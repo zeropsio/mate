@@ -5,7 +5,7 @@ import type { Stops } from "@t3tools/client-runtime/zerops/account/runtime";
 import type { Deployment, StopService } from "@t3tools/client-runtime/zerops/flow";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { Atom, AtomRegistry } from "effect/reactivity";
-import type { ReactNode } from "react";
+import { act, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "./__fixtures__/testDom";
@@ -45,8 +45,6 @@ function installTestDom(): TestNode {
   vi.stubGlobal("HTMLIFrameElement", TestNode);
   return document;
 }
-
-const nextMacrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** A post-grant stage whose stops answer what the test holds, recording every demand. */
 function stage() {
@@ -184,8 +182,7 @@ describe("the account's project flow in the web", () => {
         expect(latest()).toMatchObject({ state: "known", value: { kind: "deploying" } }),
       );
     } finally {
-      root.unmount();
-      await nextMacrotask();
+      await act(async () => root.unmount());
       unbind();
     }
     expect(rig.stopDemands).toEqual([]);
@@ -220,8 +217,7 @@ describe("the account's project flow in the web", () => {
       await vi.waitFor(() => expect(answers.at(-1)).not.toBe(before));
       expect(answers.at(-1)?.get("p-stage")?.state).not.toBe("unread");
     } finally {
-      root.unmount();
-      await nextMacrotask();
+      await act(async () => root.unmount());
       unbind();
     }
   });
@@ -250,8 +246,7 @@ describe("the account's project flow in the web", () => {
       await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-prod"]));
       expect(rig.stopDemandCalls()).toBe(2);
     } finally {
-      root.unmount();
-      await nextMacrotask();
+      await act(async () => root.unmount());
       unbind();
     }
     expect(rig.stopDemands).toEqual([]);
@@ -286,8 +281,7 @@ describe("the account's project flow in the web", () => {
         expect(answers.at(-1)).toMatchObject({ state: "known", value: services }),
       );
     } finally {
-      root.unmount();
-      await nextMacrotask();
+      await act(async () => root.unmount());
       unbind();
     }
   });
@@ -321,8 +315,7 @@ describe("the account's project flow in the web", () => {
       await vi.waitFor(() => expect(answers.at(-1)).not.toBe(before));
       expect(answers.at(-1)?.state).toBe("known");
     } finally {
-      root.unmount();
-      await nextMacrotask();
+      await act(async () => root.unmount());
       unbind();
     }
   });
@@ -347,8 +340,7 @@ describe("the account's project flow in the web", () => {
       root.render(rig.wrap(<Page project={production} />));
       await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-prod"]));
     } finally {
-      root.unmount();
-      await nextMacrotask();
+      await act(async () => root.unmount());
       unbind();
     }
     expect(rig.stopDemands).toEqual([]);
@@ -374,12 +366,10 @@ describe("the account's project flow in the web", () => {
     try {
       root.render(rig.wrap(<Page />));
       await vi.waitFor(() => expect(answers.length).toBeGreaterThan(0));
-      await nextMacrotask();
       expect(answers.at(-1)).toEqual({ state: "unread", waitingFor: "access-grant" });
       expect(rig.stopDemandCalls()).toBe(0);
     } finally {
-      root.unmount();
-      await nextMacrotask();
+      await act(async () => root.unmount());
       unbind();
     }
   });
@@ -415,8 +405,7 @@ describe("the account's project flow in the web", () => {
         expect(answers.at(-1)?.get("s-app")).toMatchObject({ value: { name: "v1.0.0" } }),
       );
     } finally {
-      root.unmount();
-      await nextMacrotask();
+      await act(async () => root.unmount());
       unbind();
     }
     expect(rig.versionHolds).toEqual([]);

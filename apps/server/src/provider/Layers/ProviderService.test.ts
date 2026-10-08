@@ -77,13 +77,14 @@ const serverConfigTestLayer = ServerConfig.layerTest(process.cwd(), process.cwd(
 const fixtureCwdRoot = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "provider-service-test-"));
 afterAll(() => NodeFS.rmSync(fixtureCwdRoot, { recursive: true, force: true }));
 // A send's uploads copies held until the test lets them go.
-const keepGate = vi.hoisted(() => ({ held: null as Promise<void> | null }));
+const keepGate = vi.hoisted(() => ({ held: null as Promise<void> | null, admitted: () => {} }));
 
 vi.mock("../../uploadsFolder.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../uploadsFolder.ts")>();
   const { andThen, promise } = await import("effect/Effect");
   const keepSentFiles: typeof actual.keepSentFiles = (input) => {
     const held = keepGate.held;
+    if (input.items.length > 0 && held !== null) keepGate.admitted();
     return input.items.length > 0 && held !== null
       ? andThen(
           promise(() => held),
@@ -2091,6 +2092,8 @@ routing.layer("ProviderServiceLive routing", (it) => {
         mimeType: "application/pdf",
         sizeBytes: 4,
       };
+      const admitted = yield* Deferred.make<void>();
+      keepGate.admitted = () => Deferred.doneUnsafe(admitted, Effect.void);
       let release!: () => void;
       keepGate.held = new Promise<void>((resolve) => {
         release = resolve;
@@ -2098,13 +2101,13 @@ routing.layer("ProviderServiceLive routing", (it) => {
       routing.codex.sendTurn.mockClear();
       const first = yield* Effect.forkChild(
         provider.sendTurn({ threadId: session.threadId, input: "first", attachments: [file] }),
+        { startImmediately: true },
       );
+      yield* Deferred.await(admitted).pipe(Effect.timeout("5 seconds"), Effect.orDie);
       const second = yield* Effect.forkChild(
         provider.sendTurn({ threadId: session.threadId, input: "second" }),
+        { startImmediately: true },
       );
-      // Real time for the later send to overtake, the test clock standing still.
-      // @effect-diagnostics-next-line globalTimers:off
-      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 30)));
       release();
       keepGate.held = null;
       yield* Fiber.join(first);

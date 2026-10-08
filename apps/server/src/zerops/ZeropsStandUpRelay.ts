@@ -30,6 +30,8 @@ import {
   type SpiEvent,
   type TurnId,
 } from "@t3tools/contracts";
+import { completionReceipt } from "@t3tools/shared/completionReceipt";
+import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -140,6 +142,14 @@ const progressKey = (progress: StandUpProgress): string =>
 const isStandUpCall = (event: SpiEvent) =>
   event.toolCall?.name === STAND_UP_TOOL_NAME && event.itemId !== undefined;
 
+export class ZeropsStandUpRelay extends Context.Service<
+  ZeropsStandUpRelay,
+  {
+    readonly nextPass: Effect.Effect<void>;
+    readonly finished: Effect.Effect<void>;
+  }
+>()("t3/zerops/ZeropsStandUpRelay") {}
+
 export const make = Effect.gen(function* () {
   const bus = yield* ProviderRuntimeEventBus;
   const setup = yield* ZeropsSetup;
@@ -177,6 +187,7 @@ export const make = Effect.gen(function* () {
    * Only this call's section is judged: until zcp writes it, the file holds
    * the previous call's, whose process may be gone without this one's being.
    */
+  const passes = completionReceipt();
   const relayOnce = (
     event: SpiEvent,
     call: { readonly startedAt: string; last: string | undefined },
@@ -211,7 +222,10 @@ export const make = Effect.gen(function* () {
       });
       call.last = written;
       return false;
-    }).pipe(Effect.catchCause(() => Effect.succeed(false)));
+    }).pipe(
+      Effect.catchCause(() => Effect.succeed(false)),
+      Effect.ensuring(passes.complete),
+    );
 
   const follow = (
     event: SpiEvent,
@@ -271,6 +285,16 @@ export const make = Effect.gen(function* () {
         : Effect.void,
     ),
   );
+  return {
+    nextPass: Effect.suspend(passes.next),
+    finished: Effect.suspend(() =>
+      Effect.forEach(
+        [...following.values()].flatMap((call) => (call.fiber === undefined ? [] : [call.fiber])),
+        Fiber.join,
+        { discard: true },
+      ),
+    ),
+  };
 });
 
-export const layer = Layer.effectDiscard(make);
+export const layer = Layer.effect(ZeropsStandUpRelay, make);

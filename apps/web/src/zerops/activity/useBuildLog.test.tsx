@@ -449,7 +449,6 @@ describe("useBuildLog over the account's own log registry", () => {
 
       // Its socket stands, the backend has not accepted it: not live — a
       // stream that never handshook said "waiting" through a whole build.
-      await act(() => new Promise((resolve) => setTimeout(resolve, 5)));
       expect(statuses.at(-1)).toBe("loading");
 
       await act(async () => {
@@ -457,9 +456,13 @@ describe("useBuildLog over the account's own log registry", () => {
         StreamSocket.opened[0]!.answer([
           { id: "b1", timestamp: "2026-10-03T10:00:14.000Z", message: "Installing dependencies" },
         ]);
-        await new Promise((resolve) => setTimeout(resolve, 5));
+        await logs.drain();
       });
-      expect(seen.slot).toEqual(["Installing dependencies"]);
+      await vi.waitFor(async () => {
+        await act(async () => {});
+        expect(seen.slot).toEqual(["Installing dependencies"]);
+        expect(statuses.at(-1)).toBe("live");
+      });
       expect(statuses.at(-1)).toBe("live");
 
       // Its call settled: the line plops from the slot into the history.

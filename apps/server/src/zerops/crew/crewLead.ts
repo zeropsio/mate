@@ -189,13 +189,20 @@ export const wakeLead = (
     if (wait > 0) {
       if (core.memory.wakeWaiting) return;
       core.memory.wakeWaiting = true;
-      yield* core.background(
-        Effect.gen(function* () {
-          core.memory.wakeWaiting = false;
-          const now = yield* core.applied;
-          const member = now === undefined ? undefined : memberOf(now, lead.row.handle);
-          if (now !== undefined && member !== undefined) yield* wakeLead(core, now, member);
-        }).pipe(Effect.delay(Duration.millis(wait))),
+      yield* Effect.forkIn(
+        Effect.sleep(Duration.millis(wait)).pipe(
+          Effect.andThen(
+            core.background(
+              Effect.gen(function* () {
+                core.memory.wakeWaiting = false;
+                const now = yield* core.applied;
+                const member = now === undefined ? undefined : memberOf(now, lead.row.handle);
+                if (now !== undefined && member !== undefined) yield* wakeLead(core, now, member);
+              }),
+            ),
+          ),
+        ),
+        core.scope,
       );
       return;
     }

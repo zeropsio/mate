@@ -8925,16 +8925,24 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const thread = makeDefaultOrchestrationReadModel().threads[0]!;
       const liveEvents = yield* PubSub.unbounded<OrchestrationEvent>();
+      const subscribed = yield* Deferred.make<void>();
+      const stream = Stream.unwrap(
+        Effect.gen(function* () {
+          const subscription = yield* PubSub.subscribe(liveEvents);
+          yield* Deferred.succeed(subscribed, undefined);
+          return Stream.fromSubscription(subscription);
+        }),
+      );
 
       yield* buildAppUnderTest({
         layers: {
           orchestrationEngine: {
-            streamDomainEvents: Stream.fromPubSub(liveEvents),
+            streamDomainEvents: stream,
           },
           projectionSnapshotQuery: {
             getThreadDetailSnapshot: () =>
               Effect.gen(function* () {
-                yield* Effect.sleep("25 millis");
+                yield* Deferred.await(subscribed).pipe(Effect.timeout("2 seconds"), Effect.orDie);
                 yield* PubSub.publishAll(liveEvents, [
                   makeLiveToolActivityEvent(2),
                   makeLiveToolActivityEvent(3),
@@ -8965,16 +8973,24 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const thread = makeDefaultOrchestrationReadModel().threads[0]!;
       const liveEvents = yield* PubSub.unbounded<OrchestrationEvent>();
+      const subscribed = yield* Deferred.make<void>();
+      const stream = Stream.unwrap(
+        Effect.gen(function* () {
+          const subscription = yield* PubSub.subscribe(liveEvents);
+          yield* Deferred.succeed(subscribed, undefined);
+          return Stream.fromSubscription(subscription);
+        }),
+      );
 
       yield* buildAppUnderTest({
         layers: {
           orchestrationEngine: {
-            streamDomainEvents: Stream.fromPubSub(liveEvents),
+            streamDomainEvents: stream,
           },
           projectionSnapshotQuery: {
             getThreadDetailSnapshot: () =>
               Effect.gen(function* () {
-                yield* Effect.sleep("25 millis");
+                yield* Deferred.await(subscribed).pipe(Effect.timeout("2 seconds"), Effect.orDie);
                 yield* PubSub.publishAll(liveEvents, [
                   ...Array.from({ length: 512 }, (_, index) =>
                     makeLiveToolActivityEvent(index + 2),
@@ -9049,6 +9065,14 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     Effect.gen(function* () {
       const thread = makeDefaultOrchestrationReadModel().threads[0]!;
       const liveEvents = yield* PubSub.unbounded<OrchestrationEvent>();
+      const subscribed = yield* Deferred.make<void>();
+      const stream = Stream.unwrap(
+        Effect.gen(function* () {
+          const subscription = yield* PubSub.subscribe(liveEvents);
+          yield* Deferred.succeed(subscribed, undefined);
+          return Stream.fromSubscription(subscription);
+        }),
+      );
       const messageEvent = {
         sequence: 3,
         eventId: EventId.make("event-interleaved-message"),
@@ -9075,12 +9099,12 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({
         layers: {
           orchestrationEngine: {
-            streamDomainEvents: Stream.fromPubSub(liveEvents),
+            streamDomainEvents: stream,
           },
           projectionSnapshotQuery: {
             getThreadDetailSnapshot: () =>
               Effect.gen(function* () {
-                yield* Effect.sleep("25 millis");
+                yield* Deferred.await(subscribed).pipe(Effect.timeout("2 seconds"), Effect.orDie);
                 yield* PubSub.publishAll(liveEvents, [
                   makeLiveToolActivityEvent(2),
                   messageEvent,

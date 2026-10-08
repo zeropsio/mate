@@ -27,6 +27,7 @@ import {
 } from "./testing/crewEngineSteps.ts";
 import {
   eventually,
+  drained,
   spiEvent,
   withCrewEngine,
   withCrewEngines,
@@ -1078,8 +1079,7 @@ it.live("the boot sweep holds each crewmate's copy: a press during it waits its 
           handle: "backend",
           text: "Work",
           attachments: [],
-        }).pipe(Effect.forkChild);
-        yield* Effect.sleep("300 millis");
+        }).pipe(Effect.forkChild({ startImmediately: true }));
         assert.strictEqual(press.pollUnsafe() === undefined, true);
         yield* hold.release;
         yield* Fiber.join(press);
@@ -1121,7 +1121,7 @@ it.live("untracked files never stop a checked task, nor get committed or landed"
         yield* world.publish(spiEvent("turn.started", thread, {}));
         write(copy, "build.log", "untracked\n");
         yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        yield* Effect.sleep("200 millis");
+        yield* drained;
         assert.strictEqual((yield* latest).board.tasks[0]!.state, "ready");
       }),
     (world) =>

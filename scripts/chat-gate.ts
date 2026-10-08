@@ -238,16 +238,22 @@ async function runCommand(root: string, command: ChatGateCommand): Promise<numbe
   if (command.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts")))
     delete env.VITEST_MAX_WORKERS;
   return new Promise((resolve) => {
-    const child = NodeChildProcess.spawn("vp", [...command.args], {
-      cwd: NodePath.join(root, command.cwd),
-      env: {
-        ...env,
-        PATH: [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
-          NodePath.delimiter,
-        ),
+    const child = NodeChildProcess.spawn(
+      "vp",
+      command.args.map((arg) =>
+        arg.startsWith("test/scenarios/areas/") ? NodePath.resolve(root, command.cwd, arg) : arg,
+      ),
+      {
+        cwd: NodePath.join(root, command.cwd),
+        env: {
+          ...env,
+          PATH: [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
+            NodePath.delimiter,
+          ),
+        },
+        stdio: "inherit",
       },
-      stdio: "inherit",
-    });
+    );
     child.on("error", (error) => {
       console.error(error.message);
       resolve(1);

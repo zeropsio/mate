@@ -46,6 +46,7 @@ import {
 import type { MateState } from "@t3tools/shared/mateLink";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
 import { selectionWithPreferredEffort } from "@t3tools/shared/zeropsEffort";
+import { completionReceipt } from "@t3tools/shared/completionReceipt";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -144,6 +145,8 @@ export class ZeropsSetup extends Context.Service<
      * the Mate's unit fails a section left running (zcp's `MarkLaunch`), so none outlives them.
      */
     readonly noteStandUpCall: (call: StandUpCall) => Effect.Effect<void>;
+    /** A scheduled stand-up or flip decision returned; not an in-flight send. */
+    readonly nextPoll: Effect.Effect<void>;
     /** Receipt: the initial wait ended as sent, failed, skipped or not asked. */
     readonly awaitStandUp: Effect.Effect<void>;
     /**
@@ -928,6 +931,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
      * runs anything of its own) and its agent, once, when the engine holds none yet. V1's
      * projections are only read.
      */
+    const polled = completionReceipt();
     const adoptAtFlip = Effect.gen(function* () {
       const held = yield* engineConversation();
       // Unread is not none: adopting now could give a conversation that exists a second agent.
@@ -958,6 +962,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           turns,
         });
     }).pipe(
+      Effect.ensuring(polled.complete),
       Effect.retry({
         while: (error) => error === "unread",
         schedule: Schedule.spaced(timings.poll),
@@ -994,7 +999,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       const since = yield* Clock.currentTimeMillis;
       while (true) {
         const upMs = (yield* Clock.currentTimeMillis) - since;
-        if (yield* attempts.withPermit(step())) {
+        if (yield* attempts.withPermit(step()).pipe(Effect.ensuring(polled.complete))) {
           yield* Deferred.succeed(settled, undefined);
           return;
         }
@@ -1039,6 +1044,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       standUpGone,
       noteStandUpCall,
       retry,
+      nextPoll: Effect.suspend(polled.next),
       awaitStandUp: Deferred.await(settled),
     });
   });

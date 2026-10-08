@@ -1,3 +1,4 @@
+import { completionReceipt } from "@t3tools/shared/completionReceipt";
 /**
  * Which HQ is the official one. An org Admin or Owner mints the anchor: an integration token named
  * `mate-hq:<projectId>:<address>` with the org role Admin, its value discarded. The member list
@@ -100,6 +101,8 @@ export class Official extends Context.Service<
      * no verdict, only the state a Core starts in.
      */
     readonly checked: Effect.Effect<boolean>;
+    /** The next scheduled official-verdict read and its state publication have completed. */
+    readonly nextCheck: Effect.Effect<void>;
     /** The newest `ok` this Core holds, read or inherited: what the leader records for the next. */
     readonly lastOk: Effect.Effect<OfficialOk | undefined>;
     /**
@@ -177,6 +180,7 @@ export const officialLayer = (
         }),
       );
 
+      const completed = completionReceipt();
       const check = Effect.gen(function* () {
         const official = yield* read;
         const now = yield* Clock.currentTimeMillis;
@@ -190,7 +194,7 @@ export const officialLayer = (
           yield* Effect.logInfo("official verdict changed", { from: was.official, to: official });
         }
         return official;
-      });
+      }).pipe(Effect.ensuring(completed.complete));
       yield* Effect.forkScoped(
         Effect.forever(
           Effect.flatMap(check, (official) =>
@@ -200,6 +204,7 @@ export const officialLayer = (
       );
 
       return Official.of({
+        nextCheck: Effect.suspend(completed.next),
         checked: Ref.get(checked),
         lastOk: Effect.map(Ref.get(state), ({ okAt }) =>
           okAt === undefined ? undefined : { at: okAt, projectId: options.projectId },

@@ -1242,9 +1242,11 @@ describe("a Mate's changes in HQ", () => {
               .changes,
             [own(head, "Add a login page")],
           );
-          // Changed inputs may repeat the refusal; no protected value reaches the developer.
+          // Its post-change subscription is refused too; no protected value reached it.
+          yield* devSocket.send({ type: "subscribe", scopes: [{ scope: detail }] });
+          assert.strictEqual((yield* devSocket.take("scope-error")).code, "forbidden");
           assert.deepStrictEqual(
-            (yield* devSocket.quiet("1 millis")).filter(
+            (yield* devSocket.collected).filter(
               (message) => message.type === "scope-reset" || message.type === "scope-values",
             ),
             [],

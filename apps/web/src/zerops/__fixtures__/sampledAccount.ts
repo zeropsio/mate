@@ -12,9 +12,6 @@ import type { AtomRegistry } from "effect/reactivity";
 
 import type { AccountData } from "../ZeropsAccountData";
 
-/** Real time enough for the layer, on its own runtime, to carry a read through. */
-export const LAYER_TURNS_MS = 20;
-
 /**
  * The account observing `orgId`, whose reads `answer` answers — a `GET`, or a `POST` search with
  * its body; `null` for a path it has not. A search answered 403 is refused, any other non-200 lost.

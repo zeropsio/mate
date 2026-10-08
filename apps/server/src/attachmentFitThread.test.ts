@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as JpegJs from "jpeg-js";
@@ -31,9 +32,6 @@ function smallPicture(): PictureInput {
 
 const fitted: PictureFit = { _tag: "unsupported" };
 
-/** Lets every started fiber and promise run as far as it can. */
-const settle = Effect.sleep("20 millis");
-
 describe("fitPictureOffThread", () => {
   it.effect("fits a picture as the server's own fit would", () =>
     Effect.gen(function* () {
@@ -61,18 +59,20 @@ describe("makePictureFitter", () => {
     Effect.gen(function* () {
       const finish = [Promise.withResolvers<PictureFit>(), Promise.withResolvers<PictureFit>()];
       let started = 0;
+      const admitted = [yield* Deferred.make<void>(), yield* Deferred.make<void>()];
       const fit = makePictureFitter(() => {
         started += 1;
+        Deferred.doneUnsafe(admitted[started - 1]!, Effect.void);
         return finish[started - 1]!.promise;
       });
       const first = yield* Effect.forkChild(fit(photo()));
       const second = yield* Effect.forkChild(fit(photo()));
-      yield* settle;
+      yield* Deferred.await(admitted[0]!).pipe(Effect.timeout("5 seconds"), Effect.orDie);
       expect(started).toBe(1);
 
       finish[0]!.resolve(fitted);
       yield* Fiber.join(first);
-      yield* settle;
+      yield* Deferred.await(admitted[1]!).pipe(Effect.timeout("5 seconds"), Effect.orDie);
       expect(started).toBe(2);
 
       finish[1]!.resolve(fitted);
@@ -94,12 +94,14 @@ describe("makePictureFitter", () => {
   it.live("stops the thread of a fit nobody waits for any more", () =>
     Effect.gen(function* () {
       const signals: AbortSignal[] = [];
+      const admitted = yield* Deferred.make<void>();
       const fit = makePictureFitter((_input, signal) => {
         signals.push(signal);
+        Deferred.doneUnsafe(admitted, Effect.void);
         return new Promise<PictureFit>(() => {});
       });
       const fiber = yield* Effect.forkChild(fit(photo()));
-      yield* settle;
+      yield* Deferred.await(admitted).pipe(Effect.timeout("5 seconds"), Effect.orDie);
       yield* Fiber.interrupt(fiber);
       expect(signals.map((signal) => signal.aborted)).toEqual([true]);
     }),

@@ -59,9 +59,8 @@ describe("makeZeropsAtomSelectionStore", () => {
         await Promise.resolve();
       }
     }
-    // The next task tells it; a timer's task may come first.
+    // The scheduled notification has delivered the final snapshot.
     await vi.waitFor(() => expect(notifications).toBeGreaterThan(0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(notifications).toBe(1);
     expect([...store.getSnapshot().values()]).toEqual(sources.map(() => 4));

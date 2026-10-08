@@ -32,7 +32,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
+import type * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../../../config.ts";
@@ -44,6 +44,7 @@ import {
 import { makeCursorAdapter } from "../../../provider/Layers/CursorAdapter.ts";
 import { makeGrokAdapter } from "../../../provider/Layers/GrokAdapter.ts";
 import { makeAntigravityAcpRuntime } from "../../../provider/acp/AntigravityAcpSupport.ts";
+import { collectReplay, completedTurn } from "../../../spi/replay/collector.ts";
 import { replayClaude } from "../../../spi/replay/claudeReplay.ts";
 import { replayCodex } from "../../../spi/replay/codexReplay.ts";
 import type { Fixture } from "../../../spi/replay/types.ts";
@@ -242,19 +243,11 @@ export async function recordAcp(
   const program = Effect.gen(function* () {
     const adapter = yield* makeAdapter;
     const log: Array<BridgeInput> = [];
-    const seen = (predicate: (event: SpiEvent) => boolean) =>
-      log.some((input) => input.kind === "event" && predicate(input.event));
+    const collector = yield* collectReplay(adapter.streamEvents, (event) => {
+      log.push({ kind: "event", event });
+    });
     const waitFor = (predicate: (event: SpiEvent) => boolean) =>
-      Effect.gen(function* () {
-        for (let tries = 0; tries < 300 && !seen(predicate); tries += 1) {
-          yield* Effect.sleep("20 millis");
-        }
-      });
-    yield* Stream.runForEach(adapter.streamEvents, (event) =>
-      Effect.sync(() => {
-        log.push({ kind: "event", event });
-      }),
-    ).pipe(Effect.forkScoped);
+      collector.waitFor((events) => events.some(predicate));
 
     log.push({ kind: "start", session: S1, from: "fresh" });
     yield* adapter.startSession({
@@ -292,7 +285,7 @@ export async function recordAcp(
     );
     const untilReturned = Deferred.await(sendReturned).pipe(
       Effect.timeout("6 seconds"),
-      Effect.ignore,
+      Effect.orDie,
     );
 
     switch (scenario.kind) {
@@ -300,7 +293,15 @@ export async function recordAcp(
         yield* untilReturned;
         break;
       case "stop-mid-tool":
-        yield* waitFor((event) => event.type.startsWith("item.") && event.payload !== undefined);
+        yield* waitFor(
+          (event) =>
+            event.type === "item.updated" &&
+            (
+              event.raw?.payload as
+                | { readonly update?: { readonly sessionUpdate?: string } }
+                | undefined
+            )?.update?.sessionUpdate === "tool_call_update",
+        );
         log.push({ kind: "interrupt", turn: H1 });
         yield* adapter.interruptTurn(threadId).pipe(Effect.ignore);
         yield* untilReturned;
@@ -309,8 +310,16 @@ export async function recordAcp(
         yield* waitFor((event) => event.type === scenario.type);
         break;
     }
-    // Late events land after the end: give the stream a moment, as acpReplay does.
-    yield* Effect.sleep("300 millis");
+    if (scenario.kind !== "until") {
+      yield* collector.waitFor(completedTurn);
+      if (
+        collector.events.some(
+          (event) =>
+            event.type === "turn.completed" && event.payload.terminalReason === "process_exit",
+        )
+      )
+        yield* waitFor((event) => event.type === "session.exited");
+    }
     // A copy: what the scope's finalizers emit on close is not part of the scenario.
     return [...log];
   });

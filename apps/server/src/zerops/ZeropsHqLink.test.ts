@@ -11,6 +11,7 @@ import {
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
 import { MateLinkUp, type MateOverview, type MateState } from "@t3tools/shared/mateLink";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -184,9 +185,16 @@ const rig = (
       }),
     );
     const autoUpdatePolicy = yield* makeMateAutoUpdatePolicy;
+    const enrollmentRead = yield* Deferred.make<void>();
+    let readBefore = false;
     const link = yield* makeZeropsHqLink({
       autoUpdatePolicy,
-      readEnrollment: Ref.get(enrollment),
+      // Pulling again acknowledges that the previous enrollment decision finished.
+      readEnrollment: Effect.suspend(() => {
+        if (readBefore) Deferred.doneUnsafe(enrollmentRead, Effect.void);
+        readBefore = true;
+        return Ref.get(enrollment);
+      }),
       readOutcome: Ref.get(outcome),
       connect: (url) => {
         const socket = new FakeSocket(url);
@@ -231,6 +239,7 @@ const rig = (
       asked,
       hq,
       until,
+      enrollmentRead: Deferred.await(enrollmentRead),
       reads,
       relayed,
     };
@@ -320,8 +329,8 @@ describe("ZeropsHqLink", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { link, enrollment, sockets, until } = yield* rig({ everyMs: 10 });
-          yield* Effect.sleep(Duration.millis(60));
+          const { link, enrollment, sockets, until, enrollmentRead } = yield* rig({ everyMs: 10 });
+          yield* enrollmentRead.pipe(Effect.timeout("5 seconds"), Effect.orDie);
           assert.strictEqual(sockets.length, 0);
           yield* Ref.set(enrollment, Option.some({ hq: "https://hq.test", credential: "cred" }));
           const socket = yield* until(() => sockets[0]);

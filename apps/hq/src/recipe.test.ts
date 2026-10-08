@@ -426,7 +426,6 @@ describe("an application's recipe in HQ", () => {
           yield* untilHealth(next.call, "active");
           const nextOwner = yield* sessionFor(next.call, "door-owner-2");
           yield* stateBecomes(next.call, nextOwner, ada.appId, boNumber, "merged");
-          yield* Effect.sleep(Duration.millis(300));
           yield* stateBecomes(next.call, nextOwner, ada.appId, adaNumber, "open");
         }),
     );

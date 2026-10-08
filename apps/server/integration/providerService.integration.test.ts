@@ -95,17 +95,16 @@ const collectEventsDuring = <A, E, R>(
   Effect.gen(function* () {
     const queue = yield* Queue.unbounded<ProviderRuntimeEvent>();
     yield* Stream.runForEach(stream, (event) => Queue.offer(queue, event).pipe(Effect.asVoid)).pipe(
-      Effect.forkScoped,
+      Effect.forkScoped({ startImmediately: true }),
     );
 
-    yield* Effect.sleep("50 millis");
     yield* action;
 
     return yield* Effect.forEach(
       Array.from({ length: count }, () => undefined),
       () => Queue.take(queue),
       { discard: false },
-    );
+    ).pipe(Effect.timeout("15 seconds"), Effect.orDie);
   });
 
 const runTurn = (input: {

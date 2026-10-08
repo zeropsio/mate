@@ -364,7 +364,6 @@ describe("serveMateLink: who ended a link, and with what code", () => {
     Effect.gen(function* () {
       const { serving, state } = yield* statesOf(Effect.fail(new NotLeader({ reason: "standby" })));
       yield* state((frame) => frame.usage === undefined);
-      yield* Effect.sleep("200 millis");
       assert.isUndefined(serving.pollUnsafe());
     }),
   );

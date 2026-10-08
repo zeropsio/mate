@@ -447,7 +447,7 @@ describe("a backup set, taken", () => {
         const leaderVersion = a.sql<{ readonly xmin: string }>`
           SELECT xmin::text AS xmin FROM hq_leader WHERE id = 1`;
         const before = yield* leaderVersion;
-        yield* Effect.sleep("500 millis");
+        yield* a.official.nextCheck.pipe(Effect.timeout("5 seconds"), Effect.orDie);
         assert.deepStrictEqual(yield* leaderVersion, before);
       }),
     );
@@ -466,7 +466,7 @@ describe("a backup set, taken", () => {
         assert.deepStrictEqual(NodeFS.readdirSync(NodePath.join(a.storeDir, "sets")), [set]);
         assert.isTrue(NodeFS.existsSync(NodePath.join(a.storeDir, "sets", set, "manifest.json")));
         // The standby takes none.
-        yield* Effect.sleep("500 millis");
+        yield* b.backup.nextCheck.pipe(Effect.timeout("5 seconds"), Effect.orDie);
         assert.deepStrictEqual(NodeFS.readdirSync(b.storeDir), []);
         assert.deepStrictEqual(NodeFS.readdirSync(b.stagingDir), []);
       }),
@@ -489,7 +489,7 @@ describe("a backup set, taken", () => {
         });
         yield* leading(b);
         assert.deepStrictEqual(yield* backupHealth(b.call), [200, { state: "ok", set: kept.id }]);
-        yield* Effect.sleep("500 millis");
+        yield* b.backup.nextCheck.pipe(Effect.timeout("5 seconds"), Effect.orDie);
         assert.deepStrictEqual(NodeFS.readdirSync(NodePath.join(b.storeDir, "sets")), [kept.id]);
       }),
     );

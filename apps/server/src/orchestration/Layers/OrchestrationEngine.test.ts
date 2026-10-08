@@ -739,8 +739,8 @@ describe("OrchestrationEngine", () => {
           Stream.take(engine.streamDomainEvents, 2).pipe(
             Stream.runForEach((event) => Queue.offer(eventQueue, event).pipe(Effect.asVoid)),
           ),
+          { startImmediately: true },
         );
-        yield* Effect.sleep("10 millis");
         yield* engine.dispatch({
           type: "thread.create",
           commandId: CommandId.make("cmd-stream-thread-create"),

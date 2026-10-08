@@ -2,7 +2,7 @@
  * lifetime must never publish into a later account's stores. */
 let accountId: string | null = null;
 let generation = 0;
-const onClose = new Set<() => void>();
+const onClose = new Set<() => void | Promise<void>>();
 
 export function currentAccountId(): string | null {
   return accountId;
@@ -36,21 +36,24 @@ export function openAccountLifetime(userId: string): void {
   }
 }
 
-export function closeAccountLifetime(): void {
+export function closeAccountLifetime(): Promise<void> {
   generation += 1;
   // Writers flush while their original account still owns the keys. Every
   // cleanup must run even if a storage policy rejects one writer.
+  const completing: Promise<void>[] = [];
   for (const close of [...onClose].toReversed()) {
     try {
-      close();
+      const completed = close();
+      if (completed !== undefined) completing.push(completed);
     } catch (cause) {
       console.error("Account cleanup failed", cause);
     }
   }
   accountId = null;
+  return Promise.all(completing).then(() => undefined);
 }
 
-export function onAccountLifetimeClose(close: () => void): () => void {
+export function onAccountLifetimeClose(close: () => void | Promise<void>): () => void {
   onClose.add(close);
   return () => onClose.delete(close);
 }

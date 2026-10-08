@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { act, useState, useSyncExternalStore } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "../../zerops/__fixtures__/testDom";
@@ -34,8 +34,6 @@ function installTestDom(): TestNode {
   vi.stubGlobal("HTMLIFrameElement", TestNode);
   return document;
 }
-
-const nextMacrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -80,17 +78,16 @@ describe("useSyncStateOnChange", () => {
       try {
         root.render(<Composer />);
         // The store is subscribed once the mount's passive effects ran.
-        while (!store.subscribed()) await nextMacrotask();
+        await vi.waitFor(() => expect(store.subscribed()).toBe(true));
         for (let write = 1; write <= 80; write += 1) {
           store.write(write);
           await Promise.resolve();
         }
-        await nextMacrotask();
+        await vi.waitFor(() => expect(rendered).toEqual({ written: 80, value: initial }));
         expect(uncaught).toEqual([]);
         expect(rendered).toEqual({ written: 80, value: initial });
       } finally {
-        root.unmount();
-        await nextMacrotask();
+        await act(async () => root.unmount());
       }
     },
   );
@@ -99,30 +96,27 @@ describe("useSyncStateOnChange", () => {
     const document = installTestDom();
     const { createRoot } = await import("react-dom/client");
     const store = makeStore();
-    let rendered: boolean | undefined;
+    let rendered: { readonly written: number; readonly open: boolean } | undefined;
 
     function Composer() {
       const written = useSyncExternalStore(store.subscribe, store.read);
       const [open, setOpen] = useState(true);
       // The menu closes once the store has been written twice.
       useSyncStateOnChange(open, setOpen, open && written < 2, [written]);
-      rendered = open;
+      rendered = { written, open };
       return <span>{written}</span>;
     }
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
       root.render(<Composer />);
-      while (!store.subscribed()) await nextMacrotask();
+      await vi.waitFor(() => expect(store.subscribed()).toBe(true));
       store.write(1);
-      await nextMacrotask();
-      expect(rendered).toBe(true);
+      await vi.waitFor(() => expect(rendered).toEqual({ written: 1, open: true }));
       store.write(2);
-      await nextMacrotask();
-      expect(rendered).toBe(false);
+      await vi.waitFor(() => expect(rendered).toEqual({ written: 2, open: false }));
     } finally {
-      root.unmount();
-      await nextMacrotask();
+      await act(async () => root.unmount());
     }
   });
 });

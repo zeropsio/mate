@@ -10,6 +10,7 @@ import { CrewThreadDirectory, CrewToolHost } from "./crewSeams.ts";
 import { CrewStore } from "./CrewStore.ts";
 import {
   eventually,
+  drained,
   spiEvent,
   withCrewEngine,
   withCrewEngines,
@@ -523,7 +524,7 @@ describe("CrewEngine runs", () => {
         yield* reportDone(thread);
         yield* ended(world, thread, 0.1);
         yield* snapshotWhere((current) => current.board.tasks[0]?.state === "ready");
-        yield* Effect.sleep("300 millis");
+        yield* drained;
         assert.strictEqual((yield* snapshotWhere(() => true)).board.tasks[0]?.state, "ready");
       }),
     ),

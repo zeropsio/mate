@@ -27,6 +27,8 @@ import * as Scope from "effect/Scope";
 import * as HttpServer from "effect/http/HttpServer";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { Sessions } from "../../src/sessions.ts";
+import { Official } from "../../src/official.ts";
 import { Backup, directoryStore } from "../../src/backup.ts";
 import { Changes } from "../../src/changes.ts";
 import { coreApp } from "../../src/core.ts";
@@ -391,15 +393,13 @@ export const startCore = (
         return {
           opened,
           pings,
+          pinged: (count: number) =>
+            until(() => (pings.seen >= count ? pings.seen : undefined), "ping"),
           next,
           take,
           takeWhere,
-          /** What arrived within `window`. */
-          quiet: (window: Duration.Input) =>
-            Effect.andThen(
-              Effect.sleep(window),
-              Effect.sync(() => [...messages]),
-            ),
+          /** Frames buffered after a wire receipt proved the relevant work finished. */
+          collected: Effect.sync(() => [...messages]),
           closedWith: until(() => closed?.code, "close"),
           close: Effect.sync(() => ws.close()),
           send: (message: unknown) => Effect.sync(() => ws.send(encodeJson(message))),
@@ -418,6 +418,8 @@ export const startCore = (
       changes: Context.get(context, Changes),
       overviews: Context.get(context, MateOverviews),
       backup: Context.get(context, Backup),
+      official: Context.get(context, Official),
+      sessionChecks: Context.get(context, Sessions).checks,
       storeDir,
       stagingDir,
     };
@@ -428,7 +430,11 @@ export type Call = Effect.Success<ReturnType<typeof startCore>>["call"];
 export const untilHealth = (call: Call, state: string) =>
   call("GET", "/health").pipe(
     Effect.filterOrFail(
-      (response) => (response.body as { readonly state: string }).state === state,
+      (response) =>
+        response.body !== null &&
+        typeof response.body === "object" &&
+        "state" in response.body &&
+        response.body.state === state,
     ),
     Effect.retry(Schedule.spaced(Duration.millis(50))),
     Effect.timeout(Duration.seconds(10)),

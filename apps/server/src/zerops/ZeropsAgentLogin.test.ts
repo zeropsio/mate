@@ -12,6 +12,7 @@ import type {
 import { TerminalNotRunningError, ZeropsAgentLoginError } from "@t3tools/contracts";
 import { latestSucceededSignIn } from "@t3tools/shared/zeropsAgentAuth";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -44,6 +45,7 @@ interface WriteRecord {
 interface FakeTerminalManager {
   readonly service: TerminalManagerService;
   readonly writes: Ref.Ref<ReadonlyArray<WriteRecord>>;
+  readonly writeWhere: (predicate: (write: WriteRecord) => boolean) => Effect.Effect<WriteRecord>;
   readonly closed: Ref.Ref<ReadonlyArray<CloseRecord>>;
   readonly opened: Ref.Ref<
     ReadonlyArray<{
@@ -90,6 +92,7 @@ const fakeSnapshot = (input: {
 const makeFakeTerminalManager = (): Effect.Effect<FakeTerminalManager> =>
   Effect.gen(function* () {
     const writes = yield* Ref.make<ReadonlyArray<WriteRecord>>([]);
+    const written = yield* Queue.unbounded<WriteRecord>();
     const closed = yield* Ref.make<ReadonlyArray<CloseRecord>>([]);
     const opened = yield* Ref.make<
       ReadonlyArray<{
@@ -114,7 +117,7 @@ const makeFakeTerminalManager = (): Effect.Effect<FakeTerminalManager> =>
         Ref.update(writes, (all) => [
           ...all,
           { threadId: input.threadId, terminalId: input.terminalId, data: input.data },
-        ]).pipe(Effect.asVoid),
+        ]).pipe(Effect.andThen(Queue.offer(written, input)), Effect.asVoid),
       attachStream: (
         input: TerminalAttachInput,
         listener: (event: TerminalAttachStreamEvent) => Effect.Effect<void>,
@@ -152,7 +155,21 @@ const makeFakeTerminalManager = (): Effect.Effect<FakeTerminalManager> =>
         }
       });
 
-    return { service, writes, closed, opened, emit, exit } satisfies FakeTerminalManager;
+    const writeWhere = (predicate: (write: WriteRecord) => boolean) =>
+      Stream.runHead(Stream.fromQueue(written).pipe(Stream.filter(predicate))).pipe(
+        Effect.map(Option.getOrThrow),
+        Effect.timeout("5 seconds"),
+        Effect.orDie,
+      );
+    return {
+      service,
+      writes,
+      writeWhere,
+      closed,
+      opened,
+      emit,
+      exit,
+    } satisfies FakeTerminalManager;
   });
 
 interface FakeAuth {
@@ -500,7 +517,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
               "Select login method:\n1. Claude account with subscription\n2. Anthropic Console account\n",
             );
 
-            yield* Effect.sleep("1600 millis");
+            yield* fakeTerminal.writeWhere((write) => write.data === "\r");
 
             const writes = yield* Ref.get(fakeTerminal.writes);
             // The login command itself, then the stall's own auto-Enter.
@@ -1305,15 +1322,51 @@ const realFeed = (home: string, { signedIn, ...options }: RealFeedOptions = {}) 
     const fakeAuth = yield* makeFakeAuth();
     const loginChecks = yield* Ref.make<ReadonlyArray<string>>([]);
     const signIns = yield* memorySignInStore(signedIn);
+    const fs = yield* FileSystem.FileSystem;
+    const pending = yield* Deferred.make<void>();
+    let committing = false;
+    const homes = yield* makeLoginHomes(home, options).pipe(
+      Effect.provideService(FileSystem.FileSystem, {
+        ...fs,
+        exists: (path) =>
+          fs
+            .exists(path)
+            .pipe(
+              Effect.tap((present) =>
+                committing && !present ? Deferred.succeed(pending, undefined) : Effect.void,
+              ),
+            ),
+      }),
+    );
     const feed = yield* ZeropsAgentLoginModule.make({
       terminalManager: fakeTerminal.service,
       zeropsAgentAuth: fakeAuth,
       zeropsLogins: { recheckNow: (id) => Ref.update(loginChecks, (all) => [...all, id]) },
       isZeropsEnvironment: true,
-      homes: yield* makeLoginHomes(home, options),
+      homes: {
+        ...homes,
+        commit: (target) =>
+          Effect.suspend(() => {
+            committing = true;
+            return homes.commit(target).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  committing = false;
+                }),
+              ),
+            );
+          }),
+      },
       signIns,
     });
-    return { fakeTerminal, fakeAuth, loginChecks, signIns, feed };
+    return {
+      fakeTerminal,
+      fakeAuth,
+      loginChecks,
+      signIns,
+      feed,
+      waitingCredential: Deferred.await(pending).pipe(Effect.timeout("5 seconds"), Effect.orDie),
+    };
   });
 
 /** Claude's global config for `row`: the default login's beside `~/.claude`, any other's in its home. */
@@ -1345,14 +1398,14 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
           const fs = yield* FileSystem.FileSystem;
           const row = REAL_LOGINS[0]!;
           const home = yield* seedHome(row);
-          const { fakeTerminal, feed, key } = yield* startReal(row, home, {
+          const { fakeTerminal, feed, key, waitingCredential } = yield* startReal(row, home, {
             credentialWait: Duration.millis(500),
           });
 
           const success = yield* fakeTerminal
             .emit("thread-1", ZeropsAgentLoginModule.loginTerminalId(key), row.success)
             .pipe(Effect.forkChild);
-          yield* Effect.sleep(Duration.millis(100));
+          yield* waitingCredential;
           yield* feed.cancel(row.agentId);
           yield* Fiber.join(success);
 
@@ -1507,7 +1560,10 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
           const home = yield* seedHome(row);
-          const { fakeTerminal, feed, key, scratch } = yield* startReal(row, home);
+          const { fakeTerminal, feed, key, scratch, waitingCredential } = yield* startReal(
+            row,
+            home,
+          );
           yield* fs.writeFileString(`${scratch}/${row.file}`, "new");
 
           yield* fakeTerminal.exit("thread-1", ZeropsAgentLoginModule.loginTerminalId(key), {
@@ -1558,12 +1614,15 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
           const home = yield* seedHome(row);
-          const { fakeTerminal, feed, key, scratch } = yield* startReal(row, home);
+          const { fakeTerminal, feed, key, scratch, waitingCredential } = yield* startReal(
+            row,
+            home,
+          );
 
           const success = yield* fakeTerminal
             .emit("thread-1", ZeropsAgentLoginModule.loginTerminalId(key), row.success)
             .pipe(Effect.forkChild);
-          yield* Effect.sleep(Duration.seconds(1));
+          yield* waitingCredential;
           yield* fs.writeFileString(`${scratch}/${row.file}`, "new");
           yield* Fiber.join(success);
 
@@ -1582,16 +1641,13 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
           const home = yield* seedHome(row);
-          const { fakeTerminal, fakeAuth, loginChecks, signIns, feed, key } = yield* startReal(
-            row,
-            home,
-            { credentialWait: Duration.millis(500) },
-          );
+          const { fakeTerminal, fakeAuth, loginChecks, signIns, feed, key, waitingCredential } =
+            yield* startReal(row, home, { credentialWait: Duration.millis(500) });
 
           const success = yield* fakeTerminal
             .emit("thread-1", ZeropsAgentLoginModule.loginTerminalId(key), row.success)
             .pipe(Effect.forkChild);
-          yield* Effect.sleep(Duration.millis(100));
+          yield* waitingCredential;
           // Waiting yet for the credential to land.
           assert.notEqual((yield* feed.latest)[key]?.phase, "failed");
           yield* Fiber.join(success);

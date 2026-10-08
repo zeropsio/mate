@@ -11,7 +11,6 @@
  * prefix overlap from OpenCode part deltas").
  */
 import * as Effect from "effect/Effect";
-import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -32,6 +31,8 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderSessionDirectory } from "../../provider/Services/ProviderSessionDirectory.ts";
 import { OpenCodeRuntime, type OpenCodeRuntimeShape } from "../../provider/opencodeRuntime.ts";
 import { makeOpenCodeAdapter } from "../../provider/Layers/OpenCodeAdapter.ts";
+
+import { collectReplay } from "./collector.ts";
 
 const decodeOpenCodeSettings = Schema.decodeSync(OpenCodeSettings);
 
@@ -205,7 +206,7 @@ const makeReplayRuntime = (
 
 /**
  * Starts a session against the replay double and returns every emitted
- * event up to (and slightly past) `item.completed`, once the canned SSE
+ * event through `item.completed`, once the canned SSE
  * sequence above has fully played out.
  */
 export async function recordOpenCodeBaseline(): Promise<ReadonlyArray<SpiEvent>> {
@@ -217,20 +218,7 @@ export async function recordOpenCodeBaseline(): Promise<ReadonlyArray<SpiEvent>>
   const program = Effect.gen(function* () {
     const adapter = yield* makeOpenCodeAdapter(openCodeConfig);
 
-    const events: Array<SpiEvent> = [];
-    const itemCompleted = yield* Deferred.make<void>();
-
-    const collectorFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
-      Effect.sync(() => {
-        events.push(event);
-      }).pipe(
-        Effect.andThen(
-          event.type === "item.completed"
-            ? Deferred.succeed(itemCompleted, undefined)
-            : Effect.void,
-        ),
-      ),
-    ).pipe(Effect.forkChild);
+    const collector = yield* collectReplay(adapter.streamEvents);
 
     yield* adapter.startSession({
       threadId: REPLAY_THREAD_ID,
@@ -238,11 +226,10 @@ export async function recordOpenCodeBaseline(): Promise<ReadonlyArray<SpiEvent>>
       runtimeMode: "full-access",
     });
 
-    yield* Deferred.await(itemCompleted);
-    yield* Effect.sleep("100 millis");
-    yield* Fiber.interrupt(collectorFiber);
+    yield* collector.waitFor((events) => events.some((event) => event.type === "item.completed"));
+    yield* Fiber.interrupt(collector.fiber);
 
-    return events;
+    return collector.events;
   });
 
   const testLayer = Layer.mergeAll(
@@ -271,18 +258,7 @@ export async function recordOpenCodeTurn(
   const program = Effect.gen(function* () {
     const adapter = yield* makeOpenCodeAdapter(openCodeConfig);
 
-    const collected: Array<SpiEvent> = [];
-    const turnEnded = yield* Deferred.make<void>();
-
-    const collectorFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
-      Effect.sync(() => {
-        collected.push(event);
-      }).pipe(
-        Effect.andThen(
-          event.type === "turn.completed" ? Deferred.succeed(turnEnded, undefined) : Effect.void,
-        ),
-      ),
-    ).pipe(Effect.forkChild);
+    const collector = yield* collectReplay(adapter.streamEvents);
 
     yield* adapter.startSession({
       threadId: REPLAY_THREAD_ID,
@@ -299,11 +275,10 @@ export async function recordOpenCodeTurn(
       },
     });
 
-    yield* Deferred.await(turnEnded).pipe(Effect.timeout("6 seconds"), Effect.ignore);
-    yield* Effect.sleep("100 millis");
-    yield* Fiber.interrupt(collectorFiber);
+    yield* collector.waitFor((events) => events.some((event) => event.type === "turn.completed"));
+    yield* Fiber.interrupt(collector.fiber);
 
-    return collected;
+    return collector.events;
   });
 
   const testLayer = Layer.mergeAll(

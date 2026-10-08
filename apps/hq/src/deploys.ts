@@ -78,6 +78,7 @@ import { can } from "./permissions.ts";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -183,6 +184,8 @@ export class Deploys extends Context.Service<
     ) => Effect.Effect<HqDeployAnswer, DeployRefused | NotLeader | SqlError | ZeropsError>;
     /** Ticks after every change of a job, starting with the current tick. */
     readonly changes: Stream.Stream<number>;
+    /** Joins the environment workers already admitted by a completed rollout. */
+    readonly drain: Effect.Effect<void>;
     /** PB operation scope: current jobs and their minimal persisted evidence. */
     readonly operations: (appId: string) => ReturnType<typeof operationRecords>;
   }
@@ -1551,7 +1554,7 @@ export const deploysLayer = (
       /** The leading Core's scope, where each environment's worker runs; none while it leads not. */
       const leading = yield* Ref.make<Scope.Scope | undefined>(undefined);
       const registry = yield* Semaphore.make(1);
-      const workers = new Set<string>();
+      const workers = new Map<string, Fiber.Fiber<void>>();
 
       /**
        * An environment's worker: it follows what the environment builds, and submits what waits
@@ -1598,8 +1601,8 @@ export const deploysLayer = (
           Effect.gen(function* () {
             const scope = yield* Ref.get(leading);
             if (scope === undefined || workers.has(projectId)) return;
-            workers.add(projectId);
-            yield* Effect.forkIn(work(projectId), scope);
+            const worker = yield* Effect.forkIn(work(projectId), scope);
+            workers.set(projectId, worker);
           }),
         );
 
@@ -1797,6 +1800,9 @@ export const deploysLayer = (
             id === undefined ? Effect.succeed(NO_DEPLOYS) : run(id),
           ),
         changes: SubscriptionRef.changes(ticks),
+        drain: Effect.suspend(() =>
+          Effect.forEach([...workers.values()], Fiber.join, { discard: true }),
+        ).pipe(Effect.repeat({ until: () => workers.size === 0 })),
         // A deploy cannot be taken back: each is asked over roles read for it alone.
         redeploy: (userId, appId, name, service, sha) =>
           decidedFresh(

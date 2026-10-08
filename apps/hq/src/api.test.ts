@@ -11,6 +11,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
+import * as Stream from "effect/Stream";
 import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
@@ -1043,7 +1044,7 @@ describe("HQ API", () => {
             key: "person:owner",
             reason: "no-access",
           });
-          yield* Effect.sleep(Duration.millis(1100));
+          yield* owner.pinged(3);
           assert.isAtLeast(owner.pings.seen, 3);
           yield* owner.close;
         }),
@@ -1279,6 +1280,10 @@ describe("HQ API", () => {
         const dev = yield* sessionFor(call, "door-dev");
         const watching = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, dev)}`);
         const nav = { kind: "navigation" } as const;
+        const ownerView = yield* socket(
+          `/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`,
+        );
+        yield* scopeReset(ownerView, nav);
         assert.isFalse(
           (yield* scopeReset(watching, nav)).some((value) => value.key.startsWith("app:")),
         );
@@ -1288,11 +1293,17 @@ describe("HQ API", () => {
           session: owner,
           body: { projectId: "P_MATE", kind: "stage" },
         });
+        // The shared source contains the new placement before the developer reads its own cut.
+        yield* nextScopeValue<HqNavigationApp>(ownerView, nav, `app:${appId}`, (value) =>
+          value.projectIds.includes("P_MATE"),
+        );
+        const checked = yield* scopeReset(watching, nav);
         assert.isFalse(
-          (yield* watching.quiet("700 millis")).some((message) =>
+          [...checked, ...(yield* watching.collected)].some((message) =>
             JSON.stringify(message).includes(appId),
           ),
         );
+        yield* ownerView.close;
         Object.assign(
           fake.projects.find((project) => project.id === "P_MATE")!,
           { userRoles: [{ clientUserId: "C-dev", roleCode: "BASIC_USER" }] },
@@ -1415,14 +1426,19 @@ describe("HQ API", () => {
     // HQ's trouble, and the socket stays its holder's.
     it.effect("keeps a socket open through a session check that cannot be read", () =>
       Effect.gen(function* () {
-        const { call, socket, url } = yield* startCore(true);
+        const { call, socket, url, sessionChecks } = yield* startCore(true);
         yield* untilHealth(call, "active");
         const session = yield* sessionFor(call, "door-owner");
         const open = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, session)}`);
         yield* scopeReset(open, { kind: "navigation" });
+        const rechecked = yield* sessionChecks.pipe(
+          Stream.filter((result) => result === "unreadable"),
+          Stream.take(3),
+          Stream.runDrain,
+          Effect.forkChild({ startImmediately: true }),
+        );
         yield* query(url, "ALTER TABLE hq_session RENAME TO hq_session_unreadable");
-        // Several rechecks (200 ms each) meet the unreadable session relation.
-        yield* Effect.sleep(Duration.seconds(1));
+        yield* Fiber.join(rechecked).pipe(Effect.timeout("5 seconds"), Effect.orDie);
         yield* query(url, "ALTER TABLE hq_session_unreadable RENAME TO hq_session");
         const created = yield* call("POST", "/api/apps", { session, body: { name: "Kept" } });
         const appId = (created.body as { id: string }).id;
@@ -1903,7 +1919,9 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(seen.overview, overview);
           assert.deepStrictEqual([seen.presence.online, seen.presence.overview], [true, "live"]);
-          assert.deepStrictEqual(yield* readerSocket.quiet("700 millis"), []);
+          yield* readerSocket.send({ type: "subscribe", scopes: [{ scope }] });
+          assert.strictEqual((yield* readerSocket.take("scope-error")).code, "forbidden");
+          assert.deepStrictEqual(yield* readerSocket.collected, []);
           yield* link.close;
           const gone = yield* nextScopeValue<HqAttentionScopeValue>(
             ownerSocket,

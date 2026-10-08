@@ -317,8 +317,8 @@ export const ensureRunTick = (core: CrewCore) =>
   Effect.suspend(() => {
     if (core.memory.runTick) return Effect.void;
     core.memory.runTick = true;
-    return core.background(
-      checkRunLimits(core).pipe(
+    return Effect.forkIn(
+      core.updateWork.run(checkRunLimits(core)).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             core.memory.lastError = failureWords(error);
@@ -327,7 +327,8 @@ export const ensureRunTick = (core: CrewCore) =>
         Effect.repeat(Schedule.spaced(RUN_TICK)),
         Effect.asVoid,
       ),
-    );
+      core.scope,
+    ).pipe(Effect.asVoid);
   });
 
 /**

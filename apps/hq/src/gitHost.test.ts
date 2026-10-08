@@ -151,7 +151,7 @@ describe("gitHost", () => {
         );
         yield* untilActive.pipe(Effect.provide(context));
         const host = Context.get(context, GitHost);
-        yield* Effect.sleep(Duration.millis(300));
+        yield* host.nextAttempt.pipe(Effect.timeout("5 seconds"), Effect.orDie);
         assert.isTrue(Exit.isFailure(yield* Effect.exit(host.git)), "git opened on a file");
         NodeFS.rmSync(volume);
         yield* host.git.pipe(
@@ -188,7 +188,7 @@ describe("gitHost", () => {
           Effect.flatMap(lead, ({ sql }) => sql`ALTER TABLE hq_release RENAME TO hq_release_aside`),
         );
         const next = yield* lead;
-        yield* Effect.sleep(Duration.millis(300));
+        yield* next.host.nextAttempt.pipe(Effect.timeout("5 seconds"), Effect.orDie);
         assert.isTrue(
           Exit.isFailure(yield* Effect.exit(next.host.git)),
           "git opened past a failed takeover",

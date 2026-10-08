@@ -22,13 +22,12 @@ import {
   TurnId,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
-import * as PubSub from "effect/PubSub";
+import { handledQueue } from "@t3tools/shared/testing/handledQueue";
 import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -93,7 +92,8 @@ function createProviderServiceHarness(
   providerName: ProviderSession["provider"] = ProviderDriverKind.make("codex"),
 ) {
   const now = "2026-01-01T00:00:00.000Z";
-  const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
+  const runtimeEvents = Effect.runSync(handledQueue<ProviderRuntimeEvent>("15 seconds"));
+  const pending = new Set<Promise<void>>();
   const rollbackConversation = vi.fn(
     (_input: { readonly threadId: ThreadId; readonly numTurns: number }) => Effect.void,
   );
@@ -142,16 +142,24 @@ function createProviderServiceHarness(
     rollbackConversation,
     uploadFeedback: () => unsupported(),
     get streamEvents() {
-      return Stream.fromPubSub(runtimeEventPubSub);
+      return runtimeEvents.events;
     },
   };
 
   const emit = (event: LegacyProviderRuntimeEvent): void => {
-    Effect.runSync(PubSub.publish(runtimeEventPubSub, event as unknown as ProviderRuntimeEvent));
+    const handled = Effect.runPromise(
+      runtimeEvents.publish(event as unknown as ProviderRuntimeEvent),
+    );
+    pending.add(handled);
+    void handled.then(
+      () => pending.delete(handled),
+      () => undefined,
+    );
   };
 
   return {
     service,
+    admitted: () => Promise.all(pending),
     assertConversationRollbackSupported,
     rollbackConversation,
     emit,
@@ -159,6 +167,7 @@ function createProviderServiceHarness(
 }
 
 async function waitForThread(
+  drain: () => Promise<void>,
   readModel: () => Promise<{
     readonly threads: ReadonlyArray<{
       readonly id: ThreadId;
@@ -172,48 +181,24 @@ async function waitForThread(
     checkpoints: ReadonlyArray<{ checkpointTurnCount: number }>;
     activities: ReadonlyArray<{ kind: string }>;
   }) => boolean,
-  timeoutMs = 15_000,
 ) {
-  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
-  const poll = async (): Promise<{
-    latestTurn: { turnId: string } | null;
-    checkpoints: ReadonlyArray<{ checkpointTurnCount: number }>;
-    activities: ReadonlyArray<{ kind: string }>;
-  }> => {
-    const snapshot = await readModel();
-    const thread = snapshot.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
-    if (thread && predicate(thread)) {
-      return thread;
-    }
-    if ((await Effect.runPromise(Clock.currentTimeMillis)) >= deadline) {
-      throw new Error("Timed out waiting for thread state.");
-    }
-    await Effect.runPromise(Effect.sleep("10 millis"));
-    return poll();
-  };
-  return poll();
+  await drain();
+  const snapshot = await readModel();
+  const thread = snapshot.threads.find((entry) => entry.id === ThreadId.make("thread-1"));
+  expect(thread, "the checkpoint worker completed with the thread present").toBeDefined();
+  expect(predicate(thread!), "the completed checkpoint has the expected thread state").toBe(true);
+  return thread!;
 }
 
 async function waitForEvent(
+  drain: () => Promise<void>,
   engine: OrchestrationEngineShape,
   predicate: (event: { type: string }) => boolean,
-  timeoutMs = 15_000,
 ) {
-  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
-  const poll = async () => {
-    const events = await Effect.runPromise(
-      Stream.runCollect(engine.readEvents(0)).pipe(Effect.map((chunk) => Array.from(chunk))),
-    );
-    if (events.some(predicate)) {
-      return events;
-    }
-    if ((await Effect.runPromise(Clock.currentTimeMillis)) >= deadline) {
-      throw new Error("Timed out waiting for orchestration event.");
-    }
-    await Effect.runPromise(Effect.sleep("10 millis"));
-    return poll();
-  };
-  return poll();
+  await drain();
+  const events = await Effect.runPromise(Stream.runCollect(engine.readEvents(0)));
+  expect(events.some(predicate), "the completed worker published the expected event").toBe(true);
+  return events;
 }
 
 function runGit(cwd: string, args: ReadonlyArray<string>) {
@@ -248,19 +233,9 @@ function gitShowFileAtRef(cwd: string, ref: string, filePath: string): string {
   return runGit(cwd, ["show", `${ref}:${filePath}`]);
 }
 
-async function waitForGitRefExists(cwd: string, ref: string, timeoutMs = 15_000) {
-  const deadline = (await Effect.runPromise(Clock.currentTimeMillis)) + timeoutMs;
-  const poll = async (): Promise<void> => {
-    if (gitRefExists(cwd, ref)) {
-      return;
-    }
-    if ((await Effect.runPromise(Clock.currentTimeMillis)) >= deadline) {
-      throw new Error(`Timed out waiting for git ref '${ref}'.`);
-    }
-    await Effect.runPromise(Effect.sleep("10 millis"));
-    return poll();
-  };
-  return poll();
+async function waitForGitRefExists(drain: () => Promise<void>, cwd: string, ref: string) {
+  await drain();
+  expect(gitRefExists(cwd, ref), "the completed capture created the checkpoint ref").toBe(true);
 }
 
 describe("CheckpointReactor", () => {
@@ -449,7 +424,13 @@ describe("CheckpointReactor", () => {
         return receipts;
       }),
     );
-    const drain = () => Effect.runPromise(reactor.drain);
+    const drain = () =>
+      Effect.runPromise(
+        Effect.promise(provider.admitted).pipe(
+          Effect.andThen(reactor.drain),
+          Effect.timeout("15 seconds"),
+        ),
+      );
 
     const createdAt = "2026-01-01T00:00:00.000Z";
     await Effect.runPromise(
@@ -1225,6 +1206,7 @@ describe("CheckpointReactor", () => {
 
     await harness.drain();
     await waitForEvent(
+      harness.drain,
       harness.engine,
       (event) =>
         event.type === "thread.meta-updated" &&
@@ -1346,6 +1328,7 @@ describe("CheckpointReactor", () => {
       turnId: asTurnId("turn-main"),
     });
     await waitForGitRefExists(
+      harness.drain,
       harness.cwd,
       checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
     );
@@ -1380,6 +1363,7 @@ describe("CheckpointReactor", () => {
     });
 
     const thread = await waitForThread(
+      harness.drain,
       harness.readModel,
       (entry) => entry.latestTurn?.turnId === "turn-main" && entry.checkpoints.length === 1,
     );
@@ -1420,6 +1404,7 @@ describe("CheckpointReactor", () => {
       turnId: asTurnId("turn-claude-1"),
     });
     await waitForGitRefExists(
+      harness.drain,
       harness.cwd,
       checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
     );
@@ -1435,8 +1420,13 @@ describe("CheckpointReactor", () => {
       payload: { state: "completed" },
     });
 
-    await waitForEvent(harness.engine, (event) => event.type === "thread.turn-diff-completed");
+    await waitForEvent(
+      harness.drain,
+      harness.engine,
+      (event) => event.type === "thread.turn-diff-completed",
+    );
     const thread = await waitForThread(
+      harness.drain,
       harness.readModel,
       (entry) => entry.latestTurn?.turnId === "turn-claude-1" && entry.checkpoints.length === 1,
     );
@@ -1615,6 +1605,7 @@ describe("CheckpointReactor", () => {
     );
 
     await waitForGitRefExists(
+      harness.drain,
       harness.cwd,
       checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
     );
@@ -1665,7 +1656,11 @@ describe("CheckpointReactor", () => {
       payload: { state: "completed" },
     });
 
-    await waitForEvent(harness.engine, (event) => event.type === "thread.turn-diff-completed");
+    await waitForEvent(
+      harness.drain,
+      harness.engine,
+      (event) => event.type === "thread.turn-diff-completed",
+    );
     expect(
       gitRefExists(harness.cwd, checkpointRefForThreadTurn(ThreadId.make("thread-1"), 1)),
     ).toBe(true);
@@ -1772,6 +1767,7 @@ describe("CheckpointReactor", () => {
     });
 
     await waitForGitRefExists(
+      harness.drain,
       harness.cwd,
       checkpointRefForThreadTurn(ThreadId.make("thread-1"), 0),
     );
@@ -1950,8 +1946,13 @@ describe("CheckpointReactor", () => {
         }),
       );
 
-      await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+      await waitForEvent(
+        harness.drain,
+        harness.engine,
+        (event) => event.type === "thread.reverted",
+      );
       const thread = await waitForThread(
+        harness.drain,
         harness.readModel,
         (entry) => entry.checkpoints.length === 1,
       );
@@ -2041,8 +2042,9 @@ describe("CheckpointReactor", () => {
       }),
     );
 
-    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+    await waitForEvent(harness.drain, harness.engine, (event) => event.type === "thread.reverted");
     const thread = await waitForThread(
+      harness.drain,
       harness.readModel,
       (entry) => entry.checkpoints.length === 1,
     );
@@ -2117,7 +2119,7 @@ describe("CheckpointReactor", () => {
       }),
     );
 
-    await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+    await waitForEvent(harness.drain, harness.engine, (event) => event.type === "thread.reverted");
     expect(harness.provider.rollbackConversation).toHaveBeenCalledTimes(1);
     expect(harness.provider.rollbackConversation).toHaveBeenCalledWith({
       threadId: ThreadId.make("thread-1"),
@@ -2229,7 +2231,11 @@ describe("CheckpointReactor", () => {
         createdAt,
       });
 
-      await waitForEvent(harness.engine, (event) => event.type === "thread.reverted");
+      await waitForEvent(
+        harness.drain,
+        harness.engine,
+        (event) => event.type === "thread.reverted",
+      );
       expect(harness.provider.rollbackConversation).toHaveBeenCalledWith({
         threadId: ThreadId.make("thread-1"),
         numTurns: 1,

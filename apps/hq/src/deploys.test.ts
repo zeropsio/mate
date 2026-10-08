@@ -9,6 +9,7 @@ import { assert, describe, it } from "@effect/vitest";
 import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -201,6 +202,7 @@ interface Rig {
   readonly request: (event: RolloutCause) => Effect.Effect<HqDeployAnswer>;
   /** Waits until every rollout is planned. */
   readonly planned: Effect.Effect<void>;
+  readonly drained: Effect.Effect<void>;
   readonly again: (userId: string, sha: string) => Effect.Effect<HqDeployAnswer>;
   /**
    * The Core stopped, `meanwhile` done while none leads, and another leading over the same
@@ -386,6 +388,10 @@ const withDeploys = <A, E>(
       ask,
       request,
       planned,
+      drained: Effect.suspend(() => Context.get(core.context, Deploys).drain).pipe(
+        Effect.timeout("10 seconds"),
+        Effect.orDie,
+      ),
       again: (userId, sha) =>
         Context.get(core.context, Deploys)
           .redeploy(userId, appId, "shop-stage", "web", sha)
@@ -595,7 +601,7 @@ describe("deploys", () => {
     // tier to read asks for nothing, and no timer asks later; a key kept asks for what the
     // environment is wanted at, its services one after another, higher priority first (B19).
     it.effect("deploys an environment's services in the tier's priority order, on an event", () =>
-      withDeploys(({ appId, world, tiers, commit, until, ask, planned, deploys }) =>
+      withDeploys(({ appId, world, tiers, commit, until, ask, planned, deploys, drained }) =>
         Effect.gen(function* () {
           world.services.push(fakeService("api"));
           const web = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
@@ -605,7 +611,7 @@ describe("deploys", () => {
             `${appId}/stage`,
             stageTier(appId, [{ hostname: "web" }, { hostname: "api", priority: 5 }]),
           );
-          yield* Effect.sleep(Duration.millis(200));
+          yield* drained;
           assert.deepStrictEqual(yield* deploys, []);
           yield* ask({ cause: "key_kept", projectId: "P_STAGE", by: "owner" });
           yield* until((rows) => rows.length === 2 && settled("live")(rows));
@@ -815,7 +821,7 @@ describe("deploys", () => {
     // refused at once, in HQ's words, for a person's Run again; it says nothing of the key, which
     // stays unmarked.
     it.effect("refuses at once what Zerops did not answer, and never tries it again", () =>
-      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until, drained }) =>
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
@@ -823,7 +829,7 @@ describe("deploys", () => {
           const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
           yield* until(settled("refused"));
           world.down = false;
-          yield* Effect.sleep(Duration.millis(200));
+          yield* drained;
           const [ended] = yield* deploys;
           assert.lengthOf(yield* deploys, 1);
           assert.match(ended?.reason ?? "", /^Zerops did not answer: /u);
@@ -1179,7 +1185,6 @@ describe("deploys", () => {
             });
             yield* ask({ cause: "key_kept", projectId: "P_STAGE", by: "owner" });
             yield* planned;
-            yield* Effect.sleep(Duration.millis(100));
             assert.lengthOf(yield* deploys, 1);
             assert.strictEqual(yield* runAgain(appId, "dev", sha), "ok");
             yield* until((rows) => rows.length === 2 && settled("live")(rows));
@@ -1323,7 +1328,6 @@ describe("deploys", () => {
           // Seen: no second import.
           yield* commit("group", { "README.md": "# Shop again\n" });
           yield* planned;
-          yield* Effect.sleep(Duration.millis(100));
           assert.lengthOf(world.imports, 1);
         }),
       ),
@@ -1369,10 +1373,16 @@ describe("deploys", () => {
         withDeploys(({ appId, world, tiers, commit, deploys, until, planned }) =>
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
-            world.importOutcome = () => "RUNNING";
+            const followed = yield* Deferred.make<void>();
+            let readBefore = false;
+            world.importOutcome = () => {
+              if (readBefore) Deferred.doneUnsafe(followed, Effect.void);
+              readBefore = true;
+              return "RUNNING";
+            };
             const api = yield* addApi({ appId, tiers, commit, planned });
             yield* deltaIs(sql, "building");
-            yield* Effect.sleep(Duration.millis(200));
+            yield* Deferred.await(followed).pipe(Effect.timeout("5 seconds"), Effect.orDie);
             assert.deepStrictEqual(
               (yield* deploys).filter((row) => row.service === "api"),
               [],
@@ -1522,7 +1532,6 @@ describe("deploys", () => {
             );
             yield* commit("group", { "README.md": "# Shop, again\n" });
             yield* planned;
-            yield* Effect.sleep(Duration.millis(100));
             assert.lengthOf(world.imports, 1);
             // Asked by a person, each is added: its import asked, then followed to its end.
             const added = yield* (yield* Deploys).addService("dev", appId, "shop-stage", "cache");
@@ -2077,14 +2086,14 @@ describe("deploys", () => {
     // A version made whose answer was lost is one HQ cannot name: the job ends refused, and HQ
     // makes no other.
     it.effect("marks unresolved a deploy whose version's answer was lost, making no other", () =>
-      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until, drained }) =>
         Effect.gen(function* () {
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
           world.lost.add("createAppVersion");
           yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
           yield* until(settled("unresolved"));
           assert.match((yield* deploys)[0]?.reason ?? "", /HQ has no handle to follow/u);
-          yield* Effect.sleep(Duration.millis(200));
+          yield* drained;
           assert.lengthOf(versions(world), 1);
         }),
       ),
@@ -2237,10 +2246,7 @@ describe("deploys", () => {
                   ${sha}, 0, 'submitting', now(), 'V-legacy', false)`;
               }).pipe(Effect.orDie),
             );
-            yield* until(
-              (rows) =>
-                rows.length === 2 && (seenAfter === undefined || rows[1]?.state !== "submitting"),
-            );
+            yield* until((rows) => rows.length === 2 && rows[1]?.state === ends[0]);
             const legacy = (yield* deploys)[1];
             assert.deepStrictEqual([legacy?.state, legacy?.reason ?? null], [...ends]);
           }),
@@ -2329,7 +2335,6 @@ describe("deploys", () => {
           yield* ask({ cause: "env_added", projectId: "P_STAGE", by: "owner" });
           yield* commit("web", { "index.js": "two\n" });
           yield* planned;
-          yield* Effect.sleep(Duration.millis(100));
           assert.deepStrictEqual(yield* deploys, []);
           assert.deepStrictEqual(versions(world), []);
         }),

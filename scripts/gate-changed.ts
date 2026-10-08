@@ -364,7 +364,11 @@ if (import.meta.main) {
         delete env.VITEST_MAX_WORKERS;
       const status = runLogged(
         step.command,
-        step.args,
+        step.args.map((arg) =>
+          arg.startsWith("test/scenarios/areas/") || arg.startsWith("test/scenarios/fakes/")
+            ? NodePath.resolve(root, step.cwd ?? ".", arg)
+            : arg,
+        ),
         { cwd: NodePath.join(root, step.cwd ?? "."), env },
         logPath,
       );

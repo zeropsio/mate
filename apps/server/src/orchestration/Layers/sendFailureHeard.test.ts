@@ -27,6 +27,7 @@ import {
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
@@ -336,9 +337,12 @@ function harnessLayer(input: {
 function fakeEvents(driver: Driver, lagMs: number) {
   return Effect.gen(function* () {
     const pubsub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    const ready = yield* Deferred.make<void>();
     const instanceId = ProviderInstanceId.make(driver);
     const provider = ProviderDriverKind.make(driver);
     let sequence = 0;
+    const publications: Array<Fiber.Fiber<boolean>> = [];
+    const scope = yield* Effect.scope;
     const emit: Emit = (type, rest) =>
       Effect.gen(function* () {
         sequence += 1;
@@ -353,15 +357,25 @@ function fakeEvents(driver: Driver, lagMs: number) {
           payload: rest?.payload ?? {},
         } as unknown as ProviderRuntimeEvent;
         if (lagMs > 0) {
-          yield* PubSub.publish(pubsub, event).pipe(
+          const publication = yield* PubSub.publish(pubsub, event).pipe(
             Effect.delay(`${lagMs} millis`),
-            Effect.forkDetach,
+            Effect.forkIn(scope),
           );
+          publications.push(publication);
         } else {
           yield* PubSub.publish(pubsub, event);
         }
       });
-    return { pubsub, emit, instanceId, provider };
+    return {
+      pubsub,
+      emit,
+      instanceId,
+      provider,
+      ready,
+      published: Effect.suspend(() =>
+        Effect.forEach(publications.splice(0), Fiber.join, { discard: true }),
+      ).pipe(Effect.timeout("5 seconds"), Effect.orDie),
+    };
   });
 }
 
@@ -421,7 +435,13 @@ function fakeService(input: {
     rollbackConversation: () => Effect.die("unsupported"),
     uploadFeedback: () => Effect.die("unsupported"),
     get streamEvents() {
-      return Stream.fromPubSub(pubsub);
+      return Stream.unwrap(
+        Effect.gen(function* () {
+          const subscription = yield* PubSub.subscribe(pubsub);
+          yield* Deferred.succeed(events.ready, undefined);
+          return Stream.fromSubscription(subscription);
+        }),
+      );
     },
   };
 }
@@ -460,8 +480,6 @@ const openThread = (instanceId: ProviderInstanceId, baseDir: string) =>
     });
     yield* ingestion.start();
     yield* reactor.start();
-    // The ingestion worker subscribes before the first event.
-    yield* Effect.sleep("20 millis");
 
     const send = (index: number) =>
       engine.dispatch({
@@ -522,18 +540,19 @@ function makeRun(driver: Driver, script: Script, lagMs: number) {
 
     return yield* Effect.gen(function* () {
       const { reactor, ingestion, send, thread } = yield* openThread(instanceId, baseDir);
+      yield* Deferred.await(events.ready).pipe(Effect.timeout("5 seconds"), Effect.orDie);
       yield* send(1);
       yield* reactor.drain;
       if (script.steer === true) {
         // The first message's turn runs; the follow-up steers into it.
-        yield* Effect.sleep(`${lagMs + 60} millis`);
+        yield* events.published;
         yield* ingestion.drain;
         yield* send(2);
         yield* reactor.drain;
       }
       if (script.later) yield* script.later(emit);
       // Everything the adapter said reaches ingestion, however late.
-      yield* Effect.sleep(`${lagMs + 60} millis`);
+      yield* events.published;
       yield* ingestion.drain;
       yield* reactor.drain;
       yield* ingestion.drain;
@@ -844,9 +863,10 @@ function makeStopRun(driver: Driver, moment: StopMoment, lagMs: number) {
 
     return yield* Effect.gen(function* () {
       const { engine, reactor, ingestion, send, thread } = yield* openThread(instanceId, baseDir);
+      yield* Deferred.await(events.ready).pipe(Effect.timeout("5 seconds"), Effect.orDie);
       const settle = Effect.gen(function* () {
         yield* reactor.drain;
-        yield* Effect.sleep(`${lagMs + 60} millis`);
+        yield* events.published;
         yield* ingestion.drain;
         yield* reactor.drain;
         yield* ingestion.drain;

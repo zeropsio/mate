@@ -5,17 +5,24 @@ import * as NodePath from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import { vi } from "vite-plus/test";
 
-import { keepSentFiles, sweepPartialUploads, uploadsFileName } from "./uploadsFolder.ts";
+import {
+  drainUploads,
+  keepSentFiles,
+  sweepPartialUploads,
+  uploadsFileName,
+} from "./uploadsFolder.ts";
 
 // The send path never blocks the server on the filesystem: while `syncBanned`
 // is set, every synchronous fs call throws, and a held copy stays pending.
 const fsGuard = vi.hoisted(() => ({
   syncBanned: false,
   heldCopy: null as Promise<void> | null,
+  admitted: null as (() => void) | null,
   copying: 0,
   peakCopying: 0,
 }));
@@ -38,6 +45,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   const copyFile: typeof actual.copyFile = async (...args) => {
     fsGuard.copying += 1;
+    fsGuard.admitted?.();
     fsGuard.peakCopying = Math.max(fsGuard.peakCopying, fsGuard.copying);
     try {
       if (fsGuard.heldCopy) await fsGuard.heldCopy;
@@ -129,6 +137,7 @@ describe("keepSentFiles", () => {
   afterEach(() => {
     fsGuard.syncBanned = false;
     fsGuard.heldCopy = null;
+    fsGuard.admitted = null;
     fsGuard.peakCopying = 0;
     NodeFS.rmSync(root, { recursive: true, force: true });
   });
@@ -315,13 +324,15 @@ describe("keepSentFiles", () => {
       fsGuard.heldCopy = new Promise<void>((resolve) => {
         release = resolve;
       });
+      const admitted = yield* Deferred.make<void>();
+      fsGuard.admitted = () => Deferred.doneUnsafe(admitted, Effect.void);
       let settled = false;
       const keeping = yield* Effect.forkChild(
         keepOne("spec.pdf", storedPath, 50).pipe(
           Effect.tap(() => Effect.sync(() => (settled = true))),
         ),
       );
-      yield* Effect.sleep("5 millis");
+      yield* Deferred.await(admitted).pipe(Effect.timeout("5 seconds"), Effect.orDie);
       expect(settled).toBe(false);
       const place = yield* Fiber.join(keeping);
       expect(place.path).toBe(storedPath);
@@ -377,7 +388,7 @@ describe("keepSentFiles", () => {
         fsGuard.heldCopy = null;
         const kept = () => NodeFS.readdirSync(uploadsDir).filter((name) => !name.startsWith("."));
         yield* Effect.promise(() => vi.waitFor(() => expect(kept()).toHaveLength(2)));
-        yield* Effect.sleep("50 millis");
+        yield* drainUploads.pipe(Effect.timeout("5 seconds"), Effect.orDie);
         expect(kept()).toHaveLength(2);
       }),
   );

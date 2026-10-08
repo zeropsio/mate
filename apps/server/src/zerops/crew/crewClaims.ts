@@ -107,18 +107,25 @@ const request = (core: CrewCore, handle: string, reason: string | null) =>
       if (reason !== null) core.memory.showReasons.set(host, reason);
       yield* refreshClaims(core);
       const requestedAt = core.memory.claims.get(host)?.requestedAt;
-      yield* core.background(
-        Effect.gen(function* () {
-          const claim = core.memory.claims.get(host);
-          // An *Allow* waiting on the crewmate's turn keeps the request standing.
-          if (
-            claim?.state === "requested" &&
-            claim.requestedAt === requestedAt &&
-            !core.memory.grantsWaiting.has(host)
-          ) {
-            yield* moveClaim(core, host, "timeout");
-          }
-        }).pipe(Effect.delay(CLAIM_REQUEST_TIMEOUT)),
+      yield* Effect.forkIn(
+        Effect.sleep(CLAIM_REQUEST_TIMEOUT).pipe(
+          Effect.andThen(
+            core.background(
+              Effect.gen(function* () {
+                const claim = core.memory.claims.get(host);
+                // An *Allow* waiting on the crewmate's turn keeps the request standing.
+                if (
+                  claim?.state === "requested" &&
+                  claim.requestedAt === requestedAt &&
+                  !core.memory.grantsWaiting.has(host)
+                ) {
+                  yield* moveClaim(core, host, "timeout");
+                }
+              }),
+            ),
+          ),
+        ),
+        core.scope,
       );
     } else {
       yield* refreshClaims(core);

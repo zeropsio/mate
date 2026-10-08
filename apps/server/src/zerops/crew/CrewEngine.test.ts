@@ -27,6 +27,9 @@ import { CrewStore } from "./CrewStore.ts";
 import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
 import {
   eventually,
+  loginReconciled,
+  drained,
+  booted,
   runningPersonThread,
   spiEvent,
   withCrewEngine,
@@ -595,7 +598,7 @@ describe("CrewEngine", () => {
             (turns) => turns.length === turnsBefore + 1,
           ),
         );
-        yield* Effect.sleep("300 millis");
+        yield* drained;
         assert.strictEqual(
           (yield* dispatchedOf(world, "thread.turn.start")).length,
           turnsBefore + 1,
@@ -707,9 +710,9 @@ describe("CrewEngine", () => {
         });
         yield* snapshotWhere((current) => current.attention.length === 1);
         const tries = (yield* Ref.get(world.admitted)).length;
-        yield* world.signedInAs("codex");
-        yield* world.extraSignedIn("work");
-        yield* Effect.sleep("300 millis");
+        yield* loginReconciled(world.signedInAs("codex"));
+        yield* loginReconciled(world.extraSignedIn("work"));
+        yield* drained;
         assert.deepStrictEqual(
           [(yield* Ref.get(world.admitted)).length, (yield* latest).board.tasks[0]!.state],
           [tries, "queued"],
@@ -1229,7 +1232,7 @@ describe("CrewEngine", () => {
           yield* snapshotWhere(
             (snapshot) => snapshot.lastError?.includes("still redeploying") === true,
           );
-          yield* Effect.sleep("500 millis");
+          yield* booted;
           const head = git(copy, ["rev-parse", "HEAD"]);
           assert.deepStrictEqual(
             [
@@ -1282,7 +1285,7 @@ describe("CrewEngine", () => {
           );
           // Thawed, it stops asking.
           const after = yield* Ref.get(world.processReads);
-          yield* Effect.sleep("600 millis");
+          yield* drained;
           assert.strictEqual(yield* Ref.get(world.processReads), after);
         }),
     ]),
@@ -1304,8 +1307,7 @@ describe("CrewEngine", () => {
             handle: "backend",
             text: "Work",
             attachments: [],
-          }).pipe(Effect.forkChild);
-          yield* Effect.sleep("300 millis");
+          }).pipe(Effect.forkChild({ startImmediately: true }));
           const lane = Option.getOrThrow(yield* (yield* CrewStore).getLane(CREW_ID, "backend"));
           assert.deepStrictEqual(
             [lane.frozenSince !== null, press.pollUnsafe() === undefined],
@@ -1456,7 +1458,6 @@ describe("CrewEngine", () => {
         (world) =>
           Effect.gen(function* () {
             assert.strictEqual(yield* Ref.get(world.installs), 2);
-            yield* Effect.sleep("300 millis");
             assert.strictEqual(
               (yield* dispatchedOf(world, "thread.turn.start")).length,
               turnsBefore,
@@ -1498,13 +1499,7 @@ describe("CrewEngine", () => {
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* eventually(
-          Effect.gen(function* () {
-            const settled = yield* Ref.get(world.sshCalls);
-            yield* Effect.sleep("200 millis");
-            return settled === (yield* Ref.get(world.sshCalls));
-          }),
-        );
+        yield* drained;
         const before = yield* Ref.get(world.sshCalls);
         const engine = yield* CrewEngine;
         const frames = yield* engine.snapshot.pipe(Stream.take(1), Stream.runCollect);
@@ -1518,7 +1513,8 @@ describe("CrewEngine", () => {
       Effect.gen(function* () {
         const engine = yield* CrewEngine;
         yield* engine.snapshot.pipe(Stream.take(1), Stream.runCollect);
-        yield* Effect.sleep("300 millis");
+        yield* (yield* ServerCommandReadiness).complete;
+        yield* drained;
         assert.strictEqual(yield* Ref.get(world.sshCalls), 0);
       }),
     ),

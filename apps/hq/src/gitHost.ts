@@ -24,6 +24,7 @@
  */
 import type * as NodeHttp from "node:http";
 
+import { completionReceipt } from "@t3tools/shared/completionReceipt";
 import * as NodeHttpServerRequest from "@effect/platform-node/NodeHttpServerRequest";
 import {
   type GitEvent,
@@ -82,6 +83,8 @@ export type MatePrincipal = Extract<Principal, { readonly kind: "mate" }>;
 export class GitHost extends Context.Service<
   GitHost,
   {
+    /** The next attempt to open git returned, including a refused takeover. */
+    readonly nextAttempt: Effect.Effect<void>;
     /**
      * The git layer, while this Core leads and has it open; a quarantined repository's every
      * operation fails `unavailable`, its reason the message.
@@ -459,8 +462,12 @@ export const gitHostLayer = (options: {
         Schedule.exponential(options.openBackoff ?? Duration.seconds(1)),
         Schedule.spaced(Duration.seconds(30)),
       ]);
+      const attempts = completionReceipt();
       const openWhileLeading = Effect.uninterruptible(
-        open.pipe(Effect.tapError((error) => Effect.logError("git open failed", error))),
+        open.pipe(
+          Effect.ensuring(attempts.complete),
+          Effect.tapError((error) => Effect.logError("git open failed", error)),
+        ),
       ).pipe(Effect.retry(backoff), Effect.ignore);
       yield* Effect.forkScoped(
         leader.changes.pipe(
@@ -533,6 +540,7 @@ export const gitHostLayer = (options: {
           : Effect.fail(new NotLeader({ reason: "standby" })),
       );
       return GitHost.of({
+        nextAttempt: Effect.suspend(attempts.next),
         git,
         status: Effect.gen(function* () {
           const withheld = yield* Ref.get(quarantined);

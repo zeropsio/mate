@@ -22,7 +22,9 @@ import type {
   AccountHarness,
   BrowserSignal,
   HarnessTab,
+  HarnessBrowser,
 } from "@t3tools/client-runtime/zerops/testing";
+import * as Effect from "effect/Effect";
 import { act, createElement, Fragment, useEffect, type ComponentType, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeAll, vi } from "vite-plus/test";
@@ -39,6 +41,7 @@ const ORIGIN = "https://mate.example.test";
 /** A page that reloads itself this often in one test is in a loop. */
 const RELOAD_LOOP = 10;
 
+const browsers = new Set<HarnessBrowser>();
 const mounted = new Set<MountedTab>();
 const reloading = new Set<Promise<void>>();
 /** Points the globals at the tab that holds them now; `null` before any tab opens. */
@@ -236,6 +239,7 @@ export async function mountTab(
 ): Promise<MountedTab> {
   const opened = generation;
   /** Throws once the test that opened this tab has ended. */
+  browsers.add(harness.browser);
   const ownTest = () => {
     if (generation !== opened) throw new Error(`${tab.id} was opened by a test that has ended.`);
   };
@@ -388,18 +392,17 @@ export async function unmountTabs(): Promise<void> {
   await Promise.all(reloading);
   for (const page of mounted) await page.unmount();
   active = null;
+  browsers.clear();
 }
 
-/**
- * Lets every tab's pending work run: fetches answer, storage events arrive,
- * reloads remount. A fixed number of task turns, each inside React's act.
- */
-export async function settle(turns = 20): Promise<void> {
+/** Joins scheduled browser delivery and reloads inside React's completed update boundary. */
+export async function settle(): Promise<void> {
   do {
-    for (let turn = 0; turn < turns; turn++)
-      await act(async () => {
-        await nextTask();
-      });
-    await Promise.all(reloading);
-  } while (reloading.size > 0);
+    await act(async () => {
+      await Promise.all([...browsers].map((browser) => browser.delivered()));
+      await Effect.runPromise(
+        Effect.promise(() => Promise.all(reloading)).pipe(Effect.timeout(PRELOAD_TIMEOUT_MS)),
+      );
+    });
+  } while (reloading.size > 0 || [...browsers].some((browser) => browser.delivering()));
 }

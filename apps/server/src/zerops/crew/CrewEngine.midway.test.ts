@@ -8,6 +8,7 @@ import { CREW_ID } from "./CrewHome.ts";
 import { CrewStore } from "./CrewStore.ts";
 import {
   eventually,
+  drained,
   runningPersonThread,
   spiEvent,
   withCrewEngine,
@@ -60,7 +61,7 @@ const turnsAfter = (world: CrewWorld, before: number, count: number) =>
     yield* eventually(
       Effect.map(dispatchedOf(world, "thread.turn.start"), (all) => all.length >= before + count),
     );
-    yield* Effect.sleep("300 millis");
+    yield* drained;
     return (yield* dispatchedOf(world, "thread.turn.start")).slice(before);
   });
 

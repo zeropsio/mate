@@ -11,6 +11,8 @@
  * window of their own.
  */
 
+import * as Effect from "effect/Effect";
+
 import {
   ZEROPS_SELECTION_STORAGE_KEY,
   ZEROPS_SESSION_STORAGE_KEY,
@@ -134,6 +136,9 @@ export interface HarnessBrowser {
   readonly localStorageKeys: () => ReadonlyArray<string>;
   /** The names of the Web Locks some tab holds. */
   readonly locksHeld: () => ReadonlyArray<string>;
+  /** Resolves after all scheduled storage and channel deliveries, including follow-up deliveries. */
+  readonly delivered: () => Promise<void>;
+  readonly delivering: () => boolean;
 }
 
 export interface HarnessBrowserOptions {
@@ -312,7 +317,7 @@ function makeLockManager() {
  * One origin's channels. A message reaches every other open channel of its
  * name, in any tab, as a later task and as a structured clone.
  */
-function makeChannelHub() {
+function makeChannelHub(schedule: (deliver: () => void) => void) {
   const open = new Set<HarnessBroadcastChannel>();
   class HarnessBroadcastChannel implements FakeBroadcastChannel {
     readonly #listeners = new Set<(event: HarnessMessageEvent) => void>();
@@ -327,7 +332,7 @@ function makeChannelHub() {
       for (const channel of open) {
         if (channel === this || channel.name !== this.name) continue;
         const clone = structuredClone(data);
-        nextTask(() => {
+        schedule(() => {
           for (const listener of channel.#listeners) listener({ data: clone });
         });
       }
@@ -362,15 +367,40 @@ export function makeHarnessBrowser(options: HarnessBrowserOptions = {}): Harness
     shared.set(ZEROPS_SESSION_STORAGE_KEY, JSON.stringify(options.session));
   const tabs = new Set<HarnessTab>();
   const locks = makeLockManager();
-  const channels = makeChannelHub();
+  const pending = new Set<Promise<void>>();
+  const schedule = (deliver: () => void) => {
+    const delivery = new Promise<void>((resolve, reject) =>
+      nextTask(() => {
+        try {
+          deliver();
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      }),
+    );
+    pending.add(delivery);
+    void delivery.then(
+      () => pending.delete(delivery),
+      () => {},
+    );
+  };
+  const channels = makeChannelHub(schedule);
   let opened = 0;
 
   return {
+    delivering: () => pending.size > 0,
+    delivered: () =>
+      Effect.runPromise(
+        Effect.promise(async () => {
+          while (pending.size > 0) await Promise.all(pending);
+        }).pipe(Effect.timeout("5 seconds")),
+      ),
     openTab: () => {
       const id = `tab-${++opened}`;
       const { signals, unloadPage } = makeSignals();
       const localStorage = makeStorage(shared, (change) => {
-        for (const other of tabs) if (other !== tab) nextTask(() => other.signals.storage(change));
+        for (const other of tabs) if (other !== tab) schedule(() => other.signals.storage(change));
       });
       const sessionStorage = makeStorage(new Map(), () => undefined);
       let reloads = 0;

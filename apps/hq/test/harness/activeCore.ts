@@ -29,6 +29,7 @@ export const activeCoreLayer = (url: string) => {
       Layer.succeed(Official, {
         status: Effect.succeed({ official: "ok" as const, allowed: true }),
         checked: Effect.succeed(true),
+        nextCheck: Effect.never,
         lastOk: Effect.undefined,
         inherit: () => Effect.void,
       }),

@@ -1,5 +1,5 @@
-// @effect-diagnostics globalTimers:off -- requests reach the fake as fetch promises; these tests wait one task.
 import { describe, expect, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 
 import { ZeropsApiClient, ZeropsApiError, type ZeropsUser } from "../api.ts";
 import { makeHarnessBrowser } from "./browserTabs.ts";
@@ -191,8 +191,7 @@ describe("FakeZeropsRest", () => {
 
     const first = client.fetchUser();
     const second = failureOf(clientOf(rest).fetchUser());
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(round.waiting()).toBe(2);
+    await vi.waitFor(() => expect(round.waiting()).toBe(2));
 
     round.release();
     await expect(first).resolves.toEqual(person);
@@ -200,7 +199,7 @@ describe("FakeZeropsRest", () => {
 
     const failing = rest.hold("GET /user/info");
     const failed = failureOf(client.fetchUser());
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(() => expect(failing.waiting()).toBe(1));
     failing.fail(503);
     await expect(failed).resolves.toBe("server");
     await expect(client.fetchUser()).resolves.toEqual(person);
@@ -213,7 +212,9 @@ describe("FakeZeropsRest", () => {
     const abort = new AbortController();
 
     const pending = failureOf(client.fetchProject("p1", abort.signal));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(() =>
+      expect(rest.requests().some((request) => request.route === "GET /project/p1")).toBe(true),
+    );
     abort.abort();
 
     await expect(pending).resolves.toBe("network");

@@ -40,11 +40,11 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
@@ -56,6 +56,8 @@ import {
 import { makeCursorAdapter } from "../../provider/Layers/CursorAdapter.ts";
 import { makeGrokAdapter } from "../../provider/Layers/GrokAdapter.ts";
 import { makeAntigravityAcpRuntime } from "../../provider/acp/AntigravityAcpSupport.ts";
+
+import { collectReplay, completedTurn } from "./collector.ts";
 
 const decodeAntigravitySettings = Schema.decodeSync(AntigravitySettings);
 const decodeCursorSettings = Schema.decodeSync(CursorSettings);
@@ -81,7 +83,7 @@ const testLayer = ServerConfig.layerTest(process.cwd(), {
   prefix: "spi-acp-replay-test-",
 }).pipe(Layer.provideMerge(NodeServices.layer));
 
-/** Runs `adapter` through the fixed "hello" baseline and returns every event up to and including turn.completed. */
+/** Runs `adapter` through the fixed "hello" baseline and returns the turn and all its completed assistant items. */
 function runBaseline<EStart, ESend, EStop>(
   adapter: {
     readonly streamEvents: Stream.Stream<SpiEvent, never>;
@@ -105,22 +107,9 @@ function runBaseline<EStart, ESend, EStop>(
     readonly model: string;
     readonly turnInput: string;
   },
-): Effect.Effect<ReadonlyArray<SpiEvent>, EStart | ESend | EStop> {
+): Effect.Effect<ReadonlyArray<SpiEvent>, EStart | EStop, Scope.Scope> {
   return Effect.gen(function* () {
-    const events: Array<SpiEvent> = [];
-    const turnCompleted = yield* Deferred.make<void>();
-
-    const collectorFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
-      Effect.sync(() => {
-        events.push(event);
-      }).pipe(
-        Effect.andThen(
-          event.type === "turn.completed"
-            ? Deferred.succeed(turnCompleted, undefined)
-            : Effect.void,
-        ),
-      ),
-    ).pipe(Effect.forkChild);
+    const collector = yield* collectReplay(adapter.streamEvents);
 
     yield* adapter.startSession({
       threadId: input.threadId,
@@ -133,23 +122,19 @@ function runBaseline<EStart, ESend, EStop>(
       },
     });
 
-    yield* adapter.sendTurn({
-      threadId: input.threadId,
-      input: input.turnInput,
-      attachments: [],
-    });
+    yield* adapter
+      .sendTurn({
+        threadId: input.threadId,
+        input: input.turnInput,
+        attachments: [],
+      })
+      .pipe(Effect.timeout("6 seconds"), Effect.orDie);
 
-    yield* Deferred.await(turnCompleted);
-    // A trailing event (e.g. Cursor's item.completed for the assistant
-    // message) can arrive slightly after turn.completed rather than before
-    // it — give the stream a short quiescence window before cutting it off,
-    // so the baseline captures the full deterministic sequence regardless
-    // of exactly where turn.completed lands in it.
-    yield* Effect.sleep("500 millis");
-    yield* Fiber.interrupt(collectorFiber);
+    yield* collector.waitFor(completedTurn);
+    yield* Fiber.interrupt(collector.fiber);
     yield* adapter.stopSession(input.threadId);
 
-    return events;
+    return collector.events;
   });
 }
 

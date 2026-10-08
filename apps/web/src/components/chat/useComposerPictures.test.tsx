@@ -30,12 +30,22 @@ vi.mock("../../lib/attachmentUploadQueue", () => ({
   retryAttachmentUpload: () => {},
 }));
 vi.mock("../../zerops/useZeropsMates", () => ({ useZeropsMate: () => ({ kind: "unknown" }) }));
-const copies = vi.hoisted(() => ({ fit: vi.fn() }));
-vi.mock("../../lib/imageCompression", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../lib/imageCompression")>()),
-  fitPictureCopy: (input: unknown) => copies.fit(input),
-  pictureCanvasEncoder: () => async () => null,
-}));
+const copies = vi.hoisted(() => ({ fit: vi.fn(), sources: new Set<Promise<unknown>>() }));
+vi.mock("../../lib/imageCompression", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/imageCompression")>();
+  return {
+    ...actual,
+    pictureSourceFile: (file: File) => {
+      const work = actual.pictureSourceFile(file);
+      copies.sources.add(work);
+      const done = () => copies.sources.delete(work);
+      work.then(done, done);
+      return work;
+    },
+    fitPictureCopy: (input: unknown) => copies.fit(input),
+    pictureCanvasEncoder: () => async () => null,
+  };
+});
 
 const ENVIRONMENT = EnvironmentId.make("environment-local");
 const A = DraftId.make("draft-a");
@@ -160,11 +170,22 @@ async function show(target: DraftId) {
   await act(() => root!.render(<Composer target={target} />));
 }
 
-/** Lets every pending promise and timer of the composer run out. */
-async function settle(ms = 0) {
+/** Source reads have answered, and every visible copy has completed in its own draft. */
+async function settle() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, ms));
+    await vi.waitFor(() => expect(copies.sources.size).toBe(0), { timeout: 5_000 });
   });
+  await vi.waitFor(
+    async () => {
+      await act(async () => {});
+      expect(
+        [A, B]
+          .flatMap((target) => draftOf(target)?.images ?? [])
+          .some((image) => image.picture?.preparing === true),
+      ).toBe(false);
+    },
+    { timeout: 5_000 },
+  );
 }
 
 beforeEach(() => {
@@ -188,6 +209,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   await act(() => root?.unmount());
   root = undefined;
   document.body.innerHTML = "";
@@ -204,13 +226,15 @@ describe("a picture's copy", () => {
     const made = deferred<unknown>();
     copies.fit.mockReturnValueOnce(made.promise);
     const mark = pin("m1", 40, 40, "First note");
+    vi.useFakeTimers();
     await act(() =>
       (api.view as ReactElement<ComposerPictureViewProps>).props.onChange({
         ...image.picture!,
         marks: [mark],
       }),
     );
-    await settle(600);
+    await act(async () => vi.runAllTimersAsync());
+    vi.useRealTimers();
     const preparing = imageOf(A, image.id)!.picture!;
     expect(preparing.preparing).toBe(true);
     await act(() =>
@@ -243,10 +267,12 @@ describe("a picture's copy", () => {
     await act(() => api.open("one"));
     const view = api.view as ReactElement<ComposerPictureViewProps>;
     const picture = imageOf(A, "one")!.picture!;
+    vi.useFakeTimers();
     await act(() =>
       view.props.onChange({ ...picture, marks: [{ ...mark, note: "Far too small" }] }),
     );
-    await settle(600);
+    await act(async () => vi.runAllTimersAsync());
+    vi.useRealTimers();
 
     expect(imageOf(A, "one")!.picture).toMatchObject({
       preparing: false,

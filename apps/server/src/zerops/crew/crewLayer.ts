@@ -29,10 +29,12 @@ import {
   type CrewSnapshot,
   type ZeropsLogin,
 } from "@t3tools/contracts";
+import { completionReceipt } from "@t3tools/shared/completionReceipt";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -496,6 +498,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     const core = yield* makeCrewCore;
     yield* restoreNotes(core);
     const bus = yield* ProviderRuntimeEventBus;
+    const loginReconciled = completionReceipt();
     const agentAuth = yield* ZeropsAgentAuth;
     const readiness = yield* ServerCommandReadiness;
     const policies = yield* ThreadToolPolicyRegistry;
@@ -566,6 +569,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       ).pipe(
         Stream.runForEach((logins) =>
           core.updateWork.run(retryRefused(core, moved(logins))).pipe(
+            Effect.ensuring(loginReconciled.complete),
             Effect.catch((error) =>
               Effect.sync(() => {
                 core.memory.lastError = failureWords(error);
@@ -600,6 +604,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       ),
       Effect.forkIn(scope),
     );
+    const carried = yield* Deferred.make<void>();
     const inspected = yield* Deferred.make<void, CrewCommandError>();
     yield* Effect.flatMap(core.applied, (applied) =>
       Deferred.complete(
@@ -626,6 +631,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
           yield* core.changed;
         }),
       ),
+      Effect.ensuring(Deferred.succeed(carried, undefined)),
       Effect.forkIn(scope),
     );
 
@@ -649,9 +655,21 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       Stream.runForEach(() => Queue.offer(dirty, undefined)),
       Effect.forkIn(scope),
     );
+    const projected = completionReceipt();
+    let projecting = false;
     yield* Queue.take(dirty).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          projecting = true;
+        }),
+      ),
       Effect.andThen(rebuild),
       Effect.flatMap((snapshot) => SubscriptionRef.set(hub, snapshot)),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          projecting = false;
+        }).pipe(Effect.andThen(projected.complete)),
+      ),
       Effect.andThen(Effect.sleep(SNAPSHOT_INTERVAL)),
       Effect.catch((error) =>
         Effect.sync(() => {
@@ -701,6 +719,22 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       Effect.catchCause(() => Effect.succeed({ idle: false, blockers: ["crew state unreadable"] })),
     );
     const engine: CrewEngineService = {
+      booted: Deferred.await(carried),
+      drain: core.updateWork.drain.pipe(
+        Effect.andThen(
+          Effect.gen(function* () {
+            const pass = yield* projected.next().pipe(Effect.forkChild({ startImmediately: true }));
+            yield* Queue.offer(dirty, undefined);
+            yield* Fiber.join(pass);
+            while (true) {
+              const completed = projected.next();
+              if (!projecting && Queue.sizeUnsafe(dirty) <= 0) return;
+              yield* completed;
+            }
+          }),
+        ),
+      ),
+      nextLoginReconciliation: Effect.suspend(loginReconciled.next),
       updateFacts,
       subscribeUpdateChanges: mergeUpdateSubscriptions([
         core.subscribeSignals,

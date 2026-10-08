@@ -9,6 +9,8 @@ import { CrewStore } from "./CrewStore.ts";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import {
   eventually,
+  drained,
+  booted,
   spiEvent,
   withCrewEngine,
   withCrewEngines,
@@ -562,7 +564,7 @@ describe("CrewEngine lead", () => {
           });
           yield* world.publish(spiEvent("turn.completed", lead, { state: "completed" }));
           yield* snapshotWhere((current) => current.board.tasks[0]?.state === "landed");
-          yield* Effect.sleep("300 millis");
+          yield* drained;
           assert.deepStrictEqual(
             [
               read(world.root, "ok.txt"),
@@ -803,8 +805,8 @@ describe("CrewEngine lead", () => {
         (world) =>
           Effect.gen(function* () {
             yield* (yield* ServerCommandReadiness).complete;
-            yield* snapshotWhere((current) => current.run?.state === "running");
-            yield* Effect.sleep("500 millis");
+            yield* booted;
+            yield* drained;
             assert.deepStrictEqual([before, yield* wakes(world, yield* leadThread(world))], [1, 1]);
           }),
       ]);
@@ -824,10 +826,11 @@ describe("CrewEngine lead", () => {
       () =>
         Effect.gen(function* () {
           yield* (yield* ServerCommandReadiness).complete;
+          yield* booted;
           const kept = yield* snapshotWhere((current) =>
             current.attention.some((need) => need.kind === "interrupted" && need.handle === "lead"),
           );
-          yield* Effect.sleep("300 millis");
+          yield* drained;
           const still = yield* snapshotWhere(() => true);
           assert.isTrue(
             still.attention.some(
@@ -897,7 +900,7 @@ describe("CrewEngine lead", () => {
         yield* reportDone(thread);
         yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
         yield* snapshotWhere((current) => current.board.tasks[0]?.state === "review");
-        yield* Effect.sleep("500 millis");
+        yield* drained;
         const wakes = (yield* dispatchedOf(world, "thread.turn.start")).filter(
           (turn) => turn.threadId === lead,
         );

@@ -71,8 +71,8 @@ beforeEach(async () => {
   kept = await import("./keptSessions");
 });
 
-afterEach(() => {
-  lifetime.closeAccountLifetime();
+afterEach(async () => {
+  await lifetime.closeAccountLifetime();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -148,9 +148,6 @@ function fakeLocks() {
   return { request, query };
 }
 
-/** Lets the close's lock requests and the ends they decide run. */
-const settleLocks = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 // L08: a Mate session one tab minted displaced the one a neighbouring tab of the account still used.
 describe("a Mate session this tab mints in place of a kept one", () => {
   const logouts = () => fetched.map(({ authorization }) => authorization);
@@ -180,8 +177,7 @@ describe("a Mate session this tab mints in place of a kept one", () => {
     if (by === "mine") kept.keepMintedMateSession("p1:zcp", session("old"));
     else kept.keptSessions.keep("p1:zcp", session("old"));
 
-    kept.keepMintedMateSession("p1:zcp", session("new"));
-    await settleLocks();
+    await kept.keepMintedMateSession("p1:zcp", session("new"));
 
     expect(logouts()).toEqual(ended);
     expect(kept.keptSessions.read("p1:zcp")?.credential.token).toBe("session-new");
@@ -193,12 +189,10 @@ describe("a Mate session this tab mints in place of a kept one", () => {
     const otherTabLets = holdAccount(locks);
     lifetime.openAccountLifetime("person-1");
     kept.keptSessions.keep("p1:zcp", session("old"));
-    kept.keepMintedMateSession("p1:zcp", session("new"));
-    await settleLocks();
+    await kept.keepMintedMateSession("p1:zcp", session("new"));
 
     otherTabLets();
-    lifetime.closeAccountLifetime();
-    await settleLocks();
+    await lifetime.closeAccountLifetime();
 
     expect(logouts().toSorted()).toEqual(["Bearer session-new", "Bearer session-old"]);
   });
@@ -239,8 +233,7 @@ describe("a refused stored login's own kept sessions", () => {
         () => new Promise(() => {}),
       );
 
-    kept.endKeptSessionsOf("person-1");
-    await settleLocks();
+    await kept.endKeptSessionsOf("person-1");
 
     expect(fetched.map(({ authorization }) => authorization)).toEqual(ended);
     lifetime.openAccountLifetime("person-2");
@@ -265,16 +258,14 @@ describe("no kept session outlives the login it was opened under", () => {
     lifetime.openAccountLifetime("person-1");
     kept.keptSessions.keep("p1:zcp", session("shop"));
 
-    lifetime.closeAccountLifetime();
-    await settleLocks();
+    await lifetime.closeAccountLifetime();
 
     expect(fetched).toEqual([]);
     lifetime.openAccountLifetime("person-1");
     expect(kept.keptSessions.read("p1:zcp")).not.toBeNull();
 
     otherTabCloses();
-    lifetime.closeAccountLifetime();
-    await settleLocks();
+    await lifetime.closeAccountLifetime();
 
     expect(fetched).toEqual([
       {
@@ -302,11 +293,12 @@ describe("no kept session outlives the login it was opened under", () => {
     lifetime.openAccountLifetime("person-1");
     // Registered after the kept sessions' own closer, so it runs before this tab lets go.
     const unregister = lifetime.onAccountLifetimeClose(() =>
-      kept.endWhenAccountLeft(() => ends.push("ended")),
+      kept.endWhenAccountLeft(() => {
+        ends.push("ended");
+      }),
     );
 
-    lifetime.closeAccountLifetime();
-    await settleLocks();
+    await lifetime.closeAccountLifetime();
     unregister();
 
     expect(ends).toEqual(expected);
@@ -318,8 +310,7 @@ describe("no kept session outlives the login it was opened under", () => {
     lifetime.openAccountLifetime("person-1");
     kept.keptSessions.keep("p1:zcp", session("shop"));
 
-    lifetime.closeAccountLifetime();
-    await settleLocks();
+    await lifetime.closeAccountLifetime();
 
     expect(fetched.map(({ authorization }) => authorization)).toEqual(["Bearer session-shop"]);
   });
@@ -332,8 +323,7 @@ describe("no kept session outlives the login it was opened under", () => {
     // The tab's own closer already ended one of them.
     kept.endKeptSession(session("shop"));
 
-    lifetime.closeAccountLifetime();
-    await settleLocks();
+    await lifetime.closeAccountLifetime();
 
     expect(fetched).toEqual([
       {

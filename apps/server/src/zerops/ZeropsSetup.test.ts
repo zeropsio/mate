@@ -159,6 +159,7 @@ interface World {
   readonly refusal: Ref.Ref<string | undefined>;
   /** A dispatch never comes back: the server dies before its stand-up goes out. */
   readonly dispatchHangs: Ref.Ref<boolean>;
+  readonly dispatchHeld: Deferred.Deferred<void>;
   readonly dispatchFailure: Ref.Ref<boolean>;
   /** The engine's conversations, the agents it was given and the wakes it armed. */
   readonly engineViews: Ref.Ref<ReadonlyArray<ConversationView>>;
@@ -198,6 +199,7 @@ const makeWorld = Effect.gen(function* () {
     admitted: yield* Ref.make<ReadonlyArray<TurnPrincipal>>([]),
     refusal: yield* Ref.make<string | undefined>(undefined),
     dispatchHangs: yield* Ref.make(false),
+    dispatchHeld: yield* Deferred.make<void>(),
     dispatchFailure: yield* Ref.make(false),
     engineViews: yield* Ref.make<ReadonlyArray<ConversationView>>([]),
     engineComplete: yield* Ref.make(true),
@@ -235,7 +237,10 @@ const fakes = (world: World) =>
     Layer.mock(OrchestrationEngineService)({
       dispatch: (command) =>
         Effect.gen(function* () {
-          if (yield* Ref.get(world.dispatchHangs)) return yield* Effect.never;
+          if (yield* Ref.get(world.dispatchHangs)) {
+            yield* Deferred.succeed(world.dispatchHeld, undefined);
+            return yield* Effect.never;
+          }
           if (yield* Ref.get(world.dispatchFailure))
             return yield* new OrchestrationCommandInvariantError({
               commandType: command.type,
@@ -384,7 +389,7 @@ const serverOn = (
 const withServer = <A, E>(
   world: World,
   database: string,
-  body: (setup: ZeropsSetup["Service"]) => Effect.Effect<A, E>,
+  body: (setup: ZeropsSetup["Service"]) => Effect.Effect<A, E, ZeropsSetup>,
   timings: ZeropsSetupTimings = FAST,
   mateEngine: ServerConfig.MateEngineMode = "v1",
 ) =>
@@ -404,8 +409,10 @@ const turnsOf = (world: World) =>
     ),
   );
 
-/** Lets the poll run a few times. */
-const ticks = Effect.sleep(Duration.millis(80));
+/** The next completed worker cycle, with a failing bound if it never runs. */
+const ticks = Effect.flatMap(ZeropsSetup, (setup) =>
+  Effect.raceFirst(setup.nextPoll, setup.awaitStandUp),
+).pipe(Effect.timeout("5 seconds"), Effect.orDie);
 
 const eventually = <A>(read: Effect.Effect<A>, holds: (value: A) => boolean) =>
   Effect.gen(function* () {
@@ -847,7 +854,9 @@ describe("ZeropsSetup: the stand-up", () => {
       const database = freshDatabase();
       yield* Ref.set(world.signers, SIGNED);
       yield* Ref.set(world.dispatchHangs, true);
-      yield* withServer(world, database, () => ticks);
+      yield* withServer(world, database, () =>
+        Deferred.await(world.dispatchHeld).pipe(Effect.timeout("5 seconds"), Effect.orDie),
+      );
       yield* Ref.set(world.dispatchHangs, false);
       yield* withServer(world, database, () =>
         eventually(turnsOf(world), (turns) => turns.length === 1),
@@ -868,7 +877,9 @@ describe("ZeropsSetup: the stand-up", () => {
         yield* Ref.set(world.hq, linked("user-b"));
         yield* Ref.set(world.signers, { "claude-code": "user-b" });
         yield* Ref.set(world.dispatchHangs, true);
-        yield* withServer(world, database, () => ticks);
+        yield* withServer(world, database, () =>
+          Deferred.await(world.dispatchHeld).pipe(Effect.timeout("5 seconds"), Effect.orDie),
+        );
         yield* Ref.set(world.dispatchHangs, false);
         yield* Ref.set(world.hq, ASKED);
         yield* Ref.set(world.signers, SIGNED);
@@ -888,7 +899,9 @@ describe("ZeropsSetup: the stand-up", () => {
       const database = freshDatabase();
       yield* Ref.set(world.signers, SIGNED);
       yield* Ref.set(world.dispatchHangs, true);
-      yield* withServer(world, database, () => ticks);
+      yield* withServer(world, database, () =>
+        Deferred.await(world.dispatchHeld).pipe(Effect.timeout("5 seconds"), Effect.orDie),
+      );
       yield* Ref.set(world.dispatchHangs, false);
       // Someone else entirely holds the agent now.
       yield* Ref.set(world.signers, { "claude-code": "user-c" });
@@ -1299,8 +1312,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
       yield* Ref.set(world.dispatchHangs, true);
       yield* withServer(world, freshDatabase(), (setup) =>
         Effect.gen(function* () {
-          yield* eventually(Ref.get(world.admitted), (admitted) => admitted.length > 0);
-          yield* ticks;
+          yield* Deferred.await(world.dispatchHeld).pipe(Effect.timeout("5 seconds"), Effect.orDie);
           assert.strictEqual(yield* stateOf(setup, "standup"), "waiting");
         }),
       );
@@ -1438,7 +1450,7 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
   const onEngine = <A, E>(
     world: World,
     database: string,
-    body: (setup: ZeropsSetup["Service"]) => Effect.Effect<A, E>,
+    body: (setup: ZeropsSetup["Service"]) => Effect.Effect<A, E, ZeropsSetup>,
   ) => withServer(world, database, body, FAST, "mate");
 
   it.live(

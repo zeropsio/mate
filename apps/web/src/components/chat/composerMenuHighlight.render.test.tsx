@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { act, useSyncExternalStore } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "../../zerops/__fixtures__/testDom";
@@ -34,8 +34,6 @@ function installTestDom(): TestNode {
   vi.stubGlobal("HTMLIFrameElement", TestNode);
   return document;
 }
-
-const nextMacrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -73,17 +71,16 @@ describe("useComposerMenuHighlight", () => {
       try {
         root.render(<Composer />);
         // The store is subscribed once the mount's passive effects ran.
-        while (!store.subscribed()) await nextMacrotask();
+        await vi.waitFor(() => expect(store.subscribed()).toBe(true));
         for (let write = 1; write <= 80; write += 1) {
           store.write(write);
           await Promise.resolve();
         }
-        await nextMacrotask();
+        await vi.waitFor(() => expect(rendered).toEqual({ written: 80, highlighted }));
         expect(uncaught).toEqual([]);
         expect(rendered).toEqual({ written: 80, highlighted });
       } finally {
-        root.unmount();
-        await nextMacrotask();
+        await act(async () => root.unmount());
       }
     },
   );

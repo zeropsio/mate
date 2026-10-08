@@ -2,7 +2,7 @@ import { RegistryContext } from "@effect/atom-react";
 import { accountReadsAtom, makeAccountStore, makeMateAdapter } from "@t3tools/client-runtime/data";
 import { EnvironmentId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/reactivity";
-import { Profiler } from "react";
+import { act, Profiler } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "./__fixtures__/testDom";
@@ -10,6 +10,7 @@ import { TestNode } from "./__fixtures__/testDom";
 function installTestDom(): TestNode {
   const document = new TestNode("#document", null, 9);
   vi.stubGlobal("document", document);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("window", {
     document,
     HTMLIFrameElement: TestNode,
@@ -19,8 +20,6 @@ function installTestDom(): TestNode {
   vi.stubGlobal("HTMLIFrameElement", TestNode);
   return document;
 }
-
-const nextMacrotask = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const MATES = 12;
 const keyOf = (mate: number) => `project-${mate}:zcp`;
@@ -85,7 +84,6 @@ describe("the Mates as React reads them", () => {
     const { createRoot } = await import("react-dom/client");
     const { useEnvironmentMachines } = await import("./accountEnvironments");
     const { registry, adapter } = adapterOverStore();
-    await nextMacrotask();
     let connected = -1;
     let commits = 0;
 
@@ -98,14 +96,16 @@ describe("the Mates as React reads them", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(
-        <RegistryContext value={registry}>
-          <Profiler id="surface" onRender={() => void (commits += 1)}>
-            <Surface />
-          </Profiler>
-        </RegistryContext>,
+      await act(async () =>
+        root.render(
+          <RegistryContext value={registry}>
+            <Profiler id="surface" onRender={() => void (commits += 1)}>
+              <Surface />
+            </Profiler>
+          </RegistryContext>,
+        ),
       );
-      await nextMacrotask();
+      await vi.waitFor(() => expect(connected).toBe(0));
       commits = 0;
 
       for (let mate = 1; mate <= MATES; mate += 1) {
@@ -117,15 +117,13 @@ describe("the Mates as React reads them", () => {
           await Promise.resolve();
         }
       }
-      await vi.waitFor(() => expect(commits).toBeGreaterThan(0));
-      await nextMacrotask();
+      await vi.waitFor(() => expect(connected).toBe(MATES));
 
       expect(commits).toBe(1);
       expect(connected).toBe(MATES);
     } finally {
-      root.unmount();
+      await act(async () => root.unmount());
       adapter.dispose();
-      await nextMacrotask();
     }
   });
 });
