@@ -164,7 +164,7 @@ describe("a paging card's scroll", () => {
   const at = (ms: number) => new Date(Date.UTC(2026, 9, 5, 12, 0, 0, ms)).toISOString();
   const lines = [1, 2, 3, 4, 5].map((n) => ({ key: `l${n}`, at: at(n) }));
   const paging = (since: number | null, through: number | null): EngineCardPaging => ({
-    runId: run,
+    pageRuns: { earlier: since === null ? null : run, later: through === null ? null : run },
     counts: { calls: {}, tools: {}, edited: 0 },
     hasWork: true,
     holdsLines: since !== null || through !== 0,

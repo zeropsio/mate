@@ -54,14 +54,17 @@ export function useEngineUnheldWork(
 export function useEngineCardPaging(turnId: string | null): CardPaging | null {
   const { host, environmentId, conversationId, cards } = useCards(use(TimelineRowCtx).threadRef);
   const paging = turnId === null ? null : (cards[turnId] ?? null);
-  const runId = paging?.runId ?? null;
+  const earlierRun = paging?.pageRuns.earlier ?? null;
+  const laterRun = paging?.pageRuns.later ?? null;
   const read = useCallback(
     (direction: "earlier" | "later") => {
+      // A card of several runs reads them in its order: the next page each way is one run's.
+      const runId = direction === "earlier" ? earlierRun : laterRun;
       if (host === null || environmentId === null || conversationId === null || runId === null)
         return;
       host.conversations.readRunPage({ environmentId, conversationId }, runId, direction);
     },
-    [conversationId, environmentId, host, runId],
+    [conversationId, earlierRun, environmentId, host, laterRun],
   );
   return useMemo(
     () =>

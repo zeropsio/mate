@@ -26,6 +26,7 @@ import {
   engineFactId,
 } from "./families/mateEngine.ts";
 import { engineHeader, engineRun } from "./__fixtures__/mateEngine.ts";
+import { engineResendId } from "./projections/mateEngine.ts";
 
 const ENV = "env-ada";
 const turn = (attachments: ReadonlyArray<unknown> = []) =>
@@ -36,7 +37,13 @@ const turn = (attachments: ReadonlyArray<unknown> = []) =>
     interactionMode: "default",
   }) as unknown as Parameters<typeof engineStartTurn>[1];
 
-function rig(mateEngine: number | undefined) {
+const ACCEPTED = { _tag: "Accepted", seq: 16, itemId: "x" } as EngineCallResult;
+
+function rig(
+  mateEngine: number | undefined,
+  /** How the Mate's engine answers each command: accepted unless said otherwise. */
+  answer: (command: EngineCommand) => EngineCallResult = () => ACCEPTED,
+) {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   const calls: EngineCommand[] = [];
@@ -46,7 +53,7 @@ function rig(mateEngine: number | undefined) {
     wire: {
       call: (_environmentId, command) => {
         calls.push(command);
-        return Effect.succeed({ _tag: "Accepted", seq: 16, itemId: "x" } as EngineCallResult);
+        return Effect.succeed(answer(command));
       },
       receipt: () => Effect.succeed({ _tag: "None" }),
     },
@@ -180,6 +187,33 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
       yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn(carries)), r.v1));
       expect(r.calls.map((call) => call.kind)).toEqual(["send"]);
     }),
+  );
+
+  // Catches a steer racing the run's end: the engine refuses it, and the person saw "Nothing is
+  // running to stop." for a message. V1 starts a new turn with it.
+  it.effect.each([
+    { why: "the run ended", reason: "run-not-running" },
+    { why: "its session can no longer steer", reason: "steer-unsupported" },
+  ])(
+    "a message steered as $why goes as the conversation's next run, under its own message",
+    ({ reason }) =>
+      Effect.gen(function* () {
+        const r = rig(1, (command) =>
+          command.kind === "steer"
+            ? ({ _tag: "Rejected", rejection: { reason } } as EngineCallResult)
+            : ACCEPTED,
+        );
+        r.runs([engineRun("thread-ada", 1), working("running")], SESSION(true));
+        const result = yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1));
+        expect(result).toEqual({ sequence: 16 });
+        expect(r.calls).toMatchObject([
+          { kind: "steer", commandId: "message-7" },
+          { kind: "send", text: "And the worker", attachments: [] },
+        ]);
+        // The engine keeps the steer's refusal under the message's id: the send goes under its own.
+        expect(r.calls[1]?.commandId).toBe(engineResendId("message-7"));
+        expect(r.v1Calls).toEqual([]);
+      }),
   );
 
   it.effect("a Stop on a run that continues another stops the run that works, not its card", () =>

@@ -43,6 +43,7 @@ import type { EngineAcceptance } from "./operations/mateEngine.ts";
 import {
   ENGINE_UPDATE_WORDS,
   NATIVE_UPDATE_WORDS,
+  engineResendId,
   engineSteerTarget,
   engineStopTarget,
 } from "./projections/mateEngine.ts";
@@ -124,25 +125,38 @@ export const engineStartTurn =
         new EngineOperationFailed({ outcome: "refused", message: PICTURES_BY_REFERENCE }),
       );
     const target = { environmentId, conversationId: input.threadId };
+    const send = (commandId: string) =>
+      host.operations.send({
+        ...target,
+        text: input.message.text,
+        attachments,
+        ...(input.interactionMode === "plan" ? { interactionMode: "plan" as const } : {}),
+        commandId,
+      });
     // Into the run that works, as V1 sends a message into its running turn; files and pictures
     // go as the next run, since a steer carries words only.
     const steered =
       attachments.length === 0 ? engineSteerTarget(readsOfState(host.store.state()), target) : null;
-    if (steered !== null)
-      return host.operations.steer({
+    if (steered === null) return send(input.message.messageId);
+    return host.operations
+      .steer({
         ...target,
         runId: steered,
         text: input.message.text,
         commandId: input.message.messageId,
-      });
-    return host.operations.send({
-      ...target,
-      text: input.message.text,
-      attachments,
-      ...(input.interactionMode === "plan" ? { interactionMode: "plan" as const } : {}),
-      commandId: input.message.messageId,
-    });
+      })
+      .pipe(
+        // The run ended (or its session changed) before the steer arrived: as V1 starts a new turn,
+        // the message goes as the next run — never refused as if it were a Stop.
+        Effect.catchIf(
+          (failure) => failure.outcome === "refused" && STEER_MISSED.has(failure.code ?? ""),
+          () => send(engineResendId(input.message.messageId)),
+        ),
+      );
   };
+
+/** The engine's refusals of a steer that mean the run it aimed at no longer takes one. */
+const STEER_MISSED: ReadonlySet<string> = new Set(["run-not-running", "steer-unsupported"]);
 
 /** Stop names the turn the view draws (a card); the engine stops the run that works on it. */
 export const engineInterruptTurn =
