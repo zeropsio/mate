@@ -209,7 +209,13 @@ it.each(["toolbar", "failed read"])(
     document.body.append(container);
     const root = createRoot(container);
     try {
-      await act(() => root.render(<DiffPanel />));
+      await act(() =>
+        root.render(
+          <DiffPanel
+            composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never}
+          />,
+        ),
+      );
       Object.values(input.refreshes).forEach((refresh) => refresh.mockClear());
       const button =
         location === "toolbar"
