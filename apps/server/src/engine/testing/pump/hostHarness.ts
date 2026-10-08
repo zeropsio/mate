@@ -22,6 +22,9 @@ export const makeHostHarness = (
     readonly driver?: BridgeDriver;
     readonly failFirst?: number;
     readonly pictures?: CallPictures;
+    readonly interruptTurn?: Effect.Effect<void>;
+    readonly stopSession?: Effect.Effect<void>;
+    readonly changed?: Effect.Effect<void>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -44,8 +47,8 @@ export const makeHostHarness = (
       subscribe: () => Effect.die("not used") as never,
     } as unknown as ConversationsShape;
     const provider = {
-      stopSession: () => Effect.void,
-      interruptTurn: () => Effect.void,
+      stopSession: () => options.stopSession ?? Effect.void,
+      interruptTurn: () => options.interruptTurn ?? Effect.void,
     } as unknown as ProviderServiceShape;
     const host = yield* makeSessionHost(
       { conversationId: hostConversation, thread: hostThread, driver: options.driver ?? "codex" },
@@ -57,6 +60,7 @@ export const makeHostHarness = (
         stopping: () => false,
         quiet: Effect.void,
         ...(options.pictures === undefined ? {} : { pictures: options.pictures }),
+        ...(options.changed === undefined ? {} : { changed: options.changed }),
       },
     );
     return { host, told, commandId: CommandId.make("unused") };

@@ -342,7 +342,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
         Effect.catchCause((cause) =>
           Effect.logWarning("engine pump: a deferred Stop could not be sent", { cause }),
         ),
-        Effect.forkIn(deps.scope),
+        forkInSession,
       );
     }
     if (unasked) yield* replaceUnasked;
@@ -367,7 +367,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
       Effect.catchCause((cause) =>
         Effect.logWarning("engine pump: the unasked session would not close", { cause }),
       ),
-      Effect.forkIn(deps.scope),
+      forkInSession,
     );
   });
 
@@ -469,6 +469,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
           current === null &&
           waiting.size === 0 &&
           deferredInterrupts.size === 0 &&
+          sessionCalls === 0 &&
           [...gates.values()].every((gate) => gate.state === "dropped"),
       ),
     ),
