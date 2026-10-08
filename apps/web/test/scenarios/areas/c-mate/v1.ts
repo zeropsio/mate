@@ -84,6 +84,10 @@ export class V1ChatWire implements ChatWire {
     this.message("history", "user", text, turnId);
   }
 
+  reply(turnId: string, text: string) {
+    this.message(`reply-${turnId}`, "assistant", text, turnId);
+  }
+
   private exchanges = 0;
   exchange(question: string, answer: string) {
     this.exchanges += 1;

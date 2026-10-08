@@ -150,6 +150,35 @@ describe("C: opening a Mate and chat", () => {
       }),
     );
 
+    // Catches "Send now" starting a run of its own behind the running one (the engine's did) instead of steering it.
+    it.effect("Send now puts a waiting message into the running turn", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        chat.fixture().run("story-run", "running");
+        yield* chat.then.control("Stop generation");
+        yield* chat.when.send("Change of plan: keep it under 120 words");
+        yield* chat.when.press("Send now");
+        yield* chat.then.once("Change of plan: keep it under 120 words");
+        expect(chat.fixture().sentTurnCount()).toBe(1);
+        chat.fixture().reply("story-run", "A short story about a lighthouse cat");
+        chat.fixture().run("story-run", "completed");
+        yield* chat.then.text("A short story about a lighthouse cat");
+        // The message went into that turn: when it ends, nothing else works.
+        yield* chat.then.control("Stop generation", "button", false);
+        const text = yield* Effect.promise(() =>
+          s.page.evaluate(() => document.querySelector("main")?.innerText ?? ""),
+        );
+        // Where V1 draws a message sent into its running turn: after the answer it settled with.
+        expect(text.indexOf("Change of plan: keep it under 120 words")).toBeGreaterThan(
+          text.indexOf("A short story about a lighthouse cat"),
+        );
+        yield* chat.then.once("Change of plan: keep it under 120 words");
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // Catches an agent's approval never appearing or Approve failing to release the pending command.
     it.effect("approve an agent command and see it resolve", () =>
       Effect.gen(function* () {

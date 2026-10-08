@@ -198,13 +198,28 @@ export class MateEngineFake {
 
   /** The agent starts a run of its own, joining the last: its engine id. */
   startRun(): string {
-    return this.commit((change) =>
-      this.openRun(
+    return this.commit((change) => {
+      this.openSession(change);
+      return this.openRun(
         change,
         { kind: "wake", cause: "self", wakeId: null },
         [...this.runs.values()].at(-1)?.id ?? null,
-      ),
-    );
+      );
+    });
+  }
+
+  /** The agent's session is open: it can take a message into the turn it runs. */
+  private openSession(change: Changed) {
+    if (this.header.session !== null) return;
+    this.header = decodeHeader({
+      ...this.header,
+      session: {
+        driver: this.header.agent?.driver ?? "codex",
+        model: this.header.model,
+        steer: true,
+      },
+    });
+    change.header = true;
   }
 
   /** Run `id` ends as the agent's turn did. */
@@ -807,15 +822,7 @@ export class MateEngineFake {
         queueMicrotask(() => {
           this.commit((change) => {
             this.setRun(change, runId, { state: "sending" });
-            this.header = decodeHeader({
-              ...this.header,
-              session: {
-                driver: this.header.agent?.driver ?? "codex",
-                model: this.header.model,
-                steer: true,
-              },
-            });
-            change.header = true;
+            this.openSession(change);
           });
           queueMicrotask(() => {
             this.commit((change) => {
@@ -828,6 +835,28 @@ export class MateEngineFake {
           });
         });
         return accepted as never;
+      }
+      case WS_METHODS.engineSteer: {
+        // Into the run that works, while its session can take it, as the engine's steer.
+        const run = this.runs.get(String(payload.runId));
+        if (run === undefined)
+          return { _tag: "Rejected", rejection: { reason: "unknown-run" } } as never;
+        if (run.state !== "running" && run.state !== "waiting")
+          return { _tag: "Rejected", rejection: { reason: "run-not-running" } } as never;
+        if (this.header.session?.steer !== true)
+          return { _tag: "Rejected", rejection: { reason: "steer-unsupported" } } as never;
+        this.applied.push({ commandId, op: "steer", payload });
+        const itemId = this.commit((change) =>
+          this.addItem(change, run.id, {
+            kind: "person",
+            by: { kind: "person", principal: { kind: "person", subject: "owner" } },
+            text: String(payload.text),
+            attachments: [],
+            sendId: commandId,
+            delivery: { state: "steered", at: this.stamp(this.seq) },
+          }),
+        );
+        return { _tag: "Accepted", seq: this.seq, runId: run.id, itemId } as never;
       }
       case WS_METHODS.engineAnswer: {
         const requestId = String(payload.requestId);

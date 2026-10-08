@@ -474,7 +474,14 @@ export function makeMateEngineOperations(options: {
           requestId: target.requestId,
         }),
       ),
-    steer: (target: EngineOperationTarget & { readonly runId: string; readonly text: string }) =>
+    steer: (
+      target: EngineOperationTarget & {
+        readonly runId: string;
+        readonly text: string;
+        /** The steer's own id where its caller already gave it one (the message's id). */
+        readonly commandId?: string;
+      },
+    ) =>
       execute(
         {
           kind: "mate-engine-steer",
@@ -490,6 +497,7 @@ export function makeMateEngineOperations(options: {
           runId: target.runId,
           text: target.text,
         }),
+        target.commandId,
       ),
     /** The conversation's next model, on the agent it already runs. */
     switchModel: (target: EngineOperationTarget & { readonly model: string }) =>

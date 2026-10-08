@@ -64,6 +64,11 @@ export class EngineChatWire implements ChatWire {
     this.asks.set(id, { ask: "question", named: requestId });
   }
 
+  reply(turnId: string, text: string) {
+    const run = this.journeyRuns.get(turnId);
+    if (run !== undefined) this.engine.note(run, text);
+  }
+
   /** The journey's runs are the engine's own runs, under the engine's ids. */
   run(turnId: string, state: "running" | "completed" | "error" | "interrupted") {
     const run = this.journeyRuns.get(turnId);
@@ -76,7 +81,7 @@ export class EngineChatWire implements ChatWire {
 
   intents() {
     return this.engine.applied.flatMap(({ op, payload }): ChatIntent[] => {
-      if (op === "send") return [{ kind: "turn", text: String(payload.text) }];
+      if (op === "send" || op === "steer") return [{ kind: "turn", text: String(payload.text) }];
       if (op !== "answer") return [];
       const asked = this.asks.get(String(payload.requestId));
       const ask = asked?.ask ?? "other";
