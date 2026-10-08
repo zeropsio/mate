@@ -5,11 +5,20 @@
  * task's start — dropped — and its completion, after the turn.
  */
 import { EventId, MessageId, TurnId, type OrchestrationThreadActivity } from "@t3tools/contracts";
+import {
+  callItem,
+  engineRun,
+  engineThreadOfRecords,
+  noteItem,
+  personItem,
+  workItem,
+} from "@t3tools/client-runtime/data/fixtures";
 import { describe, expect, it } from "vite-plus/test";
 
 import { deriveTimelineEntries, deriveWorkLogEntries } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import { deriveMessagesTimelineRows, type MessagesTimelineRow } from "./MessagesTimeline.logic";
+import { foldBackgroundTasks } from "./conversationDock.logic";
 
 const at = (second: number) => new Date(Date.UTC(2026, 9, 4, 8, 0, second)).toISOString();
 let next = 0;
@@ -189,4 +198,74 @@ describe("a command sent to the background, from the server's activities", () =>
     // Nowhere else: no loose line for a job's report.
     expect(list.filter((row) => row.kind === "work")).toEqual([]);
   });
+});
+
+describe("an engine Mate's command sent to the background, from its records", () => {
+  const key = { environmentId: "env-ada", conversationId: "thread-ada" };
+  const run1 = "thread-ada/r/1";
+  const run2 = "thread-ada/r/2";
+  const sleep = "Wait two minutes, then print a confirmation";
+  const records = (status: "running" | "completed" | "failed" | "lost", working: boolean) => ({
+    runs: [
+      engineRun("thread-ada", 1),
+      ...(working ? [engineRun("thread-ada", 2, { state: "running", end: null })] : []),
+    ],
+    items: [
+      personItem(run1, 1, "Run sleep 120 then reply SLEPT."),
+      callItem(run1, 2, {
+        shows: {
+          toolName: "Bash",
+          command: "sleep 120 && echo slept",
+          input: { description: sleep },
+          rawOutput: {
+            content:
+              "Command running in background with ID: bsleep. Output is being written to: /tmp/x/bsleep.output",
+          },
+        },
+      }),
+      workItem(run1, 3, { work: "bsleep", workKind: "shell", status, title: sleep }),
+      noteItem(run1, 4, "I'll reply once it finishes."),
+      ...(working ? [personItem(run2, 5, "Still there?")] : []),
+    ],
+  });
+
+  function engineJobs(status: "running" | "completed" | "failed" | "lost", working: boolean) {
+    const thread = engineThreadOfRecords(key, records(status, working));
+    if (thread === null) throw new Error("no thread");
+    const list = deriveMessagesTimelineRows({
+      timelineEntries: deriveTimelineEntries(
+        thread.messages as ReadonlyArray<ChatMessage>,
+        [],
+        deriveWorkLogEntries(thread.activities),
+      ),
+      latestTurn: thread.latestTurn,
+      runningTurnId: working ? TurnId.make(run2) : null,
+      isWorking: working,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+      nowMs: Date.parse(at(600)),
+      // An engine Mate names no live jobs: what the server holds is not said while it works.
+      liveJobs: working ? null : { ids: new Set<string>() },
+    });
+    return {
+      card: jobs(list),
+      band: foldBackgroundTasks(thread.activities).map((task) => `${task.title}: ${task.state}`),
+    };
+  }
+
+  it.each([
+    { status: "completed", working: false, card: "done", band: "done" },
+    { status: "failed", working: false, card: "failed", band: "failed" },
+    { status: "lost", working: false, card: "lost", band: "lost" },
+    { status: "lost", working: true, card: "lost", band: "lost" },
+  ] as const)(
+    "work a restart cut never reads finished: $status, the Mate working $working",
+    ({ status, working, card, band }) => {
+      expect(engineJobs(status, working)).toEqual({
+        card: [`${sleep}: ${card}`],
+        band: [`${sleep}: ${band}`],
+      });
+    },
+  );
 });

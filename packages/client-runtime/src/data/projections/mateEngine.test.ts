@@ -726,10 +726,10 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
       payload: { taskType: "monitor" },
     },
     {
-      name: "work its session lost ended stopped",
+      name: "work its session lost ended unreported, never as stopped or done",
       item: { workKind: "shell", status: "lost" },
       kinds: ["task.started", "task.completed"],
-      payload: { status: "stopped" },
+      payload: { status: "lost" },
     },
     {
       name: "work that failed ended failed",
@@ -750,6 +750,14 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
       ).map(({ title, status }) => ({ title, status }));
     expect(helpers("running")).toEqual([{ title: "Review the api", status: "running" }]);
     expect(helpers("completed")).toEqual([{ title: "Review the api", status: "completed" }]);
+  });
+
+  // Milo, 2026-10-08: "Started a helper · 56c95419-…/s/1.2.w1".
+  it("a helper its agent never named is on the helpers' surface in plain words, never its id", () => {
+    const [helper] = foldSubagentActivities(
+      activitiesOf([workItem(run1, 2, { work: `${run1}/s/1.2.w1`, title: null })]),
+    );
+    expect(helper?.title).toBe("A helper");
   });
 
   it("a thought is the run's reasoning, drawn from its first word while it is written", () => {

@@ -681,6 +681,55 @@ describe("the running engine", () => {
       ),
   );
 
+  // Milo, 2026-10-08: Claude said it would reply once its background sleep finished, a restart
+  // killed the sleep, and nothing woke it again.
+  it.effect("background work a restart killed wakes the Mate once with a note naming it", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.startWork(thread));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.crash;
+        yield* w.boot;
+        yield* w.advance(0);
+        const woken = yield* w.run(r(2));
+        assert.deepStrictEqual(
+          [woken?.trigger.cause, woken?.joins, woken?.state],
+          ["lost-work", r(1), "running"],
+        );
+        assert.match(
+          w.provider.calls.at(-1) ?? "",
+          /^send .*: Your background work .+ was stopped by a restart before it reported\.$/u,
+        );
+        assert.isUndefined(yield* w.run(r(3)));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "background work its agent's crash took wakes the Mate once with a note naming it",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w);
+          yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* w.agent((agent, thread) => agent.crash(thread));
+          yield* w.advance(0);
+          const woken = yield* w.run(r(2));
+          assert.deepStrictEqual([woken?.trigger.cause, woken?.state], ["lost-work", "running"]);
+          assert.match(
+            w.provider.calls.at(-1) ?? "",
+            /^send .*: Your background work .+ was stopped when its session ended before it reported\.$/u,
+          );
+          assert.isUndefined(yield* w.run(r(3)));
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   it.effect(
     "a self turn during preparation sends the prepared message back to the head of the queue",
     () =>

@@ -2774,6 +2774,27 @@ export function outcomeDraws(outcome: OutcomeModel): boolean {
 // Receipts
 // ---------------------------------------------------------------------------
 
+const NO_TURNS: ReadonlySet<string> = new Set();
+
+/**
+ * The runs a person's messages started that came: the latest turn's and every one a message
+ * before it names. Only an engine Mate's message names its run; a run waiting in the queue comes
+ * after the latest turn, so it is not among them.
+ */
+export function turnsThatCame(
+  entries: ReadonlyArray<TimelineEntry>,
+  latestTurn: { readonly turnId: string } | null,
+): ReadonlySet<string> {
+  if (latestTurn === null) return NO_TURNS;
+  const named = entries.flatMap((entry) =>
+    entry.kind === "message" && entry.message.role === "user" && entry.message.turnId != null
+      ? [entry.message.turnId as string]
+      : [],
+  );
+  const latestAt = named.lastIndexOf(latestTurn.turnId);
+  return latestAt === -1 ? NO_TURNS : new Set(named.slice(0, latestAt + 1));
+}
+
 /**
  * Whether the Mate has read a message. The one that began a run is read once
  * the server has begun it: the run is the Mate reading it, however long it
@@ -2781,18 +2802,19 @@ export function outcomeDraws(outcome: OutcomeModel): boolean {
  * Mate's next step — once something of its turn came after it. A message the
  * provider has not reached yet is only sent. One no run took, with a run
  * after it, says nothing: the Mate moved on without it, and "not read yet"
- * would promise a next step that never comes.
+ * would promise a next step that never comes. One whose own run came (`turnsThatCame`) was
+ * read, however that run ended — a Stop before a word draws no turn, yet the Mate had it.
  */
 export function messageReceipt(
   message: ChatMessage,
   structure: ConversationStructure,
   index: number,
+  came: ReadonlySet<string> = NO_TURNS,
 ): "sent" | "seen" | null {
   const stretch = structure.stretchByIndex.get(index);
   if (stretch === undefined) {
-    return structure.turns.some((turn) => (turn.stretches[0]?.anchorIndex ?? -1) > index)
-      ? null
-      : "sent";
+    if (structure.turns.some((turn) => (turn.stretches[0]?.anchorIndex ?? -1) > index)) return null;
+    return message.turnId != null && came.has(message.turnId) ? "seen" : "sent";
   }
   if (!stretch.aside && stretch.turnId !== null) return "seen";
   const turn = structure.turns.find((candidate) => candidate.key === stretch.turnKey);
