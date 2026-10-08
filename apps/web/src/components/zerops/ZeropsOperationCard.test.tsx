@@ -1,3 +1,4 @@
+import { NO_RESTARTS, readRestart, type OperationProgress } from "@t3tools/client-runtime/data";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -1893,3 +1894,34 @@ it("a failed restart card says the process outcome and offers an explicit retry 
   expect(html).toContain("Try again");
   expect(html).not.toContain("private-id");
 });
+
+it.each([
+  { stage: "uncertain", next: "ask-owner-again" },
+  { stage: "refused", reason: "Access refused." },
+  { stage: "unsent", next: "send-again", reason: "No request was sent." },
+] satisfies ReadonlyArray<OperationProgress>)(
+  "a headless restart keeps its $stage explanation in the parent line",
+  (progress) => {
+    const process = { id: "r", actionName: "stack.restart", status: "FAILED" };
+    const call = zeropsCall({
+      id: "retry-card",
+      status: "completed",
+      startedAt: "2026-10-08T10:00:00Z",
+      toolName: "zerops_manage",
+      input: { serviceHostname: "Eddy", action: "restart" },
+      resultText: JSON.stringify({ process }),
+    });
+    const operation = reduceZeropsOperations([call], {
+      ...CONTEXT,
+      restarts: (source) =>
+        readRestart({ ...NO_RESTARTS, attempts: { r: { requestId: "retry", progress } } }, source),
+    }).operations[0]!;
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard operation={operation} headless now={0} />,
+    );
+    expect(html).not.toContain("Zerops couldn&#x27;t restart");
+    expect(html).not.toContain("unconfirmed");
+    expect(html).not.toContain("Access refused.");
+    expect(html).not.toContain("No request was sent.");
+  },
+);

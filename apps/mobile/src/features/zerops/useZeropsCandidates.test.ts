@@ -265,6 +265,7 @@ describe("the project picker's candidates", () => {
         created: CREATED_AT,
       };
       return {
+        retained: status === "none" ? [] : [enable],
         processes: status === "none" ? [] : [enable],
         running: status === "RUNNING" ? [enable] : [],
         live: true,

@@ -1,5 +1,5 @@
 import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
-import type { MateRecovery } from "@t3tools/client-runtime/data";
+import { NO_RESTARTS, readRestartRecovery, type MateRecovery } from "@t3tools/client-runtime/data";
 import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 import { MateDetailFailure } from "~/components/zerops/MateDetailFailure";
 import { PauseBlock } from "~/components/chat/ConversationRows";
@@ -339,7 +339,16 @@ const voiceFixture = (
 
 const STATES: ReadonlyArray<HarnessState> = [
   ...linkFixtures.map(([id, reachability]) => voiceFixture(id, reachability)),
-  ...recoveryFixtures.map(([id, recovery]) => voiceFixture(id, null, recovery)),
+  ...recoveryFixtures.map(([id, recovery]) =>
+    voiceFixture(id, null, {
+      ...recovery,
+      lifecycle: readRestartRecovery(
+        { ...NO_RESTARTS, running: ["process"] },
+        recovery.process,
+        recovery.status,
+      ),
+    }),
+  ),
   {
     id: "unnamed-opening",
     label: "Unnamed opening",

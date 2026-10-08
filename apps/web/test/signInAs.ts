@@ -1,6 +1,6 @@
 /**
  * Signs a browser-test page into a real Zerops account, for agents testing a
- * dev build as several people (`docs/internals/zerops/test-accounts.md`).
+ * dev build as several people.
  *
  * It reads the accounts from `MATE_TEST_ACCOUNTS` — a JSON array of
  * `{ email, password }` — logs the one with `email` in with

@@ -15,6 +15,7 @@ import {
   reachabilityPhrase,
 } from "../../zerops/environments/index.ts";
 import type { MateRecovery } from "./mateRecovery.ts";
+import { NO_RESTARTS, readRestartRecovery } from "./restart.ts";
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import type { ReachabilityAction } from "../../zerops/environments/index.ts";
 
@@ -599,16 +600,11 @@ export interface RecoveryNotice {
 
 /** Only owner evidence distinguishes access, deletion, deliberate stop and startup failure. */
 export function recoveryNotice(read: MateRecovery, mateName: string): RecoveryNotice | null {
-  const { standing, status, process } = read;
+  const { standing, status, lifecycle } = read;
   const name = mateName.trim() || "The Mate";
   const recovering =
-    !mateProjectUnavailable(standing) &&
-    (process?.status === "RUNNING" || process?.status === "PENDING")
-      ? process.actionName === "stack.restart"
-        ? ("restart" as const)
-        : process.actionName === "stack.start"
-          ? ("start" as const)
-          : undefined
+    !mateProjectUnavailable(standing) && lifecycle?.state === "running"
+      ? (lifecycle.verb ?? undefined)
       : undefined;
   const say = (
     headline: string,
@@ -643,36 +639,19 @@ export function recoveryNotice(read: MateRecovery, mateName: string): RecoveryNo
     return say(
       `${name} is ${recovering === "restart" ? "restarting" : "starting"}.`,
       "",
-      [],
+      lifecycle!.actions,
       "default",
     );
-  if (status?.endsWith("FAILED")) {
-    const verb =
-      process?.actionName === "stack.restart"
-        ? "restart"
-        : process?.actionName === "stack.start"
-          ? "start"
-          : null;
-    const failed = process?.status === "FAILED" || process?.status === "CANCELED";
-    const result = failed ? process.failReason : undefined;
-    const cause =
-      result && /init command failed|CommandExec/iu.test(result)
-        ? "Its startup command failed."
-        : result && /ENOSPC|EDQUOT|no space left|disk quota exceeded/iu.test(result)
-          ? "Its disk is full. Free space before saving or running more work."
-          : result && /(?:\b5\d{2}\b|internal server error)/iu.test(result)
-            ? `Zerops returned an error${verb === "restart" ? " while restarting" : verb === "start" ? " while starting" : " while preparing the container"}.`
-            : process?.status === "CANCELED"
-              ? "Zerops canceled the process."
-              : "Open the process in Zerops to see what happened.";
+  if (lifecycle?.state === "failed")
     return say(
-      failed && verb !== null ? `${name} couldn't ${verb}.` : `${name}'s container failed.`,
-      cause,
-      ["restart", "open-in-zerops"],
+      lifecycle.verb === null
+        ? `${name}'s container failed.`
+        : `${name} couldn't ${lifecycle.verb}.`,
+      lifecycle.cause,
+      lifecycle.actions,
       "error",
-      result,
+      lifecycle.details,
     );
-  }
   if (status === "STOPPED")
     return say(
       `${name}'s container is stopped.`,
@@ -777,7 +756,12 @@ export function mateNoticeDecision(input: {
     (input.recovery === undefined ? null : recoveryNotice(input.recovery, input.mateName)) ??
     (notice?.level === "inactive"
       ? recoveryNotice(
-          { standing: { kind: "unknown" }, status: notice.status, process: undefined },
+          {
+            standing: { kind: "unknown" },
+            status: notice.status,
+            process: undefined,
+            lifecycle: readRestartRecovery(NO_RESTARTS, undefined, notice.status),
+          },
           input.mateName,
         )
       : null);

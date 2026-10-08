@@ -7,6 +7,46 @@ import { readsOfState } from "../store.ts";
 import { platformInventory } from "./platformInventory.ts";
 
 const viewer = { id: "org", name: "Org", membershipId: "member", roleCode: "ADMIN" };
+
+it.each([
+  { older: "BASIC_USER", newer: "NO_ACCESS", projects: [], denied: ["p"] },
+  { older: "NO_ACCESS", newer: "BASIC_USER", projects: ["p"], denied: [] },
+])(
+  "shows a project only when its newest owner role permits it, regardless of answer order ($older → $newer)",
+  ({ older, newer, projects, denied }) => {
+    const answer = (roleCode: string, version: number): AccountInput => ({
+      kind: "rows",
+      scope: projectsScope("org"),
+      generation: 1,
+      method: "push",
+      via: "zerops-realtime",
+      rows: [
+        {
+          family: "project",
+          id: "p",
+          value: projectValue({
+            id: "p",
+            userRoles: [{ clientUserId: "member", roleCode }],
+          }),
+          revision: zeropsVersion(version),
+        },
+      ],
+    });
+    for (const answers of [
+      [answer(older, 2), answer(newer, 3)],
+      [answer(newer, 3), answer(older, 2)],
+    ]) {
+      const state = [...liveProjects("org", [{ id: "p" }]), ...answers].reduce(
+        (held, input) => reduceAccount(held, input).state,
+        emptyAccount,
+      );
+      const shown = platformInventory.derive(readsOfState(state), { orgId: "org", viewer });
+      expect(shown.projects.map(({ id }) => id)).toEqual(projects);
+      expect(shown.denied).toEqual(denied);
+    }
+  },
+);
+
 const deniedProject: ReadonlyArray<AccountInput> = [
   ...liveProjects("org", [{ id: "p" }]),
   { kind: "access", family: "project", id: "p", access: "denied" },

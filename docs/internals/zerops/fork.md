@@ -201,13 +201,8 @@ a vendor, and `t3.json` is the project file's name.
   facts our code relies on → a comment beside that code or a short ledger entry with its verification
   command (one writer). The map → `CLAUDE.md` / `AGENTS.md`; plans are transient. Follow
   `CLAUDE.md`'s “What a doc may hold”; a rewrite keeps every test sentence.
-- **Loop per pass or slice** (a tweak or a one-surface change runs its own tier in `CLAUDE.md`,
-  "Size the work first"): FRAME → PROVE (live on `z3-eval`) → SHAPE (plan + a `judge` pass; Codex only when the owner asks) →
-  BUILD (one worktree per slice, RED → GREEN, Sonnet slices with self-contained briefs, atomic
-  commits, no trailers) → ASSEMBLE (targeted tests + typecheck + live smoke through the push loop
-  - owner retest pack) → LAND (spec + ledger updated, plan deleted).
-- **Verify minimally**: `vp test run <files>` + package typecheck; never the repo-wide suite.
-  Live = the push loop to `z3-eval`. Nothing is released before the release gate.
+- **Verification and shipping**: follow [CLAUDE.md §Commands](../../../CLAUDE.md#commands)
+  for the worktree, targeted checks and lane shipping loop.
 - **Ledger discipline**: subagents report facts as text; one writer edits the ledger.
 
 ## 6. Upstream intake — lean

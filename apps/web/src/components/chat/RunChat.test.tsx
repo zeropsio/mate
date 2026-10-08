@@ -1,5 +1,5 @@
 import { markupDom } from "../../../test/markupDom";
-import { EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
+import { ApprovalRequestId, EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   emptyAgentPanelModel,
@@ -159,6 +159,28 @@ const thought = (id: string, text: string): RecordItem => ({
   messages: [message(id, "reasoning", text)],
   durationMs: 4000,
 });
+
+const questionItem: RecordItem = {
+  kind: "question",
+  key: "question:q1",
+  at: at(2),
+  questions: ["Which specification should I use?"],
+};
+
+const attachmentAnswer: RecordItem = {
+  kind: "call",
+  key: "call:answer",
+  at: at(3),
+  entry: command("answer", "", {
+    questionAnswer: {
+      requestId: ApprovalRequestId.make("q1"),
+      answers: {},
+      attachmentsByQuestionId: {
+        q1: [{ type: "file", id: "spec", name: "spec.txt", mimeType: "text/plain", sizeBytes: 42 }],
+      },
+    },
+  }),
+};
 
 const step = (entry: WorkLogEntry): RecordItem => ({
   kind: "step",
@@ -426,6 +448,9 @@ describe("RunChat", () => {
       /data-chat-bubble="speech" data-chat-kind="question"><div[^>]*><div[^>]*data-capped="item"[^>]*><div[^>]*><p[^>]*>Should \/status be public\?</u,
     );
     // Its answer stands nowhere else: whole, never cut to a line.
+    expect(markupDom(markup).querySelector('[data-chat-kind="person"]')?.textContent).toBe(
+      "Yes, but show no secrets — and keep /health for the load balancer",
+    );
   });
 
   // A screen reader hears the now line when its words change, never its
@@ -1495,6 +1520,95 @@ describe("RunChat, as the person uses it", () => {
     expect(JSON.stringify(box.findByType("pre").children)).toContain("line 30");
     expect(box.props["data-whole"]).toBe("");
     expect(box.props.onScroll).toBeUndefined();
+  });
+
+  describe("the log and its work opener", () => {
+    const personItem: RecordItem = {
+      kind: "person",
+      key: "person:leading",
+      at: at(1),
+      words: "Keep /health working too",
+      imageOnly: false,
+    };
+    afterEach(() => forgetRunFolds(SHARED.routeThreadKey));
+    const settled = (items: ReadonlyArray<RecordItem>) =>
+      record(items, {
+        status: status({ live: false, face: "idle", endedAt: at(5), worked: false }),
+      });
+
+    // Compatibility controls: empty thoughts and leading person marks never make work.
+    it.each([
+      { name: "an empty thought", items: [thought("empty", "")] },
+      { name: "a whitespace-only thought", items: [thought("blank", " \n\t ")] },
+      {
+        name: "leading person entries",
+        items: [personItem, { ...personItem, key: "person:next" }],
+      },
+    ])("shows no line or empty-work opener for $name", ({ items }) => {
+      const open = markupDom(draw(record(items)));
+      expect(open.querySelector('[role="region"][aria-label="Nova\'s work"]')).toBeNull();
+      expect(open.querySelector('[data-chat-kind="person"]')).toBeNull();
+      expect(draw(settled(items))).not.toContain("Show work");
+    });
+
+    // Synthetic agreement witness; production reachability of this record is unproven.
+    it("offers no empty work for a leading call answer", () => {
+      const open = markupDom(draw(record([attachmentAnswer])));
+      expect(open.querySelector('[role="region"][aria-label="Nova\'s work"]')).toBeNull();
+      expect(open.body.textContent).not.toContain("spec.txt");
+      expect(draw(settled([attachmentAnswer]))).not.toContain("Show work");
+    });
+
+    it.each([
+      { name: "an ordinary command", prefix: [] },
+      {
+        name: "leading person entries",
+        prefix: [personItem, { ...personItem, key: "person:next" }],
+      },
+      { name: "a leading call answer", prefix: [attachmentAnswer] },
+    ])("keeps the command visible and available through Show work after $name", ({ prefix }) => {
+      const items = [...prefix, step(command("work", "echo eligible"))];
+      const open = markupDom(draw(record(items)));
+      const work = open.querySelector('[role="region"][aria-label="Nova\'s work"]');
+      expect(work?.textContent).toContain("echo eligible");
+      expect(work?.querySelectorAll("ol > li")).toHaveLength(1);
+      expect(work?.textContent).not.toContain("Keep /health");
+      expect(work?.textContent).not.toContain("spec.txt");
+      const renderer = mount(settled(items));
+      expect(JSON.stringify(renderer.toJSON())).not.toContain("echo eligible");
+      act(() => button(renderer, "Show work").props.onClick());
+      expect(JSON.stringify(renderer.toJSON())).toContain("echo eligible");
+      expect(button(renderer, "Hide work").props["aria-expanded"]).toBe(true);
+    });
+
+    it.each([
+      {
+        name: "the person's words",
+        answer: {
+          kind: "person",
+          key: "person:reply",
+          at: at(3),
+          words: "Use the attached specification",
+          imageOnly: false,
+        } as RecordItem,
+        content: "Use the attached specification",
+      },
+      { name: "an attachment answer", answer: attachmentAnswer, content: "spec.txt" },
+    ])("keeps $name paired with its question and its content intact", ({ answer, content }) => {
+      const items = [questionItem, thought("gap", " \n"), answer];
+      const dom = markupDom(draw(record(items)));
+      const work = dom.querySelector('[role="region"][aria-label="Nova\'s work"]');
+      expect(work?.textContent).toContain("Which specification should I use?");
+      expect(work?.textContent).toContain(content);
+      expect(work?.querySelectorAll("ol > li")).toHaveLength(2);
+      const renderer = mount(settled(items));
+      act(() => button(renderer, "Show work").props.onClick());
+      const answerRow = renderer.root.find(
+        (node) => node.props.lineKey === answer.key && node.props.theirs === true,
+      );
+      expect(answerRow.props.pairs).toBe(true);
+      expect(JSON.stringify(renderer.toJSON())).toContain(content);
+    });
   });
 
   // A run the person comes back to opens closed (D3): its summary line alone

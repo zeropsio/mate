@@ -584,6 +584,9 @@ export { agentUsage, type AgentUsageRead } from "./projections/agentUsage.ts";
 export {
   projectRestarts,
   readRestart,
+  restartReadout,
+  readRestartRecovery,
+  type RestartRecovery,
   NO_RESTARTS,
   type RestartReading,
   type RestartEvidence,

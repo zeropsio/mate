@@ -71,6 +71,7 @@ export const accountReadsAtom = Atom.make<AccountReads | null>(null).pipe(
 );
 
 export const NOT_READ_PROCESSES: ProjectProcesses = {
+  retained: undefined,
   processes: undefined,
   running: [],
   live: false,

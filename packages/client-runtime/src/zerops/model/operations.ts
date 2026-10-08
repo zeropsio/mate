@@ -170,7 +170,7 @@ function buildStandaloneOperation(
     phase,
     ...anchorOf(call),
     ...(phase !== "running"
-      ? { settledAt: fields.restartProcess?.finished ?? call.settledAt ?? call.startedAt }
+      ? { settledAt: fields.restartReading?.process.finished ?? call.settledAt ?? call.startedAt }
       : {}),
     ...(call.settledAt !== undefined ? { returnedAt: call.settledAt } : {}),
     ...(call.status === "inProgress" ? { openedAt: call.startedAt } : {}),
@@ -196,7 +196,6 @@ function buildStandaloneOperation(
     hasResult: fields.hasResult,
     ...(fields.version !== undefined ? { version: fields.version } : {}),
     ...(fields.processIds !== undefined ? { processIds: fields.processIds } : {}),
-    ...(fields.restartProcess === undefined ? {} : { restartProcess: fields.restartProcess }),
     ...(fields.restartReading === undefined ? {} : { restartReading: fields.restartReading }),
     ...(fields.appVersionIds !== undefined ? { appVersionIds: fields.appVersionIds } : {}),
     ...(fields.explanation !== undefined ? { explanation: fields.explanation } : {}),

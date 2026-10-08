@@ -1,3 +1,4 @@
+import { NO_RESTARTS, readRestartRecovery, type MateRecovery } from "@t3tools/client-runtime/data";
 import { describe, expect, it } from "vite-plus/test";
 import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 import { mateNoticeVoice } from "./mateNoticeVoice";
@@ -121,7 +122,7 @@ it.each([
     nowMs: 0,
     conversationShown: false,
     reachability: { kind: "not-answering", overdue: false },
-    recovery: {
+    recovery: liveRecovery({
       standing: kind === "unknown" ? { kind } : { kind, name: "Rosa" },
       status: status === "FAILED" ? "ACTION_FAILED" : "ACTIVE",
       process: {
@@ -132,7 +133,7 @@ it.each([
         projectId: "p",
         serviceStackIds: ["s"],
       },
-    },
+    }),
   });
   expect(voice.surface).toBe("stage");
   expect("restarting" in voice && voice.restarting === true).toBe(plays);
@@ -194,7 +195,7 @@ it("an ongoing restart keeps the last-known state alongside every notice line", 
     conversationShown: true,
     reachability: { kind: "not-answering", overdue: false },
     lastKnown: held,
-    recovery: {
+    recovery: liveRecovery({
       standing: { kind: "unknown" },
       status: "ACTIVE",
       process: {
@@ -205,7 +206,7 @@ it("an ongoing restart keeps the last-known state alongside every notice line", 
         projectId: "p",
         serviceStackIds: ["s"],
       },
-    },
+    }),
   });
   expect(voice).toMatchObject({
     surface: "banner",
@@ -221,7 +222,7 @@ it("a failed restart separates its cause and Details while retaining last-known 
   expect(
     mateNoticeVoice({
       reachability: { kind: "not-answering", overdue: false },
-      recovery: {
+      recovery: liveRecovery({
         standing: { kind: "unknown" },
         status: "ACTION_FAILED",
         process: {
@@ -233,7 +234,7 @@ it("a failed restart separates its cause and Details while retaining last-known 
           serviceStackIds: ["s"],
           failReason: "500: Internal Server Error",
         },
-      },
+      }),
       conversationShown: false,
       nowMs: 0,
       mateName: "Eddy",
@@ -272,7 +273,7 @@ it("a recovered Mate does not repeat its old failed process as a connection bann
       conversationShown: true,
       reachability: { kind: "ready", notice: null },
       nowMs: 0,
-      recovery: {
+      recovery: liveRecovery({
         standing: { kind: "unknown" },
         status: "ACTIVE",
         process: {
@@ -285,7 +286,7 @@ it("a recovered Mate does not repeat its old failed process as a connection bann
           finished: "2026-10-08T10:15:00Z",
           failReason: "platform error",
         },
-      },
+      }),
     }),
   ).toMatchObject({ surface: "none" });
 });
@@ -315,3 +316,15 @@ it.each(["denied", "deleted"] as const)(
     expect(voice).not.toHaveProperty("restarting");
   },
 );
+function liveRecovery(read: MateRecovery): MateRecovery {
+  if (read.standing.kind === "denied" || read.standing.kind === "deleted")
+    return { ...read, lifecycle: undefined };
+  return {
+    ...read,
+    lifecycle: readRestartRecovery(
+      { ...NO_RESTARTS, running: read.process === undefined ? [] : [read.process.id] },
+      read.process,
+      read.status,
+    ),
+  };
+}

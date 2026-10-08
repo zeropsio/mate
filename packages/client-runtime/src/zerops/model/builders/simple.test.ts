@@ -421,21 +421,42 @@ it("an accepted restart whose observation ended keeps its acceptance and names t
     {
       projectId: "p",
       builds: () => "unobservable",
-      restarts: () => ({
-        sourceProcessId: source.id,
-        process: source,
-        phase: "uncertain",
-        requestId: "retry",
-        progress: {
-          stage: "unresolved",
-          operationId: "retry",
-          nextActor: "you",
-          nextAction: "Check the process in Zerops.",
-        },
-      }),
+      restarts: () =>
+        readRestart(
+          {
+            ...NO_RESTARTS,
+            attempts: {
+              [source.id]: {
+                requestId: "retry",
+                progress: {
+                  stage: "unresolved",
+                  operationId: "retry",
+                  nextActor: "you",
+                  nextAction: "Check the process in Zerops.",
+                },
+              },
+            },
+          },
+          source,
+        ),
     },
   );
   expect(fields.closing).toBe(
     "Zerops accepted the restart. Its outcome is unconfirmed. Check the process in Zerops.",
   );
+});
+
+// Decision: one derivation per state; consumers never recompute it, including tool-only native input.
+it("a tool-only restart without live owner evidence is unconfirmed", () => {
+  const fields = buildSimpleFields(
+    "manage",
+    simpleCall("zerops_manage", "completed", {
+      process: { ...proc("RUNNING"), actionName: "stack.restart" },
+    }),
+  );
+  expect(fields).toMatchObject({
+    phaseOverride: "uncertain",
+    statusWord: "Restart unconfirmed",
+    closing: "Zerops last reported apidev restarting. Its outcome is unconfirmed.",
+  });
 });

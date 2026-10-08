@@ -28,6 +28,30 @@ import {
 } from "./MessagesTimeline.logic";
 import type { StepKind, WorkStep } from "./workSteps.logic";
 
+/** A wordless thought has no line, in either the slot or the history. */
+export function chatItemHasLine(item: RecordItem): boolean {
+  return item.kind !== "thought" || item.messages.some((message) => message.text.trim().length > 0);
+}
+
+/**
+ * The log starts with the Mate's work, omitting leading person/answer entries.
+ * The opener reads this sequence's length without constructing any bubbles.
+ * An answer pairs with the preceding visible question, across wordless thoughts.
+ */
+export function selectChatItems(
+  items: ReadonlyArray<RecordItem>,
+): ReadonlyArray<{ readonly item: RecordItem; readonly pairs: boolean }> {
+  const selected: { readonly item: RecordItem; readonly pairs: boolean }[] = [];
+  for (const item of items) {
+    if (!chatItemHasLine(item)) continue;
+    const theirs =
+      item.kind === "person" || (item.kind === "call" && item.entry.questionAnswer !== undefined);
+    if (selected.length === 0 && theirs) continue;
+    selected.push({ item, pairs: theirs && selected.at(-1)?.item.kind === "question" });
+  }
+  return selected;
+}
+
 // ---------------------------------------------------------------------------
 // A long chat, in its one scroll
 // ---------------------------------------------------------------------------

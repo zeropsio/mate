@@ -200,6 +200,8 @@ import {
 } from "./MessagesTimeline.logic";
 import {
   chatOpensAt,
+  chatItemHasLine,
+  selectChatItems,
   cutEdges,
   earlierShown,
   followAfter,
@@ -2783,7 +2785,7 @@ function PersonPictures({ pictures }: { readonly pictures: ReadonlyArray<ChatIma
  * A record's item as its line of the chat; `undone` the failures a later step
  * undid (`recoveredFailures`), which stand quiet.
  */
-function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | null {
+function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine {
   switch (item.kind) {
     case "step":
       return {
@@ -2802,8 +2804,6 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine | nul
         call: true,
       };
     case "thought":
-      // A thought with no words shows nothing: no line of the chat.
-      if (item.messages.every((message) => message.text.trim().length === 0)) return null;
       return {
         key: item.key,
         bubble: <ThoughtBubble messages={item.messages} />,
@@ -3622,8 +3622,7 @@ function LiveSlot({
   if (standsOpen !== heldOpen) setHeldOpen(standsOpen);
   const lines = drawn
     .flatMap(({ item }) => {
-      const line = itemLine(item, undone);
-      return line === null ? [] : [line];
+      return chatItemHasLine(item) ? [itemLine(item, undone)] : [];
     })
     .map((line, index, all) =>
       line.theirs === true && all[index - 1]?.asks === true ? { ...line, pairs: true } : line,
@@ -4159,7 +4158,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
                 // and only onto a line that shows something.
                 shows.toggle !== null &&
                 ((paging?.hasWork ?? false) ||
-                  opensOnto({ control: "work", lines: chatLineCount(row.items) })) ? (
+                  opensOnto({ control: "work", lines: selectChatItems(row.items).length })) ? (
                   <WorkToggle
                     onToggle={() => {
                       // Its lines not read yet: it opens once their first page is held.
@@ -4235,38 +4234,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   );
 }
 
-/** How many lines `chatLines` draws, counted without drawing them. */
-function chatLineCount(items: ReadonlyArray<RecordItem>): number {
-  let count = 0;
-  for (const item of items) {
-    // A thought with no words is no line; the person's words before anything
-    // the Mate did mark nothing.
-    if (item.kind === "thought" && item.messages.every((message) => !message.text.trim())) {
-      continue;
-    }
-    if (count === 0 && item.kind === "person") continue;
-    count += 1;
-  }
-  return count;
-}
-
-/**
- * A record's items as the chat's lines, from the first thing the Mate did;
- * `undone` the failures a later step undid (`recoveredFailures`).
- */
+/** Build bubbles only for the selected history once its work is drawn. */
 function chatLines(items: ReadonlyArray<RecordItem>, undone: ReadonlySet<string>): ChatLine[] {
-  const lines = items.flatMap((item) => {
-    const line = itemLine(item, undone);
-    return line === null ? [] : [line];
-  });
-  // A mark says where in the run the person spoke; before anything the Mate
-  // did it marks nothing — their words stand on the page right above the
-  // card, and the card opened on a second copy of them.
-  while (lines[0]?.theirs === true) lines.shift();
-  // An answer pairs with the question right above it.
-  return lines.map((line, index) =>
-    line.theirs === true && lines[index - 1]?.asks === true ? { ...line, pairs: true } : line,
-  );
+  return selectChatItems(items).map(({ item, pairs }) => ({ ...itemLine(item, undone), pairs }));
 }
 
 /**

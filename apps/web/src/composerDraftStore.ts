@@ -1598,7 +1598,7 @@ function normalizePersistedDraftThreads(
      * map is keyed by the *logical* project key — a repository identity or
      * `environment:workspaceRoot` — which is not a project ref and must never
      * be parsed as one. Doing so once rewrote a draft's project id to
-     * `/var/www` on every reload (`questions.md` Q-16).
+     * `/var/www` on every reload.
      */
     readonly keysAreProjectRefs: boolean;
   },

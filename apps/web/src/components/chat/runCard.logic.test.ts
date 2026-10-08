@@ -1,4 +1,4 @@
-import { MessageId, TurnId } from "@t3tools/contracts";
+import { ApprovalRequestId, MessageId, TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { WorkLogEntry } from "../../session-logic";
@@ -8,6 +8,7 @@ import type { RecordItem, RunStatus, TurnHeaderActivity } from "./MessagesTimeli
 import {
   CHAT_OPENS_WITH,
   chatOpensAt,
+  selectChatItems,
   cutEdges,
   EARLIER_CHUNK,
   EARLIER_REACH_PX,
@@ -42,6 +43,92 @@ import {
   slotWords,
 } from "./runCard.logic";
 import { stepOf } from "./workSteps.logic";
+
+describe("selectChatItems", () => {
+  const person: RecordItem = {
+    kind: "person",
+    key: "person",
+    at: "",
+    words: "My answer",
+    imageOnly: false,
+  };
+  const question: RecordItem = {
+    kind: "question",
+    key: "question",
+    at: "",
+    questions: ["Which one?"],
+  };
+  const work: RecordItem = {
+    kind: "call",
+    key: "work",
+    at: "",
+    entry: { id: "work", createdAt: "", label: "Command run", tone: "tool", command: "echo work" },
+  };
+  const answer: RecordItem = {
+    kind: "call",
+    key: "answer",
+    at: "",
+    entry: {
+      ...work.entry,
+      questionAnswer: {
+        requestId: ApprovalRequestId.make("q"),
+        answers: {},
+        attachmentsByQuestionId: {},
+      },
+    },
+  };
+  const thought = (text: string): RecordItem => ({
+    kind: "thought",
+    key: "thought",
+    at: "",
+    durationMs: null,
+    messages: [
+      {
+        id: MessageId.make("thought"),
+        turnId: TurnId.make("turn"),
+        role: "reasoning",
+        text,
+        streaming: false,
+        createdAt: "",
+        updatedAt: "",
+      },
+    ],
+  });
+
+  it.each([
+    { name: "nothing", items: [], keys: [] },
+    { name: "empty thoughts", items: [thought(""), thought(" \n\t")], keys: [] },
+    { name: "only leading replies", items: [person, answer], keys: [] },
+    { name: "replies before work", items: [person, thought(" "), answer, work], keys: ["work"] },
+    { name: "a thought with words", items: [thought("Consider this")], keys: ["thought"] },
+    {
+      name: "replies after work",
+      items: [work, person, answer],
+      keys: ["work", "person", "answer"],
+    },
+  ])("selects the visible sequence for $name", ({ items, keys }) => {
+    const selected = selectChatItems(items);
+    expect(selected.map(({ item }) => item.key)).toEqual(keys);
+    expect(selected.map(({ pairs }) => pairs)).toEqual(keys.map(() => false));
+    for (const { item } of selected) expect(items).toContain(item);
+  });
+
+  it.each([person, answer])("pairs a $kind answer across an empty thought", (reply) => {
+    const selected = selectChatItems([question, thought(" "), reply]);
+    expect(selected.map(({ item, pairs }) => [item.key, pairs])).toEqual([
+      ["question", false],
+      [reply.key, true],
+    ]);
+  });
+
+  it("keeps a reply separate when work stands between it and the question", () => {
+    expect(selectChatItems([question, work, person]).map(({ pairs }) => pairs)).toEqual([
+      false,
+      false,
+      false,
+    ]);
+  });
+});
 
 describe("chatOpensAt", () => {
   it.each([

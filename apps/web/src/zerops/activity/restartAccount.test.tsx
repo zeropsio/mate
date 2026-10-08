@@ -3,7 +3,14 @@ import { AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, expect, it, vi } from "vite-plus/test";
-import { makeAccountStore, projectRestarts, readRestart } from "@t3tools/client-runtime/data";
+import {
+  makeAccountStore,
+  mateRecovery,
+  projectRestarts,
+  readRestart,
+  readsOfState,
+} from "@t3tools/client-runtime/data";
+import { liveZerops, ORG } from "@t3tools/client-runtime/data/fixtures";
 import {
   deriveZeropsThreadModel,
   type ZeropsOperation,
@@ -12,6 +19,7 @@ import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import { AccountDataContext, type AccountData } from "../ZeropsAccountData";
 import { AccountOperationsContext, type AccountOperations } from "../accountOperations";
 import { useOperationCard, type OperationCardRegions } from "./useOperationCard";
+import { recoveryNotice } from "@t3tools/client-runtime/data";
 
 const source = {
   id: "source",
@@ -178,6 +186,7 @@ function fixture(responseMode: "lost" | "refused" | "accepted" = "lost") {
   return {
     mount,
     calls,
+    store,
     get: () => ({ answer: answer!, operation: operation! }),
     flush: () => {
       while (tasks.length) tasks.shift()!();
@@ -229,9 +238,132 @@ it("an accepted retry missing from history retains the new process identity and 
     await f.get().answer.onRestartRetry!();
   });
   expect(f.get().operation.phase).toBe("uncertain");
-  expect(f.get().operation.restartProcess).toMatchObject({ id: "new-process", status: "UNKNOWN" });
+  expect(f.get().operation.restartReading?.process).toMatchObject({
+    id: "new-process",
+    status: "UNKNOWN",
+  });
   expect(f.get().operation.closing).toBe(
     "Zerops accepted the restart. Its outcome is unconfirmed.",
   );
   expect(f.get().answer.restartRetryDisabled).toBe(true);
+});
+
+it.each([
+  { failReason: "CommandExec: init command failed (exit 23)" },
+  { error: { message: "CommandExec: init command failed (exit 23)" } },
+])(
+  "an accepted retry that fails keeps its startup cause and diagnostic on the card and recovery notice (%j)",
+  async (failure) => {
+    const f = fixture("accepted");
+    f.mount();
+    await act(async () => {
+      await f.get().answer.onRestartRetry!();
+    });
+    act(() => {
+      liveZerops({
+        services: [{ id: "s", projectId: "p", status: "ACTION_FAILED" }],
+        running: [
+          source,
+          { ...source, id: "new-process", created: "2026-10-08T11:00:00Z", ...failure },
+        ],
+      }).forEach(f.store.dispatch);
+    });
+    expect(f.get().operation.closing).toBe(
+      "Zerops couldn't restart Eddy — its startup command failed.",
+    );
+    const recovery = mateRecovery.derive(readsOfState(f.store.state()), {
+      orgId: ORG,
+      projectId: "p",
+      serviceId: "s",
+    });
+    expect(recoveryNotice(recovery, "Eddy")).toMatchObject({
+      headline: "Eddy couldn't restart.",
+      secondary: "Its startup command failed.",
+      details: "CommandExec: init command failed (exit 23)",
+    });
+  },
+);
+
+it("the latest deliberate retry supersedes an earlier failure on both the card and recovery notice", async () => {
+  const f = fixture("accepted");
+  f.mount();
+  await act(async () => {
+    await f.get().answer.onRestartRetry!();
+  });
+  act(() => {
+    liveZerops({
+      services: [{ id: "s", projectId: "p", status: "ACTION_FAILED" }],
+      running: [source, { ...source, id: "new-process", created: "2026-10-08T11:00:00Z" }],
+    }).forEach(f.store.dispatch);
+    f.store.dispatch({
+      kind: "operation-recorded",
+      requestId: "next",
+      intent: {
+        kind: "mate-restart",
+        orgId: ORG,
+        projectId: "p",
+        serviceId: "s",
+        sourceProcessId: source.id,
+        way: "restart",
+      },
+    });
+    f.store.dispatch({ kind: "operation-uncertain", requestId: "next" });
+    f.store.dispatch({ kind: "operation-lookup-failed", requestId: "next" });
+  });
+  expect(f.get().answer.restartRetryLabel).toBe("Check restart");
+  const recovery = mateRecovery.derive(readsOfState(f.store.state()), {
+    orgId: ORG,
+    projectId: "p",
+    serviceId: "s",
+  });
+  expect(recovery.process?.id).toBe("new-process");
+  expect(recoveryNotice(recovery, "Eddy")).toMatchObject({
+    headline: "Eddy's container failed.",
+    actions: ["open-in-zerops"],
+  });
+  const originalSend = f.calls[0]!;
+  await act(async () => {
+    await f.get().answer.onRestartRetry!();
+  });
+  expect(f.calls).toEqual([originalSend, "ask:next"]);
+});
+
+it("a definitively unsent restart resends the original request rather than submitting a new identity", async () => {
+  const f = fixture();
+  f.mount();
+  await act(async () => {
+    await f.get().answer.onRestartRetry!();
+  });
+  const requestId = f.calls[0]!.slice(5);
+  act(() => f.store.dispatch({ kind: "operation-unsent", requestId }));
+  expect(f.get().answer.restartRetryLabel).toBe("Try again");
+  expect(f.get().answer.restartRetryDisabled).toBe(false);
+  await act(async () => {
+    await f.get().answer.onRestartRetry!();
+  });
+  expect(f.calls).toEqual([`send:${requestId}`, `ask:${requestId}`]);
+});
+
+it("an unresolved restart stays disabled and a retained callback cannot create another write", async () => {
+  const f = fixture("accepted");
+  f.mount();
+  const firstPress = f.get().answer.onRestartRetry!;
+  await act(async () => {
+    await firstPress();
+  });
+  const requestId = f.calls[0]!.slice(5);
+  act(() =>
+    f.store.dispatch({
+      kind: "operation-exhausted",
+      requestId,
+      unobservable: { nextActor: "you", nextAction: "Check the process in Zerops." },
+    }),
+  );
+  expect(f.get().answer.restartRetryLabel).toBe("Restart unconfirmed");
+  expect(f.get().answer.restartRetryDisabled).toBe(true);
+  await act(async () => {
+    await firstPress();
+    await f.get().answer.onRestartRetry!();
+  });
+  expect(f.calls).toEqual([`send:${requestId}`]);
 });

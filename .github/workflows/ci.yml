@@ -123,13 +123,19 @@ jobs:
         run: vp run --filter @t3tools/desktop ensure:electron
 
       - name: Build desktop pipeline
-        run: vp run build:desktop
+        env:
+          VITE_HTTP_URL: ""
+          VITE_WS_URL: ""
+        run: |
+          VITE_HOSTED_APP_CHANNEL="$(node --input-type=module -e 'import { resolveDesktopUpdateChannel } from "./scripts/stage-desktop-web.ts"; import pkg from "./apps/server/package.json" with { type: "json" }; process.stdout.write(resolveDesktopUpdateChannel(pkg.version));')"
+          export VITE_HOSTED_APP_CHANNEL
+          vp run build:desktop
 
       - name: Verify preload bundle output
         run: node apps/desktop/scripts/verify-preload-bundle.mjs
 
       - name: Stage desktop web bundle
-        run: node scripts/stage-desktop-web.ts
+        run: node scripts/stage-desktop-web.ts --skip-build
 
       - name: Diagnose Linux Electron runtime
         continue-on-error: true
