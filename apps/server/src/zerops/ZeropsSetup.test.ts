@@ -164,6 +164,8 @@ interface World {
   /** Whether the engine could read every conversation. */
   readonly engineComplete: Ref.Ref<boolean>;
   readonly assigned: Ref.Ref<ReadonlyArray<readonly [string, unknown]>>;
+  /** Each import asked: the conversation, its source, and how many agents it had been given then. */
+  readonly imported: Ref.Ref<ReadonlyArray<readonly [string, unknown, number]>>;
   readonly wakes: Ref.Ref<ReadonlyArray<WakeRequest>>;
   /** The run each wake started, by wake id, once it has. */
   readonly wokenRuns: Ref.Ref<
@@ -195,6 +197,7 @@ const makeWorld = Effect.gen(function* () {
     engineViews: yield* Ref.make<ReadonlyArray<ConversationView>>([]),
     engineComplete: yield* Ref.make(true),
     assigned: yield* Ref.make<ReadonlyArray<readonly [string, unknown]>>([]),
+    imported: yield* Ref.make<ReadonlyArray<readonly [string, unknown, number]>>([]),
     wakes: yield* Ref.make<ReadonlyArray<WakeRequest>>([]),
     wokenRuns: yield* Ref.make<
       Readonly<
@@ -279,6 +282,12 @@ const fakes = (world: World) =>
         Effect.map(Ref.get(world.engineViews), (views) =>
           views.find((view) => view.conversationId === id),
         ),
+      importHistory: (id, source) =>
+        Effect.gen(function* () {
+          const given = (yield* Ref.get(world.assigned)).length;
+          yield* Ref.update(world.imported, (all) => [...all, [id, source, given] as const]);
+          return 3;
+        }),
       assignAgent: (id, agent) =>
         Effect.gen(function* () {
           yield* Ref.update(world.assigned, (all) => [...all, [id, agent] as const]);
@@ -1457,6 +1466,26 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
       ]);
       assert.deepStrictEqual(yield* Ref.get(world.wakes), []);
     }),
+  );
+
+  it.live(
+    "a flipped Mate's main conversation brings its V1 record in before it takes its agent",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        const database = freshDatabase();
+        yield* recordIn(database, "server");
+        yield* Ref.set(world.providers, [instance("claudeAgent"), instance("codex")]);
+        yield* onEngine(world, database, (setup) =>
+          Effect.andThen(
+            setup.awaitStandUp,
+            eventually(Ref.get(world.assigned), (all) => all.length > 0),
+          ),
+        );
+        assert.deepStrictEqual(yield* Ref.get(world.imported), [
+          ["thread-main", { kind: "v1", threadId: "thread-main" }, 0],
+        ]);
+      }),
   );
 
   it.live("a stand-up still due on a flipped Mate goes into its main conversation", () =>

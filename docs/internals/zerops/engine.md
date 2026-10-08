@@ -75,5 +75,8 @@ usage-resume wake starts the next run, which joins it.
 One engine runs per Mate process, chosen at boot. In `mate` mode the old engine is built but
 parked: its reactors, reaper and boot reconcile don't start and its doors refuse. Crew stays off
 until it runs on the engine. The engine's tables are `engine_*`, on their own migration track, in
-the same database. A client learns which wire a Mate speaks from the environment descriptor before
-it opens a socket. The conversation's chat-gate journeys keep their sentences for both engines.
+the same database. At the flip the Mate's conversation copies the V1 main thread's record in once,
+before it runs anything of its own: its newest turns become ended runs marked `imported`, never
+sent, woken or answerable, and V1's tables are only read, so flipping back finds V1's history. A
+client learns which wire a Mate speaks from the environment descriptor before it opens a socket.
+The conversation's chat-gate journeys keep their sentences for both engines.
