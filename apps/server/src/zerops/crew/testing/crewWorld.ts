@@ -218,6 +218,11 @@ export interface CrewWorld {
   readonly root: string;
   /** The Mate's workspace (the container's `/var/www`): the crew home lives here. */
   readonly workspace: string;
+  /**
+   * A ref this world's crew writes in the service repository on its own, beside a crewmate's open
+   * task (V1: its crew-state mirror; the engine: the task's landing anchor).
+   */
+  readonly ownRef: Effect.Effect<string>;
   /** zcp's dev-server pidfile, as this world's crew reads it. */
   readonly devServerPidFile: string;
   /** Where the server stores a chat's pictures and files. */
@@ -516,6 +521,7 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
     root: fakes.root,
     workspace: fakes.workspace,
     devServerPidFile: fakes.devServerPidFile,
+    ownRef: Effect.succeed("refs/t3/crew-state/main"),
     attachmentsDir: NodePath.join(fakes.workspace, "attachments"),
     writeHome: (files) => writeCrewHome(fakes.workspace, files),
     press: (input, as = KAREL) => Effect.flatMap(engine, (service) => service.command(input, as)),

@@ -59,7 +59,7 @@ import { crewServicesLayer } from "../crewLayer.ts";
 import { DevServerPidFile } from "../CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost, type CrewThreadMember } from "../crewSeams.ts";
 import { installCrewThreadPolicy } from "../CrewThreadPolicy.ts";
-import type { CrewEffectPayload } from "../engine/command.ts";
+import { taskAssignment, type CrewEffectPayload } from "../engine/command.ts";
 import {
   crewEngineHooksLayer,
   crewEngineLinkLayer,
@@ -161,6 +161,8 @@ const enginePort = (input: {
   readonly started: Effect.Effect<void>;
   readonly start: Effect.Effect<void>;
   readonly sendHold: Ref.Ref<CrewHold | undefined>;
+  /** Every hold's release, run when the life ends. */
+  readonly releases: Array<Effect.Effect<void>>;
 }): CrewWorld => {
   const { fx, fixture, context, provider } = input;
   const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -392,6 +394,8 @@ const enginePort = (input: {
     });
 
   const sent = Effect.gen(function* () {
+    // What the crew sent once it settled: a delivery its last step asked for has gone out.
+    yield* settled;
     const rows = yield* Effect.flatMap(sql, (client) =>
       client<DeliveryRow>`
         SELECT payload_json, state FROM engine_effect
@@ -482,6 +486,14 @@ const enginePort = (input: {
     root: fx.root,
     workspace: fx.workspace,
     devServerPidFile: fx.devServerPidFile,
+    ownRef: Effect.map(crewState, (state) => {
+      const open = Object.values(state.tasks).find(
+        (task) => task.state !== "landed" && task.state !== "discarded",
+      );
+      return open === undefined
+        ? "refs/t3/crew/landing/none"
+        : `refs/t3/crew/landing/${taskAssignment(open)}`;
+    }),
     attachmentsDir: NodePath.join(fx.workspace, "attachments"),
     writeHome: (files) => writeCrewHome(fx.workspace, files),
     press: (press, as) =>
@@ -596,12 +608,13 @@ const enginePort = (input: {
               release: Effect.void,
             };
             yield* Ref.set(input.sendHold, hold);
-            return {
-              reached: Deferred.await(reached),
-              release: Deferred.succeed(release, undefined).pipe(Effect.asVoid),
-            } satisfies CrewHold;
+            const released = Deferred.succeed(release, undefined).pipe(Effect.asVoid);
+            input.releases.push(released);
+            return { reached: Deferred.await(reached), release: released } satisfies CrewHold;
           })
-        : fixture.world.holdSsh(holdMatcher(step)),
+        : Effect.tap(fixture.world.holdSsh(holdMatcher(step)), (hold) =>
+            Effect.sync(() => input.releases.push(hold.release)),
+          ),
     snapshot: snapshotWhere(() => true),
     snapshotWhere,
     frames: Stream.unwrap(Effect.map(crew, (service) => service.snapshot)),
@@ -732,6 +745,7 @@ export const engineWorld: CrewWorldRunner = <E>(
           ) as EngineCrewPolicyInstaller)
         : countingInstaller(fixture.world.installs);
     let first = true;
+    const releases: Array<Effect.Effect<void>> = [];
     for (const phase of phases) {
       const scripted = yield* makeScriptedProvider({ driver: "claudeAgent" });
       const sendHold = yield* Ref.make<CrewHold | undefined>(undefined);
@@ -777,8 +791,12 @@ export const engineWorld: CrewWorldRunner = <E>(
         started: Effect.asVoid(Ref.get(startedFlag)),
         start,
         sendHold,
+        releases,
       });
       const exit = yield* Effect.exit(phase(world));
+      // Whatever a journey still holds goes on, so the life's own work can wind down.
+      yield* Ref.set(fixture.holds, []);
+      for (const release of releases.splice(0)) yield* release;
       // The server goes down: every driver process dies with it.
       for (const session of scripted.sessions.values()) session.alive = false;
       yield* Scope.close(life, Exit.void);

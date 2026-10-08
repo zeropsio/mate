@@ -850,9 +850,8 @@ describe("CrewEngine", () => {
     crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        const thread = yield* firstTurn(world, () =>
-          git(world.root, ["update-ref", "refs/t3/crew-state/main", "HEAD"]),
-        );
+        const thread = yield* firstTurn(world, () => undefined);
+        git(world.root, ["update-ref", yield* world.ownRef, "HEAD"]);
         yield* world.turnEnds(thread);
         const [task] = yield* world.tasks;
         assert.strictEqual(task?.state, "working");
