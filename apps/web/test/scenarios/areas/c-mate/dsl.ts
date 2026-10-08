@@ -239,6 +239,18 @@ export function mateChat(
           await button!.focus();
           await page.keyboard.press("Enter");
         }),
+      /** The newest visible control named `name` (a later run's card over an earlier one's). */
+      activateLast: (name: string) =>
+        Effect.promise(async () => {
+          await page.waitForSelector(`::-p-aria([name="${name}"][role="button"])`, {
+            visible: true,
+            timeout: 8000,
+          });
+          const buttons = await page.$$(`::-p-aria([name="${name}"][role="button"])`);
+          const button = buttons.at(-1)!;
+          await button.focus();
+          await page.keyboard.press("Enter");
+        }),
       pasteFile: (name: string, content: string) =>
         Effect.promise(async () => {
           await (await page.locator(composer).setTimeout(8000).waitHandle()).focus();

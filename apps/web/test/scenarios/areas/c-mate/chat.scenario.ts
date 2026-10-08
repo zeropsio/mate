@@ -170,7 +170,7 @@ describe("C: opening a Mate and chat", () => {
             chat.fixture().responseRefusal = null;
             yield* chat.when.key("Enter");
             const answer = yield* Effect.promise(() =>
-              chat.fixture().waitForCommand("thread.user-input.respond", 3),
+              chat.fixture().waitForAnswer("question-custom"),
             );
             expect(answer).toMatchObject({
               requestId: "question-custom",
@@ -179,14 +179,14 @@ describe("C: opening a Mate and chat", () => {
             });
             chat.fixture().run("question-custom-run", "completed");
             yield* chat.then.once("Inspect the preview shown here");
-            yield* chat.when.activate("Show work");
+            yield* chat.when.activateLast("Show work");
             yield* chat.when.press("Open question-preview.png");
             yield* chat.then.text("question-preview.png");
             yield* chat.when.key("Escape");
             yield* chat.then.noText("Attached to this answer");
             yield* chat.then.draft("");
             yield* chat.when.reload();
-            yield* chat.when.activate("Show work");
+            yield* chat.when.activateLast("Show work");
             yield* chat.then.once("Inspect the preview shown here");
             yield* chat.then.control("Open question-preview.png");
           }),
