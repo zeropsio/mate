@@ -317,6 +317,66 @@ const journeys: ReadonlyArray<Journey> = [
       "its copy has edits made after its check; they stay in its copy and do not land",
     ],
   },
+  {
+    sentence: "a turn's save a guard stopped stops its task in the guard's words",
+    journey: (w) => {
+      working(w);
+      w.end("backend");
+      w.settle("crew.checkpoint", "backend", {
+        _tag: "park",
+        detail: "the WIP commit stopped on secrets: .env",
+      });
+      return [w.task(1).state, w.task(1).wait?.reason];
+    },
+    expected: ["parked", "the WIP commit stopped on secrets: .env"],
+  },
+  {
+    sentence: "each turn of an attempt is saved under its own number",
+    journey: (w) => {
+      working(w);
+      w.end("backend");
+      const first = w.pending("crew.checkpoint", "backend")?.payload;
+      w.checkpoint("backend");
+      w.press({ _tag: "message", handle: "backend", text: "Go on.", attachments: [] });
+      w.run("backend");
+      w.end("backend");
+      const second = w.pending("crew.checkpoint", "backend")?.payload;
+      return [first, second].map((payload) =>
+        payload?.kind === "crew.checkpoint" ? payload.turn : undefined,
+      );
+    },
+    expected: [1, 2],
+  },
+  {
+    sentence: "the check after a merge is bound to the tree the merge left",
+    journey: (w) => {
+      working(w);
+      w.tool("backend", { tool: "report", input: { status: "done", summary: "Done." } });
+      w.end("backend");
+      w.checkpoint("backend");
+      w.settle("crew.mergeIn", "backend", {
+        _tag: "merged",
+        head: "h".repeat(40),
+        tip: "m".repeat(40),
+      });
+      const check = w.pending("crew.check", "backend")?.payload;
+      return check?.kind === "crew.check" ? check.tip : undefined;
+    },
+    expected: "m".repeat(40),
+  },
+  {
+    sentence: "a check on a copy that moved since its merge stops its task",
+    journey: (w) => {
+      working(w);
+      w.tool("backend", { tool: "report", input: { status: "done", summary: "Done." } });
+      w.end("backend");
+      w.checkpoint("backend");
+      w.settle("crew.mergeIn", "backend", { _tag: "merged", head: "h".repeat(40) });
+      w.settle("crew.check", "backend", { _tag: "moved" });
+      return [w.task(1).state, w.task(1).wait?.reason];
+    },
+    expected: ["parked", "its copy of the code moved outside the engine"],
+  },
 ];
 
 describe("crew landing", () => {

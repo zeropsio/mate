@@ -140,8 +140,24 @@ const fold = (state: CrewState, event: CrewEvent): CrewState => {
     }
     case "UsageRead":
       return { ...state, usage: { ...state.usage, [event.login]: event.percent } };
-    case "DeliveryRecorded":
-      return { ...state, deliveries: { ...state.deliveries, [event.effectId]: event.delivery } };
+    case "DeliveryRecorded": {
+      const recorded = {
+        ...state,
+        deliveries: { ...state.deliveries, [event.effectId]: event.delivery },
+      };
+      // A turn sent to a task counts toward its attempt's turns.
+      const task =
+        event.delivery.taskId === null || event.delivery.text === null
+          ? undefined
+          : state.tasks[event.delivery.taskId];
+      if (task === undefined) return recorded;
+      const { attempt } = task.counters;
+      const count = task.turns?.attempt === attempt ? task.turns.count + 1 : 1;
+      return {
+        ...recorded,
+        tasks: { ...state.tasks, [task.id]: { ...task, turns: { attempt, count } } },
+      };
+    }
     case "DeliveryLinked": {
       const delivery = state.deliveries[event.effectId];
       return delivery === undefined

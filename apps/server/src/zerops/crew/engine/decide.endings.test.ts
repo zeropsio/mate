@@ -150,6 +150,58 @@ const journeys: ReadonlyArray<Journey> = [
     },
     expected: ["ready", ["task"]],
   },
+  {
+    sentence: "work a restart left uncommitted is saved and said in its crewmate's chat",
+    journey: (w) => {
+      w.apply(home(writer("backend")));
+      restarted(w);
+      w.settle("crew.sweep", "backend", {
+        swept: true,
+        copy: { _tag: "committed", commit: "s".repeat(40), paths: ["src/hud.ts"] },
+      });
+      return w.delivered.at(-1)?.command;
+    },
+    expected: {
+      _tag: "Seam",
+      seam: {
+        seam: "swept",
+        branch: "crew/backend",
+        commit: "s".repeat(40),
+        paths: ["src/hud.ts"],
+      },
+    },
+  },
+  {
+    sentence: "edits a restart found on a checked copy stop its task; they never land",
+    journey: (w) => {
+      w.apply(home(writer("backend")));
+      newTask(w, "backend", "First");
+      w.start("backend");
+      w.tool("backend", { tool: "report", input: { status: "done", summary: "Done." } });
+      w.end("backend");
+      w.checkpoint("backend");
+      w.mergeAndCheck("backend");
+      restarted(w);
+      const sweep = w.pending("crew.sweep", "backend")?.payload;
+      w.settle("crew.sweep", "backend", { swept: false, copy: { _tag: "held" } });
+      return [sweep?.kind === "crew.sweep" && sweep.checked, w.task(1).state];
+    },
+    expected: [true, "parked"],
+  },
+  {
+    sentence: "a copy a restart found gone is brought back",
+    journey: (w) => {
+      w.apply(home(writer("backend")));
+      restarted(w);
+      w.settle("crew.sweep", "backend", { swept: false, copy: { _tag: "missing" } });
+      const recover = w.pending("crew.recover", "appdev")?.payload;
+      return [
+        w.state.members.backend?.lane?.state,
+        recover?.kind === "crew.recover" ? recover.handles : undefined,
+      ];
+    },
+    expected: ["missing", ["backend"]],
+  },
 ];
 
 describe("crew turn endings", () => {
