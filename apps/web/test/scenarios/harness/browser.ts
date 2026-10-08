@@ -107,6 +107,9 @@ export async function openBrowser(
     pipe: true,
     waitForInitialPage: false,
     args: [
+      // CI runners restrict the user namespaces Chrome's sandbox needs (Ubuntu 24.04's
+      // AppArmor), and Chrome for Testing carries no profile of its own.
+      ...(process.env.CI ? ["--no-sandbox"] : []),
       "--disable-background-networking",
       "--disable-component-update",
       "--disable-domain-reliability",
