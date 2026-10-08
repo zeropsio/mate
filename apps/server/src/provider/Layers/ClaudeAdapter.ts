@@ -5556,154 +5556,170 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         "claude.query.path_to_executable": claudeBinaryPath,
       });
 
-      const queryRuntime = yield* Effect.try({
-        try: () =>
-          createQuery({
-            prompt,
-            options: queryOptions,
-          }),
-        catch: (cause) =>
-          new ProviderAdapterProcessError({
-            provider: PROVIDER,
-            threadId,
-            detail: "Failed to start Claude runtime session.",
-            cause,
-          }),
-      });
+      // From the spawn until this start returns, the CLI is the start's alone: one that ends
+      // early - a Stop interrupting it - closes the CLI instead of leaving it running unread.
+      let spawned: ClaudeQueryRuntime | undefined;
+      let registered: ClaudeSessionContext | undefined;
+      return yield* Effect.gen(function* () {
+        const queryRuntime = yield* Effect.try({
+          // Kept in the same step as the spawn: an interrupt is seen before the next one.
+          try: () =>
+            (spawned = createQuery({
+              prompt,
+              options: queryOptions,
+            })),
+          catch: (cause) =>
+            new ProviderAdapterProcessError({
+              provider: PROVIDER,
+              threadId,
+              detail: "Failed to start Claude runtime session.",
+              cause,
+            }),
+        });
 
-      const session: ProviderSession = {
-        threadId,
-        provider: PROVIDER,
-        providerInstanceId: boundInstanceId,
-        status: "ready",
-        runtimeMode: input.runtimeMode,
-        ...(input.cwd ? { cwd: input.cwd } : {}),
-        ...(modelSelection?.model ? { model: modelSelection.model } : {}),
-        ...(threadId ? { threadId } : {}),
-        resumeCursor: {
+        const session: ProviderSession = {
+          threadId,
+          provider: PROVIDER,
+          providerInstanceId: boundInstanceId,
+          status: "ready",
+          runtimeMode: input.runtimeMode,
+          ...(input.cwd ? { cwd: input.cwd } : {}),
+          ...(modelSelection?.model ? { model: modelSelection.model } : {}),
           ...(threadId ? { threadId } : {}),
-          ...(sessionId ? { resume: sessionId } : {}),
-          ...(resumeState?.resumeSessionAt ? { resumeSessionAt: resumeState.resumeSessionAt } : {}),
-          turnCount: resumeState?.turnCount ?? 0,
-          ...(resumeState?.turnStartMessageIds
-            ? { turnStartMessageIds: resumeState.turnStartMessageIds }
-            : {}),
-        },
-        createdAt: startedAt,
-        updatedAt: startedAt,
-      };
-
-      const context: ClaudeSessionContext = {
-        session,
-        stderrTail,
-        startInput: input,
-        turnStartMessageIds: resumeState?.turnStartMessageIds
-          ? [...resumeState.turnStartMessageIds]
-          : Array.from({ length: resumeState?.turnCount ?? 0 }, () => null),
-        promptQueue,
-        query: queryRuntime,
-        streamFiber: undefined,
-        startedAt,
-        basePermissionMode: permissionMode,
-        profiled: threadSetup !== undefined,
-        currentApiModelId: apiModelId,
-        currentEffort: effectiveEffort ?? undefined,
-        resumeSessionId: sessionId,
-        pendingApprovals,
-        pendingUserInputs,
-        turns: [],
-        inFlightTools,
-        claudeTasks,
-        taskAgents,
-        pendingTaskModels,
-        subagentToolParents,
-        workflowMemberFingerprints,
-        liveTaskIds,
-        turnState: undefined,
-        selectedContextWindow: initialContextWindow,
-        lastKnownContextWindow: initialContextWindow,
-        lastKnownTokenUsage: undefined,
-        lastKnownTotalProcessedTokens: undefined,
-        lastAssistantUuid: resumeState?.resumeSessionAt,
-        lastThreadStartedId: undefined,
-        announcedUsageLimits: undefined,
-        interruptedTurnSettled: undefined,
-        stopped: false,
-      };
-      yield* Ref.set(contextRef, context);
-      sessions.set(threadId, context);
-
-      const sessionStartedStamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        type: "session.started",
-        eventId: sessionStartedStamp.eventId,
-        provider: PROVIDER,
-        createdAt: sessionStartedStamp.createdAt,
-        threadId,
-        payload: input.resumeCursor !== undefined ? { resume: input.resumeCursor } : {},
-        providerRefs: {},
-      });
-
-      const configuredStamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        type: "session.configured",
-        eventId: configuredStamp.eventId,
-        provider: PROVIDER,
-        createdAt: configuredStamp.createdAt,
-        threadId,
-        payload: {
-          config: {
-            ...(apiModelId ? { model: apiModelId } : {}),
-            ...(input.cwd ? { cwd: input.cwd } : {}),
-            ...(effectiveEffort ? { effort: effectiveEffort } : {}),
-            ...(permissionMode ? { permissionMode } : {}),
-            ...(fastMode ? { fastMode: true } : {}),
+          resumeCursor: {
+            ...(threadId ? { threadId } : {}),
+            ...(sessionId ? { resume: sessionId } : {}),
+            ...(resumeState?.resumeSessionAt
+              ? { resumeSessionAt: resumeState.resumeSessionAt }
+              : {}),
+            turnCount: resumeState?.turnCount ?? 0,
+            ...(resumeState?.turnStartMessageIds
+              ? { turnStartMessageIds: resumeState.turnStartMessageIds }
+              : {}),
           },
-        },
-        providerRefs: {},
-      });
+          createdAt: startedAt,
+          updatedAt: startedAt,
+        };
 
-      const readyStamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        type: "session.state.changed",
-        eventId: readyStamp.eventId,
-        provider: PROVIDER,
-        createdAt: readyStamp.createdAt,
-        threadId,
-        payload: {
-          state: "ready",
-        },
-        providerRefs: {},
-      });
+        const context: ClaudeSessionContext = {
+          session,
+          stderrTail,
+          startInput: input,
+          turnStartMessageIds: resumeState?.turnStartMessageIds
+            ? [...resumeState.turnStartMessageIds]
+            : Array.from({ length: resumeState?.turnCount ?? 0 }, () => null),
+          promptQueue,
+          query: queryRuntime,
+          streamFiber: undefined,
+          startedAt,
+          basePermissionMode: permissionMode,
+          profiled: threadSetup !== undefined,
+          currentApiModelId: apiModelId,
+          currentEffort: effectiveEffort ?? undefined,
+          resumeSessionId: sessionId,
+          pendingApprovals,
+          pendingUserInputs,
+          turns: [],
+          inFlightTools,
+          claudeTasks,
+          taskAgents,
+          pendingTaskModels,
+          subagentToolParents,
+          workflowMemberFingerprints,
+          liveTaskIds,
+          turnState: undefined,
+          selectedContextWindow: initialContextWindow,
+          lastKnownContextWindow: initialContextWindow,
+          lastKnownTokenUsage: undefined,
+          lastKnownTotalProcessedTokens: undefined,
+          lastAssistantUuid: resumeState?.resumeSessionAt,
+          lastThreadStartedId: undefined,
+          announcedUsageLimits: undefined,
+          interruptedTurnSettled: undefined,
+          stopped: false,
+        };
+        yield* Ref.set(contextRef, context);
+        sessions.set(threadId, context);
+        registered = context;
 
-      let streamFiber: Fiber.Fiber<void, never>;
-      streamFiber = runFork(
-        Effect.exit(runSdkStream(context)).pipe(
-          Effect.flatMap((exit) => {
-            if (context.stopped) {
-              return Effect.void;
-            }
-            if (context.streamFiber === streamFiber) {
-              context.streamFiber = undefined;
-            }
-            return handleStreamExit(context, exit).pipe(
-              Effect.catch((cause) =>
-                Effect.logError("Failed to close Claude runtime stream.", { cause }),
-              ),
-            );
-          }),
+        const sessionStartedStamp = yield* makeEventStamp();
+        yield* offerRuntimeEvent({
+          type: "session.started",
+          eventId: sessionStartedStamp.eventId,
+          provider: PROVIDER,
+          createdAt: sessionStartedStamp.createdAt,
+          threadId,
+          payload: input.resumeCursor !== undefined ? { resume: input.resumeCursor } : {},
+          providerRefs: {},
+        });
+
+        const configuredStamp = yield* makeEventStamp();
+        yield* offerRuntimeEvent({
+          type: "session.configured",
+          eventId: configuredStamp.eventId,
+          provider: PROVIDER,
+          createdAt: configuredStamp.createdAt,
+          threadId,
+          payload: {
+            config: {
+              ...(apiModelId ? { model: apiModelId } : {}),
+              ...(input.cwd ? { cwd: input.cwd } : {}),
+              ...(effectiveEffort ? { effort: effectiveEffort } : {}),
+              ...(permissionMode ? { permissionMode } : {}),
+              ...(fastMode ? { fastMode: true } : {}),
+            },
+          },
+          providerRefs: {},
+        });
+
+        const readyStamp = yield* makeEventStamp();
+        yield* offerRuntimeEvent({
+          type: "session.state.changed",
+          eventId: readyStamp.eventId,
+          provider: PROVIDER,
+          createdAt: readyStamp.createdAt,
+          threadId,
+          payload: {
+            state: "ready",
+          },
+          providerRefs: {},
+        });
+
+        let streamFiber: Fiber.Fiber<void, never>;
+        streamFiber = runFork(
+          Effect.exit(runSdkStream(context)).pipe(
+            Effect.flatMap((exit) => {
+              if (context.stopped) {
+                return Effect.void;
+              }
+              if (context.streamFiber === streamFiber) {
+                context.streamFiber = undefined;
+              }
+              return handleStreamExit(context, exit).pipe(
+                Effect.catch((cause) =>
+                  Effect.logError("Failed to close Claude runtime stream.", { cause }),
+                ),
+              );
+            }),
+          ),
+        );
+        context.streamFiber = streamFiber;
+        streamFiber.addObserver(() => {
+          if (context.streamFiber === streamFiber) {
+            context.streamFiber = undefined;
+          }
+        });
+
+        return {
+          ...session,
+        };
+      }).pipe(
+        Effect.onInterrupt(() =>
+          registered !== undefined
+            ? stopSessionInternal(registered).pipe(Effect.ignore)
+            : Effect.sync(() => spawned?.close()).pipe(Effect.ignore),
         ),
       );
-      context.streamFiber = streamFiber;
-      streamFiber.addObserver(() => {
-        if (context.streamFiber === streamFiber) {
-          context.streamFiber = undefined;
-        }
-      });
-
-      return {
-        ...session,
-      };
     },
   );
 

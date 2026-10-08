@@ -551,27 +551,34 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       const persistedCwd = readPersistedCwd(input.binding.runtimePayload);
       const persistedModelSelection = readPersistedModelSelection(input.binding.runtimePayload);
 
-      const resumed = yield* adapter.startSession({
+      return yield* startRecorded({
+        adapter,
         threadId: input.binding.threadId,
-        provider: input.binding.provider,
-        providerInstanceId: bindingInstanceId,
-        ...(persistedCwd ? { cwd: persistedCwd } : {}),
-        ...(persistedModelSelection ? { modelSelection: persistedModelSelection } : {}),
-        ...(hasResumeCursor ? { resumeCursor: input.binding.resumeCursor } : {}),
-        runtimeMode: input.binding.runtimeMode ?? "full-access",
-      });
-      if (resumed.provider !== adapter.provider) {
-        return yield* toValidationError(
-          input.operation,
-          `Adapter/provider mismatch while recovering thread '${input.binding.threadId}'. Expected '${adapter.provider}', received '${resumed.provider}'.`,
-        );
-      }
+        start: adapter.startSession({
+          threadId: input.binding.threadId,
+          provider: input.binding.provider,
+          providerInstanceId: bindingInstanceId,
+          ...(persistedCwd ? { cwd: persistedCwd } : {}),
+          ...(persistedModelSelection ? { modelSelection: persistedModelSelection } : {}),
+          ...(hasResumeCursor ? { resumeCursor: input.binding.resumeCursor } : {}),
+          runtimeMode: input.binding.runtimeMode ?? "full-access",
+        }),
+        record: (resumed) =>
+          Effect.gen(function* () {
+            if (resumed.provider !== adapter.provider) {
+              return yield* toValidationError(
+                input.operation,
+                `Adapter/provider mismatch while recovering thread '${input.binding.threadId}'. Expected '${adapter.provider}', received '${resumed.provider}'.`,
+              );
+            }
 
-      yield* upsertSessionBinding(
-        { ...resumed, providerInstanceId: bindingInstanceId },
-        input.binding.threadId,
-      );
-      return { adapter, session: resumed } as const;
+            yield* upsertSessionBinding(
+              { ...resumed, providerInstanceId: bindingInstanceId },
+              input.binding.threadId,
+            );
+            return { adapter, session: resumed } as const;
+          }),
+      });
     }).pipe(
       withMetrics({
         counter: providerSessionsTotal,
@@ -631,6 +638,45 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       isActive: true,
     } as const;
   });
+
+  /**
+   * An adapter's session start and the bookkeeping that records it, as one step. A start that
+   * ends after its adapter opened a session - failed, or interrupted by a Stop while it starts or
+   * by the engine's bound - stops that session: it is recorded nowhere, so nothing else would
+   * (the reaper walks bindings). A session the thread already had live is left alone.
+   */
+  const startRecorded = <A, E, R, E2, R2>(input: {
+    readonly adapter: ProviderAdapterShape<ProviderAdapterError>;
+    readonly threadId: ThreadId;
+    readonly start: Effect.Effect<ProviderSession, E, R>;
+    readonly record: (session: ProviderSession) => Effect.Effect<A, E2, R2>;
+  }) =>
+    Effect.gen(function* () {
+      const liveSince = (sessions: ReadonlyArray<ProviderSession>) =>
+        sessions.find((session) => session.threadId === input.threadId)?.createdAt;
+      const before = liveSince(yield* input.adapter.listSessions());
+      const stopOpened = input.adapter.listSessions().pipe(
+        Effect.flatMap((sessions) => {
+          const opened = liveSince(sessions);
+          return opened === undefined || opened === before
+            ? Effect.void
+            : input.adapter.stopSession(input.threadId);
+        }),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("provider.session.stop-unrecorded-failed", {
+            threadId: input.threadId,
+            provider: input.adapter.provider,
+            cause,
+          }),
+        ),
+      );
+      return yield* Effect.uninterruptibleMask((restore) =>
+        restore(input.start).pipe(
+          Effect.flatMap((session) => restore(input.record(session))),
+          Effect.onError(() => stopOpened),
+        ),
+      );
+    });
 
   const stopStaleSessionsForThread = Effect.fn("stopStaleSessionsForThread")(function* (input: {
     readonly threadId: ThreadId;
@@ -767,34 +813,40 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           }
         }
         const adapter = yield* registry.getByInstance(resolvedInstanceId);
-        const session = yield* adapter.startSession({
-          ...input,
-          providerInstanceId: resolvedInstanceId,
-          ...(effectiveCwd !== undefined ? { cwd: effectiveCwd } : {}),
-          ...(effectiveResumeCursor !== undefined ? { resumeCursor: effectiveResumeCursor } : {}),
-        });
-
-        if (session.provider !== adapter.provider) {
-          return yield* toValidationError(
-            "ProviderService.startSession",
-            `Adapter/provider mismatch: requested '${adapter.provider}', received '${session.provider}'.`,
-          );
-        }
-        const sessionWithInstance = {
-          ...session,
-          providerInstanceId: resolvedInstanceId,
-        };
-
-        yield* stopStaleSessionsForThread({
+        return yield* startRecorded({
+          adapter,
           threadId,
-          currentInstanceId: resolvedInstanceId,
-        });
-        yield* upsertSessionBinding(sessionWithInstance, threadId, {
-          modelSelection: input.modelSelection,
-        });
-        timedOutNativeCompactions.delete(threadId);
+          start: adapter.startSession({
+            ...input,
+            providerInstanceId: resolvedInstanceId,
+            ...(effectiveCwd !== undefined ? { cwd: effectiveCwd } : {}),
+            ...(effectiveResumeCursor !== undefined ? { resumeCursor: effectiveResumeCursor } : {}),
+          }),
+          record: (session) =>
+            Effect.gen(function* () {
+              if (session.provider !== adapter.provider) {
+                return yield* toValidationError(
+                  "ProviderService.startSession",
+                  `Adapter/provider mismatch: requested '${adapter.provider}', received '${session.provider}'.`,
+                );
+              }
+              const sessionWithInstance = {
+                ...session,
+                providerInstanceId: resolvedInstanceId,
+              };
 
-        return sessionWithInstance;
+              yield* stopStaleSessionsForThread({
+                threadId,
+                currentInstanceId: resolvedInstanceId,
+              });
+              yield* upsertSessionBinding(sessionWithInstance, threadId, {
+                modelSelection: input.modelSelection,
+              });
+              timedOutNativeCompactions.delete(threadId);
+
+              return sessionWithInstance;
+            }),
+        });
       }).pipe(
         withMetrics({
           counter: providerSessionsTotal,

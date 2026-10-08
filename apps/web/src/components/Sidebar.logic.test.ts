@@ -25,7 +25,9 @@ import {
   formatWorkingDurationLabel,
   shouldClearThreadSelectionOnMouseDown,
   sortLogicalProjectsForSidebar,
+  resolveSettledTimestamp,
   sortSettledThreadsForSidebar,
+  type SettledTimestampInput,
   pinOrderKeyBetween,
   planPinnedReorder,
   sortPinnedThreadsForSidebar,
@@ -1001,6 +1003,34 @@ describe("sortSettledThreadsForSidebar", () => {
     ]);
 
     expect(sorted.map((thread) => thread.id)).toEqual(["a", "b"]);
+  });
+
+  it("matches the per-comparison order on a shuffled list with ties", () => {
+    const stamps = [
+      { settledAt: "2026-03-09T10:00:00.000Z" },
+      { settledAt: "invalid", latestUserMessageAt: "2026-03-09T10:00:00.000Z" },
+      { latestUserMessageAt: "2026-03-09T11:00:00.000Z" },
+      { updatedAt: "2026-03-09T09:00:00.000Z" },
+      { updatedAt: "invalid" },
+    ];
+    // Ids repeat every 3 rows and stamps every 5, so rows tie on the time,
+    // on the id, and on both. (index * 7) % 30 scrambles the input order.
+    const threads = Array.from({ length: 30 }, (_, index) => {
+      const row = (index * 7) % 30;
+      return { ...settled({ id: `thread-${row % 3}`, ...stamps[row % 5] }), row };
+    });
+    // The comparator this sort replaced: it resolved both keys on every call.
+    const timestampMs = (thread: SettledTimestampInput) => {
+      const timestamp = resolveSettledTimestamp(thread);
+      return timestamp === null ? 0 : Date.parse(timestamp);
+    };
+    const expected = threads.toSorted(
+      (left, right) => timestampMs(right) - timestampMs(left) || left.id.localeCompare(right.id),
+    );
+
+    expect(sortSettledThreadsForSidebar(threads).map((thread) => thread.row)).toEqual(
+      expected.map((thread) => thread.row),
+    );
   });
 });
 
