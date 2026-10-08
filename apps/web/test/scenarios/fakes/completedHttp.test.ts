@@ -52,6 +52,30 @@ function navigationBrowser() {
   return { events, client, body, navigation, rendererTurns: () => rendererTurns };
 }
 
+it("navigation starting after the last body wakes a settler still blocks the old renderer", async () => {
+  const browser = navigationBrowser();
+  const settle = completedHttp(browser.events as unknown as Page);
+  browser.events.emit("request", browser.body);
+  const drained = settle();
+  browser.events.emit("requestfinished", browser.body);
+  browser.events.emit("request", browser.navigation);
+  await Promise.resolve();
+  try {
+    expect(browser.rendererTurns(), "A wake-up is not a document commit receipt").toBe(0);
+    browser.events.emit("requestfinished", browser.navigation);
+    await Promise.resolve();
+    expect(browser.rendererTurns(), "A finished navigation body still waits for its commit").toBe(
+      0,
+    );
+  } finally {
+    browser.client.emit("Page.frameNavigated", { frame: { id: "main" } });
+    browser.events.emit("requestfinished", browser.navigation);
+    await drained;
+    settle.close();
+  }
+  expect(browser.rendererTurns()).toBe(1);
+});
+
 it.each(["requestfinished", "requestfailed"])(
   "navigation %s before document commit cannot retire an unfinished old body",
   async (terminal) => {

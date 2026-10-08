@@ -195,6 +195,65 @@ describe("projectGone", () => {
 });
 
 describe("projectStanding", () => {
+  it.each(["create-project", "import-project"] as const)(
+    "%s acceptance identifies only its own project and organization before a roster row",
+    (kind) => {
+      const intent =
+        kind === "create-project"
+          ? { kind, orgId: ORG, name: "Cy", tagList: [] }
+          : { kind, orgId: ORG, name: "Cy", yaml: "project: Cy" };
+      let state = apply(emptyAccount, [
+        { kind: "operation-recorded", requestId: "make-cy", intent },
+        { kind: "operation-uncertain", requestId: "make-cy" },
+      ]);
+      const key = { orgId: ORG, projectId: "cy" };
+      expect(projectStanding.derive(readsOfState(state), key)).toEqual({ kind: "unknown" });
+      state = apply(state, [
+        {
+          kind: "operation-receipt",
+          receipt: {
+            requestId: "make-cy",
+            operationId: "cy",
+            executor: "zerops",
+            affected: [{ family: "project", id: "cy" }],
+            handles: ["cy"],
+            acceptance: { kind: "accepted", result: { projectId: "cy" } },
+            outcome: { kind: "pending" },
+          },
+        },
+      ]);
+      expect(projectStanding.derive(readsOfState(state), key)).toEqual({
+        kind: "accepted",
+        name: "Cy",
+      });
+      expect(projectStanding.derive(readsOfState(state), { ...key, orgId: "other-org" })).toEqual({
+        kind: "unknown",
+      });
+      expect(
+        projectStanding.derive(readsOfState(state), { ...key, projectId: "other-project" }),
+      ).toEqual({ kind: "unknown" });
+      const listed = apply(
+        state,
+        liveZerops({ running: [], projects: [{ id: "cy", name: "Cy" }] }),
+      );
+      expect(projectStanding.derive(readsOfState(listed), key).kind).toBe("listed");
+      const forgotten = apply(listed, [{ kind: "forget", scopes: [SCOPE] }]);
+      expect(projectStanding.derive(readsOfState(forgotten), key)).toEqual({ kind: "unknown" });
+      state = apply(state, [
+        {
+          kind: "proven-deletion",
+          family: "project",
+          id: "cy",
+          scope: `zerops:${ORG}:project:cy`,
+          evidence: "projectNotFound",
+        },
+      ]);
+      expect(projectStanding.derive(readsOfState(state), key)).toEqual({ kind: "deleted" });
+      state = apply(state, [{ kind: "forget", scopes: [`zerops:${ORG}:project:cy`] }]);
+      expect(projectStanding.derive(readsOfState(state), key)).toEqual({ kind: "unknown" });
+    },
+  );
+
   it.each<{
     readonly name: string;
     readonly state: () => AccountState;

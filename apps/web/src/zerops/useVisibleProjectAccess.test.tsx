@@ -267,7 +267,6 @@ it.each([
   { role: "OWNER", named: false, expected: [] },
   { role: "READ_ONLY", named: false, expected: [] },
   { role: "NO_ACCESS", named: true, expected: [] },
-  // Positive control: this member needs an own-row verdict even with a known listing row.
   { role: "NO_ACCESS", named: false, expected: ["p-cy"] },
 ])(
   "recovery uses the listed grant for $role (named: $named)",
@@ -277,6 +276,52 @@ it.each([
     await account.mount();
     expect(account.held).toEqual(expected);
     expect(account.seen.at(-1)).toMatchObject({ standing: { kind: "listed" }, status: "STOPPED" });
+    if (expected.length > 0) {
+      await act(async () => account.roster(true, true));
+      expect(account.held, "A listing grant ends the own-row read").toEqual([]);
+    }
+  },
+);
+
+it.each(["OWNER", "NO_ACCESS"])(
+  "an accepted %s creation keeps its identity and the viewer's grant policy before its roster row",
+  async (role) => {
+    const account = recoveryAccount(role);
+    account.roster(false, false, true);
+    account.store.dispatch({
+      kind: "operation-recorded",
+      requestId: "create-cy",
+      intent: { kind: "create-project", orgId: "org-1", name: "Cy", tagList: [] },
+    });
+    account.store.dispatch({
+      kind: "operation-receipt",
+      receipt: {
+        requestId: "create-cy",
+        operationId: "p-cy",
+        executor: "zerops",
+        affected: [{ family: "project", id: "p-cy" }],
+        handles: ["p-cy"],
+        acceptance: { kind: "accepted", result: { projectId: "p-cy" } },
+        outcome: { kind: "pending" },
+      },
+    });
+    await account.mount();
+    expect(account.held, "Creation acceptance is identity evidence, not a project grant").toEqual(
+      role === "NO_ACCESS" ? ["p-cy"] : [],
+    );
+    expect(account.seen.at(-1)).toMatchObject({
+      standing: { kind: "accepted", name: "Cy" },
+      status: undefined,
+    });
+    await act(async () => account.roster(true, true));
+    expect(account.seen.at(-1)).toMatchObject({ standing: { kind: "listed" }, status: "STOPPED" });
+    expect(account.held).toEqual([]);
+    expect(account.asked).toEqual(role === "NO_ACCESS" ? ["p-cy"] : []);
+    await act(async () => {
+      account.store.dispatch({ kind: "access", family: "project", id: "p-cy", access: "denied" });
+    });
+    expect(account.seen.at(-1)?.standing.kind).toBe("denied");
+    expect(account.held).toEqual([]);
   },
 );
 

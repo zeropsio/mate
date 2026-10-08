@@ -83,6 +83,8 @@ export function completedHttp(
                 activeWaiter = undefined;
               }
             }
+            // A new request can arrive after resolving a waiter but before its continuation runs.
+            if (pending.size > 0 || awaitingCommit !== undefined) continue;
             if (page.isClosed()) throw new Error("Page closed while settling HTTP");
             // Observe a renderer turn after body completion: fetch continuations and native scheduler
             // jobs can dispatch another request. This is a rendering receipt, never a quiet-time sleep.

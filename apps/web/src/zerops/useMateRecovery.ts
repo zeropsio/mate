@@ -38,10 +38,11 @@ export function useMateRecovery(
     "project",
     orgId !== null &&
       (recovery.standing.kind === "unknown" ||
-        ownRowWanted(
-          viewerRole,
-          recovery.standing.kind === "listed" ? recovery.standing.project : null,
-        ))
+        ((recovery.standing.kind === "listed" || recovery.standing.kind === "accepted") &&
+          ownRowWanted(
+            viewerRole,
+            recovery.standing.kind === "listed" ? recovery.standing.project : null,
+          )))
       ? projectId
       : null,
   );
