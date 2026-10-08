@@ -1,5 +1,4 @@
-import { readUsageLimitNotice } from "../../zerops/providerLimit.logic";
-import { usageLimitProvider } from "../../zerops/noticeWords";
+import { readUsageLimitNotice, usageLimitProvider } from "../../zerops/providerLimit.logic";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { sameValue } from "../../lib/sameValue";
 import {

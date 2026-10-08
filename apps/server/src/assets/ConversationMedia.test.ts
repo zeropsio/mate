@@ -15,7 +15,7 @@ import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "../project/T3ProjectFileLoader.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { resolveImageAsset } from "./ImageAsset.ts";
-import { contentAssetsAt } from "./ContentAssets.ts";
+import { ContentAssets, contentAssetsAt } from "./ContentAssets.ts";
 import { projectActivityPayload } from "../orchestration/ActivityPayloadProjection.ts";
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
@@ -200,9 +200,9 @@ it.effect.each(["storage-full", "source-missing", "source-changed"] as const)(
     }).pipe(Effect.provide(layer)),
 );
 
-it.effect(
-  "a replay preserves a captured tool image identity after its temporary file is removed",
-  () =>
+it.effect.each(["Read", "read", "Codex", "ACP"])(
+  "a %s screenshot survives source cleanup and a fresh asset store before anyone views it",
+  (provider) =>
     Effect.gen(function* () {
       const config = yield* ServerConfig;
       const source = NodePath.join(config.stateDir, "tool-shot.png");
@@ -220,17 +220,46 @@ it.effect(
           summary: "Screenshot",
           createdAt: "2026-10-07T00:00:00.000Z",
           turnId: null,
-          payload: { data: { toolName: "Read", input: { file_path: source }, imagePath: source } },
+          payload: {
+            itemType: "image_view",
+            data:
+              provider === "Codex"
+                ? { item: { type: "imageView", path: source } }
+                : provider === "ACP"
+                  ? { imagePath: source }
+                  : { toolName: provider, input: { file_path: source } },
+          },
         },
         ThreadId.make("thread"),
         config.stateDir,
       );
       yield* Effect.promise(() => NodeFSP.unlink(source));
+      const projectedFirst = projectActivityPayload(first);
+      const path = (projectedFirst.payload as { data: { imagePath: string } }).data.imagePath;
+      expect(path).toMatch(/^mate-asset:[a-f0-9-]{36}$/);
+      const restarted = new ContentAssets(NodePath.join(config.stateDir, "assets"));
+      const occurrence = yield* Effect.promise(() => restarted.occurrence(path.slice(11)));
+      if (occurrence.original.status !== "ready") throw new Error("Screenshot not retained");
+      expect(
+        yield* Effect.promise(async () =>
+          NodeFSP.readFile(
+            (
+              await restarted.object(
+                occurrence.original.status === "ready" ? occurrence.original.digest : "",
+              )
+            ).path,
+          ),
+        ),
+      ).toEqual(bytes);
       const replay = yield* captureActivityMedia(first, ThreadId.make("thread"), config.stateDir);
       expect(replay.payload).toEqual(first.payload);
       const projected = projectActivityPayload(replay);
       expect(projected.payload).toMatchObject({
-        data: { imagePath: expect.stringMatching(/^mate-asset:/) },
+        data: {
+          imagePath: expect.stringMatching(/^mate-asset:/),
+          imageDimensions: { width: 20, height: 12 },
+          imageName: "tool-shot.png",
+        },
       });
       expect(encodeJson(projected.payload)).not.toContain(`"imagePath":"${source}"`);
     }).pipe(Effect.provide(layer)),

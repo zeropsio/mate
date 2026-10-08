@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { mateFailureWords, usageLimitProvider, usageLimitWords } from "./noticeWords";
+import { mateFailureWords, usageLimitWords } from "./noticeWords";
+import { usageLimitProvider } from "./providerLimit.logic";
 
 describe("usage notices", () => {
   it.each(["Claude", "Codex", "Grok", "OpenCode"])("recognizes %s's own limit", (name) => {

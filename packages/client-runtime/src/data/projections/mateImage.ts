@@ -14,9 +14,15 @@ export type MateImageRead =
   | {
       readonly kind: "ready";
       readonly blob: Blob;
+      readonly dimensions?: MateImageValue["dimensions"];
       readonly occurrence?: MateImageValue["occurrence"];
     }
-  | { readonly kind: "failed"; readonly reason: string; readonly originalAvailable: boolean };
+  | {
+      readonly kind: "failed";
+      readonly reason: string;
+      readonly originalAvailable: boolean;
+      readonly retryable: boolean;
+    };
 export const mateImage: Projection<MateImageKey, MateImageRead> = {
   name: "mateImage",
   keyOf: mateImageId,
@@ -27,27 +33,40 @@ export const mateImage: Projection<MateImageKey, MateImageRead> = {
       stream.fault?.outcome === "access-unverified" ||
       stream.fault?.outcome === "authoritative-denial"
     )
-      return { kind: "failed", reason: stream.fault.message, originalAvailable: false };
+      return {
+        kind: "failed",
+        reason: stream.fault.message,
+        originalAvailable: false,
+        retryable: false,
+      };
     if (fact.kind === "withheld")
       return {
         kind: "failed",
         reason: stream.fault?.message ?? "Access could not be verified.",
         originalAvailable: false,
+        retryable: false,
       };
     if (fact.kind === "known")
       return fact.value.blob !== null
         ? {
             kind: "ready",
             blob: fact.value.blob,
+            ...(fact.value.dimensions ? { dimensions: fact.value.dimensions } : {}),
             ...(fact.value.occurrence === undefined ? {} : { occurrence: fact.value.occurrence }),
           }
         : {
             kind: "failed",
             reason: fact.value.failure ?? "Preview unavailable",
             originalAvailable: fact.value.occurrence?.original.status === "ready",
+            retryable: false,
           };
     if (stream.fault)
-      return { kind: "failed", reason: stream.fault.message, originalAvailable: false };
+      return {
+        kind: "failed",
+        reason: stream.fault.message,
+        originalAvailable: false,
+        retryable: stream.fault.outcome === "transient",
+      };
     if (["connecting", "baselining", "recovering", "reauthenticating"].includes(stream.phase))
       return { kind: "reading" };
     return { kind: "unknown" };
@@ -55,9 +74,13 @@ export const mateImage: Projection<MateImageKey, MateImageRead> = {
   equals: (a, b) =>
     a.kind === b.kind &&
     (a.kind === "ready" && b.kind === "ready"
-      ? a.blob === b.blob
+      ? a.blob === b.blob &&
+        a.dimensions?.width === b.dimensions?.width &&
+        a.dimensions?.height === b.dimensions?.height
       : a.kind === "failed" && b.kind === "failed"
-        ? a.reason === b.reason && a.originalAvailable === b.originalAvailable
+        ? a.reason === b.reason &&
+          a.originalAvailable === b.originalAvailable &&
+          a.retryable === b.retryable
         : true),
 };
 
@@ -75,7 +98,11 @@ export const mateImagePreview: Projection<MateImageReference, MateImageRead> = {
         fact.value.blob !== null &&
         !decodeURIComponent(id).includes('"rendition":"original"')
       )
-        return { kind: "ready", blob: fact.value.blob };
+        return {
+          kind: "ready",
+          blob: fact.value.blob,
+          ...(fact.value.dimensions ? { dimensions: fact.value.dimensions } : {}),
+        };
     }
     return { kind: "unknown" };
   },

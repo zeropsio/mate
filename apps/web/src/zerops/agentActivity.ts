@@ -61,8 +61,7 @@ import {
 } from "@t3tools/shared/threadStatus";
 
 import { threadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
-import { currentProviderLimit } from "./providerLimit.logic";
-import { usageLimitProvider } from "./noticeWords";
+import { currentProviderLimit, usageLimitProvider } from "./providerLimit.logic";
 import { liveStepWords, type LiveStepWords } from "./liveStep";
 
 /**

@@ -1,5 +1,5 @@
 import { parseMateImageSource } from "@t3tools/client-runtime/data";
-import { useMateImage } from "~/assets/MateImages";
+import { useMateImage, useImageIntent } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
@@ -59,6 +59,10 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   const original = useMateImage(
     reference === null ? null : { ...reference, rendition: "original" },
   );
+  const previousIntent = useImageIntent(
+    preview.images[(index - 1 + preview.images.length) % preview.images.length]?.src,
+  );
+  const nextIntent = useImageIntent(preview.images[(index + 1) % preview.images.length]?.src);
   if (!item) return null;
 
   return (
@@ -81,6 +85,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           variant="ghost"
           className="absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6"
           aria-label="Previous image"
+          {...previousIntent}
           onClick={() => navigateImage(-1)}
         >
           <ChevronLeftIcon className="size-5" />
@@ -112,6 +117,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             key={`${index}:${item.src}`}
             src={item.src}
             name={item.name}
+            dimensions={original.dimensions}
             onError={() => setFailedImageSrc(item.src)}
           />
         )}
@@ -136,6 +142,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
           variant="ghost"
           className="absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6"
           aria-label="Next image"
+          {...nextIntent}
           onClick={() => navigateImage(1)}
         >
           <ChevronRightIcon className="size-5" />

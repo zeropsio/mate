@@ -56,7 +56,7 @@ it.each([
     status: 404,
     code: "object-missing",
     outcome: "definitive-refusal",
-    reason: "Stored media is missing.",
+    reason: "Image no longer available",
   },
   {
     status: 403,

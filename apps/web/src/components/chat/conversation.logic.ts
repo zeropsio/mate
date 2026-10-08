@@ -2144,6 +2144,7 @@ export type OutcomePicture =
   | {
       readonly kind: "file";
       readonly key: string;
+      readonly dimensions?: { readonly width: number; readonly height: number };
       /** Where the Mate's workspace keeps it. */
       readonly path: string;
       /** The file's name: "home-mobile.png". */
@@ -2516,7 +2517,15 @@ function turnPictures(
     taken.push({
       same: `path:${path}`,
       at: parseMs(entry.entry.updatedAt ?? entry.entry.createdAt) ?? 0,
-      picture: { kind: "file", key: `file:${path}`, path, name: fileName(path) },
+      picture: {
+        kind: "file",
+        key: `file:${path}`,
+        path,
+        name: entry.entry.viewedImageName ?? fileName(entry.entry.callInput?.filePath ?? path),
+        ...(entry.entry.viewedImageDimensions
+          ? { dimensions: entry.entry.viewedImageDimensions }
+          : {}),
+      },
     });
   }
   const last = new Map<string, (typeof taken)[number]>();

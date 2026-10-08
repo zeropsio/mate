@@ -53,4 +53,21 @@ describe("subscribeSecond — one clock for every counting duration", () => {
     expect(heard).toEqual(["a", "b", "b", "b"]);
     stopB();
   });
+
+  it("a new counting surface takes over without ticking twice", () => {
+    const heard: string[] = [];
+    let stopB = () => {};
+    const stopA = subscribeSecond(() => {
+      heard.push("a");
+      stopA();
+      stopB = subscribeSecond(() => heard.push("b"));
+    });
+    try {
+      vi.advanceTimersByTime(2600);
+      expect(heard).toEqual(["a", "b", "b"]);
+    } finally {
+      stopA();
+      stopB();
+    }
+  });
 });

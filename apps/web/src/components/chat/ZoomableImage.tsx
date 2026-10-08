@@ -19,11 +19,13 @@ export interface ZoomableImageHandle {
 export function ZoomableImage({
   src,
   name,
+  dimensions,
   onError,
   ref,
 }: {
   src: string;
   name: string;
+  dimensions?: { readonly width: number; readonly height: number } | undefined;
   onError: () => void;
   ref?: Ref<ZoomableImageHandle>;
 }) {
@@ -45,14 +47,15 @@ export function ZoomableImage({
   } | null>(null);
   const suppressClickRef = useRef(false);
   const [dragging, setDragging] = useState(false);
+  const sourceSize = dimensions ?? naturalSize;
   const maxHeight = Math.max(1, Math.min(windowSize.height * 0.86, windowSize.height - 160));
   const fit = Math.min(
     1,
-    (windowSize.width * 0.92 - (windowSize.width >= 640 ? 96 : 0)) / (naturalSize.width || 1),
-    maxHeight / (naturalSize.height || 1),
+    (windowSize.width * 0.92 - (windowSize.width >= 640 ? 96 : 0)) / (sourceSize.width || 1),
+    maxHeight / (sourceSize.height || 1),
   );
-  const width = naturalSize.width * fit * zoom;
-  const height = naturalSize.height * fit * zoom;
+  const width = sourceSize.width * fit * zoom;
+  const height = sourceSize.height * fit * zoom;
 
   useImperativeHandle(
     ref,
@@ -232,7 +235,7 @@ export function ZoomableImage({
           draggable={false}
           className="block max-w-none select-none"
           style={
-            naturalSize.width ? { width, height } : { maxWidth: "var(--media-width)", maxHeight }
+            sourceSize.width ? { width, height } : { maxWidth: "var(--media-width)", maxHeight }
           }
           onLoad={(event) => {
             setNaturalSize({

@@ -1,4 +1,16 @@
-import { usageLimitProvider } from "./noticeWords";
+/** A provider refusal, distinct from allowed or warning admission telemetry. */
+export function usageLimitProvider(error: string | null | undefined): string | null {
+  if (!error) return null;
+  const matched =
+    /^(Claude(?: AI)?|Codex|Grok|OpenCode|Cursor|Antigravity|Coding agent) usage limit reached\b/i.exec(
+      error.trim(),
+    );
+  if (matched)
+    return matched[1]!.toLowerCase() === "coding agent"
+      ? "coding agent"
+      : matched[1]!.replace(/ AI$/i, "");
+  return /^you[’']ve hit your [\w\s-]*?limit\b/i.test(error.trim()) ? "coding agent" : null;
+}
 
 export interface UsageLimitNotice {
   /** When the limit resets, when the notice says. */

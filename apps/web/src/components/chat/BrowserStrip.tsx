@@ -19,10 +19,10 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
 import { CheckIcon, CodeXmlIcon, RotateCcwIcon, XIcon } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { mateImageSource, parseMateImageSource } from "@t3tools/client-runtime/data/mateImage";
-import { useMateImage } from "~/assets/MateImages";
-import { ImageUnavailable } from "~/assets/AssetImage";
+import { useLayoutEffect, useRef, useState } from "react";
+import { mateImageSource } from "@t3tools/client-runtime/data/mateImage";
+import { useImageIntent } from "~/assets/MateImages";
+import { AssetImage } from "~/assets/AssetImage";
 
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
@@ -121,48 +121,15 @@ function takeSource(src: string | undefined, threadRef: ScopedThreadRef | null) 
     : src;
 }
 function TakeThumbnail({ src, aspect }: { readonly src: string; readonly aspect: number }) {
-  const reference = parseMateImageSource(src);
-  return reference ? (
-    <ManagedTakeThumbnail reference={reference} aspect={aspect} />
+  return src.startsWith("mate-image:") ? (
+    <AssetImage
+      src={src}
+      alt=""
+      className="block size-full object-cover object-top"
+      style={{ width: "100%", height: "100%" }}
+    />
   ) : (
     <LocalTakeThumbnail src={src} aspect={aspect} />
-  );
-}
-function ManagedTakeThumbnail({
-  reference,
-  aspect,
-}: {
-  readonly reference: NonNullable<ReturnType<typeof parseMateImageSource>>;
-  readonly aspect: number;
-}) {
-  const { ref, near } = useNearViewport<HTMLSpanElement>();
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
-  useEffect(() => {
-    const element = ref.current;
-    if (!element || !near) return;
-    const measure = () => {
-      const box = element.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      if (box.width > 0 && box.height > 0) {
-        const width = Math.min(8192, Math.ceil(box.width * dpr));
-        const height = Math.min(8192, Math.ceil(box.height * dpr));
-        setSize((old) => (old?.width === width && old.height === height ? old : { width, height }));
-      }
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [near, ref]);
-  const image = useMateImage(near && size ? { ...reference, rendition: size } : null);
-  return (
-    <span ref={ref} className="block size-full">
-      {image.read.kind === "failed" ? (
-        <ImageUnavailable reason={image.read.reason} />
-      ) : image.url ? (
-        <LocalTakeThumbnail src={image.url} aspect={aspect} />
-      ) : null}
-    </span>
   );
 }
 function LocalTakeThumbnail({ src, aspect }: { readonly src: string; readonly aspect: number }) {
@@ -194,6 +161,7 @@ export function BrowserStrip({
   /** Drawn in a surface of its own, or bare inside the Mate at work's tray. */
   readonly bare?: boolean;
 }) {
+  const intent = useImageIntent();
   const latest = strip.checks.at(-1)!;
   const running = latest.phase === "running";
   // A picked take holds the stage until a new check starts.
@@ -392,6 +360,7 @@ export function BrowserStrip({
                       "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
                     )}
                     data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
+                    {...intent}
                     onClick={onStageClick}
                     type="button"
                   />
@@ -546,6 +515,7 @@ export function BrowserTakes({
   readonly environmentId?: EnvironmentId | null;
   readonly threadRef?: ScopedThreadRef | null;
 }) {
+  const intent = useImageIntent();
   const shots = takes.flatMap((take) =>
     take.screenshot
       ? [
@@ -598,6 +568,7 @@ export function BrowserTakes({
                   ? "border-status-attention"
                   : "border-border",
             )}
+            {...intent}
             data-report-take={device}
             onClick={() =>
               onOpenImage({ images: shots.map(({ src, name }) => ({ src, name })), index })

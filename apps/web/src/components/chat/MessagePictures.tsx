@@ -9,7 +9,7 @@
  * above its words as before.
  */
 import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
-import { useMateImageDimensions } from "~/assets/MateImages";
+import { useMateImageDimensions, useImageIntent } from "~/assets/MateImages";
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
 import { Fragment, type ReactNode } from "react";
 
@@ -90,6 +90,7 @@ function MessagePicture(props: {
   readonly maxHeight: number | undefined;
   readonly onOpen: (image: ChatImageAttachment) => void;
 }) {
+  const intent = useImageIntent(props.segment.image.previewUrl);
   const { segment, dimensions } = props;
   const box = reservedPictureBox(segment.image, dimensions, props.maxHeight) ?? {
     width: `min(100%, ${props.maxHeight ?? 300}px)`,
@@ -114,6 +115,7 @@ function MessagePicture(props: {
           className="message-picture-open"
           style={{ width: "100%" }}
           aria-label={`Open picture ${segment.n}`}
+          {...intent}
           onClick={() => props.onOpen(segment.image)}
         >
           <AssetImage

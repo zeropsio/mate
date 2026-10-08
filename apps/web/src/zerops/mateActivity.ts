@@ -15,7 +15,7 @@
  * that path goes with the old overview shape.
  */
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { usageLimitProvider } from "./noticeWords";
+import { usageLimitProvider } from "./providerLimit.logic";
 import type { MateAttentionRead } from "@t3tools/client-runtime/data";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, MateAttention, ThreadId } from "@t3tools/contracts";
