@@ -129,12 +129,14 @@ function logThreadOutboxDeliveryFailure(input: {
   readonly stage: ThreadOutboxCommandStage;
   readonly error: unknown;
   readonly interrupted: boolean;
+  readonly engine: boolean;
   readonly context: Record<string, unknown>;
 }): ThreadOutboxFailureAction {
   const action = resolveThreadOutboxFailureAction({
     stage: input.stage,
     error: input.error,
     interrupted: input.interrupted,
+    engine: input.engine,
   });
   const details = { ...input.context, stage: input.stage, action };
   const ordinaryTransportRetry =
@@ -736,6 +738,10 @@ export function useThreadOutboxDrain(): void {
   }, []);
 
   const makeDeliveryHelpers = useCallback((queuedMessage: QueuedThreadMessage) => {
+    // An engine Mate's conversation decides a setting as it decides a send.
+    const engine =
+      appAtomRegistry.get(serverEnvironment.configValueAtom(queuedMessage.environmentId))
+        ?.environment.capabilities.mateEngine !== undefined;
     const reportFailure = (
       commandResult: AtomCommandResult<unknown, unknown>,
       stage: ThreadOutboxCommandStage,
@@ -748,6 +754,7 @@ export function useThreadOutboxDrain(): void {
         stage,
         error,
         interrupted: Cause.hasInterruptsOnly(commandResult.cause),
+        engine,
         context: {
           environmentId: queuedMessage.environmentId,
           threadId: queuedMessage.threadId,
@@ -788,8 +795,10 @@ export function useThreadOutboxDrain(): void {
           },
         });
         if (AsyncResult.isFailure(updateResult)) {
-          reportFailure(updateResult, "settings-sync");
-          return false;
+          const failure = reportFailure(updateResult, "settings-sync");
+          return failure?.action === "restore"
+            ? restoreQueuedMessage(queuedMessage, failure.message)
+            : false;
         }
       }
 
@@ -804,8 +813,10 @@ export function useThreadOutboxDrain(): void {
           },
         });
         if (AsyncResult.isFailure(runtimeResult)) {
-          reportFailure(runtimeResult, "settings-sync");
-          return false;
+          const failure = reportFailure(runtimeResult, "settings-sync");
+          return failure?.action === "restore"
+            ? restoreQueuedMessage(queuedMessage, failure.message)
+            : false;
         }
       }
 
@@ -820,8 +831,10 @@ export function useThreadOutboxDrain(): void {
           },
         });
         if (AsyncResult.isFailure(interactionResult)) {
-          reportFailure(interactionResult, "settings-sync");
-          return false;
+          const failure = reportFailure(interactionResult, "settings-sync");
+          return failure?.action === "restore"
+            ? restoreQueuedMessage(queuedMessage, failure.message)
+            : false;
         }
       }
 
