@@ -310,6 +310,25 @@ const rows: ReadonlyArray<Row> = [
     }),
   },
   {
+    sentence: "a discard whose copy cannot be reset reads as not kept at once, its task as it was",
+    scene: scene((root) =>
+      Effect.gen(function* () {
+        yield* createLane("backend");
+        write(lane(root), "src/score.ts", "export const score = 1;\n");
+        write(root, ".git/worktrees/backend/index.lock", "");
+        const kept = yield* value("crew.lane.keep", {
+          handle: "backend",
+          taskId: "task-1",
+          attempt: 1,
+          assignment: ASSIGNMENT,
+          run: null,
+        });
+        return (kept as { readonly _tag: string })._tag;
+      }),
+    ),
+    expected: () => "failed",
+  },
+  {
     sentence: "a discard of a copy that is gone reads as kept: nothing is left to keep",
     scene: scene((root) =>
       Effect.gen(function* () {

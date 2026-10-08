@@ -190,6 +190,9 @@ export const crewEngineHooksLayer = Layer.effectContext(
 
 /* ------------------------------------------------------------ the front */
 
+/** How long a discard's press waits for its copy's work to be kept aside. */
+const DISCARD_WAIT_MS = 30_000;
+
 /** How long a press waits for its crewmate's copy to come back before it is asked anyway. */
 const PRESS_WAIT_MS = 120_000;
 
@@ -751,6 +754,29 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         }
       });
 
+    /**
+     * A discard keeps the task's work aside before it lets the task go; as V1's press did, it
+     * answers once that is done, refused in the copy's own words when it could not be.
+     */
+    const discardSettled = (taskId: string) =>
+      Effect.gen(function* () {
+        const keeping = (current: CrewState) =>
+          Object.values(current.effects).some(
+            (effect) => effect.kind === "crew.lane.keep" && effect.taskId === taskId,
+          );
+        for (let waited = 0; waited < DISCARD_WAIT_MS; waited += 50) {
+          if (!keeping(yield* state)) break;
+          yield* Effect.sleep("50 millis");
+        }
+        const after = yield* state;
+        const task = after.tasks[taskId];
+        if (keeping(after) || task === undefined || task.state === "discarded") return;
+        const words = after.lastError?.startsWith(`#${task.number} was not discarded`)
+          ? after.lastError
+          : null;
+        if (words !== null) return yield* refuse("io", words);
+      });
+
     const removeFromHome = (handle: string) =>
       Effect.gen(function* () {
         const parsed = yield* home.load;
@@ -797,6 +823,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
               : withFiles(releaseClaimedAttachments(claimed)).pipe(Effect.ignore),
           ),
         );
+        if (press._tag === "discard") yield* discardSettled(press.taskId);
         if (press._tag === "apply") yield* activate;
         // Taken out of crew.yaml too, so the next Apply does not bring it back (V1's).
         if (press._tag === "removeCrewmate") yield* removeFromHome(press.handle);

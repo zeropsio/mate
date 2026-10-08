@@ -132,6 +132,10 @@ interface Translation<K extends CrewEffectKind, P, V> {
   ) => EffectOutcome | undefined;
 }
 
+/** A failure's first line, the words a row or a refusal gives. */
+const firstLine = (text: string): string =>
+  text.split("\n").find((line) => line.trim() !== "") ?? text;
+
 const bridged = <K extends CrewEffectKind, P, V>(
   kind: K,
   handler: EffectHandler,
@@ -292,7 +296,7 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
     },
   );
 
-  const laneKeep = bridged<"crew.lane.keep", LaneResetPayload, LaneResetValue>(
+  const keepAside = bridged<"crew.lane.keep", LaneResetPayload, LaneResetValue>(
     "crew.lane.keep",
     handlerOf(HANDLER_KINDS.laneReset),
     {
@@ -329,6 +333,27 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
       },
     },
   );
+
+  /**
+   * A discard is the person's press, answered as V1 answered it: a copy that cannot be reset
+   * now (a git lock, a failed command) reads as not kept at once, its task as it was, rather
+   * than a reset retried behind the person's back; pressed again, it goes again.
+   */
+  const laneKeep: EffectHandler = {
+    ...keepAside,
+    run: (row) =>
+      Effect.map(keepAside.run(row), (result): HandlerResult =>
+        result._tag === "Retry"
+          ? {
+              _tag: "Done",
+              outcome: {
+                kind: "ok",
+                value: { _tag: "failed", detail: firstLine(result.reason) },
+              },
+            }
+          : result,
+      ),
+  };
 
   /** Removal: the copy goes, unless it holds work not landed and the person kept it. */
   const laneRemove: EffectHandler = {
