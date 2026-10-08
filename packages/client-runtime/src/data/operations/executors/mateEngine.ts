@@ -203,6 +203,7 @@ const REFUSALS: Readonly<Record<string, string>> = {
   "not-answerable": "That question can no longer be answered.",
   "not-dismissible": "The agent waits on this question: it needs an answer, or stop the work.",
   "run-not-running": "Nothing is running to stop.",
+  "run-ended": "That work has already ended.",
   "stop-already-asked": "Stop was already asked.",
   "steer-unsupported": "This agent cannot take a message while it works.",
 };

@@ -476,3 +476,27 @@ it("serves a call's line, facts and result, a long result cut and read whole, it
     await r.close();
   }
 });
+
+// Catches a fake that stops whatever runs, so a Stop aimed at an ended card never goes red.
+it("stops the run a Stop names, and refuses one that ended, as the engine does", async () => {
+  const r = await connect();
+  try {
+    const engine = r.wire.engine;
+    const first = engine.personRun("Deploy the api");
+    engine.end(first, { kind: "completed" });
+    const continued = engine.startRun();
+    const stop = async (id: string, runId: string) =>
+      decodeCall(
+        (await r.call(id, WS_METHODS.engineStop, { ...conversation, commandId: id, runId })).value,
+      );
+    expect(await stop("s1", first)).toMatchObject({
+      _tag: "Rejected",
+      rejection: { reason: "run-ended" },
+    });
+    expect(engine.runs.get(continued)?.state).toBe("running");
+    expect(await stop("s2", continued)).toMatchObject({ _tag: "Accepted", runId: continued });
+    expect(engine.runs.get(continued)?.state).toBe("ended");
+  } finally {
+    await r.close();
+  }
+});

@@ -619,6 +619,22 @@ function cardsOf(read: ProjectionReads, conversationKey: string) {
   return { runs, rootOf, cardOf, latest, turn };
 }
 
+/**
+ * The run a Stop on a turn ends: the live run drawn on that card (a run that continues another
+ * draws on its root's, which ended), else the run the turn names.
+ */
+export function engineStopTarget(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+  turnId: string,
+): string {
+  const { runs, rootOf } = cardsOf(read, engineConversationId(key));
+  return (
+    runs.findLast((run) => LIVE_RUN_STATES.has(run.state) && rootOf(run).id === turnId)?.id ??
+    turnId
+  );
+}
+
 /** A held conversation's turn as its own records say it: the live run, on the card it draws on. */
 export interface HeldTurn {
   readonly latestTurn: OrchestrationLatestTurn | null;

@@ -883,16 +883,22 @@ export class MateEngineFake {
         return { _tag: "Accepted", seq: this.seq, requestId, runId: request.runId } as never;
       }
       case WS_METHODS.engineStop: {
-        if (running === undefined)
+        // The run it names, as the engine stops it: an ended one is refused, never another run.
+        const named = payload.runId === undefined ? running : this.runs.get(String(payload.runId));
+        if (payload.runId !== undefined && named === undefined)
+          return { _tag: "Rejected", rejection: { reason: "unknown-run" } } as never;
+        if (named?.state === "ended")
+          return { _tag: "Rejected", rejection: { reason: "run-ended" } } as never;
+        if (named === undefined)
           return { _tag: "Rejected", rejection: { reason: "run-not-running" } } as never;
         this.applied.push({ commandId, op: "stop", payload });
         this.commit((change) =>
-          this.endRun(change, running.id, {
+          this.endRun(change, named.id, {
             kind: "stopped",
             by: { kind: "person", subject: "owner" },
           }),
         );
-        return { _tag: "Accepted", seq: this.seq, runId: running.id } as never;
+        return { _tag: "Accepted", seq: this.seq, runId: named.id } as never;
       }
       default:
         return {

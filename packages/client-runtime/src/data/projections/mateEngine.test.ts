@@ -35,6 +35,7 @@ import {
 import {
   engineHeldTurns,
   engineRows,
+  engineStopTarget,
   engineThread,
   overlayEngineRow,
   overlayEngineShell,
@@ -824,6 +825,25 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
       },
       { kind: "context-window.updated", payload: { usedTokens: 4_000, maxTokens: 200_000 } },
     ]);
+  });
+
+  // Catches Stop aimed at the card: the card's root ended, the run on it works on.
+  it("Stop on a card a continuing run shares ends the run that works", () => {
+    const state = held({
+      runs: [
+        engineRun("thread-ada", 1),
+        engineRun("thread-ada", 2, {
+          joins: run1 as never,
+          trigger: { kind: "wake", cause: "self", wakeId: null } as never,
+          state: "running",
+          end: null,
+          endedAt: null,
+        }),
+      ],
+    });
+    expect(thread(state)?.session?.activeTurnId).toBe(run1);
+    expect(engineStopTarget(readsOfState(state), key, run1)).toBe("thread-ada/r/2");
+    expect(engineStopTarget(readsOfState(state), key, "thread-ada/r/9")).toBe("thread-ada/r/9");
   });
 
   it("a run that continues another shares its card, and is its latest turn", () => {

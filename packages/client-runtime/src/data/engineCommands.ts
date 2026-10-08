@@ -32,7 +32,8 @@ import { NATIVE_ENGINE_WORDS } from "../state/threadState.ts";
 import { engineConversationId } from "./families/mateEngine.ts";
 import { EngineOperationFailed } from "./operations/executors/mateEngine.ts";
 import type { EngineAcceptance } from "./operations/mateEngine.ts";
-import { ENGINE_UPDATE_WORDS } from "./projections/mateEngine.ts";
+import { ENGINE_UPDATE_WORDS, engineStopTarget } from "./projections/mateEngine.ts";
+import { readsOfState } from "./store.ts";
 
 type Command<T extends ClientOrchestrationCommand["type"]> = Omit<
   Extract<ClientOrchestrationCommand, { readonly type: T }>,
@@ -110,12 +111,21 @@ export const engineStartTurn =
     });
   };
 
+/** Stop names the turn the view draws (a card); the engine stops the run that works on it. */
 export const engineInterruptTurn =
   (environmentId: string, input: Command<"thread.turn.interrupt">) => (host: MateEngineHost) =>
     host.operations.stop({
       environmentId,
       conversationId: input.threadId,
-      ...(input.turnId === undefined ? {} : { runId: input.turnId }),
+      ...(input.turnId === undefined
+        ? {}
+        : {
+            runId: engineStopTarget(
+              readsOfState(host.store.state()),
+              { environmentId, conversationId: input.threadId },
+              input.turnId,
+            ),
+          }),
     });
 
 const DECISION_WORDS: Readonly<Record<string, string>> = {
