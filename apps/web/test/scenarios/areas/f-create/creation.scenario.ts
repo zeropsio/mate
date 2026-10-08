@@ -121,6 +121,11 @@ describe("F: creation through the hosted client", () => {
         c.stopAfterContainer();
         yield* c.newProject;
         yield* c.submitProject;
+        yield* c.text("Details");
+        expect(
+          yield* Effect.promise(() => s.page.evaluate(() => document.body.innerText)),
+        ).not.toContain("isolation could not be read");
+        yield* c.click("Details");
         yield* c.text("isolation could not be read");
         yield* c.settled;
         c.allowSetup();
