@@ -1798,7 +1798,7 @@ export function SidebarAccountLine({
 }) {
   return (
     <div
-      className="flex shrink-0 items-center gap-1 ps-4 pe-2 py-1.5 text-xs text-sidebar-muted-foreground"
+      className="flex h-10 shrink-0 items-center gap-1 ps-4 pe-2 py-1 text-xs text-sidebar-muted-foreground"
       data-zerops-surface="sidebar-account-line"
       role="status"
     >
