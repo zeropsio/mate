@@ -169,9 +169,11 @@ export function selectLaneChatStages(paths: ReadonlyArray<string>, areas: Readon
       selected.add("A");
     } else if (/^(?:apps\/server\/src\/engine\/|packages\/contracts\/src\/engine)/u.test(path)) {
       selected.add("E");
-      // Engine wire changes also reach the encoded records consumed by the C journeys.
+      // Engine records and call metadata also reach the encoded records consumed by C.
       if (
-        /^(?:apps\/server\/src\/engine\/wire\/|packages\/contracts\/src\/engineWire)/u.test(path)
+        /^(?:apps\/server\/src\/engine\/wire\/|packages\/contracts\/src\/(?:engine\.ts$|engineCall\.ts$|engineWire))/u.test(
+          path,
+        )
       ) {
         selected.add("C");
         selected.add("C-engine");

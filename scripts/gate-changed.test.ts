@@ -255,6 +255,8 @@ it.each([{ args: [] }, { args: ["--list"] }])(
 it.each([
   { path: "apps/server/src/provider/Layers/ClaudeAdapter.ts", stages: "A", area: "" },
   { path: "apps/server/src/engine/domain/decide.ts", stages: "E", area: "" },
+  { path: "packages/contracts/src/engine.ts", stages: "C,C-engine,E,types", area: "c-mate" },
+  { path: "packages/contracts/src/engineCall.ts", stages: "C,C-engine,E,types", area: "c-mate" },
   {
     path: "apps/server/src/engine/wire/EngineWire.ts",
     stages: "C,C-engine,E,types",
