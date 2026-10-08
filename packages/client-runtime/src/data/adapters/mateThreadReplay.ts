@@ -197,11 +197,7 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
   memoryOnly = false,
-  opening: "latest-ask" | "recent-history" = "recent-history",
 ) {
-  // Hosted opening reads one complete ask, including its helper work. Earlier asks use
-  // the existing cursor on demand; native readers retain their recent-history window.
-  const openingTurnLimit = opening === "latest-ask" ? 1 : INITIAL_THREAD_USER_TURN_LIMIT;
   const supervisor = yield* EnvironmentSupervisor;
   const cache = memoryOnly ? EMPTY_REPLAY_CACHE : yield* EnvironmentCacheStore;
   const snapshotLoader = yield* ThreadSnapshotLoader;
@@ -853,7 +849,7 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
               .load(
                 prepared,
                 threadId,
-                capabilities.pagination ? { turnLimit: openingTurnLimit } : undefined,
+                capabilities.pagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : undefined,
                 capabilities.reasoningMessages,
               )
               .pipe(
@@ -950,7 +946,7 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
               : yield* snapshotLoader.load(
                   prepared,
                   threadId,
-                  supportsPagination ? { turnLimit: openingTurnLimit } : undefined,
+                  supportsPagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : undefined,
                   supportsReasoningMessages,
                 );
           if (Option.isSome(httpSnapshot)) {
@@ -979,7 +975,7 @@ export const openThreadReplay = Effect.fn("EnvironmentThreadState.make")(functio
           // The WS fallback snapshot (sent when afterSequence is missing or
           // the gap is too large) should be windowed the same as the HTTP
           // path; without this a resume failure re-downloads the full thread.
-          ...(supportsPagination ? { turnLimit: openingTurnLimit } : {}),
+          ...(supportsPagination ? { turnLimit: INITIAL_THREAD_USER_TURN_LIMIT } : {}),
         };
       }),
       {

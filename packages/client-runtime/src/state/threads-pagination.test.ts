@@ -132,9 +132,10 @@ type LoaderResponse = Option.Option<OrchestrationThreadDetailSnapshot>;
 
 const makeHarness = Effect.fn("TestThreadPagination.makeHarness")(function* (options?: {
   readonly paginationCapability?: boolean;
-  readonly opening?: "latest-ask" | "recent-history";
   readonly reasoningCapability?: boolean;
-  readonly initialResponse?: LoaderResponse;
+  readonly initialResponse?:
+    | LoaderResponse
+    | ((window: ThreadSnapshotWindow | undefined) => LoaderResponse);
   /** Cached snapshot returned by the cache store (simulates a warm cache). */
   readonly cached?: OrchestrationThreadDetailSnapshot;
 }) {
@@ -143,6 +144,7 @@ const makeHarness = Effect.fn("TestThreadPagination.makeHarness")(function* (opt
   const loaderWindows = yield* Ref.make<ReadonlyArray<ThreadSnapshotWindow | undefined>>([]);
   const loaderReasoning = yield* Ref.make<ReadonlyArray<boolean | undefined>>([]);
   const lastSubscribeInput = yield* Ref.make<Record<string, unknown> | undefined>(undefined);
+  const subscribeInputs = yield* Queue.unbounded<Record<string, unknown>>();
   const savedThreads = yield* Ref.make<ReadonlyArray<OrchestrationThreadDetailSnapshot>>([]);
   // Older-page responses resolve through deferreds so tests can interleave
   // live events with an in-flight page fetch.
@@ -152,7 +154,12 @@ const makeHarness = Effect.fn("TestThreadPagination.makeHarness")(function* (opt
   );
   const client = {
     [ORCHESTRATION_WS_METHODS.subscribeThread]: (input: Record<string, unknown>) =>
-      Stream.unwrap(Ref.set(lastSubscribeInput, input).pipe(Effect.as(Stream.fromQueue(inputs)))),
+      Stream.unwrap(
+        Ref.set(lastSubscribeInput, input).pipe(
+          Effect.andThen(Queue.offer(subscribeInputs, input)),
+          Effect.as(Stream.fromQueue(inputs)),
+        ),
+      ),
   } as unknown as WsRpcProtocolClient;
   const session: RpcSession.RpcSession = {
     client,
@@ -178,7 +185,9 @@ const makeHarness = Effect.fn("TestThreadPagination.makeHarness")(function* (opt
         Effect.andThen(
           window?.beforeCursor === undefined
             ? Effect.succeed(
-                options?.initialResponse ?? Option.none<OrchestrationThreadDetailSnapshot>(),
+                typeof options?.initialResponse === "function"
+                  ? options.initialResponse(window)
+                  : (options?.initialResponse ?? Option.none<OrchestrationThreadDetailSnapshot>()),
               )
             : Deferred.make<LoaderResponse>().pipe(
                 Effect.tap((deferred) => Queue.offer(pendingPageResponses, deferred)),
@@ -214,12 +223,7 @@ const makeHarness = Effect.fn("TestThreadPagination.makeHarness")(function* (opt
     clearVcsRefs: () => Effect.void,
     clear: () => Effect.void,
   });
-  const threadState = yield* makeEnvironmentThreadState(
-    THREAD_ID,
-    undefined,
-    false,
-    options?.opening,
-  ).pipe(
+  const threadState = yield* makeEnvironmentThreadState(THREAD_ID, undefined, false).pipe(
     Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
     Effect.provideService(Persistence.EnvironmentCacheStore, cache),
     Effect.provideService(ThreadSnapshotLoader, snapshotLoader),
@@ -246,6 +250,9 @@ const makeHarness = Effect.fn("TestThreadPagination.makeHarness")(function* (opt
     lastSubscribeInput,
     savedThreads,
     threadState,
+    subscribeInputs,
+    supervisorSession,
+    session,
   };
 });
 
@@ -344,13 +351,16 @@ describe("thread pagination state", () => {
   it.effect("the latest ask opens before catchup and earlier asks remain readable", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({
-        opening: "latest-ask",
         initialResponse: Option.some(WINDOWED_SNAPSHOT),
       });
       const initial = yield* harness.awaitState((value) => Option.isSome(value.page));
       expect(Option.getOrThrow(initial.data).messages).toEqual([RECENT_MESSAGE]);
-      expect((yield* Ref.get(harness.loaderWindows))[0]?.turnLimit).toBe(1);
-      expect((yield* Ref.get(harness.lastSubscribeInput))?.turnLimit).toBe(1);
+      expect((yield* Ref.get(harness.loaderWindows))[0]?.turnLimit).toBe(
+        INITIAL_THREAD_USER_TURN_LIMIT,
+      );
+      expect((yield* Ref.get(harness.lastSubscribeInput))?.turnLimit).toBe(
+        INITIAL_THREAD_USER_TURN_LIMIT,
+      );
       expect(requestOlderThreadTurns(TARGET.environmentId, THREAD_ID)).toBe(true);
       yield* harness.resolveNextPage(Option.some(OLDER_PAGE));
       const older = yield* harness.awaitState((value) =>
@@ -361,6 +371,82 @@ describe("thread pagination state", () => {
         turnLimit: 20,
         beforeCursor: "cursor-1",
       });
+    }),
+  );
+
+  const firstPageOf = (
+    messages: readonly OrchestrationMessage[],
+    window?: ThreadSnapshotWindow,
+    snapshotSequence = 10,
+    title = BASE_THREAD.title,
+  ): OrchestrationThreadDetailSnapshot => {
+    const selected = messages.slice(-(window?.turnLimit ?? messages.length));
+    const hasMore = selected.length < messages.length;
+    return {
+      snapshotSequence,
+      thread: {
+        ...BASE_THREAD,
+        title,
+        messages: selected,
+        checkpoints: messages.map((entry, index) => checkpoint(entry.turnId!, index + 1)),
+      },
+      page: {
+        beforeCursor: hasMore ? `before-${selected[0]!.id}` : null,
+        hasMore,
+        snapshotSequence,
+      },
+    };
+  };
+
+  it.effect("rewinding the latest of two turns leaves the surviving exchange visible", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        initialResponse: (window) =>
+          Option.some(firstPageOf([OLDER_MESSAGE, RECENT_MESSAGE], window)),
+      });
+      yield* harness.awaitState((value) => hasMessage(value, "message-recent"));
+      yield* Queue.offer(harness.inputs, revertEvent(11));
+      const reverted = yield* harness.awaitState((value) => !hasMessage(value, "message-recent"));
+      expect(Option.getOrThrow(reverted.data).messages).toEqual([OLDER_MESSAGE]);
+    }),
+  );
+
+  it.effect("snapshot fallback after a new ask preserves already read history", () =>
+    Effect.gen(function* () {
+      const messages = Array.from({ length: 12 }, (_, index) =>
+        message(
+          `message-${index + 1}`,
+          `turn-${index + 1}`,
+          `2026-04-01T${String(index + 1).padStart(2, "0")}:00:00.000Z`,
+        ),
+      );
+      const harness = yield* makeHarness({
+        initialResponse: (window) => Option.some(firstPageOf(messages, window)),
+      });
+      yield* Queue.take(harness.subscribeInputs);
+      const initial = yield* harness.awaitState((value) => hasMessage(value, "message-12"));
+      const heldIds = new Set(Option.getOrThrow(initial.data).messages.map((entry) => entry.id));
+      expect(requestOlderThreadTurns(TARGET.environmentId, THREAD_ID)).toBe(true);
+      yield* harness.resolveNextPage(
+        Option.some(firstPageOf(messages.filter((entry) => !heldIds.has(entry.id)))),
+      );
+      yield* harness.awaitState((value) => hasMessage(value, "message-1"));
+      yield* SubscriptionRef.set(harness.supervisorSession, Option.none());
+      yield* SubscriptionRef.set(harness.supervisorSession, Option.some({ ...harness.session }));
+      const input = yield* Queue.take(harness.subscribeInputs);
+      const newest = message("message-13", "turn-13", "2026-04-01T13:00:00.000Z");
+      yield* Queue.offer(harness.inputs, {
+        kind: "snapshot",
+        snapshot: firstPageOf(
+          [...messages, newest],
+          { turnLimit: Number(input.turnLimit) },
+          20,
+          "Fresh first page",
+        ),
+      });
+      const state = yield* harness.awaitState(isFresh);
+      expect(Option.getOrThrow(state.data).messages).toEqual([...messages, newest]);
+      expect(Option.getOrThrow(state.page).hasMore).toBe(false);
     }),
   );
 

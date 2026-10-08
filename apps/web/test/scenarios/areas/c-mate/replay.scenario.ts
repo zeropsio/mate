@@ -63,9 +63,6 @@ describe("C: reading, replay and attention", () => {
         wire.holdReplay = true;
         yield* s.given.signedIn;
         yield* chat.when.open("Ada", "Read this older deployment decision");
-        expect(
-          wire.http.find((request) => request.includes("/api/orchestration/threads/")),
-        ).toContain("turnLimit=1");
         yield* Effect.promise(() => wire.replaySubscribed());
         yield* chat.then.control("Syncing messages...", "");
         yield* chat.then.once("Read this older deployment decision");

@@ -240,7 +240,7 @@ export function createAccountConversationAtoms<R, E>(
             key.environmentId as EnvironmentId,
             v1Only(
               Stream.unwrap(
-                openThreadReplay(key.threadId as ThreadId, resume, true, "latest-ask").pipe(
+                openThreadReplay(key.threadId as ThreadId, resume, true).pipe(
                   Effect.map(SubscriptionRef.changes),
                 ),
               ),
