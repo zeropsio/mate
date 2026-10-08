@@ -84,6 +84,8 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
 - A release is `node scripts/release-mate.ts` (`--minor` when the client's floor rises, `--dry-run`
   prints the plan): it bumps the three versions in a throwaway worktree of `origin/main`, pushes,
   tags, and waits until `stable.json` serves the new version.
+- Tested work ships at once: when a change's checks pass and nothing blocks it, push and release
+  in the same run. Unreleased work is invisible — nobody can use it, judge it or build on it.
 - Delivery to a running container is the push loop, not a release:
   `../zcp/eval/scripts/mate-dev-push.sh`. A container restart wipes a dev build; push again after.
 
