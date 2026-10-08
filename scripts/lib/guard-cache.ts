@@ -274,35 +274,45 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
           NodePath.join(project.root, "src", specifier.slice(2)),
         );
       else {
+        const packageImport = specifier.startsWith("#");
         const name = packageName(specifier);
-        const manifest = packageAt(project.root, name) ?? packageAt(NodePath.dirname(file), name);
-        if (manifest !== undefined) {
+        const manifest = packageImport
+          ? NodePath.join(project.root, "package.json")
+          : (packageAt(project.root, name) ?? packageAt(NodePath.dirname(file), name));
+        if (manifest !== undefined && NodeFS.existsSync(manifest)) {
           globalInputs.add(manifest);
           const metadata = readJsonc(manifest);
           const subpath = specifier.slice(name.length);
-          const exports =
-            typeof metadata.exports === "string"
+          const mappings = packageImport
+            ? decodeObject(metadata.imports ?? {})
+            : typeof metadata.exports === "string"
               ? { ".": metadata.exports }
               : decodeObject(metadata.exports ?? {});
-          for (const key of Object.keys(exports).toSorted((a, b) => b.length - a.length)) {
-            const captured = matchPath(key, subpath === "" ? "." : `.${subpath}`);
-            const target = pickExport(exports[key]);
+          for (const key of Object.keys(mappings)
+            .filter((key) => key.startsWith(".") || key.startsWith("#"))
+            .toSorted((a, b) => b.length - a.length)) {
+            const captured = matchPath(
+              key,
+              packageImport ? specifier : subpath === "" ? "." : `.${subpath}`,
+            );
+            const target = pickExport(mappings[key]);
             if (captured !== undefined && target !== undefined)
               candidates.push(
                 NodePath.resolve(NodePath.dirname(manifest), target.replaceAll("*", captured)),
               );
           }
-          candidates.push(
-            NodePath.join(
-              NodePath.dirname(manifest),
-              subpath ||
-                (typeof metadata.module === "string"
-                  ? metadata.module
-                  : typeof metadata.main === "string"
-                    ? metadata.main
-                    : "index.js"),
-            ),
-          );
+          if (!packageImport)
+            candidates.push(
+              NodePath.join(
+                NodePath.dirname(manifest),
+                subpath ||
+                  (typeof metadata.module === "string"
+                    ? metadata.module
+                    : typeof metadata.main === "string"
+                      ? metadata.main
+                      : "index.js"),
+              ),
+            );
         }
       }
     }

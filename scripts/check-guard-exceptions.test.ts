@@ -129,9 +129,27 @@ const cacheFixture = Effect.gen(function* () {
 });
 
 it.layer(NodeServices.layer)("guard exception driver", (it) => {
-  it.effect(
-    "reports restyling through the TypeScript wrapper when a JSX sibling is also present",
-    () =>
+  it.effect.each([
+    {
+      title: "reports restyling through the TypeScript wrapper when a JSX sibling is also present",
+      specifier: "./wrapper",
+      imports: {},
+    },
+    {
+      title: "reports restyling through a wrapper resolved by package imports",
+      specifier: "#wrapper",
+      imports: { "#wrapper": "./src/wrapper.ts" },
+    },
+    {
+      title: "reports restyling through a wrapper resolved by conditional wildcard package imports",
+      specifier: "#fixture/wrapper",
+      imports: {
+        "#fixture/*": { import: "./src/*.ts", default: "./src/wrapper.jsx" },
+      },
+    },
+  ])(
+    "$title",
+    (scenario) =>
       Effect.scoped(
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
@@ -142,7 +160,10 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
           for (const root of [...GUARD_SCOPE_PATHS, "apps/web/src/components/ui", "ledgers"])
             yield* fs.makeDirectory(path.join(cwd, root), { recursive: true });
           yield* fs.writeFileString(path.join(cwd, "package.json"), '{"name":"fixture"}');
-          yield* fs.writeFileString(path.join(cwd, "apps/web/package.json"), '{"name":"web"}');
+          yield* fs.writeFileString(
+            path.join(cwd, "apps/web/package.json"),
+            encodeUnknownJson({ name: "web", imports: scenario.imports }),
+          );
           yield* fs.writeFileString(path.join(directory, "no-restyle.json"), "[]");
           const config = path.join(cwd, ".oxlintrc.json");
           yield* fs.writeFileString(
@@ -162,7 +183,7 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
           yield* fs.writeFileString(path.join(cwd, "apps/web/src/wrapper.jsx"), plainWrapper);
           yield* fs.writeFileString(
             path.join(cwd, "apps/web/src/consumer.tsx"),
-            'import { Alias } from "./wrapper"; export const view = <Alias className="bg-red-500" />;',
+            `import { Alias } from "${scenario.specifier}"; export const view = <Alias className="bg-red-500" />;`,
           );
           const oxlintPackage = NodeModule.createRequire(
             NodeModule.createRequire(import.meta.url).resolve("vite-plus/package.json"),
