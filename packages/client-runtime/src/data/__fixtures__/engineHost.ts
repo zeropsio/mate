@@ -1,5 +1,5 @@
 /** An engine host over a real store and live text, for the readers' tests; its links are counters. */
-import type { Item, RunRecord } from "@t3tools/contracts";
+import type { ConversationRow, Item, RunRecord } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/reactivity";
 
 import { engineHeader } from "./mateEngine.ts";
@@ -9,6 +9,7 @@ import {
   engineConversationId,
   engineConversationScopes,
   engineFactId,
+  engineRowsScope,
   type EngineConversationKey,
 } from "../families/mateEngine.ts";
 import type { Row } from "../reducer.ts";
@@ -29,7 +30,7 @@ export function makeTestEngineHost(
     },
     clearTimer: () => {},
   });
-  const counts = { held: 0, earlier: 0 };
+  const counts = { held: 0, earlier: 0, rowsHeld: 0 };
   const host = {
     store,
     atoms,
@@ -41,7 +42,12 @@ export function makeTestEngineHost(
           counts.held -= 1;
         };
       },
-      holdRows: () => () => {},
+      holdRows: () => {
+        counts.rowsHeld += 1;
+        return () => {
+          counts.rowsHeld -= 1;
+        };
+      },
       readEarlier: () => {
         counts.earlier += 1;
         return true;
@@ -99,5 +105,22 @@ export function makeTestEngineHost(
       removals: [],
     });
   };
-  return { host, live, deliver, counts };
+  /** The Mate's conversation rows, as its rows subscription delivers them. */
+  const deliverRows = (rows: ReadonlyArray<ConversationRow>) => {
+    seq += 1;
+    store.dispatch({
+      kind: "delivery",
+      via: "mate-direct",
+      scopes: [{ scope: engineRowsScope(ENV), generation: 0 }],
+      reset: false,
+      rows: rows.map((row): Row => ({
+        family: "mateEngineRow",
+        id: engineFactId(ENV, row.conversationId),
+        value: { ...row, environmentId: ENV },
+        revision: { kind: "mate-conversation", environmentId: ENV, epoch: 1, seq },
+      })),
+      removals: [],
+    });
+  };
+  return { host, live, deliver, deliverRows, counts };
 }

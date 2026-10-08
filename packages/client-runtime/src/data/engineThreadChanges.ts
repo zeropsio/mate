@@ -18,7 +18,13 @@ import type { EnvironmentThreadState } from "../state/threadState.ts";
 import { registerOlderThreadTurns } from "./adapters/mateThreadReplay.ts";
 import type { MateEngineHost } from "./engineHost.ts";
 import type { EngineConversationKey } from "./families/mateEngine.ts";
-import { engineThread } from "./projections/mateEngine.ts";
+import {
+  engineHeldTurns,
+  engineRows,
+  engineThread,
+  overlayEngineShell,
+} from "./projections/mateEngine.ts";
+import type { EnvironmentShellState } from "./adapters/mateShellReplay.ts";
 
 type LiveRead = (itemId: string, stream: "text" | "reasoning") => string | null;
 
@@ -98,6 +104,49 @@ export function engineThreadChanges(
           unsubscribe();
           for (const stop of watched.values()) stop();
           releaseEarlier();
+          release();
+        };
+      }),
+      (close) => Effect.sync(close),
+    ),
+  );
+}
+
+/** What a Mate's engine rows lay over the V1 shell a reader draws its menu from. */
+export type EngineShellOverlay = (shell: EnvironmentShellState) => EnvironmentShellState;
+
+/**
+ * A Mate's engine conversation rows while the stream runs, held while read: each change as the
+ * overlay that lays them, and the turns of the conversations the account holds, over the V1 shell.
+ */
+export function engineShellChanges(
+  host: MateEngineHost,
+  environmentId: string,
+): Stream.Stream<EngineShellOverlay> {
+  return Stream.callback<EngineShellOverlay>((queue) =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        const rowsAtom = host.store.data.project(engineRows, environmentId);
+        const heldAtom = host.store.data.project(engineHeldTurns, environmentId);
+        const release = host.conversations.holdRows(environmentId);
+        let rows = host.atoms.get(rowsAtom);
+        let held = host.atoms.get(heldAtom);
+        const emit = () =>
+          Queue.offerUnsafe(queue, (shell: EnvironmentShellState) =>
+            overlayEngineShell(shell, rows, held),
+          );
+        const unsubscribeRows = host.atoms.subscribe(rowsAtom, (next) => {
+          rows = next;
+          emit();
+        });
+        const unsubscribeHeld = host.atoms.subscribe(heldAtom, (next) => {
+          held = next;
+          emit();
+        });
+        emit();
+        return () => {
+          unsubscribeHeld();
+          unsubscribeRows();
           release();
         };
       }),

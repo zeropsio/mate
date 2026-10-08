@@ -7,8 +7,19 @@ import { describe, expect, it } from "@effect/vitest";
 
 import { requestOlderThreadTurns } from "./adapters/mateThreadReplay.ts";
 import { makeTestEngineHost } from "./__fixtures__/engineHost.ts";
-import { engineRun, noteItem, personItem, thoughtItem } from "./__fixtures__/mateEngine.ts";
-import { engineThreadChanges, withEngineLiveText } from "./engineThreadChanges.ts";
+import {
+  engineRow,
+  engineRun,
+  noteItem,
+  personItem,
+  thoughtItem,
+} from "./__fixtures__/mateEngine.ts";
+import {
+  engineShellChanges,
+  engineThreadChanges,
+  withEngineLiveText,
+} from "./engineThreadChanges.ts";
+import type { EnvironmentShellState } from "./adapters/mateShellReplay.ts";
 import type { EngineConversationKey } from "./families/mateEngine.ts";
 import { readsOfState } from "./store.ts";
 import { engineThread } from "./projections/mateEngine.ts";
@@ -154,4 +165,89 @@ describe("a streaming message's words so far", () => {
     );
     expect(textsOf(state)).toEqual(texts);
   });
+});
+
+describe("an engine Mate's menu, for a reader that draws its V1 shell", () => {
+  const shell = {
+    snapshot: Option.some({
+      snapshotSequence: 1,
+      projects: [],
+      threads: [
+        {
+          id: "thread-ada",
+          projectId: "project-ada",
+          title: "Ada",
+          modelSelection: { instanceId: "claudeAgent", model: "claude-sonnet-4-5" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          latestTurn: null,
+          createdAt: "2026-10-01T00:00:00.000Z",
+          updatedAt: "2026-10-01T00:00:00.000Z",
+          archivedAt: null,
+          settledOverride: null,
+          settledAt: null,
+          session: null,
+          latestUserMessageAt: null,
+          hasPendingApprovals: false,
+          hasPendingUserInput: false,
+          hasActionableProposedPlan: false,
+        },
+      ],
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    }),
+    status: "live",
+    error: Option.none(),
+  } as unknown as EnvironmentShellState;
+  const threadOf = (state: EnvironmentShellState) => Option.getOrThrow(state.snapshot).threads[0]!;
+
+  it.effect(
+    "lays each conversation's row over its thread shell: working on its run, on the model it runs",
+    () =>
+      Effect.gen(function* () {
+        const h = makeTestEngineHost();
+        h.deliverRows([
+          engineRow(ENV, "thread-ada", {
+            state: { kind: "working" } as never,
+            activeRunId: run1 as never,
+            agent: { ...engineRow(ENV, "thread-ada").agent!, model: "claude-opus-4-1" },
+          }),
+        ]);
+        const overlay = yield* engineShellChanges(h.host, ENV).pipe(
+          Stream.runHead,
+          Effect.map(Option.getOrThrow),
+        );
+        const thread = threadOf(overlay(shell));
+        expect(thread.session?.status).toBe("running");
+        expect(thread.session?.activeTurnId).toBe(run1);
+        expect(thread.modelSelection.model).toBe("claude-opus-4-1");
+      }),
+  );
+
+  it.effect("holds the Mate's rows while its menu is read and lets them go after", () =>
+    Effect.gen(function* () {
+      const h = makeTestEngineHost();
+      yield* engineShellChanges(h.host, ENV).pipe(
+        Stream.tap(() =>
+          Effect.sync(() => {
+            expect(h.counts.rowsHeld).toBe(1);
+          }),
+        ),
+        Stream.runHead,
+      );
+      expect(h.counts.rowsHeld).toBe(0);
+    }),
+  );
+
+  it.effect("leaves the shell as it is while the Mate has no rows", () =>
+    Effect.gen(function* () {
+      const h = makeTestEngineHost();
+      const overlay = yield* engineShellChanges(h.host, ENV).pipe(
+        Stream.runHead,
+        Effect.map(Option.getOrThrow),
+      );
+      expect(overlay(shell)).toBe(shell);
+    }),
+  );
 });
