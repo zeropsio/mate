@@ -170,7 +170,7 @@ import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { isMateStandUpAsk } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
 import { useEngineLiveMessage, useEngineLiveStructure } from "~/zerops/useEngineLiveMessage";
-import { useEngineCardSnapshots } from "~/zerops/useEngineCardPaging";
+import { useEngineCardSnapshots, useEngineRunCards } from "~/zerops/useEngineCardPaging";
 import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
@@ -537,10 +537,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const timelineThread = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
   const cardPaging = useEngineCardSnapshots(timelineThread);
   const liveLines = useEngineLiveStructure(timelineThread, timelineEntries);
+  const runCards = useEngineRunCards(timelineThread);
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
         cache: rowsCache,
+        ...(runCards === null ? {} : { runCards }),
         limit,
         nowMs,
         newSince,
@@ -565,6 +567,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       cardPaging,
       liveLines,
       isCompacting,
+      runCards,
       nowMs,
       newSince,
       timelineEntries,

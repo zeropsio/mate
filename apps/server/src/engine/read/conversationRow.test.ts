@@ -192,7 +192,12 @@ describe("the menu row", () => {
       revision,
     );
     expect(row.activeRunId).toBe(runId(c, 3));
-    expect(row.latestRun).toEqual({ id: runId(c, 3), end: null, endedAt: null });
+    expect(row.latestRun).toEqual({
+      id: runId(c, 3),
+      end: null,
+      endedAt: null,
+      turnState: "running",
+    });
   });
 
   it("says when the agent asked", () => {

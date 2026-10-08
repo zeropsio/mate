@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
-import { ConversationId, itemId, runId } from "./engine.ts";
+import { ConversationId, RunTurnState, itemId, runId } from "./engine.ts";
 import {
   ConversationHeader,
   EngineAnswer,
@@ -88,6 +88,21 @@ describe("an older client reads a newer engine's wire", () => {
       type: "reset",
       reason: "unknown",
     });
+  });
+
+  it("keeps unknown run verdicts unknown and permits an older header to omit them", () => {
+    expect(Schema.decodeUnknownSync(RunTurnState)("future-turn-state")).toBe("unknown");
+    const header = {
+      conversationId: conversation,
+      agent: null,
+      archived: false,
+      model: null,
+      session: null,
+      pausedUntil: null,
+      queued: 0,
+    };
+    expect(decodeHeader(header).runStatus).toBeUndefined();
+    expect(decodeHeader({ ...header, runStatus: "future-phase" }).runStatus).toBe("unknown");
   });
 
   it("reads a runtime or interaction mode it does not know as unknown", () => {

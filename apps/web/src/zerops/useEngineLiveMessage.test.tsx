@@ -292,7 +292,13 @@ it("shows an empty streaming thought when its words arrive, without rebuilding s
         ...records,
         runs: [
           records.runs[0]!,
-          { ...running, state: "ended", end: { kind: "completed" }, endedAt: thought.at + 1_000 },
+          {
+            ...running,
+            state: "ended",
+            turnState: "completed",
+            end: { kind: "completed" },
+            endedAt: thought.at + 1_000,
+          },
         ],
         items: [
           ...records.items.slice(0, -1),

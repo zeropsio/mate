@@ -83,6 +83,8 @@ export function cardAccount(readRunPage: MateEngineHost["conversations"]["readRu
       epoch: 1,
       seq: sequence,
     };
+    const active = records.runs.findLast((run) => run.turnState === "running");
+    const latest = active ?? records.runs.findLast((run) => run.state === "ended");
     const rows: Row[] = [
       {
         family: "mateEngineConversation",
@@ -98,6 +100,10 @@ export function cardAccount(readRunPage: MateEngineHost["conversations"]["readRu
               profile: { kind: "mate" },
             },
             archived: false,
+            activeRunId: active?.id ?? null,
+            latestRunId: latest?.id ?? null,
+            runStatus:
+              active !== undefined ? "running" : latest?.turnState === "error" ? "error" : "ready",
             model: "claude-sonnet-4-5",
             session: null,
             pausedUntil: null,

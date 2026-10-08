@@ -263,6 +263,15 @@ export const RunTrigger = forwardCompatibleUnion({
 });
 export type RunTrigger = typeof RunTrigger.Type;
 
+/** The existing turn presentation, projected by the server; null when the end is unknown. */
+export const RunTurnState = Schema.NullOr(
+  forwardCompatibleLiterals(["running", "completed", "interrupted", "error"]),
+);
+export type RunTurnState = typeof RunTurnState.Type;
+
+/** The current run's existing session presentation, excluding queued messages and background jobs. */
+export const ConversationRunStatus = forwardCompatibleLiterals(["running", "error", "ready"]);
+
 /** A run as the engine projects it. */
 export const Run = Schema.Struct({
   id: RunId,
@@ -593,8 +602,14 @@ export const ConversationRow = Schema.Struct({
   revision: Schema.Struct({ environmentId: Schema.String, epoch: Schema.Int, seq: Schema.Int }),
   state: ConversationRowState,
   activeRunId: Schema.NullOr(RunId),
+  runStatus: Schema.optionalKey(ConversationRunStatus),
   latestRun: Schema.NullOr(
-    Schema.Struct({ id: RunId, end: Schema.NullOr(RunEnd), endedAt: Schema.NullOr(Millis) }),
+    Schema.Struct({
+      id: RunId,
+      end: Schema.NullOr(RunEnd),
+      endedAt: Schema.NullOr(Millis),
+      turnState: Schema.optionalKey(RunTurnState),
+    }),
   ),
   subject: Schema.NullOr(Schema.String),
   snippet: Schema.NullOr(Schema.String),

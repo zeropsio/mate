@@ -560,12 +560,14 @@ export {
   engineCardPaging,
   engineCardPagingOf,
   engineRows,
+  engineRunCards,
   engineThread,
   engineThreadOf,
   overlayEngineRow,
   overlayEngineShell,
   type EngineCardCounts,
   type EngineCardPaging,
+  type EngineRunCard,
 } from "./projections/mateEngine.ts";
 
 export {

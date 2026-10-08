@@ -10,6 +10,8 @@ import type { ConversationRow, ConversationRowState, RunEnd } from "@t3tools/con
 import { maskSecrets, messagePreviewText } from "@t3tools/shared/messagePreview";
 import { attachmentsLabel, userAskOf, type UserAskSource } from "@t3tools/shared/userAsk";
 
+import { runStatusOf, turnStateOf } from "./runState.ts";
+
 import type { ConversationView, ViewRequest, ViewRun } from "./conversationView.ts";
 
 /** The longest text a row carries (wire.md §2.3). */
@@ -134,8 +136,17 @@ export const conversationRowOf = (
     agent: view.agent,
     revision: { ...revision, seq: view.seq },
     state: rowStateOf(view),
+    runStatus: runStatusOf(view),
     activeRunId: view.activeRun?.id ?? null,
-    latestRun: latest === null ? null : { id: latest.id, end: latest.end, endedAt: latest.endedAt },
+    latestRun:
+      latest === null
+        ? null
+        : {
+            id: latest.id,
+            end: latest.end,
+            endedAt: latest.endedAt,
+            turnState: turnStateOf(latest),
+          },
     subject: view.lastPerson === null ? null : subjectOf(view.lastPerson),
     snippet: rowText(view.lastAgent?.text),
     at: view.updatedAt,

@@ -28,6 +28,7 @@ import {
   ConversationAgent,
   ConversationId,
   ConversationRow,
+  ConversationRunStatus,
   Item,
   ItemId,
   Millis,
@@ -35,6 +36,7 @@ import {
   RequestId,
   Run,
   RunId,
+  RunTurnState,
   forwardCompatibleLiterals,
   forwardCompatibleUnion,
 } from "./engine.ts";
@@ -103,7 +105,11 @@ export const RunSummary = Schema.Struct({
 export type RunSummary = typeof RunSummary.Type;
 
 /** A run as the wire carries it. */
-export const RunRecord = Schema.Struct({ ...Run.fields, summary: RunSummary });
+export const RunRecord = Schema.Struct({
+  ...Run.fields,
+  summary: RunSummary,
+  turnState: Schema.optionalKey(RunTurnState),
+});
 export type RunRecord = typeof RunRecord.Type;
 
 /** A mode a newer build may add: any this build does not know decodes as `unknown`. */
@@ -115,6 +121,10 @@ export const ConversationHeader = Schema.Struct({
   conversationId: ConversationId,
   agent: Schema.NullOr(ConversationAgent),
   archived: Schema.Boolean,
+  /** Current run verdict and identities, from the same server projection as the menu row. */
+  runStatus: Schema.optionalKey(ConversationRunStatus),
+  activeRunId: Schema.optionalKey(Schema.NullOr(RunId)),
+  latestRunId: Schema.optionalKey(Schema.NullOr(RunId)),
   model: Schema.NullOr(Schema.String),
   /** The session open now; `steer` says whether a message may go into a running turn. */
   session: Schema.NullOr(

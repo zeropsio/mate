@@ -67,6 +67,7 @@ import type { ConversationState } from "../domain/state.ts";
 import { EngineSignals } from "../EngineSignals.ts";
 import { LiveBus, type LiveFrame } from "../LiveBus.ts";
 import { conversationRowOf } from "../read/conversationRow.ts";
+import { runStatusOf } from "../read/runState.ts";
 import { readConversationView } from "../read/conversationView.ts";
 import { bytesOf, changesFrames, fitRecords, liveFrames, sliceUtf8 } from "./budget.ts";
 import { makeRecords } from "./records.ts";
@@ -211,24 +212,38 @@ const decodeResult = Schema.decodeUnknownEffect(Schema.fromJsonString(CommandRes
 /** A header as text: a subscriber is sent it again only when this changes. */
 const headerJson = Schema.encodeSync(Schema.fromJsonString(ConversationHeader));
 
-const headerOf = (state: ConversationState): ConversationHeader => ({
-  conversationId: state.conversationId,
-  agent: state.agent,
-  archived: state.archived,
-  model: state.model,
-  session:
-    state.session === null
-      ? null
-      : {
-          driver: state.session.driver,
-          model: state.session.model,
-          steer: state.session.capabilities.steer,
-        },
-  pausedUntil: state.pausedUntil,
-  queued: state.queue.length,
-  ...(state.runtimeMode === null ? {} : { runtimeMode: state.runtimeMode }),
-  ...(state.interactionMode === null ? {} : { interactionMode: state.interactionMode }),
-});
+const headerOf = (state: ConversationState): ConversationHeader => {
+  const activeRun = state.activeRunId === null ? null : (state.runs[state.activeRunId] ?? null);
+  const lastEnded = Object.values(state.runs)
+    .filter((run) => run.state === "ended")
+    .reduce<typeof activeRun>(
+      (latest, run) => (latest === null || run.ordinal > latest.ordinal ? run : latest),
+      null,
+    );
+  return {
+    conversationId: state.conversationId,
+    runStatus: runStatusOf({ activeRun, lastEnded }),
+    activeRunId: state.activeRunId,
+    latestRunId: (activeRun ?? lastEnded)?.id ?? null,
+    agent: state.agent,
+    archived: state.archived,
+    model: state.model,
+    session:
+      state.session === null
+        ? null
+        : {
+            driver: state.session.driver,
+            model: state.session.model,
+            steer:
+              state.session.capabilities.steer &&
+              (activeRun?.state === "running" || activeRun?.state === "waiting"),
+          },
+    pausedUntil: state.pausedUntil,
+    queued: state.queue.length,
+    ...(state.runtimeMode === null ? {} : { runtimeMode: state.runtimeMode }),
+    ...(state.interactionMode === null ? {} : { interactionMode: state.interactionMode }),
+  };
+};
 
 type Inbox =
   | { readonly _tag: "event"; readonly event: KnownEngineEvent }

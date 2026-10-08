@@ -1,4 +1,8 @@
-import { type EngineCardPaging, type MateLimit } from "@t3tools/client-runtime/data";
+import {
+  type EngineCardPaging,
+  type EngineRunCard,
+  type MateLimit,
+} from "@t3tools/client-runtime/data";
 import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { HISTORY_CUT_KIND } from "@t3tools/client-runtime/data";
 import type { MateTintId } from "@t3tools/shared/brand";
@@ -2098,6 +2102,7 @@ export function assembleRecordCard(input: {
 
 export function deriveMessagesTimelineRows(input: {
   readonly limit?: MateLimit;
+  readonly runCards?: Readonly<Record<string, EngineRunCard>>;
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
   runningTurnId?: TurnId | null;
@@ -2150,6 +2155,7 @@ export function deriveMessagesTimelineRows(input: {
   const reading = batchReadingOf(entries, { byTiming: batchesByTiming(input.provider) });
   const structure = deriveConversationStructure({
     timelineEntries: entries,
+    ...(input.runCards === undefined ? {} : { runCards: input.runCards }),
     latestTurn: input.latestTurn ?? null,
     runningTurnId: input.runningTurnId ?? null,
     isWorking: input.isWorking,
@@ -2655,6 +2661,8 @@ export function deriveMessagesTimelineRows(input: {
       hasRecord ||
       pausedHere ||
       turn.interruption !== undefined ||
+      turn.brokeOff !== null ||
+      turn.interrupted ||
       extras.length > 0;
     const diffs = turn.span.turnIds.flatMap((turnId) => diffByTurnId.get(turnId) ?? []);
     const outcome =

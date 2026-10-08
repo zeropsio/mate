@@ -20,6 +20,8 @@ import {
   type RunId,
 } from "@t3tools/contracts";
 
+import { turnStateOf } from "../read/runState.ts";
+
 const decodeRun = Schema.decodeUnknownEffect(RunRecord);
 const decodeItem = Schema.decodeUnknownEffect(Item);
 const decodeRequest = Schema.decodeUnknownEffect(Request);
@@ -240,7 +242,7 @@ export const makeRecords = Effect.gen(function* () {
           unresponsiveSince: row.unresponsive_since,
           summary: summaryOf(row.run_id),
         }),
-      );
+      ).pipe(Effect.map((runs) => runs.map((run) => ({ ...run, turnState: turnStateOf(run) }))));
     });
 
   const runsById = (conversation: ConversationId, ids: ReadonlyArray<string>) =>

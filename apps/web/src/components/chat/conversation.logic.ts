@@ -16,8 +16,9 @@ import {
   projectLimitEntry,
   projectLimitHistory,
   type HistoricalLimit,
+  type EngineRunCard,
 } from "@t3tools/client-runtime/data";
-import { isEngineItemId, type TurnId } from "@t3tools/contracts";
+import { isEngineItemId, TurnId, type RunRecord } from "@t3tools/contracts";
 import {
   envChangeWords,
   isReadOperationKind,
@@ -350,6 +351,7 @@ function endsTheWait(entry: TimelineEntry): boolean {
 export function deriveTurnSpans(input: {
   readonly timelineEntries: ReadonlyArray<TimelineEntry>;
   readonly terminalAssistantMessageIds: ReadonlySet<string>;
+  readonly runCards?: Readonly<Record<string, EngineRunCard>>;
   readonly unsettledTurnId: TurnId | null;
   readonly isWorking: boolean;
 }): TurnSpan[] {
@@ -433,8 +435,18 @@ export function deriveTurnSpans(input: {
     return previous;
   };
   const calls = callTurns(input.timelineEntries);
+  const cardByOpener = new Map(
+    Object.entries(input.runCards ?? {}).flatMap(([id, card]) =>
+      card.openerMessageId === undefined ? [] : [[card.openerMessageId, TurnId.make(id)] as const],
+    ),
+  );
   for (const [index, entry] of input.timelineEntries.entries()) {
     if (isUserMessageEntry(entry)) {
+      const turnId = entry.message.turnId ?? cardByOpener.get(entry.message.id) ?? null;
+      if (input.runCards !== undefined && turnId != null && input.runCards[turnId] !== undefined) {
+        if (!byTurnId.has(turnId)) open(turnId, { entry, index });
+        continue;
+      }
       unclaimed.push({ entry, index });
       continue;
     }
@@ -474,7 +486,9 @@ export function deriveTurnSpans(input: {
       unclaimed = [];
     } else {
       const opener = openerOf(unclaimed);
-      span = (opener === null ? wake(turnId, index) : null) ?? open(turnId, opener);
+      span =
+        (input.runCards === undefined && opener === null ? wake(turnId, index) : null) ??
+        open(turnId, opener);
       unclaimed = [];
     }
     span.entryIndexes.push(index);
@@ -549,6 +563,7 @@ export interface ConversationTurn {
    * running").
    */
   readonly waiting: boolean;
+  readonly run?: RunRecord;
   readonly interrupted: boolean;
   readonly interruption?: import("@t3tools/contracts").MateInterruption;
   /** Interrupted by the person's next message, not by their Stop. */
@@ -638,7 +653,7 @@ function lastOwnEntry(entries: ReadonlyArray<TimelineEntry>): TimelineEntry | un
 /** Why a run broke off, and — the latest run only — what to do next. */
 export interface BrokeOff {
   /** The runtime failure represented here, rather than repeated in the work log. */
-  readonly entryId: string;
+  readonly entryId: string | null;
   readonly reason: string;
   readonly next: string | null;
 }
@@ -755,6 +770,7 @@ export function latestFinishedWordsAt(
 
 export function deriveConversationStructure(given: {
   readonly timelineEntries: ReadonlyArray<TimelineEntry>;
+  readonly runCards?: Readonly<Record<string, EngineRunCard>>;
   readonly latestTurn: TimelineLatestTurnLike | null;
   readonly runningTurnId: TurnId | null;
   readonly isWorking: boolean;
@@ -773,11 +789,14 @@ export function deriveConversationStructure(given: {
   const input = given;
   const unsettledTurnId =
     deriveUnsettledTurnId(input.latestTurn, input.runningTurnId) ??
-    (input.isWorking ? unnamedRunningTurnId(entries, input.latestTurn) : null);
+    (input.runCards === undefined && input.isWorking
+      ? unnamedRunningTurnId(entries, input.latestTurn)
+      : null);
   const terminalIds = deriveTerminalAssistantMessageIds(entries);
   const spans = deriveTurnSpans({
     timelineEntries: entries,
     terminalAssistantMessageIds: terminalIds,
+    ...(input.runCards === undefined ? {} : { runCards: input.runCards }),
     unsettledTurnId,
     isWorking: input.isWorking,
   });
@@ -790,12 +809,19 @@ export function deriveConversationStructure(given: {
   const latestSpan = spans.at(-1);
   const helperWorks = input.helperWorks;
   const waitingSpan =
-    liveSpan === undefined &&
-    helperWorks !== undefined &&
-    latestSpan !== undefined &&
-    latestSpan.helpers.some((taskId) => helperWorks(taskId))
-      ? latestSpan
-      : undefined;
+    input.runCards !== undefined
+      ? spans.find((span) =>
+          span.turnIds.some((id) => {
+            const state = input.runCards?.[id]?.state;
+            return state?.kind === "working" && state.waitsOnHelpers;
+          }),
+        )
+      : liveSpan === undefined &&
+          helperWorks !== undefined &&
+          latestSpan !== undefined &&
+          latestSpan.helpers.some((taskId) => helperWorks(taskId))
+        ? latestSpan
+        : undefined;
   const openerIndexes = new Set(
     spans.flatMap((span) => (span.openerIndex === null ? [] : [span.openerIndex])),
   );
@@ -857,22 +883,49 @@ export function deriveConversationStructure(given: {
   const turns: ConversationTurn[] = [];
   for (const [spanIndex, span] of spans.entries()) {
     const members = membersBySpan.get(span) ?? [];
-    const live = span === liveSpan;
+    const cardRuns = span.turnIds.flatMap((id) => input.runCards?.[id]?.runs ?? []);
+    const run = cardRuns.at(-1);
+    const typed = input.runCards !== undefined;
+    const live = typed ? run?.turnState === "running" : span === liveSpan;
     const turnEntries = members
       .map((index) => entries[index]!)
       .filter((entry) => !isUserMessageEntry(entry));
     const firstMember = members[0];
-    const waiting = span === waitingSpan;
+    const waiting = !live && span === waitingSpan;
     const latestTurnId = input.latestTurn?.turnId ?? null;
     const isLatestTurn = latestTurnId !== null && span.turnIds.at(-1) === latestTurnId;
     const interruption = turnEntries.findLast(
       (entry) => entry.kind === "work" && entry.entry.interruption !== undefined,
     );
-    const restart = interruption?.kind === "work" ? interruption.entry.interruption : undefined;
+    const cutRun = cardRuns.findLast((run) => run.end?.kind === "cut-by-restart");
+    const cut = cutRun?.end;
+    const restart = typed
+      ? cut?.kind === "cut-by-restart"
+        ? {
+            turnId: span.turnId!,
+            restart: cut.restart ?? {
+              cause: "restarted" as const,
+              at: cutRun?.endedAt == null ? null : new Date(cutRun.endedAt).toISOString(),
+            },
+            continuation:
+              cut.continuedBy !== null
+                ? ("continued" as const)
+                : cut.notContinued !== undefined
+                  ? ("none" as const)
+                  : ("automatic" as const),
+          }
+        : undefined
+      : interruption?.kind === "work"
+        ? interruption.entry.interruption
+        : undefined;
     const interrupted =
       !live &&
       !waiting &&
-      (isLatestTurn ? input.latestTurn?.state === "interrupted" : endedOnAStep(turnEntries));
+      (typed
+        ? run?.end?.kind === "stopped" || run?.end?.kind === "cut-by-restart"
+        : isLatestTurn
+          ? input.latestTurn?.state === "interrupted"
+          : endedOnAStep(turnEntries));
     // The person's next message came while it ran: their message interrupted
     // it, never their Stop (Noibit, run 11: "stopped after 8m 11s").
     const next = spans[spanIndex + 1];
@@ -885,6 +938,7 @@ export function deriveConversationStructure(given: {
         entry.entry.toolLifecycleStatus === "stopped",
     );
     const byMessage =
+      !typed &&
       restart === undefined &&
       interrupted &&
       !stoppedTasks &&
@@ -907,12 +961,28 @@ export function deriveConversationStructure(given: {
     const brokeOff =
       live || waiting
         ? null
-        : brokeOffOn({
-            entries: turnEntries,
-            latest: span === spans.at(-1),
-            refused: refusal.hasRefusal,
-          });
-    const answer = live || waiting || brokeOff !== null ? null : span.terminalEntry;
+        : typed
+          ? run?.end?.kind === "failed" || run?.end?.kind === "crashed"
+            ? {
+                entryId: null,
+                reason: run.end.reason,
+                next: run.end.kind === "failed" && isLatestTurn ? run.end.next : null,
+              }
+            : null
+          : brokeOffOn({
+              entries: turnEntries,
+              latest: span === spans.at(-1),
+              refused: refusal.hasRefusal,
+            });
+    const answer =
+      live || waiting || brokeOff !== null
+        ? null
+        : typed
+          ? (turnEntries.find(
+              (entry): entry is MessageEntry =>
+                entry.kind === "message" && String(entry.message.id) === run?.summary.answerItemId,
+            ) ?? null)
+          : span.terminalEntry;
     // Words still streaming, nothing after them: the working row's, as they
     // come. Anything after them — a step, a thought — makes them a note in
     // the record, and so does their end: Codex says nothing of a command
@@ -947,7 +1017,11 @@ export function deriveConversationStructure(given: {
     // the latest or not, so its "worked for" never changes after the fact. A
     // helper or a background task it left working reports in on the turn,
     // but that is the task's time, not the Mate's.
-    const turnEnd = live ? null : (latestEndOf(turnEntries, true) ?? turnStart);
+    const turnEnd = live
+      ? null
+      : typed && run?.endedAt != null
+        ? new Date(run.endedAt).toISOString()
+        : (latestEndOf(turnEntries, true) ?? turnStart);
 
     // Split at the person's messages, and where a turn nobody wrote to start
     // took the run on.
@@ -1042,6 +1116,7 @@ export function deriveConversationStructure(given: {
       writing,
       live,
       waiting,
+      ...(run === undefined ? {} : { run }),
       interrupted,
       ...(restart === undefined ? {} : { interruption: restart }),
       byMessage,
@@ -1646,7 +1721,12 @@ export function stretchFace(input: {
     (entry) =>
       entry !== turn.answer && !(entry.kind === "message" && entry.message.role === "reasoning"),
   );
-  if (stretch.last && lastWord?.kind === "work" && lastWord.entry.tone === "error") {
+  if (
+    turn.run === undefined &&
+    stretch.last &&
+    lastWord?.kind === "work" &&
+    lastWord.entry.tone === "error"
+  ) {
     return "failed";
   }
   if (

@@ -6,8 +6,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   engineCardPaging,
+  engineRunCards,
   mateEngineHostAtom,
   type EngineCardPaging,
+  type EngineRunCard,
 } from "@t3tools/client-runtime/data";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
@@ -31,12 +33,27 @@ export function useEngineCardSnapshots(threadRef: ScopedThreadRef | null) {
   return cards;
 }
 
+const NO_RUNS = Atom.make<Readonly<Record<string, EngineRunCard>> | null>(null);
+
+/** Typed server run endings survive cards whose work is unheld. */
+export function useEngineRunCards(threadRef: ScopedThreadRef | null) {
+  const host = useAtomValue(mateEngineHostAtom);
+  const environmentId = threadRef?.environmentId;
+  const conversationId = threadRef?.threadId;
+  return useAtomValue(
+    host === null || environmentId === undefined || conversationId === undefined
+      ? NO_RUNS
+      : host.store.data.project(engineRunCards, { environmentId, conversationId }),
+  );
+}
+
 /** Execute the assembled card's paging intent; coverage is joined by the timeline. */
 export function useEngineCardPages(paging: EngineCardPaging | null): ScrollPages | null {
   const host = useAtomValue(mateEngineHostAtom);
   const threadRef = use(TimelineRowCtx).threadRef;
   const environmentId = threadRef?.environmentId ?? null;
   const conversationId = threadRef?.threadId ?? null;
+
   const earlierRun = paging?.pageRuns.earlier ?? null;
   const laterRun = paging?.pageRuns.later ?? null;
   const read = useCallback(
