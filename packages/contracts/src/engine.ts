@@ -15,6 +15,7 @@ import { CommandId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProviderOptionSelection } from "./model.ts";
 import { ChatImageAttachment } from "./orchestration.ts";
 import { ToolPresentation } from "./providerRuntime.ts";
+import { callFields } from "./engineCall.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -332,6 +333,7 @@ const itemBodyFields = {
     endedAt: Schema.NullOr(Millis),
     /** How the call presents itself, as its agent said: an MCP tool's title and server. */
     presentation: Schema.optionalKey(ToolPresentation),
+    ...callFields,
   },
   request: { requestId: RequestId },
   /** Background work the agent started (a helper, a shell, a monitor), under the run it served. */

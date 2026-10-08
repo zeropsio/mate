@@ -135,6 +135,40 @@ describe("forward-compatible members", () => {
     expect(encodeItem(decodeItem(raw))).toEqual(raw);
   });
 
+  it("keeps a call's input line, what its row shows, its Zerops result and its parts through its record", () => {
+    const raw = {
+      id: itemId(run, 3),
+      conversationId: "mate",
+      runId: run,
+      seq: 8,
+      rev: 9,
+      at: 1,
+      by: { kind: "mate" },
+      kind: "call",
+      step: "mcp",
+      tool: { name: "zerops_browser", server: "zerops" },
+      words: "zerops_browser",
+      state: "done",
+      endedAt: 2,
+      input: 'mcp__zerops__zerops_browser: {"url":"https://app.example"}',
+      shows: { toolName: "mcp__zerops__zerops_browser", input: { url: "https://app.example" } },
+      result: {
+        toolName: "zerops_browser",
+        resultText: '{"status":"ok"}',
+        images: [
+          {
+            mimeType: "image/png",
+            asset: { id: "a1", original: { status: "ready" } },
+            width: 2,
+            height: 1,
+          },
+        ],
+      },
+      parts: ["detail", "data"],
+    };
+    expect(encodeItem(decodeItem(raw))).toEqual(raw);
+  });
+
   it("decodes a rejection reason from a newer engine as unknown", () => {
     expect(
       decodeResult({
