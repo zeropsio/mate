@@ -4,6 +4,7 @@
  *
  * @module crew/engine/cards
  */
+import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { CrewCard, CrewTaskSource } from "@t3tools/contracts";
 
 import type { TaskRecord } from "./state.ts";
@@ -37,7 +38,9 @@ const taskCardOf = (
   links: extra.links ?? [],
 });
 
-const lines = (head: string, body: ReadonlyArray<string>): string => [head, ...body].join("\n");
+/** A card's words as the agent reads them: the crew's opener, its heading, its body. */
+const lines = (head: string, body: ReadonlyArray<string>): string =>
+  [CREW_CARD_OPENER, head, ...body].join("\n");
 
 /** A task's first turn: the whole brief, never a summary. */
 export const taskCard = (task: TaskRecord, resetTo: string | null): SentCard => {
