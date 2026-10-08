@@ -195,7 +195,7 @@ it.each([
   { path: "apps/mobile/src/chat.tsx", ids: [] },
   {
     path: "packages/client-runtime/src/zerops/timelineFollow.ts",
-    ids: ["A", "C", "C-engine", "E", "F", "types"],
+    ids: ["A", "C", "C-engine", "E", "types"],
   },
 ])("a lane selects the affected contract layers for $path", ({ path, ids }) => {
   expect(

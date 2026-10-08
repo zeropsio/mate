@@ -213,8 +213,9 @@ export function selectLaneChatStages(paths: ReadonlyArray<string>, areas: Readon
       selected.add("C-engine");
       selected.add("types");
     } else {
-      // Shared contracts, dependencies and gate tooling have uncertain boundary impact.
-      for (const stage of chatGateStages) selected.add(stage.id);
+      // Shared contracts, dependencies and gate tooling have uncertain boundary impact on the
+      // chat; the crew's journeys (F) stay with the crew's own paths.
+      for (const stage of chatGateStages) if (stage.id !== "F") selected.add(stage.id);
     }
   }
   return chatGateStages.filter((stage) => selected.has(stage.id));
