@@ -61,6 +61,7 @@ import {
 } from "./usageDimensions";
 import { UsageDimensionTable, UsagePeopleSplit } from "./UsageDimensionViews";
 import { createUsageIdentityIndex, usagePageState } from "./usagePage.logic";
+import { UsageCoverage } from "./UsageCoverage";
 import { UsageLimitsSection } from "./UsageLimits";
 import { UsageProviderChart } from "./UsageProviderChart";
 import {
@@ -509,14 +510,6 @@ export function UsagePage({
                 ? "Limits are account-wide subscription quotas, shared across projects and Mates. Project and owner filters do not apply."
                 : "Recorded consumption by agents and subagents running in Mate. Cost is an API-equivalent estimate; attribution uses the current Mate owner."}
             </p>
-            {!showingLimits &&
-            report?.coverage.some((source) =>
-              source.value.gaps.includes("codex-resumed-turns-unavailable"),
-            ) ? (
-              <p role="status" className="text-xs text-muted-foreground">
-                Usage from resumed Codex threads is unavailable.
-              </p>
-            ) : null}
             {showingLimits ? (
               baseline === "unavailable" ? (
                 <p className="text-sm text-muted-foreground">
@@ -549,11 +542,6 @@ export function UsagePage({
                     This report contains more sources or groups than can be shown.
                   </p>
                 ) : null}
-                {state.kind === "partial" ? (
-                  <p role="status" className="text-xs text-muted-foreground">
-                    Partial recorded usage. Some provider usage was not reported.
-                  </p>
-                ) : null}
                 {read.kind === "read" && read.updateRequired ? (
                   <p role="status" className="text-xs text-muted-foreground">
                     Update HQ to read current Mate usage. The retained report is last-known.
@@ -564,11 +552,6 @@ export function UsagePage({
                     Last-known HQ report; reconnect or refresh HQ access.
                   </p>
                 ) : null}
-                {report?.recordedSince == null ? null : (
-                  <p className="text-xs text-muted-foreground">
-                    No data before {formatDayShort(report.recordedSince.slice(0, 10))}.
-                  </p>
-                )}
 
                 <section className="grid gap-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
                   <div className="flex min-w-0 flex-col gap-5">
@@ -913,6 +896,9 @@ export function UsagePage({
                 </section>
               </>
             )}
+            {!showingLimits && !settling && report !== null ? (
+              <UsageCoverage report={report} labels={labels} now={Date.now()} />
+            ) : null}
           </WorkspacePageContainer>
         </ScrollArea>
       </div>

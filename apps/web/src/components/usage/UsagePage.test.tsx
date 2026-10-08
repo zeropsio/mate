@@ -402,7 +402,7 @@ describe("recorded HQ usage presentation", () => {
   });
   it("shows the recording boundary without inventing earlier consumption", () => {
     const markup = renderPage();
-    expect(markup).toContain("No data before");
+    expect(markup).toContain("Recorded since Oct 1");
     expect(markup).not.toContain("transcript");
     expect(markup).not.toContain("Not connected, so not counted");
   });
@@ -510,7 +510,11 @@ describe("recorded HQ usage presentation", () => {
         },
       ],
     });
-    expect(renderPage()).toContain(message);
+    const markup = renderPage();
+    expect(markup).toContain(message);
+    expect(markup).toMatch(/<details[^>]*><summary[^>]*>Coverage by Mate<\/summary>/);
+    expect(markup).not.toMatch(/<details[^>]*open/);
+    expect(markup).not.toContain("2026-10-01T");
   });
   it("unknown token categories are labelled unknown", () => {
     testState.report = recordedReport({ totals: { ...statistics(), unknownComponents: "1" } });

@@ -72,7 +72,7 @@ export function usagePageState(input: {
       message:
         report.recordedSince == null
           ? "No recorded Mate usage yet."
-          : `No recorded usage in this period. No data before ${report.recordedSince.slice(0, 10)}.`,
+          : "No recorded usage in this period.",
     };
   return { kind: report.state === "complete" ? "ready" : "partial", message: null };
 }

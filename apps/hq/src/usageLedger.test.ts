@@ -683,6 +683,49 @@ describe("HQ immutable usage", () => {
           }),
         ),
     );
+    it.effect(
+      "authorized Mates that have not reported remain explicit coverage, never invented usage",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { sql } = yield* setup;
+            yield* sql`DELETE FROM hq_usage_origin`;
+            const report = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: baseQuery },
+              access,
+              new Map(),
+            );
+            assert.lengthOf(report.coverage, 1);
+            assert.strictEqual(report.coverage[0]!.mateId, binding.mateId);
+            assert.isUndefined(report.coverage[0]!.originId);
+            assert.deepStrictEqual(report.coverage[0]!.value, {
+              state: "unknown",
+              since: null,
+              through: null,
+              gaps: [],
+            });
+            assert.isNull(report.recordedSince);
+            assert.strictEqual(report.totals.tokens, "0");
+            const denied = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: baseQuery },
+              {
+                ...access,
+                facts: {
+                  ...access.facts,
+                  members: [{ ...access.facts.members[0]!, roleCode: "NO_ACCESS" }],
+                  projects: [],
+                },
+              },
+              new Map(),
+            );
+            assert.lengthOf(denied.coverage, 0);
+          }),
+        ),
+    );
     it.effect("only admitted origins establish the first recorded date", () =>
       database(
         Effect.gen(function* () {

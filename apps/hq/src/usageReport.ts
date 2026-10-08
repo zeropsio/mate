@@ -177,6 +177,9 @@ export const readUsageReport = Effect.fnUntraced(function* (
       dates.sort();
       const recordedSince = dates[0] ?? null;
       counted.sort((a, b) => a.originId.localeCompare(b.originId));
+      const coverage = scoped.toSorted((a, b) =>
+        (a.originId ?? a.mateId).localeCompare(b.originId ?? b.mateId),
+      );
       // A narrowed inaccessible selector is a refusal, not an authorized empty zero.
       if (q.projectId !== null && !admitted.some((source) => source.project_id === q.projectId))
         return yield* new UsageRefused({ code: "forbidden" });
@@ -218,6 +221,7 @@ export const readUsageReport = Effect.fnUntraced(function* (
           Date.parse(q.since) < Date.parse(state.exact_since));
       const incomplete =
         state.recovery !== "verified" ||
+        counted.length !== scoped.length ||
         counted.length === 0 ||
         counted.some(
           (source) =>
@@ -244,9 +248,14 @@ export const readUsageReport = Effect.fnUntraced(function* (
               : incomplete
                 ? ("partial" as const)
                 : ("complete" as const),
-        coverage: counted.slice(0, 200).map((source) => ({
-          originId: source.originId,
-          value: source.coverage,
+        coverage: coverage.slice(0, 200).map((source) => ({
+          ...(source.originId === null ? {} : { originId: source.originId }),
+          value: source.coverage ?? {
+            state: "unknown" as const,
+            since: null,
+            through: null,
+            gaps: [],
+          },
           deleted: source.deleted,
           projectId: source.projectId,
           mateId: source.mateId,
@@ -255,7 +264,7 @@ export const readUsageReport = Effect.fnUntraced(function* (
           label: source.label,
           placement: source.live ? ("current" as const) : ("last-known" as const),
         })),
-        coverageMore: counted.length > 200,
+        coverageMore: coverage.length > 200,
         recordedSince,
       };
       if (unsupported)

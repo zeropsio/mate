@@ -212,7 +212,8 @@ export const UsageReport = Schema.Struct({
   state: Schema.Literals(["unknown", "partial", "complete", "unsupported-exact-boundary"]),
   coverage: Schema.Array(
     Schema.Struct({
-      originId: UsageIdentity,
+      /** Absent when an authorized Mate has not reported a usage origin. */
+      originId: Schema.optionalKey(UsageIdentity),
       value: UsageCoverage,
       deleted: Schema.Boolean,
       projectId: Schema.optionalKey(UsageIdentity),
