@@ -28,58 +28,13 @@ a project, not just `zcp`, so the fix uses that instead.
 
 ### H-02 · Pairing is minted behind a long-lived shared secret · superseded (2026-09-04)
 
-**Superseded** by the Zerops-identity door (spec §3.2, decision D1): nothing is minted any more. A project member exchanges their own Zerops token at `POST /api/auth/zerops-identity`; the `/z3-pair` location, the sidecar on 127.0.0.1:3774 and the rate-limit zone are gone from zcp. The text below is the POC record.
-
-**Where** `zcp` — `location = /z3-pair/{{.Password}}` in
-`internal/content/templates/nginx.conf.tmpl`, mirroring the existing `/zcp-auth/{{.Password}}`
-path-token pattern exactly, rate-limited (`limit_req zone=z3pair burst=20 nodelay;`, see H-16).
-Proxies to `internal/z3sidecar`, a loopback-only (127.0.0.1:3774) HTTP listener supervised via
-`startCommands` in `deploy/zcp-container.yml` — the exact same `zcp service start z3sidecar`
-ExecStart shape as nginx/vscode, no `zsc unit create` involved (H-05 was rewritten once this
-landed). Its `/` route checks `VSCODE_PASSWORD` is set too — belt-and-suspenders: nginx already
-omits the whole location when it isn't, but a container with no auth gets a plain 404 from the
-sidecar itself, never a mint, even on a direct hit. It then derives the public mate origin from
-`zeropsSubdomain` (H-01's fix, never `prg1` — see verified.md for a live-found quirk: it is
-newline-joined, one URL per declared port, on a multi-port service like this one), and runs
-`npx t3@<pinned> auth pairing create --base-dir <same base-dir mate itself
-uses> --base-url <origin> --json`, returning `{credential, expiresAt, origin}` with
-`Access-Control-Allow-Origin: *` (see H-15).
-**Status** Live-verified end to end against `z3probe`, 2026-08-27, including across a real service
-restart: `GET /z3-pair/<password>` returns a usable credential, a wrong password gets no mint
-(302, same cookie gate as everything else), and the credential drives the FULL chain — RFC 8693
-token exchange at mate's own `/oauth/token`, a ticket from `/api/auth/websocket-ticket`, a real
-`wss://…/ws?wsTicket=…` connection that opens successfully. See verified.md for the exact requests.
-**Why** mate lives on its own declared port with its own auth, so it has no cookie gate and therefore
-no proof that a caller is entitled to a pairing credential. The 8080 origin already has one —
-`VSCODE_PASSWORD`, readable only by a project member through the authenticated Zerops API — so the
-mint endpoint borrows it rather than inventing a second scheme.
-**Blast radius** `VSCODE_PASSWORD` is long-lived and shared. Anyone who has ever held it can mint
-agent access indefinitely, and revoking access means rotating it, which also signs everyone out of
-code-server. Not worse than the status quo — code-server access already means a terminal in the
-container — but it is a shared secret doing a per-user job.
-**Real fix** Mint against the caller's own Zerops identity rather than a container-wide password:
-the client presents its Zerops session, the container verifies it against the API and checks project
-membership. Then revocation is per-user and nothing is shared.
+**Superseded** by the Zerops-identity door (spec §3.2, decision D1): nothing is minted any more. A project member exchanges their own Zerops token at `POST /api/auth/zerops-identity`; the `/z3-pair` location, the sidecar on 127.0.0.1:3774 and the rate-limit zone are gone from zcp.
 
 ---
 
 ### H-03 · Pairing credential carried out by hand over SSH · superseded (2026-09-04)
 
-**Superseded** by the Zerops-identity door (spec §3.2): no credential leaves the container, by hand or otherwise. The text below is the POC record.
-
-**Where** `poc/pair.sh`; mobile's Settings → Zerops connect form.
-**Why** Nothing mints the credential automatically yet, so a human SSHes in and copies it out.
-**Blast radius** Every project connection needs VPN and SSH, which is what stops the flow working
-from a browser or a phone.
-**Real fix** The `/z3-pair` endpoint described in H-02. Once that exists this entry dies, and with
-it the only reason VPN appears in the product flow at all.
-**Web-side progress** `apps/web/src/components/zerops/connect.ts` implements the consuming half of
-H-02's flow — read `VSCODE_PASSWORD`, `GET {mintOrigin}/z3-pair/{password}`, `connectPairing` —
-behind `ZeropsProjectPicker`'s one-click "Connect". The mint endpoint it calls now exists and is
-live-verified server-side end to end on `z3probe` (H-02) — `GET /z3-pair/<password>` returns
-exactly the `{credential, expiresAt, origin}` shape `connectPairing` expects. What's unverified is
-this specific file's flow completing from an actual browser click; that's this slice's job, not
-container-side. This entry stays open until that has run once end to end.
+**Superseded** by the Zerops-identity door (spec §3.2): no credential leaves the container, by hand or otherwise.
 
 ---
 
@@ -254,51 +209,13 @@ H-17 for the same reasoning applied to the web mounts panel.
 
 ### H-15 · The `/z3-pair` mint response uses `Access-Control-Allow-Origin: *` · superseded (2026-09-04)
 
-**Superseded**: the `/z3-pair` endpoint no longer exists (spec §3.2). The door's origin allowlist (spec §3.4) is gone too since 2026-10-04 (spec D36): the door takes only bearer tokens and tickets, so it answers any origin. The text below is the POC record.
-
-**Where** `zcp` — `internal/z3sidecar/z3sidecar.go`'s `handleMint`
-**Why** The caller is the mate web app, a different origin than the container, so the mint response
-needs a CORS header for `fetch()` to read it at all. `*` was chosen deliberately over echoing the
-request's `Origin`: the URL itself already carries the secret (the raw `VSCODE_PASSWORD` as a path
-segment, H-02's pattern), so a wildcard adds no exposure beyond what a leaked URL already grants —
-whoever can construct the URL can already mint. Keeping the request a plain `GET` with no custom
-headers avoids a CORS preflight (`OPTIONS`) entirely, which is why the endpoint takes no
-`Authorization` header or other simple-request-breaking input.
-**Blast radius** None beyond H-02's own: anyone who can read the URL (i.e. anyone who could already
-mint by curling it directly) can now also do so from a browser tab on any origin. No new secret
-exposure, only a new client shape that can reach it.
-**Real fix** Falls out of H-02's real fix: once minting is bound to the caller's own Zerops session
-rather than a shared password, echoing the specific caller's `Origin` (or a small allowlist) becomes
-meaningful. Wildcard CORS on a shared-secret URL is not worth narrowing on its own.
+**Superseded**: the `/z3-pair` endpoint no longer exists (spec §3.2). The door's origin allowlist (spec §3.4) is gone too since 2026-10-04 (spec D36): the door takes only bearer tokens and tickets, so it answers any origin.
 
 ---
 
 ### H-16 · `/z3-pair`'s rate limit may collapse to one shared bucket behind the Zerops L7 · superseded (2026-09-04)
 
-**Superseded**: the `/z3-pair` location and its `limit_req` zone no longer exist (spec §3.2). The text below is the POC record.
-
-**Where** `zcp` — `limit_req_zone $binary_remote_addr zone=z3pair:10m rate=10r/s;` +
-`limit_req zone=z3pair burst=20 nodelay;` in `internal/content/templates/nginx.conf.tmpl`
-**Why** The brief for this endpoint asked for "at least do not make it trivially loopable," not a
-fairness guarantee, and nginx's own `limit_req` is the existing facility for that — no custom
-machinery. It is keyed on `$binary_remote_addr`, nginx's view of the immediate TCP peer. Whether
-that is the real caller's IP or the Zerops L7 balancer's own address depends on the same mechanics
-`internal/ingest`'s `clientIP()` already documents as a CLAUDE.md trap: on the shared
-`*.zerops.app` subdomain, `X-Real-IP` (the balancer-authoritative header) is "the constant proxy
-addr (one global bucket)" for that ingest endpoint. This container's nginx sits behind the identical
-L7, so `$remote_addr` may be similarly constant across callers rather than one bucket per real
-client — not independently re-verified here, carried over as the same caveat.
-**Blast radius** In the worst case, the rate limit is one shared bucket for the whole container
-rather than per-caller: a legitimate burst from one caller could transiently 503 another. Given the
-endpoint is already gated behind `VSCODE_PASSWORD`, the threat this defends against is accidental
-tight-loop hammering, not multi-tenant fairness, so a shared bucket still does its job. The numbers
-are therefore chosen _for_ a shared bucket: the original `1r/s`/`burst=3` was tight enough that the
-product's own flow would trip it — one person connecting a few projects in succession, or a single
-retry, exhausts a budget every caller shares — so it is `10r/s`/`burst=20`. That still stops a tight
-loop, which is all it is for.
-**Real fix** Confirm live whether `$http_x_real_ip` (or a custom-domain deployment, per the
-telemetry doc's "v2" note) carries the real per-client IP on this container's origin, and key
-`limit_req_zone` on that instead if so.
+**Superseded**: the `/z3-pair` location and its `limit_req` zone no longer exist (spec §3.2).
 
 ---
 
