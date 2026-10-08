@@ -212,6 +212,45 @@ describe("HQ's overview of a Mate on the engine", () => {
     assert.deepStrictEqual(main?.usagePause, { resetsAt: "2026-10-07T15:00:00.000Z" });
   });
 
+  // Milo, 2026-10-08: the row read "[Picture 1]" for a pasted picture and its question.
+  it.each([
+    {
+      name: "a picture and words",
+      person: {
+        text: "[Picture 1]\nEngine check 9: what number is in the picture?",
+        attachments: [{ type: "image", mimeType: "image/png" }],
+      },
+      said: "Engine check 9: what number is in the picture?",
+    },
+    {
+      name: "a picture alone",
+      person: { text: "[Picture 1]", attachments: [{ type: "image", mimeType: "image/png" }] },
+      said: "1 image",
+    },
+    {
+      name: "words in markdown",
+      person: { text: "Deploy **the api**", attachments: [] },
+      said: "Deploy the api",
+    },
+  ])(
+    "previews the person's message as V1's shell does, never a picture's label: $name",
+    ({ person, said }) => {
+      const lastPerson = { ...person, at: T("2026-10-07T10:05:00.000Z") };
+      const main = overviewOf([engineShellOf(view({ lastPerson }))]).main;
+      assert.deepStrictEqual(main?.latestUserMessagePreview, { text: said });
+      assert.deepStrictEqual(main?.latestMessagePreview, { role: "user", text: said });
+    },
+  );
+
+  it("previews the agent's last words as V1's shell does, its markdown read", () => {
+    const lastAgent = { text: "The number is **42**.", at: T("2026-10-07T10:04:00.000Z") };
+    const main = overviewOf([engineShellOf(view({ lastAgent }))]).main;
+    assert.deepStrictEqual(main?.latestMessagePreview, {
+      role: "assistant",
+      text: "The number is 42.",
+    });
+  });
+
   it.effect(
     "a thread V1 left running at the flip never shows working: mate mode reads only the engine",
     () =>
