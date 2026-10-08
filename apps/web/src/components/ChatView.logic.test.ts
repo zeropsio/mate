@@ -2472,6 +2472,22 @@ describe("the view's own thread error", () => {
 
   it.each([
     {
+      name: "A refusal from another login replaces identical words from the previous command",
+      existing: {
+        message: "Refused.",
+        at: 1,
+        after: T1,
+        refusalSource: { instanceId: "claudeAgent-work", driver: "claudeAgent" },
+      },
+      next: {
+        message: "Refused.",
+        at: 2,
+        after: T1,
+        refusalSource: { instanceId: "claudeAgent-home", driver: "claudeAgent" },
+      },
+      kept: false,
+    },
+    {
       name: "the same words again, after a turn of the person's: written anew",
       existing: { message: "Refused.", at: 1, after: T1 },
       next: { message: "Refused.", at: 2, after: T2 },

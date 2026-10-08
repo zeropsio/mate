@@ -553,4 +553,5 @@ export {
   admissionExplainsRefusal,
   resolveZeropsProviderAvailability,
   type AgentAdmissionAttention,
+  type AgentRefusalSource,
 } from "./projections/agentAdmission.ts";

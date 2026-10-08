@@ -1,5 +1,9 @@
 import { zeropsCommands } from "../state/zeropsCommands";
-import { agentAdmission, admissionExplainsRefusal } from "@t3tools/client-runtime/data";
+import {
+  agentAdmission,
+  admissionExplainsRefusal,
+  type AgentRefusalSource,
+} from "@t3tools/client-runtime/data";
 import { useAgentAdmissionPlacement } from "../zerops/AgentAdmissionComposition";
 import { AgentAdmissionExplanation } from "./chat/AgentAdmissionExplanation";
 import { resolveZeropsProviderAvailability } from "@t3tools/client-runtime/data";
@@ -1381,6 +1385,7 @@ type LocalThreadErrorEntry = {
   readonly at: number;
   /** When the person's newest turn was made as it was written (`localThreadErrorStanding`). */
   readonly after?: string | null | undefined;
+  readonly refusalSource?: AgentRefusalSource | undefined;
 };
 
 function chatActionErrorMessage(error: unknown): string {
@@ -1807,7 +1812,7 @@ export default function ChatView(props: ChatViewProps) {
       if (
         currentEntry !== undefined &&
         (currentEntry.at > pendingDraftEntry.at ||
-          currentEntry.message === pendingDraftEntry.message)
+          threadErrorEntryUnchanged(currentEntry, pendingDraftEntry))
       ) {
         return existing;
       }
@@ -3274,8 +3279,16 @@ export default function ChatView(props: ChatViewProps) {
   const admissionRefusal = admissionExplainsRefusal(
     admission.attention,
     visibleThreadError,
-    activeServerThread?.session?.providerName,
-    activeProviderStatus?.driver,
+    localServerError !== null
+      ? localServerErrorsByThreadKey[routeThreadKey]?.refusalSource
+      : localDraftError !== null
+        ? localDraftErrorsByDraftId[draftId ?? ""]?.refusalSource
+        : activeServerThread?.session?.providerInstanceId && activeServerThread.session.providerName
+          ? {
+              instanceId: activeServerThread.session.providerInstanceId,
+              driver: activeServerThread.session.providerName,
+            }
+          : undefined,
   );
   const shownThreadError = admissionRefusal ? null : visibleThreadError;
   const visibleProviderStatus = shouldShowProviderStatusBanner(
@@ -3378,13 +3391,14 @@ export default function ChatView(props: ChatViewProps) {
   const hasReachedSplitLimit =
     (activeTerminalGroup?.terminalIds.length ?? 0) >= MAX_TERMINALS_PER_GROUP;
   const setThreadError = useCallback(
-    (targetThreadId: ThreadId | null, error: string | null) => {
+    (targetThreadId: ThreadId | null, error: string | null, refusalSource?: AgentRefusalSource) => {
       if (!targetThreadId) return;
       const nextError = sanitizeThreadErrorMessage(error);
       const nextEntry: LocalThreadErrorEntry = {
         message: nextError,
         at: Date.now(),
         after: activeServerNewestTurnRef.current,
+        refusalSource,
       };
       if (
         shouldWriteThreadErrorToCurrentServerThread({
@@ -3406,7 +3420,7 @@ export default function ChatView(props: ChatViewProps) {
       }
       const localDraftErrorKey = draftId ?? targetThreadId;
       setLocalDraftErrorsByDraftId((existing) => {
-        if ((existing[localDraftErrorKey]?.message ?? null) === nextError) {
+        if (threadErrorEntryUnchanged(existing[localDraftErrorKey], nextEntry)) {
           return existing;
         }
         return {
@@ -4059,7 +4073,7 @@ export default function ChatView(props: ChatViewProps) {
   const openAgentAuthDialog = useCallback(() => {
     const item = admission.attention;
     if (item?.action === "manage-api-key") {
-      addZeropsSurface();
+      openProviderSetup(item.instanceId as ProviderInstanceId);
     } else if (item?.agentId !== undefined) {
       if (item.action === "check-again" || item.action === "register-again") {
         if (activeThreadRef !== null)
@@ -4077,7 +4091,6 @@ export default function ChatView(props: ChatViewProps) {
         );
     } else if (activeProviderStatus !== null) openProviderSetup(activeProviderStatus.instanceId);
   }, [
-    addZeropsSurface,
     admission.attention,
     activeProviderStatus,
     activeThreadRef,
@@ -7473,6 +7486,9 @@ export default function ChatView(props: ChatViewProps) {
         setThreadError(
           threadIdForSend,
           error instanceof Error ? error.message : "Failed to send message.",
+          turnStartAttempted
+            ? { instanceId: ctxSelectedModelSelection.instanceId, driver: ctxSelectedProvider }
+            : undefined,
         );
       }
     }

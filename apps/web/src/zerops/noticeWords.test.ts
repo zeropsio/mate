@@ -16,10 +16,10 @@ describe("usage notices", () => {
     expect(usageLimitProvider("Could not test Claude usage limit reached handling")).toBeNull();
     expect(usageLimitProvider("Git could not authenticate")).toBeNull();
   });
-  it("keeps sign-in requests in the same name-based voice", () => {
+  it("A retained sign-in refusal describes the failed turn, not current admission", () => {
     const error = "Claude's sign-in has expired. Sign Claude in again.";
     expect(mateFailureWords(error, "claudeAgent")).toBe(
-      "The Mate needs a Claude sign-in to continue.",
+      "The Mate's turn could not continue because Claude was signed out.",
     );
     expect(mateFailureWords(error, "codex")).toBe(error);
   });

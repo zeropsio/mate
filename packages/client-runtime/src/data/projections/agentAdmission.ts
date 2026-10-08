@@ -11,6 +11,8 @@ import type {
 import { agentIdForDriverKind } from "@t3tools/contracts";
 import {
   resolveZeropsAgentAvailability,
+  resolveZeropsAgentOwnership,
+  zeropsAgentAvailabilityIsRunnable,
   zeropsAgentAuthReads,
   zeropsLoginAuthReads,
   type ZeropsAgentAvailability,
@@ -145,26 +147,9 @@ export function agentAdmission(input: {
     available !== undefined ||
     agentIdForDriverKind(provider?.driver) !== undefined;
   const providerStatus = admissionProviderStatus(provider, input.snapshot, input.providers);
-  const cliSignIn =
-    provider !== null &&
-    providerStatus === null &&
-    provider.installed &&
-    provider.auth.status === "unauthenticated";
+  const cliSignIn = provider !== null && providerNeedsSignIn(provider);
   let attention: AgentAdmissionAttention | null = null;
-  const cause =
-    available?.kind === "signing-in"
-      ? "sign-in-in-progress"
-      : available?.kind === "needs-sign-in"
-        ? available.signInKind === "needs-reauth"
-          ? "expired-login"
-          : "missing-sign-in"
-        : available?.kind === "someone-else"
-          ? "another-signer"
-          : available?.kind === "unrecorded"
-            ? "unrecorded-login"
-            : !managed && cliSignIn
-              ? "missing-sign-in"
-              : null;
+  const cause = admissionCause(available) ?? (!managed && cliSignIn ? "missing-sign-in" : null);
   // An unidentified viewer cannot earn a person-scoped ownership assertion.
   if (cause !== null && instanceId !== undefined && input.viewerSubject !== undefined) {
     attention = admissionAttention({
@@ -192,20 +177,41 @@ export function agentAdmission(input: {
   return { attention, providerStatus };
 }
 
-/** A refusal remains dated history; correlate only with the same selected driver and current cause. */
+export interface AgentRefusalSource {
+  readonly instanceId: string;
+  readonly driver: string;
+}
+
+/** A refusal remains dated history; only the refused instance's current admission explains it. */
 export function admissionExplainsRefusal(
   attention: AgentAdmissionAttention | null,
   error: string | null,
-  driver: string | null | undefined,
-  selectedDriver: string | undefined,
+  source: AgentRefusalSource | undefined,
 ): boolean {
   return (
     attention !== null &&
-    driver !== undefined &&
-    driver !== null &&
-    driver === selectedDriver &&
-    (agentNeedsSignIn(error ?? "", driver) || attention.refusalMessages.includes(error ?? ""))
+    source !== undefined &&
+    source.instanceId === attention.instanceId &&
+    (agentNeedsSignIn(error ?? "", source.driver) ||
+      attention.refusalMessages.includes(error ?? ""))
   );
+}
+
+function admissionCause(
+  available: ZeropsAgentAvailability | undefined,
+): AgentAdmissionAttention["cause"] | null {
+  switch (available?.kind) {
+    case "signing-in":
+      return "sign-in-in-progress";
+    case "needs-sign-in":
+      return available.signInKind === "needs-reauth" ? "expired-login" : "missing-sign-in";
+    case "someone-else":
+      return "another-signer";
+    case "unrecorded":
+      return "unrecorded-login";
+    default:
+      return null;
+  }
 }
 
 function admissionAttention(input: {
@@ -229,7 +235,7 @@ function admissionAttention(input: {
         : input.agentName;
   const text =
     action === "manage-api-key"
-      ? `${input.mateName}'s ${agentName} is unavailable. Add a working key in Coding agents to continue.`
+      ? `${input.mateName}'s ${agentName} is unavailable. Update its key in Settings to continue.`
       : cause === "sign-in-in-progress"
         ? `${input.mateName}'s ${agentName} sign-in is not finished. Continue authorization to use it.`
         : cause === "another-signer" || cause === "unrecorded-login"
@@ -297,19 +303,34 @@ export const mateAdmissionSummary: Projection<
     )
       return null;
     if (overview.identity.runsWithoutSignIn) return null;
-    // HQ's compact contract proves credential absence, not whether a present credential has expired.
-    const entries = Object.entries(overview.logins);
-    if (entries.some(([, login]) => login.present)) return null;
-    const entry = entries.find(([id]) => id === "claude-code" || id === "codex");
+    // HQ proves presence and signer ownership, but carries no evidence of expiry.
+    const entries = Object.entries(overview.logins).map(([id, login]) => ({
+      id,
+      availability: !login.present
+        ? ({ kind: "needs-sign-in", signInKind: "not-authorized" } as const)
+        : login.token
+          ? ({ kind: "ready" } as const)
+          : resolveZeropsAgentOwnership(
+              {
+                authorizedBy: login.signedInBy === null ? undefined : { subject: login.signedInBy },
+                viewerSubject: key.viewerSubject,
+              },
+              "authorized",
+            ),
+    }));
+    if (entries.some((entry) => zeropsAgentAvailabilityIsRunnable(entry.availability))) return null;
+    const entry = entries.find(({ id }) => id === "claude-code" || id === "codex");
     if (entry === undefined) return null;
-    const agentId = entry[0] as ZeropsAgentId;
+    const agentId = entry.id as ZeropsAgentId;
+    const cause = admissionCause(entry.availability);
+    if (cause === null) return null;
     return admissionAttention({
       environmentId: overview.identity.environmentId,
       instanceId: agentId === "claude-code" ? "claudeAgent" : "codex",
       loginKey: agentId,
       agentId,
       viewerSubject: key.viewerSubject,
-      cause: "missing-sign-in",
+      cause,
       mateName: key.mateName,
       agentName: "coding agent",
       refusalMessages: admissionRefusalMessages(agentId, undefined),
@@ -341,25 +362,23 @@ export function admissionProviderStatus<
   )
     return provider;
   const spent = resolveSpentLogin(provider.instanceId, snapshot, providers);
+  const agentId =
+    spent?.agent.agentId ??
+    agentIdForDriverKind(
+      provider.driver ?? providers.find((row) => row.instanceId === provider.instanceId)?.driver,
+    );
   const login = snapshot?.logins?.find((row) => !row.default && row.id === spent?.key);
   const kinds = ["registering", "reconnect", "needs-reauth", "not-authorized"] as const;
   const managedWords =
-    spent !== undefined &&
+    agentId !== undefined &&
     kinds.some(
       (kind) =>
         provider.message ===
         (login === undefined
-          ? zeropsAgentUnavailableReason(spent.agent.agentId, kind)
+          ? zeropsAgentUnavailableReason(agentId, kind)
           : zeropsLoginUnavailableReason(login, kind)),
     );
-  const cliWords =
-    provider.installed === true &&
-    provider.auth?.status === "unauthenticated" &&
-    (!provider.message ||
-      (provider.driver === "antigravity" &&
-        provider.message === "Sign in with Google to use Antigravity.") ||
-      agentNeedsSignIn(provider.message, provider.driver) ||
-      /^(?:Not signed in\.|Not authenticated\.|Authentication required\.)/u.test(provider.message));
+  const cliWords = providerNeedsSignIn(provider);
   if (!managedWords && !cliWords) return provider;
   // Admission owns the auth part even when config also carries a version advisory.
   // Keep that independent evidence without presenting the obsolete auth error again.
@@ -367,6 +386,23 @@ export function admissionProviderStatus<
     provider.compatibilityAdvisory?.status === "unsupported"
     ? { ...provider, status: "ready" as const, message: undefined }
     : null;
+}
+
+function providerNeedsSignIn(provider: {
+  readonly installed?: boolean;
+  readonly auth?: { readonly status: string };
+  readonly message?: string | undefined;
+  readonly driver?: string;
+}): boolean {
+  return (
+    provider.installed === true &&
+    provider.auth?.status === "unauthenticated" &&
+    (!provider.message ||
+      (provider.driver === "antigravity" &&
+        provider.message === "Sign in with Google to use Antigravity.") ||
+      agentNeedsSignIn(provider.message, provider.driver) ||
+      /^(?:Not signed in\.|Not authenticated\.|Authentication required\.)/u.test(provider.message))
+  );
 }
 
 export function admissionRefusalWords(

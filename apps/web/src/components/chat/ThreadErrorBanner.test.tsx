@@ -95,7 +95,12 @@ describe("the thread's error banner", () => {
         "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
     },
   ])("says the Mate is signed out where its sign-in was $case", ({ error }) => {
-    expect(admissionExplainsRefusal(attention, error, provider.driver, provider.driver)).toBe(true);
+    expect(
+      admissionExplainsRefusal(attention, error, {
+        instanceId: provider.instanceId,
+        driver: provider.driver,
+      }),
+    ).toBe(true);
     const html = renderToStaticMarkup(
       <AgentAdmissionExplanation attention={attention} onAction={() => {}} />,
     );

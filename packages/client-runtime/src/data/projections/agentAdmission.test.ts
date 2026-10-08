@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   ProviderInstanceId,
+  ProviderDriverKind,
+  EnvironmentId,
+  type ServerProvider,
   type ZeropsAgentAuthSnapshot,
   type ZeropsLogin,
 } from "@t3tools/contracts";
@@ -8,7 +11,11 @@ import {
   agentAdmission,
   admissionProviderStatus,
   resolveZeropsProviderAvailability,
+  mateAdmissionSummary,
 } from "./agentAdmission.ts";
+import { AtomRegistry } from "effect/reactivity";
+import { makeAccountStore } from "../store.ts";
+import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 
 it.each(["unknown", "authenticated", "unauthenticated"] as const)(
   "only a proved failed provider login asks for sign-in (%s)",
@@ -225,7 +232,7 @@ describe("admission config evidence", () => {
       feed: authorized,
       expected: false,
     },
-    { name: "no feed", status: registeringWord, feed: null, expected: false },
+    { name: "no feed", status: registeringWord, feed: null, expected: true },
     { name: "no status", status: null, feed: authorized, expected: false },
   ])("is $expected for $name", ({ status, feed, expected }) => {
     expect(
@@ -234,3 +241,103 @@ describe("admission config evidence", () => {
     ).toBe(expected);
   });
 });
+
+it("A cold auth read does not present stale managed sign-in guidance as a runtime error", () => {
+  expect(
+    admissionProviderStatus(
+      {
+        instanceId: "claudeAgent",
+        driver: "claudeAgent",
+        installed: true,
+        auth: { status: "unknown" },
+        status: "error",
+        message: "Claude Code is not signed in on this project. Sign it in to use it.",
+      },
+      null,
+      [{ instanceId: "claudeAgent", driver: "claudeAgent" }],
+    ),
+  ).toBeNull();
+});
+
+it.each(["unsupported", "broken"] as const)(
+  "A signed-out Antigravity has admission guidance alongside its %s version advisory",
+  (status) => {
+    const provider: ServerProvider = {
+      instanceId: ProviderInstanceId.make("antigravity"),
+      driver: ProviderDriverKind.make("antigravity"),
+      enabled: true,
+      installed: true,
+      version: "1.0.0",
+      status: "error",
+      auth: { status: "unauthenticated" },
+      checkedAt: "2026-10-08T00:00:00Z",
+      models: [],
+      skills: [],
+      slashCommands: [],
+      message: "Sign in with Google to use Antigravity.",
+      compatibilityAdvisory: {
+        status,
+        message: "Use a supported version.",
+        recommendedVersion: null,
+        recommendedRange: null,
+      },
+    };
+    const result = agentAdmission({
+      environmentId: "env",
+      instanceId: provider.instanceId,
+      viewerSubject: "viewer",
+      snapshot: null,
+      availability: undefined,
+      providers: [provider],
+      mateName: "Ada",
+    });
+    expect(result.attention).toMatchObject({ cause: "missing-sign-in", action: "sign-in" });
+    expect(result.providerStatus).toMatchObject({
+      status: "ready",
+      message: undefined,
+      compatibilityAdvisory: { status },
+    });
+  },
+);
+
+it.each([
+  { signedInBy: "colleague", token: false, cause: "another-signer" },
+  { signedInBy: null, token: false, cause: "unrecorded-login" },
+  { signedInBy: "viewer", token: false, cause: null },
+  { signedInBy: "colleague", token: true, cause: null },
+])(
+  "The menu summarizes admission for its viewer, not credential presence ($signedInBy, token $token)",
+  ({ signedInBy, token, cause }) => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    seedHqNavigation(store, "org", {
+      mates: {
+        project: {
+          presence: { online: true, since: "2026-10-08T00:00:00Z", overview: "live" },
+          identity: {
+            environmentId: EnvironmentId.make("env"),
+            serverVersion: "1.0.0",
+            update: null,
+          },
+          main: null,
+          threads: { list: [], omitted: 0 },
+          crew: { status: "off" },
+          logins: {
+            "claude-code": { present: true, signedInBy, token },
+            codex: { present: false, signedInBy: null, token: false },
+          },
+        },
+      },
+    });
+    const attention = registry.get(
+      store.data.project(mateAdmissionSummary, {
+        orgId: "org",
+        projectId: "project",
+        viewerSubject: "viewer",
+        mateName: "Ada",
+      }),
+    );
+    expect(attention?.cause ?? null).toBe(cause);
+    registry.dispose();
+  },
+);

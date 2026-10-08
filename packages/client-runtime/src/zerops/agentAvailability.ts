@@ -231,7 +231,7 @@ export function resolveZeropsAgentAvailability(
  * an unidentified viewer is `someone-else`, not `unrecorded` — the server
  * refuses it as somebody else's either way.
  */
-function resolveZeropsAgentOwnership(
+export function resolveZeropsAgentOwnership(
   input: Pick<ZeropsAgentAuthFacts, "authorizedBy"> &
     Pick<ZeropsAgentAvailabilityInput, "viewerSubject">,
   auth: Extract<ZeropsAgentAuthKind["kind"], "authorized" | "registering">,

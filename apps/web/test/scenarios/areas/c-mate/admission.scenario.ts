@@ -1,6 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { ProviderInstanceId } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  ServerSettings,
+  ServerSettingsPatch,
+  WS_METHODS,
+} from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+import { reportConversation } from "../b-menu/fake.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "./fake.ts";
@@ -31,7 +38,7 @@ const signInExplanations = () =>
   [...document.querySelectorAll('[role="status"], [role="alert"]')]
     .filter((node) => node.getBoundingClientRect().height > 0 && !node.closest("[inert]"))
     .map((node) => node.textContent ?? "")
-    .filter((text) => /sign-in|signed in|authorization/iu.test(text));
+    .filter((text) => /sign-in|signed in|signed out|authorization/iu.test(text));
 
 describe("C: agent admission", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -82,6 +89,21 @@ describe("C: agent admission", () => {
         yield* chat.then.noText("Ada needs a Claude sign-in to continue.");
         yield* chat.then.text("Update Claude to a supported version.");
         yield* chat.then.noText("Claude Code is not signed in on this project.");
+        yield* reportConversation(
+          s.drivers,
+          "Ada",
+          { session: wire.mate.thread.session, latestTurn: wire.mate.thread.latestTurn },
+          "failed",
+        );
+        yield* Effect.promise(() =>
+          expect
+            .poll(
+              () =>
+                s.page.$eval('[data-zerops-surface="sidebar-mate"]', (node) => node.textContent),
+              { timeout: 8000 },
+            )
+            .toContain("Ada's turn could not continue because Claude was signed out."),
+        );
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -151,7 +173,7 @@ describe("C: agent admission", () => {
       () =>
         Effect.gen(function* () {
           const { s, chat, wire } = yield* setup;
-          const instanceId = ProviderInstanceId.make("claude-key");
+          const instanceId = ProviderInstanceId.make("claudeAgent-work");
           Object.assign(wire.mate.config.environment.capabilities, { mateLogins: true });
           wire.authSnapshot = {
             ...wire.auth(),
@@ -178,6 +200,47 @@ describe("C: agent admission", () => {
             modelSelection: { instanceId, model: "sonnet" },
             session: { ...wire.mate.thread.session!, providerInstanceId: instanceId },
           });
+          Object.assign(wire.mate.config.settings, {
+            providerInstances: {
+              [instanceId]: {
+                driver: "claudeAgent",
+                config: { homePath: "/fixture/.mate/logins/claudeAgent-work" },
+                environment: [{ name: "ANTHROPIC_API_KEY", value: "", sensitive: true }],
+              },
+            },
+          });
+          const repairs: string[] = [];
+          wire.mate.rpcHandlers.unshift((request, socket) => {
+            if (request.tag !== WS_METHODS.serverUpdateSettings) return false;
+            const patch = Schema.decodeUnknownSync(ServerSettingsPatch)(request.payload.patch);
+            Object.assign(wire.mate.config.settings, patch);
+            const instances = patch.providerInstances;
+            if (instances !== undefined && instances !== null) {
+              repairs.push(...Object.keys(instances));
+              const repaired = instances[instanceId]?.environment?.some(
+                (variable) => variable.name === "ANTHROPIC_API_KEY" && variable.value.length > 0,
+              );
+              if (repaired) {
+                wire.authSnapshot = {
+                  ...wire.auth(),
+                  logins: wire
+                    .auth()
+                    .logins!.map((login) =>
+                      login.id === instanceId
+                        ? { ...login, state: "authorized", signedInBy: "owner" }
+                        : login,
+                    ),
+                };
+                wire.publishAuth();
+              }
+            }
+            wire.mate.reply(
+              socket,
+              request.id,
+              Schema.encodeSync(ServerSettings)(wire.mate.config.settings),
+            );
+            return true;
+          });
           yield* s.given.signedIn;
           yield* chat.when.open();
           yield* Effect.promise(() =>
@@ -191,15 +254,119 @@ describe("C: agent admission", () => {
               .toBe("Manage API key"),
           );
           yield* chat.when.press("Manage API key");
-          yield* chat.then.text("Claude API key · work");
           yield* Effect.promise(() =>
-            s.page.locator('[data-zerops-add-login="claude-code"]').click(),
+            expect
+              .poll(() => s.page.evaluate(() => location.pathname), { timeout: 8000 })
+              .toBe("/settings/providers"),
           );
-          yield* chat.when.press("API key");
-          yield* chat.then.control("Anthropic API key", "textbox");
+          yield* Effect.promise(() =>
+            s.page
+              .locator('input[aria-label="Environment variable value 1"]')
+              .setTimeout(8000)
+              .fill("fixture-key-repair"),
+          );
+          yield* chat.when.key("Enter");
+          yield* Effect.promise(() =>
+            expect.poll(() => repairs, { timeout: 8000 }).toEqual(["claudeAgent-work"]),
+          );
+          yield* chat.when.visit("/env-Ada/thread-Ada");
+          yield* chat.then.noText("Manage API key");
+          yield* chat.when.send("Continue the same conversation");
+          expect(
+            yield* Effect.promise(() => wire.waitForCommand("thread.turn.start")),
+          ).toMatchObject({
+            modelSelection: { instanceId: "claudeAgent-work" },
+            message: { text: "Continue the same conversation" },
+          });
           expect(wire.startedLogins).toHaveLength(0);
           yield* s.then.noExternalNetwork;
         }),
+    );
+
+    it.effect("A refused first turn has one explanation scoped to the attempted login", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installArea]);
+        yield* s.given.project("Ada", { mate: true });
+        const chat = mateChat(s);
+        const wire = chat.fixture();
+        wire.history();
+        wire.claudeLoginFacts("ready");
+        wire.providers(
+          wire.mate.config.providers.filter((provider) => provider.driver === "claudeAgent"),
+        );
+        wire.snapshot({
+          modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "sonnet" },
+          session: null,
+          latestTurn: null,
+        });
+        wire.turnRefusal = "Claude's sign-in has expired. Sign Claude in again.";
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* chat.when.attemptSend("Start work");
+        yield* Effect.promise(() => wire.waitForCommand("thread.turn.start"));
+        yield* chat.then.text("Claude was signed out.");
+        wire.authSnapshot = {
+          ...wire.auth(),
+          agents: wire.auth().agents.map((agent) =>
+            agent.agentId === "claude-code"
+              ? {
+                  ...agent,
+                  state: "not-authorized",
+                  credPresent: false,
+                  flagOAuth: false,
+                  providerAuth: "unauthenticated",
+                  authorizedBy: undefined,
+                }
+              : agent,
+          ),
+        };
+        wire.publishAuth();
+        yield* chat.then.text("Ada needs a Claude sign-in to continue.");
+        expect(yield* Effect.promise(() => s.page.evaluate(signInExplanations))).toEqual([
+          "Ada needs a Claude sign-in to continue.Sign in",
+        ]);
+        yield* chat.then.draft("Start work");
+        yield* chat.then.sendDisabled;
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    it.effect("A cold auth read holds sending without flashing stale sign-in guidance", () =>
+      Effect.gen(function* () {
+        const { s, chat, wire } = yield* setup;
+        wire.claudeLoginFacts("ready");
+        wire.providers(
+          wire.mate.config.providers.map((provider) =>
+            provider.driver === "claudeAgent"
+              ? {
+                  ...provider,
+                  status: "error",
+                  auth: { status: "unknown" },
+                  message: "Claude Code is not signed in on this project. Sign it in to use it.",
+                }
+              : provider,
+          ),
+        );
+        let received!: () => void;
+        const subscribed = new Promise<void>((resolve) => {
+          received = resolve;
+        });
+        wire.mate.rpcHandlers.unshift((request, socket) => {
+          if (request.tag !== WS_METHODS.subscribeZeropsAgentAuth) return false;
+          wire.mate.subscriptions.get(socket)!.set(request.id, request);
+          received();
+          return true;
+        });
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* Effect.promise(() => subscribed);
+        yield* chat.then.sendDisabled;
+        expect(yield* Effect.promise(() => s.page.evaluate(signInExplanations))).toEqual([]);
+        wire.publishAuth();
+        yield* chat.when.send("Use the authorized login");
+        expect(wire.sentTurnCount()).toBe(1);
+        yield* s.then.noExternalNetwork;
+      }),
     );
   });
 });

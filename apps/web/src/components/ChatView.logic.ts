@@ -1379,17 +1379,29 @@ export function localThreadErrorStanding(
   return entry.message;
 }
 
-/** Whether writing `next` over `existing` changes nothing: the same words, the same newest turn. */
+/** The same words, newest turn and refused instance can retain the existing error. */
 export function threadErrorEntryUnchanged(
   existing:
-    | { readonly message: string | null; readonly after?: string | null | undefined }
+    | {
+        readonly message: string | null;
+        readonly after?: string | null | undefined;
+        readonly refusalSource?:
+          | { readonly instanceId: string; readonly driver: string }
+          | undefined;
+      }
     | undefined,
-  next: { readonly message: string | null; readonly after?: string | null | undefined },
+  next: {
+    readonly message: string | null;
+    readonly after?: string | null | undefined;
+    readonly refusalSource?: { readonly instanceId: string; readonly driver: string } | undefined;
+  },
 ): boolean {
   return (
     existing !== undefined &&
     (existing.message ?? null) === next.message &&
-    existing.after === next.after
+    existing.after === next.after &&
+    existing.refusalSource?.instanceId === next.refusalSource?.instanceId &&
+    existing.refusalSource?.driver === next.refusalSource?.driver
   );
 }
 
