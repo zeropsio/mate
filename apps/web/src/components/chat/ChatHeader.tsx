@@ -649,9 +649,15 @@ export const ChatHeader = memo(function ChatHeader({
           // A Mate's header is a row of borderless buttons, 4 px apart like
           // the panel toggles beside it — held so while its Mate is not named yet.
           lead === "breadcrumb" ? "gap-2 @3xl/header-actions:gap-3" : "gap-1",
-          // Reserve two panel toggles plus their 4px gaps and 1px edge inset.
-          // The page header adds 8px more right padding at sm.
-          rightPanelOpen ? "pr-0" : "pr-18.25 sm:pr-14.25",
+          // Reserve two panel toggles (32px, 28px at sm) with their 4px gap and
+          // 1px edge inset, plus the gap the actions keep between themselves so
+          // the terminal toggle does not sit against the last action. The page
+          // header adds 8px more right padding at sm.
+          rightPanelOpen
+            ? "pr-0"
+            : lead === "breadcrumb"
+              ? "pr-19.25 sm:pr-15.25 @3xl/header-actions:pr-16.25"
+              : "pr-18.25 sm:pr-14.25",
         )}
       >
         {/* The Mate's version and its update live with its body in the right
