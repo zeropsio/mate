@@ -176,7 +176,7 @@ const demanded = apply(emptyAccount, [
 const read = apply(demanded, [
   stream(linkKeys.hq(ORG), { kind: "handshake" }),
   stream(linkKeys.hq(ORG), { kind: "baseline-committed" }),
-  { kind: "hq-delivery", scopes: generations, reset: true, rows, removals: [] },
+  { kind: "delivery", via: "hq-stream", scopes: generations, reset: true, rows, removals: [] },
   { kind: "hq-ready", scopes: generations },
   ...NAV.map((scope) => stream(scope, { kind: "baseline-committed" })),
 ]);
@@ -197,7 +197,8 @@ const refused = apply(read, [
 ]);
 const removed = apply(read, [
   {
-    kind: "hq-delivery",
+    kind: "delivery",
+    via: "hq-stream",
     scopes: generations,
     reset: false,
     rows: [],
@@ -256,7 +257,8 @@ describe("hqNavigation", () => {
     const app = hqAppFamily.hq!.decode(raw, "app:shop")!;
     const next = apply(state, [
       {
-        kind: "hq-delivery",
+        kind: "delivery",
+        via: "hq-stream",
         scopes: generations,
         reset: true,
         rows: [
@@ -280,7 +282,8 @@ describe("hqNavigation", () => {
     )!;
     const next = apply(read, [
       {
-        kind: "hq-delivery",
+        kind: "delivery",
+        via: "hq-stream",
         scopes: generations,
         reset: false,
         rows: [
@@ -357,7 +360,8 @@ describe("hqMates", () => {
     stream(hqMateScope(ORG, "ada"), { kind: "demand", demanded: true }),
     stream(hqMateScope(ORG, "ada"), { kind: "attempt" }),
     {
-      kind: "hq-delivery",
+      kind: "delivery",
+      via: "hq-stream",
       scopes: [{ scope: hqMateScope(ORG, "ada"), generation: 1 }],
       reset: true,
       rows: [
@@ -433,7 +437,8 @@ describe("HQ-computed Mate owners", () => {
   const owned = (state: AccountState, ownerUserId: string | null) =>
     apply(state, [
       {
-        kind: "hq-delivery",
+        kind: "delivery",
+        via: "hq-stream",
         scopes: generations,
         reset: false,
         removals: [],
@@ -485,7 +490,8 @@ describe("HQ-computed Mate owners", () => {
     const before = owned(read, "u1");
     const after = apply(before, [
       {
-        kind: "hq-delivery",
+        kind: "delivery",
+        via: "hq-stream",
         scopes: generations,
         reset: false,
         removals: [],
@@ -529,7 +535,8 @@ describe("release offers from navigation", () => {
     ["refused scope retains facts", refused],
   ] as const)("%s needs no app detail and preserves the owner's offer", (_label, state) => {
     const next = reduceAccount(state, {
-      kind: "hq-delivery",
+      kind: "delivery",
+      via: "hq-stream",
       scopes: generations,
       reset: false,
       removals: [],

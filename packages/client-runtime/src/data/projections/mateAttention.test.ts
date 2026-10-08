@@ -76,7 +76,8 @@ const relay = (
   ...goLive(hqMateScope(ORG, P)),
   ...goLive(hqMateAttentionScope(ORG, P)),
   {
-    kind: "hq-delivery",
+    kind: "delivery",
+    via: "hq-stream",
     scopes: [
       { scope: hqMateScope(ORG, P), generation: 1 },
       { scope: hqMateAttentionScope(ORG, P), generation: 1 },
@@ -115,7 +116,8 @@ const relay = (
 const placed = (unseen: number | null): ReadonlyArray<AccountInput> => [
   ...goLive(placementsScope(ORG)),
   {
-    kind: "hq-delivery",
+    kind: "delivery",
+    via: "hq-stream",
     scopes: [{ scope: placementsScope(ORG), generation: 1 }],
     reset: true,
     rows: [

@@ -34,7 +34,8 @@ let revision = 0;
 const discussed = (store: AccountStore, comments: ReadonlyArray<HqChangeComment>) => {
   revision += 1;
   store.dispatch({
-    kind: "hq-delivery",
+    kind: "delivery",
+    via: "hq-stream",
     scopes: [{ scope: hqDiscussionScope(ORG, LINK), generation: 0 }],
     reset: true,
     rows: [

@@ -82,7 +82,8 @@ const release = (tag: string): Release => ({
 async function listed(releases: ReadonlyArray<Release>) {
   await act(async () => {
     store().dispatch({
-      kind: "hq-delivery",
+      kind: "delivery",
+      via: "hq-stream",
       scopes: [{ scope: `hq:${ORG}:hq-app-detail:shop`, generation: 0 }],
       reset: false,
       rows: [

@@ -90,7 +90,14 @@ export function seedHqProjectPeople(
       },
     })),
   ];
-  store.dispatch({ kind: "hq-delivery", scopes: generations, reset: true, rows, removals: [] });
+  store.dispatch({
+    kind: "delivery",
+    via: "hq-stream",
+    scopes: generations,
+    reset: true,
+    rows,
+    removals: [],
+  });
   store.dispatch({ kind: "hq-ready", scopes: generations });
   for (const scope of opening) event(scope, { kind: "baseline-committed" });
 }

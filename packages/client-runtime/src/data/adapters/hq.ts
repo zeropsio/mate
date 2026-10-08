@@ -56,7 +56,7 @@ import {
   type Revision,
   type ScopeKey,
 } from "../model.ts";
-import { streamOf, type HqDeliveryScope, type HqRemovalInput, type Row } from "../reducer.ts";
+import { streamOf, type DeliveryScope, type RemovalInput, type Row } from "../reducer.ts";
 import { readsOfState, type AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import type { LinkOptions } from "../supervisor.ts";
@@ -278,7 +278,7 @@ export function hqNavigationLink(options: {
       /** Each subscribed HQ scope this attempt, by its key, with the generations it was given. */
       const subscribed = new Map<
         string,
-        { readonly registered: Registered; generations: ReadonlyArray<HqDeliveryScope> }
+        { readonly registered: Registered; generations: ReadonlyArray<DeliveryScope> }
       >();
 
       /** The scopes the open segment was asked for: what HQ may be sending. */
@@ -323,7 +323,7 @@ export function hqNavigationLink(options: {
       /** Starts a registration of each store scope: a new generation, its handshake made. */
       const register = (registered: Registered) =>
         Effect.gen(function* () {
-          const generations: HqDeliveryScope[] = [];
+          const generations: DeliveryScope[] = [];
           for (const scope of [
             ...registered.families.map(({ scope }) => scope),
             ...(registered.wire.kind === "navigation" ? [hqProtocolScope(orgId)] : []),
@@ -378,15 +378,15 @@ export function hqNavigationLink(options: {
                     )?.(decoded, value) ?? revision,
                 } as Row);
             }
-          const removals: HqRemovalInput[] = message.removals.flatMap(
-            ({ key: recordKey, reason }) =>
-              entry.registered.families.flatMap(({ spec }) => {
-                const id = spec.hq!.idOf(recordKey, entry.registered.owner);
-                return id === null ? [] : [{ family: spec.family, id, reason }];
-              }),
+          const removals: RemovalInput[] = message.removals.flatMap(({ key: recordKey, reason }) =>
+            entry.registered.families.flatMap(({ spec }) => {
+              const id = spec.hq!.idOf(recordKey, entry.registered.owner);
+              return id === null ? [] : [{ family: spec.family, id, reason }];
+            }),
           );
           store.dispatch({
-            kind: "hq-delivery",
+            kind: "delivery",
+            via: "hq-stream",
             scopes: entry.generations,
             reset: message.type === "scope-reset",
             rows,
@@ -464,7 +464,8 @@ export function hqNavigationLink(options: {
                   () => ({}),
                 );
                 store.dispatch({
-                  kind: "hq-delivery",
+                  kind: "delivery",
+                  via: "hq-stream",
                   scopes: entry.generations.filter((entry) => entry.scope === scope),
                   reset: true,
                   rows: [

@@ -51,7 +51,8 @@ describe("stable attention readers", () => {
     publishLink("org", false, 3);
     expect(registry.get(store.data.project(attentionProjects, "org"))).toEqual(["a"]);
     store.dispatch({
-      kind: "hq-delivery",
+      kind: "delivery",
+      via: "hq-stream",
       scopes: [{ scope: placementsScope("org"), generation: 1 }],
       reset: false,
       rows: [],

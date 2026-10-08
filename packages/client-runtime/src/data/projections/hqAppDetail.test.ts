@@ -32,7 +32,8 @@ const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
 const row = (key: string, value: Row["value"]): Row =>
   ({ family: "hqAppDetail", id: `shop/${key}`, revision, value }) as Row;
 const deliver = (rows: ReadonlyArray<Row>, reset = false): AccountInput => ({
-  kind: "hq-delivery",
+  kind: "delivery",
+  via: "hq-stream",
   scopes: [{ scope: SCOPE, generation: 1 }],
   reset,
   rows,
@@ -87,7 +88,8 @@ const refused = apply(read, [
 ]);
 const withheld = apply(read, [
   {
-    kind: "hq-delivery",
+    kind: "delivery",
+    via: "hq-stream",
     scopes: [{ scope: SCOPE, generation: 1 }],
     reset: false,
     rows: [],

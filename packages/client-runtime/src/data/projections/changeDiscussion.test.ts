@@ -36,7 +36,8 @@ const demanded = apply(emptyAccount, [
 
 const revision = { kind: "hq", incarnation: "i", revision: 1 } as const;
 const delivered = (value: HqDiscussionValue): AccountInput => ({
-  kind: "hq-delivery",
+  kind: "delivery",
+  via: "hq-stream",
   scopes: [{ scope: SCOPE, generation: 1 }],
   reset: true,
   rows: [{ family: "hqDiscussion", id: discussionId(LINK), revision, value }],

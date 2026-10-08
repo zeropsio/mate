@@ -137,7 +137,8 @@ describe("useMenuMateReadings — a Mate HQ tells of, no socket to it", () => {
     store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "attempt" } });
     store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "handshake" } });
     store.dispatch({
-      kind: "hq-delivery",
+      kind: "delivery",
+      via: "hq-stream",
       scopes: [{ scope, generation: 1 }],
       reset: true,
       rows: [

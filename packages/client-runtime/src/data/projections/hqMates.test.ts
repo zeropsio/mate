@@ -88,7 +88,8 @@ describe("keyed HQ Mate readers", () => {
     ) => {
       const { presence: p, ...overview } = value;
       store.dispatch({
-        kind: "hq-delivery",
+        kind: "delivery",
+        via: "hq-stream",
         scopes: [{ scope: hqMateScope("org", ids[0]!), generation: 1 }],
         reset: false,
         rows: [
@@ -155,7 +156,8 @@ describe("keyed HQ Mate readers", () => {
     expect(registry.get(store.data.project(hqMateLogins, key("a")))).toBeUndefined();
     const scope = placementsScope("org");
     store.dispatch({
-      kind: "hq-delivery",
+      kind: "delivery",
+      via: "hq-stream",
       scopes: [{ scope, generation: 1 }],
       reset: false,
       rows: [],

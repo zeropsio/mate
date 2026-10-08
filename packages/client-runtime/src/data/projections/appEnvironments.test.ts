@@ -48,8 +48,9 @@ const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
 const deliver = (
   rows: ReadonlyArray<Row>,
   removals: ReadonlyArray<{ family: "hqApp"; id: string; reason: "deleted" | "no-access" }> = [],
-): Extract<AccountInput, { readonly kind: "hq-delivery" }> => ({
-  kind: "hq-delivery",
+): Extract<AccountInput, { readonly kind: "delivery" }> => ({
+  kind: "delivery",
+  via: "hq-stream",
   scopes: [{ scope: SCOPE, generation: 1 }],
   reset: false,
   rows,

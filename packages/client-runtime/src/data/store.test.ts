@@ -63,7 +63,8 @@ describe("makeAccountStore", () => {
       everSignedIn: {},
     });
     const delivery = (ids: ReadonlyArray<string>, revision: number, unseen = 0): AccountInput => ({
-      kind: "hq-delivery",
+      kind: "delivery",
+      via: "hq-stream",
       scopes: [{ scope, generation: 0 }],
       reset: false,
       removals: [],

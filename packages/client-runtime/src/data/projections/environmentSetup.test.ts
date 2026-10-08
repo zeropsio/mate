@@ -43,8 +43,9 @@ const app = (environments: unknown): Row =>
 const apply = (state: AccountState, input: AccountInput) => reduceAccount(state, input).state;
 const deliver = (
   rows: ReadonlyArray<Row>,
-): Extract<AccountInput, { readonly kind: "hq-delivery" }> => ({
-  kind: "hq-delivery",
+): Extract<AccountInput, { readonly kind: "delivery" }> => ({
+  kind: "delivery",
+  via: "hq-stream",
   reset: false,
   scopes: [apps, placementsScope(ORG), hqPressesScope(ORG)].map((scope) => ({
     scope,
