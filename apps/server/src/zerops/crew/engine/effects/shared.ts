@@ -166,6 +166,10 @@ export interface LaneEvidence {
   readonly unmerged: ReadonlyArray<string>;
   /** The copy's tip's first parent. */
   readonly parent: string | null;
+  /** The copy's tip's second parent: what a merge took in. */
+  readonly mergedFrom: string | null;
+  /** Whether an open merge's other side is in your tree's history. */
+  readonly mergeHeadInHead: boolean;
   /** The copy's tip's subject line. */
   readonly subject: string;
   /** The `Crew-Operation:` trailer of the copy's tip: the effect that wrote it, if one did. */
@@ -200,11 +204,13 @@ export const readLane = (
       `tip=$(${git({ lane: handle }, ["rev-parse", "HEAD"])}) || exit 1\n` +
       `printf 'tip\\t%s\\n' "$tip"\n` +
       `p=$(${git({ lane: handle }, ["rev-parse", "-q", "--verify", "HEAD^1"])}) && printf 'parent\\t%s\\n' "$p"\n` +
+      `p=$(${git({ lane: handle }, ["rev-parse", "-q", "--verify", "HEAD^2"])}) && printf 'merged\\t%s\\n' "$p"\n` +
       `printf 'subject\\t%s\\n' "$(${git({ lane: handle }, ["log", "-1", "--format=%s"])})"\n` +
       `printf 'operation\\t%s\\n' "$(${git({ lane: handle }, ["log", "-1", `--format=%(trailers:key=${OPERATION_TRAILER},valueonly,separator=%x20)`])})"\n` +
       `[ -z "$(${git({ lane: handle }, ["status", "--porcelain"])})" ] || printf 'dirty\\tyes\\n'\n` +
       `m=$(${git({ lane: handle }, ["rev-parse", "-q", "--verify", "MERGE_HEAD"])}) && {\n` +
       `  printf 'merge\\t%s\\n' "$m"\n` +
+      `  [ -n "$H" ] && ${git("integration", ["merge-base", "--is-ancestor", shellVariable("m"), shellVariable("H")])} && printf 'mergeinhead\\tyes\\n'\n` +
       `  ${git({ lane: handle }, ["diff", "--name-only", "--diff-filter=U"])} | sed 's/^/unmerged\\t/'\n` +
       `}\n` +
       `[ -n "$H" ] && ${git("integration", ["merge-base", "--is-ancestor", shellVariable("tip"), shellVariable("H")])} && printf 'inhead\\tyes\\n'\n` +
@@ -221,6 +227,8 @@ export const readLane = (
         mergeHead: field(out, "merge") ?? null,
         unmerged: all("unmerged"),
         parent: field(out, "parent") ?? null,
+        mergedFrom: field(out, "merged") ?? null,
+        mergeHeadInHead: field(out, "mergeinhead") === "yes",
         subject: field(out, "subject") ?? "",
         operation: field(out, "operation") ?? "",
         inHead: field(out, "inhead") === "yes",
