@@ -224,16 +224,26 @@ export const RunEndSource = forwardCompatibleLiterals([
 ]);
 export type RunEndSource = typeof RunEndSource.Type;
 
-/** Why a run exists: a person's message, or a wake (`cause: "self"` for an agent-started turn). */
+/**
+ * Why a run exists: a person's message, or a wake (`cause: "self"` for an agent-started turn), or
+ * a turn the conversation had on the engine before this one, copied in as it ended (`imported`:
+ * never sent, never woken, its requests never answerable).
+ */
 export const RunTrigger = forwardCompatibleUnion({
   key: "kind",
-  known: ["person", "wake", "unknown"],
+  known: ["person", "wake", "imported", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("person"), itemId: ItemId }),
     Schema.Struct({
       kind: Schema.Literal("wake"),
       cause: Schema.String,
       wakeId: Schema.NullOr(WakeId),
+    }),
+    Schema.Struct({
+      kind: Schema.Literal("imported"),
+      /** The engine the turn ran on (`v1`) and its id there; null for a message never sent. */
+      from: Schema.String,
+      turn: Schema.NullOr(Schema.String),
     }),
   ],
   fallback: unknownKind,
@@ -784,6 +794,58 @@ export const WakeArmed = event("WakeArmed", {
 export const WakeFired = event("WakeFired", { wakeId: WakeId, dueAt: Millis });
 export const WakeCancelled = event("WakeCancelled", { wakeId: WakeId, reason: Schema.String });
 
+// ── imported history ────────────────────────────────────────────────────────────────────────
+
+/** Where a conversation's earlier record comes from: the V1 thread it continues. */
+export const HistorySource = Schema.Struct({ kind: Schema.Literal("v1"), threadId: Schema.String });
+export type HistorySource = typeof HistorySource.Type;
+
+/**
+ * A conversation starts copying its earlier record in, once: its first `runs` ordinals are the
+ * imported turns', and no run is admitted until the import ends.
+ */
+export const HistoryImportStarted = event("HistoryImportStarted", {
+  source: HistorySource,
+  runs: Schema.Int,
+});
+/** A turn of the earlier record, as it ended. `happenedAt` is when it was asked, there. */
+export const RunImported = event("RunImported", {
+  runId: RunId,
+  ordinal: Schema.Int,
+  trigger: RunTrigger,
+  principal: Principal,
+  end: RunEnd,
+  source: RunEndSource,
+  happenedAt: Millis,
+  startedAt: Schema.NullOr(Millis),
+  endedAt: Schema.NullOr(Millis),
+});
+/** An item of the earlier record, closed as it was left. `happenedAt` is when it was made. */
+export const ItemImported = event("ItemImported", {
+  runId: Schema.NullOr(RunId),
+  itemId: ItemId,
+  by: ItemActor,
+  body: ItemBody,
+  happenedAt: Millis,
+});
+/** A request of the earlier record, in its final state: never answerable here. */
+export const RequestImported = event("RequestImported", {
+  runId: RunId,
+  requestId: RequestId,
+  ask: RequestAsk,
+  state: StoredRequestState,
+  answer: Schema.optionalKey(Schema.Struct({ by: Principal, at: Millis, summary: Schema.String })),
+  principal: Principal,
+  happenedAt: Millis,
+});
+/** How far the import has come: the next record of its plan. */
+export const HistoryBatchImported = event("HistoryBatchImported", { cursor: Schema.Int });
+/** The import is over: every record copied, or the rest could not be read (`failed`). */
+export const HistoryImportEnded = event("HistoryImportEnded", {
+  outcome: Schema.Literals(["complete", "failed"]),
+  reason: Schema.optionalKey(Schema.String),
+});
+
 /** An event from a newer engine: its order and run hold, its body is not read. */
 export const UnknownEngineEvent = Schema.TaggedStruct("Unknown", {
   ...eventHeader,
@@ -824,6 +886,12 @@ const knownEvents = [
   WakeArmed,
   WakeFired,
   WakeCancelled,
+  HistoryImportStarted,
+  RunImported,
+  ItemImported,
+  RequestImported,
+  HistoryBatchImported,
+  HistoryImportEnded,
 ] as const;
 
 /** Every event this build knows: what `decide` emits and `evolve` folds. */

@@ -38,6 +38,7 @@ import {
   type SessionCloseReason,
   type SessionId,
   type TurnHandle,
+  ItemId,
   WORK_ENDED,
 } from "@t3tools/contracts";
 
@@ -52,6 +53,7 @@ import type {
   Envelope,
   EventDraft,
   ItemDataDraft,
+  ImportedRecord,
   ItemDetailDraft,
   ProviderSignal,
 } from "./command.ts";
@@ -90,6 +92,7 @@ export const EFFECT_KINDS = {
   "run.prepare": { lane: "side", class: "replay-safe" },
   "workspace.finish": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
+  "history.import": { lane: "side", class: "replay-safe" },
 } as const satisfies Record<string, { lane: EffectLane; class: EffectClass }>;
 export type EngineEffectKind = keyof typeof EFFECT_KINDS;
 
@@ -234,6 +237,10 @@ const handle = (b: StepBuilder, command: Command): void => {
       return signals(b, command.sessionId, command.signals);
     case "Recovered":
       return recovered(b, command.cutEffects, command.unstartedEffects ?? [], command.words);
+    case "ImportHistory":
+      return importHistory(b, command);
+    case "HistoryBatch":
+      return historyBatch(b, command);
   }
 };
 
@@ -275,6 +282,8 @@ const paused = (b: StepBuilder) =>
  */
 const admitNext = (b: StepBuilder): void => {
   if (b.state.activeRunId !== null) return;
+  // The earlier record goes in first: a run admitted now would answer without it.
+  if (b.state.history?.state === "importing") return;
   const next = paused(b) ? undefined : b.state.queue[0];
   if (next === undefined) return armIdle(b);
   cancelIdle(b);
@@ -800,6 +809,7 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   const answered = b.state.answering[id];
   const closing = b.state.closing?.effectId === id ? b.state.closing : null;
   b.emit({ _tag: "EffectOutcomeRecorded", effectId: id, kind: effect.kind, outcome });
+  if (effect.kind === "history.import") return historySettled(b, id, outcome);
   const failure =
     outcome.kind === "ok"
       ? null
@@ -1484,5 +1494,124 @@ const recovered = (
     dispatch(b, admitted);
     return;
   }
+  admitNext(b);
+};
+
+// ── the earlier record ──────────────────────────────────────────────────────────────────────
+
+/** The cause every import effect derives its id from: one import per conversation. */
+const historyCause = (b: StepBuilder) => `${b.state.conversationId}/history`;
+
+/** The effect that reads the plan's records from `cursor` on: one per batch, by where it starts. */
+const askHistory = (b: StepBuilder, cursor: number): void => {
+  const history = b.state.history;
+  if (history === null) return;
+  b.effect("history.import", historyCause(b), cursor + 1, null, {
+    source: history.source,
+    runs: history.runs,
+    cursor,
+  });
+};
+
+/**
+ * The earlier record is copied in once, before the conversation runs anything of its own: its
+ * turns take the first ordinals, so they read before every run of the engine's. A conversation
+ * that already ran, or already imported, takes nothing.
+ */
+const importHistory = (
+  b: StepBuilder,
+  command: Extract<Command, { readonly _tag: "ImportHistory" }>,
+): void => {
+  if (b.state.history !== null || b.state.archived) return;
+  if (b.state.nextRunOrdinal !== 1 || command.runs < 1) return;
+  b.emit({ _tag: "HistoryImportStarted", source: command.source, runs: command.runs });
+  askHistory(b, 0);
+};
+
+/** Whether a batch's record sits where the import reserved it: ids derive from their cause. */
+const placed = (b: StepBuilder, runs: number, record: ImportedRecord): boolean => {
+  const conversation = b.state.conversationId;
+  const ofRun = (run: RunId | null) => {
+    if (run === null) return false;
+    const ordinal = Number(run.slice(`${conversation}/r/`.length));
+    return (
+      Number.isInteger(ordinal) &&
+      ordinal >= 1 &&
+      ordinal <= runs &&
+      run === deriveRunId(conversation, ordinal)
+    );
+  };
+  switch (record._tag) {
+    case "RunImported":
+      return record.runId === deriveRunId(conversation, record.ordinal) && ofRun(record.runId);
+    case "ItemImported":
+      return record.runId === null
+        ? record.itemId.startsWith(`${historyCause(b)}/`)
+        : ofRun(record.runId) && record.itemId.startsWith(`${record.runId}/i/`);
+    case "RequestImported":
+      return ofRun(record.runId) && record.requestId.startsWith(`${record.runId}/q/`);
+  }
+};
+
+/** One batch of the earlier record: its records, then how far the import has come. */
+const historyBatch = (
+  b: StepBuilder,
+  command: Extract<Command, { readonly _tag: "HistoryBatch" }>,
+): void => {
+  const history = b.state.history;
+  if (history?.state !== "importing") {
+    throw new Rejected("invalid-signal", "No import of the earlier record is under way.");
+  }
+  if (command.from !== history.cursor || command.to <= command.from) {
+    throw new Rejected(
+      "invalid-signal",
+      `The batch reads ${command.from}..${command.to}; the import is at ${history.cursor}.`,
+    );
+  }
+  for (const record of command.records) {
+    if (!placed(b, history.runs, record)) {
+      throw new Rejected("invalid-signal", `An imported record is out of place: ${record._tag}.`);
+    }
+    b.emit(record);
+  }
+  b.details.push(...command.details);
+  b.data.push(...command.data);
+  b.emit({ _tag: "HistoryBatchImported", cursor: command.to });
+};
+
+/** What an import's read came to: the next batch, the end, or what could not be brought over. */
+const historySettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): void => {
+  const history = b.state.history;
+  if (history?.state !== "importing") return admitNext(b);
+  const started = Number(id.slice(id.lastIndexOf("/") + 1)) - 1;
+  const value = outcome.kind === "ok" ? (outcome.value as { done?: unknown } | undefined) : null;
+  if (value != null && value.done === true) {
+    b.emit({ _tag: "HistoryImportEnded", outcome: "complete" });
+    return admitNext(b);
+  }
+  if (outcome.kind === "ok" && history.cursor > started) return askHistory(b, history.cursor);
+  const reason =
+    outcome.kind === "ok"
+      ? "the import read nothing more"
+      : outcome.kind === "failed" || outcome.kind === "cut"
+        ? outcome.reason
+        : outcome.kind === "timed-out"
+          ? "the earlier record took too long to read"
+          : `an outcome this build does not know (${outcome.type})`;
+  b.emit({
+    _tag: "ItemImported",
+    runId: null,
+    itemId: ItemId.make(`${historyCause(b)}/failed`),
+    by: ENGINE_ACTOR,
+    body: {
+      kind: "marker",
+      marker: {
+        kind: "error",
+        reason: `The earlier conversation could not all be brought over: ${reason}`,
+      },
+    },
+    happenedAt: b.now,
+  });
+  b.emit({ _tag: "HistoryImportEnded", outcome: "failed", reason });
   admitNext(b);
 };

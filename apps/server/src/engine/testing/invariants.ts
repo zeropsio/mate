@@ -83,6 +83,8 @@ export class Model {
   pausedUntil: number | null = null;
   head = 0;
   nextOrdinal = 1;
+  /** The ordinals the earlier record reserved, while its import holds the queue. */
+  imported: { readonly runs: number; importing: boolean } | null = null;
   readonly log: Array<KnownEngineEvent> = [];
 
   readonly conversation: ConversationId;
@@ -265,6 +267,8 @@ const applyEvent = (model: Model, envelope: Envelope, now: number, event: KnownE
       }
       if (model.active !== null)
         fail("one active run", `${event.runId} admitted while ${model.active} is active`);
+      if (model.imported?.importing === true)
+        fail("the earlier record goes in first", `${event.runId} admitted while it is imported`);
       move(event.runId, "admitted");
       model.queue.splice(model.queue.indexOf(event.runId), 1);
       model.active = event.runId;
@@ -361,6 +365,33 @@ const applyEvent = (model: Model, envelope: Envelope, now: number, event: KnownE
     }
     case "WakeCancelled":
       model.wakes.delete(event.wakeId);
+      return;
+    case "HistoryImportStarted":
+      if (model.nextOrdinal !== 1 || model.imported !== null)
+        fail(
+          "the earlier record goes in first",
+          `an import started at ordinal ${model.nextOrdinal}`,
+        );
+      model.imported = { runs: event.runs, importing: true };
+      model.nextOrdinal = event.runs + 1;
+      return;
+    case "RunImported":
+      if (
+        model.imported?.importing !== true ||
+        event.ordinal < 1 ||
+        event.ordinal > model.imported.runs ||
+        event.runId !== `${model.conversation}/r/${event.ordinal}`
+      ) {
+        fail("ids derive from their cause", `imported run ${event.runId} (${event.ordinal})`);
+      }
+      return;
+    case "ItemImported":
+    case "RequestImported":
+      if (model.imported?.importing !== true && event._tag === "RequestImported")
+        fail("the earlier record goes in first", `${event.requestId} imported after the import`);
+      return;
+    case "HistoryImportEnded":
+      if (model.imported !== null) model.imported.importing = false;
       return;
     default:
       return;
