@@ -240,5 +240,154 @@ describe("C: conversation images", () => {
           yield* s.then.noExternalNetwork;
         }),
     );
+    it.effect(
+      "result screenshots fill their reserved boxes and permanent missing files have no retry",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          const bytes = Buffer.from(
+            yield* Effect.promise(() =>
+              s.page.evaluate(() => {
+                const canvas = document.createElement("canvas");
+                canvas.width = 160;
+                canvas.height = 100;
+                canvas.getContext("2d")!.fillRect(0, 0, 160, 100);
+                return canvas.toDataURL("image/png").split(",")[1]!;
+              }),
+            ),
+            "base64",
+          );
+          let release!: () => void;
+          const held = new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          yield* Effect.addFinalizer(() => Effect.sync(release));
+          const paths: string[] = [];
+          s.drivers.onMate.push((mate) => {
+            Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
+            Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
+            mate.rpcHandlers.unshift((request, socket) => {
+              if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
+              const input = decode(request.payload);
+              if (input.resource._tag !== "workspace-file") return false;
+              const missing = input.resource.path.includes("source-missing");
+              mate.reply(
+                socket,
+                request.id,
+                encode({
+                  relativeUrl: `/api/assets/objects/${"b".repeat(64)}/preview`,
+                  expiresAt: 0,
+                  imageDimensions: { width: 640, height: 400 },
+                  ...(missing
+                    ? {
+                        occurrence: {
+                          id: "missing",
+                          threadId: mate.thread.id,
+                          ownerId: "read-gone",
+                          name: "gone.png",
+                          provenance: "capture" as const,
+                          original: { status: "failed" as const, code: "source-missing" as const },
+                        },
+                      }
+                    : {}),
+                }),
+              );
+              return true;
+            });
+            const handle = mate.handle;
+            mate.handle = async (request) => {
+              if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
+              paths.push(request.url.pathname);
+              await held;
+              return { bytes, headers: { "content-type": "image/png" } };
+            };
+          });
+          yield* s.given.project("Ada", { mate: true });
+          const chat = mateChat(s);
+          const wire = chat.fixture();
+          wire.history("Screenshot report", "run-one");
+          wire.tool(
+            "read-kept",
+            "tool.completed",
+            {
+              toolName: "Read",
+              input: { file_path: "/tmp/shot.png" },
+              imagePath: "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            },
+            "run-one",
+            { itemType: "image_view" },
+          );
+          wire.tool(
+            "read-gone",
+            "tool.completed",
+            {
+              toolName: "Read",
+              input: { file_path: "/tmp/gone.png" },
+              imagePath: "mate-asset:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:source-missing",
+            },
+            "run-one",
+            { itemType: "image_view" },
+          );
+          wire.message("answer", "assistant", "The screenshots are in the result", "run-one");
+          wire.run("run-one", "completed", null, "answer");
+          yield* s.given.signedIn;
+          yield* chat.when.open("Ada", "The screenshots are in the result");
+          yield* Effect.promise(() => s.page.waitForSelector("[data-result-picture] img"));
+          yield* Effect.promise(() =>
+            s.page.$eval("[data-result-picture] img", (image) =>
+              image.scrollIntoView({ block: "center" }),
+            ),
+          );
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(() =>
+              [...document.querySelectorAll("[data-result-picture]")].some(
+                (n) => n.textContent === "Image no longer available",
+              ),
+            ),
+          );
+          const pending = yield* Effect.promise(() =>
+            s.page.$eval("[data-result-picture]:has(img)", (tile) => {
+              const image = tile.querySelector("img")!;
+              return {
+                width: tile.getBoundingClientRect().width,
+                height: tile.getBoundingClientRect().height,
+                imageHeight: image.getBoundingClientRect().height,
+              };
+            }),
+          );
+          expect(pending.imageHeight).toBe(pending.height);
+          release();
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(() => {
+              const image = document.querySelector<HTMLImageElement>("[data-result-picture] img");
+              return image?.naturalWidth === 160 && Number(getComputedStyle(image).opacity) === 1;
+            }),
+          );
+          const loaded = yield* Effect.promise(() =>
+            s.page.$eval("[data-result-picture]:has(img)", (tile) => ({
+              width: tile.getBoundingClientRect().width,
+              height: tile.getBoundingClientRect().height,
+              imageHeight: tile.querySelector("img")!.getBoundingClientRect().height,
+            })),
+          );
+          expect(loaded).toEqual(pending);
+          expect(paths.every((path) => path.endsWith("/preview"))).toBe(true);
+          const gone = yield* Effect.promise(() =>
+            s.page.$eval("[data-result-picture]:has(.asset-image-unavailable)", (tile) => ({
+              text: tile.textContent,
+              retry: tile.querySelector("button") !== null,
+              height: tile.getBoundingClientRect().height,
+              surfaceHeight: tile.querySelector(".asset-image-unavailable")!.getBoundingClientRect()
+                .height,
+            })),
+          );
+          expect(gone).toEqual({
+            text: "Image no longer available",
+            retry: false,
+            height: pending.height,
+            surfaceHeight: pending.height,
+          });
+        }),
+    );
   });
 });

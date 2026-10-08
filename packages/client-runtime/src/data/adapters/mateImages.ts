@@ -34,9 +34,9 @@ export function classifyImageHttp(
 ): StreamFault {
   const messages: Readonly<Record<string, string>> = {
     "storage-full": "Storage full",
-    "source-missing": "Image unavailable: source file missing",
-    "object-missing": "Stored media is missing.",
-    "source-changed": "Image unavailable: source file changed",
+    "source-missing": "Image no longer available",
+    "object-missing": "Image no longer available",
+    "source-changed": "Screenshot source has changed",
     "preview-unavailable": "Preview unavailable",
     unsupported: "Preview unavailable",
     removed: "Image removed",

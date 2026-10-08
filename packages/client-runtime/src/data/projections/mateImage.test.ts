@@ -61,6 +61,7 @@ it("a failed preview still offers the retained original, including when preview 
     kind: "failed",
     reason: "Storage full",
     originalAvailable: true,
+    retryable: false,
   });
 });
 
@@ -148,5 +149,26 @@ it("a deployment screenshot exposes its original dimensions with its retained pr
     kind: "ready",
     blob,
     dimensions: { width: 1600, height: 900 },
+  });
+});
+
+it.each([
+  { outcome: "definitive-refusal", message: "Image no longer available", retryable: false },
+  { outcome: "transient", message: "Mate is unreachable.", retryable: true },
+  { outcome: "authoritative-denial", message: "Access denied", retryable: false },
+  { outcome: "recoverable-session", message: "Sign in to read this image.", retryable: false },
+] as const)("offers retry only when $outcome can recover", ({ outcome, message, retryable }) => {
+  const store = makeAccountStore(AtomRegistry.make());
+  store.dispatch({
+    kind: "stream",
+    key: mateImageScope(key),
+    now: 0,
+    event: { kind: "fault", jitter: 0, fault: { outcome, message } },
+  });
+  expect(mateImage.derive(readsOfState(store.state()), key)).toEqual({
+    kind: "failed",
+    reason: message,
+    originalAvailable: false,
+    retryable,
   });
 });

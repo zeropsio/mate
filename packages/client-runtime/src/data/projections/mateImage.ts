@@ -17,7 +17,12 @@ export type MateImageRead =
       readonly dimensions?: MateImageValue["dimensions"];
       readonly occurrence?: MateImageValue["occurrence"];
     }
-  | { readonly kind: "failed"; readonly reason: string; readonly originalAvailable: boolean };
+  | {
+      readonly kind: "failed";
+      readonly reason: string;
+      readonly originalAvailable: boolean;
+      readonly retryable: boolean;
+    };
 export const mateImage: Projection<MateImageKey, MateImageRead> = {
   name: "mateImage",
   keyOf: mateImageId,
@@ -28,12 +33,18 @@ export const mateImage: Projection<MateImageKey, MateImageRead> = {
       stream.fault?.outcome === "access-unverified" ||
       stream.fault?.outcome === "authoritative-denial"
     )
-      return { kind: "failed", reason: stream.fault.message, originalAvailable: false };
+      return {
+        kind: "failed",
+        reason: stream.fault.message,
+        originalAvailable: false,
+        retryable: false,
+      };
     if (fact.kind === "withheld")
       return {
         kind: "failed",
         reason: stream.fault?.message ?? "Access could not be verified.",
         originalAvailable: false,
+        retryable: false,
       };
     if (fact.kind === "known")
       return fact.value.blob !== null
@@ -47,9 +58,15 @@ export const mateImage: Projection<MateImageKey, MateImageRead> = {
             kind: "failed",
             reason: fact.value.failure ?? "Preview unavailable",
             originalAvailable: fact.value.occurrence?.original.status === "ready",
+            retryable: false,
           };
     if (stream.fault)
-      return { kind: "failed", reason: stream.fault.message, originalAvailable: false };
+      return {
+        kind: "failed",
+        reason: stream.fault.message,
+        originalAvailable: false,
+        retryable: stream.fault.outcome === "transient",
+      };
     if (["connecting", "baselining", "recovering", "reauthenticating"].includes(stream.phase))
       return { kind: "reading" };
     return { kind: "unknown" };
@@ -61,7 +78,9 @@ export const mateImage: Projection<MateImageKey, MateImageRead> = {
         a.dimensions?.width === b.dimensions?.width &&
         a.dimensions?.height === b.dimensions?.height
       : a.kind === "failed" && b.kind === "failed"
-        ? a.reason === b.reason && a.originalAvailable === b.originalAvailable
+        ? a.reason === b.reason &&
+          a.originalAvailable === b.originalAvailable &&
+          a.retryable === b.retryable
         : true),
 };
 

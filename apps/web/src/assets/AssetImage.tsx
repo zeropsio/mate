@@ -3,17 +3,19 @@ import { useMateImage } from "./MateImages";
 import { AssetDownloadLink } from "./AssetDownloadLink";
 import { useEffect, useState, type RefObject, type ComponentPropsWithoutRef } from "react";
 
+import { Button } from "../components/ui/button";
 import { useNearViewport } from "../hooks/useNearViewport";
 
 export function ImageUnavailable({
   reason,
   className,
+  children,
   ...props
 }: ComponentPropsWithoutRef<"span"> & { readonly reason?: string | undefined }) {
   return (
     <span {...props} className={`asset-image-unavailable ${className ?? ""}`}>
-      <span>Image unavailable</span>
-      {reason ? <small>{reason}</small> : null}
+      <span>{reason ?? "Image unavailable"}</span>
+      {children}
     </span>
   );
 }
@@ -99,17 +101,19 @@ function DirectAssetImage({
           role="img"
           aria-label={props.alt ? `Image unavailable · ${props.alt}` : "Image unavailable"}
           className={props.className}
-        />
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            setFailedSrc(undefined);
-            setAttempt((value) => value + 1);
-          }}
         >
-          Try again
-        </button>
+          <Button
+            variant="ghost-muted"
+            size="xs"
+            onClick={(event) => {
+              event.stopPropagation();
+              setFailedSrc(undefined);
+              setAttempt((value) => value + 1);
+            }}
+          >
+            Try again
+          </Button>
+        </ImageUnavailable>
       </span>
     );
   }
@@ -120,7 +124,7 @@ function DirectAssetImage({
       imageRef={ref}
       src={near ? src : undefined}
       data-image-src={src}
-      loading="lazy"
+      loading="eager"
       decoding="async"
       onError={(event) => {
         setFailedSrc(src);
@@ -198,9 +202,10 @@ function ManagedAssetImage({
             width: Math.min(8192, Math.ceil(slot.width * (window.devicePixelRatio || 1))),
             height: Math.min(8192, Math.ceil(slot.height * (window.devicePixelRatio || 1))),
           };
-  const key =
-    near && (original || demanded !== null)
-      ? { ...reference, rendition: original ? ("original" as const) : demanded! }
+  const key = original
+    ? { ...reference, rendition: "original" as const }
+    : near && demanded !== null
+      ? { ...reference, rendition: demanded }
       : null;
   const { read, url, originalUrl, previewUrl, loadingOriginal, retry } = useMateImage(key);
   const [failedUrl, setFailedUrl] = useState<string>();
@@ -220,23 +225,27 @@ function ManagedAssetImage({
                 ? read.reason
                 : undefined
           }
-        />
-        {read.kind === "failed" && read.originalAvailable ? (
-          <AssetDownloadLink source={props.src ?? ""} download={props.alt || "image"}>
-            Download original
-          </AssetDownloadLink>
-        ) : null}
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            setFailedUrl(undefined);
-            setAttempt((value) => value + 1);
-            retry();
-          }}
         >
-          Try again
-        </button>
+          {read.kind === "failed" && read.originalAvailable ? (
+            <AssetDownloadLink source={props.src ?? ""} download={props.alt || "image"}>
+              Download original
+            </AssetDownloadLink>
+          ) : null}
+          {!decodeFailed && read.kind === "failed" && read.retryable ? (
+            <Button
+              variant="ghost-muted"
+              size="xs"
+              onClick={(event) => {
+                event.stopPropagation();
+                setFailedUrl(undefined);
+                setAttempt((value) => value + 1);
+                retry();
+              }}
+            >
+              Try again
+            </Button>
+          ) : null}
+        </ImageUnavailable>
       </span>
     );
   return (
@@ -260,7 +269,7 @@ function ManagedAssetImage({
         src={original ? originalUrl : url}
         underlay={original ? previewUrl : undefined}
         data-image-src={props.src}
-        loading="lazy"
+        loading="eager"
         decoding="async"
         aria-busy={!url || loadingOriginal}
         onError={(event) => {

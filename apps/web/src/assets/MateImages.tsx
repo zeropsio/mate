@@ -11,7 +11,7 @@ import {
   type MateImageRead,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/unstable/reactivity";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export const MateImagesContext = createContext<{
   readonly store: AccountStore;
@@ -60,7 +60,7 @@ function useBlobUrl(blob: Blob | null) {
     readonly blob: Blob;
     readonly url: string;
   } | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (blob === null) {
       setPresentation(null);
       return;

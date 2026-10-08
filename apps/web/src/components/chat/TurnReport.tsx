@@ -27,7 +27,6 @@ import {
   useState,
   type AnimationEvent,
   type CSSProperties,
-  type SyntheticEvent,
 } from "react";
 
 import { useAssetUrlStates, type AssetUrlState } from "../../assets/assetUrls";
@@ -205,19 +204,13 @@ function PictureTile({
     (more > 0 ? `${picture.label}, and ${more} more` : picture.label) +
     (unavailable ? `. Image unavailable${reason ? ` · ${reason}` : ""}` : "");
   const failed = (picture.kind === "check" && picture.failed) || undefined;
-  const size = state._tag === "Success" ? state.imageDimensions : undefined;
-  const known =
-    picture.kind === "check" ? picture.ratio : size === undefined ? null : size.width / size.height;
-  // A file whose address came without its size takes its shape as it loads.
-  const [learned, setLearned] = useState<number | null>(null);
-  const shape: CSSProperties = { aspectRatio: tileRatio(known ?? learned) };
-  const learn =
-    known === null
-      ? (event: SyntheticEvent<HTMLImageElement>) => {
-          const { naturalWidth, naturalHeight } = event.currentTarget;
-          if (naturalWidth > 0 && naturalHeight > 0) setLearned(naturalWidth / naturalHeight);
-        }
+  const size =
+    picture.kind === "file"
+      ? (picture.dimensions ?? (state._tag === "Success" ? state.imageDimensions : undefined))
       : undefined;
+  const known = picture.kind === "check" ? picture.ratio : size ? size.width / size.height : null;
+  // A legacy file without dimensions keeps its reserved shape after decode.
+  const shape: CSSProperties = { aspectRatio: tileRatio(known) };
   return (
     <Tooltip>
       <TooltipTrigger
@@ -250,7 +243,8 @@ function PictureTile({
         ) : state._tag === "Success" ? (
           <AssetImage
             alt=""
-            onLoad={learn}
+            width={size?.width}
+            height={size?.height}
             src={state.url}
             onError={() => setFailedUrl(state.url)}
           />
