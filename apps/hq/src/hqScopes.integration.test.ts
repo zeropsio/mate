@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off globalTimers:off preferSchemaOverJson:off globalConsoleInEffect:off -- real HQ socket acceptance test.
+// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off globalTimers:off globalConsoleInEffect:off -- real HQ socket acceptance test.
 import { assert, describe, it } from "@effect/vitest";
 import { HqAttentionValue } from "@t3tools/shared/hqStream";
 import * as Schema from "effect/Schema";

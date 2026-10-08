@@ -532,7 +532,6 @@ const makeBrowserOtlpPayload = (spanName: string) =>
         Effect.andThen(Effect.die(new Error("Timed out waiting for OTLP trace export"))),
       ),
     );
-    // @effect-diagnostics-next-line preferSchemaOverJson:off
     return JSON.parse(request.body) as OtlpTracer.TraceData;
   });
 
@@ -5416,7 +5415,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           "content-type": "application/json",
           origin: "http://localhost:5733",
         },
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         body: HttpBody.text(JSON.stringify(payload), "application/json"),
       });
 
@@ -5551,7 +5549,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           authorization: yield* getAuthenticatedAuthorizationHeader(),
           "content-type": "application/json",
         },
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         body: HttpBody.text(JSON.stringify(payload), "application/json"),
       });
 
@@ -5639,7 +5636,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             authorization: yield* getAuthenticatedAuthorizationHeader(),
             "content-type": "application/json",
           },
-          // @effect-diagnostics-next-line preferSchemaOverJson:off
           body: HttpBody.text(JSON.stringify(payload), "application/json"),
         });
 

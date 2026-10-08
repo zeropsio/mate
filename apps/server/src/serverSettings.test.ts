@@ -600,7 +600,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
 
         const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
         assert.deepEqual(
-          // @effect-diagnostics-next-line preferSchemaOverJson:off
           JSON.parse(raw).sourceControlWriterModelSelection,
           sourceControlWriterModelSelection,
         );
@@ -887,7 +886,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.isFalse(settings.providers.grok.enabled);
 
       const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       assert.isFalse(JSON.parse(raw).providers.grok.enabled);
     }).pipe(Effect.provide(makeServerSettingsLayer())),
   );
@@ -908,7 +906,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       yield* serverSettings.updateSettings({ addProjectBaseDirectory: "~/Development" });
 
       const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       const persisted = JSON.parse(raw);
       assert.isTrue(persisted.providers.cursor.enabled);
       assert.isTrue(persisted.providers.grok.enabled);
@@ -945,7 +942,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.isFalse(resolveProviderInstanceEnabled(grok));
 
       const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       const persisted = JSON.parse(raw);
       assert.isFalse(persisted.providers.cursor.enabled);
       assert.isFalse(persisted.providers.grok.enabled);
@@ -1129,7 +1125,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
       assert.equal(next.providers.codex.binaryPath, "/opt/homebrew/bin/codex");
 
       const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       assert.deepEqual(JSON.parse(raw), {
         addProjectBaseDirectory: "~/Development",
         observability: {
@@ -1347,7 +1342,6 @@ it.layer(NodeServices.layer)("server settings", (it) => {
 
       const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
       assert.notInclude(raw, "sk-or-secret");
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       assert.deepEqual(JSON.parse(raw).providerInstances.codex_personal.environment, [
         {
           name: "OPENROUTER_API_KEY",

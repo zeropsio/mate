@@ -1,4 +1,4 @@
-// @effect-diagnostics globalTimers:off preferSchemaOverJson:off -- real sockets carry scope receipts.
+// @effect-diagnostics globalTimers:off -- real sockets carry scope receipts.
 import { assert, describe, it } from "@effect/vitest";
 import { RECIPE_REPO, RECIPE_TIER_PATHS } from "@t3tools/shared/hqRecipe";
 import * as Duration from "effect/Duration";

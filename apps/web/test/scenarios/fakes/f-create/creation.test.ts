@@ -1,4 +1,4 @@
-// @effect-diagnostics globalFetch:off preferSchemaOverJson:off -- localhost HTTP driver proof.
+// @effect-diagnostics globalFetch:off -- localhost HTTP driver proof.
 import { describe, expect, it } from "vite-plus/test";
 import { seedCoreWorld } from "../../../../../hq/test/harness/runningCore.ts";
 import { ZeropsFake } from "../zerops.ts";

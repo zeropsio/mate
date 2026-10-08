@@ -196,7 +196,6 @@ describe("CodexSessionRuntime collab integration", () => {
           capturedSpawnedThread(),
         ],
       };
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => NodeFS.rmSync(scriptPath, { force: true })),
@@ -253,7 +252,6 @@ describe("CodexSessionRuntime collab integration", () => {
         rootThreadId: ROOT,
         notifications: [capturedSpawnedThread(), { method: "rawResponse/completed", params }],
       };
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => NodeFS.rmSync(scriptPath, { force: true })),
@@ -303,7 +301,6 @@ describe("CodexSessionRuntime collab integration", () => {
           [CHILD_A]: { model: "gpt-5.6-luna", reasoningEffort: "low" },
         },
       };
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
       NodeFS.rmSync(`${scriptPath}.requests`, { force: true });
       yield* Effect.addFinalizer(() =>
@@ -395,7 +392,6 @@ describe("CodexSessionRuntime collab integration", () => {
           },
         },
       };
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
       NodeFS.rmSync(`${scriptPath}.requests`, { force: true });
       yield* Effect.addFinalizer(() =>
@@ -480,7 +476,6 @@ describe("CodexSessionRuntime collab integration", () => {
             notifications: [capturedStartedActivity()],
             childResumeSnapshots: { [CHILD_A]: childSnapshot },
           };
-          // @effect-diagnostics-next-line preferSchemaOverJson:off
           NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
           NodeFS.rmSync(`${scriptPath}.requests`, { force: true });
 
@@ -517,7 +512,6 @@ describe("CodexSessionRuntime collab integration", () => {
 
   it.effect("replays the captured fan-out into synthetic agent events without child leaks", () =>
     Effect.gen(function* () {
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       NodeFS.writeFileSync(scriptPath, JSON.stringify(buildScript()), "utf8");
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => NodeFS.rmSync(scriptPath, { force: true })),
@@ -654,7 +648,6 @@ describe("CodexSessionRuntime collab integration", () => {
           turnStartedB,
         ],
       };
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
       const interruptsPath = `${scriptPath}.interrupts`;
       NodeFS.rmSync(interruptsPath, { force: true });
@@ -747,7 +740,6 @@ describe("CodexSessionRuntime collab integration", () => {
           },
         ],
       };
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
       const responsesPath = `${scriptPath}.approvalResponses`;
       NodeFS.rmSync(responsesPath, { force: true });
@@ -834,7 +826,6 @@ describe("CodexSessionRuntime collab integration", () => {
         expectedActiveTurnId: activeTurnId,
         notifications: [],
       };
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
       const interruptsPath = `${scriptPath}.interrupts`;
       NodeFS.rmSync(interruptsPath, { force: true });
@@ -932,7 +923,6 @@ describe("CodexSessionRuntime collab integration", () => {
           serverRequests: [scriptedRequest],
         };
         const responsesPath = `${scriptPath}.responses`;
-        // @effect-diagnostics-next-line preferSchemaOverJson:off
         NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
         NodeFS.rmSync(responsesPath, { force: true });
         yield* Effect.addFinalizer(() =>
@@ -1002,7 +992,6 @@ describe("CodexSessionRuntime compaction", () => {
         // A child's compaction must not inject into the root thread.
         notifications: [compacted(CHILD_A), compacted(ROOT)],
       };
-      // @effect-diagnostics-next-line preferSchemaOverJson:off
       NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
       NodeFS.rmSync(`${scriptPath}.requests`, { force: true });
       yield* Effect.addFinalizer(() =>
