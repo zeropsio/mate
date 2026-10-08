@@ -478,7 +478,7 @@ function ArrivalComposition({
   );
   return (
     <div
-      className="flex h-full flex-col items-center px-5 sm:px-6"
+      className="flex h-full w-full min-w-0 flex-col items-center px-5 sm:px-6"
       data-arrival={kind}
       data-zerops-surface="mate-empty-state"
     >
