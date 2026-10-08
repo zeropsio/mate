@@ -451,8 +451,9 @@ export function mateChat(
               if (
                 node.textContent === value &&
                 node.parentElement?.getBoundingClientRect().height &&
+                // The menu row and the header's subject quote the person's last ask too.
                 !node.parentElement.closest(
-                  '[inert], [role="textbox"], [data-zerops-surface="sidebar-environments"]',
+                  '[inert], [role="textbox"], [data-zerops-surface="sidebar-environments"], [data-conversation-subject]',
                 )
               )
                 count++;

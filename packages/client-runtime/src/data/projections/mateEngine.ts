@@ -1044,7 +1044,30 @@ export const ENGINE_UPDATE_WORDS = UPDATE_WORDS;
 export const NATIVE_UPDATE_WORDS =
   "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.";
 
-/** A conversation row onto the thread shell the menu draws: its state, its turn, its agent. */
+/**
+ * The conversation's last words as its row says them, over the V1 thread the engine took over:
+ * that thread's words are from before the flip, and a menu read off it showed them days old.
+ * A row with no words yet leaves the thread's.
+ */
+const rowWords = (
+  row: ConversationRow,
+): Pick<
+  OrchestrationThreadShell,
+  "latestUserMessageAt" | "latestUserMessagePreview" | "latestMessagePreview"
+> | null => {
+  if (row.subject === null && row.snippet === null) return null;
+  const createdAt = iso(row.at);
+  const asked =
+    row.subject === null ? null : { role: "user" as const, text: row.subject, createdAt };
+  return {
+    latestUserMessageAt: asked === null ? null : createdAt,
+    latestUserMessagePreview: asked,
+    latestMessagePreview:
+      row.snippet === null ? asked : { role: "assistant", text: row.snippet, createdAt },
+  };
+};
+
+/** A conversation row onto the thread shell the menu draws: its state, its turn, its agent, its words. */
 export function overlayEngineRow(
   thread: OrchestrationThreadShell,
   row: ConversationRow,
@@ -1082,7 +1105,9 @@ export function overlayEngineRow(
             ...(row.agent.options === undefined ? {} : { options: row.agent.options }),
           } as OrchestrationThreadShell["modelSelection"],
         }),
-    latestTurn: held === undefined ? latestTurn : (held.latestTurn ?? thread.latestTurn),
+    // Held, its records name the turn; until they do, the row's run — never the V1 thread's.
+    latestTurn: held?.latestTurn ?? latestTurn,
+    ...rowWords(row),
     // A conversation the engine started never had a V1 session: the row is its session.
     session: {
       ...(thread.session ?? {
