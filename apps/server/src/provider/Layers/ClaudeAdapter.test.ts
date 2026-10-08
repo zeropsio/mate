@@ -4559,6 +4559,43 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("a start stopped as its CLI spawns closes that CLI", () => {
+    const query = new FakeClaudeQuery();
+    let start: Fiber.Fiber<unknown, unknown> | undefined;
+    const layer = Layer.effect(
+      ClaudeAdapter,
+      makeClaudeAdapter(decodeClaudeSettings({}), {
+        createQuery: () => {
+          // The Stop lands while the CLI is spawning: the start's next step sees it.
+          start?.interruptUnsafe();
+          return query;
+        },
+      }),
+    ).pipe(
+      Layer.provideMerge(ServerConfig.layerTest("/tmp/claude-adapter-test", "/tmp")),
+      Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(NodeServices.layer),
+    );
+
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      start = yield* adapter
+        .startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        })
+        .pipe(Effect.forkChild);
+      yield* Fiber.await(start);
+
+      assert.equal(query.closeCalls, 1);
+      assert.equal(yield* adapter.hasSession(THREAD_ID), false);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(layer),
+    );
+  });
+
   it.effect("stopAll attempts every session when one process close fails", () => {
     const queries: FakeClaudeQuery[] = [];
     const layer = Layer.effect(

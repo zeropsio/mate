@@ -1379,6 +1379,43 @@ routing.layer("ProviderServiceLive routing", (it) => {
       }),
   );
 
+  // Nothing else would stop it: the session is recorded nowhere, and the reaper walks bindings.
+  it.effect.each(["stopped while it starts", "refused once its agent answered"] as const)(
+    "a session start %s leaves no agent session running",
+    (ending) =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const threadId = asThreadId(`start-${ending.replaceAll(" ", "-")}`);
+        const open = routing.codex.startSession.getMockImplementation()!;
+        const opened = yield* Deferred.make<void>();
+        routing.codex.startSession.mockImplementationOnce((input) =>
+          open(input).pipe(
+            Effect.tap(() => Deferred.succeed(opened, undefined)),
+            Effect.flatMap((session) =>
+              ending === "stopped while it starts"
+                ? Effect.never
+                : Effect.succeed({ ...session, provider: CLAUDE_AGENT_DRIVER }),
+            ),
+          ),
+        );
+
+        const start = yield* provider
+          .startSession(threadId, {
+            provider: CODEX_DRIVER,
+            providerInstanceId: codexInstanceId,
+            threadId,
+            runtimeMode: "full-access",
+            cwd: fixtureCwd("project"),
+          })
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(opened);
+        if (ending === "stopped while it starts") yield* Fiber.interrupt(start);
+
+        assert.isTrue(Exit.isFailure(yield* Fiber.await(start)));
+        assert.isFalse(yield* routing.codex.adapter.hasSession(threadId));
+      }),
+  );
+
   it.effect("routes provider operations and rollback conversation", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService.ProviderService;

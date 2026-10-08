@@ -1542,8 +1542,10 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
           );
 
           ctx.notificationFiber = nf;
-          sessions.set(input.threadId, ctx);
           yield* runTurnLivenessWatchdog(ctx).pipe(Effect.forkIn(ctx.scope), Effect.asVoid);
+          // Published in the step that hands the scope over: a start interrupted before it closes
+          // the scope and leaves no dead session behind for the next send to find.
+          sessions.set(input.threadId, ctx);
           sessionScopeTransferred = true;
 
           yield* offerRuntimeEvent({
