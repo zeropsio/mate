@@ -13,6 +13,7 @@ import type {
   TurnId,
 } from "@t3tools/contracts";
 import { mateInterruptionOf } from "@t3tools/contracts";
+import { isCompactCommandMessage } from "@t3tools/shared/userAsk";
 import { isToolCallEcho, toolCallEchoKey } from "@t3tools/shared/toolCallEcho";
 
 export type ThreadDetailReducerResult =
@@ -337,22 +338,30 @@ export function applyThreadDetailEvent(
       };
 
     // ── Turn lifecycle ──────────────────────────────────────────────
-    case "thread.turn-start-requested":
+    case "thread.turn-start-requested": {
+      const message = thread.messages.find((each) => each.id === event.payload.messageId);
+      const continuesWork =
+        event.payload.purpose === "work" ||
+        (event.payload.purpose === undefined &&
+          message !== undefined &&
+          !isCompactCommandMessage(message));
       return {
         kind: "updated",
         thread: {
           ...thread,
-          activities: thread.activities.map((activity) => {
-            const item = mateInterruptionOf(activity);
-            return item?.continuation !== "manual"
-              ? activity
-              : {
-                  ...activity,
-                  payload: { interruption: { ...item, continuation: "requested" } },
-                };
-          }),
+          activities: !continuesWork
+            ? thread.activities
+            : thread.activities.map((activity) => {
+                const item = mateInterruptionOf(activity);
+                return item?.continuation !== "manual"
+                  ? activity
+                  : {
+                      ...activity,
+                      payload: { interruption: { ...item, continuation: "requested" } },
+                    };
+              }),
           session:
-            thread.session?.interruption == null
+            !continuesWork || thread.session?.interruption == null
               ? thread.session
               : {
                   ...thread.session,
@@ -368,7 +377,7 @@ export function applyThreadDetailEvent(
           updatedAt: event.occurredAt,
         },
       };
-
+    }
     case "thread.turn-interrupt-requested": {
       if (event.payload.turnId === undefined) {
         return { kind: "unchanged" };

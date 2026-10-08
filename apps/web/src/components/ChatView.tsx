@@ -5747,7 +5747,7 @@ export default function ChatView(props: ChatViewProps) {
     // so only the viewer's own connection is said.
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
-    const urgentSystemItems = [...systemComposerBannerItems.filter(isUrgentSystemItem)];
+    const urgentSystemItems = systemComposerBannerItems.filter(isUrgentSystemItem);
     // What belongs to the conversation — another of its chats at work, its compaction, its waking
     // or parking, its branch — waits until the conversation shows, not over its opening line.
     const conversationShown = !threadDetailLoading;
@@ -8666,7 +8666,10 @@ export default function ChatView(props: ChatViewProps) {
                   onUsageAutoResumeChange,
                   interruption: activeServerThread?.session?.interruption ?? null,
                   onRestartContinue:
-                    isWorking || isSendBusy || activePendingProgress || zeropsShownReadOnly !== null
+                    isWorking ||
+                    isSendBusy ||
+                    queueBlockedByPendingRequest ||
+                    zeropsSendBlockReason !== undefined
                       ? null
                       : (interruption) => {
                           const pending = activeServerThread?.session?.interruption;

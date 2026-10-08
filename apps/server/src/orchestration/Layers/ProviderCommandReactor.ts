@@ -15,7 +15,7 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@t3tools/shared/git";
-import { userAskOf } from "@t3tools/shared/userAsk";
+import { userAskOf, isCompactCommandMessage } from "@t3tools/shared/userAsk";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
@@ -51,10 +51,7 @@ import {
   type ProviderCommandReactorShape,
 } from "../Services/ProviderCommandReactor.ts";
 import { forkParked, ServerActivation } from "../../serverActivation.ts";
-import {
-  formatThreadTitleContext,
-  type ThreadTitleMessage,
-} from "../../textGeneration/ThreadTitleContext.ts";
+import { formatThreadTitleContext } from "../../textGeneration/ThreadTitleContext.ts";
 import { canReplaceThreadTitle, DEFAULT_THREAD_TITLE } from "../threadTitles.ts";
 import {
   resolveSourceControlWriterModelSelection,
@@ -108,10 +105,6 @@ function toNonEmptyProviderInput(value: string | undefined): string | undefined 
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
-const isCompactCommandMessage = (message: ThreadTitleMessage): boolean =>
-  message.role === "user" &&
-  (message.attachments?.length ?? 0) === 0 &&
-  message.text.trim().toLowerCase() === "/compact";
 function mapProviderSessionStatusToOrchestrationStatus(
   status: "connecting" | "ready" | "running" | "error" | "closed",
 ): OrchestrationSession["status"] {
@@ -1449,7 +1442,10 @@ const make = Effect.gen(function* () {
 
     yield* ensureThreadWorktree(thread);
 
-    const isCompactCommand = isCompactCommandMessage(message);
+    const isCompactCommand =
+      event.payload.purpose === undefined
+        ? isCompactCommandMessage(message)
+        : event.payload.purpose === "compact";
     // Only the first real ask titles the thread and names its branch: a slash
     // command or the usage-limit resume asks nothing, attachments without
     // words are read from the attachments, never from the client's placeholder,

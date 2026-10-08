@@ -1867,6 +1867,8 @@ export const ThreadMessageSentPayload = Schema.Struct({
 });
 
 export const ThreadTurnStartRequestedPayload = Schema.Struct({
+  // Persist the command owner's verdict; replay must not infer intent from a projection head.
+  purpose: Schema.optionalKey(Schema.Literals(["work", "compact"])),
   threadId: ThreadId,
   messageId: MessageId,
   modelSelection: Schema.optional(ModelSelection),

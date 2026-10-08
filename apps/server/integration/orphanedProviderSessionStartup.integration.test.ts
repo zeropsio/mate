@@ -440,6 +440,14 @@ it.effect(
             createdAt,
           }),
         );
+        const acceptedThread = Option.getOrThrow(yield* query.getThreadDetailById(threadId));
+        assert.strictEqual(acceptedThread.session?.interruption, null);
+        const acceptedRecovery = acceptedThread.activities.find(
+          (activity) => activity.kind === "runtime.interrupted",
+        );
+        assert.deepStrictEqual(acceptedRecovery?.payload, {
+          interruption: { ...restartedThread.session?.interruption, continuation: "requested" },
+        });
         const binding = Option.getOrThrow(yield* directory.getBinding(threadId));
         const stoppedBinding = Option.getOrThrow(
           yield* directory.getBinding(stoppedBindingThreadId),

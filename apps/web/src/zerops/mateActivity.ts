@@ -171,7 +171,11 @@ export function attentionActivity(input: {
           : main.id === threadId
             ? { ...main, environmentId }
             : wordlessChat(threadId, environmentId, main.updatedAt)));
-  const heldWords = words ?? (restartQuestion?.interruption?.restart.at == null ? undefined : wordlessChat(threadId, environmentId, restartQuestion.interruption.restart.at));
+  const heldWords =
+    words ??
+    (restartQuestion?.interruption?.restart.at == null
+      ? undefined
+      : wordlessChat(threadId, environmentId, restartQuestion.interruption.restart.at));
   const limit = input.limits?.get(scopedThreadKey(scopeThreadRef(environmentId, threadId)));
   const read =
     row !== undefined
@@ -201,7 +205,14 @@ export function attentionActivity(input: {
           : unread
             ? "done"
             : "idle";
-  const { liveStep, waitsOnHelpers, question: asked, errorLine, interruption: _interruption, ...rest } = read;
+  const {
+    liveStep,
+    waitsOnHelpers,
+    question: asked,
+    errorLine,
+    interruption: _interruption,
+    ...rest
+  } = read;
   const activity: ZeropsAgentActivity = {
     ...rest,
     interruption: question?.interruption,

@@ -5160,6 +5160,58 @@ it.layer(
           (value) => value.id === threadId,
         );
         assert.deepStrictEqual(rebound?.session?.interruption, interruption);
+
+        const compactId = MessageId.make("compact-maintenance");
+        yield* append({
+          ...fields,
+          eventId: EventId.make("compact-message"),
+          type: "thread.message-sent",
+          payload: {
+            threadId,
+            messageId: compactId,
+            role: "user",
+            text: "/compact",
+            turnId: null,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
+        });
+        yield* append({
+          ...fields,
+          eventId: EventId.make("compact-request"),
+          type: "thread.turn-start-requested",
+          payload: {
+            threadId,
+            messageId: compactId,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: at,
+          },
+        });
+        const compacted = (yield* query.getCommandReadModel()).threads.find(
+          (value) => value.id === threadId,
+        );
+        assert.deepStrictEqual(compacted?.session?.interruption, interruption);
+        const [compactHistory] = yield* sql<{
+          readonly continuation: string;
+        }>`SELECT json_extract(payload_json, '$.interruption.continuation') AS continuation FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        assert.strictEqual(compactHistory?.continuation, "manual");
+        yield* append({
+          ...fields,
+          eventId: EventId.make("continue-message"),
+          type: "thread.message-sent",
+          payload: {
+            threadId,
+            messageId: MessageId.make("continue"),
+            role: "user",
+            text: "Continue",
+            turnId: null,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
+        });
         yield* append({
           ...fields,
           eventId: EventId.make("accepted"),
@@ -5227,6 +5279,23 @@ it.layer(
         );
 
         // The accepted first message can be cut off before a provider assigns any turn id.
+
+        const backgroundTurn = TurnId.make("background-without-opener");
+        yield* append({
+          ...fields,
+          eventId: EventId.make("background-checkpoint"),
+          type: "thread.turn-diff-completed",
+          payload: {
+            threadId,
+            turnId: backgroundTurn,
+            checkpointTurnCount: 1,
+            checkpointRef: CheckpointRef.make("refs/checkpoints/background"),
+            status: "ready",
+            files: [],
+            assistantMessageId: null,
+            completedAt: at,
+          },
+        });
         const messageId = MessageId.make("handshake-message");
         yield* append({
           ...fields,
@@ -5261,7 +5330,7 @@ it.layer(
           ...fields,
           eventId: EventId.make("handshake-rewind"),
           type: "thread.reverted",
-          payload: { threadId, turnCount: 0 },
+          payload: { threadId, turnCount: 1 },
         });
         const removedHandshake = (yield* query.getCommandReadModel()).threads.find(
           (value) => value.id === threadId,
@@ -5271,6 +5340,14 @@ it.layer(
           yield* sql`SELECT * FROM projection_thread_activities WHERE thread_id = ${threadId}`,
           [],
         );
+        assert.deepStrictEqual(
+          yield* sql`SELECT * FROM projection_thread_messages WHERE thread_id = ${threadId} AND message_id = ${messageId}`,
+          [],
+        );
+        // The background checkpoint has no opener; another projector has already pruned the anchor.
+        yield* sql`DELETE FROM projection_thread_messages WHERE thread_id = ${threadId}`;
+        yield* sql`UPDATE projection_state SET last_applied_sequence = 0 WHERE projector = 'projection.thread-messages'`;
+        yield* pipeline.bootstrap;
         assert.deepStrictEqual(
           yield* sql`SELECT * FROM projection_thread_messages WHERE thread_id = ${threadId} AND message_id = ${messageId}`,
           [],

@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   type OrchestrationCommand,
+  type OrchestrationLatestTurn,
   ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
@@ -47,6 +48,17 @@ const makeThread = (
   archivedAt,
   updatedAt,
   deletedAt: null,
+  latestTurn:
+    activeTurnId === null
+      ? null
+      : {
+          turnId: activeTurnId,
+          state: "running" as OrchestrationLatestTurn["state"],
+          requestedAt: updatedAt,
+          startedAt: updatedAt,
+          completedAt: null,
+          assistantMessageId: null,
+        },
   session: {
     threadId: ThreadId.make(id),
     status,
@@ -54,7 +66,7 @@ const makeThread = (
     providerInstanceId,
     runtimeMode: "full-access" as const,
     activeTurnId,
-    lastError: null,
+    lastError: null as string | null,
     updatedAt,
   },
 });
@@ -435,3 +447,26 @@ for (const row of [
     }),
   );
 }
+
+it.effect(
+  "an idle restart preserves a provider failure despite its retained active turn id",
+  () => {
+    const failed = makeThread("idle-failed", "error", TurnId.make("failed"));
+    failed.session.lastError = "Provider request failed.";
+    if (failed.latestTurn === null) throw new Error("Missing failed turn fixture");
+    failed.latestTurn.state = "error";
+    const commands: OrchestrationCommand[] = [];
+    return runReconciliation({
+      threads: [failed],
+      directory: {
+        getBinding: () => Effect.succeedNone,
+        upsert: () => Effect.void,
+        getProvider: () => Effect.die("unused"),
+        listThreadIds: () => Effect.die("unused"),
+        listBindings: () => Effect.die("unused"),
+      },
+      dispatch: (command) =>
+        Effect.sync(() => commands.push(command)).pipe(Effect.as({ sequence: 1 })),
+    }).pipe(Effect.tap(() => Effect.sync(() => assert.deepStrictEqual(commands, []))));
+  },
+);

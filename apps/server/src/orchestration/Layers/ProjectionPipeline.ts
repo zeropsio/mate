@@ -10,7 +10,7 @@ import {
   type ThreadMessagePreview,
 } from "@t3tools/contracts";
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
-import { userAskPreviewText } from "@t3tools/shared/userAsk";
+import { userAskPreviewText, isCompactCommandMessage } from "@t3tools/shared/userAsk";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -154,16 +154,6 @@ function threadMessagePreviewFromSource(
 // How many of the newest messages a preview looks through for one that
 // previews: past this many slash commands in a row, it says nothing.
 const PREVIEW_SOURCE_WINDOW = 20;
-
-// A request to compact the conversation — `/compact` alone, as the command
-// reactor reads it.
-function isCompactRequest(message: ProjectionThreadMessage): boolean {
-  return (
-    message.role === "user" &&
-    (message.attachments?.length ?? 0) === 0 &&
-    message.text.trim().toLowerCase() === "/compact"
-  );
-}
 
 function firstThreadMessagePreview(
   sources: ReadonlyArray<ProjectionThreadMessagePreviewSource>,
@@ -581,9 +571,36 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       return next;
     });
 
+    // Older events lack the verdict: read their immutable accepted message, never another projector's head.
+    const continuesWork = Effect.fn("continuesWork")(function* (
+      event: Extract<OrchestrationEvent, { type: "thread.turn-start-requested" }>,
+    ) {
+      if (event.payload.purpose !== undefined) return event.payload.purpose === "work";
+      const source = yield* eventStore
+        .readAggregateRange({
+          aggregateKind: "thread",
+          aggregateId: event.payload.threadId,
+          fromSequenceExclusive: 0,
+          toSequenceInclusive: event.sequence,
+        })
+        .pipe(
+          Stream.filter(
+            (each) =>
+              each.type === "thread.message-sent" &&
+              each.payload.messageId === event.payload.messageId,
+          ),
+          Stream.runHead,
+        );
+      return (
+        Option.isSome(source) &&
+        source.value.type === "thread.message-sent" &&
+        !isCompactCommandMessage(source.value.payload)
+      );
+    });
+
     const isCompactRequestId = Effect.fn("isCompactRequestId")(function* (messageId: MessageId) {
       const message = yield* projectionThreadMessageRepository.getByMessageId({ messageId });
-      return Option.isSome(message) && isCompactRequest(message.value);
+      return Option.isSome(message) && isCompactCommandMessage(message.value);
     });
 
     // Whether the person's message lands in a run already on — a turn the
@@ -1225,16 +1242,28 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           const existingTurns = yield* projectionTurnRepository.listByThreadId({
             threadId: event.payload.threadId,
           });
-          const interruptedStarts = new Set(
-            (yield* projectionThreadActivityRepository.listByThreadId(event.payload)).flatMap(
-              (row) => {
-                const item = mateInterruptionOf(row);
-                return item?.turnId === null && item.messageId !== undefined
-                  ? [item.messageId]
-                  : [];
-              },
-            ),
-          );
+          const interruptedStarts = yield* eventStore
+            .readAggregateRange({
+              aggregateKind: "thread",
+              aggregateId: event.payload.threadId,
+              fromSequenceExclusive: 0,
+              toSequenceInclusive: event.sequence,
+            })
+            .pipe(
+              Stream.runFold(
+                () => new Set<MessageId>(),
+                (anchors, source) => {
+                  if (source.type === "thread.created") anchors.clear();
+                  const item =
+                    source.type === "thread.session-set"
+                      ? source.payload.session.interruption
+                      : null;
+                  if (item?.turnId === null && item.messageId !== undefined)
+                    anchors.add(item.messageId);
+                  return anchors;
+                },
+              ),
+            );
           const keptRows = retainProjectionMessagesAfterRevert(
             existingRows.filter((row) => !interruptedStarts.has(row.messageId)),
             existingTurns,
@@ -1331,7 +1360,15 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
 
         case "thread.turn-start-requested": {
           // Fold this projector's event-ordered history, not another projector's current head.
-          const rows = yield* projectionThreadActivityRepository.listByThreadId(event.payload);
+          const rows = yield* projectionThreadActivityRepository.listByThreadId({
+            threadId: event.payload.threadId,
+            activityKinds: ["runtime.interrupted"],
+          });
+          if (
+            !rows.some((row) => mateInterruptionOf(row)?.continuation === "manual") ||
+            !(yield* continuesWork(event))
+          )
+            return;
           for (const row of rows) {
             const item = mateInterruptionOf(row);
             if (item?.continuation !== "manual") continue;
@@ -1418,7 +1455,11 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
       }
       if (event.type === "thread.turn-start-requested") {
         const session = yield* projectionThreadSessionRepository.getByThreadId(event.payload);
-        if (Option.isSome(session) && session.value.interruption != null) {
+        if (
+          Option.isSome(session) &&
+          session.value.interruption != null &&
+          (yield* continuesWork(event))
+        ) {
           yield* projectionThreadSessionRepository.upsert({
             ...session.value,
             interruption: null,
@@ -1490,7 +1531,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             const pendingMessage = yield* projectionThreadMessageRepository.getByMessageId({
               messageId: pendingTurnStart.value.messageId,
             });
-            if (Option.isSome(pendingMessage) && isCompactRequest(pendingMessage.value)) {
+            if (Option.isSome(pendingMessage) && isCompactCommandMessage(pendingMessage.value)) {
               return;
             }
           }

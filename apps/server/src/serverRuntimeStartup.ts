@@ -422,7 +422,7 @@ export const reconcileProviderSessions = Effect.gen(function* () {
       thread.session !== null &&
       (thread.session.status === "starting" ||
         thread.session.status === "running" ||
-        thread.session.activeTurnId !== null ||
+        thread.latestTurn?.state === "running" ||
         (thread.session.status === "error" &&
           thread.session.activeTurnId === null &&
           thread.latestTurn?.state === "error" &&
@@ -519,10 +519,9 @@ export const reconcileProviderSessions = Effect.gen(function* () {
         ? legacyRestartCause(session.lastError)
         : null;
     const interruptedTurnId =
-      session.activeTurnId ??
-      (thread.latestTurn?.state === "running" || legacyRestart !== null
+      thread.latestTurn?.state === "running" || legacyRestart !== null
         ? (thread.latestTurn?.turnId ?? null)
-        : null);
+        : null;
     const pending =
       interruptedTurnId !== null
         ? Option.none()

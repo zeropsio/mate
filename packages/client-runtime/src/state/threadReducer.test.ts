@@ -1815,21 +1815,75 @@ it.each([
     if (rebound.kind !== "updated") return;
     expect(rebound.thread.session?.interruption).toEqual(interruption);
     expect(rebound.thread.activities).toEqual(result.thread.activities);
-    const accepted = applyThreadDetailEvent(rebound.thread, {
-      ...baseEventFields,
-      sequence: 2,
-      aggregateKind: "thread",
-      aggregateId: baseThread.id,
-      occurredAt: at,
-      type: "thread.turn-start-requested",
-      payload: {
-        threadId: baseThread.id,
-        messageId: MessageId.make("continue"),
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        createdAt: at,
+    const compactMessageId = MessageId.make("compact");
+    const compact = applyThreadDetailEvent(
+      {
+        ...rebound.thread,
+        messages: [
+          ...rebound.thread.messages,
+          {
+            id: compactMessageId,
+            role: "user",
+            text: "/compact",
+            turnId: null,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
+        ],
       },
-    });
+      {
+        ...baseEventFields,
+        sequence: 3,
+        aggregateKind: "thread",
+        aggregateId: baseThread.id,
+        occurredAt: at,
+        type: "thread.turn-start-requested",
+        payload: {
+          threadId: baseThread.id,
+          messageId: compactMessageId,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: at,
+        },
+      },
+    );
+    expect(compact.kind).toBe("updated");
+    if (compact.kind !== "updated") return;
+    expect(compact.thread.session?.interruption).toEqual(interruption);
+    expect(compact.thread.activities).toEqual(rebound.thread.activities);
+    const accepted = applyThreadDetailEvent(
+      {
+        ...compact.thread,
+        messages: [
+          ...compact.thread.messages,
+          {
+            id: MessageId.make("continue"),
+            role: "user",
+            text: "Continue",
+            turnId: null,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
+        ],
+      },
+      {
+        ...baseEventFields,
+        sequence: 2,
+        aggregateKind: "thread",
+        aggregateId: baseThread.id,
+        occurredAt: at,
+        type: "thread.turn-start-requested",
+        payload: {
+          threadId: baseThread.id,
+          messageId: MessageId.make("continue"),
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: at,
+        },
+      },
+    );
     expect(accepted.kind).toBe("updated");
     if (accepted.kind !== "updated") return;
     expect(accepted.thread.session?.interruption).toBeNull();
