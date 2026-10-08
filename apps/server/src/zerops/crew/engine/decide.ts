@@ -158,7 +158,12 @@ export const STOPPED_MIDWAY =
 /** A died turn's carry-on, in V1's words: its agent continues in the copy it left. */
 export const RESTART_CUT = "Continue where you stopped. Your edits remain in your copy.";
 /** Why a task goes on in a new session after its context overflowed. */
-export const NEW_SESSION = "Your conversation outgrew its context, so a new session goes on now.";
+/** Why an overflow's new session carries its task on, as its card says (V1's stint words). */
+export const NEW_SESSION = stintReasonWords(
+  "context-overflow",
+  { brief: 1, job: 1 },
+  { brief: 1, job: 1 },
+);
 /** What a press is told about a landing while the copy shows on dev. */
 export const ON_DEV = "its copy shows on dev; take it back to your tree first";
 
