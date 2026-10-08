@@ -1,3 +1,5 @@
+import type { FilesystemBrowseResult } from "@t3tools/contracts";
+import { collectionPresentation, type EnvironmentQueryView } from "../state/query";
 import {
   type EnvironmentId,
   type FilesystemBrowseEntry,
@@ -740,5 +742,18 @@ export function restartCodingAgentPlan(
             cwd,
             fresh: true,
           },
+  };
+}
+
+export function folderListingPresentation(query: EnvironmentQueryView<FilesystemBrowseResult>) {
+  const view = collectionPresentation(query, (data) => data.entries, {
+    loading: "Loading folders...",
+    unavailable: "Folder listing unavailable.",
+  });
+  return {
+    entries: view.items,
+    message: view.message,
+    canInferCreation: view.state === "ready",
+    retained: view.retained,
   };
 }

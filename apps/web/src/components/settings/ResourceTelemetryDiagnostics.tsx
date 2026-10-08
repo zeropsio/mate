@@ -1,3 +1,5 @@
+import { CollectionRead } from "../CollectionRead";
+import { collectionPresentation } from "../../state/query";
 import { ProcessSignalActions } from "./ProcessSignalActions";
 import {
   ActivityIcon,
@@ -53,6 +55,7 @@ import {
   resourceHistoryBarHeight,
   resourceHistoryCpuScaleMax,
   shouldShowResourceMonitorRetry,
+  resourceTelemetryProcessPresentation,
   visibleResourceTelemetryProcesses,
 } from "./ResourceTelemetryDiagnostics.logic";
 import { SettingsSection, useRelativeTimeTick } from "./settingsLayout";
@@ -603,13 +606,6 @@ function ProcessTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
-            {visible.length === 0 ? (
-              <tr>
-                <td colSpan={11} className="px-4 py-5 text-xs text-muted-foreground sm:px-5">
-                  Waiting for the native process monitor.
-                </td>
-              </tr>
-            ) : null}
             {visible.map((process) => (
               <tr key={processIdentityKey(process)} className="hover:bg-muted/20">
                 <td className="px-4 py-2 sm:pl-5">
@@ -1221,14 +1217,23 @@ export function ResourceTelemetryDiagnostics() {
         }
       >
         <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5">
-          {history.error ? (
-            <div className="flex items-start gap-2 border-b border-destructive/20 bg-destructive/5 px-4 py-3 text-xs text-destructive sm:px-5">
-              <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
-              <span>{history.error}</span>
-            </div>
-          ) : null}
-          <ResourceHistoryChart buckets={history.data?.buckets ?? []} />
-          <HistoryProcessTable processes={history.data?.topProcesses ?? []} />
+          <CollectionRead
+            presentation={collectionPresentation(history, (data) => data.buckets, {
+              loading: "Loading resource history...",
+              unavailable: "Resource history unavailable.",
+            })}
+            emptyLabel="No resource samples in this window."
+          >
+            {(buckets) => <ResourceHistoryChart buckets={buckets} />}
+          </CollectionRead>
+          <CollectionRead
+            presentation={collectionPresentation(history, (data) => data.topProcesses, {
+              loading: "Loading resource history...",
+              unavailable: "Resource history unavailable.",
+            })}
+          >
+            {(processes) => <HistoryProcessTable processes={processes} />}
+          </CollectionRead>
         </div>
       </SettingsSection>
 
@@ -1244,11 +1249,18 @@ export function ResourceTelemetryDiagnostics() {
         }
       >
         <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs/5">
-          <ProcessTable
-            processes={snapshot?.processes ?? []}
-            signalingKeys={signalingKeys}
-            onSignal={signalProcess}
-          />
+          <CollectionRead
+            presentation={resourceTelemetryProcessPresentation(telemetry)}
+            emptyLabel="No processes"
+          >
+            {(processes) => (
+              <ProcessTable
+                processes={processes}
+                signalingKeys={signalingKeys}
+                onSignal={signalProcess}
+              />
+            )}
+          </CollectionRead>
         </div>
       </SettingsSection>
 
@@ -1265,7 +1277,14 @@ export function ResourceTelemetryDiagnostics() {
             counters identify known Zerops Mate operations so process spikes can be correlated with
             specific persistence and logging paths.
           </div>
-          <AttributionTable entries={snapshot?.attribution.entries ?? []} />
+          <CollectionRead
+            presentation={collectionPresentation(telemetry, (data) => data.attribution.entries, {
+              loading: "Loading application I/O...",
+              unavailable: "Application I/O unavailable.",
+            })}
+          >
+            {(entries) => <AttributionTable entries={entries} />}
+          </CollectionRead>
         </div>
       </SettingsSection>
     </>

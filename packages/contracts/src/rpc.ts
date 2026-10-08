@@ -179,6 +179,7 @@ import {
 import {
   ResourceTelemetryHistory,
   ResourceTelemetryHistoryInput,
+  ResourceTelemetryHistoryReadFailed,
   ResourceTelemetryRetryResult,
   ResourceTelemetrySnapshot,
 } from "./resourceTelemetry.ts";
@@ -593,7 +594,7 @@ const WsServerGetProcessDiagnosticsRpc = Rpc.make(WS_METHODS.serverGetProcessDia
 const WsServerGetProcessResourceHistoryRpc = Rpc.make(WS_METHODS.serverGetProcessResourceHistory, {
   payload: ServerProcessResourceHistoryInput,
   success: ServerProcessResourceHistoryResult,
-  error: EnvironmentAuthorizationError,
+  error: Schema.Union([EnvironmentAuthorizationError, ResourceTelemetryHistoryReadFailed]),
 });
 
 const WsServerGetResourceTelemetryHistoryRpc = Rpc.make(
@@ -601,7 +602,7 @@ const WsServerGetResourceTelemetryHistoryRpc = Rpc.make(
   {
     payload: ResourceTelemetryHistoryInput,
     success: ResourceTelemetryHistory,
-    error: EnvironmentAuthorizationError,
+    error: Schema.Union([EnvironmentAuthorizationError, ResourceTelemetryHistoryReadFailed]),
   },
 );
 

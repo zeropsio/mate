@@ -1,3 +1,4 @@
+import { CollectionRead } from "../CollectionRead";
 import { ProcessSignalActions } from "./ProcessSignalActions";
 import {
   AlertTriangleIcon,
@@ -26,7 +27,7 @@ import { cn } from "../../lib/utils";
 import { ensureLocalApi } from "../../localApi";
 import { resolveAndPersistPreferredEditor } from "../../editorPreferences";
 import { formatRelativeTimeLabel, getRelativeTimeState } from "../../timestampFormat";
-import { useEnvironmentQuery } from "../../state/query";
+import { collectionPresentation, useEnvironmentQuery } from "../../state/query";
 import {
   primaryServerAvailableEditorsAtom,
   primaryServerObservabilityAtom,
@@ -845,7 +846,6 @@ export function DiagnosticsSettingsPanel() {
   }, [availableEditors, environmentId, observability?.logsDirectoryPath, openInEditor]);
 
   const isInitialLoading = isPending && data === null;
-  const isProcessInitialLoading = isProcessPending && processData === null;
   const signalProcess = useCallback(
     async (pid: number, signal: ServerProcessSignal) => {
       if (signalingPidRef.current !== null) return;
@@ -933,6 +933,29 @@ export function DiagnosticsSettingsPanel() {
 
   const processDiagnosticsError = processData ? Option.getOrNull(processData.error) : null;
   const processResourceError = resourceData ? Option.getOrNull(resourceData.error) : null;
+  const processPresentation = collectionPresentation(
+    { data: processData, error: processError, isPending: isProcessPending },
+    (data) => data.processes,
+    { loading: "Loading live processes...", unavailable: "Live processes unavailable." },
+    processDiagnosticsError?.message,
+  );
+  const resourceQuery = { data: resourceData, error: resourceError, isPending: isResourcePending };
+  const resourceLabels = {
+    loading: "Loading process resource samples...",
+    unavailable: "Process resource history unavailable.",
+  };
+  const bucketPresentation = collectionPresentation(
+    resourceQuery,
+    (data) => data.buckets,
+    resourceLabels,
+    processResourceError?.message,
+  );
+  const topProcessPresentation = collectionPresentation(
+    resourceQuery,
+    (data) => data.topProcesses,
+    resourceLabels,
+    processResourceError?.message,
+  );
   const traceDiagnosticsError = data ? Option.getOrNull(data.error) : null;
   const traceDiagnosticsPartialFailure = data
     ? Option.getOrElse(data.partialFailure, () => false)
@@ -975,32 +998,16 @@ export function DiagnosticsSettingsPanel() {
             value={processData ? String(processData.serverPid) : "..."}
           />
         </StatsGrid>
-        {processDiagnosticsError || processError ? (
-          <div className="space-y-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground sm:px-5">
-            {processDiagnosticsError ? (
-              <div className="flex items-start gap-2 text-destructive">
-                <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
-                <span>{processDiagnosticsError.message}</span>
-              </div>
-            ) : null}
-            {processError ? (
-              <div className="flex items-start gap-2 text-destructive">
-                <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
-                <span>{processError}</span>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <ProcessDiagnosticsTable
-          processes={processData?.processes ?? []}
-          signalingPid={signalingPid}
-          onSignal={signalProcess}
-          emptyLabel={
-            isProcessInitialLoading
-              ? "Loading live processes..."
-              : "No live descendant processes found."
-          }
-        />
+        <CollectionRead presentation={processPresentation}>
+          {(processes) => (
+            <ProcessDiagnosticsTable
+              processes={processes}
+              signalingPid={signalingPid}
+              onSignal={signalProcess}
+              emptyLabel="No live descendant processes found."
+            />
+          )}
+        </CollectionRead>
       </SettingsSection>
 
       <SettingsSection
@@ -1040,31 +1047,20 @@ export function DiagnosticsSettingsPanel() {
             value={resourceData ? formatCount(resourceData.topProcesses.length) : "..."}
           />
         </StatsGrid>
-        {processResourceError || resourceError ? (
-          <div className="space-y-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground sm:px-5">
-            {processResourceError ? (
-              <div className="flex items-start gap-2 text-destructive">
-                <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
-                <span>{processResourceError.message}</span>
-              </div>
-            ) : null}
-            {resourceError ? (
-              <div className="flex items-start gap-2 text-destructive">
-                <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
-                <span>{resourceError}</span>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <ProcessResourceHistoryChart buckets={resourceData?.buckets ?? []} />
-        <ProcessResourceHistoryTable
-          processes={resourceData?.topProcesses ?? []}
-          emptyLabel={
-            isResourcePending && resourceData === null
-              ? "Collecting process resource samples..."
-              : "No process resource samples found for this window."
-          }
-        />
+        <CollectionRead
+          presentation={bucketPresentation}
+          emptyLabel="No process resource samples found for this window."
+        >
+          {(buckets) => <ProcessResourceHistoryChart buckets={buckets} />}
+        </CollectionRead>
+        <CollectionRead presentation={topProcessPresentation}>
+          {(processes) => (
+            <ProcessResourceHistoryTable
+              processes={processes}
+              emptyLabel="No process resource samples found for this window."
+            />
+          )}
+        </CollectionRead>
       </SettingsSection>
 
       <SettingsSection

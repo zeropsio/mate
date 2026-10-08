@@ -357,7 +357,10 @@ describe("an account's HQ", () => {
       yield* turns;
       yield* deliver(old, "old-core", 8, false);
       yield* turns;
-      expect(current()).toMatchObject({ enabled: false, editable: true });
+      expect(current()).toMatchObject({
+        policy: { kind: "known", enabled: false },
+        editable: true,
+      });
       account.showHq({ orgId: "org-a", ownerId: "new-project", wire: fresh.wire });
       expect(current().editable).toBe(false);
       // A queued answer from the owner just removed must not restore an editable old value.
@@ -366,10 +369,18 @@ describe("an account's HQ", () => {
       expect([old.opens(), fresh.opens()]).toEqual([1, 1]);
       yield* deliver(fresh, "new-core", 0, true);
       yield* turns;
-      expect(current()).toMatchObject({ enabled: true, editable: true, words: "On" });
+      expect(current()).toMatchObject({
+        policy: { kind: "known", enabled: true },
+        editable: true,
+        words: "On",
+      });
       yield* deliver(old, "old-core", 10, false);
       yield* turns;
-      expect(current()).toMatchObject({ enabled: true, editable: true, words: "On" });
+      expect(current()).toMatchObject({
+        policy: { kind: "known", enabled: true },
+        editable: true,
+        words: "On",
+      });
       account.stop();
     }),
   );

@@ -29,6 +29,7 @@ against the obvious) or the code itself (look). Reasons and reversals go in the 
 
 A rewrite keeps every test sentence: it changes how a test arranges its input, never what its title
 says. Deleting a sentence removes the behaviour and needs the owner's word in the commit.
+`scripts/check-test-sentences.ts` enforces retention; approve a removal with `Drops-test: <exact title>` in the commit trailers.
 A behaviour a person sees is tested against the surface's input (the record it reads → what it
 shows), so swapping the data source turns it red.
 

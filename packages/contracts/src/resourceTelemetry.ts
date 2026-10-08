@@ -371,6 +371,11 @@ export const ResourceTelemetrySnapshot = Schema.Struct({
 });
 export type ResourceTelemetrySnapshot = typeof ResourceTelemetrySnapshot.Type;
 
+export class ResourceTelemetryHistoryReadFailed extends Schema.TaggedError<ResourceTelemetryHistoryReadFailed>()(
+  "ResourceTelemetryHistoryReadFailed",
+  { message: Schema.String },
+) {}
+
 export const ResourceTelemetryHistoryInput = Schema.Struct({
   windowMs: NonNegativeInt,
   bucketMs: NonNegativeInt,
