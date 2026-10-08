@@ -123,7 +123,7 @@ describe("container resource evidence", () => {
         "memory.high": String(1.75 * 1024 ** 3),
         "memory.swap.max": String(512 * 1024 ** 2),
       });
-      const child = await fixture({ "memory.max": String(3 * 1024 ** 3) });
+      const child = await fixture({ "memory.max": String(1024 ** 3) });
       const previous = await readResourceHealth([child, root], root);
       await NodeFSP.writeFile(
         NodePath.join(root, signal === "reclaim" ? "memory.events" : "memory.swap.current"),
@@ -135,11 +135,46 @@ describe("container resource evidence", () => {
         resources: ["memory"],
         memory: {
           scope: root,
-          max: 3 * 1024 ** 3,
+          max: 3.75 * 1024 ** 3,
           high: 1.75 * 1024 ** 3,
           ...(signal === "reclaim" ? { growth: { high: 1 } } : { swapGrowth: 200 * 1024 ** 2 }),
         },
       });
+    },
+  );
+  it.each(["disabled", "unreadable"])(
+    "preserves descendant PSI when container accounting is %s",
+    async (accounting) => {
+      const root = await fixture({
+        "memory.max": String(3.75 * 1024 ** 3),
+        "memory.high": String(1.75 * 1024 ** 3),
+        "cgroup.pressure": "0",
+      });
+      const child = await fixture({
+        "memory.max": String(1024 ** 3),
+        "memory.pressure": "some avg10=30.00 total=300\nfull avg10=24.00 total=240\n",
+      });
+      if (accounting === "unreadable") await NodeFSP.unlink(NodePath.join(root, "memory.pressure"));
+      const health = await readResourceHealth([child, root], root);
+      expect(health).toMatchObject({
+        status: "strained",
+        resources: ["memory"],
+        severity: "warning",
+        memory: {
+          scope: root,
+          max: 3.75 * 1024 ** 3,
+          high: 1.75 * 1024 ** 3,
+          pressure: { some: { avg10: 30, total: 300 }, full: { avg10: 24, total: 240 } },
+        },
+      });
+      expect(health.unavailable.includes("memory.pressure")).toBe(accounting === "unreadable");
+      await NodeFSP.writeFile(
+        NodePath.join(child, "memory.pressure"),
+        "some avg10=0.00 total=300\nfull avg10=0.00 total=240\n",
+      );
+      expect((await readResourceHealth([child, root], root, health)).status).toBe(
+        accounting === "unreadable" ? "unknown" : "ok",
+      );
     },
   );
   it.each([

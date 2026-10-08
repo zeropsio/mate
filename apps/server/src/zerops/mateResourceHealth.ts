@@ -79,17 +79,25 @@ export async function readResourceHealth(
   // The root of a cgroup namespace can omit the memory controller. A readable descendant still
   // supplies evidence; unreadable ancestors stay explicitly unavailable.
   const known = memories.filter((memory) => memory !== null);
-  const tightest = known.toSorted((a, b) => (a.max ?? Infinity) - (b.max ?? Infinity))[0];
-  // Hierarchical events, PSI and swap belong to the outermost readable scope,
-  // which includes descendant pressure. Events cannot identify which threshold
-  // was crossed (memory.events is hierarchical). The effective hard cap is independent.
+  // Usage, limits, hierarchical events and swap stay at the outermost readable
+  // scope. A child's limit cannot describe the container's allocation. Events
+  // cannot identify which threshold was crossed (memory.events is hierarchical).
   const container = known.at(-1);
+  // cgroup.pressure is independently configurable at each level. A quiet or
+  // unreadable ancestor cannot erase measured descendant stalls. Keep the
+  // strongest actual PSI reading, rather than summing overlapping accounting.
+  // https://docs.kernel.org/admin-guide/cgroup-v2.html#core-interface-files
+  const pressure =
+    known
+      .map((memory) => memory.pressure)
+      .filter((value) => value !== null)
+      .toSorted((a, b) => b.some.avg10 - a.some.avg10)[0] ?? null;
   const memory =
     container === undefined
       ? null
       : {
           ...container,
-          max: tightest?.max ?? null,
+          pressure,
           swapGrowth: growing(
             container.swapCurrent ?? 0,
             previous?.memory?.scope === container.scope
