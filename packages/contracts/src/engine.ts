@@ -55,6 +55,8 @@ export const runId = (conversation: ConversationId, ordinal: number): RunId =>
   RunId.make(`${conversation}/r/${ordinal}`);
 /** `${run}/i/${ordinal}`: the run's n-th item. */
 export const itemId = (run: RunId, ordinal: number): ItemId => ItemId.make(`${run}/i/${ordinal}`);
+/** Whether an id is an engine item's (`${run}/i/${ordinal}`), never a V1 message's. */
+export const isEngineItemId = (id: string): boolean => /\/r\/\d+\/i\/\d+$/.test(id);
 /** `${run}/q/${ordinal}`: the run's n-th request. */
 export const requestId = (run: RunId, ordinal: number): RequestId =>
   RequestId.make(`${run}/q/${ordinal}`);

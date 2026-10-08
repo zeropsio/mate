@@ -545,8 +545,16 @@ describe("deriveConversationStructure", () => {
     // holds (`useEngineLiveMessage`): it is words on their way all the same.
     {
       name: "a line whose first words have not reached its record",
-      tail: [assistant("a1", "t1", 1, "", { streaming: true })],
-      writing: "a1",
+      tail: [assistant("thread-ada/r/1/i/2", "t1", 1, "", { streaming: true })],
+      writing: "thread-ada/r/1/i/2",
+      answer: null,
+    },
+    // V1 streams token by token: a first delta of only whitespace is no words yet, as it was
+    // before the engine's rule (which holds for an engine Mate's item alone).
+    {
+      name: "a V1 line whose first delta is only whitespace",
+      tail: [assistant("a1", "t1", 1, " ", { streaming: true })],
+      writing: null,
       answer: null,
     },
     // Done streaming, a line is a note: Codex says nothing of a command until
