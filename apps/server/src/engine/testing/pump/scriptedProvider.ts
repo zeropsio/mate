@@ -380,6 +380,28 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
           });
           return itemId;
         }),
+      /** The agent changes files in one patch (Codex's shape of an edit): each by its path. */
+      change: (thread: string, paths: ReadonlyArray<string>) =>
+        Effect.gen(function* () {
+          const session = live(thread);
+          const itemId = `c${++items}`;
+          const payload = { itemType: "file_change", title: "Edit files" };
+          yield* emit("item.started", thread, {
+            turnId: session.open,
+            itemId,
+            payload: { ...payload, status: "inProgress" },
+          });
+          yield* emit("item.completed", thread, {
+            turnId: session.open,
+            itemId,
+            payload: {
+              ...payload,
+              status: "completed",
+              data: { item: { changes: paths.map((path) => ({ path, kind: "update" })) } },
+            },
+          });
+          return itemId;
+        }),
       /**
        * The agent calls a Zerops tool, which returns `text` (Claude's shape of the call); `line`
        * is the input line Claude's adapter gives it.
