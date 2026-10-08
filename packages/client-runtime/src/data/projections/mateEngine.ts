@@ -184,12 +184,15 @@ const WORK_TASK_TYPES: Readonly<Record<string, string>> = {
   monitor: "monitor",
 };
 
-/** Background work's end as V1's task lifecycle says it; `lost` never reports, so it stopped. */
+/**
+ * Background work's end as V1's task lifecycle says it. `lost` is the engine's own word that its
+ * session went before it reported — what V1 judges from the live set (`jobLost`), said outright.
+ */
 const WORK_END_STATUS: Readonly<Record<string, string>> = {
   completed: "completed",
   failed: "failed",
   stopped: "stopped",
-  lost: "stopped",
+  lost: "lost",
 };
 
 function activity(

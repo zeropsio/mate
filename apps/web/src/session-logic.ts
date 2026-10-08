@@ -269,6 +269,8 @@ export interface WorkLogEntry {
   spilledTo?: string;
   /** A task's kind, as the runtime names it ("local_bash", "local_agent", …). */
   taskType?: string;
+  /** A task's: it ended unreported, its session gone (an engine Mate says so: `status: "lost"`). */
+  taskLost?: boolean;
   itemType?: ToolLifecycleItemType;
   requestKind?: PendingApproval["requestKind"];
   /** From runtime item / task payload `status` when present (e.g. tool.updated). */
@@ -1359,6 +1361,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (isTaskActivity && typeof payload?.taskId === "string" && payload.taskId.length > 0) {
     entry.taskId = payload.taskId;
   }
+  if (activity.kind === "task.completed" && payload?.status === "lost") entry.taskLost = true;
   if (isTaskActivity && typeof payload?.role === "string" && payload.role.length > 0) {
     entry.agentRole = payload.role;
   }

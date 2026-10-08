@@ -11,4 +11,4 @@ export {
   engineThreadOfRecords,
   type EngineRecords,
 } from "./engineThread.ts";
-export { callItem, engineRun, personItem, noteItem } from "./mateEngine.ts";
+export { callItem, engineRun, personItem, noteItem, workItem } from "./mateEngine.ts";

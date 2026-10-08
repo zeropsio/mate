@@ -726,10 +726,10 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
       payload: { taskType: "monitor" },
     },
     {
-      name: "work its session lost ended stopped",
+      name: "work its session lost ended unreported, never as stopped or done",
       item: { workKind: "shell", status: "lost" },
       kinds: ["task.started", "task.completed"],
-      payload: { status: "stopped" },
+      payload: { status: "lost" },
     },
     {
       name: "work that failed ended failed",
