@@ -21,6 +21,7 @@
     "@types/pngjs": "6.0.5",
     "lightningcss": "1.33.0",
     "oxc-parser": "0.148.0",
+    "parse5": "7.3.0",
     "vite-plus": "catalog:"
   }
 }

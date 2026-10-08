@@ -7,6 +7,7 @@ import { chatGateStages, chatGateTestFiles, selectLaneChatStages } from "./chat-
 import { failureSummary, gateLogDirectory, runLogged } from "./gate-log.ts";
 import { parseSync } from "oxc-parser";
 import { transform as parseCss } from "lightningcss";
+import { parse as parseHtml, type DefaultTreeAdapterMap } from "parse5";
 
 export const scenarioAreas = [
   "a-signin",
@@ -26,6 +27,46 @@ const sourceFile = /\.[cm]?[jt]sx?$/u;
 const documentation = (path: string) => /^(?:docs|\.plans)\//u.test(path) || /\.md$/iu.test(path);
 
 function sourceShape(path: string, text: string): string | undefined {
+  if (path === "apps/web/index.html") {
+    let invalid = false;
+    const document = parseHtml(text, {
+      sourceCodeLocationInfo: true,
+      onParseError: () => {
+        invalid = true;
+      },
+    });
+    if (invalid) return undefined;
+    const edits: { startOffset: number; endOffset: number; replacement: string }[] = [];
+    const visit = (node: DefaultTreeAdapterMap["node"]): void => {
+      if (node.nodeName === "#comment" && node.sourceCodeLocation)
+        edits.push({ ...node.sourceCodeLocation, replacement: "" });
+      if ("tagName" in node) {
+        const type = node.attrs.find((attribute) => attribute.name === "type")?.value;
+        const inline =
+          node.tagName === "style" && !type
+            ? "inline.css"
+            : node.tagName === "script" && (!type || type === "module")
+              ? "inline.js"
+              : undefined;
+        if (inline)
+          for (const child of node.childNodes) {
+            if (!("value" in child) || !child.sourceCodeLocation) continue;
+            const shape = sourceShape(inline, child.value);
+            if (shape === undefined) invalid = true;
+            else edits.push({ ...child.sourceCodeLocation, replacement: shape });
+          }
+      }
+      if ("childNodes" in node) node.childNodes.forEach(visit);
+      if ("content" in node) visit(node.content);
+    };
+    visit(document);
+    if (invalid) return undefined;
+    for (const { startOffset, endOffset, replacement } of edits.sort(
+      (left, right) => right.startOffset - left.startOffset,
+    ))
+      text = text.slice(0, startOffset) + replacement + text.slice(endOffset);
+    return text.trim();
+  }
   if (path.endsWith(".css")) {
     let shape: string | undefined;
     try {
@@ -76,7 +117,7 @@ export function meaningfulChanges(root: string, base: string, paths: ReadonlyArr
       previous.set(path, old.stdout);
     }
     if (
-      (!sourceFile.test(path) && !path.endsWith(".css")) ||
+      (!sourceFile.test(path) && !path.endsWith(".css") && path !== "apps/web/index.html") ||
       !NodeFS.existsSync(NodePath.join(root, path))
     )
       return true;

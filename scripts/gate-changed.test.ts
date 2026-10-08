@@ -633,6 +633,67 @@ it("a comments-only stylesheet edit schedules no browser scenarios or chat stage
   }
 });
 
+it("a comments-only HTML edit schedules no browser scenarios or chat stages", () => {
+  const file = NodePath.join(repositoryFixture, "apps/web/index.html");
+  const original = NodeFS.readFileSync(file, "utf8");
+  try {
+    NodeFS.writeFileSync(file, original + "\n<!-- Updated browser entry explanation. -->\n");
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("Scenario files: 0; reason: documentation/comments only");
+    expect(result.stdout).not.toContain("scripts/chat-gate.ts --stages");
+    expect(result.stdout).not.toContain(".scenario.ts");
+  } finally {
+    NodeFS.writeFileSync(file, original);
+  }
+});
+
+it("HTML comments preserve markup, inline code, literal content and visible whitespace", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-html-"));
+  const path = "apps/web/index.html";
+  const file = NodePath.join(root, path);
+  const original = `<!doctype html><html><head>
+<script>const message = "<!-- script literal -->"; // script explanation
+</script><style>a::after { content: "<!-- style literal -->"; /* style explanation */ }</style>
+</head><body><span title="<!-- attribute literal -->">one</span> <span>two</span>
+<template><!-- template explanation --></template></body></html>`;
+  const git = (...args: string[]) => {
+    const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr);
+  };
+  try {
+    NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
+    NodeFS.writeFileSync(file, original);
+    git("init", "-q");
+    git("config", "user.name", "Gate fixture");
+    git("config", "user.email", "gate@example.test");
+    git("add", ".");
+    git("commit", "-qm", "HTML fixture");
+    for (const [before, after, meaningful] of [
+      ["template explanation", "updated explanation", false],
+      ["script explanation", "updated explanation", false],
+      ["style explanation", "updated explanation", false],
+      ["script literal", "changed script literal", true],
+      ["style literal", "changed style literal", true],
+      ["attribute literal", "changed attribute literal", true],
+      ["const message", "window.message", true],
+      ["<span>two", "<span hidden>two", true],
+      ["</span> <span>", "</span><span>", true],
+    ] as const) {
+      NodeFS.writeFileSync(file, original.replace(before, after));
+      expect(meaningfulChanges(root, "HEAD", [path]).paths, before).toEqual(
+        meaningful ? [path] : [],
+      );
+    }
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 it("stylesheet strings containing comment delimiters remain meaningful changes", () => {
   const path = "apps/web/src/index.css";
   const file = NodePath.join(repositoryFixture, path);
