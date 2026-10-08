@@ -167,7 +167,7 @@ const enginePort = (input: {
   readonly releases: Array<Effect.Effect<void>>;
   /** The session each conversation's agent last started (its session-start hook), across lives. */
   readonly hooked: Map<string, number>;
-}): CrewWorld => {
+}): CrewWorld & { readonly sendsReached: Effect.Effect<void> } => {
   const { fx, fixture, context, provider } = input;
   const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.provide(effect as Effect.Effect<A, E>, context);
@@ -511,7 +511,21 @@ const enginePort = (input: {
 
   const policy = run(Effect.flatMap(ThreadToolPolicyRegistry, (registry) => registry.current));
 
+  /**
+   * The turns the crew sent this life reached their agents (V1's dispatch returned once its turn
+   * went out): the server goes down after, not between. A held send stays held.
+   */
+  const sendsReached = Effect.gen(function* () {
+    if ((yield* Ref.get(input.sendHold)) !== undefined) return;
+    for (let waited = 0; waited < 3_000; waited += 25) {
+      const state = yield* crewState;
+      if (membersInOrder(state).every((member) => member.active?.reached !== false)) return;
+      yield* Effect.sleep("25 millis");
+    }
+  });
+
   return {
+    sendsReached,
     name: "engine",
     root: fx.root,
     workspace: fx.workspace,
@@ -948,6 +962,7 @@ export const engineWorld: CrewWorldRunner = <E>(
         hooked,
       });
       const exit = yield* Effect.exit(phase(world));
+      if (Exit.isSuccess(exit)) yield* world.sendsReached;
       // Whatever a journey still holds goes on, so the life's own work can wind down.
       yield* Ref.set(fixture.holds, []);
       for (const release of releases.splice(0)) yield* release;
