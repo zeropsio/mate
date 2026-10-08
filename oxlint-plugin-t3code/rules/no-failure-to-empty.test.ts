@@ -853,3 +853,35 @@ it.layer(NodeServices.layer)("final orchestrator regressions", (it) => {
     );
   }
 });
+
+it.layer(NodeServices.layer)("automatic policy carries unknown and failure presentation", (it) => {
+  it.effect(
+    "accepts the real policy view but rejects a version that discards failure evidence",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const source = yield* fs.readFileString(
+          path.resolve(
+            import.meta.dirname,
+            "../../packages/client-runtime/src/data/projections/hqAutoUpdatePolicy.ts",
+          ),
+        );
+        const policy = createOxlintRuleHarness(RULE, {
+          filename: "packages/client-runtime/src/data/projections/hqAutoUpdatePolicy.ts",
+        });
+        yield* expectFindingCount(policy, source, 0);
+        yield* expectFindingCount(
+          policy,
+          source.replace("retryRead: stream.fault !== null", "retryRead: false"),
+          1,
+        );
+        yield* expectFindingCount(
+          policy,
+          source.replace("stream.fault?.message ?? null", "null"),
+          1,
+        );
+        yield* expectFindingCount(policy, source.replaceAll("enabled === null", "false"), 1);
+      }),
+  );
+});

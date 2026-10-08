@@ -36,33 +36,6 @@
     "class": "review"
   },
   {
-    "path": "apps/web/src/components/CommandPalette.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "browseResult?.entries ?? EMPTY_BROWSE_ENTRIES",
-    "owner": "maintainers",
-    "reason": "Failed folder discovery can imply an absent path that needs creation; preserve the discovery state.",
-    "expires": "never",
-    "class": "misleading"
-  },
-  {
-    "path": "apps/web/src/components/DiffPanel.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "localBranchRefs.data?.refs.filter((ref) => ref.name !== selectedGitSource?.headRef) ?? []",
-    "owner": "maintainers",
-    "reason": "Unread ref lists can display no matching refs; distinguish unread or failed discovery from known empty refs.",
-    "expires": "never",
-    "class": "misleading"
-  },
-  {
-    "path": "apps/web/src/components/DiffPanel.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "remoteBranchRefs.data?.refs ?? []",
-    "owner": "maintainers",
-    "reason": "Unread ref lists can display no matching refs; distinguish unread or failed discovery from known empty refs.",
-    "expires": "never",
-    "class": "misleading"
-  },
-  {
     "path": "apps/web/src/components/DiffPanel.tsx",
     "kind": "LogicalExpression",
     "fingerprint": "serverConfig?.availableEditors ?? []",
@@ -70,15 +43,6 @@
     "reason": "Unread editor configuration resembles no available editors; preserve read state before deciding availability.",
     "expires": "never",
     "class": "review"
-  },
-  {
-    "path": "apps/web/src/components/GitActionsControl.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "gitStatusForActions?.workingTree.files ?? []",
-    "owner": "maintainers",
-    "reason": "Unread changed files can resemble a clean working tree; retain discovery state in the presentation.",
-    "expires": "never",
-    "class": "misleading"
   },
   {
     "path": "apps/web/src/components/GitActionsControl.tsx",
@@ -180,33 +144,6 @@
     "class": "review"
   },
   {
-    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "processData?.processes ?? []",
-    "owner": "maintainers",
-    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
-    "expires": "never",
-    "class": "misleading"
-  },
-  {
-    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "resourceData?.buckets ?? []",
-    "owner": "maintainers",
-    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
-    "expires": "never",
-    "class": "misleading"
-  },
-  {
-    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "resourceData?.topProcesses ?? []",
-    "owner": "maintainers",
-    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
-    "expires": "never",
-    "class": "misleading"
-  },
-  {
     "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
     "kind": "LogicalExpression",
     "fingerprint": "readProviders ?? EMPTY_SERVER_PROVIDERS",
@@ -241,42 +178,6 @@
     "reason": "Optional provider settings retain the owning settings status; default collections supply configuration choices.",
     "expires": "never",
     "class": "justified"
-  },
-  {
-    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "history.data?.buckets ?? []",
-    "owner": "maintainers",
-    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
-    "expires": "never",
-    "class": "misleading"
-  },
-  {
-    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "history.data?.topProcesses ?? []",
-    "owner": "maintainers",
-    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
-    "expires": "never",
-    "class": "misleading"
-  },
-  {
-    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "snapshot?.attribution.entries ?? []",
-    "owner": "maintainers",
-    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
-    "expires": "never",
-    "class": "misleading"
-  },
-  {
-    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "snapshot?.processes ?? []",
-    "owner": "maintainers",
-    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
-    "expires": "never",
-    "class": "misleading"
   },
   {
     "path": "apps/web/src/state/queries.ts",
