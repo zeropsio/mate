@@ -176,7 +176,7 @@ const publishedEvents = (queue: Queue.Queue<Published>) => {
   );
 };
 
-interface PendingHold {
+export interface PendingHold {
   readonly matches: (script: string) => boolean;
   readonly reached: Deferred.Deferred<void>;
   readonly release: Deferred.Deferred<void>;
@@ -227,7 +227,7 @@ export const spiEvent = <T extends SpiEvent["type"]>(
  * listed without an identity, and only an observation remembers a verified
  * binding — which a restart forgets.
  */
-const repositoryLayers = (root: string) =>
+export const repositoryLayers = (root: string) =>
   Layer.effectContext(
     Effect.gen(function* () {
       const known = yield* Ref.make<ReadonlyArray<ZeropsRepository>>([]);
@@ -275,76 +275,28 @@ const agentSnapshot = (signers: ReadonlyMap<string, string>): ZeropsAgentAuthSna
 });
 
 /** A sign-in the fixture moves: a default agent's (agent-auth feed) or an extra login's (logins feed). */
-type SignIn =
+export type SignIn =
   | { readonly _tag: "agent"; readonly agent: "claude-code" | "codex" }
   | { readonly _tag: "extra"; readonly id: string };
 
-const fakes = (
-  world: Omit<CrewWorld, "publish" | "holdSsh" | "signedIn" | "signedInAs" | "extraSignedIn">,
-  events: Queue.Queue<Published>,
+/** The world's fixture state the fakes read and record. */
+export type CrewFixtureWorld = Omit<
+  CrewWorld,
+  "publish" | "holdSsh" | "signedIn" | "signedInAs" | "extraSignedIn"
+>;
+
+/**
+ * The platform around a crew, as both worlds see it: the service's mount and its verification, the
+ * Mate's logins and agents, the platform's process list, and the thread policy registries.
+ */
+export const platformFakes = (
+  world: CrewFixtureWorld,
   signIns: PubSub.PubSub<SignIn>,
   /** Each default agent's signer as the agent-auth feed last told it. */
   agentSigners = new Map<string, string>(),
 ) =>
   Layer.mergeAll(
     repositoryLayers(world.root),
-    Layer.mock(OrchestrationEngineService)({
-      dispatch: (command) =>
-        (command.type === "thread.turn.start"
-          ? Ref.get(world.beforeDispatch).pipe(Effect.flatten)
-          : Effect.void
-        ).pipe(
-          Effect.andThen(Ref.update(world.dispatched, (all) => [...all, command])),
-          // The projection follows a conversation's new copy, as the reactor's does.
-          Effect.andThen(
-            command.type === "thread.meta.update" && command.worktreePath !== undefined
-              ? Ref.update(world.threads, (threads) =>
-                  threads.map((thread) =>
-                    thread.id === command.threadId
-                      ? { ...thread, worktreePath: command.worktreePath ?? null }
-                      : thread,
-                  ),
-                )
-              : Effect.void,
-          ),
-          Effect.as({ sequence: 1 }),
-        ),
-    }),
-    Layer.mock(ProjectionSnapshotQuery)({
-      getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.some(project)),
-      getShellSnapshot: () =>
-        Effect.map(Ref.get(world.threads), (threads) => ({
-          snapshotSequence: 1,
-          projects: [],
-          threads,
-          updatedAt: "2026-09-27T10:00:00.000Z",
-        })),
-      getThreadShellById: (threadId) =>
-        Effect.map(Ref.get(world.threads), (threads) =>
-          Option.fromNullishOr(threads.find((thread) => thread.id === threadId)),
-        ),
-    }),
-    Layer.mock(ZeropsTurnAdmission)({
-      admit: ({ command, principal }) =>
-        Ref.update(world.admitted, (all) => [...all, { type: command.type, principal }]).pipe(
-          Effect.andThen(Ref.get(world.refusal)),
-          Effect.flatMap((refusal) =>
-            refusal === undefined
-              ? Effect.void
-              : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal })),
-          ),
-        ),
-      admitOperator: ({ instanceIds, principal }) =>
-        Ref.update(world.operated, (all) => [...all, { instanceIds, principal }]).pipe(
-          Effect.andThen(Ref.get(world.notTheirs)),
-          Effect.flatMap((notTheirs) => {
-            const refusal = instanceIds.map((id) => notTheirs.get(id)).find((words) => words);
-            return refusal === undefined
-              ? Effect.void
-              : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal }));
-          }),
-        ),
-    }),
     Layer.succeed(CrewPlatformProcesses, {
       read: Ref.update(world.processReads, (count) => count + 1).pipe(
         Effect.andThen(Ref.get(world.processes)),
@@ -394,9 +346,79 @@ const fakes = (
           missing.has(instanceId) ? undefined : testAgentOf(instanceId),
         ),
     }),
-    ProviderRuntimeEventBusTest.make(publishedEvents(events)),
     ThreadToolPolicyRegistry.layer,
     ClaudeThreadExtensionRegistry.layer,
+  );
+
+/** Admission as the fixture plays it: every turn and press recorded, refused as the test says. */
+export const admissionFake = (world: CrewFixtureWorld) =>
+  Layer.mock(ZeropsTurnAdmission)({
+    admit: ({ command, principal }) =>
+      Ref.update(world.admitted, (all) => [...all, { type: command.type, principal }]).pipe(
+        Effect.andThen(Ref.get(world.refusal)),
+        Effect.flatMap((refusal) =>
+          refusal === undefined
+            ? Effect.void
+            : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal })),
+        ),
+      ),
+    admitOperator: ({ instanceIds, principal }) =>
+      Ref.update(world.operated, (all) => [...all, { instanceIds, principal }]).pipe(
+        Effect.andThen(Ref.get(world.notTheirs)),
+        Effect.flatMap((notTheirs) => {
+          const refusal = instanceIds.map((id) => notTheirs.get(id)).find((words) => words);
+          return refusal === undefined
+            ? Effect.void
+            : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal }));
+        }),
+      ),
+  });
+
+const fakes = (
+  world: CrewFixtureWorld,
+  events: Queue.Queue<Published>,
+  signIns: PubSub.PubSub<SignIn>,
+) =>
+  Layer.mergeAll(
+    platformFakes(world, signIns),
+    Layer.mock(OrchestrationEngineService)({
+      dispatch: (command) =>
+        (command.type === "thread.turn.start"
+          ? Ref.get(world.beforeDispatch).pipe(Effect.flatten)
+          : Effect.void
+        ).pipe(
+          Effect.andThen(Ref.update(world.dispatched, (all) => [...all, command])),
+          // The projection follows a conversation's new copy, as the reactor's does.
+          Effect.andThen(
+            command.type === "thread.meta.update" && command.worktreePath !== undefined
+              ? Ref.update(world.threads, (threads) =>
+                  threads.map((thread) =>
+                    thread.id === command.threadId
+                      ? { ...thread, worktreePath: command.worktreePath ?? null }
+                      : thread,
+                  ),
+                )
+              : Effect.void,
+          ),
+          Effect.as({ sequence: 1 }),
+        ),
+    }),
+    Layer.mock(ProjectionSnapshotQuery)({
+      getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.some(project)),
+      getShellSnapshot: () =>
+        Effect.map(Ref.get(world.threads), (threads) => ({
+          snapshotSequence: 1,
+          projects: [],
+          threads,
+          updatedAt: "2026-09-27T10:00:00.000Z",
+        })),
+      getThreadShellById: (threadId) =>
+        Effect.map(Ref.get(world.threads), (threads) =>
+          Option.fromNullishOr(threads.find((thread) => thread.id === threadId)),
+        ),
+    }),
+    admissionFake(world),
+    ProviderRuntimeEventBusTest.make(publishedEvents(events)),
     ServerCommandReadiness.layer,
   );
 
@@ -437,11 +459,11 @@ const TEST_AGENTS: ReadonlyArray<readonly [string, ProviderInstanceAgent]> = [
   ],
 ];
 
-const testAgentOf = (instanceId: string): ProviderInstanceAgent | undefined =>
+export const testAgentOf = (instanceId: string): ProviderInstanceAgent | undefined =>
   TEST_AGENTS.find(([prefix]) => instanceId === prefix || instanceId.startsWith(`${prefix}_`))?.[1];
 
 /** The local ssh shim, counting every session and holding the one a test asked for. */
-const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray<PendingHold>>) =>
+export const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray<PendingHold>>) =>
   Layer.effect(
     ProcessRunner.ProcessRunner,
     Effect.gen(function* () {
@@ -488,67 +510,75 @@ export type CrewEngineServices =
  * first is the Mate after a server restart. Each engine is built from fresh
  * layers and closed before the next starts.
  */
+/**
+ * One world's fixture: a fresh service repository, the Mate's workspace and the fakes' records,
+ * shared by every phase (server lifetime) of a journey.
+ */
+export const makeFixtureWorld = Effect.gen(function* () {
+  const root = makeServiceRepository();
+  const workspace = NodeFS.realpathSync(
+    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-mate-")),
+  );
+  const events = yield* Queue.unbounded<Published>();
+  const signIns = yield* PubSub.unbounded<SignIn>();
+  const holds = yield* Ref.make<ReadonlyArray<PendingHold>>([]);
+  const world: CrewWorld = {
+    root,
+    workspace,
+    devServerPidFile: NodePath.join(workspace, "zcp-dev-server.log.pid"),
+    beforeDispatch: yield* Ref.make<Effect.Effect<void>>(Effect.void),
+    dispatched: yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]),
+    admitted: yield* Ref.make<
+      ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
+    >([]),
+    refusal: yield* Ref.make<string | undefined>(undefined),
+    operated: yield* Ref.make<
+      ReadonlyArray<{
+        readonly instanceIds: ReadonlyArray<string>;
+        readonly principal: TurnPrincipal;
+      }>
+    >([]),
+    notTheirs: yield* Ref.make<ReadonlyMap<string, string>>(new Map()),
+    threads: yield* Ref.make<ReadonlyArray<OrchestrationThreadShell>>([]),
+    installs: yield* Ref.make(0),
+    sshCalls: yield* Ref.make(0),
+    logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
+    missingAgents: yield* Ref.make<ReadonlySet<string>>(new Set()),
+    processes: yield* Ref.make<ReadonlyArray<unknown> | "unreadable">([]),
+    processReads: yield* Ref.make(0),
+    publish: (event) =>
+      Effect.gen(function* () {
+        const handled = yield* Deferred.make<void>();
+        yield* Queue.offer(events, { event, handled });
+        yield* Deferred.await(handled);
+      }),
+    holdSsh: (matches) =>
+      Effect.gen(function* () {
+        const hold: PendingHold = {
+          matches,
+          reached: yield* Deferred.make<void>(),
+          release: yield* Deferred.make<void>(),
+        };
+        yield* Ref.update(holds, (all) => [...all, hold]);
+        return {
+          reached: Deferred.await(hold.reached),
+          release: Deferred.succeed(hold.release, undefined).pipe(Effect.asVoid),
+        };
+      }),
+    signedIn: PubSub.publish(signIns, { _tag: "agent", agent: "claude-code" }).pipe(Effect.asVoid),
+    signedInAs: (agent) => PubSub.publish(signIns, { _tag: "agent", agent }).pipe(Effect.asVoid),
+    extraSignedIn: (id) => PubSub.publish(signIns, { _tag: "extra", id }).pipe(Effect.asVoid),
+  };
+  return { world, events, signIns, holds };
+});
+
 export const withCrewEngines = <E>(
   phases: ReadonlyArray<(world: CrewWorld) => Effect.Effect<void, E, CrewEngineServices>>,
   options: { readonly installer?: (installs: Ref.Ref<number>) => CrewPolicyInstaller } = {},
 ) =>
   Effect.gen(function* () {
-    const root = makeServiceRepository();
-    const workspace = NodeFS.realpathSync(
-      NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-mate-")),
-    );
-    const events = yield* Queue.unbounded<Published>();
-    const signIns = yield* PubSub.unbounded<SignIn>();
-    const holds = yield* Ref.make<ReadonlyArray<PendingHold>>([]);
-    const world: CrewWorld = {
-      root,
-      workspace,
-      devServerPidFile: NodePath.join(workspace, "zcp-dev-server.log.pid"),
-      beforeDispatch: yield* Ref.make<Effect.Effect<void>>(Effect.void),
-      dispatched: yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]),
-      admitted: yield* Ref.make<
-        ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
-      >([]),
-      refusal: yield* Ref.make<string | undefined>(undefined),
-      operated: yield* Ref.make<
-        ReadonlyArray<{
-          readonly instanceIds: ReadonlyArray<string>;
-          readonly principal: TurnPrincipal;
-        }>
-      >([]),
-      notTheirs: yield* Ref.make<ReadonlyMap<string, string>>(new Map()),
-      threads: yield* Ref.make<ReadonlyArray<OrchestrationThreadShell>>([]),
-      installs: yield* Ref.make(0),
-      sshCalls: yield* Ref.make(0),
-      logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
-      missingAgents: yield* Ref.make<ReadonlySet<string>>(new Set()),
-      processes: yield* Ref.make<ReadonlyArray<unknown> | "unreadable">([]),
-      processReads: yield* Ref.make(0),
-      publish: (event) =>
-        Effect.gen(function* () {
-          const handled = yield* Deferred.make<void>();
-          yield* Queue.offer(events, { event, handled });
-          yield* Deferred.await(handled);
-        }),
-      holdSsh: (matches) =>
-        Effect.gen(function* () {
-          const hold: PendingHold = {
-            matches,
-            reached: yield* Deferred.make<void>(),
-            release: yield* Deferred.make<void>(),
-          };
-          yield* Ref.update(holds, (all) => [...all, hold]);
-          return {
-            reached: Deferred.await(hold.reached),
-            release: Deferred.succeed(hold.release, undefined).pipe(Effect.asVoid),
-          };
-        }),
-      signedIn: PubSub.publish(signIns, { _tag: "agent", agent: "claude-code" }).pipe(
-        Effect.asVoid,
-      ),
-      signedInAs: (agent) => PubSub.publish(signIns, { _tag: "agent", agent }).pipe(Effect.asVoid),
-      extraSignedIn: (id) => PubSub.publish(signIns, { _tag: "extra", id }).pipe(Effect.asVoid),
-    };
+    const { world, events, signIns, holds } = yield* makeFixtureWorld;
+    const { root, workspace } = world;
     const installer = (options.installer ?? countingInstaller)(world.installs);
     const engine = () =>
       Layer.effectContext(makeCrewEngine(installer)).pipe(
