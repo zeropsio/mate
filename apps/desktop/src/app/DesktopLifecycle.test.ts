@@ -94,50 +94,53 @@ function makeDesktopWindowLayer(
 }
 
 describe("DesktopLifecycle", () => {
-  for (const platform of ["darwin", "win32", "linux"] satisfies ReadonlyArray<NodeJS.Platform>) {
-    it.effect(`lets the updater's quit event proceed on ${platform}`, () => {
-      const appListeners = new Map<string, (...args: readonly unknown[]) => void>();
-      const environmentLayer = Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
-        platform,
-        isDevelopment: false,
-      } as DesktopEnvironment.DesktopEnvironment["Service"]);
+  it.effect.each(
+    Array.from(
+      ["darwin", "win32", "linux"] satisfies ReadonlyArray<NodeJS.Platform>,
+      (platform) => ({ title: `lets the updater's quit event proceed on ${platform}`, platform }),
+    ),
+  )("$title", ({ platform }) => {
+    const appListeners = new Map<string, (...args: readonly unknown[]) => void>();
+    const environmentLayer = Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
+      platform,
+      isDevelopment: false,
+    } as DesktopEnvironment.DesktopEnvironment["Service"]);
 
-      const layer = DesktopLifecycle.layer.pipe(
-        Layer.provideMerge(makeElectronAppLayer(appListeners)),
-        Layer.provideMerge(electronThemeLayer),
-        Layer.provideMerge(makeElectronWindowLayer()),
-        Layer.provideMerge(makeDesktopWindowLayer()),
-        Layer.provideMerge(environmentLayer),
-        Layer.provideMerge(DesktopShutdown.layer),
-        Layer.provideMerge(DesktopState.layer),
-      );
+    const layer = DesktopLifecycle.layer.pipe(
+      Layer.provideMerge(makeElectronAppLayer(appListeners)),
+      Layer.provideMerge(electronThemeLayer),
+      Layer.provideMerge(makeElectronWindowLayer()),
+      Layer.provideMerge(makeDesktopWindowLayer()),
+      Layer.provideMerge(environmentLayer),
+      Layer.provideMerge(DesktopShutdown.layer),
+      Layer.provideMerge(DesktopState.layer),
+    );
 
-      return Effect.scoped(
-        Effect.gen(function* () {
-          const lifecycle = yield* DesktopLifecycle.DesktopLifecycle;
-          yield* lifecycle.register;
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const lifecycle = yield* DesktopLifecycle.DesktopLifecycle;
+        yield* lifecycle.register;
 
-          appListeners.get("before-quit-for-update")?.();
+        appListeners.get("before-quit-for-update")?.();
 
-          let prevented = false;
-          const event = {
-            preventDefault: () => {
-              prevented = true;
-            },
-          } as Electron.Event;
-          appListeners.get("before-quit")?.(event);
+        let prevented = false;
+        const event = {
+          preventDefault: () => {
+            prevented = true;
+          },
+        } as Electron.Event;
+        appListeners.get("before-quit")?.(event);
 
-          assert.isFalse(
-            prevented,
-            "cancelling this event prevents the updater from completing its relaunch",
-          );
+        assert.isFalse(
+          prevented,
+          "cancelling this event prevents the updater from completing its relaunch",
+        );
 
-          const state = yield* DesktopState.DesktopState;
-          assert.isTrue(yield* Ref.get(state.quitting));
-        }),
-      ).pipe(Effect.provide(layer));
-    });
-  }
+        const state = yield* DesktopState.DesktopState;
+        assert.isTrue(yield* Ref.get(state.quitting));
+      }),
+    ).pipe(Effect.provide(layer));
+  });
 
   it.effect("destroys windows before waiting for backend shutdown", () =>
     Effect.gen(function* () {

@@ -710,16 +710,14 @@ describe("environment machine (DESIGN §4.4)", () => {
         offered: false,
       },
     ];
-    for (const row of rows) {
-      it(row.name, () => {
-        const machine = twoFailures({
-          second: row.second,
-          sourceState: row.sourceState(),
-        });
-        expect(machine.credential.kind).toBe("backoff");
-        expect(identityRestartOffered(machine)).toBe(row.offered);
+    it.each(Array.from(rows, (row) => ({ title: row.name, row })))("$title", ({ row }) => {
+      const machine = twoFailures({
+        second: row.second,
+        sourceState: row.sourceState(),
       });
-    }
+      expect(machine.credential.kind).toBe("backoff");
+      expect(identityRestartOffered(machine)).toBe(row.offered);
+    });
 
     it("a source outage after the second failure withdraws the offer", () => {
       const machine = twoFailures({

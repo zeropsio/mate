@@ -1213,102 +1213,113 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }).pipe(Effect.provide(settingsLayer));
   });
 
-  for (const { label, variable, expected, duplicate } of [
-    {
-      label: "preserves an inline secret on a redacted settings save",
-      variable: { name: "API_TOKEN", value: "", sensitive: true, valueRedacted: true },
-      expected: "inline-test-token",
-    },
-    {
-      label: "preserves the effective last inline secret when names are duplicated",
-      variable: { name: "API_TOKEN", value: "", sensitive: true, valueRedacted: true },
-      expected: "last-inline-test-token",
-      duplicate: true,
-    },
-    {
-      label: "replaces an inline secret with an explicit value",
-      variable: { name: "API_TOKEN", value: "replacement-test-token", sensitive: true },
-      expected: "replacement-test-token",
-    },
-    {
-      label: "clears an inline secret with an explicit empty value",
-      variable: { name: "API_TOKEN", value: "", sensitive: true },
-      expected: "",
-    },
-  ]) {
-    it.effect(label, () =>
-      Effect.gen(function* () {
-        const instanceId = ProviderInstanceId.make("codex_personal");
-        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
-        const serverConfig = yield* ServerConfig.ServerConfig;
-        const fileSystem = yield* FileSystem.FileSystem;
-        yield* fileSystem.writeFileString(
-          serverConfig.settingsPath,
-          duplicate
-            ? '{"providerInstances":{"codex_personal":{"driver":"codex","environment":[{"name":"API_TOKEN","value":"inline-test-token","sensitive":true},{"name":"API_TOKEN","value":"last-inline-test-token","sensitive":true}],"config":{}}}}'
-            : '{"providerInstances":{"codex_personal":{"driver":"codex","environment":[{"name":"API_TOKEN","value":"inline-test-token","sensitive":true}],"config":{}}}}',
-        );
-        const initial = yield* serverSettings.getSettings;
-        assert.equal(
-          initial.providerInstances[instanceId]?.environment?.[0]?.value,
-          "inline-test-token",
-        );
+  it.effect.each(
+    Array.from(
+      [
+        {
+          label: "preserves an inline secret on a redacted settings save",
+          variable: { name: "API_TOKEN", value: "", sensitive: true, valueRedacted: true },
+          expected: "inline-test-token",
+        },
+        {
+          label: "preserves the effective last inline secret when names are duplicated",
+          variable: { name: "API_TOKEN", value: "", sensitive: true, valueRedacted: true },
+          expected: "last-inline-test-token",
+          duplicate: true,
+        },
+        {
+          label: "replaces an inline secret with an explicit value",
+          variable: { name: "API_TOKEN", value: "replacement-test-token", sensitive: true },
+          expected: "replacement-test-token",
+        },
+        {
+          label: "clears an inline secret with an explicit empty value",
+          variable: { name: "API_TOKEN", value: "", sensitive: true },
+          expected: "",
+        },
+      ],
+      ({ label, variable, expected, duplicate }) => ({
+        title: label,
+        variable,
+        expected,
+        duplicate,
+      }),
+    ),
+  )("$title", ({ variable, expected, duplicate }) =>
+    Effect.gen(function* () {
+      const instanceId = ProviderInstanceId.make("codex_personal");
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      const serverConfig = yield* ServerConfig.ServerConfig;
+      const fileSystem = yield* FileSystem.FileSystem;
+      yield* fileSystem.writeFileString(
+        serverConfig.settingsPath,
+        duplicate
+          ? '{"providerInstances":{"codex_personal":{"driver":"codex","environment":[{"name":"API_TOKEN","value":"inline-test-token","sensitive":true},{"name":"API_TOKEN","value":"last-inline-test-token","sensitive":true}],"config":{}}}}'
+          : '{"providerInstances":{"codex_personal":{"driver":"codex","environment":[{"name":"API_TOKEN","value":"inline-test-token","sensitive":true}],"config":{}}}}',
+      );
+      const initial = yield* serverSettings.getSettings;
+      assert.equal(
+        initial.providerInstances[instanceId]?.environment?.[0]?.value,
+        "inline-test-token",
+      );
 
-        const next = yield* serverSettings.updateSettings({
-          providerInstances: {
-            [instanceId]: {
-              driver: ProviderDriverKind.make("codex"),
-              displayName: "Renamed provider",
-              environment: duplicate ? [variable, variable] : [variable],
-              config: {},
-            },
+      const next = yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("codex"),
+            displayName: "Renamed provider",
+            environment: duplicate ? [variable, variable] : [variable],
+            config: {},
           },
-        });
-        assert.equal(next.providerInstances[instanceId]?.environment?.[0]?.value, expected);
-        const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
-        assert.notInclude(raw, "inline-test-token");
-        assert.notInclude(raw, "replacement-test-token");
+        },
+      });
+      assert.equal(next.providerInstances[instanceId]?.environment?.[0]?.value, expected);
+      const raw = yield* fileSystem.readFileString(serverConfig.settingsPath);
+      assert.notInclude(raw, "inline-test-token");
+      assert.notInclude(raw, "replacement-test-token");
 
-        const reloaded = yield* Effect.gen(function* () {
-          const fresh = yield* ServerSettingsModule.ServerSettingsService;
-          return yield* fresh.getSettings;
-        }).pipe(
-          Effect.provide(
-            Layer.fresh(ServerSettingsModule.layer).pipe(Layer.provide(ServerSecretStore.layer)),
-          ),
-        );
-        assert.equal(reloaded.providerInstances[instanceId]?.environment?.[0]?.value, expected);
-      }).pipe(Effect.provide(makeServerSettingsLayer())),
-    );
-  }
+      const reloaded = yield* Effect.gen(function* () {
+        const fresh = yield* ServerSettingsModule.ServerSettingsService;
+        return yield* fresh.getSettings;
+      }).pipe(
+        Effect.provide(
+          Layer.fresh(ServerSettingsModule.layer).pipe(Layer.provide(ServerSecretStore.layer)),
+        ),
+      );
+      assert.equal(reloaded.providerInstances[instanceId]?.environment?.[0]?.value, expected);
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
 
-  for (const sensitiveLast of [true, false]) {
-    it.effect(`preserves duplicate secret operation order (sensitive last: ${sensitiveLast})`, () =>
-      Effect.gen(function* () {
-        const service = yield* ServerSettingsModule.ServerSettingsService;
-        const instanceId = ProviderInstanceId.make("codex_duplicate");
-        const secret = { name: "API_TOKEN", value: "secret-last", sensitive: true };
-        const plain = { name: "API_TOKEN", value: "plain-last", sensitive: false };
-        const next = yield* service.updateSettings({
-          providerInstances: {
-            [instanceId]: {
-              driver: ProviderDriverKind.make("codex"),
-              environment: sensitiveLast ? [plain, secret] : [secret, plain],
-              config: {},
-            },
+  it.effect.each(
+    Array.from([true, false], (sensitiveLast) => ({
+      title: `preserves duplicate secret operation order (sensitive last: ${sensitiveLast})`,
+      sensitiveLast,
+    })),
+  )("$title", ({ sensitiveLast }) =>
+    Effect.gen(function* () {
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      const instanceId = ProviderInstanceId.make("codex_duplicate");
+      const secret = { name: "API_TOKEN", value: "secret-last", sensitive: true };
+      const plain = { name: "API_TOKEN", value: "plain-last", sensitive: false };
+      const next = yield* service.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("codex"),
+            environment: sensitiveLast ? [plain, secret] : [secret, plain],
+            config: {},
           },
-        });
-        assert.equal(
-          next.providerInstances[instanceId]?.environment?.at(-1)?.value,
-          sensitiveLast ? "secret-last" : "plain-last",
-        );
-        assert.equal(
-          next.providerInstances[instanceId]?.environment?.find((v) => v.sensitive)?.value,
-          sensitiveLast ? "secret-last" : "",
-        );
-      }).pipe(Effect.provide(makeServerSettingsLayer())),
-    );
-  }
+        },
+      });
+      assert.equal(
+        next.providerInstances[instanceId]?.environment?.at(-1)?.value,
+        sensitiveLast ? "secret-last" : "plain-last",
+      );
+      assert.equal(
+        next.providerInstances[instanceId]?.environment?.find((v) => v.sensitive)?.value,
+        sensitiveLast ? "secret-last" : "",
+      );
+    }).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
 
   it.effect("stores sensitive provider instance environment values outside settings.json", () =>
     Effect.gen(function* () {
@@ -1441,112 +1452,114 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     }),
   );
 
-  for (const failure of ["response materialization", "partially committed write"] as const) {
-    it.effect(`rolls back provider secret changes after ${failure} fails`, () => {
-      const textDecoder = new TextDecoder();
-      const secrets = new Map<string, Uint8Array>();
-      let rejectNewSecret = false;
-      const secretStoreLayer = Layer.succeed(
-        ServerSecretStore.ServerSecretStore,
-        ServerSecretStore.ServerSecretStore.of({
-          get: (name) =>
-            Effect.suspend(() => {
-              const value = secrets.get(name);
-              if (
-                failure === "response materialization" &&
-                rejectNewSecret &&
-                value !== undefined &&
-                textDecoder.decode(value) === "sk-new"
-              ) {
-                return Effect.fail(
-                  new ServerSecretStore.SecretStoreReadError({
-                    resource: `secret ${name}`,
-                    cause: "Forced response materialization failure.",
-                  }),
-                );
-              }
-              return Effect.succeed(
-                value === undefined ? Option.none() : Option.some(Uint8Array.from(value)),
+  it.effect.each(
+    Array.from(["response materialization", "partially committed write"] as const, (failure) => ({
+      title: `rolls back provider secret changes after ${failure} fails`,
+      failure,
+    })),
+  )("$title", ({ failure }) => {
+    const textDecoder = new TextDecoder();
+    const secrets = new Map<string, Uint8Array>();
+    let rejectNewSecret = false;
+    const secretStoreLayer = Layer.succeed(
+      ServerSecretStore.ServerSecretStore,
+      ServerSecretStore.ServerSecretStore.of({
+        get: (name) =>
+          Effect.suspend(() => {
+            const value = secrets.get(name);
+            if (
+              failure === "response materialization" &&
+              rejectNewSecret &&
+              value !== undefined &&
+              textDecoder.decode(value) === "sk-new"
+            ) {
+              return Effect.fail(
+                new ServerSecretStore.SecretStoreReadError({
+                  resource: `secret ${name}`,
+                  cause: "Forced response materialization failure.",
+                }),
               );
-            }),
-          set: (name, value) =>
-            Effect.suspend(() => {
-              secrets.set(name, Uint8Array.from(value));
-              return failure === "partially committed write" &&
-                rejectNewSecret &&
-                textDecoder.decode(value) === "sk-new"
-                ? Effect.fail(
-                    new ServerSecretStore.SecretStorePersistError({
-                      resource: `secret ${name}`,
-                      cause: "chmod failed after rename",
-                    }),
-                  )
-                : Effect.void;
-            }),
-          create: (name, value) =>
-            Effect.sync(() => {
-              secrets.set(name, Uint8Array.from(value));
-            }),
-          getOrCreateRandom: (name, bytes) =>
-            Effect.sync(() => {
-              const value = secrets.get(name) ?? new Uint8Array(bytes);
-              secrets.set(name, value);
-              return Uint8Array.from(value);
-            }),
-          remove: (name) =>
-            Effect.sync(() => {
-              secrets.delete(name);
-            }),
-        }),
-      );
-      const settingsLayer = ServerSettingsModule.layer.pipe(
-        Layer.provideMerge(Layer.fresh(SqlitePersistenceMemory)),
-        Layer.provide(secretStoreLayer),
-        Layer.provideMerge(
-          Layer.fresh(
-            ServerConfig.layerTest(process.cwd(), {
-              prefix: "t3code-server-settings-materialization-failure-test-",
-            }),
-          ),
+            }
+            return Effect.succeed(
+              value === undefined ? Option.none() : Option.some(Uint8Array.from(value)),
+            );
+          }),
+        set: (name, value) =>
+          Effect.suspend(() => {
+            secrets.set(name, Uint8Array.from(value));
+            return failure === "partially committed write" &&
+              rejectNewSecret &&
+              textDecoder.decode(value) === "sk-new"
+              ? Effect.fail(
+                  new ServerSecretStore.SecretStorePersistError({
+                    resource: `secret ${name}`,
+                    cause: "chmod failed after rename",
+                  }),
+                )
+              : Effect.void;
+          }),
+        create: (name, value) =>
+          Effect.sync(() => {
+            secrets.set(name, Uint8Array.from(value));
+          }),
+        getOrCreateRandom: (name, bytes) =>
+          Effect.sync(() => {
+            const value = secrets.get(name) ?? new Uint8Array(bytes);
+            secrets.set(name, value);
+            return Uint8Array.from(value);
+          }),
+        remove: (name) =>
+          Effect.sync(() => {
+            secrets.delete(name);
+          }),
+      }),
+    );
+    const settingsLayer = ServerSettingsModule.layer.pipe(
+      Layer.provideMerge(Layer.fresh(SqlitePersistenceMemory)),
+      Layer.provide(secretStoreLayer),
+      Layer.provideMerge(
+        Layer.fresh(
+          ServerConfig.layerTest(process.cwd(), {
+            prefix: "t3code-server-settings-materialization-failure-test-",
+          }),
         ),
-      );
-      const instanceId = ProviderInstanceId.make("codex_materialization_failure");
+      ),
+    );
+    const instanceId = ProviderInstanceId.make("codex_materialization_failure");
 
-      return Effect.gen(function* () {
-        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
-        yield* serverSettings.updateSettings({
+    return Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+      yield* serverSettings.updateSettings({
+        providerInstances: {
+          [instanceId]: {
+            driver: ProviderDriverKind.make("codex"),
+            environment: [{ name: "OPENROUTER_API_KEY", value: "sk-kept", sensitive: true }],
+            config: {},
+          },
+        },
+      });
+
+      rejectNewSecret = true;
+      const failedUpdate = yield* serverSettings
+        .updateSettings({
           providerInstances: {
             [instanceId]: {
               driver: ProviderDriverKind.make("codex"),
-              environment: [{ name: "OPENROUTER_API_KEY", value: "sk-kept", sensitive: true }],
+              environment: [{ name: "OPENROUTER_API_KEY", value: "sk-new", sensitive: true }],
               config: {},
             },
           },
-        });
+        })
+        .pipe(Effect.result);
 
-        rejectNewSecret = true;
-        const failedUpdate = yield* serverSettings
-          .updateSettings({
-            providerInstances: {
-              [instanceId]: {
-                driver: ProviderDriverKind.make("codex"),
-                environment: [{ name: "OPENROUTER_API_KEY", value: "sk-new", sensitive: true }],
-                config: {},
-              },
-            },
-          })
-          .pipe(Effect.result);
-
-        assert.equal(failedUpdate._tag, "Failure");
-        rejectNewSecret = false;
-        assert.equal(
-          (yield* serverSettings.getSettings).providerInstances[instanceId]?.environment?.[0]
-            ?.value,
-          "sk-kept",
-        );
-      }).pipe(Effect.provide(settingsLayer));
-    });
-  }
+      assert.equal(failedUpdate._tag, "Failure");
+      rejectNewSecret = false;
+      assert.equal(
+        (yield* serverSettings.getSettings).providerInstances[instanceId]?.environment?.[0]?.value,
+        "sk-kept",
+      );
+    }).pipe(Effect.provide(settingsLayer));
+  });
 });
 
 it("titles a thread with the thread's own provider when it is enabled, on that provider's title model", () => {

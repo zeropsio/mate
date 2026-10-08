@@ -239,22 +239,25 @@ describe("CLIProxyAPI built-in management API", () => {
     }),
   );
 
-  for (const [code, outcome] of [
-    ["nothing_to_reset", "nothingToReset"],
-    ["no_credit", "noCredit"],
-    ["already_redeemed", "alreadyRedeemed"],
-  ] as const) {
-    it.effect(`reports ${code} accurately`, () =>
-      Effect.gen(function* () {
-        const test = fixture({ upstream: () => ({ status: 200, body: { code } }) });
-        const api = yield* test.api;
-        expect(yield* api.consume(config, "first.json", "credit")).toEqual({ outcome });
-        expect(test.requests.some((request) => request.path.endsWith("/reset-quota"))).toBe(
-          code === "already_redeemed",
-        );
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from(
+      [
+        ["nothing_to_reset", "nothingToReset"],
+        ["no_credit", "noCredit"],
+        ["already_redeemed", "alreadyRedeemed"],
+      ] as const,
+      ([code, outcome]) => ({ title: `reports ${code} accurately`, code, outcome }),
+    ),
+  )("$title", ({ code, outcome }) =>
+    Effect.gen(function* () {
+      const test = fixture({ upstream: () => ({ status: 200, body: { code } }) });
+      const api = yield* test.api;
+      expect(yield* api.consume(config, "first.json", "credit")).toEqual({ outcome });
+      expect(test.requests.some((request) => request.path.endsWith("/reset-quota"))).toBe(
+        code === "already_redeemed",
+      );
+    }),
+  );
 
   it.effect("reports redemption success even if cooldown clearing fails", () =>
     Effect.gen(function* () {

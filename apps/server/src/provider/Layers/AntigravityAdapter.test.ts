@@ -1240,74 +1240,76 @@ it.layer(layer)("AntigravityAdapter", (it) => {
     }),
   );
 
-  for (const stop of ["cancel", "steer", "disconnect", "end_turn"] as const) {
-    it.effect(`settles open subagent calls on ${stop}`, () =>
-      Effect.gen(function* () {
-        const h = yield* makeHarness();
-        yield* h.adapter.startSession({
-          threadId,
-          cwd: process.cwd(),
-          runtimeMode: "approval-required",
+  it.effect.each(
+    Array.from(["cancel", "steer", "disconnect", "end_turn"] as const, (stop) => ({
+      title: `settles open subagent calls on ${stop}`,
+      stop,
+    })),
+  )("$title", ({ stop }) =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      yield* h.adapter.startSession({
+        threadId,
+        cwd: process.cwd(),
+        runtimeMode: "approval-required",
+      });
+      const sending = yield* h.adapter
+        .sendTurn({ threadId, input: "Start a subagent" })
+        .pipe(Effect.forkChild);
+      const prompt = yield* h.nextPrompt;
+      yield* h.emitNative(
+        nativeToolUpdate({
+          sessionUpdate: "tool_call",
+          toolCallId: "trajectory:4",
+          title: "Running start_subagent",
+          kind: "other",
+          status: "in_progress",
+          rawInput: {},
+        }),
+      );
+      yield* h.waitForEvent((event) => event.type === "task.progress");
+      yield* h.emitNative(
+        nativeToolUpdate({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "trajectory:4",
+          status: "completed",
+          rawOutput: "Launch subagents",
+        }),
+      );
+      yield* h.waitForEvent((event) => event.type === "task.progress");
+      if (stop === "disconnect") {
+        yield* h.emitNative({
+          _tag: "ConnectionTerminated",
+          error: new AcpErrors.AcpTransportError({ detail: "Process exited.", cause: undefined }),
         });
-        const sending = yield* h.adapter
-          .sendTurn({ threadId, input: "Start a subagent" })
+      } else if (stop === "cancel") {
+        yield* h.adapter.interruptTurn(threadId);
+      } else if (stop === "steer") {
+        const steering = yield* h.adapter
+          .sendTurn({ threadId, input: "Change direction" })
           .pipe(Effect.forkChild);
-        const prompt = yield* h.nextPrompt;
-        yield* h.emitNative(
-          nativeToolUpdate({
-            sessionUpdate: "tool_call",
-            toolCallId: "trajectory:4",
-            title: "Running start_subagent",
-            kind: "other",
-            status: "in_progress",
-            rawInput: {},
-          }),
-        );
-        yield* h.waitForEvent((event) => event.type === "task.progress");
-        yield* h.emitNative(
-          nativeToolUpdate({
-            sessionUpdate: "tool_call_update",
-            toolCallId: "trajectory:4",
-            status: "completed",
-            rawOutput: "Launch subagents",
-          }),
-        );
-        yield* h.waitForEvent((event) => event.type === "task.progress");
-        if (stop === "disconnect") {
-          yield* h.emitNative({
-            _tag: "ConnectionTerminated",
-            error: new AcpErrors.AcpTransportError({ detail: "Process exited.", cause: undefined }),
-          });
-        } else if (stop === "cancel") {
-          yield* h.adapter.interruptTurn(threadId);
-        } else if (stop === "steer") {
-          const steering = yield* h.adapter
-            .sendTurn({ threadId, input: "Change direction" })
-            .pipe(Effect.forkChild);
-          const replacement = yield* h.nextPrompt;
-          yield* Deferred.succeed(replacement.result, { stopReason: "end_turn" });
-          yield* Fiber.join(steering);
-        } else {
-          yield* Deferred.succeed(prompt.result, { stopReason: "end_turn" });
-        }
-        const settled = yield* h.waitForEvent((event) => event.type === "task.updated");
-        expect(settled.payload).toMatchObject({
-          taskId: "trajectory:4",
-          title: "Antigravity subagent batch",
-          taskType: "subagent_batch",
-          status:
-            stop === "disconnect"
-              ? "failed"
-              : stop === "cancel" || stop === "steer"
-                ? "cancelled"
-                : "idle",
-        });
-        if (stop === "disconnect")
-          yield* h.waitForEvent((event) => event.type === "session.exited");
-        else yield* Fiber.join(sending);
-      }),
-    );
-  }
+        const replacement = yield* h.nextPrompt;
+        yield* Deferred.succeed(replacement.result, { stopReason: "end_turn" });
+        yield* Fiber.join(steering);
+      } else {
+        yield* Deferred.succeed(prompt.result, { stopReason: "end_turn" });
+      }
+      const settled = yield* h.waitForEvent((event) => event.type === "task.updated");
+      expect(settled.payload).toMatchObject({
+        taskId: "trajectory:4",
+        title: "Antigravity subagent batch",
+        taskType: "subagent_batch",
+        status:
+          stop === "disconnect"
+            ? "failed"
+            : stop === "cancel" || stop === "steer"
+              ? "cancelled"
+              : "idle",
+      });
+      if (stop === "disconnect") yield* h.waitForEvent((event) => event.type === "session.exited");
+      else yield* Fiber.join(sending);
+    }),
+  );
 
   it.effect("retires a prompt cancelled before native dispatch", () =>
     Effect.gen(function* () {

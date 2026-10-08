@@ -32,15 +32,34 @@ describe("DesktopApp errors", () => {
     },
   ] as const;
 
-  for (const {
-    name,
-    smokeCapturePath,
-    expectedDialogCount,
-    expectedQuitCount,
-    expectedExitCodes,
-    expectedStderrCount,
-  } of fatalErrorRows) {
-    it.effect(`handles a fatal error during ${name}`, () =>
+  it.effect.each(
+    Array.from(
+      fatalErrorRows,
+      ({
+        name,
+        smokeCapturePath,
+        expectedDialogCount,
+        expectedQuitCount,
+        expectedExitCodes,
+        expectedStderrCount,
+      }) => ({
+        title: `handles a fatal error during ${name}`,
+        smokeCapturePath,
+        expectedDialogCount,
+        expectedQuitCount,
+        expectedExitCodes,
+        expectedStderrCount,
+      }),
+    ),
+  )(
+    "$title",
+    ({
+      smokeCapturePath,
+      expectedDialogCount,
+      expectedQuitCount,
+      expectedExitCodes,
+      expectedStderrCount,
+    }) =>
       Effect.gen(function* () {
         const previousCapturePath = NodeProcess.env.T3CODE_SMOKE_CAPTURE;
         if (smokeCapturePath === undefined) {
@@ -105,6 +124,5 @@ describe("DesktopApp errors", () => {
           }
         }
       }),
-    );
-  }
+  );
 });

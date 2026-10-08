@@ -124,15 +124,18 @@ describe("readServiceEnvRows", () => {
     );
   });
 
-  for (const [name, body] of [
-    ["not an object", "nope"],
-    ["missing items", {}],
-    ["items not an array", { items: {} }],
-  ] as const) {
-    it(`answers undefined when the body is ${name}`, () => {
-      assert.isUndefined(readServiceEnvRows(body));
-    });
-  }
+  it.each(
+    Array.from(
+      [
+        ["not an object", "nope"],
+        ["missing items", {}],
+        ["items not an array", { items: {} }],
+      ] as const,
+      ([name, body]) => ({ title: `answers undefined when the body is ${name}`, body }),
+    ),
+  )("$title", ({ body }) => {
+    assert.isUndefined(readServiceEnvRows(body));
+  });
 
   it("drops a malformed entry without poisoning the rest", () => {
     assert.deepStrictEqual(

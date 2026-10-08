@@ -6,70 +6,79 @@ import { makeMateSetupMarkers } from "./mateSetupMarkers.ts";
 import { ZeropsRefused, ZeropsUnavailable } from "./zerops/api.ts";
 
 describe("navigation setup marker evidence", () => {
-  for (const value of [true, false, null] as const) {
-    it.effect(`shares one read returning ${String(value)}, without blocking the baseline`, () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const answer = yield* Deferred.make<boolean | null>();
-          const published = yield* Queue.unbounded<void>();
-          let reads = 0;
-          const markers = yield* makeMateSetupMarkers(() => {
-            reads += 1;
-            return Deferred.await(answer);
-          }, Queue.offer(published, undefined).pipe(Effect.asVoid));
-          const input = {
-            orgId: "ORG",
-            projectId: "Ada",
-            record: "1",
-            serviceId: "zcp",
-            importProcessId: null,
-          };
-          assert.strictEqual(yield* markers.read(input), null);
-          assert.strictEqual(yield* markers.read(input), null);
-          yield* Deferred.succeed(answer, value);
-          yield* Queue.take(published);
-          assert.strictEqual(yield* markers.read(input), value);
-          assert.strictEqual(reads, 1);
+  it.effect.each(
+    Array.from([true, false, null] as const, (value) => ({
+      title: `shares one read returning ${String(value)}, without blocking the baseline`,
+      value,
+    })),
+  )("$title", ({ value }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const answer = yield* Deferred.make<boolean | null>();
+        const published = yield* Queue.unbounded<void>();
+        let reads = 0;
+        const markers = yield* makeMateSetupMarkers(() => {
+          reads += 1;
+          return Deferred.await(answer);
+        }, Queue.offer(published, undefined).pipe(Effect.asVoid));
+        const input = {
+          orgId: "ORG",
+          projectId: "Ada",
+          record: "1",
+          serviceId: "zcp",
+          importProcessId: null,
+        };
+        assert.strictEqual(yield* markers.read(input), null);
+        assert.strictEqual(yield* markers.read(input), null);
+        yield* Deferred.succeed(answer, value);
+        yield* Queue.take(published);
+        assert.strictEqual(yield* markers.read(input), value);
+        assert.strictEqual(reads, 1);
+      }),
+    ),
+  );
+  it.effect.each(
+    Array.from(
+      [
+        new ZeropsUnavailable({ operation: "marker", message: "outage" }),
+        new ZeropsRefused({
+          operation: "marker",
+          reason: "forbidden",
+          status: 403,
+          code: "insufficientPermissions",
         }),
-      ),
-    );
-  }
-  for (const error of [
-    new ZeropsUnavailable({ operation: "marker", message: "outage" }),
-    new ZeropsRefused({
-      operation: "marker",
-      reason: "forbidden",
-      status: 403,
-      code: "insufficientPermissions",
-    }),
-  ]) {
-    it.effect(`${error._tag} stays unknown; unchanged input never retries it`, () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const published = yield* Queue.unbounded<void>();
-          let reads = 0;
-          const markers = yield* makeMateSetupMarkers(() => {
-            reads += 1;
-            return Effect.fail(error);
-          }, Queue.offer(published, undefined).pipe(Effect.asVoid));
-          const input = {
-            orgId: "ORG",
-            projectId: "Ada",
-            record: "1",
-            serviceId: "zcp",
-            importProcessId: null,
-          };
-          yield* markers.read(input);
-          yield* Queue.take(published);
-          for (let i = 0; i < 3; i++) assert.strictEqual(yield* markers.read(input), null);
-          assert.strictEqual(reads, 1);
-          yield* markers.read({ ...input, importProcessId: "new-import" });
-          yield* Queue.take(published);
-          assert.strictEqual(reads, 2);
-        }),
-      ),
-    );
-  }
+      ],
+      (error) => ({
+        title: `${error._tag} stays unknown; unchanged input never retries it`,
+        error,
+      }),
+    ),
+  )("$title", ({ error }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const published = yield* Queue.unbounded<void>();
+        let reads = 0;
+        const markers = yield* makeMateSetupMarkers(() => {
+          reads += 1;
+          return Effect.fail(error);
+        }, Queue.offer(published, undefined).pipe(Effect.asVoid));
+        const input = {
+          orgId: "ORG",
+          projectId: "Ada",
+          record: "1",
+          serviceId: "zcp",
+          importProcessId: null,
+        };
+        yield* markers.read(input);
+        yield* Queue.take(published);
+        for (let i = 0; i < 3; i++) assert.strictEqual(yield* markers.read(input), null);
+        assert.strictEqual(reads, 1);
+        yield* markers.read({ ...input, importProcessId: "new-import" });
+        yield* Queue.take(published);
+        assert.strictEqual(reads, 2);
+      }),
+    ),
+  );
   it.effect("fences an old read after a record is replaced", () =>
     Effect.scoped(
       Effect.gen(function* () {

@@ -1084,13 +1084,11 @@ describe("setUpMateVerb", () => {
     },
   ] as const;
 
-  for (const tc of cases) {
-    it(tc.name, () => {
-      expect(
-        setUpMateVerb({ candidateKey: tc.candidateKey, settingUpKey: tc.settingUpKey }),
-      ).toEqual(tc.want);
-    });
-  }
+  it.each(Array.from(cases, (tc) => ({ title: tc.name, tc })))("$title", ({ tc }) => {
+    expect(setUpMateVerb({ candidateKey: tc.candidateKey, settingUpKey: tc.settingUpKey })).toEqual(
+      tc.want,
+    );
+  });
 });
 
 describe("setUpMateRecord", () => {

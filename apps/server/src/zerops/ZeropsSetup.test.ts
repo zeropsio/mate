@@ -738,24 +738,27 @@ describe("ZeropsSetup: the stand-up", () => {
         ),
     ],
   ];
-  for (const [name, arrange] of settles) {
-    it.live(`stops polling for good ${name}, across a restart too`, () =>
-      Effect.gen(function* () {
-        const world = yield* makeWorld;
-        yield* arrange(world);
-        const database = freshDatabase();
-        yield* withServer(world, database, () =>
-          Effect.gen(function* () {
-            yield* ticks;
-            assert.isFalse(yield* stillPolling(world));
-          }),
-        );
-        const reads = yield* Ref.get(world.hqReads);
-        yield* withServer(world, database, () => ticks);
-        assert.strictEqual(yield* Ref.get(world.hqReads), reads);
-      }),
-    );
-  }
+  it.live.each(
+    Array.from(settles, ([name, arrange]) => ({
+      title: `stops polling for good ${name}, across a restart too`,
+      arrange,
+    })),
+  )("$title", ({ arrange }) =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* arrange(world);
+      const database = freshDatabase();
+      yield* withServer(world, database, () =>
+        Effect.gen(function* () {
+          yield* ticks;
+          assert.isFalse(yield* stillPolling(world));
+        }),
+      );
+      const reads = yield* Ref.get(world.hqReads);
+      yield* withServer(world, database, () => ticks);
+      assert.strictEqual(yield* Ref.get(world.hqReads), reads);
+    }),
+  );
 
   // Audit B3: HQ's record of the Mate carries its ask from the write that made it, so a linked
   // Mate naming nobody is one nobody asked for — settled at once, its project closed off or not.
@@ -763,25 +766,28 @@ describe("ZeropsSetup: the stand-up", () => {
     ["its project closed off", NOBODY_ASKED],
     ["its project not closed off yet", linked(null, false)],
   ];
-  for (const [name, hq] of nobodyAsked) {
-    it.live(`settles as none at once when nobody asked, ${name}`, () =>
-      Effect.gen(function* () {
-        const world = yield* makeWorld;
-        yield* Ref.set(world.hq, hq);
-        yield* withServer(world, freshDatabase(), (setup) =>
-          Effect.gen(function* () {
-            yield* ticks;
-            assert.isFalse(yield* stillPolling(world));
-            const document = yield* setup.document;
-            assert.deepStrictEqual(
-              document.steps.find((step) => step.id === "standup"),
-              { id: "standup", state: "none", at: "" },
-            );
-          }),
-        );
-      }),
-    );
-  }
+  it.live.each(
+    Array.from(nobodyAsked, ([name, hq]) => ({
+      title: `settles as none at once when nobody asked, ${name}`,
+      hq,
+    })),
+  )("$title", ({ hq }) =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.hq, hq);
+      yield* withServer(world, freshDatabase(), (setup) =>
+        Effect.gen(function* () {
+          yield* ticks;
+          assert.isFalse(yield* stillPolling(world));
+          const document = yield* setup.document;
+          assert.deepStrictEqual(
+            document.steps.find((step) => step.id === "standup"),
+            { id: "standup", state: "none", at: "" },
+          );
+        }),
+      );
+    }),
+  );
 
   // Who asked comes from HQ: until the link brings the Mate, nobody is known to have asked —
   // which is not "nobody asked", and never settles the stand-up as none.
@@ -899,35 +905,39 @@ describe("ZeropsSetup: the stand-up", () => {
     ["browser", undefined],
     ["browser:claimed", "waiting"],
   ] as const;
-  for (const [source, standup] of browserRecords) {
-    it.live(`a browser's record from before (${source}) is a stand-up that ran`, () =>
-      Effect.gen(function* () {
-        const world = yield* makeWorld;
-        const database = freshDatabase();
-        yield* Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`INSERT INTO zerops_stand_ups
+  it.live.each(
+    Array.from(browserRecords, ([source, standup]) => ({
+      title: `a browser's record from before (${source}) is a stand-up that ran`,
+      source,
+      standup,
+    })),
+  )("$title", ({ source, standup }) =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      const database = freshDatabase();
+      yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO zerops_stand_ups
             (project_id, thread_id, command_id, user_id, source, started_at)
             VALUES ('project-mate', 'thread-main', 'mate-standup-thread-main-1', 'user-a',
               ${source}, '2026-10-01T10:00:00.000Z')`;
-        }).pipe(
-          Effect.provide(
-            Layer.effectDiscard(runMigrations()).pipe(
-              Layer.provideMerge(NodeSqliteClient.layer({ filename: database })),
-              Layer.provide(NodeServices.layer),
-            ),
+      }).pipe(
+        Effect.provide(
+          Layer.effectDiscard(runMigrations()).pipe(
+            Layer.provideMerge(NodeSqliteClient.layer({ filename: database })),
+            Layer.provide(NodeServices.layer),
           ),
-        );
-        yield* Ref.set(world.signers, SIGNED);
-        const document = yield* withServer(world, database, (setup) =>
-          Effect.andThen(ticks, setup.document),
-        );
-        assert.deepStrictEqual(yield* turnsOf(world), []);
-        assert.strictEqual(document.steps.find((step) => step.id === "standup")?.state, standup);
-        assert.isFalse(yield* withServer(world, database, () => stillPolling(world)));
-      }),
-    );
-  }
+        ),
+      );
+      yield* Ref.set(world.signers, SIGNED);
+      const document = yield* withServer(world, database, (setup) =>
+        Effect.andThen(ticks, setup.document),
+      );
+      assert.deepStrictEqual(yield* turnsOf(world), []);
+      assert.strictEqual(document.steps.find((step) => step.id === "standup")?.state, standup);
+      assert.isFalse(yield* withServer(world, database, () => stillPolling(world)));
+    }),
+  );
 });
 
 describe("ZeropsSetup: why a stand-up waits", () => {
@@ -950,8 +960,9 @@ describe("ZeropsSetup: why a stand-up waits", () => {
     ["enrolled, HQ has not sent the Mate", { kind: "not-linked" }, { reason: "not_linked" }],
     ["asked, the asker not signed in yet", ASKED, {}],
   ];
-  for (const [name, hq, said] of waits) {
-    it.live(`${name}`, () =>
+  it.live.each(Array.from(waits, ([name, hq, said]) => ({ title: `${name}`, hq, said })))(
+    "$title",
+    ({ hq, said }) =>
       Effect.gen(function* () {
         const world = yield* makeWorld;
         yield* Ref.set(world.hq, hq);
@@ -962,8 +973,7 @@ describe("ZeropsSetup: why a stand-up waits", () => {
         );
         assert.deepStrictEqual(step, { id: "standup", state: "waiting", at: "", ...said });
       }),
-    );
-  }
+  );
 });
 
 describe("ZeropsSetup: what its setup document leaves out", () => {
@@ -1259,23 +1269,27 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
       "running",
     ],
   ];
-  for (const [name, arrange, expected] of pendingStage) {
-    it.live(`zcp done with the stage halves pending, ${name}`, () =>
-      Effect.gen(function* () {
-        const world = yield* makeWorld;
-        yield* Ref.set(world.signers, SIGNED);
-        const database = freshDatabase();
-        yield* withServer(world, database, (setup) =>
-          Effect.gen(function* () {
-            const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-            yield* arrange(database, standUp!.threadId, standUp!.message.messageId);
-            yield* Ref.set(world.statusFile, { version: 1, standup: afterDev });
-            assert.strictEqual(yield* stateOf(setup, "standup"), expected);
-          }),
-        );
-      }),
-    );
-  }
+  it.live.each(
+    Array.from(pendingStage, ([name, arrange, expected]) => ({
+      title: `zcp done with the stage halves pending, ${name}`,
+      arrange,
+      expected,
+    })),
+  )("$title", ({ arrange, expected }) =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.signers, SIGNED);
+      const database = freshDatabase();
+      yield* withServer(world, database, (setup) =>
+        Effect.gen(function* () {
+          const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+          yield* arrange(database, standUp!.threadId, standUp!.message.messageId);
+          yield* Ref.set(world.statusFile, { version: 1, standup: afterDev });
+          assert.strictEqual(yield* stateOf(setup, "standup"), expected);
+        }),
+      );
+    }),
+  );
 
   it.live("a stand-up claimed and not sent yet reads waiting, never left out", () =>
     Effect.gen(function* () {
@@ -1329,8 +1343,9 @@ describe("ZeropsSetup: the git step reads the Mate's enrollment with HQ", () => 
       { state: "failed", reason: "refused", code: "not_a_mate" },
     ],
   ];
-  for (const [name, hq, said] of steps) {
-    it.live(name, () =>
+  it.live.each(Array.from(steps, ([name, hq, said]) => ({ title: name, hq, said })))(
+    "$title",
+    ({ hq, said }) =>
       Effect.gen(function* () {
         const world = yield* makeWorld;
         yield* Ref.set(world.hq, hq);
@@ -1342,8 +1357,7 @@ describe("ZeropsSetup: the git step reads the Mate's enrollment with HQ", () => 
           }),
         );
       }),
-    );
-  }
+  );
 });
 
 describe("zcpProcessGone", () => {
@@ -1386,13 +1400,18 @@ describe("standUpPollDelay", () => {
     ["30 minutes in", Duration.minutes(30), Duration.seconds(60)],
     ["a day in", Duration.hours(24), Duration.seconds(60)],
   ];
-  for (const [name, elapsed, delay] of cases) {
-    it(`every ${Duration.toSeconds(delay)} s ${name}`, () =>
-      assert.strictEqual(
-        Duration.toMillis(standUpPollDelay(Duration.toMillis(elapsed))),
-        Duration.toMillis(delay),
-      ));
-  }
+  it.each(
+    Array.from(cases, ([name, elapsed, delay]) => ({
+      title: `every ${Duration.toSeconds(delay)} s ${name}`,
+      elapsed,
+      delay,
+    })),
+  )("$title", ({ elapsed, delay }) =>
+    assert.strictEqual(
+      Duration.toMillis(standUpPollDelay(Duration.toMillis(elapsed))),
+      Duration.toMillis(delay),
+    ),
+  );
 });
 
 describe("ZeropsSetup: the stand-up on the Mate engine", () => {

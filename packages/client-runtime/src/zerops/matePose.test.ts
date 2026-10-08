@@ -79,11 +79,12 @@ describe("matePose", () => {
     },
   ];
 
-  for (const entry of cases) {
-    it(`${entry.name}: ${entry.pose}`, () => {
+  it.each(Array.from(cases, (entry) => ({ title: `${entry.name}: ${entry.pose}`, entry })))(
+    "$title",
+    ({ entry }) => {
       expect(matePose(entry.face, entry.facts)).toBe(entry.pose);
-    });
-  }
+    },
+  );
 });
 
 describe("mateArriving", () => {
@@ -250,9 +251,12 @@ describe("mateArriving", () => {
     },
   ];
 
-  for (const entry of cases) {
-    it(`${entry.name}: ${entry.arriving ? "arriving" : "not arriving"}`, () => {
-      expect(mateArriving(mateArrivingUntil(entry.candidate), entry.atMs)).toBe(entry.arriving);
-    });
-  }
+  it.each(
+    Array.from(cases, (entry) => ({
+      title: `${entry.name}: ${entry.arriving ? "arriving" : "not arriving"}`,
+      entry,
+    })),
+  )("$title", ({ entry }) => {
+    expect(mateArriving(mateArrivingUntil(entry.candidate), entry.atMs)).toBe(entry.arriving);
+  });
 });

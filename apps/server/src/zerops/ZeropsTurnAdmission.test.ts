@@ -365,342 +365,351 @@ describe("ZeropsTurnAdmission — the login beyond the defaults the gate is told
 });
 
 describe("ZeropsTurnAdmission", () => {
-  for (const [name, world, command, principal, expected] of [
-    [
-      "admits the signer's own turn",
-      janSignedClaude,
-      turnStart("claudeAgent"),
-      session(JAN),
-      undefined,
-    ],
-    [
-      "refuses a turn on an agent another member signed in",
-      janSignedClaude,
-      turnStart("claudeAgent"),
-      session(EVA),
-      SOMEONE_ELSE,
-    ],
-    [
-      "refuses a turn on an agent nobody recorded a signer for",
-      { agents: [signedIn("claude-code")] },
-      turnStart("claudeAgent"),
-      session(JAN),
-      UNRECORDED,
-    ],
-    [
-      "admits anybody on a token-authorized agent: a key belongs to the project",
-      { agents: [signedIn("codex", true)], signers: { codex: JAN } },
-      turnStart("codex"),
-      session(EVA),
-      undefined,
-    ],
-    [
-      "refuses a turn on an agent that is not signed in",
-      {
-        agents: [
-          {
-            ...signedIn("claude-code"),
-            credPresent: false,
-            providerAuth: "unauthenticated",
-            state: "not-authorized",
-          },
-        ],
-        signers: { "claude-code": JAN },
-      },
-      turnStart("claudeAgent"),
-      session(JAN),
-      "Claude Code is not signed in on this project. Sign it in to use it.",
-    ],
-    [
-      "reads the agent off the thread when the command names none",
-      { ...janSignedClaude, threadInstanceId: "claudeAgent" },
-      turnStart(),
-      session(EVA),
-      SOMEONE_ELSE,
-    ],
-    [
-      "resolves the agent-auth spelling of an instance too",
-      janSignedClaude,
-      turnStart("claude-code"),
-      session(EVA),
-      SOMEONE_ELSE,
-    ],
-    [
-      "gates a second instance of a signed-in agent's driver as that agent",
-      { ...janSignedClaude, drivers: { ...DEFAULT_DRIVERS, claudeAgent_work: "claudeAgent" } },
-      turnStart("claudeAgent_work"),
-      session(EVA),
-      SOMEONE_ELSE,
-    ],
-    [
-      "admits a turn on another login by that login's own signer",
-      evaSignedWork,
-      turnStart("claudeAgent-work"),
-      session(EVA),
-      undefined,
-    ],
-    [
-      "refuses a turn on another login a teammate signed in, whoever signed its agent in",
-      evaSignedWork,
-      turnStart("claudeAgent-work"),
-      session(JAN),
-      LOGIN_SOMEONE_ELSE,
-    ],
-    [
-      "reads another login off the thread when the command names none",
-      { ...evaSignedWork, threadInstanceId: "claudeAgent-work" },
-      turnStart(),
-      session(JAN),
-      LOGIN_SOMEONE_ELSE,
-    ],
-    [
-      "refuses a crew turn on a login its starter did not sign in (N9)",
-      evaSignedWork,
-      turnStart("claudeAgent-work"),
-      { kind: "crew", startedBy: JAN },
-      LOGIN_SOMEONE_ELSE,
-    ],
-    [
-      "admits a crew turn on the starter's own login",
-      evaSignedWork,
-      turnStart("claudeAgent-work"),
-      { kind: "crew", startedBy: EVA },
-      undefined,
-    ],
-    [
-      "never lets another login inherit its agent's signer",
-      { ...evaSignedWork, signers: { "claude-code": JAN } },
-      turnStart("claudeAgent-work"),
-      session(JAN),
-      LOGIN_UNRECORDED,
-    ],
-    [
-      "refuses a turn on another login that is not signed in",
-      { ...evaSignedWork, logins: { "claudeAgent-work": "not-authorized" } },
-      turnStart("claudeAgent-work"),
-      session(EVA),
-      "Claude Code · work is not signed in on this project. Sign it in to use it.",
-    ],
-    [
-      "admits a turn on a driver Mate signs nobody in to",
-      janSignedClaude,
-      turnStart("opencode"),
-      session(EVA),
-      undefined,
-    ],
-    [
-      "admits a turn whose agent the auth feed does not report",
-      { signers: { "claude-code": JAN } },
-      turnStart("claudeAgent"),
-      session(EVA),
-      undefined,
-    ],
-    [
-      "admits a turn on no known thread and no named instance",
-      janSignedClaude,
-      turnStart(),
-      session(EVA),
-      undefined,
-    ],
-    [
-      "leaves stopping a turn to every member",
-      { ...janSignedClaude, threadInstanceId: "claudeAgent" },
-      interrupt,
-      session(EVA),
-      undefined,
-    ],
-    [
-      "gates an answer to a message-mode question: it starts a turn",
-      {
-        ...janSignedClaude,
-        threadInstanceId: "claudeAgent",
-        question: { kind: "user-input.requested", payload: { responseMode: "message" } },
-      },
-      answer,
-      session(EVA),
-      SOMEONE_ELSE,
-    ],
-    [
-      "leaves an answer to a native callback question to every member",
-      {
-        ...janSignedClaude,
-        threadInstanceId: "claudeAgent",
-        question: { kind: "user-input.requested", payload: {} },
-      },
-      answer,
-      session(EVA),
-      undefined,
-    ],
-    [
-      "gates an answer whose question cannot be read",
-      { ...janSignedClaude, threadInstanceId: "claudeAgent", question: "unreadable" },
-      answer,
-      session(EVA),
-      SOMEONE_ELSE,
-    ],
-    [
-      "refuses a session that names no Zerops user",
-      janSignedClaude,
-      turnStart("claudeAgent"),
-      { kind: "session", subject: "cloud-connect" },
-      SOMEONE_ELSE,
-    ],
-    [
-      "admits every turn outside a Zerops environment",
-      { ...janSignedClaude, zerops: false },
-      turnStart("claudeAgent"),
-      session(EVA),
-      undefined,
-    ],
-    [
-      "admits a crew turn started by the signer",
-      janSignedClaude,
-      turnStart("claudeAgent"),
-      { kind: "crew", startedBy: JAN },
-      undefined,
-    ],
-    [
-      "refuses a crew turn started by somebody else",
-      janSignedClaude,
-      turnStart("claudeAgent"),
-      { kind: "crew", startedBy: EVA },
-      SOMEONE_ELSE,
-    ],
-    // X3: a turn no session stands behind follows project access, as a session does.
-    [
-      "refuses a crew turn whose starter this project no longer opens for",
-      { ...janSignedClaude, access: { [JAN]: false } },
-      turnStart("claudeAgent"),
-      { kind: "crew", startedBy: JAN },
-      NO_ACCESS,
-    ],
-    [
-      "refuses a crew turn whose starter's access cannot be confirmed",
-      { ...janSignedClaude, access: {} },
-      turnStart("opencode"),
-      { kind: "crew", startedBy: JAN },
-      ACCESS_UNCONFIRMED,
-    ],
-    [
-      "admits a stand-up its starter signed the agent in for and may still use",
-      janSignedClaude,
-      turnStart("claudeAgent"),
-      { kind: "standup", startedBy: JAN },
-      undefined,
-    ],
-    [
-      "refuses a stand-up whose starter this project no longer opens for",
-      { ...janSignedClaude, access: { [JAN]: false } },
-      turnStart("claudeAgent"),
-      { kind: "standup", startedBy: JAN },
-      NO_ACCESS,
-    ],
-    [
-      "refuses a stand-up on an agent somebody else signed in",
-      janSignedClaude,
-      turnStart("claudeAgent"),
-      { kind: "standup", startedBy: EVA },
-      SOMEONE_ELSE,
-    ],
-    ...(["thread.archive", "thread.unarchive", "thread.delete"] as const).map(
-      (type) =>
+  it.effect.each(
+    Array.from(
+      [
         [
-          `refuses ${type} on a crewmate's conversation from a session`,
-          { ...janSignedClaude, crewThread: { profile: "given" } },
-          onCrewThread(type),
+          "admits the signer's own turn",
+          janSignedClaude,
+          turnStart("claudeAgent"),
           session(JAN),
-          CREW_KEEPS_IT,
-        ] as const,
-    ),
-    [
-      "refuses a runtime-mode change on a crewmate's conversation",
-      { ...janSignedClaude, crewThread: { profile: "given" } },
-      onCrewThreadMode,
-      session(JAN),
-      MODE_KEPT,
-    ],
-    [
-      "leaves a runtime-mode change on a person's own conversation alone",
-      { ...janSignedClaude, threadInstanceId: "claudeAgent" },
-      onCrewThreadMode,
-      session(JAN),
-      undefined,
-    ],
-    [
-      "leaves archiving a crewmate's conversation to the crew itself",
-      { ...janSignedClaude, crewThread: { profile: "given" } },
-      onCrewThread("thread.archive"),
-      { kind: "crew", startedBy: JAN },
-      undefined,
-    ],
-    [
-      "refuses a session's turn on a retired crewmate conversation",
-      { ...janSignedClaude, crewThread: { archived: true, profile: "given" } },
-      turnStart("claudeAgent"),
-      session(JAN),
-      RETIRED,
-    ],
-    [
-      "refuses a crewmate turn the thread tool policy has no profile for",
-      { ...janSignedClaude, crewThread: { profile: "none" } },
-      turnStart("claudeAgent"),
-      { kind: "crew", startedBy: JAN },
-      NOT_RUNNING,
-    ],
-    [
-      "refuses a crewmate turn where no thread tool policy registry exists",
-      { ...janSignedClaude, crewThread: { profile: "no-registry" } },
-      turnStart("claudeAgent"),
-      session(JAN),
-      NOT_RUNNING,
-    ],
-    [
-      "refuses a crewmate turn on an agent that never reads the crew's profile",
-      {
-        ...janSignedClaude,
-        drivers: { ...DEFAULT_DRIVERS, cursor: "cursor" },
-        threadInstanceId: "cursor",
-        crewThread: { profile: "given" },
-      },
-      turnStart("cursor"),
-      { kind: "crew", startedBy: JAN },
-      UNGATED,
-    ],
-    [
-      "refuses a crewmate turn that names an agent which never reads the crew's profile",
-      {
-        ...janSignedClaude,
-        drivers: { ...DEFAULT_DRIVERS, cursor: "cursor" },
-        threadInstanceId: "claudeAgent",
-        crewThread: { profile: "given" },
-      },
-      turnStart("cursor"),
-      { kind: "crew", startedBy: JAN },
-      UNGATED,
-    ],
-    [
-      "admits a crewmate turn its profile gates, as its signer",
-      { ...janSignedClaude, crewThread: { profile: "given" } },
-      turnStart("claudeAgent"),
-      session(JAN),
-      undefined,
-    ],
-    [
-      "leaves a person's own session to the membership watch",
-      { ...janSignedClaude, access: { [JAN]: false } },
-      turnStart("claudeAgent"),
-      session(JAN),
-      undefined,
-    ],
-  ] as const satisfies ReadonlyArray<
-    readonly [string, World, OrchestrationCommand, TurnPrincipal, string | undefined]
-  >) {
-    it.effect(name, () =>
-      Effect.gen(function* () {
-        assert.strictEqual(yield* admitted(world, command, principal), expected);
+          undefined,
+        ],
+        [
+          "refuses a turn on an agent another member signed in",
+          janSignedClaude,
+          turnStart("claudeAgent"),
+          session(EVA),
+          SOMEONE_ELSE,
+        ],
+        [
+          "refuses a turn on an agent nobody recorded a signer for",
+          { agents: [signedIn("claude-code")] },
+          turnStart("claudeAgent"),
+          session(JAN),
+          UNRECORDED,
+        ],
+        [
+          "admits anybody on a token-authorized agent: a key belongs to the project",
+          { agents: [signedIn("codex", true)], signers: { codex: JAN } },
+          turnStart("codex"),
+          session(EVA),
+          undefined,
+        ],
+        [
+          "refuses a turn on an agent that is not signed in",
+          {
+            agents: [
+              {
+                ...signedIn("claude-code"),
+                credPresent: false,
+                providerAuth: "unauthenticated",
+                state: "not-authorized",
+              },
+            ],
+            signers: { "claude-code": JAN },
+          },
+          turnStart("claudeAgent"),
+          session(JAN),
+          "Claude Code is not signed in on this project. Sign it in to use it.",
+        ],
+        [
+          "reads the agent off the thread when the command names none",
+          { ...janSignedClaude, threadInstanceId: "claudeAgent" },
+          turnStart(),
+          session(EVA),
+          SOMEONE_ELSE,
+        ],
+        [
+          "resolves the agent-auth spelling of an instance too",
+          janSignedClaude,
+          turnStart("claude-code"),
+          session(EVA),
+          SOMEONE_ELSE,
+        ],
+        [
+          "gates a second instance of a signed-in agent's driver as that agent",
+          { ...janSignedClaude, drivers: { ...DEFAULT_DRIVERS, claudeAgent_work: "claudeAgent" } },
+          turnStart("claudeAgent_work"),
+          session(EVA),
+          SOMEONE_ELSE,
+        ],
+        [
+          "admits a turn on another login by that login's own signer",
+          evaSignedWork,
+          turnStart("claudeAgent-work"),
+          session(EVA),
+          undefined,
+        ],
+        [
+          "refuses a turn on another login a teammate signed in, whoever signed its agent in",
+          evaSignedWork,
+          turnStart("claudeAgent-work"),
+          session(JAN),
+          LOGIN_SOMEONE_ELSE,
+        ],
+        [
+          "reads another login off the thread when the command names none",
+          { ...evaSignedWork, threadInstanceId: "claudeAgent-work" },
+          turnStart(),
+          session(JAN),
+          LOGIN_SOMEONE_ELSE,
+        ],
+        [
+          "refuses a crew turn on a login its starter did not sign in (N9)",
+          evaSignedWork,
+          turnStart("claudeAgent-work"),
+          { kind: "crew", startedBy: JAN },
+          LOGIN_SOMEONE_ELSE,
+        ],
+        [
+          "admits a crew turn on the starter's own login",
+          evaSignedWork,
+          turnStart("claudeAgent-work"),
+          { kind: "crew", startedBy: EVA },
+          undefined,
+        ],
+        [
+          "never lets another login inherit its agent's signer",
+          { ...evaSignedWork, signers: { "claude-code": JAN } },
+          turnStart("claudeAgent-work"),
+          session(JAN),
+          LOGIN_UNRECORDED,
+        ],
+        [
+          "refuses a turn on another login that is not signed in",
+          { ...evaSignedWork, logins: { "claudeAgent-work": "not-authorized" } },
+          turnStart("claudeAgent-work"),
+          session(EVA),
+          "Claude Code · work is not signed in on this project. Sign it in to use it.",
+        ],
+        [
+          "admits a turn on a driver Mate signs nobody in to",
+          janSignedClaude,
+          turnStart("opencode"),
+          session(EVA),
+          undefined,
+        ],
+        [
+          "admits a turn whose agent the auth feed does not report",
+          { signers: { "claude-code": JAN } },
+          turnStart("claudeAgent"),
+          session(EVA),
+          undefined,
+        ],
+        [
+          "admits a turn on no known thread and no named instance",
+          janSignedClaude,
+          turnStart(),
+          session(EVA),
+          undefined,
+        ],
+        [
+          "leaves stopping a turn to every member",
+          { ...janSignedClaude, threadInstanceId: "claudeAgent" },
+          interrupt,
+          session(EVA),
+          undefined,
+        ],
+        [
+          "gates an answer to a message-mode question: it starts a turn",
+          {
+            ...janSignedClaude,
+            threadInstanceId: "claudeAgent",
+            question: { kind: "user-input.requested", payload: { responseMode: "message" } },
+          },
+          answer,
+          session(EVA),
+          SOMEONE_ELSE,
+        ],
+        [
+          "leaves an answer to a native callback question to every member",
+          {
+            ...janSignedClaude,
+            threadInstanceId: "claudeAgent",
+            question: { kind: "user-input.requested", payload: {} },
+          },
+          answer,
+          session(EVA),
+          undefined,
+        ],
+        [
+          "gates an answer whose question cannot be read",
+          { ...janSignedClaude, threadInstanceId: "claudeAgent", question: "unreadable" },
+          answer,
+          session(EVA),
+          SOMEONE_ELSE,
+        ],
+        [
+          "refuses a session that names no Zerops user",
+          janSignedClaude,
+          turnStart("claudeAgent"),
+          { kind: "session", subject: "cloud-connect" },
+          SOMEONE_ELSE,
+        ],
+        [
+          "admits every turn outside a Zerops environment",
+          { ...janSignedClaude, zerops: false },
+          turnStart("claudeAgent"),
+          session(EVA),
+          undefined,
+        ],
+        [
+          "admits a crew turn started by the signer",
+          janSignedClaude,
+          turnStart("claudeAgent"),
+          { kind: "crew", startedBy: JAN },
+          undefined,
+        ],
+        [
+          "refuses a crew turn started by somebody else",
+          janSignedClaude,
+          turnStart("claudeAgent"),
+          { kind: "crew", startedBy: EVA },
+          SOMEONE_ELSE,
+        ],
+        // X3: a turn no session stands behind follows project access, as a session does.
+        [
+          "refuses a crew turn whose starter this project no longer opens for",
+          { ...janSignedClaude, access: { [JAN]: false } },
+          turnStart("claudeAgent"),
+          { kind: "crew", startedBy: JAN },
+          NO_ACCESS,
+        ],
+        [
+          "refuses a crew turn whose starter's access cannot be confirmed",
+          { ...janSignedClaude, access: {} },
+          turnStart("opencode"),
+          { kind: "crew", startedBy: JAN },
+          ACCESS_UNCONFIRMED,
+        ],
+        [
+          "admits a stand-up its starter signed the agent in for and may still use",
+          janSignedClaude,
+          turnStart("claudeAgent"),
+          { kind: "standup", startedBy: JAN },
+          undefined,
+        ],
+        [
+          "refuses a stand-up whose starter this project no longer opens for",
+          { ...janSignedClaude, access: { [JAN]: false } },
+          turnStart("claudeAgent"),
+          { kind: "standup", startedBy: JAN },
+          NO_ACCESS,
+        ],
+        [
+          "refuses a stand-up on an agent somebody else signed in",
+          janSignedClaude,
+          turnStart("claudeAgent"),
+          { kind: "standup", startedBy: EVA },
+          SOMEONE_ELSE,
+        ],
+        ...(["thread.archive", "thread.unarchive", "thread.delete"] as const).map(
+          (type) =>
+            [
+              `refuses ${type} on a crewmate's conversation from a session`,
+              { ...janSignedClaude, crewThread: { profile: "given" } },
+              onCrewThread(type),
+              session(JAN),
+              CREW_KEEPS_IT,
+            ] as const,
+        ),
+        [
+          "refuses a runtime-mode change on a crewmate's conversation",
+          { ...janSignedClaude, crewThread: { profile: "given" } },
+          onCrewThreadMode,
+          session(JAN),
+          MODE_KEPT,
+        ],
+        [
+          "leaves a runtime-mode change on a person's own conversation alone",
+          { ...janSignedClaude, threadInstanceId: "claudeAgent" },
+          onCrewThreadMode,
+          session(JAN),
+          undefined,
+        ],
+        [
+          "leaves archiving a crewmate's conversation to the crew itself",
+          { ...janSignedClaude, crewThread: { profile: "given" } },
+          onCrewThread("thread.archive"),
+          { kind: "crew", startedBy: JAN },
+          undefined,
+        ],
+        [
+          "refuses a session's turn on a retired crewmate conversation",
+          { ...janSignedClaude, crewThread: { archived: true, profile: "given" } },
+          turnStart("claudeAgent"),
+          session(JAN),
+          RETIRED,
+        ],
+        [
+          "refuses a crewmate turn the thread tool policy has no profile for",
+          { ...janSignedClaude, crewThread: { profile: "none" } },
+          turnStart("claudeAgent"),
+          { kind: "crew", startedBy: JAN },
+          NOT_RUNNING,
+        ],
+        [
+          "refuses a crewmate turn where no thread tool policy registry exists",
+          { ...janSignedClaude, crewThread: { profile: "no-registry" } },
+          turnStart("claudeAgent"),
+          session(JAN),
+          NOT_RUNNING,
+        ],
+        [
+          "refuses a crewmate turn on an agent that never reads the crew's profile",
+          {
+            ...janSignedClaude,
+            drivers: { ...DEFAULT_DRIVERS, cursor: "cursor" },
+            threadInstanceId: "cursor",
+            crewThread: { profile: "given" },
+          },
+          turnStart("cursor"),
+          { kind: "crew", startedBy: JAN },
+          UNGATED,
+        ],
+        [
+          "refuses a crewmate turn that names an agent which never reads the crew's profile",
+          {
+            ...janSignedClaude,
+            drivers: { ...DEFAULT_DRIVERS, cursor: "cursor" },
+            threadInstanceId: "claudeAgent",
+            crewThread: { profile: "given" },
+          },
+          turnStart("cursor"),
+          { kind: "crew", startedBy: JAN },
+          UNGATED,
+        ],
+        [
+          "admits a crewmate turn its profile gates, as its signer",
+          { ...janSignedClaude, crewThread: { profile: "given" } },
+          turnStart("claudeAgent"),
+          session(JAN),
+          undefined,
+        ],
+        [
+          "leaves a person's own session to the membership watch",
+          { ...janSignedClaude, access: { [JAN]: false } },
+          turnStart("claudeAgent"),
+          session(JAN),
+          undefined,
+        ],
+      ] as const satisfies ReadonlyArray<
+        readonly [string, World, OrchestrationCommand, TurnPrincipal, string | undefined]
+      >,
+      ([name, world, command, principal, expected]) => ({
+        title: name,
+        world,
+        command,
+        principal,
+        expected,
       }),
-    );
-  }
+    ),
+  )("$title", ({ world, command, principal, expected }) =>
+    Effect.gen(function* () {
+      assert.strictEqual(yield* admitted(world, command, principal), expected);
+    }),
+  );
 });
 
 const operator = (
@@ -720,153 +729,162 @@ const janNeedsReauth: World = {
 };
 
 describe("ZeropsTurnAdmission.admitOperator", () => {
-  for (const [name, world, instanceIds, principal, expected] of [
-    [
-      "lets the signer run or change what runs on their login",
-      janSignedClaude,
-      ["claudeAgent"],
-      session(JAN),
-      undefined,
-    ],
-    [
-      "refuses anybody else, in admission's words",
-      janSignedClaude,
-      ["claudeAgent"],
-      session(EVA),
-      SOMEONE_ELSE,
-    ],
-    [
-      "refuses everybody on a login nobody recorded a signer for",
-      { agents: [signedIn("claude-code")] },
-      ["claudeAgent"],
-      session(JAN),
-      UNRECORDED,
-    ],
-    [
-      "lets anybody on a token-authorized agent: a key belongs to the project",
-      { agents: [signedIn("codex", true)], signers: { codex: JAN } },
-      ["codex"],
-      session(EVA),
-      undefined,
-    ],
-    [
-      "lets anybody where no login is held: there is nobody's to spend",
-      {
-        agents: [
-          {
-            ...signedIn("claude-code"),
-            credPresent: false,
-            providerAuth: "unauthenticated",
-            state: "not-authorized",
-          },
+  it.effect.each(
+    Array.from(
+      [
+        [
+          "lets the signer run or change what runs on their login",
+          janSignedClaude,
+          ["claudeAgent"],
+          session(JAN),
+          undefined,
         ],
-        signers: { "claude-code": JAN },
-      },
-      ["claudeAgent"],
-      session(EVA),
-      undefined,
-    ],
-    [
-      "judges a login whose credential stopped working by whose it is",
-      janNeedsReauth,
-      ["claudeAgent"],
-      session(EVA),
-      SOMEONE_ELSE,
-    ],
-    [
-      "lets its signer at a login whose credential stopped working",
-      janNeedsReauth,
-      ["claudeAgent"],
-      session(JAN),
-      undefined,
-    ],
-    [
-      "judges another login by its own signer",
-      evaSignedWork,
-      ["claudeAgent-work"],
-      session(JAN),
-      LOGIN_SOMEONE_ELSE,
-    ],
-    [
-      "lets another login's own signer",
-      evaSignedWork,
-      ["claudeAgent-work"],
-      session(EVA),
-      undefined,
-    ],
-    [
-      "never lets another login inherit its agent's signer",
-      { ...evaSignedWork, signers: { "claude-code": JAN } },
-      ["claudeAgent-work"],
-      session(JAN),
-      LOGIN_UNRECORDED,
-    ],
-    [
-      "lets anybody on another login that holds no credential",
-      { ...evaSignedWork, logins: { "claudeAgent-work": "reconnect" } },
-      ["claudeAgent-work"],
-      session(JAN),
-      undefined,
-    ],
-    [
-      "judges another login that must sign in again by whose it is",
-      { ...evaSignedWork, logins: { "claudeAgent-work": "needs-reauth" } },
-      ["claudeAgent-work"],
-      session(JAN),
-      LOGIN_SOMEONE_ELSE,
-    ],
-    [
-      "refuses on the first login of several the person may not run",
-      evaSignedWork,
-      ["claudeAgent-work", "claudeAgent"],
-      session(EVA),
-      SOMEONE_ELSE,
-    ],
-    ["lets a press that reaches no login", janSignedClaude, [], session(EVA), undefined],
-    [
-      "lets anybody on a driver Mate signs nobody in to",
-      janSignedClaude,
-      ["opencode"],
-      session(EVA),
-      undefined,
-    ],
-    [
-      "lets anybody on an agent the auth feed does not report",
-      { signers: { "claude-code": JAN } },
-      ["claudeAgent"],
-      session(EVA),
-      undefined,
-    ],
-    [
-      "refuses a session that names no Zerops user",
-      janSignedClaude,
-      ["claudeAgent"],
-      { kind: "session", subject: "cloud-connect" },
-      SOMEONE_ELSE,
-    ],
-    [
-      "judges a crew principal by its starter",
-      janSignedClaude,
-      ["claudeAgent"],
-      { kind: "crew", startedBy: EVA },
-      SOMEONE_ELSE,
-    ],
-    [
-      "lets everybody outside a Zerops environment",
-      { ...janSignedClaude, zerops: false },
-      ["claudeAgent"],
-      session(EVA),
-      undefined,
-    ],
-  ] as const satisfies ReadonlyArray<
-    readonly [string, World, ReadonlyArray<string>, TurnPrincipal, string | undefined]
-  >) {
-    it.effect(name, () =>
-      Effect.gen(function* () {
-        assert.strictEqual(yield* operator(world, instanceIds, principal), expected);
+        [
+          "refuses anybody else, in admission's words",
+          janSignedClaude,
+          ["claudeAgent"],
+          session(EVA),
+          SOMEONE_ELSE,
+        ],
+        [
+          "refuses everybody on a login nobody recorded a signer for",
+          { agents: [signedIn("claude-code")] },
+          ["claudeAgent"],
+          session(JAN),
+          UNRECORDED,
+        ],
+        [
+          "lets anybody on a token-authorized agent: a key belongs to the project",
+          { agents: [signedIn("codex", true)], signers: { codex: JAN } },
+          ["codex"],
+          session(EVA),
+          undefined,
+        ],
+        [
+          "lets anybody where no login is held: there is nobody's to spend",
+          {
+            agents: [
+              {
+                ...signedIn("claude-code"),
+                credPresent: false,
+                providerAuth: "unauthenticated",
+                state: "not-authorized",
+              },
+            ],
+            signers: { "claude-code": JAN },
+          },
+          ["claudeAgent"],
+          session(EVA),
+          undefined,
+        ],
+        [
+          "judges a login whose credential stopped working by whose it is",
+          janNeedsReauth,
+          ["claudeAgent"],
+          session(EVA),
+          SOMEONE_ELSE,
+        ],
+        [
+          "lets its signer at a login whose credential stopped working",
+          janNeedsReauth,
+          ["claudeAgent"],
+          session(JAN),
+          undefined,
+        ],
+        [
+          "judges another login by its own signer",
+          evaSignedWork,
+          ["claudeAgent-work"],
+          session(JAN),
+          LOGIN_SOMEONE_ELSE,
+        ],
+        [
+          "lets another login's own signer",
+          evaSignedWork,
+          ["claudeAgent-work"],
+          session(EVA),
+          undefined,
+        ],
+        [
+          "never lets another login inherit its agent's signer",
+          { ...evaSignedWork, signers: { "claude-code": JAN } },
+          ["claudeAgent-work"],
+          session(JAN),
+          LOGIN_UNRECORDED,
+        ],
+        [
+          "lets anybody on another login that holds no credential",
+          { ...evaSignedWork, logins: { "claudeAgent-work": "reconnect" } },
+          ["claudeAgent-work"],
+          session(JAN),
+          undefined,
+        ],
+        [
+          "judges another login that must sign in again by whose it is",
+          { ...evaSignedWork, logins: { "claudeAgent-work": "needs-reauth" } },
+          ["claudeAgent-work"],
+          session(JAN),
+          LOGIN_SOMEONE_ELSE,
+        ],
+        [
+          "refuses on the first login of several the person may not run",
+          evaSignedWork,
+          ["claudeAgent-work", "claudeAgent"],
+          session(EVA),
+          SOMEONE_ELSE,
+        ],
+        ["lets a press that reaches no login", janSignedClaude, [], session(EVA), undefined],
+        [
+          "lets anybody on a driver Mate signs nobody in to",
+          janSignedClaude,
+          ["opencode"],
+          session(EVA),
+          undefined,
+        ],
+        [
+          "lets anybody on an agent the auth feed does not report",
+          { signers: { "claude-code": JAN } },
+          ["claudeAgent"],
+          session(EVA),
+          undefined,
+        ],
+        [
+          "refuses a session that names no Zerops user",
+          janSignedClaude,
+          ["claudeAgent"],
+          { kind: "session", subject: "cloud-connect" },
+          SOMEONE_ELSE,
+        ],
+        [
+          "judges a crew principal by its starter",
+          janSignedClaude,
+          ["claudeAgent"],
+          { kind: "crew", startedBy: EVA },
+          SOMEONE_ELSE,
+        ],
+        [
+          "lets everybody outside a Zerops environment",
+          { ...janSignedClaude, zerops: false },
+          ["claudeAgent"],
+          session(EVA),
+          undefined,
+        ],
+      ] as const satisfies ReadonlyArray<
+        readonly [string, World, ReadonlyArray<string>, TurnPrincipal, string | undefined]
+      >,
+      ([name, world, instanceIds, principal, expected]) => ({
+        title: name,
+        world,
+        instanceIds,
+        principal,
+        expected,
       }),
-    );
-  }
+    ),
+  )("$title", ({ world, instanceIds, principal, expected }) =>
+    Effect.gen(function* () {
+      assert.strictEqual(yield* operator(world, instanceIds, principal), expected);
+    }),
+  );
 });
 
 const runAdmitted = (
@@ -880,81 +898,160 @@ const runAdmitted = (
   );
 
 describe("ZeropsTurnAdmission.admitRun", () => {
-  for (const [name, world, instanceId, principal, expected] of [
-    ["admits the signer's own run", janSignedClaude, "claudeAgent", session(JAN), undefined],
-    [
-      "refuses a run on an agent another member signed in",
-      janSignedClaude,
-      "claudeAgent",
-      session(EVA),
-      SOMEONE_ELSE,
-    ],
-    [
-      "refuses a run on an agent nobody recorded a signer for",
-      { agents: [signedIn("claude-code")] },
-      "claudeAgent",
-      session(JAN),
-      UNRECORDED,
-    ],
-    [
-      "admits anybody on a token-authorized agent",
-      { agents: [signedIn("codex", true)], signers: { codex: JAN } },
-      "codex",
-      session(EVA),
-      undefined,
-    ],
-    [
-      "refuses a run on another login a teammate signed in",
-      evaSignedWork,
-      "claudeAgent-work",
-      session(JAN),
-      LOGIN_SOMEONE_ELSE,
-    ],
-    [
-      "refuses a wake for somebody this project no longer opens for",
-      { ...janSignedClaude, access: { [JAN]: false } },
-      "claudeAgent",
-      { kind: "standup", startedBy: JAN },
-      NO_ACCESS,
-    ],
-    [
-      "refuses a wake whose person's access cannot be confirmed",
-      { ...janSignedClaude, access: {} },
-      "claudeAgent",
-      { kind: "crew", startedBy: JAN },
-      ACCESS_UNCONFIRMED,
-    ],
-    [
-      "admits a wake for the signer who still has access",
-      janSignedClaude,
-      "claudeAgent",
-      { kind: "standup", startedBy: JAN },
-      undefined,
-    ],
-    [
-      "lets everybody outside a Zerops environment",
-      { ...janSignedClaude, zerops: false },
-      "claudeAgent",
-      session(EVA),
-      undefined,
-    ],
-  ] as const satisfies ReadonlyArray<
-    readonly [string, World, string, TurnPrincipal, string | undefined]
-  >) {
-    it.effect(name, () =>
-      Effect.gen(function* () {
-        assert.strictEqual(yield* runAdmitted(world, instanceId, principal), expected);
+  it.effect.each(
+    Array.from(
+      [
+        ["admits the signer's own run", janSignedClaude, "claudeAgent", session(JAN), undefined],
+        [
+          "refuses a run on an agent another member signed in",
+          janSignedClaude,
+          "claudeAgent",
+          session(EVA),
+          SOMEONE_ELSE,
+        ],
+        [
+          "refuses a run on an agent nobody recorded a signer for",
+          { agents: [signedIn("claude-code")] },
+          "claudeAgent",
+          session(JAN),
+          UNRECORDED,
+        ],
+        [
+          "admits anybody on a token-authorized agent",
+          { agents: [signedIn("codex", true)], signers: { codex: JAN } },
+          "codex",
+          session(EVA),
+          undefined,
+        ],
+        [
+          "refuses a run on another login a teammate signed in",
+          evaSignedWork,
+          "claudeAgent-work",
+          session(JAN),
+          LOGIN_SOMEONE_ELSE,
+        ],
+        [
+          "refuses a wake for somebody this project no longer opens for",
+          { ...janSignedClaude, access: { [JAN]: false } },
+          "claudeAgent",
+          { kind: "standup", startedBy: JAN },
+          NO_ACCESS,
+        ],
+        [
+          "refuses a wake whose person's access cannot be confirmed",
+          { ...janSignedClaude, access: {} },
+          "claudeAgent",
+          { kind: "crew", startedBy: JAN },
+          ACCESS_UNCONFIRMED,
+        ],
+        [
+          "admits a wake for the signer who still has access",
+          janSignedClaude,
+          "claudeAgent",
+          { kind: "standup", startedBy: JAN },
+          undefined,
+        ],
+        [
+          "lets everybody outside a Zerops environment",
+          { ...janSignedClaude, zerops: false },
+          "claudeAgent",
+          session(EVA),
+          undefined,
+        ],
+      ] as const satisfies ReadonlyArray<
+        readonly [string, World, string, TurnPrincipal, string | undefined]
+      >,
+      ([name, world, instanceId, principal, expected]) => ({
+        title: name,
+        world,
+        instanceId,
+        principal,
+        expected,
       }),
-    );
-    it.effect(`refuses exactly as the command door does: ${name}`, () =>
-      Effect.gen(function* () {
-        assert.strictEqual(
-          yield* runAdmitted(world, instanceId, principal),
-          yield* admitted(world, turnStart(instanceId), principal),
-        );
+    ),
+  )("$title", ({ world, instanceId, principal, expected }) =>
+    Effect.gen(function* () {
+      assert.strictEqual(yield* runAdmitted(world, instanceId, principal), expected);
+    }),
+  );
+  it.effect.each(
+    Array.from(
+      [
+        ["admits the signer's own run", janSignedClaude, "claudeAgent", session(JAN), undefined],
+        [
+          "refuses a run on an agent another member signed in",
+          janSignedClaude,
+          "claudeAgent",
+          session(EVA),
+          SOMEONE_ELSE,
+        ],
+        [
+          "refuses a run on an agent nobody recorded a signer for",
+          { agents: [signedIn("claude-code")] },
+          "claudeAgent",
+          session(JAN),
+          UNRECORDED,
+        ],
+        [
+          "admits anybody on a token-authorized agent",
+          { agents: [signedIn("codex", true)], signers: { codex: JAN } },
+          "codex",
+          session(EVA),
+          undefined,
+        ],
+        [
+          "refuses a run on another login a teammate signed in",
+          evaSignedWork,
+          "claudeAgent-work",
+          session(JAN),
+          LOGIN_SOMEONE_ELSE,
+        ],
+        [
+          "refuses a wake for somebody this project no longer opens for",
+          { ...janSignedClaude, access: { [JAN]: false } },
+          "claudeAgent",
+          { kind: "standup", startedBy: JAN },
+          NO_ACCESS,
+        ],
+        [
+          "refuses a wake whose person's access cannot be confirmed",
+          { ...janSignedClaude, access: {} },
+          "claudeAgent",
+          { kind: "crew", startedBy: JAN },
+          ACCESS_UNCONFIRMED,
+        ],
+        [
+          "admits a wake for the signer who still has access",
+          janSignedClaude,
+          "claudeAgent",
+          { kind: "standup", startedBy: JAN },
+          undefined,
+        ],
+        [
+          "lets everybody outside a Zerops environment",
+          { ...janSignedClaude, zerops: false },
+          "claudeAgent",
+          session(EVA),
+          undefined,
+        ],
+      ] as const satisfies ReadonlyArray<
+        readonly [string, World, string, TurnPrincipal, string | undefined]
+      >,
+      ([name, world, instanceId, principal]) => ({
+        title: `refuses exactly as the command door does: ${name}`,
+        world,
+        instanceId,
+        principal,
       }),
-    );
-  }
+    ),
+  )("$title", ({ world, instanceId, principal }) =>
+    Effect.gen(function* () {
+      assert.strictEqual(
+        yield* runAdmitted(world, instanceId, principal),
+        yield* admitted(world, turnStart(instanceId), principal),
+      );
+    }),
+  );
 });
 
 it.effect(

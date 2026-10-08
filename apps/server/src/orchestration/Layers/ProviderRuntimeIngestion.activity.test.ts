@@ -305,13 +305,18 @@ describe("runtimeEventToActivities a helper's words", () => {
       expected: undefined,
     },
   ];
-  for (const { name, event, field, expected } of cases) {
-    it(name, () => {
-      const [activity] = runtimeEventToActivities(event);
-      const payload = projectActivityPayload(activity!).payload as Record<string, unknown>;
-      expect(payload[field]).toBe(expected);
-    });
-  }
+  it.each(
+    Array.from(cases, ({ name, event, field, expected }) => ({
+      title: name,
+      event,
+      field,
+      expected,
+    })),
+  )("$title", ({ event, field, expected }) => {
+    const [activity] = runtimeEventToActivities(event);
+    const payload = projectActivityPayload(activity!).payload as Record<string, unknown>;
+    expect(payload[field]).toBe(expected);
+  });
 
   it("bounds a report past any reader's need", () => {
     const huge = "word ".repeat(20_000);

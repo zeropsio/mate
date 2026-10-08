@@ -133,26 +133,26 @@ it("keeps the same waiting stage and face when the link route hands over to an a
 });
 
 for (const input of ["pointerdown", "keydown", "wheel", "touchmove"]) {
-  for (const during of ["wake", "hand-off"]) {
-    it(`${input} immediately finishes the ${during} and leaves the conversation usable`, async () => {
-      const view = await opening();
-      try {
-        await view.show(true);
-        if (during === "hand-off")
-          await end(
-            view.host.querySelector('[data-mate-face-eye="left"]'),
-            "conversation-eye-open",
-          );
-        await act(() => document.dispatchEvent(new Event(input, { bubbles: true })));
-        expect(phase(view.host)).toBe("complete");
-        expect(
-          view.host.querySelector("[data-conversation-avatar] [data-mate-face-state]"),
-        ).not.toBeNull();
-      } finally {
-        await view.close();
-      }
-    });
-  }
+  it.each(
+    Array.from(["wake", "hand-off"], (during) => ({
+      title: `${input} immediately finishes the ${during} and leaves the conversation usable`,
+      during,
+    })),
+  )("$title", async ({ during }) => {
+    const view = await opening();
+    try {
+      await view.show(true);
+      if (during === "hand-off")
+        await end(view.host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
+      await act(() => document.dispatchEvent(new Event(input, { bubbles: true })));
+      expect(phase(view.host)).toBe("complete");
+      expect(
+        view.host.querySelector("[data-conversation-avatar] [data-mate-face-state]"),
+      ).not.toBeNull();
+    } finally {
+      await view.close();
+    }
+  });
 }
 
 it("reduced motion waits for real readiness, then shows open eyes and the conversation without moving", async () => {
@@ -330,92 +330,92 @@ it("a warm source shows no waiting pose while its list proves placement", async 
   }
 });
 
-for (const restarting of [true, false]) {
-  it(`the ${restarting ? "restart" : "stand-up"} composition transfers its actual face to an already placed conversation`, async () => {
-    const view = await opening();
-    try {
-      await view.show(
-        false,
-        "source",
-        true,
-        "main",
-        true,
-        <MateEmptyStateView
-          mate={mate}
-          phase={null}
-          coming={{
-            kind: restarting ? "reaching" : "coming",
-            restarting,
-            headline: restarting ? "Restarting Sage" : "Sage is standing up",
-            below: <button>Inspect progress</button>,
-          }}
-          signIn={null}
-          signInRequired={false}
-          unknown={null}
-        />,
-      );
-      const face = view.host.querySelector("[data-mate-face-state]");
-      const lead = view.host.querySelector("[data-mate-empty-lead]");
-      expect(view.host.querySelectorAll("[data-mate-face-state]")).toHaveLength(1);
-      expect(view.host.textContent).toContain(
-        restarting ? "Restarting Sage" : "Sage is standing up",
-      );
-      await view.show(true, "conversation");
-      expect(phase(view.host)).toBe("wake");
-      expect(view.host.textContent).toContain(
-        restarting ? "Restarting Sage" : "Sage is standing up",
-      );
-      expect(view.host.textContent).toContain("Inspect progress");
-      expect(view.host.querySelector("[data-mate-empty-lead]")).toBe(lead);
-      expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
-      await end(view.host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
-      await end(view.host.querySelector("[data-conversation-opening]"), "conversation-handoff");
-      expect(view.host.querySelector("[data-conversation-avatar] [data-mate-face-state]")).toBe(
-        face,
-      );
-    } finally {
-      await view.close();
-    }
-  });
-}
+it.each(
+  Array.from([true, false], (restarting) => ({
+    title: `the ${restarting ? "restart" : "stand-up"} composition transfers its actual face to an already placed conversation`,
+    restarting,
+  })),
+)("$title", async ({ restarting }) => {
+  const view = await opening();
+  try {
+    await view.show(
+      false,
+      "source",
+      true,
+      "main",
+      true,
+      <MateEmptyStateView
+        mate={mate}
+        phase={null}
+        coming={{
+          kind: restarting ? "reaching" : "coming",
+          restarting,
+          headline: restarting ? "Restarting Sage" : "Sage is standing up",
+          below: <button>Inspect progress</button>,
+        }}
+        signIn={null}
+        signInRequired={false}
+        unknown={null}
+      />,
+    );
+    const face = view.host.querySelector("[data-mate-face-state]");
+    const lead = view.host.querySelector("[data-mate-empty-lead]");
+    expect(view.host.querySelectorAll("[data-mate-face-state]")).toHaveLength(1);
+    expect(view.host.textContent).toContain(restarting ? "Restarting Sage" : "Sage is standing up");
+    await view.show(true, "conversation");
+    expect(phase(view.host)).toBe("wake");
+    expect(view.host.textContent).toContain(restarting ? "Restarting Sage" : "Sage is standing up");
+    expect(view.host.textContent).toContain("Inspect progress");
+    expect(view.host.querySelector("[data-mate-empty-lead]")).toBe(lead);
+    expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
+    await end(view.host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
+    await end(view.host.querySelector("[data-conversation-opening]"), "conversation-handoff");
+    expect(view.host.querySelector("[data-conversation-avatar] [data-mate-face-state]")).toBe(face);
+  } finally {
+    await view.close();
+  }
+});
 
-for (const kind of ["unreachable", "reaching"] as const) {
-  it(`a warm skip does not suppress a later ${kind} message or its recovery actions`, async () => {
-    const view = await opening();
-    const recover = vi.fn();
-    try {
-      await view.show(false, "warm", true, "warm-thread", false);
-      expect(view.host.querySelector("[data-conversation-opening]")).toBeNull();
-      await view.show(
-        false,
-        "warm",
-        true,
-        "warm-thread",
-        false,
-        <MateEmptyStateView
-          mate={mate}
-          phase={null}
-          signIn={null}
-          signInRequired={false}
-          unknown={null}
-          coming={{
-            kind,
-            headline: "Sage cannot be reached",
-            below: <button onClick={recover}>Try again</button>,
-          }}
-        />,
-      );
-      expect(phase(view.host)).toBe("waiting");
-      expect(view.host.textContent).toContain("Sage cannot be reached");
-      const action = view.host.querySelector("button");
-      expect(action).not.toBeNull();
-      await act(() => action?.click());
-      expect(recover).toHaveBeenCalledOnce();
-    } finally {
-      await view.close();
-    }
-  });
-}
+it.each(
+  Array.from(["unreachable", "reaching"] as const, (kind) => ({
+    title: `a warm skip does not suppress a later ${kind} message or its recovery actions`,
+    kind,
+  })),
+)("$title", async ({ kind }) => {
+  const view = await opening();
+  const recover = vi.fn();
+  try {
+    await view.show(false, "warm", true, "warm-thread", false);
+    expect(view.host.querySelector("[data-conversation-opening]")).toBeNull();
+    await view.show(
+      false,
+      "warm",
+      true,
+      "warm-thread",
+      false,
+      <MateEmptyStateView
+        mate={mate}
+        phase={null}
+        signIn={null}
+        signInRequired={false}
+        unknown={null}
+        coming={{
+          kind,
+          headline: "Sage cannot be reached",
+          below: <button onClick={recover}>Try again</button>,
+        }}
+      />,
+    );
+    expect(phase(view.host)).toBe("waiting");
+    expect(view.host.textContent).toContain("Sage cannot be reached");
+    const action = view.host.querySelector("button");
+    expect(action).not.toBeNull();
+    await act(() => action?.click());
+    expect(recover).toHaveBeenCalledOnce();
+  } finally {
+    await view.close();
+  }
+});
 
 it("leaving a pending opening ends its lifetime; returning to that ready thread skips it", async () => {
   const view = await opening();
@@ -431,27 +431,28 @@ it("leaving a pending opening ends its lifetime; returning to that ready thread 
   }
 });
 
-for (const renamed of ["Renamed Sage", "@backend"]) {
-  it(`keeps the same Mate face through readiness when the display name becomes ${renamed}`, async () => {
-    const view = await opening();
-    try {
-      const face = view.host.querySelector("[data-mate-face-state]");
-      await view.show(true, "conversation", true, "main", true, undefined, renamed);
-      expect(phase(view.host)).toBe("wake");
-      expect(view.host.textContent).toContain("Sage is opening the conversation.");
-      expect(view.host.textContent).not.toContain(`${renamed} is opening`);
-      expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
-      await end(view.host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
-      expect(phase(view.host)).toBe("hand-off");
-      await end(view.host.querySelector("[data-conversation-opening]"), "conversation-handoff");
-      expect(view.host.querySelector("[data-conversation-avatar] [data-mate-face-state]")).toBe(
-        face,
-      );
-    } finally {
-      await view.close();
-    }
-  });
-}
+it.each(
+  Array.from(["Renamed Sage", "@backend"], (renamed) => ({
+    title: `keeps the same Mate face through readiness when the display name becomes ${renamed}`,
+    renamed,
+  })),
+)("$title", async ({ renamed }) => {
+  const view = await opening();
+  try {
+    const face = view.host.querySelector("[data-mate-face-state]");
+    await view.show(true, "conversation", true, "main", true, undefined, renamed);
+    expect(phase(view.host)).toBe("wake");
+    expect(view.host.textContent).toContain("Sage is opening the conversation.");
+    expect(view.host.textContent).not.toContain(`${renamed} is opening`);
+    expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
+    await end(view.host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
+    expect(phase(view.host)).toBe("hand-off");
+    await end(view.host.querySelector("[data-conversation-opening]"), "conversation-handoff");
+    expect(view.host.querySelector("[data-conversation-avatar] [data-mate-face-state]")).toBe(face);
+  } finally {
+    await view.close();
+  }
+});
 
 it("keeps the opening face visible and interactive outside a withheld settling pane", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

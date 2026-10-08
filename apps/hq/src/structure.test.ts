@@ -256,64 +256,65 @@ const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A
 
 describe("structure", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    for (const marker of [true, false] as const) {
-      it.effect(
-        `shares setup marker ${String(marker)} across authorized navigation recipients`,
-        () =>
-          withStructure((_view, _down, world) =>
-            Effect.gen(function* () {
-              world.projects = [...VIEW.projects];
-              world.tokens.set("org-key", {
-                id: "core",
-                name: "Core",
-                orgId: "ORG",
-                roleCode: "READ_ONLY",
-                canCreateProjects: false,
-                canViewFinances: false,
-                canEditFinances: false,
-                projects: [],
-                createdMs: 0,
-                createdByUser: null,
-              });
-              if (marker) world.setupMarkers.add("zcp");
-              const structure = yield* Structure;
-              yield* structure.createMate("owner", {
-                projectId: "P_OWN",
-                face: "face",
-                serviceId: "zcp",
-              });
-              const told = yield* Stream.runHead(Stream.drop(structure.changes, 1)).pipe(
-                Effect.forkChild,
-              );
-              yield* Effect.yieldNow;
-              yield* structure.navigation;
-              yield* Fiber.join(told);
-              const known = yield* structure.navigation;
-              for (const who of ["owner", "admin", "reader", "maker"])
-                assert.strictEqual(
-                  known.forPerson(who).ungrouped.find((row) => row.projectId === "P_OWN")?.mate
-                    .setupMarker,
-                  marker,
-                );
-              assert.deepStrictEqual(known.forPerson("nobody").ungrouped, []);
-              assert.strictEqual(
-                world.calls.filter((call) => call.startsWith("mateSetupMarker:")).length,
-                1,
-              );
-              yield* structure.navigation;
-              assert.strictEqual(
-                world.calls.filter((call) => call.startsWith("mateSetupMarker:")).length,
-                1,
-              );
-              yield* structure.markClosedOff("owner", "P_OWN");
-              assert.strictEqual(
-                (yield* structure.navigation).forPerson("owner").ungrouped[0]?.mate.closedOff,
-                true,
-              );
-            }),
-          ),
-      );
-    }
+    it.effect.each(
+      Array.from([true, false] as const, (marker) => ({
+        title: `shares setup marker ${String(marker)} across authorized navigation recipients`,
+        marker,
+      })),
+    )("$title", ({ marker }) =>
+      withStructure((_view, _down, world) =>
+        Effect.gen(function* () {
+          world.projects = [...VIEW.projects];
+          world.tokens.set("org-key", {
+            id: "core",
+            name: "Core",
+            orgId: "ORG",
+            roleCode: "READ_ONLY",
+            canCreateProjects: false,
+            canViewFinances: false,
+            canEditFinances: false,
+            projects: [],
+            createdMs: 0,
+            createdByUser: null,
+          });
+          if (marker) world.setupMarkers.add("zcp");
+          const structure = yield* Structure;
+          yield* structure.createMate("owner", {
+            projectId: "P_OWN",
+            face: "face",
+            serviceId: "zcp",
+          });
+          const told = yield* Stream.runHead(Stream.drop(structure.changes, 1)).pipe(
+            Effect.forkChild,
+          );
+          yield* Effect.yieldNow;
+          yield* structure.navigation;
+          yield* Fiber.join(told);
+          const known = yield* structure.navigation;
+          for (const who of ["owner", "admin", "reader", "maker"])
+            assert.strictEqual(
+              known.forPerson(who).ungrouped.find((row) => row.projectId === "P_OWN")?.mate
+                .setupMarker,
+              marker,
+            );
+          assert.deepStrictEqual(known.forPerson("nobody").ungrouped, []);
+          assert.strictEqual(
+            world.calls.filter((call) => call.startsWith("mateSetupMarker:")).length,
+            1,
+          );
+          yield* structure.navigation;
+          assert.strictEqual(
+            world.calls.filter((call) => call.startsWith("mateSetupMarker:")).length,
+            1,
+          );
+          yield* structure.markClosedOff("owner", "P_OWN");
+          assert.strictEqual(
+            (yield* structure.navigation).forPerson("owner").ungrouped[0]?.mate.closedOff,
+            true,
+          );
+        }),
+      ),
+    );
     it.effect(
       "a held half-made environment offers finish independently of its occupied add slot",
       () =>
@@ -1790,65 +1791,67 @@ describe("structure", () => {
 
     // An environment goes with its project: at reconcile once Zerops no longer has it, and when
     // it leaves its application; a move into another application or tier records it there anew.
-    for (const kind of ["stage", "production", "devstage"] as const) {
-      it.effect(`moving a Mate as ${kind} keeps its identity and source repository history`, () =>
-        withStructure((view) =>
-          Effect.gen(function* () {
-            const structure = yield* Structure;
-            const sql = yield* SqlClient.SqlClient;
-            const source = yield* structure.createApp("owner", "Source");
-            const destination = yield* structure.createApp("owner", "Destination");
-            yield* structure.attachProject("owner", source.id, {
-              projectId: "P_MATE",
-              kind: "mate",
-              mate: { face: "face-3", standUp: true },
-            });
-            yield* structure.recordSigners("P_MATE", { claude: "dev" });
-            yield* structure.markClosedOff("owner", "P_MATE");
-            const before = (yield* structure.read("owner")).apps.find(
-              (app) => app.id === source.id,
-            )!.projects[0]!.mate;
-            yield* sql`INSERT INTO hq_repo (app_id, name, created_by)
+    it.effect.each(
+      Array.from(["stage", "production", "devstage"] as const, (kind) => ({
+        title: `moving a Mate as ${kind} keeps its identity and source repository history`,
+        kind,
+      })),
+    )("$title", ({ kind }) =>
+      withStructure((view) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const source = yield* structure.createApp("owner", "Source");
+          const destination = yield* structure.createApp("owner", "Destination");
+          yield* structure.attachProject("owner", source.id, {
+            projectId: "P_MATE",
+            kind: "mate",
+            mate: { face: "face-3", standUp: true },
+          });
+          yield* structure.recordSigners("P_MATE", { claude: "dev" });
+          yield* structure.markClosedOff("owner", "P_MATE");
+          const before = (yield* structure.read("owner")).apps.find((app) => app.id === source.id)!
+            .projects[0]!.mate;
+          yield* sql`INSERT INTO hq_repo (app_id, name, created_by)
               VALUES (${source.id}::uuid, 'appdev', 'owner')`;
-            yield* sql`INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state, head)
+          yield* sql`INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, state, head)
               VALUES (${source.id}::uuid, 'appdev', 1, 'P_MATE', 'Open work', 'open', ${"a".repeat(40)}),
                      (${source.id}::uuid, 'appdev', 2, 'P_MATE', 'Merged work', 'merged', ${"b".repeat(40)})`;
-            const history = sql`SELECT app_id::text, repo, number, mate_project_id, state, head
+          const history = sql`SELECT app_id::text, repo, number, mate_project_id, state, head
               FROM hq_change ORDER BY number`;
-            const beforeHistory = yield* history;
-            yield* structure.moveProject("owner", "P_MATE", { appId: destination.id, kind });
-            const read = yield* structure.read("owner");
-            assert.deepStrictEqual(
-              read.apps
-                .find((app) => app.id === destination.id)!
-                .projects.map((project) => ({
-                  projectId: project.projectId,
-                  kind: project.kind,
-                  mate: project.mate,
-                })),
-              [{ projectId: "P_MATE", kind, mate: before }],
-            );
-            assert.deepStrictEqual(read.apps.find((app) => app.id === source.id)!.projects, []);
-            assert.deepStrictEqual(yield* history, beforeHistory);
-            assert.strictEqual(
-              yield* reasonOf(structure.deleteApp("owner", source.id)),
-              "app_not_empty",
-            );
-            // Destruction removes placement, never another repository's retained changes.
-            yield* Ref.update(view, (org) => ({
-              ...org,
-              projects: org.projects.filter((project) => project.id !== "P_MATE"),
-            }));
-            yield* structure.reconcile;
-            assert.deepStrictEqual(yield* history, beforeHistory);
-            assert.strictEqual(
-              yield* reasonOf(structure.deleteApp("owner", source.id)),
-              "app_not_empty",
-            );
-          }),
-        ),
-      );
-    }
+          const beforeHistory = yield* history;
+          yield* structure.moveProject("owner", "P_MATE", { appId: destination.id, kind });
+          const read = yield* structure.read("owner");
+          assert.deepStrictEqual(
+            read.apps
+              .find((app) => app.id === destination.id)!
+              .projects.map((project) => ({
+                projectId: project.projectId,
+                kind: project.kind,
+                mate: project.mate,
+              })),
+            [{ projectId: "P_MATE", kind, mate: before }],
+          );
+          assert.deepStrictEqual(read.apps.find((app) => app.id === source.id)!.projects, []);
+          assert.deepStrictEqual(yield* history, beforeHistory);
+          assert.strictEqual(
+            yield* reasonOf(structure.deleteApp("owner", source.id)),
+            "app_not_empty",
+          );
+          // Destruction removes placement, never another repository's retained changes.
+          yield* Ref.update(view, (org) => ({
+            ...org,
+            projects: org.projects.filter((project) => project.id !== "P_MATE"),
+          }));
+          yield* structure.reconcile;
+          assert.deepStrictEqual(yield* history, beforeHistory);
+          assert.strictEqual(
+            yield* reasonOf(structure.deleteApp("owner", source.id)),
+            "app_not_empty",
+          );
+        }),
+      ),
+    );
 
     it.effect("drops an environment with its project, and records it anew where it moves", () =>
       withStructure((view) =>

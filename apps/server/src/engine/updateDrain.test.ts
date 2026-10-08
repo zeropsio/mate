@@ -132,24 +132,27 @@ const drainEngine = ConversationsModule.layer().pipe(
 
 describe("engine update drain", () => {
   it.layer(drainEngine)("worker receipts", (it) => {
-    for (const state of ["pending", "running", "settling"]) {
-      it.effect(`${state} work postpones switching even when no run is active`, () =>
-        Effect.gen(function* () {
-          const conversations = yield* Conversations;
-          const id = ConversationId.make(`receipt-${state}`);
-          yield* conversations.ask(envelope({ _tag: "Archive" }, { conversation: id }));
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`INSERT INTO engine_effect (effect_id, conversation_id, lane, kind, class, payload_json, state, available_at, cause_id, created_seq)
+    it.effect.each(
+      Array.from(["pending", "running", "settling"], (state) => ({
+        title: `${state} work postpones switching even when no run is active`,
+        state,
+      })),
+    )("$title", ({ state }) =>
+      Effect.gen(function* () {
+        const conversations = yield* Conversations;
+        const id = ConversationId.make(`receipt-${state}`);
+        yield* conversations.ask(envelope({ _tag: "Archive" }, { conversation: id }));
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO engine_effect (effect_id, conversation_id, lane, kind, class, payload_json, state, available_at, cause_id, created_seq)
           VALUES (${`receipt-${state}`}, ${id}, 'side', 'workspace.finish', 'replay-safe', '{}', ${state}, 0, 'test', 1)`;
-          const drain = yield* makeEngineUpdateDrain;
-          expect(drain).toBeDefined();
-          const facts = yield* drain!.facts;
-          expect(facts.idle).toBe(false);
-          expect(facts.blockers).toContain("unsettled worker receipt");
-          yield* sql`UPDATE engine_effect SET state = 'done' WHERE effect_id = ${`receipt-${state}`}`;
-        }),
-      );
-    }
+        const drain = yield* makeEngineUpdateDrain;
+        expect(drain).toBeDefined();
+        const facts = yield* drain!.facts;
+        expect(facts.idle).toBe(false);
+        expect(facts.blockers).toContain("unsettled worker receipt");
+        yield* sql`UPDATE engine_effect SET state = 'done' WHERE effect_id = ${`receipt-${state}`}`;
+      }),
+    );
 
     it.effect("quiescence requires a fence and keeps new work refused until cancellation", () =>
       Effect.gen(function* () {

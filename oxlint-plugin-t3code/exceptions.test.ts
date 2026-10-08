@@ -380,8 +380,9 @@ describe("exception reconciliation", () => {
     },
   ];
 
-  for (const testCase of cases) {
-    it(testCase.name, () => {
+  it.each(Array.from(cases, (testCase) => ({ title: testCase.name, testCase })))(
+    "$title",
+    ({ testCase }) => {
       assert.deepStrictEqual(
         reconcileExceptions({
           entries: testCase.entries,
@@ -391,8 +392,8 @@ describe("exception reconciliation", () => {
         }),
         testCase.expected,
       );
-    });
-  }
+    },
+  );
 
   it("one entry suppresses exactly one occurrence — a second identical finding is unlisted", () => {
     const duplicate = finding();

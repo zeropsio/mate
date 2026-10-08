@@ -88,9 +88,10 @@ const CAPTURED: ReadonlyArray<readonly [string, string, LandingRefusal]> = [
 ];
 
 describe("classifyLandingRefusal", () => {
-  for (const [name, stderr, expected] of CAPTURED) {
-    it(name, () => {
+  it.each(Array.from(CAPTURED, ([name, stderr, expected]) => ({ title: name, stderr, expected })))(
+    "$title",
+    ({ stderr, expected }) => {
       assert.deepStrictEqual(classifyLandingRefusal(stderr), expected);
-    });
-  }
+    },
+  );
 });

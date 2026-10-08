@@ -663,39 +663,42 @@ it("shows the current and crew paths and offers a selected copy assignment", () 
   ]);
 });
 
-for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
-  it(`offers Continue for interrupted ${kind}, with Drop it only before landing`, () => {
-    const operation = {
-      id: "op-1",
-      crew: "crew",
-      handle: "backend",
-      taskId: "task-12",
-      kind,
-      stage: "dispatching",
-      confirmedStage: "prepared",
-      status: "interrupted" as const,
-      startedBy: "person",
-      resumeState: "working" as const,
-      targets: {
-        host: "appdev",
-        path: "/crew/copy",
-        ref: "crew/backend",
-        threadId: null,
-        commandId: null,
-        attempt: 1,
-      },
-      result: null,
-      detail: null,
-      startedAt: "2026-10-03T10:00:00.000Z",
-      updatedAt: "2026-10-03T10:00:00.000Z",
-    };
-    const row = needing("interrupted", { operation });
-    expect(row.needs[0]?.actions.map((action) => action.label)).toEqual(
-      kind === "landing" ? ["Continue"] : ["Continue", "Drop it"],
-    );
-    expect(row.needs[0]?.detail).toContain("Last confirmed: ready to start");
-  });
-}
+it.each(
+  Array.from(["dispatch", "checkpoint", "check", "landing"] as const, (kind) => ({
+    title: `offers Continue for interrupted ${kind}, with Drop it only before landing`,
+    kind,
+  })),
+)("$title", ({ kind }) => {
+  const operation = {
+    id: "op-1",
+    crew: "crew",
+    handle: "backend",
+    taskId: "task-12",
+    kind,
+    stage: "dispatching",
+    confirmedStage: "prepared",
+    status: "interrupted" as const,
+    startedBy: "person",
+    resumeState: "working" as const,
+    targets: {
+      host: "appdev",
+      path: "/crew/copy",
+      ref: "crew/backend",
+      threadId: null,
+      commandId: null,
+      attempt: 1,
+    },
+    result: null,
+    detail: null,
+    startedAt: "2026-10-03T10:00:00.000Z",
+    updatedAt: "2026-10-03T10:00:00.000Z",
+  };
+  const row = needing("interrupted", { operation });
+  expect(row.needs[0]?.actions.map((action) => action.label)).toEqual(
+    kind === "landing" ? ["Continue"] : ["Continue", "Drop it"],
+  );
+  expect(row.needs[0]?.detail).toContain("Last confirmed: ready to start");
+});
 
 it("offers a selected rebuild for a missing crew copy", () => {
   const row = needing("copy-missing", { taskId: null });

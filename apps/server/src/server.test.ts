@@ -2251,45 +2251,51 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  for (const manifest of [
-    { label: "missing", contents: null },
-    { label: "nonmatching", contents: '{"other.js":{"file":"assets/other-AbCd0123.js"}}' },
-    { label: "malformed", contents: "{not-json" },
-  ]) {
-    it.effect(`revalidates hash-like static filenames with a ${manifest.label} manifest`, () =>
-      Effect.gen(function* () {
-        const fileSystem = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const staticDir = yield* fileSystem.makeTempDirectoryScoped({
-          prefix: "t3-static-mutable-",
-        });
-        yield* fileSystem.makeDirectory(path.join(staticDir, "assets"));
-        if (manifest.contents !== null) {
-          yield* fileSystem.makeDirectory(path.join(staticDir, ".vite"));
-          yield* fileSystem.writeFileString(
-            path.join(staticDir, ".vite", "manifest.json"),
-            manifest.contents,
-          );
-        }
-        const filePath = path.join(staticDir, "assets", "config-20260904.js");
-        yield* fileSystem.writeFileString(filePath, "first config");
-        yield* buildAppUnderTest({ config: { staticDir } });
+  it.effect.each(
+    Array.from(
+      [
+        { label: "missing", contents: null },
+        { label: "nonmatching", contents: '{"other.js":{"file":"assets/other-AbCd0123.js"}}' },
+        { label: "malformed", contents: "{not-json" },
+      ],
+      (manifest) => ({
+        title: `revalidates hash-like static filenames with a ${manifest.label} manifest`,
+        manifest,
+      }),
+    ),
+  )("$title", ({ manifest }) =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const staticDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-static-mutable-",
+      });
+      yield* fileSystem.makeDirectory(path.join(staticDir, "assets"));
+      if (manifest.contents !== null) {
+        yield* fileSystem.makeDirectory(path.join(staticDir, ".vite"));
+        yield* fileSystem.writeFileString(
+          path.join(staticDir, ".vite", "manifest.json"),
+          manifest.contents,
+        );
+      }
+      const filePath = path.join(staticDir, "assets", "config-20260904.js");
+      yield* fileSystem.writeFileString(filePath, "first config");
+      yield* buildAppUnderTest({ config: { staticDir } });
 
-        const initial = yield* HttpClient.get("/assets/config-20260904.js");
-        assert.equal(initial.headers["cache-control"], "no-cache");
-        assert.equal(yield* initial.text, "first config");
+      const initial = yield* HttpClient.get("/assets/config-20260904.js");
+      assert.equal(initial.headers["cache-control"], "no-cache");
+      assert.equal(yield* initial.text, "first config");
 
-        yield* fileSystem.writeFileString(filePath, "replacement config");
-        const changed = yield* HttpClient.get("/assets/config-20260904.js", {
-          headers: { "if-none-match": initial.headers.etag! },
-        });
-        assert.equal(changed.status, 200);
-        assert.equal(changed.headers["cache-control"], "no-cache");
-        assert.notEqual(changed.headers.etag, initial.headers.etag);
-        assert.equal(yield* changed.text, "replacement config");
-      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-    );
-  }
+      yield* fileSystem.writeFileString(filePath, "replacement config");
+      const changed = yield* HttpClient.get("/assets/config-20260904.js", {
+        headers: { "if-none-match": initial.headers.etag! },
+      });
+      assert.equal(changed.status, 200);
+      assert.equal(changed.headers["cache-control"], "no-cache");
+      assert.notEqual(changed.headers.etag, initial.headers.etag);
+      assert.equal(yield* changed.text, "replacement config");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
 
   it.effect("binds static metadata and bytes to one file across atomic replacement", () =>
     Effect.gen(function* () {
@@ -4867,31 +4873,34 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  for (const desktopOrigin of ["t3code://app", "t3code-dev://app"]) {
-    it.effect(`allows credentialed preflights from ${desktopOrigin} in development`, () =>
-      Effect.gen(function* () {
-        yield* buildAppUnderTest({
-          config: { devUrl: new URL(crossOriginClientOrigin) },
-        });
+  it.effect.each(
+    Array.from(["t3code://app", "t3code-dev://app"], (desktopOrigin) => ({
+      title: `allows credentialed preflights from ${desktopOrigin} in development`,
+      desktopOrigin,
+    })),
+  )("$title", ({ desktopOrigin }) =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: { devUrl: new URL(crossOriginClientOrigin) },
+      });
 
-        const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
-        const response = yield* fetchEffect(sessionUrl, {
-          method: "OPTIONS",
-          headers: {
-            origin: desktopOrigin,
-            "access-control-request-method": "GET",
-            "access-control-request-headers": "content-type",
-          },
-        });
-
-        assert.equal(response.status, 204);
-        assertBrowserApiCorsPreflightHeaders(response.headers, {
+      const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
+      const response = yield* fetchEffect(sessionUrl, {
+        method: "OPTIONS",
+        headers: {
           origin: desktopOrigin,
-          credentials: true,
-        });
-      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-    );
-  }
+          "access-control-request-method": "GET",
+          "access-control-request-headers": "content-type",
+        },
+      });
+
+      assert.equal(response.status, 204);
+      assertBrowserApiCorsPreflightHeaders(response.headers, {
+        origin: desktopOrigin,
+        credentials: true,
+      });
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
 
   it.effect("includes CORS headers on remote websocket-ticket auth failures", () =>
     Effect.gen(function* () {
@@ -6424,98 +6433,101 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  for (const mode of ["all", "targeted", "background"] as const) {
-    it.effect(`provider refresh invalidates T3 caches before probing (${mode})`, () => {
-      const driver = ProviderDriverKind.make("codex");
-      const instanceIds = [ProviderInstanceId.make("codex"), ProviderInstanceId.make("codex_work")];
-      const packageNames = ["@example/personal", "@example/work"];
-      const versionCache = new Map(
-        packageNames.map((name) => [
-          name,
-          {
-            expiresAt: Number.MAX_SAFE_INTEGER,
-            version: "1.0.0",
-          },
-        ]),
-      );
-      const invalidated: string[] = [];
-      const freshMaintenance: string[] = [];
-      let manifestRefreshed = false;
-      let probed = false;
-      const instances = instanceIds.map(
-        (instanceId, index) =>
-          ({
-            instanceId,
-            driverKind: driver,
-            continuationIdentity: { driverKind: driver, continuationKey: instanceId },
-            displayName: undefined,
-            enabled: true,
-            invalidateCaches: Effect.sync(() => {
-              invalidated.push(instanceId);
-            }),
-            snapshot: {
-              resolveMaintenance: (options) =>
-                Effect.sync(() => {
-                  assert.isTrue(options?.fresh);
-                  freshMaintenance.push(instanceId);
-                  return makeManualOnlyProviderMaintenanceCapabilities({
-                    provider: driver,
-                    packageName: packageNames[index]!,
-                  });
-                }),
-              getSnapshot: Effect.never,
-              refresh: Effect.never,
-              streamChanges: Stream.empty,
-              applyUsageLimits: () => Effect.void,
-            },
-            adapter: {} as ProviderInstance["adapter"],
-            textGeneration: {} as ProviderInstance["textGeneration"],
-          }) satisfies ProviderInstance,
-      );
-      const expected =
-        mode === "background" ? [] : mode === "targeted" ? [instanceIds[1]!] : instanceIds;
-      const probe = Effect.sync(() => {
-        probed = true;
-        assert.equal(manifestRefreshed, mode !== "background");
-        assert.deepEqual(invalidated.toSorted(), expected.toSorted());
-        assert.deepEqual(freshMaintenance.toSorted(), expected.toSorted());
-        for (let index = 0; index < instanceIds.length; index++) {
-          assert.equal(
-            versionCache.has(packageNames[index]!),
-            !expected.includes(instanceIds[index]!),
-          );
-        }
-        return [];
-      });
-      return Effect.gen(function* () {
-        yield* buildAppUnderTest({
-          layers: {
-            modelManifest: {
-              forceRefresh: Effect.sync(() => {
-                manifestRefreshed = true;
-                return ModelManifest.BUNDLED_MODEL_MANIFEST;
+  it.effect.each(
+    Array.from(["all", "targeted", "background"] as const, (mode) => ({
+      title: `provider refresh invalidates T3 caches before probing (${mode})`,
+      mode,
+    })),
+  )("$title", ({ mode }) => {
+    const driver = ProviderDriverKind.make("codex");
+    const instanceIds = [ProviderInstanceId.make("codex"), ProviderInstanceId.make("codex_work")];
+    const packageNames = ["@example/personal", "@example/work"];
+    const versionCache = new Map(
+      packageNames.map((name) => [
+        name,
+        {
+          expiresAt: Number.MAX_SAFE_INTEGER,
+          version: "1.0.0",
+        },
+      ]),
+    );
+    const invalidated: string[] = [];
+    const freshMaintenance: string[] = [];
+    let manifestRefreshed = false;
+    let probed = false;
+    const instances = instanceIds.map(
+      (instanceId, index) =>
+        ({
+          instanceId,
+          driverKind: driver,
+          continuationIdentity: { driverKind: driver, continuationKey: instanceId },
+          displayName: undefined,
+          enabled: true,
+          invalidateCaches: Effect.sync(() => {
+            invalidated.push(instanceId);
+          }),
+          snapshot: {
+            resolveMaintenance: (options) =>
+              Effect.sync(() => {
+                assert.isTrue(options?.fresh);
+                freshMaintenance.push(instanceId);
+                return makeManualOnlyProviderMaintenanceCapabilities({
+                  provider: driver,
+                  packageName: packageNames[index]!,
+                });
               }),
-            },
-            providerInstanceRegistry: { listInstances: Effect.succeed(instances) },
-            providerRegistry: { refresh: () => probe, refreshInstance: () => probe },
+            getSnapshot: Effect.never,
+            refresh: Effect.never,
+            streamChanges: Stream.empty,
+            applyUsageLimits: () => Effect.void,
           },
-        });
-        const wsUrl = yield* getWsServerUrl("/ws");
-        yield* Effect.scoped(
-          withWsRpcClient(wsUrl, (client) =>
-            client[WS_METHODS.serverRefreshProviders]({
-              ...(mode === "targeted" ? { instanceId: instanceIds[1]! } : {}),
-              ...(mode !== "background" ? { refreshModels: true } : {}),
-            }),
-          ),
+          adapter: {} as ProviderInstance["adapter"],
+          textGeneration: {} as ProviderInstance["textGeneration"],
+        }) satisfies ProviderInstance,
+    );
+    const expected =
+      mode === "background" ? [] : mode === "targeted" ? [instanceIds[1]!] : instanceIds;
+    const probe = Effect.sync(() => {
+      probed = true;
+      assert.equal(manifestRefreshed, mode !== "background");
+      assert.deepEqual(invalidated.toSorted(), expected.toSorted());
+      assert.deepEqual(freshMaintenance.toSorted(), expected.toSorted());
+      for (let index = 0; index < instanceIds.length; index++) {
+        assert.equal(
+          versionCache.has(packageNames[index]!),
+          !expected.includes(instanceIds[index]!),
         );
-        assert.isTrue(probed);
-      }).pipe(
-        Effect.provideService(ProviderVersionCache, versionCache),
-        Effect.provide(NodeHttpServer.layerTest),
-      );
+      }
+      return [];
     });
-  }
+    return Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        layers: {
+          modelManifest: {
+            forceRefresh: Effect.sync(() => {
+              manifestRefreshed = true;
+              return ModelManifest.BUNDLED_MODEL_MANIFEST;
+            }),
+          },
+          providerInstanceRegistry: { listInstances: Effect.succeed(instances) },
+          providerRegistry: { refresh: () => probe, refreshInstance: () => probe },
+        },
+      });
+      const wsUrl = yield* getWsServerUrl("/ws");
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[WS_METHODS.serverRefreshProviders]({
+            ...(mode === "targeted" ? { instanceId: instanceIds[1]! } : {}),
+            ...(mode !== "background" ? { refreshModels: true } : {}),
+          }),
+        ),
+      );
+      assert.isTrue(probed);
+    }).pipe(
+      Effect.provideService(ProviderVersionCache, versionCache),
+      Effect.provide(NodeHttpServer.layerTest),
+    );
+  });
 
   it.effect("streams all three fixture feeds through the real Zerops RPC handlers", () =>
     Effect.gen(function* () {
@@ -8506,164 +8518,167 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  for (const reasoningMessages of [undefined, true] as const) {
-    it.effect(`preserves reasoning wire compatibility with opt-in ${reasoningMessages}`, () =>
-      Effect.gen(function* () {
-        let timingNow = 0;
-        const message = {
-          id: MessageId.make("thinking-compatibility"),
-          role: "reasoning" as const,
-          text: "Checking the available evidence.",
-          turnId: null,
-          streaming: false,
-          createdAt: "2026-01-01T00:00:01.000Z",
-          updatedAt: "2026-01-01T00:00:01.000Z",
-        };
-        const thread = { ...makeDefaultOrchestrationReadModel().threads[0]!, messages: [message] };
-        const event = {
-          sequence: 2,
-          eventId: EventId.make("thinking-compatibility-event"),
-          aggregateKind: "thread" as const,
-          aggregateId: defaultThreadId,
-          occurredAt: message.createdAt,
-          commandId: null,
-          causationEventId: null,
-          correlationId: null,
-          metadata: {},
-          type: "thread.message-sent" as const,
-          payload: {
-            messageId: message.id,
-            threadId: defaultThreadId,
-            role: message.role,
-            text: message.text,
-            turnId: message.turnId,
-            streaming: message.streaming,
-            createdAt: message.createdAt,
-            updatedAt: message.updatedAt,
+  it.effect.each(
+    Array.from([undefined, true] as const, (reasoningMessages) => ({
+      title: `preserves reasoning wire compatibility with opt-in ${reasoningMessages}`,
+      reasoningMessages,
+    })),
+  )("$title", ({ reasoningMessages }) =>
+    Effect.gen(function* () {
+      let timingNow = 0;
+      const message = {
+        id: MessageId.make("thinking-compatibility"),
+        role: "reasoning" as const,
+        text: "Checking the available evidence.",
+        turnId: null,
+        streaming: false,
+        createdAt: "2026-01-01T00:00:01.000Z",
+        updatedAt: "2026-01-01T00:00:01.000Z",
+      };
+      const thread = { ...makeDefaultOrchestrationReadModel().threads[0]!, messages: [message] };
+      const event = {
+        sequence: 2,
+        eventId: EventId.make("thinking-compatibility-event"),
+        aggregateKind: "thread" as const,
+        aggregateId: defaultThreadId,
+        occurredAt: message.createdAt,
+        commandId: null,
+        causationEventId: null,
+        correlationId: null,
+        metadata: {},
+        type: "thread.message-sent" as const,
+        payload: {
+          messageId: message.id,
+          threadId: defaultThreadId,
+          role: message.role,
+          text: message.text,
+          turnId: message.turnId,
+          streaming: message.streaming,
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+        },
+      } satisfies OrchestrationEvent;
+      const answer = {
+        ...event,
+        sequence: 3,
+        eventId: EventId.make("thinking-answer-event"),
+        payload: {
+          ...event.payload,
+          messageId: MessageId.make("thinking-answer"),
+          role: "assistant" as const,
+          text: "Here is the answer.",
+        },
+      };
+      const liveEvents = yield* PubSub.unbounded<OrchestrationEvent>();
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            streamDomainEvents: Stream.fromPubSub(liveEvents),
+            latestSequence: Effect.succeed(3),
+            getThreadReplayStats: () =>
+              Effect.succeed({ eventCount: 2, payloadBytes: 200, hasCreateEvent: false }),
+            readThreadEvents: () => Stream.make(event, answer),
           },
-        } satisfies OrchestrationEvent;
-        const answer = {
-          ...event,
-          sequence: 3,
-          eventId: EventId.make("thinking-answer-event"),
-          payload: {
-            ...event.payload,
-            messageId: MessageId.make("thinking-answer"),
-            role: "assistant" as const,
-            text: "Here is the answer.",
-          },
-        };
-        const liveEvents = yield* PubSub.unbounded<OrchestrationEvent>();
-        yield* buildAppUnderTest({
-          layers: {
-            orchestrationEngine: {
-              streamDomainEvents: Stream.fromPubSub(liveEvents),
-              latestSequence: Effect.succeed(3),
-              getThreadReplayStats: () =>
-                Effect.succeed({ eventCount: 2, payloadBytes: 200, hasCreateEvent: false }),
-              readThreadEvents: () => Stream.make(event, answer),
-            },
-            projectionSnapshotQuery: {
-              getThreadDetailSnapshot: () =>
-                Effect.gen(function* () {
-                  timingNow += 30;
-                  yield* PubSub.publishAll(liveEvents, [event, answer]);
-                  return Option.some({
+          projectionSnapshotQuery: {
+            getThreadDetailSnapshot: () =>
+              Effect.gen(function* () {
+                timingNow += 30;
+                yield* PubSub.publishAll(liveEvents, [event, answer]);
+                return Option.some({
+                  snapshotSequence: 1,
+                  thread,
+                  page: {
+                    beforeCursor: null,
+                    hasMore: false,
                     snapshotSequence: 1,
-                    thread,
-                    page: {
-                      beforeCursor: null,
-                      hasMore: false,
-                      snapshotSequence: 1,
-                      threadSequence: 2,
-                    },
-                  });
-                }),
-            },
+                    threadSequence: 2,
+                  },
+                });
+              }),
           },
-        });
-        const role = reasoningMessages ? "reasoning" : "system";
-        const authorization = yield* getAuthenticatedAuthorizationHeader();
-        const auth = yield* testAuth;
-        const authenticate = auth.authenticateHttpRequest;
-        const authenticateSpy = vi
-          .spyOn(auth, "authenticateHttpRequest")
-          .mockImplementation((request) =>
-            authenticate(request).pipe(
-              Effect.tap(() =>
-                Effect.sync(() => {
-                  timingNow += 200;
-                }),
-              ),
+        },
+      });
+      const role = reasoningMessages ? "reasoning" : "system";
+      const authorization = yield* getAuthenticatedAuthorizationHeader();
+      const auth = yield* testAuth;
+      const authenticate = auth.authenticateHttpRequest;
+      const authenticateSpy = vi
+        .spyOn(auth, "authenticateHttpRequest")
+        .mockImplementation((request) =>
+          authenticate(request).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                timingNow += 200;
+              }),
             ),
-          );
-        timingNow = 0;
-        const timingClock = vi.spyOn(performance, "now").mockImplementation(() => timingNow);
-        yield* Effect.addFinalizer(() =>
-          Effect.sync(() => {
-            timingClock.mockRestore();
-            authenticateSpy.mockRestore();
-          }),
-        );
-        const response = yield* fetchEffect(
-          yield* getHttpServerUrl(
-            `/api/orchestration/threads/${defaultThreadId}?turnLimit=1${reasoningMessages ? "&reasoningMessages=true" : ""}`,
           ),
-          { headers: { authorization } },
         );
-        const timing = response.headers["server-timing"];
-        assert.isNotNull(timing);
-        // Authentication, including the session/DPoP middleware, is visible before headers.
-        assert.include(timing!, "authorize;dur=200.00");
-        assert.include(timing!, "snapshot;dur=230.00");
-        for (const stage of [
-          "authorize",
-          "read",
-          "project",
-          "media",
-          "projection",
-          "encode",
-          "snapshot",
-        ]) {
-          assert.match(timing!, new RegExp(`(?:^|, )${stage};dur=\\d+\\.\\d+`));
-        }
-        assert.include(response.headers["access-control-expose-headers"], "Server-Timing");
-        const httpSnapshot = yield* responseJsonEffect<OrchestrationThreadDetailSnapshot>(response);
-        assert.equal(response.status, 200);
-        assert.deepEqual(httpSnapshot.thread.messages, [{ ...message, role }]);
-        assert.equal(httpSnapshot.page?.threadSequence, 2);
-        const wsUrl = yield* getWsServerUrl("/ws");
-        for (const afterSequence of [undefined, 1]) {
-          const items = yield* Effect.scoped(
-            withWsRpcClient(wsUrl, (client) =>
-              client[ORCHESTRATION_WS_METHODS.subscribeThread]({
-                threadId: defaultThreadId,
-                requestCompletionMarker: true,
-                ...(reasoningMessages ? { reasoningMessages } : {}),
-                ...(afterSequence !== undefined ? { afterSequence } : {}),
-              }).pipe(
-                Stream.takeUntil((item) => item.kind === "synchronized"),
-                Stream.runCollect,
-              ),
+      timingNow = 0;
+      const timingClock = vi.spyOn(performance, "now").mockImplementation(() => timingNow);
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          timingClock.mockRestore();
+          authenticateSpy.mockRestore();
+        }),
+      );
+      const response = yield* fetchEffect(
+        yield* getHttpServerUrl(
+          `/api/orchestration/threads/${defaultThreadId}?turnLimit=1${reasoningMessages ? "&reasoningMessages=true" : ""}`,
+        ),
+        { headers: { authorization } },
+      );
+      const timing = response.headers["server-timing"];
+      assert.isNotNull(timing);
+      // Authentication, including the session/DPoP middleware, is visible before headers.
+      assert.include(timing!, "authorize;dur=200.00");
+      assert.include(timing!, "snapshot;dur=230.00");
+      for (const stage of [
+        "authorize",
+        "read",
+        "project",
+        "media",
+        "projection",
+        "encode",
+        "snapshot",
+      ]) {
+        assert.match(timing!, new RegExp(`(?:^|, )${stage};dur=\\d+\\.\\d+`));
+      }
+      assert.include(response.headers["access-control-expose-headers"], "Server-Timing");
+      const httpSnapshot = yield* responseJsonEffect<OrchestrationThreadDetailSnapshot>(response);
+      assert.equal(response.status, 200);
+      assert.deepEqual(httpSnapshot.thread.messages, [{ ...message, role }]);
+      assert.equal(httpSnapshot.page?.threadSequence, 2);
+      const wsUrl = yield* getWsServerUrl("/ws");
+      for (const afterSequence of [undefined, 1]) {
+        const items = yield* Effect.scoped(
+          withWsRpcClient(wsUrl, (client) =>
+            client[ORCHESTRATION_WS_METHODS.subscribeThread]({
+              threadId: defaultThreadId,
+              requestCompletionMarker: true,
+              ...(reasoningMessages ? { reasoningMessages } : {}),
+              ...(afterSequence !== undefined ? { afterSequence } : {}),
+            }).pipe(
+              Stream.takeUntil((item) => item.kind === "synchronized"),
+              Stream.runCollect,
             ),
-          );
-          if (afterSequence === undefined) {
-            const first = items[0];
-            assertTrue(first?.kind === "snapshot");
-            assert.deepEqual(first.snapshot.thread.messages, [{ ...message, role }]);
-            assert.equal(first.snapshot.page?.threadSequence, 2);
-          }
-          const events = items.filter((item) => item.kind === "event");
-          assert.equal(events.length, 2);
-          assert.deepEqual(events[0]?.event, { ...event, payload: { ...event.payload, role } });
-          assert.deepEqual(events[1]?.event, answer);
-          assert.deepEqual(items.at(-1), { kind: "synchronized" });
+          ),
+        );
+        if (afterSequence === undefined) {
+          const first = items[0];
+          assertTrue(first?.kind === "snapshot");
+          assert.deepEqual(first.snapshot.thread.messages, [{ ...message, role }]);
+          assert.equal(first.snapshot.page?.threadSequence, 2);
         }
-        assert.equal(message.role, "reasoning");
-        assert.equal(event.payload.role, "reasoning");
-      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-    );
-  }
+        const events = items.filter((item) => item.kind === "event");
+        assert.equal(events.length, 2);
+        assert.deepEqual(events[0]?.event, { ...event, payload: { ...event.payload, role } });
+        assert.deepEqual(events[1]?.event, answer);
+        assert.deepEqual(items.at(-1), { kind: "synchronized" });
+      }
+      assert.equal(message.role, "reasoning");
+      assert.equal(event.payload.role, "reasoning");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
 
   it.effect("marks a socket thread snapshot as synchronized when requested", () =>
     Effect.gen(function* () {
@@ -8808,100 +8823,103 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  for (const subscription of ["thread", "shell"] as const) {
-    it.effect("delivers large raw tool results through the " + subscription + " stream", () =>
-      Effect.gen(function* () {
-        const eventThreadId =
-          subscription === "thread" ? defaultThreadId : ThreadId.make("other-live-thread");
-        const thread = makeDefaultOrchestrationReadModel().threads[0]!;
-        const baseEvent = makeLiveToolActivityEvent(2, "tool.completed");
-        const event: OrchestrationEvent = {
-          ...baseEvent,
-          aggregateId: eventThreadId,
-          payload: {
-            threadId: eventThreadId,
-            activity: {
-              ...baseEvent.payload.activity,
-              summary: "Build complete",
-              payload: {
-                itemType: "command_execution",
-                toolCallId: "call-build",
-                status: "completed",
-                title: "Build complete",
-                data: {
-                  item: {
-                    command: "build",
-                    aggregatedOutput: "Build complete\n" + "x".repeat(9 * 1024 * 1024),
-                  },
+  it.effect.each(
+    Array.from(["thread", "shell"] as const, (subscription) => ({
+      title: "delivers large raw tool results through the " + subscription + " stream",
+      subscription,
+    })),
+  )("$title", ({ subscription }) =>
+    Effect.gen(function* () {
+      const eventThreadId =
+        subscription === "thread" ? defaultThreadId : ThreadId.make("other-live-thread");
+      const thread = makeDefaultOrchestrationReadModel().threads[0]!;
+      const baseEvent = makeLiveToolActivityEvent(2, "tool.completed");
+      const event: OrchestrationEvent = {
+        ...baseEvent,
+        aggregateId: eventThreadId,
+        payload: {
+          threadId: eventThreadId,
+          activity: {
+            ...baseEvent.payload.activity,
+            summary: "Build complete",
+            payload: {
+              itemType: "command_execution",
+              toolCallId: "call-build",
+              status: "completed",
+              title: "Build complete",
+              data: {
+                item: {
+                  command: "build",
+                  aggregatedOutput: "Build complete\n" + "x".repeat(9 * 1024 * 1024),
                 },
               },
             },
           },
-        };
-        yield* buildAppUnderTest({
-          layers: {
-            orchestrationEngine: {
-              streamDomainEvents: Stream.concat(Stream.make(event), Stream.never),
-            },
-            projectionSnapshotQuery: {
-              getThreadDetailSnapshot: () => Effect.succeedSome({ snapshotSequence: 1, thread }),
-              getThreadShellById: (threadId) =>
-                Effect.succeedSome({
-                  ...makeDefaultOrchestrationThreadShell(),
-                  id: threadId,
-                  title: "Build complete",
-                }),
-            },
+        },
+      };
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            streamDomainEvents: Stream.concat(Stream.make(event), Stream.never),
           },
+          projectionSnapshotQuery: {
+            getThreadDetailSnapshot: () => Effect.succeedSome({ snapshotSequence: 1, thread }),
+            getThreadShellById: (threadId) =>
+              Effect.succeedSome({
+                ...makeDefaultOrchestrationThreadShell(),
+                id: threadId,
+                title: "Build complete",
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const items =
+        subscription === "thread"
+          ? yield* Effect.scoped(
+              withWsRpcClient(wsUrl, (client) =>
+                client[ORCHESTRATION_WS_METHODS.subscribeThread]({
+                  threadId: defaultThreadId,
+                  requestCompletionMarker: true,
+                }).pipe(
+                  Stream.takeUntil((item) => item.kind === "synchronized"),
+                  Stream.runCollect,
+                ),
+              ),
+            )
+          : yield* Effect.scoped(
+              withWsRpcClient(wsUrl, (client) =>
+                client[ORCHESTRATION_WS_METHODS.subscribeShell]({
+                  requestCompletionMarker: true,
+                }).pipe(
+                  Stream.takeUntil((item) => item.kind === "synchronized"),
+                  Stream.runCollect,
+                ),
+              ),
+            );
+
+      assert.equal(items[0]?.kind, "snapshot");
+      const update = items[1];
+      if (subscription === "thread") {
+        assertTrue(update?.kind === "event" && update.event.type === "thread.activity-appended");
+        assert.equal(update.event.sequence, 2);
+        assert.deepEqual(update.event.payload.activity.payload, {
+          itemType: "command_execution",
+          toolCallId: "call-build",
+          status: "completed",
+          title: "Build complete",
+          data: { item: { command: "build", aggregatedOutput: "Build complete" } },
         });
-
-        const wsUrl = yield* getWsServerUrl("/ws");
-        const items =
-          subscription === "thread"
-            ? yield* Effect.scoped(
-                withWsRpcClient(wsUrl, (client) =>
-                  client[ORCHESTRATION_WS_METHODS.subscribeThread]({
-                    threadId: defaultThreadId,
-                    requestCompletionMarker: true,
-                  }).pipe(
-                    Stream.takeUntil((item) => item.kind === "synchronized"),
-                    Stream.runCollect,
-                  ),
-                ),
-              )
-            : yield* Effect.scoped(
-                withWsRpcClient(wsUrl, (client) =>
-                  client[ORCHESTRATION_WS_METHODS.subscribeShell]({
-                    requestCompletionMarker: true,
-                  }).pipe(
-                    Stream.takeUntil((item) => item.kind === "synchronized"),
-                    Stream.runCollect,
-                  ),
-                ),
-              );
-
-        assert.equal(items[0]?.kind, "snapshot");
-        const update = items[1];
-        if (subscription === "thread") {
-          assertTrue(update?.kind === "event" && update.event.type === "thread.activity-appended");
-          assert.equal(update.event.sequence, 2);
-          assert.deepEqual(update.event.payload.activity.payload, {
-            itemType: "command_execution",
-            toolCallId: "call-build",
-            status: "completed",
-            title: "Build complete",
-            data: { item: { command: "build", aggregatedOutput: "Build complete" } },
-          });
-        } else {
-          assertTrue(update?.kind === "thread-upserted");
-          assert.equal(update.sequence, 2);
-          assert.equal(update.thread.id, eventThreadId);
-          assert.equal(update.thread.title, "Build complete");
-        }
-        assert.deepEqual(items[2], { kind: "synchronized" });
-      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-    );
-  }
+      } else {
+        assertTrue(update?.kind === "thread-upserted");
+        assert.equal(update.sequence, 2);
+        assert.equal(update.thread.id, eventThreadId);
+        assert.equal(update.thread.title, "Build complete");
+      }
+      assert.deepEqual(items[2], { kind: "synchronized" });
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
 
   it.effect("coalesces buffered live tool updates to the latest state", () =>
     Effect.gen(function* () {
@@ -9562,123 +9580,125 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  for (const { createBeforeDelete, oversized } of [
-    { createBeforeDelete: false, oversized: false },
-    { createBeforeDelete: true, oversized: false },
-    { createBeforeDelete: true, oversized: true },
-  ]) {
-    it.effect(
-      oversized
-        ? "keeps the missing-snapshot error when an absent thread exceeds the replay limit"
-        : `synchronizes an absent thread and removes its shell after ${createBeforeDelete ? "creation and deletion" : "deletion"}`,
-      () =>
-        Effect.gen(function* () {
-          const store = yield* OrchestrationEventStore;
-          const base = makeLiveToolActivityEvent(0, "tool.completed");
-          if (createBeforeDelete) {
-            const thread = makeDefaultOrchestrationReadModel().threads[0]!;
-            yield* store.append({
-              ...base,
-              eventId: EventId.make(`create-before-final-delete-${oversized}`),
-              type: "thread.created",
-              payload: {
-                threadId: defaultThreadId,
-                projectId: thread.projectId,
-                title: thread.title,
-                modelSelection: thread.modelSelection,
-                runtimeMode: thread.runtimeMode,
-                interactionMode: thread.interactionMode,
-                branch: thread.branch,
-                worktreePath: thread.worktreePath,
-                createdAt: thread.createdAt,
-                updatedAt: thread.updatedAt,
-              },
-            });
-          }
-          if (oversized) {
-            yield* Effect.forEach(
-              Array.from({ length: 1_000 }, (_, index) => index + 1),
-              (sequence) => store.append(makeLiveToolActivityEvent(sequence, "tool.completed")),
-              { discard: true },
-            );
-          }
-          const deleted = yield* store.append({
-            ...base,
-            eventId: EventId.make(`deleted-replay-${createBeforeDelete}-${oversized}`),
-            type: "thread.deleted",
-            payload: { threadId: defaultThreadId, deletedAt: base.occurredAt },
-          });
-          yield* buildAppUnderTest({
-            layers: {
-              orchestrationEngine: {
-                latestSequence: Effect.succeed(deleted.sequence),
-                getThreadReplayStats: ({ threadId, ...range }) =>
-                  store.getAggregateReplayStats({
-                    ...range,
-                    aggregateKind: "thread",
-                    aggregateId: threadId,
-                  }),
-                readThreadEvents: ({ threadId, ...range }) =>
-                  store.readAggregateRange({
-                    ...range,
-                    aggregateKind: "thread",
-                    aggregateId: threadId,
-                  }),
-                readEvents: store.readFromSequence,
-              },
-              projectionSnapshotQuery: {
-                getThreadDetailSnapshot: () => Effect.succeedNone,
-              },
-            },
-          });
-          const wsUrl = yield* getWsServerUrl("/ws");
-          yield* Effect.scoped(
-            withWsRpcClient(wsUrl, (client) =>
-              Effect.gen(function* () {
-                const threadResult = yield* client[ORCHESTRATION_WS_METHODS.subscribeThread]({
-                  threadId: defaultThreadId,
-                  afterSequence: 0,
-                  requestCompletionMarker: true,
-                }).pipe(
-                  Stream.takeUntil((item) => item.kind === "synchronized"),
-                  Stream.runCollect,
-                  Effect.result,
-                );
-                if (oversized) {
-                  assertTrue(threadResult._tag === "Failure");
-                  assert.equal(threadResult.failure._tag, "OrchestrationGetSnapshotError");
-                  assert.equal(
-                    threadResult.failure.message,
-                    `Thread ${defaultThreadId} was not found`,
-                  );
-                  return;
-                }
-                assertTrue(threadResult._tag === "Success");
-                assert.deepEqual(threadResult.success, [{ kind: "synchronized" }]);
-                const shellItems = yield* client[ORCHESTRATION_WS_METHODS.subscribeShell]({
-                  afterSequence: 0,
-                  requestCompletionMarker: true,
-                }).pipe(
-                  Stream.takeUntil((item) => item.kind === "synchronized"),
-                  Stream.runCollect,
-                );
-                assert.deepEqual(shellItems, [
-                  { kind: "thread-removed", sequence: deleted.sequence, threadId: defaultThreadId },
-                  { kind: "synchronized" },
-                ]);
+  it.effect.each(
+    Array.from(
+      [
+        { createBeforeDelete: false, oversized: false },
+        { createBeforeDelete: true, oversized: false },
+        { createBeforeDelete: true, oversized: true },
+      ],
+      ({ createBeforeDelete, oversized }) => ({
+        title: oversized
+          ? "keeps the missing-snapshot error when an absent thread exceeds the replay limit"
+          : `synchronizes an absent thread and removes its shell after ${createBeforeDelete ? "creation and deletion" : "deletion"}`,
+        createBeforeDelete,
+        oversized,
+      }),
+    ),
+  )("$title", ({ createBeforeDelete, oversized }) =>
+    Effect.gen(function* () {
+      const store = yield* OrchestrationEventStore;
+      const base = makeLiveToolActivityEvent(0, "tool.completed");
+      if (createBeforeDelete) {
+        const thread = makeDefaultOrchestrationReadModel().threads[0]!;
+        yield* store.append({
+          ...base,
+          eventId: EventId.make(`create-before-final-delete-${oversized}`),
+          type: "thread.created",
+          payload: {
+            threadId: defaultThreadId,
+            projectId: thread.projectId,
+            title: thread.title,
+            modelSelection: thread.modelSelection,
+            runtimeMode: thread.runtimeMode,
+            interactionMode: thread.interactionMode,
+            branch: thread.branch,
+            worktreePath: thread.worktreePath,
+            createdAt: thread.createdAt,
+            updatedAt: thread.updatedAt,
+          },
+        });
+      }
+      if (oversized) {
+        yield* Effect.forEach(
+          Array.from({ length: 1_000 }, (_, index) => index + 1),
+          (sequence) => store.append(makeLiveToolActivityEvent(sequence, "tool.completed")),
+          { discard: true },
+        );
+      }
+      const deleted = yield* store.append({
+        ...base,
+        eventId: EventId.make(`deleted-replay-${createBeforeDelete}-${oversized}`),
+        type: "thread.deleted",
+        payload: { threadId: defaultThreadId, deletedAt: base.occurredAt },
+      });
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            latestSequence: Effect.succeed(deleted.sequence),
+            getThreadReplayStats: ({ threadId, ...range }) =>
+              store.getAggregateReplayStats({
+                ...range,
+                aggregateKind: "thread",
+                aggregateId: threadId,
               }),
-            ),
-          );
-        }).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              OrchestrationEventStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
-              NodeHttpServer.layerTest,
-            ),
-          ),
+            readThreadEvents: ({ threadId, ...range }) =>
+              store.readAggregateRange({
+                ...range,
+                aggregateKind: "thread",
+                aggregateId: threadId,
+              }),
+            readEvents: store.readFromSequence,
+          },
+          projectionSnapshotQuery: {
+            getThreadDetailSnapshot: () => Effect.succeedNone,
+          },
+        },
+      });
+      const wsUrl = yield* getWsServerUrl("/ws");
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const threadResult = yield* client[ORCHESTRATION_WS_METHODS.subscribeThread]({
+              threadId: defaultThreadId,
+              afterSequence: 0,
+              requestCompletionMarker: true,
+            }).pipe(
+              Stream.takeUntil((item) => item.kind === "synchronized"),
+              Stream.runCollect,
+              Effect.result,
+            );
+            if (oversized) {
+              assertTrue(threadResult._tag === "Failure");
+              assert.equal(threadResult.failure._tag, "OrchestrationGetSnapshotError");
+              assert.equal(threadResult.failure.message, `Thread ${defaultThreadId} was not found`);
+              return;
+            }
+            assertTrue(threadResult._tag === "Success");
+            assert.deepEqual(threadResult.success, [{ kind: "synchronized" }]);
+            const shellItems = yield* client[ORCHESTRATION_WS_METHODS.subscribeShell]({
+              afterSequence: 0,
+              requestCompletionMarker: true,
+            }).pipe(
+              Stream.takeUntil((item) => item.kind === "synchronized"),
+              Stream.runCollect,
+            );
+            assert.deepEqual(shellItems, [
+              { kind: "thread-removed", sequence: deleted.sequence, threadId: defaultThreadId },
+              { kind: "synchronized" },
+            ]);
+          }),
         ),
-    );
-  }
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          OrchestrationEventStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
+          NodeHttpServer.layerTest,
+        ),
+      ),
+    ),
+  );
 
   it.effect("subscribeThread bounds catch-up replay to the captured head", () =>
     Effect.gen(function* () {

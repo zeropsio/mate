@@ -242,33 +242,36 @@ describe("CrewWorkspace", () => {
     },
   ];
 
-  for (const guard of GUARDS) {
-    it.effect(`parks the lane on ${guard.name}, naming it and staging nothing`, () =>
-      withLanes((root) =>
-        Effect.gen(function* () {
-          const workspace = yield* CrewWorkspace.CrewWorkspace;
-          const store = yield* CrewStore.CrewStore;
-          yield* workspace.create(BACKEND);
-          const lane = `${root}/.crew/backend`;
-          write(lane, "src/ok.ts", "export {};\n");
-          guard.arrange(lane);
-          const outcome = yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 });
-          assert.deepStrictEqual(
-            {
-              outcome,
-              staged: git(lane, ["diff", "--cached", "--name-only"]),
-              state: Option.getOrUndefined(yield* store.getLane("game", "backend"))?.state,
-            },
-            {
-              outcome: { _tag: "parked", reason: guard.reason, paths: guard.paths },
-              staged: "",
-              state: "parked",
-            },
-          );
-        }),
-      ),
-    );
-  }
+  it.effect.each(
+    Array.from(GUARDS, (guard) => ({
+      title: `parks the lane on ${guard.name}, naming it and staging nothing`,
+      guard,
+    })),
+  )("$title", ({ guard }) =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        const store = yield* CrewStore.CrewStore;
+        yield* workspace.create(BACKEND);
+        const lane = `${root}/.crew/backend`;
+        write(lane, "src/ok.ts", "export {};\n");
+        guard.arrange(lane);
+        const outcome = yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 });
+        assert.deepStrictEqual(
+          {
+            outcome,
+            staged: git(lane, ["diff", "--cached", "--name-only"]),
+            state: Option.getOrUndefined(yield* store.getLane("game", "backend"))?.state,
+          },
+          {
+            outcome: { _tag: "parked", reason: guard.reason, paths: guard.paths },
+            staged: "",
+            state: "parked",
+          },
+        );
+      }),
+    ),
+  );
 
   it.effect("parks a lane whose tip the engine did not write", () =>
     withLanes((root) =>
@@ -720,40 +723,43 @@ describe("CrewWorkspace", () => {
     },
   ];
 
-  for (const resolution of RESOLUTIONS) {
-    it.effect(`during an open merge, ${resolution.name}`, () =>
-      withLanes((root) =>
-        Effect.gen(function* () {
-          const workspace = yield* CrewWorkspace.CrewWorkspace;
-          yield* workspace.create(BACKEND);
-          const lane = `${root}/.crew/backend`;
-          write(lane, "README.md", "lane\n");
-          yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 });
-          write(root, "README.md", "person\n");
-          git(root, ["commit", "-q", "-am", "person"]);
-          gitExit(lane, ["merge", "-q", "main"]);
-          resolution.resolve(root, lane);
-          const outcome = yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 2 });
-          assert.deepStrictEqual(
-            {
-              outcome:
-                outcome._tag === "rework"
-                  ? { tag: outcome._tag, paths: outcome.paths }
-                  : outcome._tag,
-              unmerged: git(lane, ["diff", "--name-only", "--diff-filter=U"]) === "README.md",
-            },
-            {
-              outcome:
-                resolution.expected === "rework"
-                  ? { tag: "rework", paths: ["README.md"] }
-                  : "committed",
-              unmerged: resolution.unmergedAfter,
-            },
-          );
-        }),
-      ),
-    );
-  }
+  it.effect.each(
+    Array.from(RESOLUTIONS, (resolution) => ({
+      title: `during an open merge, ${resolution.name}`,
+      resolution,
+    })),
+  )("$title", ({ resolution }) =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.create(BACKEND);
+        const lane = `${root}/.crew/backend`;
+        write(lane, "README.md", "lane\n");
+        yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 });
+        write(root, "README.md", "person\n");
+        git(root, ["commit", "-q", "-am", "person"]);
+        gitExit(lane, ["merge", "-q", "main"]);
+        resolution.resolve(root, lane);
+        const outcome = yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 2 });
+        assert.deepStrictEqual(
+          {
+            outcome:
+              outcome._tag === "rework"
+                ? { tag: outcome._tag, paths: outcome.paths }
+                : outcome._tag,
+            unmerged: git(lane, ["diff", "--name-only", "--diff-filter=U"]) === "README.md",
+          },
+          {
+            outcome:
+              resolution.expected === "rework"
+                ? { tag: "rework", paths: ["README.md"] }
+                : "committed",
+            unmerged: resolution.unmergedAfter,
+          },
+        );
+      }),
+    ),
+  );
 });
 
 it.effect("dispatch refuses to reset a copy that still has preserved dirty work", () =>

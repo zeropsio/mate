@@ -21,8 +21,9 @@ describe("provider slug validation (shared by driver + instance ids)", () => {
     { schemaName: "ProviderDriverKind", decode: decodeProviderDriverKind },
   ] as const;
 
-  for (const { schemaName, decode } of cases) {
-    describe(schemaName, () => {
+  describe.each(Array.from(cases, ({ schemaName, decode }) => ({ title: schemaName, decode })))(
+    "$title",
+    ({ decode }) => {
       it.each(["codex", "codex_personal", "codex-work", "claudeAgent", "x", "abc123", "ollama"])(
         "accepts %s",
         (id) => {
@@ -52,8 +53,8 @@ describe("provider slug validation (shared by driver + instance ids)", () => {
         const justRight = "a".repeat(64);
         expect(decode(justRight)).toBe(justRight);
       });
-    });
-  }
+    },
+  );
 });
 
 describe("ProviderInstanceRef", () => {

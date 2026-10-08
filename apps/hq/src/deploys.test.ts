@@ -1790,67 +1790,70 @@ describe("deploys", () => {
         ),
     );
 
-    for (const column of ["evidence", "verified_version_id"] as const) {
-      it.effect(`restarts an environment worker after a transient ${column} SQL failure`, () =>
-        Effect.gen(function* () {
-          const stopped = yield* Queue.unbounded<Fiber.Fiber<unknown, unknown>>();
-          let platform: FakeWorld | undefined;
-          return yield* withDeploys(
-            ({ appId, world, tiers, commit, deploys }) =>
-              Effect.gen(function* () {
-                platform = world;
-                const sql = yield* SqlClient.SqlClient;
-                yield* sql.unsafe(
-                  `CREATE FUNCTION reject_observation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'temporary observation write failure'; END $$`,
-                );
-                yield* sql.unsafe(
-                  `CREATE TRIGGER reject_observation BEFORE UPDATE OF ${column} ON hq_deploy_job FOR EACH ROW EXECUTE FUNCTION reject_observation()`,
-                );
-                tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-                world.outcome = () => "BUILDING";
-                yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-                // Observer finalization precedes the worker's registry cleanup. Join the worker
-                // that reported the SQL failure before waking dispatch again.
-                yield* Fiber.await(yield* Queue.take(stopped));
-                yield* sql`DROP TRIGGER reject_observation ON hq_deploy_job`;
-                yield* (yield* Rollouts).wake;
-                yield* (yield* Deploys).changes.pipe(
-                  Stream.mapEffect(() => deploys),
-                  Stream.filter(settled("live")),
-                  Stream.take(1),
-                  Stream.runDrain,
-                );
-                assert.lengthOf(versions(world), 1);
-              }),
-            {
-              observer: {
-                watch: (target) =>
-                  Stream.unwrap(
-                    Effect.sync(() => {
-                      if (platform !== undefined)
-                        platform.services[0]!.activeVersionId = target.versionId;
-                      return Stream.succeed({
-                        phase: "live",
-                        processes: target.processIds.map((id) => ({ id, status: "FINISHED" })),
-                        version: { id: target.versionId!, status: "ACTIVE" },
-                      } as const);
-                    }),
-                  ),
-              },
+    it.effect.each(
+      Array.from(["evidence", "verified_version_id"] as const, (column) => ({
+        title: `restarts an environment worker after a transient ${column} SQL failure`,
+        column,
+      })),
+    )("$title", ({ column }) =>
+      Effect.gen(function* () {
+        const stopped = yield* Queue.unbounded<Fiber.Fiber<unknown, unknown>>();
+        let platform: FakeWorld | undefined;
+        return yield* withDeploys(
+          ({ appId, world, tiers, commit, deploys }) =>
+            Effect.gen(function* () {
+              platform = world;
+              const sql = yield* SqlClient.SqlClient;
+              yield* sql.unsafe(
+                `CREATE FUNCTION reject_observation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'temporary observation write failure'; END $$`,
+              );
+              yield* sql.unsafe(
+                `CREATE TRIGGER reject_observation BEFORE UPDATE OF ${column} ON hq_deploy_job FOR EACH ROW EXECUTE FUNCTION reject_observation()`,
+              );
+              tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+              world.outcome = () => "BUILDING";
+              yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+              // Observer finalization precedes the worker's registry cleanup. Join the worker
+              // that reported the SQL failure before waking dispatch again.
+              yield* Fiber.await(yield* Queue.take(stopped));
+              yield* sql`DROP TRIGGER reject_observation ON hq_deploy_job`;
+              yield* (yield* Rollouts).wake;
+              yield* (yield* Deploys).changes.pipe(
+                Stream.mapEffect(() => deploys),
+                Stream.filter(settled("live")),
+                Stream.take(1),
+                Stream.runDrain,
+              );
+              assert.lengthOf(versions(world), 1);
+            }),
+          {
+            observer: {
+              watch: (target) =>
+                Stream.unwrap(
+                  Effect.sync(() => {
+                    if (platform !== undefined)
+                      platform.services[0]!.activeVersionId = target.versionId;
+                    return Stream.succeed({
+                      phase: "live",
+                      processes: target.processIds.map((id) => ({ id, status: "FINISHED" })),
+                      version: { id: target.versionId!, status: "ACTIVE" },
+                    } as const);
+                  }),
+                ),
             },
-          ).pipe(
-            Effect.provide(
-              Logger.layer([
-                Logger.make(({ message, fiber }) => {
-                  if (Array.isArray(message) && message[0] === "an environment's deploys stopped")
-                    Queue.offerUnsafe(stopped, fiber);
-                }),
-              ]),
-            ),
-          );
-        }),
-      );
-    }
+          },
+        ).pipe(
+          Effect.provide(
+            Logger.layer([
+              Logger.make(({ message, fiber }) => {
+                if (Array.isArray(message) && message[0] === "an environment's deploys stopped")
+                  Queue.offerUnsafe(stopped, fiber);
+              }),
+            ]),
+          ),
+        );
+      }),
+    );
 
     it.effect(
       "B9: an accepted build reads UPLOADING before it appears and is followed to its end",

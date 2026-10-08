@@ -677,51 +677,51 @@ describe("CrewStore", () => {
 });
 
 it.layer(storeLayer)("durable operations", (it) => {
-  for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
-    it.effect(`keeps ${kind}'s identity, confirmed stage and outcome across reads`, () =>
-      Effect.gen(function* () {
-        const store = yield* CrewStore.CrewStore;
-        const operation = {
-          id: `${kind}-1`,
-          crew: "game",
-          handle: "backend",
-          taskId: "task-1",
-          kind,
-          stage: "prepared",
-          confirmedStage: "prepared",
-          status: "running" as const,
-          startedBy: "person-1",
-          resumeState: "working" as const,
-          targets: {
-            host: "appdev",
-            path: "/app/.crew/backend",
-            ref: "crew/backend",
-            threadId: null,
-            commandId: null,
-            attempt: 1,
-          },
-          result: null,
-          detail: null,
-          startedAt: "2026-10-03T10:00:00.000Z",
-          updatedAt: "2026-10-03T10:00:00.000Z",
-        };
-        yield* store.putOperation(operation);
-        assert.deepStrictEqual(
-          Option.getOrThrow(yield* store.getOperation(operation.id)),
-          operation,
-        );
-        const ended = {
-          ...operation,
-          status: "failed" as const,
-          stage: "recording-outcome",
-          result: { reason: "lost connection" },
-          detail: "Outcome unknown",
-        };
-        yield* store.putOperation(ended);
-        assert.deepStrictEqual(yield* store.operations("game"), [ended]);
-        yield* store.putOperation({ ...ended, status: "succeeded" });
-        assert.deepStrictEqual(yield* store.operations("game"), []);
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from(["dispatch", "checkpoint", "check", "landing"] as const, (kind) => ({
+      title: `keeps ${kind}'s identity, confirmed stage and outcome across reads`,
+      kind,
+    })),
+  )("$title", ({ kind }) =>
+    Effect.gen(function* () {
+      const store = yield* CrewStore.CrewStore;
+      const operation = {
+        id: `${kind}-1`,
+        crew: "game",
+        handle: "backend",
+        taskId: "task-1",
+        kind,
+        stage: "prepared",
+        confirmedStage: "prepared",
+        status: "running" as const,
+        startedBy: "person-1",
+        resumeState: "working" as const,
+        targets: {
+          host: "appdev",
+          path: "/app/.crew/backend",
+          ref: "crew/backend",
+          threadId: null,
+          commandId: null,
+          attempt: 1,
+        },
+        result: null,
+        detail: null,
+        startedAt: "2026-10-03T10:00:00.000Z",
+        updatedAt: "2026-10-03T10:00:00.000Z",
+      };
+      yield* store.putOperation(operation);
+      assert.deepStrictEqual(Option.getOrThrow(yield* store.getOperation(operation.id)), operation);
+      const ended = {
+        ...operation,
+        status: "failed" as const,
+        stage: "recording-outcome",
+        result: { reason: "lost connection" },
+        detail: "Outcome unknown",
+      };
+      yield* store.putOperation(ended);
+      assert.deepStrictEqual(yield* store.operations("game"), [ended]);
+      yield* store.putOperation({ ...ended, status: "succeeded" });
+      assert.deepStrictEqual(yield* store.operations("game"), []);
+    }),
+  );
 });

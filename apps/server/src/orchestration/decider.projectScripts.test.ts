@@ -128,28 +128,31 @@ it.layer(NodeServices.layer)("decider project scripts", (it) => {
     });
   };
 
-  for (const id of ["install-javascript-dependencies", "A", "a.b", "a b", "-a", "a".repeat(25)]) {
-    it.effect(`rejects a new script ID that cannot have a shortcut: ${id}`, () =>
-      Effect.gen(function* () {
-        const readModel = yield* projectWithScripts([]);
-        const failure = yield* Effect.flip(
-          decideOrchestrationCommand({
-            readModel,
-            command: {
-              type: "project.meta.update",
-              commandId: CommandId.make("cmd-invalid-script"),
-              projectId: asProjectId("project-scripts"),
-              scripts: [script("lint"), script(id)],
-            },
-          }),
-        );
-        expect(failure).toMatchObject({ _tag: "OrchestrationCommandInvariantError" });
-        expect(failure.message).toContain("Script ID");
-        expect(failure.message).toContain("24");
-        expect(readModel.projects[0]?.scripts).toEqual([]);
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from(
+      ["install-javascript-dependencies", "A", "a.b", "a b", "-a", "a".repeat(25)],
+      (id) => ({ title: `rejects a new script ID that cannot have a shortcut: ${id}`, id }),
+    ),
+  )("$title", ({ id }) =>
+    Effect.gen(function* () {
+      const readModel = yield* projectWithScripts([]);
+      const failure = yield* Effect.flip(
+        decideOrchestrationCommand({
+          readModel,
+          command: {
+            type: "project.meta.update",
+            commandId: CommandId.make("cmd-invalid-script"),
+            projectId: asProjectId("project-scripts"),
+            scripts: [script("lint"), script(id)],
+          },
+        }),
+      );
+      expect(failure).toMatchObject({ _tag: "OrchestrationCommandInvariantError" });
+      expect(failure.message).toContain("Script ID");
+      expect(failure.message).toContain("24");
+      expect(readModel.projects[0]?.scripts).toEqual([]);
+    }),
+  );
 
   it.effect("accepts a script ID at the shortcut length limit", () =>
     Effect.gen(function* () {

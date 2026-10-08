@@ -79,21 +79,21 @@ describe("a Codex command approval, answered by the thread's gate", () => {
     },
   ];
 
-  for (const { name, decideTool, expected } of CASES) {
-    it.effect(name, () =>
-      Effect.gen(function* () {
-        const { calls, profile } = recording(decideTool);
-        const decision = yield* codexThreadSetup(profile)
-          .decideCommand({ itemId: "call_exec_1", command: "npm test" })
-          .pipe(Effect.forkChild);
-        yield* TestClock.adjust("15 seconds");
-        assert.strictEqual(yield* Fiber.join(decision), expected);
-        assert.deepStrictEqual(calls, [
-          { toolName: "Bash", input: { command: "npm test" }, toolUseId: "call_exec_1" },
-        ]);
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from(CASES, ({ name, decideTool, expected }) => ({ title: name, decideTool, expected })),
+  )("$title", ({ decideTool, expected }) =>
+    Effect.gen(function* () {
+      const { calls, profile } = recording(decideTool);
+      const decision = yield* codexThreadSetup(profile)
+        .decideCommand({ itemId: "call_exec_1", command: "npm test" })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust("15 seconds");
+      assert.strictEqual(yield* Fiber.join(decision), expected);
+      assert.deepStrictEqual(calls, [
+        { toolName: "Bash", input: { command: "npm test" }, toolUseId: "call_exec_1" },
+      ]);
+    }),
+  );
 
   it.effect("declines a request that names no command, without asking the gate", () =>
     Effect.gen(function* () {
@@ -171,17 +171,21 @@ describe("a Codex command wrapped in its shell, as its approval names it", () =>
     },
   ];
 
-  for (const { name, command, gateSees } of CASES) {
-    it.effect(`hands the gate the command its shell runs: ${name}`, () =>
-      Effect.gen(function* () {
-        const { calls, profile } = recording(() => Effect.succeed({ kind: "allow" }));
-        yield* codexThreadSetup(profile).decideCommand({ itemId: "call_exec_1", command });
-        assert.deepStrictEqual(calls, [
-          { toolName: "Bash", input: { command: gateSees }, toolUseId: "call_exec_1" },
-        ]);
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from(CASES, ({ name, command, gateSees }) => ({
+      title: `hands the gate the command its shell runs: ${name}`,
+      command,
+      gateSees,
+    })),
+  )("$title", ({ command, gateSees }) =>
+    Effect.gen(function* () {
+      const { calls, profile } = recording(() => Effect.succeed({ kind: "allow" }));
+      yield* codexThreadSetup(profile).decideCommand({ itemId: "call_exec_1", command });
+      assert.deepStrictEqual(calls, [
+        { toolName: "Bash", input: { command: gateSees }, toolUseId: "call_exec_1" },
+      ]);
+    }),
+  );
 });
 
 describe("a Codex file change approval, answered by the thread's gate", () => {
@@ -232,27 +236,31 @@ describe("a Codex file change approval, answered by the thread's gate", () => {
     },
   ];
 
-  for (const { name, changes, calls: expectedCalls } of CASES) {
-    it.effect(`${name}; every path allowed accepts`, () =>
-      Effect.gen(function* () {
-        const { calls, profile } = recording(() => Effect.succeed({ kind: "allow" }));
-        const decision = yield* codexThreadSetup(profile).decideFileChange({
-          itemId: "call_patch_1",
-          cwd: CWD,
-          changes,
-        });
-        assert.strictEqual(decision, "accept");
-        assert.deepStrictEqual(
-          calls,
-          expectedCalls.map(({ toolName, path }) => ({
-            toolName,
-            input: { file_path: path },
-            toolUseId: "call_patch_1",
-          })),
-        );
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from(CASES, ({ name, changes, calls: expectedCalls }) => ({
+      title: `${name}; every path allowed accepts`,
+      changes,
+      expectedCalls,
+    })),
+  )("$title", ({ changes, expectedCalls }) =>
+    Effect.gen(function* () {
+      const { calls, profile } = recording(() => Effect.succeed({ kind: "allow" }));
+      const decision = yield* codexThreadSetup(profile).decideFileChange({
+        itemId: "call_patch_1",
+        cwd: CWD,
+        changes,
+      });
+      assert.strictEqual(decision, "accept");
+      assert.deepStrictEqual(
+        calls,
+        expectedCalls.map(({ toolName, path }) => ({
+          toolName,
+          input: { file_path: path },
+          toolUseId: "call_patch_1",
+        })),
+      );
+    }),
+  );
 
   it.effect("one refused path declines the whole change", () =>
     Effect.gen(function* () {
@@ -277,23 +285,26 @@ describe("a Codex file change approval, answered by the thread's gate", () => {
     }),
   );
 
-  for (const [name, changes] of [
-    ["a change whose files are unknown", undefined],
-    ["a change that names no file", []],
-  ] as const) {
-    it.effect(`declines ${name}, without asking the gate`, () =>
-      Effect.gen(function* () {
-        const { calls, profile } = recording(() => Effect.succeed({ kind: "allow" }));
-        const decision = yield* codexThreadSetup(profile).decideFileChange({
-          itemId: "call_patch_1",
-          cwd: CWD,
-          changes,
-        });
-        assert.strictEqual(decision, "decline");
-        assert.deepStrictEqual(calls, []);
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from(
+      [
+        ["a change whose files are unknown", undefined],
+        ["a change that names no file", []],
+      ] as const,
+      ([name, changes]) => ({ title: `declines ${name}, without asking the gate`, changes }),
+    ),
+  )("$title", ({ changes }) =>
+    Effect.gen(function* () {
+      const { calls, profile } = recording(() => Effect.succeed({ kind: "allow" }));
+      const decision = yield* codexThreadSetup(profile).decideFileChange({
+        itemId: "call_patch_1",
+        cwd: CWD,
+        changes,
+      });
+      assert.strictEqual(decision, "decline");
+      assert.deepStrictEqual(calls, []);
+    }),
+  );
 });
 
 describe("the model a profiled Codex thread runs", () => {
@@ -361,18 +372,23 @@ describe("the model a profiled Codex thread runs", () => {
     },
   ];
 
-  for (const { name, profile, selection, expected } of CASES) {
-    it(name, () => {
-      assert.deepStrictEqual(
-        codexProfileModelSelection(
-          profile === undefined ? undefined : { ...PROFILE, ...profile },
-          INSTANCE_ID,
-          selection,
-        ),
-        expected,
-      );
-    });
-  }
+  it.each(
+    Array.from(CASES, ({ name, profile, selection, expected }) => ({
+      title: name,
+      profile,
+      selection,
+      expected,
+    })),
+  )("$title", ({ profile, selection, expected }) => {
+    assert.deepStrictEqual(
+      codexProfileModelSelection(
+        profile === undefined ? undefined : { ...PROFILE, ...profile },
+        INSTANCE_ID,
+        selection,
+      ),
+      expected,
+    );
+  });
 });
 
 describe("the thread and turn a profiled Codex thread starts", () => {
@@ -403,20 +419,28 @@ describe("the thread and turn a profiled Codex thread starts", () => {
     );
   });
 
-  for (const [readOnly, sandbox, sandboxPolicy] of [
-    [undefined, "workspace-write", { type: "workspaceWrite" }],
-    [false, "workspace-write", { type: "workspaceWrite" }],
-    [true, "read-only", { type: "readOnly" }],
-  ] as const) {
-    it(`a profile read only ${readOnly} runs in the ${sandbox} sandbox`, () => {
-      const setup = codexThreadSetup({
-        ...PROFILE,
-        ...(readOnly === undefined ? {} : { readOnly }),
-      });
-      assert.strictEqual(setup.thread.sandbox, sandbox);
-      assert.deepStrictEqual(setup.turn.sandboxPolicy, sandboxPolicy);
+  it.each(
+    Array.from(
+      [
+        [undefined, "workspace-write", { type: "workspaceWrite" }],
+        [false, "workspace-write", { type: "workspaceWrite" }],
+        [true, "read-only", { type: "readOnly" }],
+      ] as const,
+      ([readOnly, sandbox, sandboxPolicy]) => ({
+        title: `a profile read only ${readOnly} runs in the ${sandbox} sandbox`,
+        readOnly,
+        sandbox,
+        sandboxPolicy,
+      }),
+    ),
+  )("$title", ({ readOnly, sandbox, sandboxPolicy }) => {
+    const setup = codexThreadSetup({
+      ...PROFILE,
+      ...(readOnly === undefined ? {} : { readOnly }),
     });
-  }
+    assert.strictEqual(setup.thread.sandbox, sandbox);
+    assert.deepStrictEqual(setup.turn.sandboxPolicy, sandboxPolicy);
+  });
 });
 
 describe("a Codex session start asks the installed policy", () => {

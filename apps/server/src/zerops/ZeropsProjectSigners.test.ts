@@ -60,128 +60,146 @@ describe("turnRefusal", () => {
   } as const;
   // Is the agent signed in at all, then whose is it: mine / someone else's /
   // unrecorded / a token agent.
-  for (const [name, input, refusal] of [
-    ["my own agent", { agent: signedIn, signer: JAN, subject: JAN }, undefined],
-    [
-      "an agent somebody else signed in",
-      { agent: signedIn, signer: EVA, subject: JAN },
-      { kind: "someone-else" },
-    ],
-    // D6 keeps no backward compatibility: an older login, a terminal login or
-    // a copied credential file runs for nobody until someone signs in here.
-    [
-      "an agent nobody's sign-in was recorded for",
-      { agent: signedIn, signer: undefined, subject: JAN },
-      { kind: "unrecorded" },
-    ],
-    [
-      "an agent whose recorded signer is blank",
-      { agent: signedIn, signer: "", subject: JAN },
-      { kind: "unrecorded" },
-    ],
-    [
-      "a caller the session could not name",
-      { agent: signedIn, signer: JAN, subject: undefined },
-      { kind: "someone-else" },
-    ],
-    // An API key belongs to the project, not to a person.
-    [
-      "a token-authorized agent somebody else signed in",
-      { agent: tokenAgent, signer: EVA, subject: JAN },
-      undefined,
-    ],
-    [
-      "a token-authorized agent with no record at all",
-      { agent: tokenAgent, signer: undefined, subject: JAN },
-      undefined,
-    ],
-    // Signed in inside the container, the project flag seconds away: the CLI
-    // works, so only whose it is decides.
-    [
-      "my agent still being registered",
-      {
-        agent: { ...signedIn, state: "local-only" },
-        signer: JAN,
-        subject: JAN,
-      },
-      undefined,
-    ],
-    // Not signed in is refused before anything else: the turn would only fail
-    // inside the agent CLI.
-    [
-      "an agent nobody signed in",
-      {
-        agent: {
-          state: "not-authorized",
-          providerAuth: "unauthenticated",
-          credPresent: false,
-          flagToken: false,
-        },
-        signer: undefined,
-        subject: JAN,
-      },
-      { kind: "not-signed-in", auth: "not-authorized" },
-    ],
-    [
-      "an agent the project signed in but this container has no login for",
-      {
-        agent: { ...signedIn, credPresent: false, state: "reconnect" },
-        signer: JAN,
-        subject: JAN,
-      },
-      { kind: "not-signed-in", auth: "reconnect" },
-    ],
-    [
-      "an agent whose own check says its login no longer works",
-      {
-        agent: { ...signedIn, providerAuth: "unauthenticated" },
-        signer: JAN,
-        subject: JAN,
-      },
-      { kind: "not-signed-in", auth: "needs-reauth" },
-    ],
-  ] as const) {
-    it(`${refusal === undefined ? "allows" : "refuses"} a turn on ${name}`, () => {
-      assert.deepStrictEqual(turnRefusal(input), refusal);
-    });
-  }
+  it.each(
+    Array.from(
+      [
+        ["my own agent", { agent: signedIn, signer: JAN, subject: JAN }, undefined],
+        [
+          "an agent somebody else signed in",
+          { agent: signedIn, signer: EVA, subject: JAN },
+          { kind: "someone-else" },
+        ],
+        // D6 keeps no backward compatibility: an older login, a terminal login or
+        // a copied credential file runs for nobody until someone signs in here.
+        [
+          "an agent nobody's sign-in was recorded for",
+          { agent: signedIn, signer: undefined, subject: JAN },
+          { kind: "unrecorded" },
+        ],
+        [
+          "an agent whose recorded signer is blank",
+          { agent: signedIn, signer: "", subject: JAN },
+          { kind: "unrecorded" },
+        ],
+        [
+          "a caller the session could not name",
+          { agent: signedIn, signer: JAN, subject: undefined },
+          { kind: "someone-else" },
+        ],
+        // An API key belongs to the project, not to a person.
+        [
+          "a token-authorized agent somebody else signed in",
+          { agent: tokenAgent, signer: EVA, subject: JAN },
+          undefined,
+        ],
+        [
+          "a token-authorized agent with no record at all",
+          { agent: tokenAgent, signer: undefined, subject: JAN },
+          undefined,
+        ],
+        // Signed in inside the container, the project flag seconds away: the CLI
+        // works, so only whose it is decides.
+        [
+          "my agent still being registered",
+          {
+            agent: { ...signedIn, state: "local-only" },
+            signer: JAN,
+            subject: JAN,
+          },
+          undefined,
+        ],
+        // Not signed in is refused before anything else: the turn would only fail
+        // inside the agent CLI.
+        [
+          "an agent nobody signed in",
+          {
+            agent: {
+              state: "not-authorized",
+              providerAuth: "unauthenticated",
+              credPresent: false,
+              flagToken: false,
+            },
+            signer: undefined,
+            subject: JAN,
+          },
+          { kind: "not-signed-in", auth: "not-authorized" },
+        ],
+        [
+          "an agent the project signed in but this container has no login for",
+          {
+            agent: { ...signedIn, credPresent: false, state: "reconnect" },
+            signer: JAN,
+            subject: JAN,
+          },
+          { kind: "not-signed-in", auth: "reconnect" },
+        ],
+        [
+          "an agent whose own check says its login no longer works",
+          {
+            agent: { ...signedIn, providerAuth: "unauthenticated" },
+            signer: JAN,
+            subject: JAN,
+          },
+          { kind: "not-signed-in", auth: "needs-reauth" },
+        ],
+      ] as const,
+      ([name, input, refusal]) => ({
+        title: `${refusal === undefined ? "allows" : "refuses"} a turn on ${name}`,
+        input,
+        refusal,
+      }),
+    ),
+  )("$title", ({ input, refusal }) => {
+    assert.deepStrictEqual(turnRefusal(input), refusal);
+  });
 });
 
 // A login other than the defaults has no platform flag: its state is its own
 // check's answer, and its signer is its own.
 describe("loginTurnRefusal", () => {
-  for (const [name, input, refusal] of [
-    ["my own login", { state: "authorized", token: false, signer: JAN, subject: JAN }, undefined],
-    [
-      "a login a teammate signed in",
-      { state: "authorized", token: false, signer: EVA, subject: JAN },
-      { kind: "someone-else" },
-    ],
-    [
-      "a login nobody's sign-in was recorded for",
-      { state: "authorized", token: false, signer: undefined, subject: JAN },
-      { kind: "unrecorded" },
-    ],
-    [
-      "my login its own check has not answered for yet",
-      { state: "registering", token: false, signer: JAN, subject: JAN },
-      undefined,
-    ],
-    [
-      "a login nobody signed in",
-      { state: "not-authorized", token: false, signer: JAN, subject: JAN },
-      { kind: "not-signed-in", auth: "not-authorized" },
-    ],
-    [
-      "a project token somebody else set",
-      { state: "authorized", token: true, signer: EVA, subject: JAN },
-      undefined,
-    ],
-  ] as const) {
-    it(`${refusal === undefined ? "allows" : "refuses"} a turn on ${name}`, () => {
-      assert.deepStrictEqual(loginTurnRefusal(input), refusal);
-    });
-  }
+  it.each(
+    Array.from(
+      [
+        [
+          "my own login",
+          { state: "authorized", token: false, signer: JAN, subject: JAN },
+          undefined,
+        ],
+        [
+          "a login a teammate signed in",
+          { state: "authorized", token: false, signer: EVA, subject: JAN },
+          { kind: "someone-else" },
+        ],
+        [
+          "a login nobody's sign-in was recorded for",
+          { state: "authorized", token: false, signer: undefined, subject: JAN },
+          { kind: "unrecorded" },
+        ],
+        [
+          "my login its own check has not answered for yet",
+          { state: "registering", token: false, signer: JAN, subject: JAN },
+          undefined,
+        ],
+        [
+          "a login nobody signed in",
+          { state: "not-authorized", token: false, signer: JAN, subject: JAN },
+          { kind: "not-signed-in", auth: "not-authorized" },
+        ],
+        [
+          "a project token somebody else set",
+          { state: "authorized", token: true, signer: EVA, subject: JAN },
+          undefined,
+        ],
+      ] as const,
+      ([name, input, refusal]) => ({
+        title: `${refusal === undefined ? "allows" : "refuses"} a turn on ${name}`,
+        input,
+        refusal,
+      }),
+    ),
+  )("$title", ({ input, refusal }) => {
+    assert.deepStrictEqual(loginTurnRefusal(input), refusal);
+  });
 });
 
 describe("isTurnStartingCommand", () => {
@@ -192,59 +210,68 @@ describe("isTurnStartingCommand", () => {
   // The decider turns an answer to a message-mode question into a turn of its
   // own; an answer to a native callback question continues the running turn.
   const respond = { type: "thread.user-input.respond" };
-  for (const [name, request, expected] of [
-    [
-      "gates an answer to a pending message-mode question",
-      { kind: "user-input.requested", payload: { responseMode: "message", questions: [] } },
-      true,
-    ],
-    [
-      "leaves an answer to a native callback question to every member",
-      { kind: "user-input.requested", payload: { questions: [] } },
-      false,
-    ],
-    [
-      "leaves an answer to a message-mode question already resolved",
-      { kind: "user-input.resolved", payload: { responseMode: "message" } },
-      false,
-    ],
-    ["leaves an answer to a question it cannot find", undefined, false],
-  ] as const) {
-    it(name, () => {
-      assert.strictEqual(isTurnStartingCommand(respond, request), expected);
-    });
-  }
+  it.each(
+    Array.from(
+      [
+        [
+          "gates an answer to a pending message-mode question",
+          { kind: "user-input.requested", payload: { responseMode: "message", questions: [] } },
+          true,
+        ],
+        [
+          "leaves an answer to a native callback question to every member",
+          { kind: "user-input.requested", payload: { questions: [] } },
+          false,
+        ],
+        [
+          "leaves an answer to a message-mode question already resolved",
+          { kind: "user-input.resolved", payload: { responseMode: "message" } },
+          false,
+        ],
+        ["leaves an answer to a question it cannot find", undefined, false],
+      ] as const,
+      ([name, request, expected]) => ({ title: name, request, expected }),
+    ),
+  )("$title", ({ request, expected }) => {
+    assert.strictEqual(isTurnStartingCommand(respond, request), expected);
+  });
 
   // Everything else stays open to every member who can open the Mate: a
   // colleague must be able to stop an agent they are not allowed to start.
-  for (const type of [
-    "thread.turn.interrupt",
-    "thread.session.stop",
-    "thread.archive",
-    "thread.settle",
-    "thread.create",
-    "thread.meta.update",
-    "project.create",
-  ]) {
-    it(`leaves ${type} to every member`, () => {
-      assert.isFalse(isTurnStartingCommand({ type }));
-    });
-  }
+  it.each(
+    Array.from(
+      [
+        "thread.turn.interrupt",
+        "thread.session.stop",
+        "thread.archive",
+        "thread.settle",
+        "thread.create",
+        "thread.meta.update",
+        "project.create",
+      ],
+      (type) => ({ title: `leaves ${type} to every member`, type }),
+    ),
+  )("$title", ({ type }) => {
+    assert.isFalse(isTurnStartingCommand({ type }));
+  });
 });
 
 describe("isMemberListComplete", () => {
-  for (const [name, body, entriesLength, expected] of [
-    ["no totalCount at all", {}, 3, true],
-    ["body is not an object", null, 0, true],
-    ["totalCount matches the rows read", { totalCount: 2 }, 2, true],
-    ["totalCount is fewer than the rows read", { totalCount: 1 }, 2, true],
-    ["totalCount exceeds the rows read", { totalCount: 5 }, 2, false],
-    ["totalCount is not a finite number", { totalCount: "5" }, 2, true],
-  ] as const) {
-    it(name, () => {
-      assert.strictEqual(isMemberListComplete(body, entriesLength), expected);
-    });
-  }
+  it.each(
+    Array.from(
+      [
+        ["no totalCount at all", {}, 3, true],
+        ["body is not an object", null, 0, true],
+        ["totalCount matches the rows read", { totalCount: 2 }, 2, true],
+        ["totalCount is fewer than the rows read", { totalCount: 1 }, 2, true],
+        ["totalCount exceeds the rows read", { totalCount: 5 }, 2, false],
+        ["totalCount is not a finite number", { totalCount: "5" }, 2, true],
+      ] as const,
+      ([name, body, entriesLength, expected]) => ({ title: name, body, entriesLength, expected }),
+    ),
+  )("$title", ({ body, entriesLength, expected }) => {
+    assert.strictEqual(isMemberListComplete(body, entriesLength), expected);
+  });
 });
 
 const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
@@ -364,37 +391,44 @@ describe("the turn gate", () => {
 
   // Eva signed in last; Jan's code is being checked, his credential already written over hers.
   // Her turn would run on his credential: it waits for his sign-in to settle, then goes by it.
-  for (const [name, succeeds, expected] of [
-    ["his sign-in succeeds: refused", true, { kind: "someone-else" }],
-    ["his sign-in fails: hers again", false, undefined],
-  ] as const) {
-    it.effect(`the signer's turn waits while somebody else's code is checked — ${name}`, () =>
-      Effect.gen(function* () {
-        const { signers, signIns } = yield* gate({ "claude-code": by(EVA) });
-        const login = yield* checking(JAN);
-        const fiber = yield* signers
-          .turnRefusal({
-            agentId: "claude-code",
-            agent: signedIn,
-            subject: EVA,
-            login: yield* Ref.get(login),
-            currentLogin: Ref.get(login),
-          })
-          .pipe(Effect.forkChild);
-        yield* TestClock.adjust(Duration.seconds(2));
-        assert.isUndefined(fiber.pollUnsafe(), "held while the code is checked");
-        // As the walker settles it: a success is kept before anything else hears of it.
-        if (succeeds) yield* signIns.save("claude-code", by(JAN));
-        yield* Ref.update(login, (current) => ({
-          ...current,
-          phase: succeeds ? ("succeeded" as const) : ("failed" as const),
-        }));
-        yield* TestClock.adjust(Duration.seconds(2));
+  it.effect.each(
+    Array.from(
+      [
+        ["his sign-in succeeds: refused", true, { kind: "someone-else" }],
+        ["his sign-in fails: hers again", false, undefined],
+      ] as const,
+      ([name, succeeds, expected]) => ({
+        title: `the signer's turn waits while somebody else's code is checked — ${name}`,
+        succeeds,
+        expected,
+      }),
+    ),
+  )("$title", ({ succeeds, expected }) =>
+    Effect.gen(function* () {
+      const { signers, signIns } = yield* gate({ "claude-code": by(EVA) });
+      const login = yield* checking(JAN);
+      const fiber = yield* signers
+        .turnRefusal({
+          agentId: "claude-code",
+          agent: signedIn,
+          subject: EVA,
+          login: yield* Ref.get(login),
+          currentLogin: Ref.get(login),
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.seconds(2));
+      assert.isUndefined(fiber.pollUnsafe(), "held while the code is checked");
+      // As the walker settles it: a success is kept before anything else hears of it.
+      if (succeeds) yield* signIns.save("claude-code", by(JAN));
+      yield* Ref.update(login, (current) => ({
+        ...current,
+        phase: succeeds ? ("succeeded" as const) : ("failed" as const),
+      }));
+      yield* TestClock.adjust(Duration.seconds(2));
 
-        assert.deepStrictEqual(yield* Fiber.join(fiber), expected);
-      }).pipe(Effect.scoped),
-    );
-  }
+      assert.deepStrictEqual(yield* Fiber.join(fiber), expected);
+    }).pipe(Effect.scoped),
+  );
 
   // A live run (2026-10-01): Claude writes its credential before it prints its success line, so
   // the agent reads signed in while its login still checks the code — and the stand-up left
@@ -423,96 +457,120 @@ describe("the turn gate", () => {
   );
 
   // A check whose outcome cannot change the answer holds nobody.
-  for (const [name, kept, subject, agent, expected] of [
-    ["the signer's own re-sign-in", JAN, JAN, signedIn, undefined],
-    ["a third person's turn", EVA, "ida-user-id", signedIn, { kind: "someone-else" }],
-    ["a turn nobody could be named for", undefined, undefined, signedIn, { kind: "unrecorded" }],
-    [
-      "a turn on a project token, nobody's login",
-      EVA,
-      EVA,
-      { ...signedIn, state: "authorized-token", flagToken: true },
-      undefined,
-    ],
-    [
-      "a turn on an agent that is not signed in",
-      EVA,
-      EVA,
-      { ...signedIn, state: "not-authorized", credPresent: false },
-      { kind: "not-signed-in", auth: "not-authorized" },
-    ],
-  ] as const) {
-    it.effect(`a code being checked holds no turn it cannot decide — ${name}`, () =>
-      Effect.gen(function* () {
-        const { signers } = yield* gate(kept === undefined ? {} : { "claude-code": by(kept) });
-        const login = yield* Ref.get(yield* checking(JAN));
-        const fiber = yield* signers
-          .turnRefusal({
-            agentId: "claude-code",
-            agent,
-            subject,
-            login,
-            currentLogin: Effect.succeed(login),
-          })
-          .pipe(Effect.forkChild);
-        yield* TestClock.adjust(Duration.zero);
+  it.effect.each(
+    Array.from(
+      [
+        ["the signer's own re-sign-in", JAN, JAN, signedIn, undefined],
+        ["a third person's turn", EVA, "ida-user-id", signedIn, { kind: "someone-else" }],
+        [
+          "a turn nobody could be named for",
+          undefined,
+          undefined,
+          signedIn,
+          { kind: "unrecorded" },
+        ],
+        [
+          "a turn on a project token, nobody's login",
+          EVA,
+          EVA,
+          { ...signedIn, state: "authorized-token", flagToken: true },
+          undefined,
+        ],
+        [
+          "a turn on an agent that is not signed in",
+          EVA,
+          EVA,
+          { ...signedIn, state: "not-authorized", credPresent: false },
+          { kind: "not-signed-in", auth: "not-authorized" },
+        ],
+      ] as const,
+      ([name, kept, subject, agent, expected]) => ({
+        title: `a code being checked holds no turn it cannot decide — ${name}`,
+        kept,
+        subject,
+        agent,
+        expected,
+      }),
+    ),
+  )("$title", ({ kept, subject, agent, expected }) =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate(kept === undefined ? {} : { "claude-code": by(kept) });
+      const login = yield* Ref.get(yield* checking(JAN));
+      const fiber = yield* signers
+        .turnRefusal({
+          agentId: "claude-code",
+          agent,
+          subject,
+          login,
+          currentLogin: Effect.succeed(login),
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.zero);
 
-        assert.strictEqual(fiber.pollUnsafe()?._tag, "Success", "answered at once");
-        assert.deepStrictEqual(yield* Fiber.join(fiber), expected);
-      }).pipe(Effect.scoped),
-    );
-  }
+      assert.strictEqual(fiber.pollUnsafe()?._tag, "Success", "answered at once");
+      assert.deepStrictEqual(yield* Fiber.join(fiber), expected);
+    }).pipe(Effect.scoped),
+  );
 
   // A login left at its menu, its page or its code prompt has written nothing: no turn waits on
   // an abandoned sign-in.
-  for (const phase of ["menu", "awaiting-browser", "awaiting-code", "failed"] as const) {
-    it.effect(`a sign-in at ${phase} makes no turn wait`, () =>
-      Effect.gen(function* () {
-        const { signers } = yield* gate({ "claude-code": by(EVA) });
-        const login = { ...(yield* Ref.get(yield* checking(JAN))), phase };
-        const fiber = yield* signers
-          .turnRefusal({
-            agentId: "claude-code",
-            agent: signedIn,
-            subject: JAN,
-            login,
-            currentLogin: Effect.succeed(login),
-          })
-          .pipe(Effect.forkChild);
-        yield* TestClock.adjust(Duration.zero);
+  it.effect.each(
+    Array.from(["menu", "awaiting-browser", "awaiting-code", "failed"] as const, (phase) => ({
+      title: `a sign-in at ${phase} makes no turn wait`,
+      phase,
+    })),
+  )("$title", ({ phase }) =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate({ "claude-code": by(EVA) });
+      const login = { ...(yield* Ref.get(yield* checking(JAN))), phase };
+      const fiber = yield* signers
+        .turnRefusal({
+          agentId: "claude-code",
+          agent: signedIn,
+          subject: JAN,
+          login,
+          currentLogin: Effect.succeed(login),
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.zero);
 
-        assert.strictEqual(fiber.pollUnsafe()?._tag, "Success", "answered at once");
-        assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "someone-else" });
-      }).pipe(Effect.scoped),
-    );
-  }
+      assert.strictEqual(fiber.pollUnsafe()?._tag, "Success", "answered at once");
+      assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "someone-else" });
+    }).pipe(Effect.scoped),
+  );
 
   // A check that never settles leaves the credential's owner unknown: once the wait is over,
   // nobody's turn runs on it.
-  for (const [name, subject] of [
-    ["the signer's", EVA],
-    ["the checked person's", JAN],
-  ] as const) {
-    it.effect(`a check that never settles refuses ${name} turn once the wait is over`, () =>
-      Effect.gen(function* () {
-        const { signers } = yield* gate({ "claude-code": by(EVA) });
-        const login = yield* Ref.get(yield* checking(JAN));
-        const fiber = yield* signers
-          .turnRefusal({
-            agentId: "claude-code",
-            agent: signedIn,
-            subject,
-            login,
-            currentLogin: Effect.succeed(login),
-          })
-          .pipe(Effect.forkChild);
-        yield* TestClock.adjust(SIGN_IN_CHECK_WAIT);
-        yield* TestClock.adjust(Duration.seconds(1));
+  it.effect.each(
+    Array.from(
+      [
+        ["the signer's", EVA],
+        ["the checked person's", JAN],
+      ] as const,
+      ([name, subject]) => ({
+        title: `a check that never settles refuses ${name} turn once the wait is over`,
+        subject,
+      }),
+    ),
+  )("$title", ({ subject }) =>
+    Effect.gen(function* () {
+      const { signers } = yield* gate({ "claude-code": by(EVA) });
+      const login = yield* Ref.get(yield* checking(JAN));
+      const fiber = yield* signers
+        .turnRefusal({
+          agentId: "claude-code",
+          agent: signedIn,
+          subject,
+          login,
+          currentLogin: Effect.succeed(login),
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(SIGN_IN_CHECK_WAIT);
+      yield* TestClock.adjust(Duration.seconds(1));
 
-        assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "someone-else" });
-      }).pipe(Effect.scoped),
-    );
-  }
+      assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "someone-else" });
+    }).pipe(Effect.scoped),
+  );
 
   // Eva signs in; the server restarts. The credential is still Eva's — it lives on under the
   // home — and so does who signed it in.
@@ -639,26 +697,35 @@ describe("hasProjectAccess", () => {
     userRoles,
   });
 
-  for (const [name, roleCode, override, status, expected] of [
-    ["an org member who builds", "BASIC_USER", undefined, "ACTIVE", true],
-    // Kept in the org, taken out of this project: their crew stops with their session (X3).
-    ["an org member this project shuts out", "BASIC_USER", "NO_ACCESS", "ACTIVE", false],
-    ["a member let in here alone", "NO_ACCESS", "BASIC_USER", "ACTIVE", true],
-    ["a read-only member", "READ_ONLY", undefined, "ACTIVE", false],
-    ["an admin who is not active", "ADMIN", undefined, "WAITING_AUTHORIZATION", false],
-  ] as const) {
-    it.effect(`answers by this project's door: ${name}, ${String(expected)}`, () =>
-      Effect.gen(function* () {
-        const { signers } = yield* access({
-          project: projectWith(
-            override === undefined ? [] : [{ clientUserId: `cu-${JAN}`, roleCode: override }],
-          ),
-          members: { clientUserList: [member(JAN, roleCode, status), member(EVA, "OWNER")] },
-        });
-        assert.strictEqual(yield* signers.hasProjectAccess(JAN), expected);
-      }).pipe(Effect.scoped),
-    );
-  }
+  it.effect.each(
+    Array.from(
+      [
+        ["an org member who builds", "BASIC_USER", undefined, "ACTIVE", true],
+        // Kept in the org, taken out of this project: their crew stops with their session (X3).
+        ["an org member this project shuts out", "BASIC_USER", "NO_ACCESS", "ACTIVE", false],
+        ["a member let in here alone", "NO_ACCESS", "BASIC_USER", "ACTIVE", true],
+        ["a read-only member", "READ_ONLY", undefined, "ACTIVE", false],
+        ["an admin who is not active", "ADMIN", undefined, "WAITING_AUTHORIZATION", false],
+      ] as const,
+      ([name, roleCode, override, status, expected]) => ({
+        title: `answers by this project's door: ${name}, ${String(expected)}`,
+        roleCode,
+        override,
+        status,
+        expected,
+      }),
+    ),
+  )("$title", ({ roleCode, override, status, expected }) =>
+    Effect.gen(function* () {
+      const { signers } = yield* access({
+        project: projectWith(
+          override === undefined ? [] : [{ clientUserId: `cu-${JAN}`, roleCode: override }],
+        ),
+        members: { clientUserList: [member(JAN, roleCode, status), member(EVA, "OWNER")] },
+      });
+      assert.strictEqual(yield* signers.hasProjectAccess(JAN), expected);
+    }).pipe(Effect.scoped),
+  );
 
   // R6: HQ's relay answers while it holds, and Zerops is not read for it.
   it.effect("answers from HQ's relay while it holds, reading nothing of Zerops", () =>
@@ -724,18 +791,21 @@ describe("hasProjectAccess", () => {
 
   // An empty list is an outage dressed as an answer, and a page is not the whole org (S6): acting
   // on either would take somebody's access, and with it their logins (`ZeropsOffboarding`).
-  for (const [name, members] of [
-    ["comes back empty", { clientUserList: [] }],
-    ["is not a list", { members: [] }],
-    ["is a partial page", { clientUserList: [member(JAN, "BASIC_USER")], totalCount: 2 }],
-  ] as const) {
-    it.effect(`answers nothing when the member list ${name}`, () =>
-      Effect.gen(function* () {
-        const { signers } = yield* access({ project: projectWith([]), members });
-        assert.isUndefined(yield* signers.hasProjectAccess(JAN));
-      }).pipe(Effect.scoped),
-    );
-  }
+  it.effect.each(
+    Array.from(
+      [
+        ["comes back empty", { clientUserList: [] }],
+        ["is not a list", { members: [] }],
+        ["is a partial page", { clientUserList: [member(JAN, "BASIC_USER")], totalCount: 2 }],
+      ] as const,
+      ([name, members]) => ({ title: `answers nothing when the member list ${name}`, members }),
+    ),
+  )("$title", ({ members }) =>
+    Effect.gen(function* () {
+      const { signers } = yield* access({ project: projectWith([]), members });
+      assert.isUndefined(yield* signers.hasProjectAccess(JAN));
+    }).pipe(Effect.scoped),
+  );
 
   it.effect("answers nothing when nothing could be read", () =>
     Effect.gen(function* () {

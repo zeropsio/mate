@@ -50,49 +50,54 @@ describe("completed Mate turn usage delivery", () => {
       }),
     ),
   );
-  for (const scenario of ["retry", "clone resend", "lost acknowledgement"] as const) {
-    it.effect(`${scenario} keeps the same consumption identity`, () =>
-      withOutbox((box) =>
-        Effect.gen(function* () {
-          yield* box.bind(binding);
-          yield* box.record(turn("a"));
-          const first = yield* box.batch;
-          yield* box.record({ ...turn("a"), at: "2026-10-08T10:01:00.000Z" });
-          const resent = yield* (yield* makeUsageOutbox).batch;
-          assert.deepEqual(resent, first);
-        }),
-      ),
-    );
-  }
-  for (const provider of ["claude", "codex"] as const) {
-    it.effect(`${provider} counts subagent consumption once under its native turn identities`, () =>
-      withOutbox((box) =>
-        Effect.gen(function* () {
-          yield* box.bind(binding);
-          const parent = { ...turn("parent", "120"), provider };
-          const child = { ...turn("child", "30"), provider };
-          const values =
-            provider === "claude"
-              ? [
-                  {
-                    ...parent,
-                    models: [...parent.models, { ...child.models[0]!, model: "claude-haiku-4-5" }],
-                  },
-                ]
-              : [parent, { ...child, nativeThreadId: "child-thread", parentId: "parent" }];
-          for (const value of [...values, ...values]) yield* box.record(value);
-          const frame = yield* box.batch;
-          assert.equal(frame?.facts.length, provider === "claude" ? 1 : 2);
-          assert.equal(
-            frame!.facts
-              .flatMap((fact) => fact.models)
-              .reduce((sum, line) => sum + BigInt(line.components.inclusiveTotal!), 0n),
-            150n,
-          );
-        }),
-      ),
-    );
-  }
+  it.effect.each(
+    Array.from(["retry", "clone resend", "lost acknowledgement"] as const, (scenario) => ({
+      title: `${scenario} keeps the same consumption identity`,
+    })),
+  )("$title", (_row) =>
+    withOutbox((box) =>
+      Effect.gen(function* () {
+        yield* box.bind(binding);
+        yield* box.record(turn("a"));
+        const first = yield* box.batch;
+        yield* box.record({ ...turn("a"), at: "2026-10-08T10:01:00.000Z" });
+        const resent = yield* (yield* makeUsageOutbox).batch;
+        assert.deepEqual(resent, first);
+      }),
+    ),
+  );
+  it.effect.each(
+    Array.from(["claude", "codex"] as const, (provider) => ({
+      title: `${provider} counts subagent consumption once under its native turn identities`,
+      provider,
+    })),
+  )("$title", ({ provider }) =>
+    withOutbox((box) =>
+      Effect.gen(function* () {
+        yield* box.bind(binding);
+        const parent = { ...turn("parent", "120"), provider };
+        const child = { ...turn("child", "30"), provider };
+        const values =
+          provider === "claude"
+            ? [
+                {
+                  ...parent,
+                  models: [...parent.models, { ...child.models[0]!, model: "claude-haiku-4-5" }],
+                },
+              ]
+            : [parent, { ...child, nativeThreadId: "child-thread", parentId: "parent" }];
+        for (const value of [...values, ...values]) yield* box.record(value);
+        const frame = yield* box.batch;
+        assert.equal(frame?.facts.length, provider === "claude" ? 1 : 2);
+        assert.equal(
+          frame!.facts
+            .flatMap((fact) => fact.models)
+            .reduce((sum, line) => sum + BigInt(line.components.inclusiveTotal!), 0n),
+          150n,
+        );
+      }),
+    ),
+  );
   it.effect(
     "reordering a turn's reported model lines does not change its identity or consumption",
     () =>

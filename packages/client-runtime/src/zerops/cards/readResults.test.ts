@@ -65,11 +65,12 @@ describe("decodeZeropsCard — zerops_logs (`internal/ops/logs.go` `LogsResult`)
       expected: { kind: "logs", entries: [], hasMore: false },
     },
   ];
-  for (const { name, body, expected } of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ({ name, body, expected }) => ({ title: name, body, expected })))(
+    "$title",
+    ({ body, expected }) => {
       expect(card("zerops_logs", body)).toEqual(expected);
-    });
-  }
+    },
+  );
 
   it("has no card for a document without entries", () => {
     expect(card("zerops_logs", { lines: ["hello"] })).toBeUndefined();
@@ -131,11 +132,12 @@ describe("decodeZeropsCard — zerops_events (`internal/ops/events.go` `EventsRe
       expected: { kind: "events", events: [] },
     },
   ];
-  for (const { name, body, expected } of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ({ name, body, expected }) => ({ title: name, body, expected })))(
+    "$title",
+    ({ body, expected }) => {
       expect(card("zerops_events", body)).toEqual(expected);
-    });
-  }
+    },
+  );
 
   it("has no card for a document without events", () => {
     expect(card("zerops_events", { projectId: "p1" })).toBeUndefined();
@@ -203,11 +205,12 @@ describe("decodeZeropsCard — zerops_process (`internal/ops/process.go`)", () =
       },
     },
   ];
-  for (const { name, body, expected } of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ({ name, body, expected }) => ({ title: name, body, expected })))(
+    "$title",
+    ({ body, expected }) => {
       expect(card("zerops_process", body)).toEqual(expected);
-    });
-  }
+    },
+  );
 
   it("has no card for a document that is neither shape", () => {
     expect(card("zerops_process", { settled: true })).toBeUndefined();
@@ -278,11 +281,12 @@ describe("decodeZeropsCard — zerops_discover (`internal/ops/discover.go` `Disc
       expected: { kind: "discover", services: [], warnings: [] },
     },
   ];
-  for (const { name, body, expected } of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ({ name, body, expected }) => ({ title: name, body, expected })))(
+    "$title",
+    ({ body, expected }) => {
       expect(card("zerops_discover", body)).toEqual(expected);
-    });
-  }
+    },
+  );
 
   it("has no card for a document without services", () => {
     expect(card("zerops_discover", { project: { id: "p1" } })).toBeUndefined();

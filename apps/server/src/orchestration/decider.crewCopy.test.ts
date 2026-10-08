@@ -46,29 +46,32 @@ const readModel: OrchestrationReadModel = {
 };
 
 it.layer(NodeServices.layer)("conversation copy assignment", (it) => {
-  for (const currentPath of [null, "/chosen/copy"]) {
-    it.effect(`refuses a stale path change from ${currentPath}`, () =>
-      Effect.gen(function* () {
-        const error = yield* Effect.flip(
-          decideOrchestrationCommand({
-            command: {
-              type: "thread.meta.update",
-              commandId: CommandId.make("crew:copy:selected"),
-              threadId: ThreadId.make("thread-1"),
-              expectedWorktreePath: currentPath,
-              worktreePath: "/crew/copy",
-            },
-            readModel: {
-              ...readModel,
-              threads: readModel.threads.map((thread) => ({
-                ...thread,
-                worktreePath: "/new/choice",
-              })),
-            },
-          }),
-        );
-        expect(error._tag).toBe("OrchestrationCommandInvariantError");
-      }),
-    );
-  }
+  it.effect.each(
+    Array.from([null, "/chosen/copy"], (currentPath) => ({
+      title: `refuses a stale path change from ${currentPath}`,
+      currentPath,
+    })),
+  )("$title", ({ currentPath }) =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        decideOrchestrationCommand({
+          command: {
+            type: "thread.meta.update",
+            commandId: CommandId.make("crew:copy:selected"),
+            threadId: ThreadId.make("thread-1"),
+            expectedWorktreePath: currentPath,
+            worktreePath: "/crew/copy",
+          },
+          readModel: {
+            ...readModel,
+            threads: readModel.threads.map((thread) => ({
+              ...thread,
+              worktreePath: "/new/choice",
+            })),
+          },
+        }),
+      );
+      expect(error._tag).toBe("OrchestrationCommandInvariantError");
+    }),
+  );
 });

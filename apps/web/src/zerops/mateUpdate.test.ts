@@ -39,11 +39,16 @@ describe("mateUpdateLine", () => {
     },
   ];
 
-  for (const { name, update, serverVersion, expected } of cases) {
-    it(name, () => {
-      expect(mateUpdateLine(update, serverVersion)).toEqual(expected);
-    });
-  }
+  it.each(
+    Array.from(cases, ({ name, update, serverVersion, expected }) => ({
+      title: name,
+      update,
+      serverVersion,
+      expected,
+    })),
+  )("$title", ({ update, serverVersion, expected }) => {
+    expect(mateUpdateLine(update, serverVersion)).toEqual(expected);
+  });
 });
 
 describe("mateUpdateStatus", () => {

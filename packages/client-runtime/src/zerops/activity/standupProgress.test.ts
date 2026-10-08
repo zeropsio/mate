@@ -57,14 +57,15 @@ describe("standupReadingFromProgress", () => {
       { state: "failed", reason: "port 3000 never opened" },
     ],
   ];
-  for (const [name, service, expected] of cases) {
-    it(name, () => {
+  it.each(Array.from(cases, ([name, service, expected]) => ({ title: name, service, expected })))(
+    "$title",
+    ({ service, expected }) => {
       const progress = readStandUpProgress(payload([{ hostname: "api", ...service }]))!;
       expect(standupReadingFromProgress(progress, { nowMs: NOW }).rows).toEqual([
         { hostname: "api", ...expected },
       ]);
-    });
-  }
+    },
+  );
 
   it("counts what builds, is up and failed", () => {
     const progress = readStandUpProgress(

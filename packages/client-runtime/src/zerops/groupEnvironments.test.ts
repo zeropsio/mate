@@ -213,20 +213,18 @@ describe("missingEnvironmentRows", () => {
     },
   ] as const;
 
-  for (const tc of cases) {
-    it(tc.name, () => {
-      const rows = missingEnvironmentRows({
-        tiersOnMain: tc.tiersOnMain,
-        declarations: tc.declared.map((tier) => ({ tier })),
-        ...("filled" in tc ? { filledTiers: tc.filled } : {}),
-      });
-      expect(rows.map((row) => row.name)).toEqual(tc.want);
-      for (const row of rows) {
-        expect(row.kind).toBe("missing-environment");
-        expect(row.line).toBe(MISSING_ENVIRONMENT_LINE);
-      }
+  it.each(Array.from(cases, (tc) => ({ title: tc.name, tc })))("$title", ({ tc }) => {
+    const rows = missingEnvironmentRows({
+      tiersOnMain: tc.tiersOnMain,
+      declarations: tc.declared.map((tier) => ({ tier })),
+      ...("filled" in tc ? { filledTiers: tc.filled } : {}),
     });
-  }
+    expect(rows.map((row) => row.name)).toEqual(tc.want);
+    for (const row of rows) {
+      expect(row.kind).toBe("missing-environment");
+      expect(row.line).toBe(MISSING_ENVIRONMENT_LINE);
+    }
+  });
 });
 
 // The one rule every door asks (the projects page's menu, the sidebar's, the Environments section, the

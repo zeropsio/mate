@@ -890,88 +890,92 @@ describe("CodexSessionRuntime collab integration", () => {
     readonly response: Record<string, unknown>;
   }>;
 
-  for (const { decision, response } of elicitationCases) {
-    it.live(`returns the MCP elicitation ${decision} response to Codex`, () =>
-      Effect.gen(function* () {
-        const scriptedRequest = {
-          id: 7001,
-          method: "mcpServer/elicitation/request",
-          params: {
-            mode: "form",
-            message: "Allow ChatGPT to use Safari?",
-            serverName: "computer-use",
-            threadId: ROOT,
-            turnId: wireFixture.responses.turnStart.turn.id,
-            _meta: { app_name: "Safari", persist: ["session", "always"] },
-            requestedSchema: {
-              type: "object",
-              properties: {
-                approval: {
-                  type: "string",
-                  enum: ["once", "session", "always"],
-                },
+  it.live.each(
+    Array.from(elicitationCases, ({ decision, response }) => ({
+      title: `returns the MCP elicitation ${decision} response to Codex`,
+      decision,
+      response,
+    })),
+  )("$title", ({ decision, response }) =>
+    Effect.gen(function* () {
+      const scriptedRequest = {
+        id: 7001,
+        method: "mcpServer/elicitation/request",
+        params: {
+          mode: "form",
+          message: "Allow ChatGPT to use Safari?",
+          serverName: "computer-use",
+          threadId: ROOT,
+          turnId: wireFixture.responses.turnStart.turn.id,
+          _meta: { app_name: "Safari", persist: ["session", "always"] },
+          requestedSchema: {
+            type: "object",
+            properties: {
+              approval: {
+                type: "string",
+                enum: ["once", "session", "always"],
               },
-              required: ["approval"],
             },
+            required: ["approval"],
           },
-        };
-        const script = {
-          rootThreadId: ROOT,
-          holdTurnOpen: true,
-          completeTurnOnServerResponse: true,
-          notifications: [],
-          serverRequests: [scriptedRequest],
-        };
-        const responsesPath = `${scriptPath}.responses`;
-        NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
-        NodeFS.rmSync(responsesPath, { force: true });
-        yield* Effect.addFinalizer(() =>
-          Effect.sync(() => {
-            NodeFS.rmSync(scriptPath, { force: true });
-            NodeFS.rmSync(responsesPath, { force: true });
-          }),
-        );
+        },
+      };
+      const script = {
+        rootThreadId: ROOT,
+        holdTurnOpen: true,
+        completeTurnOnServerResponse: true,
+        notifications: [],
+        serverRequests: [scriptedRequest],
+      };
+      const responsesPath = `${scriptPath}.responses`;
+      NodeFS.writeFileSync(scriptPath, JSON.stringify(script), "utf8");
+      NodeFS.rmSync(responsesPath, { force: true });
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          NodeFS.rmSync(scriptPath, { force: true });
+          NodeFS.rmSync(responsesPath, { force: true });
+        }),
+      );
 
-        const runtime = yield* makeCodexSessionRuntime({
-          threadId: ThreadId.make("thread-codex-mcp-elicitation"),
-          binaryPath: peerPath,
-          cwd: NodeOS.tmpdir(),
-          runtimeMode: "auto",
-          environment: { ...process.env, T3_CODEX_COLLAB_SCRIPT: scriptPath },
-        });
-        const approvalRequested = yield* Deferred.make<ProviderEvent>();
-        const turnCompleted = yield* Deferred.make<void>();
-        yield* runtime.events.pipe(
-          Stream.runForEach((event) =>
-            event.method === "mcpServer/elicitation/request"
-              ? Deferred.succeed(approvalRequested, event).pipe(Effect.asVoid)
-              : event.method === "turn/completed"
-                ? Deferred.succeed(turnCompleted, undefined).pipe(Effect.asVoid)
-                : Effect.void,
-          ),
-          Effect.forkScoped,
-        );
+      const runtime = yield* makeCodexSessionRuntime({
+        threadId: ThreadId.make("thread-codex-mcp-elicitation"),
+        binaryPath: peerPath,
+        cwd: NodeOS.tmpdir(),
+        runtimeMode: "auto",
+        environment: { ...process.env, T3_CODEX_COLLAB_SCRIPT: scriptPath },
+      });
+      const approvalRequested = yield* Deferred.make<ProviderEvent>();
+      const turnCompleted = yield* Deferred.make<void>();
+      yield* runtime.events.pipe(
+        Stream.runForEach((event) =>
+          event.method === "mcpServer/elicitation/request"
+            ? Deferred.succeed(approvalRequested, event).pipe(Effect.asVoid)
+            : event.method === "turn/completed"
+              ? Deferred.succeed(turnCompleted, undefined).pipe(Effect.asVoid)
+              : Effect.void,
+        ),
+        Effect.forkScoped,
+      );
 
-        yield* runtime.start();
-        yield* runtime.sendTurn({ input: "Open Safari" });
-        const approval = yield* Deferred.await(approvalRequested);
-        assert.equal(approval.requestKind, "mcp-elicitation");
-        assert.isDefined(approval.requestId);
-        if (approval.requestId === undefined) return;
+      yield* runtime.start();
+      yield* runtime.sendTurn({ input: "Open Safari" });
+      const approval = yield* Deferred.await(approvalRequested);
+      assert.equal(approval.requestKind, "mcp-elicitation");
+      assert.isDefined(approval.requestId);
+      if (approval.requestId === undefined) return;
 
-        yield* runtime.respondToRequest(approval.requestId, decision);
-        yield* Deferred.await(turnCompleted);
+      yield* runtime.respondToRequest(approval.requestId, decision);
+      yield* Deferred.await(turnCompleted);
 
-        const recordedResponse = yield* decodeMcpElicitationResponse(
-          NodeFS.readFileSync(responsesPath, "utf8"),
-        );
-        assert.equal(recordedResponse.id, scriptedRequest.id);
-        assert.deepEqual(recordedResponse.result, response);
+      const recordedResponse = yield* decodeMcpElicitationResponse(
+        NodeFS.readFileSync(responsesPath, "utf8"),
+      );
+      assert.equal(recordedResponse.id, scriptedRequest.id);
+      assert.deepEqual(recordedResponse.result, response);
 
-        yield* runtime.close;
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-    );
-  }
+      yield* runtime.close;
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
 });
 
 describe("CodexSessionRuntime compaction", () => {

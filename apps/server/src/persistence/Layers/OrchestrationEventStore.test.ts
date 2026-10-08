@@ -317,43 +317,44 @@ layer("OrchestrationEventStore", (it) => {
   );
 });
 
-for (const reader of ["all", "aggregate"] as const) {
-  it.effect(`releases consumed pages during ${reader} replay`, () =>
-    Effect.gen(function* () {
-      const store = yield* OrchestrationEventStore;
-      const threadId = ThreadId.make(`retention-${reader}`);
-      yield* Effect.forEach(
-        Array.from({ length: 1_501 }, (_, index) => index),
-        (index) => store.append(messageEvent(threadId, `retention-${reader}-${index}`)),
-        { discard: true },
-      );
-      // oxlint-disable-next-line typescript/no-extraneous-class -- Identifies page markers for V8's heap query.
-      class ReplayPage {}
-      let count = 0;
-      const replay =
-        reader === "all"
-          ? store.readAll()
-          : store.readAggregateRange({
-              aggregateKind: "thread",
-              aggregateId: threadId,
-              fromSequenceExclusive: 0,
-              toSequenceInclusive: 1_501,
-              limit: 1_501,
-            });
-      yield* Stream.runForEach(replay, (event) =>
-        Effect.sync(() => {
-          assert.equal(event.sequence, count + 1);
-          if (count % 500 === 0) {
-            // Count live page markers after full GC, without timing or heap-size thresholds.
-            Object.assign(event, { replayPage: new ReplayPage() });
-            assert.isAtMost(NodeV8.queryObjects(ReplayPage, { format: "count" }), 1);
-          }
-          count++;
-        }),
-      );
-      assert.equal(count, 1_501);
-    }).pipe(
-      Effect.provide(OrchestrationEventStoreLive.pipe(Layer.provide(SqlitePersistenceMemory))),
-    ),
-  );
-}
+it.effect.each(
+  Array.from(["all", "aggregate"] as const, (reader) => ({
+    title: `releases consumed pages during ${reader} replay`,
+    reader,
+  })),
+)("$title", ({ reader }) =>
+  Effect.gen(function* () {
+    const store = yield* OrchestrationEventStore;
+    const threadId = ThreadId.make(`retention-${reader}`);
+    yield* Effect.forEach(
+      Array.from({ length: 1_501 }, (_, index) => index),
+      (index) => store.append(messageEvent(threadId, `retention-${reader}-${index}`)),
+      { discard: true },
+    );
+    // oxlint-disable-next-line typescript/no-extraneous-class -- Identifies page markers for V8's heap query.
+    class ReplayPage {}
+    let count = 0;
+    const replay =
+      reader === "all"
+        ? store.readAll()
+        : store.readAggregateRange({
+            aggregateKind: "thread",
+            aggregateId: threadId,
+            fromSequenceExclusive: 0,
+            toSequenceInclusive: 1_501,
+            limit: 1_501,
+          });
+    yield* Stream.runForEach(replay, (event) =>
+      Effect.sync(() => {
+        assert.equal(event.sequence, count + 1);
+        if (count % 500 === 0) {
+          // Count live page markers after full GC, without timing or heap-size thresholds.
+          Object.assign(event, { replayPage: new ReplayPage() });
+          assert.isAtMost(NodeV8.queryObjects(ReplayPage, { format: "count" }), 1);
+        }
+        count++;
+      }),
+    );
+    assert.equal(count, 1_501);
+  }).pipe(Effect.provide(OrchestrationEventStoreLive.pipe(Layer.provide(SqlitePersistenceMemory)))),
+);
