@@ -89,7 +89,7 @@ export function useUsualAgent(projectId: string | undefined): {
     return () => window.clearTimeout(timer);
   }, [projectId]);
 
-  // Known sign-ins may guide the suggestion; completing a failed read only settles the wait.
+  // Retained sign-ins settle the card order; completing a failed read only settles the wait.
   const read = serviceIds.flatMap((serviceId) => {
     const value = agents[serviceId]?.value;
     return value !== undefined ? [value] : [];
@@ -99,6 +99,8 @@ export function useUsualAgent(projectId: string | undefined): {
     settled:
       waited ||
       orgId === null ||
-      serviceIds.every((serviceId) => agents[serviceId]?.settled || settledReads.has(serviceId)),
+      serviceIds.every(
+        (serviceId) => agents[serviceId]?.value !== undefined || settledReads.has(serviceId),
+      ),
   };
 }
