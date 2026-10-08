@@ -18,7 +18,6 @@ import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 import {
   SessionId,
-  ThreadId,
   type ConversationId,
   type EffectOutcome,
   type ProviderOptionSelection,
@@ -27,14 +26,13 @@ import {
 } from "@t3tools/contracts";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
-import { ProviderSessionDirectory } from "../../provider/Services/ProviderSessionDirectory.ts";
 import { DRIVER_CAPABILITIES } from "../bridge/capabilities.ts";
 import type { BridgeDriver } from "../bridge/spi3.ts";
 import { Conversations } from "../Conversations.ts";
 import type { SessionOpenedValue } from "../domain/decide.ts";
 import { effectSettledCommandId } from "../domain/ids.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
-import { AgentWorkspace } from "../ports.ts";
+import { AgentWorkspace, HandedOverResume } from "../ports.ts";
 import { TurnPump } from "../pump/TurnPump.ts";
 import { bounded, failed, knownDriver, recovering, timedOut, wordsOf } from "./shared.ts";
 
@@ -61,7 +59,7 @@ export const makeSessionOpen = Effect.gen(function* () {
   const conversations = yield* Conversations;
   const workspace = yield* AgentWorkspace;
   const sql = yield* SqlClient.SqlClient;
-  const directory = yield* Effect.serviceOption(ProviderSessionDirectory);
+  const handedOver = yield* HandedOverResume;
 
   /** The model options a session of this driver takes on its next send, as V1 decides it. */
   const inSessionOptions = (driver: BridgeDriver, instanceId: string) =>
@@ -74,27 +72,6 @@ export const makeSessionOpen = Effect.gen(function* () {
           // Unknown: every change waits for a new session, never applied to the wrong one.
           Effect.orElseSucceed(() => []),
         );
-
-  /**
-   * The resume state another instance of the driver left on the thread: ProviderService resumes
-   * a binding of the same instance itself, and refuses an incompatible one.
-   */
-  const handedOver = (thread: string, instanceId: string) =>
-    Option.match(directory, {
-      onNone: () => Effect.succeed(undefined),
-      onSome: (sessions) =>
-        sessions.getBinding(ThreadId.make(thread)).pipe(
-          Effect.map((binding) =>
-            Option.isSome(binding) &&
-            binding.value.providerInstanceId !== undefined &&
-            binding.value.providerInstanceId !== instanceId &&
-            binding.value.resumeCursor != null
-              ? binding.value.resumeCursor
-              : undefined,
-          ),
-          Effect.orElseSucceed(() => undefined),
-        ),
-    });
 
   /** `<thread>.<n>`: the conversation's n-th open, the same id for the same effect after a crash. */
   const sessionIdOf = (thread: string, conversation: ConversationId, effectId: string) =>
@@ -135,7 +112,10 @@ export const makeSessionOpen = Effect.gen(function* () {
             session,
             from: payload.resume === null && payload.rotateFrom === null ? "fresh" : "resume",
           });
-          const resumeCursor = yield* handedOver(host.thread, payload.instanceId);
+          const resumeCursor = yield* handedOver.of({
+            thread: host.thread,
+            instanceId: payload.instanceId,
+          });
           const started = yield* Effect.exit(
             bounded(
               provider.startSession(host.thread, {

@@ -763,6 +763,39 @@ describe("a client's calls to an engine conversation", () => {
   );
 
   it.effect(
+    "a session opened after an agent pick resumes from the state another instance of its driver left",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* makeEngineWorld({
+            driver: "claudeAgent",
+            handedOver: ({ instanceId }) =>
+              instanceId === "claudeAgent:second" ? { session: "left-by-claudeAgent" } : undefined,
+          });
+          yield* w.boot;
+          const wire = yield* wireOf(w);
+          const picked = yield* wire.assignAgent(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make("agent-second"),
+              instanceId: "claudeAgent:second",
+              model: "m1",
+            },
+            ana,
+          );
+          assert.strictEqual(picked._tag, "Accepted");
+          yield* send(wire, "Deploy the api");
+          yield* w.settle;
+          assert.deepInclude(w.provider.starts.at(-1), {
+            resumeCursor: { session: "left-by-claudeAgent" },
+          });
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
     "an agent picked before the conversation starts becomes its agent, on the driver its instance names",
     () =>
       Effect.scoped(

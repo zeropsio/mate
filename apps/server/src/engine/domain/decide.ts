@@ -47,8 +47,8 @@ import {
   ItemId,
   WORK_ENDED,
 } from "@t3tools/contracts";
+import { changedOptionIds } from "@t3tools/shared/modelOptions";
 
-import { changedOptionIds } from "../../orchestration/modelSelectionChange.ts";
 import type { TurnOutcome } from "../bridge/spi3.ts";
 
 import type {

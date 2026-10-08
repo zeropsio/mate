@@ -43,6 +43,10 @@
       "types": "./src/messagePreview.ts",
       "import": "./src/messagePreview.ts"
     },
+    "./modelOptions": {
+      "types": "./src/modelOptions.ts",
+      "import": "./src/modelOptions.ts"
+    },
     "./userAsk": {
       "types": "./src/userAsk.ts",
       "import": "./src/userAsk.ts"

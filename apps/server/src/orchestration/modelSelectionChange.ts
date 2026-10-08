@@ -1,4 +1,5 @@
 import type { ModelSelection } from "@t3tools/contracts";
+import { changedOptionIds } from "@t3tools/shared/modelOptions";
 
 /**
  * What a session must do to run with a requested model selection:
@@ -7,24 +8,6 @@ import type { ModelSelection } from "@t3tools/contracts";
  * - `new-session`: only a new session can run it.
  */
 export type ModelSelectionChange = "none" | "in-session" | "new-session";
-
-type ModelOptions = ModelSelection["options"];
-type OptionValue = NonNullable<ModelOptions>[number]["value"];
-
-function optionValues(options: ModelOptions): ReadonlyMap<string, OptionValue> {
-  return new Map((options ?? []).map((option) => [option.id, option.value]));
-}
-
-/** Option ids whose values differ; order and absent vs empty options don't count. */
-export function changedOptionIds(
-  previous: ModelOptions,
-  requested: ModelOptions,
-): ReadonlyArray<string> {
-  const before = optionValues(previous);
-  const after = optionValues(requested);
-  const ids = new Set([...before.keys(), ...after.keys()]);
-  return [...ids].filter((id) => before.get(id) !== after.get(id)).toSorted();
-}
 
 /** Option ids whose values differ; order and absent vs empty options don't count. */
 export function changedModelOptionIds(
