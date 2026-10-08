@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 import {
   EngineCallResult,
   EngineConversationFrame,
+  EnginePage,
   EngineReceiptResult,
   ORCHESTRATION_WS_METHODS,
   WS_METHODS,
@@ -171,6 +172,103 @@ it("refuses and flags a V1 turn sent to an engine conversation", async () => {
     expect(exit._tag).toBe("Failure");
     expect([...r.mate.unknownMethods].join()).toMatch(/V1 write to an engine conversation/);
     expect(r.wire.intents()).toEqual([]);
+  } finally {
+    await r.close();
+  }
+});
+
+const decodePage = Schema.decodeUnknownSync(EnginePage);
+
+// Catches a fake that hands the client every record at once, so paging is never exercised.
+it("opens on a window of the newest run groups, the rest a page away", async () => {
+  const r = await connect();
+  try {
+    const engine = r.wire.engine;
+    engine.windowGroups = 1;
+    engine.runPageItems = 1;
+    r.wire.history("Earlier words");
+    const run = engine.personRun("Deploy the api");
+    engine.item(run, {
+      kind: "call",
+      step: "command",
+      tool: { name: "Bash" },
+      words: "Ran command",
+      state: "done",
+      endedAt: null,
+    });
+    const answer = engine.item(run, {
+      kind: "note",
+      text: "Deployed.",
+      streaming: false,
+      answer: true,
+    });
+    engine.end(run, { kind: "completed" }, answer);
+    r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
+    await r.until(() => r.stream("c").some((frame) => frame.type === "synchronized"));
+    const [snapshot] = r.stream("c");
+    expect(snapshot).toMatchObject({
+      type: "snapshot",
+      runs: [{ ordinal: 2, summary: { items: 3 } }],
+      window: { oldestOrdinal: 2, earlier: true },
+    });
+    expect(snapshot?.type === "snapshot" && snapshot.items.map((item) => item.kind)).toEqual([
+      "person",
+      "note",
+    ]);
+    const newest = decodePage(
+      (await r.call("p1", WS_METHODS.engineReadRun, { ...conversation, runId: run })).value,
+    );
+    expect(newest).toMatchObject({ items: [{ kind: "note" }], more: true });
+    const older = decodePage(
+      (
+        await r.call("p2", WS_METHODS.engineReadRun, {
+          ...conversation,
+          runId: run,
+          beforeSeq: newest._tag === "Page" ? newest.items[0]!.seq : 0,
+        })
+      ).value,
+    );
+    expect(older).toMatchObject({ items: [{ kind: "call" }], more: true });
+    const earlier = decodePage(
+      (await r.call("e", WS_METHODS.engineReadEarlier, { ...conversation, beforeOrdinal: 2 }))
+        .value,
+    );
+    expect(earlier).toMatchObject({
+      runs: [{ ordinal: 1 }],
+      items: [{ kind: "person", text: "Earlier words" }],
+      window: { oldestOrdinal: 1, earlier: false },
+    });
+  } finally {
+    await r.close();
+  }
+});
+
+// Catches streamed text a late subscriber never hears, or one placed at the wrong offset.
+it("streams an item's text at its offsets, whole to a subscriber that opens late", async () => {
+  const r = await connect();
+  try {
+    const engine = r.wire.engine;
+    const run = engine.personRun("Deploy the api");
+    const note = engine.item(run, { kind: "note", text: "", streaming: true, answer: false });
+    r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
+    await r.until(() => r.stream("c").some((frame) => frame.type === "synchronized"));
+    engine.stream(note, "Deploying ");
+    engine.stream(note, "the api");
+    r.request("late", WS_METHODS.subscribeEngineConversation, conversation);
+    await r.until(() => r.stream("late").some((frame) => frame.type === "live.open"));
+    engine.settle(note);
+    await r.until(() => r.stream("c").some((frame) => frame.type === "live.settle"));
+    expect(r.stream("c").filter((frame) => frame.type.startsWith("live."))).toEqual([
+      { type: "live.open", itemId: note, stream: "text", text: "Deploying " },
+      { type: "live.append", itemId: note, stream: "text", offset: 10, text: "the api" },
+      { type: "live.settle", itemId: note },
+    ]);
+    expect(r.stream("late").find((frame) => frame.type === "live.open")).toEqual({
+      type: "live.open",
+      itemId: note,
+      stream: "text",
+      text: "Deploying the api",
+    });
   } finally {
     await r.close();
   }
