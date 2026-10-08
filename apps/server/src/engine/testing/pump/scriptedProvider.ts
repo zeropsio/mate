@@ -377,6 +377,16 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
             payload: { streamKind: "assistant_text", delta },
           });
         }),
+      /** Reasoning streamed into a thought that stays open. */
+      think: (thread: string, itemId: string, delta: string) =>
+        Effect.gen(function* () {
+          const session = live(thread);
+          yield* emit("content.delta", thread, {
+            ...(session.open === null ? {} : { turnId: session.open }),
+            itemId,
+            payload: { streamKind: "reasoning_text", delta },
+          });
+        }),
       /** A command starts running (ACP calls first show as an update). */
       call: (thread: string) =>
         Effect.gen(function* () {

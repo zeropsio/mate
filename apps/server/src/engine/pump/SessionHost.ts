@@ -88,6 +88,11 @@ export interface SessionHost {
   readonly nativeRequest: (key: RequestKey) => Effect.Effect<NativeRequest | undefined>;
   /** Background work alive in the current session. */
   readonly liveWork: Effect.Effect<number>;
+  /**
+   * The server is stopping under the current session: its open text items go to the record cut,
+   * with the words they streamed, before the drivers go down and the restart cuts the run.
+   */
+  readonly keepWords: Effect.Effect<void>;
   /** Runs a driver call that outlives the handler that made it (a send that holds its turn). */
   readonly forkInSession: <A, E>(call: Effect.Effect<A, E>) => Effect.Effect<Fiber.Fiber<A, E>>;
   /** Nothing of it is live: no session, no send waiting, no Stop waiting on a turn. */
@@ -432,6 +437,15 @@ export const makeSessionHost = Effect.fnUntraced(function* (
       ),
     nativeRequest: (key) => Effect.sync(() => translator.nativeRequest(key)),
     liveWork: Effect.sync(() => toCore.liveWork()),
+    keepWords: lock.withPermits(1)(
+      Effect.gen(function* () {
+        const session = current;
+        const gate = session === null ? undefined : gates.get(session);
+        if (session === null || gate?.state !== "open") return;
+        const closes = toCore.cutText(yield* Clock.currentTimeMillis);
+        if (closes.length > 0) yield* tell(session, gate, closes);
+      }),
+    ),
     forkInSession: (call) => Effect.forkIn(call, deps.scope),
     idle: lock.withPermits(1)(
       Effect.sync(

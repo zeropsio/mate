@@ -52,6 +52,9 @@ export const makeSessionClose = Effect.gen(function* () {
         );
         // Closed for the engine either way: nothing more goes into it.
         yield* host.record({ kind: "stopped" });
+        // The bridge ends the session's open items cut, with the words they streamed: the record
+        // takes them before this close settles, as after it the session's signals are stale.
+        yield* bounded(host.settled);
         return Option.isNone(stopped) ? timedOut : ok();
       }).pipe(Effect.catchCause(recovering)),
   } satisfies EffectHandler;

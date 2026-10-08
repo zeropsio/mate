@@ -78,6 +78,9 @@ export class TurnPump extends Context.Service<TurnPump, TurnPumpShape>()(
   "t3/engine/pump/TurnPump",
 ) {}
 
+/** How long a stopping server waits for the record to take the words its hosts held. */
+const KEEP_WORDS_BOUND_MS = 5_000;
+
 export const makeTurnPump = Effect.gen(function* () {
   const bus = yield* ProviderRuntimeEventBus;
   const provider = yield* ProviderService;
@@ -108,6 +111,17 @@ export const makeTurnPump = Effect.gen(function* () {
     }),
   );
   const hosts = new Map<ConversationId, SessionHost>();
+  // Runs first as the server stops (finalizers run last-added first), while the record still
+  // takes what the hosts tell: the words open items streamed, which nothing else holds.
+  yield* Effect.addFinalizer(() =>
+    Effect.forEach(hosts.values(), (host) => host.keepWords, { discard: true }).pipe(
+      // A record that takes nothing never holds the server's stop.
+      Effect.timeoutOption(KEEP_WORDS_BOUND_MS),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("engine pump: streamed words could not be kept", { cause }),
+      ),
+    ),
+  );
   const byThread = new Map<string, SessionHost>();
   const foreign = new Map<string, number>();
 
