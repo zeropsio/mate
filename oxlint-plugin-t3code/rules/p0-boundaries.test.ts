@@ -238,33 +238,33 @@ describe("sanctioned source boundaries retain their counterexamples", () => {
   const labels = empty("apps/web/src/components/zerops/ZeropsGroupDetail.tsx");
   labels.valid(
     "optional names leave the attention items intact",
-    `const mateNames = useNames(); export const items = projectAttention({ mates, mateNames: mateNames ?? EMPTY_MATE_NAMES });`,
+    `import { useMateNames as useNames } from "~/zerops/projectFlows"; const mateNames = useNames(); export const items = projectAttention({ mates, mateNames: mateNames ?? EMPTY_MATE_NAMES });`,
   );
   labels.invalid(
     "the same default cannot erase the attention collection",
-    `const mateNames = useNames(); export const items = projectAttention({ mates: mateNames ?? EMPTY_MATE_NAMES });`,
+    `import { useMateNames as useNames } from "~/zerops/projectFlows"; const mateNames = useNames(); export const items = projectAttention({ mates: mateNames ?? EMPTY_MATE_NAMES });`,
   );
   labels.invalid(
     "an unknown working tree cannot be rendered clean",
-    `const tree = useWorkingTree(); export const files = tree.state === "known" ? tree.value.files : [];`,
+    `import { useEnvironmentQuery as useWorkingTree } from "~/state/query"; const tree = useWorkingTree(); export const files = tree.state === "known" ? tree.value.files : [];`,
   );
   const focus = empty("packages/client-runtime/src/zerops/agentLogin.ts");
   focus.valid(
     "failed command focuses no terminal",
-    `export function agentLoginTerminalToFocus(result: AtomCommandResult<ZeropsAgentLoginStartResult, unknown>) { return result._tag === "Success" ? result.value.terminalId : undefined; }`,
+    `import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime"; export function agentLoginTerminalToFocus(result: AtomCommandResult<ZeropsAgentLoginStartResult, unknown>) { return result._tag === "Success" ? result.value.terminalId : undefined; }`,
   );
   focus.invalid(
     "the command focus helper cannot empty a source result",
-    `export function agentLoginTerminalToFocus(result: AtomCommandResult<ZeropsAgentLoginStartResult, unknown>) { return result._tag === "Success" ? result.value.rows : undefined; }`,
+    `import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime"; export function agentLoginTerminalToFocus(result: AtomCommandResult<ZeropsAgentLoginStartResult, unknown>) { return result._tag === "Success" ? result.value.rows : undefined; }`,
   );
   const lifecycle = empty("packages/client-runtime/src/zerops/model/deriveThreadModel.ts");
   lifecycle.valid(
     "optional lifecycle composition keeps builds unobservable",
-    `export function deriveZeropsThreadModel(input) { const lifecycle = input.lifecycle; const envelope = lifecycle?.state === "known" ? lifecycle.value.envelope : undefined; return reduceZeropsOperations(calls, { projectId: envelope?.project.id, builds: input.builds ?? UNOBSERVABLE }); }`,
+    `import type { Known } from "@t3tools/client-runtime/zerops/knowledge"; export function deriveZeropsThreadModel(input: { lifecycle: Known<Lifecycle> }) { const lifecycle: Known<Lifecycle> = input.lifecycle; const envelope = lifecycle?.state === "known" ? lifecycle.value.envelope : undefined; return reduceZeropsOperations(calls, { projectId: envelope?.project.id, builds: input.builds ?? UNOBSERVABLE }); }`,
   );
   lifecycle.invalid(
     "missing lifecycle cannot imply no work",
-    `export function deriveZeropsThreadModel(input) { const lifecycle = input.lifecycle; return lifecycle?.state === "known" ? lifecycle.value.operations : []; }`,
+    `import type { Known } from "@t3tools/client-runtime/zerops/knowledge"; export function deriveZeropsThreadModel(input: { lifecycle: Known<Lifecycle> }) { const lifecycle: Known<Lifecycle> = input.lifecycle; return lifecycle?.state === "known" ? lifecycle.value.operations : []; }`,
   );
 
   const intents = storage("apps/web/src/zerops/environmentPorts.ts");
