@@ -160,7 +160,7 @@ describe("Conversations", () => {
           commit: (input) => Effect.andThen(gate.await, store.commit(input)),
         });
         const signals = {
-          effects: yield* EngineSignals.makeDoorbell,
+          effects: yield* EngineSignals.makeDoorbells,
           wakes: yield* EngineSignals.makeDoorbell,
           commits: yield* EngineSignals.makeCommits,
         };

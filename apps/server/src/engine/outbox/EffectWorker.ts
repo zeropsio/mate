@@ -208,6 +208,13 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
     });
   const runOnce = runFrom();
 
+  /** Each pool's own doorbell: a fiber of one pool arming never hides a ring from the other. */
+  const bells = {
+    conversations: yield* signals.effects.consumer,
+    owners: yield* signals.effects.consumer,
+  };
+  const bellOf = (pool: EffectPool) => bells[pool];
+
   const idle = (pool: EffectPool) =>
     Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
@@ -216,12 +223,12 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
         onNone: () => pollMillis,
         onSome: (at) => Math.max(0, Math.min(pollMillis, at - now)),
       });
-      yield* Effect.raceFirst(Effect.sleep(sleep), signals.effects.wait);
+      yield* Effect.raceFirst(Effect.sleep(sleep), bellOf(pool).wait);
     });
 
   const loop = (pool: EffectPool) =>
     Effect.gen(function* () {
-      yield* signals.effects.arm;
+      yield* bellOf(pool).arm;
       const worked = yield* runFrom(pool);
       if (!worked) yield* idle(pool);
     }).pipe(

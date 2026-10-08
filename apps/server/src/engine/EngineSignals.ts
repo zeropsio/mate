@@ -30,9 +30,27 @@ export const makeDoorbell = Effect.gen(function* () {
   } satisfies Doorbell;
 });
 
+/**
+ * One ring heard by several consumers, each with its own latch: one consumer's `arm` never closes
+ * a ring another has yet to wait on.
+ */
+export interface Doorbells {
+  readonly ring: Effect.Effect<void>;
+  /** A consumer's own doorbell, rung with every ring from now on. */
+  readonly consumer: Effect.Effect<Doorbell>;
+}
+
+export const makeDoorbells = Effect.sync((): Doorbells => {
+  const consumers = new Set<Doorbell>();
+  return {
+    ring: Effect.forEach(consumers, (bell) => bell.ring, { discard: true }),
+    consumer: Effect.tap(makeDoorbell, (bell) => Effect.sync(() => consumers.add(bell))),
+  };
+});
+
 export interface EngineSignalsShape {
-  /** Outbox rows were queued or requeued. */
-  readonly effects: Doorbell;
+  /** Outbox rows were queued or requeued: each worker pool hears it on its own doorbell. */
+  readonly effects: Doorbells;
   /** A wake was armed, fired or cancelled. */
   readonly wakes: Doorbell;
   /** A conversation committed events: its view may have changed (the grafts' `changes`). */
@@ -48,5 +66,5 @@ export const makeCommits = PubSub.sliding<ConversationId>(256);
 
 export const layer = Layer.effect(
   EngineSignals,
-  Effect.all({ effects: makeDoorbell, wakes: makeDoorbell, commits: makeCommits }),
+  Effect.all({ effects: makeDoorbells, wakes: makeDoorbell, commits: makeCommits }),
 );
