@@ -4,13 +4,17 @@
  * and sends a terminal outcome back as `EffectSettled` through the owner's actor, which records it
  * in the same transaction as its consequences. The outcome is written to its row first, so a tell
  * that fails is told again (with backoff, and at boot) instead of leaving the row running. A
- * replay-safe handler's failure backs off and retries; past the attempt limit it fails for good.
- * A process-bound handler's failure is its outcome: it may have acted, so it is never tried again.
- * A fiber sleeps until the next row comes due or the actor rings.
+ * replay-safe handler's failure backs off and retries by its owner kind's policy (a conversation's
+ * five quick tries; the crew's ten, minutes apart, so an ssh hiccup passes); past it, it fails for
+ * good. A process-bound handler's failure is its outcome: it may have acted, so it is never tried
+ * again. A fiber sleeps until the next row comes due or the actor rings.
+ *
+ * The conversations' effects and every other owner's run on fibers of their own: a crew check or
+ * setup may hold its fiber for minutes, and never holds a conversation's send.
  *
  * Boot reconcile runs before the worker starts: replay-safe rows are requeued, and every
  * conversation with process-bound work left behind, a live run or an open session is told
- * `Recovered`.
+ * `Recovered`, as is every owner of another kind (the crew reconciles its hosts at each boot).
  *
  * @module engine/outbox/EffectWorker
  */
@@ -27,7 +31,15 @@ import { Conversations } from "../Conversations.ts";
 import { effectSettledCommandId, recoveredCommandId } from "../domain/ids.ts";
 import { EngineSignals } from "../EngineSignals.ts";
 import type { EngineStoreError } from "../store/EngineStore.ts";
-import { EffectOutbox, type EffectRow } from "./EffectOutbox.ts";
+import {
+  CONVERSATION_RETRY,
+  EffectOutbox,
+  OWNER_RETRY,
+  retryPolicyOf,
+  type EffectPool,
+  type EffectRow,
+  type RetryPolicy,
+} from "./EffectOutbox.ts";
 
 /** What a handler's attempt came to. */
 export type HandlerResult =
@@ -55,8 +67,14 @@ export const recoveryRetryMs = (attempt: number): number =>
   Math.min(5 * 60_000, 1_000 * 2 ** Math.max(0, attempt - 1));
 
 export interface EffectWorkerOptions {
+  /** Fibers for the conversations' effects. */
   readonly concurrency?: number;
+  /** Fibers for every other owner's effects (the crew's): one per lane it may run at once. */
+  readonly ownerConcurrency?: number;
+  /** A conversation's replay-safe effect: how many tries. */
   readonly maxAttempts?: number;
+  /** Every other owner's replay-safe effect: how many tries, how far apart. */
+  readonly ownerRetry?: RetryPolicy;
   /** The longest a fiber sleeps without a ring. */
   readonly pollMillis?: number;
 }
@@ -71,7 +89,13 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
   const conversations = yield* Conversations;
   const handlers = yield* EffectHandlers;
   const signals = yield* EngineSignals;
-  const maxAttempts = options.maxAttempts ?? 5;
+  const policies = {
+    conversation: {
+      ...CONVERSATION_RETRY,
+      maxAttempts: options.maxAttempts ?? CONVERSATION_RETRY.maxAttempts,
+    },
+    owner: options.ownerRetry ?? OWNER_RETRY,
+  };
   const pollMillis = options.pollMillis ?? 30_000;
 
   const attempt = (row: EffectRow): Effect.Effect<HandlerResult> => {
@@ -153,48 +177,61 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
       return true;
     });
 
-  /** Tells a settling row again or claims and processes one row; false when nothing was due. */
-  const runOnce = Effect.gen(function* () {
-    const now = yield* Clock.currentTimeMillis;
-    if (yield* sweepOnce(now)) return true;
-    const claimed = yield* outbox.claim(boot, now);
-    if (Option.isNone(claimed)) return false;
-    const row = claimed.value;
-    const result = yield* Effect.uninterruptible(attempt(row));
-    if (result._tag === "Retry") {
-      if (row.attempt >= maxAttempts) {
-        yield* settle(row, { kind: "failed", reason: result.reason });
-      } else {
-        yield* outbox.retry(row, yield* Clock.currentTimeMillis, result.reason);
+  /**
+   * Tells a settling row again or claims and processes one row of the pool (any, by default);
+   * false when nothing was due.
+   */
+  const runFrom = (pool?: EffectPool) =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      if (yield* sweepOnce(now)) return true;
+      const claimed = yield* outbox.claim(boot, now, pool);
+      if (Option.isNone(claimed)) return false;
+      const row = claimed.value;
+      const result = yield* Effect.uninterruptible(attempt(row));
+      if (result._tag === "Retry") {
+        const policy = retryPolicyOf(row, policies);
+        if (row.attempt >= policy.maxAttempts) {
+          yield* settle(row, { kind: "failed", reason: result.reason });
+        } else {
+          yield* outbox.retry(
+            row,
+            yield* Clock.currentTimeMillis,
+            result.reason,
+            policy.delayMs(row.attempt),
+          );
+        }
+        return true;
       }
+      yield* settle(row, result.outcome);
       return true;
-    }
-    yield* settle(row, result.outcome);
-    return true;
-  });
-
-  const idle = Effect.gen(function* () {
-    const now = yield* Clock.currentTimeMillis;
-    const next = yield* outbox.nextAvailableAt;
-    const sleep = Option.match(next, {
-      onNone: () => pollMillis,
-      onSome: (at) => Math.max(0, Math.min(pollMillis, at - now)),
     });
-    yield* Effect.raceFirst(Effect.sleep(sleep), signals.effects.wait);
-  });
+  const runOnce = runFrom();
 
-  const loop = Effect.gen(function* () {
-    yield* signals.effects.arm;
-    const worked = yield* runOnce;
-    if (!worked) yield* idle;
-  }).pipe(
-    Effect.catchCause((cause) =>
-      Effect.logWarning("engine effect worker step failed", cause).pipe(
-        Effect.andThen(Effect.sleep(1_000)),
+  const idle = (pool: EffectPool) =>
+    Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
+      const next = yield* outbox.nextAvailableAt(pool);
+      const sleep = Option.match(next, {
+        onNone: () => pollMillis,
+        onSome: (at) => Math.max(0, Math.min(pollMillis, at - now)),
+      });
+      yield* Effect.raceFirst(Effect.sleep(sleep), signals.effects.wait);
+    });
+
+  const loop = (pool: EffectPool) =>
+    Effect.gen(function* () {
+      yield* signals.effects.arm;
+      const worked = yield* runFrom(pool);
+      if (!worked) yield* idle(pool);
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("engine effect worker step failed", cause).pipe(
+          Effect.andThen(Effect.sleep(1_000)),
+        ),
       ),
-    ),
-    Effect.forever,
-  );
+      Effect.forever,
+    );
 
   /**
    * Boot: requeue replay-safe rows, tell each conversation the restart touched what it cut and
@@ -274,12 +311,17 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
 
   return {
     runOnce,
+    /** One row of one pool, as a fiber of that pool takes it. */
+    runFrom,
     reconcileAtBoot,
     retryRecoveries,
-    /** Starts the fibers in the caller's scope. */
+    /** Starts the fibers in the caller's scope: the conversations' pool and the owners'. */
     start: Effect.forEach(
-      Array.from({ length: options.concurrency ?? 4 }),
-      () => Effect.forkScoped(loop),
+      [
+        ...Array.from({ length: options.concurrency ?? 4 }, () => "conversations" as const),
+        ...Array.from({ length: options.ownerConcurrency ?? 8 }, () => "owners" as const),
+      ],
+      (pool) => Effect.forkScoped(loop(pool)),
       { discard: true },
     ) as Effect.Effect<void, never, Scope.Scope>,
   };

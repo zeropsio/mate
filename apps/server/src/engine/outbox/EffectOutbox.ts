@@ -2,8 +2,10 @@
  * EffectOutbox: the effects a step queued, in the same transaction as the step.
  *
  * The claim is one statement: the oldest pending row whose time has come, and only when nothing
- * earlier in its conversation and lane is still pending, running or settling — a row waiting in
- * backoff holds the rows behind it. A retryable failure is bookkeeping (back to pending, later). A
+ * earlier in its owner and lane is still pending, running or settling — a row waiting in backoff
+ * holds the rows behind it. A lane is any string its owner kind names (a conversation's `turn`, the
+ * crew's `git/<handle>`), FIFO within its owner. A claim takes from one pool: the conversations'
+ * effects, or every other owner's, so neither waits on the other's fibers. A retryable failure is bookkeeping (back to pending, later). A
  * terminal outcome is first written to its row (`settling`), then told to the owner's actor, which
  * records it (`EffectSettled`); a tell that failed is told again by a sweep with backoff, and at
  * boot, so an outcome is never lost and its lane never stays blocked. At boot, process-bound rows
@@ -22,6 +24,7 @@ import {
   type BootId,
   type ConversationId,
   type EffectId,
+  type OwnerKind,
   type RunId,
 } from "@t3tools/contracts";
 
@@ -32,7 +35,9 @@ export type EffectRowState = "pending" | "running" | "settling" | "done" | "fail
 
 export interface EffectRow {
   readonly effectId: EffectId;
+  /** Its owner: a conversation, or the crew. */
   readonly conversationId: ConversationId;
+  readonly ownerKind: OwnerKind;
   readonly lane: EffectLane;
   readonly kind: string;
   readonly class: EffectClass;
@@ -59,16 +64,31 @@ export interface RecoveryOwner {
   readonly unstarted: ReadonlyArray<EffectId>;
 }
 
+/**
+ * Whose effects a claim takes: the conversations', or every other owner's (the crew's git, checks
+ * and deliveries, which may hold a fiber for minutes). Absent: any.
+ */
+export type EffectPool = "conversations" | "owners";
+
+/** How often, and how far apart, a replay-safe effect is tried before it fails for good. */
+export interface RetryPolicy {
+  readonly maxAttempts: number;
+  /** The wait before the next attempt, after attempt `n` failed. */
+  readonly delayMs: (attempt: number) => number;
+}
+
 export interface EffectOutboxShape {
   readonly claim: (
     boot: BootId,
     now: number,
+    pool?: EffectPool,
   ) => Effect.Effect<Option.Option<EffectRow>, EngineStoreError>;
-  /** A retryable failure: pending again after `backoffMs(attempt)`. */
+  /** A retryable failure: pending again after `delayMs` (by default `backoffMs(attempt)`). */
   readonly retry: (
     row: EffectRow,
     now: number,
     reason: string,
+    delayMs?: number,
   ) => Effect.Effect<void, EngineStoreError>;
   /** A terminal outcome its owner could not record: closed here so it never blocks its lane. */
   readonly close: (
@@ -90,7 +110,9 @@ export interface EffectOutboxShape {
    * When the worker next has something to do: the earliest lane head that comes due, or the
    * earliest settling row due to be told again. A row behind a running or settling row is not due.
    */
-  readonly nextAvailableAt: Effect.Effect<Option.Option<number>, EngineStoreError>;
+  readonly nextAvailableAt: (
+    pool?: EffectPool,
+  ) => Effect.Effect<Option.Option<number>, EngineStoreError>;
   readonly row: (effect: EffectId) => Effect.Effect<Option.Option<EffectRow>, EngineStoreError>;
   /** Boot: requeues replay-safe rows another boot was running; returns how many. */
   readonly requeueReplaySafe: (
@@ -98,9 +120,10 @@ export interface EffectOutboxShape {
     now: number,
   ) => Effect.Effect<number, EngineStoreError>;
   /**
-   * Boot: the conversations to recover — every one with process-bound rows another boot left
+   * Boot: the owners to recover — every conversation with process-bound rows another boot left
    * pending or running (tried ones are cut, untried ones reported apart), every one whose run was
-   * alive, and every one with a session still open (its process died with the server).
+   * alive, every one with a session still open (its process died with the server), and every
+   * owner of another kind, which reconciles what it holds at each boot.
    */
   readonly recoveryOwners: (
     boot: BootId,
@@ -115,9 +138,38 @@ export class EffectOutbox extends Context.Service<EffectOutbox, EffectOutboxShap
 export const backoffMs = (attempt: number): number =>
   Math.min(30_000, 100 * 2 ** Math.max(0, attempt - 1));
 
+/** A conversation's effect: five tries in about a second and a half. */
+export const CONVERSATION_RETRY: RetryPolicy = { maxAttempts: 5, delayMs: backoffMs };
+
+/**
+ * Every other owner's (the crew's git and checks over ssh): `min(1 min, 1 s · 2^(n − 1))` between
+ * ten tries, about four minutes in all, so an ssh hiccup or a container's restart passes.
+ */
+export const OWNER_RETRY: RetryPolicy = {
+  maxAttempts: 10,
+  delayMs: (attempt) => Math.min(60_000, 1_000 * 2 ** Math.max(0, attempt - 1)),
+};
+
+/** The retry policy of a row's owner kind. */
+export const retryPolicyOf = (
+  row: Pick<EffectRow, "ownerKind">,
+  policies: { readonly conversation: RetryPolicy; readonly owner: RetryPolicy } = {
+    conversation: CONVERSATION_RETRY,
+    owner: OWNER_RETRY,
+  },
+): RetryPolicy => (row.ownerKind === "conversation" ? policies.conversation : policies.owner);
+
+const poolFilter = (pool: EffectPool | undefined, alias: string): string =>
+  pool === undefined
+    ? "1 = 1"
+    : pool === "conversations"
+      ? `${alias}.owner_kind = 'conversation'`
+      : `${alias}.owner_kind != 'conversation'`;
+
 interface Row {
   readonly effect_id: string;
   readonly conversation_id: string;
+  readonly owner_kind: string;
   readonly lane: string;
   readonly kind: string;
   readonly class: string;
@@ -143,7 +195,8 @@ const fromRow = (row: Row) =>
     Effect.map(({ payload, outcome }): EffectRow => ({
       effectId: row.effect_id as EffectId,
       conversationId: row.conversation_id as ConversationId,
-      lane: row.lane as EffectLane,
+      ownerKind: row.owner_kind as OwnerKind,
+      lane: row.lane,
       kind: row.kind,
       class: row.class as EffectClass,
       runId: row.run_id as RunId | null,
@@ -158,10 +211,10 @@ const fromRow = (row: Row) =>
     })),
   );
 
-const COLUMNS = `effect_id, conversation_id, lane, kind, class, run_id, payload_json, state, attempt,
+const COLUMNS = `effect_id, conversation_id, owner_kind, lane, kind, class, run_id, payload_json, state, attempt,
   available_at, claimed_boot, last_error, outcome_json, settle_attempt`;
 
-/** A lane's head: nothing earlier in its conversation and lane is still in flight. */
+/** A lane's head: nothing earlier in its owner and lane is still in flight. */
 const LANE_HEAD = `NOT EXISTS (
   SELECT 1 FROM engine_effect p
   WHERE p.conversation_id = e.conversation_id AND p.lane = e.lane
@@ -173,13 +226,14 @@ export const makeEffectOutbox = Effect.fn("makeEffectOutbox")(function* () {
   const failed = (operation: string) => (cause: unknown) =>
     new EngineStoreError({ operation: `outbox.${operation}`, cause });
 
-  const claim: EffectOutboxShape["claim"] = (boot, now) =>
+  const claim: EffectOutboxShape["claim"] = (boot, now, pool) =>
     sql<Row>`
       UPDATE engine_effect
       SET state = 'running', claimed_boot = ${boot}, claimed_at = ${now}, attempt = attempt + 1
       WHERE effect_id = (
         SELECT e.effect_id FROM engine_effect e
         WHERE e.state = 'pending' AND e.available_at <= ${now} AND ${sql.literal(LANE_HEAD)}
+          AND ${sql.literal(poolFilter(pool, "e"))}
         ORDER BY e.rowid LIMIT 1
       )
       RETURNING ${sql.literal(COLUMNS)}
@@ -201,10 +255,10 @@ export const makeEffectOutbox = Effect.fn("makeEffectOutbox")(function* () {
   return EffectOutbox.of({
     claim,
     row,
-    retry: (effect, now, reason) =>
+    retry: (effect, now, reason, delayMs = backoffMs(effect.attempt)) =>
       sql`
         UPDATE engine_effect
-        SET state = 'pending', available_at = ${now + backoffMs(effect.attempt)},
+        SET state = 'pending', available_at = ${now + delayMs},
           last_error = ${reason}
         WHERE effect_id = ${effect.effectId} AND state = 'running'
       `.pipe(Effect.asVoid, Effect.mapError(failed("retry"))),
@@ -236,17 +290,19 @@ export const makeEffectOutbox = Effect.fn("makeEffectOutbox")(function* () {
         ),
         Effect.mapError(failed("nextSettling")),
       ),
-    nextAvailableAt: sql<{ readonly at: number | null }>`
-      SELECT min(at) AS at FROM (
-        SELECT min(e.available_at) AS at FROM engine_effect e
-        WHERE e.state = 'pending' AND ${sql.literal(LANE_HEAD)}
-        UNION ALL
-        SELECT min(available_at) AS at FROM engine_effect WHERE state = 'settling'
-      )
-    `.pipe(
-      Effect.map((rows) => Option.fromNullishOr(rows[0]?.at)),
-      Effect.mapError(failed("nextAvailableAt")),
-    ),
+    nextAvailableAt: (pool) =>
+      sql<{ readonly at: number | null }>`
+        SELECT min(at) AS at FROM (
+          SELECT min(e.available_at) AS at FROM engine_effect e
+          WHERE e.state = 'pending' AND ${sql.literal(LANE_HEAD)}
+            AND ${sql.literal(poolFilter(pool, "e"))}
+          UNION ALL
+          SELECT min(available_at) AS at FROM engine_effect WHERE state = 'settling'
+        )
+      `.pipe(
+        Effect.map((rows) => Option.fromNullishOr(rows[0]?.at)),
+        Effect.mapError(failed("nextAvailableAt")),
+      ),
     requeueReplaySafe: (boot, now) =>
       sql<{ readonly effect_id: string }>`
         UPDATE engine_effect SET state = 'pending', available_at = ${now}
@@ -276,6 +332,8 @@ export const makeEffectOutbox = Effect.fn("makeEffectOutbox")(function* () {
           WHERE state IN ('admitted', 'sending', 'running', 'waiting')
           UNION
           SELECT conversation_id FROM engine_session WHERE state = 'open'
+          UNION
+          SELECT conversation_id FROM engine_conversation WHERE owner_kind != 'conversation'
         `;
         const owners = new Map<
           string,
