@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   type makeMateImages,
   mateImage,
+  parseMateImageSource,
   mateImagePreview,
   mateImageDimensions,
   type MateImageReference,
@@ -10,7 +11,7 @@ import {
   type MateImageRead,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/unstable/reactivity";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 export const MateImagesContext = createContext<{
   readonly store: AccountStore;
@@ -33,7 +34,28 @@ export function useMateImage(key: MateImageKey | null) {
       ? UNKNOWN
       : context.store.data.project(mateImagePreview, key),
   );
-  const blob = read.kind === "ready" ? read.blob : preview.kind === "ready" ? preview.blob : null;
+  const originalUrl = useBlobUrl(read.kind === "ready" ? read.blob : null);
+  const previewUrl = useBlobUrl(preview.kind === "ready" ? preview.blob : null);
+  return {
+    read,
+    retry: () => {
+      if (key !== null) context?.images.retry(key);
+    },
+    loadingOriginal: key?.rendition === "original" && read.kind !== "ready",
+    url: originalUrl ?? previewUrl,
+    originalUrl,
+    previewUrl,
+    dimensions:
+      read.kind === "ready"
+        ? read.dimensions
+        : preview.kind === "ready"
+          ? preview.dimensions
+          : undefined,
+  };
+}
+
+/** Blob URLs belong to the presentation; the account retains the bytes. */
+function useBlobUrl(blob: Blob | null) {
   const [presentation, setPresentation] = useState<{
     readonly blob: Blob;
     readonly url: string;
@@ -47,13 +69,38 @@ export function useMateImage(key: MateImageKey | null) {
     setPresentation({ blob, url });
     return () => URL.revokeObjectURL(url);
   }, [blob]);
+  return blob !== null && presentation?.blob === blob ? presentation.url : undefined;
+}
+
+/** A deliberate image-open intent owns original demand until leave, blur or unmount. */
+export function useImageIntent(source?: string) {
+  const context = useContext(MateImagesContext);
+  const held = useRef<{ readonly id: string; readonly release: () => void } | null>(null);
+  const release = () => {
+    held.current?.release();
+    held.current = null;
+  };
+  useEffect(() => release, [context]);
+  const start = (event: { readonly currentTarget: HTMLElement }) => {
+    const image = event.currentTarget.querySelector<HTMLElement>("[data-image-src]");
+    const reference = parseMateImageSource(source ?? image?.dataset.imageSrc);
+    if (reference === null || context === null) return;
+    const key = { ...reference, rendition: "original" as const };
+    const id = JSON.stringify(key);
+    if (held.current?.id === id) return;
+    release();
+    held.current = { id, release: context.images.demand(key) };
+  };
   return {
-    read,
-    retry: () => {
-      if (key !== null) context?.images.retry(key);
+    onPointerEnter: start,
+    onFocus: start,
+    onPointerDown: start,
+    onPointerLeave: (event: { readonly currentTarget: HTMLElement }) => {
+      if (!event.currentTarget.matches(":focus-within")) release();
     },
-    loadingOriginal: key?.rendition === "original" && read.kind !== "ready",
-    url: blob !== null && presentation?.blob === blob ? presentation.url : undefined,
+    onBlur: (event: { readonly currentTarget: HTMLElement }) => {
+      if (!event.currentTarget.matches(":hover")) release();
+    },
   };
 }
 

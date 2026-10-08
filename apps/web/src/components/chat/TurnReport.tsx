@@ -15,6 +15,7 @@
  * 40 ms apart, when the run finished while the person watched (T5); read
  * later, they are simply there.
  */
+import { useImageIntent } from "~/assets/MateImages";
 import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
 import type { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import { ArrowUpRightIcon, GitPullRequestIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
@@ -194,6 +195,7 @@ function PictureTile({
   /** Opens the viewer here; null where nothing here can be opened yet. */
   readonly onOpen: (() => void) | null;
 }) {
+  const intent = useImageIntent(state._tag === "Success" ? state.url : undefined);
   const [failedUrl, setFailedUrl] = useState<string>();
   const unavailable =
     state._tag === "Failure" || (state._tag === "Success" && failedUrl === state.url);
@@ -235,6 +237,7 @@ function PictureTile({
               className="run-result-tile"
               data-failed={failed}
               data-result-picture={status}
+              {...intent}
               onClick={onOpen}
               style={shape}
               type="button"

@@ -32,10 +32,12 @@ function reservedImageStyle(props: ComponentPropsWithoutRef<"img">) {
 function DecodedImage({
   imageRef,
   reserved = false,
+  underlay,
   ...props
 }: ComponentPropsWithoutRef<"img"> & {
   readonly imageRef: RefObject<HTMLImageElement | null>;
   readonly reserved?: boolean;
+  readonly underlay?: string | undefined;
 }) {
   const [decoded, setDecoded] = useState<string>();
   useEffect(() => {
@@ -61,6 +63,16 @@ function DecodedImage({
       data-image-pending={!ready || undefined}
       style={reserved ? reservedImageStyle(props) : undefined}
     >
+      {underlay ? (
+        <img
+          src={underlay}
+          alt=""
+          aria-hidden
+          decoding="async"
+          className="asset-image-underlay"
+          style={{ opacity: ready && props.src !== underlay ? 0 : 1 }}
+        />
+      ) : null}
       <img
         {...props}
         ref={imageRef}
@@ -190,7 +202,7 @@ function ManagedAssetImage({
     near && (original || demanded !== null)
       ? { ...reference, rendition: original ? ("original" as const) : demanded! }
       : null;
-  const { read, url, loadingOriginal, retry } = useMateImage(key);
+  const { read, url, originalUrl, previewUrl, loadingOriginal, retry } = useMateImage(key);
   const [failedUrl, setFailedUrl] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   const decodeFailed = url !== undefined && failedUrl === url;
@@ -232,7 +244,9 @@ function ManagedAssetImage({
       {read.kind === "failed" ? (
         <span role="status">{read.reason}</span>
       ) : url && loadingOriginal ? (
-        <span role="status">Loading original</span>
+        <span className="sr-only" role="status">
+          Loading original
+        </span>
       ) : !url ? (
         <span className="sr-only" role="status">
           {original ? "Loading original" : "Loading image"}
@@ -243,7 +257,8 @@ function ManagedAssetImage({
         key={attempt}
         imageRef={ref}
         reserved
-        src={url}
+        src={original ? originalUrl : url}
+        underlay={original ? previewUrl : undefined}
         data-image-src={props.src}
         loading="lazy"
         decoding="async"

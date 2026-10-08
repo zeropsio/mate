@@ -2,10 +2,15 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { expect, it } from "vite-plus/test";
 
-import { mateImageId, mateImageScope, type MateImageKey } from "../families/mateImage.ts";
+import {
+  mateImageId,
+  mateImageScope,
+  mateImageReferenceId,
+  type MateImageKey,
+} from "../families/mateImage.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { streamOf } from "../reducer.ts";
-import { mateImage } from "./mateImage.ts";
+import { mateImage, mateImagePreview } from "./mateImage.ts";
 
 const key: MateImageKey = {
   environmentId: EnvironmentId.make("mate"),
@@ -104,4 +109,44 @@ it.each([
   const read = mateImage.derive(readsOfState(store.state()), key);
   expect(read.kind).toBe(expected);
   expect(readsOfState(store.state()).fact("mateImage", mateImageId(key)).kind).not.toBe("deleted");
+});
+
+it("a deployment screenshot exposes its original dimensions with its retained preview", () => {
+  const store = makeAccountStore(AtomRegistry.make());
+  const reference = {
+    environmentId: EnvironmentId.make("mate"),
+    resource: {
+      _tag: "workspace-file" as const,
+      threadId: ThreadId.make("thread"),
+      path: "mate-asset:shot",
+    },
+  };
+  const key: MateImageKey = { ...reference, rendition: { width: 200, height: 120 } };
+  const scope = mateImageScope(key);
+  const blob = new Blob(["preview"]);
+  store.dispatch({ kind: "baseline-begin", scope, generation: 0 });
+  store.dispatch({
+    kind: "baseline-commit",
+    scope,
+    generation: 0,
+    via: "mate-direct",
+    members: [mateImageId(key)],
+    rows: [
+      {
+        family: "mateImage",
+        id: mateImageId(key),
+        revision: { kind: "mate-link", sequence: 0 },
+        value: {
+          blob,
+          reference: mateImageReferenceId(reference),
+          dimensions: { width: 1600, height: 900 },
+        },
+      },
+    ],
+  });
+  expect(mateImagePreview.derive(readsOfState(store.state()), reference)).toEqual({
+    kind: "ready",
+    blob,
+    dimensions: { width: 1600, height: 900 },
+  });
 });

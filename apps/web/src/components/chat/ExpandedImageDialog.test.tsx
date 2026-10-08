@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 
 const reads = vi.hoisted(() => ({ keys: [] as unknown[] }));
 vi.mock("~/assets/MateImages", () => ({
+  useImageIntent: () => ({}),
   useMateImage: (key: unknown) => {
     reads.keys.push(key);
     return {

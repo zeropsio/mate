@@ -30,6 +30,7 @@ import { mateImageSource } from "@t3tools/client-runtime/data/mateImage";
  *
  * See `../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §5.
  */
+import { useImageIntent } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";
 import { useState, type ComponentProps, type JSX, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -468,6 +469,7 @@ function BrowserThumbnail({
   readonly onOpenPanel: () => void;
   readonly subject: string;
 }) {
+  const intent = useImageIntent(image?.src);
   const label = image !== undefined ? "Open the screenshot" : "Open the Browser panel";
   return (
     <Tooltip>
@@ -477,6 +479,7 @@ function BrowserThumbnail({
             aria-label={label}
             className="block w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-foreground/5 p-0 max-h-60 @[22rem]:w-[168px] @[22rem]:max-h-32 @[36rem]:w-[200px] @[36rem]:max-h-40"
             data-zerops-browser-viewport
+            {...intent}
             onClick={image !== undefined ? onOpenImage : onOpenPanel}
             style={{ aspectRatio }}
             type="button"

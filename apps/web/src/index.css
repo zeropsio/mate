@@ -5195,6 +5195,13 @@ button.run-bar:focus-visible {
 .asset-image-frame[data-image-pending] {
   background: var(--color-muted);
 }
+.asset-image-underlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
 .asset-image-frame > img {
   transition: opacity 140ms ease-out;
 }

@@ -21,7 +21,7 @@ import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
 import { CheckIcon, CodeXmlIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { mateImageSource, parseMateImageSource } from "@t3tools/client-runtime/data/mateImage";
-import { useMateImage } from "~/assets/MateImages";
+import { useMateImage, useImageIntent } from "~/assets/MateImages";
 import { ImageUnavailable } from "~/assets/AssetImage";
 
 import { cn } from "~/lib/utils";
@@ -156,7 +156,7 @@ function ManagedTakeThumbnail({
   }, [near, ref]);
   const image = useMateImage(near && size ? { ...reference, rendition: size } : null);
   return (
-    <span ref={ref} className="block size-full">
+    <span ref={ref} className="block size-full" data-image-src={mateImageSource(reference)}>
       {image.read.kind === "failed" ? (
         <ImageUnavailable reason={image.read.reason} />
       ) : image.url ? (
@@ -194,6 +194,7 @@ export function BrowserStrip({
   /** Drawn in a surface of its own, or bare inside the Mate at work's tray. */
   readonly bare?: boolean;
 }) {
+  const intent = useImageIntent();
   const latest = strip.checks.at(-1)!;
   const running = latest.phase === "running";
   // A picked take holds the stage until a new check starts.
@@ -392,6 +393,7 @@ export function BrowserStrip({
                       "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
                     )}
                     data-browser-strip-stage={running && onStage === latest ? "live" : "still"}
+                    {...intent}
                     onClick={onStageClick}
                     type="button"
                   />
@@ -546,6 +548,7 @@ export function BrowserTakes({
   readonly environmentId?: EnvironmentId | null;
   readonly threadRef?: ScopedThreadRef | null;
 }) {
+  const intent = useImageIntent();
   const shots = takes.flatMap((take) =>
     take.screenshot
       ? [
@@ -598,6 +601,7 @@ export function BrowserTakes({
                   ? "border-status-attention"
                   : "border-border",
             )}
+            {...intent}
             data-report-take={device}
             onClick={() =>
               onOpenImage({ images: shots.map(({ src, name }) => ({ src, name })), index })
