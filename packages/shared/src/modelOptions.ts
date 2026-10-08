@@ -19,5 +19,5 @@ export function changedOptionIds(
   const before = optionValues(previous);
   const after = optionValues(requested);
   const ids = new Set([...before.keys(), ...after.keys()]);
-  return [...ids].filter((id) => before.get(id) !== after.get(id)).toSorted();
+  return [...ids].filter((id) => before.get(id) !== after.get(id)).sort();
 }
