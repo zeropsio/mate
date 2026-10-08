@@ -547,11 +547,13 @@ export const copyWriting = (state: CrewState, handle: string): boolean =>
       effect.handle === handle && COPY_EFFECTS.has(effect.kind) && effect.kind !== "crew.check",
   );
 
-/** A delivery to the crewmate is on its way: a turn is about to run. */
+/**
+ * A turn the crew sent the crewmate is on its way: asked, or queued as a run the crew has not seen
+ * start yet (a delivery closes when its run ends).
+ */
 export const delivering = (state: CrewState, handle: string): boolean =>
   Object.values(state.deliveries).some(
-    (delivery) =>
-      delivery.handle === handle && delivery.runId === null && isTurnPurpose(delivery.purpose),
+    (delivery) => delivery.handle === handle && isTurnPurpose(delivery.purpose),
   );
 
 export const isTurnPurpose = (purpose: DeliveryRecord["purpose"]): purpose is DeliveryPurpose =>
