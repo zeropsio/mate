@@ -48,6 +48,7 @@ import { MateCredentials } from "./mateCredentials.ts";
 import { MateOverviews } from "./mateOverviews.ts";
 import { LiveSockets, socketEnding } from "./stream.ts";
 import { Structure } from "./structure.ts";
+import { AutoUpdatePolicy } from "./autoUpdate.ts";
 
 // Identify a corrupt value frame without inventing a second attention contract.
 const readFrameType = Schema.decodeUnknownOption(
@@ -95,6 +96,7 @@ export const serveMateLink = (
       const credentials = yield* MateCredentials;
       const leader = yield* Leader;
       const access = yield* MateAccess;
+      const autoUpdate = yield* AutoUpdatePolicy;
       const usage = (yield* UsageLane).ledger;
       /** This link's capture lane once it opens; until then, and if it cannot, none. */
       let sender: UsageSender | undefined;
@@ -113,6 +115,7 @@ export const serveMateLink = (
         const frame = encodeDown({
           type: "state",
           mate,
+          autoUpdate: yield* autoUpdate.current,
           ...(sender === undefined
             ? {}
             : {
@@ -130,9 +133,13 @@ export const serveMateLink = (
 
       // Every change's tick, starting with the current one: its state at once, then as it moves.
       const states = Stream.runForEach(
-        Stream.merge(
-          Stream.filter(structure.mateChanges, (changed) => changed === projectId),
-          changes.changes,
+        Stream.mergeAll(
+          [
+            Stream.filter(structure.mateChanges, (changed) => changed === projectId),
+            Stream.map(changes.changes, () => projectId),
+            Stream.map(autoUpdate.changes, () => projectId),
+          ],
+          { concurrency: "unbounded" },
         ),
         // A lane that opens at once rides on the first state; a slow one never holds it back.
         () =>
@@ -190,6 +197,19 @@ export const serveMateLink = (
                   Effect.ignore,
                 );
               }
+              continue;
+            }
+            if (read.kind === "message" && read.message.type === "auto-update-policy") {
+              const { requestId } = read.message;
+              yield* Effect.gen(function* () {
+                yield* writer.write(
+                  encodeDown({
+                    type: "auto-update-policy",
+                    requestId,
+                    policy: yield* autoUpdate.current,
+                  }),
+                );
+              }).pipe(Effect.catch(() => close(1011, "the update policy could not be read")));
               continue;
             }
             if (read.kind === "message" && read.message.type === "health") {
