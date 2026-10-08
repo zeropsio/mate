@@ -1792,3 +1792,13 @@ describe("failed setup recovery fixture", () => {
     host.remove();
   });
 });
+
+it("a ready machine does not renew arrival while the listing still provisions its container", () => {
+  app.listing = listingOf([
+    { ...QUINN, group: "provisioning", service: { ...QUINN.service!, status: "CREATING" } },
+  ]);
+  app.link = { key: KEY, environmentId: undefined, reachability: { kind: "ready", notice: null } };
+  openView();
+  expect(said()).not.toContain("Quinn is coming up");
+  expect(said()).not.toContain("Coming up. A few minutes.");
+});

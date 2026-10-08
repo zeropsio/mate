@@ -1,6 +1,6 @@
 import { useClientSettings } from "~/hooks/useSettings";
 import { useMateRecovery } from "~/zerops/useMateRecovery";
-import { recoveryNotice } from "~/zerops/mateRecovery.logic";
+import { recoveryNotice } from "@t3tools/client-runtime/data";
 import { MateStateDetails } from "./MateStateDetails";
 import { MateHealthNotice } from "./MateHealthNotice";
 import { ConversationOpeningStage } from "../chat/ConversationOpeningStage";
@@ -81,19 +81,15 @@ import { useThreadDetail, useThreadShells, useThreadStatus } from "~/state/entit
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAccountEnvironments, useConnectMate } from "~/zerops/accountEnvironments";
 import {
-  arrivalAwaitsAnswer,
-  arrivalHoldsThrough,
   firstBuildState,
   halfMadeFor,
   LISTING_CATCH_UP_MS,
   listingLacksCreation,
-  mateArrivalShown,
-  mateComing,
-  mateComingPage,
-  mateOpeningPhrase,
   mateConnectKey,
+  mateConversationEnvironment,
   type MateComing,
-} from "~/zerops/mateComing";
+} from "@t3tools/client-runtime/data";
+import { mateOpeningPhrase } from "~/zerops/mateComing";
 import {
   mateIdentityPose,
   mateStageAwake,
@@ -255,16 +251,12 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // What opens it is its machine (`mateLink`): found by its project while its row stands for the
   // project, and before the listing names it at all.
   const recovery = useMateRecovery(projectId, candidate?.service?.id);
-  const projectUnavailable =
-    recovery.standing.kind === "deleted" || recovery.standing.kind === "denied";
   const { mateLink } = useEnvironmentLinks();
   const rowKey = candidate?.key ?? projectId;
   const link = useMemo(
     () => mateLink({ key: rowKey, project: { id: projectId } }),
     [mateLink, projectId, rowKey],
   );
-  // Its link failing since it last connected: an arrival holds its board only through the first.
-  const failuresSinceConnect = link.failuresSinceConnect;
   // Its first build's processes, read only while its container waits for that build.
   const firstBuilding = candidate?.service?.status === "READY_TO_DEPLOY";
   const { processes: firstBuildProcesses } = useProjectActivity(firstBuilding ? projectId : null);
@@ -292,56 +284,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     query: failureQuery,
     live: false,
   });
-  const coming =
-    failedProcess === undefined
-      ? mateComing({
-          closeOffHold,
-          press:
-            press === undefined
-              ? undefined
-              : {
-                  startedAt: press.startedAt,
-                  container: press.container,
-                  retryable: pressRetry !== null,
-                },
-          candidate,
-          setUpFailed: pressFailure(press),
-          nowMs: Date.now(),
-          created: creation !== undefined,
-          listingLacksIt,
-          linkHolds: arrivalHoldsThrough(link.reachability, { failuresSinceConnect }),
-          answerAwaited: arrivalAwaitsAnswer(link),
-          firstBuild: firstBuilding
-            ? firstBuildState(firstBuildProcesses, candidate?.service?.id)
-            : undefined,
-          pressElsewhere: pressOf(projectId),
-        })
-      : ({ kind: "failed", line: "Setup stopped.", verb: "try-again" } as const);
-  // An absent project is decided by the person's project scope. Unopened projects' container
-  // reads cannot keep an ungranted direct link waiting after that scope has answered.
-  const page = mateComingPage({
-    coming: listedOnly ? undefined : coming,
-    candidate: listedOnly ? undefined : candidate,
-    complete:
-      (held.complete || wholeForPerson) &&
-      press === undefined &&
-      (creation === undefined || listingLacksIt),
-    linked: !listedOnly && link.environmentId !== undefined,
-    reachability: projectUnavailable
-      ? {
-          kind: "gone",
-          because: recovery.standing.kind === "deleted" ? "direct-not-found" : "direct-forbidden",
-        }
-      : listedOnly
-        ? { kind: "refused-role" }
-        : link.reachability,
-  });
-  // Whether this view has shown it coming up: its hand-over is then the stand-up's, in place.
   const [cameUp, setCameUp] = useState(false);
-  if (page?.kind === "coming" && !cameUp) setCameUp(true);
-  // Its arrival, once shown, holds the board through every wait on its way to its conversation:
-  // one surface from the press to the sign-in (`mateArrivalShown`).
-  const arrival = mateArrivalShown({ page, cameUp, failuresSinceConnect });
 
   // HQ names it as the menu does. Before registration, its creation or press names it.
   const identity = useAtomValue(shownHqMateIdentitiesAtom)[projectId];
@@ -381,9 +324,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Up: its main conversation, read live, and its agents' sign-in — what the conversation paints
   // first, painted here first. Its environment is the one its machine opens, or its row's once
   // connected.
-  const environmentId: EnvironmentId | null =
-    link.environmentId ??
-    (candidate?.group === "connected" ? (candidate.environmentId ?? null) : null);
+  const environmentId = mateConversationEnvironment(link, candidate);
   const threads = useThreadShells();
   const primaryId = useMemo(
     () =>
@@ -410,15 +351,46 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       ? EMPTY_SHELL_STATUS
       : Atom.map(environmentShell.stateValueAtom(environmentId), (state) => state.status),
   );
-  const arrivalDecision = mateArrival({
-    connected: environmentId !== null && link.reachability?.kind === "ready",
-    shell: shellStatus,
-    hasConversation: threadRef !== null,
-    detail: status,
-    detailHeld: useThreadDetail(threadRef) !== null,
-    signInKnown: empty.signInKnown,
+  const {
+    coming,
+    page,
+    arrival,
+    handover: arrivalDecision,
+    projectUnavailable,
+  } = mateArrival({
+    closeOffHold,
+    press:
+      press === undefined
+        ? undefined
+        : {
+            startedAt: press.startedAt,
+            container: press.container,
+            retryable: pressRetry !== null,
+          },
+    candidate,
+    setUpFailed: pressFailure(press),
+    nowMs: Date.now(),
+    created: made !== undefined,
+    listingLacksIt,
+    link,
+    setupFailure: failedProcess,
+    firstBuild: firstBuilding
+      ? firstBuildState(firstBuildProcesses, candidate?.service?.id)
+      : undefined,
+    pressElsewhere: pressOf(projectId),
+    listing: { complete: held.complete, wholeForPerson, lacksCreation: listingLacksIt },
+    listedOnly,
+    recovery,
     cameUp,
+    conversation: {
+      shell: shellStatus,
+      hasConversation: threadRef !== null,
+      detail: status,
+      detailHeld: useThreadDetail(threadRef) !== null,
+      signInKnown: empty.signInKnown,
+    },
   });
+  if (page?.kind === "coming" && !cameUp) setCameUp(true);
   const up = arrivalDecision === "conversation";
 
   // Preload the destination immediately. The shared opening stage keeps its face across the route;

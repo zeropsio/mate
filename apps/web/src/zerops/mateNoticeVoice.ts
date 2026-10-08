@@ -6,7 +6,7 @@ import {
   pressRuns,
   type ArrivalSubstep,
 } from "./mateArrival";
-import { type MateComing } from "./mateComing";
+import { type MateComing } from "@t3tools/client-runtime/data";
 import { NOT_SET_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
 import { usageLimitWords } from "./noticeWords";
 
@@ -126,7 +126,7 @@ export const comingSentenceOf = (input: MateArrivalNoticeInput) =>
 import type { MateRecovery } from "@t3tools/client-runtime/data";
 import { mateUnreachableWords } from "./lastKnownMate.logic";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import { recoveryNotice } from "./mateRecovery.logic";
+import { mateNoticeDecision } from "@t3tools/client-runtime/data";
 import { restartLine, RESTART_LINES } from "./restartLine";
 
 import {
@@ -161,9 +161,10 @@ export function mateNoticeVoice(
     readonly timestampFormat?: TimestampFormat;
   },
 ): WebMateVoice {
-  const { reachability, conversationShown } = input;
+  const { reachability } = input;
   const name = input.mateName.trim() || "The Mate";
-  const surface = conversationShown ? "banner" : "stage";
+  const decision = mateNoticeDecision(input);
+  const { surface } = decision;
   const say = (
     headline: string,
     secondary: string,
@@ -172,15 +173,7 @@ export function mateNoticeVoice(
     processes = false,
   ): Exclude<WebMateVoice, { readonly surface: "none" }> => ({
     surface,
-    severity:
-      reachability?.kind === "refused-configuration" ||
-      reachability?.kind === "not-answering" ||
-      reachability?.kind === "no-address"
-        ? "danger"
-        : actions.length > 0 ||
-            (reachability?.kind === "connecting" && reachability.waitingOn === "visible")
-          ? "attention"
-          : "info",
+    severity: decision.severity,
     headline,
     secondary,
     text: secondary.length === 0 ? headline : `${headline} ${secondary}`,
@@ -188,31 +181,12 @@ export function mateNoticeVoice(
     actions,
     processes,
   });
-  if (input.limit !== undefined)
+  if (decision.phase === "limit" && input.limit !== undefined)
     return {
       ...say(usageLimitWords(input.limit.provider, undefined, name), input.limit.detail),
       severity: "attention",
     };
-  const notice =
-    reachability?.kind === "ready"
-      ? reachability.notice
-      : reachability?.kind === "container"
-        ? reachability.container
-        : null;
-  const recovery =
-    (input.recovery === undefined ? null : recoveryNotice(input.recovery, name)) ??
-    (notice?.level === "inactive"
-      ? recoveryNotice(
-          { standing: { kind: "unknown" }, status: notice.status, process: undefined },
-          name,
-        )
-      : null);
-  const process = input.recovery?.process;
-  const recoveringRestart =
-    input.recovery?.standing.kind !== "denied" &&
-    input.recovery?.standing.kind !== "deleted" &&
-    (process?.status === "RUNNING" || process?.status === "PENDING") &&
-    process.actionName === "stack.restart";
+  const { recovery, recoveringRestart } = decision;
   if (recovery !== null)
     return {
       surface,
@@ -230,54 +204,32 @@ export function mateNoticeVoice(
             ),
           }
         : {}),
-      severity:
-        recovery.tone === "error" ? "danger" : recovery.tone === "warning" ? "attention" : "info",
+      severity: decision.severity,
       actions: recovery.actions,
       processes: false,
-      face:
-        (input.recovery?.process?.status === "RUNNING" ||
-          input.recovery?.process?.status === "PENDING") &&
-        (input.recovery.process.actionName === "stack.restart" ||
-          input.recovery.process.actionName === "stack.start")
-          ? "waking"
-          : "sleep",
+      face: decision.recovering ? "waking" : "sleep",
     };
-  if (notice?.level === "restarting" || notice?.level === "updating") {
-    if (!("overdue" in notice && notice.overdue)) {
-      return notice.level === "restarting"
-        ? {
-            ...say(`${name} is restarting.`, restartLine(name, input.restartLine ?? 0), "waking"),
-            restarting: true,
-            restartLines: RESTART_LINES.map((line) => line(name)),
-          }
-        : say(
-            `${name} is updating.`,
-            "The conversation will open once the update finishes.",
-            "waking",
-          );
-    }
-  }
-  if (
-    reachability === null ||
-    reachability.kind === "resolving" ||
-    (reachability.kind === "connecting" && reachability.waitingOn !== "visible")
-  ) {
-    return conversationShown
-      ? { surface: "none" }
-      : {
-          ...say(
-            `${name} is opening the conversation.`,
-            "Picking up where you left off.",
-            "sleep",
-            [],
-            false,
-          ),
-          opening: true,
-        };
-  }
-  if (reachability.kind === "ready" && reachability.notice === null) return { surface: "none" };
+  if (decision.phase === "restarting")
+    return {
+      ...say(`${name} is restarting.`, restartLine(name, input.restartLine ?? 0), "waking"),
+      restarting: true,
+      restartLines: RESTART_LINES.map((line) => line(name)),
+    };
+  if (decision.phase === "updating")
+    return say(
+      `${name} is updating.`,
+      "The conversation will open once the update finishes.",
+      "waking",
+    );
+  if (decision.phase === "none") return { surface: "none" };
+  if (decision.phase === "opening")
+    return {
+      ...say(`${name} is opening the conversation.`, "Picking up where you left off."),
+      opening: true,
+    };
+  if (reachability === null) return { surface: "none" };
   const phrase = reachabilityPhrase(reachability, { ...input, mateName: name });
-  const actions = phrase.actions;
+  const actions = decision.actions;
   switch (reachability.kind) {
     case "replaced":
       return say(
@@ -355,7 +307,7 @@ export function mateNoticeVoice(
         mateUnreachableWords(name, input.offlineSince, input.timestampFormat),
         input.lastKnown ?? "",
         "sleep",
-        [...actions, "open-in-zerops"],
+        actions,
       );
     case "reconnecting":
     case "retrying": {
@@ -364,7 +316,7 @@ export function mateNoticeVoice(
           mateUnreachableWords(name, input.offlineSince, input.timestampFormat, true),
           input.lastKnown ?? "The conversation will open when the connection returns.",
           "sleep",
-          ["open-in-zerops"],
+          actions,
         );
       }
       const secondary = [
@@ -377,7 +329,7 @@ export function mateNoticeVoice(
         mateUnreachableWords(name, input.offlineSince, input.timestampFormat, true),
         secondary.replaceAll("This Mate", name).replaceAll("this Mate", name),
         "sleep",
-        [...actions, "open-in-zerops"],
+        actions,
       );
     }
     case "container": {

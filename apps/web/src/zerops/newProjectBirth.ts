@@ -56,7 +56,7 @@ import type {
 import { COMING_UP_LINE, NOT_SET_UP_LINE } from "../components/zerops/ZeropsProjectRow.logic";
 import { HQ_UNFOLLOWED } from "./accountOperations";
 import type { ArrivalSubstep } from "./mateArrival";
-import { asSentence, type MateComing } from "./mateComing";
+import { asSentence, type MateComing } from "@t3tools/client-runtime/data";
 import { PRESS_MAY_HAVE_LANDED } from "./matePress";
 import { newMateView, type NewMateAgain } from "./newMate";
 

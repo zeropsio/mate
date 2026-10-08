@@ -15,7 +15,7 @@ import { mateRowReading } from "~/components/zerops/SidebarMateRow.logic";
 import { zeropsSessionAtom } from "../state/zerops";
 import { COMING_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
 
-import { mateComing } from "./mateComing";
+import { mateComing } from "@t3tools/client-runtime/data";
 import {
   useComingClock,
   useMateConversationsRead,

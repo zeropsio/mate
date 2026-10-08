@@ -1,3 +1,17 @@
+import {
+  COMING_UP_LINE,
+  ALMOST_THERE_LINE,
+  TAKING_LONGER_LINE,
+  NOT_SET_UP_LINE,
+  RESTARTING_SERVICE_STATUSES,
+} from "@t3tools/client-runtime/data";
+export {
+  COMING_UP_LINE,
+  ALMOST_THERE_LINE,
+  TAKING_LONGER_LINE,
+  NOT_SET_UP_LINE,
+  RESTARTING_SERVICE_STATUSES,
+} from "@t3tools/client-runtime/data";
 /**
  * What a row on the projects screen says and offers — the words and the verb,
  * not the pixels.
@@ -227,24 +241,6 @@ const RUNNING_PROCESS_DETAIL: Readonly<
   "start-service": "Starting the container",
   "start-project": "Starting the project",
 };
-
-/**
- * The two lines under a Mate that is on its way. Expectations, not status
- * verbs: the face is asleep for the whole boot and these only say how long
- * — the container being made takes minutes, Mate answering takes seconds.
- */
-export const COMING_UP_LINE = "Coming up. A few minutes.";
-export const ALMOST_THERE_LINE = "Almost there.";
-/** A birth's step outlasted its cap: words, never a stop (B-2). */
-export const TAKING_LONGER_LINE = "Taking longer than usual.";
-/** A creation this tab made stopped on a step, and says no more of why. */
-export const NOT_SET_UP_LINE = "Could not be set up.";
-
-/** Service statuses the inventory files under provisioning that restart a container it has. */
-export const RESTARTING_SERVICE_STATUSES: ReadonlySet<string> = new Set([
-  "RESTARTING",
-  "UPGRADING",
-]);
 
 /**
  * The line under a project the platform failed to create, with the

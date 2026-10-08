@@ -15,7 +15,7 @@ import { gatedPortal } from "../components/ui/portal-gate";
 import { readableText, TestNode } from "../zerops/__fixtures__/testDom";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { RouteGateView } from "./-routeGate";
-import { recoveryNotice } from "../zerops/mateRecovery.logic";
+import { recoveryNotice } from "@t3tools/client-runtime/data";
 
 // "Go to projects" is a router link; no router runs here.
 vi.mock("@tanstack/react-router", async (actual) => ({

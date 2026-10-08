@@ -148,7 +148,7 @@ import {
 } from "~/zerops/agentActivity";
 import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
 import { type HqOutage } from "~/zerops/hqNavigation";
-import type { MateComing } from "~/zerops/mateComing";
+import type { MateComing } from "@t3tools/client-runtime/data";
 import { mateRowCues } from "~/zerops/mateMoments.logic";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";

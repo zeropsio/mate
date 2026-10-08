@@ -1,6 +1,5 @@
 import { lastKnownMateWords } from "./lastKnownMate.logic";
 import { attentionActivity } from "./mateActivity";
-import { failedSetupProcess } from "@t3tools/client-runtime/data";
 import { useProjectsActivityRead } from "./activity/useProjectActivity";
 /**
  * How the left menu reads each Mate it draws: what its row says (`useMateRowActivity` — its
@@ -30,13 +29,7 @@ import { hqMainChatsAtom } from "../state/zerops";
 import { overviewAgentActivity, type ZeropsAgentActivity } from "./agentActivity";
 import type { MatesActivity } from "./useZeropsAgentActivity";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
-import {
-  arrivalAwaitsAnswer,
-  arrivalLinkHolds,
-  mateComing,
-  mateComingDeadlines,
-  type MateComing,
-} from "./mateComing";
+import { mateArrival, mateComingDeadlines, type MateComing } from "@t3tools/client-runtime/data";
 import { useWakeAt } from "./useNowMs";
 import { useCreations } from "./creations";
 import { madeOf } from "./newProjectBirth";
@@ -169,23 +162,7 @@ export function useMateComingOf(
   return useCallback(
     (candidate: ZeropsCandidate) => {
       const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
-      // Made here, and not connected since.
-      const created =
-        candidate.group !== "connected" && madeOf(creations, candidate.project.id) !== undefined;
-      const unfinished = closeOffOpenOf(
-        closeOffHolds,
-        candidate.project.id,
-        presses.find((entry) => entry.projectId === candidate.project.id),
-      );
-      if (
-        candidate.group !== "connected" &&
-        (press !== undefined || created || unfinished) &&
-        failedSetupProcess(processFacts[candidate.project.id]?.processes, candidate.service?.id) !==
-          undefined
-      ) {
-        return { kind: "failed", line: "Setup stopped.", verb: "try-again" };
-      }
-      return mateComing({
+      return mateArrival({
         press,
         // A row says only the hold it offers Finish setup for; the others, its own view.
         closeOffHold: closeOffOpenOf(
@@ -200,13 +177,12 @@ export function useMateComingOf(
         // A new getter at each deadline (`useComingClock`): the menu is memoised, and nothing
         // else may change then.
         nowMs: Math.max(Date.now(), wokeAt),
-        created,
-        linkHolds: created ? arrivalLinkHolds(mateLink(candidate)) : undefined,
-        answerAwaited:
-          candidate.arriving === undefined ? undefined : arrivalAwaitsAnswer(mateLink(candidate)),
+        created: madeOf(creations, candidate.project.id) !== undefined,
+        processes: processFacts[candidate.project.id]?.processes,
+        link: mateLink(candidate),
         firstBuild: firstBuilds.get(candidate.key),
         pressElsewhere: pressOf(candidate.project.id),
-      });
+      }).coming;
     },
     [
       presses,

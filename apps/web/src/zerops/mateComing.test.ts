@@ -24,13 +24,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   arrivalAwaitsAnswer,
-  arrivalLinkHolds,
+  arrivalHoldsThrough,
   mateComing,
   mateComingDeadlines,
-  mateComingHeadlineClauses,
-  mateComingPage,
   mateConnectKey,
-  mateOpeningPhrase,
   type MateComingInput,
   HALF_MADE_LINE,
   HALF_MADE_OWNER_LINE,
@@ -42,7 +39,9 @@ import {
   listingLacksCreation,
   mateArrivalShown,
   type MateComingPage,
-} from "./mateComing";
+} from "@t3tools/client-runtime/data";
+import { mateComingPage } from "@t3tools/client-runtime/data";
+import { mateComingHeadlineClauses, mateOpeningPhrase } from "./mateComing";
 import type { MateLink, Reachability } from "@t3tools/client-runtime/zerops/environments";
 import {
   NO_ADDRESS_MEMORY,
@@ -986,7 +985,7 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
         failure: { class: "retryable", cause: { kind: "network" } },
         descriptor: null,
       });
-      holds.push(arrivalLinkHolds(linkOf(machine)));
+      holds.push(arrivalHoldsThrough(linkOf(machine).reachability, linkOf(machine)));
       // Still retried on its own: the next try is on the ladder.
       expect(machine.credential.kind).toBe("backoff");
       if (failure < 6) machine = step(machine, { type: "TICK" });
@@ -1191,7 +1190,7 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
       { ...initialEnvironment({ record: null }), presence },
       null,
     );
-    const linkHolds = arrivalLinkHolds({ reachability, failuresSinceConnect: 0 });
+    const linkHolds = arrivalHoldsThrough(reachability, { failuresSinceConnect: 0 });
     const coming = mateComing({
       press: undefined,
       candidate,
@@ -1431,7 +1430,9 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
         press: undefined,
         candidate,
         nowMs,
-        ...(created ? { created, linkHolds: arrivalLinkHolds(step.link) } : {}),
+        ...(created
+          ? { created, linkHolds: arrivalHoldsThrough(step.link.reachability, step.link) }
+          : {}),
         answerAwaited: arrivalAwaitsAnswer(step.link),
       });
     });

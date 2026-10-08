@@ -399,7 +399,45 @@ export {
 export { hardenMateProject } from "./operations/executors/hardenMateProject.ts";
 
 export { creationHandoff } from "./projections/creationHandoff.ts";
-export { mateArrival } from "./projections/mateArrival.ts";
+export {
+  firstBuildTargets,
+  firstBuildsOf,
+  type FirstBuildTarget,
+  mateConversationEnvironment,
+  mateComingPage,
+  mateProjectUnavailable,
+  mateNoticeDecision,
+  mateArrival,
+  recoveryNotice,
+  type RecoveryNotice,
+  type MateComing,
+  type MateComingInput,
+  type MateComingVerb,
+  type MateComingPage,
+  mateComing,
+  mateComingDeadlines,
+  firstBuildState,
+  type FirstBuildState,
+  listingLacksCreation,
+  LISTING_CATCH_UP_MS,
+  ARRIVAL_FAILURES_HELD,
+  arrivalHoldsThrough,
+  arrivalAwaitsAnswer,
+  mateArrivalShown,
+  mateConnectKey,
+  HALF_MADE_LINE,
+  HALF_MADE_OWNER_LINE,
+  CLOSING_OFF_LINE,
+  CHECKING_SETUP_LINE,
+  AWAITING_HQ_LINE,
+  halfMadeFor,
+  asSentence,
+  RESTARTING_SERVICE_STATUSES,
+  COMING_UP_LINE,
+  ALMOST_THERE_LINE,
+  TAKING_LONGER_LINE,
+  NOT_SET_UP_LINE,
+} from "./projections/mateArrival.ts";
 
 export { makeMateSetupDemand } from "./adapters/mateSetup.ts";
 export { mateSetupOwner, mateSetupSettled } from "./families/mateSetup.ts";

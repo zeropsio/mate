@@ -40,7 +40,7 @@ import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { readThreadShells, useProjects, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { deletingMates, mateDeleting } from "./deletingMates";
-import { arrivalAwaitsAnswer, arrivalLinkHolds, mateComing } from "./mateComing";
+import { mateArrival } from "@t3tools/client-runtime/data";
 import { awaitMateConversation } from "./mateOpening";
 import { useCreations } from "./creations";
 import { newMateView } from "./newMate";
@@ -102,8 +102,8 @@ export function useOpenMate(): OpenMate {
       }
       const pressed = pressComingInput(presses, projectId);
       // Made here, and not connected since.
-      const created = candidate.group !== "connected" && madeOf(creations, projectId) !== undefined;
-      const coming = mateComing({
+      const created = madeOf(creations, projectId) !== undefined;
+      const { coming } = mateArrival({
         press: pressed.press,
         // Held by the close-off gate, it opens on its own view, which says why.
         closeOffHold: closeOffHoldOf(
@@ -115,9 +115,7 @@ export function useOpenMate(): OpenMate {
         setUpFailed: pressed.setUpFailed,
         nowMs: Date.now(),
         created,
-        linkHolds: created ? arrivalLinkHolds(mateLink(candidate)) : undefined,
-        answerAwaited:
-          candidate.arriving === undefined ? undefined : arrivalAwaitsAnswer(mateLink(candidate)),
+        link: mateLink(candidate),
       });
       if (coming !== undefined) {
         ownView();

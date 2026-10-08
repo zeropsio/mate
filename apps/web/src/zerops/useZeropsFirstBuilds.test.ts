@@ -1,7 +1,7 @@
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { describe, expect, it } from "vite-plus/test";
 
-import { firstBuildsOf, firstBuildTargets } from "./useZeropsFirstBuilds";
+import { firstBuildsOf, firstBuildTargets } from "@t3tools/client-runtime/data";
 
 const candidate = (key: string, status: string | undefined) =>
   ({
