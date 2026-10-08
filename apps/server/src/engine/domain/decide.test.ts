@@ -2567,14 +2567,22 @@ describe("background work its session lost", () => {
     plural
       ? `Your background work ${titles} were stopped ${how} before they reported.`
       : `Your background work ${titles} was stopped ${how} before it reported.`;
-  const work = (key: string, title: string, n = 1): Command =>
-    signal({
+  const upserted = (key: string, title: string, status: "running" | "lost", n = 1) =>
+    ({
       kind: "work-upserted",
       work: key,
       origin: T(n),
       workKind: "shell",
-      status: "running",
+      status,
       title,
+    }) as const;
+  const work = (key: string, title: string, n = 1): Command =>
+    signal(upserted(key, title, "running", n));
+  /** The bridge's own order as a session dies: its live work lost, then the exit. */
+  const exited = (...titles: ReadonlyArray<readonly [string, string]>): Command =>
+    signal(...titles.map(([key, title]) => upserted(key, title, "lost")), {
+      kind: "session-exited",
+      reason: "exit 137",
     });
   const backgrounded: ReadonlyArray<Step> = [...running, work("w1", SLEEP), ended(1)];
   const lostWakeId = wakeId(conversation, "lost-work", "note");
@@ -2591,8 +2599,19 @@ describe("background work its session lost", () => {
     },
     {
       name: "its session's process exiting",
-      steps: [...backgrounded, signal({ kind: "session-exited", reason: "exit 137" })],
+      steps: [...backgrounded, exited(["w1", SLEEP])],
       text: lostNote(`“${SLEEP}”`, "when its session ended"),
+    },
+    {
+      name: "its session's process exiting, several items at once",
+      steps: [
+        ...running,
+        work("w1", SLEEP),
+        work("w2", "Tail the api log"),
+        ended(1),
+        exited(["w1", SLEEP], ["w2", "Tail the api log"]),
+      ],
+      text: lostNote(`“${SLEEP}” and “Tail the api log”`, "when its session ended", true),
     },
     {
       name: "a restart, several items at once",
@@ -2635,7 +2654,9 @@ describe("background work its session lost", () => {
       const scene = play([...steps, prepared(2), opened(2)]);
       expect(sendText(scene)).toEqual([`${lostNote(`“${SLEEP}”`)}\n\nnext`]);
       expect(Object.keys(scene.state.runs)).toEqual([r(1), r(2)]);
-      expect(scene.state.wakes[lostWakeId]).toBeUndefined();
+      expect(
+        play([...steps, prepared(2), opened(2), sent(2)]).state.wakes[lostWakeId],
+      ).toBeUndefined();
     },
   );
 
@@ -2664,5 +2685,47 @@ describe("background work its session lost", () => {
     expect(log.some((event) => event._tag === "WakeArmed" && event.kind === "lost-work")).toBe(
       false,
     );
+  });
+
+  it("a session change that took the work tells the Mate with the message that changed it", () => {
+    const steps = [
+      ...backgrounded,
+      { _tag: "SwitchModel", model: "sonnet" } as Command,
+      send("next"),
+      prepared(2),
+      signal(upserted("w1", SLEEP, "lost")),
+      sessionClosed(),
+      opened(2, { session: "s2" }),
+    ];
+    expect(sendText(play(steps))).toEqual([
+      `${lostNote(`“${SLEEP}”`, "by a session change")}\n\nnext`,
+    ]);
+  });
+
+  it("a note held for a message that never went fires on its own", () => {
+    const held = [...running, work("w1", SLEEP), send("next"), ended(1), recovered()];
+    const { log } = playAll([...held, stop(2)]);
+    expect(
+      log.findLast((event) => event._tag === "WakeArmed" && event.kind === "lost-work"),
+    ).toMatchObject({ dueAt: T0, text: lostNote(`“${SLEEP}”`) });
+    const woken = [...held, stop(2), fired("lost-work", "note"), prepared(3), opened(3)];
+    expect(sendText(play(woken))).toEqual([lostNote(`“${SLEEP}”`)]);
+  });
+
+  it("a send a restart cut goes again with the note", () => {
+    const steps = [
+      ...running,
+      work("w1", SLEEP),
+      send("next"),
+      ended(1),
+      recovered(),
+      prepared(2),
+      opened(2),
+      recovered([effectId(r(2), "provider.send", 1)]),
+      fired("restart-continuation", r(2)),
+      prepared(3),
+      opened(3),
+    ];
+    expect(sendText(play(steps))).toEqual([`${lostNote(`“${SLEEP}”`)}\n\n${resentText("next")}`]);
   });
 });
