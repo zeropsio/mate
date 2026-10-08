@@ -2478,7 +2478,7 @@ const observed = (
     if (member === undefined) mateEvent(b, conversationId, event);
     else crewmateEvent(b, member, event);
   }
-  b.emit({ _tag: "ObservedUpTo", conversationId, seq: fresh.at(-1)!.seq });
+  b.emit({ _tag: "ObservedUpTo", observed: conversationId, upTo: fresh.at(-1)!.seq });
 };
 
 /** The Mate's own conversation: a landing waits while it runs a turn. */
@@ -2488,12 +2488,12 @@ const mateEvent = (b: Builder, conversationId: string, event: KnownEngineEvent):
     case "RunAdmitted":
     case "RunStarted":
       if (b.state.mate.runId !== event.runId) {
-        b.emit({ _tag: "MateRunChanged", conversationId: id, runId: event.runId });
+        b.emit({ _tag: "MateRunChanged", mate: id, runId: event.runId });
       }
       return;
     case "RunEnded":
       if (b.state.mate.runId === event.runId) {
-        b.emit({ _tag: "MateRunChanged", conversationId: id, runId: null });
+        b.emit({ _tag: "MateRunChanged", mate: id, runId: null });
       }
       return;
     default:

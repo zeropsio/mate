@@ -24,6 +24,21 @@ interface Journey {
 
 const journeys: ReadonlyArray<Journey> = [
   {
+    sentence: "a turn's end the crew read once is not taken in again when its record is read again",
+    journey: (w) => {
+      w.apply(home(reader("reviewer")));
+      w.press({ _tag: "start", ...OPTIONS }, OTHER);
+      newTask(w, "reviewer", "Read it");
+      w.run("reviewer");
+      w.end("reviewer");
+      const conversation = w.state.members.reviewer!.conversationId;
+      const readUpTo = w.state.cursors[conversation];
+      w.replay("reviewer");
+      return [w.turns("reviewer"), readUpTo, w.recorded("ObservedUpTo")];
+    },
+    expected: [["task", "nudge"], 4, 2],
+  },
+  {
     sentence: "in a run, a turn that ends without a report gets one nudge",
     journey: (w) => {
       w.apply(home(reader("reviewer")));

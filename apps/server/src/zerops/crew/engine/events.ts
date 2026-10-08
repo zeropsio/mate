@@ -100,13 +100,17 @@ export type CrewDomainEventDraft =
   /** The run a delivery queued, from its settle or from the conversation's own record. */
   | { readonly _tag: "DeliveryLinked"; readonly effectId: EffectId; readonly runId: RunId }
   | { readonly _tag: "DeliveryClosed"; readonly effectId: EffectId }
+  /**
+   * No draft field is named after the header (`conversationId`, `seq`, `at`, `commandId`, `v`):
+   * the stamp would overwrite it.
+   */
   | {
       readonly _tag: "MateRunChanged";
-      readonly conversationId: ConversationId;
+      readonly mate: ConversationId;
       readonly runId: RunId | null;
     }
   /** The cursor over an observed conversation's log moved. */
-  | { readonly _tag: "ObservedUpTo"; readonly conversationId: string; readonly seq: number }
+  | { readonly _tag: "ObservedUpTo"; readonly observed: string; readonly upTo: number }
   /** A landing the run asked for waits, in these words (said once); `null` clears it. */
   | { readonly _tag: "LandingHeld"; readonly taskId: string; readonly words: string | null }
   | { readonly _tag: "AttentionRaised"; readonly row: AttentionRecord }

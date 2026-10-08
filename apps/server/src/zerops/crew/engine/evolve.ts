@@ -173,9 +173,9 @@ const fold = (state: CrewState, event: CrewEvent): CrewState => {
     case "DeliveryClosed":
       return { ...state, deliveries: without(state.deliveries, event.effectId) };
     case "MateRunChanged":
-      return { ...state, mate: { conversationId: event.conversationId, runId: event.runId } };
+      return { ...state, mate: { conversationId: event.mate, runId: event.runId } };
     case "ObservedUpTo":
-      return { ...state, cursors: { ...state.cursors, [event.conversationId]: event.seq } };
+      return { ...state, cursors: { ...state.cursors, [event.observed]: event.upTo } };
     case "LandingHeld":
       return {
         ...state,
