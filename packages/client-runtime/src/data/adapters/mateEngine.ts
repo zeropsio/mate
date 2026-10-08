@@ -50,7 +50,9 @@ import {
   engineFactId,
   engineRowsLink,
   engineRowsScope,
+  ENGINE_WHOLE_RUN_ITEMS,
   type EngineConversationKey,
+  type EngineSpanValue,
 } from "../families/mateEngine.ts";
 import type { FamilyValues, LinkKey, Revision, ScopeKey } from "../model.ts";
 import { streamOf, type Row } from "../reducer.ts";
@@ -67,6 +69,13 @@ export const ENGINE_FORGET_AFTER_MS = 5 * 60 * 1_000;
  */
 export const ENGINE_RUN_PAGES = 5;
 
+/** Where a page of a run is read from: before a sequence, after one, or its newest. */
+export interface RunPageAt {
+  readonly before?: number;
+  readonly after?: number;
+  readonly only?: "outcome";
+}
+
 /** How many runs read their missing items at once. */
 const RUN_READS_AT_ONCE = 4;
 
@@ -82,11 +91,14 @@ export interface EngineConversationWire {
     key: EngineConversationKey,
     beforeOrdinal: number,
   ) => Effect.Effect<EnginePage, StreamFault>;
-  /** A run's items, the newest page first; `beforeSeq` pages back. */
+  /**
+   * A run's items: its newest page, the page `before` a sequence, the oldest page `after` one;
+   * `only: "outcome"` reads just what its closed card draws its result from.
+   */
   readonly readRun: (
     key: EngineConversationKey,
     runId: string,
-    beforeSeq: number | null,
+    at: RunPageAt,
   ) => Effect.Effect<EnginePage, StreamFault>;
   /** An item's whole part (`engine.readDetail`): a cut message, a call's output or result. */
   readonly readDetail: (
@@ -184,7 +196,7 @@ export function makeEngineConversationWire(
           }),
         )
         .pipe(Effect.catchCause((cause) => Effect.fail(classifyEngineFailure(cause)))),
-    readRun: (key, runId, beforeSeq) =>
+    readRun: (key, runId, at) =>
       registry
         .run(
           key.environmentId as EnvironmentId,
@@ -192,7 +204,9 @@ export function makeEngineConversationWire(
             protocol: PROTOCOL,
             conversationId: key.conversationId as never,
             runId: runId as never,
-            ...(beforeSeq === null ? {} : { beforeSeq }),
+            ...(at.before === undefined ? {} : { beforeSeq: at.before }),
+            ...(at.after === undefined ? {} : { afterSeq: at.after }),
+            ...(at.only === undefined ? {} : { only: at.only }),
           }),
         )
         .pipe(Effect.catchCause((cause) => Effect.fail(classifyEngineFailure(cause)))),
@@ -426,11 +440,25 @@ export function makeMateEngineConversations(options: {
   /** The order this tab heard live gauges in: a later one replaces an earlier one. */
   let heard = 0;
 
+  /** A run's span as a row: the order this tab heard it in orders it. */
+  const spanRow = (key: EngineConversationKey, span: Omit<EngineSpanValue, "environmentId">) =>
+    ({
+      family: "mateEngineSpan",
+      id: engineFactId(key.environmentId, span.runId),
+      value: { ...span, environmentId: key.environmentId },
+      revision: { kind: "mate-link", sequence: ++heard },
+    }) satisfies Row;
+
   /**
-   * What the runs a frame or a page carries lack of their own items, read back from the newest
-   * page until each holds as many as its summary counts: a card draws its run whole, as a V1
-   * run's, so a window's or a page's run never paints its effort before its calls are held. A
-   * read that fails leaves the run with what it holds.
+   * What the runs a frame or a page carries lack of their own items, read before they are drawn: a
+   * card draws its run whole, as a V1 run's, so a window's or a page's run never paints its effort
+   * before its calls are held. A run up to `ENGINE_WHOLE_RUN_ITEMS` is read back from its newest
+   * page until each holds as many as its summary counts. A longer one is read at one end — a live
+   * run its newest page, under the lines its card opens on; a finished one its first page, where
+   * "Show work" opens — and, finished, for what its result draws from; its card counts its effort
+   * from its summary, and the rest pages in as its scroll reaches it (`readRunPage`). A run not
+   * held whole says what stretch of it is (`mateEngineSpan`). A read that fails leaves the run
+   * with what it holds.
    */
   const wholeRuns = (
     key: EngineConversationKey,
@@ -439,6 +467,7 @@ export function makeMateEngineConversations(options: {
   ): Effect.Effect<{
     readonly items: ReadonlyArray<Item>;
     readonly requests: ReadonlyArray<Request>;
+    readonly spans: ReadonlyArray<Omit<EngineSpanValue, "environmentId">>;
   }> =>
     Effect.gen(function* () {
       const read = readsOfState(store.state());
@@ -452,33 +481,83 @@ export function makeMateEngineConversations(options: {
         }
         return held.size < run.summary.items ? [{ run, held }] : [];
       });
-      if (lacking.length === 0) return { items: [], requests: [] };
+      if (lacking.length === 0) return { items: [], requests: [], spans: [] };
       const found = yield* Effect.forEach(
         lacking,
         ({ run, held }) =>
           Effect.gen(function* () {
             const items: Item[] = [];
             const requests: Request[] = [];
-            let before: number | null = null;
-            for (let page = 0; page < ENGINE_RUN_PAGES && held.size < run.summary.items; page++) {
-              const answer = yield* wire.readRun(key, run.id, before);
-              if (answer._tag !== "Page") break;
+            const take = (answer: EnginePage) => {
+              if (answer._tag !== "Page") return null;
               for (const item of answer.items)
                 if (!held.has(item.id)) {
                   held.add(item.id);
                   items.push(item);
                 }
               requests.push(...answer.requests);
-              if (!answer.more || answer.items.length === 0) break;
-              before = Math.min(...answer.items.map((item) => item.seq));
+              return answer;
+            };
+            const span = (from: number | null, to: number | null) => ({
+              conversationId: key.conversationId,
+              runId: run.id,
+              from,
+              to,
+              reading: null,
+            });
+            const long = run.summary.items > ENGINE_WHOLE_RUN_ITEMS;
+            if (long && run.end !== null) {
+              const [first] = yield* Effect.all(
+                [
+                  wire.readRun(key, run.id, { after: 0 }),
+                  Effect.gen(function* () {
+                    let after = 0;
+                    for (let page = 0; page < ENGINE_RUN_PAGES; page++) {
+                      const outcome = take(
+                        yield* wire.readRun(key, run.id, { after, only: "outcome" }),
+                      );
+                      if (outcome === null || !outcome.more || outcome.items.length === 0) break;
+                      after = Math.max(...outcome.items.map((item) => item.seq));
+                    }
+                  }),
+                ],
+                { concurrency: 2 },
+              );
+              const page = take(first);
+              const to =
+                page === null || page.items.length === 0
+                  ? 0
+                  : Math.max(...page.items.map((item) => item.seq));
+              return { items, requests, spans: [span(null, page?.more === false ? null : to)] };
             }
-            return { items, requests };
-          }).pipe(Effect.orElseSucceed(() => ({ items: [], requests: [] }))),
+            let before: number | null = null;
+            let more = true;
+            const pages = long ? 1 : ENGINE_RUN_PAGES;
+            for (let page = 0; page < pages && held.size < run.summary.items; page++) {
+              const answer = take(
+                yield* wire.readRun(key, run.id, before === null ? {} : { before }),
+              );
+              if (answer === null) break;
+              more = answer.more && answer.items.length > 0;
+              if (answer.items.length > 0)
+                before = Math.min(...answer.items.map((item) => item.seq));
+              if (!more) break;
+            }
+            return {
+              items,
+              requests,
+              spans:
+                more && held.size < run.summary.items && before !== null
+                  ? [span(before, null)]
+                  : [],
+            };
+          }).pipe(Effect.orElseSucceed(() => ({ items: [], requests: [], spans: [] }))),
         { concurrency: RUN_READS_AT_ONCE },
       );
       return {
         items: found.flatMap((run) => run.items),
         requests: found.flatMap((run) => run.requests),
+        spans: found.flatMap((run) => run.spans),
       };
     });
 
@@ -597,7 +676,15 @@ export function makeMateEngineConversations(options: {
                     items,
                     requests: [...frame.requests, ...lacked.requests],
                   };
-                  Atom.batch(() => deliver(rowsOf(key, frame.epoch, whole, frame.window), true));
+                  Atom.batch(() =>
+                    deliver(
+                      [
+                        ...rowsOf(key, frame.epoch, whole, frame.window),
+                        ...lacked.spans.map((span) => spanRow(key, span)),
+                      ],
+                      true,
+                    ),
+                  );
                   settleClosed(whole.items);
                   cursors.set(id, { epoch: frame.epoch, origin: frame.origin, seq: frame.head });
                 });
@@ -791,7 +878,7 @@ export function makeMateEngineConversations(options: {
             ? Effect.gen(function* () {
                 const lacked = yield* wholeRuns(key, page.runs, page.items);
                 const items = yield* wholeResults(key, [...page.items, ...lacked.items]);
-                return { page, lacked: { items, requests: lacked.requests } };
+                return { page, lacked: { items, requests: lacked.requests, spans: lacked.spans } };
               })
             : Effect.fail(unservedFault(page.unserved)),
         ),
@@ -814,17 +901,20 @@ export function makeMateEngineConversations(options: {
                 scopes: generations,
                 reset: false,
                 partial: true,
-                rows: rowsOf(
-                  key,
-                  cursor.epoch,
-                  {
-                    runs: page.runs,
-                    items: lacked.items,
-                    requests: [...page.requests, ...lacked.requests],
-                    head: cursor.seq,
-                  },
-                  undefined,
-                ),
+                rows: [
+                  ...rowsOf(
+                    key,
+                    cursor.epoch,
+                    {
+                      runs: page.runs,
+                      items: lacked.items,
+                      requests: [...page.requests, ...lacked.requests],
+                      head: cursor.seq,
+                    },
+                    undefined,
+                  ),
+                  ...lacked.spans.map((span) => spanRow(key, span)),
+                ],
                 removals: [],
               });
               signal(scope, { kind: "baseline-committed" });
@@ -838,8 +928,90 @@ export function makeMateEngineConversations(options: {
     return true;
   };
 
+  /**
+   * Reads the next page of a run not held whole, the way its card's scroll goes: `later` after
+   * the stretch it holds, `earlier` before it. Its span says while it reads; a read that fails
+   * leaves what it holds, and the next ask reads again. Nothing when the run is whole that way, a
+   * page is already being read, or the conversation has not opened.
+   */
+  const readRunPage = (
+    key: EngineConversationKey,
+    runId: string,
+    direction: "earlier" | "later",
+  ): boolean => {
+    if (closed || withheld.has(key.environmentId)) return false;
+    const cursor = cursors.get(engineConversationId(key));
+    if (cursor === undefined) return false;
+    const held = readsOfState(store.state()).fact(
+      "mateEngineSpan",
+      engineFactId(key.environmentId, runId),
+    );
+    if (held.kind !== "known") return false;
+    const { environmentId: _environmentId, ...span } = held.value;
+    const edge = direction === "later" ? span.to : span.from;
+    if (span.reading !== null || edge === null) return false;
+    const generations = Object.values(engineConversationScopes(key)).map((owned) => ({
+      scope: owned,
+      generation: streamOf(store.state(), owned).generation,
+    }));
+    const deliver = (rows: ReadonlyArray<Row>) =>
+      store.dispatch({
+        kind: "delivery",
+        via: "mate-direct",
+        scopes: generations,
+        reset: false,
+        partial: true,
+        rows,
+        removals: [],
+      });
+    deliver([spanRow(key, { ...span, reading: direction })]);
+    const fiber = Effect.runFork(
+      wire.readRun(key, runId, direction === "later" ? { after: edge } : { before: edge }).pipe(
+        Effect.flatMap((page) =>
+          page._tag === "Page"
+            ? Effect.map(wholeResults(key, page.items), (items) => ({ ...page, items }))
+            : Effect.fail(unservedFault(page.unserved)),
+        ),
+        Effect.match({
+          onFailure: () => {
+            if (!closed) deliver([spanRow(key, span)]);
+          },
+          onSuccess: (page) => {
+            if (closed || withheld.has(key.environmentId)) return;
+            const seqs = page.items.map((item) => item.seq);
+            const more = page.more && seqs.length > 0;
+            const moved =
+              direction === "later"
+                ? { ...span, to: more ? Math.max(...seqs) : null }
+                : { ...span, from: more ? Math.min(...seqs) : null };
+            Atom.batch(() =>
+              deliver([
+                ...rowsOf(
+                  key,
+                  cursor.epoch,
+                  {
+                    runs: page.runs,
+                    items: page.items,
+                    requests: page.requests,
+                    head: cursor.seq,
+                  },
+                  undefined,
+                ),
+                spanRow(key, moved),
+              ]),
+            );
+          },
+        }),
+      ),
+    );
+    reads.add(fiber);
+    fiber.addObserver(() => reads.delete(fiber));
+    return true;
+  };
+
   return {
     readEarlier,
+    readRunPage,
     /** Holds the conversation while drawn; the returned release lets it go. */
     hold(key: EngineConversationKey): () => void {
       if (closed) return () => {};

@@ -503,9 +503,13 @@ export * from "./operations/mateEngine.ts";
 export * from "./operations/executors/mateEngine.ts";
 export {
   ENGINE_UPDATE_WORDS,
+  engineCardPaging,
+  engineCardPagingOf,
   engineRows,
   engineThread,
   engineThreadOf,
   overlayEngineRow,
   overlayEngineShell,
+  type EngineCardCounts,
+  type EngineCardPaging,
 } from "./projections/mateEngine.ts";

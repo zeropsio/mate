@@ -40,6 +40,7 @@ import {
   engineConversationId,
   engineConversationScopes,
   engineEarlierScope,
+  engineFactId,
   engineRowsKey,
   type EngineConversationKey,
   type EngineFact,
@@ -694,6 +695,93 @@ export function engineThreadOf(
     session,
   };
 }
+
+/** What a card's runs' calls came to, as the server counts them (`RunSummary`). */
+export interface EngineCardCounts {
+  readonly calls: Readonly<Record<string, number>>;
+  readonly tools: Readonly<Record<string, number>>;
+  /** Files edited, each once; `null` when a summary did not count them. */
+  readonly edited: number | null;
+}
+
+/**
+ * A card whose run was too long to read whole before it painted: its worked line counts its
+ * effort from its runs' summaries, whatever of it is held, and its scroll holds the lines from
+ * `since` through `through` (times; `null` is its start, or its end) — the rest page in as it
+ * reaches them, through `runId`'s pages.
+ */
+export interface EngineCardPaging {
+  readonly runId: string;
+  readonly counts: EngineCardCounts;
+  readonly since: string | null;
+  readonly through: string | null;
+  readonly reading: "earlier" | "later" | null;
+}
+
+const sumInto = (into: Record<string, number>, counts: Readonly<Record<string, number>>) => {
+  for (const [name, count] of Object.entries(counts)) into[name] = (into[name] ?? 0) + count;
+};
+
+/** The cards of a conversation not held whole, by the card's id (the turn the view draws). */
+export function engineCardPagingOf(
+  read: ProjectionReads,
+  key: EngineConversationKey,
+): Readonly<Record<string, EngineCardPaging>> {
+  const conversationKey = engineConversationId(key);
+  const spans = [...read.index("engineSpansIn", conversationKey)].flatMap((id) => {
+    const fact = read.fact("mateEngineSpan", id);
+    return fact.kind === "known" ? [fact.value] : [];
+  });
+  if (spans.length === 0) return NO_PAGING;
+  const { runs, cardOf } = cardsOf(read, conversationKey);
+  /** When the run's item at `seq` happened: where its card's held lines end. */
+  const timeAt = (runId: string, seq: number, otherwise: number) => {
+    for (const id of read.index("engineItemsOfRun", engineFactId(key.environmentId, runId))) {
+      const fact = read.fact("mateEngineItem", id);
+      if (fact.kind === "known" && fact.value.seq === seq) return iso(fact.value.at);
+    }
+    return iso(otherwise);
+  };
+  const cards: Record<string, EngineCardPaging> = {};
+  for (const span of spans) {
+    const run = runs.find((candidate) => candidate.id === span.runId);
+    const card = cardOf(span.runId);
+    if (run === undefined || card === null || cards[card] !== undefined) continue;
+    const calls: Record<string, number> = {};
+    const tools: Record<string, number> = {};
+    let edited: number | null = 0;
+    for (const member of runs) {
+      if (cardOf(member.id) !== card) continue;
+      sumInto(calls, member.summary.calls);
+      sumInto(tools, member.summary.tools ?? {});
+      edited =
+        edited === null || member.summary.edited === undefined
+          ? null
+          : edited + member.summary.edited;
+    }
+    cards[card] = {
+      runId: span.runId,
+      counts: { calls, tools, edited },
+      since: span.from === null ? null : timeAt(span.runId, span.from, run.endedAt ?? run.queuedAt),
+      through: span.to === null ? null : timeAt(span.runId, span.to, run.queuedAt),
+      reading: span.reading,
+    };
+  }
+  return cards;
+}
+
+const NO_PAGING: Readonly<Record<string, EngineCardPaging>> = {};
+
+/** A conversation's cards not held whole: what their worked lines count, what their scrolls hold. */
+export const engineCardPaging: Projection<
+  EngineConversationKey,
+  Readonly<Record<string, EngineCardPaging>>
+> = {
+  name: "engineCardPaging",
+  keyOf: engineConversationId,
+  equals: sameValue,
+  derive: engineCardPagingOf,
+};
 
 /** What a fault on the conversation's link says to a person, if anything. */
 function faultWords(read: ProjectionReads, key: EngineConversationKey): string | null {
