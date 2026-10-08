@@ -70,6 +70,25 @@ it("the gate proves the Mate engine on the proof harness's fixed seeds and the r
   ]);
 });
 
+it("the gate runs the crew's journeys on the engine's world, beside the unit suite's V1 run", () => {
+  const commands = chatGateStages.flatMap((stage) =>
+    stage.commands.flatMap((command) =>
+      command.args.some((arg) => arg.startsWith("src/zerops/crew/CrewEngine"))
+        ? [
+            [
+              stage.name,
+              command.env?.CREW_WORLD,
+              command.args.filter((arg) => arg.startsWith("src/")),
+            ],
+          ]
+        : [],
+    ),
+  );
+  expect(commands).toEqual([
+    ["F: crew journeys on the engine", "engine", ["src/zerops/crew/CrewEngine"]],
+  ]);
+});
+
 it("CI runs the same named gate as local ports", () => {
   const workflow = NodeFS.readFileSync(
     new URL("../.github/workflows/ci.yml", import.meta.url),

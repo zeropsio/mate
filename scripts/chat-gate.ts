@@ -25,9 +25,15 @@ export function selectsChatGate(paths: ReadonlyArray<string>): boolean {
 export interface ChatGateCommand {
   readonly cwd: string;
   readonly args: ReadonlyArray<string>;
+  readonly env?: Readonly<Record<string, string>>;
 }
 
-export const chatGateStages = [
+export interface ChatGateStage {
+  readonly name: string;
+  readonly commands: ReadonlyArray<ChatGateCommand>;
+}
+
+export const chatGateStages: ReadonlyArray<ChatGateStage> = [
   {
     name: "A: provider goldens",
     commands: [
@@ -109,6 +115,19 @@ export const chatGateStages = [
     ],
   },
   {
+    // The crew's journeys on a Mate whose crew runs on the engine; the unit suite runs the same
+    // sentences on V1's crew, so each one holds on both. The files' V1-only tests (`itV1`, V1's
+    // own mechanism) skip here by design, so this run reports without the certifying reporter.
+    name: "F: crew journeys on the engine",
+    commands: [
+      {
+        cwd: "apps/server",
+        env: { CREW_WORLD: "engine" },
+        args: ["test", "run", "src/zerops/crew/CrewEngine", "--allowOnly=false"],
+      },
+    ],
+  },
+  {
     name: "Typecheck: wire consumers",
     commands: [
       ...["apps/server", "packages/contracts", "packages/client-runtime", "apps/web"].map(
@@ -130,10 +149,7 @@ export const chatGateStages = [
       },
     ],
   },
-] satisfies ReadonlyArray<{
-  readonly name: string;
-  readonly commands: ReadonlyArray<ChatGateCommand>;
-}>;
+];
 
 async function runCommand(root: string, command: ChatGateCommand): Promise<number> {
   const env = { ...process.env };
@@ -145,6 +161,7 @@ async function runCommand(root: string, command: ChatGateCommand): Promise<numbe
       cwd: NodePath.join(root, command.cwd),
       env: {
         ...env,
+        ...command.env,
         PATH: [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
           NodePath.delimiter,
         ),
@@ -168,7 +185,11 @@ if (import.meta.main) {
   } else if (args.includes("--list")) {
     for (const stage of chatGateStages)
       for (const command of stage.commands)
-        console.log(`${stage.name}: (${command.cwd}) vp ${command.args.join(" ")}`);
+        console.log(
+          `${stage.name}: (${command.cwd}) ${Object.entries(command.env ?? {})
+            .map(([key, value]) => `${key}=${value} `)
+            .join("")}vp ${command.args.join(" ")}`,
+        );
   } else {
     if (process.env.SPI_UPDATE_GOLDENS === "1")
       throw new Error("The chat gate compares goldens; unset SPI_UPDATE_GOLDENS.");
