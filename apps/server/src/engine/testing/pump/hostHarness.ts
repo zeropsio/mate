@@ -11,13 +11,18 @@ import type { ConversationsShape } from "../../Conversations.ts";
 import type { Envelope, ProviderSignal } from "../../domain/command.ts";
 import { EngineStoreError } from "../../store/EngineStore.ts";
 import { makeLiveBus } from "../../LiveBus.ts";
+import type { CallPictures } from "../../pump/callPictures.ts";
 import { makeSessionHost } from "../../pump/SessionHost.ts";
 
 export const hostConversation = ConversationId.make("mate");
 export const hostThread = ThreadId.make("mate/s/1");
 
 export const makeHostHarness = (
-  options: { readonly driver?: BridgeDriver; readonly failFirst?: number } = {},
+  options: {
+    readonly driver?: BridgeDriver;
+    readonly failFirst?: number;
+    readonly pictures?: CallPictures;
+  } = {},
 ) =>
   Effect.gen(function* () {
     const told: Array<ReadonlyArray<ProviderSignal>> = [];
@@ -51,6 +56,7 @@ export const makeHostHarness = (
         scope: yield* Effect.scope,
         stopping: () => false,
         quiet: Effect.void,
+        ...(options.pictures === undefined ? {} : { pictures: options.pictures }),
       },
     );
     return { host, told, commandId: CommandId.make("unused") };

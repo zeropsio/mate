@@ -26,7 +26,14 @@ import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import type * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
-import type { ConversationId, SpiEvent, ThreadId, TurnHandle, TurnId } from "@t3tools/contracts";
+import type {
+  ConversationId,
+  SpiEvent,
+  SpiToolCallImage,
+  ThreadId,
+  TurnHandle,
+  TurnId,
+} from "@t3tools/contracts";
 
 import type { ProviderServiceShape } from "../../provider/Services/ProviderService.ts";
 import type {
@@ -41,6 +48,7 @@ import type { ConversationsShape } from "../Conversations.ts";
 import type { ProviderSignal } from "../domain/command.ts";
 import { signalsCommandId } from "../domain/ids.ts";
 import type { LiveBusShape } from "../LiveBus.ts";
+import type { CallPictures } from "./callPictures.ts";
 import { makeToCore, type SendEvidence } from "./toCore.ts";
 
 /** How an unasked session reads in the record. */
@@ -101,6 +109,8 @@ export interface SessionHostDeps {
   readonly stopping: () => boolean;
   /** Returns once the events published so far have reached their hosts. */
   readonly quiet: Effect.Effect<void>;
+  /** Where a call's pictures are stored before its record names them; none drops them. */
+  readonly pictures?: CallPictures;
 }
 
 type Inbox =
@@ -194,12 +204,54 @@ export const makeSessionHost = Effect.fnUntraced(function* (
       { discard: true },
     );
 
+  /**
+   * A closing call as its record holds it: its result's pictures and a workspace picture it
+   * looked at stored and named by reference, its own record (`data`) among its parts.
+   */
+  const withPictures = (
+    signal: ProviderSignal,
+    pictures: ReadonlyMap<string, ReadonlyArray<SpiToolCallImage>>,
+  ): Effect.Effect<ProviderSignal> =>
+    Effect.gen(function* () {
+      if (signal.kind !== "item-closed" || signal.body.kind !== "call") return signal;
+      let body = signal.body;
+      if (signal.data !== undefined && !(body.parts ?? []).includes("data")) {
+        body = { ...body, parts: [...(body.parts ?? []), "data"] };
+      }
+      const images = pictures.get(signal.key);
+      if (images !== undefined && body.result !== undefined) {
+        const stored =
+          deps.pictures === undefined
+            ? { images: [], dropped: true }
+            : yield* deps.pictures.results(input.thread, signal.key, images);
+        body = {
+          ...body,
+          result: {
+            ...body.result,
+            ...(stored.images.length === 0 ? {} : { images: stored.images }),
+            ...(stored.dropped ? { imagesDropped: true } : {}),
+          },
+        };
+      }
+      const looked = body.shows?.imagePath;
+      if (
+        deps.pictures !== undefined &&
+        typeof looked === "string" &&
+        !looked.startsWith("mate-asset:")
+      ) {
+        const picture = yield* deps.pictures.looked(input.thread, signal.key, looked);
+        if (picture !== null) body = { ...body, shows: { ...body.shows, ...picture } };
+      }
+      return body === signal.body ? signal : { ...signal, body };
+    });
+
   const process = Effect.fnUntraced(function* (inputs: ReadonlyArray<BridgeInput>) {
     const now = yield* Clock.currentTimeMillis;
     const batches = new Map<SessionId, Array<ProviderSignal>>();
     const evidence: Array<{ readonly turn: TurnHandle; readonly evidence: SendEvidence }> = [];
     const live: Array<Effect.Effect<unknown>> = [];
     const closed: Array<{ readonly session: SessionId; readonly words: string }> = [];
+    const pictures = new Map<string, ReadonlyArray<SpiToolCallImage>>();
     let unasked = false;
     for (const next of inputs) {
       // A call's own record (what it was asked, what it wrote) rides its close to the record.
@@ -221,6 +273,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
           batches.set(signal.session, batch);
         }
         evidence.push(...step.evidence);
+        for (const { key, images } of step.pictures) pictures.set(key, images);
         for (const op of step.live) {
           live.push(
             op._tag === "Append"
@@ -235,6 +288,13 @@ export const makeSessionHost = Effect.fnUntraced(function* (
         }
         if (step.session?._tag === "Opened" && step.session.implicit) unasked = true;
       }
+    }
+    // A closing call's pictures are stored first: its record names them by reference.
+    for (const [session, signals] of batches) {
+      batches.set(
+        session,
+        yield* Effect.forEach(signals, (signal) => withPictures(signal, pictures)),
+      );
     }
     // 1. the boundaries, each session's in order; one not yet opened holds them.
     for (const [session, signals] of batches) {

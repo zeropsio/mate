@@ -21,16 +21,19 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { ConversationId, ThreadId, type SpiEvent } from "@t3tools/contracts";
 
+import { ServerConfig } from "../../config.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { ProviderRuntimeEventBus } from "../../spi/ProviderRuntimeEventBus.ts";
 import type { BridgeDriver } from "../bridge/spi3.ts";
 import { Conversations } from "../Conversations.ts";
 import { LiveBus } from "../LiveBus.ts";
+import { makeCallPictures } from "./callPictures.ts";
 import { makeSessionHost, type SessionHost } from "./SessionHost.ts";
 
 /** How often the pump looks for hosts to let go. */
@@ -81,6 +84,18 @@ export const makeTurnPump = Effect.gen(function* () {
   const conversations = yield* Conversations;
   const live = yield* LiveBus;
   const scope = yield* Effect.scope;
+  const config = yield* Effect.serviceOption(ServerConfig);
+  // A call's pictures go to the Mate's asset store; a looked-at file resolves in its session's
+  // directory.
+  const pictures = Option.isSome(config)
+    ? makeCallPictures(config.value.stateDir, (thread) =>
+        provider
+          .listSessions()
+          .pipe(
+            Effect.map((sessions) => sessions.find((session) => session.threadId === thread)?.cwd),
+          ),
+      )
+    : undefined;
   const queue = yield* Queue.unbounded<SpiEvent>();
   // Subscribed now: the fork runs at once up to its first wait, which is after the subscription.
   yield* Stream.runForEach(bus.events, (event) => Queue.offer(queue, event)).pipe(
@@ -104,7 +119,15 @@ export const makeTurnPump = Effect.gen(function* () {
       if (known !== undefined) byThread.delete(known.thread);
       const host = yield* makeSessionHost(
         { conversationId: conversation, thread, driver },
-        { conversations, live, provider, scope, stopping: () => stopping, quiet },
+        {
+          conversations,
+          live,
+          provider,
+          scope,
+          stopping: () => stopping,
+          quiet,
+          ...(pictures === undefined ? {} : { pictures }),
+        },
       );
       hosts.set(conversation, host);
       byThread.set(host.thread, host);
