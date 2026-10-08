@@ -380,7 +380,7 @@ export interface ServerUsagePause {
 /**
  * A usage limit as one calm pause, quiet once the Mate
  * picked up again — however many attempts the limit refused. Both are one
- * block: its mark and words in one size, and what it says under its words.
+ * block: a centred headline, what it says under its words, and its controls.
  */
 export function PauseBlock({
   row,
@@ -421,9 +421,9 @@ export function PauseBlock({
     <div
       className={cn(
         // Resumed, the same block goes quiet — history, not a state to act
-        // on: a line like an event's, its mark on the text edge — and keeps
+        // on: a line like an event's — and keeps
         // its height: newer rows may already sit under it.
-        "relative grid gap-1 rounded-xl border py-2.5",
+        "relative grid gap-3 rounded-xl border py-3 text-center",
         history
           ? "border-x-0 border-transparent text-muted-foreground"
           : "border-border bg-muted/35 px-3.5",
@@ -431,7 +431,7 @@ export function PauseBlock({
       data-conversation-pause={resumed ? "resumed" : passed ? "expired" : "paused"}
       role="status"
     >
-      <div className="flex min-w-0 items-center gap-1.5 text-line" data-pause-head>
+      <div className="flex min-w-0 flex-col items-center gap-1 text-line" data-pause-head>
         <span className="font-medium">
           {history
             ? usageLimitHistoryWords(
@@ -448,9 +448,7 @@ export function PauseBlock({
         {row.held > 0 ? (
           <Tooltip>
             <TooltipTrigger
-              render={
-                <span className="ms-auto shrink-0 text-muted-foreground text-xs tabular-nums" />
-              }
+              render={<span className="shrink-0 text-muted-foreground text-xs tabular-nums" />}
             >
               {row.held === 1 ? "1 more attempt" : `${row.held} more attempts`}
             </TooltipTrigger>
@@ -465,15 +463,15 @@ export function PauseBlock({
         {detail}
       </p>
       {!resumed && onContinue !== null ? (
-        <div>
-          <Button size="sm" variant="ghost" onClick={onContinue}>
+        <div className="arrival-acts">
+          <Button size="compact" variant="pill" onClick={onContinue}>
             Continue
           </Button>
         </div>
       ) : null}
       {!history && serverPause !== null && onAutoResumeChange !== null ? (
         <label
-          className="flex w-fit cursor-pointer items-center gap-2 text-line text-foreground"
+          className="mx-auto flex w-fit cursor-pointer items-center gap-2 text-line text-foreground"
           data-pause-switch
         >
           <Switch
