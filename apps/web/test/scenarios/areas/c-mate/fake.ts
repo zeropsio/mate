@@ -1449,6 +1449,10 @@ export class ChatDriver {
     this.wire.exchange(question, answer);
   }
 
+  skewClock(ms: number) {
+    this.wire.skewClock(ms);
+  }
+
   reply(turnId: string, text: string) {
     this.wire.reply(turnId, text);
   }

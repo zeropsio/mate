@@ -42,6 +42,10 @@ export class EngineChatWire implements ChatWire {
     this.engine.personTurn(text);
   }
 
+  skewClock(ms: number) {
+    this.engine.clockSkewMs = ms;
+  }
+
   exchange(question: string, answer: string) {
     this.engine.note(this.engine.personRun(question), answer, { kind: "completed" });
   }

@@ -391,8 +391,10 @@ export class MateEngineFake {
 
   /** Once a person sends, the engine records the wall clock, as the real one always does. */
   private wallClock = false;
+  /** How far the Mate's clock runs from the person's, once it records the wall clock. */
+  clockSkewMs = 0;
   private stamp(seq: number) {
-    return this.wallClock ? Date.now() : AT + seq;
+    return this.wallClock ? Date.now() + this.clockSkewMs : AT + seq;
   }
 
   private openRun(

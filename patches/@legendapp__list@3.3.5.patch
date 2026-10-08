@@ -1376,8 +1376,44 @@ index 40e87cda8c9bc79a889e5542f29af429a24b24d4..93aac741d2cf77ce3599636243910817
        onScroll: onScrollHandler,
        recycleItems,
        refreshControl: refreshControlElement ? stylePaddingTopState > 0 ? React2.cloneElement(refreshControlElement, {
+diff --git a/react-native.web.js b/react-native.web.js
+index 914d2dafaafa001c9ab6791a0a0581659295e333..b8aaecc4640ec95976347b3f1b863cd30146cd94 100644
+--- a/react-native.web.js
++++ b/react-native.web.js
+@@ -7011,7 +7011,12 @@ function onScroll(ctx, event) {
+   state.lastNativeScrollTime = Date.now();
+   if (state.scrollingTo && state.scrollingTo.offset >= newScroll) {
+     const maxOffset = clampScrollOffset(ctx, newScroll, state.scrollingTo);
+-    if (newScroll !== maxOffset && Math.abs(newScroll - maxOffset) > 1) {
++    // T3 Code: the scroll element's own range is what a scroll can reach. A total being
++    // remeasured after a data change reads short for a frame; clamping to it pulled the
++    // view to the top of a long conversation.
++    const scrollNode = state.refScroller.current?.getScrollableNode?.();
++    const reachable = scrollNode && !state.props.horizontal ? Math.max(0, scrollNode.scrollHeight - scrollNode.clientHeight) : void 0;
++    if (newScroll !== maxOffset && Math.abs(newScroll - maxOffset) > 1 && (reachable === void 0 || maxOffset >= Math.min(newScroll, reachable) - 1)) {
+       newScroll = maxOffset;
+       scrollTo(ctx, {
+         forceScroll: true,
+diff --git a/react-native.web.mjs b/react-native.web.mjs
+index 95465f2ab89ce41a10553f58af83618f7310e83c..c29bb180ad4d2b57a5eec822c6a4b0b36a68ecfe 100644
+--- a/react-native.web.mjs
++++ b/react-native.web.mjs
+@@ -6990,7 +6990,12 @@ function onScroll(ctx, event) {
+   state.lastNativeScrollTime = Date.now();
+   if (state.scrollingTo && state.scrollingTo.offset >= newScroll) {
+     const maxOffset = clampScrollOffset(ctx, newScroll, state.scrollingTo);
+-    if (newScroll !== maxOffset && Math.abs(newScroll - maxOffset) > 1) {
++    // T3 Code: the scroll element's own range is what a scroll can reach. A total being
++    // remeasured after a data change reads short for a frame; clamping to it pulled the
++    // view to the top of a long conversation.
++    const scrollNode = state.refScroller.current?.getScrollableNode?.();
++    const reachable = scrollNode && !state.props.horizontal ? Math.max(0, scrollNode.scrollHeight - scrollNode.clientHeight) : void 0;
++    if (newScroll !== maxOffset && Math.abs(newScroll - maxOffset) > 1 && (reachable === void 0 || maxOffset >= Math.min(newScroll, reachable) - 1)) {
+       newScroll = maxOffset;
+       scrollTo(ctx, {
+         forceScroll: true,
 diff --git a/react.js b/react.js
-index 914d2dafaafa001c9ab6791a0a0581659295e333..0730b209dd688ed559144fdf339079483fa73869 100644
+index 914d2dafaafa001c9ab6791a0a0581659295e333..edc9776603b3f8120b83c3bf0410190160922067 100644
 --- a/react.js
 +++ b/react.js
 @@ -4702,7 +4702,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
@@ -1424,8 +1460,22 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..0730b209dd688ed559144fdf33907948
              void contentNode.offsetHeight;
              scrollBy();
              if (resetPaddingRafRef.current !== void 0) {
+@@ -7011,7 +7020,12 @@ function onScroll(ctx, event) {
+   state.lastNativeScrollTime = Date.now();
+   if (state.scrollingTo && state.scrollingTo.offset >= newScroll) {
+     const maxOffset = clampScrollOffset(ctx, newScroll, state.scrollingTo);
+-    if (newScroll !== maxOffset && Math.abs(newScroll - maxOffset) > 1) {
++    // T3 Code: the scroll element's own range is what a scroll can reach. A total being
++    // remeasured after a data change reads short for a frame; clamping to it pulled the
++    // view to the top of a long conversation.
++    const scrollNode = state.refScroller.current?.getScrollableNode?.();
++    const reachable = scrollNode && !state.props.horizontal ? Math.max(0, scrollNode.scrollHeight - scrollNode.clientHeight) : void 0;
++    if (newScroll !== maxOffset && Math.abs(newScroll - maxOffset) > 1 && (reachable === void 0 || maxOffset >= Math.min(newScroll, reachable) - 1)) {
+       newScroll = maxOffset;
+       scrollTo(ctx, {
+         forceScroll: true,
 diff --git a/react.mjs b/react.mjs
-index 95465f2ab89ce41a10553f58af83618f7310e83c..e24364e9dd307063a079875abdf140961f6ce613 100644
+index 95465f2ab89ce41a10553f58af83618f7310e83c..7a60412189119953ab8fabbcbb13c9b08927ecc9 100644
 --- a/react.mjs
 +++ b/react.mjs
 @@ -4681,7 +4681,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
@@ -1472,6 +1522,20 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..e24364e9dd307063a079875abdf14096
              void contentNode.offsetHeight;
              scrollBy();
              if (resetPaddingRafRef.current !== void 0) {
+@@ -6990,7 +6999,12 @@ function onScroll(ctx, event) {
+   state.lastNativeScrollTime = Date.now();
+   if (state.scrollingTo && state.scrollingTo.offset >= newScroll) {
+     const maxOffset = clampScrollOffset(ctx, newScroll, state.scrollingTo);
+-    if (newScroll !== maxOffset && Math.abs(newScroll - maxOffset) > 1) {
++    // T3 Code: the scroll element's own range is what a scroll can reach. A total being
++    // remeasured after a data change reads short for a frame; clamping to it pulled the
++    // view to the top of a long conversation.
++    const scrollNode = state.refScroller.current?.getScrollableNode?.();
++    const reachable = scrollNode && !state.props.horizontal ? Math.max(0, scrollNode.scrollHeight - scrollNode.clientHeight) : void 0;
++    if (newScroll !== maxOffset && Math.abs(newScroll - maxOffset) > 1 && (reachable === void 0 || maxOffset >= Math.min(newScroll, reachable) - 1)) {
+       newScroll = maxOffset;
+       scrollTo(ctx, {
+         forceScroll: true,
 diff --git a/reanimated.d.ts b/reanimated.d.ts
 index e5043320700b12f34f4c0babbc341f85ca8135c1..2ce63830a28636b21937a0741fd0e613dae950fe 100644
 --- a/reanimated.d.ts

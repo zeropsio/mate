@@ -101,6 +101,10 @@ export class V1ChatWire implements ChatWire {
   }
 
   private exchanges = 0;
+  skewClock(ms: number) {
+    this.clockSkewMs = ms;
+  }
+
   exchange(question: string, answer: string) {
     this.exchanges += 1;
     this.message(`exchange-${this.exchanges}-ask`, "user", question);
@@ -206,9 +210,11 @@ export class V1ChatWire implements ChatWire {
     return event;
   }
 
+  /** How far the Mate's clock runs from the person's, once its runs are live. */
+  clockSkewMs = 0;
   at() {
     return this.live
-      ? new Date().toISOString()
+      ? new Date(Date.now() + this.clockSkewMs).toISOString()
       : new Date(Date.parse(AT) + this.mate.sequence).toISOString();
   }
 
