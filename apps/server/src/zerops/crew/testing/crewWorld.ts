@@ -33,6 +33,7 @@ import {
   type OrchestrationThreadShell,
 } from "@t3tools/contracts";
 import type * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -151,10 +152,11 @@ export interface CrewHold {
  * - `land`: a landing writing its commit onto your tree;
  * - `recover`: a deploy's end bringing the host's copies back, before it thaws;
  * - `sweep`: the boot's sweep of a copy's refs;
- * - `verdict`: the check's final read of the copy, after its command (`nth` such read).
+ * - `verdict`: the check's final read of the copy, after its command (`nth` such read);
+ * - `send`: a turn on its way into a crewmate's conversation, before its agent gets it.
  */
 export type CrewHoldStep =
-  | { readonly step: "save" | "check" | "land" | "recover" | "sweep" }
+  | { readonly step: "save" | "check" | "land" | "recover" | "sweep" | "send" }
   | { readonly step: "verdict"; readonly nth: number };
 
 /** A task as the crew holds it, not as a frame showed it. */
@@ -348,6 +350,24 @@ const ZEROPS_DEPLOY = {
   arguments: { targetService: "appdev" },
 };
 
+/** Holds the next turn V1 dispatches, before the orchestration engine takes it. */
+const holdDispatch = (fakes: V1Fakes) =>
+  Effect.gen(function* () {
+    const reached = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    yield* Ref.set(
+      fakes.beforeDispatch,
+      Ref.set(fakes.beforeDispatch, Effect.void).pipe(
+        Effect.andThen(Deferred.succeed(reached, undefined)),
+        Effect.andThen(Deferred.await(release)),
+      ),
+    );
+    return {
+      reached: Deferred.await(reached),
+      release: Deferred.succeed(release, undefined).pipe(Effect.asVoid),
+    } satisfies CrewHold;
+  });
+
 /** The ssh script each hold step stops at, on the V1 engine. */
 const holdMatcher = (hold: CrewHoldStep): ((script: string) => boolean) => {
   switch (hold.step) {
@@ -361,6 +381,8 @@ const holdMatcher = (hold: CrewHoldStep): ((script: string) => boolean) => {
       return (script) => script.includes("worktree prune");
     case "sweep":
       return (script) => script.includes("ignoring broken ref");
+    case "send":
+      return () => false;
     case "verdict": {
       let reads = 0;
       return (script) => script.includes("dirty=no") && ++reads === hold.nth;
@@ -556,7 +578,7 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
           yield* store.putAssignment({ ...task, updatedAt: at });
         }).pipe(Effect.orDie),
       ),
-    hold: (step) => fakes.holdSsh(holdMatcher(step)),
+    hold: (step) => (step.step === "send" ? holdDispatch(fakes) : fakes.holdSsh(holdMatcher(step))),
     snapshot: snapshotWhere(() => true),
     snapshotWhere,
     frames: Stream.unwrap(Effect.map(engine, (service) => service.snapshot)),
@@ -626,7 +648,7 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
 
 /** The V1 world: the crew engine over `crewEngineFixture.ts`. */
 const v1Phases = <E>(
-  phases: ReadonlyArray<(world: V1CrewWorld) => Effect.Effect<void, E>>,
+  phases: ReadonlyArray<(world: V1CrewWorld) => Effect.Effect<void, E, CrewEngineServices>>,
   options: CrewJourneyOptions,
 ) =>
   withCrewEngines(
@@ -656,11 +678,14 @@ export const crewJourney = <E>(
   return runner(typeof phases === "function" ? [phases] : phases, options);
 };
 
-/** Plays a journey that arranges through V1's own tables: on the V1 world only (see `itV1`). */
+/**
+ * Plays a journey that arranges through V1's own tables: on the V1 world only (see `itV1`), each
+ * phase with V1's engine services at hand.
+ */
 export const v1Journey = <E>(
   phases:
-    | ((world: V1CrewWorld) => Effect.Effect<void, E>)
-    | ReadonlyArray<(world: V1CrewWorld) => Effect.Effect<void, E>>,
+    | ((world: V1CrewWorld) => Effect.Effect<void, E, CrewEngineServices>)
+    | ReadonlyArray<(world: V1CrewWorld) => Effect.Effect<void, E, CrewEngineServices>>,
   options: CrewJourneyOptions = {},
 ): Effect.Effect<void> => v1Phases(typeof phases === "function" ? [phases] : phases, options);
 
@@ -672,6 +697,13 @@ export const onV1 = (
   world: CrewWorld,
   check: (world: V1CrewWorld) => Effect.Effect<void>,
 ): Effect.Effect<void> => ("v1" in world ? check(world as V1CrewWorld) : Effect.void);
+
+/** What `read` gives on the V1 world; `undefined` on any other. */
+export const onV1Value = <A, E>(
+  world: CrewWorld,
+  read: (world: V1CrewWorld) => Effect.Effect<A, E>,
+): Effect.Effect<A | undefined> =>
+  "v1" in world ? Effect.orDie(read(world as V1CrewWorld)) : Effect.succeed(undefined);
 
 /** A test of a `v1Journey`: it runs where the journeys run on V1, and is skipped elsewhere. */
 export const itV1 = it.live.skipIf(CREW_WORLD !== "v1");
