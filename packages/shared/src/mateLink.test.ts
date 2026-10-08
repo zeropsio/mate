@@ -165,6 +165,71 @@ describe("mateLink", () => {
     });
   });
 
+  it("carries an engine Mate's own rows and the protocol they speak beside the shell fields", () => {
+    const row = {
+      conversationId: "t1",
+      agent: {
+        instanceId: "claudeAgent",
+        driver: "claudeAgent",
+        model: "claude-opus-4-6",
+        profile: { kind: "mate" },
+      },
+      revision: { environmentId: "env-ada", epoch: 3, seq: 41 },
+      state: { kind: "waiting", on: "question", words: "Which provider should it use?" },
+      activeRunId: "run-2",
+      latestRun: { id: "run-2", end: null, endedAt: null },
+      subject: "Add a login page",
+      snippet: "Which provider should it use?",
+      at: 1_791_000_000_000,
+      askedAt: 1_791_000_000_000,
+    };
+    const engine = {
+      ...overview,
+      identity: { ...overview.identity, engine: { protocol: 1 } },
+      conversations: [row],
+    };
+    const whole = decodeUp(JSON.stringify({ type: "overview", full: true, overview: engine }));
+    expect(whole._tag === "Success" ? whole.value : whole._tag).toEqual({
+      type: "overview",
+      full: true,
+      overview: engine,
+    });
+    // A state, or a wait, a later engine adds reads as one this build does not know: no refusal.
+    const later = [
+      { ...row, state: { kind: "dreaming", since: 1 } },
+      { ...row, state: { kind: "waiting", on: "payment", words: null } },
+    ];
+    expect(
+      readLinkUp(
+        JSON.stringify({ type: "overview", full: false, sections: { conversations: later } }),
+      ),
+    ).toEqual({
+      kind: "message",
+      message: {
+        type: "overview",
+        full: false,
+        sections: {
+          conversations: [
+            { ...row, state: { kind: "unknown" } },
+            { ...row, state: { kind: "waiting", on: "unknown", words: null } },
+          ],
+        },
+      },
+    });
+  });
+
+  it("reads a newer Mate's overview whose keys this build does not know as the keys it does", () => {
+    const newer = {
+      ...overview,
+      identity: { ...overview.identity, later: { protocol: 9 } },
+      laterSection: [{ id: "x" }],
+    };
+    expect(readLinkUp(JSON.stringify({ type: "overview", full: true, overview: newer }))).toEqual({
+      kind: "message",
+      message: { type: "overview", full: true, overview },
+    });
+  });
+
   it("passes by a frame whose type this build does not know", () => {
     expect(readLinkUp(JSON.stringify({ type: "usage", windows: [] }))).toEqual({
       kind: "unknown",

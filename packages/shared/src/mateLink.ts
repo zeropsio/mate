@@ -9,6 +9,11 @@
  *   frame per {@link MATE_OVERVIEW_EVERY_MS}. Bounded: texts to {@link MATE_LINK_TEXT_MAX}
  *   characters, titles to {@link MATE_TITLE_MAX}, a frame to {@link MATE_LINK_FRAME_MAX} bytes.
  *   An older Mate's `summary` is a type this build does not know.
+ * - **Up**, in the overview of a Mate whose conversation runs on the engine, the engine's own rows
+ *   (`conversations`, `ConversationRow` in `@t3tools/contracts`) beside the main chat's shell
+ *   fields, and the protocol they speak (`identity.engine`). Both keys are optional: a V1 Mate sends
+ *   neither, and an HQ from before them drops both and still takes the frame — a key a struct does
+ *   not know is passed by.
  * - **Up**, beside the overview, the Mate's attention (`attention`, `MateAttention` in
  *   `@t3tools/contracts`): one value with its own revision, whole on every link and again at each
  *   new revision. An older HQ passes it by as a type it does not know.
@@ -24,6 +29,7 @@
  * @module mateLink
  */
 import {
+  ConversationRow,
   CrewAttention,
   CrewHandle,
   CrewTask,
@@ -54,6 +60,8 @@ export const MATE_OVERVIEW_EVERY_MS = 500;
 export const MATE_TITLE_MAX = 120;
 /** The chats an overview lists: every one that is not idle, then the newest. */
 export const MATE_OVERVIEW_THREADS_MAX = 40;
+/** The engine conversations an overview carries rows of: every one that is not idle, then the newest. */
+export const MATE_OVERVIEW_CONVERSATIONS_MAX = 40;
 export const MATE_LOGINS_MAX = 8;
 /** What a live step carries of its calls (`ThreadLiveStep`), cut for a row. */
 export const MATE_LIVE_STEP_BOUNDS = { calls: 4, command: 200, inputs: 4, input: 120, files: 3 };
@@ -106,6 +114,8 @@ export const OverviewIdentity = Schema.Struct({
   environmentId: ExecutionEnvironmentDescriptor.fields.environmentId,
   serverVersion: ExecutionEnvironmentDescriptor.fields.serverVersion,
   update: Schema.NullOr(ExecutionEnvironmentUpdate),
+  /** The engine its conversation runs on, by the protocol its rows speak; absent on a V1 Mate. */
+  engine: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
 });
 export type OverviewIdentity = typeof OverviewIdentity.Type;
 
@@ -256,6 +266,16 @@ export const OverviewCrew = Schema.Union([
 ]);
 export type OverviewCrew = typeof OverviewCrew.Type;
 
+/**
+ * An engine Mate's conversations as the engine rows them (`conversationRowOf`): the state, subject
+ * and snippet a menu row reads, texts masked and cut by the Mate. Its literals are the engine's
+ * forward-compatible sets, so a state a later engine adds reads as `unknown`, never a refusal.
+ */
+export const OverviewConversations = Schema.Array(ConversationRow).check(
+  atMost(MATE_OVERVIEW_CONVERSATIONS_MAX),
+);
+export type OverviewConversations = typeof OverviewConversations.Type;
+
 /** Everything a Mate tells HQ of itself, by section: a section is always replaced whole. */
 export const MateOverview = Schema.Struct({
   identity: OverviewIdentity,
@@ -263,6 +283,8 @@ export const MateOverview = Schema.Struct({
   threads: OverviewThreads,
   logins: OverviewLogins,
   crew: OverviewCrew,
+  /** An engine Mate's own rows; absent on a V1 Mate. */
+  conversations: Schema.optionalKey(OverviewConversations),
 });
 export type MateOverview = typeof MateOverview.Type;
 
@@ -273,6 +295,7 @@ export const MateOverviewSections = Schema.Struct({
   threads: Schema.optionalKey(MateOverview.fields.threads),
   logins: Schema.optionalKey(MateOverview.fields.logins),
   crew: Schema.optionalKey(MateOverview.fields.crew),
+  conversations: Schema.optionalKey(OverviewConversations),
 });
 export type MateOverviewSections = typeof MateOverviewSections.Type;
 
