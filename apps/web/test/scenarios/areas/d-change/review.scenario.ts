@@ -38,21 +38,30 @@ describe("D: change review, comments and merge", () => {
             await s.page.setViewport({ width, height: 1000 });
             const overflow = await s.page.evaluate(() => {
               const review = document.querySelector('[data-zerops-surface="review"]')!;
-              const regions = [...review.querySelectorAll<HTMLElement>(".rv-title, .rv-diff")];
+              const regions = [".rv-title", ".rv-diff"].map((selector) =>
+                review.querySelector<HTMLElement>(selector),
+              );
               return {
-                count: regions.length,
+                visible: regions.every((node) => {
+                  if (!node?.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
+                    return false;
+                  const box = node.getBoundingClientRect();
+                  return box.width > 32 && box.height > 8;
+                }),
                 excess: regions.map((node) =>
-                  Math.max(
-                    node.scrollWidth - node.clientWidth,
-                    node.getBoundingClientRect().right - review.getBoundingClientRect().right,
-                  ),
+                  node === null
+                    ? 0
+                    : Math.max(
+                        node.scrollWidth - node.clientWidth,
+                        node.getBoundingClientRect().right - review.getBoundingClientRect().right,
+                      ),
                 ),
               };
             });
             expect(
-              overflow.count,
-              "ASSERTION: review title and expanded diff supply geometry",
-            ).toBeGreaterThanOrEqual(2);
+              overflow.visible,
+              "ASSERTION: review title and expanded diff are visible with nonzero geometry",
+            ).toBe(true);
             expect(
               Math.max(...overflow.excess),
               "ASSERTION: long review headings and diffs have no horizontal overflow",
