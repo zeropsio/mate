@@ -159,6 +159,7 @@ export type CrewHoldStep =
 /** A task as the crew holds it, not as a frame showed it. */
 export interface CrewHeldTask {
   readonly id: string;
+  readonly number: number;
   readonly state: string;
   readonly attempt: number;
   readonly reworks: number;
@@ -173,6 +174,7 @@ export interface CrewHeldAttempt {
   readonly ending: string | null;
   readonly endingDetail: string | null;
   readonly costUsd: number;
+  readonly endedAt: string | null;
 }
 
 /** What a crewmate's conversation is set up with: its tool gate and its prompt's parts. */
@@ -542,6 +544,7 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
         Effect.map((rows) =>
           rows.map((row) => ({
             id: row.assignment,
+            number: row.number,
             state: row.state,
             attempt: row.attempt,
             reworks: row.reworks,
@@ -562,6 +565,7 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
               ending: row.ending,
               endingDetail: row.endingDetail,
               costUsd: row.costUsd,
+              endedAt: row.endedAt,
             })),
           ),
           Effect.orDie,
