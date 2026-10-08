@@ -22,11 +22,11 @@ export interface SampledRead<T> {
   /** The owner's value as the last read answered it; `undefined` until one did. */
   readonly value: T | undefined;
   /**
-   * `ready` only for a complete current answer; retained values remain visible while loading
-   * or failed. The public fact, coverage and stream preserve why.
+   * `ready` for a complete successful answer with no read under way, including after its demand
+   * is released. Retained values remain visible while loading or failed.
    */
   readonly status: "loading" | "ready" | "failed";
-  /** The value is what a read settled: none is under way or failing over it. */
+  /** The held read settled successfully; a released answer remains ready but is not held. */
   readonly settled: boolean;
   /** Its owner refused it: nothing reads it again until the person tries again. */
   readonly refused: boolean;
@@ -56,16 +56,17 @@ export function sampledRead<F extends Family>(
   }
   const refused = stream.phase === "refused" || link?.phase === "refused";
   const failing = fault !== null || refused || fact.kind === "withheld";
-  const settled =
-    fact.kind === "known" && coverage === "complete" && stream.phase === "live" && !failing;
+  const answered =
+    stream.phase === "live" || (stream.phase === "paused" && stream.next.kind === "await-demand");
+  const ready = fact.kind === "known" && coverage === "complete" && answered && !failing;
   return {
     fact,
     coverage,
     stream,
     link,
     value,
-    status: failing ? "failed" : settled ? "ready" : "loading",
-    settled,
+    status: failing ? "failed" : ready ? "ready" : "loading",
+    settled: ready && stream.phase === "live",
     refused,
   };
 }

@@ -79,6 +79,26 @@ describe("a sampled read, as a screen reads it", () => {
       expected: { members: [ANNA], status: "ready", settled: true, refused: false },
     },
     {
+      name: "successful read released: its complete answer remains ready",
+      inputs: [
+        ...begun(MEMBERS),
+        ...answered(MEMBERS, "organizationMembers", [ANNA]),
+        event(MEMBERS, { kind: "demand", demanded: false }),
+      ],
+      expected: { members: [ANNA], status: "ready", settled: false, refused: false },
+    },
+    {
+      name: "failed refresh released: its retained answer remains failed",
+      inputs: [
+        ...begun(MEMBERS),
+        ...answered(MEMBERS, "organizationMembers", [ANNA]),
+        revalidating(MEMBERS),
+        failed(MEMBERS, "transient"),
+        event(MEMBERS, { kind: "demand", demanded: false }),
+      ],
+      expected: { members: [ANNA], status: "failed", settled: false, refused: false },
+    },
+    {
       name: "read again on its cadence: its value shown, not settled",
       inputs: [
         ...begun(MEMBERS),

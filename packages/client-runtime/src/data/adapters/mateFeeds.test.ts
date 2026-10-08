@@ -13,7 +13,12 @@ import type { RpcSession } from "../../rpc/session.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Fiber from "effect/Fiber";
 import type { StreamFault } from "../streamMachine.ts";
-import { mateFeedReadsAtom, mateFeedAsyncAtom, readMateFeed } from "../mateFeedReads.ts";
+import {
+  mateFeedReadsAtom,
+  mateFeedAsyncAtom,
+  retainedMateFeedAtom,
+  readMateFeed,
+} from "../mateFeedReads.ts";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -298,15 +303,26 @@ describe("account-owned Mate feeds", () => {
             ),
         },
       });
+      r.registry.set(mateFeedReadsAtom, { data: r.store.data, ...feeds });
+      const retained = retainedMateFeedAtom(key);
       const release = feeds.hold(key);
       yield* settle;
       release();
       access({ outcome: "access-unverified", message: "Verify access again." });
       expect(r.read()).toMatchObject({ state: "failed", failure: { kind: "refused" } });
+      expect(r.registry.get(retained).evidence?.fact).toEqual({
+        kind: "withheld",
+        reason: "unverified",
+      });
+      expect(r.registry.get(retained)).not.toHaveProperty("evidence.fact.value");
       access(null);
       feeds.hold(key);
       yield* settle;
       expect(r.read()).toMatchObject({ state: "known", value: auth, freshness: { kind: "live" } });
+      expect(r.registry.get(retained).evidence?.fact).toMatchObject({
+        kind: "known",
+        value: { snapshot: auth },
+      });
       feeds.close();
       r.close();
     }),

@@ -101,6 +101,13 @@ export function publicRead<T>(fact: Fact<T> | undefined): PublicRead<T> {
         ...(fact.label === undefined ? {} : { label: fact.label }),
       };
     case "value":
+      if (fact.access !== "allowed") {
+        return {
+          kind: "withheld",
+          reason: fact.access,
+          ...(fact.label === undefined ? {} : { label: fact.label }),
+        };
+      }
       return {
         kind: "known",
         value: fact.content.value,
