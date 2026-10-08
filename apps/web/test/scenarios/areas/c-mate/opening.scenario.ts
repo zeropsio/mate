@@ -62,17 +62,23 @@ describe("C: the conversation opening follows readiness", () => {
                           }> = [];
                           let seenStage = false;
                           let conversationReady = false;
-                          Object.assign(window, { openingStageGap: false });
+                          Object.assign(window, {
+                            openingStageGap: false,
+                            openingEyesAtReady: null,
+                          });
+                          const visible = (node: Element) =>
+                            node.getBoundingClientRect().height > 0 &&
+                            getComputedStyle(node).visibility !== "hidden" &&
+                            !node.closest('[aria-hidden="true"]');
                           const sample = () => {
-                            const timeline = document.querySelector<HTMLElement>(
-                              "[data-timeline-thread]:not([data-timeline-placing])",
+                            const timeline = [
+                              ...document.querySelectorAll<HTMLElement>(
+                                "[data-timeline-thread]:not([data-timeline-placing])",
+                              ),
+                            ].find(
+                              (node) => !node.closest("[data-kept-timeline]") && visible(node),
                             );
-                            if (
-                              timeline &&
-                              !timeline.closest("[data-kept-timeline]") &&
-                              timeline.getBoundingClientRect().height > 0
-                            )
-                              conversationReady = true;
+                            if (timeline) conversationReady = true;
                             const stages = [
                               ...document.querySelectorAll<HTMLElement>(
                                 '[data-zerops-surface="mate-empty-state"]',
@@ -89,8 +95,24 @@ describe("C: the conversation opening follows readiness", () => {
                             if (stage && column) {
                               const box = stage.getBoundingClientRect();
                               const pane = column.getBoundingClientRect();
-                              if (box.width > 0 && box.height > 0) seenStage = true;
-                              else if (seenStage && !conversationReady)
+                              const phase = stage
+                                .closest("[data-conversation-opening]")
+                                ?.getAttribute("data-conversation-opening");
+                              if (
+                                phase === "ready" &&
+                                Reflect.get(window, "openingEyesAtReady") === null
+                              ) {
+                                const eyes = [...stage.querySelectorAll("[data-mate-face-eye]")];
+                                const shut = [...stage.querySelectorAll("[data-mate-face-shut]")];
+                                Reflect.set(window, "openingEyesAtReady", {
+                                  open:
+                                    eyes.length === 2 &&
+                                    eyes.every((eye) => getComputedStyle(eye).opacity === "1"),
+                                  shut: shut.some((eye) => getComputedStyle(eye).opacity !== "0"),
+                                });
+                              }
+                              if (box.width > 0 && visible(stage)) seenStage = true;
+                              else if (seenStage && !conversationReady && phase !== "ready")
                                 Reflect.set(window, "openingStageGap", true);
                               samples.push({
                                 phase:
@@ -240,6 +262,14 @@ describe("C: the conversation opening follows readiness", () => {
                           encodeJson(samples),
                         );
                         yield* fs.writeFileString(
+                          path.join(dir, "eyes-at-ready.json"),
+                          encodeJson(
+                            yield* Effect.promise(() =>
+                              s.page.evaluate(() => Reflect.get(window, "openingEyesAtReady")),
+                            ),
+                          ),
+                        );
+                        yield* fs.writeFileString(
                           path.join(dir, "frames.json"),
                           encodeJson(
                             frames.map(({ timestamp }, i) => ({
@@ -254,6 +284,12 @@ describe("C: the conversation opening follows readiness", () => {
                           s.page.evaluate(() => Reflect.get(window, "openingStageGap")),
                         ),
                       ).toBe(false);
+                      if (person !== "reader")
+                        expect(
+                          yield* Effect.promise(() =>
+                            s.page.evaluate(() => Reflect.get(window, "openingEyesAtReady")),
+                          ),
+                        ).toEqual({ open: true, shut: false });
                       yield* Effect.promise(() => cdp.detach());
                       yield* s.then.noExternalNetwork;
                     }),
