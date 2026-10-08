@@ -40,8 +40,8 @@ npm install ./zerops-mate-0.1.0.tgz
 ./node_modules/.bin/mate serve
 ```
 
-The version command prints `mate v0.1.0`. `mate serve` starts the bundled web server and prints the
-pairing details for this standalone installation.
+The version command prints `mate v0.1.0`. `mate serve` starts the bundled web server without
+opening a browser.
 
 The release package is named `zerops-mate`, but its executable is `mate`. It is not published to the
 npm registry, so install the downloaded tarball rather than a registry package name.
@@ -75,6 +75,6 @@ T3 Code are upstream packages and do not install Zerops Mate.
 ## Next Steps
 
 - [Permission modes](./permission-modes.md): how much Zerops Mate asks before acting
-- [Remote access](./remote-access.md): Zerops account access and standalone pairing
+- [Remote access](./remote-access.md): Zerops account access
 - [Keeping Zerops Mate current](./updating.md): Zerops pins and standalone release updates
 - [Running in the background](./background-service.md): the service zcp manages on Zerops
