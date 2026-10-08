@@ -55,7 +55,12 @@ import {
   type ScriptedProvider,
 } from "../../../engine/testing/pump/scriptedProvider.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
-import { noRestartEvidence, serverWorkspace, zeropsRunAdmission } from "../../engineAdapters.ts";
+import {
+  noRestartEvidence,
+  serverMessagePictures,
+  serverWorkspace,
+  zeropsRunAdmission,
+} from "../../engineAdapters.ts";
 import { CrewEngine } from "../CrewEngine.ts";
 import { crewServicesLayer } from "../crewLayer.ts";
 import { DevServerPidFile } from "../CrewRuntime.ts";
@@ -929,6 +934,7 @@ const lifeLayer = (
         history.layer,
         noRestartEvidence,
         serverWorkspace,
+        serverMessagePictures,
         zeropsRunAdmission,
       ),
     ),
