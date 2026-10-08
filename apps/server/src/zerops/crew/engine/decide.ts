@@ -39,7 +39,7 @@ import {
 import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
 
 import { AGENT_STOPPED_ITSELF } from "../../../engine/domain/decide.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "../../ZeropsMembershipWatch.ts";
+import { principalUserId } from "../../ZeropsTurnAdmission.ts";
 import { crewHomeChange } from "../crewAccess.ts";
 import { savedSeamWords, stintReasonWords } from "../crewCards.ts";
 import { assignCrewPorts } from "../crewPorts.ts";
@@ -388,9 +388,7 @@ const userOf = (principal: Principal): string =>
 /** The engine acting for a person outside their session: named by their user id, never a subject. */
 const crewAs = (startedBy: string): Principal => ({
   kind: "crew",
-  startedBy: startedBy.startsWith(ZEROPS_SUBJECT_PREFIX)
-    ? startedBy.slice(ZEROPS_SUBJECT_PREFIX.length)
-    : startedBy,
+  startedBy: principalUserId({ kind: "session", subject: startedBy }) ?? startedBy,
 });
 
 /**

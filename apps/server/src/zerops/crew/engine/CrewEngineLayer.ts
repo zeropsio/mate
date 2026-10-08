@@ -56,12 +56,12 @@ import {
   type CrewMemberSpec,
 } from "@t3tools/shared/crewHome";
 
-import { pendingUploadOf } from "../../../attachmentStore.ts";
 import { ServerConfig } from "../../../config.ts";
 import {
   claimMessageAttachments,
+  pendingUploadOf,
   releaseClaimedAttachments,
-} from "../../../orchestration/Normalizer.ts";
+} from "../../../orchestration/Services/MessageAttachments.ts";
 import { Conversations } from "../../../engine/Conversations.ts";
 import { EngineEffectExtensions } from "../../../engine/effects/index.ts";
 import { MateEngine } from "../../../engine/MateEngine.ts";
