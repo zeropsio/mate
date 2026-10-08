@@ -296,8 +296,20 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.then.text("A short story about a lighthouse cat");
         // The message went into that turn: when it ends, nothing else works.
         yield* chat.then.control("Stop generation", "button", false);
+        // The conversation's words in order; the header's subject quotes the last ask as well.
         const text = yield* Effect.promise(() =>
-          s.page.evaluate(() => document.querySelector("main")?.innerText ?? ""),
+          s.page.evaluate(() => {
+            const main = document.querySelector("main");
+            if (main === null) return "";
+            const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+            let words = "";
+            while (walker.nextNode()) {
+              const node = walker.currentNode;
+              if (!node.parentElement?.closest("[data-conversation-subject]"))
+                words += `${node.textContent ?? ""}\n`;
+            }
+            return words;
+          }),
         );
         // Where V1 draws a message sent into its running turn: after the answer it settled with.
         expect(text.indexOf("Change of plan: keep it under 120 words")).toBeGreaterThan(

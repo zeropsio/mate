@@ -1156,6 +1156,59 @@ describe("an engine conversation's row in the menu", () => {
     });
   });
 
+  // The V1 thread the engine took over keeps its last words from before the flip: a menu row read
+  // off the shell showed them after a reload, days old, over the conversation's own.
+  it("an engine Mate's menu reads its conversation's own words, never the V1 thread's from before the engine took it over", () => {
+    const v1Thread = {
+      ...shellThread,
+      latestUserMessageAt: "2026-10-01T15:50:00.000Z",
+      latestUserMessagePreview: {
+        role: "user",
+        text: "ok, should be working now, continue",
+        createdAt: "2026-10-01T15:50:00.000Z",
+      },
+      latestMessagePreview: {
+        role: "assistant",
+        text: "I've rebuilt the first screen.",
+        createdAt: "2026-10-01T15:53:00.000Z",
+      },
+      latestTurn: {
+        turnId: "v1-turn",
+        state: "completed",
+        requestedAt: "2026-10-01T15:50:00.000Z",
+        startedAt: "2026-10-01T15:50:00.000Z",
+        completedAt: "2026-10-01T15:53:00.000Z",
+        assistantMessageId: null,
+      },
+    } as unknown as Parameters<typeof overlayEngineRow>[0];
+    const at = Date.parse("2026-10-08T18:00:00.000Z");
+    const row = engineRow(ENV, "thread-ada", {
+      at,
+      latestRun: { id: run1 as never, end: { kind: "completed" }, endedAt: at + 5 },
+      subject: "Reply with the single word ROWS.",
+      snippet: "ROWS",
+    });
+    const read = (thread: ReturnType<typeof overlayEngineRow>) => ({
+      asked: thread.latestUserMessagePreview?.text,
+      said: thread.latestMessagePreview,
+      askedAt: thread.latestUserMessageAt,
+      ended: thread.latestTurn?.completedAt,
+    });
+    const own = {
+      asked: "Reply with the single word ROWS.",
+      said: { role: "assistant", text: "ROWS", createdAt: "2026-10-08T18:00:00.000Z" },
+      askedAt: "2026-10-08T18:00:00.000Z",
+      ended: "2026-10-08T18:00:00.005Z",
+    };
+    expect(read(overlayEngineRow(v1Thread, row))).toEqual(own);
+    // Held, before its records name a turn: still the row's run, never the V1 thread's turn.
+    expect(
+      read(
+        overlayEngineRow(v1Thread, row, { latestTurn: null, status: "ready", activeTurnId: null }),
+      ),
+    ).toEqual(own);
+  });
+
   it("leaves a Mate's shell as it is until its rows arrive, then lays them over it", () => {
     const shellState = {
       snapshot: Option.some({
