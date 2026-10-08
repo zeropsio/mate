@@ -200,6 +200,72 @@ const byTime = <A extends { readonly at: number; readonly order: number; readonl
   right: A,
 ) => left.at - right.at || left.order - right.order || left.id.localeCompare(right.id);
 
+const byActivityTime = (left: V1ActivityHead, right: V1ActivityHead) =>
+  ms(left.createdAt) - ms(right.createdAt) ||
+  (left.sequence ?? 0) - (right.sequence ?? 0) ||
+  left.id.localeCompare(right.id);
+
+/**
+ * The work V1 kept under no turn after a turn's last word, as turns of their own: V1 draws a
+ * turnless call inside the turn whose records surround it, and one past a turn's last record
+ * outside every card (`ownerOf` in the web's conversation), so no card counts it or runs on to it.
+ * The engine holds every item in a run: each such stretch between two turns is one run.
+ */
+const looseTurns = (skeleton: V1Skeleton): ReadonlyArray<V1Turn> => {
+  const turns = skeleton.turns.toSorted(
+    (left, right) =>
+      ms(left.requestedAt) - ms(right.requestedAt) || left.key.localeCompare(right.key),
+  );
+  const starts = turns.map((turn) => ms(turn.requestedAt));
+  const byTurnId = new Map(
+    turns.flatMap((turn, index) => (turn.turnId === null ? [] : [[turn.turnId, index] as const])),
+  );
+  const turnAt = (at: number) => starts.findLastIndex((start) => start <= at);
+  // When each turn last said or did something under its own name: where V1's card ends.
+  const lastNamed = turns.map(() => Number.NEGATIVE_INFINITY);
+  const named = (turnId: string | null, at: number) => {
+    const index = turnId === null ? undefined : byTurnId.get(turnId);
+    if (index !== undefined) lastNamed[index] = Math.max(lastNamed[index]!, at);
+  };
+  for (const head of skeleton.messages) named(head.turnId, ms(head.createdAt));
+  const lifecycles = new Map<string, Array<V1ActivityHead>>();
+  for (const head of skeleton.activities.toSorted(byActivityTime)) {
+    if (UNSHOWN.has(head.kind)) continue;
+    named(head.turnId, ms(head.createdAt));
+    const key =
+      TOOL.has(head.kind) && head.callId !== null
+        ? `call:${head.callId}`
+        : TASK.has(head.kind) && head.taskId !== null
+          ? `task:${head.taskId}`
+          : null;
+    if (key === null) continue;
+    lifecycles.set(key, [...(lifecycles.get(key) ?? []), head]);
+  }
+  // A call or a task no record of which names a turn, past its turn's last named record.
+  const loose = new Map<number, Array<V1ActivityHead>>();
+  for (const heads of lifecycles.values()) {
+    if (heads.some((head) => head.turnId !== null && byTurnId.has(head.turnId))) continue;
+    const first = heads[0]!;
+    const at = ms(first.createdAt);
+    const turn = turnAt(at);
+    if (turn < 0 || at <= lastNamed[turn]!) continue;
+    loose.set(turn, [...(loose.get(turn) ?? []), ...heads]);
+  }
+  return [...loose.values()].map((heads) => {
+    const first = heads.toSorted(byActivityTime)[0]!;
+    const last = heads.toSorted(byActivityTime).at(-1)!;
+    return {
+      key: `loose:${first.id}`,
+      turnId: null,
+      pendingMessageId: null,
+      state: "completed",
+      requestedAt: first.createdAt,
+      startedAt: first.createdAt,
+      completedAt: last.createdAt,
+    };
+  });
+};
+
 /**
  * The thread's turns in order, the newest `HISTORY_TURN_LIMIT` (fewer when they hold more than
  * `HISTORY_RECORD_LIMIT` records, the newest turn always whole), and what each holds: by its turn
@@ -212,7 +278,7 @@ export const planOf = (
     records: HISTORY_RECORD_LIMIT,
   },
 ): Plan => {
-  const turns = skeleton.turns.toSorted(
+  const turns = [...skeleton.turns, ...looseTurns(skeleton)].toSorted(
     (left, right) =>
       ms(left.requestedAt) - ms(right.requestedAt) || left.key.localeCompare(right.key),
   );
