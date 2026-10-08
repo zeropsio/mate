@@ -101,6 +101,7 @@ const journeys: ReadonlyArray<Journey> = [
         login: "claudeAgent",
         compactions: 0,
         startedAt: Date.parse("2026-10-08T10:00:00.000Z"),
+        costKept: 0,
       },
       2,
     ],

@@ -34,7 +34,8 @@ const journeys: ReadonlyArray<Journey> = [
       const left = sessionBudgetUsd(w.state);
       w.quiet();
       w.run("reviewer");
-      spends(w, 9);
+      // A session's total is cumulative: 21 is this turn's 9 on top of the first's 12.
+      spends(w, 21);
       return [first, left, w.state.run?.state, w.state.run?.reason, sessionBudgetUsd(w.state)];
     },
     expected: [20, 8, "paused", "budget", 0],
@@ -66,6 +67,39 @@ const journeys: ReadonlyArray<Journey> = [
       return w.state.run?.spentUsd;
     },
     expected: 2.5,
+  },
+  {
+    sentence: "a session total below the kept one starts the count again from it, counting nothing",
+    journey: (w) => {
+      inRun(w, { budgetUsd: 20 });
+      spends(w, 0.5);
+      for (const total of [0.2, 0.35]) {
+        w.quiet();
+        w.press({ _tag: "message", handle: "reviewer", text: "More", attachments: [] });
+        w.run("reviewer");
+        spends(w, total);
+      }
+      return w.state.run?.spentUsd.toFixed(2);
+    },
+    expected: "0.65",
+  },
+  {
+    sentence:
+      "a session whose turns the engine never costed counts nothing for its next turn, not its history",
+    journey: (w) => {
+      inRun(w, { budgetUsd: 20 });
+      w.end("reviewer");
+      const spent = [w.state.run?.spentUsd];
+      for (const total of [1.78, 1.98]) {
+        w.quiet();
+        w.press({ _tag: "message", handle: "reviewer", text: "More", attachments: [] });
+        w.run("reviewer");
+        spends(w, total);
+        spent.push(w.state.run?.spentUsd);
+      }
+      return spent.map((value) => value?.toFixed(2));
+    },
+    expected: ["0.00", "0.00", "0.20"],
   },
   {
     sentence: "a run with No limit sets no session budget and still meters the spend",

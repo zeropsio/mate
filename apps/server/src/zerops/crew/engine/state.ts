@@ -79,6 +79,11 @@ export interface SessionRecord {
   readonly login: string;
   readonly compactions: number;
   readonly startedAt: number;
+  /**
+   * The session's cumulative cost last counted (a driver reports a session's total, not a turn's);
+   * `null` once a turn of it ended uncosted, so its history is unknown. Absent, `0`.
+   */
+  readonly costKept?: number | null;
 }
 
 export type LaneState = "creating" | "setting-up" | "ready" | "failed" | "missing";

@@ -2665,6 +2665,45 @@ const endingOf = (event: Extract<KnownEngineEvent, { _tag: "RunEnded" }>): Endin
   return { kind: "completed" };
 };
 
+/**
+ * A run's cost, from the session total its driver reported (V1's metering): the rise over the
+ * total last counted counts toward the run; a total below it starts the count again from it,
+ * counting nothing; a turn that reached its agent and reported none leaves the session's history
+ * unknown, so its next total counts nothing either.
+ */
+const countCost = (
+  b: Builder,
+  handle: string,
+  event: Extract<KnownEngineEvent, { _tag: "RunEnded" }>,
+  reached: boolean,
+): void => {
+  const member = b.state.members[handle]!;
+  const kept = member.session.costKept === undefined ? 0 : member.session.costKept;
+  const total = event.costUsd;
+  if (total === undefined) {
+    if (reached && event.end.kind === "completed" && kept !== null) {
+      b.emit({
+        _tag: "CrewmateUpdated",
+        handle,
+        set: { session: { ...member.session, costKept: null } },
+      });
+    }
+    return;
+  }
+  const counted = kept !== null && total >= kept ? total - kept : 0;
+  if (total !== kept) {
+    b.emit({
+      _tag: "CrewmateUpdated",
+      handle,
+      set: { session: { ...member.session, costKept: total } },
+    });
+  }
+  const run = runOn(b.state);
+  if (run !== undefined && counted > 0) {
+    b.emit({ _tag: "RunUpdated", set: { spentUsd: run.spentUsd + counted } });
+  }
+};
+
 const runEnded = (
   b: Builder,
   member: MemberRecord,
@@ -2682,10 +2721,7 @@ const runEnded = (
     set: { active: null, lastEnd: { at: event.at, completed: event.end.kind === "completed" } },
   });
   if (linked !== undefined) b.emit({ _tag: "DeliveryClosed", effectId: linked[0] as EffectId });
-  const run = runOn(b.state);
-  if (run !== undefined && event.costUsd !== undefined && event.costUsd > 0) {
-    b.emit({ _tag: "RunUpdated", set: { spentUsd: run.spentUsd + event.costUsd } });
-  }
+  countCost(b, member.handle, event, active?.reached === true);
 
   if (event.detail === "refused") {
     const words = event.refusal ?? "admission refused the turn";

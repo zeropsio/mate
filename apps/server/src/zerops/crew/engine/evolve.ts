@@ -94,6 +94,8 @@ const fold = (state: CrewState, event: CrewEvent): CrewState => {
           login: member.login,
           compactions: 0,
           startedAt: event.at,
+          // A resumed session (a run's new cap) goes on counting from its total.
+          costKept: event.fresh ? 0 : (member.session.costKept ?? 0),
         },
         rotateWhenFree: null,
         apply: event.rotation === "prompt-changed" ? null : member.apply,
