@@ -1,7 +1,19 @@
 import { describe, expect, it } from "@effect/vitest";
-import { ThreadId, type CrewSnapshot, type Crewmate } from "@t3tools/contracts";
+import {
+  ThreadId,
+  type ConversationRow,
+  type CrewSnapshot,
+  type Crewmate,
+} from "@t3tools/contracts";
+import * as Option from "effect/Option";
 
-import { crewSnapshotFixture } from "../crew/testing/fixtures.ts";
+import { engineRow } from "../../data/__fixtures__/mateEngine.ts";
+import { overlayEngineShell } from "../../data/projections/mateEngine.ts";
+import {
+  crewConversationId,
+  crewEngineSnapshotFixture,
+  crewSnapshotFixture,
+} from "../crew/testing/fixtures.ts";
 import {
   mateMarkStateForThreadStatus,
   resolveThreadStatus,
@@ -372,5 +384,230 @@ describe("crewPortOwners", () => {
         ],
       ]),
     );
+  });
+});
+
+/**
+ * The same sentences on the engine: the snapshot the engine's crew serves, joined to each
+ * crewmate's conversation row as the Mate's shell lays it over a crew thread.
+ */
+describe("deriveCrewView on the engine", () => {
+  const ENV = "env-fen";
+  const conversation = (handle: string) => crewConversationId(handle) as string;
+  const crewmateAgent = (handle: string) => ({
+    instanceId: "claudeAgent",
+    driver: "claudeAgent",
+    model: "claude-sonnet-4-5",
+    profile: { kind: "crewmate" as const, id: handle, name: handle },
+  });
+  const rowOf = (handle: string, state: ConversationRow["state"]): ConversationRow =>
+    engineRow(ENV, conversation(handle), {
+      agent: crewmateAgent(handle),
+      state,
+      activeRunId: state.kind === "working" ? (`${conversation(handle)}/r/1` as never) : null,
+    });
+  const IDLE = { kind: "idle" } as const;
+  const WORKING = { kind: "working", since: 1, waitsOnHelpers: false } as const;
+  const ASKING = { kind: "waiting", on: "question", words: "Cursor or offset?" } as const;
+  const rows: ReadonlyArray<ConversationRow> = [
+    rowOf("lead", IDLE),
+    rowOf("backend", WORKING),
+    rowOf("frontend", WORKING),
+    rowOf("erik", ASKING),
+  ];
+
+  /** The Mate's shell with its rows laid over it, as `useCrew` reads its thread shells. */
+  const shellsOf = (
+    conversationRows: ReadonlyArray<ConversationRow>,
+    v1Threads: ReadonlyArray<unknown> = [],
+  ): ReadonlyArray<Shell> => {
+    const shell = overlayEngineShell(
+      {
+        snapshot: Option.some({
+          snapshotSequence: 1,
+          projects: [{ id: "project-fen" }],
+          threads: v1Threads,
+          updatedAt: "2026-09-27T09:00:00.000Z",
+        }),
+        status: "live",
+        error: Option.none(),
+      } as unknown as Parameters<typeof overlayEngineShell>[0],
+      conversationRows,
+    );
+    return (Option.getOrNull(shell.snapshot)?.threads ?? []) as unknown as ReadonlyArray<Shell>;
+  };
+
+  it("has no shell and no status for a crewmate before its first turn or whose shell is not here", () => {
+    const view = deriveCrewView(
+      crewEngineSnapshotFixture(),
+      shellsOf(rows.filter((row) => !/-(erik|frontend)-/u.test(row.conversationId))),
+    );
+
+    const byHandle = new Map(view.crewmates.map((row) => [row.crewmate.handle, row]));
+    expect(byHandle.get("erik")).toMatchObject({ shell: null, status: null, statusWord: null });
+    expect(byHandle.get("frontend")).toMatchObject({ shell: null, status: null, statusWord: null });
+    expect(byHandle.get("backend")?.status?.kind).toBe("working");
+  });
+
+  it("counts a crewmate as working by its thread's face", () => {
+    const snapshot = crewEngineSnapshotFixture({ run: null });
+    const table = [
+      { name: "two running", rows, working: 2 },
+      {
+        name: "nobody running",
+        rows: rows.map((row) => ({ ...row, state: IDLE, activeRunId: null })),
+        working: 0,
+      },
+    ] as const;
+
+    for (const row of table) {
+      const view = deriveCrewView(snapshot, shellsOf(row.rows));
+      expect([row.name, view.workingCount]).toEqual([row.name, row.working]);
+    }
+  });
+
+  it("marks a crewmate pending while its running prompt is older than the current one", () => {
+    const snapshot = crewEngineSnapshotFixture();
+    const frontend = mate(snapshot, "frontend");
+    const table = [
+      { running: { brief: 4, job: 2 }, current: { brief: 4, job: 2 }, pending: null },
+      {
+        running: { brief: 4, job: 2 },
+        current: { brief: 4, job: 3 },
+        pending: { job: 3, brief: null },
+      },
+      {
+        running: { brief: 4, job: 2 },
+        current: { brief: 5, job: 2 },
+        pending: { job: null, brief: 5 },
+      },
+      { running: null, current: { brief: 5, job: 3 }, pending: null },
+    ] as const;
+
+    for (const row of table) {
+      const [view] = deriveCrewView(
+        {
+          ...snapshot,
+          crewmates: [
+            { ...frontend, promptVersions: { running: row.running, current: row.current } },
+          ],
+        },
+        shellsOf(rows),
+      ).crewmates;
+      expect(view?.pending).toEqual(row.pending);
+    }
+  });
+
+  it("gives each crewmate its open task and its queue in order", () => {
+    const view = deriveCrewView(crewEngineSnapshotFixture(), shellsOf(rows));
+    const byHandle = new Map(view.crewmates.map((row) => [row.crewmate.handle, row]));
+
+    expect(byHandle.get("backend")?.openTask?.number).toBe(12);
+    expect(byHandle.get("frontend")?.queuedTasks.map((task) => task.number)).toEqual([15]);
+    expect(byHandle.get("lead")?.openTask).toBeNull();
+  });
+
+  it("keeps every task but a dropped one, each with its owner", () => {
+    const view = deriveCrewView(crewEngineSnapshotFixture(), shellsOf(rows));
+
+    expect(view.tasks.map((row) => [row.task.number, row.owner?.crewmate.handle])).toEqual([
+      [10, "frontend"],
+      [11, "backend"],
+      [12, "backend"],
+      [13, "frontend"],
+      [14, "erik"],
+      [15, "frontend"],
+      [16, "backend"],
+      [17, "erik"],
+    ]);
+  });
+
+  it("marks every crew shell with archivedAt as retired and maps each stint's thread to its crewmate", () => {
+    const archived = {
+      ...shellsOf([rowOf("backend", IDLE)])[0]!,
+      archivedAt: "2026-09-27T09:10:00.000Z",
+    };
+    const view = deriveCrewView(crewEngineSnapshotFixture(), [
+      ...shellsOf(rows.filter((row) => !row.conversationId.includes("-backend-"))),
+      archived,
+      idle("thread-person-1", { archivedAt: "2026-09-27T07:00:00.000Z" }),
+    ]);
+
+    expect([...view.retiredThreadIds]).toEqual([conversation("backend")]);
+    expect(view.stints.get(ThreadId.make(conversation("backend")))).toEqual({
+      handle: "backend",
+      stint: 1,
+      current: true,
+      retired: true,
+    });
+    expect(view.stints.get(ThreadId.make(conversation("frontend")))).toEqual({
+      handle: "frontend",
+      stint: 1,
+      current: true,
+      retired: false,
+    });
+    expect(view.stints.has(ThreadId.make("thread-person-1"))).toBe(false);
+  });
+
+  it("reads a shell's crew origin as a crew thread even when the snapshot does not list its stint", () => {
+    const view = deriveCrewView(crewEngineSnapshotFixture(), [
+      idle("thread-crew-backend-9", {
+        archivedAt: "2026-09-27T10:00:00.000Z",
+        crew: { crew: "game", crewmate: "backend", stint: 9 },
+      }),
+    ]);
+
+    expect(view.stints.get(ThreadId.make("thread-crew-backend-9"))).toEqual({
+      handle: "backend",
+      stint: 9,
+      current: false,
+      retired: true,
+    });
+  });
+
+  it("names the lead, and lands by the person unless a run on says otherwise", () => {
+    const snapshot = crewEngineSnapshotFixture();
+    const shells = shellsOf(rows);
+
+    expect(deriveCrewView(snapshot, shells).lead?.crewmate.handle).toBe("lead");
+    expect(
+      deriveCrewView({ ...snapshot, crewmates: snapshot.crewmates.slice(1) }, shells).lead,
+    ).toBeNull();
+    expect(deriveCrewView(snapshot, shells).personLands).toBe(true);
+    expect(
+      deriveCrewView(
+        {
+          ...snapshot,
+          run: { ...snapshot.run!, options: { ...snapshot.run!.options, landing: "check" } },
+        },
+        shells,
+      ).personLands,
+    ).toBe(false);
+  });
+
+  it("reads an unapplied crew as empty", () => {
+    const view = deriveCrewView(
+      crewEngineSnapshotFixture({
+        status: "none",
+        crew: null,
+        crewmates: [],
+        hosts: [],
+        board: { tasks: [] },
+        run: null,
+        attention: [],
+        landedNotDelivered: 0,
+      }),
+      // The Mate's own conversation, a person's thread.
+      shellsOf([], [idle("thread-fen")]),
+    );
+
+    expect(view).toMatchObject({
+      status: "none",
+      crew: null,
+      crewmates: [],
+      tasks: [],
+      lead: null,
+    });
+    expect(view.stints.size).toBe(0);
   });
 });
