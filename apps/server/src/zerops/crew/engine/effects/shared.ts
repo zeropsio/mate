@@ -176,6 +176,8 @@ export interface LaneEvidence {
   readonly operation: string;
   /** Whether the tip is in your tree's history. */
   readonly inHead: boolean;
+  /** Whether the tip descends from (or is) the `since` commit asked about. */
+  readonly descends: boolean;
   /** The values of the refs asked about, by name; absent when the ref is not there. */
   readonly refs: Readonly<Record<string, string>>;
 }
@@ -186,6 +188,7 @@ export const readLane = (
   host: string,
   handle: string,
   refs: ReadonlyArray<string> = [],
+  since?: string,
 ) =>
   runFields(
     shell,
@@ -214,6 +217,9 @@ export const readLane = (
       `  ${git({ lane: handle }, ["diff", "--name-only", "--diff-filter=U"])} | sed 's/^/unmerged\\t/'\n` +
       `}\n` +
       `[ -n "$H" ] && ${git("integration", ["merge-base", "--is-ancestor", shellVariable("tip"), shellVariable("H")])} && printf 'inhead\\tyes\\n'\n` +
+      (since === undefined
+        ? ""
+        : `${git("integration", ["merge-base", "--is-ancestor", since, shellVariable("tip")])} 2>/dev/null && printf 'descends\\tyes\\n'\n`) +
       `exit 0\n`,
     READ_TIMEOUT,
   ).pipe(
@@ -232,6 +238,7 @@ export const readLane = (
         subject: field(out, "subject") ?? "",
         operation: field(out, "operation") ?? "",
         inHead: field(out, "inhead") === "yes",
+        descends: field(out, "descends") === "yes",
         refs: Object.fromEntries(
           all("ref").map((value) => {
             const space = value.lastIndexOf(" ");
