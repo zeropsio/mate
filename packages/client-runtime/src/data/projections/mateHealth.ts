@@ -1,4 +1,4 @@
-import { sustainedPressureLevel, type MateHealth } from "@t3tools/contracts";
+import type { MateHealth } from "@t3tools/contracts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { hqMateHealthScope, mateHealthScope } from "../families/mateHealth.ts";
 import { linkKeys } from "../model.ts";
@@ -53,19 +53,7 @@ export function mateHealthCopy(
   const { health, live } = read;
   if (health === null || health.evidence.status !== "strained") return null;
   const evidence = health.evidence;
-  const memory = evidence.memory;
-  // Raw sampler flags also describe routine autoscaling signals. Notices require
-  // sustained work stalls or a new OOM kill, including when reading older reports.
-  const memoryStrained =
-    memory !== null && (memory.growth.oomKill > 0 || sustainedPressureLevel(memory.pressure) >= 1);
-  const resources: Array<"memory" | "disk" | "io" | "cpu"> = [];
-  if (memoryStrained) resources.push("memory");
-  if (evidence.disk?.free === 0) resources.push("disk");
-  if (sustainedPressureLevel(evidence.io) >= 1) resources.push("io");
-  if (evidence.cpu?.window?.saturated === true && sustainedPressureLevel(evidence.cpu) >= 1)
-    resources.push("cpu");
-  const severity =
-    evidence.disk?.free === 0 || (memory?.growth.oomKill ?? 0) > 0 ? "critical" : "warning";
+  const { resources, severity } = evidence;
   if (resources.length === 0) return null;
   const prefix = live ? name : `${name} · last-known health`;
   const resource = resources[0];
