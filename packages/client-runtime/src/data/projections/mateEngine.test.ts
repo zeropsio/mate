@@ -988,6 +988,31 @@ describe("an engine card not held whole, as its worked line and its scroll read 
     );
   });
 
+  // Catches a card left out on a cold open: a loose run (work V1 kept under no turn) has no
+  // person's words, so its one call is all it holds.
+  it.each([
+    {
+      name: "a loose imported run with one call",
+      trigger: { kind: "imported", from: "v1", turn: null },
+      items: [],
+      summary: { items: 1, calls: { command: 1 }, answerItemId: null, lastItemSeq: 1 },
+      hasWork: true,
+    },
+    {
+      name: "an imported turn with only its message and answer",
+      trigger: { kind: "imported", from: "v1", turn: "turn-1" },
+      items: [personItem(run1, 1, "Hi")],
+      summary: { items: 2, calls: {}, answerItemId: `${run1}/i/2`, lastItemSeq: 2 },
+      hasWork: false,
+    },
+  ])("says whether $name has work to open", ({ trigger, items, summary, hasWork }) => {
+    const run = engineRun("thread-ada", 1, { trigger, summary } as never);
+    const spans = [{ runId: run1, from: null, to: 0, reading: null }];
+    expect(engineCardPagingOfRecords(key, { runs: [run], items, spans })[run1]).toMatchObject({
+      hasWork,
+    });
+  });
+
   it("holds a live card's lines from the earliest read to its end", () => {
     const paging = engineCardPagingOfRecords(key, {
       runs: [long(1, { state: "running", end: null, endedAt: null })],
