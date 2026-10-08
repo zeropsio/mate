@@ -39,6 +39,25 @@ function claudeLine(overrides: {
 }
 
 describe("parseClaudeLine", () => {
+  it("does not count a refused Claude admission as usage", () => {
+    const refusal = {
+      type: "assistant",
+      sessionId: "refused-session",
+      error: "rate_limit",
+      timestamp: "2026-10-08T10:00:00.000Z",
+      message: {
+        id: "refused",
+        model: "<synthetic>",
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+        },
+      },
+    };
+    expect(parseClaudeLine(JSON.stringify(refusal))).toBeNull();
+  });
   it("extracts token totals and a dedupe key", () => {
     const record = parseClaudeLine(claudeLine({ messageId: "msg_1", contentType: "text" }));
 

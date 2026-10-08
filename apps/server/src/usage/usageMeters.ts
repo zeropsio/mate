@@ -5,7 +5,7 @@ import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { AntigravityGeneration } from "./antigravityUsageReader.ts";
-import { readGrokTurn, type UsageRecord } from "./usageTranscripts.ts";
+import { isClaudeRateLimitRecord, readGrokTurn, type UsageRecord } from "./usageTranscripts.ts";
 
 const Count = Schema.Number.check(
   Schema.isInt(),
@@ -183,6 +183,7 @@ export function meterLine(
   const json = decodeJson(line);
   if (Option.isNone(json)) return { gap: "damaged-transcript" };
   if (provider === "claude") {
+    if (isClaudeRateLimitRecord(json.value)) return {};
     const decoded = decodeClaude(json.value);
     if (Option.isNone(decoded)) {
       const isAssistant = isAssistantRecord(json.value);

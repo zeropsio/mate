@@ -27,7 +27,6 @@ import type { Command, Decision, EffectDraft, ProviderSignal } from "./command.t
 import {
   CONTINUE_TEXT,
   SESSION_IDLE_MS,
-  USAGE_RESUME_GRACE_MS,
   WATCHDOG_SILENCE_MS,
   decide,
   resentText,
@@ -435,7 +434,7 @@ const transitions: ReadonlyArray<Row> = [
     run: { n: 1, end: "failed", source: "inferred-from-effect" },
   },
   {
-    name: "a usage limit ends the run and arms a resume 30 seconds after the reset",
+    name: "a usage limit ends the run and holds work until the exact provider reset",
     given: running,
     when: signal({ kind: "usage-limit", resetsAt: T0 + 60 * MINUTE }),
     events: ["WakeCancelled", "RunEnded", "EffectRequested", "WakeArmed", "WakeArmed"],
@@ -443,9 +442,9 @@ const transitions: ReadonlyArray<Row> = [
     also: (scene) => {
       expect(scene.events[3]).toMatchObject({
         kind: "usage-resume",
-        dueAt: T0 + 60 * MINUTE + USAGE_RESUME_GRACE_MS,
+        dueAt: T0 + 60 * MINUTE,
       });
-      expect(scene.state.pausedUntil).toBe(T0 + 60 * MINUTE + USAGE_RESUME_GRACE_MS);
+      expect(scene.state.pausedUntil).toBe(T0 + 60 * MINUTE);
     },
   },
   {
@@ -1452,12 +1451,12 @@ describe("decide: a usage limit, a refused answer and a message's delivery", () 
     ]);
     expect(state.wakes[probeOf(1)]).toBeUndefined();
     expect(state.wakes[wakeId(conversation, "usage-resume", r(1))]).toMatchObject({
-      dueAt: reset + USAGE_RESUME_GRACE_MS,
+      dueAt: reset,
       joins: r(1),
     });
     expect({ queued: state.runs[r(2)]?.state, paused: state.pausedUntil }).toEqual({
       queued: "queued",
-      paused: reset + USAGE_RESUME_GRACE_MS,
+      paused: reset,
     });
   });
   it("an answer the provider can no longer take expires its request", () => {

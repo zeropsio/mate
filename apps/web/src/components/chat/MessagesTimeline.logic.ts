@@ -2193,6 +2193,7 @@ export function deriveMessagesTimelineRows(input: {
       limitError?.kind === "work"
         ? (limitError.entry.detail ?? limitError.entry.label)
         : turn.answer?.message.text,
+      input.provider,
     );
     const answerAt =
       limitError?.createdAt ?? turn.answer?.createdAt ?? turn.stretches.at(-1)!.startedAt;

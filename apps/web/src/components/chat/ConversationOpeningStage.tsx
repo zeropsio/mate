@@ -1,3 +1,6 @@
+import type { TimestampFormat } from "@t3tools/contracts/settings";
+import type { ZeropsAgentActivity } from "../../zerops/agentActivity";
+import { openingLimitWords } from "../../zerops/mateOpeningStage";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import {
   createContext,
@@ -22,6 +25,8 @@ import type { MateFaceProps } from "../zerops/primitives/MateFace";
 
 export type OpeningPhase = "waiting" | "wake" | "hand-off" | "complete";
 type OpeningProps = {
+  readonly activity?: ZeropsAgentActivity | undefined;
+  readonly timestampFormat?: TimestampFormat | undefined;
   readonly notice?: ReactNode;
   readonly threadKey?: string | undefined;
   readonly ready: boolean;
@@ -66,6 +71,8 @@ export function ConversationOpeningProvider({ children }: { readonly children: R
         if (
           current.stage?.node === next.node &&
           current.stage.ready === next.ready &&
+          current.stage.activity === next.activity &&
+          current.stage.timestampFormat === next.timestampFormat &&
           current.stage.notice === next.notice &&
           current.stage.readPending === next.readPending &&
           current.stage.children === next.children &&
@@ -165,6 +172,8 @@ export function ConversationOpeningLayer({ children }: { readonly children: Reac
 export const ConversationOpeningStage = gatedPortal(OpeningStage);
 
 function OpeningStage({
+  activity,
+  timestampFormat,
   ready,
   name,
   mate,
@@ -187,6 +196,8 @@ function OpeningStage({
   useLayoutEffect(() => {
     if (ref.current !== null)
       setStage?.({
+        activity,
+        timestampFormat,
         ready,
         name,
         mate,
@@ -196,10 +207,23 @@ function OpeningStage({
         notice,
         node: ref.current,
       });
-  }, [ready, name, mate, threadKey, readPending, children, notice, setStage]);
+  }, [
+    activity,
+    timestampFormat,
+    ready,
+    name,
+    mate,
+    threadKey,
+    readPending,
+    children,
+    notice,
+    setStage,
+  ]);
   const content =
     opening === null ? (
       <OpeningSequence
+        activity={activity}
+        timestampFormat={timestampFormat}
         ready={ready}
         name={name}
         mate={mate}
@@ -216,6 +240,8 @@ function OpeningStage({
 }
 
 function OpeningSequence({
+  activity,
+  timestampFormat,
   ready,
   name,
   mate,
@@ -235,11 +261,19 @@ function OpeningSequence({
   );
   // The source owns its composition until hand-off; the destination cannot replace its words
   // or move its centred face while the eyes open.
-  const [scene, setScene] = useState({ node, content: children, name, mate, notice });
+  const [scene, setScene] = useState({
+    node,
+    content: children,
+    name,
+    mate,
+    notice,
+    activity,
+    timestampFormat,
+  });
   if (phase === "complete" && scene.content !== undefined) {
-    setScene({ node, content: undefined, name, mate, notice });
+    setScene({ node, content: undefined, name, mate, notice, activity, timestampFormat });
   } else if (phase === "skipped" && !ready && children !== undefined) {
-    setScene({ node, content: children, name, mate, notice });
+    setScene({ node, content: children, name, mate, notice, activity, timestampFormat });
     setPhase("waiting");
   } else if (
     phase === "waiting" &&
@@ -248,9 +282,11 @@ function OpeningSequence({
     (scene.content !== children ||
       scene.name !== name ||
       scene.mate !== mate ||
-      scene.notice !== notice)
+      scene.notice !== notice ||
+      scene.activity !== activity ||
+      scene.timestampFormat !== timestampFormat)
   ) {
-    setScene({ node, content: children, name, mate, notice });
+    setScene({ node, content: children, name, mate, notice, activity, timestampFormat });
   }
   useLayoutEffect(() => {
     onPhase?.(phase === "skipped" ? "complete" : phase);
@@ -424,7 +460,10 @@ function OpeningSequence({
             face="waking"
             faceSlot={carryFace}
             headline={`${scene.name || "The Mate"} is opening the conversation.`}
-            secondary="Picking up where you left off."
+            secondary={
+              openingLimitWords(scene.activity, scene.name || "The Mate", scene.timestampFormat) ??
+              "Picking up where you left off."
+            }
             actions={null}
           />
         )}

@@ -1,15 +1,23 @@
+import { PROVIDER_DISPLAY_NAMES } from "@t3tools/contracts";
+
 /** A provider refusal, distinct from allowed or warning admission telemetry. */
-export function usageLimitProvider(error: string | null | undefined): string | null {
+export function usageLimitProvider(
+  error: string | null | undefined,
+  driver?: string | null,
+): string | null {
   if (!error) return null;
+  const known = Object.entries(PROVIDER_DISPLAY_NAMES).find(([key]) => key === driver)?.[1];
   const matched =
     /^(Claude(?: AI)?|Codex|Grok|OpenCode|Cursor|Antigravity|Coding agent) usage limit reached\b/i.exec(
       error.trim(),
     );
   if (matched)
     return matched[1]!.toLowerCase() === "coding agent"
-      ? "coding agent"
+      ? (known ?? "coding agent")
       : matched[1]!.replace(/ AI$/i, "");
-  return /^you[’']ve hit your [\w\s-]*?limit\b/i.test(error.trim()) ? "coding agent" : null;
+  return /^you[’']ve hit your [\w\s-]*?limit\b/i.test(error.trim())
+    ? (known ?? "coding agent")
+    : null;
 }
 
 export interface UsageLimitNotice {
@@ -61,6 +69,8 @@ export function readUsageLimitNotice(text: string, createdAt: string): UsageLimi
   const writtenMs = Number.isFinite(parsed) ? parsed : null;
   const cli = CLI_LIMIT.exec(text);
   if (cli && text.trim().length < 240) {
+    // A weekly window needs a date. A time of day alone cannot name which day it reopens.
+    if (/\b(?:weekly|seven.day|7.day)\b/i.test(cli[0])) return { resetsAt: null };
     if (cli[1] === undefined || writtenMs === null) return { resetsAt: null };
     let hour = Number(cli[1]) % 12;
     if ((cli[3] ?? "").toLowerCase() === "pm") hour += 12;
@@ -97,8 +107,9 @@ export function currentProviderLimit(input: {
   readonly lastMessage: string | undefined;
   readonly noticeAt: string | null | undefined;
   readonly nowMs: number;
+  readonly providerName?: string | null | undefined;
 }) {
-  const provider = usageLimitProvider(input.lastError);
+  const provider = usageLimitProvider(input.lastError, input.providerName);
   const errorNotice =
     input.lastError && input.noticeAt != null
       ? readUsageLimitNotice(input.lastError, input.noticeAt)

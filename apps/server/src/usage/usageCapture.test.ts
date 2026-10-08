@@ -540,3 +540,40 @@ it.effect("a record past the record cap is skipped as a gap and the transcript r
     }),
   ),
 );
+
+it.effect("a refused Claude admission creates no durable usage fact or replication entry", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const directory = yield* temporary;
+      const refusal = usageCanonical({
+        type: "assistant",
+        sessionId: "session",
+        error: "rate_limit",
+        timestamp: "2026-10-08T10:00:00.000Z",
+        message: {
+          id: "refused",
+          model: "<synthetic>",
+          usage: {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+          },
+        },
+      });
+      yield* Effect.tryPromise(() =>
+        NodeFSP.writeFile(NodePath.join(directory, "session.jsonl"), refusal + "\n"),
+      );
+      yield* makeUsageLedger.pipe(
+        Effect.flatMap((ledger) =>
+          Effect.gen(function* () {
+            yield* captureSource(ledger, binding, { provider: "claude", directory });
+            const batch = yield* ledger.batch("0", "refusal-proof");
+            assert.equal((batch?.entries ?? []).flatMap((entry) => entry.facts).length, 0);
+          }),
+        ),
+        Effect.provide(Sqlite.layer({ filename: NodePath.join(directory, "usage.sqlite") })),
+      );
+    }),
+  ),
+);

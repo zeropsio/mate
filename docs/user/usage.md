@@ -44,6 +44,14 @@ closes when you dismiss it or send your next message. It uses the same snapshot 
 view, so it does not run the agent or refresh anything. The command is offered only for providers
 that appear on the **Limits** view.
 
+When a provider refuses a turn at its usage limit, the Mate shows that provider's name and its
+reported reset time. **Continue** before a known reset explains why the work is still held. At the
+reset, the Limit marker disappears; the dated refusal and **Continue** remain until another
+attempt is acknowledged. An unknown reset stays unknown. A Mate that cannot be reached shows the
+refusal as **Last known**, with the source time. Refused Claude admissions do not count as usage.
+A conversation stays with the provider that started it; archive it and start fresh to use another
+provider on the same Mate.
+
 OpenCode Go reports its session, weekly, and monthly allowance when OpenCode runs locally in
 the environment. Limits cannot be reported for external OpenCode servers because their
 credentials belong to the remote server. Cursor reports its monthly allowance, including

@@ -50,6 +50,54 @@ const settled = (saves: ReadonlyArray<string>) =>
   Effect.map(Effect.repeat(Effect.yieldNow, { times: 100 }), () => [...saves]);
 
 describe("MateOverviews", () => {
+  it.effect("keeps a corrected provider reset for last-known reading after HQ restarts", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rows, store } = memoryStore();
+        const saved = yield* Deferred.make<void>();
+        const baseline = yield* Deferred.make<void>();
+        const corrected = "2026-10-12T02:00:00Z";
+        const overviews = yield* makeMateOverviews({
+          ...store,
+          save: (id, overview) =>
+            store
+              .save(id, overview)
+              .pipe(
+                Effect.tap(() =>
+                  Deferred.succeed(
+                    overview.main?.usagePause?.resetsAt === corrected ? saved : baseline,
+                    undefined,
+                  ),
+                ),
+              ),
+        });
+        const link = yield* overviews.connect("P");
+        const main = {
+          ...mainAt(""),
+          session: { status: "error" as const, lastError: "Claude usage limit reached." },
+          usagePause: { resetsAt: "2026-10-09T02:00:00Z" },
+        };
+        yield* overviews.report("P", link, {
+          type: "overview",
+          full: true,
+          overview: overviewOf({ main }),
+        });
+        yield* Deferred.await(baseline);
+        yield* overviews.report("P", link, {
+          type: "overview",
+          full: false,
+          sections: { main: { ...main, usagePause: { resetsAt: corrected } } },
+        });
+        yield* Deferred.await(saved);
+        const restarted = yield* makeMateOverviews(memoryStore([...rows.values()]).store);
+        yield* restarted.restore;
+        assert.strictEqual(
+          (yield* restarted.all).get("P")?.overview?.main?.usagePause?.resetsAt,
+          corrected,
+        );
+      }),
+    ),
+  );
   it.effect("replaces only the sections a frame names", () =>
     Effect.scoped(
       Effect.gen(function* () {

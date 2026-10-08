@@ -110,7 +110,15 @@ export function parseClaudeLine(line: string): UsageRecord | null {
   return parseClaudeRecord(parsed);
 }
 
+/** Claude's synthetic rate-limit answer is a refused admission, not a metered response. */
+export function isClaudeRateLimitRecord(parsed: unknown): boolean {
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const record = parsed as Record<string, unknown>;
+  return record["type"] === "assistant" && record["error"] === "rate_limit";
+}
+
 export function parseClaudeRecord(parsed: unknown): UsageRecord | null {
+  if (isClaudeRateLimitRecord(parsed)) return null;
   if (typeof parsed !== "object" || parsed === null) return null;
 
   const record = parsed as Record<string, unknown>;

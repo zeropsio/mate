@@ -1,4 +1,5 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { useClientSettings } from "~/hooks/useSettings";
 /**
  * A Mate's page while its conversation cannot show yet (a reload before the catalog names its
  * thread, the route's link being made, the Mate down): its header — the face and the name — as its
@@ -20,6 +21,7 @@ import { MateDetailFailure } from "./MateDetailFailure";
 import { useMateVoice } from "~/zerops/mateVoiceContext";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { useThreadDetail } from "~/state/entities";
+import { useToldActivity } from "~/zerops/useMenuMateReadings";
 import { MateLinkLine, type Spoken } from "./MateLinkLine";
 import { RouteStandIn } from "./RouteStandIn";
 import { MateComingFrame, MateComingHeader } from "./ZeropsMateComingPage";
@@ -105,7 +107,9 @@ function MateLinkStageOf({
   readonly failure: { readonly message: string } | null;
   readonly again: () => void;
 }) {
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const at = useZeropsMate(environmentId);
+  const activity = useToldActivity(projectId ?? "");
   // Try now asks its Mate again, its exchange as well as its link, as the banner's does.
   const tryAgain = useTryMateAgain();
   if (at.kind === "nobody" && failure === null) return <MateLinkWords voice={voice} />;
@@ -139,6 +143,8 @@ function MateLinkStageOf({
           ready={false}
           name={known?.name}
           mate={mate}
+          activity={activity}
+          timestampFormat={timestampFormat}
           threadKey={threadKey}
           readPending={readPending}
         />
@@ -147,6 +153,8 @@ function MateLinkStageOf({
           ready={false}
           name={known?.name}
           mate={mate}
+          activity={activity}
+          timestampFormat={timestampFormat}
           threadKey={threadKey}
         >
           <MateEmptyStateView

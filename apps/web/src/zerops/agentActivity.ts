@@ -429,6 +429,7 @@ function readThreadAgentActivity(
   const visited = lastVisitedAt === undefined ? {} : { lastVisitedAt };
   const pause = thread.usagePause ?? undefined;
   const limit = currentProviderLimit({
+    providerName: thread.session?.providerName,
     pause,
     resetAt: thread.session?.usageLimitResetAt,
     lastError: thread.session?.lastError,

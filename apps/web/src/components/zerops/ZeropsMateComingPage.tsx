@@ -1,3 +1,4 @@
+import { useClientSettings } from "~/hooks/useSettings";
 import { useMateRecovery } from "~/zerops/useMateRecovery";
 import { recoveryNotice } from "~/zerops/mateRecovery.logic";
 import { MateStateDetails } from "./MateStateDetails";
@@ -188,6 +189,7 @@ const EMPTY_SHELL_STATUS =
   Atom.make<import("@t3tools/client-runtime/state/shell").EnvironmentShellStatus>("empty");
 
 export function ZeropsMateComingPage({ projectId }: { readonly projectId: string }) {
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const navigate = useNavigate();
   const router = useRouter();
   const openMate = useOpenMate();
@@ -905,6 +907,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           name={named.name}
           mate={named}
           notice={<MateHealthNotice projectId={projectId} name={named.name} />}
+          activity={liveActivity ?? toldActivity}
+          timestampFormat={timestampFormat}
         />
       ) : view === null ? null : (
         <ConversationOpeningStage ready={false} name={named.name} mate={named}>

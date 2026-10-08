@@ -24,11 +24,15 @@ import {
   SendIcon,
   TerminalIcon,
 } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { subscribeSecond } from "~/lib/secondTicker";
 import { cn } from "~/lib/utils";
-import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
+import {
+  formatChatTimestampTooltip,
+  formatDayAwareTimestamp,
+  formatUpcomingTimestamp,
+} from "../../timestampFormat";
 import { usageLimitWords, usageLimitHistoryWords } from "../../zerops/noticeWords";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
@@ -410,21 +414,32 @@ export function PauseBlock({
   const passed = reset !== null && reset <= nowMs;
   const autoResume = serverPause?.autoResume ?? false;
   const history = resumed || passed;
-  const detail = resumed
-    ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
-    : resetsAt === null
-      ? "The coding agent hasn't given a reset time yet."
-      : passed
-        ? `Reset time passed. Continue to try again.`
-        : serverPause === null
-          ? `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
-          : autoResume
-            ? `${speaker.name} will try again automatically at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
-            : `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}. Automatic continuation is off.`;
+  const [waitingAt, setWaitingAt] = useState<string | null>(null);
+  const detail =
+    !history && resetsAt !== null && waitingAt === resetsAt
+      ? `${speaker.name} can’t continue with ${row.provider ?? "the coding agent"} before ${formatDayAwareTimestamp(resetsAt, timestampFormat)}: the provider’s limit still holds this work.`
+      : resumed
+        ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
+        : resetsAt === null
+          ? "The coding agent hasn't given a reset time yet."
+          : passed
+            ? `Reset time passed. Continue to try again.`
+            : serverPause === null
+              ? `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
+              : autoResume
+                ? `${speaker.name} will try again automatically at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}.`
+                : `Available again at ${formatDayAwareTimestamp(resetsAt, timestampFormat)}. Automatic continuation is off.`;
   const actions = !resumed ? (
     <div className="flex flex-col items-center gap-4">
       {onContinue === null ? null : (
-        <Button size="sm" variant="ghost" onClick={onContinue}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            if (reset !== null && !passed) setWaitingAt(resetsAt);
+            else onContinue();
+          }}
+        >
           Continue
         </Button>
       )}
@@ -442,7 +457,7 @@ export function PauseBlock({
       )}
     </div>
   ) : null;
-  if (!resumed && serverPause !== null) {
+  if (!history && serverPause !== null) {
     const voice = mateNoticeVoice({
       reachability: null,
       conversationShown: false,

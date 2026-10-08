@@ -564,3 +564,47 @@ it("finishes existing source acting when readiness hands the face to the short w
     await view.close();
   }
 });
+
+it("preserves a named, dated Claude refusal while history is opening", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  try {
+    await act(() =>
+      root.render(
+        <ConversationOpeningStage
+          ready={false}
+          name="Sage"
+          mate={null}
+          activity={{
+            threadId: "opening" as import("@t3tools/contracts").ThreadId,
+            kind: "idle",
+            status: null,
+            face: "sleep",
+            subject: undefined,
+            snippet: undefined,
+            at: "2026-10-07T12:00:00.000Z",
+            unread: false,
+            pausedUntil: undefined,
+            threadKey: "opening",
+            task: undefined,
+            limitHistory: { provider: "Claude", resetsAt: "2026-10-10T00:00:00.000Z" },
+            lastKnown: {
+              kind: "failed",
+              at: "2026-10-07T12:00:00.000Z",
+              usageLimited: true,
+              pausedUntil: "2026-10-10T00:00:00.000Z",
+            },
+          }}
+        />,
+      ),
+    );
+    expect(host.textContent).toContain("Sage is opening the conversation.");
+    expect(host.textContent).toContain("Last known");
+    expect(host.textContent).toContain("Sage hit the Claude limit");
+    expect(host.textContent).toContain("Oct 10, 2026");
+  } finally {
+    await act(() => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});

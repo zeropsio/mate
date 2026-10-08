@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { formatDayAwareTimestamp } from "../../timestampFormat";
+import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { EventLine, PauseBlock, type ConversationSpeaker } from "./ConversationRows";
 
 const NOVA: ConversationSpeaker = { name: "Nova", tint: "sky" };
@@ -35,6 +35,19 @@ describe("the usage-limit pause", () => {
         timestampFormat="24-hour"
       />,
     );
+  it("shows the day of a weekly reset in both the marker and continuation explanation", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW_MS);
+    try {
+      const reset = new Date(NOW_MS + 7 * 86_400_000).toISOString();
+      const when = formatUpcomingTimestamp(reset, "24-hour", NOW_MS);
+      const notice = render(false, reset);
+      expect(notice).toContain(`Limit · until ${when}`);
+      expect(notice).toContain(`Reset time: ${when}.`);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("names the agent whose limit holds the work", () => {
     expect(render(false, null)).toContain("Nova hit the Codex limit.");
     expect(render(false, null)).toContain("hasn&#x27;t given a reset time");
@@ -42,7 +55,7 @@ describe("the usage-limit pause", () => {
   it("only promises automatic continuation when the server has enabled it", () => {
     const reset = new Date(NOW_MS + 3_600_000).toISOString();
     expect(render(true, reset)).toContain(
-      `try again automatically at ${formatDayAwareTimestamp(reset, "24-hour")}`,
+      `try again automatically at ${formatUpcomingTimestamp(reset, "24-hour", NOW_MS)}`,
     );
     expect(render(false, reset)).toContain("Automatic continuation is off");
     expect(render(false, reset)).not.toContain("Send a message");
@@ -57,7 +70,7 @@ describe("the usage-limit pause", () => {
   it("a known reset cannot invent an unread continuation choice", () => {
     const reset = new Date(NOW_MS + 3_600_000).toISOString();
     const notice = render(null, reset);
-    expect(notice).toContain(`Available again at ${formatDayAwareTimestamp(reset, "24-hour")}.`);
+    expect(notice).toContain(`Reset time: ${formatUpcomingTimestamp(reset, "24-hour", NOW_MS)}.`);
     expect(notice).not.toContain("Automatic continuation is off");
     expect(notice).not.toContain("try again automatically");
   });
@@ -109,11 +122,46 @@ describe("the pause's automatic-resume choice", () => {
       const button = document.querySelector<HTMLButtonElement>("button");
       expect(button?.textContent).toBe("Continue");
       await act(() => button!.click());
-      expect(continued).toHaveBeenCalledOnce();
+      if (resetsAt !== null && Date.parse(resetsAt) > NOW_MS) {
+        expect(continued).not.toHaveBeenCalled();
+        expect(document.body.textContent).toContain("can't continue");
+      } else expect(continued).toHaveBeenCalledOnce();
       await show(at(30));
       expect(document.querySelector("button")).toBeNull();
     },
   );
+
+  it("Continue before a known reset explains the wait without submitting another attempt", async () => {
+    const continued = vi.fn();
+    const resetsAt = new Date(NOW_MS + 3_600_000).toISOString();
+    await act(() =>
+      root!.render(
+        <PauseBlock
+          nowMs={NOW_MS}
+          row={{
+            kind: "pause",
+            id: "waiting",
+            createdAt: at(600),
+            resetsAt,
+            resumedAt: null,
+            held: 0,
+            provider: "Claude",
+          }}
+          serverPause={null}
+          onAutoResumeChange={null}
+          onContinue={continued}
+          speaker={NOVA}
+          timestampFormat="24-hour"
+        />,
+      ),
+    );
+    await act(() => document.querySelector<HTMLButtonElement>("button")!.click());
+    expect(continued).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("Nova can't continue with Claude before");
+    expect(document.body.textContent).toContain(
+      formatUpcomingTimestamp(resetsAt, "24-hour", NOW_MS),
+    );
+  });
 
   it.each([
     { autoResume: true, next: "off" },

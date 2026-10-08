@@ -183,6 +183,7 @@ import type { LiveJobs } from "./liveJobs.logic";
 import { backgroundLineOf, jobItems, taskItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { ConversationOpeningStage } from "./ConversationOpeningStage";
+import { useZeropsThreadActivity } from "../../zerops/useZeropsAgentActivity";
 import type { CarriedRow } from "./stepHeight";
 import {
   TimelineRowActivityCtx,
@@ -1208,6 +1209,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // shared state handed every message's markdown a new prop, and each was
   // parsed again.
   const threadRef = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
+  const openingActivity = useZeropsThreadActivity(threadRef);
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
@@ -1611,6 +1613,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           name={openingName}
           mate={mate ?? null}
           threadKey={routeThreadKey}
+          activity={openingActivity}
+          timestampFormat={timestampFormat}
         />
       )}
     </>

@@ -76,8 +76,6 @@ export const WATCHDOG_SILENCE_MS = 10 * 60_000;
 /** The first probe of a usage limit whose reset is unknown, and the longest a probe waits. */
 export const USAGE_PROBE_FIRST_MS = 15 * 60_000;
 export const USAGE_PROBE_MAX_MS = 60 * 60_000;
-/** A usage resume waits this long past the reset the driver gave: the window reopens late. */
-export const USAGE_RESUME_GRACE_MS = 30_000;
 /** What a continuation or a usage resume tells the agent. */
 export const CONTINUE_TEXT = "Continue where you left off.";
 /** A message a restart cut mid-send goes again in its own words, marked so the agent knows. */
@@ -1398,7 +1396,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         _tag: "WakeArmed",
         wakeId: deriveWakeId(b.state.conversationId, "usage-resume", probe.joins ?? "limit"),
         kind: "usage-resume",
-        dueAt: signal.resetsAt + USAGE_RESUME_GRACE_MS,
+        dueAt: signal.resetsAt,
         cron: null,
         principal: probe.principal,
         joins: probe.joins,
@@ -1475,8 +1473,8 @@ const resetTime = (resetsAt: string): number | null => {
 };
 
 /**
- * A usage limit ended `run` and holds the queue. A known reset arms a resume that joins it, 30
- * seconds after the reset (V1's grace: the window reopens late); an
+ * A usage limit ended `run` and holds the queue. A known reset arms a resume that joins it at the
+ * provider's reported reset; an
  * unknown one arms a probe that tries to resume it, waiting 15 minutes, then twice as long after
  * each probe the limit refuses, up to an hour. Only the probe's outcome ends anything; the
  * person can write sooner.
@@ -1503,7 +1501,7 @@ const limited = (b: StepBuilder, run: RunRecord, resetsAt: number | null): void 
     _tag: "WakeArmed",
     wakeId: deriveWakeId(b.state.conversationId, "usage-resume", run.id),
     kind: "usage-resume",
-    dueAt: resetsAt + USAGE_RESUME_GRACE_MS,
+    dueAt: resetsAt,
     cron: null,
     principal: run.principal,
     joins: run.id,

@@ -6,7 +6,7 @@ import {
   mateAttentionAtom,
   shownAttentionProjectsAtom,
 } from "@t3tools/client-runtime/data";
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { Atom } from "effect/reactivity";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
@@ -15,6 +15,7 @@ import { zeropsEnvironmentsAtom } from "../state/zerops";
 import { useUiStateStore } from "../uiStateStore";
 import { matesActivityOf } from "./mateActivity";
 import type { ZeropsAgentActivity } from "./agentActivity";
+import { threadAgentActivity } from "./agentActivity";
 
 const visitsAtom = Atom.make((get) => {
   get.addFinalizer(
@@ -57,6 +58,30 @@ export function sameActivity(
   const before = { ...a, at: "" };
   return shareEqual(before, { ...b, at: "" }) === before;
 }
+
+/** A deadline invalidates a reading; it never claims the provider admitted another turn. */
+function invalidateAtReset(resetsAt: string | undefined, refresh: () => void): () => void {
+  const remaining = resetsAt === undefined ? NaN : Date.parse(resetsAt) - Date.now();
+  if (!(remaining > 0)) return () => {};
+  const timer = setTimeout(refresh, Math.min(remaining, 2 ** 31 - 1));
+  window.addEventListener("focus", refresh);
+  return () => {
+    clearTimeout(timer);
+    window.removeEventListener("focus", refresh);
+  };
+}
+
+export const threadActivityAtom = Atom.family((key: string | null) =>
+  Atom.make((get) => {
+    const ref = key === null ? null : parseScopedThreadKey(key);
+    if (ref === null || key === null) return undefined;
+    const shell = get(environmentThreadShells.threadShellAtom(ref));
+    if (shell === null) return undefined;
+    const activity = threadAgentActivity(shell, get(visitOfThreadAtom(key)));
+    get.addFinalizer(invalidateAtReset(activity.pausedUntil, () => get.refreshSelf()));
+    return activity;
+  }).pipe(Atom.withEquality(sameActivity)),
+);
 
 export const mateActivityAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
@@ -109,19 +134,7 @@ export const mateActivityAtom = Atom.family((projectId: string) =>
     }).get(projectId);
     // The wake only invalidates the projection. The source deadline and current clock decide
     // whether this refusal still applies, including a tab that wakes after the deadline.
-    const resetsAt = activity?.pausedUntil;
-    if (resetsAt !== undefined && Date.parse(resetsAt) > Date.now()) {
-      // Browser timers use a signed 32-bit millisecond delay. A distant provider deadline
-      // can request another derivation at that bound; it cannot become an early reset.
-      const delay = Math.min(Date.parse(resetsAt) - Date.now(), 2 ** 31 - 1);
-      const timer = setTimeout(() => get.refreshSelf(), delay);
-      const wake = () => get.refreshSelf();
-      window.addEventListener("focus", wake);
-      get.addFinalizer(() => {
-        clearTimeout(timer);
-        window.removeEventListener("focus", wake);
-      });
-    }
+    get.addFinalizer(invalidateAtReset(activity?.pausedUntil, () => get.refreshSelf()));
     return activity;
   }).pipe(Atom.withEquality(sameActivity)),
 );

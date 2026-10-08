@@ -144,6 +144,42 @@ const replicate = (mate: UsageLedger, socket: Socket) =>
 
 describe("a Mate's usage reaching HQ", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("refused Claude admissions add no records, tokens or cost to the Usage report", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { core, link, ledger, append, scan } = yield* world;
+          const first = yield* link;
+          const mate = yield* ledger;
+          yield* mate.begin(first.binding);
+          yield* scan(mate, first.binding);
+          const refusal = usageCanonical({
+            type: "assistant",
+            sessionId: "session",
+            error: "rate_limit",
+            timestamp: DateTime.formatIso(DateTime.nowUnsafe()),
+            message: {
+              id: "refused",
+              model: "<synthetic>",
+              usage: {
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_read_input_tokens: 0,
+                cache_creation_input_tokens: 0,
+              },
+            },
+          });
+          yield* append(refusal + "\n");
+          yield* scan(mate, first.binding);
+          yield* replicate(mate, first.socket);
+          const rows = yield* core.sql<{ records: string; tokens: string; cost: string }>`SELECT
+          coalesce(sum((statistics->>'records')::numeric),0)::text AS records,
+          coalesce(sum((statistics->>'tokens')::numeric),0)::text AS tokens,
+          (SELECT coalesce(sum(amount::numeric),0)::text FROM hq_usage_daily CROSS JOIN LATERAL jsonb_each_text(native_cost) AS costs(currency,amount)) AS cost FROM hq_usage_daily`;
+          assert.deepStrictEqual(rows[0], { records: "0", tokens: "0", cost: "0" });
+        }),
+      ),
+    );
+
     it.effect(
       "a Mate's journal reaches HQ exactly once across a dropped link, a restart, a fenced link and a snapshot",
       () =>

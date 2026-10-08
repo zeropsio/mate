@@ -1020,6 +1020,7 @@ describe("a provider refusal in the menu", () => {
         runtimeMode: "full-access",
         activeTurnId: null,
         lastError: "Claude usage limit reached. Send the message again once the limit resets.",
+        usageLimitResetAt: "2026-10-07T02:00:00.000Z",
         updatedAt: "2026-10-06T22:24:44.519Z",
       },
       usagePause: null,
