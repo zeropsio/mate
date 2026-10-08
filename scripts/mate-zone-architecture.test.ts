@@ -1662,16 +1662,25 @@ const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
   // V1's own projection of a tool activity: an engine call (live or imported) carries what V1's
   // row of it shows by construction, and the Zerops result it decodes.
   "apps/server/src/orchestration/ActivityPayloadProjection.ts",
+  // V1's model option diff, pure: both engines decide alike which change needs a new session.
+  "apps/server/src/orchestration/modelSelectionChange.ts",
   "apps/server/src/provider/Services/ProviderService.ts",
+  // The resume state another instance of the same driver left on the thread, read when a
+  // person's agent pick keeps the thread (optional: absent, the session starts fresh).
+  "apps/server/src/provider/Services/ProviderSessionDirectory.ts",
   "apps/server/src/terminal/Manager.ts",
   "apps/server/src/zerops/zeropsActivityResult.ts",
 ]);
 const ENGINE_ALLOWED_OUTSIDE_DIRS: ReadonlyArray<string> = ["apps/server/src/spi/"];
 
 // The engine is the SPI's one consumer (fork.md §3.1): it reaches the drivers through
-// `ProviderService` and its bridge, and no other provider file. Its tests and the
-// `testing/` harness may record through real drivers.
-const ENGINE_PROVIDER_DOOR = "apps/server/src/provider/Services/ProviderService.ts";
+// `ProviderService` and its bridge, and no other provider file but the session directory it
+// reads a handed-over resume cursor from. Its tests and the `testing/` harness may record
+// through real drivers.
+const ENGINE_PROVIDER_DOORS: ReadonlySet<string> = new Set([
+  "apps/server/src/provider/Services/ProviderService.ts",
+  "apps/server/src/provider/Services/ProviderSessionDirectory.ts",
+]);
 
 const isEngineTestFile = (file: string) => isTestFile(file) || file.includes("/testing/");
 
@@ -1692,7 +1701,7 @@ const collectEngineProviderViolations = Effect.fn("collectEngineProviderViolatio
             .join("/")
         : specifier;
       const reachesProvider = target.includes("/provider/") || /\bProviderService\b/.test(clause);
-      if (reachesProvider && target !== ENGINE_PROVIDER_DOOR) {
+      if (reachesProvider && !ENGINE_PROVIDER_DOORS.has(target)) {
         violations.push({ file: relativeFile, specifier });
       }
     }
