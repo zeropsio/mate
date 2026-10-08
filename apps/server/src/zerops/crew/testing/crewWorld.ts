@@ -69,6 +69,7 @@ import {
   type CrewEngineServices,
   type CrewWorld as V1Fakes,
 } from "./crewEngineFixture.ts";
+import { engineWorld } from "./crewEngineWorld.ts";
 import { AS_CREW, KAREL } from "./crewEngineSteps.ts";
 
 export { AS_CREW, CREW_ENGINE_TEST_TIMEOUT, eventually, KAREL };
@@ -195,6 +196,22 @@ export interface CrewChatWas {
   readonly worktreePath?: string | null;
 }
 
+/**
+ * A crewmate's sessions as its world shows them: V1's stints, or the sessions of the engine's one
+ * conversation, each begun for a reason in the crew's words.
+ */
+export interface CrewSessionsSeen {
+  /** Sessions its conversation has had; a rotation adds one. */
+  readonly count: number;
+  /**
+   * The latest: `active` once its agent's session started, `rotate-pending` while a rotation waits
+   * for its next task, `open` otherwise.
+   */
+  readonly latest: "open" | "active" | "rotate-pending";
+  /** Why each began, oldest first, in the crew's words; `null` for the first. */
+  readonly reasons: ReadonlyArray<string | null>;
+}
+
 export interface CrewWorld {
   readonly name: CrewWorldName;
   /** The service repository the crew works in: your tree; `backend`'s copy is `.crew/backend`. */
@@ -292,6 +309,11 @@ export interface CrewWorld {
   /** The crew feed: the current frame at once, then one per change. */
   readonly frames: Stream.Stream<CrewSnapshot>;
   readonly sent: Effect.Effect<ReadonlyArray<CrewSent>>;
+  /** A crewmate's sessions once `check` holds for them; it waits on the crew. */
+  readonly sessionsWhere: (
+    handle: string,
+    check: (sessions: CrewSessionsSeen) => boolean,
+  ) => Effect.Effect<CrewSessionsSeen>;
   /** As whom each turn the crew started (or tried to) was asked to run, in order. */
   readonly admissions: Effect.Effect<ReadonlyArray<TurnPrincipal>>;
   readonly tasks: Effect.Effect<ReadonlyArray<CrewHeldTask>>;
@@ -477,6 +499,17 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
     );
   /** Each conversation's latest turn end, to deliver again. */
   const lastEnds = new Map<CrewChat, SpiEvent>();
+  /** A crewmate's stints as sessions: one per stint, the latest's state, each one's reason. */
+  const seenOf = (snapshot: CrewSnapshot, handle: string): CrewSessionsSeen | undefined => {
+    const mate = snapshot.crewmates.find((entry) => entry.handle === handle);
+    if (mate === undefined) return undefined;
+    const latest = mate.stints.at(-1)?.state;
+    return {
+      count: mate.stints.length,
+      latest: latest === "active" || latest === "rotate-pending" ? latest : "open",
+      reasons: mate.stints.map((stint) => stint.reason),
+    };
+  };
   const policy = run(Effect.flatMap(ThreadToolPolicyRegistry, (registry) => registry.current));
   return {
     name: "v1",
@@ -583,6 +616,14 @@ const v1Port = (fakes: V1Fakes, context: Context.Context<CrewEngineServices>): V
     snapshot: snapshotWhere(() => true),
     snapshotWhere,
     frames: Stream.unwrap(Effect.map(engine, (service) => service.snapshot)),
+    sessionsWhere: (handle, check) =>
+      Effect.map(
+        snapshotWhere((snapshot) => {
+          const seen = seenOf(snapshot, handle);
+          return seen !== undefined && check(seen);
+        }),
+        (snapshot) => seenOf(snapshot, handle)!,
+      ),
     sent: Effect.map(Ref.get(fakes.dispatched), (all) =>
       all.flatMap((command) => {
         const sent = sentOf(command);
@@ -662,9 +703,10 @@ const v1Phases = <E>(
     options.toolProfiles === true ? { installer: () => installCrewThreadPolicy } : {},
   ).pipe(Effect.orDie);
 
-/** Every world the journeys run on; part D adds `engine`. */
+/** Every world the journeys run on. */
 export const CREW_WORLDS: Partial<Record<CrewWorldName, CrewWorldRunner>> = {
   v1: v1Phases,
+  engine: engineWorld,
 };
 
 /**

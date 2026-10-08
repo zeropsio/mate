@@ -362,6 +362,16 @@ export const admissionFake = (world: CrewFixtureWorld) =>
             : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal })),
         ),
       ),
+    // The engine's runs (`run.prepare`), recorded and refused as V1's turns are.
+    admitRun: ({ principal }) =>
+      Ref.update(world.admitted, (all) => [...all, { type: "run", principal }]).pipe(
+        Effect.andThen(Ref.get(world.refusal)),
+        Effect.flatMap((refusal) =>
+          refusal === undefined
+            ? Effect.void
+            : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal })),
+        ),
+      ),
     admitOperator: ({ instanceIds, principal }) =>
       Ref.update(world.operated, (all) => [...all, { instanceIds, principal }]).pipe(
         Effect.andThen(Ref.get(world.notTheirs)),
@@ -626,7 +636,7 @@ export const withCrewEngines = <E>(
  * 60 s, with files in parallel, and an engine's work — copies, commits, a merge, a check, each a
  * git or shell process — takes longer on a loaded machine without anything going wrong.
  */
-export const CREW_ENGINE_TEST_TIMEOUT = 120_000;
+export const CREW_ENGINE_TEST_TIMEOUT = Number(process.env.CREW_JOURNEY_TIMEOUT ?? 120_000);
 
 /** One engine: see {@link withCrewEngines}. */
 export const withCrewEngine = <E>(
