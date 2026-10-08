@@ -3763,3 +3763,33 @@ it("a restart remains the cause on its turn after a later message", () => {
   expect(read.turns[0]?.interruption).toEqual(interruption);
   expect(read.turns[0]?.byMessage).toBe(false);
 });
+
+it("a restart before the provider acknowledges its first turn stays with the accepted message", () => {
+  const opener = user("accepted", 0, "Inspect the service");
+  if (opener.kind !== "message") throw new Error("Expected accepted message");
+  const interruption = {
+    turnId: null,
+    messageId: opener.message.id,
+    restart: { cause: "restarted" as const, at: at(9) },
+    continuation: "manual" as const,
+  };
+  const cut: TimelineEntry = {
+    id: "restart",
+    kind: "work",
+    createdAt: at(9),
+    entry: {
+      id: "restart",
+      createdAt: at(9),
+      label: "Interrupted",
+      tone: "info",
+      interruption,
+      turnId: null,
+      sourceActivityKind: "runtime.interrupted",
+    },
+  };
+  const read = structure([opener, cut, user("next", 10, "Continue")]);
+  expect(read.turns).toHaveLength(1);
+  expect(read.turns[0]?.span.opener?.message.id).toBe(opener.message.id);
+  expect(read.turns[0]?.interruption).toEqual(interruption);
+  expect(read.turns[0]?.byMessage).toBe(false);
+});

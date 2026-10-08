@@ -1,5 +1,6 @@
 import {
   ApprovalRequestId,
+  mateInterruptionOf,
   UserInputAttachmentAnswerPayload,
   type ChatAttachment,
   type MessageId,
@@ -1224,8 +1225,18 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           const existingTurns = yield* projectionTurnRepository.listByThreadId({
             threadId: event.payload.threadId,
           });
+          const interruptedStarts = new Set(
+            (yield* projectionThreadActivityRepository.listByThreadId(event.payload)).flatMap(
+              (row) => {
+                const item = mateInterruptionOf(row);
+                return item?.turnId === null && item.messageId !== undefined
+                  ? [item.messageId]
+                  : [];
+              },
+            ),
+          );
           const keptRows = retainProjectionMessagesAfterRevert(
-            existingRows,
+            existingRows.filter((row) => !interruptedStarts.has(row.messageId)),
             existingTurns,
             event.payload.turnCount,
           );
@@ -1318,6 +1329,27 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           });
           return;
 
+        case "thread.turn-start-requested": {
+          const session = yield* projectionThreadSessionRepository.getByThreadId(event.payload);
+          const pending = Option.isSome(session) ? session.value.interruption : null;
+          if (pending == null) return;
+          const rows = yield* projectionThreadActivityRepository.listByThreadId(event.payload);
+          for (const row of rows) {
+            const item = mateInterruptionOf(row);
+            if (
+              row.kind !== "runtime.interrupted" ||
+              item === null ||
+              item.turnId !== pending.turnId ||
+              item.messageId !== pending.messageId
+            )
+              continue;
+            yield* projectionThreadActivityRepository.upsert({
+              ...row,
+              payload: { interruption: { ...item, continuation: "requested" } },
+            });
+          }
+          return;
+        }
         case "thread.session-set": {
           const interruption = event.payload.session.interruption;
           if (interruption == null) return;
@@ -1364,7 +1396,7 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             existingRows,
             existingTurns,
             event.payload.turnCount,
-          );
+          ).filter((row) => mateInterruptionOf(row)?.turnId !== null);
           if (keptRows.length === existingRows.length) {
             return;
           }
@@ -1402,6 +1434,26 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             updatedAt: event.occurredAt,
           });
         }
+        return;
+      }
+      if (event.type === "thread.reverted") {
+        const session = yield* projectionThreadSessionRepository.getByThreadId(event.payload);
+        if (Option.isNone(session) || session.value.interruption == null) return;
+        const turns = yield* projectionTurnRepository.listByThreadId(event.payload);
+        const retained = turns.some(
+          (turn) =>
+            turn.turnId === session.value.interruption?.turnId &&
+            turn.turnId !== null &&
+            turn.checkpointTurnCount !== null &&
+            turn.checkpointTurnCount <= event.payload.turnCount,
+        );
+        if (!retained)
+          yield* projectionThreadSessionRepository.upsert({
+            ...session.value,
+            interruption: null,
+            status: session.value.status === "interrupted" ? "ready" : session.value.status,
+            updatedAt: event.occurredAt,
+          });
         return;
       }
       if (event.type !== "thread.session-set") {
@@ -1508,7 +1560,13 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
               threadId: event.payload.threadId,
             });
             yield* Effect.forEach(
-              existingTurns.filter((turn) => turn.turnId !== null && turn.state === "running"),
+              existingTurns.filter(
+                (turn) =>
+                  turn.turnId !== null &&
+                  (turn.state === "running" ||
+                    (event.payload.session.interruption?.turnId === turn.turnId &&
+                      turn.state === "error")),
+              ),
               (turn) =>
                 turn.turnId === null
                   ? Effect.void

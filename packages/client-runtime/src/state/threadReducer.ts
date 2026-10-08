@@ -12,6 +12,7 @@ import type {
   OrchestrationThreadActivity,
   TurnId,
 } from "@t3tools/contracts";
+import { mateInterruptionOf } from "@t3tools/contracts";
 import { isToolCallEcho, toolCallEchoKey } from "@t3tools/shared/toolCallEcho";
 
 export type ThreadDetailReducerResult =
@@ -341,6 +342,22 @@ export function applyThreadDetailEvent(
         kind: "updated",
         thread: {
           ...thread,
+          activities:
+            thread.session?.interruption == null
+              ? thread.activities
+              : thread.activities.map((activity) => {
+                  const item = mateInterruptionOf(activity);
+                  const pending = thread.session?.interruption;
+                  return item === null ||
+                    pending == null ||
+                    item.turnId !== pending.turnId ||
+                    item.messageId !== pending.messageId
+                    ? activity
+                    : {
+                        ...activity,
+                        payload: { interruption: { ...item, continuation: "requested" } },
+                      };
+                }),
           session:
             thread.session?.interruption == null
               ? thread.session
@@ -507,7 +524,9 @@ export function applyThreadDetailEvent(
                   : null,
             }
           : thread.latestTurn !== null &&
-              thread.latestTurn.state === "running" &&
+              (thread.latestTurn.state === "running" ||
+                (thread.latestTurn.state === "error" &&
+                  thread.latestTurn.turnId === event.payload.session.interruption?.turnId)) &&
               settledTurnState !== null
             ? {
                 ...thread.latestTurn,
@@ -647,14 +666,26 @@ export function applyThreadDetailEvent(
       );
 
       const retainedTurnIds = new Set(Arr.map(checkpoints, (entry) => entry.turnId));
-      const messages = retainMessagesAfterRevert(thread.messages, retainedTurnIds);
+      const interruptedStarts = new Set(
+        thread.activities.flatMap((activity) => {
+          const item = mateInterruptionOf(activity);
+          return item?.turnId === null && item.messageId !== undefined ? [item.messageId] : [];
+        }),
+      );
+      const messages = retainMessagesAfterRevert(thread.messages, retainedTurnIds).filter(
+        (message) => !interruptedStarts.has(message.id),
+      );
       const proposedPlans = pipe(
         thread.proposedPlans,
         Arr.filter((plan) => plan.turnId === null || retainedTurnIds.has(plan.turnId)),
       );
       const activities = pipe(
         thread.activities,
-        Arr.filter((activity) => activity.turnId === null || retainedTurnIds.has(activity.turnId)),
+        Arr.filter(
+          (activity) =>
+            (activity.turnId === null || retainedTurnIds.has(activity.turnId)) &&
+            mateInterruptionOf(activity)?.turnId !== null,
+        ),
       );
       const latestCheckpoint = checkpoints.at(-1) ?? null;
 
@@ -666,6 +697,17 @@ export function applyThreadDetailEvent(
           messages,
           proposedPlans,
           activities,
+          session:
+            thread.session?.interruption == null ||
+            (thread.session.interruption.turnId !== null &&
+              retainedTurnIds.has(thread.session.interruption.turnId))
+              ? thread.session
+              : {
+                  ...thread.session,
+                  interruption: null,
+                  status: thread.session.status === "interrupted" ? "ready" : thread.session.status,
+                  updatedAt: event.occurredAt,
+                },
           latestTurn:
             latestCheckpoint === null
               ? null

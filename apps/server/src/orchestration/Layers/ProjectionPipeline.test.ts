@@ -5162,6 +5162,85 @@ it.layer(
           readonly kind: string;
         }>`SELECT turn_id AS "turnId", kind FROM projection_thread_activities WHERE thread_id = ${threadId}`;
         assert.deepStrictEqual(retained, history);
+        const [continued] = yield* sql<{
+          readonly continuation: string;
+        }>`SELECT json_extract(payload_json, '$.interruption.continuation') AS continuation FROM projection_thread_activities WHERE thread_id = ${threadId}`;
+        assert.strictEqual(continued?.continuation, "requested");
+        // Rewind removes the original affected turn as well as its recovery item.
+        yield* append({
+          ...fields,
+          eventId: EventId.make("restart-again"),
+          type: "thread.session-set",
+          payload: {
+            threadId,
+            session: { ...session, status: "interrupted", activeTurnId: null, interruption },
+          },
+        });
+        yield* append({
+          ...fields,
+          eventId: EventId.make("rewind"),
+          type: "thread.reverted",
+          payload: { threadId, turnCount: 0 },
+        });
+        const rewound = (yield* query.getCommandReadModel()).threads.find(
+          (value) => value.id === threadId,
+        );
+        assert.strictEqual(rewound?.session?.interruption, null);
+        assert.strictEqual(rewound?.latestTurn, null);
+        assert.deepStrictEqual(
+          yield* sql`SELECT * FROM projection_thread_activities WHERE thread_id = ${threadId}`,
+          [],
+        );
+
+        // The accepted first message can be cut off before a provider assigns any turn id.
+        const messageId = MessageId.make("handshake-message");
+        yield* append({
+          ...fields,
+          eventId: EventId.make("handshake-message"),
+          type: "thread.message-sent",
+          payload: {
+            threadId,
+            messageId,
+            role: "user",
+            text: "Work",
+            turnId: null,
+            streaming: false,
+            createdAt: at,
+            updatedAt: at,
+          },
+        });
+        yield* append({
+          ...fields,
+          eventId: EventId.make("handshake-restart"),
+          type: "thread.session-set",
+          payload: {
+            threadId,
+            session: {
+              ...session,
+              status: "interrupted",
+              activeTurnId: null,
+              interruption: { ...interruption, turnId: null, messageId },
+            },
+          },
+        });
+        yield* append({
+          ...fields,
+          eventId: EventId.make("handshake-rewind"),
+          type: "thread.reverted",
+          payload: { threadId, turnCount: 0 },
+        });
+        const removedHandshake = (yield* query.getCommandReadModel()).threads.find(
+          (value) => value.id === threadId,
+        );
+        assert.strictEqual(removedHandshake?.session?.interruption, null);
+        assert.deepStrictEqual(
+          yield* sql`SELECT * FROM projection_thread_activities WHERE thread_id = ${threadId}`,
+          [],
+        );
+        assert.deepStrictEqual(
+          yield* sql`SELECT * FROM projection_thread_messages WHERE thread_id = ${threadId} AND message_id = ${messageId}`,
+          [],
+        );
       }),
   );
 });

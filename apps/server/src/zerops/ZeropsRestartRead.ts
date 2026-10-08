@@ -167,3 +167,19 @@ export function restartCause(input: {
   }
   return { cause: "restarted", at: bootAt };
 }
+
+// Only the exact sentence written by the old boot reconciler is legacy restart evidence.
+const oldRestart =
+  /^.+(?: was (restarted|stopped|redeployed)(?: by .+)? at |'s container was (replaced) at | (restarted) at )(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z); its running turn was interrupted\. Send a message to continue\.$/u;
+
+export function legacyRestartCause(lastError: string | null): MateRestart | null {
+  const match = lastError === null ? null : oldRestart.exec(lastError);
+  if (match === null) return null;
+  const cause = match[1] ?? match[2] ?? match[3];
+  return cause === "restarted" ||
+    cause === "replaced" ||
+    cause === "stopped" ||
+    cause === "redeployed"
+    ? { cause, at: match[4]! }
+    : null;
+}

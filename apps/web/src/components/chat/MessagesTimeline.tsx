@@ -374,7 +374,9 @@ interface MessagesTimelineProps {
   limit?: MateLimit;
   onUsageAutoResumeChange?: ((enabled: boolean) => void) | null;
   interruption?: import("@t3tools/contracts").MateInterruption | null;
-  onRestartContinue?: ((turnId: TurnId) => void) | null;
+  onRestartContinue?:
+    | ((interruption: import("@t3tools/contracts").MateInterruption) => void)
+    | null;
   onUsageContinue?: (() => void) | null;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;

@@ -1,6 +1,7 @@
 import { V1UpdateDrain } from "./update/V1UpdateDrain.ts";
 import {
   CommandId,
+  EventId,
   DEFAULT_MODEL,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   type ModelSelection,
@@ -26,6 +27,13 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
+import { ProjectionTurnRepository } from "./persistence/Services/ProjectionTurns.ts";
+import { ProjectionThreadActivityRepository } from "./persistence/Services/ProjectionThreadActivities.ts";
+import { ProjectionPendingApprovalRepository } from "./persistence/Services/ProjectionPendingApprovals.ts";
+import { ProjectionTurnRepositoryLive } from "./persistence/Layers/ProjectionTurns.ts";
+import { ProjectionThreadActivityRepositoryLive } from "./persistence/Layers/ProjectionThreadActivities.ts";
+import { ProjectionPendingApprovalRepositoryLive } from "./persistence/Layers/ProjectionPendingApprovals.ts";
+import { openUserInputRequests } from "./orchestration/pendingUserInput.ts";
 import * as ServerConfig from "./config.ts";
 import { mateUpdateBootPending } from "./mateUpdateBoot.ts";
 import { MateEngine, type MateEngineService } from "./engine/MateEngine.ts";
@@ -45,7 +53,7 @@ import {
   isBootstrapDecidable,
   resolveZeropsBootstrapModelSelection,
 } from "./zerops/ZeropsBootstrapModel.ts";
-import { restartCause, ZeropsRestartRead } from "./zerops/ZeropsRestartRead.ts";
+import { legacyRestartCause, restartCause, ZeropsRestartRead } from "./zerops/ZeropsRestartRead.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 import { forkParked } from "./serverActivation.ts";
 import { ServerCommandReadiness } from "./spi/serverCommandReadiness.ts";
@@ -414,21 +422,28 @@ export const reconcileProviderSessions = Effect.gen(function* () {
       thread.session !== null &&
       (thread.session.status === "starting" ||
         thread.session.status === "running" ||
-        thread.session.activeTurnId !== null) &&
+        thread.session.activeTurnId !== null ||
+        (thread.session.status === "error" &&
+          thread.session.activeTurnId === null &&
+          thread.latestTurn?.state === "error" &&
+          legacyRestartCause(thread.session.lastError) !== null)) &&
       !liveThreadIds.has(thread.id),
   );
 
   if (orphanedThreads.length === 0) return;
   // The platform is asked once for the whole boot, never once per thread and never retried.
-  // Outside Zerops there is no own-key reader; the plain restart message still applies.
+  // Outside Zerops the observed boot remains the restart evidence.
   const reader = yield* Effect.serviceOption(ZeropsRestartRead);
-  const evidence = Option.isSome(reader)
-    ? yield* reader.value.read.pipe(
-        Effect.catchCause((cause) =>
-          Cause.hasInterrupts(cause) ? Effect.failCause(cause) : Effect.succeed(null),
-        ),
-      )
-    : null;
+  const evidence =
+    orphanedThreads.some(
+      (thread) => thread.session?.status !== "error" || thread.session.activeTurnId !== null,
+    ) && Option.isSome(reader)
+      ? yield* reader.value.read.pipe(
+          Effect.catchCause((cause) =>
+            Cause.hasInterrupts(cause) ? Effect.failCause(cause) : Effect.succeed(null),
+          ),
+        )
+      : null;
 
   for (const thread of orphanedThreads) {
     const session = thread.session;
@@ -455,14 +470,71 @@ export const reconcileProviderSessions = Effect.gen(function* () {
       ),
     );
 
+    const reconciledAt = DateTime.formatIso(yield* DateTime.now);
+    const activities = yield* ProjectionThreadActivityRepository;
+    const approvals = yield* ProjectionPendingApprovalRepository;
+    const nativeQuestions = openUserInputRequests(
+      yield* activities.listUserInputLifecycleByThreadId({ threadId: thread.id }),
+    ).filter(
+      (activity) =>
+        typeof activity.payload === "object" &&
+        activity.payload !== null &&
+        (activity.payload as Record<string, unknown>).responseMode !== "message",
+    );
+    const deadRequests = [
+      ...nativeQuestions.map((activity) => ({
+        kind: "user-input.resolved",
+        turnId: activity.turnId,
+        requestId: (activity.payload as Record<string, unknown>).requestId,
+      })),
+      ...(yield* approvals.listByThreadId({ threadId: thread.id }))
+        .filter((approval) => approval.status === "pending")
+        .map((approval) => ({
+          kind: "approval.resolved",
+          turnId: approval.turnId,
+          requestId: approval.requestId,
+        })),
+    ];
+    for (const request of deadRequests) {
+      yield* orchestrationEngine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.make(yield* crypto.randomUUIDv4),
+        threadId: thread.id,
+        createdAt: reconciledAt,
+        activity: {
+          id: EventId.make(yield* crypto.randomUUIDv4),
+          createdAt: reconciledAt,
+          tone: "info",
+          kind: request.kind,
+          summary: "Request ended when the Mate restarted",
+          payload: { requestId: request.requestId },
+          turnId: request.turnId,
+        },
+      });
+    }
+    const legacyRestart =
+      session.status === "error" &&
+      session.activeTurnId === null &&
+      thread.latestTurn?.state === "error"
+        ? legacyRestartCause(session.lastError)
+        : null;
+    const interruptedTurnId =
+      session.activeTurnId ??
+      (thread.latestTurn?.state === "running" || legacyRestart !== null
+        ? (thread.latestTurn?.turnId ?? null)
+        : null);
+    const pending =
+      interruptedTurnId !== null
+        ? Option.none()
+        : yield* (yield* ProjectionTurnRepository).getPendingTurnStartByThreadId({
+            threadId: thread.id,
+          });
+    const messageId = Option.isSome(pending) ? pending.value.messageId : null;
+    const commandId = CommandId.make(yield* crypto.randomUUIDv4);
     yield* Effect.gen(function* () {
-      const interruptedTurnId =
-        session.activeTurnId ??
-        (thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null);
-      const reconciledAt = DateTime.formatIso(yield* DateTime.now);
       yield* orchestrationEngine.dispatch({
         type: "thread.session.set",
-        commandId: CommandId.make(yield* crypto.randomUUIDv4),
+        commandId,
         threadId: thread.id,
         session: {
           ...session,
@@ -470,19 +542,22 @@ export const reconcileProviderSessions = Effect.gen(function* () {
           activeTurnId: null,
           lastError: null,
           interruption:
-            interruptedTurnId === null
+            interruptedTurnId === null && messageId === null
               ? null
               : {
                   turnId: interruptedTurnId,
+                  ...(messageId === null ? {} : { messageId }),
                   continuation: "manual",
-                  restart: restartCause({
-                    evidence,
-                    lastActivityAt:
-                      Date.parse(thread.updatedAt) > Date.parse(session.updatedAt)
-                        ? thread.updatedAt
-                        : session.updatedAt,
-                    bootAt,
-                  }),
+                  restart:
+                    legacyRestart ??
+                    restartCause({
+                      evidence,
+                      lastActivityAt:
+                        Date.parse(thread.updatedAt) > Date.parse(session.updatedAt)
+                          ? thread.updatedAt
+                          : session.updatedAt,
+                      bootAt,
+                    }),
                 },
           updatedAt: reconciledAt,
         },
@@ -714,6 +789,14 @@ export const make = (options?: StartupOptions) =>
   });
 
 export const layerWithOptions = (options?: StartupOptions) =>
-  Layer.effect(ServerRuntimeStartup, make(options));
+  Layer.effect(ServerRuntimeStartup, make(options)).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        ProjectionTurnRepositoryLive,
+        ProjectionThreadActivityRepositoryLive,
+        ProjectionPendingApprovalRepositoryLive,
+      ),
+    ),
+  );
 
 export const layer = layerWithOptions();

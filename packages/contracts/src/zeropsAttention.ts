@@ -27,6 +27,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
   TurnId,
+  MessageId,
 } from "./baseSchemas.ts";
 
 /** The most ids each list of a Mate's attention carries. */
@@ -73,11 +74,32 @@ export const MateRestart = Schema.Struct({
 export type MateRestart = typeof MateRestart.Type;
 
 export const MateInterruption = Schema.Struct({
-  turnId: TurnId,
+  turnId: Schema.NullOr(TurnId),
+  messageId: Schema.optionalKey(MessageId),
   restart: MateRestart,
-  continuation: Schema.Literals(["manual", "automatic", "continued", "none"]),
-});
+  continuation: Schema.Literals(["manual", "requested", "automatic", "continued", "none"]),
+}).check(
+  Schema.makeFilter((item) => item.turnId !== null || item.messageId !== undefined, {
+    message: "An interruption must name its turn or accepted message.",
+  }),
+);
 export type MateInterruption = typeof MateInterruption.Type;
+const isMateInterruption = Schema.is(MateInterruption);
+
+/** Read typed restart evidence on a durable activity, never from its preview words. */
+export function mateInterruptionOf(activity: {
+  readonly kind: string;
+  readonly payload: unknown;
+}): MateInterruption | null {
+  const payload = activity.payload;
+  return activity.kind === "runtime.interrupted" &&
+    typeof payload === "object" &&
+    payload !== null &&
+    "interruption" in payload &&
+    isMateInterruption(payload.interruption)
+    ? payload.interruption
+    : null;
+}
 
 /** A chat waiting on its person, at the turn it waits in (none before its first). */
 export const MateAttentionQuestion = Schema.Struct({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
-import { MateAttentionSource } from "./zeropsAttention.ts";
+import { MateAttentionSource, MateInterruption } from "./zeropsAttention.ts";
 
 const source = { environmentId: "env", incarnation: "boot", revision: 9 };
 const decode = Schema.decodeUnknownSync(MateAttentionSource);
@@ -21,5 +21,17 @@ describe("MateAttentionSource", () => {
 
   it.each([-1, 1.5, null, "1"])("rejects an invalid explicit epoch: %s", (epoch) => {
     expect(() => decode({ ...source, epoch })).toThrow();
+  });
+});
+
+describe("MateInterruption", () => {
+  const restart = { cause: "replaced", at: "2026-10-08T08:24:39.700Z" };
+  const decodeInterruption = Schema.decodeUnknownSync(MateInterruption);
+  it("anchors interrupted first-handshake work to its accepted message", () => {
+    const item = { turnId: null, messageId: "accepted", restart, continuation: "manual" };
+    expect(decodeInterruption(item)).toEqual(item);
+  });
+  it("rejects an interruption with no affected work", () => {
+    expect(() => decodeInterruption({ turnId: null, restart, continuation: "manual" })).toThrow();
   });
 });

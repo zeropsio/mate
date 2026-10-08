@@ -467,6 +467,18 @@ export function deriveTurnSpans(input: {
     }
     const turnId = entryTurnId(entry, calls);
     if (turnId === null) {
+      const messageId = entry.kind === "work" ? entry.entry.interruption?.messageId : undefined;
+      if (messageId !== undefined) {
+        const openerIndex = input.timelineEntries.findIndex(
+          (candidate) => isUserMessageEntry(candidate) && candidate.message.id === messageId,
+        );
+        const opener = input.timelineEntries[openerIndex];
+        if (opener !== undefined && isUserMessageEntry(opener)) {
+          const span = open(null, { entry: opener, index: openerIndex });
+          span.entryIndexes.push(index);
+          unclaimed = unclaimed.filter((candidate) => candidate.index > openerIndex);
+        }
+      }
       if (endsTheWait(entry)) unclaimed = [];
       continue;
     }

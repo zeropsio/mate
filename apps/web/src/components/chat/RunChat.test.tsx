@@ -947,7 +947,7 @@ describe("RunChat, as the person uses it", () => {
       continuation: "manual" as const,
     };
     const onRestartContinue = vi.fn();
-    const row = record([step(command("cut", "inspect"))], {
+    let row = record([step(command("cut", "inspect"))], {
       status: status({ live: false, face: "interrupted", endedAt: at(9), interruption }),
     });
     const view = (pending: typeof interruption | null) => (
@@ -964,7 +964,14 @@ describe("RunChat, as the person uses it", () => {
     act(() => {
       button(renderer, "Continue").props.onClick();
     });
-    expect(onRestartContinue).toHaveBeenCalledExactlyOnceWith(turnId);
+    expect(onRestartContinue).toHaveBeenCalledExactlyOnceWith(interruption);
+    row = {
+      ...row,
+      status: status({
+        ...row.status,
+        interruption: { ...interruption, continuation: "requested" },
+      }),
+    };
     act(() => {
       renderer.update(view(null));
     });
@@ -2677,6 +2684,15 @@ describe("a turn interrupted by a Mate restart", () => {
       expect(html).not.toContain("2026-09-27T");
       expect(html).not.toContain("Needs attention");
       expect(drawWith(null)).not.toContain(">Continue</button>");
+      const resumed = draw({
+        ...row,
+        status: status({
+          ...row.status,
+          interruption: { ...interruption, continuation: "requested" },
+        }),
+      });
+      expect(resumed).not.toContain("Interrupted");
+      expect(resumed).toContain("continuation requested");
     },
   );
 });
@@ -2684,6 +2700,7 @@ describe("a turn interrupted by a Mate restart", () => {
 it.each([
   ["automatic", "continuation scheduled"],
   ["continued", "continued automatically"],
+  ["requested", "continuation requested"],
 ] as const)("a restart says %s only from the recorded continuation", (continuation, words) => {
   const interruption = { turnId, restart: { cause: "replaced" as const, at: at(9) }, continuation };
   const html = draw(
@@ -2694,4 +2711,8 @@ it.each([
   expect(html).toContain(words);
   expect(html).not.toContain(">Continue</button>");
   if (continuation === "automatic") expect(html).not.toContain("continued automatically");
+  if (continuation === "requested") {
+    expect(html).not.toContain("Interrupted");
+    expect(html).not.toContain(">Continue</button>");
+  }
 });

@@ -3167,9 +3167,11 @@ function NowLine({
           words:
             status.interruption.continuation === "automatic"
               ? `${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)} · continuation scheduled`
-              : status.interruption.continuation === "continued"
-                ? `${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)} · continued automatically`
-                : `Interrupted — ${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)}`,
+              : status.interruption.continuation === "requested"
+                ? `${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)} · continuation requested`
+                : status.interruption.continuation === "continued"
+                  ? `${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)} · continued automatically`
+                  : `Interrupted — ${restartWords(ctx.speaker.name, status.interruption, ctx.timestampFormat)}`,
           effort: null,
         }
       : baseLine;
@@ -3177,12 +3179,13 @@ function NowLine({
   // (`nowLineCalm.logic`); the run's end shows at once.
   const line = useCalmLine(latest, nowLineWords(latest), !status.live);
   const settledFace = nowLineFace(line, status);
-  const face =
+  const restartPending =
     !status.live &&
     status.interruption?.continuation === "manual" &&
-    ctx.interruption?.turnId === status.interruption.turnId
-      ? { ...settledFace, state: "needs" as const }
-      : settledFace;
+    ctx.interruption != null &&
+    ctx.interruption.turnId === status.interruption.turnId &&
+    ctx.interruption.messageId === status.interruption.messageId;
+  const face = restartPending ? { ...settledFace, state: "needs" as const } : settledFace;
   const words = nowLineWords(line);
   // The line's words change in place as the run goes: the old ones leave
   // where they stood as the new ones rise into it, so a change reads as the
@@ -3240,14 +3243,13 @@ function NowLine({
           <RunTicker status={status} />
           {end}
         </span>
-      ) : status.interruption?.continuation === "manual" &&
-        ctx.interruption?.turnId === status.interruption.turnId ? (
+      ) : restartPending ? (
         <span className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
             disabled={ctx.onRestartContinue == null}
-            onClick={() => ctx.onRestartContinue?.(status.interruption!.turnId)}
+            onClick={() => ctx.onRestartContinue?.(status.interruption!)}
           >
             Continue
           </Button>

@@ -8,6 +8,10 @@ import {
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import { ProjectionTurnRepository } from "./persistence/Services/ProjectionTurns.ts";
+import { ProjectionThreadActivityRepository } from "./persistence/Services/ProjectionThreadActivities.ts";
+import { ProjectionPendingApprovalRepository } from "./persistence/Services/ProjectionPendingApprovals.ts";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -21,6 +25,14 @@ import { ProviderSessionDirectoryPersistenceError } from "./provider/Errors.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
+
+const recoveryRepositories = Layer.mergeAll(
+  Layer.mock(ProjectionTurnRepository)({ getPendingTurnStartByThreadId: () => Effect.succeedNone }),
+  Layer.mock(ProjectionThreadActivityRepository)({
+    listUserInputLifecycleByThreadId: () => Effect.succeed([]),
+  }),
+  Layer.mock(ProjectionPendingApprovalRepository)({ listByThreadId: () => Effect.succeed([]) }),
+);
 
 const providerInstanceId = ProviderInstanceId.make("codex");
 const updatedAt = "2026-08-20T12:00:00.000Z";
@@ -96,7 +108,7 @@ const runReconciliation = (input: {
       subscribeDomainEvents: Effect.succeed(Stream.empty),
       latestSequence: Effect.succeed(0),
     }),
-    Effect.provide(NodeServices.layer),
+    Effect.provide(Layer.mergeAll(recoveryRepositories, NodeServices.layer)),
   );
 
 it.effect("reconciles multiple active and archived orphans but skips live sessions", () => {
@@ -303,7 +315,7 @@ it.effect("does not fail startup when the live provider session inventory cannot
       subscribeDomainEvents: Effect.succeed(Stream.empty),
       latestSequence: Effect.succeed(0),
     }),
-    Effect.provide(NodeServices.layer),
+    Effect.provide(Layer.mergeAll(recoveryRepositories, NodeServices.layer)),
     Effect.tap(() => Effect.sync(() => assert.equal(queried, false))),
   );
 });

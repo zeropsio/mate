@@ -8668,10 +8668,13 @@ export default function ChatView(props: ChatViewProps) {
                   onRestartContinue:
                     isWorking || isSendBusy || activePendingProgress || zeropsShownReadOnly !== null
                       ? null
-                      : (turnId) => {
+                      : (interruption) => {
+                          const pending = activeServerThread?.session?.interruption;
                           if (
                             activeThreadKey === null ||
-                            activeServerThread?.session?.interruption?.turnId !== turnId
+                            pending == null ||
+                            pending.turnId !== interruption.turnId ||
+                            pending.messageId !== interruption.messageId
                           )
                             return;
                           const message = useQueuedMessageStore

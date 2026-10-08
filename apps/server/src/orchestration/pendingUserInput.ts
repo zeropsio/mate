@@ -34,6 +34,8 @@ export function openUserInputRequests<Activity extends UserInputLifecycleActivit
   activities: ReadonlyArray<Activity>,
 ): ReadonlyArray<Activity> {
   const open = new Map<string, Activity>();
+  // Request ids are unique: a terminal receipt stays final at equal timestamps or out-of-order replay.
+  const closed = new Set<string>();
   const ordered = [...activities].toSorted(
     (left, right) =>
       left.createdAt.localeCompare(right.createdAt) ||
@@ -44,12 +46,14 @@ export function openUserInputRequests<Activity extends UserInputLifecycleActivit
     const requestId = payload?.requestId;
     if (typeof requestId !== "string") continue;
     if (activity.kind === "user-input.requested") {
-      open.set(requestId, activity);
+      if (!closed.has(requestId)) open.set(requestId, activity);
     } else if (activity.kind === "user-input.resolved") {
+      closed.add(requestId);
       open.delete(requestId);
     } else if (activity.kind === "provider.user-input.respond.failed") {
       const detail = typeof payload?.detail === "string" ? payload.detail.toLowerCase() : "";
       if (STALE_REQUEST_FAILURES.some((failure) => detail.includes(failure))) {
+        closed.add(requestId);
         open.delete(requestId);
       }
     }
