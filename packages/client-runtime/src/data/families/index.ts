@@ -32,6 +32,7 @@ import { mateSetupFamily } from "./mateSetup.ts";
 import { locationLatencyFamily } from "./locationLatency.ts";
 import { hqLifecycleFamily } from "./hqLifecycle.ts";
 import { mateImageFamily } from "./mateImage.ts";
+import { MATE_ENGINE_FAMILIES } from "./mateEngine.ts";
 /**
  * The fact families this account holds. A new family is one module beside these and one line
  * here; the reducer, the store and the Zerops adapter loop over this list.
@@ -97,6 +98,7 @@ export function defineFamilies(
 export const FAMILIES = defineFamilies([
   mateShellFamily,
   mateThreadFamily,
+  ...MATE_ENGINE_FAMILIES,
   mateGitRemoteFamily,
   mateRepositoryDiscoveryFamily,
   mateRepositoryFamily,
@@ -204,7 +206,11 @@ export function scopeListing(scope: ScopeKey): ScopeListing {
  */
 export function streamMode(key: string): "realtime" | "sampled" | "once" {
   if (key.startsWith("mate:image/")) return "once";
-  if (key.startsWith("mate:browser-") || key.startsWith("mate:database-session-"))
+  if (
+    key.startsWith("mate:browser-") ||
+    key.startsWith("mate:database-session-") ||
+    key.startsWith("mate:engine-")
+  )
     return "realtime";
   const declaredMode = bySuffix.get(key.split(":")[2] ?? "")?.spec.scope.mode;
   if (declaredMode !== undefined) return declaredMode;
