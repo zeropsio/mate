@@ -836,6 +836,14 @@ export function engineCardPagingOf(
     }
     return iso(otherwise);
   };
+  const personItemsOf = (runId: string) => {
+    let count = 0;
+    for (const id of read.index("engineItemsOfRun", engineFactId(key.environmentId, runId))) {
+      const fact = read.fact("mateEngineItem", id);
+      if (fact.kind === "known" && fact.value.kind === "person") count++;
+    }
+    return count;
+  };
   const spanOf = new Map(spans.map((span) => [span.runId as string, span]));
   const cards: Record<string, EngineCardPaging> = {};
   for (const span of spans) {
@@ -858,8 +866,10 @@ export function engineCardPagingOf(
     let edited: number | null = 0;
     let hasWork = false;
     for (const member of members) {
-      // Past the person's words and its answer, something it did.
-      const asked = member.trigger.kind === "person" || member.trigger.kind === "imported" ? 1 : 0;
+      // Past the person's words and its answer, something it did. The words counted from the
+      // run's own items (every person message is held): a loose imported run has none.
+      const words = personItemsOf(member.id);
+      const asked = member.trigger.kind === "person" ? Math.max(1, words) : words;
       const answered = member.summary.answerItemId === null ? 0 : 1;
       if (member.summary.items > asked + answered) hasWork = true;
       sumInto(calls, member.summary.calls);
