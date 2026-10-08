@@ -150,9 +150,22 @@ describe("B: text-only drafts", () => {
               ),
             );
           const before = yield* Effect.promise(geometry);
+          const footerSpacing = () =>
+            s.page.evaluate(() => {
+              const newProject = document.querySelector(
+                '[data-zerops-surface="sidebar-new-project"]',
+              )!;
+              const footer = document.querySelector('[data-sidebar="footer"]')!;
+              return (
+                footer.getBoundingClientRect().top -
+                newProject.parentElement!.getBoundingClientRect().bottom
+              );
+            });
+          expect(yield* Effect.promise(footerSpacing)).toBe(0);
           yield* dropZerops(s.drivers);
           yield* lastingZeropsOutage(s);
           expect(yield* Effect.promise(geometry)).toEqual(before);
+          expect(yield* Effect.promise(footerSpacing)).toBe(0);
           s.drivers.zerops.handlers.pop();
           s.drivers.zerops.faults.delete("POST /web-socket/login");
           yield* Effect.promise(async () => {

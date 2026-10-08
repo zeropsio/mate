@@ -4707,6 +4707,9 @@ export default function Sidebar() {
           ) : null}
         </SidebarGroup>
       </SidebarContent>
+      {/* Reserve the account notice above the footer controls so background
+          failure and recovery leave both the scroll viewport and controls fixed. */}
+      {zeropsSignedIn ? <AccountVoiceLine /> : null}
       {/* *New project*, pinned just above the account's row whatever the
           list's length (D11): the list scrolls under it, and fades into the
           canvas above it only while something is scrolled there. */}
@@ -4720,9 +4723,6 @@ export default function Sidebar() {
       }) ? (
         <SidebarNewProject onNewProject={openNewZeropsProject} />
       ) : null}
-      {/* The account's one line (`accountFootLine`) — its lapse, or its inventory's lasting
-          trouble — pinned at the menu's foot, seen whatever the list's length, never over the app. */}
-      {zeropsSignedIn ? <AccountVoiceLine /> : null}
       <SidebarChromeFooter />
     </>
   );
