@@ -173,7 +173,7 @@ export const ratchetAdditions = (
 ): ReadonlyArray<string> => {
   const counts = new Map<string, number>();
   for (const entry of baseline) {
-    // A baseline from before Effect 4.0.1 names the same import by its effect/unstable/ path.
+    // A baseline from before Effect 4.0.1 names the same import by its effect/unstable/* path.
     const identity = identityOf({ ...entry, fingerprint: rewriteImportPaths(entry.fingerprint) });
     counts.set(identity, (counts.get(identity) ?? 0) + 1);
   }

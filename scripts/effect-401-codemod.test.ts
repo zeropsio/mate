@@ -160,6 +160,13 @@ describe("effect-401 codemod", () => {
     expect(rewriteFile("file.ts", input).checks).not.toEqual([]);
   });
 
+  it("prose about the move (a glob or a placeholder) is neither rewritten nor listed", () => {
+    const input = "Effect 4.0.1 drops `effect/unstable/*` (effect/unstable/<area>).\n";
+    const result = rewriteFile("notes.md", input);
+    expect(result.text).toBe(input);
+    expect(result.handFixes).toEqual([]);
+  });
+
   it.each([`Stream.scan(() => [], f);\n`, `Stream.scan(seedState, f);\n`])(
     "a Stream.scan already given a lazy initial state is not listed: %s",
     (input) => {

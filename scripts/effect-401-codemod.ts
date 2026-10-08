@@ -85,7 +85,8 @@ const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\/]/gu, "
 
 const rewriteUnstable = (text: string, changes: Array<Site>, handFixes: Array<Site>): string => {
   // Plain form: "effect/unstable/http/HttpClient".
-  const plain = new RegExp(`${escapeRegExp(OLD_ROOT)}(?:/([A-Za-z][\\w-]*))?`, "gu");
+  // `effect/unstable/*` and `effect/unstable/<area>` are prose about the move, not paths.
+  const plain = new RegExp(`${escapeRegExp(OLD_ROOT)}(?!/[*<])(?:/([A-Za-z][\\w-]*))?`, "gu");
   let out = text.replace(plain, (match, area: string | undefined, offset: number) => {
     const next = area === undefined ? undefined : AREAS.get(area);
     if (next === undefined) {

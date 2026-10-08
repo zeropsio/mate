@@ -292,8 +292,8 @@ it.layer(NodeServices.layer)("imported-lock: checkImportedLock", (it) => {
 // re-import (2026-10-07: Effect 4.0.1's import paths). The check reproduces it, so any edit
 // beyond the transform still fails, even one the lock's own tree OIDs were updated to hide.
 it.layer(NodeServices.layer)("imported-lock: a transformed import", (it) => {
-  const upstreamSource =
-    'import { HttpClient } from "effect/unstable/http";\nexport const a = 1;\n';
+  // Built from parts, so the codemod's own run leaves this upstream fixture as it is.
+  const upstreamSource = `import { HttpClient } from "${["effect", "unstable", "http"].join("/")}";\nexport const a = 1;\n`;
   const transformedSource = 'import { HttpClient } from "effect/http";\nexport const a = 1;\n';
 
   const lockFor = Effect.fn("test.lockFor")(function* (repoDir: string) {

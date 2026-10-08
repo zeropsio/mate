@@ -52,7 +52,7 @@ describe("identity multiset ratchet", () => {
   // the move keeps the same exceptions, under their new import path.
   it("a baseline import path from before Effect 4.0.1 is the same identity under its new path", () =>
     check(`
-    const before = { ...entry, kind: "ImportDeclaration", fingerprint: "effect/unstable/httpapi/HttpApi" };
+    const before = { ...entry, kind: "ImportDeclaration", fingerprint: ["effect", "unstable", "httpapi", "HttpApi"].join("/") };
     assert.deepEqual(ratchetAdditions([{ ...before, fingerprint: "effect/http-api/HttpApi" }], [before]), []);
     assert.equal(ratchetAdditions([{ ...before, fingerprint: "effect/http-api/HttpApi" }, { ...before, fingerprint: "effect/http-api/HttpApi" }], [before]).length, 1);
   `));
