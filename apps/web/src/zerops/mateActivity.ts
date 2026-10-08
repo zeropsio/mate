@@ -7,8 +7,9 @@
  * the person's acknowledgements), and whether that word is of now. Neither a clock nor which path
  * brought the word decides it: the store already holds the newest by the Mate's own revision. The
  * words a row shows — the task, the last reply, the step, the question — are the attention's chat's
- * own, found by its id: in the chat's shell where this page holds it, else in HQ's overview of the
- * Mate's main chat; a chat HQ's overview does not name yet reads without words until it does.
+ * own, found by its id: in the chat's shell where this page holds it, else in the engine's own row of
+ * it where HQ relays an engine Mate's rows, else in HQ's overview of the Mate's main chat; a chat
+ * HQ's overview does not name yet reads without words until it does.
  *
  * A Mate from before the attention value is read as it always was, off its socket's reading while
  * that socket stands, else off HQ's overview of it, live while HQ holds its link (`legacyActivity`);
@@ -32,6 +33,7 @@ import {
   deriveZeropsAgentActivity,
   overviewAgentActivity,
   restingActivity,
+  rowAgentActivity,
   threadAgentActivity,
   type AgentActivityThread,
   type ZeropsAgentActivity,
@@ -151,20 +153,30 @@ export function attentionActivity(input: {
   const threadId = attention.mainThreadId ?? attention.lastThreadId;
   if (threadId === null) return undefined;
   const main = input.overview?.main ?? null;
+  const visited = input.lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))];
+  const shell = input.shells.find((each) => each.id === threadId);
+  // An engine Mate's own row of the chat, where HQ relays its rows; else its main chat's fields.
+  const row =
+    shell === undefined
+      ? input.overview?.conversations?.find((each) => (each.conversationId as string) === threadId)
+      : undefined;
   const words: AgentActivityThread | undefined =
-    input.shells.find((shell) => shell.id === threadId) ??
-    (main === null
+    row !== undefined
       ? undefined
-      : main.id === threadId
-        ? { ...main, environmentId }
-        : wordlessChat(threadId, environmentId, main.updatedAt));
-  if (words === undefined) return undefined;
-  const read = threadAgentActivity(
-    words,
-    input.lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))],
-    undefined,
-    input.limits?.get(scopedThreadKey(scopeThreadRef(environmentId, threadId))),
-  );
+      : (shell ??
+        (main === null
+          ? undefined
+          : main.id === threadId
+            ? { ...main, environmentId }
+            : wordlessChat(threadId, environmentId, main.updatedAt)));
+  const limit = input.limits?.get(scopedThreadKey(scopeThreadRef(environmentId, threadId)));
+  const read =
+    row !== undefined
+      ? rowAgentActivity(row, environmentId, visited, undefined, limit)
+      : words === undefined
+        ? undefined
+        : threadAgentActivity(words, visited, undefined, limit);
+  if (read === undefined) return undefined;
   const unread = input.unseen === null ? read.unread : input.unseen > 0;
   const question = attention.questions.find(
     (question) =>
@@ -204,7 +216,9 @@ export function attentionActivity(input: {
       ? { errorLine }
       : {}),
   };
-  return input.live ? activity : restingActivity(activity, words.updatedAt);
+  return input.live
+    ? activity
+    : restingActivity(activity, words === undefined ? read.at : words.updatedAt);
 }
 
 /**

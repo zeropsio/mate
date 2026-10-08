@@ -17,7 +17,7 @@ const check = (assertion: string) => {
     import { execFileSync } from "node:child_process";
     import * as os from "node:os";
     import * as path from "node:path";
-    const entry = { path: "apps/web/src/one.ts", kind: "CallExpression", fingerprint: "fetch", owner: "owner", reason: "debt", expires: "F3" };
+    const entry = { path: "apps/web/src/one.ts", kind: "CallExpression", fingerprint: "fetch", owner: "owner", reason: "debt", expires: "F3", class: "review" };
     ${assertion}
   `,
     ],
@@ -139,6 +139,41 @@ describe("identity multiset ratchet", () => {
       assert.equal(loadRatchetBaseline(checkout, "origin/main").get(RATCHET_RULES[0]).length, 2);
       fs.writeFileSync(eventPath, JSON.stringify({ before: "0".repeat(40) }));
       assert.throws(() => loadRatchetBaseline(checkout, "origin/main"), /valid previous main/);
+    } finally { fs.rmSync(directory, { recursive: true }); }
+  `));
+  it("admits only the enrollment commit and never replays admission after removal", () =>
+    check(`
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "failure-admission-"));
+    const git = (...args) => execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    try {
+      git("init", "-b", "main"); git("config", "user.name", "Guard fixture"); git("config", "user.email", "fixture@example.invalid");
+      const ledgers = path.join(directory, "oxlint-plugin-t3code", "exceptions"); fs.mkdirSync(ledgers, { recursive: true });
+      const ruleFile = path.join(directory, "oxlint-plugin-t3code", "rules", "no-failure-to-empty.ts"); fs.mkdirSync(path.dirname(ruleFile));
+      fs.writeFileSync(ruleFile, 'const roots = ["apps/web/src/zerops/"];');
+      for (const rule of RATCHET_RULES) fs.writeFileSync(path.join(ledgers, rule + ".json"), "[]");
+      git("add", "."); git("commit", "-m", "before enrollment"); const before = git("rev-parse", "HEAD");
+      const snapshot = path.join(directory, "oxlint-plugin-t3code", "failure-to-empty-enrollment.json");
+      const ledger = path.join(ledgers, "no-failure-to-empty.json");
+      const admitted = { ...entry, class: "review" };
+      fs.writeFileSync(ruleFile, 'const roots = ["apps/web/src/", "packages/client-runtime/src/data/"];');
+      fs.writeFileSync(snapshot, JSON.stringify([admitted])); fs.writeFileSync(ledger, JSON.stringify([admitted]));
+      assert.deepEqual(ratchetAdditions([admitted], loadRatchetBaseline(directory, before).get("no-failure-to-empty")), []);
+      git("add", "."); git("commit", "-m", "enroll roots and baseline"); const enrollment = git("rev-parse", "HEAD");
+      fs.writeFileSync(snapshot, JSON.stringify([admitted, admitted])); fs.writeFileSync(ledger, JSON.stringify([admitted, admitted]));
+      git("add", "."); git("commit", "-m", "attempt to extend snapshot");
+      assert.equal(ratchetAdditions([admitted, admitted], loadRatchetBaseline(directory, before).get("no-failure-to-empty")).length, 1);
+      assert.equal(ratchetAdditions([admitted, admitted], loadRatchetBaseline(directory, enrollment).get("no-failure-to-empty")).length, 1);
+      fs.writeFileSync(ledger, "[]"); git("add", "."); git("commit", "-m", "remove all debt"); const cleared = git("rev-parse", "HEAD");
+      fs.writeFileSync(ledger, JSON.stringify([admitted]));
+      assert.equal(ratchetAdditions([admitted], loadRatchetBaseline(directory, cleared).get("no-failure-to-empty")).length, 1);
+      git("checkout", "-f", before);
+      fs.writeFileSync(snapshot, JSON.stringify([admitted])); fs.writeFileSync(ledger, JSON.stringify([admitted]));
+      assert.throws(() => loadRatchetBaseline(directory, before), /accompany/);
+      fs.writeFileSync(ruleFile, 'const roots = ["apps/web/src/", "packages/client-runtime/src/data/"];');
+      fs.writeFileSync(snapshot, JSON.stringify([{ ...admitted, path: "apps/mobile/src/one.ts" }]));
+      assert.throws(() => loadRatchetBaseline(directory, before), /newly guarded/);
+      fs.writeFileSync(snapshot, JSON.stringify([admitted, admitted]));
+      assert.throws(() => loadRatchetBaseline(directory, before), /match the ledger/);
     } finally { fs.rmSync(directory, { recursive: true }); }
   `));
 });

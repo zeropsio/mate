@@ -1,3 +1,4 @@
+import { mateRecoveryActionLabel } from "~/zerops/mateRecovery.logic";
 import type { WebMateVoice as MateVoice } from "~/zerops/mateNoticeVoice";
 import {
   connectionBannerCopy,
@@ -120,11 +121,7 @@ export function mateVoiceBannerItem(input: {
                   size="compact"
                   onClick={() => input.onContainerAction?.(containerAction)}
                 >
-                  {input.busy
-                    ? "Asking Zerops…"
-                    : containerAction === "start"
-                      ? "Start"
-                      : "Retry restart"}
+                  {mateRecoveryActionLabel(containerAction, input.busy)}
                 </Button>
               )}
               {askAgain === null ? null : (

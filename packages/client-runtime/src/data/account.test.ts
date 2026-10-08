@@ -9,9 +9,10 @@ import { hqAppsScope } from "./families/hqNavigation.ts";
 import { historyScope, runningScope } from "./families/process.ts";
 import { linkKeys, type OperationIntent } from "./model.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
+import { autoUpdatePolicySettings } from "./projections/hqAutoUpdatePolicy.ts";
 import { hqVerdict } from "./projections/hqVerdict.ts";
 import { streamOf } from "./reducer.ts";
-import { makeAccountStore } from "./store.ts";
+import { makeAccountStore, readsOfState } from "./store.ts";
 
 /** The navigation runs on its own runtime: real time passes for it, so a test waits on the state it expects, not on a delay. */
 const until = (condition: () => boolean, what: string) =>
@@ -309,6 +310,66 @@ describe("an account's HQ", () => {
       yield* first.endSegment;
       yield* turns;
       expect([first.opens(), second.opens()]).toEqual([1, 1]);
+      account.stop();
+    }),
+  );
+
+  it.live("replacing HQ accepts its default policy and fences the previous owner's answers", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const account = observeAccount({
+        store,
+        wire: emptyZerops().wire,
+        repairSession: Effect.void,
+      });
+      const old = hqFixtureWire();
+      const fresh = hqFixtureWire();
+      const current = () =>
+        autoUpdatePolicySettings.derive(readsOfState(store.state()), {
+          orgId: "org-a",
+          admin: true,
+        });
+      const deliver = (
+        wire: ReturnType<typeof hqFixtureWire>,
+        incarnation: string,
+        revision: number,
+        enabled: boolean,
+      ) =>
+        Effect.andThen(
+          wire.send({
+            type: "scope-reset",
+            scope: { kind: "navigation" },
+            incarnation,
+            revision,
+            values: [{ key: "auto-update-policy", value: { orgId: "org-a", enabled, revision } }],
+            removals: [],
+          }),
+          wire.send({
+            type: "scope-ready",
+            core: { protocol: 1, autoUpdatePolicy: 1 },
+            scope: { kind: "navigation" },
+            incarnation,
+            revision,
+          }),
+        );
+      account.show("org-a");
+      account.showHq({ orgId: "org-a", ownerId: "old-project", wire: old.wire });
+      yield* turns;
+      yield* deliver(old, "old-core", 8, false);
+      yield* turns;
+      expect(current()).toMatchObject({ enabled: false, editable: true });
+      account.showHq({ orgId: "org-a", ownerId: "new-project", wire: fresh.wire });
+      expect(current().editable).toBe(false);
+      // A queued answer from the owner just removed must not restore an editable old value.
+      yield* deliver(old, "old-core", 9, false);
+      yield* turns;
+      expect([old.opens(), fresh.opens()]).toEqual([1, 1]);
+      yield* deliver(fresh, "new-core", 0, true);
+      yield* turns;
+      expect(current()).toMatchObject({ enabled: true, editable: true, words: "On" });
+      yield* deliver(old, "old-core", 10, false);
+      yield* turns;
+      expect(current()).toMatchObject({ enabled: true, editable: true, words: "On" });
       account.stop();
     }),
   );

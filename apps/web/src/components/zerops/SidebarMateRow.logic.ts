@@ -1,4 +1,5 @@
-import { lastKnownMateWords } from "../../zerops/lastKnownMate.logic";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
+import { lastKnownMateWords, mateUnreachableWords } from "../../zerops/lastKnownMate.logic";
 import { mateStatus } from "../../zerops/mateStatus.logic";
 import { mateFailureWords, usageLimitWords } from "../../zerops/noticeWords";
 /**
@@ -319,6 +320,7 @@ export type MateRowSlot =
 export type MateRowReply =
   | {
       readonly kind: "words";
+      readonly lastKnown?: true;
       readonly text: string;
       /** Muted at rest, the second ink unread, full ink as a question, red as an error. */
       readonly tone: "muted" | "ink-2" | "ink" | "failed" | "attention";
@@ -368,6 +370,8 @@ export function mateRowView(
   activity: ZeropsAgentActivity | undefined,
   face: MateMarkState,
   name = "The Mate",
+  offlineSince?: string,
+  timestampFormat?: TimestampFormat,
 ): MateRowView {
   if (activity === undefined) {
     const needs = face === "needs";
@@ -416,9 +420,20 @@ export function mateRowView(
     ask,
     reply: ask === undefined ? undefined : reply,
   });
-  const held = lastKnownMateWords(activity, name);
+  const held = lastKnownMateWords(activity, name, timestampFormat);
   if (activity.remembered === true && held !== undefined)
-    return { ...view(undefined), reply: { kind: "words", text: held, tone: "muted" } };
+    return {
+      ...view(undefined),
+      reply: {
+        kind: "words",
+        text:
+          offlineSince === undefined
+            ? held
+            : `${mateUnreachableWords(name, offlineSince, timestampFormat)} ${held}`,
+        tone: "muted",
+        lastKnown: true,
+      },
+    };
   // A new Mate's first run is the stand-up its person's sign-in sent: while it works, and where
   // it stops, the row says so in the person's words — never the command sent on their behalf.
   // Waiting on them, or done, it is any Mate's row.
@@ -533,6 +548,8 @@ export function mateRowReading(input: {
   readonly name?: string;
   /** Its container is connected right now. */
   readonly connected: boolean;
+  readonly offlineSince?: string | undefined;
+  readonly timestampFormat?: TimestampFormat | undefined;
   readonly activity: ZeropsAgentActivity | undefined;
   /** Its own change waits on the person's review (`mateNextStep`): it needs them. */
   readonly reviewWaits?: boolean;
@@ -552,6 +569,8 @@ export function mateRowReading(input: {
       input.mine,
     ),
     input.name,
+    input.offlineSince,
+    input.timestampFormat,
   );
 }
 

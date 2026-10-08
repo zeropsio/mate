@@ -105,6 +105,33 @@ it.layer(NodeServices.layer)("exception ledger loading", (it) => {
     ),
   );
 
+  it.effect(
+    "failure findings retain a validated classification without changing other ledgers",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const directory = yield* fs.makeTempDirectoryScoped({ prefix: "guard-class-" });
+          for (const classification of ["misleading", "justified", "review"] as const) {
+            const expected = { ...entry(), class: classification };
+            yield* writeJson(directory, "no-failure-to-empty.json", [expected]);
+            assert.deepStrictEqual(loadExceptionLedger("no-failure-to-empty", directory).entries, [
+              expected,
+            ]);
+          }
+          for (const invalid of [entry(), { ...entry(), class: "approved" }]) {
+            yield* writeJson(directory, "no-failure-to-empty.json", [invalid]);
+            assert.throws(
+              () => loadExceptionLedger("no-failure-to-empty", directory),
+              /field class/u,
+            );
+          }
+          yield* writeJson(directory, "other-rule.json", [entry()]);
+          assert.deepStrictEqual(loadExceptionLedger("other-rule", directory).entries, [entry()]);
+        }),
+      ),
+  );
+
   it.effect("accepts a leading BOM in ledger and completed phases JSON", () =>
     Effect.scoped(
       Effect.gen(function* () {

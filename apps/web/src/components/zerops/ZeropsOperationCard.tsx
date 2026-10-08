@@ -1,3 +1,5 @@
+import { Button } from "~/components/ui/button";
+import { restartCardReadout } from "@t3tools/client-runtime/zerops/activity/observedSteps";
 import { mateImageSource } from "@t3tools/client-runtime/data/mateImage";
 /**
  * The Operations-layer card: one shell for every `ZeropsOperation` kind
@@ -663,6 +665,9 @@ function StepsBody({
 export function ZeropsOperationCard(props: {
   readonly operation: ZeropsOperation;
   readonly observed?: ObservedRegion;
+  readonly onRestartRetry?: () => Promise<void>;
+  readonly restartRetryLabel?: string;
+  readonly restartRetryDisabled?: boolean;
   /**
    * `devServer` only: the subdomain URL resolved by the timeline's own
    * topology view (client-topology-view — server feed, not the tool result).
@@ -702,19 +707,29 @@ export function ZeropsOperationCard(props: {
     live = false,
     liveFrame,
     observed,
-    operation,
     subjectHost,
     threadRef,
   } = props;
-  const tone = operationTone(operation);
+  const [retryBusy, setRetryBusy] = useState(false);
+  const operation = props.operation;
+  const restartProcess = operation.restartProcess;
   const isRunning = isRunningPhase(operation);
   const tickNow = useSecondsNowMs(props.now === undefined && isRunning);
   const now = props.now ?? tickNow;
+  const restartReadout =
+    restartProcess === undefined ||
+    operation.restartReading?.phase === "uncertain" ||
+    operation.restartReading?.progress?.stage === "refused" ||
+    operation.restartReading?.progress?.stage === "unsent"
+      ? undefined
+      : restartCardReadout(restartProcess, operation.subject, now);
+  const tone = operationTone(operation);
   const deploy = readsPipeline(operation)
     ? deployHeader(operation, observed?.pipeline, now)
     : undefined;
   const durationText =
-    deploy === undefined ? headerDurationText(operation, now) : deploy.durationText;
+    restartReadout?.duration ??
+    (deploy === undefined ? headerDurationText(operation, now) : deploy.durationText);
   const subject = operationSubject(operation, subjectHost);
   const header = headless ? null : (
     <CardHeader
@@ -743,8 +758,12 @@ export function ZeropsOperationCard(props: {
   // Under its line (headless), the line says how it went: the closing would
   // say it again, and a bare "Failed." carries nothing — why stays, in its
   // explanation.
-  const closing = headless ? undefined : drawnClosing(operation);
-  const hasResultRow = closing !== undefined || version !== undefined || links.length > 0;
+  const closing = restartReadout?.text ?? (headless ? undefined : drawnClosing(operation));
+  const hasResultRow =
+    closing !== undefined ||
+    version !== undefined ||
+    links.length > 0 ||
+    props.onRestartRetry !== undefined;
 
   const Frame = headless ? HeadlessFrame : FlatCard;
   return (
@@ -808,6 +827,24 @@ export function ZeropsOperationCard(props: {
                   {closing}
                 </p>
               ) : null}
+              {props.onRestartRetry === undefined ? null : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={retryBusy || props.restartRetryDisabled}
+                  onClick={async () => {
+                    if (retryBusy) return;
+                    setRetryBusy(true);
+                    try {
+                      await props.onRestartRetry?.();
+                    } finally {
+                      setRetryBusy(false);
+                    }
+                  }}
+                >
+                  {retryBusy ? "Asking Zerops…" : (props.restartRetryLabel ?? "Try again")}
+                </Button>
+              )}
               {version !== undefined ? (
                 <span
                   className="flex items-baseline gap-1.5 text-muted-foreground text-xs"

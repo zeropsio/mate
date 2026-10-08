@@ -28,7 +28,7 @@ describe("C: source failures keep the conversation", () => {
         wire.disconnect();
         yield* chat.then.text("Wren couldn't restart.");
         yield* chat.then.text("Its startup command failed.");
-        yield* chat.then.control("Retry restart");
+        yield* chat.then.control("Try again");
         yield* chat.then.text("Open in Zerops");
         yield* chat.then.noText("I'm stopped.");
         yield* chat.then.once("The existing conversation is still here");

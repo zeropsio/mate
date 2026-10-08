@@ -1,3 +1,4 @@
+import { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { HqLifecycleRecord, type HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
 /**
@@ -245,6 +246,8 @@ export interface Asked<T> {
 }
 
 export interface HqApi {
+  readonly autoUpdatePolicy: (signal?: AbortSignal) => Promise<HqAutoUpdatePolicy>;
+  readonly setAutoUpdatePolicy: (enabled: boolean) => Promise<HqAutoUpdatePolicy>;
   readonly structure: (signal?: AbortSignal) => Promise<HqStructure>;
   /**
    * One segment of HQ's scope stream (`@t3tools/shared/hqStream`): a socket opened with a fresh
@@ -1035,6 +1038,25 @@ export function makeHqApi(input: {
           ),
         )
       ).deploys,
+    autoUpdatePolicy: async (signal) =>
+      decoded(HqAutoUpdatePolicy)(
+        await authorized("/api/auto-update", signal === undefined ? {} : { signal }),
+      ),
+    setAutoUpdatePolicy: async (enabled) => {
+      // Neither a matching boolean nor a later revision identifies a lost PUT as ours.
+      try {
+        return await decoded(HqAutoUpdatePolicy)(
+          await authorized(
+            "/api/auto-update",
+            { method: "PUT", body: JSON.stringify({ enabled }) },
+            true,
+          ),
+        );
+      } catch (cause) {
+        if (cause instanceof HqError && cause.code === "unreadable") throw uncertain();
+        throw cause;
+      }
+    },
     lifecycleWrite: async (requestId, intent) =>
       decoded(HqLifecycleRecord)(
         await authorized(

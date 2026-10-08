@@ -204,3 +204,28 @@ describe("deriveOperationObservation — a result's own ids pin the attributed p
     expect(state.kind !== "off" && state.observation.outcome).toBe(outcome);
   });
 });
+
+it("a reopened restart reads its terminal history by process identity while its service is running", () => {
+  const failed = process({
+    id: "restart",
+    actionName: "stack.restart",
+    status: "FAILED",
+    created: "2026-09-01T10:00:00Z",
+    finished: "2026-09-01T10:15:00Z",
+  });
+  const later = process({ id: "later", actionName: "stack.restart", status: "RUNNING" });
+  const result = derive({
+    target: target({
+      kind: "manage",
+      running: false,
+      startedAtMs: Date.parse(failed.created),
+      exact: { processIds: [failed.id] },
+    }),
+    snapshot: held([later, failed]),
+  });
+  expect(result.settledRead).toBe("read");
+  expect(result.state).toMatchObject({
+    kind: "observing",
+    observation: { outcome: "failed" },
+  });
+});

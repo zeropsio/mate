@@ -159,9 +159,11 @@ export const HqScopeFailure = Schema.Struct({
 export type HqScopeFailure = typeof HqScopeFailure.Type;
 /** Raised when the client requires new navigation facts; independent of the build label. */
 export const HQ_NAVIGATION_PROTOCOL = 1;
+export const AUTO_UPDATE_POLICY_PROTOCOL = 1;
 export const HqCoreProtocol = Schema.Struct({
   protocol: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   build: Schema.optionalKey(Schema.String),
+  autoUpdatePolicy: Schema.optionalKey(Schema.Literal(AUTO_UPDATE_POLICY_PROTOCOL)),
   agentUsage: Schema.optionalKey(Schema.Literal(AGENT_USAGE_REPORT_PROTOCOL)),
 });
 export type HqCoreProtocol = typeof HqCoreProtocol.Type;

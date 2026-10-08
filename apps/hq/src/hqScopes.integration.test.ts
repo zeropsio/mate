@@ -248,10 +248,11 @@ describe("HQ scoped socket", () => {
             1,
             "one shared change read for all people and Mates",
           );
-          // Each structure read: isolation SET, five structure SELECTs, four environment SELECTs.
+          // Each shared snapshot: isolation SET, five structure SELECTs, four environment SELECTs,
+          // and one organization policy SELECT shared by every navigation recipient.
           // Each person also reads seen results and key health. The asynchronous release read
           // starts three shared SELECTs and its first recipe lookup before the scope receipts.
-          const statementsPerStructureRead = 1 + 5 + 4;
+          const statementsPerStructureRead = 1 + 5 + 4 + 1;
           const sqlBudget =
             people.length * (sessionReadsPerPerson + 1 + 1) +
             structureQueries.length * statementsPerStructureRead +

@@ -124,6 +124,8 @@ export const comingSentenceOf = (input: MateArrivalNoticeInput) =>
   mateArrivalNotice(input).secondary;
 
 import type { MateRecovery } from "@t3tools/client-runtime/data";
+import { mateUnreachableWords } from "./lastKnownMate.logic";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { recoveryNotice } from "./mateRecovery.logic";
 import { restartLine, RESTART_LINES } from "./restartLine";
 
@@ -155,6 +157,8 @@ export function mateNoticeVoice(
     readonly recovery?: MateRecovery;
     readonly restartLine?: number | undefined;
     readonly lastKnown?: string | undefined;
+    readonly offlineSince?: string | undefined;
+    readonly timestampFormat?: TimestampFormat;
   },
 ): WebMateVoice {
   const { reachability, conversationShown } = input;
@@ -347,14 +351,20 @@ export function mateNoticeVoice(
         actions,
       );
     case "not-answering":
-      return say(`${name} isn't answering.`, input.lastKnown ?? "", "sleep", actions);
+      return say(
+        mateUnreachableWords(name, input.offlineSince, input.timestampFormat),
+        input.lastKnown ?? "",
+        "sleep",
+        [...actions, "open-in-zerops"],
+      );
     case "reconnecting":
     case "retrying": {
       if (reachability.kind === "reconnecting" && reachability.retryAtMs === undefined) {
         return say(
-          `${name} is reconnecting.`,
+          mateUnreachableWords(name, input.offlineSince, input.timestampFormat, true),
           input.lastKnown ?? "The conversation will open when the connection returns.",
           "sleep",
+          ["open-in-zerops"],
         );
       }
       const secondary = [
@@ -364,10 +374,10 @@ export function mateNoticeVoice(
         .filter(Boolean)
         .join(" ");
       return say(
-        `${name} is reconnecting.`,
+        mateUnreachableWords(name, input.offlineSince, input.timestampFormat, true),
         secondary.replaceAll("This Mate", name).replaceAll("this Mate", name),
         "sleep",
-        actions,
+        [...actions, "open-in-zerops"],
       );
     }
     case "container": {

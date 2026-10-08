@@ -1,3 +1,5 @@
+import { RegistryContext } from "@effect/atom-react";
+import { randomUUID } from "~/lib/utils";
 /**
  * Maps source observations onto the operation card's presentational `ObservedRegion` prop.
  *
@@ -8,8 +10,9 @@
  * one piece of state this layer needs that isn't derivable from props), and
  * attaches the `ZeropsBuildLog` node when there is a build to show one for.
  */
-import { createElement, useEffect, useState, type ReactElement } from "react";
+import { createElement, useContext, useEffect, useState, type ReactElement } from "react";
 
+export { restartCardReadout } from "@t3tools/client-runtime/zerops/activity/observedSteps";
 import type { ObservedKind } from "@t3tools/client-runtime/zerops/activity/attribution";
 import { type BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import type {
@@ -35,6 +38,16 @@ import type {
 } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
+import {
+  projectRestarts,
+  readRestart,
+  type RestartReading,
+  type OperationProgress,
+  restartWay,
+} from "@t3tools/client-runtime/data";
+import { AccountOperationsContext, type AccountOperations } from "../accountOperations";
+import { useAccountDataOptional } from "../ZeropsAccountData";
+import { toastManager } from "~/components/ui/toast";
 import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
 import { browserPageUrl } from "../../components/zerops/operation/subject";
 import type {
@@ -92,7 +105,10 @@ export function observationTargetFor(operation: ZeropsOperation): ObservationTar
   const processIds = operation.processIds ?? [];
   const named = appVersionIds.length > 0 || processIds.length > 0;
   const running = operation.phase === "running";
-  if (!running && (operation.kind !== "deploy" || !named)) {
+  if (
+    !running &&
+    ((operation.kind !== "deploy" && operation.restartProcess === undefined) || !named)
+  ) {
     return null;
   }
   return {
@@ -341,6 +357,9 @@ function useLiveBrowserFrame(
 
 export interface OperationCardRegions {
   readonly observed?: ObservedRegion;
+  readonly onRestartRetry?: () => Promise<void>;
+  readonly restartRetryLabel?: string;
+  readonly restartRetryDisabled?: boolean;
   readonly devServerUrl?: string;
   readonly browserScreenshot?: BrowserScreenshot;
   /** `browser` only: the hostname of the service whose route answers the page — `browserSubjectHostFor`. */
@@ -384,6 +403,10 @@ export function useOperationCard(
   readsLog = true,
   threadId: string | null = null,
 ): OperationCardRegions {
+  const operations = useContext(AccountOperationsContext);
+  const account = useAccountDataOptional();
+  const registry = useContext(RegistryContext);
+  const orgId = account?.orgId ?? null;
   const target = observationTargetFor(operation);
   const running = operation.phase === "running";
   // A settled one whose pipeline still runs moves on the clock too: its steps count on.
@@ -412,7 +435,59 @@ export function useOperationCard(
   const subjectHost = browserSubjectHostFor(operation, topology);
   const seen = state.kind === "off" ? undefined : state.observation;
   const service = batchServiceFor(operation, seen, topology);
+  const reading = operation.restartReading;
+  const restartService =
+    reading === undefined
+      ? undefined
+      : topology?.services.find((service) => service.hostname === operation.target?.hostname);
   const fields = {
+    ...(reading === undefined ||
+    restartService === undefined ||
+    operations === null ||
+    orgId === null ||
+    topology === undefined ||
+    reading.phase === "done" ||
+    reading.phase === "running"
+      ? {}
+      : {
+          ...restartRetryWords(
+            reading.requestId ?? null,
+            reading.progress ?? { stage: "unknown" },
+            reading.phase,
+          ),
+          onRestartRetry: async () => {
+            const current = readRestart(
+              registry.get(
+                account!.data.project(projectRestarts, {
+                  orgId,
+                  projectId: topology.project.id,
+                }),
+              ),
+              { ...reading.process, id: reading.sourceProcessId },
+            );
+            try {
+              await requestRestartRetry(
+                operations,
+                {
+                  kind: "mate-restart",
+                  orgId,
+                  projectId: topology.project.id,
+                  serviceId: restartService.serviceId,
+                  way: restartWay(restartService.status),
+                  sourceProcessId: reading.sourceProcessId,
+                },
+                current,
+              );
+            } catch {
+              toastManager.add({
+                type: "error",
+                title:
+                  "Zerops could not confirm the restart request. Check it before trying again.",
+              });
+            }
+          },
+        }),
+
     ...(service === undefined ? {} : { service }),
     ...(devServerUrl === undefined ? {} : { devServerUrl }),
     ...(browserScreenshot === undefined ? {} : { browserScreenshot }),
@@ -459,4 +534,53 @@ export function useOperationCard(
     subject: service ?? operation.subject,
   });
   return { observed: { ...observed, log }, ...fields };
+}
+
+/** An uncertain account operation is reconciled by its original identity, never repeated. */
+export async function requestRestartRetry(
+  operations: Pick<AccountOperations, "askAgain" | "submit">,
+  intent: Extract<Parameters<AccountOperations["submit"]>[0], { kind: "mate-restart" }>,
+  reading: RestartReading,
+): Promise<void> {
+  if (reading.requestId !== undefined) {
+    const progress = reading.progress;
+    if (progress?.stage === "done" && progress.outcome === "succeeded") return;
+    if (progress === undefined || !["done", "refused"].includes(progress.stage)) {
+      await operations.askAgain(reading.requestId);
+      return;
+    }
+  } else if (reading.phase !== "failed") return;
+  await operations.submit(intent, randomUUID());
+}
+
+export function restartRetryWords(
+  requestId: string | null,
+  progress: OperationProgress,
+  phase: RestartReading["phase"] = "failed",
+) {
+  if (requestId === null && phase !== "failed")
+    return { restartRetryLabel: "Restart unconfirmed", restartRetryDisabled: true };
+  if (
+    requestId === null ||
+    progress.stage === "refused" ||
+    progress.stage === "unsent" ||
+    (progress.stage === "done" && progress.outcome !== "succeeded")
+  )
+    return { restartRetryLabel: "Try again", restartRetryDisabled: false };
+  if (progress.stage === "unresolved")
+    return { restartRetryLabel: "Restart unconfirmed", restartRetryDisabled: true };
+  if (progress.stage === "uncertain")
+    return {
+      restartRetryLabel: "Check restart",
+      restartRetryDisabled: progress.next === "asking-owner",
+    };
+  return {
+    restartRetryLabel:
+      progress.stage === "done"
+        ? "Restarted"
+        : progress.stage === "accepted" || progress.stage === "reflected"
+          ? "Restart requested"
+          : "Asking Zerops…",
+    restartRetryDisabled: true,
+  };
 }

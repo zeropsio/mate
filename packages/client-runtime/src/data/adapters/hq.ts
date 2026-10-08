@@ -162,6 +162,7 @@ export function hqNavigationLink(options: {
 } {
   const { orgId, store } = options;
   let wire = options.wire;
+  let stopped = false;
   const key: LinkKey = linkKeys.hq(orgId);
   const nav: Registered = {
     wire: NAVIGATION,
@@ -340,6 +341,7 @@ export function hqNavigationLink(options: {
 
       const deliver = (message: HqScopeDelivery) =>
         Effect.gen(function* () {
+          if (stopped) return;
           const scopeKey = hqScopeKey(message.scope);
           const entry = subscribed.get(scopeKey);
           if (entry === undefined) return;
@@ -437,6 +439,7 @@ export function hqNavigationLink(options: {
 
       const onMessage = (encoded: string): Effect.Effect<void> =>
         Effect.gen(function* () {
+          if (stopped) return;
           heardAt = yield* Clock.currentTimeMillis;
           // The socket said something: its session holds, and the link is live.
           if (!said) {
@@ -789,6 +792,7 @@ export function hqNavigationLink(options: {
       wire = next;
     },
     stop: () => {
+      stopped = true;
       stopHolding?.();
       stopHolding = null;
       for (const release of mateHolds.values()) release();

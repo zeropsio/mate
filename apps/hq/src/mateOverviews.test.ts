@@ -12,7 +12,7 @@ import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 
 import { rowsWhere } from "../test/harness/mates.ts";
-import { digest, mainAt, memoryStore, overviewOf } from "../test/harness/overviews.ts";
+import { digest, mainAt, memoryStore, overviewOf, row } from "../test/harness/overviews.ts";
 import {
   enrollMate,
   sessionFor,
@@ -215,6 +215,40 @@ describe("MateOverviews", () => {
           sections: { threads: { list: [digest("t1", "working")], omitted: 1 } },
         });
         assert.deepStrictEqual(yield* settled(saves), ["P", "P"]);
+      }),
+    ),
+  );
+
+  it.effect("writes when an engine conversation's state changes, not when its words do", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { saves, store } = memoryStore();
+        const overviews = yield* makeMateOverviews(store);
+        const link = yield* overviews.connect("P");
+        yield* overviews.report("P", link, {
+          type: "overview",
+          full: true,
+          overview: overviewOf({ conversations: [row("t1")] }),
+        });
+        assert.deepStrictEqual(yield* settled(saves), ["P"]);
+        const working = { kind: "working", since: 1, waitsOnHelpers: false } as const;
+        yield* overviews.report("P", link, {
+          type: "overview",
+          full: false,
+          sections: { conversations: [row("t1", working)] },
+        });
+        assert.deepStrictEqual(yield* settled(saves), ["P", "P"]);
+        for (const words of ["Reading the schema", "Writing the migration"]) {
+          yield* overviews.report("P", link, {
+            type: "overview",
+            full: false,
+            sections: { conversations: [row("t1", working, words)] },
+          });
+        }
+        assert.deepStrictEqual(yield* settled(saves), ["P", "P"]);
+        assert.deepStrictEqual((yield* overviews.all).get("P")?.overview?.conversations, [
+          row("t1", working, "Writing the migration"),
+        ]);
       }),
     ),
   );
