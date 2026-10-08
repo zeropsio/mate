@@ -74,6 +74,7 @@ import { ZeropsRepositorySource } from "../../ZeropsRepositorySource.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { crewLane } from "../CrewDefinition.ts";
+import { DEFAULT_CREW_LOGIN, noSpendWords } from "../crewCore.ts";
 import { CrewEngine, type CrewEngineService } from "../CrewEngine.ts";
 import { CREW_ID, CrewHome, refusalOf } from "../CrewHome.ts";
 import { makeOver, type CrewMemoryRecords } from "../CrewMemory.ts";
@@ -695,6 +696,58 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         ).pipe(Effect.mapError((error) => refuse("not-allowed", error.message)));
       });
 
+    /** The first of `logins` whose agent doesn't report what it spends, by its agent's name. */
+    const silentSpender = (logins: ReadonlyArray<string>) =>
+      Effect.gen(function* () {
+        for (const login of logins) {
+          const agent = yield* agentOf(login);
+          if (agent?.threadProfile?.reportsSpend !== true) return agent?.displayName ?? login;
+        }
+        return undefined;
+      });
+
+    /**
+     * A dollar budget is kept only when every crewmate's agent reports what it spends (V1's
+     * rule): a run asked for one is refused, and so is a crewmate a running budget would not see.
+     */
+    const requireSpendReported = (
+      current: CrewState,
+      press: CrewCommand,
+      definition: CrewDefinition | undefined,
+    ) =>
+      Effect.gen(function* () {
+        const run = current.run;
+        if (press._tag === "start" || press._tag === "resume") {
+          const budget =
+            press._tag === "start" ? press.budgetUsd : (press.budgetUsd ?? run?.options.budgetUsd);
+          if (typeof budget !== "number") return;
+          const silent = yield* silentSpender(
+            membersInOrder(current).map((member) => member.login),
+          );
+          if (silent !== undefined) {
+            return yield* refuse("wrong-state", `${noSpendWords(silent)}: choose No limit.`);
+          }
+          return;
+        }
+        if (definition === undefined || (press._tag !== "apply" && press._tag !== "jobSave")) {
+          return;
+        }
+        if (run === null || run.state === "finished" || run.state === "stopped") return;
+        if (typeof run.options.budgetUsd !== "number") return;
+        const reached = definition.members.filter(
+          (member) => press._tag === "apply" || member.handle === press.handle,
+        );
+        for (const member of reached) {
+          const silent = yield* silentSpender([member.login ?? DEFAULT_CREW_LOGIN]);
+          if (silent !== undefined) {
+            return yield* refuse(
+              "invalid-definition",
+              `${noSpendWords(silent)}: give @${member.handle} another login, or keep the run going with No limit.`,
+            );
+          }
+        }
+      });
+
     const command: CrewEngineService["command"] = (press, principal) =>
       Effect.gen(function* () {
         if (PRESS_READS.has(press._tag)) {
@@ -707,6 +760,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         const definition = needsHome ? yield* loadHome(current) : undefined;
         const refusal = yield* admitAt(doorLogins(current, press, definition), principal);
         if (refusal !== null) return yield* refuse("not-allowed", refusal);
+        yield* requireSpendReported(current, press, definition);
         const seen = press._tag === "taskEdit" ? press.seen : undefined;
         const claimed = yield* claimAttachments(current, press);
         yield* askAs(
