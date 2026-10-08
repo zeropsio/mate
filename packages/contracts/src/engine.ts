@@ -952,8 +952,26 @@ export const WakeCancelled = event("WakeCancelled", { wakeId: WakeId, reason: Sc
 
 // ── imported history ────────────────────────────────────────────────────────────────────────
 
-/** Where a conversation's earlier record comes from: the V1 thread it continues. */
-export const HistorySource = Schema.Struct({ kind: Schema.Literal("v1"), threadId: Schema.String });
+/**
+ * One V1 thread of a chain: a crewmate's stint. `reason` is why it opened, as a crewmate's
+ * session reason (`null` for the first); `words` are V1's own words for it.
+ */
+export const HistoryStint = Schema.Struct({
+  threadId: Schema.String,
+  reason: Schema.NullOr(Schema.String),
+  words: Schema.NullOr(Schema.String),
+});
+export type HistoryStint = typeof HistoryStint.Type;
+
+/**
+ * Where a conversation's earlier record comes from: the V1 thread it continues, or, for a
+ * crewmate, the chain of its stints oldest first (`threadId` is then the first of them).
+ */
+export const HistorySource = Schema.Struct({
+  kind: Schema.Literal("v1"),
+  threadId: Schema.String,
+  chain: Schema.optionalKey(Schema.Array(HistoryStint)),
+});
 export type HistorySource = typeof HistorySource.Type;
 
 /**
