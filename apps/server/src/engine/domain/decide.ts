@@ -415,7 +415,8 @@ const misfit = (
   state: ConversationState,
   session: SessionRecord,
 ): "closed" | "model" | "settings" | null => {
-  if (state.rotation !== null) return "closed";
+  // Read loosely: a record from before the rotation was kept carries none.
+  if (state.rotation != null) return "closed";
   const agent = state.agent;
   if (session.requestedModel !== state.model) return "model";
   if (
@@ -508,7 +509,8 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     b.emit({ _tag: "RunSending", runId: run.id, sessionId: session.id, effectId: effect });
     return;
   }
-  const rotation = b.state.rotation;
+  // Read loosely: a record from before the rotation was kept carries none.
+  const rotation = b.state.rotation ?? null;
   b.effect("session.open", run.id, run.sessionOpenAttempts + 1, run.id, {
     runId: run.id,
     instanceId: b.state.agent?.instanceId ?? null,

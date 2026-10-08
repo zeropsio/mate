@@ -66,8 +66,11 @@ interface Scene {
 }
 
 /** Plays commands through decide and evolve; the scene describes the last one. */
-const play = (steps: ReadonlyArray<Step>): Scene => {
-  let state = initialState(conversation);
+const play = (
+  steps: ReadonlyArray<Step>,
+  from: ConversationState = initialState(conversation),
+): Scene => {
+  let state = from;
   let now = T0;
   let scene: Scene | undefined;
   steps.forEach((step, index) => {
@@ -94,6 +97,25 @@ const play = (steps: ReadonlyArray<Step>): Scene => {
   });
   return scene!;
 };
+
+/** A record as an older snapshot kept it: no rotation field at all (main's version 8). */
+const withoutRotation = (state: ConversationState): ConversationState => {
+  const { rotation: _rotation, ...older } = state;
+  return older as ConversationState;
+};
+
+describe("a record kept before the rotation was", () => {
+  it("opens a session for its next send", () => {
+    const scene = play([send(), prepared(1)], withoutRotation(initialState(conversation)));
+    expect(scene.effects.map((effect) => effect.kind)).toContain("session.open");
+  });
+
+  it("keeps the healthy session it has open for its next send", () => {
+    const before = play([...running, turnEnded]).state;
+    const scene = play([send("again", {}), prepared(2)], withoutRotation(before));
+    expect(scene.effects.map((effect) => effect.kind)).toEqual(["provider.send"]);
+  });
+});
 
 // ── commands ────────────────────────────────────────────────────────────────────────────────
 

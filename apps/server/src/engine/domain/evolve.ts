@@ -418,7 +418,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         closing: state.closing?.sessionId === event.sessionId ? null : state.closing,
         // A session replaced (a model switch, a setting, a rotation) hands its place to the next one.
         rotatingFrom:
-          event.reason === "model" || event.reason === "settings" || state.rotation !== null
+          event.reason === "model" || event.reason === "settings" || state.rotation != null
             ? event.sessionId
             : state.rotatingFrom,
       };
