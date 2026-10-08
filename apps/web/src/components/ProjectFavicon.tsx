@@ -1,4 +1,3 @@
-import { AssetImage } from "~/assets/AssetImage";
 import { useMateImage } from "~/assets/MateImages";
 import { parseMateImageSource } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -40,13 +39,20 @@ export function ProjectFavicon(input: {
   const image = useMateImage(
     reference !== null && near ? { ...reference, rendition: { width: size, height: size } } : null,
   );
+  const [failedUrl, setFailedUrl] = useState<string>();
   const FallbackIcon = input.fallbackIcon ?? FolderIcon;
   const url =
     reference !== null ? image.url : src && !isProjectFaviconFallbackUrl(src) ? src : null;
   return (
     <span ref={ref} className={cn("inline-flex size-3.5 shrink-0", input.className)}>
-      {url ? (
-        <AssetImage src={url} alt="" className="size-full rounded-[25%] object-contain" />
+      {url && url !== failedUrl ? (
+        <img
+          src={url}
+          alt=""
+          decoding="async"
+          onError={() => setFailedUrl(url)}
+          className="size-full rounded-[25%] object-contain"
+        />
       ) : (
         <FallbackIcon className="size-full text-icon-muted" />
       )}

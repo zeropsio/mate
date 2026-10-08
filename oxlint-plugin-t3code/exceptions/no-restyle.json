@@ -1786,14 +1786,6 @@
   {
     "path": "apps/web/src/components/sidebar/SidebarChrome.tsx",
     "kind": "Literal",
-    "fingerprint": "<SidebarFooter> p-[var(--sidebar-content-inset)] in \"p-[var(--sidebar-content-inset)]\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/sidebar/SidebarChrome.tsx",
-    "kind": "Literal",
     "fingerprint": "<SidebarHeader> drag-region in \"drag-region\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",

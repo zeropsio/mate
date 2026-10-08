@@ -146,22 +146,6 @@
   {
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "Literal",
-    "fingerprint": "<> px-[var(--sidebar-row-content-inset)] in \"relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> py-[var(--sidebar-content-inset)] in \"relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
     "fingerprint": "<SidebarGroup> pe-[var(--sidebar-content-inset)] in \"ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
@@ -579,14 +563,6 @@
     "path": "apps/web/src/components/settings/settingsLayout.tsx",
     "kind": "Literal",
     "fingerprint": "<> tracking-[-0.025em] in \"flex items-center gap-2 text-lg font-semibold tracking-[-0.025em] text-foreground\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/sidebar/SidebarChrome.tsx",
-    "kind": "Literal",
-    "fingerprint": "<SidebarFooter> p-[var(--sidebar-content-inset)] in \"p-[var(--sidebar-content-inset)]\"",
     "owner": "web-intake",
     "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
