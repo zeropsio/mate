@@ -135,6 +135,9 @@ Every tool call re-sends the whole conversation, so a task keeps its context sma
 - TDD for behaviour: RED → GREEN, table-driven tests.
 - Atomic commits, English, never a `Co-Authored-By` trailer.
 - Delete, don't disable — no commented-out code or compat shims.
+- Any part can fail — HQ, a Mate's container, the Zerops platform, a provider. Code assumes it with
+  reasonable defence: bounded waits, an honest state for the user, recovery when the part returns.
+  No over-engineering: no machinery for failures that have not happened or cost more than they save.
 - Ported-zone edits stay minimal; a diverged port is an expensive port next time.
 - The ledger has one writer — subagents report facts as text, never edit `verified.md` /
   `questions.md` / `hacks.md` / `map.md` / `poc-findings.md` directly.
