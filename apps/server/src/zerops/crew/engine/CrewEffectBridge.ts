@@ -21,7 +21,12 @@
  */
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import type { ChatImageAttachment, EffectOutcome, Principal } from "@t3tools/contracts";
+import type {
+  ChatFileAttachment,
+  ChatImageAttachment,
+  EffectOutcome,
+  Principal,
+} from "@t3tools/contracts";
 
 import type { Command } from "../../../engine/domain/command.ts";
 import type { EffectRow } from "../../../engine/outbox/EffectOutbox.ts";
@@ -687,8 +692,10 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
           });
           switch (crewCommand._tag) {
             case "Send": {
+              // Pictures and files reach the agent; an attachment of a kind unknown here does not.
               const pictures = (crewCommand.attachments ?? []).filter(
-                (attachment): attachment is ChatImageAttachment => attachment.type === "image",
+                (attachment): attachment is ChatImageAttachment | ChatFileAttachment =>
+                  attachment.type === "image" || attachment.type === "file",
               );
               const send = told(
                 {

@@ -768,10 +768,22 @@ const rotateIfDue = (
 /* ------------------------------------------------------------ starting and carrying on */
 
 /** A task's first turn: its copy reset (a writer's), then its card, admitted as `principal`. */
-const startTask = (b: Builder, task: TaskRecord, principal: Principal, ownCall: boolean): void => {
+const startTask = (
+  b: Builder,
+  task: TaskRecord,
+  principal: Principal,
+  ownCall: boolean,
+  attachments: ReadonlyArray<ChatAttachment> = [],
+): void => {
   const member = b.member(task.owner);
   if (rotateIfDue(b, member, "task-start", task, principal) === false) return;
-  b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { starting: { principal, ownCall } } });
+  b.emit({
+    _tag: "TaskUpdated",
+    taskId: task.id,
+    set: {
+      starting: { principal, ownCall, ...(attachments.length === 0 ? {} : { attachments }) },
+    },
+  });
   if (member.kind === "writer") {
     b.effect(
       {
@@ -785,7 +797,7 @@ const startTask = (b: Builder, task: TaskRecord, principal: Principal, ownCall: 
     );
     return;
   }
-  sendTurn(b, member, taskCard(b.task(task.id), null), principal, "task", task.id);
+  sendTurn(b, member, taskCard(b.task(task.id), null), principal, "task", task.id, attachments);
 };
 
 /**
@@ -1743,7 +1755,7 @@ const message = (
     dependsOn: [],
   });
   if (!isFree(b.state, handle)) return;
-  startTask(b, task, as, true);
+  startTask(b, task, as, true, attachments);
 };
 
 /** *Tell the crew*: to the lead, or one task per crewmate it mentions. */
@@ -3506,6 +3518,7 @@ const settled = (
             task.starting.principal,
             "task",
             task.id,
+            task.starting.attachments ?? [],
           );
           return;
         case "dirty":

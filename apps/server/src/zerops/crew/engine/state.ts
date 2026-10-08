@@ -10,6 +10,7 @@
  */
 import {
   CREW_OWNER_ID,
+  type ChatAttachment,
   type ConversationId,
   type CrewApplyChoice,
   type CrewCard,
@@ -203,6 +204,8 @@ export interface TaskRecord {
   readonly starting: {
     readonly principal: Principal;
     readonly ownCall: boolean;
+    /** What the message that opened it carried: its first turn takes them. */
+    readonly attachments?: ReadonlyArray<ChatAttachment>;
   } | null;
   /** Lands once ready, as this principal: *Land now*, or *Land* on a task whose tree moved. */
   readonly landAs: Principal | null;
