@@ -2,7 +2,9 @@ import { formatPercent, formatTokens, formatUsd } from "@t3tools/shared/usageFor
 import { isModelCostUnknown, type ModelTotals } from "@t3tools/shared/usageMerge";
 import { useMemo } from "react";
 
-import { mergeAnsweredUsage, type EnvironmentUsageStatus } from "../../state/usage";
+import { useAgentUsage } from "../../state/usage";
+import type { UsageReportQuery, UsageSummaryInput } from "@t3tools/contracts";
+import type { UsageScope } from "./usageDimensions";
 import {
   Dialog,
   DialogDescription,
@@ -38,29 +40,27 @@ export interface UsageChartWindow {
  */
 export function UsageModelDialog({
   model,
-  environments,
+  input,
+  scope,
+  provenance,
   metric,
   chartWindow,
   onClose,
 }: {
   readonly model: ModelTotals;
-  readonly environments: readonly EnvironmentUsageStatus[];
+  readonly input: UsageSummaryInput;
+  readonly scope: UsageScope;
+  readonly provenance: NonNullable<UsageReportQuery["provenance"]>;
   readonly metric: UsageChartMetric;
   readonly chartWindow: UsageChartWindow;
   readonly onClose: () => void;
 }) {
-  const usage = useMemo(
-    () =>
-      mergeAnsweredUsage(
-        environments,
-        (bucket) => bucket.provider === model.provider && bucket.model === model.model,
-      ),
-    [environments, model.provider, model.model],
-  );
+  const { merged: usage, report } = useAgentUsage(input, scope, true, provenance, model);
+  const componentsKnown = report !== null && report.totals.unknownComponents === "0";
   const providers = useMemo(() => [model.provider], [model.provider]);
   const presentation = PROVIDER_PRESENTATION[model.provider];
   const costUnknown = isModelCostUnknown(model);
-  const hitRate = cacheHitRate(model);
+  const hitRate = componentsKnown ? cacheHitRate(model) : null;
   const perMillion = costPerMillionTokens(model);
   const stats = [
     { label: "Cost", value: costUnknown ? "Unpriced" : formatUsd(model.costUsd) },
@@ -112,18 +112,22 @@ export function UsageModelDialog({
             />
 
             <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
-              {costUnknown ? null : (
+              {costUnknown || usage.categoryCost.unsplit === usage.costUsd ? null : (
                 <UsageShareBar
                   label="Cost by type"
                   segments={costTypeSegments(usage.categoryCost)}
                   format={formatUsd}
                 />
               )}
-              <UsageShareBar
-                label="Tokens by type"
-                segments={tokenTypeSegments(model.tokens)}
-                format={formatTokens}
-              />
+              {componentsKnown ? (
+                <UsageShareBar
+                  label="Tokens by type"
+                  segments={tokenTypeSegments(model.tokens)}
+                  format={formatTokens}
+                />
+              ) : (
+                <p>Token categories are unknown.</p>
+              )}
               {usage.speedCost.fast + usage.speedCost.ultrafast > 0 ? (
                 <UsageShareBar
                   label="Cost by speed"
@@ -138,8 +142,7 @@ export function UsageModelDialog({
         {model.unpricedTokens > 0 ? (
           <DialogFooter variant="bare" className="items-center sm:justify-start">
             <span className="text-xs text-muted-foreground">
-              {formatTokens(model.unpricedTokens)} tokens have no known price. Set one in Model
-              prices.
+              {formatTokens(model.unpricedTokens)} tokens have no known price.
             </span>
           </DialogFooter>
         ) : null}

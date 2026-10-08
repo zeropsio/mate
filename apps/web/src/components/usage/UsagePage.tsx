@@ -69,7 +69,7 @@ import {
   resolveUsageShortcut,
   type UsageMetric,
 } from "./usageShortcuts";
-import { modelShare, sortModelsByTokens, usageTotals, type UsageTotal } from "./usageBreakdown";
+import { modelShare, sortModelsByTokens, type UsageTotal } from "./usageBreakdown";
 import { UsageModelDialog } from "./UsageModelDialog";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION, providersWithUsage } from "./usageProviders";
 import {
@@ -392,7 +392,12 @@ export function UsagePage({
         >
           {WINDOW_OPTIONS.map((option) => (
             <ShortcutHint key={option.days} shortcut={shortcutOf(option)}>
-              <Toggle value={String(option.days)} disabled={provenance === "legacy-scanner" && option.days === 1}>{option.label}</Toggle>
+              <Toggle
+                value={String(option.days)}
+                disabled={provenance === "legacy-scanner" && option.days === 1}
+              >
+                {option.label}
+              </Toggle>
             </ShortcutHint>
           ))}
         </ToggleGroup>
@@ -914,7 +919,9 @@ export function UsagePage({
       {openModel === null ? null : (
         <UsageModelDialog
           model={openModel}
-          environments={scopedEnvironments}
+          input={window}
+          scope={scope}
+          provenance={provenance}
           metric={dimensionMetric}
           chartWindow={{
             days,
@@ -955,7 +962,11 @@ const USAGE_TOTAL_LABELS = [
   "Estimated cache savings",
 ] as const;
 
-function Metric({ label, value, detail }: UsageTotal) {
+function Metric({
+  label,
+  value,
+  detail,
+}: Omit<UsageTotal, "detail"> & { readonly detail?: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="text-xs text-muted-foreground">{label}</span>

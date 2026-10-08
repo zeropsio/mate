@@ -29,7 +29,6 @@ export const UsageLinkDown = Schema.Union([
     batchId: UsageIdentity,
     code: UsageIdentity,
     disposition: Schema.Literals(["refused", "transient", "unsupported", "fenced"]),
-    cursor: Schema.optionalKey(UsageQuantity),
   }),
 ]);
 export type UsageLinkDown = typeof UsageLinkDown.Type;

@@ -43,8 +43,12 @@ export function useAgentUsage(
   scope: UsageScope,
   enabled = true,
   provenance: NonNullable<UsageReportQuery["provenance"]> = "live-responses",
+  model?: Pick<ModelTotals, "provider" | "model">,
 ) {
-  const query = usageReportQuery(input, scope, provenance);
+  const query = {
+    ...usageReportQuery(input, scope, provenance),
+    ...(model === undefined ? {} : { provider: model.provider, model: model.model }),
+  };
   const primary = useReport(query, enabled);
   const overall = useReport({ ...query, appId: null, mateId: null, ownerUserId: null }, enabled);
   const models = useReport({ ...query, groupBy: "model" }, enabled);
@@ -126,6 +130,15 @@ export function usageReportView(
               costKnown: row.costUsdNanos !== null,
               costUsd: Number(row.costUsdNanos ?? 0) / 1e9,
               totalTokens: Number(row.totals.tokens),
+              tokens: {
+                totalTokens: Number(row.totals.tokens),
+                uncachedInputTokens: Number(row.totals.uncachedInput),
+                cachedInputTokens: Number(row.totals.cachedInput),
+                cacheCreationTokens: Number(row.totals.cacheCreation),
+                outputTokens: Number(row.totals.output),
+                reasoningTokens: Number(row.totals.reasoning),
+              },
+              unpricedTokens: row.costUsdNanos === null ? Number(row.totals.tokens) : 0,
               records: Number(row.totals.records),
               unpricedRecords: row.costUsdNanos === null ? Number(row.totals.records) : 0,
               costShare:
@@ -187,6 +200,8 @@ export function usageReportView(
   }));
   return {
     ...totals,
+    categoryCost: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, unsplit: totals.costUsd },
+    speedCost: { standard: 0, fast: 0, ultrafast: 0, premium: 0 },
     models: modelRows,
     providers: providerRows,
     daily: hourly ? [] : periodRows,

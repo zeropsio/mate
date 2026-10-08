@@ -7,16 +7,10 @@ import {
   OrchestrationThread,
   ClientOrchestrationCommand,
   ORCHESTRATION_WS_METHODS,
-  WS_METHODS,
-  USAGE_CONTRACT_VERSION,
-  UsageSummary,
-  UsageSummaryInput,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { usageCanonical } from "@t3tools/shared/agentUsage";
-import { readTranscriptRecords } from "../../../../../server/src/usage/usageTranscriptReader.ts";
+import { makeClaudeTurnUsage } from "../../../../../server/src/spi/responseUsage.ts";
 import { mateOverviewOf } from "../../../../../server/src/zerops/zeropsHqOverview.ts";
-import { UsageAggregator } from "../../../../../server/src/usage/usageAggregation.ts";
 import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as FileSystem from "effect/FileSystem";
@@ -31,8 +25,6 @@ import { mateChat } from "./dsl.ts";
 
 const decodeThread = Schema.decodeUnknownSync(OrchestrationThread);
 const decodeCommand = Schema.decodeUnknownSync(ClientOrchestrationCommand);
-const decodeUsageInput = Schema.decodeUnknownSync(UsageSummaryInput);
-const encodeUsage = Schema.encodeSync(UsageSummary);
 
 // A deadline changes the reading, even when the provider and HQ send nothing more.
 describe("C: provider refusal and its real deadline", () => {
@@ -132,7 +124,11 @@ describe("C: provider refusal and its real deadline", () => {
               "codex-reply",
             );
             wire.run("codex-reply", "completed", null, "codex-answer");
-            yield* reportConversation(s.drivers, "Ada", wire.mate.shellThread());
+            yield* reportConversation(s.drivers, "Ada", {
+              session: wire.mate.thread.session ?? null,
+              latestTurn: wire.mate.thread.latestTurn ?? null,
+              latestMessagePreview: wire.mate.shellThread().latestMessagePreview ?? null,
+            });
             yield* chat.then.once("Codex is ready to work while Claude waits for its reset.");
             yield* chat.then.noText("Thinking");
             yield* Effect.promise(() => settled());
@@ -226,92 +222,25 @@ describe("C: provider refusal and its real deadline", () => {
         "connected Usage shows zero records, sessions and cost for a refused Claude transcript",
         () =>
           Effect.gen(function* () {
-            const fs = yield* FileSystem.FileSystem;
-            const path = yield* Path.Path;
-            const directory = yield* fs.makeTempDirectoryScoped();
-            const file = path.join(directory, "refused.jsonl");
-            yield* fs.writeFileString(
-              file,
-              usageCanonical({
-                type: "assistant",
-                error: "rate_limit",
-                sessionId: "refused-session",
-                timestamp: "2026-10-08T10:00:00.000Z",
-                message: {
-                  id: "refused",
-                  model: "<synthetic>",
-                  usage: {
-                    input_tokens: 0,
-                    output_tokens: 0,
-                    cache_read_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
-                  },
-                },
-              }) + "\n",
-            );
-            const parsed = yield* Effect.promise(() => readTranscriptRecords(file, "claude"));
-            expect(parsed?.records).toEqual([]);
+            const read = makeClaudeTurnUsage({ session: { model_usage: {}, total_cost_usd: 0 } });
+            // A refused native result has no consumption; transcript history is never an input.
+            expect(
+              read({
+                type: "result",
+                session_id: "refused-session",
+                uuid: "refused",
+                modelUsage: {},
+                total_cost_usd: 0,
+              }),
+            ).toEqual([]);
             const s = yield* createScenario([installArea]);
             yield* s.given.project("Ada", { mate: true, app: "Shop" });
             const chat = mateChat(s);
             const wire = chat.fixture();
             wire.history();
-            let heard = () => {};
-            const summaryRead = new Promise<void>((resolve) => {
-              heard = resolve;
-            });
-            wire.mate.rpcHandlers.unshift((request, socket) => {
-              if (request.tag !== WS_METHODS.serverGetUsageSummary) return false;
-              const input = decodeUsageInput(request.payload);
-              const aggregate = new UsageAggregator({
-                timeZone: input.timeZone,
-                sinceDay: input.sinceDay,
-                untilDay: input.untilDay,
-                rates: new Map(),
-                resolution: input.resolution ?? "day",
-                ...(input.sinceTime === undefined
-                  ? {}
-                  : { sinceTimeMs: Date.parse(input.sinceTime) }),
-                ...(input.untilTime === undefined
-                  ? {}
-                  : { untilTimeMs: Date.parse(input.untilTime) }),
-              });
-              for (const record of parsed!.records) aggregate.add(record);
-              const summary: typeof UsageSummary.Type = {
-                contractVersion: USAGE_CONTRACT_VERSION,
-                readAt: "2026-10-08T10:00:00.000Z",
-                timeZone: input.timeZone,
-                sinceDay: input.sinceDay,
-                untilDay: input.untilDay,
-                buckets: aggregate.finish().buckets,
-                sources: [
-                  {
-                    fingerprint: {
-                      hostId: "Ada",
-                      provider: "claude",
-                      resolvedHomePath: "/home/claude",
-                      volumeId: "1:1",
-                    },
-                    status: "ok",
-                    scannedFiles: 1,
-                    skippedFiles: 0,
-                    malformedRecords: 0,
-                    distinctSessions: 0,
-                    message: null,
-                  },
-                ],
-                pricing: {
-                  status: "cached",
-                  source: "fixture",
-                  fetchedAt: "2026-10-08T10:00:00.000Z",
-                  knownModels: 0,
-                },
-                scanDurationMs: 0,
-              };
-              wire.mate.reply(socket, request.id, encodeUsage(summary));
-              heard();
-              return true;
-            });
+            const rows = yield* s.drivers.core
+              .sql`SELECT count(*)::text AS records FROM hq_usage_fact`;
+            expect(rows[0]?.records).toBe("0");
             yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
             yield* Effect.promise(() =>
               s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
@@ -321,10 +250,8 @@ describe("C: provider refusal and its real deadline", () => {
             yield* Effect.promise(() => s.page.goto(`${s.web.origin}/usage`));
             yield* chat.when.press("Cost");
             yield* chat.when.press("30 days");
-            yield* Effect.promise(() => summaryRead);
-            yield* chat.then.text("0 sessions");
-            yield* chat.then.text("$0.00");
-            yield* chat.then.text("No activity in this window.");
+            yield* chat.then.text("No recorded Mate usage yet.");
+            yield* chat.then.noText("$0.00");
             yield* chat.then.noText("Not connected, so not counted: Ada");
             const output = process.env.MATE_LIMIT_EVIDENCE;
             if (output)

@@ -596,6 +596,13 @@ export const layer = (crew: OverviewSources["crew"]) =>
       // Separate home database: capture IO cannot lock the orchestration event store.
       // Admission waits for a subscribed capture service, including across storage recovery.
       const usage = yield* makeUsageCapture(paths.join(config.stateDir, "usage.sqlite"));
+      const path = config.zerops?.hqEnrollmentPath;
+      if (path === undefined) {
+        return ZeropsHqLink.of({
+          standing: Effect.succeed({ kind: "not-enrolled", outcome: Option.none() }),
+        });
+      }
+      const fs = yield* FileSystem.FileSystem;
       // While the Mate engine owns the conversation, its conversations are the chats: V1's
       // projections (a thread left running at the flip among them) are never read.
       const chats = chatsSource(yield* MateEngine, {

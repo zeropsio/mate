@@ -33,6 +33,7 @@ export class UsageRefused extends Schema.TaggedError<UsageRefused>()("UsageRefus
 }) {}
 export type UsageWriteError = UsageRefused | SqlError | NotLeader | ZeropsError;
 export interface UsageSender {
+  readonly orgId: string;
   readonly projectId: string;
   readonly credential: string;
   readonly channel: string;
@@ -201,7 +202,7 @@ export const makeUsageLedger = Effect.fnUntraced(function* (
           if (mate === undefined) return yield* fail("mate_gone");
           const channel = NodeCrypto.randomUUID();
           yield* sql`INSERT INTO hq_usage_sender(project_id,channel,process_id) VALUES(${projectId},${channel},${processId}) ON CONFLICT(project_id) DO UPDATE SET channel=EXCLUDED.channel,process_id=EXCLUDED.process_id`;
-          return { projectId, credential, channel, mateId: mate.id };
+          return { projectId, credential, channel, mateId: mate.id, orgId: yield* readOrg };
         }),
       ),
     receive,

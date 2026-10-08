@@ -5613,32 +5613,32 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             }),
         });
 
-      // The native print runtime restores resume/fork history before accepting controls.
-      // Read its live ledger before any Mate input; skipBehaviors prevents transcript scanning.
-      const usageBaseline = yield* Effect.tryPromise({
-        try: () =>
-          queryRuntime.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({
-            skipBehaviors: true,
-          }),
-        catch: (cause) =>
-          new ProviderAdapterProcessError({
-            provider: PROVIDER,
-            threadId,
-            detail: "Claude live usage baseline is unavailable.",
-            cause,
-          }),
-      }).pipe(Effect.onError(() => Effect.sync(() => queryRuntime.close())));
+        // The native print runtime restores resume/fork history before accepting controls.
+        // Read its live ledger before any Mate input; skipBehaviors prevents transcript scanning.
+        const usageBaseline = yield* Effect.tryPromise({
+          try: () =>
+            queryRuntime.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({
+              skipBehaviors: true,
+            }),
+          catch: (cause) =>
+            new ProviderAdapterProcessError({
+              provider: PROVIDER,
+              threadId,
+              detail: "Claude live usage baseline is unavailable.",
+              cause,
+            }),
+        }).pipe(Effect.onError(() => Effect.sync(() => queryRuntime.close())));
 
-      const turnUsage = yield* Effect.try({
-        try: () => makeClaudeTurnUsage(usageBaseline),
-        catch: (cause) =>
-          new ProviderAdapterProcessError({
-            provider: PROVIDER,
-            threadId,
-            detail: "Claude live usage baseline is invalid.",
-            cause,
-          }),
-      }).pipe(Effect.onError(() => Effect.sync(() => queryRuntime.close())));
+        const turnUsage = yield* Effect.try({
+          try: () => makeClaudeTurnUsage(usageBaseline),
+          catch: (cause) =>
+            new ProviderAdapterProcessError({
+              provider: PROVIDER,
+              threadId,
+              detail: "Claude live usage baseline is invalid.",
+              cause,
+            }),
+        }).pipe(Effect.onError(() => Effect.sync(() => queryRuntime.close())));
 
         const session: ProviderSession = {
           threadId,
