@@ -822,8 +822,8 @@ for (const state of ["blocked", "ready", "review"] as const) {
       (world) =>
         Effect.gen(function* () {
           yield* world.serverReady;
-          const settled = yield* world.snapshotWhere(
-            (frame) => frame.operations?.every((row) => row.status !== "interrupted") === true,
+          const settled = yield* world.snapshotWhere((frame) =>
+            (frame.operations ?? []).every((row) => row.status !== "interrupted"),
           );
           assert.deepStrictEqual(
             [
@@ -895,8 +895,8 @@ it.live("a restart sends no turn into a run the person paused; Resume carries th
     (world) =>
       Effect.gen(function* () {
         yield* world.serverReady;
-        const held = yield* world.snapshotWhere(
-          (frame) => frame.operations?.every((row) => row.status !== "interrupted") === true,
+        const held = yield* world.snapshotWhere((frame) =>
+          (frame.operations ?? []).every((row) => row.status !== "interrupted"),
         );
         const turns = (yield* turnsSent(world)).length;
         assert.deepStrictEqual(
