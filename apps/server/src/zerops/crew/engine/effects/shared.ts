@@ -2,15 +2,18 @@
  * What every crew effect handler shares: its lanes, its kinds, its outcomes, and the reads it
  * takes its evidence from.
  *
- * A crew effect wraps one of the crew's git or app modules unchanged. Its id doubles as the
- * `Crew-Operation:` trailer of every commit it writes, so a handler run again after a crash first
- * reads what its own earlier attempt finished and adopts it instead of writing it twice. Every
- * crew effect is replay-safe.
+ * A crew effect wraps one of the crew's git or app modules unchanged, and every crew effect is
+ * replay-safe: run again after a crash, a handler first reads what its own earlier attempt
+ * finished and adopts it instead of writing it twice. Its evidence is the effect id as the
+ * `Crew-Operation:` trailer where the module takes one (a turn's WIP commit, a merge-in), the
+ * task's `Crew-Assignment:` trailer for a landing, and otherwise what the write leaves behind
+ * (a copy, an attempt ref, a reset, the sweep's own subject, a live pidfile, a stored receipt).
  *
  * Outcomes: what the module answered is the effect's `ok` value, a refusal included (a conflict,
  * a park, a failed check, a refused landing): the crew's decider reads it as the task's next
- * event. `failed` is kept for what no answer came from: a copy nobody recorded, a service that is
- * not the one asked for, or a service that kept failing past the worker's attempts.
+ * event. `failed` is kept for what no answer came from: a copy nobody recorded, a service that
+ * answers as another one, a command its conversation refused, or a service that kept failing past
+ * the worker's attempts.
  *
  * @module zerops/crew/engine/effects/shared
  */
