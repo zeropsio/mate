@@ -58,6 +58,9 @@ it.each([
 ])("a test sentence cannot disappear without approval ($change)", ({ change, expected }) => {
   fixture(({ root, write, commit }) => {
     NodeFS.unlinkSync(NodePath.join(root, "old.test.ts"));
+    expect(checkTestSentences(root, "origin/main")).toEqual([
+      "routine memory reclaim shows no notice",
+    ]);
     if (change === "renamed") write("old.test.ts", 'it("reclaim is quiet", () => {});');
     if (change === "moved")
       write(
@@ -71,6 +74,42 @@ it.each([
     );
     expect(checkTestSentences(root, "origin/main")).toEqual(expected);
   });
+});
+
+it("conditional test sentences cannot disappear without approval", () => {
+  fixture(({ root, write, commit, git }) => {
+    write(
+      "old.test.ts",
+      [
+        'it.skipIf(platformUnsupported)("only treats a missing log file as an empty current size", () => {});',
+        'test.runIf(featureEnabled)("enabled features retain their behaviour", () => {});',
+        'describe.skipIf(platformUnsupported)("unsupported platforms keep their contract", () => {});',
+        'describe.runIf(featureEnabled)("enabled suites retain their contract", () => {});',
+        'it.skipIf(platformUnsupported).each([1])("conditional case %s stays protected", () => {});',
+      ].join("\n"),
+    );
+    commit("conditional baseline");
+    git("branch", "-f", "origin/main");
+    write("old.test.ts", "export {};");
+    expect(checkTestSentences(root, "origin/main")).toEqual([
+      "conditional case %s stays protected",
+      "enabled features retain their behaviour",
+      "enabled suites retain their contract",
+      "only treats a missing log file as an empty current size",
+      "unsupported platforms keep their contract",
+    ]);
+  });
+});
+
+it("conditional setup arguments are not test sentences", () => {
+  const source = [
+    'it.skipIf("skip reason")("skipped behaviour stays protected", () => {});',
+    'test.runIf("run reason")("conditional behaviour stays protected", () => {});',
+  ].join("\n");
+  expect([...collectTestTitles(source, "conditional.test.ts")]).toEqual([
+    "skipped behaviour stays protected",
+    "conditional behaviour stays protected",
+  ]);
 });
 
 it("test sentences retain modifier and each template titles without inventing tests in strings", () => {

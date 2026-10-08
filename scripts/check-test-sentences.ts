@@ -18,15 +18,19 @@ function testCallee(value: unknown): boolean {
   if (!node) return false;
   if (node.type === "Identifier") return ["it", "test", "describe"].includes(String(node.name));
   if (node.type === "MemberExpression" && node.computed === false) return testCallee(node.object);
-  if (node.type === "CallExpression" || node.type === "TaggedTemplateExpression") {
-    const callee = record(node.callee ?? node.tag);
-    return (
-      callee?.type === "MemberExpression" &&
-      record(callee.property)?.name === "each" &&
-      testCallee(callee.object)
-    );
-  }
+  if (node.type === "CallExpression" || node.type === "TaggedTemplateExpression")
+    return curriedModifier(node.callee ?? node.tag);
   return false;
+}
+
+function curriedModifier(value: unknown): boolean {
+  const node = record(value);
+  return (
+    node?.type === "MemberExpression" &&
+    node.computed === false &&
+    ["each", "skipIf", "runIf"].includes(String(record(node.property)?.name)) &&
+    testCallee(node.object)
+  );
 }
 
 export function collectTestTitles(source: string, file: string): Set<string> {
@@ -40,15 +44,14 @@ export function collectTestTitles(source: string, file: string): Set<string> {
     }
     const node = record(value);
     if (!node) return;
-    if (node.type === "CallExpression" && testCallee(node.callee)) {
-      const callee = record(node.callee);
-      const isEachTable =
-        callee?.type === "MemberExpression" && record(callee.property)?.name === "each";
+    if (
+      node.type === "CallExpression" &&
+      testCallee(node.callee) &&
+      !curriedModifier(node.callee)
+    ) {
       const title = record(Array.isArray(node.arguments) ? node.arguments[0] : undefined);
-      if (!isEachTable && title?.type === "Literal" && typeof title.value === "string")
-        titles.add(title.value);
+      if (title?.type === "Literal" && typeof title.value === "string") titles.add(title.value);
       if (
-        !isEachTable &&
         title?.type === "TemplateLiteral" &&
         Array.isArray(title.expressions) &&
         title.expressions.length === 0 &&
