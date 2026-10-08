@@ -17,7 +17,7 @@ it.each(["requestfinished", "requestfailed"])(
       waitForNetworkIdle: async () => {},
     });
     const settle = completedHttp(events as unknown as Page);
-    const request = {} as HTTPRequest;
+    const request = { isNavigationRequest: () => false } as HTTPRequest;
     events.emit("request", request);
     const drained = settle();
     events.emit("response", { request: () => request });
@@ -31,3 +31,33 @@ it.each(["requestfinished", "requestfailed"])(
     expect(events.listenerCount("requestfinished")).toBe(0);
   },
 );
+
+it("a new main document settles without waiting for abandoned requests from the old document", async () => {
+  let rendererTurns = 0;
+  const mainFrame = {};
+  const events = Object.assign(new NodeEvents.EventEmitter(), {
+    isClosed: () => false,
+    mainFrame: () => mainFrame,
+    evaluate: async () => {
+      rendererTurns++;
+    },
+  });
+  const settle = completedHttp(events as unknown as Page);
+  const abandoned = { isNavigationRequest: () => false } as HTTPRequest;
+  const navigation = {
+    isNavigationRequest: () => true,
+    frame: () => mainFrame,
+  } as unknown as HTTPRequest;
+  events.emit("request", abandoned);
+  events.emit("request", navigation);
+  const drained = settle();
+  events.emit("requestfinished", navigation);
+  await Promise.resolve();
+  try {
+    expect(rendererTurns, "The new document is still waiting for an abandoned old body").toBe(1);
+  } finally {
+    events.emit("requestfailed", abandoned);
+    await drained;
+    settle.close();
+  }
+});

@@ -11,6 +11,7 @@ import {
   useDrawnProjectAccess,
   useVisibleProjectAccess,
 } from "./useVisibleProjectAccess";
+import { useMateRecovery } from "./useMateRecovery";
 
 const viewer = vi.hoisted(() => ({ role: "OWNER" }));
 vi.mock("./sessionContext", () => ({
@@ -29,6 +30,10 @@ function RowsProbe() {
   useLayoutEffect(() => {
     rows.drawn = drawn;
   });
+  return null;
+}
+function RecoveryProbe() {
+  useMateRecovery("p-cy", undefined, false);
   return null;
 }
 let tree: ReactTestRenderer | undefined;
@@ -179,3 +184,46 @@ it("holds one access detail while any row is drawn and releases it with the last
   await act(async () => second());
   expect(held).toEqual([]);
 });
+
+it.each([
+  { role: "OWNER", listed: true, named: false, expected: [] },
+  { role: "READ_ONLY", listed: true, named: false, expected: [] },
+  { role: "NO_ACCESS", listed: true, named: true, expected: [] },
+  { role: "NO_ACCESS", listed: true, named: false, expected: ["project/project/p-cy"] },
+  { role: "OWNER", listed: false, named: false, expected: ["project/project/p-cy"] },
+])(
+  "Mate recovery asks for an own row only when $role access needs it (listing grant: $named)",
+  async ({ role, listed, named, expected }) => {
+    viewer.role = role;
+    const registry = AtomRegistry.make();
+    const held: string[] = [];
+    const roster = Atom.make({
+      projects: listed
+        ? [{ id: "p-cy", name: "Cy", status: "ACTIVE", listingNamesGrants: named }]
+        : [],
+      read: "read",
+      complete: true,
+      live: true,
+      reconnecting: false,
+    });
+    registry.set(accountReadsAtom, {
+      data: { project: () => roster } as never,
+      orgId: "org-1",
+      demandDetail: (demand) => {
+        const key = `${demand.family}/${demand.listing}/${demand.ownerId}`;
+        held.push(key);
+        return () => held.splice(held.indexOf(key), 1);
+      },
+      renewHeld: () => {},
+    });
+    await act(async () => {
+      tree = create(
+        createElement(RegistryContext.Provider, { value: registry }, createElement(RecoveryProbe)),
+      );
+    });
+    expect(held).toEqual(expected);
+    await act(async () => tree?.unmount());
+    tree = undefined;
+    expect(held).toEqual([]);
+  },
+);

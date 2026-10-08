@@ -5,6 +5,7 @@ import * as Schema from "effect/Schema";
 import type { Page, BrowserContext } from "puppeteer-core";
 import { inject } from "vite-plus/test";
 import { expect } from "@effect/vitest";
+import { HqAttentionScopeValue } from "@t3tools/shared/hqStream";
 import { MateLinkUp, MateOverview } from "@t3tools/shared/mateLink";
 import {
   startCore,
@@ -12,6 +13,7 @@ import {
   sessionFor,
   enrollMate,
   untilHealth,
+  ticketFor,
 } from "../../../../hq/test/harness/runningCore.ts";
 import { mateInApp } from "../../../../hq/test/harness/mates.ts";
 import { overviewOf, digest } from "../../../../hq/test/harness/overviews.ts";
@@ -20,7 +22,7 @@ import { ZeropsFake } from "../fakes/zerops.ts";
 import { MateFake } from "../fakes/mate.ts";
 import { hqConnection } from "../fakes/hqConnection.ts";
 import { serve } from "./http.ts";
-import { startScenarioCore, type HqTimings } from "./hqCore.ts";
+import { openScenarioNavigation, startScenarioCore, type HqTimings } from "./hqCore.ts";
 import { openBrowser, clickText, visibleText, sendConversationMessage } from "./browser.ts";
 
 const decodeOverview = Schema.decodeUnknownEffect(MateOverview);
@@ -232,6 +234,21 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       },
     });
     yield* link.send(yield* encodeLink({ type: "overview", full: true, overview }));
+    // Sending is not an application receipt: wait for the overview consumers will actually read.
+    const attentionTicket = yield* ticketFor(core.call, owner);
+    yield* openScenarioNavigation(
+      core.origin,
+      attentionTicket,
+      (message) =>
+        (message.type === "scope-reset" || message.type === "scope-values") &&
+        message.scope.kind === "attention" &&
+        message.scope.projectId === name &&
+        message.values.some((entry) => {
+          const value = Schema.decodeUnknownSync(HqAttentionScopeValue)(entry.value);
+          return value.overview?.main?.id === mate.thread.id;
+        }),
+      { kind: "attention", projectId: name },
+    ).pipe(Effect.scoped);
   });
 
   const web = yield* Effect.promise(() =>
