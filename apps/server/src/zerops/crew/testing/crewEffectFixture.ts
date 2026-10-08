@@ -17,7 +17,14 @@ import * as CrewReads from "../CrewReads.ts";
 import * as CrewRuntime from "../CrewRuntime.ts";
 import * as CrewWorkspace from "../CrewWorkspace.ts";
 import { laneKey } from "../engine/effects/shared.ts";
-import { crewGitLayer, git, withCrewService, write, TEST_HOST } from "./crewGitFixture.ts";
+import {
+  crewGitLayer,
+  git,
+  withCrewService,
+  write,
+  TEST_HOST,
+  type CrewShellFixtureOptions,
+} from "./crewGitFixture.ts";
 
 export const CREW_OWNER = ConversationId.make("crew/main");
 
@@ -64,8 +71,8 @@ export const okValue = (result: HandlerResult): unknown => {
 };
 
 /** The crew git core with reads and the claim runtime, over the shim. */
-export const crewEffectLayer = (root: string) => {
-  const core = crewGitLayer(root);
+export const crewEffectLayer = (root: string, options: CrewShellFixtureOptions = {}) => {
+  const core = crewGitLayer(root, options);
   return Layer.mergeAll(CrewReads.layer, CrewRuntime.layer).pipe(Layer.provideMerge(core));
 };
 
@@ -73,7 +80,8 @@ export type CrewEffectServices = Layer.Success<ReturnType<typeof crewEffectLayer
 
 export const withCrewEffects = <A, E>(
   body: (root: string) => Effect.Effect<A, E, CrewEffectServices>,
-) => withCrewService(body, crewEffectLayer);
+  options: CrewShellFixtureOptions = {},
+) => withCrewService(body, (root) => crewEffectLayer(root, options));
 
 /** A writer's copy on the fixture's host, recorded as the engine path keys it. */
 export const createLane = (handle: string) =>

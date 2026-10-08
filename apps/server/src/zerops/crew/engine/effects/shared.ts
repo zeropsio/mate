@@ -124,16 +124,17 @@ export const failedFor = (reason: string): HandlerResult => ({
 export type CrewModuleError = CrewShellError | CrewGitError | CrewStoreError | CrewLaneNotRecorded;
 
 /**
- * A module's error as the handler's result. A copy nobody recorded, or a service that is not the
- * one asked for, fails at once: trying again changes nothing. Anything else (the connection, a git
- * lock, the database) is tried again, and past the worker's attempts it fails with these words.
+ * A module's error as the handler's result. A copy nobody recorded, or a service that answers as
+ * another one, fails at once: trying again changes nothing. Anything else is tried again — the
+ * connection, a git lock, the database, a host whose binding is not verified yet (the repository
+ * list may still be loading at boot) — and past the worker's attempts it fails with these words.
  */
 export const settleError = (error: CrewModuleError): HandlerResult => {
   switch (error._tag) {
     case "CrewLaneNotRecorded":
       return failedFor(error.message);
     case "CrewShellError":
-      return error.reason === "identity" || error.reason === "unverified"
+      return error.reason === "identity"
         ? failedFor(error.message)
         : { _tag: "Retry", reason: error.message };
     default:
