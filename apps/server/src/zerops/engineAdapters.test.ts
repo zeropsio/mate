@@ -1,10 +1,14 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
-import type { Principal, RunTrigger } from "@t3tools/contracts";
+import { ConversationId, type Principal, type RunTrigger } from "@t3tools/contracts";
 
-import { RestartEvidence, RunAdmission } from "../engine/ports.ts";
-import { engineAdaptersOpen, turnPrincipalOf } from "./engineAdapters.ts";
+import { ServerConfig } from "../config.ts";
+import { AgentWorkspace, RestartEvidence, RunAdmission } from "../engine/ports.ts";
+import { CrewWorkspaceDirectory } from "./crew/engine/CrewWorkspaceDirectory.ts";
+import { engineAdaptersOpen, serverWorkspace, turnPrincipalOf } from "./engineAdapters.ts";
 import type { TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 
 describe("engineAdapters", () => {
@@ -86,5 +90,41 @@ describe("engineAdapters", () => {
           "Mate restarted at 2026-10-07T10:01:00.000Z.",
         );
       }).pipe(Effect.provide(engineAdaptersOpen)),
+  );
+});
+
+describe("engineAdapters: where an agent works", () => {
+  const ana = ConversationId.make("crew-main-ana-1");
+  const mate = ConversationId.make("mate");
+  const lane = { cwd: "/var/www/.crew/ana", runtimeMode: "full-access" } as const;
+  const crew = Layer.succeed(CrewWorkspaceDirectory, {
+    workspaceOf: (conversation) =>
+      Effect.succeed(conversation === ana ? Option.some(lane) : Option.none()),
+  });
+  // The server's directory is all the workspace reads of its config.
+  const config = Layer.succeed(ServerConfig, {
+    cwd: "/var/www",
+  } as unknown as ServerConfig["Service"]);
+
+  it.effect(
+    "a crewmate's conversation works where its crew says; any other in the server's directory",
+    () =>
+      Effect.gen(function* () {
+        const workspace = yield* AgentWorkspace;
+        assert.deepStrictEqual(yield* workspace.of(ana), lane);
+        assert.deepStrictEqual(yield* workspace.of(mate), {
+          cwd: "/var/www",
+          runtimeMode: "full-access",
+        });
+      }).pipe(Effect.provide(serverWorkspace.pipe(Layer.provideMerge(Layer.merge(config, crew))))),
+  );
+
+  it.effect("with no crew, every agent works in the server's directory", () =>
+    Effect.gen(function* () {
+      assert.deepStrictEqual(yield* (yield* AgentWorkspace).of(ana), {
+        cwd: "/var/www",
+        runtimeMode: "full-access",
+      });
+    }).pipe(Effect.provide(serverWorkspace.pipe(Layer.provideMerge(config)))),
   );
 });

@@ -2,13 +2,15 @@
  * The Mate engine's ports, implemented for Zerops: a run is admitted by
  * `ZeropsTurnAdmission.admitRun` (D6), the restart is read by
  * `ZeropsRestartRead` and worded as V1 words it, and the agent works in the
- * server's own directory. Outside Zerops nothing is gated and nothing is read.
+ * server's own directory, or a crewmate where its crew says. Outside Zerops nothing is gated and
+ * nothing is read.
  *
  * @module engineAdapters
  */
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import type { Principal, RunTrigger } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
@@ -19,6 +21,7 @@ import {
   RunRefused,
   type RestartFacts,
 } from "../engine/ports.ts";
+import { CrewWorkspaceDirectory } from "./crew/engine/CrewWorkspaceDirectory.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { restartCause, ZeropsRestartRead } from "./ZeropsRestartRead.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
@@ -84,14 +87,28 @@ export const noRestartEvidence = Layer.succeed(
   RestartEvidence.of({ read: Effect.succeed(null), explain: explainRestart }),
 );
 
-/** The agent works in the server's own directory, with full access: the Mate's container. */
+/**
+ * A crewmate's conversation works where its crew says (its copy, or the Mate's tree); every other
+ * agent works in the server's own directory, with full access: the Mate's container.
+ */
 export const serverWorkspace = Layer.effect(
   AgentWorkspace,
-  Effect.map(ServerConfig, (config) =>
-    AgentWorkspace.of({
-      of: () => Effect.succeed({ cwd: config.cwd, runtimeMode: "full-access" }),
-    }),
-  ),
+  Effect.gen(function* () {
+    const config = yield* ServerConfig;
+    const crew = yield* Effect.serviceOption(CrewWorkspaceDirectory);
+    const server = { cwd: config.cwd, runtimeMode: "full-access" } as const;
+    return AgentWorkspace.of({
+      of: (conversation) =>
+        Option.match(crew, {
+          onNone: () => Effect.succeed(server),
+          onSome: (directory) =>
+            Effect.map(
+              directory.workspaceOf(conversation),
+              Option.getOrElse(() => server),
+            ),
+        }),
+    });
+  }),
 );
 
 /** Outside Zerops: every run is admitted, and there is no restart to read. */
