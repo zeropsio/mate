@@ -133,6 +133,7 @@ export function makeMateFeedWire(
                         client[WS_METHODS.subscribeServerConfig]({
                           usageLimitSources: true,
                           usageLimitsCommand: true,
+                          mateUpdate: true,
                         }),
                       ).pipe(
                         Stream.mapAccum(

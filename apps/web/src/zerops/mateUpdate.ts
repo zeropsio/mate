@@ -20,6 +20,22 @@ export function mateUpdateLine(
   if (update === undefined) {
     return { text: `Server ${serverVersion}`, tone: "default" };
   }
+  const automatic = update.automatic;
+  if (automatic !== undefined) {
+    const text =
+      automatic.phase === "draining"
+        ? "Update ready; waiting for your work to finish"
+        : automatic.phase === "switching" || automatic.phase === "verifying"
+          ? "Updating — your conversations are safe"
+          : automatic.phase === "updated"
+            ? `Updated to ${automatic.runningVersion}`
+            : automatic.phase === "postponed"
+              ? `Update postponed; Mate is running ${automatic.runningVersion}`
+              : update.available && !automatic.rollbackCompatible
+                ? "Update available — needs your confirmation"
+                : undefined;
+    if (text !== undefined) return { text, tone: "default" };
+  }
   if (!update.available) {
     return { text: `Server ${update.installed}`, tone: "default" };
   }
