@@ -347,6 +347,11 @@ const CHANGED: ReadonlyArray<Pattern> = [
     message: "Stream.scan takes a lazy initial state: pass () => initial",
   },
   {
+    test: /\bSchema\.brand\(\s*[A-Za-z_$][\w$]*\s*\)/u,
+    message:
+      "Schema.brand of a generic parameter: 4.0.1 wants Brand & EnsureSingleBrandKey<Brand>, so type it Parameters<typeof Schema.brand<Brand>>[0] and call Schema.brand<Brand>(brand)",
+  },
+  {
     test: /\bTracerDisabledWhen\b/u,
     within: /\bHttpRouter\b|\bHttpMiddleware\b/u,
     message:

@@ -149,6 +149,10 @@ describe("effect-401 codemod", () => {
       input: `stream.pipe(Stream.scan([], f));\n`,
     },
     {
+      name: "Schema.brand of a generic parameter",
+      input: `const id = <B extends string>(brand: B) => S.pipe(Schema.brand(brand));\n`,
+    },
+    {
       name: "TracerDisabledWhen beside an HttpRouter",
       input: `import { HttpRouter } from "effect/http";\nLayer.succeed(HttpMiddleware.TracerDisabledWhen)(f);\n`,
     },
