@@ -14,6 +14,7 @@ import {
   turnsSent,
   type CrewChat,
   type CrewWorld,
+  itV1,
 } from "./testing/crewWorld.ts";
 
 /** The crewmate's current conversation. */
@@ -29,7 +30,7 @@ const endsWith = (world: CrewWorld, chat: CrewChat, reason: string) =>
 /** The person's next message runs a turn in the crewmate's current conversation. */
 const nextTurn = (world: CrewWorld, stints: number) =>
   Effect.gen(function* () {
-    yield* world.snapshotWhere((current) => current.crewmates[0]!.stints.length === stints);
+    yield* world.sessionsWhere("backend", (sessions) => sessions.count === stints);
     yield* world.press({ _tag: "message", handle: "backend", text: "Go on", attachments: [] });
     const chat = (yield* turnsSent(world)).at(-1)!.chat;
     yield* world.turnStarts(chat);
@@ -54,15 +55,19 @@ describe("CrewEngine endings", () => {
           );
           assert.deepStrictEqual(
             {
-              stints: parked.crewmates[0]!.stints.map((stint) => [stint.state, stint.reason]),
+              stints: yield* world.sessionsWhere("backend", () => true),
               reason: parked.board.tasks[0]!.reason,
             },
             {
-              stints: [
-                ["retired", null],
-                ["retired", "A fresh conversation: the last one grew too long"],
-                ["open", "A fresh conversation: the last one grew too long"],
-              ],
+              stints: {
+                count: 3,
+                latest: "open",
+                reasons: [
+                  null,
+                  "A fresh conversation: the last one grew too long",
+                  "A fresh conversation: the last one grew too long",
+                ],
+              },
               reason: "its conversation outgrew its context too often",
             },
           );
@@ -143,7 +148,7 @@ describe("CrewEngine endings", () => {
         });
         const first = yield* firstTurn(world, () => undefined);
         yield* endsWith(world, first, "prompt_too_long");
-        yield* world.snapshotWhere((current) => current.crewmates[0]!.stints.length === 2);
+        yield* world.sessionsWhere("backend", (sessions) => sessions.count === 2);
         const second = yield* currentChat(world);
         const carried = (yield* turnsSent(world)).findLast((turn) => turn.chat === second);
         assert.deepStrictEqual(carried?.text.split("\n").slice(1, 3), [
@@ -154,13 +159,15 @@ describe("CrewEngine endings", () => {
     ),
   );
 
-  it.live("a rotation a turn's start makes counts toward the attempt's two", () =>
+  // Its turn-start rotation is a transcript gone before a resume: V1's own mechanism (the engine
+  // resumes its sessions itself), so it runs on V1 until the cutover (the owner, 2026-10-08).
+  itV1("a rotation a turn's start makes counts toward the attempt's two", () =>
     crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const first = yield* firstTurn(world, () => undefined);
         yield* endsWith(world, first, "prompt_too_long");
-        yield* world.snapshotWhere((current) => current.crewmates[0]!.stints.length === 2);
+        yield* world.sessionsWhere("backend", (sessions) => sessions.count === 2);
         const second = yield* currentChat(world);
         const transcript = NodePath.join(world.workspace, "second.jsonl");
         NodeFS.writeFileSync(transcript, "{}\n");
@@ -169,8 +176,9 @@ describe("CrewEngine endings", () => {
           sessionId: "session-2",
           transcriptPath: transcript,
         });
-        yield* world.snapshotWhere(
-          (current) => current.crewmates[0]!.stints[1]?.state === "active",
+        yield* world.sessionsWhere(
+          "backend",
+          (sessions) => sessions.count === 2 && sessions.latest === "active",
         );
         NodeFS.rmSync(transcript);
         const third = yield* nextTurn(world, 2);
@@ -179,7 +187,10 @@ describe("CrewEngine endings", () => {
           (current) => current.board.tasks[0]?.state === "parked",
         );
         assert.deepStrictEqual(
-          [parked.crewmates[0]!.stints.map((stint) => stint.reason), parked.board.tasks[0]!.reason],
+          [
+            (yield* world.sessionsWhere("backend", () => true)).reasons,
+            parked.board.tasks[0]!.reason,
+          ],
           [
             [
               null,
