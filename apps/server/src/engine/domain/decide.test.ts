@@ -9,6 +9,7 @@ import {
   requestId,
   runId,
   wakeId,
+  type ChatFileAttachment,
   type ChatImageAttachment,
   type EffectOutcome,
   type EngineEventTag,
@@ -25,6 +26,7 @@ import type { TurnOutcome } from "../bridge/spi3.ts";
 
 import type { Command, Decision, EffectDraft, ProviderSignal } from "./command.ts";
 import {
+  BACKGROUND_WORK_WORDS,
   CONTINUE_TEXT,
   SESSION_IDLE_MS,
   USAGE_RESUME_GRACE_MS,
@@ -1955,5 +1957,333 @@ describe("decide: every run acts for someone", () => {
       },
     ]);
     expect(Object.values(state.runs).every((run) => run.principal.kind !== "engine")).toBe(true);
+  });
+});
+
+describe("decide: a conversation's settings reach its agent as V1's do", () => {
+  const effortHigh = [{ id: "effort", value: "high" }] as const;
+  const agent = {
+    instanceId: "claude-ana",
+    driver: "claudeAgent",
+    model: "opus",
+    options: effortHigh,
+    profile: { kind: "mate" },
+  } as const;
+  /** The session opened as asked; `inSessionOptions` is what its driver takes per turn. */
+  const openedWith = (run: number, inSessionOptions: "all" | ReadonlyArray<string>) =>
+    settled(r(run), "session.open", {
+      kind: "ok",
+      value: {
+        sessionId: "s1",
+        driver: "claudeAgent",
+        model: "opus",
+        nativeRef: "native-1",
+        capabilities: { steer: false, inSessionOptions },
+        requestedModel: "opus",
+        instanceId: "claude-ana",
+        options: effortHigh,
+        runtimeMode: "full-access",
+      },
+    });
+  const firstRun = (inSession: "all" | ReadonlyArray<string>): ReadonlyArray<Step> => [
+    { _tag: "AssignAgent", agent },
+    send("go"),
+    prepared(1),
+    openedWith(1, inSession),
+    sentTurn(1),
+  ];
+  const firstRunOver = (inSession: "all" | ReadonlyArray<string>) => [
+    ...firstRun(inSession),
+    ended(1),
+  ];
+  const effortLow: Command = {
+    _tag: "SwitchModel",
+    model: "opus",
+    options: [{ id: "effort", value: "low" }],
+  };
+  const fastMode: Command = {
+    _tag: "SwitchModel",
+    model: "opus",
+    options: [...effortHigh, { id: "fastMode", value: true }],
+  };
+  const approvalRequired: Command = { _tag: "SetRuntimeMode", runtimeMode: "approval-required" };
+  const work = (status: "running" | "completed"): Command =>
+    signal({
+      kind: "work-upserted",
+      work: "w1",
+      origin: T(1),
+      workKind: "shell",
+      status,
+      title: "watch",
+    });
+
+  it.each([
+    ["Claude's effort", ["effort"], effortLow],
+    ["an option its driver reads per turn", "all", fastMode],
+  ] as const)("%s goes with the next message, in the same session", (_name, inSession, change) => {
+    const scene = play([...firstRunOver(inSession), change, send("next"), prepared(2)]);
+    expect(scene.effects).toMatchObject([
+      {
+        kind: "provider.send",
+        payload: {
+          sessionId: "s1",
+          modelSelection: {
+            instanceId: "claude-ana",
+            model: "opus",
+            options: (change as Extract<Command, { _tag: "SwitchModel" }>).options,
+          },
+        },
+      },
+    ]);
+  });
+
+  it("an option only a new session runs with closes the session between runs, and the next one resumes it", () => {
+    const steps = [...firstRunOver(["effort"]), fastMode, send("next"), prepared(2)];
+    expect(play(steps).effects).toMatchObject([
+      { kind: "session.close", payload: { reason: "settings" } },
+    ]);
+    expect(play([...steps, sessionClosed()]).effects).toMatchObject([
+      {
+        kind: "session.open",
+        payload: {
+          options: [...effortHigh, { id: "fastMode", value: true }],
+          resume: "native-1",
+          rotateFrom: "s1",
+        },
+      },
+    ]);
+  });
+
+  it("a runtime mode change reopens the session with it between runs, resuming the old one", () => {
+    const steps = [...firstRunOver("all"), approvalRequired, send("next"), prepared(2)];
+    expect(play(steps).effects).toMatchObject([
+      { kind: "session.close", payload: { reason: "settings" } },
+    ]);
+    expect(play([...steps, sessionClosed()]).effects).toMatchObject([
+      {
+        kind: "session.open",
+        payload: { runtimeMode: "approval-required", resume: "native-1", rotateFrom: "s1" },
+      },
+    ]);
+  });
+
+  it("the session opens with the conversation's runtime mode once a person set it", () => {
+    const scene = play([{ _tag: "AssignAgent", agent }, approvalRequired, send("go"), prepared(1)]);
+    expect(scene.effects).toMatchObject([
+      { kind: "session.open", payload: { runtimeMode: "approval-required" } },
+    ]);
+    const unset = play([{ _tag: "AssignAgent", agent }, send("go"), prepared(1)]);
+    expect(unset.effects[0]?.payload).not.toHaveProperty("runtimeMode");
+  });
+
+  it("a setting never cuts a running turn: it applies at the next run", () => {
+    const { log, state } = playAll([...firstRun(["effort"]), approvalRequired, fastMode]);
+    expect(log.some((e) => e._tag === "SessionClosing")).toBe(false);
+    expect(state.runs[r(1)]?.state).toBe("running");
+    const next = play([
+      ...firstRun(["effort"]),
+      approvalRequired,
+      fastMode,
+      ended(1),
+      send("next"),
+      prepared(2),
+    ]);
+    expect(next.effects).toMatchObject([
+      { kind: "session.close", payload: { reason: "settings" } },
+    ]);
+  });
+
+  it.each([
+    ["a runtime mode", approvalRequired],
+    ["an option only a new session runs with", fastMode],
+  ] as const)(
+    "%s is refused in V1's words while the agent's background work lives in the session",
+    (_name, change) => {
+      const scene = play([...firstRun(["effort"]), work("running"), ended(1), change]);
+      expect(scene.decision).toEqual({
+        _tag: "Reject",
+        rejection: { reason: "background-work", detail: BACKGROUND_WORK_WORDS },
+      });
+      const done = play([...firstRun(["effort"]), work("running"), work("completed"), change]);
+      expect(done.decision._tag).toBe("Accept");
+    },
+  );
+
+  it("an option the session takes per turn is taken while background work lives", () => {
+    const scene = play([...firstRun(["effort"]), work("running"), ended(1), effortLow]);
+    expect(scene.decision._tag).toBe("Accept");
+  });
+
+  it("a message that needs a new session while background work lives is refused in V1's words, the session kept", () => {
+    const { state, log } = playAll([
+      ...firstRunOver(["effort"]),
+      approvalRequired,
+      work("running"),
+      send("next"),
+      prepared(2),
+    ]);
+    expect(state.runs[r(2)]?.end).toEqual({
+      kind: "failed",
+      reason: BACKGROUND_WORK_WORDS,
+      next: null,
+    });
+    expect(log.some((e) => e._tag === "SessionClosing")).toBe(false);
+    expect(state.session?.id).toBe("s1");
+  });
+
+  it.each([
+    ["plan", { interactionMode: "plan" } as const, "plan"],
+    ["default", {}, undefined],
+  ] as const)("a %s message goes to the agent in its interaction mode", (_name, extra, mode) => {
+    const scene = play([send("go", extra), prepared(1), opened(1)]);
+    expect(scene.effects).toMatchObject([{ kind: "provider.send" }]);
+    const payload = scene.effects[0]?.payload as { readonly interactionMode?: string } | undefined;
+    expect(payload?.interactionMode).toBe(mode);
+  });
+
+  it("the conversation keeps its runtime mode and the latest message's interaction mode", () => {
+    const { state } = playAll([approvalRequired, send("go", { interactionMode: "plan" })]);
+    expect(state.runtimeMode).toBe("approval-required");
+    expect(state.interactionMode).toBe("plan");
+  });
+
+  it("the same setting again records nothing", () => {
+    expect(play([approvalRequired, approvalRequired]).events).toEqual([]);
+    const same = play([
+      { _tag: "AssignAgent", agent },
+      { _tag: "SwitchModel", model: "opus", options: [...effortHigh] },
+    ]);
+    expect(same.events).toEqual([]);
+  });
+});
+
+describe("decide: a person picks the conversation's agent", () => {
+  const agent = {
+    instanceId: "claude",
+    driver: "claudeAgent",
+    model: "opus",
+    profile: { kind: "mate" },
+  } as const;
+  const choose = (instanceId: string, driver: string, resumes = false): Command => ({
+    _tag: "ChooseAgent",
+    instanceId,
+    driver,
+    model: "m2",
+    resumes,
+  });
+  const started: ReadonlyArray<Step> = [{ _tag: "AssignAgent", agent }, ...proofRunning, ended(1)];
+
+  it("before the conversation starts, any agent: its sessions open on it", () => {
+    const scene = play([
+      { _tag: "AssignAgent", agent },
+      choose("codex", "codex"),
+      send("go"),
+      prepared(1),
+    ]);
+    expect(scene.effects).toMatchObject([
+      { kind: "session.open", payload: { instanceId: "codex", driver: "codex", model: "m2" } },
+    ]);
+    expect(scene.state.agent?.profile).toEqual({ kind: "mate" });
+  });
+
+  it("after it started, another driver is refused in V1's words", () => {
+    expect(play([...started, choose("codex", "codex", true)]).decision).toEqual({
+      _tag: "Reject",
+      rejection: {
+        reason: "agent-locked",
+        detail: "This conversation is bound to driver 'claudeAgent' and cannot switch to 'codex'.",
+      },
+    });
+  });
+
+  it("after it started, an instance of its driver whose sessions do not resume the old one's is refused", () => {
+    expect(play([...started, choose("claude-2", "claudeAgent")]).decision).toMatchObject({
+      _tag: "Reject",
+      rejection: { reason: "agent-locked" },
+    });
+  });
+
+  it("after it started, an instance of its driver whose sessions resume the old one's carries the thread over", () => {
+    const steps = [...started, choose("claude-2", "claudeAgent", true), send("next"), prepared(2)];
+    const scene = play(steps);
+    expect(scene.state.threadGeneration).toBe(1);
+    expect(scene.effects).toMatchObject([{ kind: "session.close", payload: { reason: "model" } }]);
+    expect(play([...steps, sessionClosed()]).effects).toMatchObject([
+      {
+        kind: "session.open",
+        payload: { instanceId: "claude-2", generation: 1, resume: "native-1", rotateFrom: "s1" },
+      },
+    ]);
+  });
+
+  it("the agent it already runs takes a model and its options as a model switch", () => {
+    const scene = play([
+      ...started,
+      {
+        _tag: "ChooseAgent",
+        instanceId: "claude",
+        driver: "claudeAgent",
+        model: "sonnet",
+        options: [{ id: "effort", value: "low" }],
+        resumes: false,
+      },
+    ]);
+    expect(scene.events).toMatchObject([
+      { _tag: "ModelSwitched", model: "sonnet", options: [{ id: "effort", value: "low" }] },
+    ]);
+  });
+});
+
+describe("decide: files go with a message", () => {
+  const file = {
+    type: "file",
+    id: "file-1",
+    name: "notes.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 4096,
+  } as unknown as ChatFileAttachment;
+
+  it("a message's files are in its record and in its send, by the id they were uploaded under", () => {
+    const queued = play([{ _tag: "Send", text: "read this", attachments: [file] }]);
+    expect(queued.events[1]).toMatchObject({ body: { kind: "person", attachments: [file] } });
+    const sending = play([
+      { _tag: "Send", text: "read this", attachments: [file] },
+      prepared(1),
+      opened(1),
+    ]);
+    expect(sending.effects[0]).toMatchObject({
+      kind: "provider.send",
+      payload: { attachments: [file] },
+    });
+  });
+
+  it("an answer by message carries the files attached to each question, each also named", () => {
+    const scene = play([
+      ...proofRunning,
+      signal({
+        kind: "request-opened",
+        turn: T(1),
+        key: "codex-async:q1",
+        ask: {
+          kind: "question",
+          questions: [{ id: "0", question: "Which spec?" }],
+          dismissible: true,
+        },
+      }),
+      ended(1),
+      {
+        _tag: "Answer",
+        requestId: requestId(r(1), 1),
+        answer: { answers: { "0": "this one" }, attachmentsByQuestionId: { "0": [file] } },
+        summary: "Answered",
+      },
+    ]);
+    expect(scene.events.find((e) => e._tag === "ItemOpened")).toMatchObject({
+      body: {
+        kind: "person",
+        text: "Which spec?\nthis one\nAttached file: notes.pdf (file-1)",
+        attachments: [file],
+      },
+    });
   });
 });

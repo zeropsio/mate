@@ -107,6 +107,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         sendAttempts: 0,
         prepare: "none",
         personBody: null,
+        interactionMode: event.interactionMode ?? "default",
       };
       const next: ConversationState = {
         ...state,
@@ -114,6 +115,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         queue: [...state.queue, run.id],
         nextRunOrdinal: Math.max(state.nextRunOrdinal, event.ordinal + 1),
         latestRunId: run.id,
+        interactionMode:
+          event.trigger.kind === "person" ? run.interactionMode : state.interactionMode,
       };
       const continuesCut =
         event.trigger.kind === "wake" && event.trigger.cause === "restart-continuation";
@@ -398,6 +401,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           requestedModel: event.requestedModel,
           instanceId: event.instanceId ?? null,
           model: event.model,
+          options: event.options ?? null,
+          runtimeMode: event.runtimeMode ?? null,
           nativeRef: event.nativeRef,
           capabilities: event.capabilities,
           closeAttempts: 0,
@@ -410,7 +415,11 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         ...state,
         session: state.session?.id === event.sessionId ? null : state.session,
         closing: state.closing?.sessionId === event.sessionId ? null : state.closing,
-        rotatingFrom: event.reason === "model" ? event.sessionId : state.rotatingFrom,
+        // A session replaced for its model or a setting hands its thread to the next one.
+        rotatingFrom:
+          event.reason === "model" || event.reason === "settings"
+            ? event.sessionId
+            : state.rotatingFrom,
       };
     case "AgentAssigned":
       // The agent's own model, none included: null runs its driver's default. Another instance or
@@ -420,6 +429,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         agent: event.agent,
         model: event.agent.model,
         threadGeneration:
+          event.keepsThread !== true &&
           state.agent !== null &&
           (state.agent.instanceId !== event.agent.instanceId ||
             state.agent.driver !== event.agent.driver)
@@ -430,8 +440,17 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       return {
         ...state,
         model: event.model,
-        agent: state.agent === null ? null : { ...state.agent, model: event.model },
+        agent:
+          state.agent === null
+            ? null
+            : {
+                ...state.agent,
+                model: event.model,
+                ...(event.options === undefined ? {} : { options: event.options }),
+              },
       };
+    case "RuntimeModeSet":
+      return { ...state, runtimeMode: event.runtimeMode };
     case "ConversationArchived":
       return { ...state, archived: true };
     case "ConversationUnarchived":

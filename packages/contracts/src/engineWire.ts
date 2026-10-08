@@ -38,10 +38,14 @@ import {
   forwardCompatibleLiterals,
   forwardCompatibleUnion,
 } from "./engine.ts";
+import { ProviderOptionSelection } from "./model.ts";
 import {
+  ChatFileAttachment,
   ChatImageAttachment,
   ProviderApprovalDecision,
+  ProviderInteractionMode,
   ProviderUserInputAnswers,
+  RuntimeMode,
   UserInputAttachments,
 } from "./orchestration.ts";
 import { ThreadTokenUsageSnapshot } from "./providerRuntime.ts";
@@ -113,6 +117,10 @@ export const ConversationHeader = Schema.Struct({
   pausedUntil: Schema.NullOr(Schema.Union([Millis, Schema.Literal("unknown")])),
   /** Messages waiting their turn. */
   queued: Schema.Int,
+  /** How freely the agent works, once a person set it; absent: the workspace's mode. */
+  runtimeMode: Schema.optionalKey(RuntimeMode),
+  /** The interaction mode of the person's latest message; absent: default. */
+  interactionMode: Schema.optionalKey(ProviderInteractionMode),
 });
 export type ConversationHeader = typeof ConversationHeader.Type;
 
@@ -321,11 +329,17 @@ export type EngineReceiptInput = typeof EngineReceiptInput.Type;
 
 const call = { ...protocol, conversationId: ConversationId, commandId: CommandId };
 
-/** A person's message: queued, or sent at once when nothing is on. Pictures by reference. */
+/**
+ * A person's message: queued, or sent at once when nothing is on. Pictures by reference, files by
+ * the id they were uploaded under; `plan` asks the agent for a plan.
+ */
 export const EngineSendInput = Schema.Struct({
   ...call,
   text: Schema.String,
-  attachments: Schema.optionalKey(Schema.Array(ChatImageAttachment)),
+  attachments: Schema.optionalKey(
+    Schema.Array(Schema.Union([ChatImageAttachment, ChatFileAttachment])),
+  ),
+  interactionMode: Schema.optionalKey(ProviderInteractionMode),
 });
 export type EngineSendInput = typeof EngineSendInput.Type;
 
@@ -371,9 +385,34 @@ export type EngineDismissInput = typeof EngineDismissInput.Type;
 export const EngineSteerInput = Schema.Struct({ ...call, runId: RunId, text: Schema.String });
 export type EngineSteerInput = typeof EngineSteerInput.Type;
 
-/** The conversation's next model, on the agent it already runs (its next session opens with it). */
-export const EngineSwitchModelInput = Schema.Struct({ ...call, model: Schema.String });
+/**
+ * The conversation's next model and its options (effort, fast mode, thinking), on the agent it
+ * already runs. An option its session takes per turn goes with the next message; any other change
+ * opens a new session that resumes this one, between runs.
+ */
+export const EngineSwitchModelInput = Schema.Struct({
+  ...call,
+  model: Schema.String,
+  /** Absent: the options the conversation has. */
+  options: Schema.optionalKey(Schema.Array(ProviderOptionSelection)),
+});
 export type EngineSwitchModelInput = typeof EngineSwitchModelInput.Type;
+
+/** How freely the agent works: from the next run on, in a session that resumes this one. */
+export const EngineSetRuntimeModeInput = Schema.Struct({ ...call, runtimeMode: RuntimeMode });
+export type EngineSetRuntimeModeInput = typeof EngineSetRuntimeModeInput.Type;
+
+/**
+ * The conversation's agent: another provider instance. Taken while the conversation has not
+ * started; after that only an instance of its driver whose sessions resume the old one's.
+ */
+export const EngineAssignAgentInput = Schema.Struct({
+  ...call,
+  instanceId: Schema.String,
+  model: Schema.String,
+  options: Schema.optionalKey(Schema.Array(ProviderOptionSelection)),
+});
+export type EngineAssignAgentInput = typeof EngineAssignAgentInput.Type;
 
 // ── results ─────────────────────────────────────────────────────────────────────────────────
 

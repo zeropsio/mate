@@ -92,6 +92,8 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
     const calls: Array<string> = [];
     /** Each session start's input, as the engine asked it. */
     const starts: Array<unknown> = [];
+    /** Each send's input, as the engine asked it. */
+    const sends: Array<unknown> = [];
     let events = 0;
     let requests = 0;
     let items = 0;
@@ -183,6 +185,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
       sendTurn: (input) =>
         Effect.gen(function* () {
           calls.push(`send ${input.threadId}: ${input.input ?? ""}`);
+          sends.push(input);
           if (options.holdNextSend === true) {
             options.holdNextSend = false;
             return yield* Effect.never;
@@ -294,8 +297,29 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
         ),
       streamEvents: Stream.fromPubSub(pubsub),
       compactThread: () => Effect.die("not scripted"),
-      getCapabilities: () => Effect.die("not scripted"),
-      getInstanceInfo: () => Effect.die("not scripted"),
+      // As the adapters declare them: Claude applies effort to a live session, the rest per turn.
+      getCapabilities: () =>
+        Effect.succeed({
+          sessionModelSwitch: "in-session",
+          ...(driver === "claudeAgent" ? { inSessionModelOptions: ["effort"] } : {}),
+        }) as never,
+      // An instance named `<driver>` or `<driver>:<name>` runs that driver; `<driver>:<name>~<key>`
+      // resumes by `key` (default: the driver's).
+      getInstanceInfo: (instanceId) => {
+        const [named, key] = String(instanceId).split("~");
+        const kind = named!.split(":")[0]!;
+        return Object.hasOwn(NAMES, kind)
+          ? (Effect.succeed({
+              instanceId,
+              driverKind: kind,
+              displayName: undefined,
+              enabled: true,
+              continuationIdentity: { driverKind: kind, continuationKey: key ?? kind },
+            }) as never)
+          : (Effect.fail(
+              new ScriptedError("ProviderUnsupportedError", "no such instance"),
+            ) as never);
+      },
       assertConversationRollbackSupported: () => Effect.die("not scripted"),
       rollbackConversation: () => Effect.die("not scripted"),
       uploadFeedback: () => Effect.die("not scripted"),
@@ -576,7 +600,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
       foreign: (thread: string) => emit("turn.started", thread, { turnId: "X" }),
     };
 
-    return { service, agent, calls, starts, sessions, options };
+    return { service, agent, calls, starts, sends, sessions, options };
   });
 
 export type ScriptedProvider = Effect.Success<ReturnType<typeof makeScriptedProvider>>;
