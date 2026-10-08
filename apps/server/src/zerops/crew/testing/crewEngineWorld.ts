@@ -353,7 +353,10 @@ const enginePort = (input: {
     });
 
   /** Each conversation's latest turn end, to deliver again. */
-  const lastEnds = new Map<CrewChat, Record<string, unknown>>();
+  const lastEnds = new Map<
+    CrewChat,
+    { readonly payload: Record<string, unknown>; readonly turnId: string | null }
+  >();
   /** Runs the crew stopped whose interrupted end a journey already played. */
   const stopsTaken = new Set<string>();
 
@@ -439,11 +442,9 @@ const enginePort = (input: {
           if (!sessions.has(chat) || member?.login !== undefined) opens();
           break;
         case "RotateSession":
-          // A fresh session stops the one before it, in the same conversation.
-          if (command.fresh) {
-            if (sessions.has(chat)) records.push({ kind: "stop", chat });
-            opens();
-          }
+          // A new session stops the one before it, in the same conversation; a fresh one opens.
+          if (sessions.has(chat)) records.push({ kind: "stop", chat });
+          if (command.fresh) opens();
           break;
         case "Send":
           records.push({
@@ -548,7 +549,7 @@ const enginePort = (input: {
             ...(end.reason === undefined ? {} : { terminalReason: end.reason }),
             ...(end.sessionCostUsd === undefined ? {} : { totalCostUsd: end.sessionCostUsd }),
           };
-          lastEnds.set(chat, payload);
+          lastEnds.set(chat, { payload, turnId: provider.sessions.get(thread)?.open ?? null });
           yield* provider.agent.end(thread, payload);
         }
         const member = yield* handleOf(chat);
@@ -593,9 +594,13 @@ const enginePort = (input: {
       }),
     turnEndRedelivered: (chat) =>
       Effect.gen(function* () {
-        const payload = lastEnds.get(chat);
-        if (payload === undefined) return yield* Effect.die(`no turn of ${chat} ended`);
-        yield* provider.agent.emit("turn.completed", yield* threadOf(chat), { payload });
+        const last = lastEnds.get(chat);
+        if (last === undefined) return yield* Effect.die(`no turn of ${chat} ended`);
+        // The same end again: the turn it ended, its payload.
+        yield* provider.agent.emit("turn.completed", yield* threadOf(chat), {
+          ...(last.turnId === null ? {} : { turnId: last.turnId }),
+          payload: last.payload,
+        });
       }),
     says: (chat, text) =>
       Effect.flatMap(threadOf(chat), (thread) => provider.agent.say(thread, text)),
