@@ -5,6 +5,7 @@ import { defineConfig, mergeConfig } from "vite-plus";
 import baseConfig from "../../vite.config.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
 import packageJson from "./package.json" with { type: "json" };
+import { SpreadShardSequencer } from "../../scripts/lib/spread-shard.ts";
 
 // The bundle used to inline only workspace packages, leaving every third-party
 // runtime dep external. External deps must exist on the real filesystem (the WSL
@@ -86,6 +87,8 @@ export default mergeConfig(
       // The server suite exercises sqlite, git, temp worktrees, and orchestration
       // runtimes heavily. Running files in parallel introduces load-sensitive flakes.
       fileParallelism: false,
+      // CI's shards each take every n-th file, so its slow crew and engine suites never share one.
+      sequence: { sequencer: SpreadShardSequencer },
       // Appended to the root setup, which mergeConfig concatenates.
       setupFiles: ["./src/testUtils/gitConfig.setup.ts"],
       // Server integration tests exercise sqlite, git, and orchestration together.
