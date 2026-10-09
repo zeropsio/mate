@@ -6,7 +6,7 @@ import { SidebarAccountLine } from "./SidebarZeropsTree";
 export function AccountVoiceLine() {
   const voice = useAccountVoice();
   return (
-    <div className="h-10 shrink-0">
+    <div className={voice === null ? "h-2 shrink-0" : "h-10 shrink-0"}>
       {voice === null ? null : (
         <SidebarAccountLine actions={voice.actions} sentence={voice.sentence} title={voice.title} />
       )}
