@@ -837,7 +837,7 @@ const chooseAgent = (b: StepBuilder, command: Extract<Command, { _tag: "ChooseAg
   });
 };
 
-type Delivery = "delivered" | "refused" | "unknown";
+type Delivery = "delivered" | "steered" | "refused" | "unknown";
 
 const personBody = (run: RunRecord, delivery: Delivery, at: number): ItemBody | null =>
   run.personBody === null ? null : { ...run.personBody, delivery: { state: delivery, at } };
@@ -961,10 +961,11 @@ const markStarted = (
   run: RunRecord,
   providerTurnId: string | null,
   turn: TurnHandle | null = run.turn,
+  delivery: "delivered" | "steered" = "delivered",
 ): void => {
   b.emit({ _tag: "RunStarted", runId: run.id, providerTurnId, turn });
   spendLostWorkNote(b, run);
-  updatePerson(b, run, "delivered");
+  updatePerson(b, run, delivery);
   armWatchdog(b, b.run(run.id), b.now);
   // The message carrying an answer reached the agent: that is the answer's evidence.
   const carried = answerCarried(b, run);
@@ -1522,6 +1523,9 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   switch (effect.kind) {
     case "run.prepare": {
       if (outcome.kind === "failed" && outcome.refused === true) {
+        // A message that already went into the agent's own turn: its steer asks admission too,
+        // and its refusal reads on the message; the agent's turn runs on.
+        if (run.state !== "admitted") return;
         // Only admission refuses a run, and before anything of it ran: its words are the refusal.
         endRun(
           b,
@@ -1577,9 +1581,19 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
     case "provider.steer": {
       // A steer that never reached the agent (refused, or no live session) reads so.
       if (failure === null) return;
-      const item = b.state.items[id.slice(0, id.indexOf("/e/provider.steer/"))];
-      if (item?.body.kind !== "person") return;
+      const itemId = id.slice(0, id.indexOf("/e/provider.steer/"));
       const undelivered = outcome.kind === "failed" ? outcome.undelivered : undefined;
+      // A waiting message steered into the agent's own turn is its run's own message.
+      if (run.trigger.kind === "person" && run.trigger.itemId === itemId) {
+        updatePerson(
+          b,
+          run,
+          undelivered === undefined || undelivered === true ? "refused" : "unknown",
+        );
+        return;
+      }
+      const item = b.state.items[itemId];
+      if (item?.body.kind !== "person") return;
       b.emit({
         _tag: "ItemUpdated",
         runId: run.id,
@@ -1794,10 +1808,16 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       // engine runs it as the agent's own turn on that run's behalf.
       const steered = steerOpened(b, signal.turn);
       if (signal.origin !== "self" && steered === undefined) return;
+      const active = activeRun(b.state);
+      if (active !== undefined && active.state !== "admitted") return;
+      // A person's message waiting for its turn goes into this one, never after it.
+      const waiting = steered === undefined ? waitingMessage(b) : undefined;
+      if (waiting !== undefined) {
+        return joinOwnTurn(b, waiting, signal.turn, signal.providerTurnId);
+      }
       const joined = selfJoins(b, signal.reportsOn ?? steered ?? null);
       // Nobody to act for (no run before it): the turn is not the engine's to record as a run.
       if (joined === undefined) return;
-      const active = activeRun(b.state);
       // A run still being prepared has sent nothing: it goes back to the head of the queue and
       // is sent when the agent's own turn ends.
       if (active?.state === "admitted") {
@@ -1806,7 +1826,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           runId: active.id,
           reason: "the agent started a turn of its own",
         });
-      } else if (active !== undefined) return;
+      }
       return selfStarted(b, signal.turn, signal.providerTurnId, joined);
     }
     case "activity": {
@@ -2156,6 +2176,48 @@ const steerOpened = (b: StepBuilder, turn: TurnHandle): RunId | undefined => {
     (entry) => entry.kind === "provider.steer" && entry.id.startsWith(prefix),
   );
   return effect?.runId ?? undefined;
+};
+
+/**
+ * The run admitted (first in line, nothing of it sent) when it is a person's message that can go
+ * into a running turn as a steer: words and files in the mode the turn runs in, on a session that
+ * takes a steer and fits it. The line keeps its order: a message behind it waits for it.
+ */
+const waitingMessage = (b: StepBuilder): RunRecord | undefined => {
+  const session = b.state.session;
+  if (session === null || !session.capabilities.steer || b.state.closing !== null) return;
+  if (misfit(b.state, session) !== null) return;
+  const first = activeRun(b.state);
+  if (first?.state !== "admitted") return;
+  if (first.trigger.kind !== "person" || first.principal.kind !== "person") return;
+  if (first.maintenance || first.interactionMode !== "default") return;
+  return first.personBody?.delivery.state === "queued" ? first : undefined;
+};
+
+/**
+ * The agent opened a turn of its own while a person's message waited: the message goes into that
+ * turn as a steer, the agent reads it at its next step, and the turn is the message's run — the
+ * agent answers it there.
+ */
+const joinOwnTurn = (
+  b: StepBuilder,
+  run: RunRecord,
+  turn: TurnHandle,
+  providerTurnId: string | null,
+): void => {
+  const session = b.state.session!;
+  const item = (run.trigger as Extract<RunTrigger, { kind: "person" }>).itemId;
+  const attachments = run.personBody?.attachments ?? [];
+  b.effect("provider.steer", item, 1, run.id, {
+    runId: run.id,
+    sessionId: session.id,
+    itemId: item,
+    text: withLostWorkNote(b, run),
+    ...(attachments.length === 0 ? {} : { attachments: [...attachments] }),
+    instanceId: b.state.agent?.instanceId ?? null,
+    principal: run.principal,
+  });
+  markStarted(b, b.run(run.id), providerTurnId, turn, "steered");
 };
 
 const selfStarted = (
