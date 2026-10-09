@@ -6,10 +6,8 @@ import { stallLoginAction, stepLoginOutput } from "./zeropsAgentLoginWalker.ts";
 const claude = ZEROPS_AGENT_LOGIN_HANDLERS["claude-code"];
 const codex = ZEROPS_AGENT_LOGIN_HANDLERS.codex;
 
-// Fixture lines transcribed verbatim from the live-verified F8 ledger row
-// (docs/internals/zerops/verified.md, "S7 — agent auth" section this brief
-// cites) — Claude's interactive login-method menu, its "Browser didn't
-// open…" hint + auth URL, and Codex's device-auth URL + one-time code.
+// Captured login output: Claude's interactive menu and browser URL,
+// and Codex's device-auth URL and one-time code.
 const CLAUDE_MENU = [
   "Select login method:",
   "1. Claude account with subscription",

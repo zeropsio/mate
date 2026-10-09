@@ -247,7 +247,6 @@ export interface ZeropsStatPair {
  * One item of `POST /current-stats/group-by-search` — a container's live
  * allocation when grouped by `containerId`. `vCpu` is the shared-CPU pair
  * (`cpu` is the dedicated one and reads `0/0` on a shared service).
- * Measured on `acme-docs-dev` 2026-09-06 (`verified.md`).
  */
 export interface ZeropsCurrentStat {
   readonly clientId?: string;
@@ -264,7 +263,7 @@ export interface ZeropsCurrentStat {
 /**
  * One bucket of `POST /stats-history/group-by-search` grouped by service
  * stack: the allocation and use over `[from, till]`, in the unit the field
- * says. Measured on `scratch-playground` 2026-09-06 (`verified.md`).
+ * says.
  */
 export interface ZeropsStatHistoryItem {
   readonly from: string;
@@ -1618,10 +1617,7 @@ export class ZeropsApiClient {
   /**
    * `POST /web-socket/login` — trades the account's current access token for a
    * short-lived `webSocketToken`, the credential the platform push channel's
-   * upgrade URL carries (`docs/internals/zerops/verified.md` "platform
-   * websocket from a browser origin", `token` the measured field name — a
-   * live probe succeeded with it; `frontend-legacy`'s own `accessToken`
-   * naming is unmeasured against this endpoint, so it is not sent).
+   * upgrade URL carries. The request body uses `token`.
    *
    * Retries a `401` itself rather than going through `#request`'s own retry:
    * that retry re-sends the exact `init.body` string it was given, so it
@@ -2047,8 +2043,8 @@ export class ZeropsApiClient {
   }
 
   /**
-   * HQ's append-only birth journal. The direct env file reflects writes before project search
-   * (verified.md, 2026-10-02); expose only this plain metadata, never unrelated env values.
+   * Reads HQ's append-only birth journal directly from its project env file.
+   * Expose only this plain metadata, never unrelated env values.
    */
   async readProjectBirthEnv(projectId: string): Promise<ReadonlyMap<string, string>> {
     const response = await this.#request<{ readonly envFile: string }>(
@@ -2967,7 +2963,7 @@ export class ZeropsApiClient {
    * A separate call rather than an import field because the import field does
    * not apply to a service created without code: a production environment
    * cloned from dev comes up unpublished whatever its recipe said, and answers
-   * 502 after its first deploy until this runs (`verified.md`, 2026-09-07).
+   * 502 after its first deploy until this runs.
    */
   async enableSubdomainAccess(serviceId: string, beforeWrite?: () => Promise<void>): Promise<void> {
     await this.#request(

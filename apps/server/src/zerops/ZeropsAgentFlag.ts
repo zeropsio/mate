@@ -5,8 +5,7 @@
  * Replaces `zcp agent mark-oauth <agent>` (the old `ZeropsCli.markAgentOAuth`
  * spawn): this server now writes the SERVICE-scope user-data env row
  * `ZCP_AGENT_OAUTH_<SUFFIX>` on the Mate's own zcp service directly, with
- * the Mate's own key (`ZeropsMateKey`) — verified live 2026-09-22 on project
- * 111111's zcp container:
+ * the Mate's own key (`ZeropsMateKey`):
  *   - `GET  {apiBaseUrl}/service-stack/{serviceId}/env` — the service's own
  *     user-data rows (`id`, `key`, `content`, `sensitive`, `type`).
  *   - `POST {apiBaseUrl}/service-stack/{serviceId}/user-data` — body
@@ -15,8 +14,7 @@
  *   - `DELETE {apiBaseUrl}/user-data/{id}`.
  *
  * The row MUST be written `sensitive:false`: the Zerops GUI's own read path
- * redacts a sensitive row and then reports "not authorized" reading it back
- * (docs/internals/zerops/verified.md:456-457).
+ * redacts a sensitive row and then reports "not authorized" reading it back.
  *
  * Upsert rule — ports `../zcp/internal/ops/agent_oauth.go`'s
  * `MarkAgentOAuth` semantics, not its code:
@@ -464,8 +462,7 @@ export const make = (options: {
  * Live only: `config.zerops` absent (not a Zerops environment) never
  * constructs a service that would try an HTTP call — every method fails
  * fast instead. The service id comes straight from this container's own
- * `serviceId` env var (verified.md:1383 — every container reads its own
- * `hostname`/`serviceId`/`projectId` this way), not threaded through
+ * `serviceId` env var, not threaded through
  * `ServerConfig`, mirroring how `ZeropsAgentAuth.layer` reads
  * `NodeOS.homedir()` directly rather than plumbing it through config.
  */

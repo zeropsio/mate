@@ -5,8 +5,7 @@ base URL, `TOKEN` its credential and `ORG` an accessible organization. Commands 
 status codes, never credential values or variable contents. Assumptions already explained beside
 the dependent code are not repeated here.
 
-- **An organization search is filtered to the credential's permitted projects.** The account
-  adapter therefore registers the organization's families once rather than fetching each project.
+- **An organization search is filtered to the credential's permitted projects.**
   Dependency: `packages/client-runtime/src/data/demand.ts` (`zeropsRegistrations`) and
   `packages/client-runtime/src/data/adapters/zerops.ts` (organization listing registration).
   Re-check the same command with two existing credentials of different project coverage:
@@ -19,8 +18,7 @@ the dependent code are not repeated here.
 
   This verifies the baseline's access filtering; it does not establish push revocation or replay.
 
-- **A public HTTP routing search requires its organization filter.** The routing family's
-  organization listing supplies `clientId`; omitting it is rejected.
+- **A public HTTP routing search requires its organization filter.** Omitting `clientId` is rejected.
   Dependency: `packages/client-runtime/src/data/families/publicRouting.ts` (`organization`) and
   `packages/client-runtime/src/data/adapters/zerops.ts` (listing filter).
   ```sh

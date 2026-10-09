@@ -15,7 +15,14 @@ import { gatedPortal } from "../components/ui/portal-gate";
 import { readableText, TestNode } from "../zerops/__fixtures__/testDom";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { RouteGateView } from "./-routeGate";
-import { recoveryNotice } from "@t3tools/client-runtime/data";
+import {
+  mateProjectUnavailable,
+  mateRecovery,
+  readsOfState,
+  recoveryNotice,
+} from "@t3tools/client-runtime/data";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
+import { AtomRegistry } from "effect/reactivity";
 
 // "Go to projects" is a router link; no router runs here.
 vi.mock("@tanstack/react-router", async (actual) => ({
@@ -90,6 +97,55 @@ afterEach(() => {
 });
 
 describe("RouteGateView", () => {
+  it.each([
+    { kind: "denied" as const, headline: "You no longer have access to Shop's project." },
+    { kind: "deleted" as const, headline: "Shop's project was deleted." },
+  ])(
+    "A $kind project's recovery replaces waiting and unavailable route content",
+    ({ kind, headline }) => {
+      const registry = AtomRegistry.make();
+      const orgId = "org";
+      const store = mountRoster(registry, orgId, [
+        { id: "p1", name: "Shop", status: "ACTIVE", description: "Private description" },
+      ]);
+      store.dispatch(
+        kind === "denied"
+          ? { kind: "access", family: "project", id: "p1", access: "denied" }
+          : { kind: "proven-deletion", family: "project", id: "p1", evidence: "projectNotFound" },
+      );
+      const recovery = mateRecovery.derive(readsOfState(store.state()), {
+        orgId,
+        projectId: "p1",
+        serviceId: undefined,
+      });
+      for (const gateKind of ["wait", "unavailable"] as const) {
+        act(() =>
+          root.render(
+            <RouteGateView
+              {...gateFor({ kind: "refused-role" }, "live")}
+              gate={
+                gateKind === "wait"
+                  ? { kind: "wait", reachability: { kind: "connecting", waitingOn: "exchange" } }
+                  : { kind: "unavailable", reachability: { kind: "refused-role" } }
+              }
+              projectId="p1"
+              projectUnavailable={mateProjectUnavailable(recovery.standing)}
+              recoveryPhrase={recoveryNotice(recovery, "Shop")}
+            >
+              Protected conversation
+            </RouteGateView>,
+          ),
+        );
+        const text = readableText(container);
+        expect(text).toContain(headline);
+        expect(text).toContain("Go to projects");
+        expect(text).not.toContain("Private description");
+        expect(text).not.toContain("Protected conversation");
+      }
+      registry.dispose();
+    },
+  );
+
   it.each(["denied", "deleted"] as const)(
     "owner-proven %s supersedes a refused detail read while the route is unavailable",
     (kind) => {

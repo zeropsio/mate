@@ -12,4 +12,3 @@ appearance lives in code. The zcp↔mate seam lives in `../../../../zcp/docs/spe
 - [Verified platform assumptions](verified.md)
 - [Fork rules](fork.md)
 - [Provider runtime SPI](spi.md)
-- [Provider compatibility](compat.md)

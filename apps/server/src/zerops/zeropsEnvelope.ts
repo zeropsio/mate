@@ -4,9 +4,7 @@
  * The envelope rides inside the text as a trailing fenced block rather than in
  * MCP's `structuredContent`, because Claude Code replaces the model-facing tool
  * result with `structuredContent` when it is present — which would strip every
- * atom of guidance the result renders (measured live; `../z3/docs/internals/
- * zerops/verified.md`, section "S6 PROVE"). Both Claude Code and Codex forward
- * the text verbatim.
+ * atom of guidance the result renders.
  *
  * There are TWO carriers, because zcp's tool results come in two shapes:
  *

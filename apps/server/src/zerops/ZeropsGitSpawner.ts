@@ -2,13 +2,8 @@
  * ZeropsGitSpawner - runs git on the service that owns the repository,
  * never against the sshfs mount.
  *
- * On Zerops the working tree the server sees at `/var/www/<host>` is an sshfs
- * mount of another container's `/var/www`. Git over that mount is not slow in
- * a way one can budget for: a single turn costs 12.7 s against 1.37 s over a
- * multiplexed SSH connection, a workspace rescan trips T3's own 15 s timeout,
- * and a first checkpoint on a tree without a `.gitignore` takes four minutes.
- * The measurements are in `docs/internals/zerops/verified.md` (S0.3 / S0.13).
- * So the rule is absolute: **no git process ever runs against a mount path**.
+ * A remote working tree is reached through its owning service, not the sshfs mount.
+ * No git process may run against a mount path.
  *
  * The interception sits at `ChildProcessSpawner`, one level below the git
  * driver, because there are three git paths upstream and not one -

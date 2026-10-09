@@ -71,13 +71,8 @@ export class ZeropsProjectAccess extends Context.Service<
 /**
  * Whether `body` claims the member list it carried is the whole thing.
  *
- * No paging field on `GET /client/{id}/user/list` has ever been measured
- * (`docs/internals/zerops/verified.md` — 21 members read back in one
- * unpaged `clientUserList`, no `nextCursor`, no `totalCount` seen on this
- * endpoint specifically). So a `totalCount` this build has never observed is
- * read defensively rather than ignored: present and it must match the row
- * count read, or the list is partial; absent, the whole array is the whole
- * list, matching every read measured so far.
+ * A finite `totalCount` must be covered by the rows read; otherwise the list is partial.
+ * Without that field, this reader treats the supplied array as complete.
  */
 export function isMemberListComplete(body: unknown, entriesLength: number): boolean {
   if (typeof body !== "object" || body === null) return true;
