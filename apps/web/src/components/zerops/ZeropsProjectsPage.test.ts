@@ -20,7 +20,6 @@ import {
   autoConnectServedZeropsEnvironment,
   declaredEnvironmentSummary,
   hasNoZeropsProject,
-  mateOpener,
   projectsGroupLine,
   projectsListingNotice,
   projectsTroubleView,
@@ -109,9 +108,6 @@ describe("same-origin Zerops identity bootstrap", () => {
 
     // The bar above carries the brand; the title row does not repeat it, and
     // no sentence sits under the title — the projects below say what it is.
-
-    // No creating action in the title row: the left menu's "New project" is
-    // the entry, and the reload glyph is the row's only action.
 
     expect(
       renderToStaticMarkup(createElement(ZeropsProjectsHeader, { onRefresh: () => {} })),
@@ -646,20 +642,6 @@ describe("the projects listing", () => {
   });
 });
 
-describe("opening a Mate from the projects page", () => {
-  it.each([
-    { name: "a connected Mate opens", busy: false, action: "open", opens: true },
-    { name: "a Mate coming up is still", busy: false, action: "pending", opens: false },
-    { name: "a Mate whose verb runs is still", busy: true, action: "open", opens: false },
-  ] as const)("$name", ({ busy, action, opens }) => {
-    const open = vi.fn();
-    const opener = mateOpener({ busy, action, open });
-    expect(opener !== undefined).toBe(opens);
-    opener?.();
-    expect(open).toHaveBeenCalledTimes(opens ? 1 : 0);
-  });
-});
-
 describe("a declared environment's row", () => {
   const version = (label: string | undefined) => ({
     name: undefined,
@@ -723,4 +705,11 @@ describe("a group's one line about itself", () => {
   ] as const)("reads %j as %j — never the platform's own words", (input, expected) => {
     expect(projectsGroupLine(input)).toBe(expected);
   });
+});
+
+// Decision: the owner asked for the review and its fixes; existing flows are reused, no new concepts.
+it("Projects exposes Find and New project beside its title", () => {
+  const html = renderToStaticMarkup(createElement(ZeropsProjectsHeader));
+  expect(html).toContain(">Find<");
+  expect(html).toContain(">New project<");
 });

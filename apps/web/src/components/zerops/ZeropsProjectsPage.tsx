@@ -1,3 +1,5 @@
+import { openCommandPalette } from "~/commandPaletteBus";
+import { useOpenMate } from "~/zerops/useOpenMate";
 import { useProjectsPageRows } from "~/zerops/projectsPageRows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
@@ -346,21 +348,6 @@ export function hasNoZeropsProject(input: {
   );
 }
 
-/**
- * Whether a Mate opens where the page draws it — its card, its name in a
- * project's row, its tile — and how. A ready one opens (connecting first when
- * it is not connected yet); one coming up and one whose verb is already
- * running are still: nothing a click could do that the page is not already
- * doing.
- */
-export function mateOpener(input: {
-  readonly busy: boolean;
-  readonly action: ZeropsRowAction["kind"];
-  readonly open: () => void;
-}): (() => void) | undefined {
-  return !input.busy && input.action === "open" ? input.open : undefined;
-}
-
 const PROJECTS_SURFACE: KnownSurface<ReadonlyArray<ZeropsCandidate>> = {
   subject: "your projects",
   entity: "project",
@@ -553,6 +540,12 @@ export function ZeropsProjectsHeader({
     >
       <h1 className="text-xl font-medium text-foreground">Projects</h1>
       <div className="flex items-center gap-2">
+        <Button onClick={() => openCommandPalette()} size="sm" variant="outline">
+          Find
+        </Button>
+        <Button onClick={askNewProject} size="sm">
+          New project
+        </Button>
         <ZeropsProjectOrderControl />
         {onRefresh === undefined ? null : (
           <Tooltip>
@@ -757,6 +750,7 @@ export function useZeropsProjectConnection(): {
 }
 
 function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) {
+  const openMate = useOpenMate();
   const authGate = useRouteContext({
     from: "__root__",
     select: (context) => context.authGateState,
@@ -1369,14 +1363,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   /** Runs a row's one verb; the words come from `ZeropsProjectRow.logic`. */
   const runRowAction = (candidate: ZeropsCandidate, kind: ZeropsRowAction["kind"]): void => {
     switch (kind) {
-      // Opening a Mate that is not connected yet connects first: the wait
-      // lands in the conversation when the container answers.
       case "open":
-        if (candidate.environmentId) {
-          void navigate({ to: "/", search: { environmentId: String(candidate.environmentId) } });
-          return;
-        }
-        open(candidate);
+        openMate(candidate);
         return;
       // On an existing project: what it adds and what restarts, confirmed first.
       case "set-up-mate":
@@ -2043,14 +2031,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     ),
   );
 
-  const mateOpenerOf = (candidate: ZeropsCandidatePresentation): (() => void) | undefined =>
-    mateOpener({
-      busy: busyKeys.has(candidate.key),
-      action: deriveZeropsRowAction(rowInput(candidate, roleOf.get(candidate.project.id))).kind,
-      open: () => {
-        runRowAction(candidate, "open");
-      },
-    });
+  const mateOpenerOf = (candidate: ZeropsCandidatePresentation): (() => void) | undefined => {
+    const input = rowInput(candidate, roleOf.get(candidate.project.id));
+    return busyKeys.has(candidate.key) ||
+      input.visibility === "listed" ||
+      input.outsideHq ||
+      !input.can.open
+      ? undefined
+      : () => openMate(candidate);
+  };
 
   const renderEnvironment = (
     candidate: ZeropsCandidatePresentation,
