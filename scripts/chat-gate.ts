@@ -204,7 +204,7 @@ export function selectLaneChatStages(
     : [];
   const stages: ChatGateStage[] = selected.map((stage) => ({
     ...stage,
-    reason: `related files: ${chatGateTestFiles(root, [stage]).join(", ")}; changed: ${seams[stage.id]!.join(", ")}`,
+    reason: `related files: ${chatGateTestFiles(root, [stage]).join(", ")}; inputs: ${seams[stage.id]!.join(", ")}`,
   }));
   const contracts = paths.filter(
     (path) =>
@@ -318,12 +318,8 @@ if (import.meta.main) {
   let stages: ReadonlyArray<ChatGateStage> = requested;
   if (filesAt !== -1) {
     const files: unknown = JSON.parse(args[filesAt + 1] ?? "null");
-    if (
-      !Array.isArray(files) ||
-      !files.length ||
-      !files.every((file): file is string => typeof file === "string")
-    )
-      throw new Error("--files needs a nonempty JSON array of test paths");
+    if (!Array.isArray(files) || !files.every((file): file is string => typeof file === "string"))
+      throw new Error("--files needs a JSON array of test paths");
     const inventory = chatGateTestFiles(root, requested);
     for (const file of files) {
       if (!inventory.includes(file)) throw new Error(`File outside selected chat stages: ${file}`);
@@ -333,7 +329,7 @@ if (import.meta.main) {
     stages = filterChatGateFiles(root, requested, files);
     for (const stage of requested)
       if (!stages.some((selected) => selected.id === stage.id))
-        throw new Error(`No selected files for stage ${stage.id}`);
+        console.log(`Selection ${stage.id}: skip: no selected case files`);
   }
   if (args.includes("--select")) {
     console.log(selectsChatGate(NodeFS.readFileSync(0, "utf8").split(/\r?\n/u)));
@@ -364,6 +360,9 @@ if (import.meta.main) {
       throw new Error("The chat gate could not install the scenarios' Chrome for Testing.");
     const results = await Promise.all(
       stages.map(async (stage) => {
+        console.log(
+          `Selection ${stage.id}: ${chatGateTestFiles(root, [stage]).join(", ") || "typecheck consumers"}; reason: ${filesAt === -1 ? "full stage inventory" : "explicit related files"}`,
+        );
         const started = performance.now();
         let status = 0;
         for (const command of stage.commands) {

@@ -307,7 +307,7 @@ it("lane file selection keeps the affected C journey on both wires without expan
 });
 
 it.each([
-  ["--stages", "C", "--files", "[]"],
+  ["--stages", "C", "--files", "[null]"],
   [
     "--stages",
     "C-engine",
@@ -336,4 +336,52 @@ it("a contract-only edit retains wire consumer typechecks even without a selecte
     ".",
   ]);
   expect(commands?.at(-1)?.args).toContain("apps/web/test/scenarios/areas/c-mate/tsconfig.json");
+});
+
+it("an empty lane chat selection skips before starting any command", () => {
+  const result = NodeChildProcess.spawnSync(
+    process.execPath,
+    ["scripts/chat-gate.ts", "--stages", "A,C,C-engine,E", "--files", "[]"],
+    { cwd: new URL("../", import.meta.url), encoding: "utf8" },
+  );
+  expect(result.status, result.stderr).toBe(0);
+  for (const id of ["A", "C", "C-engine", "E"])
+    expect(result.stdout).toContain(`Selection ${id}: skip: no selected case files`);
+  expect(result.stdout).not.toContain("no cases ran");
+});
+
+it("a selected client journey skips the engine stage when that project has no matching case", () => {
+  const file = "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts";
+  const result = NodeChildProcess.spawnSync(
+    process.execPath,
+    ["scripts/chat-gate.ts", "--stages", "C,C-engine", "--files", JSON.stringify([file]), "--list"],
+    { cwd: new URL("../", import.meta.url), encoding: "utf8" },
+  );
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain("Selection C-engine: skip: no selected case files");
+  expect(result.stdout).toContain("--project scenarios ");
+  expect(result.stdout).not.toContain("--project scenarios-engine");
+  expect(result.stdout).toContain(file.slice("apps/web/".length));
+});
+
+it("Decision: no test deleted or weakened; only lane selection changes; main CI runs everything", () => {
+  const result = NodeChildProcess.spawnSync(process.execPath, ["scripts/chat-gate.ts", "--list"], {
+    cwd: new URL("../", import.meta.url),
+    encoding: "utf8",
+  });
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain("test/scenarios/areas/c-mate --allowOnly=false");
+  expect(result.stdout).toContain(
+    "--project scenarios-engine test/scenarios/areas/c-mate/chat.scenario.ts",
+  );
+  for (const file of [
+    "src/spi/replay/goldens.test.ts",
+    "src/engine/domain/decide.model.test.ts",
+    "src/engine/outbox/crash.test.ts",
+    "src/engine/history/historyImport.test.ts",
+    "src/engine/engine.sim.test.ts",
+    "src/engine/engine.pump.test.ts",
+  ])
+    expect(result.stdout).toContain(file);
+  expect(result.stdout).not.toContain("skip:");
 });

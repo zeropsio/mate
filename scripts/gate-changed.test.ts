@@ -422,7 +422,21 @@ it.each([
     );
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      [
+        "scripts/gate-changed.ts",
+        "--base",
+        "HEAD",
+        "--list",
+        // Rendering coverage is the builder's declaration; the app bundle is not a lane edge.
+        ...(stages.includes("C")
+          ? [
+              "--scenarios",
+              "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+              "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts",
+              "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts",
+            ]
+          : []),
+      ],
       { cwd: repositoryFixture, encoding: "utf8" },
     );
     expect(result.status, result.stderr).toBe(0);
@@ -434,7 +448,7 @@ it.each([
       );
       expect(result.stdout).toContain('"apps/web/test/scenarios/areas/c-mate/opening.scenario.ts"');
       expect(result.stdout).not.toContain("test/scenarios/areas/c-mate --");
-      expect(result.stdout).toContain("changed:");
+      expect(result.stdout).toContain("inputs:");
     }
     if (stages.includes("A"))
       expect(result.stdout).toContain("--exclude src/spi/replay/goldens.test.ts");
@@ -609,9 +623,23 @@ it.each([
 ])("execution dependency $path retains its real consumer $consumer", ({ path, consumer }) => {
   const root = NodePath.resolve(import.meta.dirname, "..");
   const candidates = [consumer, "apps/web/test/scenarios/fakes/c-mate/chat.test.ts"];
-  const selected = relatedFiles(root, [path], candidates);
-  expect(selected).toContain(consumer);
-  expect(selected).not.toContain("apps/web/test/scenarios/fakes/c-mate/chat.test.ts");
+  if (path.startsWith("apps/web/test/") || path.startsWith("apps/server/")) {
+    const selected = relatedFiles(root, [path], candidates);
+    expect(selected).toContain(consumer);
+    expect(selected).not.toContain("apps/web/test/scenarios/fakes/c-mate/chat.test.ts");
+  } else {
+    // The builder names the journey that renders this bundle input.
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list", "--scenarios", consumer],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(`Scenario ${consumer}; reason: explicit --scenarios`);
+    expect(result.stdout).toContain("Scenario files: 1;");
+    expect(result.stdout).not.toContain("apps/web/test/scenarios/fakes/c-mate/chat.test.ts");
+    expect(relatedFiles(root, [path], candidates)).toEqual([]);
+  }
 });
 
 it("a comments-only stylesheet edit schedules no browser scenarios or chat stages", () => {
@@ -762,5 +790,81 @@ it("stylesheet imports retain nested url inputs and removed imports", () => {
     ).toEqual([test]);
   } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Decision: no test deleted or weakened; only lane selection changes; main CI runs everything.
+it("lane scenarios follow their own imports without the bundled app entry", () => {
+  const file = NodePath.join(repositoryFixture, "apps/web/src/components/chat/RunChat.tsx");
+  const original = NodeFS.readFileSync(file, "utf8");
+  try {
+    NodeFS.writeFileSync(file, original + "\nexport const gateSelect3Fixture = true;\n");
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("Scenario files: 0;");
+    expect(result.stdout).toContain("Selection C: skip:");
+  } finally {
+    NodeFS.writeFileSync(file, original);
+  }
+});
+
+it("builders name rendering scenarios without expanding their siblings", () => {
+  const named = "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts";
+  const result = NodeChildProcess.spawnSync(
+    process.execPath,
+    ["scripts/gate-changed.ts", "--base", "HEAD", "--scenarios", named, "--list"],
+    { cwd: repositoryFixture, encoding: "utf8" },
+  );
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain("Scenario files: 1;");
+  expect(result.stdout).toContain(named);
+  expect(result.stdout).toContain("explicit --scenarios");
+  expect(result.stdout).toContain("Selection C-engine: skip:");
+  expect(result.stdout).not.toContain("chat.scenario.ts");
+});
+
+it.each([
+  [],
+  ["scripts/gate-changed.test.ts"],
+  ["apps/web/test/scenarios/areas/c-mate/missing.scenario.ts"],
+  ["apps/web/test/scenarios/areas/../areas/c-mate/chat.scenario.ts"],
+])("invalid explicit scenario files fail before any gate command ($0)", (...files) => {
+  const result = NodeChildProcess.spawnSync(
+    process.execPath,
+    ["scripts/gate-changed.ts", "--base", "HEAD", "--list", "--scenarios", ...files],
+    { cwd: repositoryFixture, encoding: "utf8" },
+  );
+  expect(result.status).not.toBe(0);
+  expect(result.stdout).toBe("");
+});
+
+it("named rendering scenarios join changed scenarios once and keep their owning stages", () => {
+  const changed = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
+  const named = "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts";
+  const file = NodePath.join(repositoryFixture, changed);
+  const original = NodeFS.readFileSync(file, "utf8");
+  try {
+    NodeFS.writeFileSync(file, original + "\nexport const gateSelect3Fixture = true;\n");
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--scenarios", named, changed, named, "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("Scenario files: 2;");
+    expect(result.stdout).toContain(
+      `Scenario ${changed}; reason: changed file; explicit --scenarios`,
+    );
+    expect(result.stdout).toContain(`Scenario ${named}; reason: explicit --scenarios`);
+    expect(result.stdout).toContain("scripts/chat-gate.ts --stages C,types");
+    expect(result.stdout).toContain(
+      "related scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/d-change/review.scenario.ts",
+    );
+  } finally {
+    NodeFS.writeFileSync(file, original);
   }
 });

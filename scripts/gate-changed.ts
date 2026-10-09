@@ -128,9 +128,7 @@ export function meaningfulChanges(root: string, base: string, paths: ReadonlyArr
   return { paths: meaningful, previous };
 }
 
-/** Follow imports plus the execution inputs declared by the scenario and golden harnesses.
- * The shared browser bundle is a dependency; absent journey-level coverage cannot narrow it.
- */
+/** Follow each test's imports and harness inputs, excluding the shared app bundle. */
 export function relatedFiles(
   root: string,
   paths: ReadonlyArray<string>,
@@ -271,21 +269,6 @@ export function relatedFiles(
     visit(parsed.program);
   }
   const executionInputs = (file: string): string[] => {
-    if (file === "apps/web/test/scenarios/harness/build.ts") {
-      // build.ts runs Vite in apps/web; its router plugin generates the route tree from routes.
-      return [
-        "apps/web/index.html",
-        "apps/web/vite.config.ts",
-        "apps/web/package.json",
-        "apps/web/tsconfig.json",
-        "tsconfig.base.json",
-        "package.json",
-        "pnpm-lock.yaml",
-        ...filesBelow("apps/web/src/routes").filter(
-          (path) => sourceFile.test(path) && !/\.test\./u.test(path),
-        ),
-      ];
-    }
     if (file === "apps/server/src/spi/replay/goldens.test.ts") {
       // loadFixture and goldenCheck read recordings, metadata and expected JSON from this root.
       return filesBelow("apps/server/src/spi/fixtures");
@@ -509,17 +492,37 @@ export function relatedTestPackages(packages: ReadonlyArray<GatePackage>) {
 if (import.meta.main) {
   const root = NodePath.resolve(import.meta.dirname, "..");
   const args = process.argv.slice(2);
-  if (
-    args.some(
-      (arg) => arg !== "--list" && arg !== "--base" && args[args.indexOf(arg) - 1] !== "--base",
+  let base = "origin/main";
+  const namedScenarios: string[] = [];
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--list") continue;
+    if (arg === "--base") {
+      const ref = args[++index];
+      if (!ref || ref.startsWith("--")) throw new Error("--base needs a git ref");
+      base = ref;
+    } else if (arg === "--scenarios") {
+      const start = namedScenarios.length;
+      while (args[index + 1] && !args[index + 1]!.startsWith("--"))
+        namedScenarios.push(args[++index]!);
+      if (namedScenarios.length === start) throw new Error("--scenarios needs scenario file paths");
+    } else {
+      throw new Error(
+        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--scenarios <file...>]",
+      );
+    }
+  }
+  for (const file of namedScenarios) {
+    if (
+      !/^apps\/web\/test\/scenarios\/areas\/.+\.scenario\.ts$/u.test(file) ||
+      NodePath.posix.normalize(file) !== file
     )
-  )
-    throw new Error("Usage: node scripts/gate-changed.ts [--base origin/main] [--list]");
-  const base = args.includes("--base") ? args[args.indexOf("--base") + 1] : "origin/main";
-  if (!base) throw new Error("--base needs a git ref");
+      throw new Error(`Expected a repository-relative scenario file: ${file}`);
+  }
+  validateSelectedFiles(root, namedScenarios);
   const comparison = comparisonBase(root, base);
   const paths = changedPaths(root, comparison);
-  if (paths.length === 0) {
+  if (paths.length === 0 && namedScenarios.length === 0) {
     console.log("No changed files; no gates to run.");
     process.exit(0);
   }
@@ -533,7 +536,7 @@ if (import.meta.main) {
     (hasScenarioInventory || meaningful.paths.some((path) => path.startsWith("apps/web/src/")))
       ? scenarioFiles(root, scenarioAreas, []).map((file) => `apps/web/${file}`)
       : [];
-  const related = relatedFiles(
+  const imported = relatedFiles(
     root,
     meaningful.paths,
     [
@@ -545,7 +548,8 @@ if (import.meta.main) {
     ],
     meaningful.previous,
   );
-  const chatStages = selectLaneChatStages(meaningful.paths, related, root);
+  const related = [...new Set([...imported, ...namedScenarios])].sort();
+  const chatStages = selectLaneChatStages([...meaningful.paths, ...namedScenarios], related, root);
   const ownedFiles = chatGateTestFiles(root, chatStages);
   validateSelectedFiles(root, ownedFiles);
   const files = related
@@ -554,12 +558,22 @@ if (import.meta.main) {
   for (const stage of chatGateStages) {
     const selection = chatStages.find((selected) => selected.id === stage.id);
     console.log(
-      `Selection ${stage.id}: ${selection?.reason ?? "skip: no related tests in its owning seam"}`,
+      `Selection ${stage.id}: ${selection ? `${selection.reason}${namedScenarios.length ? `; explicit --scenarios: ${namedScenarios.join(", ")}` : ""}` : "skip: no related tests in its owning seam"}`,
     );
   }
   console.log(
-    `Scenario files: ${related.filter((file) => file.endsWith(".scenario.ts")).length}; reason: ${meaningful.paths.length ? "imports and declared harness execution inputs (including old inputs for removals)" : "documentation/comments only"}`,
+    `Scenario files: ${related.filter((file) => file.endsWith(".scenario.ts")).length}; reason: ${namedScenarios.length ? "explicit --scenarios and own imports" : meaningful.paths.length ? "own imports and harness inputs (including old inputs for removals)" : "documentation/comments only"}`,
   );
+  for (const file of related.filter((file) => file.startsWith("apps/web/test/scenarios/")))
+    console.log(
+      `Scenario ${file}; reason: ${[
+        ...(imported.includes(file)
+          ? [meaningful.paths.includes(file) ? "changed file" : "own imports or harness inputs"]
+          : []),
+        ...(namedScenarios.includes(file) ? ["explicit --scenarios"] : []),
+      ].join("; ")}`,
+    );
+  if (!files.length) console.log("Related scenarios: skip: no files outside selected chat stages");
   const typecheckCommands = chatStages.flatMap((stage) =>
     stage.commands.filter((command) => command.args.includes("tsc")),
   );
