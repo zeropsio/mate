@@ -8,6 +8,7 @@ import noGlobalProcessRuntime from "./rules/no-global-process-runtime.ts";
 import noHermesUnsupportedApis from "./rules/no-hermes-unsupported-apis.ts";
 import noInfiniteMotion from "./rules/no-infinite-motion.ts";
 import noInlineSchemaCompile from "./rules/no-inline-schema-compile.ts";
+import noLegacyNoticeApi from "./rules/no-legacy-notice-api.ts";
 import noLegacyNoticePolicy from "./rules/no-legacy-notice-policy.ts";
 import noLegacyVocabulary from "./rules/no-legacy-vocabulary.ts";
 import noManualEffectRuntimeInTests from "./rules/no-manual-effect-runtime-in-tests.ts";
@@ -38,6 +39,7 @@ export default definePlugin({
     "no-hermes-unsupported-apis": noHermesUnsupportedApis,
     "no-infinite-motion": noInfiniteMotion,
     "no-inline-schema-compile": noInlineSchemaCompile,
+    "no-legacy-notice-api": noLegacyNoticeApi,
     "no-legacy-notice-policy": noLegacyNoticePolicy,
     "no-legacy-vocabulary": noLegacyVocabulary,
     "no-manual-effect-runtime-in-tests": noManualEffectRuntimeInTests,

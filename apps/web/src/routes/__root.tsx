@@ -1,3 +1,4 @@
+import { RecoveryOutcomeStatus } from "../zerops/recoveryOutcomes";
 import { AgentAdmissionComposition } from "../zerops/AgentAdmissionComposition";
 import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeningStage";
 import { useThreadDetail } from "~/state/entities";
@@ -270,8 +271,8 @@ function SignedInRootRouteView() {
     <AgentAdmissionComposition>
       <ZeropsReviewProvider>
         <CommandPalette>
-          <ConversationOpeningProvider>
-            <AppSidebarLayout>
+          <AppSidebarLayout status={<RecoveryOutcomeStatus />}>
+            <ConversationOpeningProvider>
               {/* The organization's gate (ADR 0001): no product without its HQ. */}
               {hqGate.kind !== "open" ? (
                 <ZeropsHqGate gate={hqGate} />
@@ -311,8 +312,8 @@ function SignedInRootRouteView() {
                   <Outlet />
                 </RouteGateView>
               )}
-            </AppSidebarLayout>
-          </ConversationOpeningProvider>
+            </ConversationOpeningProvider>
+          </AppSidebarLayout>
           {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
             new Mate's hand-over to its conversation; the New project dialog, of its family, the
             same way for every "New project". Neither behind the organization's gate. */}

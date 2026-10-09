@@ -169,6 +169,7 @@ export default defineConfig({
       "t3code/no-arbitrary-values": "error",
       "t3code/no-direct-permission-rule": "error",
       "t3code/no-restyle": "error",
+      "t3code/no-legacy-notice-api": "error",
       "t3code/no-legacy-notice-policy": "error",
       "t3code/no-retired-mechanism": "error",
       "t3code/no-unknown-classes": "error",

@@ -1,3 +1,4 @@
+import { RecoveryItems, useRecoveryFeedback } from "./recoveryOutcomes";
 import { useAtomValue } from "@effect/atom-react";
 
 import { ZeropsRestartMateDialog } from "../components/zerops/ZeropsRestartMateDialog";
@@ -31,7 +32,21 @@ export function RestartMateConfirmation({
   ...dialog
 }: Omit<Parameters<typeof ZeropsRestartMateDialog>[0], "body"> & RestartTarget) {
   const body = useRestartWords({ name, projectId, environmentId });
-  return <ZeropsRestartMateDialog {...dialog} name={name} body={body} />;
+  const { items } = useRecoveryFeedback(projectId, "restart-confirmation");
+  const latest = items.at(-1)?.outcome;
+  return (
+    <ZeropsRestartMateDialog
+      {...dialog}
+      name={name}
+      body={body}
+      pending={
+        latest === undefined ? dialog.pending : !latest.terminal && latest.retry.action === null
+      }
+      error={latest === undefined ? dialog.error : null}
+      confirmLabel={latest?.succeeded ? "Restart" : latest?.retry.label}
+      feedback={items.length === 0 ? null : <RecoveryItems items={items} actions={false} />}
+    />
+  );
 }
 
 /** The update confirmation uses the same reading of running chats as the Mate's own menu. */

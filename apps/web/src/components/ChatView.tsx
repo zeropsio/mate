@@ -2465,6 +2465,7 @@ export default function ChatView(props: ChatViewProps) {
         voice: mateLinkVoice,
         onContainerAction: mateRecoveryAction.act,
         busy: mateRecoveryAction.busy,
+        recoveryFeedback: mateRecoveryAction.feedback,
         projectUrl: routeMateAt.mate.projectUrl,
         // A container that failed is stopped and started; any other Mate is asked again, its
         // exchange as well as its link.
@@ -2495,6 +2496,7 @@ export default function ChatView(props: ChatViewProps) {
     mateLinkVoice,
     mateRecoveryAction.act,
     mateRecoveryAction.busy,
+    mateRecoveryAction.feedback,
     reconnectWarningGraceElapsed,
     reviveFailedMate,
     tryMateAgain,

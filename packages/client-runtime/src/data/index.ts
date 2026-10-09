@@ -612,3 +612,10 @@ export {
 } from "./projections/agentAdmission.ts";
 
 export { initialStream } from "./streamMachine.ts";
+export { recoveryOutcome } from "./projections/restartEvidence.ts";
+export { recoveryPreparationFailure, type RecoveryOutcome } from "./projections/restart.ts";
+export {
+  makeOutcomePresentation,
+  presentOutcomes,
+  type OutcomeInvocation,
+} from "./notices/outcomes.ts";

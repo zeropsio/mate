@@ -1036,6 +1036,7 @@
         "apps/web/src/components/zerops/ZeropsDeletionRecovery.tsx",
         "apps/web/src/zerops/useMateActions.tsx",
         "apps/web/src/zerops/RestartMateConfirmation.tsx",
+        "apps/web/src/zerops/recoveryOutcomes.tsx",
         "apps/web/src/components/zerops/ZeropsRestartMateDialog.tsx",
         "apps/web/src/components/zerops/ZeropsRestartMateDialog.logic.ts",
         "apps/web/src/zerops/useSidebarMateMenus.tsx",

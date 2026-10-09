@@ -5,7 +5,12 @@ import { scopeFreshness } from "./freshness.ts";
 import { sameValue } from "./equal.ts";
 import { operationProgress } from "./operation.ts";
 import type { ProjectKey } from "./processes.ts";
-import type { RestartEvidence, RestartProcess } from "./restart.ts";
+import {
+  readRecoveryOutcome,
+  type RecoveryOutcome,
+  type RestartEvidence,
+  type RestartProcess,
+} from "./restart.ts";
 
 export const projectRestarts: Projection<ProjectKey, RestartEvidence> = {
   name: "projectRestarts",
@@ -47,5 +52,24 @@ export const projectRestarts: Projection<ProjectKey, RestartEvidence> = {
       attempts,
       sourceByProcess,
     };
+  },
+};
+
+/** Invocation identity supplies the only lookup; completion is still the operation owner's. */
+export const recoveryOutcome: Projection<
+  { readonly requestId: string; readonly action: "start" | "restart" },
+  RecoveryOutcome
+> = {
+  name: "recoveryOutcome",
+  keyOf: ({ requestId, action }) => `${requestId}/${action}`,
+  equals: sameValue,
+  derive: (read, { requestId, action }) => {
+    const receipt = read.operation(requestId)?.receipt;
+    return readRecoveryOutcome(
+      requestId,
+      action,
+      operationProgress.derive(read, requestId),
+      receipt?.outcome.kind === "pending" ? undefined : receipt?.outcome.evidence,
+    );
   },
 };

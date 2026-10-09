@@ -208,7 +208,13 @@ function ProjectProjectionRetention() {
   return null;
 }
 
-export function AppSidebarLayout({ children }: { children: ReactNode }) {
+export function AppSidebarLayout({
+  children,
+  status,
+}: {
+  children: ReactNode;
+  status?: ReactNode;
+}) {
   const navigate = useNavigate();
   // Settings routes show the settings nav in place of the thread sidebar.
   const pathname = useLocation({ select: (location) => location.pathname });
@@ -317,7 +323,10 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         )}
         <SidebarRail onDoubleClick={resetSidebarWidth} />
       </Sidebar>
-      {children}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 flex-1">{children}</div>
+        {status}
+      </div>
       <SidebarControl />
       {/* A reveal asked from outside the menu — the jump box's — brings it out. */}
       <SidebarRevealBridge showable={!isOnSettings} />

@@ -274,3 +274,93 @@ export function readRestartRecovery(
         : ["open-in-zerops"],
   };
 }
+
+/** A recovery press follows its receipt even when no process or originating view exists. */
+export interface RecoveryOutcome {
+  readonly text: string;
+  readonly details?: string;
+  readonly terminal: boolean;
+  readonly succeeded: boolean;
+  readonly busy: boolean;
+  readonly retry: NonNullable<RestartReading["retry"]>;
+}
+
+export function readRecoveryOutcome(
+  requestId: string,
+  action: "start" | "restart",
+  progress: OperationProgress,
+  evidence?: string,
+): RecoveryOutcome {
+  const retry = retryFor("uncertain", { requestId, progress });
+  const terminal =
+    progress.stage === "done" || progress.stage === "refused" || progress.stage === "unsent";
+  const succeeded = progress.stage === "done" && progress.outcome === "succeeded";
+  const label = action === "start" ? "Start" : "Restart";
+  let text: string;
+  let details: string | undefined;
+  switch (progress.stage) {
+    case "refused":
+      text = `${label} refused.`;
+      details = progress.reason;
+      break;
+    case "unsent":
+      text = `${label} was not sent.`;
+      details = progress.reason;
+      break;
+    case "uncertain":
+      text = `${label} unconfirmed. Zerops may have accepted the request.`;
+      break;
+    case "unresolved":
+      text = `${label} outcome is unconfirmed.`;
+      details = [progress.reason, progress.nextAction, `Next: ${progress.nextActor}.`]
+        .filter(Boolean)
+        .join(" ");
+      break;
+    case "done":
+      text = succeeded
+        ? `${label} completed.`
+        : progress.outcome === "cancelled"
+          ? `${label} was cancelled.`
+          : `${label} failed.`;
+      details = progress.reason ?? evidence;
+      break;
+    case "accepted":
+    case "reflected":
+      text = `Zerops accepted the ${action}. Its outcome is not confirmed yet.`;
+      break;
+    default:
+      text = `Asking Zerops to ${action}…`;
+  }
+  return {
+    text,
+    ...(details === undefined ? {} : { details }),
+    terminal,
+    succeeded,
+    busy:
+      progress.stage === "unknown" ||
+      progress.stage === "submitting" ||
+      (progress.stage === "uncertain" && progress.next === "asking-owner"),
+    retry: {
+      ...retry,
+      label:
+        action === "start"
+          ? retry.label.replace(/restart/gi, (word) => (word === "Restart" ? "Start" : "start"))
+          : retry.label,
+    },
+  };
+}
+
+/** A failed preparation never reached the write owner, so another press may submit. */
+export function recoveryPreparationFailure(
+  action: "start" | "restart",
+  reason: string,
+): RecoveryOutcome {
+  return {
+    text: `Could not request the ${action}.`,
+    details: reason,
+    terminal: true,
+    succeeded: false,
+    busy: false,
+    retry: { label: "Try again", action: { kind: "submit" } },
+  };
+}
