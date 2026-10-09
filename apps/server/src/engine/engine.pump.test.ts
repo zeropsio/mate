@@ -816,8 +816,10 @@ describe("the running engine", () => {
       ),
   );
 
+  // Milo's second stress run, 2026-10-09: Claude's background-result turns ran ahead of a queued
+  // "carry on".
   it.effect(
-    "a self turn during preparation sends the prepared message back to the head of the queue",
+    "a message waiting for its capture goes into Claude's turn of its own and is answered there",
     () =>
       scene(
         Effect.gen(function* () {
@@ -827,19 +829,25 @@ describe("the running engine", () => {
           yield* w.agent((agent, thread) => agent.finish(thread));
           const gate = yield* Deferred.make<void>();
           w.history.controls.gate = gate;
-          yield* send(w, "second");
+          yield* send(w, "carry on");
           assert.strictEqual((yield* w.run(r(2)))?.state, "admitted");
           yield* w.agent((agent, thread) => agent.endWork(thread, work));
           yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          yield* w.settle;
+          assert.strictEqual(w.provider.calls.at(-1), sendLine(w, "carry on"));
           assert.deepStrictEqual(
-            [(yield* w.run(r(2)))?.state, (yield* w.run(r(3)))?.trigger.cause],
-            ["queued", "self"],
+            [(yield* w.run(r(2)))?.state, yield* w.run(r(3))],
+            ["running", undefined],
           );
+          yield* w.agent((agent, thread) => agent.say(thread, "Carrying on."));
           yield* w.agent((agent, thread) => agent.finish(thread));
           yield* Deferred.succeed(gate, void 0);
           yield* w.settle;
-          assert.strictEqual(w.provider.calls.at(-1), sendLine(w, "second"));
-          assert.strictEqual((yield* w.run(r(2)))?.state, "running");
+          assert.deepStrictEqual(yield* ending(w, 2), ["ended", "completed", "agent"]);
+          assert.strictEqual(
+            w.provider.calls.filter((call) => call === sendLine(w, "carry on")).length,
+            1,
+          );
           yield* w.shutdown;
         }),
       ),

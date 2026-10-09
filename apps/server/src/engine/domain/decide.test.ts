@@ -2068,6 +2068,7 @@ describe("decide: a turn the agent starts itself while a run is prepared", () =>
     origin: "self",
     providerTurnId: "bg",
   });
+  // Codex takes no message into a running turn: the message waits for the agent's turn to end.
   it("requeues the prepared run, which is sent when the agent's own turn ends", () => {
     const scene = play([...running, turnEnded, send("next"), selfTurn]);
     expect(tags(scene)).toEqual([
@@ -2094,6 +2095,154 @@ describe("decide: a turn the agent starts itself while a run is prepared", () =>
     ]);
     expect(after.state.runs[r(2)]?.state).toBe("sending");
     expect(after.effects.map((effect) => effect.kind)).toEqual(["provider.send"]);
+  });
+});
+
+// Milo's second stress run, 2026-10-09: two turns Claude opened to report background work ran
+// ahead of the person's queued "carry on".
+describe("decide: a person's waiting message goes into a turn the agent starts itself", () => {
+  const BG = "bg" as TurnHandle;
+  const selfTurn = (turn: TurnHandle = BG) =>
+    signal({ kind: "turn-started", turn, origin: "self", providerTurnId: turn });
+  const bgEnded = (turn: TurnHandle = BG) =>
+    signal({ kind: "turn-ended", turn, outcome: { kind: "completed" }, source: "agent" });
+  const idle: ReadonlyArray<Step> = [...runningWithSteer, turnEnded];
+  const message = (n: number) => `${r(n)}/i/1`;
+
+  it("is steered into that turn, which becomes its run", () => {
+    const scene = play([...idle, send("carry on"), selfTurn()]);
+    expect(scene.state.runs[r(2)]).toMatchObject({ state: "running", turn: BG });
+    expect(scene.state.runs[r(3)]).toBeUndefined();
+    expect(scene.effects).toMatchObject([
+      {
+        kind: "provider.steer",
+        payload: { runId: r(2), sessionId: "s1", itemId: message(2), text: "carry on" },
+      },
+    ]);
+    expect(scene.events.find((event) => event._tag === "ItemUpdated")).toMatchObject({
+      itemId: message(2),
+      body: { kind: "person", text: "carry on", delivery: { state: "steered" } },
+    });
+  });
+
+  it("the agent's words in that turn land on the message's run, after it", () => {
+    const scene = play([
+      ...idle,
+      send("carry on"),
+      selfTurn(),
+      signal({ kind: "item-opened", turn: BG, key: "k", by: { kind: "mate" }, body: note("k") }),
+    ]);
+    expect(scene.events).toMatchObject([
+      { _tag: "ItemOpened", runId: r(2), itemId: `${r(2)}/i/2` },
+    ]);
+  });
+
+  it("the turn's end ends the message's run and the next waiting message is admitted", () => {
+    const { state, log } = playAll([...idle, send("first"), send("second"), selfTurn(), bgEnded()]);
+    expect(ends(log)).toEqual(["1:completed/agent", "2:completed/agent"]);
+    expect(state.activeRunId).toBe(r(3));
+    expect(state.runs[r(3)]?.state).toBe("admitted");
+  });
+
+  it("of two waiting messages, the first goes into the turn and the second waits for it", () => {
+    const scene = play([...idle, send("first"), send("second"), selfTurn()]);
+    expect(scene.state.runs[r(2)]?.state).toBe("running");
+    expect(scene.state.queue).toEqual([r(3)]);
+    expect(scene.effects).toMatchObject([
+      { kind: "provider.steer", payload: { itemId: message(2), text: "first" } },
+    ]);
+  });
+
+  it("the second goes into the agent's next turn of its own as well", () => {
+    const scene = play([
+      ...idle,
+      send("first"),
+      send("second"),
+      selfTurn(),
+      bgEnded(),
+      selfTurn("bg2" as TurnHandle),
+    ]);
+    expect(scene.state.runs[r(3)]).toMatchObject({ state: "running", turn: "bg2" });
+    expect(scene.effects).toMatchObject([
+      { kind: "provider.steer", payload: { itemId: message(3), text: "second" } },
+    ]);
+  });
+
+  it("a message stopped before the agent's turn opens never goes into it", () => {
+    const scene = play([...idle, send("carry on"), stop(2), selfTurn()]);
+    expect(scene.state.runs[r(2)]?.end).toMatchObject({ kind: "stopped" });
+    expect(scene.state.runs[r(3)]).toMatchObject({ state: "running", joins: r(2) });
+    expect(scene.effects.map((effect) => effect.kind)).not.toContain("provider.steer");
+  });
+
+  it("a Stop on a message that went into the agent's turn stops that turn", () => {
+    const scene = play([...idle, send("carry on"), selfTurn(), stop(2)]);
+    expect(scene.effects).toMatchObject([
+      { kind: "provider.interrupt", payload: { runId: r(2), turn: BG } },
+    ]);
+  });
+
+  it("a steer the agent never took reads refused", () => {
+    const scene = play([
+      ...idle,
+      send("carry on"),
+      selfTurn(),
+      settled(message(2), "provider.steer", {
+        kind: "failed",
+        reason: "no live session",
+        undelivered: true,
+      }),
+    ]);
+    expect(scene.events.find((event) => event._tag === "ItemUpdated")).toMatchObject({
+      itemId: message(2),
+      body: { delivery: { state: "refused" } },
+    });
+  });
+
+  it("an admission that refuses a message already in the agent's turn leaves that turn running", () => {
+    const scene = play([
+      ...idle,
+      send("carry on"),
+      selfTurn(),
+      prepared(2, { kind: "failed", reason: "the signer is offboarded", refused: true }),
+    ]);
+    expect(scene.state.runs[r(2)]?.state).toBe("running");
+  });
+
+  it("a waiting message steered in as the agent's turn ended runs as a turn of its own", () => {
+    const scene = play([
+      ...idle,
+      send("carry on"),
+      selfTurn(),
+      bgEnded(),
+      signal({
+        kind: "turn-started",
+        turn: message(2) as TurnHandle,
+        origin: "engine",
+        providerTurnId: "T3",
+      }),
+    ]);
+    expect(scene.state.runs[r(3)]).toMatchObject({
+      state: "running",
+      joins: r(2),
+      trigger: { kind: "wake", cause: "self" },
+    });
+  });
+
+  it.each([
+    { name: "a plan", given: [send("plan it", { interactionMode: "plan" })] },
+    { name: "a maintenance command", given: [send("/compact", { maintenance: true })] },
+  ])("$name waits for the agent's turn to end, first in line", ({ given }) => {
+    const scene = play([...idle, ...given, selfTurn()]);
+    expect(scene.state.queue).toEqual([r(2)]);
+    expect(scene.state.runs[r(3)]).toMatchObject({ state: "running", trigger: { cause: "self" } });
+    expect(scene.effects.map((effect) => effect.kind)).not.toContain("provider.steer");
+  });
+
+  it("a message waiting behind a turn the person started still waits for it", () => {
+    const scene = play([...runningWithSteer, send("next")]);
+    expect(scene.state.runs[r(2)]?.state).toBe("queued");
+    expect(scene.effects).toEqual([]);
   });
 });
 
