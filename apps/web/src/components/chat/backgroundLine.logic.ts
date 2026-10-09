@@ -12,7 +12,7 @@ import { normalizeCompactToolLabel } from "./MessagesTimeline.logic";
 import { taskReportWords, taskSaid, type BackgroundJob } from "./workSteps.logic";
 
 /** "lost": its session is gone and it never reported. */
-export type BackgroundState = "running" | "done" | "failed" | "lost";
+export type BackgroundState = "running" | "done" | "failed" | "stopped" | "lost";
 
 /** One task, as the opened line lists it. */
 export interface BackgroundItem {
@@ -40,6 +40,7 @@ const STATE_WORD: Record<BackgroundState, string> = {
   running: "running",
   done: "finished",
   failed: "failed",
+  stopped: "stopped",
   lost: "didn't report back",
 };
 
@@ -69,7 +70,10 @@ export function backgroundLineOf(
   const failed = items.filter((item) => item.state === "failed").length;
   const running = items.filter((item) => item.state === "running").length;
   const lost = items.filter((item) => item.state === "lost").length;
-  const done = items.length - failed - running - lost;
+  // A job stopped is its own state: never one that finished (Milo's second stress run counted a
+  // job Milo stopped as finished).
+  const stopped = items.filter((item) => item.state === "stopped").length;
+  const done = items.length - failed - running - lost - stopped;
   const where = helpers ? "helper" : "in the background";
   const [only] = items;
   if (items.length === 1 && only !== undefined) {
@@ -87,8 +91,9 @@ export function backgroundLineOf(
   const noun = helpers ? "helpers" : "background jobs";
   const counts = [
     running > 0 ? `${running} running` : null,
-    done > 0 && (running > 0 || failed > 0 || lost > 0) ? `${done} finished` : null,
+    done > 0 && (running > 0 || failed > 0 || lost > 0 || stopped > 0) ? `${done} finished` : null,
     failed > 0 ? `${failed} failed` : null,
+    stopped > 0 ? `${stopped} stopped` : null,
     lost > 0 ? `${lost} didn't report back` : null,
   ].filter((part): part is string => part !== null);
   return {

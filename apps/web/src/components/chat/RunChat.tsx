@@ -328,6 +328,9 @@ const IN_THE_BACKGROUND = "In the background";
 /** A job whose session is gone before it reported: it never will. */
 const NO_REPORT = "Didn't report back";
 
+/** A job stopped before it finished. */
+const STOPPED = "Stopped";
+
 /** How long a step took; one still running says so, one that never returned says that. */
 function stepTime(step: WorkStep): ReactNode {
   if (step.noResult === "closed") return NO_RESULT;
@@ -335,6 +338,7 @@ function stepTime(step: WorkStep): ReactNode {
   if (step.state === "running") return STILL_RUNNING;
   if (step.background?.state === "running") return IN_THE_BACKGROUND;
   if (step.background?.state === "lost") return NO_REPORT;
+  if (step.background?.state === "stopped") return STOPPED;
   if (!TIMED.has(step.kind) || step.endedAt === null) return null;
   const ms = Date.parse(step.endedAt) - Date.parse(step.startedAt);
   return Number.isFinite(ms) && ms >= 1000 ? formatWorkDuration(ms) : null;

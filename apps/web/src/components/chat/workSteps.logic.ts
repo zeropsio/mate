@@ -81,7 +81,7 @@ export interface BackgroundJob {
   /** What it was asked to do: the task's words, else the command's own. */
   readonly title: string;
   /** "lost": its session is gone and it never reported — it never will. */
-  readonly state: "running" | "done" | "failed" | "lost";
+  readonly state: "running" | "done" | "failed" | "stopped" | "lost";
   readonly startedAt: string;
   /** When its task ended; null while it runs. */
   readonly endedAt: string | null;
@@ -475,7 +475,9 @@ export function backgroundJobOf(
           ? "lost"
           : failed
             ? "failed"
-            : "done",
+            : task.toolLifecycleStatus === "stopped"
+              ? "stopped"
+              : "done",
     startedAt: command.startedAt ?? command.createdAt,
     endedAt: task !== undefined && ended ? new Date(endOf(task)).toISOString() : null,
     report: task !== undefined && ended ? taskReportWords(taskSaid(task), title) : null,

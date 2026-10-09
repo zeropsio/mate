@@ -22,6 +22,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { deriveTimelineEntries, deriveWorkLogEntries } from "../../session-logic";
 import type { ChatMessage } from "../../types";
+import { backgroundLineOf, jobItems } from "./backgroundLine.logic";
 import { deriveMessagesTimelineRows } from "./MessagesTimeline.logic";
 import { nowLineOf, nowLineWords, workedWords } from "./runCard.logic";
 import { runEffortWords } from "./runResult.logic";
@@ -366,5 +367,57 @@ describe("an engine Mate's run card, from the engine's record", () => {
     expect(jobs.map(({ title, state }) => ({ title, state }))).toEqual([
       { title: "Wait 45 seconds in the background, then print done", state: "done" },
     ]);
+  });
+
+  // Milo's second stress run: the failure was painted on the 20-second job, the failing one read
+  // "In the background", and a job Milo stopped counted as finished.
+  it("each background job says what the engine recorded of it, a stopped one as stopped", () => {
+    const sent = (ordinal: number, at: number, id: string, description: string) =>
+      call(ordinal, at, {
+        step: "command",
+        tool: { name: "Bash" },
+        words: "Command run",
+        input: `Bash: ${description}`,
+        shows: {
+          toolName: "Bash",
+          command: description,
+          input: { description },
+          rawOutput: {
+            content: `Command running in background with ID: ${id}. Output is being written to: /tmp/x`,
+          },
+        },
+      } as never);
+    const job = (ordinal: number, at: number, description: string, status: string) =>
+      ({
+        ...workItem(run1, ordinal, {
+          work: `conversation/s/1.w${ordinal}`,
+          workKind: "shell",
+          status: status as never,
+          title: description,
+        }),
+        at: t0 + at,
+      }) as Item;
+    const rows = render({
+      runs: [stressRun()],
+      items: [
+        personItem(run1, 1, "Start three jobs", { at: t0 }),
+        sent(2, 56_000, "b1", "Wait 20 seconds, print short"),
+        sent(3, 56_600, "b2", "Wait 120 seconds, print long"),
+        sent(4, 57_200, "b3", "Exit with code 3"),
+        job(5, 56_450, "Wait 20 seconds, print short", "completed"),
+        job(6, 57_050, "Wait 120 seconds, print long", "stopped"),
+        job(7, 57_650, "Exit with code 3", "failed"),
+        noteItem(run1, 8, "All three are done.", { at: t0 + 77_700 }),
+      ],
+    });
+    const jobs = rows.flatMap((row) => (row.kind === "background" ? (row.jobs ?? []) : []));
+    expect(jobs.map(({ title, state }) => [title, state])).toEqual([
+      ["Wait 20 seconds, print short", "done"],
+      ["Wait 120 seconds, print long", "stopped"],
+      ["Exit with code 3", "failed"],
+    ]);
+    expect(backgroundLineOf(jobItems(jobs), false).words).toBe(
+      "3 background jobs: 1 finished, 1 failed, 1 stopped",
+    );
   });
 });
