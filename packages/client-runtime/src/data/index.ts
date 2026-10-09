@@ -571,6 +571,7 @@ export {
   overlayEngineRow,
   overlayEngineShell,
   type EngineCardCounts,
+  type EngineCardWait,
   type EngineCardPaging,
   type EngineRunCard,
 } from "./projections/mateEngine.ts";

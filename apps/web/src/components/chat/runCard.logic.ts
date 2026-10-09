@@ -21,6 +21,7 @@ import {
 } from "./conversation.logic";
 import {
   liveCallsOf,
+  type AfterWait,
   type LiveCall,
   type RecordItem,
   type RunStatus,
@@ -401,8 +402,8 @@ export type NowLine =
   | { readonly kind: "several"; readonly calls: ReadonlyArray<LiveCall> }
   /** It waits on the person: their answer to its question, or their approval. */
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
-  /** Its turns are over, and the helpers it launched work on. */
-  | { readonly kind: "after" }
+  /** Its turns are over, and the helpers it launched work on — or what its engine names. */
+  | { readonly kind: "after"; readonly on?: AfterWait }
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
   /** Over: who, what it did and for how long, and what the effort came to. */
@@ -460,7 +461,7 @@ export function nowLineOf(input: {
     case "waiting":
       return { kind: "waiting", on: now.on };
     case "after":
-      return { kind: "after" };
+      return now.on === undefined ? { kind: "after" } : { kind: "after", on: now.on };
     case "writing":
       return { kind: "writing" };
     case "thinking":
@@ -489,7 +490,7 @@ export type SlotFiller =
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
-  | { readonly kind: "after" };
+  | { readonly kind: "after"; readonly on?: AfterWait };
 
 /**
  * What the live slot holds (pass 35): what the Mate is doing this moment,
@@ -534,7 +535,10 @@ export function slotModelOf(input: {
   if (now === null) return thinking;
   switch (now.kind) {
     case "after":
-      return { live: [], filler: { kind: "after" } };
+      return {
+        live: [],
+        filler: now.on === undefined ? { kind: "after" } : { kind: "after", on: now.on },
+      };
     case "thinking":
       return now.key !== null &&
         now.messages.some((message) => messageHasText(message, input.liveLines))
@@ -622,6 +626,22 @@ export function operationNowWords(operation: ZeropsOperation): string {
     : operationLineWords(operation);
 }
 
+/** "a background command", "2 background commands". */
+function commandsWords(count: number): string {
+  return count === 1 ? "a background command" : `${count} background commands`;
+}
+
+/**
+ * What a run whose turns are over waits on, in words: its helpers, unless its engine names a
+ * command it sent to the background — a 17-second wait on a `sleep` read "Waiting for its helpers"
+ * while its one helper had long reported (Milo's stress run).
+ */
+export function afterWords(on: AfterWait | undefined): string {
+  if (on === undefined || on.commands === 0) return "Waiting for its helpers";
+  if (on.helpers === 0) return `Waiting for ${commandsWords(on.commands).replace(/^a /, "its ")}`;
+  return `Waiting for its helpers and ${commandsWords(on.commands)}`;
+}
+
 /** The now line in words. */
 export function nowLineWords(line: NowLine): string {
   switch (line.kind) {
@@ -636,7 +656,7 @@ export function nowLineWords(line: NowLine): string {
     case "waiting":
       return line.on === "approval" ? "Waiting for your approval" : "Waiting for your answer";
     case "after":
-      return "Waiting for its helpers";
+      return afterWords(line.on);
     case "writing":
       return "Writing";
     case "condensing":
@@ -657,7 +677,7 @@ export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
       case "waiting":
         return nowLineWords({ kind: "waiting", on: filler.on });
       case "after":
-        return nowLineWords({ kind: "after" });
+        return nowLineWords(filler);
       case "thinking":
         return nowLineWords({ kind: "thinking", thought: null });
       default:

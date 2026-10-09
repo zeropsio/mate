@@ -1,5 +1,6 @@
 import {
   type EngineCardPaging,
+  type EngineCardWait,
   type EngineRunCard,
   type MateLimit,
 } from "@t3tools/client-runtime/data";
@@ -420,8 +421,11 @@ export type TurnHeaderActivity =
       readonly kind: "writing";
       readonly note?: { readonly key: string; readonly message: ChatMessage };
     }
-  /** Its turns are over and the helpers it launched work on: the run waits on them (run 11). */
-  | { readonly kind: "after" }
+  /**
+   * Its turns are over and the helpers it launched work on: the run waits on them (run 11) — on
+   * what an engine card says it waits on, its helpers or the commands it sent to the background.
+   */
+  | { readonly kind: "after"; readonly on?: AfterWait }
   /**
    * It asked the person something — a question, an approval — and waits; a
    * question it asked in its own words is the record's item `key` too.
@@ -482,6 +486,9 @@ export type ConversationEvent =
     };
 
 /** A run as its status says it: who, whether it still works, and for how long. */
+/** What a run whose turns are over still waits on, where its engine says: helpers, commands. */
+export type AfterWait = EngineCardWait;
+
 export interface RunStatus {
   readonly interruption?: import("@t3tools/contracts").MateInterruption;
   readonly live: boolean;
@@ -2811,7 +2818,10 @@ export function deriveMessagesTimelineRows(input: {
         });
       } else if (chatted) {
         const now = waiting
-          ? { kind: "after" as const }
+          ? {
+              kind: "after" as const,
+              ...(engineCard?.waitsOn === undefined ? {} : { on: engineCard.waitsOn }),
+            }
           : working && answer === null
             ? liveActivity(last, turn.writing, tracked, batch)
             : null;

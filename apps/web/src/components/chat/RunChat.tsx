@@ -3495,7 +3495,7 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
     case "after":
       return (
         <>
-          <span className="run-slot-word">{nowLineWords({ kind: "after" })}</span>
+          <span className="run-slot-word">{nowLineWords(filler)}</span>
           <TypingDots className="run-now-dots" />
         </>
       );

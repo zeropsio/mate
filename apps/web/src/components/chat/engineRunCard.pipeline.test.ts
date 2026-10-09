@@ -9,6 +9,7 @@ import {
   callItem,
   engineCardPagingOfRecords,
   engineRequest,
+  engineRow,
   engineRun,
   engineRunCardsOfRecords,
   engineThreadOfRecords,
@@ -22,7 +23,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { deriveTimelineEntries, deriveWorkLogEntries } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import { deriveMessagesTimelineRows } from "./MessagesTimeline.logic";
-import { workedWords } from "./runCard.logic";
+import { nowLineOf, nowLineWords, workedWords } from "./runCard.logic";
 import { runEffortWords } from "./runResult.logic";
 
 const key = { environmentId: "env", conversationId: "conversation" };
@@ -241,5 +242,70 @@ describe("an engine Mate's run card, from the engine's record", () => {
       requests: [question],
     });
     expect(workedWords("Milo", cardOf(rows).status!)).toBe("Milo worked 48s");
+  });
+
+  /** What the card's line says, live or settled. */
+  const lineOf = (card: ReturnType<typeof cardOf>) =>
+    nowLineWords(
+      nowLineOf({
+        status: card.status!,
+        now: card.now,
+        answering: card.answering,
+        compacting: false,
+        speaker: "Milo",
+        effort: runEffortWords(card.outcome),
+      }),
+    );
+
+  it.each([
+    {
+      when: "the change that ended its run",
+      row: { kind: "working", since: t0 + 22_900, waitsOnHelpers: false } as const,
+    },
+    {
+      when: "the row's word that it waits",
+      row: { kind: "working", since: t0 + 77_800, waitsOnHelpers: true } as const,
+    },
+  ])(
+    "its run over while its background command runs, it waits on that command from $when",
+    ({ row }) => {
+      const card = cardOf(
+        render({
+          runs: [stressRun()],
+          items: stressItems("running"),
+          row: engineRow(key.environmentId, key.conversationId, {
+            state: row,
+            latestRun: {
+              id: RunId.make(run1),
+              end: { kind: "completed" },
+              endedAt: t0 + 77_800,
+              turnState: "completed",
+            },
+          }),
+        }),
+      );
+      expect(card.status?.live).toBe(true);
+      expect(lineOf(card)).toBe("Waiting for its background command");
+    },
+  );
+
+  it("its background command done, it settles though the row still says it waits", () => {
+    const card = cardOf(
+      render({
+        runs: [stressRun()],
+        items: stressItems("completed"),
+        row: engineRow(key.environmentId, key.conversationId, {
+          state: { kind: "working", since: t0 + 77_800, waitsOnHelpers: true },
+          latestRun: {
+            id: RunId.make(run1),
+            end: { kind: "completed" },
+            endedAt: t0 + 77_800,
+            turnState: "completed",
+          },
+        }),
+      }),
+    );
+    expect(card.status?.live).toBe(false);
+    expect(lineOf(card)).toMatch(/^Milo worked /);
   });
 });

@@ -844,7 +844,23 @@ export interface EngineRunCard {
   readonly runs: ReadonlyArray<RunRecord>;
   readonly openerMessageId?: string;
   readonly state?: ConversationRow["state"];
+  /** Whether it holds any of its runs' background work: then that work says what it waits on. */
+  readonly holdsWork?: true;
+  /**
+   * Its runs over, the background work they started that still runs, by what it is: the card waits
+   * on it, from the same change that ended its run (the row's word on it comes a moment later).
+   */
+  readonly waitsOn?: EngineCardWait;
 }
+
+/** What a card whose runs are over still waits on: its helpers, and the commands it backgrounded. */
+export interface EngineCardWait {
+  readonly helpers: number;
+  readonly commands: number;
+}
+
+/** Background work that still goes on, as the engine's view counts it (`conversationView`). */
+const ALIVE_WORK: ReadonlySet<string> = new Set(["running", "waiting", "idle"]);
 
 /** The typed records on each card, in source order; joining identity decides no run state. */
 export const engineRunCards: Projection<
@@ -860,10 +876,34 @@ export const engineRunCards: Projection<
     const { runs, cardOf } = cardsOf(read, id);
     const cards: Record<
       string,
-      { runs: RunRecord[]; openerMessageId?: string; state?: ConversationRow["state"] }
+      {
+        runs: RunRecord[];
+        openerMessageId?: string;
+        state?: ConversationRow["state"];
+        holdsWork?: true;
+        waitsOn?: EngineCardWait;
+      }
     > = {};
     for (const run of runs) (cards[cardOf(run.id) ?? run.id] ??= { runs: [] }).runs.push(run);
     for (const card of Object.values(cards)) {
+      // What its runs left running in the background, once they are over (a monitor watches for
+      // hours: never waited on).
+      let helpers = 0;
+      let commands = 0;
+      for (const run of card.runs)
+        for (const itemId of read.index(
+          "engineItemsOfRun",
+          engineFactId(key.environmentId, run.id),
+        )) {
+          const item = read.fact("mateEngineItem", itemId);
+          if (item.kind !== "known" || item.value.kind !== "work") continue;
+          card.holdsWork = true;
+          if (!ALIVE_WORK.has(item.value.status) || item.value.workKind === "monitor") continue;
+          if (item.value.workKind === "helper") helpers += 1;
+          else commands += 1;
+        }
+      if (card.runs.at(-1)?.state === "ended" && helpers + commands > 0)
+        card.waitsOn = { helpers, commands };
       const first = card.runs[0];
       if (first?.trigger.kind !== "person") continue;
       const opener = read.fact(
