@@ -35,6 +35,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { mateLoginAsAgentRow } from "@t3tools/client-runtime/zerops/logins";
+
 import { ClaudeAI, OpenAI } from "~/components/Icons";
 import { SurfaceLoading } from "../SurfaceLoading";
 import { Button } from "~/components/ui/button";
@@ -111,6 +113,8 @@ export interface AgentSignInViewProps {
   /** Retained login instructions are inert while their Mate is disconnected. */
   readonly available?: boolean;
   readonly onStart: (agentId: ZeropsAgentId) => void;
+  /** Leave the replacement confirmation without starting a login. */
+  readonly onDismiss?: (() => void) | undefined;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
   /** Resolves whether the Mate took the code. */
   readonly onSubmitCode: (agentId: ZeropsAgentId, code: string) => Promise<boolean>;
@@ -221,6 +225,7 @@ export function AgentSignInView(props: AgentSignInViewProps) {
                   })
                 : null
             }
+            onDismiss={props.onDismiss ?? (() => setChosen(null))}
             onReplace={() => {
               setPressed(true);
               setSince(Date.now());
@@ -308,6 +313,7 @@ function OpenCard({
   since,
   replace,
   onReplace,
+  onDismiss,
   onSwitch,
   onRetry,
   onSubmitCode,
@@ -469,9 +475,20 @@ function OpenCard({
           <div className="arrival-open-step" data-sign-in-step="replace">
             <span />
             <span className="arrival-open-step-words">{replace}</span>
-            <Button data-sign-in-replace onClick={onReplace} size="sm">
-              {REPLACE_SIGN_IN_PRESS}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                data-sign-in-replace-cancel
+                autoFocus
+                variant="outline"
+                onClick={onDismiss}
+                size="sm"
+              >
+                Cancel
+              </Button>
+              <Button data-sign-in-replace onClick={onReplace} size="sm">
+                {REPLACE_SIGN_IN_PRESS}
+              </Button>
+            </div>
           </div>
         )}
       </div>
@@ -742,6 +759,7 @@ export function ZeropsAgentSignIn({
   mateName,
   agentId = null,
   login = null,
+  onDismiss,
 }: {
   readonly environmentId: EnvironmentId | null;
   /** The conversation the login's terminal belongs to; nothing starts without one. */
@@ -751,6 +769,7 @@ export function ZeropsAgentSignIn({
   readonly agentId?: ZeropsAgentId | null;
   /** Opened on a login beyond the agents' own. */
   readonly login?: SignInLogin | null;
+  readonly onDismiss?: (() => void) | undefined;
 }) {
   const auth = useZeropsAgentAuth(environmentId);
   const snapshot = zeropsAgentAuthView(auth).snapshot;
@@ -791,9 +810,12 @@ export function ZeropsAgentSignIn({
     [threadRef],
   );
   if (snapshot === null && login === null) return null;
+  const loginRow = snapshot?.logins?.find((row) => row.id === login?.id);
   const agents: ReadonlyArray<SignInAgent> =
     login !== null
-      ? [{ agentId: login.agentId, login: login.login }]
+      ? loginRow === undefined
+        ? []
+        : [mateLoginAsAgentRow(loginRow)]
       : agentId !== null
         ? (snapshot?.agents ?? []).filter((agent) => agent.agentId === agentId)
         : signInAgents(snapshot?.agents ?? [], usual.usual);
@@ -811,6 +833,7 @@ export function ZeropsAgentSignIn({
       nameOf={nameOf}
       onCancel={onCancel}
       onStart={onStart}
+      onDismiss={onDismiss}
       onSubmitCode={onSubmitCode}
       terminal={terminal}
       title={login?.title}
@@ -912,6 +935,7 @@ export function ZeropsAgentSignInDialog({
           agentId={login === null ? agentId : null}
           environmentId={environmentId}
           login={login}
+          onDismiss={onClose}
           mateName={mateName}
           threadRef={threadRef}
         />
@@ -930,8 +954,16 @@ export function ZeropsAgentSignInDialogPopup({
   readonly title?: string | undefined;
   readonly children: ReactNode;
 }) {
+  const popup = useRef<HTMLDivElement>(null);
   return (
-    <DialogPopup bottomStickOnMobile={false} className="max-w-xl">
+    <DialogPopup
+      ref={popup}
+      bottomStickOnMobile={false}
+      className="max-w-xl"
+      initialFocus={() =>
+        popup.current?.querySelector<HTMLElement>("[data-sign-in-replace-cancel]") ?? true
+      }
+    >
       <DialogHeader>
         <DialogTitle>
           {title !== undefined

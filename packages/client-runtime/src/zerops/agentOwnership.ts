@@ -160,7 +160,7 @@ export function agentOwnershipComposerNotice(
 }
 
 /** The one action the notice offers. */
-export const AGENT_OWNERSHIP_RECOVERY_LABEL = "Sign in with your own account";
+export const AGENT_OWNERSHIP_RECOVERY_LABEL = "Use my own account instead…";
 
 /** The login a signer comes from, as a snapshot row carries it. */
 export interface AgentSignerFacts {

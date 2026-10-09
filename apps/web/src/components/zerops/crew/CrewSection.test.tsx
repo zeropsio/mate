@@ -95,7 +95,7 @@ describe("CrewSectionEmpty — no crew yet", () => {
       />,
     );
     expect(textOf(html)).toContain(
-      "Signed in by another project member — only they can run this crew. Sign in with your own account",
+      "Signed in by another project member — only they can run this crew. Use my own account instead…",
     );
     expect(html).not.toContain(">Set up a crew</button>");
   });
@@ -218,7 +218,7 @@ describe("CrewSection — for a viewer who may not run the crew (D6)", () => {
     expect(html).not.toContain("data-crew-composer");
     expect(html).toContain('data-crew-locked="someone-else"');
     expect(textOf(html)).toContain(
-      "Signed in by another project member — only they can run this crew. Sign in with your own account",
+      "Signed in by another project member — only they can run this crew. Use my own account instead…",
     );
   });
 

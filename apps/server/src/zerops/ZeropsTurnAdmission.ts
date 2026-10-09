@@ -108,7 +108,7 @@ export function turnRefusalMessage(agentId: ZeropsAgentId, refusal: TurnRefusal)
     case "unrecorded":
       return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign in with your own account first.";
     case "someone-else":
-      return "This agent was signed in by another project member — only they can run it. Sign in with your own account first.";
+      return "This agent was signed in by another project member — only they can run it.";
   }
 }
 
@@ -124,7 +124,7 @@ export function loginRefusalMessage(
     case "unrecorded":
       return `${title}'s sign-in was not recorded by Zerops Mate, so nobody can run it. Sign it in with your own account first.`;
     case "someone-else":
-      return `${title} was signed in by another project member — only they can run it. Use a login you signed in yourself.`;
+      return `${title} was signed in by another project member — only they can run it.`;
   }
 }
 

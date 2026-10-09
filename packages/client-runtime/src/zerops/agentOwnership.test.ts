@@ -140,7 +140,7 @@ describe("the composer notice and the gate (D6)", () => {
   });
 
   it("offers one recovery, and it is the person's own sign-in", () => {
-    expect(AGENT_OWNERSHIP_RECOVERY_LABEL).toBe("Sign in with your own account");
+    expect(AGENT_OWNERSHIP_RECOVERY_LABEL).toBe("Use my own account instead…");
   });
 });
 

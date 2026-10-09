@@ -9,6 +9,7 @@
  * (`ZeropsAgentSignIn.logic.ts`, `ZeropsGroupTree.logic.ts`):
  * the component renders exactly what this resolves, nothing more.
  */
+import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/agentOwnership";
 import { ZEROPS_AGENT_NAMES } from "./ZeropsAgentSignIn.logic";
 import type {
   ZeropsAgentAuthUnknown,
@@ -168,7 +169,11 @@ export function resolveZeropsAgentPickerPanelView(input: {
       return {
         agentName,
         statusLine: zeropsAgentPickerSomeoneElseStatus(input.signerName),
-        primaryAction: { kind: "use-my-account", label: "Use my account", disabled: false },
+        primaryAction: {
+          kind: "use-my-account",
+          label: AGENT_OWNERSHIP_RECOVERY_LABEL,
+          disabled: false,
+        },
         showCancel: false,
         sessionLockNotice,
       };
@@ -176,7 +181,11 @@ export function resolveZeropsAgentPickerPanelView(input: {
       return {
         agentName,
         statusLine: "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.",
-        primaryAction: { kind: "use-my-account", label: "Use my account", disabled: false },
+        primaryAction: {
+          kind: "use-my-account",
+          label: AGENT_OWNERSHIP_RECOVERY_LABEL,
+          disabled: false,
+        },
         showCancel: false,
         sessionLockNotice,
       };

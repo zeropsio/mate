@@ -73,7 +73,11 @@ describe("resolveZeropsAgentPickerPanelView", () => {
       expected: {
         agentName: "Claude Code",
         statusLine: "Signed in by Jan — only they can run it.",
-        primaryAction: { kind: "use-my-account", label: "Use my account", disabled: false },
+        primaryAction: {
+          kind: "use-my-account",
+          label: "Use my own account instead…",
+          disabled: false,
+        },
         showCancel: false,
       },
     },
@@ -84,7 +88,11 @@ describe("resolveZeropsAgentPickerPanelView", () => {
       expected: {
         agentName: "Claude Code",
         statusLine: "Signed in by another project member — only they can run it.",
-        primaryAction: { kind: "use-my-account", label: "Use my account", disabled: false },
+        primaryAction: {
+          kind: "use-my-account",
+          label: "Use my own account instead…",
+          disabled: false,
+        },
         showCancel: false,
       },
     },
@@ -95,7 +103,11 @@ describe("resolveZeropsAgentPickerPanelView", () => {
       expected: {
         agentName: "Codex",
         statusLine: "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.",
-        primaryAction: { kind: "use-my-account", label: "Use my account", disabled: false },
+        primaryAction: {
+          kind: "use-my-account",
+          label: "Use my own account instead…",
+          disabled: false,
+        },
         showCancel: false,
       },
     },

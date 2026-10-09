@@ -92,7 +92,12 @@ export function CrewSectionEmpty({
             />
             {crewLockWords(lock.ownership)}
           </p>
-          <CrewPress label={CREW_LOCK_ACTION} onPress={() => onSignIn(lock)} size="view" />
+          <CrewPress
+            tone="quiet"
+            label={CREW_LOCK_ACTION}
+            onPress={() => onSignIn(lock)}
+            size="view"
+          />
         </div>
       )}
     </div>

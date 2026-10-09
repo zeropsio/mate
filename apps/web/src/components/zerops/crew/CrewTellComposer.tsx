@@ -251,7 +251,7 @@ export function CrewTellLocked({
     <div className={cn("crew-locked", className)} data-crew-locked={lock.ownership}>
       <LockIcon aria-hidden="true" className="size-4 shrink-0 text-warning" />
       <p className="crew-locked-words">{crewLockWords(lock.ownership)}</p>
-      <CrewPress label={CREW_LOCK_ACTION} onPress={() => onSignIn(lock)} />
+      <CrewPress tone="quiet" label={CREW_LOCK_ACTION} onPress={() => onSignIn(lock)} />
     </div>
   );
 }

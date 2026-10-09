@@ -14,6 +14,7 @@
  *
  * Pure: no clock, no I/O; every fact arrives from the crew snapshot.
  */
+import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "../agentOwnership.ts";
 import type {
   CrewAttention,
   CrewHost,
@@ -359,7 +360,7 @@ export function crewLockWords(ownership: "someone-else" | "unrecorded"): string 
 }
 
 /** The notice's one way out, the conversation's (`AGENT_OWNERSHIP_RECOVERY_LABEL`): the viewer's own sign-in. */
-export const CREW_LOCK_ACTION = "Sign in with your own account";
+export const CREW_LOCK_ACTION = AGENT_OWNERSHIP_RECOVERY_LABEL;
 
 /* ------------------------------------------------------------ the rows */
 

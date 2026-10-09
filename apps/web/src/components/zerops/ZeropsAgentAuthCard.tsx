@@ -30,6 +30,7 @@ import type {
 } from "@t3tools/contracts";
 import {
   agentOwnershipNeedsAttention,
+  AGENT_OWNERSHIP_RECOVERY_LABEL,
   agentOwnershipNotice,
   resolveAgentOwnership,
   type ZeropsAgentOwnership,
@@ -525,9 +526,9 @@ function ZeropsLoginRow({
                 onSignIn(login);
               }}
               size="compact"
-              variant="pill"
+              variant={someoneElses ? "link" : "pill"}
             >
-              Sign in
+              {someoneElses ? AGENT_OWNERSHIP_RECOVERY_LABEL : "Sign in"}
             </Button>
           ) : null}
           {!walking &&
@@ -890,14 +891,16 @@ function ZeropsAgentAuthActionButton({
   if (action === "sign-in") {
     return (
       <Button
-        data-zerops-agent-primary-action
+        data-zerops-agent-primary-action={ownership !== "someone-else" || undefined}
         onClick={() => {
           onSignIn(agent.agentId);
         }}
         size="compact"
-        variant="pill"
+        variant={ownership === "someone-else" ? "link" : "pill"}
       >
-        {AGENT_SIGN_IN_LABELS[agent.agentId]}
+        {ownership === "someone-else"
+          ? AGENT_OWNERSHIP_RECOVERY_LABEL
+          : AGENT_SIGN_IN_LABELS[agent.agentId]}
       </Button>
     );
   }
@@ -931,9 +934,9 @@ function ZeropsAgentAuthActionButton({
           onSignIn(agent.agentId);
         }}
         size="compact"
-        variant="outline"
+        variant={ownership === "someone-else" ? "link" : "outline"}
       >
-        {ownership === "mine" ? "Switch account" : "Use my account"}
+        {ownership === "mine" ? "Switch account" : AGENT_OWNERSHIP_RECOVERY_LABEL}
       </Button>
       {signOutSupported && onSignOut !== undefined ? (
         <Button

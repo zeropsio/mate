@@ -72,7 +72,7 @@ export function ZeropsReadOnlyConversationFooter({
           // The action's row height kept, so the strip is the height it will be once it comes.
           <span aria-hidden="true" className="h-7 w-0 shrink-0 sm:h-6" />
         ) : (
-          <Button size="compact" variant="pill" onClick={onSignIn}>
+          <Button size="compact" variant="link" onClick={onSignIn}>
             {AGENT_OWNERSHIP_RECOVERY_LABEL}
           </Button>
         )}
