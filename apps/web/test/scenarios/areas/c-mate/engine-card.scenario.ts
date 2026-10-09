@@ -106,85 +106,83 @@ describe("C: an engine Mate's run card in a live conversation", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     // Milo's stress run: the card waited on a background job, folded when the job ended, and the
     // run the job's end woke snapped it open 532 px in one frame and scrolled the page 768 px.
-    it.effect(
-      "a run its job's end wakes goes on in the folded card without moving the page, its answer under the reply the person was reading",
-      () =>
-        Effect.gen(function* () {
-          const { s, chat, engine } = yield* longConversation;
-          const run = engine.personRun("Start the wait in the background");
-          engine.item(run, {
-            kind: "call",
-            step: "command",
-            tool: { name: "Bash" },
-            words: "Command run",
-            state: "done",
-            endedAt: 1791552412202,
-            input: "Bash: sleep 45 && echo done",
-            shows: {
-              toolName: "Bash",
-              command: "sleep 45 && echo done",
-              input: { description: "Wait 45 seconds in the background, then print done" },
-              rawOutput: {
-                content:
-                  "Command running in background with ID: b1job. Output is being written to: /tmp/x",
-              },
+    it.effect("a run its job's end wakes goes on in the folded card without moving the page", () =>
+      Effect.gen(function* () {
+        const { s, chat, engine } = yield* longConversation;
+        const run = engine.personRun("Start the wait in the background");
+        engine.item(run, {
+          kind: "call",
+          step: "command",
+          tool: { name: "Bash" },
+          words: "Command run",
+          state: "done",
+          endedAt: 1791552412202,
+          input: "Bash: sleep 45 && echo done",
+          shows: {
+            toolName: "Bash",
+            command: "sleep 45 && echo done",
+            input: { description: "Wait 45 seconds in the background, then print done" },
+            rawOutput: {
+              content:
+                "Command running in background with ID: b1job. Output is being written to: /tmp/x",
             },
-          });
-          const job = engine.item(run, {
-            kind: "work",
-            work: "session.w2",
-            workKind: "shell",
-            status: "running",
-            title: "Wait 45 seconds in the background, then print done",
-          });
-          engine.note(run, "The background wait hasn't printed yet.", { kind: "completed" });
-          yield* chat.then.text("Waiting for its background command");
-          engine.update(job, { status: "completed" });
-          yield* chat.then.noText("Waiting for its background command");
-          yield* chat.then.noText("running in the background");
-          // The fold eases shut; the page is still once it has.
-          yield* Effect.promise(() =>
-            s.page.waitForFunction(
-              () =>
-                [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1)?.dataset
-                  .runFold === "folded",
-              { polling: "raf", timeout: 8000 },
-            ),
-          );
-          // Milo's third stress run: the reply under the folded card vanished into it at the wake,
-          // and the wake's answer landed 798 px below the view.
-          yield* trace(s.page, "The background wait hasn't printed yet.");
-          const wake = engine.startRun(run);
-          engine.note(wake, "The background wait finished and printed done.", {
-            kind: "completed",
-          });
-          yield* chat.then.text("The background wait finished and printed done.");
-          const frames = yield* readTrace(s.page, 1500);
-          expect(frames.length, "ASSERTION: the wake was sampled").toBeGreaterThan(20);
-          expect(
-            largestStep(frames, (frame) => frame.card),
-            "ASSERTION: the card never snaps open in one frame",
-          ).toBeLessThan(48);
-          expect(
-            Math.max(...frames.map((frame) => frame.card)) -
-              Math.min(...frames.map((frame) => frame.card)),
-            "ASSERTION: the folded card keeps its height while the woken run goes on in it",
-          ).toBeLessThan(48);
-          expect(
-            largestStep(frames, (frame) => frame.top),
-            "ASSERTION: the list never jumps",
-          ).toBeLessThan(120);
-          expect(frames.at(-1)!.end, "ASSERTION: the view ends at the conversation's end").toBe(0);
-          expect(
-            frames.every((frame) => frame.anchor !== null),
-            "ASSERTION: the reply the person was reading stays on screen through the wake",
-          ).toBe(true);
-          expect(
-            largestStep(frames, (frame) => frame.anchor),
-            "ASSERTION: the reply the person was reading never jumps as the wake answers",
-          ).toBeLessThan(120);
-          yield* s.then.noExternalNetwork;
-        }),
+          },
+        });
+        const job = engine.item(run, {
+          kind: "work",
+          work: "session.w2",
+          workKind: "shell",
+          status: "running",
+          title: "Wait 45 seconds in the background, then print done",
+        });
+        engine.note(run, "The background wait hasn't printed yet.", { kind: "completed" });
+        yield* chat.then.text("Waiting for its background command");
+        engine.update(job, { status: "completed" });
+        yield* chat.then.noText("Waiting for its background command");
+        yield* chat.then.noText("running in the background");
+        // The fold eases shut; the page is still once it has.
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(
+            () =>
+              [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1)?.dataset
+                .runFold === "folded",
+            { polling: "raf", timeout: 8000 },
+          ),
+        );
+        // Milo's third stress run: the reply under the folded card vanished into it at the wake,
+        // and the wake's answer landed 798 px below the view.
+        yield* trace(s.page, "The background wait hasn't printed yet.");
+        const wake = engine.startRun(run);
+        engine.note(wake, "The background wait finished and printed done.", {
+          kind: "completed",
+        });
+        yield* chat.then.text("The background wait finished and printed done.");
+        const frames = yield* readTrace(s.page, 1500);
+        expect(frames.length, "ASSERTION: the wake was sampled").toBeGreaterThan(20);
+        expect(
+          largestStep(frames, (frame) => frame.card),
+          "ASSERTION: the card never snaps open in one frame",
+        ).toBeLessThan(48);
+        expect(
+          Math.max(...frames.map((frame) => frame.card)) -
+            Math.min(...frames.map((frame) => frame.card)),
+          "ASSERTION: the folded card keeps its height while the woken run goes on in it",
+        ).toBeLessThan(48);
+        expect(
+          largestStep(frames, (frame) => frame.top),
+          "ASSERTION: the list never jumps",
+        ).toBeLessThan(120);
+        expect(frames.at(-1)!.end, "ASSERTION: the view ends at the conversation's end").toBe(0);
+        expect(
+          frames.every((frame) => frame.anchor !== null),
+          "ASSERTION: the reply the person was reading stays on screen through the wake",
+        ).toBe(true);
+        expect(
+          largestStep(frames, (frame) => frame.anchor),
+          "ASSERTION: the reply the person was reading never jumps as the wake answers",
+        ).toBeLessThan(120);
+        yield* s.then.noExternalNetwork;
+      }),
     );
 
     // Milo's third stress run: each message sent moved the conversation 130 px in one frame.
