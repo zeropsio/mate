@@ -8278,6 +8278,7 @@ export default function ChatView(props: ChatViewProps) {
                   agentAuthCard={zeropsChrome.agentAuthCard}
                   agentAuthUnknown={zeropsChrome.agentAuthUnknown}
                   agentAuthSnapshot={zeropsAgentAuth.snapshot}
+                  agentSignInDemanded={admission.attention !== null}
                   runningToolLabel={zeropsThreadModel.running?.kicker}
                   threadRef={zeropsChrome.threadRef}
                 />

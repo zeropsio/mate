@@ -56,7 +56,7 @@ import { useRef, useState } from "react";
 import type { TerminalContextSelection } from "../../lib/terminalContext";
 import { useEnvironment } from "../../state/environments";
 import { useDatabasePanel, useDatabaseServices } from "../../zerops/useDatabase";
-import { databaseTreeTarget } from "@t3tools/client-runtime/data";
+import { DATABASE_FAILURE_UNEXPLAINED, databaseTreeTarget } from "@t3tools/client-runtime/data";
 import { useZeropsDataConsole } from "../../zerops/useZeropsFeeds";
 import { Button } from "../ui/button";
 import { Chip, FlatCard, MicroLabel, StatusDot } from "./primitives";
@@ -134,6 +134,7 @@ export function ZeropsDataPanel({
     service ?? null,
   );
   const database = useDatabasePanel(dataConsoleSupported ? environmentId : null, service ?? null);
+  const summaryError = database.readStates.summary?.error;
   const {
     services,
     tree,
@@ -1126,7 +1127,7 @@ export function ZeropsDataPanel({
               {database.summary?.maskedConnection ??
                 (database.readStates.summary?.pending
                   ? "Loading connection summary…"
-                  : "Connection summary unavailable")}
+                  : "No connection summary")}
             </span>
             {database.summary ? (
               <Button
@@ -1151,9 +1152,15 @@ export function ZeropsDataPanel({
               </Button>
             )}
           </div>
-          {database.readStates.summary?.error ? (
-            <p>Connection summary unavailable; the console may need an update.</p>
-          ) : null}
+          {summaryError === undefined || database.summary ? null : (
+            <p data-zerops-data-summary-error>
+              {summaryError === DATABASE_FAILURE_UNEXPLAINED
+                ? // No reason given: most often a Mate server older than this
+                  // app, which cannot read the request at all.
+                  "The Mate's server did not take the request. Updating the Mate usually fixes that."
+                : summaryError}
+            </p>
+          )}
           <Button
             size="micro"
             variant="ghost"

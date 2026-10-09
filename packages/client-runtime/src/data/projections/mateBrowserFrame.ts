@@ -73,9 +73,25 @@ export const mateBrowserFrames: Projection<
     ),
   equals: sameValue,
 };
+/**
+ * The last page the agent's browser showed, and when. The agent's browser lives only for each
+ * tool call (3-7 s), so between calls this is what the surface has to show: that page, marked not
+ * live, rather than "hasn't opened a browser yet".
+ */
+export interface MateBrowserLastSeen {
+  readonly frame: ZeropsBrowserFrame;
+  /** When the frame arrived, on this client's clock. */
+  readonly atMs: number;
+}
+
+/** The live view's state, plus the last page seen while the view is not a current frame. */
+export type MateBrowserStreamRead = ZeropsBrowserStreamState & {
+  readonly last?: MateBrowserLastSeen;
+};
+
 export const mateBrowserStream: Projection<
   string,
-  ZeropsBrowserStreamState | "unavailable" | undefined
+  MateBrowserStreamRead | "unavailable" | undefined
 > = {
   name: "mateBrowserStream",
   keyOf: (environmentId) => environmentId,
@@ -84,15 +100,20 @@ export const mateBrowserStream: Projection<
     if (stream.phase === "refused" || stream.phase === "unsupported") return "unavailable";
     const fact = read.fact("mateBrowserFrame", mateBrowserStreamId(environmentId));
     if (fact.kind !== "known" || fact.value.kind !== "stream") return undefined;
+    const retained = fact.value.state.frame;
+    const atMs = fact.value.frameAtMs;
+    const last =
+      retained === undefined || atMs === undefined ? {} : { last: { frame: retained, atMs } };
     if (stream.phase !== "live")
       return {
         status: "connecting",
         ...(fact.value.state.url === undefined ? {} : { url: fact.value.state.url }),
         ...(fact.value.state.title === undefined ? {} : { title: fact.value.state.title }),
+        ...last,
       };
     if (!fact.value.currentFrame || fact.value.state.status !== "live") {
       const { frame: _retained, ...state } = fact.value.state;
-      return state;
+      return { ...state, ...last };
     }
     return fact.value.state;
   },

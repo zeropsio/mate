@@ -1542,7 +1542,15 @@ export default function ThreadTerminalDrawer({
       {resizeHandle}
 
       {!hasTerminalSidebar && (
-        <div className="pointer-events-none absolute right-2 top-2 z-20">
+        <div
+          className={
+            isPanel
+              ? // In the panel the toolbar takes its own row: floated over the
+                // terminal it covered the end of the first output line.
+                "flex justify-end bg-(--terminal-background) px-2 pt-2 pb-1"
+              : "pointer-events-none absolute right-2 top-2 z-20"
+          }
+        >
           <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-md border border-border/80 bg-background shadow-xs">
             <TerminalActionButton
               className={`p-1 text-foreground/90 transition-colors ${

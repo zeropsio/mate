@@ -183,6 +183,34 @@ describe("ZeropsBrowserPanel", () => {
     expect(body).not.toBeNull();
   });
 
+  // The agent's browser lives only for each 3-7 s tool call: between calls
+  // Milo's panel said "hasn't opened a browser yet" (stress run 2, 2026-10-09).
+  it("between the agent's browser calls, shows the last page it showed, where and when, marked not live", () => {
+    feedState.browserStream = {
+      status: "no-browser",
+      url: "https://app.dev/program",
+      last: { frame: FRAME, atMs: Date.now() - 3 * 60_000 },
+    };
+    hooks.beginRender();
+    const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF });
+    expect(
+      visitElements(
+        tree,
+        (element) => element.props.children === "The agent hasn't opened a browser yet.",
+      ),
+    ).toBeNull();
+    const last = findByAttribute(tree, "data-zerops-browser-last");
+    expect(visitElements(last, (element) => element.props.label === "Not live")).not.toBeNull();
+    expect(findByAttribute(last, "data-zerops-browser-last-seen")?.props.children).toBe(
+      "Last seen 3m ago · https://app.dev/program",
+    );
+    expect(visitElements(last, (element) => element.type === "img")?.props.src).toBe(
+      "data:image/jpeg;base64,AAAA",
+    );
+    // Not live is not driveable: no input surface over a picture of the past.
+    expect(findByAttribute(tree, "data-zerops-browser-input-disabled")).toBeNull();
+  });
+
   it("shows the agent's driving line with the page it is verifying", () => {
     feedState.browserStream = { status: "live", url: "https://weatherdash.example/", frame: FRAME };
     feedState.lifecycle = knownLifecycle([

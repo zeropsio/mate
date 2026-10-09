@@ -27,6 +27,7 @@ import {
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 import { cn } from "~/lib/utils";
+import { formatRelativeTimeLabel } from "../../timestampFormat";
 
 import { useAtomCommand } from "../../state/use-atom-command";
 import { zeropsCommands } from "../../state/zeropsCommands";
@@ -42,6 +43,16 @@ export interface ZeropsBrowserPanelProps {
 /** A printable single character carries CDP's `text` field alongside `key` (e.g. "a"); a named key (`Enter`, `ArrowLeft`, ...) carries `key` only. */
 function keyText(key: string): string | undefined {
   return key.length === 1 ? key : undefined;
+}
+
+/** The box a frame sits in, live or last seen. */
+const FRAME_BOX =
+  "relative overflow-hidden rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)]";
+
+/** `Last seen 3m ago · https://app.dev/`: when the retained frame came, and from where. */
+function lastSeenWords(atMs: number, url: string | undefined): string {
+  const when = formatRelativeTimeLabel(new Date(atMs).toISOString());
+  return url === undefined ? `Last seen ${when}` : `Last seen ${when} · ${url}`;
 }
 
 export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowserPanelProps) {
@@ -80,6 +91,9 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
   }
 
   const frame = read !== undefined && read !== "unavailable" ? read.frame : undefined;
+  // The agent's browser lives only for each tool call; between calls the panel
+  // keeps the last page it showed, saying it is not live and when it was seen.
+  const last = read !== undefined && read !== "unavailable" ? read.last : undefined;
 
   const sendInput = (input: ZeropsBrowserInput) => {
     if (driving.inputDisabled) {
@@ -210,12 +224,32 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
         <p className="px-1 text-muted-foreground text-xs" data-zerops-browser-unavailable>
           Live browser view isn't available on this server yet.
         </p>
+      ) : frame === undefined && last !== undefined ? (
+        <div className="flex flex-col gap-1" data-zerops-browser-last>
+          <div className="flex min-w-0 items-center gap-2 px-1 text-muted-foreground text-xs">
+            {read.status === "no-browser" ? (
+              <StatusDot label="Not live" tone="off" />
+            ) : (
+              <StatusDot label="Connecting" pulse tone="busy" />
+            )}
+            <span className="min-w-0 truncate" data-zerops-browser-last-seen>
+              {lastSeenWords(last.atMs, read.url)}
+            </span>
+          </div>
+          <div className={FRAME_BOX}>
+            <img
+              alt="The last page the agent's browser showed"
+              className="block w-full opacity-70"
+              src={frameImageSrc(last.frame)}
+            />
+          </div>
+        </div>
       ) : read.status === "no-browser" ? (
         <p className="px-1 text-muted-foreground text-xs">The agent hasn't opened a browser yet.</p>
       ) : frame === undefined ? (
         <StatusDot className="px-1" label="Connecting" pulse tone="busy" />
       ) : (
-        <div className="relative overflow-hidden rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)]">
+        <div className={FRAME_BOX}>
           {/** biome-ignore lint/a11y/noNoninteractiveElementInteractions: the frame is a live remote viewport, not a static image. */}
           <img
             alt="Live view of the agent's browser"

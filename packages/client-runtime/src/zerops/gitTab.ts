@@ -282,13 +282,19 @@ export function gitCheckoutLine(
   checkout: GitCheckoutState,
   /** Whose checkout it is, so its own branch reads as a name (`branchLabel`). */
   mateName?: string | undefined,
+  /**
+   * Whether HQ holds a change from this branch. That proves a push the checkout
+   * may no longer track (a merge takes the remote branch with it), so the line
+   * cannot say "never pushed" beside "Merged into main.".
+   */
+  hasChange = false,
 ): string {
   if (checkout.read === false) return "Reading repository…";
   if (!checkout.isRepo) return "no repository yet";
   const branch = branchLabel(checkout.headRef, mateName);
   const ahead = checkout.aheadCount > 0 ? ` ↑${String(checkout.aheadCount)}` : "";
   const behind = checkout.behindCount > 0 ? ` ↓${String(checkout.behindCount)}` : "";
-  const counts = checkout.hasUpstream ? `${ahead}${behind}` : " · never pushed";
+  const counts = checkout.hasUpstream ? `${ahead}${behind}` : hasChange ? "" : " · never pushed";
   const count = checkout.changed.length;
   const changed = count === 0 ? "" : ` · ${String(count)} file${count === 1 ? "" : "s"} changed`;
   return `${branch}${counts}${changed}`;
@@ -536,7 +542,7 @@ export function gitBlock(input: {
     repository: checkout.repository,
     branch: checkout.read === false ? "" : (checkout.headRef ?? MAIN),
     verdict,
-    checkoutLine: gitCheckoutLine(checkout, input.mateName),
+    checkoutLine: gitCheckoutLine(checkout, input.mateName, change !== undefined),
     state,
     changed: checkout.changed,
     pullRequestNumber: change?.number,

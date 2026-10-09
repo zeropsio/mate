@@ -880,6 +880,26 @@ describe("ZeropsDataPanel", () => {
       tree = render({ service: "db1", widthForTest: 420 });
       expect(findComponent(tree, ZeropsDataTree)).not.toBeNull();
     });
+    // Milo's 0.15.11 server could not decode the 0.15.14 client's summary
+    // request (stress run 2, 2026-10-09); the panel said "unavailable" twice.
+    it("A summary the Mate's server cannot answer says so once, with what fixes it.", async () => {
+      respond([SERVICE_SUPPORTED]);
+      const answer = commandSpy.getMockImplementation()!;
+      commandSpy.mockImplementation((args: { input: ZeropsDataConsoleRequest }) =>
+        args.input.kind === "summary"
+          ? Promise.resolve(
+              AsyncResult.failure(Cause.die(new Error('Expected { readonly "kind": "services" }'))),
+            )
+          : answer(args),
+      );
+      await serviceTab();
+      await flush();
+      const text = textOf(render({ service: "db1", widthForTest: 420 }));
+      expect(text).toContain("No connection summary");
+      expect(text).toContain("Updating the Mate");
+      expect(text).not.toContain("unavailable");
+    });
+
     it("Unknown totals stay unknown, and searching loaded items never claims a complete search.", async () => {
       respond([SERVICE_SUPPORTED], (request) =>
         request.kind === "tree" ? { kind: "tree", nodes: [ORDERS], nextCursor: "more" } : undefined,
