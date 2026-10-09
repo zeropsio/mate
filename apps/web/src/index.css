@@ -4279,7 +4279,7 @@ code {
   padding: 20px 14px 4px 0;
   border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
 }
-.run-now:first-child,
+.run-now:nth-child(1 of :not([hidden])),
 .run-above[data-folding] + .run-now {
   margin-top: 0;
   padding-top: 4px;
@@ -4410,6 +4410,10 @@ code {
   padding-top: 0;
   border-top: 0;
 }
+/* The work control shares the clock's line; reserve its room beside the live content. */
+.run-slot:has(.run-now-fold) {
+  padding-right: 104px;
+}
 .run-slot-list {
   display: flex;
   min-width: 0;
@@ -4438,6 +4442,9 @@ code {
   justify-content: center;
 }
 .run-slot-clock {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   right: 14px;
   font-size: 13px;
   line-height: 20px;

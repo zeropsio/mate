@@ -1632,6 +1632,48 @@ describe("RunChat, as the person uses it", () => {
     expect(box.props.onScroll).toBeUndefined();
   });
 
+  describe("Decision: Aleš's direction; keep existing fold behaviour and titles otherwise.", () => {
+    afterEach(() => forgetRunFolds(SHARED.routeThreadKey));
+    it.each(["watched", "folded"] as const)(
+      "a live run with no work rows renders just its status without a work toggle (%s)",
+      (fold) => {
+        setRunFold(SHARED.routeThreadKey, "turn-1", "watched");
+        setRunFold(SHARED.routeThreadKey, "turn-1", fold);
+        const dom = markupDom(draw(record([], { live: true, status: status() })));
+        const card = dom.querySelector("[data-run-chat]")!;
+        expect(
+          card.querySelector("button[aria-expanded]"),
+          "ASSERTION: an empty run has no work toggle",
+        ).toBeNull();
+        expect(card.querySelector('[role="region"]')).toBeNull();
+        expect(card.querySelector(".run-above")).toBeNull();
+      },
+    );
+    it.each(["watched", "folded"] as const)(
+      "the first work row renders the toggle inline in the live status line (%s)",
+      (fold) => {
+        setRunFold(SHARED.routeThreadKey, "turn-1", "watched");
+        setRunFold(SHARED.routeThreadKey, "turn-1", fold);
+        const dom = markupDom(
+          draw(
+            record([step(command("first", "echo ready"))], {
+              live: true,
+              status: status(),
+            }),
+          ),
+        );
+        const card = dom.querySelector("[data-run-chat]")!;
+        const controls = card.querySelectorAll("button.run-now-fold");
+        expect(controls).toHaveLength(1);
+        expect(
+          controls[0]!.closest("[data-run-now]"),
+          "ASSERTION: the work toggle belongs to the status line in either fold",
+        ).not.toBeNull();
+        expect(controls[0]!.textContent).toBe(fold === "folded" ? "Show work" : "Hide work");
+      },
+    );
+  });
+
   describe("the log and its work opener", () => {
     const personItem: RecordItem = {
       kind: "person",

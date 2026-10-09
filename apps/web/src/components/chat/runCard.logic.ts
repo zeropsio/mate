@@ -762,7 +762,8 @@ export type RunFold = "watched" | "folding" | "folded" | "shown";
 /**
  * Where a run's work stands and what its line offers: over the line while it
  * runs, and after, while the person reads it or it folds away; under the
- * line once they open it again; nowhere, folded. A settled run carries its
+ * line once they open it again; nowhere, folded. Only a record with work offers
+ * a toggle. A settled run carries its
  * toggle in every fold — one the person watched to its end included, which
  * they hide as they would any other (the owner, 2026-09-30: "why is this
  * uncloseable? because I saw it finish live?").
@@ -770,17 +771,22 @@ export type RunFold = "watched" | "folding" | "folded" | "shown";
 export function runCardShows(
   settled: boolean,
   fold: RunFold,
+  hasWork: boolean,
 ): { readonly work: "above" | "below" | null; readonly toggle: "hide" | "show" | null } {
-  if (!settled) return { work: "above", toggle: null };
+  const toggle = hasWork
+    ? fold === "folded" || (settled && fold === "folding")
+      ? "show"
+      : "hide"
+    : null;
+  if (!settled) return { work: "above", toggle };
   switch (fold) {
     case "watched":
-      return { work: "above", toggle: "hide" };
     case "folding":
-      return { work: "above", toggle: "show" };
+      return { work: "above", toggle };
     case "folded":
-      return { work: null, toggle: "show" };
+      return { work: null, toggle };
     case "shown":
-      return { work: "below", toggle: "hide" };
+      return { work: "below", toggle };
   }
 }
 
