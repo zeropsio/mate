@@ -595,12 +595,73 @@ describe("ZeropsDataConsole", () => {
         const result = yield* withService(
           { spawn: makeAutoReadySpawner().spawn, http },
           (service) =>
-            service.call({ kind: "query", service: "db", stmt: "select 1" }).pipe(Effect.result),
+            service
+              .call({ kind: "query", service: "db", stmt: "DELETE FROM orders" })
+              .pipe(Effect.result),
         );
         expect(result._tag).toBe("Failure");
         expect(calls).toBe(0);
       }),
     );
+    it.effect(
+      "Decision: restore SQL/filters and paging; complete the proposal; read-only data access only (no writes to service data).",
+      () =>
+        Effect.gen(function* () {
+          for (const stmt of [
+            "DELETE FROM orders",
+            "SELECT 1; DELETE FROM orders",
+            "WITH changed AS (DELETE FROM orders RETURNING *) SELECT * FROM changed",
+            "SELECT * INTO backup FROM orders",
+            "SELECT 1 /* comment */",
+            "SELECT 'unterminated",
+          ]) {
+            let calls = 0;
+            const result = yield* withService(
+              {
+                spawn: makeAutoReadySpawner().spawn,
+                http: fakeHttpClient(() => {
+                  calls++;
+                  return jsonResponse({ columns: [], rows: [] });
+                }),
+              },
+              (service) => service.call({ kind: "query", service: "db", stmt }).pipe(Effect.result),
+            );
+            expect(result._tag).toBe("Failure");
+            expect(calls).toBe(0);
+          }
+        }),
+    );
+    it.effect(
+      "Read-only SELECT accepts quoted values and identifiers while bounding its page",
+      () =>
+        Effect.gen(function* () {
+          for (const stmt of [
+            "SELECT 1",
+            "select 'delete; -- not a comment' AS value;",
+            'SELECT "update" FROM "orders"',
+            "SELECT 'it''s paid' AS value",
+          ]) {
+            let calls = 0;
+            const result = yield* withService(
+              {
+                spawn: makeAutoReadySpawner().spawn,
+                http: fakeHttpClient(() => {
+                  calls++;
+                  return jsonResponse({ columns: [], rows: [[1]], rowKeyCols: [] });
+                }),
+              },
+              (service) =>
+                service.call({ kind: "query", service: "db", stmt, page: { limit: 1000 } }),
+            );
+            expect(result.kind).toBe("table");
+            expect(calls).toBe(1);
+            expect(
+              routeRequest({ kind: "query", service: "db", stmt, page: { limit: 1000 } }).body,
+            ).toEqual({ service: "db", stmt, page: { limit: 100 } });
+          }
+        }),
+    );
+
     it.effect("Responses larger than one MiB are refused before decoding", () =>
       Effect.gen(function* () {
         const http = fakeHttpClient(() =>
@@ -799,6 +860,53 @@ describe("ZeropsDataConsole", () => {
           },
         });
       }),
+    );
+
+    it.effect(
+      "decodes a real console query response — omitempty dropped sortable/sortReason/nextCursor/bestEffort/numbered, rowKeyCols is literal null",
+      () =>
+        Effect.gen(function* () {
+          // Captured live from `POST /api/query` against the rig (2026-09-07).
+          const liveQueryBody = {
+            columns: [
+              {
+                name: "one",
+                dataType: "",
+                pk: false,
+                editable: false,
+                reason: "query results are read-only",
+              },
+            ],
+            rows: [[1, "2026-09-07T13:05:34.841934Z"]],
+            rowKeyCols: null,
+          };
+          const http = fakeHttpClient(() => jsonResponse(liveQueryBody));
+          const result = yield* withService(
+            { spawn: makeAutoReadySpawner().spawn, http },
+            (service) => service.call({ kind: "query", service: "db", stmt: "select 1" }),
+          ).pipe(Effect.orDie);
+          expect(result).toEqual({
+            kind: "table",
+            page: {
+              columns: [
+                {
+                  name: "one",
+                  dataType: "",
+                  pk: false,
+                  editable: false,
+                  reason: "query results are read-only",
+                  sortable: false,
+                  sortReason: "",
+                },
+              ],
+              rows: [[1, "2026-09-07T13:05:34.841934Z"]],
+              nextCursor: "",
+              rowKeyCols: [],
+              bestEffort: false,
+              numbered: false,
+            },
+          });
+        }),
     );
 
     it.effect("preserves an unsafe-integer cell exactly, end to end through the broker", () =>

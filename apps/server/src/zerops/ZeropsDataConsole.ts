@@ -355,7 +355,39 @@ const UNAUTHORIZED_ERROR = new ZeropsDataConsoleError({
 });
 
 /** One allowlisted console route this broker knows how to reach. */
-export interface RoutedRequest {
+export /** Product allow-list: one SELECT, with SQL quotes treated as literals. The console's
+ * read-only transaction remains the engine-level mutation boundary. Reject comments,
+ * dollar quoting and backslash escapes rather than guessing across SQL dialects. */
+function isReadOnlySelect(statement: string): boolean {
+  let sql = statement.trim().replace(/;$/, "");
+  if (!/^select\b/i.test(sql) || sql.length > 65536) return false;
+  let outside = "";
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i]!;
+    if (ch === "\\" || ch === "$" || ch === ";") return false;
+    if (ch === "'" || ch === '"' || ch === "`") {
+      const quote = ch;
+      let closed = false;
+      while (++i < sql.length) {
+        if (sql[i] === "\\") return false;
+        if (sql[i] !== quote) continue;
+        if (sql[i + 1] === quote) {
+          i++;
+          continue;
+        }
+        closed = true;
+        break;
+      }
+      if (!closed) return false;
+      outside += " ";
+    } else outside += ch;
+  }
+  return !/--|\/\*|#|\b(into|outfile|dumpfile|update|delete|insert|create|alter|drop|copy|call|execute)\b/i.test(
+    outside,
+  );
+}
+
+interface RoutedRequest {
   readonly method: "GET" | "POST";
   readonly path: string;
   readonly query?: Record<string, string>;
@@ -433,7 +465,11 @@ export const routeRequest = (
       return {
         method: "POST",
         path: "/api/query",
-        body: { service: request.service, stmt: request.stmt, page: request.page ?? {} },
+        body: {
+          service: request.service,
+          stmt: request.stmt,
+          page: { ...request.page, limit: Math.min(Math.max(request.page?.limit ?? 100, 1), 100) },
+        },
       };
     case "search":
       return {
@@ -973,10 +1009,11 @@ export const make = (options: { readonly spawnDataConsole: SpawnDataConsole }) =
       request: ZeropsDataConsoleRequest,
     ): Effect.Effect<ZeropsDataConsoleResponse, ZeropsDataConsoleError> =>
       Effect.gen(function* () {
-        if (request.kind === "query")
+        if (request.kind === "query" && !isReadOnlySelect(request.stmt))
           return yield* new ZeropsDataConsoleError({
             code: "read_only",
-            message: "Arbitrary queries are unavailable in the read-only data panel.",
+            message:
+              "Only a single read-only SELECT is allowed; comments and escape syntax are not supported.",
           });
         const info = yield* ensureSession;
         return yield* performRequest(info, request);
