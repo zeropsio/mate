@@ -895,8 +895,20 @@ it("Decision: no check is skipped for changed code; a passing receipt is reused 
     ])
       NodeFS.writeFileSync(
         NodePath.join(root, "scripts", name),
-        `import { appendFileSync } from "node:fs"; appendFileSync("checks.log", "${name}\\n");`,
+        'throw new Error("Receipt fixtures must stub guard commands without starting Node");',
       );
+    // Keep the real CLI/receipt path, but do not boot a runtime for each observable guard.
+    NodeFS.writeFileSync(
+      NodePath.join(root, "node_modules/.bin/node"),
+      `#!/bin/sh
+case "$1" in
+  scripts/check-guard-exceptions.ts|scripts/check-runtime-cycles.ts|scripts/check-test-sentences.ts)
+    echo "\${1##*/}" >> checks.log ;;
+  *) echo "Unexpected fixture command: node $*" >&2; exit 1 ;;
+esac
+`,
+      { mode: 0o755 },
+    );
     NodeFS.writeFileSync(
       NodePath.join(root, "node_modules/.bin/vp"),
       '#!/bin/sh\necho vp >> checks.log\nexit "${GATE_FIXTURE_FAIL:-0}"\n',
@@ -918,7 +930,12 @@ it("Decision: no check is skipped for changed code; a passing receipt is reused 
         {
           cwd: root,
           encoding: "utf8",
-          env: { ...process.env, GATE_FIXTURE_FAIL: fail ? "9" : "0" },
+          env: {
+            ...process.env,
+            GATE_FIXTURE_FAIL: fail ? "9" : "0",
+            // Dozens of real CLI launches share compilation, never gate results or Git state.
+            NODE_COMPILE_CACHE: NodePath.join(root, "node_modules/.cache/node"),
+          },
         },
       );
     const checks = () => NodeFS.readFileSync(NodePath.join(root, "checks.log"), "utf8");
@@ -927,6 +944,12 @@ it("Decision: no check is skipped for changed code; a passing receipt is reused 
     expect(first.stdout.trim().split("\n").length).toBeLessThanOrEqual(15);
     expect(first.stdout).not.toContain("Selection ");
     const checked = checks();
+    expect(checked.split("\n").filter(Boolean)).toEqual([
+      "check-guard-exceptions.ts",
+      "check-runtime-cycles.ts",
+      "check-test-sentences.ts",
+      "vp",
+    ]);
     const second = run();
     expect(second.status, second.stderr).toBe(0);
     expect(second.stdout).toContain("reused receipt");
