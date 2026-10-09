@@ -20,6 +20,7 @@ import { MessageFile } from "./MessageFiles";
 import {
   GALLERY_PICTURE_MAX_HEIGHT,
   messagePictureRows,
+  attachedPictureSize,
   reservedPictureBox,
   type MessagePictureSegment,
   type PictureSize,
@@ -96,10 +97,7 @@ function MessagePicture(props: {
     width: `min(100%, ${props.maxHeight ?? 300}px)`,
     aspectRatio: "16 / 9",
   };
-  const size =
-    segment.image.width !== undefined && segment.image.height !== undefined
-      ? { width: segment.image.width, height: segment.image.height }
-      : dimensions;
+  const size = attachedPictureSize(segment.image) ?? dimensions;
   const maxHeight = props.maxHeight ?? 300;
   const reservedWidth =
     size === undefined
@@ -124,8 +122,8 @@ function MessagePicture(props: {
             className="message-picture-img"
             src={segment.image.previewUrl}
             alt={`Picture ${segment.n}`}
-            width={segment.image.width ?? dimensions?.width ?? 300}
-            height={segment.image.height ?? dimensions?.height ?? 169}
+            width={size?.width ?? 300}
+            height={size?.height ?? 169}
             style={box}
           />
         </button>
