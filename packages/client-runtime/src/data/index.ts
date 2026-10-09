@@ -212,6 +212,7 @@ export {
   shownHqMatesAtom,
   shownHqNavigationAtom,
   shownHqMenuNavigationAtom,
+  shownMenuWorkReadAtom,
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,

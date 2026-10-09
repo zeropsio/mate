@@ -92,6 +92,7 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { currentAccountEpoch } from "../../zerops/accountLifetime";
 import {
   menuProjectOpening,
+  shownMenuWorkReadAtom,
   type MenuProjectOpening,
   mateAttentionAtom,
   shownHqMateIdentitiesAtom,
@@ -613,6 +614,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
   const registry = useContext(RegistryContext);
+  const workRead = useAtomValue(shownMenuWorkReadAtom);
   const [opening, setOpening] = useState<MenuProjectOpening | null>(null);
   const structureView = useAtomValue(shownHqMenuNavigationAtom);
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
@@ -914,6 +916,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     births,
   });
   const frozen = menuProjectOpening(opening, {
+    ready: workRead,
     scope: `${currentAccountEpoch()}/${structureView.orgId ?? ""}`,
     open: menuOpen,
     order: JSON.stringify([projectOrder.order, projectOrder.customOrder]),
