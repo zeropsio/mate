@@ -1,4 +1,4 @@
-import type { MateHealth } from "@t3tools/contracts";
+import { cpuWarningQuote, type MateHealth } from "@t3tools/contracts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { hqMateHealthScope, mateHealthScope } from "../families/mateHealth.ts";
 import { linkKeys } from "../model.ts";
@@ -80,16 +80,13 @@ export function mateHealthCopy(
           : (() => {
               const window = evidence.cpu?.window;
               if (window == null) return [];
-              const cores = (value: number) => Number(value.toFixed(2));
-              const usage = cores(window.usageUsec / window.elapsedUsec);
-              const capacity = cores(window.capacityCpus);
-              const measured = `Measured ${usage} CPU cores used out of a limit of ${capacity} over ${cores(window.elapsedUsec / 1_000_000)} seconds.`;
-              const consumer = window.consumer;
+              const quote = cpuWarningQuote(window);
+              const measured = `Measured ${quote.usedCores} CPU cores used out of a limit of ${quote.limitCores} over ${quote.seconds} seconds.`;
               return [
                 measured,
-                consumer === null
+                quote.consumer === null
                   ? "The kernel reports runnable work waiting for CPU. No current process could be attributed; inspect container workloads in Zerops."
-                  : `Top measured process: ${consumer.name} (PID ${consumer.pid}) used ${cores(consumer.cpuCores)} CPU cores. Check its workload before changing CPU in Zerops.`,
+                  : `Top measured process: ${quote.consumer.name} (PID ${quote.consumer.pid}) used ${quote.consumer.cores} CPU cores. Check its workload before changing CPU in Zerops.`,
               ];
             })(),
   );

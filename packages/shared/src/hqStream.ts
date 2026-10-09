@@ -69,7 +69,17 @@ export const HqScope = Schema.Union([
     number: Schema.Int,
   }),
   Schema.Struct({ kind: Schema.Literal("operation"), appId: Schema.String }),
-  Schema.Struct({ kind: Schema.Literal("attention"), projectId: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("attention"),
+    projectId: Schema.String,
+    /**
+     * `apart`: the reader takes the Mate's health as its own value ({@link HQ_ATTENTION_HEALTH_KEY}),
+     * so a health sample never resends the Mate's record. An HQ from before it passes the key by
+     * and sends health inside the record, as it does to a reader that does not ask; the scope's
+     * key ({@link hqScopeKey}) is the same either way, so a reader reads either HQ's answer.
+     */
+    health: Schema.optionalKey(Schema.Literal("apart")),
+  }),
 ]);
 export type HqScope = typeof HqScope.Type;
 export const HqCursor = Schema.Struct({
@@ -429,3 +439,11 @@ export const HqAttentionScopeValue = Schema.Struct({
   attentionState: Schema.Literals(["live", "stored", "none"]),
 });
 export type HqAttentionScopeValue = typeof HqAttentionScopeValue.Type;
+/** The key of a Mate's health in its attention scope, for a reader that takes health apart. */
+export const HQ_ATTENTION_HEALTH_KEY = "health";
+/** A Mate's health as its own value: the sample, and whether HQ hears it from the Mate now. */
+export const HqAttentionHealthValue = Schema.Struct({
+  health: HqAttentionScopeValue.fields.health,
+  healthState: HqAttentionScopeValue.fields.healthState,
+});
+export type HqAttentionHealthValue = typeof HqAttentionHealthValue.Type;

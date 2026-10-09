@@ -8,7 +8,11 @@ import {
   resolveZeropsProviderAvailability,
   isZeropsInstanceRunnable,
 } from "@t3tools/client-runtime/data";
-import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
+import {
+  OrchestrationDispatchCommandError,
+  agentIdForDriverKind,
+  agentIdForProviderInstance,
+} from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
 import { useEngineRunCards } from "../zerops/useEngineCardPaging";
@@ -16,6 +20,7 @@ import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
 import { crewCardOf, timelineEntryTurnId } from "./chat/conversation.logic";
+import { type BackgroundStopPress, backgroundStopShows } from "./chat/backgroundStop.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
 import { mateLimitAtom } from "@t3tools/client-runtime/data";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
@@ -3219,6 +3224,13 @@ export default function ChatView(props: ChatViewProps) {
       return mate.kind === "mate" ? mate.mate.name : "This Mate";
     })(),
   });
+  // The agent the conversation runs on, where it is one the agents card signs in.
+  const conversationInstanceId =
+    activeProviderInstanceId ?? activeThread?.modelSelection.instanceId;
+  const conversationAgentId =
+    agentIdForDriverKind(
+      providerStatuses.find((provider) => provider.instanceId === conversationInstanceId)?.driver,
+    ) ?? agentIdForProviderInstance(conversationInstanceId);
   const providerStatusBannerKey = getProviderStatusBannerKey(admission.providerStatus);
   useEffect(() => {
     if (providerStatusBannerKey === null && dismissedProviderStatusBannerKey !== null) {
@@ -5205,22 +5217,28 @@ export default function ChatView(props: ChatViewProps) {
     [shellTaskKey, shellLiveness, isWorking, engineConversation],
   );
   const liveJobs = useLiveJobs(liveJobsNow);
-  const [isStoppingBackgroundWork, setIsStoppingBackgroundWork] = useState(false);
+  const [backgroundStopPress, setBackgroundStopPress] = useState<BackgroundStopPress | null>(null);
+  // "Stopping..." belongs to the turn the Stop was pressed under: a press as a wake took over
+  // never saw the liveness clear, and read "Stopping..." under a later turn's wait.
+  const isStoppingBackgroundWork = backgroundStopShows(
+    backgroundStopPress,
+    activeLatestTurn?.turnId ?? null,
+  );
   useEffect(() => {
     // "Stopping..." holds until the liveness clears; the interrupt command
     // returning only means the request was accepted.
     if (activeBackgroundLiveness === null) {
-      setIsStoppingBackgroundWork(false);
+      setBackgroundStopPress(null);
     }
   }, [activeBackgroundLiveness]);
   useEffect(() => {
     // Per-thread state: switching threads while A's stop is pending must not
     // disable B's Stop button (review finding).
-    setIsStoppingBackgroundWork(false);
+    setBackgroundStopPress(null);
   }, [activeThreadId]);
   const handleStopBackgroundWork = useCallback(async () => {
     if (!activeThread) return;
-    setIsStoppingBackgroundWork(true);
+    setBackgroundStopPress({ turnId: activeThread.latestTurn?.turnId ?? null });
     const result = await interruptThreadTurn({
       environmentId,
       input: buildThreadTurnInterruptInput(activeThread),
@@ -5229,7 +5247,7 @@ export default function ChatView(props: ChatViewProps) {
       // Every failure clears the pending state — an interrupted command
       // never reached the server, so liveness would hold "Stopping..."
       // forever. Only real failures toast.
-      setIsStoppingBackgroundWork(false);
+      setBackgroundStopPress(null);
       if (!isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         setThreadError(
@@ -8291,6 +8309,7 @@ export default function ChatView(props: ChatViewProps) {
                   agentAuthUnknown={zeropsChrome.agentAuthUnknown}
                   agentAuthSnapshot={zeropsAgentAuth.snapshot}
                   agentSignInDemanded={admission.attention !== null}
+                  conversationAgentId={conversationAgentId}
                   runningToolLabel={zeropsThreadModel.running?.kicker}
                   threadRef={zeropsChrome.threadRef}
                 />

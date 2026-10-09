@@ -81,6 +81,29 @@ export const MateResourceHealth = Schema.Struct({
   unavailable: Schema.Array(Schema.String),
 });
 export type MateResourceHealth = typeof MateResourceHealth.Type;
+type CpuWindow = NonNullable<NonNullable<MateResourceHealth["cpu"]>["window"]>;
+
+/**
+ * The numbers a CPU warning quotes from a measured window, to the two decimals it shows them in:
+ * a Mate under CPU strain publishes a new sample when one of these changes, and no other number.
+ */
+export function cpuWarningQuote(window: CpuWindow) {
+  const cores = (value: number) => Number(value.toFixed(2));
+  return {
+    usedCores: cores(window.usageUsec / window.elapsedUsec),
+    limitCores: cores(window.capacityCpus),
+    seconds: cores(window.elapsedUsec / 1_000_000),
+    consumer:
+      window.consumer === null
+        ? null
+        : {
+            name: window.consumer.name,
+            pid: window.consumer.pid,
+            cores: cores(window.consumer.cpuCores),
+          },
+  };
+}
+
 export const MateHealth = Schema.Struct({
   source: MateAttentionSource,
   sampledAt: IsoDateTime,

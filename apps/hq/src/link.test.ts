@@ -13,7 +13,12 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/socket/Socket";
 
-import type { HqAttentionScopeValue } from "@t3tools/shared/hqStream";
+import {
+  HQ_ATTENTION_HEALTH_KEY,
+  type HqAttentionHealthValue,
+  type HqAttentionScopeValue,
+  type HqScopeDelivery,
+} from "@t3tools/shared/hqStream";
 import { memoryStore, overviewOf, row } from "../test/harness/overviews.ts";
 import {
   enrollMate,
@@ -36,6 +41,22 @@ import { Structure } from "./structure.ts";
 import { AutoUpdatePolicy } from "./autoUpdate.ts";
 
 const toJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+
+/** A strained Mate's sample at `revision` of its run, as its link sends it. */
+const healthAt = (revision: number) => ({
+  source: { environmentId: "env-1", epoch: 1, incarnation: "run-1", revision },
+  sampledAt: `2026-10-09T13:00:0${revision}.000Z`,
+  evidence: {
+    status: "strained",
+    severity: "warning",
+    resources: ["io"],
+    memory: null,
+    cpu: null,
+    io: { some: { avg10: 1.75, total: 2_792_695_561 + revision }, full: null },
+    disk: null,
+    unavailable: [],
+  },
+});
 
 /** A running Core with one Mate enrolled, its link open and its first state read. */
 const linked = Effect.gen(function* () {
@@ -187,6 +208,98 @@ describe("a Mate's link", () => {
             overview: { ...newer, identity: { ...newer.identity, later: 2 }, later: [] },
           });
           assert.deepStrictEqual((yield* relayed(newer)).overview, newer);
+        }),
+    );
+
+    it.effect(
+      "sends each health sample to a reader that takes health apart as that sample alone, never the Mate's unchanged record again",
+      () =>
+        Effect.gen(function* () {
+          const { call, owner, link, socket } = yield* linked;
+          const apart = { kind: "attention", projectId: "P_MATE", health: "apart" } as const;
+          const whole = { kind: "attention", projectId: "P_MATE" } as const;
+          const reader = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`);
+          const older = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`);
+          yield* scopeReset(reader, apart);
+          yield* scopeReset(older, whole);
+          const overview = overviewOf();
+          yield* link.send({ type: "overview", full: true, overview });
+          yield* nextScopeValue<HqAttentionScopeValue>(
+            reader,
+            apart,
+            "P_MATE",
+            (value) => JSON.stringify(value.overview) === JSON.stringify(overview),
+          );
+          for (const revision of [1, 2, 3]) {
+            const sample = healthAt(revision);
+            yield* link.send({ type: "health", health: sample });
+            const frame = (yield* reader.takeWhere(
+              `health ${revision}`,
+              (message) =>
+                message.type === "scope-values" &&
+                (
+                  message.values as ReadonlyArray<{ key: string; value: HqAttentionHealthValue }>
+                ).some((value) => value.value.health?.sampledAt === sample.sampledAt),
+            )) as HqScopeDelivery;
+            assert.deepStrictEqual(frame.values, [
+              { key: HQ_ATTENTION_HEALTH_KEY, value: { health: sample, healthState: "live" } },
+            ]);
+            // A reader that does not ask takes the sample inside the whole record, as before.
+            const relayed = yield* nextScopeValue<HqAttentionScopeValue>(
+              older,
+              whole,
+              "P_MATE",
+              (value) => value.health?.sampledAt === sample.sampledAt,
+            );
+            assert.deepStrictEqual(relayed.overview, overview);
+          }
+          const resent = (yield* reader.collected).filter(
+            (message) =>
+              message.type === "scope-values" &&
+              (message.values as ReadonlyArray<{ key: string }>).some(
+                (value) => value.key === "P_MATE",
+              ),
+          );
+          assert.deepStrictEqual(resent, []);
+        }),
+    );
+
+    it.effect(
+      "relays at most one health sample a window from a Mate that sends many, the latest",
+      () =>
+        Effect.gen(function* () {
+          const { call, owner, link, socket } = yield* linked;
+          const apart = { kind: "attention", projectId: "P_MATE", health: "apart" } as const;
+          const reader = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`);
+          yield* scopeReset(reader, apart);
+          yield* link.send({ type: "overview", full: true, overview: overviewOf() });
+          const carries = (message: { readonly type: string }, revision?: number) =>
+            message.type === "scope-values" &&
+            (
+              (message as HqScopeDelivery).values as ReadonlyArray<{
+                key: string;
+                value: HqAttentionHealthValue;
+              }>
+            ).some(
+              (value) =>
+                value.key === HQ_ATTENTION_HEALTH_KEY &&
+                (revision === undefined || value.value.health?.source.revision === revision),
+            );
+          const relayed = (revision: number) =>
+            reader.takeWhere(`health ${revision}`, (message) => carries(message, revision));
+          yield* link.send({ type: "health", health: healthAt(1) });
+          yield* relayed(1);
+          // Thirty-three a second, as a Mate at its memory limit sent them.
+          for (const revision of [2, 3, 4, 5, 6, 7, 8, 9]) {
+            yield* link.send({ type: "health", health: healthAt(revision) });
+            yield* Effect.sleep(Duration.millis(30));
+          }
+          yield* relayed(9);
+          // Every sample between went by unrelayed: nothing else carried health before the latest.
+          assert.deepStrictEqual(
+            (yield* reader.collected).filter((message) => carries(message)),
+            [],
+          );
         }),
     );
 

@@ -1287,6 +1287,40 @@ describe("a Mate's face follows its work in the menu", () => {
     registry.dispose();
   });
 
+  // Stress run 3 (+16:58.9): a reload painted every project as its "Review" row alone, then the
+  // Mates' menu replaced it.
+  it("A reload paints no project of change rows alone before its Mates are read", () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    mountHqNavigation(registry, organization.organizationId, {
+      structure: { apps: [{ id: "aaa", name: "Beviro CRM", projects: [] }], ungrouped: [] },
+    });
+    const html = renderToStaticMarkup(
+      <RegistryContext.Provider value={registry}>
+        <SidebarZeropsTree
+          candidates={[]}
+          complete={false}
+          reading
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+          getFlow={() => ({
+            pullRequests: [pull(57, { mateProjectId: "beviro-dev" })],
+            environments: new Map(),
+            releaseOffered: false,
+          })}
+        />
+      </RegistryContext.Provider>,
+    );
+    expect(html).not.toContain("Beviro CRM");
+    expect(html).not.toContain("#57");
+    expect(html).toContain('data-zerops-surface="sidebar-environments-skeleton"');
+    registry.dispose();
+  });
+
   it("says a foreign Mate is outside this HQ instead of inventing a sign-in state", () => {
     const registry = AtomRegistry.make();
     registry.set(zeropsSessionAtom, {

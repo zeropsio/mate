@@ -6,6 +6,7 @@ import {
   HqNavigationProject,
   HqAttentionValue,
   hqScopeKey,
+  HQ_ATTENTION_HEALTH_KEY,
   type HqScope,
   type HqScopeFailure,
   type HqStreamMessage,
@@ -139,6 +140,14 @@ const json = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const readUsageAccess = Schema.decodeUnknownOption(
   Schema.Struct({ generation: Schema.Struct({ access: Schema.String }) }),
 );
+/**
+ * A journal's key: its scope's, and for a Mate's attention whether the reader takes health apart —
+ * the two are different journals of one scope, so neither reader sees the other's shape.
+ */
+const journalKey = (scope: HqScope): string =>
+  scope.kind === "attention" && scope.health === "apart"
+    ? JSON.stringify([scope.kind, scope.projectId, HQ_ATTENTION_HEALTH_KEY])
+    : hqScopeKey(scope);
 const readAttentionSource = Schema.decodeUnknownOption(
   Schema.Struct({ attention: Schema.NullOr(HqAttentionValue) }),
 );
@@ -326,7 +335,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
         Queue.offerAllUnsafe(connection.queue, messages);
         for (const message of messages) {
           if (!("scope" in message)) continue;
-          const key = hqScopeKey(message.scope);
+          const key = journalKey(message.scope);
           if (message.type === "scope-error") connection.failures.set(key, message.code);
           else connection.failures.delete(key);
         }
@@ -347,7 +356,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
           for (const connection of connections) {
             if (
               connection.userId === entry.userId &&
-              connection.scopes.has(hqScopeKey(entry.scope))
+              connection.scopes.has(journalKey(entry.scope))
             )
               offer(connection, messages);
           }
@@ -644,7 +653,12 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 });
           } else if (scope.kind === "attention") {
             const mate = all.get(scope.projectId);
-            if (mate !== undefined) values.push({ key: scope.projectId, value: mate });
+            if (mate !== undefined && scope.health === "apart") {
+              // A health sample changes this value alone; the record goes out when it changes.
+              const { health, healthState, ...record } = mate;
+              values.push({ key: scope.projectId, value: record });
+              values.push({ key: HQ_ATTENTION_HEALTH_KEY, value: { health, healthState } });
+            } else if (mate !== undefined) values.push({ key: scope.projectId, value: mate });
             // No report is not a deletion.
             return { values, removals: [] as HqRemoval[] };
           } else if (scope.kind === "operation") {
@@ -656,7 +670,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             values.push(...(yield* operations.read(entry.userId, scope.appId)));
             return { values, removals: [] as HqRemoval[] };
           } else {
-            const key = hqScopeKey(scope);
+            const key = journalKey(scope);
             let slot = contents.get(key);
             if (slot === undefined) {
               slot = { one: Semaphore.makeUnsafe(1) };
@@ -845,7 +859,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
       const demanded = (entry: Entry) =>
         [...connections].some(
           (connection) =>
-            connection.userId === entry.userId && connection.scopes.has(hqScopeKey(entry.scope)),
+            connection.userId === entry.userId && connection.scopes.has(journalKey(entry.scope)),
         );
       const prune = () => {
         pruneIdleScopes(
@@ -1241,7 +1255,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
             let demandSequence = 0;
             const subscribe = (subscription: HqSubscription, demand: number) =>
               Effect.gen(function* () {
-                const key = hqScopeKey(subscription.scope);
+                const key = journalKey(subscription.scope);
                 if (wanted.get(key) !== demand) return;
                 const id = json([userId, key]);
                 let entry = journals.get(id);
@@ -1383,14 +1397,14 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                       const keys =
                         request.scopes === undefined
                           ? undefined
-                          : new Set(request.scopes.map(hqScopeKey));
+                          : new Set(request.scopes.map(journalKey));
                       sourceFence.invalidate();
                       contents.clear();
                       overviewCache = undefined;
                       for (const entry of journals.values()) {
                         if (
                           entry.userId !== userId ||
-                          (keys !== undefined && !keys.has(hqScopeKey(entry.scope)))
+                          (keys !== undefined && !keys.has(journalKey(entry.scope)))
                         )
                           continue;
                         entry.dirty = true;
@@ -1398,7 +1412,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                         yield* entry.one.withPermits(1)(
                           Effect.gen(function* () {
                             delete entry.failure;
-                            connection.failures.delete(hqScopeKey(entry.scope));
+                            connection.failures.delete(journalKey(entry.scope));
                             if (demanded(entry)) yield* refreshUnlocked(entry);
                           }),
                         );
@@ -1408,7 +1422,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                     case "subscribe": {
                       const demanded: Array<{ subscription: HqSubscription; demand: number }> = [];
                       for (const subscription of request.scopes) {
-                        const key = hqScopeKey(subscription.scope);
+                        const key = journalKey(subscription.scope);
                         const usageScopes = new Set(
                           [...connections]
                             .filter((value) => value.userId === userId)
@@ -1457,7 +1471,7 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                     }
                     case "unsubscribe":
                       for (const scope of request.scopes) {
-                        const key = hqScopeKey(scope);
+                        const key = journalKey(scope);
                         wanted.delete(key);
                         connection.failures.delete(key);
                         const held = journals.get(json([userId, key]));

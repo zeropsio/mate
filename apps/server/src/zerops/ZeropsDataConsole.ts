@@ -349,6 +349,11 @@ const TIMEOUT_ERROR = new ZeropsDataConsoleError({
 const toRequestError = (cause: { readonly _tag: string }): ZeropsDataConsoleError =>
   cause._tag === "TimeoutError" ? TIMEOUT_ERROR : toUnreachableError();
 
+const UNOFFERED_ERROR = new ZeropsDataConsoleError({
+  code: "unsupported",
+  message: "the data console does not offer this read yet",
+});
+
 const UNAUTHORIZED_ERROR = new ZeropsDataConsoleError({
   code: "denied",
   message: "console rejected the session",
@@ -919,6 +924,15 @@ export const make = (options: { readonly spawnDataConsole: SpawnDataConsole }) =
             Effect.orElseSucceed(() => undefined),
           );
           return yield* toEnvelopeError(envelope, response.status);
+        }
+        // A console older than the route answers it with its own page (its "/" serves the SPA):
+        // the read is not offered there yet, which is not a broken response.
+        if (
+          Headers.get("content-type")(response.headers).pipe(
+            Option.exists((type) => type.startsWith("text/html")),
+          )
+        ) {
+          return yield* UNOFFERED_ERROR;
         }
         return yield* readConsoleJson(response);
       });

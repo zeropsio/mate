@@ -480,17 +480,39 @@ interface LostWork {
   readonly how: string | undefined;
 }
 
+/** How the note says a person's Stop ended the work: never a restart (Milo called it one). */
+const BY_THE_PERSON = "by the person";
+
 /** How the note says the work's session went, by why it closed; a close not listed tells nothing. */
 const LOST_HOW: Partial<Record<SessionCloseReason, string>> = {
   restart: "by a restart",
   exited: "when its session ended",
   model: "by a session change",
   settings: "by a session change",
+  stop: BY_THE_PERSON,
 };
 
 /** The wake that tells the Mate its background work was lost: one per conversation. */
 const lostWorkWakeId = (b: StepBuilder) =>
   deriveWakeId(b.state.conversationId, "lost-work", "note");
+
+/**
+ * The note that tells the Mate a person's Stop ended its background work: held for the next
+ * message, never released to a run of its own — the person stopped the work on purpose.
+ */
+const stoppedWorkWakeId = (b: StepBuilder) =>
+  deriveWakeId(b.state.conversationId, "lost-work", "stopped");
+
+/** The lost-work notes waiting for the next message: the person's Stop's first. */
+const workNotes = (b: StepBuilder) =>
+  [b.state.wakes[stoppedWorkWakeId(b)], b.state.wakes[lostWorkWakeId(b)]].filter(
+    (wake): wake is NonNullable<typeof wake> => wake !== undefined && wake.text !== null,
+  );
+
+/** A person's Stop is in force: the close it asked, or the latest run it stopped. */
+const personStopped = (state: ConversationState): boolean =>
+  state.closing?.reason === "stop" ||
+  (state.latestRunId !== null && state.runs[state.latestRunId]?.stopAsked != null);
 
 /** A lost-work note held for the next send: it never fires on its own. */
 const HELD_FOR_SEND = Number.MAX_SAFE_INTEGER;
@@ -522,8 +544,14 @@ const runPending = (state: ConversationState): boolean => {
  * or the person chose (idle, signed out, a Stop's close).
  */
 const noteLostWork = (b: StepBuilder): void => {
-  const lost = b.lost.splice(0).filter((work) => work.how !== undefined);
-  if (lost.length === 0 || b.state.archived) return;
+  const all = b.lost.splice(0).filter((work) => work.how !== undefined);
+  if (all.length === 0 || b.state.archived) return;
+  noteStoppedWork(
+    b,
+    all.filter((work) => work.how === BY_THE_PERSON),
+  );
+  const lost = all.filter((work) => work.how !== BY_THE_PERSON);
+  if (lost.length === 0) return;
   const latest = b.state.latestRunId === null ? undefined : b.state.runs[b.state.latestRunId];
   if (latest?.stopAsked != null) return;
   // A crew's run, or any in a crewmate's chat, is its crew's to carry on: no turn of the engine's.
@@ -552,15 +580,38 @@ const noteLostWork = (b: StepBuilder): void => {
   });
 };
 
+/** Work a person's Stop ended, told with the next message the agent gets. */
+const noteStoppedWork = (b: StepBuilder, stopped: ReadonlyArray<LostWork>): void => {
+  if (stopped.length === 0) return;
+  const text = lostWorkText(
+    stopped.map((work) => work.title),
+    BY_THE_PERSON,
+  );
+  const armed = b.state.wakes[stoppedWorkWakeId(b)];
+  const latest = b.state.latestRunId === null ? undefined : b.state.runs[b.state.latestRunId];
+  b.emit({
+    _tag: "WakeArmed",
+    wakeId: stoppedWorkWakeId(b),
+    kind: "lost-work",
+    dueAt: HELD_FOR_SEND,
+    cron: null,
+    principal: latest?.principal ?? ENGINE,
+    joins: null,
+    text: armed?.text == null ? text : `${armed.text} ${text}`,
+  });
+};
+
 /**
- * The send's words with a lost-work note waiting for it, which go with them. The note stays held
+ * The send's words with the lost-work notes waiting for it, which go with them. A note stays held
  * until the run starts (`spendLostWorkNote`): a send cut or refused goes again with it.
  */
 const withLostWorkNote = (b: StepBuilder, run: RunRecord): string => {
-  const wake = b.state.wakes[lostWorkWakeId(b)];
-  if (wake === undefined || wake.text === null || run.maintenance) return run.text;
-  if (wake.dueAt !== HELD_FOR_SEND) rearmLostWork(b, wake, HELD_FOR_SEND);
-  return `${wake.text}\n\n${run.text}`;
+  const notes = workNotes(b);
+  if (notes.length === 0 || run.maintenance) return run.text;
+  for (const wake of notes) {
+    if (wake.dueAt !== HELD_FOR_SEND) rearmLostWork(b, wake, HELD_FOR_SEND);
+  }
+  return `${notes.map((wake) => wake.text).join(" ")}\n\n${run.text}`;
 };
 
 const rearmLostWork = (
@@ -582,9 +633,10 @@ const rearmLostWork = (
 
 /** A run that carried the note started: the agent has it. A self turn carried nothing. */
 const spendLostWorkNote = (b: StepBuilder, run: RunRecord): void => {
-  const wake = b.state.wakes[lostWorkWakeId(b)];
-  if (wake === undefined || run.maintenance || !needsPrepare(run)) return;
-  b.emit({ _tag: "WakeCancelled", wakeId: wake.id, reason: "went with the run's message" });
+  if (run.maintenance || !needsPrepare(run)) return;
+  for (const wake of workNotes(b)) {
+    b.emit({ _tag: "WakeCancelled", wakeId: wake.id, reason: "went with the run's message" });
+  }
 };
 
 /** A note held for a message that will not go any more fires on its own. */
@@ -785,7 +837,7 @@ const chooseAgent = (b: StepBuilder, command: Extract<Command, { _tag: "ChooseAg
   });
 };
 
-type Delivery = "delivered" | "refused" | "unknown";
+type Delivery = "delivered" | "steered" | "refused" | "unknown";
 
 const personBody = (run: RunRecord, delivery: Delivery, at: number): ItemBody | null =>
   run.personBody === null ? null : { ...run.personBody, delivery: { state: delivery, at } };
@@ -909,10 +961,11 @@ const markStarted = (
   run: RunRecord,
   providerTurnId: string | null,
   turn: TurnHandle | null = run.turn,
+  delivery: "delivered" | "steered" = "delivered",
 ): void => {
   b.emit({ _tag: "RunStarted", runId: run.id, providerTurnId, turn });
   spendLostWorkNote(b, run);
-  updatePerson(b, run, "delivered");
+  updatePerson(b, run, delivery);
   armWatchdog(b, b.run(run.id), b.now);
   // The message carrying an answer reached the agent: that is the answer's evidence.
   const carried = answerCarried(b, run);
@@ -1359,6 +1412,8 @@ const wakeFired = (
       return;
     }
     case "lost-work": {
+      // The note of a person's Stop only ever goes with a message.
+      if (id === stoppedWorkWakeId(b)) return;
       if (b.state.archived || crewCarriesOn(b.state, wake)) return;
       // A message waiting to go carries the note: held for it, never a run of its own.
       if (runPending(b.state)) return rearmLostWork(b, wake, HELD_FOR_SEND);
@@ -1468,6 +1523,9 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   switch (effect.kind) {
     case "run.prepare": {
       if (outcome.kind === "failed" && outcome.refused === true) {
+        // A message that already went into the agent's own turn: its steer asks admission too,
+        // and its refusal reads on the message; the agent's turn runs on.
+        if (run.state !== "admitted") return;
         // Only admission refuses a run, and before anything of it ran: its words are the refusal.
         endRun(
           b,
@@ -1523,9 +1581,19 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
     case "provider.steer": {
       // A steer that never reached the agent (refused, or no live session) reads so.
       if (failure === null) return;
-      const item = b.state.items[id.slice(0, id.indexOf("/e/provider.steer/"))];
-      if (item?.body.kind !== "person") return;
+      const itemId = id.slice(0, id.indexOf("/e/provider.steer/"));
       const undelivered = outcome.kind === "failed" ? outcome.undelivered : undefined;
+      // A waiting message steered into the agent's own turn is its run's own message.
+      if (run.trigger.kind === "person" && run.trigger.itemId === itemId) {
+        updatePerson(
+          b,
+          run,
+          undelivered === undefined || undelivered === true ? "refused" : "unknown",
+        );
+        return;
+      }
+      const item = b.state.items[itemId];
+      if (item?.body.kind !== "person") return;
       b.emit({
         _tag: "ItemUpdated",
         runId: run.id,
@@ -1740,10 +1808,16 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       // engine runs it as the agent's own turn on that run's behalf.
       const steered = steerOpened(b, signal.turn);
       if (signal.origin !== "self" && steered === undefined) return;
+      const active = activeRun(b.state);
+      if (active !== undefined && active.state !== "admitted") return;
+      // A person's message waiting for its turn goes into this one, never after it.
+      const waiting = steered === undefined ? waitingMessage(b) : undefined;
+      if (waiting !== undefined) {
+        return joinOwnTurn(b, waiting, signal.turn, signal.providerTurnId);
+      }
       const joined = selfJoins(b, signal.reportsOn ?? steered ?? null);
       // Nobody to act for (no run before it): the turn is not the engine's to record as a run.
       if (joined === undefined) return;
-      const active = activeRun(b.state);
       // A run still being prepared has sent nothing: it goes back to the head of the queue and
       // is sent when the agent's own turn ends.
       if (active?.state === "admitted") {
@@ -1752,7 +1826,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           runId: active.id,
           reason: "the agent started a turn of its own",
         });
-      } else if (active !== undefined) return;
+      }
       return selfStarted(b, signal.turn, signal.providerTurnId, joined);
     }
     case "activity": {
@@ -1883,8 +1957,10 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       return;
     }
     case "work-upserted": {
-      // Work a person's Stop cut with its session was stopped, not lost.
-      const stopped = signal.status === "lost" && b.state.closing?.reason === "stop";
+      // Work a person's Stop ended (its session's close cut it, or the driver stopped it as the
+      // session went) was stopped by the person, not lost.
+      const byPerson =
+        (signal.status === "lost" || signal.status === "stopped") && personStopped(b.state);
       // The call that started it, by its key: still open, or closed in a run the state keeps.
       const call =
         signal.call === undefined
@@ -1895,7 +1971,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         kind: "work",
         work: signal.work,
         workKind: signal.workKind,
-        status: stopped ? "stopped" : signal.status,
+        status: byPerson ? "stopped" : signal.status,
         title: signal.title ?? null,
         ...(call === undefined ? {} : { call }),
         ...(signal.report === undefined ? {} : { report: signal.report }),
@@ -1909,11 +1985,11 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           b.emit({ _tag: "ItemClosed", runId: open.runId, itemId: open.id, body });
           // The bridge's word that the work's session is closing: asked, for the reason asked;
           // else it died.
-          if (body.status === "lost") {
+          if (byPerson || body.status === "lost") {
             b.lost.push({
               title: body.title,
               runId: open.runId,
-              how: LOST_HOW[b.state.closing?.reason ?? "exited"],
+              how: byPerson ? BY_THE_PERSON : LOST_HOW[b.state.closing?.reason ?? "exited"],
             });
           }
           // A run held for a setting the live work stood against goes now.
@@ -2112,6 +2188,48 @@ const steerOpened = (b: StepBuilder, turn: TurnHandle): RunId | undefined => {
     (entry) => entry.kind === "provider.steer" && entry.id.startsWith(prefix),
   );
   return effect?.runId ?? undefined;
+};
+
+/**
+ * The run admitted (first in line, nothing of it sent) when it is a person's message that can go
+ * into a running turn as a steer: words and files in the mode the turn runs in, on a session that
+ * takes a steer and fits it. The line keeps its order: a message behind it waits for it.
+ */
+const waitingMessage = (b: StepBuilder): RunRecord | undefined => {
+  const session = b.state.session;
+  if (session === null || !session.capabilities.steer || b.state.closing !== null) return;
+  if (misfit(b.state, session) !== null) return;
+  const first = activeRun(b.state);
+  if (first?.state !== "admitted") return;
+  if (first.trigger.kind !== "person" || first.principal.kind !== "person") return;
+  if (first.maintenance || first.interactionMode !== "default") return;
+  return first.personBody?.delivery.state === "queued" ? first : undefined;
+};
+
+/**
+ * The agent opened a turn of its own while a person's message waited: the message goes into that
+ * turn as a steer, the agent reads it at its next step, and the turn is the message's run — the
+ * agent answers it there.
+ */
+const joinOwnTurn = (
+  b: StepBuilder,
+  run: RunRecord,
+  turn: TurnHandle,
+  providerTurnId: string | null,
+): void => {
+  const session = b.state.session!;
+  const item = (run.trigger as Extract<RunTrigger, { kind: "person" }>).itemId;
+  const attachments = run.personBody?.attachments ?? [];
+  b.effect("provider.steer", item, 1, run.id, {
+    runId: run.id,
+    sessionId: session.id,
+    itemId: item,
+    text: withLostWorkNote(b, run),
+    ...(attachments.length === 0 ? {} : { attachments: [...attachments] }),
+    instanceId: b.state.agent?.instanceId ?? null,
+    principal: run.principal,
+  });
+  markStarted(b, b.run(run.id), providerTurnId, turn, "steered");
 };
 
 const selfStarted = (

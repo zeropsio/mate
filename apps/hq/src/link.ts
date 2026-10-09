@@ -24,13 +24,16 @@ import {
   linkFrameBytes,
   readLinkUp,
 } from "@t3tools/shared/mateLink";
+import type { MateHealth } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as Socket from "effect/socket/Socket";
 
@@ -60,6 +63,8 @@ export interface LinkOptions {
   readonly pingEvery?: Duration.Duration;
   /** How often HQ checks that it still leads and the credential still holds; 30 s. */
   readonly recheck?: Duration.Duration;
+  /** The window in which HQ relays at most one of a Mate's health samples, the latest; 2 s. */
+  readonly healthEvery?: Duration.Duration;
 }
 
 /** Who the logins an overview names were last signed in by; a login nobody signed in names none. */
@@ -130,6 +135,18 @@ export const serveMateLink = (
         if ((yield* Ref.getAndSet(sent, frame)) !== frame) yield* writer.write(frame);
       });
       const heard = yield* Ref.make(yield* Clock.currentTimeMillis);
+      // One report at a time from this link: the relay below runs beside the frames it reads.
+      const reporting = yield* Semaphore.make(1);
+      const report = reporting.withPermits(1);
+      // A Mate's health reaches its readers at most once a window, the latest sample: an older
+      // Mate at its memory limit sends one on every kernel wake.
+      const latestHealth = yield* Queue.sliding<MateHealth>(1);
+      const healthRelay = Effect.forever(
+        Queue.take(latestHealth).pipe(
+          Effect.flatMap((health) => report(overviews.reportHealth(projectId, link, health))),
+          Effect.andThen(Effect.sleep(options.healthEvery ?? Duration.seconds(2))),
+        ),
+      );
 
       // Every change's tick, starting with the current one: its state at once, then as it moves.
       const states = Stream.runForEach(
@@ -213,15 +230,15 @@ export const serveMateLink = (
               continue;
             }
             if (read.kind === "message" && read.message.type === "health") {
-              yield* overviews.reportHealth(projectId, link, read.message.health);
+              yield* Queue.offer(latestHealth, read.message.health);
               continue;
             }
             if (read.kind === "message" && read.message.type === "attention") {
-              yield* overviews.reportAttention(projectId, link, read.message.attention);
+              yield* report(overviews.reportAttention(projectId, link, read.message.attention));
               continue;
             }
             if (read.kind === "message" && read.message.type === "overview") {
-              yield* overviews.report(projectId, link, read.message);
+              yield* report(overviews.report(projectId, link, read.message));
               // A write that fails is the next overview's to repeat; it never ends the link.
               yield* Effect.ignore(
                 structure.recordSigners(
@@ -278,7 +295,7 @@ export const serveMateLink = (
               Effect.andThen(Effect.never),
             );
 
-      yield* Effect.raceAll([listen, ping, states, recheck, accessFrames, capture]);
+      yield* Effect.raceAll([listen, ping, states, recheck, accessFrames, capture, healthRelay]);
       return yield* ending;
     }),
   );

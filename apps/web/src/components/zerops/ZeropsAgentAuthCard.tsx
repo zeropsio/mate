@@ -66,6 +66,7 @@ const AGENT_SIGN_IN_LABELS: Record<ZeropsAgentId, string> = {
 
 export function ZeropsAgentAuthCard({
   snapshot,
+  conversationAgentId,
   signInDemanded = false,
   viewerSubject,
   onSignIn,
@@ -85,6 +86,11 @@ export function ZeropsAgentAuthCard({
    * "Authorize coding agents" because Codex was not.
    */
   readonly signInDemanded?: boolean | undefined;
+  /**
+   * The agent the conversation runs on, where it is one this card signs in. Signed in, the card
+   * says so, and every other agent not signed in shrinks to a quiet line under it.
+   */
+  readonly conversationAgentId?: ZeropsAgentId | undefined;
   /** The signed-in Zerops user id, so a row can say whose login it is (D6). */
   readonly viewerSubject?: string | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
@@ -98,6 +104,8 @@ export function ZeropsAgentAuthCard({
   // This is where agents are managed, so it stays up as long as the feed is
   // available; the header alone demands, and only while the conversation's own
   // agent needs a sign-in.
+  const own = snapshot.agents.find((agent) => agent.agentId === conversationAgentId);
+  const ownSignedIn = !signInDemanded && own !== undefined && agentAuthAction(own) === "none";
   return (
     <FlatCard className="@container overflow-hidden" data-zerops-agent-auth-card>
       <header className="border-b border-border/60 px-4 py-2.5">
@@ -105,10 +113,13 @@ export function ZeropsAgentAuthCard({
           {signInDemanded ? "Authorize coding agents" : "Coding agents"}
         </h3>
         <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
-          Sign in inside this Zerops Control Plane. Access is shared by this project.
+          {ownSignedIn
+            ? `${AGENT_NAMES[own.agentId]} is signed in. Access is shared by this project.`
+            : "Sign in inside this Zerops Control Plane. Access is shared by this project."}
         </p>
       </header>
       <ZeropsAgentAuthRows
+        quietOffers={ownSignedIn}
         onCancel={onCancel}
         onRecheck={onRecheck}
         onSignIn={onSignIn}
@@ -178,8 +189,11 @@ export function ZeropsAgentAuthRows({
   onSignOutLogin,
   onRemoveLogin,
   loginStatus,
+  quietOffers = false,
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
+  /** The conversation's agent is signed in: another agent's bare sign-in is a quiet line, not a row. */
+  readonly quietOffers?: boolean | undefined;
   readonly viewerSubject?: string | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
@@ -195,43 +209,66 @@ export function ZeropsAgentAuthRows({
     snapshot.agents.some(
       (other) => other.agentId !== agent.agentId && agentAuthAction(other) === "none",
     );
+  // Nothing of its own to show — no sign-in running, no further login — so all it offers is a
+  // sign-in, which the signed-in conversation does not need.
+  const offerOnly = (agent: ZeropsAgentAuth) =>
+    quietOffers &&
+    agentAuthAction(agent) === "sign-in" &&
+    classifyAgentRowLogin(agent).kind === "none" &&
+    !logins.some((login) => login.agent === agent.agentId && !login.default);
+  const offers = snapshot.agents.filter(offerOnly);
   return (
     <div className="divide-y divide-border/60" data-zerops-agent-auth-rows>
-      {snapshot.agents.map((agent) => (
-        <Fragment key={agent.agentId}>
-          <ZeropsAgentAuthRow
-            agent={agent}
-            runsOn={logins.find((login) => login.default && login.agent === agent.agentId)}
-            onCancel={onCancel}
-            onRecheck={onRecheck}
-            onSignIn={onSignIn}
-            onSignOut={onSignOut}
-            quiet={anotherAuthorized(agent)}
-            signOutError={signOutError?.get(agent.agentId)}
-            signOutPending={signOutPending?.has(agent.agentId) ?? false}
-            signOutSupported={signOutSupported ?? false}
-            viewerSubject={viewerSubject}
-          />
-          {logins
-            .filter((login) => !login.default && login.agent === agent.agentId)
-            .map((login) => (
-              <ZeropsLoginRow
-                key={login.id}
-                login={login}
-                nameOf={nameOf}
-                onRecheck={onRecheck}
-                onCancel={onCancelLogin}
-                onRemove={onRemoveLogin}
-                onSignIn={onSignInLogin}
-                onSignOut={onSignOutLogin}
-                status={loginStatus?.(login.id)}
-                viewerSubject={viewerSubject}
-              />
-            ))}
-          {onAddLogin === undefined ? null : (
-            <AddLoginControl agentId={agent.agentId} error={addLoginError} onAdd={onAddLogin} />
-          )}
-        </Fragment>
+      {snapshot.agents
+        .filter((agent) => !offerOnly(agent))
+        .map((agent) => (
+          <Fragment key={agent.agentId}>
+            <ZeropsAgentAuthRow
+              agent={agent}
+              runsOn={logins.find((login) => login.default && login.agent === agent.agentId)}
+              onCancel={onCancel}
+              onRecheck={onRecheck}
+              onSignIn={onSignIn}
+              onSignOut={onSignOut}
+              quiet={anotherAuthorized(agent)}
+              signOutError={signOutError?.get(agent.agentId)}
+              signOutPending={signOutPending?.has(agent.agentId) ?? false}
+              signOutSupported={signOutSupported ?? false}
+              viewerSubject={viewerSubject}
+            />
+            {logins
+              .filter((login) => !login.default && login.agent === agent.agentId)
+              .map((login) => (
+                <ZeropsLoginRow
+                  key={login.id}
+                  login={login}
+                  nameOf={nameOf}
+                  onRecheck={onRecheck}
+                  onCancel={onCancelLogin}
+                  onRemove={onRemoveLogin}
+                  onSignIn={onSignInLogin}
+                  onSignOut={onSignOutLogin}
+                  status={loginStatus?.(login.id)}
+                  viewerSubject={viewerSubject}
+                />
+              ))}
+            {onAddLogin === undefined ? null : (
+              <AddLoginControl agentId={agent.agentId} error={addLoginError} onAdd={onAddLogin} />
+            )}
+          </Fragment>
+        ))}
+      {offers.map((agent) => (
+        <p
+          key={agent.agentId}
+          className="flex flex-wrap items-center gap-x-2 px-4 py-2 text-xs leading-4 text-muted-foreground"
+          data-agent-id={agent.agentId}
+          data-zerops-agent-offer
+        >
+          <span>{AGENT_NAMES[agent.agentId]} isn’t signed in.</span>
+          <Button size="micro" variant="link" onClick={() => onSignIn(agent.agentId)}>
+            {AGENT_SIGN_IN_LABELS[agent.agentId]}
+          </Button>
+        </p>
       ))}
     </div>
   );

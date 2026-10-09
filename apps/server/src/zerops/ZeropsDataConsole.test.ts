@@ -675,6 +675,27 @@ describe("ZeropsDataConsole", () => {
       }),
     );
 
+    // Milo 0.15.18 on zcp v9.200.3 (stress run 3, 2026-10-09): the console has no /api/summary
+    // yet, its page answers 200 with index.html, and the panel told an up-to-date Mate to update.
+    it.effect(
+      "A read the Mate's console does not offer yet is unsupported, not a broken response.",
+      () =>
+        Effect.gen(function* () {
+          const http = fakeHttpClient(
+            () =>
+              new Response("<!doctype html><html></html>", {
+                status: 200,
+                headers: { "content-type": "text/html; charset=utf-8" },
+              }),
+          );
+          const result = yield* withService(
+            { spawn: makeAutoReadySpawner().spawn, http },
+            (service) => service.call({ kind: "summary", service: "db" }).pipe(Effect.flip),
+          );
+          expect(result.code).toBe("unsupported");
+        }),
+    );
+
     it.effect("re-reads services after a refresh", () =>
       Effect.gen(function* () {
         const calls: Array<string> = [];

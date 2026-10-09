@@ -117,7 +117,11 @@ export const databasePanel: Projection<
       filteredLoadMorePending: pending("filtered"),
       queryLoadMorePending: pending("query"),
       documentSearchLoadMorePending: pending("search"),
-      errorText: value.latestTarget !== value.gridTarget ? error?.message : undefined,
+      // The summary's failure is said in the identity, where its retry stands.
+      errorText:
+        value.latestTarget !== value.gridTarget && value.latestTarget !== "summary"
+          ? error?.message
+          : undefined,
       gridNotice:
         grid == null
           ? undefined
