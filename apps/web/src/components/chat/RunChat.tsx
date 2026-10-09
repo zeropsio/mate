@@ -140,6 +140,7 @@ import {
   type LiveSlot as LiveSlotState,
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
+import { foldWork } from "./foldWork";
 import { usePace } from "./usePace";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { type DrawnRow, landingHosts, rowShifts, slotMoves } from "./slotMoves.logic";
@@ -153,7 +154,6 @@ import {
 import { useRunEffortWords } from "./runResultFacts";
 import { pageReached, type ScrollPages } from "~/zerops/engineCardPaging.logic";
 import { useEngineCardPages } from "~/zerops/useEngineCardPaging";
-import { foldWork } from "./foldWork";
 import {
   type EaseBudget,
   ROOM_TAU_MS,
@@ -3808,6 +3808,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     readingRef,
     rootRef,
     aboveRef,
+    onFoldWork: ctx.onFoldWork ?? foldWork,
   });
   // The card's own height eases (`easeRooms`) as its parts come and go — the
   // history's scroll arriving with its first line, the slot giving way to the
@@ -4235,6 +4236,7 @@ function useRunFold({
   readingRef,
   rootRef,
   aboveRef,
+  onFoldWork,
 }: {
   readonly conversation: string;
   readonly run: string;
@@ -4242,6 +4244,7 @@ function useRunFold({
   readonly readingRef: { readonly current: boolean };
   readonly rootRef: { readonly current: HTMLElement | null };
   readonly aboveRef: { readonly current: HTMLElement | null };
+  readonly onFoldWork: NonNullable<TimelineRowSharedState["onFoldWork"]>;
 }): {
   readonly fold: RunFold;
   readonly foldNow: () => void;
@@ -4308,12 +4311,12 @@ function useRunFold({
       done();
       return;
     }
-    const cancel = foldAway(above, from - words.getBoundingClientRect().top, done);
+    const cancel = foldAway(above, from - words.getBoundingClientRect().top, done, onFoldWork);
     return () => {
       active = false;
       cancel();
     };
-  }, [conversation, run, fold, aboveRef, rootRef]);
+  }, [conversation, run, fold, aboveRef, rootRef, onFoldWork]);
   return { fold, foldNow, settling, motionAllowed: motionAllowed() };
 }
 
@@ -4354,16 +4357,21 @@ function easeFeedHeight(feed: HTMLElement, from: number): void {
 /**
  * Folds the work over a run's line shut (`foldWork`): from its height, less
  * `shift` — how much higher the line stands without its hairline and room,
- * which the fold starts by keeping — to nothing, fading as it closes; `done`
+ * which the fold starts by keeping — to nothing, clipping as it closes; `done`
  * once it is shut.
  */
-function foldAway(above: HTMLElement, shift: number, done: () => void): () => void {
+function foldAway(
+  above: HTMLElement,
+  shift: number,
+  done: () => void,
+  onFoldWork: NonNullable<TimelineRowSharedState["onFoldWork"]>,
+): () => void {
   const from = above.getBoundingClientRect().height + shift;
   if (from < 1) {
     done();
     return () => undefined;
   }
-  return foldWork({ above, from, done });
+  return onFoldWork({ above, from, done });
 }
 
 /** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */

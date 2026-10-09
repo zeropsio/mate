@@ -55,6 +55,7 @@ import {
   takeOwnScroll,
   type EndFollow,
 } from "./timelineEndFollow";
+import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
@@ -750,6 +751,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // once for growth that comes a few pixels a frame, by a glide for a step.
   // The list's own keeping is off: it jumps.
   const endFollowRef = useRef<EndFollow | null>(null);
+  // Execution ownership only: fold compensation and end following cannot write together.
+  const outerFoldsRef = useRef(new Set<() => void>());
+  const foldExecutionsRef = useRef(new Set<ReturnType<typeof foldTimelineWork>>());
+  const arrivingRef = useRef(rowsHeldKey !== "");
+  useLayoutEffect(() => {
+    arrivingRef.current = rowsHeldKey !== "";
+  }, [rowsHeldKey]);
+  useEffect(
+    () => () => {
+      for (const execution of foldExecutionsRef.current) execution.dispose();
+    },
+    [],
+  );
   useEffect(() => {
     const endFollow = createEndFollow({
       viewport: () => listRef.current?.getScrollableNode() ?? null,
@@ -766,13 +780,52 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       endFollowRef.current = null;
     };
   }, [listRef]);
-  const followEnd = useCallback(() => endFollowRef.current?.follow(), []);
+  const followEnd = useCallback(() => {
+    if (outerFoldsRef.current.size === 0) endFollowRef.current?.follow();
+  }, []);
+  const onFoldWork = useCallback<NonNullable<TimelineRowSharedState["onFoldWork"]>>(
+    (input) => {
+      const release = () => {
+        outerFoldsRef.current.delete(release);
+        foldExecutionsRef.current.delete(execution);
+        followEnd();
+      };
+      const execution = foldTimelineWork({
+        ...input,
+        viewport: () => listRef.current?.getScrollableNode() ?? null,
+        rows: () => {
+          const state = listRef.current?.getState();
+          return (
+            state?.data.flatMap((_, index) => {
+              const row = state.elementAtIndex(index);
+              return row instanceof HTMLElement
+                ? [{ row, position: state.positionAtIndex(index), size: state.sizeAtIndex(index) }]
+                : [];
+            }) ?? []
+          );
+        },
+        arriving: () => arrivingRef.current,
+        follows: () => followingEndRef.current,
+        start: () => {
+          outerFoldsRef.current.add(release);
+          endFollowRef.current?.stop();
+        },
+        release,
+      });
+      foldExecutionsRef.current.add(execution);
+      return execution.cancel;
+    },
+    [followEnd, listRef],
+  );
+  const placeFolds = useCallback(() => {
+    for (const execution of foldExecutionsRef.current) execution.place();
+  }, []);
   // Rows arriving, and the viewport resizing, move the end too.
   useLayoutEffect(() => {
     if (!followingEnd || rows.length === 0) return;
     // Composer geometry keeps the followed line in place. Row growth keeps its existing motion.
     if (previousContentInsetEndAdjustmentRef.current !== contentInsetEndAdjustment) {
-      endFollowRef.current?.place();
+      if (outerFoldsRef.current.size === 0) endFollowRef.current?.place();
     }
     if (!listPlaced) return;
     const frame = requestAnimationFrame(followEnd);
@@ -793,15 +846,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // layout can hide it, then follow after the list applies its layout.
   const onItemSizeChanged = useCallback(() => {
     remeasurePositionRef.current?.();
+    placeFolds();
     if (!followingEndRef.current) return;
     endFollowRef.current?.observe();
-    queueMicrotask(followEnd);
+    queueMicrotask(() => {
+      placeFolds();
+      followEnd();
+    });
     if (endRepinFrameRef.current !== null) return;
     endRepinFrameRef.current = requestAnimationFrame(() => {
       endRepinFrameRef.current = null;
+      placeFolds();
       followEnd();
     });
-  }, [followEnd]);
+  }, [followEnd, placeFolds]);
 
   // Where the person is, kept as they move, by row: the row at the reading
   // line, how far into it, how tall it was, the run's line and the row above
@@ -1140,10 +1198,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const handleScroll = useCallback(() => {
     const node = listRef.current?.getScrollableNode();
     const own = node !== null && node !== undefined && takeOwnScroll(node);
+    placeFolds();
     readList(!own && personIsScrolling(personSessionRef.current, performance.now()), own);
     // A move of the page's own that left the end while it follows: back to the end.
     if (own && followingEndRef.current && listPlacedRef.current) followEnd();
-  }, [followEnd, listRef, readList]);
+  }, [followEnd, listRef, placeFolds, readList]);
 
   // Rows changed under the list: where it stands now is none of the person's doing.
   useEffect(() => {
@@ -1297,6 +1356,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       arrivedAfter,
       syncing,
       onHoldReading: onManualNavigation,
+      onFoldWork,
     }),
     [
       timestampFormat,
@@ -1333,6 +1393,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       arrivedAfter,
       syncing,
       onManualNavigation,
+      onFoldWork,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -1667,7 +1728,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               maintainScrollAtEnd={false}
               onItemSizeChanged={onItemSizeChanged}
               maintainVisibleContentPosition={
-                restoringReadingPosition ? false : MAINTAIN_VISIBLE_CONTENT_POSITION
+                restoringReadingPosition || followingEnd ? false : MAINTAIN_VISIBLE_CONTENT_POSITION
               }
               onScroll={handleScroll}
               onLoad={onListLoad}

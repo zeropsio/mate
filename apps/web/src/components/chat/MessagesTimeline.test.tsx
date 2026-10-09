@@ -14,6 +14,7 @@ import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   act,
+  use,
   StrictMode,
   createRef,
   useLayoutEffect,
@@ -29,6 +30,14 @@ import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "../../zerops/zeropsDataContext";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
+import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
+
+let foldContext: TimelineRowSharedState;
+function FoldBoundaryProbe() {
+  foldContext = use(TimelineRowCtx);
+  return null;
+}
+
 import { takeOwnScroll } from "./timelineEndFollow";
 import {
   classifyTimelineScroll,
@@ -95,6 +104,7 @@ vi.mock("@legendapp/list/react", async () => {
             : undefined
         }
       >
+        <FoldBoundaryProbe />
         {props.ListHeaderComponent}
         {props.data.map((item) => (
           <div key={props.keyExtractor(item)}>{props.renderItem({ item })}</div>
@@ -3222,4 +3232,196 @@ it("keeps a partly loaded account card's work reachable before and after its fir
     if (renderer !== null) await act(async () => renderer!.unmount());
     account.close();
   }
+});
+
+describe("Decision: one owner per concern as the report's table assigns; no new state model.", () => {
+  it.each([
+    { follows: true, clamp: false, interruption: "none" },
+    { follows: true, clamp: true, interruption: "none" },
+    { follows: true, clamp: true, interruption: "carry" },
+    { follows: false, clamp: false, interruption: "none" },
+    { follows: true, clamp: true, interruption: "reader" },
+    { follows: false, clamp: false, interruption: "cancel" },
+    { follows: false, clamp: false, interruption: "unmount" },
+    { follows: true, clamp: true, interruption: "replay" },
+  ])(
+    "the list supplies fold geometry and preserves its follow permission ($follows, $clamp, $interruption)",
+    async ({ follows, clamp, interruption }) => {
+      const dom = new Window();
+      const document = dom.document as unknown as Document;
+      for (const [key, value] of Object.entries({
+        window: dom,
+        document,
+        Element: dom.Element,
+        HTMLElement: dom.HTMLElement,
+        Node: dom.Node,
+        IS_REACT_ACT_ENVIRONMENT: true,
+      }))
+        vi.stubGlobal(key, value);
+      vi.stubGlobal("CSS", { escape: (value: string) => value });
+      const frames = new Map<number, FrameRequestCallback>();
+      let id = 0;
+      vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+        frames.set(++id, callback);
+        return id;
+      });
+      vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          observe() {}
+          disconnect() {}
+        },
+      );
+      // No ancestor class or follow attribute: the list's ref and verdict own this viewport.
+      const viewport = document.body.appendChild(document.createElement("div"));
+      const holder = viewport.appendChild(document.createElement("div"));
+      const card = holder.appendChild(document.createElement("div"));
+      card.dataset.cardSlice = "";
+      if (interruption === "carry") card.style.translate = "0 30px";
+      const above = card.appendChild(document.createElement("div"));
+      const below = viewport.appendChild(document.createElement("div"));
+      let laid = 500;
+      const height = () => Number.parseFloat(above.style.height) || 0;
+      holder.getBoundingClientRect = () =>
+        ({ top: 100, bottom: 140 + height(), height: height() + 40 }) as DOMRect;
+      card.getBoundingClientRect = () =>
+        ({
+          bottom:
+            100 +
+            height() +
+            40 +
+            (Number.parseFloat(card.style.translate.split(" ")[1] ?? "") || 0),
+        }) as DOMRect;
+      below.getBoundingClientRect = () =>
+        ({
+          top: laid + (Number.parseFloat(below.style.translate.split(" ")[1] ?? "") || 0),
+          height: 100,
+        }) as DOMRect;
+      let top = follows ? 1200 : 800;
+      Object.defineProperties(viewport, {
+        scrollTop: {
+          get: () => {
+            if (clamp) top = Math.min(top, 900 + height());
+            return top;
+          },
+          set: (value: number) => {
+            top = Math.max(0, Math.min(value, 900 + height()));
+          },
+        },
+        scrollHeight: { get: () => 1700 + height() },
+        clientHeight: { value: 800 },
+      });
+      let data: Array<{ id: string }> = [];
+      const listRef = {
+        current: {
+          getScrollableNode: () => viewport,
+          getState: () => ({
+            data,
+            elementAtIndex: (index: number) => [holder, below][index],
+            positionAtIndex: (index: number) => (index === 0 ? 100 : 200 + height()),
+            sizeAtIndex: () => height() + 40,
+            isWithinMaintainScrollAtEndThreshold: follows,
+          }),
+          scrollToEnd: () => {
+            viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight;
+          },
+        } as unknown as LegendListRef,
+      };
+      let renderer: ReactTestRenderer | undefined;
+      let following = follows;
+      let readerTop: number | null = null;
+      const timeline = () => (
+        <MessagesTimeline
+          {...buildProps()}
+          listRef={listRef}
+          liveFollowEnabled={following}
+          timelineEntries={[buildUserTimelineEntry("Fold this work")]}
+        />
+      );
+      const { LegendList } = await import("@legendapp/list/react");
+      try {
+        await act(async () => {
+          renderer = create(timeline());
+        });
+        data = renderer!.root.findByType(LegendList).props.data;
+        const done = vi.fn();
+        const execute = foldContext.onFoldWork!;
+        let cancel = () => {};
+        await act(async () => {
+          cancel = execute({ above, from: 300, done });
+        });
+        for (let tick = 1; tick <= 120; tick++) {
+          await act(async () => {
+            for (const [key, frame] of [...frames]) {
+              frames.delete(key);
+              frame(tick * 16);
+            }
+            // Commit the list's pending placement after the executor read its geometry.
+            laid = 200 + height();
+            if (height() < 300 && height() > 0 && follows)
+              expect(
+                Math.abs(
+                  below.getBoundingClientRect().top - card.getBoundingClientRect().bottom - 60,
+                ),
+                "ASSERTION: panel carry does not become spacing below the folding card",
+              ).toBeLessThan(1);
+
+            if (following && height() < 300)
+              expect(
+                viewport.scrollTop,
+                "ASSERTION: a native clamp and fold compensation consume the shrink once",
+              ).toBeCloseTo(900 + height(), 5);
+          });
+          if (tick === 10 && interruption === "reader") {
+            following = false;
+            viewport.scrollTop -= 400;
+            readerTop = viewport.scrollTop;
+            await act(async () => renderer!.update(timeline()));
+          }
+          if (tick === 10 && interruption === "cancel") {
+            cancel();
+            break;
+          }
+          if (tick === 10 && interruption === "unmount") {
+            await act(async () => renderer!.unmount());
+            renderer = undefined;
+            break;
+          }
+          if (tick === 10 && interruption === "replay") {
+            cancel();
+            cancel = execute({ above, from: height(), done });
+          }
+          if (readerTop !== null)
+            expect(
+              viewport.scrollTop,
+              "ASSERTION: movement during folding stays the reader's",
+            ).toBe(readerTop);
+          if (done.mock.calls.length) break;
+        }
+        expect(done).toHaveBeenCalledTimes(
+          interruption === "cancel" || interruption === "unmount" ? 0 : 1,
+        );
+        if (interruption === "none")
+          expect(
+            top,
+            "ASSERTION: the supplied outer viewport gives back folded height only while following",
+          ).toBeCloseTo(follows ? 900 : 800, 5);
+        // Completion's effect cleanup keeps the following rows held until list placement catches up.
+        cancel();
+        for (let tick = 121; tick <= 130; tick++)
+          await act(async () => {
+            for (const [key, frame] of [...frames]) {
+              frames.delete(key);
+              frame(tick * 16);
+            }
+          });
+        expect(below.style.translate).toBe("");
+        expect(frames.size).toBe(0);
+      } finally {
+        await act(async () => renderer?.unmount());
+        dom.happyDOM.abort();
+      }
+    },
+  );
 });
