@@ -5,7 +5,7 @@ import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { chatGateStages, chatGateTestFiles, selectLaneChatStages } from "./chat-gate.ts";
-import { failureSummary, gateLogDirectory, runLogged } from "./gate-log.ts";
+import { failureSummary, gateLogDirectory, runLogged, stageSummary } from "./gate-log.ts";
 import { parseSync } from "oxc-parser";
 import { transform as parseCss } from "lightningcss";
 import { parse as parseHtml, type DefaultTreeAdapterMap } from "parse5";
@@ -622,11 +622,12 @@ function writeReceipt(path: string, receipt: GateReceipt): void {
 if (import.meta.main) {
   const root = NodePath.resolve(import.meta.dirname, "..");
   const args = process.argv.slice(2);
+  const verbose = args.includes("--verbose");
   let base = "origin/main";
   const namedScenarios: string[] = [];
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
-    if (arg === "--list" || arg === "--force") continue;
+    if (arg === "--list" || arg === "--force" || arg === "--verbose") continue;
     if (arg === "--base") {
       const ref = args[++index];
       if (!ref || ref.startsWith("--")) throw new Error("--base needs a git ref");
@@ -638,7 +639,7 @@ if (import.meta.main) {
       if (namedScenarios.length === start) throw new Error("--scenarios needs scenario file paths");
     } else {
       throw new Error(
-        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--force] [--scenarios <file...>]",
+        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--force] [--scenarios <file...>]",
       );
     }
   }
@@ -685,25 +686,28 @@ if (import.meta.main) {
   const files = related
     .filter((file) => file.startsWith("apps/web/test/scenarios/") && !ownedFiles.includes(file))
     .map((file) => NodePath.posix.relative("apps/web", file));
-  for (const stage of chatGateStages) {
-    const selection = chatStages.find((selected) => selected.id === stage.id);
+  if (verbose || args.includes("--list")) {
+    for (const stage of chatGateStages) {
+      const selection = chatStages.find((selected) => selected.id === stage.id);
+      console.log(
+        `Selection ${stage.id}: ${selection ? `${selection.reason}${namedScenarios.length ? `; explicit --scenarios: ${namedScenarios.join(", ")}` : ""}` : "skip: no related tests in its owning seam"}`,
+      );
+    }
     console.log(
-      `Selection ${stage.id}: ${selection ? `${selection.reason}${namedScenarios.length ? `; explicit --scenarios: ${namedScenarios.join(", ")}` : ""}` : "skip: no related tests in its owning seam"}`,
+      `Scenario files: ${related.filter((file) => file.endsWith(".scenario.ts")).length}; reason: ${namedScenarios.length ? "explicit --scenarios and own imports" : meaningful.paths.length ? "own imports and harness inputs (including old inputs for removals)" : "documentation/comments only"}`,
     );
+    for (const file of related.filter((file) => file.startsWith("apps/web/test/scenarios/")))
+      console.log(
+        `Scenario ${file}; reason: ${[
+          ...(imported.includes(file)
+            ? [meaningful.paths.includes(file) ? "changed file" : "own imports or harness inputs"]
+            : []),
+          ...(namedScenarios.includes(file) ? ["explicit --scenarios"] : []),
+        ].join("; ")}`,
+      );
+    if (!files.length)
+      console.log("Related scenarios: skip: no files outside selected chat stages");
   }
-  console.log(
-    `Scenario files: ${related.filter((file) => file.endsWith(".scenario.ts")).length}; reason: ${namedScenarios.length ? "explicit --scenarios and own imports" : meaningful.paths.length ? "own imports and harness inputs (including old inputs for removals)" : "documentation/comments only"}`,
-  );
-  for (const file of related.filter((file) => file.startsWith("apps/web/test/scenarios/")))
-    console.log(
-      `Scenario ${file}; reason: ${[
-        ...(imported.includes(file)
-          ? [meaningful.paths.includes(file) ? "changed file" : "own imports or harness inputs"]
-          : []),
-        ...(namedScenarios.includes(file) ? ["explicit --scenarios"] : []),
-      ].join("; ")}`,
-    );
-  if (!files.length) console.log("Related scenarios: skip: no files outside selected chat stages");
   const typecheckCommands = chatStages.flatMap((stage) =>
     stage.commands.filter((command) => command.args.includes("tsc")),
   );
@@ -866,7 +870,7 @@ if (import.meta.main) {
       NodePath.delimiter,
     );
     const logs = gateLogDirectory("gate-changed");
-    console.log(`Full logs: ${logs}`);
+    if (verbose) console.log(`Full logs: ${logs}`);
     for (const [index, step] of steps.entries()) {
       const logPath = NodePath.join(logs, `${index + 1}.log`);
       const started = Date.now();
@@ -880,7 +884,10 @@ if (import.meta.main) {
         delete env.VITEST_MAX_WORKERS;
       const status = runLogged(
         step.command,
-        step.args.map((arg) =>
+        [
+          ...step.args,
+          ...(verbose && step.args[0] === "scripts/chat-gate.ts" ? ["--verbose"] : []),
+        ].map((arg) =>
           arg.startsWith("test/scenarios/areas/") || arg.startsWith("test/scenarios/fakes/")
             ? NodePath.resolve(root, step.cwd ?? ".", arg)
             : arg,
@@ -891,8 +898,16 @@ if (import.meta.main) {
       receipt.results.push({ name: step.name, status, durationMs: Date.now() - started });
       receipt.durationMs = Date.now() - gateStarted;
       writeReceipt(receiptPath, receipt);
+      const output = NodeFS.readFileSync(logPath, "utf8");
+      if (verbose) process.stdout.write(output);
       console.log(
-        `${status === 0 ? "ok" : "FAIL"} ${step.name} (${((Date.now() - started) / 1000).toFixed(2)}s)`,
+        stageSummary(
+          step.name,
+          status,
+          Date.now() - started,
+          output,
+          step.args.filter((arg) => /\.[cm]?[jt]sx?$|\.md$/u.test(arg)).length,
+        ),
       );
       if (status !== 0) {
         console.error(failureSummary(NodeFS.readFileSync(logPath, "utf8"), logPath));

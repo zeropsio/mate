@@ -374,7 +374,7 @@ beforeAll(() => {
   ]);
   if (extracted.status !== 0) throw new Error(String(extracted.stderr));
   NodeFS.rmSync(archivePath);
-  for (const file of ["gate-changed.ts", "chat-gate.ts"])
+  for (const file of ["gate-changed.ts", "chat-gate.ts", "gate-log.ts"])
     NodeFS.copyFileSync(
       NodePath.join(import.meta.dirname, file),
       NodePath.join(repositoryFixture, "scripts", file),
@@ -924,6 +924,8 @@ it("Decision: no check is skipped for changed code; a passing receipt is reused 
     const checks = () => NodeFS.readFileSync(NodePath.join(root, "checks.log"), "utf8");
     const first = run();
     expect(first.status, first.stderr).toBe(0);
+    expect(first.stdout.trim().split("\n").length).toBeLessThanOrEqual(15);
+    expect(first.stdout).not.toContain("Selection ");
     const checked = checks();
     const second = run();
     expect(second.status, second.stderr).toBe(0);
@@ -949,8 +951,12 @@ it("Decision: no check is skipped for changed code; a passing receipt is reused 
     // --list is a preview; --force must execute and replace an old passing receipt even on failure.
     expect(run(["--list"]).stdout).toContain("guard ledgers:");
     expect(checks()).toBe(checked);
+    const verbose = run(["--verbose", "--force"]);
+    expect(verbose.status).toBe(0);
+    expect(verbose.stdout).toContain("Selection A:");
     const failed = run(["--force"], true);
     expect(failed.status).toBe(9);
+    expect(failed.stderr).toContain("Full log:");
     expect(JSON.parse(NodeFS.readFileSync(receiptPath, "utf8")).results.at(-1).status).toBe(9);
     const retried = run();
     expect(retried.status, retried.stderr).toBe(0);

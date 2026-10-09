@@ -56,3 +56,33 @@ it("does not label ordinary output as an error when the process reports no cause
     "First error: No explicit error line reported",
   );
 });
+
+it("failure excerpts retain each failed title, assertion and location without passing output", () => {
+  const output = [
+    "runner banner",
+    "PASS unrelated",
+    " FAIL src/a.test.ts > first failure",
+    "AssertionError: expected true",
+    " ❯ src/a.test.ts:8:2",
+    ...Array.from({ length: 100 }, (_, i) => `detail ${i}`),
+    " Test Files  1 failed | 100 passed (101)",
+    " FAIL src/b.test.ts > second failure",
+    "TypeError: missing value",
+    " ❯ src/b.test.ts:20:4",
+    " Tests  2 failed | 100 passed (102)",
+    "Duration 1s",
+  ].join("\n");
+  const summary = failureSummary(output, "/tmp/full.log");
+  for (const expected of [
+    "first failure",
+    "second failure",
+    "AssertionError: expected true",
+    "src/a.test.ts:8:2",
+    "src/b.test.ts:20:4",
+    "Full log: /tmp/full.log",
+  ])
+    expect(summary).toContain(expected);
+  for (const omitted of ["runner banner", "PASS unrelated", "100 passed", "detail 99", "Duration"])
+    expect(summary).not.toContain(omitted);
+  expect(summary.split("\n").length).toBeLessThanOrEqual(48);
+});

@@ -308,6 +308,10 @@ it.each(["A", "E"])("a %s-only gate runs without installing a scenario browser",
       NodePath.join(root, "scripts/chat-gate.ts"),
       NodePath.join(fixture, "scripts/chat-gate.ts"),
     );
+    NodeFS.copyFileSync(
+      NodePath.join(root, "scripts/gate-log.ts"),
+      NodePath.join(fixture, "scripts/gate-log.ts"),
+    );
     // This fixture owns only command routing; no browser installer exists in it.
     NodeFS.writeFileSync(NodePath.join(fixture, "node_modules/.bin/vp"), "#!/bin/sh\nexit 0\n", {
       mode: 0o755,
@@ -376,7 +380,7 @@ it("a contract-only edit retains wire consumer typechecks even without a selecte
 it("an empty lane chat selection skips before starting any command", () => {
   const result = NodeChildProcess.spawnSync(
     process.execPath,
-    ["scripts/chat-gate.ts", "--stages", "A,C,C-engine,E", "--files", "[]"],
+    ["scripts/chat-gate.ts", "--verbose", "--stages", "A,C,C-engine,E", "--files", "[]"],
     { cwd: new URL("../", import.meta.url), encoding: "utf8" },
   );
   expect(result.status, result.stderr).toBe(0);
@@ -510,3 +514,66 @@ it.each([
   expect(result.status).toBe(1);
   expect(result.stderr).toContain("Usage:");
 });
+
+// Decision: output only; selection and pass/fail semantics unchanged; no test weakened.
+it.each([0, 7])(
+  "Decision: output only; selection and pass/fail semantics unchanged; no test weakened. (exit %s)",
+  (status) => {
+    const fixture = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "gate-quiet-"));
+    try {
+      for (const dir of ["scripts", "apps/server", "node_modules/.bin"])
+        NodeFS.mkdirSync(NodePath.join(fixture, dir), { recursive: true });
+      for (const file of ["chat-gate.ts", "gate-log.ts"])
+        NodeFS.copyFileSync(
+          NodePath.join(import.meta.dirname, file),
+          NodePath.join(fixture, "scripts", file),
+        );
+      NodeFS.writeFileSync(
+        NodePath.join(fixture, "node_modules/.bin/vp"),
+        `#!/bin/sh
+ echo 'runner banner'
+ echo 'Tests  3 passed (3)'
+ if [ ${status} -ne 0 ]; then
+ echo ' FAIL src/proof.test.ts > preserves the verdict'
+ echo 'AssertionError: expected 2 to be 1'
+ echo ' ❯ src/proof.test.ts:12:3'
+ fi
+ exit ${status}
+`,
+        { mode: 0o755 },
+      );
+      const run = (...args: string[]) =>
+        NodeChildProcess.spawnSync(
+          process.execPath,
+          ["scripts/chat-gate.ts", "--stages", "A", ...args],
+          { cwd: fixture, encoding: "utf8" },
+        );
+      const result = run();
+      const output = result.stdout + result.stderr;
+      expect(result.status).toBe(status === 0 ? 0 : 1);
+      expect(output).not.toContain("runner banner");
+      expect(output).not.toContain("Selection ");
+      if (status === 0) {
+        expect(output.trim().split("\n").length).toBeLessThanOrEqual(15);
+        expect(output).toMatch(/A: provider goldens.*3 cases.*[\d.]+s/u);
+      } else {
+        expect(output).toContain("preserves the verdict");
+        expect(output).toContain("AssertionError: expected 2 to be 1");
+        expect(output).toContain("src/proof.test.ts:12:3");
+        const path = output.match(/Full log: (.+)/u)?.[1];
+        expect(path).toBeDefined();
+        expect(NodeFS.readFileSync(path!, "utf8")).toContain("runner banner");
+      }
+      const verbose = run("--verbose");
+      expect(verbose.status).toBe(result.status);
+      expect(verbose.stdout).toContain("runner banner");
+      expect(verbose.stdout).toContain("Selection A:");
+      const list = run("--list");
+      expect(list.status).toBe(0);
+      expect(list.stdout).toContain("goldens.test.ts");
+      expect(list.stdout).not.toContain("runner banner");
+    } finally {
+      NodeFS.rmSync(fixture, { recursive: true, force: true });
+    }
+  },
+);
