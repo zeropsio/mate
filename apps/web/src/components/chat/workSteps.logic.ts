@@ -284,15 +284,27 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
     }),
   );
   const endedNear = commandsEndingNear(commands);
+  // A command sent to the background, by the words its call gave it: a task that names no call but
+  // says those words is that command's job (an engine Mate's job names no call; by timing alone
+  // its end was the failed `ls` that ended just before the job began, and the job read running on).
+  const sentByWords = new Map<string, WorkLogEntry>();
+  for (const command of commands) {
+    const words = command.callInput?.description?.trim();
+    if (command.sentToBackground !== undefined && words && !sentByWords.has(words))
+      sentByWords.set(words, command);
+  }
   for (const task of entries) {
     if (!isTask(task)) continue;
     const words = (task.toolTitle ?? task.label).trim();
     if (task.taskId !== undefined && words.length > 0) jobTitles.set(task.taskId, words);
+    const named = sentByWords.get(words);
     const command =
       task.taskToolUseId !== undefined
         ? byCallId.get(task.taskToolUseId)
         : task.taskType === undefined || task.taskType === "local_bash"
-          ? endedNear(Date.parse(task.createdAt), (candidate) => !byCommand.has(candidate.id))
+          ? named !== undefined && !byCommand.has(named.id)
+            ? named
+            : endedNear(Date.parse(task.createdAt), (candidate) => !byCommand.has(candidate.id))
           : undefined;
     if (command === undefined) continue;
     trackers.add(task.id);

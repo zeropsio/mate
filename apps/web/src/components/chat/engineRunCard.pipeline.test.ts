@@ -75,7 +75,11 @@ function stressItems(job: "running" | "completed"): Item[] {
       shows: { toolName: "Edit", input: { file_path: "/tmp/s/primes.js" }, wrote: true },
     } as never),
     bash(7, 45_900, "node /tmp/s/primes.js", "Run the primes script for 30 primes"),
-    call(8, 51_000, {
+    {
+      ...bash(8, 48_600, "ls /does-not-exist", "List a folder that doesn't exist, on purpose"),
+      state: "failed",
+    } as Item,
+    call(9, 51_000, {
       step: "command",
       tool: { name: "Bash" },
       words: "Command run",
@@ -91,7 +95,7 @@ function stressItems(job: "running" | "completed"): Item[] {
       },
     } as never),
     {
-      ...workItem(run1, 9, {
+      ...workItem(run1, 10, {
         work: "conversation/s/1.6.w2",
         workKind: "shell",
         status: job,
@@ -99,14 +103,14 @@ function stressItems(job: "running" | "completed"): Item[] {
       }),
       at: t0 + 51_450,
     } as Item,
-    call(10, 54_900, {
+    call(11, 54_900, {
       step: "tool",
       tool: { name: "WebFetch" },
       words: "Tool call",
       input: 'WebFetch: {"url":"https://example.com"}',
       shows: { toolName: "WebFetch", input: { url: "https://example.com" } },
     } as never),
-    noteItem(run1, 11, "The background wait hasn't printed yet.", {
+    noteItem(run1, 12, "The background wait hasn't printed yet.", {
       answer: false,
       at: t0 + 77_700,
     }),
@@ -118,8 +122,8 @@ const stressSummary = {
   calls: { command: 7, edit: 2, helper: 1, mcp: 1, tool: 3 },
   tools: { AskUserQuestion: 1, ToolSearch: 1, WebFetch: 1, zerops_discover: 1 },
   edited: 1,
-  answerItemId: `${run1}/i/11`,
-  lastItemSeq: 11,
+  answerItemId: `${run1}/i/12`,
+  lastItemSeq: 12,
 };
 
 function render(input: {
@@ -231,7 +235,7 @@ describe("an engine Mate's run card, from the engine's record", () => {
       items: [
         ...stressItems("completed"),
         {
-          ...noteItem(run1, 12, ""),
+          ...noteItem(run1, 13, ""),
           kind: "request",
           by: { kind: "engine" },
           requestId: question.id,
@@ -355,4 +359,12 @@ describe("an engine Mate's run card, from the engine's record", () => {
       expect(lineOf(cardOf(rows))).toBe(line);
     },
   );
+
+  it("its job's line says the job ended once the engine records it ended, whatever command ended near its start", () => {
+    const rows = render({ runs: [stressRun()], items: stressItems("completed") });
+    const jobs = rows.flatMap((row) => (row.kind === "background" ? (row.jobs ?? []) : []));
+    expect(jobs.map(({ title, state }) => ({ title, state }))).toEqual([
+      { title: "Wait 45 seconds in the background, then print done", state: "done" },
+    ]);
+  });
 });
