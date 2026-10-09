@@ -110,6 +110,29 @@ describe("ComposerBannerStack", () => {
     }
   });
 
+  it("opens the stacked notices from the edge peeking above the front one", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const host = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(host);
+    try {
+      await act(() =>
+        root.render(<ComposerBannerStack items={[banner("front"), banner("second")]} />),
+      );
+      const edge = host.querySelector<HTMLButtonElement>('button[aria-label="Show 1 more notice"]');
+      const details = host.querySelector<HTMLDivElement>(
+        "[data-composer-banner-stack-expanded-items]",
+      );
+      expect(details?.hidden).toBe(true);
+      await act(() => edge!.click());
+      expect(details?.hidden).toBe(false);
+      expect(details?.textContent).toContain("second notice");
+    } finally {
+      await act(() => root.unmount());
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("runs the action offered beside its notice", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const host = document.body.appendChild(document.createElement("div"));

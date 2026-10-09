@@ -11,7 +11,6 @@ import {
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
-import { mateHealthAtom, mateHealthCopy } from "@t3tools/client-runtime/data";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
@@ -2426,12 +2425,6 @@ export default function ChatView(props: ChatViewProps) {
   const zeropsMates = useZeropsMateDirectory();
   // Who lives here as the directory reads it: the composer says nothing until it is known.
   const whoLivesHereKind = useZeropsMate(environmentId).kind;
-  const routeHealthMate = zeropsMateAt(zeropsMates, environmentId);
-  const healthRead = useAtomValue(
-    mateHealthAtom(routeHealthMate.kind === "mate" ? (routeHealthMate.mate.projectId ?? "") : ""),
-  );
-  const healthCopy =
-    routeHealthMate.kind === "mate" ? mateHealthCopy(routeHealthMate.mate.name, healthRead) : null;
   const mateLinkVoice = useMateVoice();
   const reviveFailedMate = useReviveFailedMate();
   const recoveryMate = zeropsMateAt(zeropsMates, environmentId);
@@ -2441,15 +2434,6 @@ export default function ChatView(props: ChatViewProps) {
   const tryMateAgain = useTryMateAgain();
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
-    if (healthCopy !== null)
-      items.push({
-        id: `health:${environmentId}`,
-        variant: healthCopy.severity === "critical" ? "error" : "warning",
-        icon: null,
-        layout: "centered",
-        title: healthCopy.title,
-        description: healthCopy.description,
-      });
     const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
     const environmentReconnecting =
       unavailableConnection !== null &&
@@ -2490,7 +2474,6 @@ export default function ChatView(props: ChatViewProps) {
     }
     return items;
   }, [
-    healthCopy,
     activeEnvironmentUnavailableState,
     environmentId,
     mateLinkVoice,
