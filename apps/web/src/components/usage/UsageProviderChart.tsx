@@ -8,6 +8,8 @@ import {
   formatRelativeHourShort,
   formatTokens,
   formatUsd,
+  formatUsdTick,
+  formatUsageCost,
 } from "@t3tools/shared/usageFormat";
 import { PROVIDER_ORDER, PROVIDER_PRESENTATION } from "./usageProviders";
 
@@ -344,7 +346,7 @@ export function UsageProviderChart({
               className="absolute right-0 -translate-y-1/2 text-3xs text-muted-foreground tabular-nums"
               style={{ top: `${(toY(tick) / VIEW_HEIGHT) * 100}%` }}
             >
-              {tick === 0 ? "0" : format(tick)}
+              {tick === 0 ? "0" : metric === "cost" ? formatUsdTick(tick) : formatTokens(tick)}
             </span>
           ))}
         </div>
@@ -439,7 +441,15 @@ export function UsageProviderChart({
                       {label}
                     </span>
                     <span className="text-foreground tabular-nums">
-                      {!recorded ? "No data" : value == null ? "Unpriced" : format(value)}
+                      {!recorded
+                        ? "No data"
+                        : value == null
+                          ? "Unpriced"
+                          : metric === "cost"
+                            ? formatUsageCost(
+                                byPeriod.get(hoveredPeriod)!.byProvider.get(provider)!,
+                              )
+                            : format(value)}
                     </span>
                   </div>
                 );
@@ -453,7 +463,9 @@ export function UsageProviderChart({
                     ? "No data"
                     : hoveredColumn?.total == null
                       ? "Unpriced"
-                      : format(hoveredColumn.total)}
+                      : metric === "cost"
+                        ? formatUsageCost(byPeriod.get(hoveredPeriod)!)
+                        : format(hoveredColumn.total)}
                 </span>
               </div>
             </div>

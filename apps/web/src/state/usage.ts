@@ -102,6 +102,10 @@ export function usageReportView(
   hourly = false,
 ): MergedUsage {
   const totals = usageReportTotals(report);
+  const partial = (row: UsageReport["groups"][number]) =>
+    row.unpricedModelEntries === undefined
+      ? totals.costQuality.unpricedShare > 0
+      : Number(row.unpricedModelEntries) > 0;
   const providerRows: ProviderTotals[] = (providers?.groups ?? []).flatMap((row) =>
     row.provider == null
       ? []
@@ -109,6 +113,7 @@ export function usageReportView(
           {
             provider: row.provider,
             costKnown: row.costUsdNanos !== null,
+            costPartial: partial(row),
             costUsd: Number(row.costUsdNanos ?? 0) / 1e9,
             totalTokens: Number(row.totals.tokens),
             records: Number(row.totals.records),
@@ -128,6 +133,7 @@ export function usageReportView(
               provider: row.provider,
               model: row.model ?? "Unknown model",
               costKnown: row.costUsdNanos !== null,
+              costPartial: partial(row),
               costUsd: Number(row.costUsdNanos ?? 0) / 1e9,
               totalTokens: Number(row.totals.tokens),
               tokens: {
@@ -138,9 +144,13 @@ export function usageReportView(
                 outputTokens: Number(row.totals.output),
                 reasoningTokens: Number(row.totals.reasoning),
               },
-              unpricedTokens: row.costUsdNanos === null ? Number(row.totals.tokens) : 0,
+              unpricedTokens: Number(
+                row.unpricedTokens ?? (row.costUsdNanos === null ? row.totals.tokens : 0),
+              ),
               records: Number(row.totals.records),
-              unpricedRecords: row.costUsdNanos === null ? Number(row.totals.records) : 0,
+              unpricedRecords: Number(
+                row.unpricedModelEntries ?? (row.costUsdNanos === null ? row.totals.records : 0),
+              ),
               costShare:
                 totals.costUsd > 0 ? Number(row.costUsdNanos ?? 0) / 1e9 / totals.costUsd : 0,
               tokenShare:
@@ -156,10 +166,11 @@ export function usageReportView(
       hourStart: string;
       costUsd: number;
       costKnown: boolean;
+      costPartial: boolean;
       totalTokens: number;
       byProvider: Map<
         ProviderTotals["provider"],
-        { costUsd: number; totalTokens: number; costKnown: boolean }
+        { costUsd: number; totalTokens: number; costKnown: boolean; costPartial: boolean }
       >;
     }
   >();
@@ -170,6 +181,7 @@ export function usageReportView(
       hourStart: row.period,
       costUsd: 0,
       costKnown: false,
+      costPartial: false,
       totalTokens: 0,
       byProvider: new Map(),
     };
@@ -177,11 +189,13 @@ export function usageReportView(
     const totalTokens = Number(row.totals.tokens);
     bucket.costUsd += costUsd;
     bucket.costKnown ||= row.costUsdNanos !== null;
+    bucket.costPartial ||= partial(row);
     bucket.totalTokens += totalTokens;
     bucket.byProvider.set(row.provider, {
       costUsd,
       totalTokens,
       costKnown: row.costUsdNanos !== null,
+      costPartial: partial(row),
     });
     buckets.set(row.period, bucket);
   }
@@ -189,10 +203,13 @@ export function usageReportView(
   const byEnvironment = (report?.groups ?? []).map((row) => ({
     environmentId: EnvironmentId.make(row.key),
     costKnown: row.costUsdNanos !== null,
+    costPartial: partial(row),
     costUsd: Number(row.costUsdNanos ?? 0) / 1e9,
     totalTokens: Number(row.totals.tokens),
     records: Number(row.totals.records),
-    unpricedRecords: row.costUsdNanos === null ? Number(row.totals.records) : 0,
+    unpricedRecords: Number(
+      row.unpricedModelEntries ?? (row.costUsdNanos === null ? row.totals.records : 0),
+    ),
     sessions: Number(row.totals.records),
     costShare: totals.costUsd > 0 ? Number(row.costUsdNanos ?? 0) / 1e9 / totals.costUsd : 0,
     tokenShare: totals.totalTokens > 0 ? Number(row.totals.tokens) / totals.totalTokens : 0,
@@ -204,7 +221,7 @@ export function usageReportView(
     speedCost: { standard: 0, fast: 0, ultrafast: 0, premium: 0 },
     models: modelRows,
     providers: providerRows,
-    daily: hourly ? [] : periodRows,
+    daily: hourly ? [] : periodRows.map(({ hourStart: _hourStart, ...day }) => day),
     hourly: hourly ? periodRows : [],
     byEnvironment,
     contributingEnvironments: byEnvironment.map((row) => row.environmentId),

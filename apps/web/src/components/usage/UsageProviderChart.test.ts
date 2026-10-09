@@ -142,3 +142,60 @@ describe("hourly chart columns", () => {
     ).toEqual([null, 4, null]);
   });
 });
+
+it("Past 24h plots recorded clock-hour rows inside minute-exact window edges", async () => {
+  const { enumerateHourStarts } = await import("@t3tools/shared/usageFormat");
+  const { usageReportView } = await import("../../state/usage");
+  const { recordedReport, statistics } = await import("./usageTestFixtures");
+  const report = recordedReport();
+  const periods = recordedReport({
+    groups: [
+      {
+        key: "hour",
+        period: "2026-10-07T12:00:00.000Z",
+        provider: "claude",
+        totals: statistics("919000"),
+        costUsdNanos: null,
+      },
+    ],
+  });
+  const rows = usageReportView(report, null, null, periods, true).hourly;
+  const hours = enumerateHourStarts("2026-10-06T12:37:00.000Z", "2026-10-07T12:37:00.000Z");
+  expect(
+    buildPeriodColumns(hours, new Map(rows.map((row) => [row.hourStart, row])), "tokens").at(-1)
+      ?.total,
+  ).toBe(919000);
+  expect(hours).toHaveLength(25);
+});
+
+it.each([0.000949, 0.0199, 0.099])(
+  "Positive sub-cent chart ticks remain distinguishable at a peak of %s",
+  async (peak) => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { UsageProviderChart } = await import("./UsageProviderChart");
+    const html = renderToStaticMarkup(
+      createElement(UsageProviderChart, {
+        providers: ["claude"],
+        days: ["2026-10-07"],
+        daily: [
+          {
+            day: "2026-10-07",
+            costUsd: peak,
+            totalTokens: 100,
+            byProvider: new Map([["claude" as const, { costUsd: peak, totalTokens: 100 }]]),
+          },
+        ],
+        hours: [],
+        hourly: [],
+        metric: "cost",
+        resolution: "day",
+        timeZone: "UTC",
+        referenceTime: undefined,
+      }),
+    );
+    const ticks = [...html.matchAll(/<span[^>]*>(\$[\d.]+)<\/span>/g)].map((match) => match[1]);
+    expect(ticks.length).toBeGreaterThan(1);
+    expect(new Set(ticks).size).toBe(ticks.length);
+  },
+);

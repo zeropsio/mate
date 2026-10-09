@@ -151,6 +151,34 @@ const database = <E>(run: Effect.Effect<void, E, SqlClient.SqlClient | Leader>) 
 describe("HQ immutable usage", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
+      "The Usage report prices an Opus context variant without changing its recorded model",
+      () =>
+        database(
+          Effect.gen(function* () {
+            const { sql, leader, ledger, sender, batch } = yield* setup;
+            yield* ledger.receive(
+              sender,
+              batch([fact("variant", "919000", undefined, "claude-opus-5-5[1m]")]),
+            );
+            yield* installAutomaticUsageRates(sql, leader, {
+              "claude-opus-5-5": {
+                input_cost_per_token: 0.000005,
+                output_cost_per_token: 0.000025,
+              },
+            });
+            const report = yield* readUsageReport(
+              sql,
+              "owner",
+              { kind: "agentUsage", query: { ...baseQuery, groupBy: "model" } },
+              access,
+              new Map(),
+            );
+            assert.strictEqual(report.pricing.costUsdNanos, "4595000000");
+            assert.strictEqual(report.groups[0]?.model, "claude-opus-5-5[1m]");
+          }),
+        ),
+    );
+    it.effect(
       "one multi-model turn counts once while native header and model charges stay separate",
       () =>
         database(
@@ -910,6 +938,8 @@ describe("HQ immutable usage", () => {
           assert.strictEqual(report.pricing.costUsdNanos, "100000");
           assert.strictEqual(report.pricing.pricedModelEntries, "1");
           assert.strictEqual(report.pricing.unpricedModelEntries, "1");
+          assert.strictEqual(report.groups[0]?.unpricedModelEntries, "1");
+          assert.strictEqual(report.groups[0]?.unpricedTokens, "200");
         }),
       ),
     );

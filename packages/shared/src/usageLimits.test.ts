@@ -74,7 +74,7 @@ describe("pace", () => {
       "resets in 3d 3h",
     );
     expect(formatResetsIn({ ...window, resetsAt: "2026-09-03T11:00:00.000Z" }, now)).toBe(
-      "resets now",
+      "reset confirmation pending",
     );
   });
 });
@@ -980,4 +980,10 @@ describe("limitsPage: painted once, least quota first, never none before it is k
     const two = page({}, ["a", at("connected", [roomy])], ["b", at("connecting")]);
     expect([one.tellApart, two.tellApart]).toEqual([false, true]);
   });
+});
+
+it("A passed quota reset awaits confirmation instead of claiming a renewal now", () => {
+  expect(formatResetsIn({ ...window, resetsAt: "2026-09-03T11:00:00.000Z" }, now)).toBe(
+    "reset confirmation pending",
+  );
 });

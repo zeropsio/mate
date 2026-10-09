@@ -10,10 +10,16 @@ const state = vi.hoisted(() => ({
   pending: false,
   failedNeighbor: false,
   presentations: new Map(),
+  now: 0,
 }));
 vi.mock("@effect/atom-react", async (original) => ({
   ...(await original<object>()),
   useAtomValue: () => state.presentations,
+}));
+vi.mock("../../zerops/useNowMs", () => ({ useNowMs: () => state.now }));
+vi.mock("./usageShortcuts", async (original) => ({
+  ...(await original<object>()),
+  resolveUsageShortcut: () => "usage.period.day",
 }));
 vi.mock("../../env", () => ({ isElectron: false }));
 vi.mock("@tanstack/react-router", () => ({
@@ -68,6 +74,17 @@ vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
           ])
         : new Map(),
   }),
+}));
+vi.mock("../ui/tooltip", () => ({
+  Tooltip: "div",
+  TooltipPopup: "div",
+  TooltipTrigger: ({
+    render,
+    children,
+  }: {
+    render?: React.ReactElement;
+    children?: React.ReactNode;
+  }) => (render ? cloneElement(render, undefined, children) : <div>{children}</div>),
 }));
 vi.mock("../ui/button", () => ({ Button: "button", InlineButton: "button" }));
 vi.mock("../ui/scroll-area", () => ({ ScrollArea: "div" }));
@@ -270,4 +287,73 @@ it("an empty answer beside a terminal failure names the next action without clai
   expect(text(tree)).not.toContain("Reading organization usage from HQ");
   expect(text(tree)).toContain("Reconnect or retry HQ access");
   act(() => tree.unmount());
+});
+
+it("Earlier history cannot select Past 24h through the page shortcut", () => {
+  const tree = mount(<UsagePage scope={{}} onScopeChange={vi.fn()} />);
+  const history = tree.root.findAllByProps({ "aria-label": "Usage history" })[0]!;
+  act(() => history.props.onValueChange(["legacy-scanner"]));
+  act(() => window.dispatchEvent(new Event("keydown")));
+  expect(tree.root.findAllByProps({ "aria-label": "Usage period" })[0]!.props.value).not.toBe([
+    "1",
+  ]);
+  expect(text(tree)).not.toContain('"value":["1"]');
+  act(() => tree.unmount());
+});
+it("Limits receives the current shared clock while Usage stays open", () => {
+  state.baseline = "resolved";
+  vi.spyOn(Date, "now").mockImplementation(() => state.now);
+  state.now = Date.parse("2026-09-03T12:00:00.000Z");
+  state.presentations = new Map([
+    [
+      EnvironmentId.make("env-a"),
+      {
+        ...presentation("connected"),
+        serverConfig: {
+          providers: [
+            {
+              instanceId: "codex",
+              driver: "codex",
+              enabled: true,
+              installed: true,
+              version: null,
+              status: "ready",
+              auth: { status: "authenticated" },
+              checkedAt: "2026-09-03T12:00:00.000Z",
+              models: [],
+              slashCommands: [],
+              skills: [],
+              usageLimits: {
+                checkedAt: "2026-09-03T12:00:00.000Z",
+                windows: [
+                  {
+                    id: "session",
+                    kind: "session",
+                    label: "Session",
+                    usedPercent: 40,
+                    windowDurationMins: 300,
+                    resetsAt: "2026-09-03T14:00:00.000Z",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ],
+  ]);
+  const page = <UsagePage scope={{}} onScopeChange={vi.fn()} />;
+  const tree = mount(page);
+  act(() =>
+    tree.root.findAllByProps({ "aria-label": "Usage metric" })[0]!.props.onValueChange(["limits"]),
+  );
+  expect(text(tree)).toContain("resets in 2h 0m");
+  state.now = Date.parse("2026-09-03T13:00:00.000Z");
+  act(() => tree.update(cloneElement(page)));
+  expect(text(tree)).toContain("resets in 1h 0m");
+  state.now = Date.parse("2026-09-03T14:01:00.000Z");
+  act(() => tree.update(cloneElement(page)));
+  expect(text(tree)).toContain("reset confirmation pending");
+  act(() => tree.unmount());
+  vi.restoreAllMocks();
 });

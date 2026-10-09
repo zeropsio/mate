@@ -1,4 +1,4 @@
-import { formatPercent, formatTokens, formatUsd } from "@t3tools/shared/usageFormat";
+import { formatPercent, formatTokens, formatUsageCost } from "@t3tools/shared/usageFormat";
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 import type * as React from "react";
@@ -39,18 +39,18 @@ function personColor(person: UsagePersonRow, index: number): string {
 
 function amount(
   metric: UsageDimensionMetric,
-  row: { costUsd: number; totalTokens: number; costKnown?: boolean },
+  row: { costUsd: number; totalTokens: number; costKnown?: boolean; costPartial?: boolean },
 ) {
   return metric === "cost"
     ? row.costKnown === false
       ? "Unpriced"
-      : formatUsd(row.costUsd)
+      : formatUsageCost(row)
     : formatTokens(row.totalTokens);
 }
 
 function share(
   metric: UsageDimensionMetric,
-  row: { costShare: number; tokenShare: number; costKnown?: boolean },
+  row: { costShare: number; tokenShare: number; costKnown?: boolean; costPartial?: boolean },
 ) {
   if (metric === "cost" && row.costKnown === false) return "—";
   return formatPercent(metric === "cost" ? row.costShare : row.tokenShare);

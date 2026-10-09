@@ -25,6 +25,7 @@ export interface EnvironmentUsage {
 
 export interface ProviderTotals {
   readonly costKnown?: boolean;
+  readonly costPartial?: boolean;
   readonly provider: UsageProviderKind;
   readonly costUsd: number;
   readonly totalTokens: number;
@@ -36,6 +37,7 @@ export interface ProviderTotals {
 
 export interface ModelTotals {
   readonly costKnown?: boolean;
+  readonly costPartial?: boolean;
   readonly model: string;
   readonly provider: UsageProviderKind;
   readonly costUsd: number;
@@ -66,24 +68,26 @@ export function isModelCostUnknown(model: ModelTotals): boolean {
 
 export interface DailyTotals {
   readonly costKnown?: boolean;
+  readonly costPartial?: boolean;
   readonly day: string;
   readonly costUsd: number;
   readonly totalTokens: number;
   readonly byProvider: ReadonlyMap<
     UsageProviderKind,
-    { costUsd: number; totalTokens: number; costKnown?: boolean }
+    { costUsd: number; totalTokens: number; costKnown?: boolean; costPartial?: boolean }
   >;
 }
 
 export interface HourlyTotals {
   readonly costKnown?: boolean;
+  readonly costPartial?: boolean;
   readonly day: string;
   readonly hourStart: string;
   readonly costUsd: number;
   readonly totalTokens: number;
   readonly byProvider: ReadonlyMap<
     UsageProviderKind,
-    { costUsd: number; totalTokens: number; costKnown?: boolean }
+    { costUsd: number; totalTokens: number; costKnown?: boolean; costPartial?: boolean }
   >;
 }
 
@@ -118,6 +122,7 @@ export interface SpeedCost {
 /** One environment's own share of the merge, after de-duplication. */
 export interface EnvironmentTotals {
   readonly costKnown?: boolean;
+  readonly costPartial?: boolean;
   readonly environmentId: EnvironmentId;
   readonly costUsd: number;
   readonly totalTokens: number;
@@ -459,7 +464,7 @@ export function mergeUsage(
       totalTokens: number;
       byProvider: Map<
         UsageProviderKind,
-        { costUsd: number; totalTokens: number; costKnown?: boolean }
+        { costUsd: number; totalTokens: number; costKnown?: boolean; costPartial?: boolean }
       >;
     }
   >();
@@ -472,7 +477,7 @@ export function mergeUsage(
       totalTokens: number;
       byProvider: Map<
         UsageProviderKind,
-        { costUsd: number; totalTokens: number; costKnown?: boolean }
+        { costUsd: number; totalTokens: number; costKnown?: boolean; costPartial?: boolean }
       >;
     }
   >();
@@ -486,7 +491,7 @@ export function mergeUsage(
     sessions: number;
     providers: Map<
       UsageProviderKind,
-      { costUsd: number; totalTokens: number; costKnown?: boolean }
+      { costUsd: number; totalTokens: number; costKnown?: boolean; costPartial?: boolean }
     >;
   }[] = [];
 

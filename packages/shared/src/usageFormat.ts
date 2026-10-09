@@ -18,7 +18,28 @@ const CURRENCY = new Intl.NumberFormat("en-US", {
 const INTEGER = new Intl.NumberFormat("en-US");
 
 export function formatUsd(value: number): string {
-  return CURRENCY.format(value);
+  return value > 0 && value < 0.01 ? "<$0.01" : CURRENCY.format(value);
+}
+
+/** A displayed subtotal keeps its exclusion visible beside the amount. */
+export function formatUsageCost(row: {
+  costUsd: number;
+  costKnown?: boolean;
+  costPartial?: boolean;
+}): string {
+  return row.costKnown === false
+    ? "Unpriced"
+    : `${formatUsd(row.costUsd)}${row.costPartial ? " · partial" : ""}`;
+}
+
+export function formatUsdTick(value: number): string {
+  return value > 0 && value < 1
+    ? new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumSignificantDigits: 3,
+      }).format(value)
+    : formatUsd(value);
 }
 
 export function formatCount(value: number): string {
@@ -120,7 +141,7 @@ export function enumerateHourStarts(sinceTime: string, untilTime: string): reado
   const end = Date.parse(untilTime);
   if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return starts;
 
-  for (let cursor = start; cursor < end; cursor += HOUR_MS) {
+  for (let cursor = Math.floor(start / HOUR_MS) * HOUR_MS; cursor < end; cursor += HOUR_MS) {
     starts.push(new Date(cursor).toISOString());
   }
   return starts;

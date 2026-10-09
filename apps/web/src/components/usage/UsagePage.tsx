@@ -1,6 +1,7 @@
+import { useNowMs } from "../../zerops/useNowMs";
 import { useAtomValue } from "@effect/atom-react";
 import { type EnvironmentId, type UsageProviderKind } from "@t3tools/contracts";
-import { InfoIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { RefreshCwIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
 
 import {
@@ -37,6 +38,7 @@ import {
   formatPercent,
   formatTokens,
   formatUsd,
+  formatUsageCost,
   makeWindow,
 } from "@t3tools/shared/usageFormat";
 import { Button, InlineButton } from "../ui/button";
@@ -44,7 +46,6 @@ import { ScrollArea } from "../ui/scroll-area";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SidebarInset } from "../ui/sidebar";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
-import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
@@ -258,9 +259,9 @@ export function UsagePage({
   const activeProviders = useMemo(() => providersWithUsage(merged.providers), [merged.providers]);
   const timeValueColumnWidth = `${60 / (activeProviders.length + 2)}%`;
 
-  const [limitsNow, setLimitsNow] = useState(() => Date.now());
+  const limitsNow = useNowMs();
   const selectWindow = (days: number) => {
-    if (!isUsageWindowDays(days)) return;
+    if (!isUsageWindowDays(days) || (provenance === "legacy-scanner" && days === 1)) return;
     const nextPreferences = { metric, windowDays: days };
     setPreferences(nextPreferences);
     saveUsagePagePreferences(nextPreferences);
@@ -270,7 +271,6 @@ export function UsagePage({
     });
   };
   const selectMetric = (nextMetric: UsageMetric) => {
-    if (nextMetric === "limits") setLimitsNow(Date.now());
     const nextPreferences = { metric: nextMetric, windowDays };
     setPreferences(nextPreferences);
     saveUsagePagePreferences(nextPreferences);
@@ -310,9 +310,7 @@ export function UsagePage({
           refreshes.push(refreshProviders({ environmentId, input: {} }));
         }
       }
-      void Promise.allSettled(refreshes).then(() => {
-        setLimitsNow(Date.now());
-      });
+      void Promise.allSettled(refreshes);
       return;
     }
     const nextWindow = makeWindow(windowDays, undefined, isPast24Hours ? "hour" : "day");
@@ -567,26 +565,9 @@ export function UsagePage({
                         {sessionsLabel}
                         {metric === "cost" && (
                           <>
-                            {" · API-equivalent estimate for priced usage"}
-                            {merged.costQuality.unpricedShare > 0 && (
-                              <>
-                                {" "}
-                                <Popover>
-                                  <PopoverTrigger
-                                    openOnHover
-                                    render={<InlineButton tone="muted" />}
-                                    aria-label="Unpriced usage details"
-                                  >
-                                    <InfoIcon className="size-3" aria-hidden />
-                                  </PopoverTrigger>
-                                  <PopoverPopup side="top" tooltipStyle>
-                                    API-equivalent estimate excludes{" "}
-                                    {formatPercent(merged.costQuality.unpricedShare)} unpriced model
-                                    entries.
-                                  </PopoverPopup>
-                                </Popover>
-                              </>
-                            )}
+                            {merged.costQuality.unpricedShare > 0
+                              ? ` · ${merged.costQuality.unpricedShare === 1 ? "No usable prices" : "Partial estimate"} · ${formatCount(Number(report?.pricing.unpricedModelEntries ?? 0))} unpriced model entries excluded`
+                              : " · API-equivalent estimate for priced usage"}
                           </>
                         )}
                         {whoSummary}
@@ -629,14 +610,14 @@ export function UsagePage({
                               {metric === "cost"
                                 ? totals?.costKnown === false
                                   ? "Unpriced"
-                                  : formatUsd(totals?.costUsd ?? 0)
+                                  : formatUsageCost(totals)
                                 : formatTokens(totals?.totalTokens ?? 0)}
                             </span>
                           </div>
                           <span className="text-xs text-muted-foreground">
                             {metric === "cost"
                               ? `${totals.costKnown === false ? "Unpriced" : `${formatPercent(share)} of priced cost`} · ${formatTokens(totals.totalTokens)} tokens`
-                              : `${formatPercent(share)} of tokens · ${totals?.costKnown === false ? "Unpriced" : formatUsd(totals?.costUsd ?? 0)}`}
+                              : `${formatPercent(share)} of tokens · ${totals?.costKnown === false ? "Unpriced" : formatUsageCost(totals)}`}
                           </span>
                         </div>
                       );
@@ -805,7 +786,7 @@ export function UsagePage({
                                   {isModelCostUnknown(model) ? (
                                     <span className="text-muted-foreground">Unpriced</span>
                                   ) : (
-                                    formatUsd(model.costUsd)
+                                    formatUsageCost(model)
                                   )}
                                 </td>
                                 <td className="py-2 text-right text-muted-foreground tabular-nums">
@@ -876,13 +857,11 @@ export function UsagePage({
                                     ? "No data"
                                     : period.byProvider.get(provider)?.costKnown === false
                                       ? "Unpriced"
-                                      : formatUsd(period.byProvider.get(provider)?.costUsd ?? 0)}
+                                      : formatUsageCost(period.byProvider.get(provider)!)}
                                 </td>
                               ))}
                               <td className="py-2 text-right text-foreground tabular-nums">
-                                {period.costKnown === false
-                                  ? "Unpriced"
-                                  : formatUsd(period.costUsd)}
+                                {period.costKnown === false ? "Unpriced" : formatUsageCost(period)}
                               </td>
                               <td className="py-2 text-right text-muted-foreground tabular-nums">
                                 {formatTokens(period.totalTokens)}

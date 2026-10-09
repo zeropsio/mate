@@ -246,6 +246,8 @@ export const UsageReport = Schema.Struct({
       totals: UsageStatistics,
       nativeCosts: Schema.optionalKey(Schema.Record(Schema.String, UsageQuantity)),
       costUsdNanos: Schema.NullOr(UsageQuantity),
+      unpricedModelEntries: Schema.optionalKey(UsageQuantity),
+      unpricedTokens: Schema.optionalKey(UsageQuantity),
     }),
   ).check(Schema.isMaxLength(200)),
   groupsMore: Schema.Boolean,

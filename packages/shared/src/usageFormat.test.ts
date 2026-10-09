@@ -47,11 +47,11 @@ describe("hourly usage formatting", () => {
   });
 
   it("enumerates 24 fixed buckets across a rolling window", () => {
-    const hours = enumerateHourStarts("2026-08-10T12:37:00.000Z", "2026-08-11T12:37:00.000Z");
+    const hours = enumerateHourStarts("2026-08-10T12:00:00.000Z", "2026-08-11T12:00:00.000Z");
 
     expect(hours).toHaveLength(24);
-    expect(hours[0]).toBe("2026-08-10T12:37:00.000Z");
-    expect(hours[23]).toBe("2026-08-11T11:37:00.000Z");
+    expect(hours[0]).toBe("2026-08-10T12:00:00.000Z");
+    expect(hours[23]).toBe("2026-08-11T11:00:00.000Z");
   });
 
   it("formats rolling instants in the requested time zone", () => {

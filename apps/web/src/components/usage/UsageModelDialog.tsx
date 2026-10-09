@@ -1,4 +1,9 @@
-import { formatPercent, formatTokens, formatUsd } from "@t3tools/shared/usageFormat";
+import {
+  formatPercent,
+  formatTokens,
+  formatUsd,
+  formatUsageCost,
+} from "@t3tools/shared/usageFormat";
 import { isModelCostUnknown, type ModelTotals } from "@t3tools/shared/usageMerge";
 import { useMemo } from "react";
 
@@ -63,7 +68,7 @@ export function UsageModelDialog({
   const hitRate = componentsKnown ? cacheHitRate(model) : null;
   const perMillion = costPerMillionTokens(model);
   const stats = [
-    { label: "Cost", value: costUnknown ? "Unpriced" : formatUsd(model.costUsd) },
+    { label: "Cost", value: costUnknown ? "Unpriced" : formatUsageCost(model) },
     { label: "Tokens", value: formatTokens(model.totalTokens) },
     perMillion === null ? null : { label: "Per 1M tokens", value: formatUsd(perMillion) },
     hitRate === null ? null : { label: "Cache hit", value: formatPercent(hitRate) },
@@ -84,7 +89,7 @@ export function UsageModelDialog({
           </div>
           <DialogDescription>
             {presentation.label}
-            {costUnknown ? "" : ` · ${formatPercent(model.costShare)} of cost`}
+            {costUnknown ? "" : ` · ${formatPercent(model.costShare)} of priced cost`}
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>

@@ -11,6 +11,7 @@ import { recordedReport, statistics } from "./usageTestFixtures";
 const testState = vi.hoisted(() => ({
   identities: new Map() as ReadonlyMap<EnvironmentId, UsageEnvironmentIdentity>,
   owners: "resolved" as "resolving" | "resolved" | "unavailable",
+  hourly: true,
   metric: "cost" as "cost" | "tokens" | "limits",
   breakdown: "time" as "auto" | "person" | "project" | "mate" | "model" | "time",
   report: null as UsageReport | null,
@@ -31,15 +32,15 @@ vi.mock("react", async (original) => {
     ...actual,
     useState: (initial: unknown) => [
       initial === readUsagePagePreferences
-        ? { metric: testState.metric, windowDays: 1 }
+        ? { metric: testState.metric, windowDays: testState.hourly ? 1 : 7 }
         : typeof initial === "function"
           ? {
-              days: 1,
+              days: testState.hourly ? 1 : 7,
               window: {
                 sinceDay: "2026-10-06",
                 untilDay: "2026-10-07",
                 timeZone: "UTC",
-                resolution: "hour",
+                resolution: testState.hourly ? "hour" : "day",
                 sinceTime: "2026-10-06T12:37:00.000Z",
                 untilTime: "2026-10-07T12:37:00.000Z",
               },
@@ -69,7 +70,7 @@ vi.mock("../../state/usage", async (original) => {
               testState.models,
               testState.providers,
               testState.periods,
-              true,
+              testState.hourly,
             ),
             overall: actual.usageReportView(testState.report),
             report: testState.report,
@@ -155,6 +156,7 @@ function renderPage(scope: UsageScope = {}) {
 const bodyOf = (markup: string) => markup.match(/<tbody>(.*?)<\/tbody>/)?.[1] ?? "";
 beforeEach(() => {
   testState.metric = "cost";
+  testState.hourly = true;
   testState.breakdown = "time";
   testState.identities = new Map();
   testState.read = null;
@@ -431,6 +433,7 @@ describe("recorded HQ usage presentation", () => {
     });
     const markup = renderPage();
     expect(markup).toContain("Unpriced");
+    expect(markup).not.toContain("Partial estimate");
     expect(markup).not.toContain("$0.00");
   });
   it("a provider omitted from a recorded period is unknown rather than free", () => {
@@ -521,4 +524,62 @@ describe("recorded HQ usage presentation", () => {
     const markup = renderPage();
     expect(markup).toContain("Unknown");
   });
+});
+
+it("A partial Usage estimate visibly names the excluded model entries", () => {
+  testState.report = recordedReport({
+    pricing: {
+      ...recordedReport().pricing,
+      pricedModelEntries: "1",
+      unpricedModelEntries: "21",
+      costUsdNanos: "949000",
+    },
+  });
+  const html = renderPage();
+  expect(html).toContain("Partial estimate");
+  expect(html).toContain("21 unpriced model entries excluded");
+});
+it("A positive sub-cent Usage amount is never presented as zero dollars", () => {
+  testState.report = recordedReport({
+    pricing: { ...recordedReport().pricing, costUsdNanos: "949000" },
+  });
+  expect(renderPage()).toContain("&lt;$0.01");
+});
+
+it("The Day table renders the recorded UTC day instead of a local hour", () => {
+  testState.hourly = false;
+  testState.periods = recordedReport({
+    groups: [
+      {
+        key: "day",
+        period: "2026-10-07",
+        provider: "codex",
+        totals: statistics(),
+        costUsdNanos: "1000000000",
+      },
+    ],
+  });
+  expect(bodyOf(renderPage())).toContain("Oct 7");
+});
+it("A coding agent with partly priced usage labels its subtotal as partial", () => {
+  testState.providers = recordedReport({
+    groups: [
+      {
+        key: "codex",
+        provider: "codex",
+        totals: statistics(),
+        costUsdNanos: "7830000000",
+        unpricedModelEntries: "1",
+        unpricedTokens: "900",
+      },
+    ],
+  });
+  expect(renderPage().includes("$7.83 · partial")).toBe(true);
+});
+
+it("A fully priced zero Usage record remains a known zero amount", () => {
+  testState.report = recordedReport({
+    pricing: { ...recordedReport().pricing, costUsdNanos: "0" },
+  });
+  expect(renderPage()).toContain("$0.00");
 });

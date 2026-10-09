@@ -357,12 +357,13 @@ export const readUsageReport = Effect.fnUntraced(function* (
           : "";
       const groupColumns = byPeriod ? "1,2,3" : q.groupBy === "provider" ? "1,2" : "1";
       const costSum = "CASE WHEN count(cost)>0 THEN trunc(sum(cost))::text ELSE NULL END";
+      const unpricedSums = `coalesce(sum(CASE WHEN cost IS NULL THEN (statistics->>'records')::numeric ELSE 0 END),0)::text AS "unpricedModelEntries",coalesce(sum(CASE WHEN cost IS NULL THEN (statistics->>'tokens')::numeric ELSE 0 END),0)::text AS "unpricedTokens"`;
       const grouped =
         q.groupBy === "model"
-          ? `grouped AS (SELECT coalesce(${group},'unresolved') AS key,provider,nullif(model,'') AS model,${sums("statistics")} AS totals,hq_usage_sum(native_cost) AS "nativeCosts",${costSum} AS "costUsdNanos" FROM priced GROUP BY 1,2,3)`
+          ? `grouped AS (SELECT coalesce(${group},'unresolved') AS key,provider,nullif(model,'') AS model,${sums("statistics")} AS totals,hq_usage_sum(native_cost) AS "nativeCosts",${costSum} AS "costUsdNanos",${unpricedSums} FROM priced GROUP BY 1,2,3)`
           : `grouped_headlines AS (SELECT coalesce(${group},'unresolved') AS key,${extras}${sums("statistics")} AS totals,hq_usage_sum(native_cost) AS "nativeCosts" FROM headlines GROUP BY ${groupColumns}),
-          grouped_costs AS (SELECT coalesce(${group},'unresolved') AS key,${costSum} AS "costUsdNanos" FROM priced GROUP BY 1),
-          grouped AS (SELECT h.*,c."costUsdNanos" FROM grouped_headlines h LEFT JOIN grouped_costs c USING(key))`;
+          grouped_costs AS (SELECT coalesce(${group},'unresolved') AS key,${costSum} AS "costUsdNanos",${unpricedSums} FROM priced GROUP BY 1),
+          grouped AS (SELECT h.*,c."costUsdNanos",c."unpricedModelEntries",c."unpricedTokens" FROM grouped_headlines h LEFT JOIN grouped_costs c USING(key))`;
       const [summary] = yield* sql.unsafe<{
         readonly totals: UsageStatistics;
         readonly cost: string | null;

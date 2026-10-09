@@ -527,8 +527,7 @@ export const READING_LIMITS_LINE = "Reading subscription limits…";
 
 /**
  * Subscription quota windows from every connected environment's providers.
- * The page advances `now` on explicit refresh rather than ticking: a live
- * clock would repaint the page for no decision-changing gain. The cards appear as answers arrive, least quota left first;
+ * The page supplies the shared clock. The cards appear as answers arrive, least quota left first;
  * then they stand as painted, a late answer joining at the end, the reading
  * line under them while one is still on its way.
  */

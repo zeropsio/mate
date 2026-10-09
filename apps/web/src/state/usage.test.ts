@@ -86,3 +86,14 @@ describe("recorded consumption report selection", () => {
     },
   );
 });
+
+it("A daily Usage input produces a day row rather than an hourly row", async () => {
+  const { usageReportView } = await import("./usage");
+  const report = recordedReport();
+  const periods = recordedReport({
+    groups: [{ ...report.groups[0]!, provider: "claude", period: "2026-10-07" }],
+  });
+  const row = usageReportView(report, null, null, periods).daily[0];
+  expect(row).toHaveProperty("day", "2026-10-07");
+  expect(row).not.toHaveProperty("hourStart");
+});

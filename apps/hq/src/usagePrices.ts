@@ -46,7 +46,7 @@ const priceNanos = (rate: number, multiplier: number) => {
     ? units
     : `${units.slice(0, -scale)}.${units.slice(-scale)}`.replace(/0+$/u, "").replace(/\.$/u, "");
 };
-/** Exact published model IDs only. Unsupported modifiers remain unpriced. */
+/** Published prices plus the Claude context selector used by our catalog. Exact variant prices win. */
 export const automaticUsageRates = (
   document: Readonly<Record<string, unknown>>,
 ): ReadonlyArray<AutomaticUsageRate> =>
@@ -73,19 +73,25 @@ export const automaticUsageRates = (
         ["fast-cache-1h", fast, rate.cache_creation_input_token_cost_above_1hr],
       );
     }
-    return bands.map(([pricingBand, multiple, cacheWrite]) => ({
-      model,
-      pricingBand,
-      rates: {
-        uncachedInput: priceNanos(rate.input_cost_per_token!, multiple),
-        output: priceNanos(rate.output_cost_per_token!, multiple),
-        cachedInput:
-          rate.cache_read_input_token_cost === undefined
-            ? null
-            : priceNanos(rate.cache_read_input_token_cost, multiple),
-        cacheCreation: cacheWrite === undefined ? null : priceNanos(cacheWrite, multiple),
-      },
-    }));
+    const models =
+      /^claude-(?:opus|sonnet|haiku)-[\d-]+$/.test(model) && document[`${model}[1m]`] === undefined
+        ? [model, `${model}[1m]`]
+        : [model];
+    return models.flatMap((model) =>
+      bands.map(([pricingBand, multiple, cacheWrite]) => ({
+        model,
+        pricingBand,
+        rates: {
+          uncachedInput: priceNanos(rate.input_cost_per_token!, multiple),
+          output: priceNanos(rate.output_cost_per_token!, multiple),
+          cachedInput:
+            rate.cache_read_input_token_cost === undefined
+              ? null
+              : priceNanos(rate.cache_read_input_token_cost, multiple),
+          cacheCreation: cacheWrite === undefined ? null : priceNanos(cacheWrite, multiple),
+        },
+      })),
+    );
   });
 export const installAutomaticUsageRates = Effect.fnUntraced(function* (
   sql: SqlClient.SqlClient,
