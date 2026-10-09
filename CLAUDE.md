@@ -138,6 +138,8 @@ Every tool call re-sends the whole conversation, so a task keeps its context sma
 
 - Tests pin behaviour — state, data, protocol, guards, what a render shows and what a click does —
   never a class string, a pixel or a colour: the owner judges the look by eye.
+- A visual regression the owner reports gets a geometry witness for the relation that broke in
+  the `owner-reported layout regressions` scenario suite, in the same change as its fix.
 - TDD for behaviour: RED → GREEN, table-driven tests.
 - Atomic commits, English, never a `Co-Authored-By` trailer.
 - Delete, don't disable — no commented-out code or compat shims.
