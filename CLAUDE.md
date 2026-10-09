@@ -73,14 +73,12 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
   and links only); scripts run their own tests; logic runs typechecks of touched packages and the
   tests that import the changed files; UI adds only the scenarios that render the changed parts; a
   shared contract adds only that seam's contract suites. The full suites run once per `main` head in
-  CI; a red `main` is repaired by the lane whose commit (its `Card:` trailer) turned it red.
+  CI.
 - A lane's loop: targeted `vp test run <files>` while iterating; the gate once when the change is
-  complete, then only the failed files and the gate once more. Reviewers judge the diff and the
-  gate's receipt and never re-run the gate. Rebase once, right before the push;
+  complete, then only the failed files and the gate once more. Rebase once, right before the push;
   re-run only what the rebase changed in the lane's files. A push rejected because `main` moved is
   rebased and pushed again without re-running. `ci-local` only after touching guard ledgers,
-  exceptions, `surfaces.json`, theme tokens or tooling. At most one
-  `ci-wait <run-id | commit-sha>` (shared conditional GET cache, 20 s polling, 60 min timeout), then read
+  exceptions, `surfaces.json`, theme tokens or tooling. At most one CI watch per push, then read
   the failures once; never poll logs in a loop.
 - The integrator runs the full gates before pushing the assembled work: `node scripts/ci-local.ts`
   for CI's Check job, plus the full unit and scenario suites. CI runs the repository-wide checks;
@@ -91,9 +89,7 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
 - A release is `node scripts/release-mate.ts` (`--minor` when the client's floor rises, `--dry-run`
   prints the plan): it bumps the three versions in a throwaway worktree of `origin/main`, pushes,
   tags, and waits until `stable.json` serves the new version.
-- Tested work reaches `main` at once: when a change's checks pass, push and stop — pushing deploys
-  the hosted web and makes the code available to everyone. Mate releases and HQ deploys run in an
-  hourly batch on a green `main` (zboard); work the owner calls critical is released immediately.
+- A push to `main` deploys the hosted web client (mate.zerops.io), so `main` stays releasable.
 - Delivery to a running container is the push loop, not a release:
   `../zcp/eval/scripts/mate-dev-push.sh`. A container restart wipes a dev build; push again after.
 
