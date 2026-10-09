@@ -17,7 +17,8 @@ import {
 import type { UsageScope } from "../components/usage/usageDimensions";
 import { usageReportQuery, usageReportTotals } from "./usage.logic";
 
-const UNREAD = Atom.make<AgentUsageRead>({ kind: "reading" });
+const READING: AgentUsageRead = { kind: "reading" };
+const UNREAD = Atom.make<AgentUsageRead>(READING);
 function useReport(query: UsageReportQuery, enabled: boolean) {
   const account = useAccountDataOptional();
   const owner = agentUsageOwner(query);
@@ -36,8 +37,8 @@ const sameGeneration = (left: UsageReport | null, right: UsageReport | null) =>
   left.generation.accounting === right.generation.accounting &&
   left.generation.access === right.generation.access &&
   left.generation.pricing === right.generation.pricing;
-const matchedReport = (report: UsageReport | null, read: AgentUsageRead) =>
-  sameGeneration(report, reportOf(read)) ? reportOf(read) : null;
+const matchedRead = (report: UsageReport | null, read: AgentUsageRead): AgentUsageRead =>
+  read.kind === "read" && !sameGeneration(report, read.report) ? READING : read;
 export function useAgentUsage(
   input: UsageSummaryInput,
   scope: UsageScope,
@@ -58,29 +59,30 @@ export function useAgentUsage(
     enabled,
   );
   const report = reportOf(primary.result);
+  const sections = {
+    models: matchedRead(report, models.result),
+    providers: matchedRead(report, providers.result),
+    periods: matchedRead(report, periods.result),
+  };
   const merged = useMemo(
     () =>
       usageReportView(
         report,
-        matchedReport(report, models.result),
-        matchedReport(report, providers.result),
-        matchedReport(report, periods.result),
+        reportOf(sections.models),
+        reportOf(sections.providers),
+        reportOf(sections.periods),
         input.resolution === "hour",
       ),
-    [report, models.result, providers.result, periods.result, input.resolution],
+    [report, sections.models, sections.providers, sections.periods, input.resolution],
   );
   return {
     merged,
     overall: useMemo(() => usageReportView(reportOf(overall.result)), [overall.result]),
     report,
     overallReport: reportOf(overall.result),
-    detailPending: [models.result, providers.result, periods.result].some(
-      (read) =>
-        read.kind === "reading" || (read.kind === "read" && !sameGeneration(report, read.report)),
-    ),
-    detailUnavailable: [models.result, providers.result, periods.result].some(
-      (read) => read.kind === "unavailable",
-    ),
+    sections,
+    detailPending: Object.values(sections).some((read) => read.kind === "reading"),
+    detailUnavailable: Object.values(sections).some((read) => read.kind === "unavailable"),
     read: primary.result,
     stale: primary.result.kind === "read" && primary.result.stale,
     refresh: () => {

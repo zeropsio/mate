@@ -154,6 +154,62 @@ function renderPage(scope: UsageScope = {}) {
   return renderToStaticMarkup(<UsagePage scope={scope} onScopeChange={vi.fn()} />);
 }
 const bodyOf = (markup: string) => markup.match(/<tbody>(.*?)<\/tbody>/)?.[1] ?? "";
+
+it("Tokens shows each coding agent's recorded tokens in the Hour table", () => {
+  testState.metric = "tokens";
+  testState.periods = recordedReport({
+    groups: [
+      {
+        key: "hour",
+        period: "2026-10-07T12:00:00.000Z",
+        provider: "codex",
+        totals: statistics("919000"),
+        costUsdNanos: null,
+      },
+    ],
+  });
+  const cells = [...bodyOf(renderPage()).matchAll(/<td[^>]*>(.*?)<\/td>/g)].map(
+    (match) => match[1],
+  );
+  expect(cells[1]).toBe("919K");
+});
+
+it("The Usage range preserves exact minutes and the Hour table names its date and zone", () => {
+  testState.periods = recordedReport({
+    groups: [
+      {
+        key: "hour",
+        period: "2026-10-07T12:00:00.000Z",
+        provider: "codex",
+        totals: statistics(),
+        costUsdNanos: "0",
+      },
+    ],
+  });
+  const markup = renderPage();
+  expect(markup).toContain("Oct 6, 12:37 PM UTC");
+  expect(bodyOf(markup)).toContain("Oct 7, 12:00 PM UTC");
+});
+
+it("Daily Usage identifies the recorded UTC day window", () => {
+  testState.hourly = false;
+  expect(renderPage()).toContain("Oct 6 to Oct 7 · UTC days");
+});
+
+it("A sole contributing Mate keeps its owner, project and name in the Usage summary", () => {
+  const owner = { id: "ada", name: "Ada", initials: "A", avatarUrl: null, isViewer: true };
+  testState.people = new Map([[owner.id, owner]]);
+  testState.identities = new Map([
+    [
+      "mate-a" as EnvironmentId,
+      { mateName: "Fern", projectId: "app-a", projectName: "Shop", ownerState: "known", owner },
+    ],
+  ]);
+  testState.report = recordedReport({
+    coverage: [{ ...recordedReport().coverage[0]!, ownerUserId: "ada", label: "Fern" }],
+  });
+  expect(renderPage()).toContain("Fern · Shop · Ada");
+});
 beforeEach(() => {
   testState.metric = "cost";
   testState.hourly = true;

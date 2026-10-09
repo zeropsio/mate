@@ -57,7 +57,7 @@ describe("hourly usage formatting", () => {
   it("formats rolling instants in the requested time zone", () => {
     expect(formatHourShort("2026-08-11T00:37:00.000Z", "UTC")).toBe("12 AM");
     expect(formatHourShort("2026-08-11T12:37:00.000Z", "UTC")).toBe("12 PM");
-    expect(formatDateTimeShort("2026-08-11T17:37:00.000Z", "UTC")).toBe("Aug 11, 5 PM");
+    expect(formatDateTimeShort("2026-08-11T17:37:00.000Z", "UTC")).toBe("Aug 11, 5:37 PM UTC");
   });
 
   it("disambiguates repeated hours during a fall-back transition", () => {

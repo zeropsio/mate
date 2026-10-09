@@ -5,6 +5,70 @@ import { UsageProviderChart } from "./UsageProviderChart";
 
 beforeEach(() => vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true));
 
+it("Chart periods expose recorded, zero, unpriced and missing values to keyboard and touch", async () => {
+  const { usageReportView } = await import("../../state/usage");
+  const { recordedReport, statistics } = await import("./usageTestFixtures");
+  const report = recordedReport({
+    groups: [
+      {
+        key: "priced",
+        period: "2026-10-01",
+        provider: "claude",
+        totals: statistics("100"),
+        costUsdNanos: "949000",
+      },
+      {
+        key: "zero",
+        period: "2026-10-02",
+        provider: "claude",
+        totals: statistics("0"),
+        costUsdNanos: "0",
+      },
+      {
+        key: "unpriced",
+        period: "2026-10-03",
+        provider: "claude",
+        totals: statistics("900"),
+        costUsdNanos: null,
+      },
+    ],
+  });
+  let tree: ReactTestRenderer;
+  act(() => {
+    tree = create(
+      <UsageProviderChart
+        providers={["claude"]}
+        days={["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"]}
+        daily={usageReportView(report, null, null, report).daily}
+        hours={[]}
+        hourly={[]}
+        metric="cost"
+        resolution="day"
+        timeZone="UTC"
+      />,
+    );
+  });
+  const periods = tree!.root.findAll(
+    (node) => node.props.role === "button" && node.props.tabIndex === 0,
+  );
+  expect(periods).toHaveLength(4);
+  expect(periods.map((node) => node.props["aria-label"])).toEqual([
+    "Oct 1 · UTC day; cost; Claude Code: <$0.01",
+    "Oct 2 · UTC day; cost; Claude Code: $0.00",
+    "Oct 3 · UTC day; cost; Claude Code: Unpriced",
+    "Oct 4 · UTC day; cost; Claude Code: No data",
+  ]);
+  for (const event of ["onFocus", "onClick"] as const) {
+    act(() => periods[2]!.props[event]());
+    expect(JSON.stringify(tree!.toJSON())).toContain("Unpriced");
+  }
+  const preventDefault = vi.fn();
+  act(() => periods[3]!.props.onKeyDown({ key: "Enter", preventDefault }));
+  expect(preventDefault).toHaveBeenCalledOnce();
+  expect(JSON.stringify(tree!.toJSON())).toContain("No data");
+  act(() => tree!.unmount());
+});
+
 it.each([
   {
     name: "unpriced provider",
@@ -34,7 +98,6 @@ it.each([
         hours={[]}
         hourly={[]}
         metric="cost"
-        referenceTime={undefined}
         resolution="day"
         timeZone="UTC"
       />,

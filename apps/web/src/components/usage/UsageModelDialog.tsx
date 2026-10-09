@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
+import { UsageReadStatus } from "./UsageReadStatus";
 import { UsageShareBar } from "./UsageShareBar";
 import {
   cacheHitRate,
@@ -35,7 +36,6 @@ export interface UsageChartWindow {
   readonly hours: readonly string[];
   readonly resolution: "day" | "hour";
   readonly timeZone: string;
-  readonly referenceTime: string | undefined;
 }
 
 /**
@@ -60,7 +60,13 @@ export function UsageModelDialog({
   readonly chartWindow: UsageChartWindow;
   readonly onClose: () => void;
 }) {
-  const { merged: usage, report } = useAgentUsage(input, scope, true, provenance, model);
+  const {
+    merged: usage,
+    report,
+    read,
+    sections,
+    refresh,
+  } = useAgentUsage(input, scope, true, provenance, model);
   const componentsKnown = report !== null && report.totals.unknownComponents === "0";
   const providers = useMemo(() => [model.provider], [model.provider]);
   const presentation = PROVIDER_PRESENTATION[model.provider];
@@ -103,45 +109,54 @@ export function UsageModelDialog({
               ))}
             </div>
 
-            {/* Unpriced cost is unknown, not zero, so its trend shows tokens. */}
-            <UsageProviderChart
-              providers={providers}
-              days={chartWindow.days}
-              daily={usage.daily}
-              hours={chartWindow.hours}
-              hourly={usage.hourly}
-              metric={costUnknown ? "tokens" : metric}
-              referenceTime={chartWindow.referenceTime}
-              resolution={chartWindow.resolution}
-              timeZone={chartWindow.timeZone}
-            />
+            <UsageReadStatus read={read} label="model usage" onRetry={refresh} />
+            {read.kind === "read" ? (
+              <>
+                {read.stale && sections.periods.kind === "read" ? null : (
+                  <UsageReadStatus read={sections.periods} label="model chart" onRetry={refresh} />
+                )}
+                {/* Unpriced cost is unknown, not zero, so its trend shows tokens. */}
+                {sections.periods.kind === "read" ? (
+                  <UsageProviderChart
+                    providers={providers}
+                    days={chartWindow.days}
+                    daily={usage.daily}
+                    hours={chartWindow.hours}
+                    hourly={usage.hourly}
+                    metric={costUnknown ? "tokens" : metric}
+                    resolution={chartWindow.resolution}
+                    timeZone={chartWindow.timeZone}
+                  />
+                ) : null}
 
-            <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
-              {costUnknown || usage.categoryCost.unsplit === usage.costUsd ? null : (
-                <UsageShareBar
-                  label="Cost by type"
-                  segments={costTypeSegments(usage.categoryCost)}
-                  format={formatUsd}
-                />
-              )}
-              {componentsKnown ? (
-                <UsageShareBar
-                  label="Tokens by type"
-                  segments={tokenTypeSegments(model.tokens)}
-                  format={formatTokens}
-                />
-              ) : (
-                <p>Token categories are unknown.</p>
-              )}
-              {usage.speedCost.fast + usage.speedCost.ultrafast > 0 ? (
-                <UsageShareBar
-                  label="Cost by speed"
-                  segments={speedCostSegments(usage.speedCost)}
-                  format={formatUsd}
-                  aside={<SpeedPremium premiumUsd={usage.speedCost.premium} />}
-                />
-              ) : null}
-            </div>
+                <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+                  {costUnknown || usage.categoryCost.unsplit === usage.costUsd ? null : (
+                    <UsageShareBar
+                      label="Cost by type"
+                      segments={costTypeSegments(usage.categoryCost)}
+                      format={formatUsd}
+                    />
+                  )}
+                  {componentsKnown ? (
+                    <UsageShareBar
+                      label="Tokens by type"
+                      segments={tokenTypeSegments(model.tokens)}
+                      format={formatTokens}
+                    />
+                  ) : (
+                    <p>Token categories are unknown.</p>
+                  )}
+                  {usage.speedCost.fast + usage.speedCost.ultrafast > 0 ? (
+                    <UsageShareBar
+                      label="Cost by speed"
+                      segments={speedCostSegments(usage.speedCost)}
+                      format={formatUsd}
+                      aside={<SpeedPremium premiumUsd={usage.speedCost.premium} />}
+                    />
+                  ) : null}
+                </div>
+              </>
+            ) : null}
           </div>
         </DialogPanel>
         {model.unpricedTokens > 0 ? (

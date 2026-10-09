@@ -3,6 +3,58 @@ import { describe, expect, it } from "vite-plus/test";
 import { buildPeriodColumns, niceScale } from "./UsageProviderChart";
 import { providersWithUsage } from "./usageProviders";
 
+describe("Decision: fix what the audit lists; no new features; no test weakened.", () => {
+  it("The Usage chart draws isolated positive and zero periods without filling missing periods", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { UsageProviderChart } = await import("./UsageProviderChart");
+    const { usageReportView } = await import("../../state/usage");
+    const { recordedReport, statistics } = await import("./usageTestFixtures");
+    const report = recordedReport({
+      groups: [
+        {
+          key: "first",
+          period: "2026-10-01",
+          provider: "claude",
+          totals: statistics("100"),
+          costUsdNanos: "949000",
+        },
+        {
+          key: "last",
+          period: "2026-10-03",
+          provider: "claude",
+          totals: statistics("0"),
+          costUsdNanos: "0",
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(
+      createElement(UsageProviderChart, {
+        providers: ["claude"],
+        days: ["2026-10-01", "2026-10-02", "2026-10-03"],
+        daily: usageReportView(report, null, null, report).daily,
+        hours: [],
+        hourly: [],
+        metric: "cost",
+        resolution: "day",
+        timeZone: "UTC",
+      }),
+    );
+    const marks = [...html.matchAll(/<rect[^>]+data-usage-value=[^>]+>/g)].map((match) => match[0]);
+    expect(marks).toHaveLength(2);
+    const viewHeight = Number(html.match(/viewBox="0 0 [\d.]+ ([\d.]+)"/)![1]);
+    for (const mark of marks) {
+      const height = Number(mark.match(/height="([\d.]+)"/)![1]);
+      const top = Number(mark.match(/ y="([\d.]+)"/)![1]);
+      expect(height).toBeGreaterThan(0);
+      expect(top).toBeGreaterThanOrEqual(0);
+      expect(top + height).toBeLessThanOrEqual(viewHeight);
+    }
+    expect(html).toContain('data-usage-value="0"');
+    expect(html).not.toContain("<path");
+  });
+});
+
 describe("niceScale", () => {
   it("never puts the peak above the top of the scale", () => {
     // Regression: an earlier version stopped at the last step below the peak,
@@ -191,7 +243,6 @@ it.each([0.000949, 0.0199, 0.099])(
         metric: "cost",
         resolution: "day",
         timeZone: "UTC",
-        referenceTime: undefined,
       }),
     );
     const ticks = [...html.matchAll(/<span[^>]*>(\$[\d.]+)<\/span>/g)].map((match) => match[1]);

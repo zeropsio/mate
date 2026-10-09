@@ -182,7 +182,7 @@ export function formatHourShort(hourStart: string, timeZone?: string): string {
   }).format(instant);
 }
 
-/** `2026-08-11T14:37:00Z` to `Aug 11, 2 PM` in the requested zone. */
+/** `2026-08-11T14:37:00Z` to `Aug 11, 2:37 PM UTC` in the requested zone. */
 export function formatDateTimeShort(instant: string, timeZone?: string): string {
   const date = new Date(instant);
   if (Number.isNaN(date.getTime())) return instant;
@@ -191,6 +191,8 @@ export function formatDateTimeShort(instant: string, timeZone?: string): string 
     month: "short",
     day: "numeric",
     hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
   }).format(date);
 }
 

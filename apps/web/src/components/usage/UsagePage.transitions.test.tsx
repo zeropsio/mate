@@ -260,9 +260,16 @@ it("choosing a project replaces an old name bookmark", () => {
   const onScopeChange = vi.fn();
   const tree = mount(<UsagePage scope={{ legacyProject: "Shop" }} onScopeChange={onScopeChange} />);
   expect(text(tree)).toContain("old project-name URL");
-  const picker = tree.root.findByProps({ "aria-label": "Usage project" }).parent!;
-  act(() => picker.props.onValueChange("app-a"));
-  expect(onScopeChange).toHaveBeenCalledWith({ project: "app-a", legacyProject: undefined });
+  const pickers = tree.root.findAllByProps({ "aria-label": "Usage project" });
+  expect(pickers).toHaveLength(2);
+  for (const trigger of pickers) {
+    onScopeChange.mockClear();
+    act(() => trigger.parent!.props.onValueChange("app-a"));
+    expect(onScopeChange).toHaveBeenCalledExactlyOnceWith({
+      project: "app-a",
+      legacyProject: undefined,
+    });
+  }
   act(() => tree.unmount());
 });
 

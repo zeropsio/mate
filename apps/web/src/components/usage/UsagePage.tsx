@@ -34,7 +34,6 @@ import {
   formatCount,
   formatDateTimeShort,
   formatDayShort,
-  formatHourShort,
   formatPercent,
   formatTokens,
   formatUsd,
@@ -328,7 +327,7 @@ export function UsagePage({
   const windowLabel =
     isPast24Hours && window.sinceTime !== undefined && window.untilTime !== undefined
       ? `${formatDateTimeShort(window.sinceTime, window.timeZone)} to ${formatDateTimeShort(window.untilTime, window.timeZone)}`
-      : `${formatDayShort(window.sinceDay)} to ${formatDayShort(window.untilDay)}`;
+      : `${formatDayShort(window.sinceDay)} to ${formatDayShort(window.untilDay)} · UTC days`;
   const topbarContent = (
     <div className="flex w-full min-w-0 items-center gap-3">
       <WorkspaceBreadcrumb ariaLabel="Usage breadcrumb" className="min-w-0">
@@ -481,6 +480,20 @@ export function UsagePage({
         <ScrollArea className="min-h-0 flex-1">
           <WorkspacePageContainer width="wide">
             {showingLimits ? null : (
+              <div className="flex flex-col gap-2 lg:hidden">
+                <p className="text-xs text-muted-foreground md:hidden">{windowLabel}</p>
+                <div className="flex min-w-0 flex-wrap gap-2">
+                  <UsageScopeFilters
+                    scope={scope}
+                    identities={overallIndex.identities}
+                    projects={projects}
+                    dimensions={overallDimensions}
+                    onScopeChange={onScopeChange}
+                  />
+                </div>
+              </div>
+            )}
+            {showingLimits ? null : (
               <ToggleGroup
                 aria-label="Usage history"
                 variant="segmented"
@@ -574,6 +587,17 @@ export function UsagePage({
                       </span>
                     </div>
 
+                    {dimensions.mates.length === 1 ? (
+                      <p className="text-sm text-muted-foreground">
+                        {[
+                          dimensions.mates[0]!.mateName,
+                          dimensions.mates[0]!.projectName,
+                          dimensions.mates[0]!.owner?.name,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    ) : null}
                     {dimensions.visible.person ? (
                       <UsagePeopleSplit people={dimensions.people} metric={dimensionMetric} />
                     ) : null}
@@ -641,7 +665,6 @@ export function UsagePage({
                         hours={hours}
                         hourly={merged.hourly}
                         metric={metric}
-                        referenceTime={window.untilTime}
                         resolution={isPast24Hours ? "hour" : "day"}
                         timeZone={window.timeZone}
                       />
@@ -706,21 +729,45 @@ export function UsagePage({
                   ) : null}
                   <div className="flex items-center justify-between gap-3">
                     <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
-                    <ToggleGroup
-                      aria-label="Usage breakdown"
-                      variant="segmented"
-                      value={[breakdown]}
-                      onValueChange={(next) => {
-                        const option = breakdownOptions.find((entry) => entry.value === next[0]);
-                        if (option !== undefined) setBreakdown(option.value);
-                      }}
-                    >
-                      {breakdownOptions.map((option) => (
-                        <Toggle key={option.value} value={option.value}>
-                          {option.label}
-                        </Toggle>
-                      ))}
-                    </ToggleGroup>
+                    <div className="hidden sm:block">
+                      <ToggleGroup
+                        aria-label="Usage breakdown"
+                        variant="segmented"
+                        value={[breakdown]}
+                        onValueChange={(next) => {
+                          const option = breakdownOptions.find((entry) => entry.value === next[0]);
+                          if (option !== undefined) setBreakdown(option.value);
+                        }}
+                      >
+                        {breakdownOptions.map((option) => (
+                          <Toggle key={option.value} value={option.value}>
+                            {option.label}
+                          </Toggle>
+                        ))}
+                      </ToggleGroup>
+                    </div>
+                    <div className="min-w-0 sm:hidden">
+                      <Select
+                        value={breakdown}
+                        onValueChange={(value) => {
+                          const option = breakdownOptions.find((entry) => entry.value === value);
+                          if (option !== undefined) setBreakdown(option.value);
+                        }}
+                      >
+                        <SelectTrigger aria-label="Usage breakdown" size="compact">
+                          <SelectValue>
+                            {breakdownOptions.find((option) => option.value === breakdown)?.label}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectPopup align="end" alignItemWithTrigger={false}>
+                          {breakdownOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectPopup>
+                      </Select>
+                    </div>
                   </div>
 
                   {breakdown === "model" && provenance === "live-responses" ? (
@@ -816,7 +863,8 @@ export function UsagePage({
                           <th className="py-2 font-normal">{isPast24Hours ? "Hour" : "Day"}</th>
                           {activeProviders.map((provider) => (
                             <th key={provider} className="py-2 text-right font-normal">
-                              {PROVIDER_PRESENTATION[provider].label}
+                              {PROVIDER_PRESENTATION[provider].label} (
+                              {metric === "tokens" ? "tokens" : "cost"})
                             </th>
                           ))}
                           <th className="py-2 text-right font-normal">Priced cost</th>
@@ -845,7 +893,7 @@ export function UsagePage({
                             >
                               <td className="py-2 text-foreground">
                                 {"hourStart" in period
-                                  ? formatHourShort(period.hourStart, window.timeZone)
+                                  ? formatDateTimeShort(period.hourStart, window.timeZone)
                                   : formatDayShort(period.day)}
                               </td>
                               {activeProviders.map((provider) => (
@@ -855,8 +903,8 @@ export function UsagePage({
                                 >
                                   {period.byProvider.get(provider) === undefined
                                     ? "No data"
-                                    : period.byProvider.get(provider)?.costKnown === false
-                                      ? "Unpriced"
+                                    : metric === "tokens"
+                                      ? formatTokens(period.byProvider.get(provider)!.totalTokens)
                                       : formatUsageCost(period.byProvider.get(provider)!)}
                                 </td>
                               ))}
@@ -893,7 +941,6 @@ export function UsagePage({
             hours,
             resolution: isPast24Hours ? "hour" : "day",
             timeZone: window.timeZone,
-            referenceTime: window.untilTime,
           }}
           onClose={() => setOpenModel(null)}
         />
