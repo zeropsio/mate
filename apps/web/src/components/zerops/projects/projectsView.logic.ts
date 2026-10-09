@@ -591,6 +591,8 @@ export interface RowMateActivity {
   readonly name: string;
   /** It is on a turn now: its face says so, and its line says what on. */
   readonly working: boolean;
+  readonly outcome?: string;
+  readonly state?: string;
   /** What it is on, or was last on; absent before anybody spoke to it. */
   readonly subject: string | undefined;
   /** When it last did something. */
@@ -612,7 +614,14 @@ export type ProjectRowLine =
   /** A deploy or a release on its way. */
   | { readonly kind: "under-way"; readonly text: string }
   /** What a Mate is on (working), or was last on. */
-  | { readonly kind: "mate"; readonly mate: string; readonly text: string; readonly at?: string }
+  | {
+      readonly kind: "mate";
+      readonly mate: string;
+      readonly text: string;
+      readonly at?: string;
+      readonly request?: string;
+      readonly state?: string;
+    }
   /** A change: open, or the last that landed. */
   | { readonly kind: "change"; readonly text: string; readonly at?: string }
   | { readonly kind: "first-task"; readonly text: string }
@@ -694,19 +703,23 @@ export function projectRowLine(input: {
 
   const merged = input.lastMerged;
   const lastTalk = activities
-    .filter((mate) => mate.subject !== undefined)
+    .filter((mate) => mate.subject !== undefined || mate.outcome !== undefined)
     .reduce<RowMateActivity | undefined>(
       (latest, mate) => (latest === undefined || newer(mate.at, latest.at) ? mate : latest),
       undefined,
     );
   if (
-    lastTalk?.subject !== undefined &&
+    lastTalk !== undefined &&
+    (lastTalk.subject !== undefined || lastTalk.outcome !== undefined) &&
     (merged === undefined || newer(lastTalk.at, merged.mergedAt))
   )
     return {
       kind: "mate",
       mate: lastTalk.name,
-      text: lastTalk.subject,
+      text: (lastTalk.outcome ?? lastTalk.subject)!,
+      ...(lastTalk.outcome === undefined
+        ? {}
+        : { request: lastTalk.subject, state: lastTalk.state }),
       ...(lastTalk.at === undefined ? {} : { at: lastTalk.at }),
     };
   if (merged !== undefined)
@@ -761,6 +774,14 @@ export function rowMateActivitiesOf<T>(
         name,
         working: now && activity.kind === "working",
         subject: activity.subject,
+        ...(!now || activity.kind !== "working"
+          ? activity.snippet === undefined
+            ? {}
+            : {
+                outcome: activity.snippet,
+                state: now ? (activity.status?.label ?? "Last reply") : "Last known reply",
+              }
+          : {}),
         at: activity.at,
       },
     ];

@@ -1,8 +1,6 @@
-import { restartWords } from "../../zerops/restartWords";
-import { usageLimitWords } from "../../zerops/noticeWords";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { CircleAlertIcon, CircleHelpIcon, LogInIcon, PauseIcon } from "lucide-react";
-import type { MateStatus } from "../../zerops/mateStatus.logic";
+import { mateStatusWords, type MateStatus } from "../../zerops/mateStatus.logic";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { cn } from "../../lib/utils";
 import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
@@ -27,28 +25,7 @@ export function MateStatusMarker({
         : status.kind === "answer"
           ? CircleHelpIcon
           : PauseIcon;
-  const label =
-    status.kind === "interrupted" && status.interruption != null
-      ? restartWords(mateName, status.interruption, timestampFormat)
-      : status.kind === "limit"
-        ? "Limit"
-        : status.kind === "sign-in"
-          ? (status.admission?.summary ?? "Sign in")
-          : status.kind === "answer"
-            ? "Needs an answer"
-            : "Needs attention";
-  const cause =
-    status.kind === "limit"
-      ? usageLimitWords(
-          status.provider ?? "coding agent",
-          status.until === undefined
-            ? undefined
-            : formatUpcomingTimestamp(status.until, timestampFormat),
-          mateName,
-        )
-      : status.kind === "interrupted"
-        ? `${label}. Continue on the interrupted turn.`
-        : `${mateName}: ${label}`;
+  const { label, cause } = mateStatusWords(status, mateName, timestampFormat);
   return (
     <Tooltip>
       <TooltipTrigger

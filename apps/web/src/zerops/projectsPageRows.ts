@@ -1,6 +1,12 @@
+import { mateStatus, mateStatusWords } from "./mateStatus.logic";
 /** Projects presentation joins each row's keyed owner evidence, independently of its neighbors. */
 import { useAtomValue } from "@effect/atom-react";
-import { accountReadsAtom, hqProjectPerson, projectSummary } from "@t3tools/client-runtime/data";
+import {
+  accountReadsAtom,
+  hqProjectPerson,
+  projectSummary,
+  mateAdmissionSummary,
+} from "@t3tools/client-runtime/data";
 import { groupFlow, hasMate, type ZeropsGroupTreeGroup } from "@t3tools/client-runtime/zerops";
 import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
@@ -67,18 +73,52 @@ export function projectsRowsAtom(input: ProjectsRowsInput) {
         readOut: input.flows.hqAddress !== undefined,
       });
       const isStop = (role: string | undefined) => role === "stage" || role === "prod";
+      const flow = groupFlow(
+        groupFlowInputOf({
+          groupId: group.groupId,
+          members,
+          flow: reads,
+          deployments: input.deployments,
+          pending: group.pending,
+        }),
+      );
+      const statuses = environments.flatMap(({ item }, index) => {
+        const name = members[index]?.mate?.name;
+        if (name === undefined) return [];
+        const admission =
+          account?.orgId == null
+            ? undefined
+            : get(
+                account.data.project(mateAdmissionSummary, {
+                  orgId: account.orgId,
+                  projectId: item.project.id,
+                  mateName: name,
+                  viewerSubject: undefined,
+                }),
+              );
+        const status = mateStatus(activityOf(item), admission);
+        return status === null ? [] : [{ projectId: item.project.id, name, status }];
+      });
+      const attention =
+        statuses.find(({ status }) => status.kind === "answer" || status.kind === "sign-in") ??
+        statuses[0];
+      const words =
+        attention === undefined ? undefined : mateStatusWords(attention.status, attention.name);
       return {
         group,
         contents: app?.contents,
-        flow: groupFlow(
-          groupFlowInputOf({
-            groupId: group.groupId,
-            members,
-            flow: reads,
-            deployments: input.deployments,
-            pending: group.pending,
-          }),
-        ),
+        flow:
+          attention === undefined || words === undefined
+            ? flow
+            : {
+                ...flow,
+                nextStep: {
+                  kind: attention.status.severity === "danger" ? "fix-mate" : "answer-mate",
+                  text: words.cause,
+                  verb: words.action,
+                  target: { kind: "mate", projectId: attention.projectId },
+                },
+              },
         activities: rowMateActivitiesOf(
           environments.flatMap(({ item }, index) => {
             const name = members[index]?.mate?.name;

@@ -146,7 +146,11 @@ function RowLine({ line }: { readonly line: ProjectRowLine }) {
           <span className="min-w-0 truncate text-muted-foreground">
             <span className="font-medium text-foreground/80">{line.mate}</span>
             <span aria-hidden="true"> · </span>
+            {line.state === undefined ? null : <span>{line.state} · </span>}
             {line.text}
+            {line.request === undefined ? null : (
+              <span className="block text-xs text-muted-foreground">Request: {line.request}</span>
+            )}
           </span>
           <Age at={line.at} />
         </span>

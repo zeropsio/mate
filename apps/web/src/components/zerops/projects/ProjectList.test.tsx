@@ -476,3 +476,28 @@ describe("Projects detail demand", () => {
     },
   );
 });
+
+it("a project's latest outcome leads its request and keeps its state and time", () => {
+  const row = quiet("checkout");
+  const html = render({
+    groups: [
+      {
+        ...row,
+        activities: [
+          {
+            name: "Ada",
+            working: false,
+            subject: "Redesign checkout",
+            outcome: "Checkout is ready.",
+            state: "Done",
+            at: "2026-10-08T00:00:00Z",
+          },
+        ],
+      },
+    ],
+  });
+  expect(html).toContain("Checkout is ready.");
+  expect(html).toContain("Done");
+  expect(html).toContain("Request: ");
+  expect(html.indexOf("Checkout is ready.")).toBeLessThan(html.indexOf("Redesign checkout"));
+});
