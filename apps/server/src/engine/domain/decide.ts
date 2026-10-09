@@ -466,7 +466,7 @@ const sessionClosed = (b: StepBuilder, sessionId: SessionId, reason: SessionClos
       _tag: "ItemClosed",
       runId: item.runId,
       itemId: item.id,
-      body: { ...item.body, status: "lost" },
+      body: { ...item.body, status: reason === "stop" ? "stopped" : "lost" },
     });
     b.lost.push({ title: item.body.title, runId: item.runId, how: LOST_HOW[reason] });
   }
@@ -1020,9 +1020,30 @@ const sleepingTurn = (
   return { run, sessionId: session.id };
 };
 
+/**
+ * A Stop with no turn running stops what the Mate still does: the helpers and background work
+ * living on in the session its turn ended in. Nothing stops one piece of an agent's background
+ * work across drivers, so the session closes (V1's Claude Stop is the same hard boundary); its
+ * work ends as stopped, and the next message resumes the conversation on a new session.
+ */
+const stopWork = (b: StepBuilder): void => {
+  const session = b.state.session;
+  if (session === null || !workLives(b.state)) throw new Rejected("run-not-running");
+  if (b.state.closing !== null) {
+    throw new Rejected(
+      b.state.closing.reason === "stop" ? "stop-already-asked" : "run-not-running",
+    );
+  }
+  const served = Object.values(b.state.items).findLast(
+    (item) => item.body.kind === "work" && !WORK_ENDED.has(item.body.status),
+  )?.runId;
+  b.result = { ...b.result, ...(served == null ? {} : { runId: served }) };
+  closeSession(b, "stop");
+};
+
 const stop = (b: StepBuilder, target: RunId | undefined): void => {
   const id = target ?? b.state.activeRunId;
-  if (id === null) throw new Rejected("run-not-running");
+  if (id === null) return stopWork(b);
   const run = b.state.runs[id];
   if (run === undefined) throw new Rejected("unknown-run");
   if (run.state === "ended") throw new Rejected("run-ended");
@@ -1862,11 +1883,13 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       return;
     }
     case "work-upserted": {
+      // Work a person's Stop cut with its session was stopped, not lost.
+      const stopped = signal.status === "lost" && b.state.closing?.reason === "stop";
       const body: ItemBody = {
         kind: "work",
         work: signal.work,
         workKind: signal.workKind,
-        status: signal.status,
+        status: stopped ? "stopped" : signal.status,
         title: signal.title ?? null,
       };
       const ends = WORK_ENDED.has(signal.status);
@@ -1878,7 +1901,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           b.emit({ _tag: "ItemClosed", runId: open.runId, itemId: open.id, body });
           // The bridge's word that the work's session is closing: asked, for the reason asked;
           // else it died.
-          if (signal.status === "lost") {
+          if (body.status === "lost") {
             b.lost.push({
               title: body.title,
               runId: open.runId,

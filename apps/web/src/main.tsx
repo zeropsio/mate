@@ -12,6 +12,7 @@ import {
 } from "./lib/windowControlsOverlay";
 import { AppRoot } from "./AppRoot";
 import { keepBootFrame } from "./zerops/bootFrame";
+import { staleChunkRecovery } from "./lib/staleChunk";
 
 // Electron loads the app from a file-backed shell, so hash history avoids path resolution issues.
 const history = isElectron ? createHashHistory() : createBrowserHistory();
@@ -22,6 +23,11 @@ if (isElectron) {
   syncDocumentElectronPlatformClasses(navigator.platform);
   syncDocumentWindowControlsOverlayClass();
 }
+
+// A lazy chunk a deploy removed, met outside any route (Vite's preload says so): the new build.
+window.addEventListener("vite:preloadError", (event) => {
+  staleChunkRecovery.recover(event.payload);
+});
 
 const root = document.getElementById("root") as HTMLElement;
 // index.html's first frame stands until the app draws into #root.

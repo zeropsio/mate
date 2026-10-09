@@ -926,6 +926,42 @@ describe("the running engine", () => {
     ),
   );
 
+  // Milo, 2026-10-09: helpers ran on after the turn ended, Stop answered "Nothing is running to
+  // stop." and the helpers carried on.
+  it.effect(
+    "Stop after the turn ended stops the helpers still running, and the card shows them stopped",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w);
+          yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "completed", "agent"]);
+          const result = yield* stop(w);
+          assert.strictEqual(result._tag, "Accepted");
+          yield* w.settle;
+          assert.strictEqual(w.provider.calls.at(-1), `stop ${w.thread}`);
+          assert.deepStrictEqual(
+            (yield* w.items(r(1)))
+              .filter((item) => item.kind === "work")
+              .map((item) => item.body.status),
+            ["stopped", "stopped"],
+          );
+          assert.deepStrictEqual(
+            (yield* w.sessionsOpen).map((session) => session.close_reason),
+            ["stop"],
+          );
+          yield* w.advance(0);
+          assert.isUndefined(yield* w.run(r(2)));
+          yield* send(w, "again");
+          assert.strictEqual(w.provider.calls.at(-1), sendLine(w, "again"));
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   it.effect("signing out stops the session and ends its run", () =>
     scene(
       Effect.gen(function* () {
