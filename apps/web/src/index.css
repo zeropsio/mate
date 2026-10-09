@@ -934,6 +934,24 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     }
   }
 
+  /* The docked footer is opaque from the card's top edge down, so no row paints below the card,
+     and clear in the gap above it, so the conversation runs right up to the card. The gap is
+     the footer's own top padding (pt-1.5, sm:pt-2). */
+  .chat-composer-dock {
+    --chat-composer-dock-gap: calc(var(--spacing) * 1.5);
+    background: linear-gradient(
+      to bottom,
+      transparent var(--chat-composer-dock-gap),
+      var(--background) var(--chat-composer-dock-gap)
+    );
+  }
+
+  @media (min-width: 40rem) {
+    .chat-composer-dock {
+      --chat-composer-dock-gap: calc(var(--spacing) * 2);
+    }
+  }
+
   .chat-composer-glass-host {
     border-radius: 20px;
     box-shadow: var(--chat-composer-shadow);
