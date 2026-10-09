@@ -1,5 +1,13 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
-import { createContext, use, useEffect, useRef, type ComponentProps, type RefObject } from "react";
+import {
+  createContext,
+  isValidElement,
+  use,
+  useEffect,
+  useRef,
+  type ComponentProps,
+  type RefObject,
+} from "react";
 
 import { isFollowScroll } from "~/lib/followScroll";
 import { cn } from "~/lib/utils";
@@ -71,11 +79,18 @@ function Tooltip<Payload>(props: TooltipPrimitive.Root.Props<Payload>) {
 function TooltipTrigger(props: TooltipPrimitive.Trigger.Props) {
   const hovered = use(TooltipScrollContext);
   const actionsRef = use(TooltipHoverContext);
+  // Base UI binds its hover listeners to the first element it renders; a trigger whose element
+  // changes kind (a file chip's menu button becoming its link) remounts so hover reaches it.
+  const key =
+    isValidElement(props.render) && typeof props.render.type === "string"
+      ? props.render.type
+      : undefined;
   if (!hovered || !actionsRef) {
-    return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
+    return <TooltipPrimitive.Trigger key={key} data-slot="tooltip-trigger" {...props} />;
   }
   return (
     <TooltipPrimitive.Trigger
+      key={key}
       data-slot="tooltip-trigger"
       {...props}
       onMouseEnter={(event) => {

@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- standalone host-only test PostgreSQL supervisor.
+// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDate:off globalTimers:off -- standalone host-only test PostgreSQL supervisor.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
@@ -6,6 +6,7 @@ import * as NodeNet from "node:net";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
+import * as NodeUtil from "node:util";
 import { lifecycleLock, postgresHome } from "./test-postgres.ts";
 
 const pgBinDir = (() => {
@@ -25,6 +26,7 @@ const pgBinDir = (() => {
   return "/opt/homebrew/bin";
 })();
 const data = NodePath.join(postgresHome, "data");
+const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
 const socketPath = NodePath.join(postgresHome, "supervisor.sock");
 const run = (command: string, args: string[]) => {
   const result = NodeChildProcess.spawnSync(NodePath.join(pgBinDir, command), args, {
@@ -145,6 +147,27 @@ async function supervise() {
     };
     const sql = (query: string) =>
       run("psql", [urlOf(port, "postgres"), "-X", "-v", "ON_ERROR_STOP=1", "-Atc", query]);
+    /**
+     * Whether a database's last backend left. A client's close returns before its backend exits
+     * (PostgreSQL's own CREATE DATABASE … TEMPLATE waits for such backends too), so a closed pool
+     * still shows for a moment; a connection held open is still there once the wait ends.
+     */
+    const drained = async (name: string) => {
+      const deadline = Date.now() + 2_000;
+      for (;;) {
+        const { stdout } = await execFile(NodePath.join(pgBinDir, "psql"), [
+          urlOf(port, "postgres"),
+          "-X",
+          "-v",
+          "ON_ERROR_STOP=1",
+          "-Atc",
+          `SELECT count(*) FROM pg_stat_activity WHERE datname = '${name}'`,
+        ]);
+        if (stdout.trim() === "0") return true;
+        if (Date.now() >= deadline) return false;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+    };
     // A prior supervisor's leases cannot survive its loss. Reclaim its managed databases on start.
     for (const name of sql("SELECT datname FROM pg_database WHERE datname LIKE 'mate_test_%'")
       .trim()
@@ -197,7 +220,12 @@ async function supervise() {
         return name;
       };
       const lines = NodeReadline.createInterface({ input: socket });
+      // One command at a time per lease: the client pairs replies with its requests in order.
+      let queue = Promise.resolve();
       lines.on("line", (command) => {
+        queue = queue.then(() => answer(command));
+      });
+      const answer = async (command: string) => {
         try {
           if (released) return;
           if (command === "own") {
@@ -216,9 +244,7 @@ async function supervise() {
             const name = ownedDatabase(command.slice("freeze ".length));
             // Publication requires a closed migration pool; no writer survives the freeze.
             sql(`ALTER DATABASE ${name} ALLOW_CONNECTIONS false`);
-            if (
-              sql(`SELECT count(*) FROM pg_stat_activity WHERE datname = '${name}'`).trim() !== "0"
-            ) {
+            if (!(await drained(name))) {
               sql(`ALTER DATABASE ${name} ALLOW_CONNECTIONS true`);
               throw new Error("Close database connections before freezing a template");
             }
@@ -241,7 +267,7 @@ async function supervise() {
         } catch (error) {
           socket.write(`${JSON.stringify({ error: String(error) })}\n`);
         }
-      });
+      };
       let released = false;
       const release = async (requested = false) => {
         if (released) return;

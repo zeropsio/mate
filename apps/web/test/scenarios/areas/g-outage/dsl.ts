@@ -29,7 +29,32 @@ export const givenOutage = Effect.fn("outage.given")(function* () {
 export const stopHq = (s: Scenario) => s.drivers.core.stop;
 
 export const declareNewerProtocol = (s: Scenario) => Effect.sync(() => newerHqProtocol(s.drivers));
-export const endHqSession = (s: Scenario) => Effect.sync(() => endHqStream(s.drivers, 4401));
+/** Ends the tab's HQ session; returns how many HQ sockets had opened before it ended. */
+export const endHqSession = (s: Scenario) =>
+  Effect.sync(() => {
+    const opened = s.drivers.hq.counters.wsOpens;
+    endHqStream(s.drivers, 4401);
+    return opened;
+  });
+/**
+ * The tab, woken by `trigger`, opens a new HQ subscription after `opened` sockets. It is woken
+ * again until it does: a wake before the tab noticed the ending finds nothing to recover.
+ */
+export const resubscribesOnResume = (
+  s: Scenario,
+  trigger: "online" | "focus" | "visibilitychange",
+  opened: number,
+) =>
+  Effect.promise(async () => {
+    for (let look = 0; look < 200; look++) {
+      await s.page.evaluate((trigger) => {
+        (trigger === "visibilitychange" ? document : window).dispatchEvent(new Event(trigger));
+      }, trigger);
+      if (s.drivers.hq.counters.wsOpens > opened) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error("The tab opened no new HQ subscription after its session ended");
+  });
 export const refuseHq = (s: Scenario) => Effect.sync(() => endHqStream(s.drivers, 4403));
 export const resumeTab = (s: Scenario, trigger: "online" | "focus" | "visibilitychange") =>
   Effect.promise(() =>

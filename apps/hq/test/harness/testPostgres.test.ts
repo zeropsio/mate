@@ -94,6 +94,29 @@ it.effect(
     }).pipe(Effect.scoped),
 );
 
+// A pool's close returns before PostgreSQL's backend exits; the template must not race that exit.
+it.live("freezes a database whose closed connection's backend is still exiting", () =>
+  Effect.gen(function* () {
+    const owner = yield* lease;
+    const template = yield* Effect.promise(owner.createDatabase);
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const source = yield* connection(template);
+        yield* source.query("CREATE TABLE baseline (value text)");
+        // The backend notices its client left only once this statement ends.
+        yield* Effect.forkDetach(source.query("SELECT pg_sleep(0.5)"));
+        yield* Effect.sleep("50 millis");
+      }),
+    );
+    yield* Effect.promise(() => owner.freezeDatabase(template));
+    const clone = yield* Effect.promise(() => owner.cloneDatabase(template));
+    const copied = yield* connection(clone);
+    assert.deepEqual((yield* copied.query("SELECT to_regclass('baseline')::text AS t")).rows, [
+      { t: "baseline" },
+    ]);
+  }).pipe(Effect.scoped),
+);
+
 it.effect.each(["SIGKILL", "exit"] as const)(
   "reclaims a worker database after %s before the next owner's work",
   (mode) =>
