@@ -163,6 +163,8 @@ export interface FamilyIndex<Value> {
 }
 
 export interface FamilySpec<F extends Family> {
+  /** Nonsensitive content that remains public while access is unverified; denial still purges it. */
+  readonly retainUnverified?: true;
   /** Display identity safe to retain when protected content is purged, for named recovery notices. */
   readonly labelOf?: (value: FamilyValues[F]) => string;
   readonly family: F;

@@ -11,6 +11,7 @@
  */
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
+import { familySpec } from "./families/index.ts";
 import {
   emptyAccount,
   type AccountState,
@@ -85,7 +86,7 @@ export interface AccountStore {
 
 const EMPTY_IDS: ReadonlySet<string> = new Set();
 
-export function publicRead<T>(fact: Fact<T> | undefined): PublicRead<T> {
+export function publicRead<T>(fact: Fact<T> | undefined, family?: Family): PublicRead<T> {
   if (fact === undefined) return { kind: "unknown" };
   switch (fact.content.kind) {
     case "deleted":
@@ -101,7 +102,11 @@ export function publicRead<T>(fact: Fact<T> | undefined): PublicRead<T> {
         ...(fact.label === undefined ? {} : { label: fact.label }),
       };
     case "value":
-      if (fact.access !== "allowed") {
+      if (
+        fact.access === "denied" ||
+        (fact.access === "unverified" &&
+          (family === undefined || familySpec(family).retainUnverified !== true))
+      ) {
         return {
           kind: "withheld",
           reason: fact.access,
@@ -148,7 +153,7 @@ function valueOf(state: AccountState, key: ReadKey): unknown {
     case "operation":
       return state.operations.get(rest);
     default:
-      return publicRead(state.facts.get(key as FactKey));
+      return publicRead(state.facts.get(key as FactKey), head as Family);
   }
 }
 
