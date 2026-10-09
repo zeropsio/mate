@@ -19,6 +19,10 @@
  */
 import {
   buildSortPage,
+  buildFilteredTableStatement,
+  filtersDirty,
+  resolveSqlDialect,
+  type DataConsoleFilter,
   collapsedPrefix,
   describeRowContext,
   describeKeyExpiry,
@@ -60,6 +64,8 @@ import { DATABASE_FAILURE_UNEXPLAINED, databaseTreeTarget } from "@t3tools/clien
 import { useZeropsDataConsole } from "../../zerops/useZeropsFeeds";
 import { Button } from "../ui/button";
 import { Chip, FlatCard, MicroLabel, StatusDot } from "./primitives";
+import { ZeropsDataFilters } from "./ZeropsDataFilters";
+import { ZeropsDataQuery } from "./ZeropsDataQuery";
 import { ZeropsDataBlob } from "./ZeropsDataBlob";
 import { ZeropsDataBreadcrumbs } from "./ZeropsDataBreadcrumbs";
 import { ZeropsDataRowDrawer } from "./ZeropsDataRowDrawer";
@@ -140,6 +146,8 @@ export function ZeropsDataPanel({
     tree,
     pendingTreeKeys,
     tableModel,
+    filtered,
+    queryState,
     tableLoadMorePending,
     tableCount,
     blob,
@@ -149,6 +157,12 @@ export function ZeropsDataPanel({
     documentSearchLoadMorePending,
   } = database;
 
+  const [sqlOpen, setSqlOpen] = useState(false);
+  const [submittedQuery, setSubmittedQuery] = useState<
+    { stmt: string; target: "query" | "filtered" } | undefined
+  >();
+  const [filters, setFilters] = useState<ReadonlyArray<DataConsoleFilter>>([]);
+  const [appliedFilters, setAppliedFilters] = useState<ReadonlyArray<DataConsoleFilter>>([]);
   const [loadedSearch, setLoadedSearch] = useState("");
   const [rowPage, setRowPage] = useState(0);
   const [showList, setShowList] = useState(true);
@@ -174,14 +188,6 @@ export function ZeropsDataPanel({
   const collapsedLoadedKeysRef = useRef<Set<string>>(new Set());
   const gridScrollRef = useRef<HTMLDivElement | null>(null);
   const treeScrollRef = useRef<HTMLDivElement | null>(null);
-  // A tree can page several levels at once (a container's own children, and
-  // one of its own expanded children, both mid-cursor) — one
-  // IntersectionObserver per level's sentinel, keyed by its path, rather
-  // than the grid's single observer. `treeSentinelStateRef` holds each key's
-  // latest `{path, cursor}` so a stable-identity callback (never rebuilt
-  // while the same level keeps paging) always fires `handleLoadMoreTree`
-  // with the current page's own cursor, the same "latest ref" trick
-  // `ZeropsDataTable`'s own sentinel uses.
   const observerRef = useRef<ResizeObserver | null>(null);
   const measureRef = useRef<((node: HTMLDivElement | null) => void) | null>(null);
   if (measureRef.current === null) {
@@ -276,6 +282,11 @@ export function ZeropsDataPanel({
 
   const resetSelection = () => {
     setSelectedNode(null);
+    setFilters([]);
+    setAppliedFilters([]);
+    setSqlOpen(false);
+    setSubmittedQuery(undefined);
+    database.update({ kind: "clear-query" });
     setRowPage(0);
     setShowList(true);
     database.update({ kind: "clear-selection" });
@@ -483,6 +494,11 @@ export function ZeropsDataPanel({
   const handleTableSort = (column: ZeropsDataConsoleColumn, direction: SortDirection) => {
     if (selectedNode === null) return;
     if (!column.sortable) return;
+    if (filtered !== undefined) {
+      setTableSort({ column: column.name, direction });
+      runFiltered(appliedFilters, { column: column.name, direction });
+      return;
+    }
     const page = buildSortPage(column, direction);
     if (page === undefined) return;
     setRowPage(0);
@@ -515,13 +531,85 @@ export function ZeropsDataPanel({
   const layout = resolveDataLayout(
     widthForTest ?? measuredWidth ?? (maximized ? ASSUMED_WIDTH_MAXIMIZED : ASSUMED_WIDTH_INLINE),
   );
-  const { nextCursor: _nextCursor, ...loadedTable } = tableModel;
-  const shownPage = Math.min(rowPage, Math.max(0, Math.ceil(tableModel.rows.length / 100) - 1));
+  const sqlDialect = selectedService ? resolveSqlDialect(selectedService.type) : undefined;
+  const activeTarget = database.detailTarget;
+  const activeModel = database.detailTable;
+  const activePending = database.readStates[activeTarget]?.pending === true;
+  const { nextCursor: _nextCursor, ...loadedTable } = activeModel;
+  const shownPage = Math.min(rowPage, Math.max(0, Math.ceil(activeModel.rows.length / 100) - 1));
   const gridModel = {
     ...loadedTable,
-    rows: tableModel.rows.slice(shownPage * 100, (shownPage + 1) * 100),
+    rows: activeModel.rows.slice(shownPage * 100, (shownPage + 1) * 100),
   };
-  const gridSort = tableSort;
+  const gridSort = queryState ? undefined : tableSort;
+  const runQuery = (stmt: string, target: "query" | "filtered", cursor?: string) => {
+    if (service === undefined || affordances?.canQuery !== true) return;
+    if (cursor === undefined) {
+      setSubmittedQuery({ stmt, target });
+      setRowPage(0);
+      setOpenRow(undefined);
+      resetGridScroll();
+      database.update({ kind: "clear-grid" });
+    }
+    void database.read({
+      request: { kind: "query", service, stmt, ...(cursor ? { page: { cursor } } : {}) },
+      target,
+      grid: true,
+      ...(cursor ? { cursor } : {}),
+    });
+  };
+  const runFiltered = (nextFilters: ReadonlyArray<DataConsoleFilter>, sort = tableSort) => {
+    if (sqlDialect === undefined || selectedNode === null) return;
+    database.update({ kind: "clear-query" });
+    runQuery(
+      buildFilteredTableStatement({
+        dialect: sqlDialect,
+        path: selectedNode.path,
+        filters: nextFilters,
+        ...(sort ? { sort } : {}),
+      }),
+      "filtered",
+    );
+  };
+  const loadNextRows = () => {
+    if (activePending || activeModel.nextCursor === undefined) return;
+    const query = queryState ?? filtered;
+    if (query)
+      runQuery(
+        query.stmt,
+        database.detailDataTarget as "query" | "filtered",
+        activeModel.nextCursor,
+      );
+    else handleTableLoadMore();
+  };
+  const filtersProps =
+    selectedNode?.kind === "tabular" &&
+    sqlDialect !== undefined &&
+    affordances?.canQuery &&
+    !queryState
+      ? {
+          columns: tableModel.columns,
+          filters,
+          rawWhere: "",
+          rawOpen: false,
+          dirty: filtersDirty({ filters, rawWhere: "" }, { filters: appliedFilters, rawWhere: "" }),
+          canClear: filtered !== undefined || filters.length > 0,
+          onChangeFilters: setFilters,
+          onApply: () => {
+            setAppliedFilters(filters);
+            runFiltered(filters);
+          },
+          onClear: () => {
+            setFilters([]);
+            setAppliedFilters([]);
+            setRowPage(0);
+            setOpenRow(undefined);
+            setSubmittedQuery(undefined);
+            database.update({ kind: "clear-filter" });
+            database.update({ kind: "clear-grid" });
+          },
+        }
+      : null;
 
   const addContext = (
     context: { readonly label: string; readonly text: string },
@@ -717,14 +805,18 @@ export function ZeropsDataPanel({
   const inventoryNodes = database.inventory;
   const loadedCount = inventoryNodes.length;
   const selectedMetadata = database.node?.meta ?? selectedNode?.meta;
-  const selectedState = database.readStates[selectedNode?.kind === "blob" ? "blob" : "table"];
+  const selectedState = database.readStates[selectedNode?.kind === "blob" ? "blob" : activeTarget];
   const missingItem =
     database.readStates.stat?.code === "not_found" || selectedState?.code === "not_found";
-  const detailTime = database.lastRead[selectedNode?.kind === "blob" ? "blob" : "table"];
+  const detailTime =
+    database.lastRead[selectedNode?.kind === "blob" ? "blob" : database.detailDataTarget];
   const refreshDetail = () => {
-    if (selectedNode === null) return;
-    void database.read({ request: { kind: "stat", path: selectedNode.path }, target: "stat" });
-    if (selectedNode.kind !== "container")
+    if (selectedNode !== null)
+      void database.read({ request: { kind: "stat", path: selectedNode.path }, target: "stat" });
+    if (submittedQuery) runQuery(submittedQuery.stmt, submittedQuery.target);
+    else if (queryState || filtered)
+      runQuery((queryState ?? filtered)!.stmt, database.detailDataTarget as "query" | "filtered");
+    else if (selectedNode !== null && selectedNode.kind !== "container")
       void database.read({
         request: { kind: selectedNode.kind === "blob" ? "blob" : "table", path: selectedNode.path },
         target: selectedNode.kind === "blob" ? "blob" : "table",
@@ -901,11 +993,12 @@ export function ZeropsDataPanel({
             }
           : {})}
       />
-    ) : selectedNode?.kind === "tabular" ? (
+    ) : selectedNode?.kind === "tabular" || queryState ? (
       <ZeropsDataTable
         columnsOpen={columnsOpen}
         hiddenColumns={hiddenColumns}
-        loadMorePending={tableLoadMorePending}
+        loadMorePending={activePending}
+        filtered={filtered !== undefined && queryState === undefined}
         model={gridModel}
         onAskAboutTable={
           selectedService === null
@@ -914,12 +1007,12 @@ export function ZeropsDataPanel({
                 addContext(
                   describeTableContext({
                     service: selectedService,
-                    path: selectedNode.path,
+                    path: currentPath,
                     columns: gridModel.columns,
                     ...(tableCount !== undefined ? { approxRowCount: tableCount } : {}),
                     collapsedPrefix: treeCollapsedPrefix,
                   }),
-                  selectedNode.path,
+                  currentPath,
                 )
         }
         onCopyPageJson={() =>
@@ -941,7 +1034,7 @@ export function ZeropsDataPanel({
           setFocusedRowIndex(rowIndex);
           setOpenRow({ index: rowIndex });
         }}
-        onSort={handleTableSort}
+        {...(queryState ? {} : { onSort: handleTableSort })}
         onToggleColumn={(name) => setHiddenColumns((current) => toggleHiddenColumn(current, name))}
         onToggleColumnsOpen={() => setColumnsOpen((current) => !current)}
         scrollRegionRef={gridScrollRef}
@@ -949,9 +1042,9 @@ export function ZeropsDataPanel({
         (gridNoticeView !== undefined || detailTime === undefined)
           ? { notice: gridNoticeView ?? <p>Loading detail…</p> }
           : {})}
-        onRequestCount={handleTableCount}
+        {...(queryState || filtered ? {} : { onRequestCount: handleTableCount })}
         {...(gridSort ? { sort: gridSort } : {})}
-        {...(tableCount !== undefined ? { count: tableCount } : {})}
+        {...(tableCount !== undefined && !queryState && !filtered ? { count: tableCount } : {})}
         {...(focusedRowIndex !== undefined ? { focusedRowIndex } : {})}
       />
     ) : null;
@@ -1011,6 +1104,43 @@ export function ZeropsDataPanel({
           ) : null}
         </div>
       ) : null}
+      {filtersProps ? (
+        <div className="flex flex-wrap items-center gap-2 py-1">
+          <ZeropsDataFilters slot="toolbar" {...filtersProps} />
+        </div>
+      ) : null}
+      {filtersProps ? <ZeropsDataFilters slot="rows" {...filtersProps} /> : null}
+      {selectedNode?.kind === "tabular" &&
+      selectedService?.family === "tabular" &&
+      !affordances?.canQuery ? (
+        <p className="text-xs text-muted-foreground">
+          This console does not offer read-only SQL or filters. Update the Mate to check for
+          support.
+        </p>
+      ) : null}
+      {sqlOpen && affordances?.canQuery ? (
+        <ZeropsDataQuery pending={activePending} onSubmit={(stmt) => runQuery(stmt, "query")} />
+      ) : null}
+      {queryState ? (
+        <div className="flex items-center gap-2 py-1 text-xs" data-zerops-data-query-result>
+          <span>{`Query result · ${queryState.model.rows.length.toLocaleString()} rows loaded`}</span>
+          <Button
+            size="micro"
+            variant="ghost"
+            data-zerops-data-query-back
+            onClick={() => {
+              database.update({ kind: "clear-query" });
+              database.update({ kind: "clear-grid" });
+              setRowPage(0);
+              setOpenRow(undefined);
+              setSubmittedQuery(undefined);
+              if (selectedNode === null) setShowList(true);
+            }}
+          >
+            Back to table
+          </Button>
+        </div>
+      ) : null}
       {missingItem ? <p role="status">This item is missing or has expired.</p> : null}
       {selectedState?.error ? (
         <div role="alert">
@@ -1050,12 +1180,14 @@ export function ZeropsDataPanel({
               ) : null}
             </>
           ))}
-      {selectedNode?.kind === "tabular" && detailTime !== undefined && !missingItem ? (
+      {(selectedNode?.kind === "tabular" || queryState) &&
+      detailTime !== undefined &&
+      !missingItem ? (
         <div className="flex items-center gap-2 py-2 text-xs">
           <span>
             Rows {gridModel.rows.length === 0 ? 0 : shownPage * 100 + 1}–
             {shownPage * 100 + gridModel.rows.length}
-            {tableModel.bestEffort ? " · Paging without a primary key is best effort" : ""}
+            {activeModel.bestEffort ? " · Paging without a primary key is best effort" : ""}
           </span>
           <Button
             size="micro"
@@ -1073,12 +1205,12 @@ export function ZeropsDataPanel({
             variant="ghost"
             data-zerops-data-next-page
             disabled={
-              tableLoadMorePending ||
-              ((shownPage + 1) * 100 >= tableModel.rows.length &&
-                tableModel.nextCursor === undefined)
+              activePending ||
+              ((shownPage + 1) * 100 >= activeModel.rows.length &&
+                activeModel.nextCursor === undefined)
             }
             onClick={() => {
-              if ((shownPage + 1) * 100 >= tableModel.rows.length) handleTableLoadMore();
+              if ((shownPage + 1) * 100 >= activeModel.rows.length) loadNextRows();
               setRowPage(shownPage + 1);
               setOpenRow(undefined);
             }}
@@ -1161,6 +1293,19 @@ export function ZeropsDataPanel({
                 : summaryError}
             </p>
           )}
+          {affordances?.canQuery && !database.withheld && !serviceStopped ? (
+            <Button
+              size="micro"
+              variant="ghost"
+              data-zerops-data-query-toggle
+              onClick={() => {
+                setSqlOpen(!sqlOpen);
+                setShowList(false);
+              }}
+            >
+              SQL
+            </Button>
+          ) : null}
           <Button
             size="micro"
             variant="ghost"

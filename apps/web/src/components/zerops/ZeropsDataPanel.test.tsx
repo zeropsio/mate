@@ -3,6 +3,7 @@ import type {
   ScopedThreadRef,
   ZeropsDataConsoleColumn,
   ZeropsDataConsoleNode,
+  ZeropsDataConsolePath,
   ZeropsDataConsoleRequest,
   ZeropsDataConsoleResponse,
   ZeropsDataConsoleService,
@@ -203,7 +204,7 @@ function render(options: RenderOptions = {}) {
 const SERVICE_SUPPORTED: ZeropsDataConsoleService = {
   hostname: "db1",
   type: "postgresql",
-  family: "postgresql",
+  family: "tabular",
   support: "supported",
   actions: [
     { id: "readTable", enabled: true, readOnly: true, reason: "" },
@@ -859,6 +860,44 @@ describe("ZeropsDataPanel", () => {
       return tree;
     }
 
+    it("does not page while a page is already in flight", async () => {
+      respond([SERVICE_SUPPORTED]);
+      let tree = await serviceTab();
+      const path = { service: "db1", segments: [] };
+      commandSpy.mockImplementation(() => new Promise(() => {}));
+      commandSpy.mockClear();
+      findComponent<{ onLoadMore: (value: ZeropsDataConsolePath, cursor: string) => void }>(
+        tree,
+        ZeropsDataTree,
+      )!.props.onLoadMore(path, "c1");
+      tree = render({ service: "db1", widthForTest: 1200 });
+      findComponent<{ onLoadMore: (value: ZeropsDataConsolePath, cursor: string) => void }>(
+        tree,
+        ZeropsDataTree,
+      )!.props.onLoadMore(path, "c1");
+      expect(commandSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("A console without query capability explains why SQL and filters are unavailable.", async () => {
+      respond([
+        {
+          ...SERVICE_SUPPORTED,
+          actions: SERVICE_SUPPORTED.actions.filter((action) => action.id !== "querySQL"),
+        },
+      ]);
+      await serviceTab();
+      let tree = render({ service: "db1", widthForTest: 1200 });
+      findComponent<{ onSelectNode: (node: ZeropsDataConsoleNode) => void }>(
+        tree,
+        ZeropsDataTree,
+      )!.props.onSelectNode(ORDERS);
+      await flush();
+      tree = render({ service: "db1", widthForTest: 1200 });
+      expect(findByAttribute(tree, "data-zerops-data-query-toggle")).toBeNull();
+      expect(findComponent(tree, ZeropsDataFilters)).toBeNull();
+      expect(textOf(tree)).toContain("does not offer read-only SQL or filters");
+    });
+
     it("Opening a service shows its identity and a useful inventory before selection.", async () => {
       respond([SERVICE_SUPPORTED]);
       const tree = await serviceTab();
@@ -868,8 +907,8 @@ describe("ZeropsDataPanel", () => {
     });
     it("Decision: iteration 1 read-only as proposed; no editing or arbitrary queries.", async () => {
       const tree = await selectOrders();
-      expect(findByAttribute(tree, "data-zerops-data-query-toggle")).toBeNull();
-      expect(findComponent(tree, ZeropsDataFilters)).toBeNull();
+      expect(textOf(tree)).toContain("Read only");
+      expect(findByAttribute(tree, "data-zerops-data-edit")).toBeNull();
     });
     it("Choosing an item shows its bounded detail; Back restores the same list.", async () => {
       let tree = await selectOrders(undefined, { widthForTest: 420 });
@@ -1499,6 +1538,345 @@ describe("ZeropsDataPanel", () => {
           ZeropsDataTable,
         )!.props.count,
       ).toBeUndefined();
+    });
+
+    it("applying filters runs a read-only statement and marks the grid filtered", async () => {
+      const tree = await selectOrders((request) =>
+        request.kind === "table"
+          ? { kind: "table", page: tablePage({ columns: [column({ name: "status" })] }) }
+          : { kind: "table", page: tablePage({ rows: [["filtered"]] }) },
+      );
+      const filters = findComponent<{
+        readonly onChangeFilters: (filters: ReadonlyArray<unknown>) => void;
+        readonly onChangeRawWhere: (raw: string) => void;
+        readonly onApply: () => void;
+      }>(tree, ZeropsDataFilters)!;
+      expect(filters).not.toBeNull();
+      filters.props.onChangeFilters([{ column: "status", op: "eq", value: "paid" }]);
+      await flush();
+
+      commandSpy.mockClear();
+      findComponent<{ readonly onApply: () => void }>(
+        render({ service: "db1", widthForTest: 1200 }),
+        ZeropsDataFilters,
+      )!.props.onApply();
+      await flush();
+
+      expect(commandSpy).toHaveBeenCalledWith({
+        environmentId: THREAD_REF.environmentId,
+        input: {
+          kind: "query",
+          service: "db1",
+          stmt: 'SELECT * FROM "public"."orders" WHERE "status" = \'paid\'',
+        },
+      });
+      const grid = findComponent<{
+        readonly filtered: boolean;
+        readonly model: { readonly rows: ReadonlyArray<ReadonlyArray<unknown>> };
+      }>(render({ service: "db1", widthForTest: 1200 }), ZeropsDataTable)!;
+      expect(grid.props.filtered).toBe(true);
+      expect(grid.props.model.rows).toEqual([["filtered"]]);
+    });
+
+    it("sorting a filtered grid rebuilds the statement's ORDER BY instead of paging", async () => {
+      const STATUS = column({ name: "status" });
+      const tree = await selectOrders((request) =>
+        request.kind === "table"
+          ? { kind: "table", page: tablePage({ columns: [STATUS] }) }
+          : { kind: "table", page: tablePage({ columns: [STATUS], rows: [["paid"]] }) },
+      );
+      findComponent<{ readonly onApply: () => void }>(tree, ZeropsDataFilters)!.props.onApply();
+      await flush();
+
+      const grid = findComponent<{
+        readonly onSort: (column: ZeropsDataConsoleColumn, direction: "asc" | "desc") => void;
+      }>(render({ service: "db1", widthForTest: 1200 }), ZeropsDataTable)!;
+      commandSpy.mockClear();
+      grid.props.onSort(STATUS, "desc");
+
+      expect(commandSpy).toHaveBeenCalledWith({
+        environmentId: THREAD_REF.environmentId,
+        input: {
+          kind: "query",
+          service: "db1",
+          stmt: 'SELECT * FROM "public"."orders" ORDER BY "status" DESC',
+        },
+      });
+    });
+
+    it("clearing filters returns the plain table to the grid", async () => {
+      const tree = await selectOrders((request) =>
+        request.kind === "table"
+          ? { kind: "table", page: tablePage({ rows: [["plain"]] }) }
+          : { kind: "table", page: tablePage({ rows: [["filtered"]] }) },
+      );
+      findComponent<{ readonly onApply: () => void }>(tree, ZeropsDataFilters)!.props.onApply();
+      await flush();
+      findComponent<{ readonly onClear: () => void }>(
+        render({ service: "db1", widthForTest: 1200 }),
+        ZeropsDataFilters,
+      )!.props.onClear();
+      await flush();
+
+      const grid = findComponent<{
+        readonly filtered: boolean;
+        readonly model: { readonly rows: ReadonlyArray<ReadonlyArray<unknown>> };
+      }>(render({ service: "db1", widthForTest: 1200 }), ZeropsDataTable)!;
+      expect(grid.props.filtered).toBe(false);
+      expect(grid.props.model.rows).toEqual([["plain"]]);
+    });
+
+    it("the SQL toggle reveals the query box, which submits its statement", async () => {
+      const tree = await selectOrders((request) =>
+        request.kind === "table" ? { kind: "table", page: tablePage() } : undefined,
+      );
+      expect(findComponent(tree, ZeropsDataQuery)).toBeNull();
+
+      expect(findByAttribute(tree, "data-zerops-data-query-toggle")).not.toBeNull();
+      (findByAttribute(tree, "data-zerops-data-query-toggle")!.props.onClick as () => void)();
+      const opened = render({ service: "db1", widthForTest: 1200 });
+      const query = findComponent<{ readonly onSubmit: (stmt: string) => void }>(
+        opened,
+        ZeropsDataQuery,
+      )!;
+      commandSpy.mockClear();
+      query.props.onSubmit("select 1");
+      expect(commandSpy).toHaveBeenCalledWith({
+        environmentId: THREAD_REF.environmentId,
+        input: { kind: "query", service: "db1", stmt: "select 1" },
+      });
+    });
+
+    it("a query result takes over the one grid, and Back to table gives it back", async () => {
+      const tree = await selectOrders((request) =>
+        request.kind === "table"
+          ? { kind: "table", page: tablePage({ rows: [["plain"]] }) }
+          : { kind: "table", page: tablePage({ rows: [["queried"], ["queried-2"]] }) },
+      );
+      expect(findByAttribute(tree, "data-zerops-data-query-toggle")).not.toBeNull();
+      (findByAttribute(tree, "data-zerops-data-query-toggle")!.props.onClick as () => void)();
+      findComponent<{ readonly onSubmit: (stmt: string) => void }>(
+        render({ service: "db1", widthForTest: 1200 }),
+        ZeropsDataQuery,
+      )!.props.onSubmit("select 1");
+      await flush();
+
+      const withResult = render({ service: "db1", widthForTest: 1200 });
+      const grids = allComponents(withResult, ZeropsDataTable);
+      expect(grids).toHaveLength(1);
+      expect(
+        (grids[0]!.props as { readonly model: { readonly rows: ReadonlyArray<unknown> } }).model
+          .rows,
+      ).toEqual([["queried"], ["queried-2"]]);
+      expect(findByAttribute(withResult, "data-zerops-data-query-result")).not.toBeNull();
+      expect(
+        visitElements(
+          withResult,
+          (element) => element.props.children === "Query result · 2 rows loaded",
+        ),
+      ).not.toBeNull();
+
+      (findByAttribute(withResult, "data-zerops-data-query-back")!.props.onClick as () => void)();
+      const back = render({ service: "db1", widthForTest: 1200 });
+      expect(findByAttribute(back, "data-zerops-data-query-result")).toBeNull();
+      expect(
+        findComponent<{ readonly model: { readonly rows: ReadonlyArray<unknown> } }>(
+          back,
+          ZeropsDataTable,
+        )!.props.model.rows,
+      ).toEqual([["plain"]]);
+    });
+
+    it("offers Apply only while the filter draft differs from what is applied", async () => {
+      const tree = await selectOrders((request) =>
+        request.kind === "table"
+          ? { kind: "table", page: tablePage({ columns: [column({ name: "status" })] }) }
+          : { kind: "table", page: tablePage({ rows: [["filtered"]] }) },
+      );
+      const filters = findComponent<{
+        readonly dirty: boolean;
+        readonly onChangeFilters: (filters: ReadonlyArray<unknown>) => void;
+      }>(tree, ZeropsDataFilters)!;
+      expect(filters).not.toBeNull();
+      expect(filters.props.dirty).toBe(false);
+
+      expect(filters).not.toBeNull();
+      filters.props.onChangeFilters([{ column: "status", op: "eq", value: "paid" }]);
+      const dirty = findComponent<{ readonly dirty: boolean; readonly onApply: () => void }>(
+        render({ service: "db1", widthForTest: 1200 }),
+        ZeropsDataFilters,
+      )!;
+      expect(dirty.props.dirty).toBe(true);
+
+      dirty.props.onApply();
+      await flush();
+      expect(
+        findComponent<{ readonly dirty: boolean }>(
+          render({ service: "db1", widthForTest: 1200 }),
+          ZeropsDataFilters,
+        )!.props.dirty,
+      ).toBe(false);
+    });
+
+    it("SQL is available from a service inventory even before a table is selected.", async () => {
+      respond([SERVICE_SUPPORTED], (request) =>
+        request.kind === "query" ? { kind: "table", page: tablePage({ rows: [[42]] }) } : undefined,
+      );
+      let tree = await serviceTab({ widthForTest: 435 });
+      const toggle = findByAttribute(tree, "data-zerops-data-query-toggle");
+      expect(toggle).not.toBeNull();
+      (toggle!.props.onClick as () => void)();
+      tree = render({ service: "db1", widthForTest: 435 });
+      findComponent<{ onSubmit: (stmt: string) => void }>(tree, ZeropsDataQuery)!.props.onSubmit(
+        "SELECT 42",
+      );
+      await flush();
+      tree = render({ service: "db1", widthForTest: 435 });
+      expect(
+        findComponent<{ model: { rows: unknown } }>(tree, ZeropsDataTable)!.props.model.rows,
+      ).toEqual([[42]]);
+      expect(findByAttribute(tree, "data-zerops-data-next-page")!.props.disabled).toBe(true);
+    });
+
+    it("SQL result pages arrive after first paint and Next/Back preserve every row.", async () => {
+      let release: (() => void) | undefined;
+      const first = Array.from({ length: 100 }, (_, i) => [i + 1]);
+      const tree = await selectOrders((request) =>
+        request.kind === "table"
+          ? { kind: "table", page: tablePage({ rows: [["plain"]] }) }
+          : undefined,
+      );
+      (findByAttribute(tree, "data-zerops-data-query-toggle")!.props.onClick as () => void)();
+      commandSpy.mockImplementation(
+        ({ input }: { input: ZeropsDataConsoleRequest }) =>
+          new Promise((resolve) => {
+            release = () =>
+              resolve(
+                AsyncResult.success({
+                  kind: "table",
+                  page: tablePage({
+                    rows: input.kind === "query" && input.page?.cursor ? [[101]] : first,
+                    nextCursor: input.kind === "query" && input.page?.cursor ? "" : "100",
+                  }),
+                }),
+              );
+          }),
+      );
+      findComponent<{ onSubmit: (stmt: string) => void }>(
+        render({ service: "db1", widthForTest: 1200 }),
+        ZeropsDataQuery,
+      )!.props.onSubmit("SELECT id FROM orders ORDER BY id");
+      let pending = render({ service: "db1", widthForTest: 1200 });
+      expect(textOf(pending)).toContain("Loading detail");
+      release?.();
+      await flush();
+      let loaded = render({ service: "db1", widthForTest: 1200 });
+      const gridRows = (tree: unknown) =>
+        findComponent<{ model: { rows: unknown } }>(tree, ZeropsDataTable)!.props.model.rows;
+      expect(gridRows(loaded)).toEqual(first);
+      (findByAttribute(loaded, "data-zerops-data-next-page")!.props.onClick as () => void)();
+      pending = render({ service: "db1", widthForTest: 1200 });
+      expect(findByAttribute(pending, "data-zerops-data-next-page")!.props.disabled).toBe(true);
+      expect(gridRows(pending)).toEqual(first);
+      release?.();
+      await flush();
+      loaded = render({ service: "db1", widthForTest: 1200 });
+      expect(gridRows(loaded)).toEqual([[101]]);
+      expect(textOf(loaded)).toContain("Rows 101–101");
+      expect(findByAttribute(loaded, "data-zerops-data-next-page")!.props.disabled).toBe(true);
+      (
+        visitElements(loaded, (element) => element.props.children === "Back")!.props
+          .onClick as () => void
+      )();
+      expect(gridRows(render({ service: "db1", widthForTest: 1200 }))).toEqual(first);
+    });
+
+    it("A filtered detail retains table types and sorting when query columns omit them.", async () => {
+      const tree = await selectOrders((request) =>
+        request.kind === "table"
+          ? {
+              kind: "table",
+              page: tablePage({
+                columns: [column({ name: "status", dataType: "text", sortable: true })],
+              }),
+            }
+          : request.kind === "query"
+            ? {
+                kind: "table",
+                page: tablePage({
+                  columns: [column({ name: "status", dataType: "", sortable: false })],
+                  rows: [["paid"]],
+                }),
+              }
+            : undefined,
+      );
+      findComponent<{ onApply: () => void }>(tree, ZeropsDataFilters)!.props.onApply();
+      await flush();
+      const grid = findComponent<{ model: { columns: ReadonlyArray<ZeropsDataConsoleColumn> } }>(
+        render({ service: "db1", widthForTest: 1200 }),
+        ZeropsDataTable,
+      )!;
+      expect(grid.props.model.columns[0]).toMatchObject({ dataType: "text", sortable: true });
+    });
+
+    it("A failed SQL read shows its own error while retaining the authorized table.", async () => {
+      const tree = await selectOrders((request) =>
+        request.kind === "table"
+          ? { kind: "table", page: tablePage({ rows: [["plain"]] }) }
+          : undefined,
+      );
+      (findByAttribute(tree, "data-zerops-data-query-toggle")!.props.onClick as () => void)();
+      commandSpy.mockImplementation(() =>
+        Promise.resolve(
+          AsyncResult.failure(
+            Cause.fail(new ZeropsDataConsoleError({ code: "timeout", message: "timed out" })),
+          ),
+        ),
+      );
+      findComponent<{ onSubmit: (stmt: string) => void }>(
+        render({ service: "db1", widthForTest: 1200 }),
+        ZeropsDataQuery,
+      )!.props.onSubmit("SELECT 1");
+      await flush();
+      const failed = render({ service: "db1", widthForTest: 1200 });
+      expect(textOf(failed)).toContain("timed out");
+      expect(
+        findComponent<{ model: { rows: unknown } }>(failed, ZeropsDataTable)!.props.model.rows,
+      ).toEqual([["plain"]]);
+    });
+
+    it("Retry repeats a failed first SQL statement and labels the retained table's last read.", async () => {
+      const tree = await selectOrders((request) =>
+        request.kind === "table"
+          ? { kind: "table", page: tablePage({ rows: [["plain"]] }) }
+          : undefined,
+      );
+      (findByAttribute(tree, "data-zerops-data-query-toggle")!.props.onClick as () => void)();
+      commandSpy.mockImplementation(() =>
+        Promise.resolve(
+          AsyncResult.failure(
+            Cause.fail(new ZeropsDataConsoleError({ code: "timeout", message: "timed out" })),
+          ),
+        ),
+      );
+      findComponent<{ onSubmit: (stmt: string) => void }>(
+        render({ service: "db1", widthForTest: 1200 }),
+        ZeropsDataQuery,
+      )!.props.onSubmit("SELECT 42");
+      await flush();
+      const failed = render({ service: "db1", widthForTest: 1200 });
+      expect(textOf(failed)).toContain("Last read");
+      commandSpy.mockClear();
+      (
+        visitElements(failed, (element) => element.props.children === "Retry")!.props
+          .onClick as () => void
+      )();
+      await flush();
+      expect(commandSpy.mock.calls.map(([call]) => call.input)).toContainEqual({
+        kind: "query",
+        service: "db1",
+        stmt: "SELECT 42",
+      });
     });
 
     it("a service with no SQL dialect gets no filter bar", async () => {

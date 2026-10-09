@@ -24,7 +24,7 @@ are bounded and marked as truncated. Timeout retains authorized data with a last
 Retry; access denial withholds protected data. Empty results appear only after a successful read.
 Stopped services, unsupported capabilities and unavailable or outdated consoles have separate states.
 
-This surface is read-only: no SQL editor, arbitrary commands, filters that execute SQL, editing,
+This surface is read-only: no arbitrary commands or editing,
 uploads, deletion, TTL changes, full downloads or bulk export. Desktop source shares this web panel;
 mobile has no data-panel entry point. Other registered service families retain their existing
 capability-based views.

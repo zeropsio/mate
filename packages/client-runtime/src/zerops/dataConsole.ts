@@ -697,7 +697,7 @@ export function buildFilteredTableStatement(input: {
   readonly filters: ReadonlyArray<DataConsoleFilter>;
   readonly rawWhere?: string;
   readonly sort?: { readonly column: string; readonly direction: "asc" | "desc" };
-  readonly limit: number;
+  readonly limit?: number;
 }): string {
   const { dialect, path, filters, rawWhere, sort, limit } = input;
   const clauses = filters.map((filter) => filterClause(filter, dialect));
@@ -709,7 +709,7 @@ export function buildFilteredTableStatement(input: {
   if (sort) {
     parts.push(`ORDER BY ${quoteIdentifier(sort.column, dialect)} ${sort.direction.toUpperCase()}`);
   }
-  parts.push(`LIMIT ${limit}`);
+  if (limit !== undefined) parts.push(`LIMIT ${limit}`);
   return parts.join(" ");
 }
 

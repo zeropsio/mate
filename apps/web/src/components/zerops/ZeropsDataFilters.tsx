@@ -69,8 +69,8 @@ export interface ZeropsDataFiltersProps {
   /** Chip index whose value input takes focus on this render — the one just added. */
   readonly autoFocusIndex?: number | undefined;
   readonly onChangeFilters: (filters: ReadonlyArray<DataConsoleFilter>) => void;
-  readonly onChangeRawWhere: (rawWhere: string) => void;
-  readonly onToggleRaw: () => void;
+  readonly onChangeRawWhere?: (rawWhere: string) => void;
+  readonly onToggleRaw?: () => void;
   readonly onApply: () => void;
   readonly onClear: () => void;
   readonly valueInputRef?: RefObject<HTMLInputElement | null> | undefined;
@@ -120,14 +120,16 @@ export function ZeropsDataFilters({
           <FilterIcon />
           Filter
         </Button>
-        <Button
-          data-zerops-data-filter-raw-toggle
-          onClick={onToggleRaw}
-          size="xs"
-          variant={rawOpen ? "secondary" : "ghost"}
-        >
-          WHERE…
-        </Button>
+        {onToggleRaw ? (
+          <Button
+            data-zerops-data-filter-raw-toggle
+            onClick={onToggleRaw}
+            size="xs"
+            variant={rawOpen ? "secondary" : "ghost"}
+          >
+            WHERE…
+          </Button>
+        ) : null}
         {dirty ? (
           <Button data-zerops-data-filter-apply onClick={onApply} size="xs" variant="secondary">
             Apply
@@ -220,7 +222,7 @@ export function ZeropsDataFilters({
           aria-label="Raw WHERE clause"
           className="h-7 text-xs"
           data-zerops-data-filter-raw
-          onChange={(event) => onChangeRawWhere(event.target.value)}
+          onChange={(event) => onChangeRawWhere?.(event.target.value)}
           onKeyDown={applyOnEnter}
           placeholder="status = 'paid' AND total > 100"
           size="sm"

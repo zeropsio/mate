@@ -15,10 +15,11 @@ import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 
 export interface ZeropsDataQueryProps {
+  readonly pending?: boolean;
   readonly onSubmit: (stmt: string) => void;
 }
 
-export function ZeropsDataQuery({ onSubmit }: ZeropsDataQueryProps) {
+export function ZeropsDataQuery({ onSubmit, pending = false }: ZeropsDataQueryProps) {
   const [stmt, setStmt] = useState("");
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -26,7 +27,7 @@ export function ZeropsDataQuery({ onSubmit }: ZeropsDataQueryProps) {
   };
 
   const handleSubmit = () => {
-    if (stmt.trim().length === 0) return;
+    if (pending || stmt.trim().length === 0) return;
     onSubmit(stmt);
   };
 
@@ -35,6 +36,10 @@ export function ZeropsDataQuery({ onSubmit }: ZeropsDataQueryProps) {
       className="shrink-0 space-y-1 rounded-[var(--zerops-card-radius)] border border-border p-2"
       data-zerops-data-query
     >
+      <p className="text-xs text-muted-foreground">
+        One SELECT statement · 100 rows per page · 10 second timeout. Comments and escape syntax are
+        not supported.
+      </p>
       <Textarea
         data-zerops-data-query-input
         onChange={handleChange}
@@ -44,7 +49,7 @@ export function ZeropsDataQuery({ onSubmit }: ZeropsDataQueryProps) {
       />
       <Button
         data-zerops-data-query-submit
-        disabled={stmt.trim().length === 0}
+        disabled={pending || stmt.trim().length === 0}
         onClick={handleSubmit}
         size="sm"
         variant="secondary"

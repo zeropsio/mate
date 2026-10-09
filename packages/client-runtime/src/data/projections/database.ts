@@ -5,6 +5,7 @@ import {
   treePathKey,
   describeTableContext,
   type DataMentionEntry,
+  type DataConsoleTableModel,
 } from "../../zerops/dataConsole.ts";
 import {
   databaseKey,
@@ -21,6 +22,9 @@ import { sameValue } from "./equal.ts";
 
 export interface DatabasePanelRead extends DatabasePanelValue {
   readonly withheld: boolean;
+  readonly detailTarget: string;
+  readonly detailDataTarget: "query" | "filtered" | "table";
+  readonly detailTable: DataConsoleTableModel;
   readonly inventory: ReadonlyArray<ZeropsDataConsoleNode>;
   readonly readStates: Readonly<
     Record<
@@ -61,8 +65,30 @@ export const databasePanel: Projection<
     const pending = (target: string) => ["connecting", "baselining"].includes(stream(target).phase);
     const error = value.latestTarget === undefined ? undefined : stream(value.latestTarget).fault;
     const grid = value.gridTarget === undefined ? undefined : stream(value.gridTarget).fault;
+    const detailTarget =
+      value.gridTarget ?? (value.queryState ? "query" : value.filtered ? "filtered" : "table");
+    const detailDataTarget = value.queryState ? "query" : value.filtered ? "filtered" : "table";
+    const filteredModel = value.filtered?.model;
+    const detailTable =
+      value.queryState?.model ??
+      (filteredModel
+        ? {
+            ...filteredModel,
+            columns: filteredModel.columns.map((column) => {
+              const source = value.tableModel.columns.find(
+                (original) => original.name === column.name,
+              );
+              return source ? { ...source, editable: false } : column;
+            }),
+            rowKeyCols: value.tableModel.rowKeyCols,
+            bestEffort: value.tableModel.bestEffort,
+          }
+        : value.tableModel);
     return {
       ...value,
+      detailTarget,
+      detailDataTarget,
+      detailTable,
       withheld: fact.kind === "withheld",
       inventory: [
         ...new Map(
