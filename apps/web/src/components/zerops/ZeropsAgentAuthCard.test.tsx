@@ -140,6 +140,52 @@ describe("ZeropsAgentAuthCard", () => {
     expect(html).toContain("Sign in to Codex");
   });
 
+  // Milo, signed in to Claude, still sat under "Sign in inside this Zerops Control Plane" with a
+  // Codex Sign in row beside it (stress run 3, 2026-10-09): it read as a sign-in request.
+  it("A signed-in conversation's agent shows the signed-in state; another agent's sign-in is a quiet secondary line", () => {
+    const feed = snapshot([
+      agent({
+        agentId: "claude-code",
+        state: "authorized",
+        credPresent: true,
+        providerAuth: "authenticated",
+      }),
+      agent({ agentId: "codex", state: "not-authorized" }),
+    ]);
+    const html = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={feed}
+        conversationAgentId="claude-code"
+        signInDemanded={demanded(feed, "claudeAgent")}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+    expect(html).not.toContain("Sign in inside this Zerops Control Plane");
+    expect(html).toContain("Claude Code is signed in");
+    expect(html.match(/data-zerops-agent-auth-row=/g)).toHaveLength(1);
+    expect(html).toContain("Codex isn’t signed in");
+    expect(html).toContain("Sign in to Codex");
+  });
+
+  it("While the conversation's agent needs a sign-in, the card asks for it and lists every agent", () => {
+    const feed = snapshot([
+      agent({ agentId: "claude-code", state: "not-authorized" }),
+      agent({ agentId: "codex", state: "not-authorized" }),
+    ]);
+    const html = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={feed}
+        conversationAgentId="claude-code"
+        signInDemanded={demanded(feed, "claudeAgent")}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+    expect(html).toContain("Sign in inside this Zerops Control Plane");
+    expect(html.match(/data-zerops-agent-auth-row=/g)).toHaveLength(2);
+  });
+
   it("demands a sign-in only while no agent is signed in", () => {
     const alone = renderToStaticMarkup(
       <ZeropsAgentAuthCard
