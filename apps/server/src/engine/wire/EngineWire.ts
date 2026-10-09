@@ -70,7 +70,7 @@ import { EngineSignals } from "../EngineSignals.ts";
 import { LiveBus, type LiveFrame } from "../LiveBus.ts";
 import { conversationRowOf } from "../read/conversationRow.ts";
 import { runStatusOf } from "../read/runState.ts";
-import { readConversationView } from "../read/conversationView.ts";
+import { readConversationView, type ConversationView } from "../read/conversationView.ts";
 import { bytesOf, changesFrames, fitRecords, liveFrames, sliceUtf8 } from "./budget.ts";
 import { makeRecords } from "./records.ts";
 import type { MessagePictures } from "../ports.ts";
@@ -83,11 +83,12 @@ export interface WireCaller {
 }
 
 export interface EngineWireShape {
-  /** Archive membership and time belong to the engine; shell metadata stays with its projection. */
-  readonly readArchived: (
-    protocol: number,
-  ) => Effect.Effect<
-    ReadonlyArray<{ readonly conversationId: ConversationId; readonly archivedAt: string }>,
+  /** Archived conversations and their archive times, read entirely from engine records. */
+  readonly readArchived: (protocol: number) => Effect.Effect<
+    ReadonlyArray<{
+      readonly archivedAt: string;
+      readonly view: ConversationView;
+    }>,
     EngineWireError
   >;
   readonly subscribe: (
@@ -674,13 +675,15 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
               AND type = 'ConversationArchived')
         `;
         return (yield* Effect.forEach(ids, (row) =>
-          conversations.state(row.conversation_id as ConversationId).pipe(
-            Effect.map((state) =>
-              state.archived
+          readConversationView(row.conversation_id as ConversationId).pipe(
+            Effect.provideService(Conversations, conversations),
+            Effect.provideService(SqlClient.SqlClient, sql),
+            Effect.map((view) =>
+              view?.archived
                 ? [
                     {
-                      conversationId: state.conversationId,
                       archivedAt: DateTime.formatIso(DateTime.makeUnsafe(row.archived_at)),
+                      view,
                     },
                   ]
                 : [],

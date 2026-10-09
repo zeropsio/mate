@@ -9,6 +9,7 @@
  *
  * @module engineOverview
  */
+import type { EngineWireShape } from "../engine/wire/EngineWire.ts";
 import {
   ConversationId,
   DEFAULT_MODEL,
@@ -21,6 +22,7 @@ import {
   type ConversationRow,
   type OrchestrationLatestTurn,
   type OrchestrationSession,
+  type OrchestrationShellSnapshot,
   type OrchestrationThreadShell,
 } from "@t3tools/contracts";
 
@@ -206,6 +208,43 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
             ],
           },
         }),
+  };
+};
+
+/** The archive's shell format, including the project Settings uses to group its rows. */
+export const engineArchiveSnapshotOf = (
+  archived: Effect.Success<ReturnType<EngineWireShape["readArchived"]>>,
+  workspaceRoot: string,
+): OrchestrationShellSnapshot => {
+  const threads = archived.map(({ view, archivedAt }) => ({
+    ...engineShellOf(view),
+    archivedAt,
+  }));
+  const updatedAt = threads.reduce(
+    (latest, thread) => (thread.updatedAt > latest ? thread.updatedAt : latest),
+    "1970-01-01T00:00:00.000Z",
+  );
+  return {
+    snapshotSequence: 0,
+    projects:
+      threads.length === 0
+        ? []
+        : [
+            {
+              id: ENGINE_PROJECT_ID,
+              title: "Mate",
+              workspaceRoot,
+              defaultModelSelection: null,
+              scripts: [],
+              createdAt: threads.reduce(
+                (earliest, thread) => (thread.createdAt < earliest ? thread.createdAt : earliest),
+                updatedAt,
+              ),
+              updatedAt,
+            },
+          ],
+    threads,
+    updatedAt,
   };
 };
 
