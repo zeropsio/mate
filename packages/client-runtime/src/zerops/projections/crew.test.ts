@@ -494,7 +494,12 @@ describe("deriveCrewView on the engine", () => {
       { name: "two running", rows, working: 2 },
       {
         name: "nobody running",
-        rows: rows.map((row) => ({ ...row, state: IDLE, activeRunId: null })),
+        rows: rows.map((row) => ({
+          ...row,
+          state: IDLE,
+          activeRunId: null,
+          runStatus: "ready" as const,
+        })),
         working: 0,
       },
     ] as const;
