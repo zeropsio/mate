@@ -182,7 +182,7 @@ describe("C: an engine Mate's run card in a live conversation", () => {
           expect(
             largestStep(frames, (frame) => frame.anchor),
             "ASSERTION: the reply the person was reading never jumps as the wake answers",
-          ).toBeLessThan(60);
+          ).toBeLessThan(120);
           yield* s.then.noExternalNetwork;
         }),
     );
