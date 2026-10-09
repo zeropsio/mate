@@ -360,8 +360,8 @@ function buildRow(
             line: formatCommandLine(entry.transport.command, entry.transport.args),
           },
     actions: {
-      // Reconnecting asks the conversation's agent: there must be one with it on.
-      reconnect: state !== "disabled" && state !== "absent",
+      // Config alone does not establish a running session to reconnect.
+      reconnect: state !== "disabled" && state !== "absent" && state !== "configured",
       // Only the Mate's own servers turn off here: the repo's are edited in
       // its .mcp.json, and the Mate runs on Zerops' tools.
       toggle: origin === "mate" ? (enabled ? "off" : "on") : null,

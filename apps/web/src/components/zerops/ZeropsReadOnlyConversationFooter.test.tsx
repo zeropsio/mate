@@ -62,12 +62,13 @@ describe("ZeropsReadOnlyConversationFooter", () => {
   ] as const)("with %s offers no way to act on the agent", (_label, input, buttonCount) => {
     const html = render(input);
 
+    expect(html).not.toContain("data-zerops-primary-action");
     expect(html).not.toContain("<textarea");
     expect(html).not.toContain("contenteditable");
     expect(html).not.toContain("<form");
     expect(html).not.toContain("Waiting for you");
     expect(buttons(html)).toHaveLength(buttonCount);
-    expect(buttons(html).at(-1)).toContain("Sign in with your own account");
+    expect(buttons(html).at(-1)).toContain("Use my own account instead…");
     expect(html).toContain(readOnly.notice);
   });
 
@@ -78,7 +79,7 @@ describe("ZeropsReadOnlyConversationFooter", () => {
     const html = render({});
 
     expect(html).toMatch(
-      /<div[^>]*data-chat-composer-main-surface="true"[^>]*>[\s\S]*Sign in with your own account/,
+      /<div[^>]*data-chat-composer-main-surface="true"[^>]*>[\s\S]*Use my own account instead…/,
     );
   });
 

@@ -3522,6 +3522,7 @@ function fillerKey(filler: SlotFiller): string {
 function LiveSlot({
   ref,
   folded,
+  end,
   slot,
   live,
   items,
@@ -3534,6 +3535,7 @@ function LiveSlot({
 }: {
   readonly ref: Ref<HTMLDivElement>;
   readonly folded: boolean;
+  readonly end: ReactNode;
   readonly slot: LiveSlotState;
   /** What is live now, as the items they become. */
   readonly live: ReadonlyArray<RecordItem>;
@@ -3765,6 +3767,7 @@ function LiveSlot({
       <span className="run-slot-clock" data-run-clock-waiting={clock?.waiting ? "" : undefined}>
         {clock?.waiting ? <span className="sr-only">Waiting for you </span> : null}
         {ticker === null ? null : <RunTicker status={ticker} />}
+        {end}
       </span>
       {/* What a screen reader hears: what the slot shows, as it changes. */}
       <span className="sr-only" role="status">
@@ -3845,7 +3848,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // Watched live here, it ends under the person's eyes: its line rises in.
   const [watchedLive, setWatchedLive] = useState(row.live && !ctx.syncing);
   if (row.live && !ctx.syncing && !watchedLive) setWatchedLive(true);
-  const shows = runCardShows(settled, fold);
+  const shows = runCardShows(settled, fold, row.hasWork);
   const folded = shows.toggle === "show";
   const liveFolded = fold === "folded";
   // The work stands over the line while the run goes on, while it stays open
@@ -4098,6 +4101,16 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     [settledOutcome],
   );
   const resultPictures = useStripFiles(settledOutcome?.turnKey ?? null, stripGuess);
+  const liveToggle =
+    shows.toggle === null ? null : (
+      <WorkToggle
+        open={!liveFolded}
+        onToggle={() => {
+          hold(!liveFolded);
+          chooseLiveRunFold(ctx.routeThreadKey, row.turnKey, liveFolded ? "watched" : "folded");
+        }}
+      />
+    );
   return (
     // One container for the chat and its now line: the Mate's column keeps
     // one gap for both. Its words wear its tint (`.run-speech`). Keyed, so the
@@ -4141,7 +4154,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               end={
                 // A chat opens from its first thing the Mate did (`chatLines`),
                 // and only onto a line that shows something.
-                shows.toggle !== null && row.hasWork ? (
+                shows.toggle !== null ? (
                   <WorkToggle
                     onToggle={() => {
                       // Its lines not read yet: it opens once their first page is held.
@@ -4168,6 +4181,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
             <LiveSlot
               key="slot"
               folded={liveFolded}
+              end={liveFolded ? null : liveToggle}
               ref={slotRef}
               items={model.record}
               live={model.live}
@@ -4180,33 +4194,15 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               motionRef={motionRef}
             />
           )}
-          {row.live && row.status !== null ? (
-            liveFolded ? (
-              <NowLine
-                key="live-summary"
-                answering={row.answering}
-                outcome={null}
-                now={now}
-                status={row.status}
-                end={
-                  <WorkToggle
-                    open={false}
-                    onToggle={() => {
-                      hold(false);
-                      chooseLiveRunFold(ctx.routeThreadKey, row.turnKey, "watched");
-                    }}
-                  />
-                }
-              />
-            ) : (
-              <WorkToggle
-                open
-                onToggle={() => {
-                  hold(true);
-                  chooseLiveRunFold(ctx.routeThreadKey, row.turnKey, "folded");
-                }}
-              />
-            )
+          {row.live && row.status !== null && liveFolded ? (
+            <NowLine
+              key="live-summary"
+              answering={row.answering}
+              outcome={null}
+              now={now}
+              status={row.status}
+              end={liveToggle}
+            />
           ) : null}
           <div key="below" ref={feedRef} className="run-later-feed">
             {above ? null : scroll}

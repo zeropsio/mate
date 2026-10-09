@@ -7,7 +7,8 @@ import {
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { AGENT_OWNERSHIP_RECOVERY_LABEL, agentOwnershipComposerNotice } from "../agentOwnership.ts";
+import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "../agentSignIn.ts";
+import { agentOwnershipComposerNotice } from "../agentOwnership.ts";
 import { crewSnapshotFixture } from "./testing/fixtures.ts";
 import {
   CREW_LOCK_ACTION,

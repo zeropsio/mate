@@ -69,7 +69,7 @@ describe("ZeropsAgentPickerPanel", () => {
     );
 
     expect(html).toContain("Signed in by Jan");
-    expect(html).toContain("Use my account");
+    expect(html).toContain("Use my own account instead…");
   });
 
   it("renders registering as a disabled control, never a sign-in prompt", () => {

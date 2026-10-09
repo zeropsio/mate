@@ -25,6 +25,7 @@ export const reportConversation = Effect.fn("menu.reportConversation")(function*
   name: string,
   patch: Partial<OverviewMain> = {},
   kind: MateThreadKind = "idle",
+  conversations?: MateOverview["conversations"],
 ) {
   const mate = drivers.mates.get(name)!;
   const main = {
@@ -48,6 +49,7 @@ export const reportConversation = Effect.fn("menu.reportConversation")(function*
       runsWithoutSignIn: true,
     },
     main,
+    ...(conversations === undefined ? {} : { conversations }),
     threads: {
       list: [
         {

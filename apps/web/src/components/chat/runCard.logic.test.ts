@@ -1178,7 +1178,7 @@ describe("the runs a person watched", () => {
     ({ wasLive, reading, measured, work, toggle }) => {
       transitionRunFold("thread-d", "turn-1", { kind: "live" });
       transitionRunFold("thread-d", "turn-1", { kind: "settled", wasLive, reading, measured });
-      expect(runCardShows(true, runFoldOf("thread-d", "turn-1"))).toEqual({ work, toggle });
+      expect(runCardShows(true, runFoldOf("thread-d", "turn-1"), true)).toEqual({ work, toggle });
       forgetRunFolds("thread-d");
     },
   );
@@ -1187,14 +1187,14 @@ describe("the runs a person watched", () => {
     transitionRunFold("thread-e", "turn-1", { kind: "hide", measured: true });
     setRunFold("thread-e", "turn-1", "shown");
     transitionRunFold("thread-e", "turn-1", { kind: "finished" });
-    expect(runCardShows(true, runFoldOf("thread-e", "turn-1"))).toEqual({
+    expect(runCardShows(true, runFoldOf("thread-e", "turn-1"), true)).toEqual({
       work: "below",
       toggle: "hide",
     });
     transitionRunFold("thread-e", "turn-1", { kind: "hide", measured: true });
     transitionRunFold("thread-e", "turn-1", { kind: "live" });
     transitionRunFold("thread-e", "turn-1", { kind: "finished" });
-    expect(runCardShows(true, runFoldOf("thread-e", "turn-1"))).toEqual({
+    expect(runCardShows(true, runFoldOf("thread-e", "turn-1"), true)).toEqual({
       work: "above",
       toggle: "hide",
     });
@@ -1358,6 +1358,29 @@ describe("recoveredFailures on a long run", () => {
 });
 
 describe("runCardShows — where a run's work stands, and what its line offers", () => {
+  describe("Decision: Aleš's direction; keep existing fold behaviour and titles otherwise.", () => {
+    it.each(["watched", "folded", "shown", "folding"] as const)(
+      "a run with no work rows offers no work toggle (%s)",
+      (fold) => {
+        for (const settled of [false, true]) {
+          expect(
+            runCardShows(settled, fold, false).toggle,
+            "ASSERTION: no work rows means no work toggle",
+          ).toBeNull();
+        }
+      },
+    );
+    it.each(["watched", "folded"] as const)(
+      "the first work row makes the live work toggle available (%s)",
+      (fold) => {
+        expect(
+          runCardShows(false, fold, true).toggle,
+          "ASSERTION: the first work row enables the work toggle",
+        ).toBe(fold === "folded" ? "show" : "hide");
+      },
+    );
+  });
+
   it.each([
     {
       name: "live: over the line, nothing to toggle",
@@ -1389,7 +1412,7 @@ describe("runCardShows — where a run's work stands, and what its line offers",
       toggle: "hide",
     },
   ] as const)("$name", ({ settled, fold, work, toggle }) => {
-    expect(runCardShows(settled, fold)).toEqual({ work, toggle });
+    expect(runCardShows(settled, fold, settled)).toEqual({ work, toggle });
   });
 });
 

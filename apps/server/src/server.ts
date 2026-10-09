@@ -573,7 +573,7 @@ const ProviderRuntimeEventBusLayerLive = ProviderRuntimeEventBusLive.pipe(
  */
 const RuntimeDependenciesLive = Layer.mergeAll(
   ZeropsLayerLive,
-  McpServersLayerLive,
+  McpServersLayerLive.pipe(Layer.provide(ZeropsLayerLive)),
   // It reads the Mate engine the Zerops feeds compose (the same instance, memoized by reference).
   ThreadFileWrites.layer.pipe(Layer.provide(ZeropsLayerLive)),
 ).pipe(

@@ -244,6 +244,75 @@ const onEngine = (...rows: ReadonlyArray<ConversationRow>) =>
   new Map([["p-vera", { ...VERA, conversations: rows }]]);
 
 describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
+  it.each([true, false])(
+    "Decision: last-known content stays until replaced by newer content; no placeholder flashes (attention: %s)",
+    (withAttention) => {
+      const run = engineRow("t1", {
+        state: { kind: "working", since: Date.parse(ASKED), waitsOnHelpers: false },
+        subject: "Add a login page",
+      });
+      const main = {
+        ...VERA.main!,
+        session: { status: "running" as const, lastError: null },
+        latestTurn: { ...WORKING.latestTurn!, completedAt: null },
+        liveStep: { kind: "thinking" as const, since: ASKED },
+      };
+      for (const [conversations, liveStep, expected] of [
+        [undefined, main.liveStep, "Thinking"],
+        [[run], main.liveStep, "Thinking"],
+        [[{ ...run, revision: { ...run.revision, seq: 10 } }], main.liveStep, "Thinking"],
+        [[run], { kind: "writing" as const, since: DONE }, "Writing"],
+      ] as const) {
+        const activity = read({
+          attention: withAttention ? attention(said({ working: 1 })) : {},
+          overviews: new Map([
+            [
+              "p-vera",
+              {
+                ...VERA,
+                main: { ...main, liveStep },
+                ...(conversations === undefined ? {} : { conversations }),
+              },
+            ],
+          ]),
+        });
+        expect(mateRowView(activity, "working")).toMatchObject({
+          state: "working",
+          ask: "Add a login page",
+          slot: { kind: "clock", since: ASKED },
+          reply: { kind: "live", words: expected },
+        });
+      }
+    },
+  );
+
+  it.each([
+    { id: "t1", state: { kind: "idle" }, working: 0 },
+    {
+      id: "other-chat",
+      state: { kind: "working", since: Date.parse(ASKED), waitsOnHelpers: false },
+      working: 1,
+    },
+  ])(
+    "keeps the main chat's live step out of a finished or different conversation ($id)",
+    ({ id, state, working }) => {
+      const activity = read({
+        attention: attention(said({ mainThreadId: ThreadId.make(id), working })),
+        overviews: new Map([
+          [
+            "p-vera",
+            {
+              ...VERA,
+              main: { ...VERA.main!, liveStep: { kind: "thinking", since: ASKED } },
+              conversations: [engineRow(id, { state })],
+            },
+          ],
+        ]),
+      });
+      expect(activity?.liveStep).toBeUndefined();
+    },
+  );
+
   it("reads its words and what it waits on off its own row, not its main chat's fields", () => {
     const helpers = engineRow("t1", {
       state: { kind: "working", since: Date.parse(ASKED), waitsOnHelpers: true },

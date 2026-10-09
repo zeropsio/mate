@@ -747,6 +747,18 @@ describe("a Mate's changes in HQ", () => {
           const owner = yield* sessionFor(first.call, "door-owner");
           const { appId, auth } = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
           yield* first.call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
+          // Repository creation returns before its queued main-moved event updates the timestamp.
+          yield* Stream.runHead(
+            first.gitHost.recorded.pipe(
+              Stream.filterEffect(() =>
+                Effect.map(
+                  first.sql`SELECT 1 FROM hq_git_event
+                    WHERE app_id::text = ${appId} AND repo = 'appdev' AND kind = 'main_moved'`,
+                  (rows) => rows.length > 0,
+                ),
+              ),
+            ),
+          );
           const listed = yield* first.call("GET", `/api/apps/${appId}/repos`, { session: owner });
           const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
           yield* untilHealth(next.call, "standby");

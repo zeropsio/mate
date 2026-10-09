@@ -105,10 +105,8 @@ const EVA_LOGIN: MateLogin = {
   keyStored: false,
 };
 
-const EVAS =
-  "Claude Code · eva was signed in by another project member — only they can run it. Use a login you signed in yourself.";
-const THEIRS =
-  "This agent was signed in by another project member — only they can run it. Sign in with your own account first.";
+const EVAS = "Claude Code · eva was signed in by another project member — only they can run it.";
+const THEIRS = "This agent was signed in by another project member — only they can run it.";
 
 /** The lead on the Mate's default login; Backend on Eva's second Claude login. */
 const CREW_YAML = [

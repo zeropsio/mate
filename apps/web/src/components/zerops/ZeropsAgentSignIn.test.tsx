@@ -286,10 +286,31 @@ describe("the sign-in in a dialog", () => {
     });
     expect(calls.start).toEqual([]);
     const open = host.querySelector("[data-agent-id][data-sign-in]");
-    expect(open?.textContent).toContain("Signing in replaces Ann's sign-in.");
+    expect(open?.textContent).toContain("This replaces Ann's sign-in for this agent on this Mate.");
     click(host.querySelector("[data-sign-in-replace]"));
     expect(calls.start).toEqual(["codex"]);
   });
+});
+
+it("Decision: Aleš's direction; behaviour of admission unchanged. Replacing a member's sign-in names them and defaults to Cancel", () => {
+  const dismiss = vi.fn();
+  draw({
+    agents: [
+      { agentId: "codex", login: undefined, credPresent: true, authorizedBy: { subject: "u-ann" } },
+    ],
+    fixed: true,
+    viewerSubject: "u-bo",
+    nameOf: () => "Ann",
+    onDismiss: dismiss,
+  });
+  expect(host.textContent).toContain("This replaces Ann's sign-in for this agent on this Mate.");
+  expect(calls.start).toEqual([]);
+  const cancel = host.querySelector<HTMLButtonElement>("[data-sign-in-replace-cancel]");
+  expect(cancel?.textContent).toBe("Cancel");
+  expect(document.activeElement).toBe(cancel);
+  click(cancel);
+  expect(dismiss).toHaveBeenCalledOnce();
+  expect(calls.start).toEqual([]);
 });
 
 it("a disconnected Mate keeps the login inert and does not start a fixed sign-in", () => {

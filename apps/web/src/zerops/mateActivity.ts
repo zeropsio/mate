@@ -179,7 +179,7 @@ export function attentionActivity(input: {
   const limit = input.limits?.get(scopedThreadKey(scopeThreadRef(environmentId, threadId)));
   const read =
     row !== undefined
-      ? rowAgentActivity(row, environmentId, visited, undefined, limit)
+      ? rowAgentActivity(row, environmentId, visited, undefined, limit, main)
       : heldWords === undefined
         ? undefined
         : threadAgentActivity(heldWords, visited, undefined, limit);

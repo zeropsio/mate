@@ -256,13 +256,12 @@ const NO_ACCESS = "The person this turn runs for no longer has access to this pr
 const ACCESS_UNCONFIRMED =
   "Could not confirm that the person this turn runs for still has access to this project. Try again in a moment.";
 
-const SOMEONE_ELSE =
-  "This agent was signed in by another project member — only they can run it. Sign in with your own account first.";
+const SOMEONE_ELSE = "This agent was signed in by another project member — only they can run it.";
 const UNRECORDED =
   "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign in with your own account first.";
 
 const LOGIN_SOMEONE_ELSE =
-  "Claude Code · work was signed in by another project member — only they can run it. Use a login you signed in yourself.";
+  "Claude Code · work was signed in by another project member — only they can run it.";
 const LOGIN_UNRECORDED =
   "Claude Code · work's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign it in with your own account first.";
 

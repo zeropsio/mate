@@ -153,10 +153,8 @@ export function replacedSignInLine(input: {
     return `Signing in replaces the sign-in ${ZEROPS_AGENT_NAMES[input.agentId]} has now.`;
   }
   if (authorizedBy.subject === input.viewerSubject) return "Signing in replaces your own sign-in.";
-  const name = input.nameOf(authorizedBy.subject);
-  return name === undefined
-    ? "Signing in replaces another member's sign-in."
-    : `Signing in replaces ${name}'s sign-in.`;
+  const name = input.nameOf(authorizedBy.subject)?.trim();
+  return `This replaces ${name || "another project member"}'s sign-in for this agent on this Mate.`;
 }
 
 /**

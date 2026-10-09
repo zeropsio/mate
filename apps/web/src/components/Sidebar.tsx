@@ -4712,8 +4712,8 @@ export default function Sidebar() {
           ) : null}
         </SidebarGroup>
       </SidebarContent>
-      {/* Reserve the account notice above the footer controls so background
-          failure and recovery leave both the scroll viewport and controls fixed. */}
+      {/* Account notices sit above the pinned footer controls; without one,
+          only the normal list-to-footer gutter remains. */}
       {zeropsSignedIn ? <AccountVoiceLine /> : null}
       {/* *New project*, pinned just above the account's row whatever the
           list's length (D11): the list scrolls under it, and fades into the

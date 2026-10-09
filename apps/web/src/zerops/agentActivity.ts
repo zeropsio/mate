@@ -624,6 +624,7 @@ export function rowAgentActivity(
   lastVisitedAt: string | undefined,
   nowMs = Date.now(),
   limit = projectMateLimit({ engineRow: row, latestTurn: null, session: null }, nowMs),
+  main?: MateLiveView["main"],
 ): ZeropsAgentActivity {
   const { state } = row;
   const threadId = ThreadId.make(row.conversationId);
@@ -666,6 +667,8 @@ export function rowAgentActivity(
       : {}),
     threadKey: scopedThreadKey(scopeThreadRef(environmentId, threadId)),
     task: agentActivitySubject(words, "idle"),
+    // Engine rows own state and words; their matching overview still owns the live step.
+    ...agentActivityLiveStep(main?.id === threadId ? main : {}, kind),
     ...(state.kind === "working" && state.waitsOnHelpers ? { waitsOnHelpers: true as const } : {}),
     ...(question === undefined || question.length === 0 ? {} : { question }),
     ...(errorLine === undefined ? {} : { errorLine: maskSecrets(errorLine) }),
@@ -697,7 +700,14 @@ export function overviewAgentActivity(
           undefined,
           limits?.get(key),
         )
-      : rowAgentActivity(row, environmentId, lastVisitedAtById[key], undefined, limits?.get(key));
+      : rowAgentActivity(
+          row,
+          environmentId,
+          lastVisitedAtById[key],
+          undefined,
+          limits?.get(key),
+          main,
+        );
   return live
     ? activity
     : restingActivity(activity, row === undefined ? main.updatedAt : isoOf(row.at));

@@ -235,7 +235,9 @@ export function ZoomableImage({
           draggable={false}
           className="block max-w-none select-none"
           style={
-            sourceSize.width ? { width, height } : { maxWidth: "var(--media-width)", maxHeight }
+            sourceSize.width
+              ? { width, height, maxWidth: "none" }
+              : { maxWidth: "var(--media-width)", maxHeight }
           }
           onLoad={(event) => {
             setNaturalSize({

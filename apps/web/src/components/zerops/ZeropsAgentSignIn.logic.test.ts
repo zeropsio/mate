@@ -289,8 +289,16 @@ describe("replacedSignInLine: whose sign-in a login replaces, said before the pr
   it.each([
     ["nobody recorded", undefined, "Signing in replaces the sign-in Codex has now."],
     ["the person's own", { subject: "u-bo" }, "Signing in replaces your own sign-in."],
-    ["a colleague, by name", { subject: "u-ann" }, "Signing in replaces Ann's sign-in."],
-    ["a colleague not named", { subject: "u-cy" }, "Signing in replaces another member's sign-in."],
+    [
+      "a colleague, by name",
+      { subject: "u-ann" },
+      "This replaces Ann's sign-in for this agent on this Mate.",
+    ],
+    [
+      "a colleague not named",
+      { subject: "u-cy" },
+      "This replaces another project member's sign-in for this agent on this Mate.",
+    ],
   ] as const)("%s", (_case, authorizedBy, line) => {
     expect(
       replacedSignInLine({ agentId: "codex", authorizedBy, viewerSubject: "u-bo", nameOf }),

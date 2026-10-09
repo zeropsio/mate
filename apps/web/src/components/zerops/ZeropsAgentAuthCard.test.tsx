@@ -676,7 +676,7 @@ describe("account actions once authorized (D6 round 5)", () => {
 
     expect(html).toContain(">Switch account<");
     expect(html).toContain(">Sign out<");
-    expect(html).not.toContain(">Use my account<");
+    expect(html).not.toContain(">Use my own account instead…<");
   });
 
   it("offers Use my account and Sign out for someone else's login", () => {
@@ -687,7 +687,7 @@ describe("account actions once authorized (D6 round 5)", () => {
       onSignOut: noop,
     });
 
-    expect(html).toContain(">Use my account<");
+    expect(html).toContain(">Use my own account instead…<");
     expect(html).toContain(">Sign out<");
     expect(html).not.toContain(">Switch account<");
   });
@@ -699,7 +699,7 @@ describe("account actions once authorized (D6 round 5)", () => {
       onSignOut: noop,
     });
 
-    expect(html).toContain(">Use my account<");
+    expect(html).toContain(">Use my own account instead…<");
     expect(html).toContain(">Sign out<");
   });
 
@@ -724,7 +724,7 @@ describe("account actions once authorized (D6 round 5)", () => {
     const html = authorizedCard({ token: true, signOutSupported: true });
 
     expect(html).not.toContain(">Switch account<");
-    expect(html).not.toContain(">Use my account<");
+    expect(html).not.toContain(">Use my own account instead…<");
     expect(html).not.toContain(">Sign out<");
     expect(html).toContain("Authorized by a project token");
   });
@@ -876,6 +876,14 @@ describe("logins", () => {
     const html = card({ onSignInLogin: noop });
     expect(rowOf(html, "codex-home")).toContain("data-zerops-login-sign-in");
     expect(rowOf(html, "claudeAgent-work")).not.toContain("data-zerops-login-sign-in");
+  });
+
+  it("Replacing another member's expired named sign-in remains a secondary offer", () => {
+    const html = card({
+      logins: [row({ id: "claudeAgent-ann", signedInBy: "ann", state: "needs-reauth" })],
+      onSignInLogin: noop,
+    });
+    expect(rowOf(html, "claudeAgent-ann")).toContain("Use my own account instead…");
   });
 
   it("offers your own account Sign out and Remove, and an API key only Remove", () => {
