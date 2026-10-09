@@ -504,6 +504,36 @@ describe("a client reading more of an engine conversation", () => {
       ),
   );
 
+  it.effect("a run's counts are its Mate's own calls, never what its helpers ran", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "Count the files with a helper" });
+        const command = (itemId: string, extra: Record<string, unknown>) =>
+          w.agent((agent, thread) =>
+            agent.emit("item.completed", thread, {
+              itemId,
+              payload: {
+                itemType: "command_execution",
+                status: "completed",
+                title: "Command run",
+                data: { command: "find /tmp/s -type f" },
+                ...extra,
+              },
+            }),
+          );
+        yield* command("own", {});
+        yield* command("helpers-own", { agentId: "helper-1" });
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const [snapshot] = yield* Effect.scoped(watch(w, wire));
+        if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+        assert.strictEqual(snapshot.runs.at(-1)!.summary.calls.command, 1);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("a file written and then edited again counts as one file edited", () =>
     Effect.scoped(
       Effect.gen(function* () {

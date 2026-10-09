@@ -145,6 +145,9 @@ export const makeRecords = Effect.gen(function* () {
     Effect.gen(function* () {
       if (rows.length === 0) return [];
       const ids = rows.map((row) => row.run_id);
+      // A run's own calls: what its helpers ran is the helpers' (their card counts it), never the
+      // Mate's (a reload read "15 commands" of a run whose Mate ran 7).
+      const ownCall = sql.literal("json_extract(by_json, '$.kind') IS NOT 'helper'");
       const counts = yield* sql<{
         readonly run_id: string;
         readonly items: number;
@@ -159,7 +162,7 @@ export const makeRecords = Effect.gen(function* () {
         readonly n: number;
       }>`
         SELECT run_id, json_extract(body_json, '$.step') AS step, COUNT(*) AS n FROM engine_item
-        WHERE ${sql.in("run_id", ids)} AND kind = 'call' GROUP BY run_id, step
+        WHERE ${sql.in("run_id", ids)} AND kind = 'call' AND ${ownCall} GROUP BY run_id, step
       `;
       const tools = yield* sql<{
         readonly run_id: string;
@@ -168,7 +171,7 @@ export const makeRecords = Effect.gen(function* () {
       }>`
         SELECT run_id, json_extract(body_json, '$.tool.name') AS tool, COUNT(*) AS n
         FROM engine_item
-        WHERE ${sql.in("run_id", ids)} AND kind = 'call'
+        WHERE ${sql.in("run_id", ids)} AND kind = 'call' AND ${ownCall}
           AND json_extract(body_json, '$.step') IN ('tool', 'mcp')
         GROUP BY run_id, tool
       `;
@@ -192,6 +195,7 @@ export const makeRecords = Effect.gen(function* () {
             )
         ) AS named ON named.item_id = edit.item_id
         WHERE ${sql.in("edit.run_id", ids)} AND edit.kind = 'call'
+          AND json_extract(edit.by_json, '$.kind') IS NOT 'helper'
           AND json_extract(edit.body_json, '$.step') = 'edit'
       `;
       const answers = yield* sql<{ readonly run_id: string; readonly item_id: string }>`
