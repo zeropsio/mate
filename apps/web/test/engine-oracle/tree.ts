@@ -212,6 +212,8 @@ export const play = (world: OracleWorld, model: Model, op: Op) =>
     switch (op.op) {
       case "send":
         yield* world.person.send(op.text);
+        // A turn of the Mate's hands it whatever ended before it: nothing is left to wake to.
+        if (turnOpen()) model.ended = [];
         break;
       case "steer": {
         if (active === null || !turnOpen()) return false;
