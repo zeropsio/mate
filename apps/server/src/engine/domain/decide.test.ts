@@ -1788,6 +1788,11 @@ describe("decide: a signal delivered again changes nothing", () => {
   });
 });
 
+/** Lost-work notes that would wake the Mate on their own: one held for a message never does. */
+const dueLostWork = (
+  wakes: ReadonlyArray<{ readonly kind: string; readonly dueAt: number | null }>,
+) => wakes.filter((wake) => wake.kind === "lost-work" && wake.dueAt !== Number.MAX_SAFE_INTEGER);
+
 describe("decide: helpers and jobs are items under their run", () => {
   const work = (
     status: Extract<ProviderSignal, { kind: "work-upserted" }>["status"],
@@ -1850,7 +1855,7 @@ describe("decide: helpers and jobs are items under their run", () => {
     expect(workClosed(log)).toEqual([`${r(1)}:stopped`]);
     expect(state.items).toEqual({});
     expect(state.session).toBeNull();
-    expect(Object.values(state.wakes).map((wake) => wake.kind)).not.toContain("lost-work");
+    expect(dueLostWork(Object.values(state.wakes))).toEqual([]);
   });
   it("a second Stop while the helpers' session closes is already asked", () => {
     const scene = play([...proofRunning, work("running"), turnEnded, stop(), stop()]);
@@ -2940,7 +2945,7 @@ describe("background work its session lost", () => {
     plural
       ? `Your background work ${titles} were stopped ${how} before they reported.`
       : `Your background work ${titles} was stopped ${how} before it reported.`;
-  const upserted = (key: string, title: string, status: "running" | "lost", n = 1) =>
+  const upserted = (key: string, title: string, status: "running" | "lost" | "stopped", n = 1) =>
     ({
       kind: "work-upserted",
       work: key,
@@ -3098,10 +3103,64 @@ describe("background work its session lost", () => {
     expect(log.some((event) => event._tag === "ItemClosed" && event.body.kind === "work")).toBe(
       true,
     );
-    expect(log.some((event) => event._tag === "WakeArmed" && event.kind === "lost-work")).toBe(
-      false,
-    );
+    expect(
+      dueLostWork(log.flatMap((event) => (event._tag === "WakeArmed" ? [event] : []))),
+    ).toEqual([]);
   });
+
+  // Milo, 2026-10-09: the person stopped two helpers and a job living on after the turn; nothing
+  // told Milo, who later called the Stop "the restart".
+  const HELPER = "Watch the api build";
+  const JOB = "Tail the worker log";
+  const stoppedNote = lostNote(`“${HELPER}” and “${JOB}”`, "by the person", true);
+  const twoLive = [...running, work("w1", HELPER), work("w2", JOB)];
+  const stoppedSignals = signal(upserted("w1", HELPER, "stopped"), upserted("w2", JOB, "stopped"));
+  it.each([
+    {
+      name: "a Stop after the turn, by its session's close",
+      steps: [...twoLive, ended(1), stop(), sessionClosed()],
+      reopens: true,
+    },
+    {
+      name: "a Stop after the turn, by the driver's word that each stopped",
+      steps: [...twoLive, ended(1), stop(), stoppedSignals, sessionClosed()],
+      reopens: true,
+    },
+    {
+      name: "a Stop on the running turn whose close took the work",
+      steps: [
+        ...twoLive,
+        stop(),
+        stoppedSignals,
+        ended(1, { kind: "interrupted" }, "stop-confirmed"),
+      ],
+      reopens: false,
+    },
+  ])(
+    "work a person's Stop ended reaches the agent with the next message, stopped by the person: $name",
+    ({ steps, reopens }) => {
+      const { log, state } = playAll(steps);
+      expect(
+        log.flatMap((e) =>
+          e._tag === "ItemClosed" && e.body.kind === "work" ? [e.body.status] : [],
+        ),
+      ).toEqual(["stopped", "stopped"]);
+      // Nothing runs for it on its own: the person stopped the work, and the agent learns it when
+      // someone writes again.
+      expect(playAll([...steps, fired("lost-work", "note")]).state.runs[r(2)]).toBeUndefined();
+      expect(state.runs[r(2)]).toBeUndefined();
+      const next = [
+        ...steps,
+        send("carry on"),
+        prepared(2),
+        ...(reopens ? [opened(2, { session: "s2" })] : []),
+      ];
+      expect(sendText(play(next))).toEqual([`${stoppedNote}\n\ncarry on`]);
+      expect(
+        Object.values(play([...next, sent(2)]).state.wakes).map((wake) => wake.kind),
+      ).not.toContain("lost-work");
+    },
+  );
 
   it("a session change that took the work tells the Mate with the message that changed it", () => {
     const steps = [
