@@ -670,6 +670,7 @@ describe("releaseReview", () => {
 
 function rollback(over: Partial<RollbackReviewInput> = {}): RollbackReviewInput {
   return {
+    comparisons: { leaving: "known", comingBack: "known" },
     tag: "v0.1.55",
     nextTag: "v0.1.58",
     live: "v0.1.57",
@@ -683,6 +684,36 @@ function rollback(over: Partial<RollbackReviewInput> = {}): RollbackReviewInput 
 }
 
 describe("rollbackReview: roll back gets the same review, naming where it goes back to", () => {
+  it.each(["leaving", "comingBack"] as const)(
+    "waits for the %s comparison before offering confirmation",
+    (side) => {
+      const review = rollbackReview(
+        rollback({ comparisons: { leaving: "known", comingBack: "known", [side]: "reading" } }),
+      );
+      expect(review.primary?.enabled).toBe(false);
+      expect(review.verdict).toMatchObject({ state: "checking", title: "Comparing the rollback" });
+    },
+  );
+
+  it("keeps a reported comparison failure distinct from a pending read", () => {
+    const review = rollbackReview(
+      rollback({ comparisons: { leaving: "failed", comingBack: "known" } }),
+    );
+    expect(review.primary?.enabled).toBe(true);
+    expect(review.verdict.state).toBe("rollback-ready");
+  });
+
+  it("keeps following an accepted rollback while its comparisons change", () => {
+    const review = rollbackReview(
+      rollback({
+        comparisons: { leaving: "reading", comingBack: "reading" },
+        press: { kind: "done" },
+        outcome: { kind: "releasing" },
+      }),
+    );
+    expect(review.verdict.state).toBe("rolling-back");
+  });
+
   it.each<[string, Partial<RollbackReviewInput>, Record<string, unknown>, string]>([
     [
       "rollback",

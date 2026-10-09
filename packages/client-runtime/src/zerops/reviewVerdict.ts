@@ -29,6 +29,7 @@ import { hqRefusalWords } from "./hq/refusals.ts";
 import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
+import type { MovedCommits } from "./releaseCompare.ts";
 import { releaseNothingReason, type ReleaseGate } from "./release.ts";
 
 /**
@@ -1133,6 +1134,11 @@ function supersededModel(input: {
 // ---------------------------------------------------------------------------
 
 export interface RollbackReviewInput {
+  /** The two comparisons drawn in this review; confirmation waits for pending reads. */
+  readonly comparisons: {
+    readonly leaving: MovedCommits["state"];
+    readonly comingBack: MovedCommits["state"];
+  };
   /** The earlier release it goes back to. */
   readonly tag: string;
   /** The tag it makes, listing that release's commits — the one made, once it was. */
@@ -1183,9 +1189,11 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
       : `Production keeps running ${input.live}.`;
   // Production moves: a deliberate press, never the review's first focus, never ⌘↵.
   const permission = input.permission;
+  const comparing =
+    input.comparisons.leaving === "reading" || input.comparisons.comingBack === "reading";
   const primary = {
     label: `Roll back to ${tag}`,
-    enabled: permission?.allowed !== false,
+    enabled: !comparing && permission?.allowed !== false,
     safe: false,
   };
   const onItsWay = (why: string): ReviewModel => ({
@@ -1266,6 +1274,19 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
         tone: "attention",
         title: "Only releasers can roll back",
         why: permission.reason.replace(/\.$/u, ""),
+        fix: undefined,
+      },
+      consequence: keeps,
+      primary,
+    };
+  }
+  if (comparing) {
+    return {
+      verdict: {
+        state: "checking",
+        tone: "busy",
+        title: "Comparing the rollback",
+        why: "What leaves production and what comes back",
         fix: undefined,
       },
       consequence: keeps,

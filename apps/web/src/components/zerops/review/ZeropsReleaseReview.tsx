@@ -862,6 +862,7 @@ function RollbackListSection({
 export function RollbackReviewView(props: RollbackReviewViewProps) {
   const { press, tag } = props;
   const model = rollbackReview({
+    comparisons: { leaving: props.leaving.state, comingBack: props.comingBack.state },
     tag,
     nextTag: props.nextTag,
     live: props.live,

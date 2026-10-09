@@ -29,13 +29,15 @@ export class MergeGate {
   }
 }
 
-/** Buffers real HQ socket frames in order; releasing never changes their contents. */
+/** Buffers selected real HQ frames in order; other frames continue and no contents change. */
 export class HqFrameHold {
   private holding = false;
   private frames: { client: WebSocket; frame: string }[] = [];
   private receipt = Promise.resolve();
   private arrived: (() => void) | undefined;
-  hold() {
+  private accepts: (frame: string) => boolean = () => true;
+  hold(accepts: (frame: string) => boolean = () => true) {
+    this.accepts = accepts;
     this.holding = true;
     this.receipt = new Promise<void>((resolve) => {
       this.arrived = resolve;
@@ -43,7 +45,7 @@ export class HqFrameHold {
   }
   forward(client: WebSocket, frame: string) {
     if (client.readyState !== WebSocket.OPEN) return;
-    if (!this.holding) {
+    if (!this.holding || !this.accepts(frame)) {
       client.send(frame);
       return;
     }
