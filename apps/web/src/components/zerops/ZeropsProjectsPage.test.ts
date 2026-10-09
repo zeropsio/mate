@@ -28,6 +28,7 @@ import {
   retryZeropsProjectConnection,
   showsZeropsBirthLine,
   ZeropsProjectsHeader,
+  ProjectReleaseHistory,
 } from "./ZeropsProjectsPage";
 import { bindTestInvalidationBus } from "~/zerops/__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
@@ -707,9 +708,35 @@ describe("a group's one line about itself", () => {
   });
 });
 
-// Decision: the owner asked for the review and its fixes; existing flows are reused, no new concepts.
-it("Projects exposes Find and New project beside its title", () => {
+it("Decision: the owner asked for the review and its fixes; existing flows are reused, no new concepts.", () => {
   const html = renderToStaticMarkup(createElement(ZeropsProjectsHeader));
   expect(html).toContain(">Find<");
   expect(html).toContain(">New project<");
+});
+
+it("an expanded project shows its current release before a closed history disclosure", () => {
+  const releases = [
+    { tag: "v2", standing: undefined, word: "Approved", rollBack: true },
+    { tag: "v1", standing: "live" as const, word: "Live", rollBack: false },
+  ].map((release) => ({
+    ...release,
+    verdict: "approved" as const,
+    detail: undefined,
+    line: "app abc123",
+    entries: [],
+    taggedAt: undefined,
+    failedEntry: undefined,
+  }));
+  const html = renderToStaticMarkup(
+    createElement(ProjectReleaseHistory, {
+      groupId: "shop",
+      releases,
+      pending: new Set<string>(),
+      onRollBack: () => {},
+    }),
+  );
+  expect(html).toContain("Release history (1)");
+  expect(html).not.toContain("<details open");
+  expect(html.indexOf("v1")).toBeLessThan(html.indexOf("<details"));
+  expect(html.indexOf("v2")).toBeGreaterThan(html.indexOf("<details"));
 });

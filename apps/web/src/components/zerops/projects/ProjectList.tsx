@@ -127,9 +127,7 @@ function RowLine({ line }: { readonly line: ProjectRowLine }) {
           {/* The sentence is never cut: on a phone it wraps, and the title it names waits for room. */}
           <span className="min-w-0 text-foreground">{line.text}</span>
           {line.detail === undefined ? null : (
-            <span className="hidden min-w-0 flex-1 truncate text-muted-foreground @2xl/flow:block">
-              {line.detail}
-            </span>
+            <span className="min-w-0 break-words text-muted-foreground">{line.detail}</span>
           )}
         </span>
       );
@@ -143,7 +141,7 @@ function RowLine({ line }: { readonly line: ProjectRowLine }) {
     case "mate":
       return (
         <span className={shell} data-zerops-row-line={line.kind}>
-          <span className="min-w-0 truncate text-muted-foreground">
+          <span className="min-w-0 break-words text-muted-foreground">
             <span className="font-medium text-foreground/80">{line.mate}</span>
             <span aria-hidden="true"> · </span>
             {line.state === undefined ? null : <span>{line.state} · </span>}
@@ -158,7 +156,7 @@ function RowLine({ line }: { readonly line: ProjectRowLine }) {
     case "change":
       return (
         <span className={shell} data-zerops-row-line={line.kind}>
-          <span className="min-w-0 truncate text-muted-foreground">{line.text}</span>
+          <span className="min-w-0 break-words text-muted-foreground">{line.text}</span>
           <Age at={line.at} />
         </span>
       );
@@ -188,12 +186,13 @@ function ProductionMark({ flow }: { readonly flow: GroupFlow }) {
         render={
           <span
             aria-label={`Production runs ${mark.version}`}
-            className="hidden shrink-0 text-xs text-muted-foreground @2xl/flow:flex"
+            className="flex min-w-0 items-start gap-1.5 text-xs text-muted-foreground"
             data-zerops-step="production"
           />
         }
       >
-        <StatusDot label={mark.version} sentence tone={mark.tone} />
+        <StatusDot dotOnly label="" tone={mark.tone} />
+        <span className="min-w-0 break-all">{mark.version}</span>
       </TooltipTrigger>
       <TooltipPopup>Production runs {mark.version}</TooltipPopup>
     </Tooltip>
@@ -213,7 +212,7 @@ function RowStops({ flow }: { readonly flow: GroupFlow }) {
     ...flow.stages,
   ];
   return (
-    <span className="ms-auto flex min-w-0 items-center gap-x-3 text-xs text-muted-foreground">
+    <span className="flex min-w-0 basis-full flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground @2xl/flow:ms-auto @2xl/flow:basis-auto">
       {stops.map((stop) => (
         <span
           className="flex min-w-0 items-center gap-x-1.5 empty:hidden"
@@ -426,15 +425,29 @@ export function ProjectList<T>({
   return (
     <FlatCard>
       <ul aria-label="Projects" data-zerops-surface="project-rows">
-        {ordered.map(({ entry, line }) => (
-          <ProjectRow
-            entry={entry}
-            key={entry.group.groupId}
-            line={line}
-            onToggle={() => toggle(entry.group.groupId)}
-            open={openGroups.has(entry.group.groupId)}
-            props={props}
-          />
+        {ordered.map(({ entry, line }, index) => (
+          <Fragment key={entry.group.groupId}>
+            {line.kind === "needs-you" && index === 0 ? (
+              <li className="px-3 pt-3 text-xs font-medium text-muted-foreground">
+                Needs attention
+              </li>
+            ) : null}
+            {line.kind !== "needs-you" &&
+            index > 0 &&
+            ordered[index - 1]?.line.kind === "needs-you" ? (
+              <li className="px-3 pt-3 text-xs font-medium text-muted-foreground">
+                Other projects
+              </li>
+            ) : null}
+            <ProjectRow
+              entry={entry}
+              key={entry.group.groupId}
+              line={line}
+              onToggle={() => toggle(entry.group.groupId)}
+              open={openGroups.has(entry.group.groupId)}
+              props={props}
+            />
+          </Fragment>
         ))}
       </ul>
     </FlatCard>

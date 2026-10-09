@@ -56,14 +56,14 @@ export function ZeropsPullRequestRow({
       <span className="flex min-w-0 items-center gap-2.5">
         {onOpen === undefined ? (
           <span
-            className="min-w-0 truncate text-sm text-foreground"
+            className="min-w-0 break-words text-sm text-foreground"
             data-zerops-surface="pull-request-title"
           >
             {title}
           </span>
         ) : (
           <button
-            className="min-w-0 cursor-pointer truncate rounded-sm text-left text-sm text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-w-0 cursor-pointer break-words rounded-sm text-left text-sm text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             data-zerops-surface="pull-request-title"
             onClick={onOpen}
             type="button"

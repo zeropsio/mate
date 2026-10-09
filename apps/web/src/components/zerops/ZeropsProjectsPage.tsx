@@ -535,11 +535,11 @@ export function ZeropsProjectsHeader({
 }) {
   return (
     <div
-      className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3"
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 sm:flex sm:justify-between"
       data-zerops-project-scope="true"
     >
       <h1 className="text-xl font-medium text-foreground">Projects</h1>
-      <div className="flex items-center gap-2">
+      <div className="col-span-2 row-start-2 flex flex-wrap items-center gap-2 sm:ml-auto">
         <Button onClick={() => openCommandPalette()} size="sm" variant="outline">
           Find
         </Button>
@@ -547,6 +547,8 @@ export function ZeropsProjectsHeader({
           New project
         </Button>
         <ZeropsProjectOrderControl />
+      </div>
+      <span className="col-start-2 row-start-1">
         {onRefresh === undefined ? null : (
           <Tooltip>
             <TooltipTrigger
@@ -566,7 +568,7 @@ export function ZeropsProjectsHeader({
             <TooltipPopup>Refresh</TooltipPopup>
           </Tooltip>
         )}
-      </div>
+      </span>
     </div>
   );
 }
@@ -1736,7 +1738,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       return (
         <li className="flex min-w-0 flex-col items-start gap-0.5 py-1.5" key={key}>
           <button
-            className="min-w-0 max-w-full truncate rounded-sm text-left text-sm text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-w-0 max-w-full break-words rounded-sm text-left text-sm text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             data-zerops-surface="pull-request-title"
             onClick={open}
             type="button"
@@ -2735,12 +2737,37 @@ function ProjectReleaseRows({
   return (
     <>
       {read.live ? null : <div role="status">{read.reason ?? "Updating releases."}</div>}
-      <ZeropsReleaseRows
+      <ProjectReleaseHistory
         groupId={groupId}
         releases={releases}
         pending={pending}
         onRollBack={onRollBack}
       />
+    </>
+  );
+}
+
+/** The release rows shown inside one expanded project. */
+export function ProjectReleaseHistory(props: React.ComponentProps<typeof ZeropsReleaseRows>) {
+  const current =
+    props.releases.find((release) => release.standing === "live") ?? props.releases[0];
+  if (current === undefined) return null;
+  const history = props.releases.filter((release) => release !== current);
+  return (
+    <>
+      <ZeropsReleaseRows {...props} releases={[current]} />
+      {history.length === 0 ? null : (
+        <li>
+          <details data-zerops-release-history>
+            <summary className="cursor-pointer py-2 text-sm text-muted-foreground">
+              Release history ({history.length})
+            </summary>
+            <ul>
+              <ZeropsReleaseRows {...props} releases={history} />
+            </ul>
+          </details>
+        </li>
+      )}
     </>
   );
 }

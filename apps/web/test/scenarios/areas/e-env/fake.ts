@@ -92,7 +92,7 @@ export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
   yield* stateBecomes(core.call, s.owner, appId, recipeNumber, "merged");
   yield* git.checked(["clone", remoteOf(core.origin, credential, appId, "web"), "web"]);
   const work = `${git.dir}/web`;
-  const merge = Effect.fn("e-env.merge")(function* (title = "Ship the storefront") {
+  const change = Effect.fn("e-env.change")(function* (title = "Ship the storefront") {
     const opened = yield* core.call("POST", "/api/mate/changes", {
       headers: auth,
       body: { repo: "web", title },
@@ -124,6 +124,10 @@ export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
       Effect.retry(Schedule.spaced("30 millis")),
       Effect.timeout("10 seconds"),
     );
+    return { number, head };
+  });
+  const merge = Effect.fn("e-env.merge")(function* (title = "Ship the storefront") {
+    const { number, head } = yield* change(title);
     expect(
       (yield* core.call("POST", `/api/apps/${appId}/changes/web/${number}/merge`, {
         session: s.owner,
@@ -173,7 +177,7 @@ export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
     expect(follow).toBeDefined();
     zerops.sockets.get(follow!.receiver)!.close();
   };
-  return { s, merge, release, appId, removeService, unansweredBuilds, loseObservation };
+  return { s, change, merge, release, appId, removeService, unansweredBuilds, loseObservation };
 });
 
 export const environmentFixture = environmentFixtureWith();

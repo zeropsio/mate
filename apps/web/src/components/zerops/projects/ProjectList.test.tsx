@@ -323,6 +323,8 @@ describe("the list's order", () => {
     const needs = { ...MERGING, group: { ...MERGING.group, groupId: "m2" } };
     const html = render({ groups: [quiet("q1"), MERGING, quiet("q2"), needs] });
     expect(order(html)).toEqual(["aaa", "m2", "q1", "q2"]);
+    expect(html).toContain("Needs attention");
+    expect(html).toContain("Other projects");
   });
 });
 
