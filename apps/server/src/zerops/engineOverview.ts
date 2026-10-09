@@ -9,7 +9,6 @@
  *
  * @module engineOverview
  */
-import type { EngineWireShape } from "../engine/wire/EngineWire.ts";
 import {
   ConversationId,
   DEFAULT_MODEL,
@@ -213,7 +212,7 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
 
 /** The archive's shell format, including the project Settings uses to group its rows. */
 export const engineArchiveSnapshotOf = (
-  archived: Effect.Success<ReturnType<EngineWireShape["readArchived"]>>,
+  archived: Effect.Success<ReturnType<MateEngineService["wire"]["readArchived"]>>,
   workspaceRoot: string,
 ): OrchestrationShellSnapshot => {
   const threads = archived.map(({ view, archivedAt }) => ({
