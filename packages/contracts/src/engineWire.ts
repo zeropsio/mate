@@ -425,6 +425,10 @@ export const EngineSwitchModelInput = Schema.Struct({
 });
 export type EngineSwitchModelInput = typeof EngineSwitchModelInput.Type;
 
+/** Archive a conversation or restore it, preserving its history. */
+export const EngineSetArchivedInput = Schema.Struct({ ...call, archived: Schema.Boolean });
+export type EngineSetArchivedInput = typeof EngineSetArchivedInput.Type;
+
 /** How freely the agent works: from the next run on, in a session that resumes this one. */
 export const EngineSetRuntimeModeInput = Schema.Struct({ ...call, runtimeMode: RuntimeMode });
 export type EngineSetRuntimeModeInput = typeof EngineSetRuntimeModeInput.Type;

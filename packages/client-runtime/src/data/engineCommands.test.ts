@@ -1,10 +1,20 @@
-import { RunId, type EngineCallResult } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ThreadId,
+  ORCHESTRATION_WS_METHODS,
+  RunId,
+  type EngineCallResult,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
+import * as Crypto from "effect/Crypto";
+import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { AtomRegistry } from "effect/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
 
+import { createThreadEnvironmentAtoms } from "../state/threadCommands.ts";
+import { EnvironmentRegistry } from "../connection/registry.ts";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import {
   engineSetInteractionMode,
@@ -64,13 +74,19 @@ function rig(
     v1Calls.push("dispatchCommand");
     return { sequence: 3 } as never;
   });
-  const run = <A, E>(effect: Effect.Effect<A, E, EnvironmentSupervisor>) =>
+  const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
       const prepared = yield* SubscriptionRef.make(
         Option.some(mateEngine === undefined ? {} : { mateEngine }),
       );
       return yield* effect.pipe(
-        Effect.provideService(EnvironmentSupervisor, { prepared } as never),
+        Effect.provideService(EnvironmentSupervisor, {
+          target: { environmentId: ENV },
+          prepared,
+          session: yield* SubscriptionRef.make(
+            Option.some({ client: { [ORCHESTRATION_WS_METHODS.dispatchCommand]: () => v1 } }),
+          ),
+        } as never),
       );
     });
   /** The conversation the account holds, with these runs (and its header so patched). */
@@ -132,6 +148,60 @@ function rig(
 }
 
 describe("the thread commands a view sends, by its Mate's wire", () => {
+  describe("Decision: V1 behaviour unchanged; engine gets parity.", () => {
+    it.effect.each([
+      { action: "archive", archived: true, protocol: 1 },
+      { action: "unarchive", archived: false, protocol: 1 },
+      { action: "archive", archived: true, protocol: undefined },
+      { action: "unarchive", archived: false, protocol: undefined },
+    ] as const)(
+      "$action follows the Mate door (engine $protocol)",
+      ({ action, archived, protocol }) =>
+        Effect.gen(function* () {
+          const r = rig(protocol);
+          yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+          const runtime = Atom.runtime(
+            Layer.mergeAll(
+              Layer.succeed(EnvironmentRegistry, {
+                run: (_id, effect) => r.run(effect),
+              } as EnvironmentRegistry["Service"]),
+              Layer.succeed(
+                Crypto.Crypto,
+                Crypto.make({
+                  randomBytes: (size) => new Uint8Array(size),
+                  digest: (_algorithm, data) => Effect.succeed(data),
+                }),
+              ),
+            ),
+          );
+          const commands = createThreadEnvironmentAtoms(runtime, () => Atom.make(null));
+          const result = yield* Effect.promise(() =>
+            commands[action].run(r.registry, {
+              environmentId: EnvironmentId.make(ENV),
+              input: { threadId: ThreadId.make("thread-ada") },
+            }),
+          );
+          expect(result._tag).toBe("Success");
+          expect(
+            r.v1Calls,
+            "ASSERTION: an engine archive action never dispatches the parked V1 command",
+          ).toEqual(protocol === undefined ? ["dispatchCommand"] : []);
+          expect(r.calls).toEqual(
+            protocol === undefined
+              ? []
+              : [
+                  {
+                    kind: "set-archived",
+                    conversationId: "thread-ada",
+                    commandId: "op-1",
+                    archived,
+                  },
+                ],
+          );
+        }),
+    );
+  });
+
   // Catches a Stop sent to the card a continuing run draws on: the engine refuses an ended run, and
   // the run that works goes on (a usage-limit resume, an agent's own turn, a restart's continuation).
   const SESSION = (steer: boolean, active = true) => ({

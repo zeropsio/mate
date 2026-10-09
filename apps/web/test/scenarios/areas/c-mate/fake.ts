@@ -624,6 +624,27 @@ export class ChatDriver {
         mate.reply(socket, request.id, encodeResult({ sequence: mate.sequence }));
         return true;
       }
+      if (command.type === "thread.archive" || command.type === "thread.unarchive") {
+        const at = this.at();
+        const archived = command.type === "thread.archive";
+        mate.thread = decodeThread({
+          ...mate.thread,
+          archivedAt: archived ? at : null,
+          updatedAt: at,
+        });
+        this.event(
+          archived ? "thread.archived" : "thread.unarchived",
+          {
+            threadId: mate.thread.id,
+            updatedAt: at,
+            ...(archived ? { archivedAt: at } : {}),
+          },
+          command.commandId,
+        );
+        this.shell();
+        mate.reply(socket, request.id, encodeResult({ sequence: mate.sequence }));
+        return true;
+      }
       if (command.type === "thread.usage-auto-resume.set") {
         if (this.usagePause) this.usagePause = { ...this.usagePause, autoResume: command.enabled };
         this.event("thread.usage-auto-resume-set", {

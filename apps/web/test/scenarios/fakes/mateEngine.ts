@@ -56,6 +56,7 @@ const OPS: Readonly<Record<string, EngineOp>> = {
   [WS_METHODS.engineStop]: "stop",
   [WS_METHODS.engineSteer]: "steer",
   [WS_METHODS.engineSwitchModel]: "switch-model",
+  [WS_METHODS.engineSetArchived]: "set-archived",
   [WS_METHODS.engineSetRuntimeMode]: "set-runtime-mode",
   [WS_METHODS.engineAssignAgent]: "assign-agent",
 };
@@ -71,6 +72,7 @@ export type EngineOp =
   | "stop"
   | "steer"
   | "switch-model"
+  | "set-archived"
   | "set-runtime-mode"
   | "assign-agent";
 
@@ -760,6 +762,7 @@ export class MateEngineFake {
       case WS_METHODS.engineStop:
       case WS_METHODS.engineSteer:
       case WS_METHODS.engineSwitchModel:
+      case WS_METHODS.engineSetArchived:
       case WS_METHODS.engineSetRuntimeMode:
       case WS_METHODS.engineAssignAgent: {
         if (unserved !== null) {
@@ -1042,6 +1045,15 @@ export class MateEngineFake {
                     ...(payload.options === undefined ? {} : { options: payload.options }),
                   },
           });
+          change.header = true;
+        });
+        return { _tag: "Accepted", seq: this.seq } as never;
+      }
+      case WS_METHODS.engineSetArchived: {
+        this.applied.push({ commandId, op: "set-archived", payload });
+        this.commit((change) => {
+          this.next();
+          this.header = decodeHeader({ ...this.header, archived: payload.archived });
           change.header = true;
         });
         return { _tag: "Accepted", seq: this.seq } as never;

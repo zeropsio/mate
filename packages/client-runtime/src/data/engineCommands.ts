@@ -177,6 +177,15 @@ export const engineInterruptTurn =
           }),
     });
 
+export const engineSetArchived =
+  (
+    environmentId: string,
+    input: Command<"thread.archive"> | Command<"thread.unarchive">,
+    archived: boolean,
+  ) =>
+  (host: MateEngineHost) =>
+    host.operations.setArchived({ environmentId, conversationId: input.threadId, archived });
+
 const DECISION_WORDS: Readonly<Record<string, string>> = {
   accept: "Approved",
   acceptForSession: "Approved for this session",

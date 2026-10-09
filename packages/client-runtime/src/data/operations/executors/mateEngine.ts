@@ -113,6 +113,12 @@ export interface EngineCallWire {
           readonly options?: ReadonlyArray<ProviderOptionSelection>;
         }
       | {
+          readonly kind: "set-archived";
+          readonly conversationId: string;
+          readonly commandId: string;
+          readonly archived: boolean;
+        }
+      | {
           readonly kind: "set-runtime-mode";
           readonly conversationId: string;
           readonly commandId: string;
@@ -202,6 +208,14 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
               ...base,
               model: command.model,
               ...(command.options === undefined ? {} : { options: command.options }),
+            }),
+          );
+        case "set-archived":
+          return registry.run(
+            id,
+            request(WS_METHODS.engineSetArchived, {
+              ...base,
+              archived: command.archived,
             }),
           );
         case "set-runtime-mode":
@@ -575,6 +589,22 @@ export function makeMateEngineOperations(options: {
           commandId,
           model: target.model,
           ...(target.options === undefined ? {} : { options: target.options }),
+        }),
+      ),
+    /** Archive or restore the conversation through its existing receipt path. */
+    setArchived: (target: EngineOperationTarget & { readonly archived: boolean }) =>
+      execute(
+        {
+          kind: "mate-engine-set-archived",
+          environmentId: target.environmentId,
+          conversationId: target.conversationId,
+          archived: target.archived,
+        },
+        (commandId) => ({
+          kind: "set-archived",
+          conversationId: target.conversationId,
+          commandId,
+          archived: target.archived,
         }),
       ),
     /** How freely the agent works, from its next run on. */

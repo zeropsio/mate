@@ -640,6 +640,37 @@ describe("a client's calls to an engine conversation", () => {
     ),
   );
 
+  it.effect("archiving preserves history and restoring makes the conversation active again", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* send(wire, "Keep this conversation");
+        for (const archived of [true, false]) {
+          const input = {
+            protocol,
+            conversationId: mate,
+            commandId: CommandId.make(`archive-${archived}`),
+            archived,
+          };
+          const result = yield* wire.setArchived(input, ana);
+          assert.strictEqual(result._tag, "Accepted");
+          assert.deepStrictEqual(yield* wire.setArchived(input, ana), result);
+          const frames = yield* watch(w, wire);
+          const snapshot = frames.find((frame) => frame.type === "snapshot");
+          assert.strictEqual(snapshot?.type === "snapshot" && snapshot.header.archived, archived);
+          assert.isTrue(
+            snapshot?.type === "snapshot" &&
+              snapshot.items.some(
+                (item) => "text" in item && item.text === "Keep this conversation",
+              ),
+          );
+        }
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("a send is confirmed when the engine accepts it, as the person who sent it", () =>
     Effect.scoped(
       Effect.gen(function* () {

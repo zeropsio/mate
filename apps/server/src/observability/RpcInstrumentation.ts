@@ -125,6 +125,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.engineDismiss]: "engine",
   [WS_METHODS.engineSteer]: "engine",
   [WS_METHODS.engineSwitchModel]: "engine",
+  [WS_METHODS.engineSetArchived]: "engine",
   [WS_METHODS.engineSetRuntimeMode]: "engine",
   [WS_METHODS.engineAssignAgent]: "engine",
   [WS_METHODS.vcsRefreshStatus]: "vcs",

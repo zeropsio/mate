@@ -50,6 +50,9 @@ declare module "../model.ts" {
       readonly model: string;
       readonly options?: ReadonlyArray<ProviderOptionSelection>;
     };
+    readonly "mate-engine-set-archived": EngineOperationTarget & {
+      readonly archived: boolean;
+    };
     readonly "mate-engine-set-runtime-mode": EngineOperationTarget & {
       readonly runtimeMode: RuntimeMode;
     };
@@ -62,6 +65,7 @@ declare module "../model.ts" {
     readonly "mate-engine-dismiss": EngineAcceptance;
     readonly "mate-engine-steer": EngineAcceptance;
     readonly "mate-engine-switch-model": EngineAcceptance;
+    readonly "mate-engine-set-archived": EngineAcceptance;
     readonly "mate-engine-set-runtime-mode": EngineAcceptance;
     readonly "mate-engine-assign-agent": EngineAcceptance;
   }
@@ -187,6 +191,12 @@ export const mateEngineSwitchModel: OperationKind<"mate-engine-switch-model"> = 
   },
 };
 
+/** Archiving or restoring shows once the conversation header agrees. */
+export const mateEngineSetArchived: OperationKind<"mate-engine-set-archived"> = {
+  kind: "mate-engine-set-archived",
+  executor: "mate",
+  reflected: (read, intent) => headerOf(read, intent)?.archived === intent.archived,
+};
 /** A runtime mode shows once the conversation's header names it. */
 export const mateEngineSetRuntimeMode: OperationKind<"mate-engine-set-runtime-mode"> = {
   kind: "mate-engine-set-runtime-mode",
@@ -208,6 +218,7 @@ export const MATE_ENGINE_KINDS = [
   mateEngineDismiss,
   mateEngineSteer,
   mateEngineSwitchModel,
+  mateEngineSetArchived,
   mateEngineSetRuntimeMode,
   mateEngineAssignAgent,
 ] as const;

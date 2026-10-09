@@ -48,6 +48,7 @@ import {
   type EngineSendInput,
   type EngineSteerInput,
   type EngineSwitchModelInput,
+  type EngineSetArchivedInput,
   type EngineSetRuntimeModeInput,
   type EngineAssignAgentInput,
   type EngineStopInput,
@@ -123,6 +124,10 @@ export interface EngineWireShape {
     input: EngineSwitchModelInput,
     caller: WireCaller,
   ) => Effect.Effect<EngineCallResult, EngineWireError>;
+  readonly setArchived: (
+    input: EngineSetArchivedInput,
+    caller: WireCaller,
+  ) => Effect.Effect<EngineCallResult, EngineWireError>;
   readonly setRuntimeMode: (
     input: EngineSetRuntimeModeInput,
     caller: WireCaller,
@@ -178,6 +183,7 @@ export const unservedWire: EngineWireShape = {
   dismiss: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   steer: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   switchModel: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
+  setArchived: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   setRuntimeMode: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   assignAgent: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
 };
@@ -980,6 +986,10 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           _tag: "SwitchModel",
           model: input.model,
           ...(input.options === undefined ? {} : { options: input.options }),
+        }),
+      setArchived: (input, caller) =>
+        command(input.protocol, input.conversationId, input.commandId, caller, {
+          _tag: input.archived ? "Archive" : "Unarchive",
         }),
       setRuntimeMode: (input, caller) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {

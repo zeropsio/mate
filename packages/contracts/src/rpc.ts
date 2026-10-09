@@ -34,6 +34,7 @@ import {
   EngineSendInput,
   EngineSteerInput,
   EngineSwitchModelInput,
+  EngineSetArchivedInput,
   EngineSetRuntimeModeInput,
   EngineAssignAgentInput,
   EngineStopInput,
@@ -402,6 +403,7 @@ export const WS_METHODS = {
   engineDismiss: "engine.dismiss",
   engineSteer: "engine.steer",
   engineSwitchModel: "engine.switchModel",
+  engineSetArchived: "engine.setArchived",
   engineSetRuntimeMode: "engine.setRuntimeMode",
   engineAssignAgent: "engine.assignAgent",
 
@@ -1365,6 +1367,11 @@ const WsEngineSwitchModelRpc = Rpc.make(WS_METHODS.engineSwitchModel, {
   error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
 });
 
+const WsEngineSetArchivedRpc = Rpc.make(WS_METHODS.engineSetArchived, {
+  payload: EngineSetArchivedInput,
+  success: EngineCallResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
 const WsEngineSetRuntimeModeRpc = Rpc.make(WS_METHODS.engineSetRuntimeMode, {
   payload: EngineSetRuntimeModeInput,
   success: EngineCallResult,
@@ -1521,6 +1528,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsEngineDismissRpc,
   WsEngineSteerRpc,
   WsEngineSwitchModelRpc,
+  WsEngineSetArchivedRpc,
   WsEngineSetRuntimeModeRpc,
   WsEngineAssignAgentRpc,
   WsOrchestrationDispatchCommandRpc,

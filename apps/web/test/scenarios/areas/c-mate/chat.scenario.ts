@@ -23,6 +23,43 @@ const setup = Effect.gen(function* () {
 
 describe("C: opening a Mate and chat", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "archive and start fresh opens a new conversation and Undo restores the old one",
+      () =>
+        Effect.gen(function* () {
+          const { s, chat } = yield* setup;
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          yield* Effect.promise(async () => {
+            await s.page.locator("::-p-aria(More header actions)").click();
+            await s.page.locator("[data-zerops-start-fresh]").click();
+            await s.page.waitForFunction(() => location.pathname.startsWith("/draft/"));
+            expect(
+              new URL(s.page.url()).pathname,
+              "ASSERTION: archive opens a fresh conversation",
+            ).toMatch(/^\/draft\/[^/]+$/);
+            const fixture = chat.fixture();
+            expect(
+              fixture.wire instanceof EngineChatWire
+                ? fixture.wire.engine.header.archived
+                : fixture.mate.thread.archivedAt !== null,
+              "ASSERTION: the owning engine records the archive before starting fresh",
+            ).toBe(true);
+            await s.page.locator("::-p-aria(Undo)").click();
+          });
+          yield* chat.then.path("/env-Ada/thread-Ada");
+          yield* chat.then.text("The existing conversation is still here");
+          const fixture = chat.fixture();
+          expect(
+            fixture.wire instanceof EngineChatWire
+              ? fixture.wire.engine.header.archived
+              : fixture.mate.thread.archivedAt !== null,
+            "ASSERTION: Undo restores the conversation in its owning engine",
+          ).toBe(false);
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
     // A reported version difference alone must never offer a chat-level restart.
     it.effect("older and newer Mate versions show no version-skew warning or restart action", () =>
       Effect.gen(function* () {

@@ -67,6 +67,7 @@ import {
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
+  engineSetArchived,
   engineSetInteractionMode,
   engineSetRuntimeMode,
   engineUpdateMetadata,
@@ -137,13 +138,25 @@ export function createThreadEnvironmentAtoms<R, E>(
     }),
     archive: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:archive",
-      execute: (input: ArchiveThreadInput) => archiveThread(input),
+      execute: (input: ArchiveThreadInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineSetArchived(environmentId, input, true),
+          archiveThread(input),
+        ),
       scheduler,
       concurrency,
     }),
     unarchive: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:unarchive",
-      execute: (input: UnarchiveThreadInput) => unarchiveThread(input),
+      execute: (input: UnarchiveThreadInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineSetArchived(environmentId, input, false),
+          unarchiveThread(input),
+        ),
       scheduler,
       concurrency,
     }),

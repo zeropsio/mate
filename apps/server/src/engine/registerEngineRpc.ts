@@ -37,6 +37,7 @@ type EngineRpcTag =
   | typeof WS_METHODS.engineDismiss
   | typeof WS_METHODS.engineSteer
   | typeof WS_METHODS.engineSwitchModel
+  | typeof WS_METHODS.engineSetArchived
   | typeof WS_METHODS.engineSetRuntimeMode
   | typeof WS_METHODS.engineAssignAgent;
 
@@ -111,6 +112,11 @@ export const registerEngineRpc = ({ engine, source, subject, admit }: RegisterEn
       admit(
         WS_METHODS.engineSwitchModel,
         asCaller((who) => wire.switchModel(input, who)),
+      ),
+    [WS_METHODS.engineSetArchived]: (input) =>
+      admit(
+        WS_METHODS.engineSetArchived,
+        asCaller((who) => wire.setArchived(input, who)),
       ),
     [WS_METHODS.engineSetRuntimeMode]: (input) =>
       admit(
