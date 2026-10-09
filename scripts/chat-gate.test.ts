@@ -11,6 +11,7 @@ import {
   chatGateTestFiles,
   selectLaneChatStages,
   selectsChatGate,
+  type ChatGateCommand,
 } from "./chat-gate.ts";
 
 it.each([
@@ -79,7 +80,7 @@ it("the gate proves the Mate engine on the proof harness's fixed seeds and the r
 
 it("the gate runs the crew's journeys on the engine's world, beside the unit suite's V1 run", () => {
   const commands = chatGateStages.flatMap((stage) =>
-    stage.commands.flatMap((command) =>
+    stage.commands.flatMap((command: ChatGateCommand) =>
       command.args.some((arg) => arg.startsWith("src/zerops/crew/CrewEngine"))
         ? [
             [
