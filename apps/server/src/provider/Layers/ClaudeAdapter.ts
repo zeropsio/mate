@@ -307,6 +307,8 @@ interface ClaudeTurnState {
   readonly thinkingSnapshotIds: Set<string>;
   /** The Mate's model response streaming now (`message_start`): its calls are one batch. */
   responseId?: string | undefined;
+  /** A synthetic turn its stream opened: its first assistant message is still to name it. */
+  startMessagePending?: boolean;
 }
 
 interface AssistantTextBlockState {
@@ -2992,6 +2994,64 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     yield* updateResumeCursor(context);
   });
 
+  /**
+   * A turn Claude Code opens on its own (a background result handed to the model between prompts):
+   * from its first assistant message, or from its stream's start when that comes first — a call it
+   * streams before its first message is that turn's, never the turn before (Milo's third stress
+   * run read a wake's first command as the previous run's "No result").
+   */
+  const startSyntheticTurn = Effect.fn("startSyntheticTurn")(function* (
+    context: ClaudeSessionContext,
+    startMessageId: string | undefined,
+  ) {
+    const turnId = TurnId.make(yield* randomUUIDv4);
+    const startedAt = yield* nowIso;
+    if (startMessageId !== undefined) context.turnStartMessageIds.push(startMessageId);
+    context.turnState = {
+      turnId,
+      startedAt,
+      synthetic: true,
+      ...(startMessageId === undefined ? { startMessagePending: true } : {}),
+      assistantTextBlocks: new Map(),
+      assistantTextBlockOrder: [],
+      capturedProposedPlanKeys: new Set(),
+      latestAssistantUsage: undefined,
+      compactedSinceLatestAssistantUsage: false,
+      nextSyntheticAssistantBlockIndex: -1,
+      authenticationFailureMessage: undefined,
+      rejectedRateLimitTypes: new Set(),
+      latestAssistantRateLimited: false,
+      emittedThinkingText: false,
+      thinkingSnapshotIds: new Set(),
+    };
+    context.session = {
+      ...context.session,
+      status: "running",
+      activeTurnId: turnId,
+      updatedAt: startedAt,
+    };
+    yield* updateResumeCursor(context);
+    const turnStartedStamp = yield* makeEventStamp();
+    yield* offerRuntimeEvent({
+      type: "turn.started",
+      eventId: turnStartedStamp.eventId,
+      provider: PROVIDER,
+      createdAt: turnStartedStamp.createdAt,
+      threadId: context.session.threadId,
+      turnId,
+      payload: {},
+      providerRefs: {
+        ...nativeProviderRefs(context),
+        providerTurnId: turnId,
+      },
+      raw: {
+        source: "claude.sdk.message",
+        method: "claude/synthetic-turn-start",
+        payload: {},
+      },
+    });
+  });
+
   const handleStreamEvent = Effect.fn("handleStreamEvent")(function* (
     context: ClaudeSessionContext,
     message: SDKMessage,
@@ -3028,6 +3088,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       }
     }
 
+    // Claude's own turn streaming before its first message: it opens here, so what it streams is
+    // its own.
+    if (event.type === "message_start" && !context.turnState && !streamParentToolUseId) {
+      yield* startSyntheticTurn(context, undefined);
+    }
     if (event.type === "message_start" && context.turnState && !streamParentToolUseId) {
       context.turnState.emittedThinkingText = false;
       context.turnState.responseId = trimmedString(event.message.id);
@@ -3764,51 +3829,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         yield* updateResumeCursor(context);
         return;
       }
-      const turnId = TurnId.make(yield* randomUUIDv4);
-      const startedAt = yield* nowIso;
+      yield* startSyntheticTurn(context, message.uuid);
+    } else if (context.turnState.startMessagePending === true) {
+      // A turn its stream opened: its first assistant message names where it began.
+      context.turnState.startMessagePending = false;
       context.turnStartMessageIds.push(message.uuid);
-      context.turnState = {
-        turnId,
-        startedAt,
-        synthetic: true,
-        assistantTextBlocks: new Map(),
-        assistantTextBlockOrder: [],
-        capturedProposedPlanKeys: new Set(),
-        latestAssistantUsage: undefined,
-        compactedSinceLatestAssistantUsage: false,
-        nextSyntheticAssistantBlockIndex: -1,
-        authenticationFailureMessage: undefined,
-        rejectedRateLimitTypes: new Set(),
-        latestAssistantRateLimited: false,
-        emittedThinkingText: false,
-        thinkingSnapshotIds: new Set(),
-      };
-      context.session = {
-        ...context.session,
-        status: "running",
-        activeTurnId: turnId,
-        updatedAt: startedAt,
-      };
       yield* updateResumeCursor(context);
-      const turnStartedStamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        type: "turn.started",
-        eventId: turnStartedStamp.eventId,
-        provider: PROVIDER,
-        createdAt: turnStartedStamp.createdAt,
-        threadId: context.session.threadId,
-        turnId,
-        payload: {},
-        providerRefs: {
-          ...nativeProviderRefs(context),
-          providerTurnId: turnId,
-        },
-        raw: {
-          source: "claude.sdk.message",
-          method: "claude/synthetic-turn-start",
-          payload: {},
-        },
-      });
     }
 
     yield* presentCalls(context, message);
