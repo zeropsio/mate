@@ -88,8 +88,12 @@ import {
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { currentAccountEpoch } from "../../zerops/accountLifetime";
 import {
+  menuProjectOpening,
+  type MenuProjectOpening,
+  mateAttentionAtom,
   shownHqMateIdentitiesAtom,
   shownHqPersonFactsAtom,
   hqMatePresenceAtom,
@@ -450,6 +454,8 @@ export interface SidebarProjectFlow {
 
 export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly candidates: ReadonlyArray<T>;
+  /** A deliberate reopen refreshes the frozen project sections on web and its mobile drawer. */
+  readonly menuOpen?: boolean;
   readonly keyedReadings?: boolean;
   readonly onSelect: (candidate: T) => void;
   /**
@@ -590,6 +596,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   activeProjectId,
   getActivity,
   keyedReadings = false,
+  menuOpen = true,
   getConversationsRead,
   getOwner,
   getFlow,
@@ -605,6 +612,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   shown,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
+  const registry = useContext(RegistryContext);
+  const [opening, setOpening] = useState<MenuProjectOpening | null>(null);
   const structureView = useAtomValue(shownHqMenuNavigationAtom);
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const session = useZeropsSessionOptional();
@@ -904,9 +913,39 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     ...(projectOrder.customOrder === undefined ? {} : { customOrder: projectOrder.customOrder }),
     births,
   });
+  const frozen = menuProjectOpening(opening, {
+    scope: `${currentAccountEpoch()}/${structureView.orgId ?? ""}`,
+    open: menuOpen,
+    order: JSON.stringify([projectOrder.order, projectOrder.customOrder]),
+    now: Date.now(),
+    openProjectId: activeProjectId,
+    projects: view.groups.map(({ group, environments }) => ({
+      id: group.groupId,
+      mates: environments
+        .filter(({ item }) => hasMate(item))
+        .map(({ item }) => ({
+          projectId: item.project.id,
+          activity: getActivity?.(item),
+          attention: registry.get(mateAttentionAtom(item.project.id)),
+          face: mateRowReading({
+            name: projectNameInApp(item.project),
+            connected: mateAwake(item, hqMates),
+            activity: getActivity?.(item),
+            reviewWaits: mateReviewWaits(getFlow?.(group.groupId), item.project.id),
+            mine: waitsOnViewer(item.project.id),
+          }).face,
+        })),
+    })),
+  });
+  if (frozen !== opening) setOpening(frozen);
+  const byId = new Map(view.groups.map((entry) => [entry.group.groupId, entry]));
+  const orderedGroups = [...frozen.active, ...frozen.other].flatMap((id) => {
+    const entry = byId.get(id);
+    return entry === undefined ? [] : [entry];
+  });
   // Every project the order holds, drawn or not: what a move is written into,
   // and what choosing *Custom* elsewhere starts from.
-  const onScreen = view.groups.map(({ group }) => group.groupId);
+  const onScreen = orderedGroups.map(({ group }) => group.groupId);
   rememberProjectsOnScreen(onScreen);
   const tints = assignCandidateMateTints(candidates);
   /** A Mate's face: its tint, and the shape its person picked or that tint's own. */
@@ -1536,7 +1575,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
 
   // HQ applications remain visible when they hold only stage/production placements.
   // The viewer's Mate filter still hides applications whose Mates are all filtered out.
-  const groups = view.groups.filter(
+  const groups = orderedGroups.filter(
     ({ group, environments }) =>
       !environments.some(({ item }) => hasMate(item)) ||
       environments.some(({ item }) => hasMate(item) && (shown?.(item) ?? true)) ||
@@ -1560,13 +1599,20 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // The projects drawn, in order: a move by keyboard or by drag names its
   // place by these neighbours, and the order it writes still holds the rest.
   const drawn = groups.map(({ group }) => group.groupId);
+  const sectionOf = (id: string) => (frozen.active.includes(id) ? frozen.active : frozen.other);
+  const neighbours = (id: string) => sectionOf(id).filter((entry) => drawn.includes(entry));
   const moveProject = (groupId: string, before: string | null, name: string) => {
-    const next = movedBefore(onScreen, groupId, before).filter((id) => drawn.includes(id));
-    projectOrder.move(groupId, before, onScreen);
+    const section = sectionOf(groupId);
+    if (before !== null && !section.includes(before)) return;
+    const next = movedBefore(section, groupId, before);
+    // Replace this section in the complete preference, preserving the other section's arrangement.
+    let at = 0;
+    const completeOrder = onScreen.map((id) => (section.includes(id) ? next[at++]! : id));
+    projectOrder.choose("custom", completeOrder);
     reorder.announce(movedAnnouncement(name, next.indexOf(groupId) + 1, next.length));
   };
   const moveByKey = (groupId: string, name: string, direction: "up" | "down", refocus: boolean) => {
-    const before = keyboardTarget(drawn, groupId, direction);
+    const before = keyboardTarget(neighbours(groupId), groupId, direction);
     if (before === undefined) return;
     moveProject(groupId, before, name);
     if (!refocus) return;
@@ -1584,9 +1630,17 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         "flex flex-col transition-opacity",
         reorder.dragging === group.groupId && "opacity-40",
       )}
+      data-zerops-project-section={frozen.active.includes(group.groupId) ? "active" : "other"}
       data-zerops-group={group.groupId}
       key={group.groupId}
     >
+      {groups.some(({ group }) => frozen.active.includes(group.groupId)) &&
+      groups.some(({ group }) => frozen.other.includes(group.groupId)) &&
+      (index === 0 || sectionOf(groups[index - 1]!.group.groupId) !== sectionOf(group.groupId)) ? (
+        <h2 className="px-2.5 pb-2 pt-3 text-xs font-medium text-sidebar-muted-foreground">
+          {frozen.active.includes(group.groupId) ? "Active" : "Other projects"}
+        </h2>
+      ) : null}
       {section(
         group.groupId,
         environments,
@@ -1652,8 +1706,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             }}
             reorder={{
               custom: projectOrder.order === "custom",
-              canMoveUp: index > 0,
-              canMoveDown: index < groups.length - 1,
+              canMoveUp: neighbours(group.groupId).indexOf(group.groupId) > 0,
+              canMoveDown: neighbours(group.groupId).at(-1) !== group.groupId,
               onMove: (direction, fromGrip) => {
                 moveByKey(group.groupId, group.name, direction, fromGrip);
               },

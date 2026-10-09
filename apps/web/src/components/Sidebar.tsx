@@ -1878,7 +1878,7 @@ export default function Sidebar() {
     [zeropsProjectFlows],
   );
   const router = useRouter();
-  const { isMobile, setOpenMobile } = useSidebar();
+  const { isMobile, open, openMobile, setOpenMobile } = useSidebar();
   /** A stop's page, in place of the thread — the sidebar stays where it is. */
   const openStop = useCallback(
     (groupId: string, row: EnvironmentRow) => {
@@ -4178,6 +4178,7 @@ export default function Sidebar() {
         <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
           {zeropsSignedIn && !isSearchingThreads ? (
             <SidebarZeropsTree
+              menuOpen={isMobile ? openMobile : open}
               activeProjectId={activeZeropsProjectId}
               births={zeropsPlacedBirths}
               candidates={zeropsCandidates}

@@ -172,3 +172,78 @@ describe("movedBefore — one project put in front of another, or last", () => {
     expect(movedBefore(["a", "h", "b", "c"], id, before)).toEqual(expected);
   });
 });
+
+describe("automatic sections keep account preferences", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllGlobals();
+  });
+
+  it("Custom ordering survives regrouping, and another account cannot inherit it.", async () => {
+    vi.resetModules();
+    const storage = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      },
+    });
+    const lifetime = await import("./accountLifetime");
+    const prefs = await import("./projectOrderPreference");
+    const saved = await import("../hooks/useLocalStorage");
+    const { menuProjectOpening } = await import("@t3tools/client-runtime/data");
+    lifetime.openAccountLifetime("first");
+    saved.setLocalStorageItem(prefs.PROJECT_ORDER_STORAGE_KEY, "custom", prefs.ProjectOrderSchema);
+    saved.setLocalStorageItem(
+      prefs.PROJECT_CUSTOM_ORDER_STORAGE_KEY,
+      ["b", "a", "c"],
+      prefs.ProjectCustomOrderSchema,
+    );
+    const projects = ["b", "a", "c"].map((id) => ({
+      id,
+      mates: [{ projectId: id, face: "idle" }],
+    }));
+    const input = {
+      scope: "first/org",
+      open: true,
+      order: "custom",
+      projects,
+      now: 0,
+      openProjectId: "a",
+    };
+    const first = menuProjectOpening(null, input);
+    expect([...first.active, ...first.other]).toEqual(["a", "b", "c"]);
+    const second = menuProjectOpening({ ...first, open: false }, { ...input, openProjectId: "c" });
+    expect([...second.active, ...second.other]).toEqual(["c", "b", "a"]);
+    expect(
+      saved.getLocalStorageItem(
+        prefs.PROJECT_CUSTOM_ORDER_STORAGE_KEY,
+        prefs.ProjectCustomOrderSchema,
+      ),
+    ).toEqual(["b", "a", "c"]);
+    prefs.rememberProjectsOnScreen(["c", "b", "a"]);
+    lifetime.openAccountLifetime("second");
+    expect(
+      saved.getLocalStorageItem(
+        prefs.PROJECT_CUSTOM_ORDER_STORAGE_KEY,
+        prefs.ProjectCustomOrderSchema,
+      ),
+    ).toBeNull();
+    expect(
+      saved.getLocalStorageItem(prefs.PROJECT_ORDER_STORAGE_KEY, prefs.ProjectOrderSchema),
+    ).toBeNull();
+    expect(
+      prefs.readProjectsOnScreen(),
+      "ASSERTION: closing an account clears its last menu order",
+    ).toEqual([]);
+    lifetime.openAccountLifetime("first");
+    expect(
+      saved.getLocalStorageItem(
+        prefs.PROJECT_CUSTOM_ORDER_STORAGE_KEY,
+        prefs.ProjectCustomOrderSchema,
+      ),
+    ).toEqual(["b", "a", "c"]);
+    await lifetime.closeAccountLifetime();
+  });
+});

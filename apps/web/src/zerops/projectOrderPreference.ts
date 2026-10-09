@@ -24,6 +24,7 @@ import type { ZeropsProjectOrder } from "@t3tools/client-runtime/zerops";
 import { useCallback, useMemo } from "react";
 
 import { useLocalStorage } from "../hooks/useLocalStorage";
+import { onAccountLifetimeClose } from "./accountLifetime";
 
 export const PROJECT_ORDER_STORAGE_KEY = "mate:zerops:project-order";
 export const PROJECT_CUSTOM_ORDER_STORAGE_KEY = "mate:zerops:project-custom-order";
@@ -164,6 +165,9 @@ export function useProjectOrderOptions(): ProjectOrderOptions {
  * render that changes it; nothing else does.
  */
 let projectsOnScreen: ReadonlyArray<string> = NO_CUSTOM_ORDER;
+onAccountLifetimeClose(() => {
+  projectsOnScreen = NO_CUSTOM_ORDER;
+});
 
 export function rememberProjectsOnScreen(groupIds: ReadonlyArray<string>): void {
   projectsOnScreen = groupIds;

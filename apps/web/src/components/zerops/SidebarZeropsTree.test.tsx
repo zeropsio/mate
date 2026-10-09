@@ -26,7 +26,11 @@ import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
-import { restingActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import {
+  restingActivity,
+  threadAgentActivity,
+  type ZeropsAgentActivity,
+} from "~/zerops/agentActivity";
 import { markMateDeleting, settleDeletingMates } from "~/zerops/deletingMates";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import {
@@ -4092,4 +4096,174 @@ it("a retained Mate line keeps its row clickable and offers Zerops separately", 
   expect(html).toContain('href="https://app.zerops.io/project/crm-dev"');
   expect(html).toContain("Open in Zerops");
   expect(html).not.toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<a/);
+});
+
+describe("automatic project sections", () => {
+  const now = Date.parse("2026-10-09T12:00:00Z");
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const rows = [LINKS_MATE, CRM_DEV];
+  const activity = (at: number, untouched = false) =>
+    threadAgentActivity(
+      {
+        id: ThreadId.make("work"),
+        environmentId: EnvironmentId.make("env"),
+        title: "Work",
+        hasPendingApprovals: false,
+        hasPendingUserInput: false,
+        hasActionableProposedPlan: false,
+        interactionMode: "default",
+        backgroundLiveness: null,
+        session: null,
+        latestTurn: null,
+        latestUserMessageAt: untouched ? null : new Date(at).toISOString(),
+        updatedAt: new Date(at).toISOString(),
+      },
+      undefined,
+      now,
+    );
+  const read = (at: number, overrides: Partial<ZeropsAgentActivity> = {}) => ({
+    ...activity(at),
+    ...overrides,
+  });
+  const ids = (html: string) =>
+    [...html.matchAll(/data-zerops-group="([^"]+)"/gu)].map((match) => match[1]);
+  const mountedIds = (tree: ReactTestRenderer) =>
+    tree.root
+      .findAll((node) => node.type === "section" && node.props["data-zerops-group"] !== undefined)
+      .map((node) => node.props["data-zerops-group"]);
+  const menu = (
+    getActivity: (candidate: ZeropsCandidate) => ZeropsAgentActivity | undefined,
+    menuOpen = true,
+  ) => (
+    <SidebarZeropsTree
+      candidates={rows}
+      complete
+      menuOpen={menuOpen}
+      getActivity={getActivity}
+      onBrowseProjects={() => {}}
+      onSelect={() => {}}
+    />
+  );
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "newest", ProjectOrderSchema);
+    setLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, [], ProjectCustomOrderSchema);
+  });
+
+  // Decision: the owner asked for the most straightforward first iteration; proposal followed as written.
+  it("Work within seven days places its project in Active; older resting work does not.", () => {
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
+    const html = render(rows, {
+      getActivity: (candidate: ZeropsCandidate) =>
+        read(candidate === LINKS_MATE ? now - week : now - week - 1),
+    });
+    expect(ids(html), "ASSERTION: seven-day work precedes older resting projects").toEqual([
+      "links",
+      "aaa",
+    ]);
+    expect(html).toContain(">Active</h2>");
+    expect(html).toContain(">Other projects</h2>");
+  });
+
+  it("Current work and needs-you keep a project Active beyond seven days.", () => {
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
+    for (const kind of ["working", "connecting", "monitoring", "input"] as const) {
+      signerOf.set(LINKS_MATE.project.id, "viewer");
+      session.viewer = "viewer";
+      const html = render(rows, {
+        getActivity: (candidate: ZeropsCandidate) =>
+          read(
+            now - week - 1,
+            candidate === LINKS_MATE ? { kind, face: kind === "input" ? "needs" : "working" } : {},
+          ),
+      });
+      expect(ids(html), `ASSERTION: ${kind} promotes its project`).toEqual(["links", "aaa"]);
+    }
+  });
+
+  it("Unread, untouched chats and remembered running state do not falsely promote projects.", () => {
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
+    for (const held of [
+      read(now - week - 1, { unread: true }),
+      activity(now, true),
+      restingActivity(read(now - week - 1, { kind: "working", face: "working" })),
+    ]) {
+      const html = render(rows, {
+        getActivity: (candidate: ZeropsCandidate) => (candidate === LINKS_MATE ? held : undefined),
+      });
+      expect(ids(html)).toEqual(["aaa", "links"]);
+      expect(html).not.toContain(">Active</h2>");
+    }
+  });
+
+  it("Background arrivals and expiry never move navigation during an opening.", () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
+    const tree = mount(menu((candidate) => read(candidate === LINKS_MATE ? now : now - week - 1)));
+    expect(mountedIds(tree)).toEqual(["links", "aaa"]);
+    clock.mockReturnValue(now + week + 1);
+    act(() => tree.update(menu((candidate) => read(candidate === CRM_DEV ? now + week + 1 : now))));
+    expect(mountedIds(tree)).toEqual(["links", "aaa"]);
+    expect(text(tree.root)).toContain("Active");
+  });
+
+  it("Reopening applies current membership and the chosen order deterministically.", () => {
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
+    const tree = mount(menu(() => undefined));
+    const work = (candidate: ZeropsCandidate) => (candidate === LINKS_MATE ? read(now) : undefined);
+    act(() => tree.update(menu(work, false)));
+    act(() => tree.update(menu(work)));
+    expect(mountedIds(tree)).toEqual(["links", "aaa"]);
+  });
+
+  it("Waiting review and the open conversation use the menu's existing verdicts", () => {
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
+    session.viewer = "viewer";
+    signerOf.set(LINKS_MATE.project.id, "viewer");
+    const getFlow = (): SidebarProjectFlow => ({
+      pullRequests: [{ ...pull(2), mateProjectId: LINKS_MATE.project.id }],
+      environments: new Map(),
+      releaseOffered: false,
+    });
+    expect(ids(render(rows, { getFlow, getActivity: () => read(now - week - 1) }))).toEqual([
+      "links",
+      "aaa",
+    ]);
+    expect(ids(render(rows, { activeProjectId: LINKS_MATE.project.id }))).toEqual(["links", "aaa"]);
+  });
+
+  it("Custom moves stop at the section boundary and keep the other section in place", () => {
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
+    setLocalStorageItem(
+      PROJECT_CUSTOM_ORDER_STORAGE_KEY,
+      ["aaa", "links"],
+      ProjectCustomOrderSchema,
+    );
+    const tree = mount(menu((candidate) => (candidate === LINKS_MATE ? read(now) : undefined)));
+    const grips = tree.root.findAll(
+      (node) =>
+        node.type === "button" && node.props["data-zerops-surface"] === "sidebar-project-grip",
+    );
+    act(() => grips[0]!.props.onKeyDown({ key: "ArrowDown", preventDefault: () => {} }));
+    act(() => grips[1]!.props.onKeyDown({ key: "ArrowUp", preventDefault: () => {} }));
+    expect(mountedIds(tree)).toEqual(["links", "aaa"]);
+    expect(getLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, ProjectCustomOrderSchema)).toEqual(
+      ["aaa", "links"],
+    );
+  });
+
+  it("Multiple active Mates produce one project section; empty groups add no heading.", () => {
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const second = { ...CRM_DEV, key: "second", project: { ...CRM_DEV.project, id: "second" } };
+    const html = render([CRM_DEV, second], { getActivity: () => read(now) });
+    expect(ids(html)).toEqual(["aaa"]);
+    expect(html).not.toContain(">Active</h2>");
+    expect(render([])).not.toContain(">Other projects</h2>");
+  });
 });

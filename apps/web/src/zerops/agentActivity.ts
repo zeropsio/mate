@@ -136,6 +136,8 @@ export interface ZeropsAgentActivity {
    * writes at its right edge, the way a messenger dates its rows.
    */
   readonly at: string;
+  /** Its date records conversation work, rather than an untouched chat's update. */
+  readonly hasWork?: true | undefined;
   /**
    * The Mate's last words, quoted under the task — the reply to what the
    * subject asks. Absent while the person's message is the last thing said
@@ -427,6 +429,9 @@ export function threadAgentActivity(
     face: mateMarkStateForThread(resolved.kind, usageLimited),
     subject: agentActivitySubject(thread, resolved.kind),
     at: agentActivityAt(thread),
+    ...(thread.latestTurn !== null || thread.latestUserMessageAt !== null
+      ? { hasWork: true as const }
+      : {}),
     snippet: agentActivitySnippet(thread),
     ...(agentActivityAwaitsWords(thread) ? { awaitingWords: true as const } : {}),
     unread: hasUnseenCompletion({ latestTurn: thread.latestTurn, ...visited }),
@@ -654,6 +659,7 @@ export function rowAgentActivity(
     at: isoOf(
       state.kind === "working" || state.kind === "queued" ? state.since : (endedAt ?? row.at),
     ),
+    ...(row.latestRun !== null || row.subject !== null ? { hasWork: true as const } : {}),
     // Queued: the person's words are the last thing said, and the reply stands where they will.
     snippet: state.kind === "queued" || row.snippet === null ? undefined : maskSecrets(row.snippet),
     ...(state.kind === "queued" ? { awaitingWords: true as const } : {}),

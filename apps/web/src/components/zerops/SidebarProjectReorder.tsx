@@ -96,8 +96,12 @@ function roomAbove(section: HTMLElement): number {
 }
 
 function drawnSections(tree: HTMLElement, except: string) {
-  return Array.from(tree.querySelectorAll<HTMLElement>("section[data-zerops-group]")).filter(
-    (section) => section.dataset.zeropsGroup !== except,
+  const sections = Array.from(tree.querySelectorAll<HTMLElement>("section[data-zerops-group]"));
+  const source = sections.find((section) => section.dataset.zeropsGroup === except);
+  return sections.filter(
+    (section) =>
+      section.dataset.zeropsGroup !== except &&
+      section.dataset.zeropsProjectSection === source?.dataset.zeropsProjectSection,
   );
 }
 

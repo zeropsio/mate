@@ -619,3 +619,8 @@ export {
   presentOutcomes,
   type OutcomeInvocation,
 } from "./notices/outcomes.ts";
+export {
+  menuProjectOpening,
+  activeMenuProject,
+  type MenuProjectOpening,
+} from "./projections/menuProjectOrder.ts";
