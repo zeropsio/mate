@@ -508,6 +508,30 @@ describe("VaultPanelBody — apps", () => {
     expect(row.querySelector("[data-vault-shown]")?.textContent).toBe("db-pass");
   });
 
+  // Milo's Values said "No values yet" beside Apps listing apidev 3, appdev 2
+  // (stress run 2, 2026-10-09): the page shows what every app shares, and an
+  // empty share is not an empty vault.
+  it("says the apps keep values of their own when the environment shares none, and goes to them", async () => {
+    const view: VaultView = {
+      ...VAULT_FIXTURE,
+      notLive: [],
+      scopes: VAULT_FIXTURE.scopes.map((scope) =>
+        scope.kind === "shared" ? { ...scope, values: [] } : scope,
+      ),
+    };
+    const own = view.scopes
+      .filter((scope) => scope.kind === "runtime")
+      .reduce((sum, scope) => sum + scope.values.length, 0);
+    expect(own).toBeGreaterThan(0);
+    const { container } = await mount({ view });
+    expect(container.textContent).not.toContain("No values yet.");
+    expect(container.textContent).toContain(
+      `Nothing shared by every app yet. Your apps keep ${String(own)} value${own === 1 ? "" : "s"} of their own.`,
+    );
+    await click(button(container, "See them"));
+    expect(q(container, '[data-vault-view="apps"]')?.getAttribute("aria-selected")).toBe("true");
+  });
+
   it("says an app has nothing of its own yet, with Add", async () => {
     const { container } = await mount();
     await openApp(container, "appstage");

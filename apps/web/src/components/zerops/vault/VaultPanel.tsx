@@ -323,6 +323,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
     target !== undefined && target.editable && view.status !== "unread" && page.kind !== "apps";
   const runtime = view.scopes.filter((scope) => scope.kind === "runtime");
   const managed = view.scopes.filter((scope) => scope.kind === "managed");
+  const appsOwn = runtime.reduce((sum, scope) => sum + scope.values.length, 0);
 
   const actions = (
     <>
@@ -550,6 +551,16 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         {boxes}
         {boxes.length === 0 && q !== "" ? (
           <p className="px-1 py-2 text-line text-muted-foreground">Nothing matches “{q}”.</p>
+        ) : boxes.length === 0 && mode.kind === "list" && appsOwn > 0 ? (
+          // This page shows what every app shares; the apps' own values are
+          // still values, and "No values yet" beside them read as a lie.
+          <p className="flex flex-wrap items-baseline gap-1.5 px-1 py-2 text-line text-muted-foreground">
+            <span>
+              Nothing shared by every app yet. Your apps keep {appsOwn}{" "}
+              {appsOwn === 1 ? "value" : "values"} of their own.
+            </span>
+            <InlineButton onClick={() => go({ kind: "apps" })}>See them</InlineButton>
+          </p>
         ) : boxes.length === 0 && mode.kind === "list" ? (
           <p className="flex flex-wrap items-baseline gap-1.5 px-1 py-2 text-line text-muted-foreground">
             <span>No values yet.</span>
