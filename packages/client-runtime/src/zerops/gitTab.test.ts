@@ -492,6 +492,22 @@ describe("every state of a block", () => {
     // not what the stage runs, and saying so put two contradictions on one row.
     expect(answer.destination).toBe("stage runs it");
   });
+
+  it.each([
+    { name: "merged", state: LANDED },
+    { name: "in review", state: { state: "open", merged: false } as const },
+  ])(
+    // A branch whose tracking ref went with the merge read "never pushed" over
+    // "Merged into main." (Milo, 2026-10-09): a change in HQ is proof of a push.
+    "a branch with a change $name was pushed, so its line never says it was not",
+    ({ state }) => {
+      const answer = block(
+        checkout({ headRef: "feature/invoices", hasUpstream: false }),
+        changes({ change: change("mergeable", state) }),
+      );
+      expect(answer.checkoutLine).toBe("feature/invoices");
+    },
+  );
 });
 
 describe("the fact that has to be proved", () => {
