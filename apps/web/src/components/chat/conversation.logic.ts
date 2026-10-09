@@ -1165,7 +1165,7 @@ export function readsAsAnswer(text: string): boolean {
   );
 }
 
-type ActivityAction = "edit" | "command" | "read" | "code-search" | "search" | "other";
+type ActivityAction = "edit" | "command" | "read" | "code-search" | "search" | "fetch" | "other";
 
 /** What a run's calls did, by kind: the effort its worked line counts. */
 export type ActivityKind =
@@ -1182,6 +1182,7 @@ export const ACTIVITY_ORDER: ReadonlyArray<ActivityKind> = [
   "read",
   "code-search",
   "search",
+  "fetch",
   "workflow",
   "guides",
   "tool",
@@ -1199,7 +1200,8 @@ const NAMED_CALL_ACTION: Readonly<Record<string, ActivityAction>> = {
   Grep: "code-search",
   Glob: "code-search",
   WebSearch: "search",
-  WebFetch: "search",
+  // A fetch reads one page it was given: never a search (Milo's stress run, "1 web search").
+  WebFetch: "fetch",
 };
 
 function activityAction(entry: WorkLogEntry): ActivityAction {

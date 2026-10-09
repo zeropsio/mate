@@ -79,7 +79,7 @@ import {
   type WorkStep,
 } from "./workSteps.logic";
 import type { LiveJobs } from "./liveJobs.logic";
-import { heldLines, withPagedEffort } from "../../zerops/engineCardPaging.logic";
+import { engineCardEffort, heldLines, withPagedEffort } from "../../zerops/engineCardPaging.logic";
 import { chatItemHasLine, selectChatItems, slotModelOf } from "./runCard.logic";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 
@@ -2651,6 +2651,8 @@ export function deriveMessagesTimelineRows(input: {
       extras.push(...built.rows);
     });
     const paging = input.cardPaging?.[turn.turnId ?? ""] ?? null;
+    // An engine Mate's card: the runs it draws, as the engine records them.
+    const engineCard = input.runCards?.[turn.turnId ?? ""];
     const unheld = paging?.hasWork ?? false;
     const hasRecord = unheld || items.some((item) => item.kind !== "person");
     // A live run with nothing in its record whose answer is known already is
@@ -2678,13 +2680,16 @@ export function deriveMessagesTimelineRows(input: {
             turn,
             landed: landedByTurnKey.get(turn.key) ?? [],
             diffs,
-            activity: remembered(
-              cache?.activities,
-              cache?.generation ?? 0,
-              turn.key,
-              () => [turn.live, ...runEntries],
-              () => turnActivity(turn),
-            ),
+            activity:
+              engineCard === undefined
+                ? remembered(
+                    cache?.activities,
+                    cache?.generation ?? 0,
+                    turn.key,
+                    () => [turn.live, ...runEntries],
+                    () => turnActivity(turn),
+                  )
+                : engineCardEffort(engineCard.runs),
             later: turnsAfter(structure, turn.key),
             ...(unheld ? { unheld } : {}),
           });

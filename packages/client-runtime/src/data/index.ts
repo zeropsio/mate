@@ -562,6 +562,7 @@ export {
   ENGINE_UPDATE_WORDS,
   HISTORY_CUT_KIND,
   engineCardPaging,
+  engineCardCounts,
   engineCardPagingOf,
   engineRows,
   engineRunCards,

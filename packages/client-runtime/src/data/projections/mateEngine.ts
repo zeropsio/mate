@@ -915,6 +915,23 @@ const sumInto = (into: Record<string, number>, counts: Readonly<Record<string, n
   for (const [name, count] of Object.entries(counts)) into[name] = (into[name] ?? 0) + count;
 };
 
+/**
+ * What a card's runs' calls came to, as the server counts them from its items (`RunSummary`): the
+ * one count of a card's effort, live and after a reload alike, whatever of its items is held.
+ */
+export function engineCardCounts(runs: ReadonlyArray<RunRecord>): EngineCardCounts {
+  const calls: Record<string, number> = {};
+  const tools: Record<string, number> = {};
+  let edited: number | null = 0;
+  for (const run of runs) {
+    sumInto(calls, run.summary.calls);
+    sumInto(tools, run.summary.tools ?? {});
+    edited =
+      edited === null || run.summary.edited === undefined ? null : edited + run.summary.edited;
+  }
+  return { calls, tools, edited };
+}
+
 /** The cards of a conversation not held whole, by the card's id (the turn the view draws). */
 export function engineCardPagingOf(
   read: ProjectionReads,
@@ -960,9 +977,6 @@ export function engineCardPagingOf(
     );
     const laterSpan = later === undefined ? undefined : spanOf.get(later.id);
     const earlierSpan = earlier === undefined ? undefined : spanOf.get(earlier.id);
-    const calls: Record<string, number> = {};
-    const tools: Record<string, number> = {};
-    let edited: number | null = 0;
     let hasWork = false;
     for (const member of members) {
       // Past the person's words and its answer, something it did. The words counted from the
@@ -971,16 +985,10 @@ export function engineCardPagingOf(
       const asked = member.trigger.kind === "person" ? Math.max(1, words) : words;
       const answered = member.summary.answerItemId === null ? 0 : 1;
       if (member.summary.items > asked + answered) hasWork = true;
-      sumInto(calls, member.summary.calls);
-      sumInto(tools, member.summary.tools ?? {});
-      edited =
-        edited === null || member.summary.edited === undefined
-          ? null
-          : edited + member.summary.edited;
     }
     cards[card] = {
       pageRuns: { earlier: earlier?.id ?? null, later: later?.id ?? null },
-      counts: { calls, tools, edited },
+      counts: engineCardCounts(members),
       hasWork,
       // None until it first opens: its first run read from its start, nothing of it read yet.
       holdsLines: earlierSpan !== undefined || laterAt !== 0 || laterSpan?.to !== 0,
