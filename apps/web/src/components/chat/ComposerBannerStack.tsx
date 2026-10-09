@@ -89,10 +89,14 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
           >
             <div className="relative">
               {hasStack && !expanded ? (
-                // The edge of the next notice peeks above the front one: more are stacked behind.
-                <div
-                  className="chat-composer-banner-stack-cap pointer-events-none absolute inset-x-0 -top-3 z-0 mx-auto h-3 rounded-t-2xl border border-b-0"
-                  aria-hidden="true"
+                // The edge of the next notice peeks above the front one; a click opens the stack.
+                <button
+                  type="button"
+                  className="chat-composer-banner-stack-cap absolute inset-x-0 -top-3 z-0 mx-auto h-3 cursor-pointer rounded-t-2xl border border-b-0 after:absolute after:inset-x-0 after:-top-2 after:h-5"
+                  aria-label={`Show ${items.length - 1} more ${items.length === 2 ? "notice" : "notices"}`}
+                  aria-expanded={false}
+                  aria-controls={detailsId}
+                  onClick={() => setExpanded(true)}
                 />
               ) : null}
               <ComposerBannerStackAlert
