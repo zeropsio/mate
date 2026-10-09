@@ -77,26 +77,51 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
         >
           <div
             ref={detailsRef}
+            // The front notice stays attached to the input; expanded notices open above it.
             className={
               expanded && hasStack
-                ? "relative max-h-40 overflow-y-auto overscroll-contain space-y-2"
-                : "relative"
+                ? "relative flex max-h-40 flex-col-reverse gap-2 overflow-y-auto overscroll-contain"
+                : "relative flex flex-col-reverse"
             }
             style={
               expanded && hasStack ? { maxHeight: `min(10rem, ${availableHeight}px)` } : undefined
             }
           >
-            <ComposerBannerStackAlert
-              item={frontItem}
-              attached
-              onDismissRequest={() => frontItem.onDismiss?.()}
-            />
+            <div className="relative">
+              {hasStack && !expanded ? (
+                // The edge of the next notice peeks above the front one: more are stacked behind.
+                <div
+                  className="chat-composer-banner-stack-cap pointer-events-none absolute inset-x-0 -top-3 z-0 mx-auto h-3 rounded-t-2xl border border-b-0"
+                  aria-hidden="true"
+                />
+              ) : null}
+              <ComposerBannerStackAlert
+                item={frontItem}
+                attached
+                onDismissRequest={() => frontItem.onDismiss?.()}
+                stackToggle={
+                  hasStack ? (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      aria-expanded={expanded}
+                      aria-controls={detailsId}
+                      onClick={() => setExpanded((value) => !value)}
+                    >
+                      {expanded
+                        ? "Collapse notices"
+                        : `${items.length - 1} more ${items.length === 2 ? "notice" : "notices"}`}
+                    </Button>
+                  ) : null
+                }
+              />
+            </div>
             {hasStack ? (
               <div
                 id={detailsId}
                 hidden={!expanded}
                 data-composer-banner-stack-expanded-items="true"
-                className="space-y-2 pb-4"
+                className="space-y-2"
               >
                 {items.slice(1).map((item) => (
                   <ComposerBannerStackAlert
@@ -109,21 +134,6 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
               </div>
             ) : null}
           </div>
-          {hasStack ? (
-            <div className="relative z-10 flex justify-end pb-4">
-              <Button
-                size="xs"
-                variant="ghost"
-                aria-expanded={expanded}
-                aria-controls={detailsId}
-                onClick={() => setExpanded((value) => !value)}
-              >
-                {expanded
-                  ? "Collapse notices"
-                  : `${items.length - 1} more ${items.length === 2 ? "notice" : "notices"}`}
-              </Button>
-            </div>
-          ) : null}
         </div>
       ) : null}
     </div>
@@ -134,10 +144,12 @@ function ComposerBannerStackAlert({
   item,
   attached,
   onDismissRequest,
+  stackToggle,
 }: {
   readonly item: ComposerBannerStackItem;
   readonly attached: boolean;
   readonly onDismissRequest: () => void;
+  readonly stackToggle?: ReactNode;
 }) {
   const dismissOnly = item.onDismiss && !item.actions;
 
@@ -156,7 +168,7 @@ function ComposerBannerStackAlert({
       {item.icon}
       <AlertTitle>{item.title}</AlertTitle>
       {item.description ? <AlertDescription>{item.description}</AlertDescription> : null}
-      {item.actions || item.onDismiss ? (
+      {item.actions || item.onDismiss || stackToggle ? (
         <AlertAction
           className={cn(
             item.actionClassName,
@@ -165,6 +177,7 @@ function ComposerBannerStackAlert({
               : undefined,
           )}
         >
+          {stackToggle}
           {item.actions}
           {item.onDismiss ? (
             <Button
