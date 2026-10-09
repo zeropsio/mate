@@ -1830,6 +1830,42 @@ describe("decide: helpers and jobs are items under their run", () => {
     const { log } = playAll([...proofRunning, turnEnded, work("running", "unknown")]);
     expect(log.at(-1)).toMatchObject({ _tag: "ItemOpened", runId: r(1), key: "w1" });
   });
+
+  const workClosed = (log: ReadonlyArray<KnownEngineEvent>) =>
+    log.flatMap((e) =>
+      e._tag === "ItemClosed" && e.body.kind === "work" ? [`${e.runId}:${e.body.status}`] : [],
+    );
+  it("Stop after the turn ended stops the helpers still running in its session", () => {
+    const scene = play([...proofRunning, work("running"), turnEnded, stop()]);
+    expect(scene.decision).toMatchObject({ _tag: "Accept", step: { result: { runId: r(1) } } });
+    expect(scene.effects).toMatchObject([
+      { kind: "session.close", payload: { sessionId: "s1", reason: "stop" } },
+    ]);
+  });
+  it.each([
+    ["the session's close", [sessionClosed()]],
+    ["the bridge's word that the work was cut", [work("lost"), sessionClosed()]],
+  ] as const)("helpers a Stop ended close as stopped, by %s, and wake no one", (_, close) => {
+    const { log, state } = playAll([...proofRunning, work("running"), turnEnded, stop(), ...close]);
+    expect(workClosed(log)).toEqual([`${r(1)}:stopped`]);
+    expect(state.items).toEqual({});
+    expect(state.session).toBeNull();
+    expect(Object.values(state.wakes).map((wake) => wake.kind)).not.toContain("lost-work");
+  });
+  it("a second Stop while the helpers' session closes is already asked", () => {
+    const scene = play([...proofRunning, work("running"), turnEnded, stop(), stop()]);
+    expect(scene.decision).toMatchObject({
+      _tag: "Reject",
+      rejection: { reason: "stop-already-asked" },
+    });
+  });
+  it("Stop after the helpers ended finds nothing to stop", () => {
+    const scene = play([...proofRunning, work("running"), turnEnded, work("completed"), stop()]);
+    expect(scene.decision).toMatchObject({
+      _tag: "Reject",
+      rejection: { reason: "run-not-running" },
+    });
+  });
 });
 
 describe("decide: the conversation holds the agent it belongs to", () => {
