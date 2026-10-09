@@ -472,4 +472,63 @@ describe("an engine Mate's run card, from the engine's record", () => {
     const said = JSON.stringify([card.items, rows.filter((row) => row.kind === "background")]);
     expect(said).not.toContain(description);
   });
+
+  // Milo's third stress run: the steer stood above the card and again inside it, live; a reload
+  // drew it once. Engine #158 steers a waiting message into a turn Claude opened on its own: that
+  // turn is the message's run, on the card it goes on in.
+  const steer = "also tell me the page title";
+  it.each([
+    { into: "the running run", held: "every item", own: false, paged: false },
+    { into: "the running run", held: "what a reload reads", own: false, paged: true },
+    { into: "a turn Claude opened on its own", held: "every item", own: true, paged: false },
+    {
+      into: "a turn Claude opened on its own",
+      held: "what a reload reads",
+      own: true,
+      paged: true,
+    },
+  ])(
+    "a message steered into $into is drawn once, above its card, holding $held",
+    ({ own, paged }) => {
+      const into = own ? run2 : run1;
+      const runs = [
+        stressRun(),
+        ...(own
+          ? [
+              engineRun(key.conversationId, 2, {
+                trigger: { kind: "wake", cause: "self", wakeId: null },
+                joins: RunId.make(run1),
+                queuedAt: t0 + 80_000,
+                admittedAt: t0 + 80_000,
+                startedAt: t0 + 80_000,
+                endedAt: t0 + 90_000,
+              } as never),
+            ]
+          : []),
+      ];
+      const items = [
+        personItem(run1, 1, "Run the stress checks", { at: t0 }),
+        bash(2, 39_000, "node --version", "Check the node version"),
+        personItem(into, own ? 20 : 3, steer, {
+          at: t0 + (own ? 80_000 : 40_000),
+          delivery: { state: "steered", at: t0 + (own ? 80_000 : 40_000) },
+        }),
+        noteItem(into, own ? 21 : 4, "Both titles read Shop.", { at: t0 + 85_000 }),
+      ];
+      // A reload holds every message the person sent, and none of a closed card's lines.
+      const rows = render({
+        runs,
+        items: paged ? items.filter((item) => item.kind === "person") : items,
+        paged,
+      });
+      const drawn = rows.filter(
+        (row) =>
+          row.kind === "message" && row.message.role === "user" && row.message.text === steer,
+      );
+      const marked = rows.flatMap((row) =>
+        row.kind === "record" ? row.items.filter((item) => item.kind === "person") : [],
+      );
+      expect({ drawn: drawn.length, marked: marked.length }).toEqual({ drawn: 1, marked: 0 });
+    },
+  );
 });
