@@ -9,6 +9,7 @@ import * as Queue from "effect/Queue";
 import { vi } from "vite-plus/test";
 import * as TestClock from "effect/testing/TestClock";
 import {
+  publishesAgain,
   resourceHealthChanges,
   readResourceHealth as readKernelResourceHealth,
 } from "./mateResourceHealth.ts";
@@ -441,9 +442,10 @@ it.effect("a tick during an event read advances CPU and memory together at the n
     const dir = yield* Effect.promise(() => fixture());
     const samples = yield* Queue.unbounded<MateResourceHealth>();
     let calls = 0;
+    // The tick's window is strained, so the Mate publishes it beside the memory strain it carries.
     const cpu = async () => ({
       cpu: { some: { avg10: 0, total: ++calls }, full: null, window: null },
-      strained: false,
+      strained: calls === 2,
       unavailable: [],
     });
     yield* Effect.forkScoped(
@@ -482,3 +484,95 @@ it.effect("a tick during an event read advances CPU and memory together at the n
     expect(recovered.resources).toEqual([]);
   }),
 );
+
+describe("a Mate publishes a sample again only when its warning, or a number the warning quotes, changes", () => {
+  const quiet = { avg10: 0, total: 0 };
+  const sample = (change: {
+    readonly status?: MateResourceHealth["status"];
+    readonly severity?: MateResourceHealth["severity"];
+    readonly resources?: MateResourceHealth["resources"];
+    readonly memoryCurrent?: number;
+    readonly memoryHigh?: number;
+    readonly ioAvg10?: number;
+    readonly cpuTotal?: number;
+    readonly usageUsec?: number;
+    readonly elapsedUsec?: number;
+    readonly consumer?: { readonly pid: number; readonly name: string; readonly cpuCores: number };
+  }): MateResourceHealth => ({
+    status: change.status ?? "ok",
+    severity: change.severity ?? "warning",
+    resources: change.resources ?? [],
+    memory: {
+      current: change.memoryCurrent ?? 900,
+      high: change.memoryHigh ?? 1000,
+      max: 3000,
+      events: { high: 0, max: 0, oom: 0, oomKill: 0 },
+      growth: { high: 0, max: 0, oom: 0, oomKill: 0 },
+      pressure: { some: quiet, full: quiet },
+      swapCurrent: 0,
+      swapMax: 0,
+      swapGrowth: 0,
+    },
+    cpu: {
+      some: { avg10: 6.18, total: change.cpuTotal ?? 5_996_062_707 },
+      full: quiet,
+      window: {
+        scope: "/sys/fs/cgroup",
+        elapsedUsec: change.elapsedUsec ?? 2_000_000,
+        usageUsec: change.usageUsec ?? 3_800_000,
+        someUsec: 155_374,
+        fullUsec: 3_894,
+        capacityCpus: 2,
+        throttledPeriods: 0,
+        saturated: true,
+        consumer: change.consumer ?? { pid: 42, name: "node", cpuCores: 1.5 },
+      },
+    },
+    io: { some: { avg10: change.ioAvg10 ?? 1.75, total: 2_792_695_561 }, full: quiet },
+    disk: { free: 263_085_883_392, total: 268_435_456_000 },
+    unavailable: [],
+  });
+  const io = { status: "strained", resources: ["io"] } as const;
+  const cpu = { status: "strained", resources: ["cpu"] } as const;
+  const again = "publishes again";
+  const nothing = "publishes nothing";
+  it.each([
+    ["a healthy Mate whose usage moved", nothing, {}, { memoryCurrent: 950, cpuTotal: 1 }],
+    ["a healthy Mate whose RAM cap changed", again, {}, { memoryHigh: 2000 }],
+    [
+      "an I/O-strained Mate whose numbers moved, none of them quoted,",
+      nothing,
+      io,
+      { ...io, ioAvg10: 9.5, memoryCurrent: 950, cpuTotal: 1, usageUsec: 1_000_000 },
+    ],
+    [
+      "an I/O-strained Mate now strained on CPU too",
+      again,
+      io,
+      { ...cpu, resources: ["io", "cpu"] },
+    ],
+    ["an I/O-strained Mate that recovered", again, io, {}],
+    ["a strained Mate that turned critical", again, io, { ...io, severity: "critical" }],
+    ["a CPU-strained Mate whose measured use moved", again, cpu, { ...cpu, usageUsec: 3_000_000 }],
+    [
+      "a CPU-strained Mate whose window took a different time",
+      again,
+      cpu,
+      { ...cpu, elapsedUsec: 2_100_000, usageUsec: 3_990_000 },
+    ],
+    [
+      "a CPU-strained Mate whose top process changed",
+      again,
+      cpu,
+      { ...cpu, consumer: { pid: 43, name: "vite", cpuCores: 1.5 } },
+    ],
+    [
+      "a CPU-strained Mate whose unquoted numbers moved, the quote the same to two decimals,",
+      nothing,
+      cpu,
+      { ...cpu, usageUsec: 3_800_400, ioAvg10: 9.5, memoryCurrent: 950, cpuTotal: 1 },
+    ],
+  ] as const)("%s %s", (_case, verdict, previous, next) => {
+    expect(publishesAgain(sample(previous), sample(next))).toBe(verdict === again);
+  });
+});

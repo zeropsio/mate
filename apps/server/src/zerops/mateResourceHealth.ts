@@ -5,6 +5,7 @@ import * as NodeFS from "node:fs";
 import * as NodeChildProcess from "node:child_process";
 import * as NodePath from "node:path";
 import {
+  cpuWarningQuote,
   sustainedPressureLevel,
   type MateResourceHealth,
   type ResourcePressure,
@@ -350,20 +351,31 @@ export function resourceHealthChanges(
             };
           }),
         ),
-        Stream.changesWith((a, b) => {
-          const key = (value: MateResourceHealth) =>
-            value.status === "strained"
-              ? value
-              : {
-                  status: value.status,
-                  unavailable: value.unavailable,
-                  high: value.memory?.high,
-                  max: value.memory?.max,
-                  swapMax: value.memory?.swapMax,
-                };
-          return JSON.stringify(key(a)) === JSON.stringify(key(b));
-        }),
+        Stream.changesWith((a, b) => !publishesAgain(a, b)),
       );
     }),
   );
+}
+
+/**
+ * Whether a sample says something the last published one did not: the warning itself (its status,
+ * severity, strained resources, what could not be read, the RAM and swap caps) or a number it
+ * quotes. Only the CPU warning quotes numbers, so a Mate under CPU strain publishes each window
+ * whose quote moved and a Mate strained otherwise publishes only when its warning changes.
+ */
+export function publishesAgain(previous: MateResourceHealth, next: MateResourceHealth): boolean {
+  const said = (value: MateResourceHealth) => {
+    const window = value.cpu?.window;
+    return {
+      status: value.status,
+      severity: value.status === "strained" ? value.severity : null,
+      resources: value.resources,
+      unavailable: value.unavailable,
+      high: value.memory?.high,
+      max: value.memory?.max,
+      swapMax: value.memory?.swapMax,
+      quote: value.resources.includes("cpu") && window != null ? cpuWarningQuote(window) : null,
+    };
+  };
+  return JSON.stringify(said(previous)) !== JSON.stringify(said(next));
 }
