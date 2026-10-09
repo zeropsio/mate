@@ -76,7 +76,7 @@ import {
 } from "./workSteps.logic";
 import type { LiveJobs } from "./liveJobs.logic";
 import { heldLines, withPagedEffort } from "../../zerops/engineCardPaging.logic";
-import { selectChatItems, slotModelOf } from "./runCard.logic";
+import { chatItemHasLine, selectChatItems, slotModelOf } from "./runCard.logic";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 
 export type TimelineLatestTurn = Pick<
@@ -547,7 +547,7 @@ type MessagesTimelineRowBody =
       chatItems: ReturnType<typeof selectChatItems>;
       paging: EngineCardPaging | null;
       hasWork: boolean;
-      slot: ReturnType<typeof slotModelOf>;
+      slot: ReturnType<typeof slotModelOf> & { readonly record: ReadonlyArray<RecordItem> };
       /** What its hands are on right now, the newest bubble; null once the run is over. */
       now: TurnHeaderActivity | null;
       /** Its answer streams under the card: nothing of its own is on its way into the chat. */
@@ -2082,13 +2082,17 @@ export function assembleRecordCard(input: {
     paging,
     hasWork: (paging?.hasWork ?? false) || chatItems.length > 0,
     outcome: withPagedEffort(input.outcome, paging),
-    slot: slotModelOf({
-      now: input.now,
-      answering: input.answering,
-      compacting: input.compacting ?? false,
-      items: input.items,
-      ...(input.liveLines === undefined ? {} : { liveLines: input.liveLines }),
-    }),
+    slot: {
+      ...slotModelOf({
+        now: input.now,
+        answering: input.answering,
+        compacting: input.compacting ?? false,
+        items: input.items,
+        ...(input.liveLines === undefined ? {} : { liveLines: input.liveLines }),
+      }),
+      // Dwell admits finished lines too; a wordless thought must never occupy it.
+      record: input.items.filter((item) => chatItemHasLine(item, input.liveLines)),
+    },
   };
 }
 

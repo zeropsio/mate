@@ -3860,12 +3860,12 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // A folded line's own calls are the record's too (`parts`).
   const recordKeys = useMemo(
     () =>
-      row.items.flatMap((item) =>
+      model.record.flatMap((item) =>
         item.kind === "step" && item.parts !== undefined
           ? [item.key, ...item.parts.map((part) => part.key).filter((key) => key !== item.key)]
           : [item.key],
       ),
-    [row.items],
+    [model.record],
   );
   const slotRef = useRef<HTMLDivElement>(null);
   // What goes live enters the slot one after another (`usePace`).
@@ -4167,7 +4167,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               key="slot"
               folded={liveFolded}
               ref={slotRef}
-              items={row.items}
+              items={model.record}
               live={model.live}
               filler={model.filler}
               now={now}

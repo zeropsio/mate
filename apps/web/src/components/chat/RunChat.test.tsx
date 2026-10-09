@@ -1110,6 +1110,37 @@ describe("RunChat, as the person uses it", () => {
           ).length > 0),
     );
 
+  it.each([
+    { now: null, words: "Thinking" },
+    { now: { kind: "writing" as const }, words: "Writing" },
+  ])("keeps $words visible when a wordless thought finishes during the run", ({ now, words }) => {
+    vi.useFakeTimers();
+    try {
+      const running = (items: ReadonlyArray<RecordItem>) =>
+        record(items, { live: true, status: status(), now });
+      const renderer = mount(running([]));
+      const says = () => renderer.root.findByProps({ role: "status" }).children.join("");
+      expect(says()).toBe(words);
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={running([thought("blank", " \n\t ")])} />
+          </Rows>,
+        ),
+      );
+      expect(says()).toBe(words);
+      expect(
+        renderer.root.findAll(
+          (node) => node.type === "li" && node.props["data-run-key"] === "thought:blank",
+        ),
+      ).toHaveLength(0);
+      act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + SLOT_MIN_SHOW_MS + 100));
+      expect(says()).toBe(words);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // The Claude adapter starts a call before its input streams in: a bare
   // command's code stands in its box once it arrives, and lands so (E3).
   it("stands a bare command's code in its box once it streams in, and lands it so", () => {
