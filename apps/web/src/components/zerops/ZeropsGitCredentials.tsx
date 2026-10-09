@@ -51,7 +51,14 @@ export function ZeropsGitCredentialsView({
         hours and uses your current Zerops permissions.
       </p>
       <div>
-        <Button variant="outline" size="sm" disabled={busy} onClick={onIssue}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={
+            busy || state.credentials.state !== "known" || state.action.kind === "unresolved"
+          }
+          onClick={onIssue}
+        >
           {state.action.kind === "working" && state.action.verb === "issue"
             ? "Creating…"
             : "Create Git password"}
@@ -59,7 +66,7 @@ export function ZeropsGitCredentialsView({
       </div>
       {state.action.kind === "failed" || state.action.kind === "unresolved" ? (
         <p role="alert" className="text-sm text-status-failed">
-          {state.action.words} Read the password list again before creating another.
+          {state.action.words}
         </p>
       ) : null}
       {state.action.kind === "issued" ? (
@@ -130,6 +137,10 @@ export function ZeropsGitCredentialsView({
             </ul>
           )}
         </>
+      ) : state.credentials.state === "withheld" ? (
+        <p role="alert" className="text-sm text-status-failed">
+          Git password access is unavailable. Read again to check your access.
+        </p>
       ) : state.credentials.state === "failed" ? (
         <p role="alert" className="text-sm text-status-failed">
           {state.credentials.words}

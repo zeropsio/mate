@@ -35,7 +35,7 @@ import {
   type GroupEnvironment,
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { useCallback, useMemo, useState, type MouseEvent } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
 
@@ -90,6 +90,44 @@ function CheckoutProbe({
     // would set state in a loop.
   }, [hostname, key, onState, state]);
   return null;
+}
+
+/** The existing VCS action manager owns pending/error state for this repository. */
+function RepositoryPullAction({
+  environmentId,
+  repository,
+  action,
+  onSettled,
+}: {
+  readonly environmentId: EnvironmentId | undefined;
+  readonly repository: string;
+  readonly action: NonNullable<GitBlock["action"]>;
+  readonly onSettled: () => void;
+}) {
+  const pull = useVcsPullAction({
+    environmentId: environmentId ?? null,
+    cwd: checkoutPathFor(repository),
+  });
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <ZeropsMateVerb
+        disabled={pull.isPending}
+        label={pull.isPending ? action.running : action.label}
+        onClick={() => {
+          void pull.run().finally(onSettled);
+        }}
+      />
+      {pull.error === null ? null : (
+        <p role="alert" className="text-sm text-status-failed">
+          {typeof pull.error === "string"
+            ? pull.error
+            : pull.error instanceof Error
+              ? pull.error.message
+              : "Could not update from main."}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export interface ZeropsGitTabProps {
@@ -153,11 +191,6 @@ function KnownGitTab({
   const environmentId = props.threadRef?.environmentId;
   const [checkouts, setCheckouts] = useState<ReadonlyMap<string, GitCheckoutState>>(new Map());
   const [generation, setGeneration] = useState(0);
-  // The verb that is running, by its block: the row says so where it was
-  // pressed, and takes no second click while it runs.
-  const [running, setRunning] = useState<string | null>(null);
-  const pull = useVcsPullAction({ environmentId: environmentId ?? null, cwd: null });
-
   const onState = useCallback((hostname: string, state: GitCheckoutState) => {
     setCheckouts((current) => {
       const previous = current.get(hostname);
@@ -245,37 +278,21 @@ function KnownGitTab({
   const renderBlockAction = (block: GitBlock) => {
     const action = block.action;
     if (!gitActionAllowed(action, { isOwner: props.isOwner }) || action === undefined) return null;
-    // The remote is probed again once the verb has settled, not when it was
-    // pressed: a probe racing the verb it asks about would show the row as it
-    // was.
-    const key = `${block.repository} ${action.kind}`;
-    const isRunning = running === key;
-    const settled = () => {
-      setRunning((current) => (current === key ? null : current));
-      setGeneration((current) => current + 1);
-    };
-    const run = (event: MouseEvent<HTMLButtonElement>) => {
-      switch (action.kind) {
-        case "update-from-main":
-          setRunning(key);
-          void pull.run().finally(settled);
-          return;
-        case "review":
-          // The review reads the change itself.
-          props.onReviewPullRequest?.(block, event.currentTarget);
-          return;
-        case "push":
-          // Pushing is the agent's: the tab says what is unpushed and the
-          // person asks their Mate, rather than the app committing for them.
-          return;
-      }
-    };
     if (action.kind === "push") return null;
+    if (action.kind === "update-from-main")
+      return (
+        <RepositoryPullAction
+          environmentId={environmentId}
+          repository={block.repository}
+          action={action}
+          // Probe after the verb settles, so it reads the resulting checkout.
+          onSettled={() => setGeneration((current) => current + 1)}
+        />
+      );
     return (
       <ZeropsMateVerb
-        disabled={isRunning}
-        label={isRunning ? action.running : action.label}
-        onClick={run}
+        label={action.label}
+        onClick={(event) => props.onReviewPullRequest?.(block, event.currentTarget)}
       />
     );
   };
