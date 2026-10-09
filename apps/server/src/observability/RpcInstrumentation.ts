@@ -112,6 +112,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.zeropsCrewFilesGet]: "zerops",
   [WS_METHODS.zeropsCrewFilesPut]: "zerops",
   [WS_METHODS.zeropsCrewCommand]: "zerops",
+  [WS_METHODS.zeropsCrewTaskPage]: "zerops",
   [WS_METHODS.subscribeEngineConversation]: "engine",
   [WS_METHODS.subscribeEngineRows]: "engine",
   [WS_METHODS.engineReadEarlier]: "engine",

@@ -408,3 +408,28 @@ export const crewSnapshotFixture = (overrides: Partial<CrewSnapshot> = {}): Crew
   ...appliedCrew,
   ...overrides,
 });
+
+/** A crewmate's one engine conversation in the applied crew above (`crew-<crew>-<handle>-<n>`). */
+export const crewConversationId = (handle: string): ThreadId =>
+  ThreadId.make(`crew-game-${handle}-1`);
+
+/**
+ * The applied crew above as the engine's crew serves it: a revision under the Mate's epoch, each
+ * crewmate in its one conversation (`currentThreadId` repeats it), its sessions counted, no
+ * stints. Backend's conversation was cleared once.
+ */
+export const crewEngineSnapshotFixture = (overrides: Partial<CrewSnapshot> = {}): CrewSnapshot => ({
+  ...appliedCrew,
+  revision: { epoch: 3, seq: 41 },
+  crewmates: appliedCrew.crewmates.map((mate) => ({
+    ...mate,
+    conversationId: crewConversationId(mate.handle),
+    currentThreadId: crewConversationId(mate.handle),
+    stints: [],
+    sessions:
+      mate.handle === "backend"
+        ? { count: 2, lastReason: "cleared" as const }
+        : { count: 1, lastReason: null },
+  })),
+  ...overrides,
+});

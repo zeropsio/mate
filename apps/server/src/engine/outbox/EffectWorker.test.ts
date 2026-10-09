@@ -1,5 +1,6 @@
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -42,11 +43,13 @@ import {
   sqliteWithEngineTables,
 } from "../testing/fixtures.ts";
 import * as EngineSignals from "../EngineSignals.ts";
+import { OwnerDomains } from "../owners.ts";
 import * as EngineStoreModule from "../store/EngineStore.ts";
 import { EngineStore, EngineStoreError } from "../store/EngineStore.ts";
+import { tallyDomain, tallyEffectId, tallyOwner } from "../testing/tallyOwner.ts";
 import { World, audit, engineLayer, fireDue, newBoot, tempDb } from "../testing/world.ts";
 import * as EffectOutboxModule from "./EffectOutbox.ts";
-import { EffectOutbox } from "./EffectOutbox.ts";
+import { EffectOutbox, type EffectPool } from "./EffectOutbox.ts";
 import {
   EffectHandlers,
   handlersOf,
@@ -527,15 +530,17 @@ describe("EffectWorker: the worker", () => {
         yield* outbox.claim(boot, 0);
         const counting = {
           ...outbox,
-          claim: (b: typeof boot, now: number) =>
+          claim: (b: typeof boot, now: number, pool?: EffectPool) =>
             Effect.andThen(
               Effect.sync(() => count++),
-              outbox.claim(b, now),
+              outbox.claim(b, now, pool),
             ),
         };
-        const worker = yield* makeEffectWorker(boot).pipe(
-          Effect.provideService(EffectOutbox, counting),
-        );
+        // Four fibers in all: two for the conversations, two for the other owners.
+        const worker = yield* makeEffectWorker(boot, {
+          concurrency: 2,
+          ownerConcurrency: 2,
+        }).pipe(Effect.provideService(EffectOutbox, counting));
         yield* worker.start;
         yield* yieldMany;
         return count;
@@ -646,6 +651,184 @@ describe("EffectWorker: the worker", () => {
         return [...world.acts].filter(([id]) => id.includes("provider.send")).map(([, n]) => n);
       }).pipe(Effect.provide(engineLayer(tempDb("f4"), dying)));
       expect(acts).toEqual([1]);
+    }),
+  );
+});
+
+// ── another owner kind: the crew's lanes, fibers and retries ───────────────────────────────────
+
+describe("EffectWorker: another owner kind", () => {
+  const crewPrincipal = { kind: "crew", startedBy: "ana" } as const;
+  const askCrew = (key: string, kind: string, lane: string) =>
+    Effect.gen(function* () {
+      const crew = (yield* Conversations).owner(tallyDomain);
+      yield* crew.ask({
+        commandId: CommandId.make(`ask-${key}`),
+        conversationId: tallyOwner,
+        principal: crewPrincipal,
+        command: { _tag: "Ask", kind, lane, key },
+      });
+      return tallyEffectId(key, kind);
+    });
+
+  /** A crew check that holds its fiber until the test lets it go. */
+  const holding = (release: Deferred.Deferred<void>): EffectHandler => ({
+    kind: "test.hold",
+    run: () =>
+      Effect.as(Deferred.await(release), {
+        _tag: "Done",
+        outcome: { kind: "ok" },
+      } satisfies HandlerResult),
+  });
+  /** Fails until its seventh try: an ssh connection that comes back after a minute. */
+  const outage: EffectHandler = {
+    kind: "test.outage",
+    run: (row) =>
+      Effect.succeed<HandlerResult>(
+        row.attempt < 7
+          ? { _tag: "Retry", reason: "ssh: connection refused" }
+          : { _tag: "Done", outcome: { kind: "ok" } },
+      ),
+  };
+
+  const withCrew = (handlers: ReadonlyArray<EffectHandler>) =>
+    Layer.mergeAll(
+      ConversationsModule.layer(),
+      EffectOutboxModule.layer,
+      Layer.succeed(EffectHandlers, handlersOf(echo, ...handlers)),
+    ).pipe(
+      Layer.provideMerge(
+        Layer.mergeAll(
+          EngineStoreModule.layer,
+          EngineSignals.layer,
+          Layer.succeed(OwnerDomains, [tallyDomain]),
+        ),
+      ),
+      Layer.provideMerge(sqliteWithEngineTables),
+    );
+
+  it.effect("a long effect on one lane never holds another lane", () =>
+    Effect.gen(function* () {
+      const release = yield* Deferred.make<void>();
+      const states = yield* Effect.gen(function* () {
+        const long = yield* askCrew("check-ana", "test.hold", "check/ana");
+        const behind = yield* askCrew("check-ana-2", "test.echo", "check/ana");
+        const other = yield* askCrew("git-bo", "test.echo", "git/bo");
+        const worker = yield* makeEffectWorker(boot1, { concurrency: 1, ownerConcurrency: 2 });
+        yield* worker.start;
+        yield* yieldMany;
+        const whileHeld = {
+          long: yield* rowState(long),
+          behind: yield* rowState(behind),
+          other: yield* rowState(other),
+        };
+        yield* Deferred.succeed(release, undefined);
+        yield* yieldMany;
+        const crew = yield* (yield* Conversations).owner(tallyDomain).state(tallyOwner);
+        return { whileHeld, settled: [...crew.settled].sort() };
+      }).pipe(Effect.scoped, Effect.provide(withCrew([holding(release)])));
+      expect(states).toEqual({
+        whileHeld: { long: "running", behind: "pending", other: "done" },
+        settled: [
+          tallyEffectId("check-ana", "test.hold"),
+          tallyEffectId("check-ana-2", "test.echo"),
+          tallyEffectId("git-bo", "test.echo"),
+        ].sort(),
+      });
+    }),
+  );
+
+  it.effect("crew's cap leaves conversation effects running", () =>
+    Effect.gen(function* () {
+      const release = yield* Deferred.make<void>();
+      const states = yield* Effect.gen(function* () {
+        const long = yield* askCrew("check-ana", "test.hold", "check/ana");
+        const capped = yield* askCrew("git-bo", "test.echo", "git/bo");
+        yield* enqueue(mate, [{ id: "mate/e/test.echo/1", lane: "turn" }]);
+        const worker = yield* makeEffectWorker(boot1, { concurrency: 1, ownerConcurrency: 1 });
+        yield* worker.start;
+        yield* yieldMany;
+        const whileHeld = {
+          crewLong: yield* rowState(long),
+          crewCapped: yield* rowState(capped),
+          conversation: yield* rowState("mate/e/test.echo/1"),
+        };
+        yield* Deferred.succeed(release, undefined);
+        yield* yieldMany;
+        return { whileHeld, capped: yield* rowState(capped) };
+      }).pipe(Effect.scoped, Effect.provide(withCrew([holding(release)])));
+      expect(states).toEqual({
+        whileHeld: { crewLong: "running", crewCapped: "pending", conversation: "done" },
+        capped: "done",
+      });
+    }),
+  );
+
+  it.effect("each boot tells a crew it restarted, so it reconciles what it holds", () =>
+    Effect.gen(function* () {
+      const recoveries = yield* Effect.gen(function* () {
+        yield* askCrew("git-ana", "test.echo", "git/ana");
+        const first = yield* makeEffectWorker(boot1);
+        yield* first.reconcileAtBoot();
+        const second = yield* makeEffectWorker(boot2);
+        yield* second.reconcileAtBoot();
+        yield* second.reconcileAtBoot();
+        return (yield* (yield* Conversations).owner(tallyDomain).state(tallyOwner)).recoveries;
+      }).pipe(Effect.provide(withCrew([])));
+      expect(recoveries).toBe(2);
+    }),
+  );
+
+  it.effect(
+    "a conversation's effect that waits on a crewmate's copy rides out the outage a crew effect does",
+    () =>
+      Effect.gen(function* () {
+        const waits: EffectHandler = {
+          kind: "test.copy",
+          run: (row) =>
+            Effect.succeed<HandlerResult>(
+              row.attempt < 7
+                ? {
+                    _tag: "Retry",
+                    reason: "The crewmate's copy cannot be read now.",
+                    patient: true,
+                  }
+                : { _tag: "Done", outcome: { kind: "ok" } },
+            ),
+        };
+        const state = yield* Effect.gen(function* () {
+          yield* enqueue(mate, [{ id: "mate/e/test.copy/1", kind: "test.copy", lane: "side" }]);
+          const worker = yield* makeEffectWorker(boot1);
+          for (let tick = 0; tick < 40; tick++) {
+            while (yield* worker.runOnce) {
+              // everything due now
+            }
+            yield* TestClock.adjust(5_000);
+          }
+          return yield* rowState("mate/e/test.copy/1");
+        }).pipe(Effect.provide(withCrew([waits])));
+        expect(state).toBe("done");
+      }),
+  );
+
+  it.effect("a crew effect rides out a minute's outage that fails a conversation's for good", () =>
+    Effect.gen(function* () {
+      const states = yield* Effect.gen(function* () {
+        const crewEffect = yield* askCrew("git-ana", "test.outage", "git/ana");
+        yield* enqueue(mate, [{ id: "mate/e/test.outage/1", kind: "test.outage", lane: "side" }]);
+        const worker = yield* makeEffectWorker(boot1);
+        for (let tick = 0; tick < 40; tick++) {
+          while (yield* worker.runOnce) {
+            // everything due now
+          }
+          yield* TestClock.adjust(5_000);
+        }
+        return {
+          crew: yield* rowState(crewEffect),
+          conversation: yield* rowState("mate/e/test.outage/1"),
+        };
+      }).pipe(Effect.provide(withCrew([outage])));
+      expect(states).toEqual({ crew: "done", conversation: "failed" });
     }),
   );
 });

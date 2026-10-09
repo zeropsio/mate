@@ -1,6 +1,6 @@
 /**
  * Registers the crew RPCs (`subscribeZeropsCrew`, `zerops.crew.files.get`,
- * `zerops.crew.files.put`, `zerops.crew.command`), spread by `ws.ts` beside
+ * `zerops.crew.files.put`, `zerops.crew.command`, `zerops.crew.taskPage`), spread by `ws.ts` beside
  * `registerZeropsRpc`. Scopes stay in `auth/RpcAuthorization.ts`.
  *
  * Every handler answers from the `CrewEngine` the server was built with —
@@ -12,6 +12,7 @@
  * turn the command starts is admitted as them.
  */
 import { WS_METHODS, type WsRpcGroup } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
 import type * as Rpc from "effect/rpc/Rpc";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
@@ -22,11 +23,12 @@ type CrewRpcTag =
   | typeof WS_METHODS.subscribeZeropsCrew
   | typeof WS_METHODS.zeropsCrewFilesGet
   | typeof WS_METHODS.zeropsCrewFilesPut
-  | typeof WS_METHODS.zeropsCrewCommand;
+  | typeof WS_METHODS.zeropsCrewCommand
+  | typeof WS_METHODS.zeropsCrewTaskPage;
 
 type CrewRpc = Extract<RpcGroup.Rpcs<typeof WsRpcGroup>, { readonly _tag: CrewRpcTag }>;
 
-/** The handler function types `WsRpcGroup.of({...})` expects for exactly these four tags. */
+/** The handler function types `WsRpcGroup.of({...})` expects for exactly these tags. */
 type CrewRpcHandlers = {
   readonly [Current in CrewRpc as Current["_tag"]]: Rpc.ToHandlerFn<Current, never>;
 };
@@ -47,4 +49,7 @@ export const registerCrewRpc = ({ crew, subject, admit }: RegisterCrewRpcDeps) =
         crew.command(input, { kind: "session", subject }),
         input._tag === "pause" || input._tag === "stop",
       ),
+    // A board that holds every task (V1's) has nothing past it.
+    [WS_METHODS.zeropsCrewTaskPage]: (input) =>
+      crew.taskPage?.(input) ?? Effect.succeed({ tasks: [], next: null }),
   }) satisfies CrewRpcHandlers;

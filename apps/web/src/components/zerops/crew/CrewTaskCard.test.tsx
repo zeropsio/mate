@@ -1,4 +1,8 @@
-import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import {
+  crewConversationId,
+  crewEngineSnapshotFixture,
+  crewSnapshotFixture,
+} from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { ThreadId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
@@ -9,6 +13,7 @@ import {
   CrewTimelineContext,
   type CrewTimeline,
 } from "./CrewTaskCard";
+import { crewCardOrigin } from "./CrewTaskCard.logic";
 
 const CARD = {
   title: "#12 Add pagination to /api/items · from your message",
@@ -61,6 +66,63 @@ describe("CrewTaskCard", () => {
   });
 });
 
+describe("CrewTaskCard over the engine's typed card", () => {
+  const TYPED = {
+    title: "Add pagination",
+    text: "Add cursor pagination.",
+    typed: {
+      kind: "task",
+      taskId: "task-12",
+      number: 12,
+      title: "Add pagination",
+      why: "Add cursor pagination.",
+      doneWhen: null,
+      links: [],
+    },
+  } as const;
+  // A crewmate's one conversation: no stint origin, its sessions are lines in it.
+  const ENGINE_TIMELINE: CrewTimeline = { ...TIMELINE, origin: null };
+  const renderTyped = (id: string, timeline: CrewTimeline | null) =>
+    renderToStaticMarkup(
+      <CrewTimelineContext value={timeline}>
+        <CrewTaskCard card={TYPED} id={id} />
+      </CrewTimelineContext>,
+    );
+
+  it("opens a crewmate's conversation on its card alone, never a link to one before: its sessions are lines in it", () => {
+    const backend = crewEngineSnapshotFixture().crewmates.find(
+      (mate) => mate.handle === "backend",
+    )!;
+    const origin = crewCardOrigin({
+      stints: backend.stints,
+      threadId: crewConversationId("backend"),
+      seamed: false,
+    });
+    const html = renderTyped("entry-1", { ...ENGINE_TIMELINE, firstCardId: "entry-1", origin });
+    expect(html).toContain("data-crew-task-card");
+    expect(html).not.toContain("data-crew-seam");
+    expect(html).not.toContain("previous conversation");
+  });
+
+  it("names the task by its title alone: no number, no label, no source", () => {
+    const html = renderTyped("entry-7", ENGINE_TIMELINE);
+    expect(html).toContain("Add pagination to /api/items");
+    expect(html).toContain("Add cursor pagination.");
+    expect(html).not.toMatch(/#12|from your message|from a message|>Task</u);
+  });
+
+  it("draws no seam above a later card", () => {
+    expect(renderTyped("entry-7", ENGINE_TIMELINE)).not.toContain("data-crew-seam");
+  });
+
+  it("draws a card outside a crew chat by its own title", () => {
+    const html = renderTyped("entry-1", null);
+    expect(html).toContain(">Add pagination</p>");
+    expect(html).not.toContain("data-crew-seam");
+    expect(html).not.toContain("#12");
+  });
+});
+
 describe("CrewSeamActivity", () => {
   const renderSeam = (
     element: ReturnType<typeof CrewSeamActivity>,
@@ -104,6 +166,18 @@ describe("CrewSeamActivity", () => {
     );
     expect(html).toContain("You cleared its conversation");
     expect(html).toContain("previous conversation ↗");
+  });
+
+  it("says why a crewmate's one conversation started again, linking nowhere", () => {
+    const html = renderSeam(
+      <CrewSeamActivity
+        seam={{ seam: "stint", previousThreadId: null }}
+        words="You cleared its conversation — it keeps its job and its work"
+      />,
+      TIMELINE,
+    );
+    expect(html).toContain("You cleared its conversation — it keeps its job and its work");
+    expect(html).not.toContain("previous conversation");
   });
 
   it("says a save in the engine's words, with nothing to open", () => {

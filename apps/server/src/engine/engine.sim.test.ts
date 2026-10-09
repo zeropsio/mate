@@ -6,7 +6,9 @@
  * crash, a slow driver, a lost batch, a batch the pump delivers twice, an item after its turn's end
  * (the bridge's `afterEnd`), a usage limit that parks the turn (Claude), a failed interrupt, and a
  * server restart. Every step checks that what a turn's signal did landed on that turn's run; the
- * end checks liveness, delivery and the store.
+ * end checks liveness, delivery and the store. A second owner, a crew (the test kind), runs beside
+ * the conversation on the same store, worker and scheduler: it queues effects on its own lanes and
+ * arms wakes on its own schedule, and every invariant holds for it too.
  */
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
@@ -32,7 +34,16 @@ import { signalsCommandId } from "./domain/ids.ts";
 import type { EffectRow } from "./outbox/EffectOutbox.ts";
 import { handlersOf, makeEffectWorker, type HandlerResult } from "./outbox/EffectWorker.ts";
 import { EngineStore } from "./store/EngineStore.ts";
-import { World, audit, engineLayer, fireDue, newBoot, tempDb } from "./testing/world.ts";
+import { tallyDomain, tallyOwner } from "./testing/tallyOwner.ts";
+import {
+  World,
+  audit,
+  auditOwner,
+  engineLayer,
+  fireDue,
+  newBoot,
+  tempDb,
+} from "./testing/world.ts";
 import { gateSeeds, makeRng, type Rng } from "./testing/rng.ts";
 
 const c = ConversationId.make("mate");
@@ -334,9 +345,37 @@ const describe_ = (e: KnownEngineEvent): string => {
 const simulate = (seed: number, steps: number, faults: Faults) =>
   Effect.gen(function* () {
     const rng = makeRng(seed);
+    // The crew's schedule draws from its own stream: the conversation's stays the seed's.
+    const crewRng = makeRng(seed * 7919 + 1);
     const world = new World();
     const driver = new Driver(rng, world, faults);
     const file = tempDb(`sim-${seed}`);
+    const domains = [tallyDomain];
+    let crewAsks = 0;
+    let crewWakes = 0;
+    /** The crew's own step: an effect on one of its lanes, or a wake a few minutes out. */
+    const crewAct = (now: number) =>
+      Effect.gen(function* () {
+        const crew = (yield* Conversations).owner(tallyDomain);
+        const ask = crewRng.chance(0.7);
+        const n = ask ? ++crewAsks : ++crewWakes;
+        yield* Effect.exit(
+          crew.ask({
+            commandId: CommandId.make(`crew-${seed}-${ask ? "ask" : "arm"}-${n}`),
+            conversationId: tallyOwner,
+            principal: { kind: "crew", startedBy: "ana" },
+            command: ask
+              ? {
+                  _tag: "Ask",
+                  kind: "test.replay",
+                  lane: crewRng.pick(["git/ana", "check/ana", "deliver/ana", "git/bo", "host/h1"]),
+                  key: `k${n}`,
+                }
+              : { _tag: "Arm", key: `w${n}`, dueAt: now + crewRng.pick([1, 5, 20]) * MIN },
+          }),
+        );
+        log(`crew ${ask ? `asks k${n}` : `arms w${n}`}`);
+      });
     const broken: Array<string> = [];
     const accepted: Array<string> = [];
     let batches = 0;
@@ -370,13 +409,16 @@ const simulate = (seed: number, steps: number, faults: Faults) =>
             ["restart", faults.restart * 100],
           ] as const);
         if (action === "restart") return "restart" as const;
+        if (forced === undefined && crewRng.chance(0.2)) yield* crewAct(now);
         if (action === "clock" && forced !== undefined) {
           // Drain: jump to the next thing the clock holds (a parked turn, a due wake), if any.
           const [wake] = yield* sql<{
             readonly due_at: number;
           }>`SELECT min(due_at) AS due_at FROM engine_wake WHERE state = 'armed'`;
+          // A parked turn holds the clock only until its time: one past it (its session gone)
+          // never stops the clock reaching the next wake.
           const parked = driver.turns.flatMap((t) =>
-            t.parkedUntil !== null ? [t.parkedUntil] : [],
+            t.parkedUntil !== null && t.parkedUntil > now ? [t.parkedUntil] : [],
           );
           const next = Math.min(wake?.due_at ?? Infinity, ...parked);
           if (next === Infinity || next - now > 6 * 3_600_000) return "ok" as const;
@@ -525,7 +567,7 @@ const simulate = (seed: number, steps: number, faults: Faults) =>
           if (!any) break;
         }
         return "done" as const;
-      }).pipe(Effect.provide(engineLayer(file, driver.handlers())));
+      }).pipe(Effect.provide(engineLayer(file, driver.handlers(), {}, domains)));
 
     let remaining = steps;
     for (;;) {
@@ -538,8 +580,22 @@ const simulate = (seed: number, steps: number, faults: Faults) =>
     }
 
     // ── the end: liveness, delivery, re-sends, the store ──
-    const result = yield* audit(c).pipe(Effect.provide(engineLayer(file, driver.handlers())));
+    const result = yield* audit(c).pipe(
+      Effect.provide(engineLayer(file, driver.handlers(), {}, domains)),
+    );
     broken.push(...result.problems);
+    // The second owner: its record, every effect it asked settled once, every wake fired.
+    const crew = yield* auditOwner(tallyDomain, tallyOwner, (state) =>
+      Object.keys(state.wakes),
+    ).pipe(Effect.provide(engineLayer(file, driver.handlers(), {}, domains)));
+    broken.push(...crew.problems.map((problem) => `crew ${problem}`));
+    if (crew.recorded.size !== crewAsks)
+      broken.push(`crew effects settle: ${crew.recorded.size} of ${crewAsks} recorded`);
+    if (Object.keys(crew.state.wakes).length > 0)
+      broken.push(`crew wakes fire: ${Object.keys(crew.state.wakes).join(", ")} still armed`);
+    const boots = crew.events.flatMap((e) => (e._tag === "TallyRecovered" ? [e.bootId] : []));
+    if (new Set(boots).size !== boots.length)
+      broken.push(`crew recovers once per boot: ${boots.join(", ")}`);
     const { state, events } = result;
     for (const run of Object.values(state.runs)) {
       if (run.state === "ended" || run.state === "queued") continue;

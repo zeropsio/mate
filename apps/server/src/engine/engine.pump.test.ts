@@ -9,6 +9,7 @@ import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ConversationId, RequestId, runId, type RunId, type ThreadId } from "@t3tools/contracts";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -17,6 +18,7 @@ import type { BridgeDriver } from "./bridge/spi3.ts";
 import type { Command } from "./domain/command.ts";
 import { CONTINUE_TEXT, resentText } from "./domain/decide.ts";
 import { PROVIDER_CALL_BOUND_MS } from "./effects/shared.ts";
+import { Conversations } from "./Conversations.ts";
 import { DRIVERS, makeEngineWorld, mate, type EngineWorld } from "./testing/pump/engineWorld.ts";
 
 const r = (n: number): RunId => runId(mate, n);
@@ -28,6 +30,7 @@ const world = (
   options: {
     readonly refuse?: string;
     readonly admissionDies?: string;
+    readonly workspaceUnavailable?: number;
     readonly scripted?: Partial<{
       ignoreInterrupt: boolean;
       holdNextSend: boolean;
@@ -42,6 +45,9 @@ const world = (
       driver,
       ...(options.refuse === undefined ? {} : { refuse: options.refuse }),
       ...(options.admissionDies === undefined ? {} : { admissionDies: options.admissionDies }),
+      ...(options.workspaceUnavailable === undefined
+        ? {}
+        : { workspaceUnavailable: options.workspaceUnavailable }),
     });
     Object.assign(w.provider.options, options.scripted ?? {});
     yield* w.boot;
@@ -56,6 +62,7 @@ const send = (w: EngineWorld, text = "hello") => w.tell({ _tag: "Send", text });
 const stop = (w: EngineWorld) => w.tell({ _tag: "Stop" });
 const ending = (w: EngineWorld, n: number) =>
   Effect.map(w.run(r(n)), (run) => [run?.state, run?.end?.kind, run?.source]);
+const encodeSnapshot = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const sendLine = (w: EngineWorld, text: string) => `send ${w.thread}: ${text}`;
 
 /** Runs a scene and always closes its world, so no fiber outlives the test. */
@@ -523,6 +530,57 @@ describe("the running engine", () => {
         yield* w.shutdown;
       }),
     ),
+  );
+
+  it.effect("a snapshot of main's v8 shape refolds and a send after it opens a session", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex");
+        yield* send(w, "before");
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        // Main's version 8 kept no rotation: an older Mate's snapshot of this record, as it wrote it.
+        yield* w.within(
+          Effect.gen(function* () {
+            const conversations = yield* Conversations;
+            const { rotation: _rotation, ...older } = yield* conversations.state(mate);
+            const sql = yield* SqlClient.SqlClient;
+            const snapshot = yield* encodeSnapshot({
+              v: 8,
+              state: older,
+            });
+            yield* sql`UPDATE engine_conversation SET snapshot_json = ${snapshot},
+              snapshot_seq = ${older.headSeq} WHERE conversation_id = ${mate}`;
+          }),
+        );
+        yield* w.crash;
+        yield* w.boot;
+        const opened = (yield* w.sessionsOpen).length;
+        yield* send(w, "after");
+        assert.include(w.provider.calls, sendLine(w, "after"));
+        assert.isAbove((yield* w.sessionsOpen).length, opened);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "a session whose workspace cannot be told yet opens nowhere else, and opens there once it can",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          // The capture's read and the session's first open find no workspace.
+          const w = yield* world("codex", { workspaceUnavailable: 2 });
+          yield* send(w);
+          assert.isFalse(w.provider.calls.some((call) => call.startsWith("start")));
+          yield* w.advance(1_000);
+          assert.include(w.provider.calls, sendLine(w, "hello"));
+          assert.deepStrictEqual(
+            w.provider.starts.map((start) => (start as { readonly cwd: string }).cwd),
+            [w.dir],
+          );
+          yield* w.shutdown;
+        }),
+      ),
   );
 
   it.effect("a run cut while being sent sends its message again", () =>

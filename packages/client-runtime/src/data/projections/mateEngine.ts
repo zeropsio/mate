@@ -11,11 +11,14 @@
  * @module data/projections/mateEngine
  */
 import {
+  CREW_SEAM_ACTIVITY_KIND,
   MessageId,
   STEP_ITEM_KINDS,
   TurnId,
   type ChatAttachment,
   type ConversationRow,
+  type CrewCard,
+  type CrewSeam,
   type ConversationHeader,
   type Item,
   type OrchestrationLatestTurn,
@@ -26,6 +29,7 @@ import {
   type OrchestrationThreadActivity,
   type OrchestrationThreadShell,
   type Request,
+  type ThreadCrewOrigin,
   type RunRecord,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -47,6 +51,7 @@ import {
   type EngineFact,
 } from "../families/mateEngine.ts";
 import type { ProjectionReads, Projection } from "../store.ts";
+import { crewSeamWords, crewSessionWord } from "../../zerops/crew/phrases.ts";
 import { sameValue } from "./equal.ts";
 
 const iso = (ms: number | null | undefined) =>
@@ -115,6 +120,14 @@ const personMessageId = (item: Extract<Item, { kind: "person" }>) => {
  */
 type CardOf = (runId: string | null) => string | null;
 
+/**
+ * A message as the engine's record draws it: a crew card carries its typed card, so the timeline
+ * draws the card from it and never reads the words the agent got.
+ */
+export interface EngineMessage extends OrchestrationMessage {
+  readonly crewCard?: CrewCard;
+}
+
 /** Whether a run ended without ever starting: its message never reached the agent. */
 type NeverStarted = (runId: string | null) => boolean;
 
@@ -122,7 +135,7 @@ function messageOf(
   item: Item,
   cardOf: CardOf,
   neverStarted: NeverStarted = () => false,
-): OrchestrationMessage | null {
+): EngineMessage | null {
   const base = {
     turnId: cardOf(item.runId) as OrchestrationMessage["turnId"],
     createdAt: iso(item.at),
@@ -144,6 +157,16 @@ function messageOf(
         streaming: false,
       };
     case "note":
+      // The crew's card opens its run as V1's card message did, typed.
+      if (item.card !== undefined)
+        return {
+          ...base,
+          id: MessageId.make(item.id),
+          role: "user",
+          text: item.text,
+          streaming: false,
+          crewCard: item.card,
+        };
       return {
         ...base,
         id: MessageId.make(item.id),
@@ -409,6 +432,30 @@ function markerActivity(
       return marker.reason === undefined
         ? null
         : activity(item.id, "runtime.note", marker.reason, {}, card, item.at, item.seq);
+    case "crew.seam": {
+      const seam = marker.seam;
+      if (seam === undefined || seam.seam === "unknown") return null;
+      return activity(
+        item.id,
+        CREW_SEAM_ACTIVITY_KIND,
+        marker.reason ?? crewSeamWords(seam),
+        seam as CrewSeam as Record<string, unknown>,
+        card,
+        item.at,
+        item.seq,
+      );
+    }
+    case "session-rotated":
+      // One conversation per crewmate: a new session is a line in it, never a link elsewhere.
+      return activity(
+        item.id,
+        CREW_SEAM_ACTIVITY_KIND,
+        crewSessionWord(marker.reason),
+        { seam: "stint", previousThreadId: null },
+        card,
+        item.at,
+        item.seq,
+      );
     case "history-cut":
       // Drawn by the timeline as a line at the conversation's top, never a step of its run.
       return activity(
@@ -684,7 +731,7 @@ export function engineThreadOf(
   const requests = valuesOf(read, "mateEngineRequest", "engineRequestsIn", conversationKey).sort(
     (left, right) => left.seq - right.seq,
   );
-  const messages: OrchestrationMessage[] = [];
+  const messages: EngineMessage[] = [];
   const activities: OrchestrationThreadActivity[] = [];
   const runById = new Map(runs.map((run) => [run.id as string, run]));
   const neverStarted: NeverStarted = (runId) => {
@@ -734,6 +781,7 @@ export function engineThreadOf(
   );
   const shell = shellThreadOf(read, key);
   const agent = header.agent;
+  const crew = engineCrewOrigin(key.conversationId, agent);
   const updatedAt = iso(Math.max(items.at(-1)?.at ?? 0, latest?.endedAt ?? latest?.queuedAt ?? 0));
   const session: OrchestrationSession = {
     threadId: key.conversationId as OrchestrationSession["threadId"],
@@ -757,7 +805,10 @@ export function engineThreadOf(
   return {
     id: key.conversationId as OrchestrationThread["id"],
     projectId: (shell?.projectId ?? key.environmentId) as OrchestrationThread["projectId"],
-    title: (shell?.title ?? "Conversation") as OrchestrationThread["title"],
+    title: (shell?.title ??
+      (agent?.profile.kind === "crewmate"
+        ? agent.profile.name
+        : "Conversation")) as OrchestrationThread["title"],
     modelSelection:
       agent !== null
         ? ({
@@ -784,6 +835,7 @@ export function engineThreadOf(
     activities,
     checkpoints: [],
     session,
+    ...(crew === null ? {} : { crew }),
   };
 }
 
@@ -1181,7 +1233,71 @@ export const engineHeldTurns: Projection<string, Readonly<Record<string, HeldTur
   },
 };
 
-/** A Mate's shell with its engine conversations' rows laid over their thread shells. */
+/**
+ * A crewmate's conversation as a crew thread's origin: the crewmate its agent's profile names, and
+ * the crew and the `n` its id carries (`crew-<crew>-<handle>-<n>`); `null` for any other agent.
+ */
+export function engineCrewOrigin(
+  conversationId: string,
+  agent: ConversationRow["agent"],
+): ThreadCrewOrigin | null {
+  const profile = agent?.profile;
+  if (profile?.kind !== "crewmate") return null;
+  const mark = `-${profile.id}-`;
+  const at = conversationId.lastIndexOf(mark);
+  const n = Number(conversationId.slice(at + mark.length));
+  const named = conversationId.startsWith("crew-") && at > "crew-".length - 1;
+  return {
+    crew: named ? conversationId.slice("crew-".length, at) : "main",
+    crewmate: profile.id,
+    stint: named && Number.isInteger(n) && n > 0 ? n : 1,
+  } as ThreadCrewOrigin;
+}
+
+/**
+ * The thread shell of a crewmate's conversation V1's shell never had: the engine opened it, so the
+ * row is all there is of it — its crewmate's name, its agent, the Mate's project.
+ */
+function engineCrewShell(
+  row: ConversationRow,
+  origin: ThreadCrewOrigin,
+  projectId: OrchestrationThreadShell["projectId"],
+): OrchestrationThreadShell {
+  const at = iso(row.at);
+  const agent = row.agent!;
+  return {
+    id: row.conversationId as unknown as OrchestrationThreadShell["id"],
+    projectId,
+    title: (agent.profile.kind === "crewmate"
+      ? agent.profile.name
+      : origin.crewmate) as OrchestrationThreadShell["title"],
+    modelSelection: {
+      instanceId: agent.instanceId,
+      model: agent.model ?? "default",
+    } as OrchestrationThreadShell["modelSelection"],
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    branch: null,
+    worktreePath: null,
+    latestTurn: null,
+    createdAt: at,
+    updatedAt: at,
+    archivedAt: null,
+    settledOverride: null,
+    settledAt: null,
+    session: null,
+    latestUserMessageAt: null,
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    hasActionableProposedPlan: false,
+    crew: origin,
+  };
+}
+
+/**
+ * A Mate's shell with its engine conversations' rows laid over their thread shells, and a crew
+ * thread for each crewmate's conversation the V1 shell does not have.
+ */
 export function overlayEngineShell(
   shell: EnvironmentShellState,
   rows: ReadonlyArray<ConversationRow>,
@@ -1191,12 +1307,22 @@ export function overlayEngineShell(
   const byConversation = new Map(rows.map((row) => [row.conversationId as string, row]));
   return {
     ...shell,
-    snapshot: Option.map(shell.snapshot, (snapshot): OrchestrationShellSnapshot => ({
-      ...snapshot,
-      threads: snapshot.threads.map((thread) => {
-        const row = byConversation.get(thread.id);
-        return row === undefined ? thread : overlayEngineRow(thread, row, held[thread.id]);
-      }),
-    })),
+    snapshot: Option.map(shell.snapshot, (snapshot): OrchestrationShellSnapshot => {
+      const known = new Set<string>(snapshot.threads.map((thread) => thread.id));
+      const projectId = snapshot.projects[0]?.id ?? snapshot.threads[0]?.projectId;
+      const crewThreads = rows.flatMap((row) => {
+        const origin = engineCrewOrigin(row.conversationId, row.agent);
+        return origin === null || projectId === undefined || known.has(row.conversationId)
+          ? []
+          : [engineCrewShell(row, origin, projectId)];
+      });
+      return {
+        ...snapshot,
+        threads: [...snapshot.threads, ...crewThreads].map((thread) => {
+          const row = byConversation.get(thread.id);
+          return row === undefined ? thread : overlayEngineRow(thread, row, held[thread.id]);
+        }),
+      };
+    }),
   };
 }

@@ -1,6 +1,7 @@
 import type {
   ChatAttachment as ContractChatAttachment,
   ChatImageAttachment as ContractChatImageAttachment,
+  CrewCard as ContractCrewCard,
   OrchestrationCheckpointFile,
   OrchestrationCheckpointSummary,
   OrchestrationMessage,
@@ -49,6 +50,8 @@ export function isImageAttachment(attachment: ChatAttachment): attachment is Cha
 
 export interface ChatMessage extends Omit<OrchestrationMessage, "attachments"> {
   readonly attachments?: ReadonlyArray<ChatAttachment> | undefined;
+  /** On an engine conversation, the crew's typed card this message opens its run with. */
+  readonly crewCard?: ContractCrewCard | undefined;
 }
 
 export type ProposedPlan = OrchestrationProposedPlan;

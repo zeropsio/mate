@@ -66,8 +66,11 @@ interface Scene {
 }
 
 /** Plays commands through decide and evolve; the scene describes the last one. */
-const play = (steps: ReadonlyArray<Step>): Scene => {
-  let state = initialState(conversation);
+const play = (
+  steps: ReadonlyArray<Step>,
+  from: ConversationState = initialState(conversation),
+): Scene => {
+  let state = from;
   let now = T0;
   let scene: Scene | undefined;
   steps.forEach((step, index) => {
@@ -94,6 +97,25 @@ const play = (steps: ReadonlyArray<Step>): Scene => {
   });
   return scene!;
 };
+
+/** A record as an older snapshot kept it: no rotation field at all (main's version 8). */
+const withoutRotation = (state: ConversationState): ConversationState => {
+  const { rotation: _rotation, ...older } = state;
+  return older as ConversationState;
+};
+
+describe("a record kept before the rotation was", () => {
+  it("opens a session for its next send", () => {
+    const scene = play([send(), prepared(1)], withoutRotation(initialState(conversation)));
+    expect(scene.effects.map((effect) => effect.kind)).toContain("session.open");
+  });
+
+  it("keeps the healthy session it has open for its next send", () => {
+    const before = play([...running, turnEnded]).state;
+    const scene = play([send("again", {}), prepared(2)], withoutRotation(before));
+    expect(scene.effects.map((effect) => effect.kind)).toEqual(["provider.send"]);
+  });
+});
 
 // ── commands ────────────────────────────────────────────────────────────────────────────────
 
@@ -613,6 +635,40 @@ const transitions: ReadonlyArray<Row> = [
       providerTurnId: "bg",
     }),
     run: { n: 2, state: "running", joins: 1, cause: "self", principal: ana },
+  },
+  {
+    // The driver took the message as its next turn: unowned, its end would be dropped and the next
+    // send, steered into it, would never end.
+    name: "a message steered in as its turn ended opens a turn of its own, run as the turn it steered",
+    given: [...runningWithSteer, { _tag: "Steer", runId: r(1), text: "more" }, turnEnded],
+    when: signal({
+      kind: "turn-started",
+      turn: `${r(1)}/i/2` as TurnHandle,
+      origin: "engine",
+      providerTurnId: "T2",
+    }),
+    run: { n: 2, state: "running", joins: 1, cause: "self", principal: ana },
+  },
+  {
+    name: "the end of a turn a late steer opened ends the run the engine holds it as",
+    given: [
+      ...runningWithSteer,
+      { _tag: "Steer", runId: r(1), text: "more" },
+      turnEnded,
+      signal({
+        kind: "turn-started",
+        turn: `${r(1)}/i/2` as TurnHandle,
+        origin: "engine",
+        providerTurnId: "T2",
+      }),
+    ],
+    when: signal({
+      kind: "turn-ended",
+      turn: `${r(1)}/i/2` as TurnHandle,
+      outcome: { kind: "completed" },
+      source: "agent",
+    }),
+    run: { n: 2, state: "ended", end: "completed" },
   },
   {
     name: "the watchdog marks a silent run unresponsive and never ends it",
@@ -2141,6 +2197,138 @@ describe("decide: every run acts for someone", () => {
   });
 });
 
+describe("decide: a run's end says what it cost, how full its context was, why it broke off", () => {
+  const endWith = (
+    outcome: TurnOutcome,
+    facts: { readonly costUsd?: number; readonly contextTokens?: number } = {},
+  ): Command => signal({ kind: "turn-ended", turn: T(1), outcome, source: "agent", ...facts });
+  const runEnded = (steps: ReadonlyArray<Step>) =>
+    playAll(steps).log.find((event) => event._tag === "RunEnded");
+
+  it("a turn's end records its cost and the context the conversation held", () => {
+    const end = runEnded([
+      ...running,
+      endWith({ kind: "completed" }, { costUsd: 0.42, contextTokens: 91_000 }),
+    ]);
+    expect(end).toMatchObject({ end: { kind: "completed" }, costUsd: 0.42, contextTokens: 91_000 });
+    expect(end).not.toHaveProperty("detail");
+  });
+
+  it.each([
+    [
+      "the prompt outgrew the context",
+      "overflow",
+      { kind: "completed", reason: "prompt_too_long" },
+    ],
+    [
+      "the context refilled faster than it compacts",
+      "overflow",
+      { kind: "failed", class: "provider", words: "refill", reason: "rapid_refill_breaker" },
+    ],
+    ["an ACP agent ran out of tokens", "overflow", { kind: "completed", reason: "max_tokens" }],
+    [
+      "the provider's API failed",
+      "provider-error",
+      { kind: "failed", class: "provider", words: "API error", reason: "api_error" },
+    ],
+    [
+      "the turn's setup failed",
+      "provider-error",
+      { kind: "failed", class: "unknown", words: "no setup", reason: "turn_setup_failed" },
+    ],
+    ["the agent finished", "no detail", { kind: "completed", reason: "end_turn" }],
+  ] as const)("%s: its end reads %s", (_name, detail, outcome) => {
+    const end = runEnded([...running, endWith(outcome as TurnOutcome)]);
+    if (detail === "no detail") expect(end).not.toHaveProperty("detail");
+    else expect(end).toMatchObject({ detail });
+  });
+
+  it("a run admission refuses ends failed, its refusal in admission's own words", () => {
+    const words = "Ana's Claude login is not yours to use.";
+    const end = runEnded([send(), prepared(1, { kind: "failed", reason: words, refused: true })]);
+    expect(end).toMatchObject({
+      end: { kind: "failed", reason: words },
+      detail: "refused",
+      refusal: words,
+    });
+  });
+});
+
+describe("decide: a crew run's continuation is its crew's", () => {
+  const crew: Principal = { kind: "crew", startedBy: "ana" };
+  const crewRunning: ReadonlyArray<Step> = [
+    { command: send("task card"), by: crew },
+    prepared(1),
+    opened(1),
+    sent(1),
+  ];
+
+  it("a restart cuts a crew run and arms no continuation: its crew decides", () => {
+    const { state, log } = playAll([...crewRunning, recovered()]);
+    expect(state.runs[r(1)]?.end).toEqual({ kind: "cut-by-restart", continuedBy: null });
+    expect(Object.values(state.wakes).map((wake) => wake.kind)).not.toContain(
+      "restart-continuation",
+    );
+    expect(log.filter((event) => event._tag === "RunQueued")).toHaveLength(1);
+  });
+
+  it("a crew run a restart caught before its send ends cut, for its crew to send again", () => {
+    const { state } = playAll([
+      { command: send("task card"), by: crew },
+      prepared(1),
+      opened(1),
+      {
+        _tag: "Recovered",
+        bootId: "boot-2" as never,
+        cutEffects: [],
+        unstartedEffects: [effectId(r(1), "provider.send", 1)],
+      },
+    ]);
+    expect(state.runs[r(1)]?.state).toBe("ended");
+    expect(state.runs[r(1)]?.end?.kind).toBe("cut-by-restart");
+    expect(state.queue).toEqual([]);
+  });
+
+  it("a usage limit on a crew run resumes nothing: its wake only lifts the pause", () => {
+    const reset = T0 + 60 * MINUTE;
+    const { state, log } = playAll([
+      ...crewRunning,
+      signal({ kind: "usage-limit", resetsAt: reset }),
+      fired("usage-resume", r(1), reset),
+    ]);
+    expect(log.filter((event) => event._tag === "RunQueued")).toHaveLength(1);
+    expect(state.pausedUntil).toBeNull();
+  });
+
+  it("a run in a crewmate's chat is its crew's to carry on after a restart, whoever it ran for", () => {
+    const crewmate: ReadonlyArray<Step> = [
+      {
+        command: {
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: null,
+            profile: { kind: "crewmate", id: "backend", name: "Backend" },
+          },
+        },
+        by: crew,
+      },
+    ];
+    const { state, log } = playAll([...crewmate, ...running, recovered()]);
+    expect(state.runs[r(1)]?.end).toEqual({ kind: "cut-by-restart", continuedBy: null });
+    expect(Object.values(state.wakes).map((wake) => wake.kind)).not.toContain(
+      "restart-continuation",
+    );
+    expect(log.filter((event) => event._tag === "RunQueued")).toHaveLength(1);
+  });
+
+  it("a person's message in a crewmate's chat is continued after a restart like any person's", () => {
+    const { state } = playAll([...running, recovered()]);
+    expect(Object.values(state.wakes).map((wake) => wake.kind)).toContain("restart-continuation");
+  });
+});
+
 describe("decide: a conversation's settings reach its agent as V1's do", () => {
   const effortHigh = [{ id: "effort", value: "high" }] as const;
   const agent = {
@@ -2632,6 +2820,49 @@ describe("background work its session lost", () => {
       });
       expect(sendText(play([...woken, prepared(2), opened(2)]))).toEqual([text]);
       expect(state.runs[r(2)]).toBeUndefined();
+    },
+  );
+
+  it.each([
+    {
+      name: "in a crewmate's chat",
+      steps: [
+        {
+          command: {
+            _tag: "AssignAgent",
+            agent: {
+              instanceId: "claudeAgent",
+              driver: "claudeAgent",
+              model: null,
+              profile: { kind: "crewmate", id: "backend", name: "Backend" },
+            },
+          },
+          by: { kind: "crew", startedBy: "ana" },
+        } satisfies Input,
+        ...backgrounded,
+        recovered(),
+      ],
+    },
+    {
+      name: "a run its crew started",
+      steps: [
+        { command: send(), by: { kind: "crew", startedBy: "ana" } } satisfies Input,
+        prepared(1),
+        opened(1),
+        sent(1),
+        work("w1", SLEEP),
+        ended(1),
+        recovered(),
+      ],
+    },
+  ])(
+    "work its session lost wakes no turn where its crew carries the task on: $name",
+    ({ steps }) => {
+      const { log, state } = playAll(steps);
+      expect(
+        log.filter((event) => event._tag === "WakeArmed" && event.kind === "lost-work"),
+      ).toEqual([]);
+      expect(Object.values(state.wakes).map((wake) => wake.kind)).not.toContain("lost-work");
     },
   );
 

@@ -25,6 +25,7 @@ export function selectsChatGate(paths: ReadonlyArray<string>): boolean {
 export interface ChatGateCommand {
   readonly cwd: string;
   readonly args: ReadonlyArray<string>;
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 export const chatGateStages = [
@@ -103,11 +104,36 @@ export const chatGateStages = [
           "src/engine/domain/decide.model.test.ts",
           "src/engine/outbox/crash.test.ts",
           "src/engine/history/historyImport.test.ts",
+          "src/zerops/crew/engine/importV1Crew.test.ts",
           "src/engine/engine.sim.test.ts",
           "src/engine/engine.pump.test.ts",
           "--allowOnly=false",
           "--reporter=default",
           "--reporter=../../scripts/chat-gate-reporter.ts",
+        ],
+      },
+    ],
+  },
+  {
+    // The crew's journeys on a Mate whose crew runs on the engine; the unit suite runs the same
+    // sentences on V1's crew, so each one holds on both. The files' V1-only tests (skipped off the
+    // V1 world: V1's own mechanism) skip here by design, so this run reports without the
+    // certifying reporter.
+    id: "F",
+    name: "F: crew journeys on the engine",
+    commands: [
+      {
+        cwd: "apps/server",
+        env: { CREW_WORLD: "engine" },
+        args: [
+          "test",
+          "run",
+          ...["attachments", "endings", "lead", "memory", "midway", "operations", "runs"].map(
+            (part) => `src/zerops/crew/CrewEngine.${part}.test.ts`,
+          ),
+          "src/zerops/crew/CrewEngine.test.ts",
+          "src/zerops/crew/registerCrewRpc.test.ts",
+          "--allowOnly=false",
         ],
       },
     ],
@@ -192,6 +218,8 @@ export function selectLaneChatStages(
     E: paths.filter((path) =>
       /^(?:apps\/server\/src\/engine\/|packages\/contracts\/src\/engine)/u.test(path),
     ),
+    // The crew's journeys run on the engine for the crew's own paths.
+    F: paths.filter((path) => path.startsWith("apps/server/src/zerops/crew/")),
     C: paths,
     "C-engine": paths,
   };
@@ -273,6 +301,7 @@ async function runCommand(root: string, command: ChatGateCommand): Promise<numbe
         cwd: NodePath.join(root, command.cwd),
         env: {
           ...env,
+          ...command.env,
           PATH: [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
             NodePath.delimiter,
           ),
@@ -337,7 +366,11 @@ if (import.meta.main) {
     for (const stage of stages)
       for (const command of stage.commands)
         console.log(
-          `${stage.name}: (${command.cwd}) vp ${command.args.join(" ")} [reason: ${filesAt === -1 ? "full stage inventory" : "explicit related files"}]`,
+          `${stage.name}: (${command.cwd}) ${Object.entries(command.env ?? {})
+            .map(([key, value]) => `${key}=${value} `)
+            .join(
+              "",
+            )}vp ${command.args.join(" ")} [reason: ${filesAt === -1 ? "full stage inventory" : "explicit related files"}]`,
         );
   } else {
     if (process.env.SPI_UPDATE_GOLDENS === "1")

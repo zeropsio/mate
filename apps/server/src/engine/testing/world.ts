@@ -34,6 +34,7 @@ import {
   type EffectHandler,
   type HandlerResult,
 } from "../outbox/EffectWorker.ts";
+import { OwnerDomains, type AnyDomain, type Domain, type OwnerEvent } from "../owners.ts";
 import { EngineStore, makeEngineStore, type EngineStoreOptions } from "../store/EngineStore.ts";
 import { runEngineMigrations } from "../store/migrations.ts";
 import { makeWakeScheduler } from "../wakes/WakeScheduler.ts";
@@ -51,6 +52,8 @@ export const engineLayer = (
   filename: string,
   handlers: ReadonlyMap<string, EffectHandler>,
   storeOptions: EngineStoreOptions = {},
+  /** Owner kinds besides the conversation (a crew). */
+  domains: ReadonlyArray<AnyDomain> = [],
 ) =>
   Layer.mergeAll(
     ConversationsModule.layer(),
@@ -58,7 +61,11 @@ export const engineLayer = (
     Layer.succeed(EffectHandlers, handlers),
   ).pipe(
     Layer.provideMerge(
-      Layer.mergeAll(Layer.effect(EngineStore, makeEngineStore(storeOptions)), EngineSignals.layer),
+      Layer.mergeAll(
+        Layer.effect(EngineStore, makeEngineStore(storeOptions)),
+        EngineSignals.layer,
+        Layer.succeed(OwnerDomains, domains),
+      ),
     ),
     Layer.provideMerge(
       Layer.effectDiscard(runEngineMigrations()).pipe(
@@ -300,4 +307,71 @@ export const audit = (conversation: ConversationId) =>
       problems.push(`projection: armed wakes ${armed.map((row) => row.wake_id)} vs fold ${want}`);
     }
     return { problems, events, state: full };
+  });
+
+/**
+ * The same audit for an owner of another kind (a crew), by its domain: one gapless sequence, a
+ * load that is the full fold, no effect without its row nor a row without its record, each
+ * outcome recorded once and settling its row, and the armed wakes the fold holds.
+ */
+export const auditOwner = <
+  S extends { readonly headSeq: number; readonly wakes?: unknown },
+  C extends { readonly _tag: string },
+  E extends OwnerEvent,
+  D,
+>(
+  domain: Domain<S, C, E, D>,
+  owner: ConversationId,
+  armedOf: (state: S) => ReadonlyArray<string>,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const store = (yield* EngineStore).owner(domain);
+    const problems: Array<string> = [];
+    const events = yield* store.events(owner, 0, 1_000_000);
+    events.forEach((event, i) => {
+      if (event.seq !== i + 1) problems.push(`gapless: event ${i} has seq ${event.seq}`);
+    });
+    const [head] = yield* sql<{
+      readonly head_seq: number;
+    }>`SELECT head_seq FROM engine_conversation WHERE conversation_id = ${owner}`;
+    if ((head?.head_seq ?? 0) !== events.length)
+      problems.push(`gapless: head ${head?.head_seq} vs ${events.length} events`);
+    let full = domain.initial(owner);
+    for (const event of events) full = domain.evolve(full, event);
+    const loaded = yield* Effect.exit(store.load(owner));
+    if (loaded._tag === "Failure") problems.push(`loads: ${String(loaded.cause).slice(0, 300)}`);
+    else if (normalize(loaded.value) !== normalize(full))
+      problems.push("loads: snapshot + tail differs from the full fold");
+    const rows = yield* sql<{
+      readonly effect_id: string;
+      readonly state: string;
+    }>`SELECT effect_id, state FROM engine_effect WHERE conversation_id = ${owner}`;
+    const field = (event: E, key: string) => (event as unknown as Record<string, string>)[key];
+    const requested = new Set(
+      events.flatMap((e) => (e._tag === "EffectRequested" ? [field(e, "effectId")!] : [])),
+    );
+    const rowIds = new Set(rows.map((row) => row.effect_id));
+    for (const id of requested)
+      if (!rowIds.has(id)) problems.push(`no effect without its row: ${id} has no outbox row`);
+    for (const id of rowIds)
+      if (!requested.has(id)) problems.push(`no row without its record: ${id}`);
+    const recorded = new Map<string, number>();
+    for (const event of events) {
+      if (event._tag !== "EffectOutcomeRecorded") continue;
+      const id = field(event, "effectId")!;
+      recorded.set(id, (recorded.get(id) ?? 0) + 1);
+      const row = rows.find((r) => r.effect_id === id);
+      if (row !== undefined && (row.state === "pending" || row.state === "running"))
+        problems.push(`settled: ${id} recorded but its row is ${row.state}`);
+    }
+    for (const [id, n] of recorded)
+      if (n > 1) problems.push(`an outcome is recorded once: ${id} recorded ${n} times`);
+    const armed = yield* sql<{
+      readonly wake_id: string;
+    }>`SELECT wake_id FROM engine_wake WHERE owner_conversation_id = ${owner} AND state = 'armed' ORDER BY wake_id`;
+    const want = [...armedOf(full)].sort();
+    if (normalize(armed.map((row) => row.wake_id)) !== normalize(want))
+      problems.push(`projection: armed wakes ${armed.map((row) => row.wake_id)} vs fold ${want}`);
+    return { problems, events, state: full, recorded };
   });

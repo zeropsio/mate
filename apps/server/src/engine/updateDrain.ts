@@ -30,7 +30,7 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
     let sessions: Awaited<Effect.Success<ReturnType<typeof provider.listSessions>>> | undefined;
     const rows = yield* sql<{
       readonly conversation_id: string;
-    }>`SELECT conversation_id FROM engine_conversation`;
+    }>`SELECT conversation_id FROM engine_conversation WHERE owner_kind = 'conversation'`;
     for (const row of rows) {
       const state = yield* conversations.state(ConversationId.make(row.conversation_id));
       blockers.push(

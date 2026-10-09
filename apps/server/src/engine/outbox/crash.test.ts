@@ -95,6 +95,19 @@ const script: ReadonlyArray<Move> = [
   { kind: "work" }, // session.open
   { kind: "work" }, // provider.send
   { kind: "signals", signals: [turnEnded(2)] },
+  // The crew rotates the session between turns; the next run opens a fresh one, seeded.
+  {
+    kind: "ask",
+    command: { _tag: "RotateSession", reason: "context", fresh: true, seed: "the state packet" },
+    id: "rotate-1",
+  },
+  { kind: "work" }, // workspace.finish of the second run
+  { kind: "ask", command: { _tag: "Send", text: "after the rotation" }, id: "send-3" },
+  { kind: "work" }, // run.prepare
+  { kind: "work" }, // session.close, the session the rotation replaces
+  { kind: "work" }, // session.open, fresh
+  { kind: "work" }, // provider.send
+  { kind: "signals", signals: [turnEnded(3)] },
 ];
 
 type Crash =

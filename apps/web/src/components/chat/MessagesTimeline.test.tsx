@@ -874,6 +874,39 @@ describe("MessagesTimeline", () => {
     }
   });
 
+  it("draws the engine's typed crew card as a task, never as the person's bubble", () => {
+    const entry = buildUserTimelineEntry("#12 Camera rig · from you\n\nThe agent's words.");
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        timelineEntries={[
+          {
+            ...entry,
+            message: {
+              ...entry.message,
+              crewCard: {
+                kind: "task",
+                taskId: "task-12",
+                number: 12,
+                title: "Camera rig",
+                why: "The camera follows the player.",
+                doneWhen: "the camera follows",
+                links: [],
+              },
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('data-timeline-row-kind="crew-card"');
+    expect(markup).toContain("data-crew-task-card");
+    expect(markup).toContain(">Camera rig</p>");
+    expect(markup).toContain("The camera follows the player.");
+    expect(markup).toContain("Done when:</span> the camera follows");
+    expect(markup).not.toMatch(/#12|from you|agent&#x27;s words/u);
+  });
+
   it("draws a crew task card as a task, never as the person's bubble", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline

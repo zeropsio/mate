@@ -1,7 +1,7 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId, type CrewCard } from "@t3tools/contracts";
 
 import { crewCardOrigin, crewTaskCardModel } from "./CrewTaskCard.logic";
 
@@ -63,6 +63,72 @@ describe("crewTaskCardModel", () => {
     },
   ])("$name", ({ card, model }) => {
     expect(crewTaskCardModel(card, TASKS)).toEqual(model);
+  });
+});
+
+describe("crewTaskCardModel over the engine's typed card", () => {
+  const typed = (fields: Partial<CrewCard>): CrewCard => ({
+    kind: "task",
+    taskId: "task-12",
+    number: 12,
+    title: "Add pagination",
+    why: "Add cursor pagination to /api/items, 50 per page.",
+    doneWhen: null,
+    links: [],
+    ...fields,
+  });
+  // The words the agent got: never what the card draws.
+  const AGENT_WORDS = "#12 Add pagination · from you\nDone when: something else\n\nThe brief.";
+
+  it.each<{
+    readonly name: string;
+    readonly card: CrewCard;
+    readonly model: ReturnType<typeof crewTaskCardModel>;
+  }>([
+    {
+      name: "names a board task by its title and when it is done — never its number or source",
+      card: typed({}),
+      model: {
+        heading: "Add pagination to /api/items",
+        text: "Add cursor pagination to /api/items, 50 per page.",
+        doneWhen: "/api/items takes ?cursor; npm test passes",
+      },
+    },
+    {
+      name: "takes the board's done-when for a task the card says none for",
+      card: typed({ taskId: "task-15", number: 15, title: "Camera rig", why: "" }),
+      model: {
+        heading: "Camera rig follows the player",
+        text: "",
+        doneWhen: "The camera follows the player; npm test passes",
+      },
+    },
+    {
+      name: "reads a card whose task is not on the board by its own title",
+      card: typed({
+        taskId: "task-99",
+        number: 99,
+        title: "Something older",
+        doneWhen: "it builds",
+        why: "The body.",
+      }),
+      model: { heading: "Something older", text: "The body.", doneWhen: "it builds" },
+    },
+    {
+      name: "keeps a card without a task as it was written",
+      card: typed({
+        kind: "claim-start",
+        taskId: null,
+        number: null,
+        title: "Show your work on appdev",
+        why: "",
+      }),
+      model: { heading: "Show your work on appdev", text: "", doneWhen: null },
+    },
+  ])("$name", ({ card, model }) => {
+    expect(crewTaskCardModel({ title: card.title, text: AGENT_WORDS, typed: card }, TASKS)).toEqual(
+      model,
+    );
   });
 });
 

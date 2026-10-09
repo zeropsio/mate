@@ -82,6 +82,8 @@ export type UserAsk =
 
 export interface UserAskSource {
   readonly text: string;
+  /** The engine's typed crew card a message opens its run with: the crew wrote it, not the person. */
+  readonly crewCard?: unknown;
   /** A picture's kept original is told apart from a file by its type (`@t3tools/shared/composerPictures`). */
   readonly attachments?:
     | ReadonlyArray<{ readonly type: string; readonly mimeType?: string | undefined }>
@@ -95,6 +97,7 @@ export interface UserAskSource {
  * what the person typed.
  */
 export function userAskOf(message: UserAskSource): UserAsk | null {
+  if (message.crewCard !== undefined) return null;
   const trimmed = message.text.trim();
   if (isSlashCommand(trimmed) || isUsageLimitResumePrompt(trimmed) || isCrewCard(trimmed)) {
     return null;

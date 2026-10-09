@@ -17,12 +17,16 @@
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import type {
+  CommandId,
+  CommandResult,
   ConversationAgent,
   ConversationId,
+  EngineEvent,
   HistorySource,
   Principal,
   RunEnd,
@@ -31,14 +35,20 @@ import type {
   WakeId,
 } from "@t3tools/contracts";
 
+import type { OwnerHandle } from "./Conversations.ts";
 import type { MateUpdateDrain } from "../update/MateUpdateDrain.ts";
 
 import type { Command } from "./domain/command.ts";
+import type { Domain, OwnerEvent } from "./owners.ts";
 import type { WakeKind } from "./ports.ts";
 import type { ConversationList, ConversationView } from "./read/conversationView.ts";
 import { unservedWire, type EngineWireShape } from "./wire/EngineWire.ts";
 
 export { brokeOffLine, conversationRowOf, restartLine } from "./read/conversationRow.ts";
+/** How a run reads when its own agent interrupted the turn: an owner kind tells it apart. */
+export { AGENT_STOPPED_ITSELF } from "./domain/decide.ts";
+/** A store read or write that failed, as an owner kind's effects meet it. */
+export type { EngineStoreError } from "./store/EngineStore.ts";
 export type {
   ConversationList,
   ConversationView,
@@ -78,6 +88,17 @@ export interface WakeReceipt {
 
 /** A conversation's view the engine could not read now: not none, so a reader keeps what it held. */
 export class ViewUnreadable extends Data.TaggedError("ViewUnreadable")<{
+  readonly conversationId: ConversationId;
+}> {}
+
+/** A delivery the engine could not record now: told again, its receipt dedupes it. */
+export class DeliveryUnrecorded extends Data.TaggedError("DeliveryUnrecorded")<{
+  readonly conversationId: ConversationId;
+  readonly message: string;
+}> {}
+
+/** A conversation's record could not be read now: the reader keeps its cursor and reads again. */
+export class EventsUnreadable extends Data.TaggedError("EventsUnreadable")<{
   readonly conversationId: ConversationId;
 }> {}
 
@@ -175,6 +196,45 @@ export interface MateEngineService {
    * answers every method `unserved`.
    */
   readonly wire: EngineWireShape;
+  /**
+   * The crew's door into a crewmate's conversation (or the Mate's): one command as `principal`,
+   * under the caller's command id, so a delivery told again is answered by its receipt and never
+   * acts twice. Returns once the step is committed, accepted or refused; fails only when it could
+   * not be recorded. A crewmate's chat takes a person's messages only through its crew; this is
+   * that way in.
+   */
+  readonly deliver: (
+    conversationId: ConversationId,
+    command: Command,
+    commandId: CommandId,
+    principal: Principal,
+  ) => Effect.Effect<CommandResult, DeliveryUnrecorded>;
+  /**
+   * A conversation's durable events after a cursor, oldest first, a page at most: what the crew's
+   * observer reads instead of the bus. Gapless, so a cursor never misses one.
+   */
+  readonly eventsAfter: (
+    conversationId: ConversationId,
+    afterSeq: number,
+    limit?: number,
+  ) => Effect.Effect<ReadonlyArray<EngineEvent>, EventsUnreadable>;
+  /**
+   * A registered owner kind's door (the crew's): its commands, state and events. None when the
+   * engine does not run here.
+   */
+  readonly owner: <
+    S extends { readonly headSeq: number },
+    C extends { readonly _tag: string },
+    E extends OwnerEvent,
+    D,
+  >(
+    domain: Domain<S, C, E, D>,
+  ) => Option.Option<OwnerHandle<S, C, E>>;
+  /**
+   * The session generation a conversation runs on now (its provider thread is `<conv>/s/<n>`);
+   * none when the engine cannot say.
+   */
+  readonly generation: (conversationId: ConversationId) => Effect.Effect<number | undefined>;
   /** The latest run a wake started, or the one a provider turn belongs to, ended or not. */
   readonly runOf: (
     find: { readonly wakeId: WakeId } | { readonly providerTurnId: string },
@@ -216,5 +276,13 @@ export const inertMateEngine: MateEngineService = {
   callProgress: () => Effect.void,
   callData: () => Effect.succeed([]),
   runOf: () => Effect.succeed(undefined),
+  deliver: () =>
+    Effect.succeed({
+      _tag: "Rejected",
+      rejection: { reason: "unknown", detail: "The Mate engine is not running on this Mate." },
+    }),
+  eventsAfter: () => Effect.succeed([]),
+  owner: () => Option.none(),
+  generation: () => Effect.succeed(undefined),
   wire: unservedWire,
 };

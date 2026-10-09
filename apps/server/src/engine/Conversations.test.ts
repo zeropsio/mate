@@ -5,7 +5,8 @@ import * as Latch from "effect/Latch";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { ConversationId, type EngineEvent } from "@t3tools/contracts";
+import * as SqlClient from "effect/sql/SqlClient";
+import { CommandId, ConversationId, type EngineEvent } from "@t3tools/contracts";
 
 import { makeConversationActor } from "./ConversationActor.ts";
 import * as ConversationsModule from "./Conversations.ts";
@@ -13,7 +14,10 @@ import { Conversations } from "./Conversations.ts";
 import * as NodeSqliteClient from "../persistence/NodeSqliteClient.ts";
 import { envelope, r, send, sqliteWithEngineTables } from "./testing/fixtures.ts";
 import * as EngineSignals from "./EngineSignals.ts";
+import { OwnerDomains } from "./owners.ts";
+import * as EngineStoreModule from "./store/EngineStore.ts";
 import { EngineStore, EngineStoreError, makeEngineStore } from "./store/EngineStore.ts";
+import { tallyDomain, tallyOwner } from "./testing/tallyOwner.ts";
 import { runEngineMigrations } from "./store/migrations.ts";
 
 let loads = 0;
@@ -156,7 +160,7 @@ describe("Conversations", () => {
           commit: (input) => Effect.andThen(gate.await, store.commit(input)),
         });
         const signals = {
-          effects: yield* EngineSignals.makeDoorbell,
+          effects: yield* EngineSignals.makeDoorbells,
           wakes: yield* EngineSignals.makeDoorbell,
           commits: yield* EngineSignals.makeCommits,
         };
@@ -221,4 +225,87 @@ describe("Conversations: a failed build", () => {
       expect(exits).toEqual({ exits: ["Failure", "Success"], loads: 2 });
     }),
   );
+});
+
+const twoKinds = ConversationsModule.layer().pipe(
+  Layer.provideMerge(
+    Layer.mergeAll(
+      EngineStoreModule.layer,
+      EngineSignals.layer,
+      Layer.succeed(OwnerDomains, [tallyDomain]),
+    ),
+  ),
+  Layer.provideMerge(sqliteWithEngineTables),
+);
+
+describe("Conversations: owners of two kinds", () => {
+  it.layer(twoKinds)("a conversation and a crew", (it) => {
+    it.effect("two owner kinds run side by side, one writer each", () =>
+      Effect.gen(function* () {
+        const conversations = yield* Conversations;
+        const crew = conversations.owner(tallyDomain);
+        const mate = ConversationId.make("beside-crew");
+        yield* Effect.forEach(
+          Array.from({ length: 40 }, (_, n) => n),
+          (n) =>
+            n % 2 === 0
+              ? crew.ask({
+                  commandId: CommandId.make(`tally-${n}`),
+                  conversationId: tallyOwner,
+                  principal: { kind: "crew", startedBy: "ana" },
+                  command: { _tag: "Tally", by: 1 },
+                })
+              : conversations.ask(envelope(send(`m${n}`), { conversation: mate })),
+          { concurrency: "unbounded", discard: true },
+        );
+        const store = yield* EngineStore;
+        const crewEvents = yield* store.owner(tallyDomain).events(tallyOwner, 0);
+        const mateEvents = yield* store.events(mate, 0);
+        const sql = yield* SqlClient.SqlClient;
+        const kinds = yield* sql<{ readonly conversation_id: string; readonly owner_kind: string }>`
+          SELECT conversation_id, owner_kind FROM engine_conversation ORDER BY conversation_id
+        `;
+        assert.deepStrictEqual(
+          {
+            crewSeqs: crewEvents.map((event) => event.seq),
+            totals: crewEvents.flatMap((event) => (event._tag === "Tallied" ? [event.total] : [])),
+            crewState: (yield* crew.state(tallyOwner)).total,
+            mateSeqs: mateEvents.map((event) => event.seq),
+            kinds: kinds.map((row) => [row.conversation_id, row.owner_kind]),
+          },
+          {
+            crewSeqs: Array.from({ length: 20 }, (_, i) => i + 1),
+            totals: Array.from({ length: 20 }, (_, i) => i + 1),
+            crewState: 20,
+            mateSeqs: mateEvents.map((_, i) => i + 1),
+            kinds: [
+              ["beside-crew", "conversation"],
+              ["crew/main", "crew"],
+            ],
+          },
+        );
+      }),
+    );
+
+    it.effect("a conversation's command never reaches another kind's rules", () =>
+      Effect.gen(function* () {
+        const conversations = yield* Conversations;
+        const refused = yield* Effect.flip(
+          conversations.ask(envelope(send("hi"), { conversation: tallyOwner })),
+        );
+        const unread = yield* Effect.flip(conversations.state(tallyOwner));
+        const crew = conversations.owner(tallyDomain);
+        const wrongDoor = yield* Effect.flip(crew.state(ConversationId.make("mate")));
+        expect({
+          refused: refused._tag === "CommandRejected" ? refused.rejection.reason : refused._tag,
+          unread: unread._tag,
+          wrongDoor: wrongDoor._tag,
+        }).toEqual({
+          refused: "not-a-conversation",
+          unread: "EngineStoreError",
+          wrongDoor: "EngineStoreError",
+        });
+      }),
+    );
+  });
 });

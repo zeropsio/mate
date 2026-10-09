@@ -14,6 +14,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Latch from "effect/Latch";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Random from "effect/Random";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -37,7 +38,14 @@ import * as EffectsModule from "./effects/index.ts";
 import { importOrSayGap } from "./effects/historyImport.ts";
 import { MessagePictures } from "./ports.ts";
 import * as LiveBusModule from "./LiveBus.ts";
-import { MateEngine, ViewUnreadable, WakeRefused, type MateEngineService } from "./MateEngine.ts";
+import {
+  DeliveryUnrecorded,
+  EventsUnreadable,
+  MateEngine,
+  ViewUnreadable,
+  WakeRefused,
+  type MateEngineService,
+} from "./MateEngine.ts";
 import { readConversationView, readConversationViews } from "./read/conversationView.ts";
 import * as EffectOutboxModule from "./outbox/EffectOutbox.ts";
 import type { EffectWorkerOptions } from "./outbox/EffectWorker.ts";
@@ -339,6 +347,22 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         Effect.orElseSucceed(() => undefined),
       );
 
+    const store = yield* EngineStoreModule.EngineStore;
+
+    const deliver: MateEngineService["deliver"] = (conversationId, command, commandId, principal) =>
+      conversations
+        .tell({ commandId, conversationId, principal, command })
+        .pipe(
+          Effect.mapError(
+            (error) => new DeliveryUnrecorded({ conversationId, message: error.message }),
+          ),
+        );
+
+    const eventsAfter: MateEngineService["eventsAfter"] = (conversationId, afterSeq, limit) =>
+      store
+        .events(conversationId, afterSeq, limit)
+        .pipe(Effect.mapError(() => new EventsUnreadable({ conversationId })));
+
     // Open unless a flipped Mate holds its people's sends until its main conversation is adopted.
     const sends = yield* Latch.make(true);
     const wire = yield* makeEngineWire({
@@ -383,6 +407,14 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       callProgress,
       callData,
       runOf,
+      deliver,
+      eventsAfter,
+      owner: (domain) => Option.some(conversations.owner(domain)),
+      generation: (conversationId) =>
+        conversations.state(conversationId).pipe(
+          Effect.map((state) => state.threadGeneration),
+          Effect.orElseSucceed(() => undefined),
+        ),
     });
   });
 

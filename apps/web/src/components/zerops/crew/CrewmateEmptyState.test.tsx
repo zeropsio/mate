@@ -1,5 +1,11 @@
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
-import { EnvironmentId, ThreadId, type CrewTask, type Crewmate } from "@t3tools/contracts";
+import {
+  CREW_BOARD_FINISHED_PER_CREWMATE,
+  EnvironmentId,
+  ThreadId,
+  type CrewTask,
+  type Crewmate,
+} from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
@@ -158,6 +164,24 @@ describe("CrewmateEmptyState", () => {
     // Work that went in opens its review; work that closed with nothing to add has none to open.
     expect(work).toContain('data-crewmate-work-task="t4"');
     expect(work).not.toContain('data-crewmate-work-task="t2"');
+  });
+
+  it("offers the rest of its work past the engine's board, how much not known until it is read", () => {
+    const tasks = Array.from({ length: CREW_BOARD_FINISHED_PER_CREWMATE }, (_, index) =>
+      landed(`t${index}`, index + 1, `Task ${index + 1}`, "c4d9e02", "2026-09-27T08:10:00.000Z"),
+    );
+    const work = between(
+      render(
+        timeline(BACKEND, {
+          tasks,
+          readTaskPage: () => Promise.resolve({ tasks: [], next: null }),
+        }),
+      ),
+      "data-crewmate-work",
+      "",
+    );
+    expect(work).toContain(">Show all<");
+    expect(work).not.toMatch(/Show all \d/u);
   });
 
   it("draws no work while it finished none", () => {

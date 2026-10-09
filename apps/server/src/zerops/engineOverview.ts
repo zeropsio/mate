@@ -135,7 +135,20 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
         ? { role: "user" as const, text: personText, createdAt: iso(person.at) }
         : null;
   const call = view.liveCall;
+  // A crewmate's conversation is its crew's: it speaks through the crew, never as a chat of the
+  // person's (`crew-<crew>-<handle>-<n>`).
+  const profile = view.agent?.profile;
+  const crewmate = profile?.kind === "crewmate" ? profile : undefined;
   return {
+    ...(crewmate === undefined
+      ? {}
+      : {
+          crew: {
+            crew: view.conversationId.split("-")[1] ?? "main",
+            crewmate: crewmate.id,
+            stint: 1,
+          } as OrchestrationThreadShell["crew"],
+        }),
     id: ThreadId.make(view.conversationId),
     projectId: ENGINE_PROJECT_ID,
     title: personLine ?? "New thread",

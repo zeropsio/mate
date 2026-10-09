@@ -1,6 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import { CREW_ON_ENGINE } from "../zerops/crew/engine/crewFlipGate.ts";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
+import * as NodeSqlite from "node:sqlite";
 
 import { assert, expect, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
@@ -191,6 +193,60 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       const firstLines = messages.map((message) => (Array.isArray(message) ? message[0] : message));
       expect(resolved.mateEngine).toBe(expected);
       expect(firstLines.filter((line) => String(line).includes("T3CODE_MATE_ENGINE"))).toEqual(
+        warnings,
+      );
+    }),
+  );
+
+  it.effect.each([
+    [
+      "keeps a Mate with an applied crew on V1, naming its crew, until its crew runs on the engine",
+      "applied",
+      // Crew runs on the engine now (`CREW_ON_ENGINE`): the hold itself is crewFlipGate's row.
+      CREW_ON_ENGINE ? "mate" : "v1",
+      CREW_ON_ENGINE
+        ? []
+        : [
+            "Mate engine held: this Mate's crew (@lead, @ana) stays on V1 until crew runs on the engine.",
+          ],
+    ],
+    ["flips a Mate whose crew was never applied", "draft", "mate", []],
+    ["flips a Mate that never had a crew", null, "mate", []],
+  ] as const)("the engine switch %s", ([, crew, expected, warnings]) =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = NodeFS.mkdtempSync(join(NodeOS.tmpdir(), "t3-cli-config-crew-"));
+      const { dbPath } = yield* deriveExplicitServerPaths(baseDir, undefined);
+      NodeFS.mkdirSync(join(dbPath, ".."), { recursive: true });
+      const database = new NodeSqlite.DatabaseSync(dbPath);
+      if (crew !== null) {
+        database.exec(`
+          CREATE TABLE crew_definition (crew TEXT PRIMARY KEY, state TEXT NOT NULL);
+          CREATE TABLE crew_member (crew TEXT NOT NULL, handle TEXT NOT NULL);
+          INSERT INTO crew_definition VALUES ('main', '${crew}');
+          INSERT INTO crew_member VALUES ('main', 'lead'), ('main', 'ana');
+        `);
+      }
+      database.close();
+      const messages: Array<unknown> = [];
+      const logger = Logger.make<unknown, void>((options) => {
+        messages.push(options.message);
+      });
+      const resolved = yield* resolveServerConfig(
+        { ...noFlags, port: Option.some(3773), baseDir: Option.some(baseDir) },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: { T3CODE_MATE_ENGINE: "mate" } })),
+            NetService.layer,
+            Logger.layer([logger], { mergeWithExisting: false }),
+          ),
+        ),
+      );
+      const firstLines = messages.map((message) => (Array.isArray(message) ? message[0] : message));
+      expect(resolved.mateEngine).toBe(expected);
+      expect(firstLines.filter((line) => String(line).startsWith("Mate engine held"))).toEqual(
         warnings,
       );
     }),

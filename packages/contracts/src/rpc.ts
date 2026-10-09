@@ -216,6 +216,8 @@ import {
   CrewCommandResult,
   CrewFeedFrame,
   CrewFiles,
+  CrewTaskPage,
+  CrewTaskPageInput,
 } from "./zeropsCrew.ts";
 import {
   UsageLimitSourceError,
@@ -387,6 +389,7 @@ export const WS_METHODS = {
   zeropsCrewFilesGet: "zerops.crew.files.get",
   zeropsCrewFilesPut: "zerops.crew.files.put",
   zeropsCrewCommand: "zerops.crew.command",
+  zeropsCrewTaskPage: "zerops.crew.taskPage",
   threadsFileWrites: "threads.fileWrites",
   threadsWrittenFile: "threads.writtenFile",
   engineReadEarlier: "engine.readEarlier",
@@ -1270,6 +1273,16 @@ const WsZeropsCrewCommandRpc = Rpc.make(WS_METHODS.zeropsCrewCommand, {
   error: Schema.Union([CrewCommandError, EnvironmentAuthorizationError]),
 });
 
+/**
+ * A crewmate's finished work past the board, a page at a time (the engine's crew bounds its
+ * board); a V1 server's board holds every task and pages nothing.
+ */
+const WsZeropsCrewTaskPageRpc = Rpc.make(WS_METHODS.zeropsCrewTaskPage, {
+  payload: CrewTaskPageInput,
+  success: CrewTaskPage,
+  error: Schema.Union([CrewCommandError, EnvironmentAuthorizationError]),
+});
+
 // ── the Mate engine's conversation wire (engineWire.ts) ──────────────────────────────────────
 // Served in mate mode; a V1 Mate, or a protocol the server does not speak, answers `unserved`.
 
@@ -1495,6 +1508,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsCrewFilesGetRpc,
   WsZeropsCrewFilesPutRpc,
   WsZeropsCrewCommandRpc,
+  WsZeropsCrewTaskPageRpc,
   WsSubscribeEngineConversationRpc,
   WsSubscribeEngineRowsRpc,
   WsEngineReadEarlierRpc,

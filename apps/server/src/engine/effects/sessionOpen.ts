@@ -47,6 +47,9 @@ interface Payload {
   readonly rotateFrom: string | null;
   /** The conversation's thread generation (absent from an open asked before it existed: 1). */
   readonly generation?: number;
+  /** A rotation's open: a fresh thread (or a resumed one), told `seed` as it starts. */
+  readonly fresh?: boolean;
+  readonly seed?: string | null;
   /** The runtime mode a person set; absent: the workspace's. */
   readonly runtimeMode?: RuntimeMode;
 }
@@ -95,7 +98,15 @@ export const makeSessionOpen = Effect.gen(function* () {
         const driver = payload.driver;
         const host = yield* pump.hostFor(row.conversationId, driver, payload.generation ?? 1);
         const session = yield* sessionIdOf(host.thread, row.conversationId, row.effectId);
-        const setup = yield* workspace.of(row.conversationId);
+        const setup = yield* workspace.of(row.conversationId).pipe(
+          Effect.catchTags({
+            WorkspaceUnavailable: (unavailable) => Effect.succeed(unavailable),
+          }),
+        );
+        // A workspace that cannot be told now (a crewmate's copy unread) opens nothing anywhere
+        // else: the open is tried again, over minutes, as the copy's own effects are.
+        if ("_tag" in setup)
+          return { _tag: "Retry", reason: setup.message, patient: true } as const;
         yield* host.begin(session);
         const live = (yield* provider.listSessions()).find(
           (candidate) =>
@@ -110,7 +121,14 @@ export const makeSessionOpen = Effect.gen(function* () {
           yield* host.record({
             kind: "start",
             session,
-            from: payload.resume === null && payload.rotateFrom === null ? "fresh" : "resume",
+            from:
+              payload.fresh === true
+                ? payload.seed == null
+                  ? "fresh"
+                  : "seeded"
+                : payload.resume === null && payload.rotateFrom === null
+                  ? "fresh"
+                  : "resume",
           });
           const resumeCursor = yield* handedOver.of({
             thread: host.thread,

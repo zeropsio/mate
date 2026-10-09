@@ -2,56 +2,40 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import * as NodeUtil from "node:util";
 
 import { assert, describe, it } from "@effect/vitest";
-import {
-  type CrewCommandError,
-  ProviderInstanceId,
-  ThreadId as ThreadIdSchema,
-  type OrchestrationThreadShell,
-} from "@t3tools/contracts";
+import { ThreadId, type CrewCommand, type CrewCommandError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import type { MateLogin } from "../ZeropsLogins.ts";
-import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
-import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
-import { CrewEngine } from "./CrewEngine.ts";
 import { CREW_ID } from "./CrewHome.ts";
-import { CrewThreadDirectory, CrewToolHost } from "./crewSeams.ts";
 import { CrewStore } from "./CrewStore.ts";
-import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
-import {
-  eventually,
-  loginReconciled,
-  drained,
-  booted,
-  runningPersonThread,
-  spiEvent,
-  withCrewEngine,
-  withCrewEngines,
-  writeCrewHome,
-  type CrewWorld,
-} from "./testing/crewEngineFixture.ts";
+import { TEST_HOST, git, read, write } from "./testing/crewGitFixture.ts";
 import {
   AS_CREW,
-  commandWhenFree,
   KAREL,
   applied,
-  command,
-  dispatchedOf,
+  crewJourney,
+  eventually,
   everyCopyReady,
   firstTurn,
-  latest,
+  CREW_WORLD,
+  lastAdmitted,
+  onV1,
+  opened,
+  pressWhenFree,
   reportDone,
   seamsOf,
-  snapshotWhere,
-} from "./testing/crewEngineSteps.ts";
-import { TEST_HOST, git, read, write } from "./testing/crewGitFixture.ts";
+  sentKind,
+  turnsSent,
+  v1Journey,
+  type CrewWorld,
+} from "./testing/crewWorld.ts";
 
 const mateLogin = (id: string, agent: "claude-code" | "codex", label: string): MateLogin => ({
   id,
@@ -64,15 +48,15 @@ const mateLogin = (id: string, agent: "claude-code" | "codex", label: string): M
 
 describe("CrewEngine", () => {
   it.live("with no crew applied: status none, no policy installed", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
-        const snapshot = yield* latest;
+        const snapshot = yield* world.snapshot;
         assert.deepStrictEqual(
-          [snapshot.status, snapshot.crew, yield* Ref.get(world.installs)],
+          [snapshot.status, snapshot.crew, yield* world.profileInstalls],
           ["none", null, 0],
         );
         const error = yield* Effect.flip(
-          command({ _tag: "message", handle: "backend", text: "hi", attachments: [] }),
+          world.press({ _tag: "message", handle: "backend", text: "hi", attachments: [] }),
         );
         assert.strictEqual(error.reason, "no-crew");
       }),
@@ -80,11 +64,11 @@ describe("CrewEngine", () => {
   );
 
   it.live("Apply makes each writer's copy, installs the policies once and shows the crew", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         // The first conversation opens once the copy is ready.
-        const snapshot = yield* snapshotWhere(
+        const snapshot = yield* world.snapshotWhere(
           (current) => current.crewmates[0]!.promptVersions.running !== null,
         );
         const backend = snapshot.crewmates[0]!;
@@ -96,7 +80,7 @@ describe("CrewEngine", () => {
             lane: backend.lane?.state,
             branch: git(world.root, ["rev-parse", "--abbrev-ref", "crew/backend"]),
             copy: NodeFS.existsSync(NodePath.join(world.root, ".crew/backend/README.md")),
-            installs: yield* Ref.get(world.installs),
+            installs: yield* world.profileInstalls,
             versions: backend.promptVersions,
           },
           {
@@ -117,58 +101,57 @@ describe("CrewEngine", () => {
   it.live(
     "a message to an idle crewmate opens one implicit task and a stint; a second steers it",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* applied(world);
-          yield* command({
+          yield* world.press({
             _tag: "message",
             handle: "backend",
             text: "Add pagination to /api/items\nCursor based.",
             attachments: [],
           });
-          const created = yield* dispatchedOf(world, "thread.crew.create");
-          const resume = yield* dispatchedOf(world, "thread.usage-auto-resume.set");
-          const turns = yield* dispatchedOf(world, "thread.turn.start");
+          const created = yield* opened(world);
+          const resume = yield* sentKind(world, "autoResume");
+          const turns = yield* turnsSent(world);
           assert.deepStrictEqual(
             {
               runtimeMode: created[0]?.runtimeMode,
-              crew: created[0]?.crew,
-              autoResume: resume.map((entry) => [entry.threadId, entry.enabled]),
-              turnThread: turns[0]?.threadId,
-              card: turns[0]?.message.text.split("\n").slice(0, 2),
-              instance: turns[0]?.modelSelection?.instanceId,
+              crewmate: [created[0]?.handle, created[0]?.session],
+              autoResume: resume.map((entry) => [entry.chat, entry.enabled]),
+              turnThread: turns[0]?.chat,
+              card: turns[0]?.text.split("\n").slice(0, 2),
+              instance: turns[0]?.instanceId,
               turnMode: turns[0]?.runtimeMode,
             },
             {
               runtimeMode: "approval-required",
-              crew: { crew: "main", crewmate: "backend", stint: 1 },
-              autoResume: [[created[0]!.threadId, false]],
-              turnThread: created[0]!.threadId,
+              crewmate: ["backend", 1],
+              autoResume: [[created[0]!.chat, false]],
+              turnThread: created[0]!.chat,
               card: ["[Crew task card]", "#1 Add pagination to /api/items · from your message"],
               instance: "claudeAgent",
               turnMode: "approval-required",
             },
           );
-          yield* world.publish(spiEvent("turn.started", created[0]!.threadId, {}));
-          const member = Option.getOrThrow(
-            yield* (yield* CrewThreadDirectory).memberFor(created[0]!.threadId),
-          );
+          yield* world.turnStarts(created[0]!.chat);
           const transcript = NodePath.join(world.workspace, "session-1.jsonl");
           NodeFS.writeFileSync(transcript, "{}\n");
-          const packet = yield* (yield* CrewToolHost).sessionStart(member, {
+          const packet = yield* world.sessionStart(created[0]!.chat, {
             source: "startup",
             sessionId: "session-1",
             transcriptPath: transcript,
           });
           assert.isTrue(packet?.startsWith("crew-state seq"));
-          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.stints[0]?.state === "active");
-          yield* command({
+          yield* world.sessionsWhere("backend", (sessions) => sessions.latest === "active");
+          yield* world.press({
             _tag: "message",
             handle: "backend",
             text: "Also sort them.",
             attachments: [],
           });
-          const snapshot = yield* snapshotWhere((current) => current.board.tasks.length === 1);
+          const snapshot = yield* world.snapshotWhere(
+            (current) => current.board.tasks.length === 1,
+          );
           assert.deepStrictEqual(
             {
               tasks: snapshot.board.tasks.map((task) => [
@@ -178,16 +161,18 @@ describe("CrewEngine", () => {
                 task.source,
               ]),
               open: snapshot.crewmates[0]!.openTaskId === snapshot.board.tasks[0]!.id,
-              turns: (yield* dispatchedOf(world, "thread.turn.start")).map(
-                (turn) => turn.message.text.split("\n")[0],
+              turns: (yield* turnsSent(world)).map((turn) => turn.text.split("\n")[0]),
+              // As whom its turns ran; how often each world asks is its own mechanism.
+              principals: (yield* world.admissions).filter(
+                (principal, at, all) =>
+                  all.findIndex((other) => NodeUtil.isDeepStrictEqual(other, principal)) === at,
               ),
-              principals: (yield* Ref.get(world.admitted)).map((entry) => entry.principal),
             },
             {
               tasks: [[1, "Add pagination to /api/items", "working", "message"]],
               open: true,
               turns: ["[Crew task card]", "Also sort them."],
-              principals: [KAREL, KAREL, KAREL],
+              principals: [KAREL],
             },
           );
         }),
@@ -197,26 +182,23 @@ describe("CrewEngine", () => {
   it.live(
     "turn end commits the copy's work; a done report merges in, checks and waits for Land",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* applied(world);
-          yield* command({
+          yield* world.press({
             _tag: "message",
             handle: "backend",
             text: "Write ok.txt",
             attachments: [],
           });
-          const [created] = yield* dispatchedOf(world, "thread.crew.create");
-          const thread = created!.threadId;
-          yield* world.publish(spiEvent("turn.started", thread, {}));
+          const [created] = yield* opened(world);
+          const thread = created!.chat;
+          yield* world.turnStarts(thread);
           write(world.root, ".crew/backend/ok.txt", "ok\n");
-          const directory = yield* CrewThreadDirectory;
-          const host = yield* CrewToolHost;
-          const member = Option.getOrThrow(yield* directory.memberFor(thread));
-          const answer = yield* host.report(member, { status: "done", summary: "Wrote ok.txt." });
+          const answer = yield* world.report(thread, { status: "done", summary: "Wrote ok.txt." });
           assert.isFalse(answer.isError);
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-          const ready = yield* snapshotWhere(
+          yield* world.turnEnds(thread);
+          const ready = yield* world.snapshotWhere(
             (snapshot) => snapshot.board.tasks[0]?.state === "ready",
           );
           assert.deepStrictEqual(
@@ -228,14 +210,14 @@ describe("CrewEngine", () => {
             },
             { wip: true, check: "passed", attention: ["ready-to-land"], report: "Wrote ok.txt." },
           );
-          yield* Ref.set(world.threads, [runningPersonThread()]);
+          yield* world.mateTurnRunning(true);
           const waits = yield* Effect.flip(
-            command({ _tag: "land", taskId: ready.board.tasks[0]!.id }),
+            world.press({ _tag: "land", taskId: ready.board.tasks[0]!.id }),
           );
           assert.strictEqual(waits.reason, "wrong-state");
-          yield* Ref.set(world.threads, []);
-          yield* command({ _tag: "land", taskId: ready.board.tasks[0]!.id });
-          const landed = yield* snapshotWhere(
+          yield* world.mateTurnRunning(false);
+          yield* world.press({ _tag: "land", taskId: ready.board.tasks[0]!.id });
+          const landed = yield* world.snapshotWhere(
             (snapshot) => snapshot.board.tasks[0]?.state === "landed",
           );
           const message = git(world.root, ["log", "-1", "--format=%B", "HEAD"]);
@@ -256,11 +238,11 @@ describe("CrewEngine", () => {
   );
 
   it.live("a task for a busy crewmate queues and starts as its creator when the first lands", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
-        yield* command({
+        yield* world.press({ _tag: "message", handle: "backend", text: "First", attachments: [] });
+        yield* world.press({
           _tag: "taskCreate",
           owner: "backend",
           title: "Second",
@@ -268,7 +250,7 @@ describe("CrewEngine", () => {
           doneWhen: "",
           dependsOn: [],
         });
-        const queued = yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 2);
+        const queued = yield* world.snapshotWhere((snapshot) => snapshot.board.tasks.length === 2);
         assert.deepStrictEqual(
           queued.board.tasks.map((task) => [task.title, task.state]),
           [
@@ -276,12 +258,11 @@ describe("CrewEngine", () => {
             ["Second", "queued"],
           ],
         );
-        const [stint] = yield* dispatchedOf(world, "thread.crew.create");
-        yield* world.publish(spiEvent("turn.completed", stint!.threadId, { state: "completed" }));
-        yield* command({ _tag: "discard", taskId: queued.board.tasks[0]!.id });
-        yield* snapshotWhere((snapshot) => snapshot.board.tasks[1]?.state === "working");
-        const admitted = yield* Ref.get(world.admitted);
-        assert.deepStrictEqual(admitted.at(-1)?.principal, {
+        const [stint] = yield* opened(world);
+        yield* world.turnEnds(stint!.chat);
+        yield* world.press({ _tag: "discard", taskId: queued.board.tasks[0]!.id });
+        yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[1]?.state === "working");
+        assert.deepStrictEqual(yield* lastAdmitted(world), {
           kind: "crew",
           startedBy: "user-karel",
         });
@@ -290,22 +271,15 @@ describe("CrewEngine", () => {
   );
 
   /** A press while `backend`'s turn end commits in its copy: what it came to, and how soon. */
-  const pressDuringTurnEnd = (
-    world: Parameters<Parameters<typeof withCrewEngine>[0]>[0],
-    press: (taskId: string) => Parameters<typeof command>[0],
-  ) =>
+  const pressDuringTurnEnd = (world: CrewWorld, press: (taskId: string) => CrewCommand) =>
     Effect.gen(function* () {
-      const first = (yield* snapshotWhere((snapshot) => snapshot.board.tasks.length >= 1)).board
-        .tasks[0]!.id;
-      const stint = (yield* dispatchedOf(world, "thread.crew.create")).find(
-        (entry) => entry.crew.crewmate === "backend",
-      );
-      const turnCommit = yield* world.holdSsh((script) => script.includes("): turn 1"));
-      const ended = yield* Effect.forkChild(
-        world.publish(spiEvent("turn.completed", stint!.threadId, { state: "completed" })),
-      );
+      const first = (yield* world.snapshotWhere((snapshot) => snapshot.board.tasks.length >= 1))
+        .board.tasks[0]!.id;
+      const stint = (yield* opened(world)).find((entry) => entry.handle === "backend");
+      const turnCommit = yield* world.hold({ step: "save" });
+      const ended = yield* Effect.forkChild(world.turnEnds(stint!.chat));
       yield* turnCommit.reached;
-      const pressed = yield* Effect.forkChild(Effect.exit(command(press(first))));
+      const pressed = yield* Effect.forkChild(Effect.exit(world.press(press(first))));
       const atOnce = yield* Fiber.await(pressed).pipe(Effect.timeoutOption("300 millis"));
       yield* turnCommit.release;
       yield* Fiber.join(ended);
@@ -327,11 +301,11 @@ describe("CrewEngine", () => {
   };
 
   it.live("a discard pressed while its crewmate's turn end is handled is refused at once", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
-        yield* command({
+        yield* world.press({ _tag: "message", handle: "backend", text: "First", attachments: [] });
+        yield* world.press({
           _tag: "taskCreate",
           owner: "backend",
           title: "Second",
@@ -339,15 +313,15 @@ describe("CrewEngine", () => {
           doneWhen: "",
           dependsOn: [],
         });
-        yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 2);
+        yield* world.snapshotWhere((snapshot) => snapshot.board.tasks.length === 2);
         const { first, atOnce } = yield* pressDuringTurnEnd(world, (taskId) => ({
           _tag: "discard",
           taskId,
         }));
         refusedAsBusy(atOnce);
         // Once the turn has ended, the same press goes through and the queue moves.
-        yield* command({ _tag: "discard", taskId: first });
-        yield* snapshotWhere(
+        yield* world.press({ _tag: "discard", taskId: first });
+        yield* world.snapshotWhere(
           (snapshot) =>
             snapshot.board.tasks[0]?.state === "discarded" &&
             snapshot.board.tasks[1]?.state === "working",
@@ -358,7 +332,7 @@ describe("CrewEngine", () => {
 
   const pressesDuringTurnEnd: ReadonlyArray<{
     readonly name: string;
-    readonly press: (taskId: string) => Parameters<typeof command>[0];
+    readonly press: (taskId: string) => CrewCommand;
   }> = [
     {
       name: "a message to the crewmate",
@@ -389,10 +363,15 @@ describe("CrewEngine", () => {
       press,
     })),
   )("$title", ({ press }) =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
+        yield* world.press({
+          _tag: "message",
+          handle: "backend",
+          text: "First",
+          attachments: [],
+        });
         const { atOnce } = yield* pressDuringTurnEnd(world, press);
         refusedAsBusy(atOnce);
       }),
@@ -400,16 +379,16 @@ describe("CrewEngine", () => {
   );
 
   /** `backend` reported done; its check after the turn end is held. */
-  const holdTheCheck = (world: Parameters<Parameters<typeof withCrewEngine>[0]>[0]) =>
+  const holdTheCheck = (world: CrewWorld) =>
     Effect.gen(function* () {
       yield* applied(world);
       const thread = yield* firstTurn(world, () => undefined);
-      yield* reportDone(thread);
-      const check = yield* world.holdSsh((script) => script.includes("test -f ok.txt"));
-      yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+      yield* reportDone(world, thread);
+      const check = yield* world.hold({ step: "check" });
+      yield* world.turnEnds(thread);
       yield* check.reached;
       // The board as the engine has rebuilt it, never a snapshot from before the turn end.
-      const taskId = (yield* snapshotWhere(
+      const taskId = (yield* world.snapshotWhere(
         (snapshot) => snapshot.board.tasks[0]?.state === "checking",
       )).board.tasks[0]!.id;
       return { thread, check, taskId };
@@ -419,14 +398,14 @@ describe("CrewEngine", () => {
     Effect.exit(effect).pipe(Effect.timeoutOption("300 millis"));
 
   it.live("a discard while the check runs is refused as busy, and the check is not undone", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         const { check, taskId } = yield* holdTheCheck(world);
-        const pressed = yield* quick(command({ _tag: "discard", taskId }));
+        const pressed = yield* quick(world.press({ _tag: "discard", taskId }));
         refusedAsBusy(Option.map(pressed, (exit) => Exit.succeed(exit)));
         yield* check.release;
         // No ok.txt: the check fails, and the task goes back for rework — never discarded.
-        yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "rework");
+        yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "rework");
       }),
     ),
   );
@@ -434,32 +413,32 @@ describe("CrewEngine", () => {
   it.live(
     "a message during the check goes on at once; a turn that reports before the check ends is integrated after it",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           const { thread, check } = yield* holdTheCheck(world);
           const messaged = yield* quick(
-            command({ _tag: "message", handle: "backend", text: "More", attachments: [] }),
+            world.press({ _tag: "message", handle: "backend", text: "More", attachments: [] }),
           );
           assert.isTrue(
             Option.isSome(messaged) && Exit.isSuccess(Option.getOrThrow(messaged)),
             "the message did not go through at once",
           );
-          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
+          yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
           // Its turn reports done and ends while the first check still runs.
-          yield* world.publish(spiEvent("turn.started", thread, {}));
-          yield* reportDone(thread);
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          yield* world.turnStarts(thread);
+          yield* reportDone(world, thread);
+          yield* world.turnEnds(thread);
           yield* check.release;
           // Never stuck in merging: integrated again once the check ended.
-          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "rework");
+          yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "rework");
         }),
       ),
   );
 
   it.live("Tell the crew to a busy crewmate is refused and creates nothing", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
-        writeCrewHome(world.workspace, {
+        world.writeHome({
           "crew.yaml": [
             "name: Game team",
             "briefTitle: Space shooter",
@@ -474,9 +453,9 @@ describe("CrewEngine", () => {
           ].join("\n"),
           "jobs/erik.md": "You write the plan.\n",
         });
-        yield* command({ _tag: "apply" });
-        yield* snapshotWhere(everyCopyReady);
-        yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
+        yield* world.press({ _tag: "apply" });
+        yield* world.snapshotWhere(everyCopyReady);
+        yield* world.press({ _tag: "message", handle: "backend", text: "First", attachments: [] });
         const { atOnce } = yield* pressDuringTurnEnd(world, () => ({
           _tag: "tell",
           text: "@backend adds the API, @erik reviews the plan.",
@@ -484,11 +463,7 @@ describe("CrewEngine", () => {
         }));
         refusedAsBusy(atOnce);
         // Read from the tables, not a snapshot that may not have caught up.
-        assert.strictEqual(
-          (yield* (yield* CrewStore).assignments(CREW_ID)).length,
-          1,
-          "a busy Tell made tasks",
-        );
+        assert.strictEqual((yield* world.tasks).length, 1, "a busy Tell made tasks");
       }),
     ),
   );
@@ -504,46 +479,56 @@ describe("CrewEngine", () => {
   } as const;
 
   /** `backend`'s first task, its turn ended without a report: working, no turn running. */
-  const turnEndedWorking = (world: Parameters<Parameters<typeof withCrewEngine>[0]>[0]) =>
+  const turnEndedWorking = (world: CrewWorld) =>
     Effect.gen(function* () {
       yield* applied(world);
       const thread = yield* firstTurn(world, () => undefined);
-      yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-      const taskId = (yield* snapshotWhere(
+      yield* world.turnEnds(thread);
+      const taskId = (yield* world.snapshotWhere(
         (snapshot) => snapshot.board.tasks[0]?.state === "working",
       )).board.tasks[0]!.id;
       return { thread, taskId };
     });
 
   const stuckStates: ReadonlyArray<"merging" | "checking"> = ["merging", "checking"];
-  it.live.each(
-    Array.from(stuckStates, (state) => ({
-      title: `a task left ${state} with nothing running on it can be discarded`,
-      state,
-    })),
-  )("$title", ({ state }) =>
-    withCrewEngine((world) =>
-      Effect.gen(function* () {
-        const { taskId } = yield* turnEndedWorking(world);
-        // A redeploy held its merge, or its check errored: nothing runs on it now.
-        const store = yield* CrewStore;
-        const row = (yield* store.assignments(CREW_ID)).find((task) => task.assignment === taskId)!;
-        yield* store.putAssignment({ ...row, state });
-        yield* command({ _tag: "discard", taskId });
-        yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "discarded");
-      }),
-    ),
-  );
+  for (const state of stuckStates) {
+    // Only V1's own tables can hold a task in a state nothing runs on.
+    it.live.skipIf(CREW_WORLD !== "v1")(
+      `a task left ${state} with nothing running on it can be discarded`,
+      () =>
+        v1Journey((world) =>
+          Effect.gen(function* () {
+            const { taskId } = yield* turnEndedWorking(world);
+            // A redeploy held its merge, or its check errored: nothing runs on it now.
+            yield* world.v1.run(
+              Effect.gen(function* () {
+                const store = yield* CrewStore;
+                const row = (yield* store.assignments(CREW_ID)).find(
+                  (task) => task.assignment === taskId,
+                )!;
+                yield* store.putAssignment({ ...row, state });
+              }),
+            );
+            yield* world.press({ _tag: "discard", taskId });
+            yield* world.snapshotWhere(
+              (snapshot) => snapshot.board.tasks[0]?.state === "discarded",
+            );
+          }),
+        ),
+    );
+  }
 
   it.live("a message during a Land now's check goes through", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         const { taskId } = yield* turnEndedWorking(world);
-        const check = yield* world.holdSsh((script) => script.includes("test -f ok.txt"));
-        const landing = yield* Effect.forkChild(Effect.exit(command({ _tag: "landNow", taskId })));
+        const check = yield* world.hold({ step: "check" });
+        const landing = yield* Effect.forkChild(
+          Effect.exit(world.press({ _tag: "landNow", taskId })),
+        );
         yield* check.reached;
         const messaged = yield* quick(
-          command({ _tag: "message", handle: "backend", text: "More", attachments: [] }),
+          world.press({ _tag: "message", handle: "backend", text: "More", attachments: [] }),
         );
         yield* check.release;
         yield* Fiber.join(landing);
@@ -556,36 +541,34 @@ describe("CrewEngine", () => {
   );
 
   it.live("a Land now while the task's integration still runs lands once that one ends", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         const { thread, check, taskId } = yield* holdTheCheck(world);
         // Back to work during the check, and its turn ends with no report.
-        yield* command({ _tag: "message", handle: "backend", text: "More", attachments: [] });
-        yield* world.publish(spiEvent("turn.started", thread, {}));
+        yield* world.press({ _tag: "message", handle: "backend", text: "More", attachments: [] });
+        yield* world.turnStarts(thread);
         write(world.root, ".crew/backend/ok.txt", "ok\n");
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        yield* command({ _tag: "landNow", taskId });
+        yield* world.turnEnds(thread);
+        yield* world.press({ _tag: "landNow", taskId });
         yield* check.release;
-        yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "landed");
+        yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "landed");
       }),
     ),
   );
 
   it.live("Start during a turn end waits for the copy, then carries the task on once", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () => undefined);
-        const turnCommit = yield* world.holdSsh((script) => script.includes("): turn 1"));
-        const ended = yield* Effect.forkChild(
-          world.publish(spiEvent("turn.completed", thread, { state: "completed" })),
-        );
+        const turnCommit = yield* world.hold({ step: "save" });
+        const ended = yield* Effect.forkChild(world.turnEnds(thread));
         yield* turnCommit.reached;
-        const turnsBefore = (yield* dispatchedOf(world, "thread.turn.start")).length;
-        const started = yield* quick(command(RUN_NOW));
+        const turnsBefore = (yield* turnsSent(world)).length;
+        const started = yield* quick(world.press(RUN_NOW));
         assert.isTrue(Option.isSome(started), "Start waited on the turn end");
         assert.strictEqual(
-          (yield* dispatchedOf(world, "thread.turn.start")).length,
+          (yield* turnsSent(world)).length,
           turnsBefore,
           "a turn went to the crewmate while its copy was being committed",
         );
@@ -593,28 +576,22 @@ describe("CrewEngine", () => {
         yield* Fiber.join(ended);
         // The advance Start skipped runs once the copy is free: one carry-on, not two.
         yield* eventually(
-          Effect.map(
-            dispatchedOf(world, "thread.turn.start"),
-            (turns) => turns.length === turnsBefore + 1,
-          ),
+          Effect.map(turnsSent(world), (turns) => turns.length === turnsBefore + 1),
         );
-        yield* drained;
-        assert.strictEqual(
-          (yield* dispatchedOf(world, "thread.turn.start")).length,
-          turnsBefore + 1,
-        );
+        yield* Effect.sleep("300 millis");
+        assert.strictEqual((yield* turnsSent(world)).length, turnsBefore + 1);
       }),
     ),
   );
 
   it.live("a discard whose copy cannot be reset leaves its task as it was", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () =>
           write(NodePath.join(world.root, ".crew/backend"), "a.txt", "changed\n"),
         );
-        yield* command({
+        yield* world.press({
           _tag: "taskCreate",
           owner: "backend",
           title: "Second",
@@ -622,18 +599,18 @@ describe("CrewEngine", () => {
           doneWhen: "",
           dependsOn: [],
         });
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1);
+        yield* world.turnEnds(thread);
+        yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1);
         const lock = NodePath.join(world.root, ".git/worktrees/backend/index.lock");
         NodeFS.writeFileSync(lock, "");
-        const first = (yield* snapshotWhere((snapshot) => snapshot.board.tasks.length === 2)).board
-          .tasks[0]!.id;
-        const refused = yield* Effect.flip(command({ _tag: "discard", taskId: first }));
+        const first = (yield* world.snapshotWhere((snapshot) => snapshot.board.tasks.length === 2))
+          .board.tasks[0]!.id;
+        const refused = yield* Effect.flip(world.press({ _tag: "discard", taskId: first }));
         assert.strictEqual(refused.reason, "io");
         NodeFS.rmSync(lock);
         // Pressed again it discards: the refused press left the task open.
-        yield* command({ _tag: "discard", taskId: first });
-        yield* snapshotWhere(
+        yield* world.press({ _tag: "discard", taskId: first });
+        yield* world.snapshotWhere(
           (snapshot) =>
             snapshot.board.tasks[0]?.state === "discarded" &&
             snapshot.board.tasks[1]?.state === "working",
@@ -643,11 +620,11 @@ describe("CrewEngine", () => {
   );
 
   it.live("a queued task admission refuses stays queued with a Can't start row", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* Ref.set(world.refusal, "not the login's signer");
-        yield* command({
+        yield* world.refuseTurns("not the login's signer");
+        yield* world.press({
           _tag: "taskCreate",
           owner: "backend",
           title: "Refused",
@@ -655,30 +632,27 @@ describe("CrewEngine", () => {
           doneWhen: "",
           dependsOn: [],
         });
-        const snapshot = yield* snapshotWhere((current) => current.attention.length === 1);
+        const snapshot = yield* world.snapshotWhere((current) => current.attention.length === 1);
         assert.deepStrictEqual(
           [snapshot.board.tasks[0]?.state, snapshot.attention.map((row) => [row.kind, row.text])],
           ["queued", [["cant-start", "not the login's signer"]]],
         );
-        yield* Ref.set(world.refusal, undefined);
-        yield* command({ _tag: "taskRetry", taskId: snapshot.board.tasks[0]!.id });
-        const started = yield* snapshotWhere(
+        yield* world.refuseTurns(undefined);
+        yield* world.press({ _tag: "taskRetry", taskId: snapshot.board.tasks[0]!.id });
+        const started = yield* world.snapshotWhere(
           (current) => current.board.tasks[0]?.state === "working",
         );
-        assert.deepStrictEqual(
-          [started.attention, (yield* Ref.get(world.admitted)).at(-1)?.principal],
-          [[], KAREL],
-        );
+        assert.deepStrictEqual([started.attention, yield* lastAdmitted(world)], [[], KAREL]);
       }),
     ),
   );
 
   it.live("Try again is only for a queued task admission refused", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         yield* firstTurn(world, () => undefined);
-        yield* command({
+        yield* world.press({
           _tag: "taskCreate",
           owner: "backend",
           title: "Behind",
@@ -686,9 +660,9 @@ describe("CrewEngine", () => {
           doneWhen: "",
           dependsOn: [],
         });
-        const queued = yield* snapshotWhere((current) => current.board.tasks.length === 2);
+        const queued = yield* world.snapshotWhere((current) => current.board.tasks.length === 2);
         const refused = yield* Effect.flip(
-          command({ _tag: "taskRetry", taskId: queued.board.tasks[1]!.id }),
+          world.press({ _tag: "taskRetry", taskId: queued.board.tasks[1]!.id }),
         );
         assert.strictEqual(refused.reason, "wrong-state");
       }),
@@ -696,11 +670,11 @@ describe("CrewEngine", () => {
   );
 
   it.live("a refused queued task waits through another login's sign-in", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* Ref.set(world.refusal, "not the login's signer");
-        yield* command({
+        yield* world.refuseTurns("not the login's signer");
+        yield* world.press({
           _tag: "taskCreate",
           owner: "backend",
           title: "Refused",
@@ -708,13 +682,13 @@ describe("CrewEngine", () => {
           doneWhen: "",
           dependsOn: [],
         });
-        yield* snapshotWhere((current) => current.attention.length === 1);
-        const tries = (yield* Ref.get(world.admitted)).length;
-        yield* loginReconciled(world.signedInAs("codex"));
-        yield* loginReconciled(world.extraSignedIn("work"));
-        yield* drained;
+        yield* world.snapshotWhere((current) => current.attention.length === 1);
+        const tries = (yield* world.admissions).length;
+        yield* world.signedIn("codex");
+        yield* world.signedIn({ extra: "work" });
+        yield* Effect.sleep("300 millis");
         assert.deepStrictEqual(
-          [(yield* Ref.get(world.admitted)).length, (yield* latest).board.tasks[0]!.state],
+          [(yield* world.admissions).length, (yield* world.snapshot).board.tasks[0]!.state],
           [tries, "queued"],
         );
       }),
@@ -722,11 +696,11 @@ describe("CrewEngine", () => {
   );
 
   it.live("a refused queued task starts again once a login's sign-in changes", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* Ref.set(world.refusal, "not the login's signer");
-        yield* command({
+        yield* world.refuseTurns("not the login's signer");
+        yield* world.press({
           _tag: "taskCreate",
           owner: "backend",
           title: "Refused",
@@ -734,24 +708,21 @@ describe("CrewEngine", () => {
           doneWhen: "",
           dependsOn: [],
         });
-        yield* snapshotWhere((current) => current.attention.length === 1);
-        yield* Ref.set(world.refusal, undefined);
-        yield* world.signedIn;
-        const started = yield* snapshotWhere(
+        yield* world.snapshotWhere((current) => current.attention.length === 1);
+        yield* world.refuseTurns(undefined);
+        yield* world.signedIn("claude-code");
+        const started = yield* world.snapshotWhere(
           (current) => current.board.tasks[0]?.state === "working",
         );
-        assert.deepStrictEqual(
-          [started.attention, (yield* Ref.get(world.admitted)).at(-1)?.principal],
-          [[], AS_CREW],
-        );
+        assert.deepStrictEqual([started.attention, yield* lastAdmitted(world)], [[], AS_CREW]);
       }),
     ),
   );
 
   it.live("Tell the crew: one mention a task, none refused", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
-        writeCrewHome(world.workspace, {
+        world.writeHome({
           "crew.yaml": [
             "name: Game team",
             "briefTitle: Space shooter",
@@ -766,17 +737,17 @@ describe("CrewEngine", () => {
           ].join("\n"),
           "jobs/erik.md": "You write the plan.\n",
         });
-        yield* command({ _tag: "apply" });
-        yield* snapshotWhere(everyCopyReady);
+        yield* world.press({ _tag: "apply" });
+        yield* world.snapshotWhere(everyCopyReady);
         const none = yield* Effect.flip(
-          command({ _tag: "tell", text: "Everyone, go.", mentions: [] }),
+          world.press({ _tag: "tell", text: "Everyone, go.", mentions: [] }),
         );
-        yield* command({
+        yield* world.press({
           _tag: "tell",
           text: "@backend adds the API, @erik reviews the plan.",
           mentions: [{ handle: "backend" }, { handle: "erik" }],
         });
-        const snapshot = yield* snapshotWhere((current) => current.board.tasks.length === 2);
+        const snapshot = yield* world.snapshotWhere((current) => current.board.tasks.length === 2);
         assert.deepStrictEqual(
           {
             none: none.reason,
@@ -790,54 +761,54 @@ describe("CrewEngine", () => {
             ],
           },
         );
-        const cards = (yield* dispatchedOf(world, "thread.turn.start")).map(
-          (turn) => turn.message.text,
-        );
+        const cards = (yield* turnsSent(world)).map((turn) => turn.text);
         assert.isTrue(cards.every((card) => card.includes("Also sent to")));
       }),
     ),
   );
 
   it.live("a job saved for the next turn rotates the stint before that turn", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
-        const [first] = yield* dispatchedOf(world, "thread.crew.create");
-        yield* world.publish(spiEvent("turn.completed", first!.threadId, { state: "completed" }));
-        writeCrewHome(world.workspace, {
+        yield* world.press({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
+        const [first] = yield* opened(world);
+        yield* world.turnEnds(first!.chat);
+        world.writeHome({
           "jobs/backend.md": "You own the server and its tests.\n",
         });
-        yield* command({ _tag: "jobSave", handle: "backend", apply: "nextTurn" });
-        const pending = (yield* snapshotWhere((current) => current.crewmates[0]!.jobVersion === 2))
-          .crewmates[0]!.promptVersions;
-        yield* command({ _tag: "message", handle: "backend", text: "Go on", attachments: [] });
-        const creates = yield* dispatchedOf(world, "thread.crew.create");
-        const snapshot = yield* snapshotWhere(
-          (current) => current.crewmates[0]!.stints.length === 2,
+        yield* world.press({ _tag: "jobSave", handle: "backend", apply: "nextTurn" });
+        const pending = (yield* world.snapshotWhere(
+          (current) => current.crewmates[0]!.jobVersion === 2,
+        )).crewmates[0]!.promptVersions;
+        yield* world.press({ _tag: "message", handle: "backend", text: "Go on", attachments: [] });
+        const creates = yield* opened(world);
+        const sessions = yield* world.sessionsWhere("backend", (seen) => seen.count === 2);
+        const snapshot = yield* world.snapshot;
+        // V1 keeps each session in a conversation of its own and archives the one it left.
+        yield* onV1(world, () =>
+          Effect.map(sentKind(world, "archive"), (archived) =>
+            assert.deepStrictEqual(
+              archived.map((entry) => entry.chat),
+              [first!.chat],
+            ),
+          ),
         );
         assert.deepStrictEqual(
           {
             pending,
-            archived: (yield* dispatchedOf(world, "thread.archive")).map((entry) => entry.threadId),
-            stopped: (yield* dispatchedOf(world, "thread.session.stop")).map(
-              (entry) => entry.threadId,
-            ),
-            stints: creates.map((entry) => entry.crew.stint),
-            reason: snapshot.crewmates[0]!.stints.map((stint) => [stint.state, stint.reason]),
+            stopped: (yield* sentKind(world, "stop")).map((entry) => entry.chat),
+            stints: creates.map((entry) => entry.session),
+            reason: sessions,
             running: snapshot.crewmates[0]!.promptVersions.running,
-            carried: (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.message.text,
+            carried: (yield* turnsSent(world)).at(-1)!.text,
             seams: yield* seamsOf(world),
           },
           {
             pending: { running: { brief: 1, job: 1 }, current: { brief: 1, job: 2 } },
-            archived: [first!.threadId],
-            stopped: [first!.threadId],
+            stopped: [first!.chat],
             stints: [1, 2],
-            reason: [
-              ["retired", null],
-              ["open", "Its job changed"],
-            ],
+            reason: { count: 2, latest: "open", reasons: [null, "Its job changed"] },
             running: { brief: 1, job: 2 },
             carried: [
               "[Crew task card]",
@@ -848,7 +819,7 @@ describe("CrewEngine", () => {
             ].join("\n"),
             seams: [
               [
-                first!.threadId,
+                first!.chat,
                 "Its job changed — from its next message",
                 { seam: "saved", apply: "nextTurn" },
               ],
@@ -860,28 +831,27 @@ describe("CrewEngine", () => {
   );
 
   it.live("a message to a crewmate that asked a question answers its open task", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () => undefined);
-        const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
-        yield* (yield* CrewToolHost).report(member, {
+        yield* world.report(thread, {
           status: "blocked",
           summary: "Which currency?",
           question: "CZK or EUR?",
         });
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        yield* snapshotWhere((current) => current.board.tasks[0]?.state === "blocked");
-        yield* command({ _tag: "message", handle: "backend", text: "EUR", attachments: [] });
-        const answered = yield* snapshotWhere(
+        yield* world.turnEnds(thread);
+        yield* world.snapshotWhere((current) => current.board.tasks[0]?.state === "blocked");
+        yield* world.press({ _tag: "message", handle: "backend", text: "EUR", attachments: [] });
+        const answered = yield* world.snapshotWhere(
           (current) => current.board.tasks[0]?.state === "working",
         );
-        const turns = yield* dispatchedOf(world, "thread.turn.start");
+        const turns = yield* turnsSent(world);
         assert.deepStrictEqual(
           [
             answered.board.tasks.map((task) => [task.number, task.state]),
-            turns.at(-1)?.threadId,
-            turns.at(-1)?.message.text,
+            turns.at(-1)?.chat,
+            turns.at(-1)?.text,
           ],
           [[[1, "working"]], thread, "EUR"],
         );
@@ -890,19 +860,18 @@ describe("CrewEngine", () => {
   );
 
   it.live("refs the engine writes mid-turn never park the lane; a foreign one does", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        const thread = yield* firstTurn(world, () =>
-          git(world.root, ["update-ref", "refs/t3/crew-state/main", "HEAD"]),
-        );
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        const [task] = yield* Effect.flatMap(CrewStore, (store) => store.assignments(CREW_ID));
+        const thread = yield* firstTurn(world, () => undefined);
+        git(world.root, ["update-ref", yield* world.ownRef, "HEAD"]);
+        yield* world.turnEnds(thread);
+        const [task] = yield* world.tasks;
         assert.strictEqual(task?.state, "working");
-        yield* command({ _tag: "message", handle: "backend", text: "More", attachments: [] });
+        yield* world.press({ _tag: "message", handle: "backend", text: "More", attachments: [] });
         git(world.root, ["update-ref", "refs/heads/crewmate-made-this", "HEAD"]);
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        const parked = yield* snapshotWhere(
+        yield* world.turnEnds(thread);
+        const parked = yield* world.snapshotWhere(
           (snapshot) => snapshot.board.tasks[0]?.state === "parked",
         );
         assert.strictEqual(
@@ -916,7 +885,7 @@ describe("CrewEngine", () => {
   it.live(
     "a merge-in conflict goes back naming the files; Ask to resolve sends one turn as you",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           write(world.root, "a.txt", "base\n");
           git(world.root, ["add", "-A"]);
@@ -927,9 +896,9 @@ describe("CrewEngine", () => {
           );
           write(world.root, "a.txt", "person\n");
           git(world.root, ["commit", "-q", "-am", "person edits a.txt"]);
-          yield* reportDone(thread);
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-          const rework = yield* snapshotWhere(
+          yield* reportDone(world, thread);
+          yield* world.turnEnds(thread);
+          const rework = yield* world.snapshotWhere(
             (snapshot) => snapshot.board.tasks[0]?.state === "rework",
           );
           assert.deepStrictEqual(
@@ -944,16 +913,16 @@ describe("CrewEngine", () => {
               lane: "conflicts",
             },
           );
-          yield* command({ _tag: "askResolve", taskId: rework.board.tasks[0]!.id });
-          const turns = yield* dispatchedOf(world, "thread.turn.start");
-          const resolving = yield* snapshotWhere(
+          yield* world.press({ _tag: "askResolve", taskId: rework.board.tasks[0]!.id });
+          const turns = yield* turnsSent(world);
+          const resolving = yield* world.snapshotWhere(
             (snapshot) => snapshot.board.tasks[0]?.state === "working",
           );
           assert.deepStrictEqual(
             {
-              card: turns.at(-1)!.message.text.split("\n").slice(1, 3),
+              card: turns.at(-1)!.text.split("\n").slice(1, 3),
               attempts: resolving.board.tasks[0]!.attempts,
-              principal: (yield* Ref.get(world.admitted)).at(-1)?.principal,
+              principal: yield* lastAdmitted(world),
             },
             {
               card: [
@@ -971,19 +940,19 @@ describe("CrewEngine", () => {
   it.live(
     "Land now on a crewmate that never reported: WIP, merge-in, check and land; its chat shows the landing",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* applied(world);
           const thread = yield* firstTurn(world, () =>
             write(world.root, ".crew/backend/ok.txt", "ok\n"),
           );
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-          const working = yield* snapshotWhere(
+          yield* world.turnEnds(thread);
+          const working = yield* world.snapshotWhere(
             (snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1,
           );
           const task = working.board.tasks[0]!;
-          yield* command({ _tag: "landNow", taskId: task.id });
-          const landed = yield* snapshotWhere(
+          yield* world.press({ _tag: "landNow", taskId: task.id });
+          const landed = yield* world.snapshotWhere(
             (snapshot) => snapshot.board.tasks[0]?.state === "landed",
           );
           const commit = landed.board.tasks[0]!.landedCommit!;
@@ -1007,31 +976,31 @@ describe("CrewEngine", () => {
   it.live(
     "a failed check goes back as rework; a landing refused by your edit waits on your tree",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* applied(world);
           const thread = yield* firstTurn(world, () =>
             write(world.root, ".crew/backend/b.txt", "crew\n"),
           );
-          yield* reportDone(thread);
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-          const failed = yield* snapshotWhere(
+          yield* reportDone(world, thread);
+          yield* world.turnEnds(thread);
+          const failed = yield* world.snapshotWhere(
             (snapshot) => snapshot.board.tasks[0]?.state === "rework",
           );
           assert.deepStrictEqual(
             [failed.board.tasks[0]!.check?.state, failed.attention.map((row) => row.kind)],
             ["failed", ["check-failed"]],
           );
-          yield* command({ _tag: "askFix", taskId: failed.board.tasks[0]!.id });
+          yield* world.press({ _tag: "askFix", taskId: failed.board.tasks[0]!.id });
           write(world.root, ".crew/backend/ok.txt", "ok\n");
-          yield* reportDone(thread);
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-          const ready = yield* snapshotWhere(
+          yield* reportDone(world, thread);
+          yield* world.turnEnds(thread);
+          const ready = yield* world.snapshotWhere(
             (snapshot) => snapshot.board.tasks[0]?.state === "ready",
           );
           write(world.root, "b.txt", "the person's own edit\n");
-          yield* command({ _tag: "land", taskId: ready.board.tasks[0]!.id });
-          const waiting = yield* snapshotWhere(
+          yield* world.press({ _tag: "land", taskId: ready.board.tasks[0]!.id });
+          const waiting = yield* world.snapshotWhere(
             (snapshot) => snapshot.board.tasks[0]?.state === "waiting-on-you",
           );
           assert.deepStrictEqual(
@@ -1046,20 +1015,20 @@ describe("CrewEngine", () => {
   );
 
   it.live("Land now takes a task back from rework as its copy stands", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () =>
           write(world.root, ".crew/backend/b.txt", "crew\n"),
         );
-        yield* reportDone(thread);
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        const failed = yield* snapshotWhere(
+        yield* reportDone(world, thread);
+        yield* world.turnEnds(thread);
+        const failed = yield* world.snapshotWhere(
           (snapshot) => snapshot.board.tasks[0]?.state === "rework",
         );
         write(world.root, ".crew/backend/ok.txt", "ok\n");
-        yield* command({ _tag: "landNow", taskId: failed.board.tasks[0]!.id });
-        yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "landed");
+        yield* world.press({ _tag: "landNow", taskId: failed.board.tasks[0]!.id });
+        yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "landed");
         assert.deepStrictEqual(
           [read(world.root, "b.txt"), read(world.root, "ok.txt")],
           ["crew\n", "ok\n"],
@@ -1075,99 +1044,69 @@ describe("CrewEngine", () => {
   ] as const)(
     "a self-deploy onto the service freezes its copies and interrupts their turns ($opens)",
     ({ opens }) =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* applied(world);
           const thread = yield* firstTurn(world, () => undefined);
-          yield* world.publish(
-            spiEvent(
-              opens,
-              "person-thread",
-              { itemType: "mcp_tool_call", status: "inProgress" } as never,
-              {
-                itemId: "deploy-1",
-                toolCall: {
-                  name: "zerops_deploy",
-                  rawName: "mcp__zerops__zerops_deploy",
-                  server: "zerops",
-                  arguments: { targetService: "appdev" },
-                },
-              } as never,
-            ),
-          );
-          const frozen = yield* snapshotWhere(
+          yield* world.deploy("started", { opens });
+          const frozen = yield* world.snapshotWhere(
             (snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen",
           );
-          const interrupts = yield* dispatchedOf(world, "thread.turn.interrupt");
+          const interrupts = yield* sentKind(world, "interrupt");
           assert.deepStrictEqual(
-            [frozen.crewmates[0]!.lane?.state, interrupts.map((entry) => entry.threadId)],
+            [frozen.crewmates[0]!.lane?.state, interrupts.map((entry) => entry.chat)],
             ["frozen", [thread]],
           );
         }),
       ),
   );
 
-  const deployEvent = (type: "item.started" | "item.completed") =>
-    spiEvent(
-      type,
-      "person-thread",
-      {
-        itemType: "mcp_tool_call",
-        status: type === "item.started" ? "inProgress" : "completed",
-      } as never,
-      {
-        itemId: "deploy-1",
-        toolCall: {
-          name: "zerops_deploy",
-          rawName: "mcp__zerops__zerops_deploy",
-          server: "zerops",
-          arguments: { targetService: "appdev" },
-        },
-      } as never,
-    );
-
   it.live("a self-deploy that lost a copy's branch unfreezes the service and names the loss", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* world.publish(deployEvent("item.started"));
-        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        yield* world.deploy("started");
+        yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
         NodeFS.rmSync(NodePath.join(world.root, ".crew/backend"), { recursive: true });
         git(world.root, ["worktree", "prune"]);
         git(world.root, ["branch", "-D", "-q", "crew/backend"]);
-        yield* world.publish(deployEvent("item.completed"));
-        const after = yield* snapshotWhere(
+        yield* world.deploy("finished");
+        const after = yield* world.snapshotWhere(
           (snapshot) => snapshot.lastError?.includes("crew/backend") === true,
         );
-        const lane = yield* (yield* CrewStore).getLane(CREW_ID, "backend");
-        assert.deepStrictEqual(
-          [after.crewmates[0]!.lane?.state === "frozen", Option.getOrThrow(lane).frozenSince],
-          [false, null],
+        assert.isFalse(after.crewmates[0]!.lane?.state === "frozen");
+        yield* onV1(world, (v1) =>
+          Effect.gen(function* () {
+            const lane = yield* v1.v1.run(
+              Effect.flatMap(CrewStore, (store) => store.getLane(CREW_ID, "backend")),
+            );
+            assert.isNull(Option.getOrThrow(lane).frozenSince);
+          }).pipe(Effect.orDie),
         );
       }),
     ),
   );
 
   it.live("a restart during a self-deploy does not leave the service frozen", () =>
-    withCrewEngines([
+    crewJourney([
       (world) =>
         Effect.gen(function* () {
           yield* applied(world);
-          yield* world.publish(deployEvent("item.started"));
-          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+          yield* world.deploy("started");
+          yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
         }),
       (world) =>
         Effect.gen(function* () {
-          yield* (yield* ServerCommandReadiness).complete;
-          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "ready");
-          yield* commandWhenFree({
+          yield* world.serverReady;
+          yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "ready");
+          yield* pressWhenFree(world, {
             _tag: "message",
             handle: "backend",
             text: "Work",
             attachments: [],
           });
-          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
-          assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, 1);
+          yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
+          assert.strictEqual((yield* turnsSent(world)).length, 1);
         }),
     ]),
   );
@@ -1189,23 +1128,23 @@ describe("CrewEngine", () => {
       }),
     ),
   )("$title", ({ processes, words }) =>
-    withCrewEngines([
+    crewJourney([
       (world) =>
         Effect.gen(function* () {
           yield* applied(world);
-          yield* world.publish(deployEvent("item.started"));
-          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+          yield* world.deploy("started");
+          yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
         }),
       (world) =>
         Effect.gen(function* () {
-          yield* Ref.set(world.processes, processes);
-          yield* (yield* ServerCommandReadiness).complete;
-          const held = yield* snapshotWhere(
+          yield* world.deployState(processes);
+          yield* world.serverReady;
+          const held = yield* world.snapshotWhere(
             (snapshot) => snapshot.lastError?.includes(words) === true,
           );
           assert.strictEqual(held.crewmates[0]!.lane?.state, "frozen");
-          yield* Ref.set(world.processes, []);
-          const thawed = yield* snapshotWhere(
+          yield* world.deployState([]);
+          const thawed = yield* world.snapshotWhere(
             (snapshot) => snapshot.crewmates[0]!.lane?.state === "ready",
           );
           assert.isNull(thawed.lastError);
@@ -1214,60 +1153,53 @@ describe("CrewEngine", () => {
   );
 
   it.live("a restart leaves a frozen host's interrupted work untouched until its deploy ends", () =>
-    withCrewEngines([
+    crewJourney([
       (world) =>
         Effect.gen(function* () {
           yield* applied(world);
           yield* firstTurn(world, () => write(world.root, ".crew/backend/a.txt", "work\n"));
-          yield* world.publish(deployEvent("item.started"));
-          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+          yield* world.deploy("started");
+          yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
         }),
       (world) =>
         Effect.gen(function* () {
           const copy = NodePath.join(world.root, ".crew/backend");
-          yield* Ref.set(world.processes, [
-            { serviceStacks: [{ name: "appdev" }], status: "RUNNING" },
-          ]);
-          yield* (yield* ServerCommandReadiness).complete;
-          yield* snapshotWhere(
+          yield* world.deployState([{ serviceStacks: [{ name: "appdev" }], status: "RUNNING" }]);
+          yield* world.serverReady;
+          yield* world.snapshotWhere(
             (snapshot) => snapshot.lastError?.includes("still redeploying") === true,
           );
-          yield* booted;
+          yield* Effect.sleep("500 millis");
           const head = git(copy, ["rev-parse", "HEAD"]);
           assert.deepStrictEqual(
-            [
-              (yield* dispatchedOf(world, "thread.turn.start")).length,
-              git(copy, ["status", "--porcelain"]),
-            ],
+            [(yield* turnsSent(world)).length, git(copy, ["status", "--porcelain"])],
             [1, "?? a.txt"],
           );
-          yield* Ref.set(world.processes, []);
-          yield* eventually(
-            Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) => turns.length === 2),
-          );
+          yield* world.deployState([]);
+          yield* eventually(Effect.map(turnsSent(world), (turns) => turns.length === 2));
           assert.notStrictEqual(git(copy, ["rev-parse", "HEAD"]), head);
         }),
     ]),
   );
 
   it.live("an unreadable redeploy is asked less and less, then offered to the person to thaw", () =>
-    withCrewEngines([
+    crewJourney([
       (world) =>
         Effect.gen(function* () {
           yield* applied(world);
-          yield* world.publish(deployEvent("item.started"));
-          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+          yield* world.deploy("started");
+          yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
         }),
       (world) =>
         Effect.gen(function* () {
-          yield* Ref.set(world.processes, "unreadable");
-          yield* (yield* ServerCommandReadiness).complete;
-          const offered = yield* snapshotWhere((snapshot) =>
+          yield* world.deployState("unreadable");
+          yield* world.serverReady;
+          const offered = yield* world.snapshotWhere((snapshot) =>
             snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
           );
           // Asked at boot, then after 50, 100, 200, 200 ms: a handful, not one every tick.
-          assert.isAtMost(yield* Ref.get(world.processReads), 8);
-          const frames = yield* (yield* CrewEngine).snapshot.pipe(
+          assert.isAtMost(yield* world.deployReads, 8);
+          const frames = yield* world.frames.pipe(
             Stream.interruptWhen(Effect.sleep("700 millis")),
             Stream.runCount,
           );
@@ -1277,16 +1209,16 @@ describe("CrewEngine", () => {
             offered.attention.find((need) => need.kind === "deploy-unreadable")!.host,
             TEST_HOST,
           );
-          yield* command({ _tag: "thawHost", host: TEST_HOST });
-          yield* snapshotWhere(
+          yield* world.press({ _tag: "thawHost", host: TEST_HOST });
+          yield* world.snapshotWhere(
             (snapshot) =>
               snapshot.crewmates[0]!.lane?.state === "ready" &&
               !snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
           );
           // Thawed, it stops asking.
-          const after = yield* Ref.get(world.processReads);
-          yield* drained;
-          assert.strictEqual(yield* Ref.get(world.processReads), after);
+          const after = yield* world.deployReads;
+          yield* Effect.sleep("600 millis");
+          assert.strictEqual(yield* world.deployReads, after);
         }),
     ]),
   );
@@ -1294,144 +1226,124 @@ describe("CrewEngine", () => {
   it.live(
     "a deploy's end recovers the copies before it thaws: a press meanwhile waits its turn",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* applied(world);
-          yield* world.publish(deployEvent("item.started"));
-          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
-          const hold = yield* world.holdSsh((script) => script.includes("worktree prune"));
-          yield* world.publish(deployEvent("item.completed"));
+          yield* world.deploy("started");
+          yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+          const hold = yield* world.hold({ step: "recover" });
+          yield* world.deploy("finished");
           yield* hold.reached;
-          const press = yield* command({
-            _tag: "message",
-            handle: "backend",
-            text: "Work",
-            attachments: [],
-          }).pipe(Effect.forkChild({ startImmediately: true }));
-          const lane = Option.getOrThrow(yield* (yield* CrewStore).getLane(CREW_ID, "backend"));
-          assert.deepStrictEqual(
-            [lane.frozenSince !== null, press.pollUnsafe() === undefined],
-            [true, true],
+          const press = yield* world
+            .press({
+              _tag: "message",
+              handle: "backend",
+              text: "Work",
+              attachments: [],
+            })
+            .pipe(Effect.forkChild);
+          yield* Effect.sleep("300 millis");
+          assert.isTrue(press.pollUnsafe() === undefined);
+          yield* onV1(world, (v1) =>
+            Effect.gen(function* () {
+              const lane = yield* v1.v1.run(
+                Effect.flatMap(CrewStore, (store) => store.getLane(CREW_ID, "backend")),
+              );
+              assert.isTrue(Option.getOrThrow(lane).frozenSince !== null);
+            }).pipe(Effect.orDie),
           );
           yield* hold.release;
           yield* Fiber.join(press);
-          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
+          yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
         }),
       ),
   );
 
-  it.live("a writer's conversation without its copy as its worktree gets it back at boot", () =>
-    withCrewEngines([
-      (world) =>
-        Effect.gen(function* () {
-          yield* applied(world);
-          yield* eventually(
-            Effect.map(dispatchedOf(world, "thread.crew.create"), (creates) => creates.length > 0),
-          );
-          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
-            (entry) => entry.crew.crewmate === "backend",
-          )!;
-          yield* Ref.set(world.threads, [
-            {
-              ...runningPersonThread(),
-              id: created.threadId,
-              crew: created.crew,
-              session: null,
-              worktreePath: null,
-            } as unknown as OrchestrationThreadShell,
-          ]);
-        }),
-      (world) =>
-        Effect.gen(function* () {
-          yield* (yield* ServerCommandReadiness).complete;
-          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
-            (entry) => entry.crew.crewmate === "backend",
-          )!;
-          yield* eventually(
-            Effect.map(dispatchedOf(world, "thread.meta.update"), (updates) => updates.length > 0),
-          );
-          const [update] = yield* dispatchedOf(world, "thread.meta.update");
-          assert.deepStrictEqual(
-            [
-              update?.threadId,
-              update?.worktreePath,
-              created.worktreePath?.endsWith("/.crew/backend"),
-            ],
-            [created.threadId, created.worktreePath, true],
-          );
-        }),
-    ]),
+  // A conversation's stored worktree path is V1's thread's: the engine resolves a crewmate's
+  // workspace from its copy each time, so nothing drifts to put back (the owner, 2026-10-08:
+  // V1's mechanism goes at cutover).
+  it.live.skipIf(CREW_WORLD !== "v1")(
+    "a writer's conversation without its copy as its worktree gets it back at boot",
+    () =>
+      crewJourney([
+        (world) =>
+          Effect.gen(function* () {
+            yield* applied(world);
+            yield* eventually(Effect.map(opened(world), (creates) => creates.length > 0));
+            const created = (yield* opened(world)).find((entry) => entry.handle === "backend")!;
+            yield* world.chatWas(created.chat, { worktreePath: null });
+          }),
+        (world) =>
+          Effect.gen(function* () {
+            yield* world.serverReady;
+            const created = (yield* opened(world)).find((entry) => entry.handle === "backend")!;
+            yield* eventually(Effect.map(sentKind(world, "copy"), (updates) => updates.length > 0));
+            const [update] = yield* sentKind(world, "copy");
+            assert.deepStrictEqual(
+              [update?.chat, update?.path, created.copy?.endsWith("/.crew/backend")],
+              [created.chat, created.copy, true],
+            );
+          }),
+      ]),
   );
 
   {
     const path = "/chosen/copy";
-    it.live("boot keeps a conversation path a person chose and offers a selected crew copy", () =>
-      withCrewEngines([
-        (world) =>
-          Effect.gen(function* () {
-            yield* applied(world);
-            yield* command({ _tag: "message", handle: "backend", text: "Work", attachments: [] });
-            const [created] = yield* dispatchedOf(world, "thread.crew.create");
-            yield* Ref.set(world.threads, [
-              {
-                ...runningPersonThread(),
-                id: created!.threadId,
-                crew: created!.crew,
-                session: null,
-                latestTurn: null,
-                worktreePath: path,
-              } as unknown as OrchestrationThreadShell,
-            ]);
-          }),
-        (world) =>
-          Effect.gen(function* () {
-            yield* (yield* ServerCommandReadiness).complete;
-            const snapshot = yield* snapshotWhere((frame) =>
-              frame.attention.some((row) => row.kind === "conversation-copy"),
-            );
-            assert.deepStrictEqual(yield* dispatchedOf(world, "thread.meta.update"), []);
-            const need = snapshot.attention.find((row) => row.kind === "conversation-copy")!;
-            const [created] = yield* dispatchedOf(world, "thread.crew.create");
-            assert.deepStrictEqual(need.copyAssignment, {
-              threadId: created!.threadId,
-              currentPath: path,
-              crewPath: created!.worktreePath!,
-              source: "crew-stint",
-            });
-            // The restart's turn carries on first; the press waits for its copy to be free.
-            yield* commandWhenFree({
-              _tag: "useCrewCopy",
-              handle: "backend",
-              threadId: created!.threadId,
-              expectedPath: path,
-            });
-            const [update] = yield* dispatchedOf(world, "thread.meta.update");
-            assert.deepStrictEqual(
-              [update?.worktreePath, update?.expectedWorktreePath],
-              [created!.worktreePath, path],
-            );
-            yield* Ref.set(world.threads, [
-              {
-                ...runningPersonThread(),
-                id: created!.threadId,
-                crew: created!.crew,
-                session: null,
-                latestTurn: null,
-                worktreePath: "/new/choice",
-              } as unknown as OrchestrationThreadShell,
-            ]);
-            const error = yield* Effect.flip(
-              command({
+    // V1's thread worktree a person chose: an engine crewmate's conversation has no path of its
+    // own to choose (the owner, 2026-10-08: V1's mechanism goes at cutover).
+    it.live.skipIf(CREW_WORLD !== "v1")(
+      "boot keeps a conversation path a person chose and offers a selected crew copy",
+      () =>
+        crewJourney([
+          (world) =>
+            Effect.gen(function* () {
+              yield* applied(world);
+              yield* world.press({
+                _tag: "message",
+                handle: "backend",
+                text: "Work",
+                attachments: [],
+              });
+              const [created] = yield* opened(world);
+              yield* world.chatWas(created!.chat, { worktreePath: path });
+            }),
+          (world) =>
+            Effect.gen(function* () {
+              yield* world.serverReady;
+              const snapshot = yield* world.snapshotWhere((frame) =>
+                frame.attention.some((row) => row.kind === "conversation-copy"),
+              );
+              assert.deepStrictEqual(yield* sentKind(world, "copy"), []);
+              const need = snapshot.attention.find((row) => row.kind === "conversation-copy")!;
+              const [created] = yield* opened(world);
+              assert.deepStrictEqual(need.copyAssignment, {
+                threadId: ThreadId.make(created!.chat),
+                currentPath: path,
+                crewPath: created!.copy!,
+                source: "crew-stint",
+              });
+              // The restart's turn carries on first; the press waits for its copy to be free.
+              yield* pressWhenFree(world, {
                 _tag: "useCrewCopy",
                 handle: "backend",
-                threadId: created!.threadId,
+                threadId: ThreadId.make(created!.chat),
                 expectedPath: path,
-              }),
-            );
-            assert.strictEqual(error.reason, "wrong-state");
-            assert.strictEqual((yield* dispatchedOf(world, "thread.meta.update")).length, 1);
-          }),
-      ]),
+              });
+              const [update] = yield* sentKind(world, "copy");
+              assert.deepStrictEqual([update?.path, update?.expected], [created!.copy, path]);
+              yield* world.chatWas(created!.chat, { worktreePath: "/new/choice" });
+              const error = yield* Effect.flip(
+                world.press({
+                  _tag: "useCrewCopy",
+                  handle: "backend",
+                  threadId: ThreadId.make(created!.chat),
+                  expectedPath: path,
+                }),
+              );
+              assert.strictEqual(error.reason, "wrong-state");
+              assert.strictEqual((yield* sentKind(world, "copy")).length, 1);
+            }),
+        ]),
     );
   }
 
@@ -1439,38 +1351,31 @@ describe("CrewEngine", () => {
     "after a restart: policies install at once, the resume waits for readiness, a died turn carries on",
     () => {
       let turnsBefore = 0;
-      return withCrewEngines([
+      return crewJourney([
         (world) =>
           Effect.gen(function* () {
             yield* applied(world);
-            yield* command({
+            yield* world.press({
               _tag: "message",
               handle: "backend",
               text: "Long work",
               attachments: [],
             });
-            const [created] = yield* dispatchedOf(world, "thread.crew.create");
-            yield* Ref.set(world.threads, [
-              { ...runningPersonThread(), id: created!.threadId, crew: created!.crew },
-            ]);
-            turnsBefore = (yield* dispatchedOf(world, "thread.turn.start")).length;
+            const [created] = yield* opened(world);
+            yield* world.chatWas(created!.chat, { running: true });
+            turnsBefore = (yield* turnsSent(world)).length;
           }),
         (world) =>
           Effect.gen(function* () {
-            assert.strictEqual(yield* Ref.get(world.installs), 2);
-            assert.strictEqual(
-              (yield* dispatchedOf(world, "thread.turn.start")).length,
-              turnsBefore,
-            );
-            yield* (yield* ServerCommandReadiness).complete;
+            assert.strictEqual(yield* world.profileInstalls, 2);
+            yield* Effect.sleep("300 millis");
+            assert.strictEqual((yield* turnsSent(world)).length, turnsBefore);
+            yield* world.serverReady;
             yield* eventually(
-              Effect.map(
-                dispatchedOf(world, "thread.turn.start"),
-                (turns) => turns.length === turnsBefore + 1,
-              ),
+              Effect.map(turnsSent(world), (turns) => turns.length === turnsBefore + 1),
             );
             // Its turn died: it carries on in the attempt it stood in, never a forced rework.
-            const snapshot = yield* snapshotWhere(
+            const snapshot = yield* world.snapshotWhere(
               (current) =>
                 current.board.tasks[0]?.attempts === 1 &&
                 current.board.tasks[0]?.state === "working" &&
@@ -1478,17 +1383,17 @@ describe("CrewEngine", () => {
             );
             assert.deepStrictEqual(
               [
-                (yield* dispatchedOf(world, "thread.turn.start")).length,
-                (yield* Ref.get(world.admitted)).at(-1)?.principal,
+                (yield* turnsSent(world)).length,
+                yield* lastAdmitted(world),
                 snapshot.lastError,
                 snapshot.attention,
               ],
               [turnsBefore + 1, AS_CREW, null, []],
             );
-            const resumed = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
-            assert.include(resumed.message.text, "Continue where you stopped");
+            const resumed = (yield* turnsSent(world)).at(-1)!;
+            assert.include(resumed.text, "Continue where you stopped");
             const thread = snapshot.crewmates[0]!.currentThreadId!;
-            const member = yield* (yield* CrewThreadDirectory).memberFor(thread);
+            const member = yield* world.member(thread);
             assert.isTrue(Option.getOrThrow(member).live);
           }),
       ]);
@@ -1496,26 +1401,29 @@ describe("CrewEngine", () => {
   );
 
   it.live("a subscription reads the tables only: the feed opens no ssh", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* drained;
-        const before = yield* Ref.get(world.sshCalls);
-        const engine = yield* CrewEngine;
-        const frames = yield* engine.snapshot.pipe(Stream.take(1), Stream.runCollect);
-        assert.deepStrictEqual([frames.length, (yield* Ref.get(world.sshCalls)) - before], [1, 0]);
+        yield* eventually(
+          Effect.gen(function* () {
+            const settled = yield* world.serviceSessions;
+            yield* Effect.sleep("200 millis");
+            return settled === (yield* world.serviceSessions);
+          }),
+        );
+        const before = yield* world.serviceSessions;
+        const frames = yield* world.frames.pipe(Stream.take(1), Stream.runCollect);
+        assert.deepStrictEqual([frames.length, (yield* world.serviceSessions) - before], [1, 0]);
       }),
     ),
   );
 
   it.live("with no crew applied the engine opens no ssh at all", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
-        const engine = yield* CrewEngine;
-        yield* engine.snapshot.pipe(Stream.take(1), Stream.runCollect);
-        yield* (yield* ServerCommandReadiness).complete;
-        yield* drained;
-        assert.strictEqual(yield* Ref.get(world.sshCalls), 0);
+        yield* world.frames.pipe(Stream.take(1), Stream.runCollect);
+        yield* Effect.sleep("300 millis");
+        assert.strictEqual(yield* world.serviceSessions, 0);
       }),
     ),
   );
@@ -1523,61 +1431,61 @@ describe("CrewEngine", () => {
   it.live(
     "Start fresh rotates between turns; Save and apply now interrupts, rotates and continues",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* applied(world);
           const thread = yield* firstTurn(world, () => undefined);
-          const busy = yield* Effect.flip(command({ _tag: "startFresh", handle: "backend" }));
-          writeCrewHome(world.workspace, { "brief.md": "Ship it by Friday.\n" });
-          yield* command({ _tag: "briefSave", apply: "now" });
-          const interrupts = (yield* dispatchedOf(world, "thread.turn.interrupt")).map(
-            (entry) => entry.threadId,
-          );
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "interrupted" }));
+          const busy = yield* Effect.flip(world.press({ _tag: "startFresh", handle: "backend" }));
+          world.writeHome({ "brief.md": "Ship it by Friday.\n" });
+          yield* world.press({ _tag: "briefSave", apply: "now" });
+          const interrupts = (yield* sentKind(world, "interrupt")).map((entry) => entry.chat);
+          yield* world.turnEnds(thread, { state: "interrupted" });
+          yield* eventually(Effect.map(opened(world), (creates) => creates.length === 2));
           yield* eventually(
-            Effect.map(
-              dispatchedOf(world, "thread.crew.create"),
-              (creates) => creates.length === 2,
-            ),
+            Effect.map(turnsSent(world), (turns) => turns.at(-1)!.text.includes("· continue")),
           );
+          const continued = (yield* turnsSent(world)).at(-1)!;
+          const creates = yield* opened(world);
+          yield* world.turnEnds(continued.chat);
           yield* eventually(
-            Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
-              turns.at(-1)!.message.text.includes("· continue"),
-            ),
-          );
-          const continued = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
-          const creates = yield* dispatchedOf(world, "thread.crew.create");
-          yield* world.publish(
-            spiEvent("turn.completed", continued.threadId, { state: "completed" }),
-          );
-          yield* eventually(
-            command({ _tag: "startFresh", handle: "backend" }).pipe(
+            world.press({ _tag: "startFresh", handle: "backend" }).pipe(
               Effect.as(true),
               Effect.orElseSucceed(() => false),
             ),
           );
-          const snapshot = yield* snapshotWhere(
-            (current) => current.crewmates[0]!.stints.length === 3,
+          const sessions = yield* world.sessionsWhere("backend", (seen) => seen.count === 3);
+          const snapshot = yield* world.snapshot;
+          const fresh = (yield* opened(world)).at(-1)!;
+          const seams = yield* seamsOf(world);
+          // V1 opens a stint in a conversation of its own and says so in a seam; the engine's
+          // session boundary is its own record's.
+          yield* onV1(world, () =>
+            Effect.sync(() =>
+              assert.deepStrictEqual(
+                seams.filter(([, , seam]) => (seam as { seam?: string }).seam === "stint"),
+                [
+                  [
+                    fresh.chat,
+                    "You cleared its conversation",
+                    { seam: "stint", previousThreadId: creates[1]!.chat },
+                  ],
+                ],
+              ),
+            ),
           );
-          const fresh = (yield* dispatchedOf(world, "thread.crew.create")).at(-1)!;
           assert.deepStrictEqual(
             {
-              seams: yield* seamsOf(world),
+              seams: seams.filter(([, , seam]) => (seam as { seam?: string }).seam !== "stint"),
               busy: busy.reason,
               interrupts,
-              continueIn: continued.threadId === creates[1]!.threadId,
-              continueAs: (yield* Ref.get(world.admitted)).at(-1)?.principal,
-              reasons: snapshot.crewmates[0]!.stints.map((stint) => stint.reason),
+              continueIn: continued.chat === creates[1]!.chat,
+              continueAs: yield* lastAdmitted(world),
+              reasons: sessions.reasons,
               brief: snapshot.crew?.briefVersion,
             },
             {
               seams: [
                 [thread, "The crew's goal changed — from now on", { seam: "saved", apply: "now" }],
-                [
-                  fresh.threadId,
-                  "You cleared its conversation",
-                  { seam: "stint", previousThreadId: creates[1]!.threadId },
-                ],
               ],
               busy: "wrong-state",
               interrupts: [thread],
@@ -1592,14 +1500,13 @@ describe("CrewEngine", () => {
   );
 
   it.live("a changed login saves only as fresh; the section names it by its label", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
-        yield* Ref.set(
-          world.logins,
+        yield* world.logins(
           new Map([["claudeAgent_work", mateLogin("claudeAgent_work", "claude-code", "work")]]),
         );
-        writeCrewHome(world.workspace, {
+        world.writeHome({
           "crew.yaml": [
             "name: Game team",
             "briefTitle: Space shooter",
@@ -1612,10 +1519,10 @@ describe("CrewEngine", () => {
           ].join("\n"),
         });
         const refused = yield* Effect.flip(
-          command({ _tag: "jobSave", handle: "backend", apply: "nextTurn" }),
+          world.press({ _tag: "jobSave", handle: "backend", apply: "nextTurn" }),
         );
-        yield* command({ _tag: "jobSave", handle: "backend", apply: "fresh" });
-        const snapshot = yield* snapshotWhere(
+        yield* world.press({ _tag: "jobSave", handle: "backend", apply: "fresh" });
+        const snapshot = yield* world.snapshotWhere(
           (current) => current.crewmates[0]!.login.id === "claudeAgent_work",
         );
         assert.deepStrictEqual(
@@ -1627,19 +1534,19 @@ describe("CrewEngine", () => {
   );
 
   it.live("Remove from crew keeps a copy with unlanded work until Discard", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () =>
           write(world.root, ".crew/backend/x.txt", "x\n"),
         );
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1);
+        yield* world.turnEnds(thread);
+        yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1);
         const kept = yield* Effect.flip(
-          command({ _tag: "removeCrewmate", handle: "backend", discardUnlanded: false }),
+          world.press({ _tag: "removeCrewmate", handle: "backend", discardUnlanded: false }),
         );
-        yield* command({ _tag: "removeCrewmate", handle: "backend", discardUnlanded: true });
-        const snapshot = yield* snapshotWhere((current) => current.crewmates.length === 0);
+        yield* world.press({ _tag: "removeCrewmate", handle: "backend", discardUnlanded: true });
+        const snapshot = yield* world.snapshotWhere((current) => current.crewmates.length === 0);
         assert.deepStrictEqual(
           {
             kept: kept.reason,
@@ -1656,7 +1563,7 @@ describe("CrewEngine", () => {
   it.live(
     "crew ports: Apply gives each writer one, Run and Stop its app, Add crew ports proposes more",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           write(
             world.root,
@@ -1675,7 +1582,7 @@ describe("CrewEngine", () => {
           );
           git(world.root, ["add", "-A"]);
           git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
-          writeCrewHome(world.workspace, {
+          world.writeHome({
             "crew.yaml": [
               "name: Game team",
               "briefTitle: Space shooter",
@@ -1687,15 +1594,15 @@ describe("CrewEngine", () => {
               "",
             ].join("\n"),
           });
-          yield* command({ _tag: "apply" });
-          yield* snapshotWhere(everyCopyReady);
-          const ports = yield* command({ _tag: "addCrewPorts", host: "appdev", count: 2 });
-          yield* command({ _tag: "appRun", handle: "backend" });
-          const running = yield* snapshotWhere(
+          yield* world.press({ _tag: "apply" });
+          yield* world.snapshotWhere(everyCopyReady);
+          const ports = yield* world.press({ _tag: "addCrewPorts", host: "appdev", count: 2 });
+          yield* world.press({ _tag: "appRun", handle: "backend" });
+          const running = yield* world.snapshotWhere(
             (current) => current.crewmates[0]!.app?.state === "running",
           );
-          yield* command({ _tag: "appStop", handle: "backend" });
-          const stopped = yield* snapshotWhere(
+          yield* world.press({ _tag: "appStop", handle: "backend" });
+          const stopped = yield* world.snapshotWhere(
             (current) => current.crewmates[0]!.app?.state === "stopped",
           );
           assert.deepStrictEqual(
@@ -1719,14 +1626,14 @@ describe("CrewEngine", () => {
   it.live(
     "Deliver's draft names your tree's uncommitted paths; the orphan scan finds lost branches",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* applied(world);
           write(world.root, "notes.txt", "mine\n");
           git(world.root, ["branch", "crew/ghost"]);
           git(world.root, ["commit", "-q", "--allow-empty", "-m", "ahead of ghost"]);
-          const draft = yield* command({ _tag: "deliverDraft" });
-          const orphans = yield* command({ _tag: "orphanScan" });
+          const draft = yield* world.press({ _tag: "deliverDraft" });
+          const orphans = yield* world.press({ _tag: "orphanScan" });
           assert.deepStrictEqual(
             [draft, orphans],
             [
@@ -1750,7 +1657,7 @@ describe("CrewEngine", () => {
     "Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases",
     () => {
       const started: Array<number> = [];
-      return withCrewEngine((world) =>
+      return crewJourney((world) =>
         Effect.gen(function* () {
           write(
             world.root,
@@ -1762,35 +1669,37 @@ describe("CrewEngine", () => {
           yield* applied(world);
           started.push(startDevServer(world, world.root));
           const thread = yield* firstTurn(world, () => undefined);
-          const directory = yield* CrewThreadDirectory;
-          const member = Option.getOrThrow(yield* directory.memberFor(thread));
-          const asked = yield* (yield* CrewToolHost).showOnDev(member, { reason: "see the HUD" });
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-          const requested = yield* snapshotWhere((snapshot) =>
+          const asked = yield* world.showOnDev(thread, { reason: "see the HUD" });
+          yield* world.turnEnds(thread);
+          const requested = yield* world.snapshotWhere((snapshot) =>
             snapshot.attention.some((row) => row.kind === "show-on-dev"),
           );
+          const turnsBefore = (yield* turnsSent(world)).length;
           yield* eventually(
-            command({ _tag: "claimGrant", host: "appdev" }).pipe(
+            world.press({ _tag: "claimGrant", host: "appdev" }).pipe(
               Effect.as(true),
               Effect.orElseSucceed(() => false),
             ),
           );
-          const claimTurn = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
-          const shaped = Option.getOrThrow(yield* directory.memberFor(thread)).gate;
+          // The claim's turn goes out a moment after the press: its session is read once it has.
+          yield* eventually(Effect.map(turnsSent(world), (turns) => turns.length > turnsBefore));
+          yield* world.turnStarts(thread);
+          const claimTurn = (yield* turnsSent(world)).at(-1)!;
+          const shaped = Option.getOrThrow(yield* world.member(thread)).gate;
           started.push(startDevServer(world, NodePath.join(world.root, ".crew/backend")));
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-          const held = yield* snapshotWhere(
+          yield* world.turnEnds(thread);
+          const held = yield* world.snapshotWhere(
             (snapshot) => snapshot.hosts[0]?.claim.state === "held",
           );
-          const gate = Option.getOrThrow(yield* directory.memberFor(thread)).gate;
+          const gate = Option.getOrThrow(yield* world.member(thread)).gate;
           const blocked = yield* Effect.flip(
-            command({ _tag: "landNow", taskId: held.board.tasks[0]!.id }),
+            world.press({ _tag: "landNow", taskId: held.board.tasks[0]!.id }),
           );
-          yield* command({ _tag: "claimRelease", host: "appdev" });
-          const releaseTurn = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
+          yield* world.press({ _tag: "claimRelease", host: "appdev" });
+          const releaseTurn = (yield* turnsSent(world)).at(-1)!;
           started.push(startDevServer(world, world.root));
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-          const released = yield* snapshotWhere(
+          yield* world.turnEnds(thread);
+          const released = yield* world.snapshotWhere(
             (snapshot) => snapshot.hosts[0]?.claim.state === "none",
           );
           assert.deepStrictEqual(
@@ -1799,13 +1708,13 @@ describe("CrewEngine", () => {
               attention: requested.attention
                 .filter((row) => row.kind === "show-on-dev")
                 .map((row) => [row.host, row.text]),
-              claimCard: claimTurn.message.text.split("\n")[1],
-              claimWorkDir: claimTurn.message.text.includes(`workDir=${world.root}/.crew/backend`),
+              claimCard: claimTurn.text.split("\n")[1],
+              claimWorkDir: claimTurn.text.includes(`workDir=${world.root}/.crew/backend`),
               shaped: shaped.kind === "live" ? [shaped.turn, shaped.devServer?.port] : null,
               served: held.hosts[0]!.served,
               holdsClaim: gate.kind === "live" && gate.holdsClaim,
               blocked: blocked.reason,
-              releaseCard: releaseTurn.message.text.split("\n")[1],
+              releaseCard: releaseTurn.text.split("\n")[1],
               servedAfter: released.hosts[0]!.served,
             },
             {
@@ -1837,7 +1746,7 @@ describe("CrewEngine", () => {
   );
 
   it.live("an Allow with no dev server of the Mate's says the way out, in the section too", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         write(
           world.root,
@@ -1856,7 +1765,7 @@ describe("CrewEngine", () => {
         );
         git(world.root, ["add", "-A"]);
         git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
-        writeCrewHome(world.workspace, {
+        world.writeHome({
           "crew.yaml": [
             "name: Game team",
             "briefTitle: Space shooter",
@@ -1868,16 +1777,15 @@ describe("CrewEngine", () => {
             "",
           ].join("\n"),
         });
-        yield* command({ _tag: "apply" });
-        yield* snapshotWhere(everyCopyReady);
+        yield* world.press({ _tag: "apply" });
+        yield* world.snapshotWhere(everyCopyReady);
         const thread = yield* firstTurn(world, () => undefined);
-        const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
-        yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
-        yield* snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
-        yield* command({ _tag: "claimGrant", host: TEST_HOST });
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        const failed = yield* snapshotWhere((snapshot) => snapshot.lastError !== null);
-        const refused = yield* Effect.flip(command({ _tag: "claimGrant", host: TEST_HOST }));
+        yield* world.showOnDev(thread, { reason: "See the camera" });
+        yield* world.snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
+        yield* world.press({ _tag: "claimGrant", host: TEST_HOST });
+        yield* world.turnEnds(thread);
+        const failed = yield* world.snapshotWhere((snapshot) => snapshot.lastError !== null);
+        const refused = yield* Effect.flip(world.press({ _tag: "claimGrant", host: TEST_HOST }));
         const words =
           "appdev has no dev server started by your Mate — ask your Mate to start it, or open Backend's own app on :3001";
         assert.deepStrictEqual(
@@ -1890,7 +1798,7 @@ describe("CrewEngine", () => {
 
   it.live("an Allow waiting on a turn that a restart ended goes out when the engine boots", () => {
     const started: Array<number> = [];
-    return withCrewEngines([
+    return crewJourney([
       (world) =>
         Effect.gen(function* () {
           write(
@@ -1903,29 +1811,28 @@ describe("CrewEngine", () => {
           yield* applied(world);
           started.push(startDevServer(world, world.root));
           const thread = yield* firstTurn(world, () => undefined);
-          const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
-          yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
-          yield* snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
-          yield* command({ _tag: "claimGrant", host: TEST_HOST });
-          yield* snapshotWhere((snapshot) => snapshot.hosts[0]!.claim.grantWaiting);
+          yield* world.showOnDev(thread, { reason: "See the camera" });
+          yield* world.snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
+          yield* world.press({ _tag: "claimGrant", host: TEST_HOST });
+          yield* world.snapshotWhere((snapshot) => snapshot.hosts[0]!.claim.grantWaiting);
         }),
       (world) =>
         Effect.gen(function* () {
-          yield* (yield* ServerCommandReadiness).complete;
-          const starting = yield* snapshotWhere(
+          yield* world.serverReady;
+          const starting = yield* world.snapshotWhere(
             (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
           );
           // The claim reads starting a moment before its turn is dispatched.
           yield* eventually(
-            Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
-              turns.at(-1)!.message.text.includes("Show your work on appdev"),
+            Effect.map(turnsSent(world), (turns) =>
+              turns.at(-1)!.text.includes("Show your work on appdev"),
             ),
           );
           assert.deepStrictEqual(
             [
               starting.hosts[0]!.claim,
-              (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.message.text.split("\n")[1],
-              (yield* Ref.get(world.admitted)).at(-1)?.principal,
+              (yield* turnsSent(world)).at(-1)!.text.split("\n")[1],
+              yield* lastAdmitted(world),
             ],
             [
               { state: "starting", handle: "backend", grantWaiting: false },
@@ -1951,7 +1858,7 @@ describe("CrewEngine", () => {
     "Allow pressed while the crewmate's turn runs is kept and sent when the turn ends",
     () => {
       const started: Array<number> = [];
-      return withCrewEngine((world) =>
+      return crewJourney((world) =>
         Effect.gen(function* () {
           write(
             world.root,
@@ -1963,30 +1870,31 @@ describe("CrewEngine", () => {
           yield* applied(world);
           started.push(startDevServer(world, world.root));
           const thread = yield* firstTurn(world, () => undefined);
-          const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
-          yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
-          yield* snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
-          yield* command({ _tag: "claimGrant", host: TEST_HOST });
-          const waiting = yield* snapshotWhere((snapshot) => snapshot.hosts[0]!.claim.grantWaiting);
-          const turnsWhileRunning = (yield* dispatchedOf(world, "thread.turn.start")).length;
-          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-          const starting = yield* snapshotWhere(
+          yield* world.showOnDev(thread, { reason: "See the camera" });
+          yield* world.snapshotWhere((snapshot) => snapshot.hosts[0]?.claim.state === "requested");
+          yield* world.press({ _tag: "claimGrant", host: TEST_HOST });
+          const waiting = yield* world.snapshotWhere(
+            (snapshot) => snapshot.hosts[0]!.claim.grantWaiting,
+          );
+          const turnsWhileRunning = (yield* turnsSent(world)).length;
+          yield* world.turnEnds(thread);
+          const starting = yield* world.snapshotWhere(
             (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
           );
           // The claim reads starting a moment before its turn is dispatched.
           yield* eventually(
-            Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
-              turns.at(-1)!.message.text.includes("Show your work on appdev"),
+            Effect.map(turnsSent(world), (turns) =>
+              turns.at(-1)!.text.includes("Show your work on appdev"),
             ),
           );
-          const turns = yield* dispatchedOf(world, "thread.turn.start");
+          const turns = yield* turnsSent(world);
           assert.deepStrictEqual(
             [
               waiting.hosts[0]!.claim,
               turns.length - turnsWhileRunning,
               starting.hosts[0]!.claim,
-              turns.at(-1)!.message.text.split("\n")[1],
-              (yield* Ref.get(world.admitted)).at(-1)?.principal,
+              turns.at(-1)!.text.split("\n")[1],
+              yield* lastAdmitted(world),
             ],
             [
               { state: "requested", handle: "backend", grantWaiting: true },
@@ -2013,7 +1921,7 @@ describe("CrewEngine", () => {
 
   it.live("Show on dev pressed while the crewmate's turn runs goes out when the turn ends", () => {
     const started: Array<number> = [];
-    return withCrewEngine((world) =>
+    return crewJourney((world) =>
       Effect.gen(function* () {
         write(
           world.root,
@@ -2025,25 +1933,25 @@ describe("CrewEngine", () => {
         yield* applied(world);
         started.push(startDevServer(world, world.root));
         const thread = yield* firstTurn(world, () => undefined);
-        yield* command({ _tag: "showOnDev", handle: "backend" });
-        const turnsWhileRunning = (yield* dispatchedOf(world, "thread.turn.start")).length;
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        const starting = yield* snapshotWhere(
+        yield* world.press({ _tag: "showOnDev", handle: "backend" });
+        const turnsWhileRunning = (yield* turnsSent(world)).length;
+        yield* world.turnEnds(thread);
+        const starting = yield* world.snapshotWhere(
           (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
         );
         // The claim reads starting a moment before its turn is dispatched.
         yield* eventually(
-          Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
-            turns.at(-1)!.message.text.includes("Show your work on appdev"),
+          Effect.map(turnsSent(world), (turns) =>
+            turns.at(-1)!.text.includes("Show your work on appdev"),
           ),
         );
-        const turns = yield* dispatchedOf(world, "thread.turn.start");
+        const turns = yield* turnsSent(world);
         assert.deepStrictEqual(
           [
             turns.length - turnsWhileRunning,
             starting.hosts[0]!.claim.handle,
-            turns.at(-1)!.message.text.split("\n")[1],
-            (yield* Ref.get(world.admitted)).at(-1)?.principal,
+            turns.at(-1)!.text.split("\n")[1],
+            yield* lastAdmitted(world),
           ],
           [1, "backend", "Show your work on appdev", KAREL],
         );
@@ -2063,7 +1971,7 @@ describe("CrewEngine", () => {
 
   it.live("a run that lets the crew show work on dev allows a request when its turn ends", () => {
     const started: Array<number> = [];
-    return withCrewEngine((world) =>
+    return crewJourney((world) =>
       Effect.gen(function* () {
         write(
           world.root,
@@ -2073,7 +1981,7 @@ describe("CrewEngine", () => {
         git(world.root, ["add", "-A"]);
         git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
         yield* applied(world);
-        yield* command({
+        yield* world.press({
           _tag: "start",
           budgetUsd: "unlimited",
           timeLimitHours: "unlimited",
@@ -2084,23 +1992,27 @@ describe("CrewEngine", () => {
         });
         started.push(startDevServer(world, world.root));
         const thread = yield* firstTurn(world, () => undefined);
-        const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
-        yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        const starting = yield* snapshotWhere(
+        yield* world.showOnDev(thread, { reason: "See the camera" });
+        const admittedBefore = (yield* world.admissions).length;
+        yield* world.turnEnds(thread);
+        const starting = yield* world.snapshotWhere(
           (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
         );
-        // The claim reads starting a moment before its turn is dispatched.
+        // The claim reads starting a moment before its turn is dispatched; the turn's admission
+        // is recorded as its run starts, a moment after it went out.
         yield* eventually(
-          Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
-            turns.at(-1)!.message.text.includes("Show your work on appdev"),
+          Effect.map(turnsSent(world), (turns) =>
+            turns.at(-1)!.text.includes("Show your work on appdev"),
           ),
+        );
+        yield* eventually(
+          Effect.map(world.admissions, (admitted) => admitted.length > admittedBefore),
         );
         assert.deepStrictEqual(
           [
             starting.hosts[0]!.claim.handle,
-            (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.message.text.split("\n")[1],
-            (yield* Ref.get(world.admitted)).at(-1)?.principal,
+            (yield* turnsSent(world)).at(-1)!.text.split("\n")[1],
+            yield* lastAdmitted(world),
           ],
           ["backend", "Show your work on appdev", AS_CREW],
         );
@@ -2120,7 +2032,7 @@ describe("CrewEngine", () => {
 
   it.live("Show on dev pressed by you asks and allows at once, as you", () => {
     const started: Array<number> = [];
-    return withCrewEngine((world) =>
+    return crewJourney((world) =>
       Effect.gen(function* () {
         write(
           world.root,
@@ -2131,29 +2043,29 @@ describe("CrewEngine", () => {
         git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
         yield* applied(world);
         started.push(startDevServer(world, world.root));
-        yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
-        const [created] = yield* dispatchedOf(world, "thread.crew.create");
-        yield* world.publish(spiEvent("turn.completed", created!.threadId, { state: "completed" }));
+        yield* world.press({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
+        const [created] = yield* opened(world);
+        yield* world.turnEnds(created!.chat);
         yield* eventually(
-          command({ _tag: "showOnDev", handle: "backend" }).pipe(
+          world.press({ _tag: "showOnDev", handle: "backend" }).pipe(
             Effect.as(true),
             Effect.orElseSucceed(() => false),
           ),
         );
-        const starting = yield* snapshotWhere(
+        const starting = yield* world.snapshotWhere(
           (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
         );
         // The claim reads starting a moment before its turn is dispatched.
         yield* eventually(
-          Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
-            turns.at(-1)!.message.text.includes("Show your work on appdev"),
+          Effect.map(turnsSent(world), (turns) =>
+            turns.at(-1)!.text.includes("Show your work on appdev"),
           ),
         );
         assert.deepStrictEqual(
           [
             starting.hosts[0]!.claim.handle,
-            (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.message.text.split("\n")[1],
-            (yield* Ref.get(world.admitted)).at(-1)?.principal,
+            (yield* turnsSent(world)).at(-1)!.text.split("\n")[1],
+            yield* lastAdmitted(world),
           ],
           ["backend", "Show your work on appdev", KAREL],
         );
@@ -2174,24 +2086,19 @@ describe("CrewEngine", () => {
   it.live(
     "the crew's thread policy: installed at Apply, a profile for the live stint, deny-all once retired, none for a person",
     () =>
-      withCrewEngine(
+      crewJourney(
         (world) =>
           Effect.gen(function* () {
-            const registry = yield* ThreadToolPolicyRegistry;
-            const before = yield* registry.current;
+            const before = yield* world.toolProfilesInstalled;
             yield* applied(world);
             const thread = yield* firstTurn(world, () => undefined);
-            yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-            const policy = Option.getOrThrow(yield* registry.current);
-            const profileOf = (threadId: string) =>
-              policy.profileFor({
-                threadId: ThreadIdSchema.make(threadId),
-                instanceId: ProviderInstanceId.make("claudeAgent"),
-              });
+            yield* world.turnEnds(thread);
+            assert.isTrue(yield* world.toolProfilesInstalled);
+            const profileOf = world.toolProfile;
             const live = yield* profileOf(thread);
             const person = yield* profileOf("person-thread");
             yield* eventually(
-              command({ _tag: "startFresh", handle: "backend" }).pipe(
+              world.press({ _tag: "startFresh", handle: "backend" }).pipe(
                 Effect.as(true),
                 Effect.orElseSucceed(() => false),
               ),
@@ -2199,7 +2106,7 @@ describe("CrewEngine", () => {
             const retired = yield* profileOf(thread);
             assert.deepStrictEqual(
               {
-                before: Option.isNone(before),
+                before: !before,
                 live: [
                   live?.sessionContext.includes("You are @backend"),
                   live?.sessionContext.includes("# Brief v1: Space shooter"),
@@ -2222,7 +2129,7 @@ describe("CrewEngine", () => {
               },
             );
           }),
-        { installer: () => installCrewThreadPolicy },
+        { toolProfiles: true },
       ),
   );
 
@@ -2268,13 +2175,13 @@ describe("CrewEngine", () => {
       words: "@backend runs on gone, which isn't a login on this Mate",
     },
   ])("Apply refuses $name, naming why", ({ lead, writer, words }) =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
-        writeCrewHome(world.workspace, {
+        world.writeHome({
           "crew.yaml": twoCrewmates(lead, writer),
           "jobs/lead.md": "Plan the work.\n",
         });
-        const refused = yield* Effect.flip(command({ _tag: "apply" }));
+        const refused = yield* Effect.flip(world.press({ _tag: "apply" }));
         assert.deepStrictEqual(
           [refused.reason, refused.detail?.startsWith(words)],
           ["invalid-definition", true],
@@ -2284,25 +2191,24 @@ describe("CrewEngine", () => {
   );
 
   it.live("an agent not live yet when the engine boots gets its crew tools once it is", () =>
-    withCrewEngines([
+    crewJourney([
       (world) =>
         Effect.gen(function* () {
           yield* applied(world);
-          yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
-          yield* eventually(
-            Effect.map(dispatchedOf(world, "thread.crew.create"), (creates) => creates.length > 0),
-          );
-          yield* Ref.set(world.missingAgents, new Set(["claudeAgent"]));
+          yield* world.press({
+            _tag: "message",
+            handle: "backend",
+            text: "Start",
+            attachments: [],
+          });
+          yield* eventually(Effect.map(opened(world), (creates) => creates.length > 0));
+          yield* world.agentsNotLive(new Set(["claudeAgent"]));
         }),
       (world) =>
         Effect.gen(function* () {
-          yield* Ref.set(world.missingAgents, new Set());
-          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
-            (entry) => entry.crew.crewmate === "backend",
-          )!;
-          const member = Option.getOrThrow(
-            yield* (yield* CrewThreadDirectory).memberFor(created.threadId),
-          );
+          yield* world.agentsNotLive(new Set());
+          const created = (yield* opened(world)).find((entry) => entry.handle === "backend")!;
+          const member = Option.getOrThrow(yield* world.member(created.chat));
           assert.deepStrictEqual([member.prompt.crewTools, member.prompt.memory], [true, true]);
         }),
     ]),
@@ -2313,21 +2219,21 @@ describe("CrewEngine", () => {
   it.live(
     "a run's dollar budget is refused while a crewmate's agent doesn't report its spend",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
-          writeCrewHome(world.workspace, {
+          world.writeHome({
             "crew.yaml": twoCrewmates("claudeAgent", "grok"),
             "jobs/lead.md": "Plan the work.\n",
           });
-          yield* command({ _tag: "apply" });
-          yield* eventually(Effect.map(latest, everyCopyReady));
-          const budgeted = yield* Effect.flip(command({ ...RUN_NOW, budgetUsd: 20 }));
-          yield* command(RUN_NOW);
-          const run = (yield* snapshotWhere((snapshot) => snapshot.run !== null)).run!;
-          yield* command({ _tag: "pause", runId: run.id });
-          yield* snapshotWhere((snapshot) => snapshot.run?.state === "paused");
+          yield* world.press({ _tag: "apply" });
+          yield* eventually(Effect.map(world.snapshot, everyCopyReady));
+          const budgeted = yield* Effect.flip(world.press({ ...RUN_NOW, budgetUsd: 20 }));
+          yield* world.press(RUN_NOW);
+          const run = (yield* world.snapshotWhere((snapshot) => snapshot.run !== null)).run!;
+          yield* world.press({ _tag: "pause", runId: run.id });
+          yield* world.snapshotWhere((snapshot) => snapshot.run?.state === "paused");
           const resumed = yield* Effect.flip(
-            command({ _tag: "resume", runId: run.id, budgetUsd: 20 }),
+            world.press({ _tag: "resume", runId: run.id, budgetUsd: 20 }),
           );
           assert.deepStrictEqual(
             [budgeted.detail?.startsWith(NO_SPEND), resumed.detail?.startsWith(NO_SPEND)],
@@ -2338,23 +2244,23 @@ describe("CrewEngine", () => {
   );
 
   it.live("Apply refuses a crewmate on an agent that doesn't report its spend under a budget", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
-        writeCrewHome(world.workspace, {
+        world.writeHome({
           "crew.yaml": twoCrewmates("claudeAgent", "claudeAgent"),
           "jobs/lead.md": "Plan the work.\n",
         });
-        yield* command({ _tag: "apply" });
-        yield* eventually(Effect.map(latest, everyCopyReady));
-        yield* command({ ...RUN_NOW, budgetUsd: 20 });
-        yield* snapshotWhere((snapshot) => snapshot.run !== null);
-        writeCrewHome(world.workspace, {
+        yield* world.press({ _tag: "apply" });
+        yield* eventually(Effect.map(world.snapshot, everyCopyReady));
+        yield* world.press({ ...RUN_NOW, budgetUsd: 20 });
+        yield* world.snapshotWhere((snapshot) => snapshot.run !== null);
+        world.writeHome({
           "crew.yaml": twoCrewmates("claudeAgent", "grok"),
           "jobs/lead.md": "Plan the work.\n",
         });
-        const refused = yield* Effect.flip(command({ _tag: "apply" }));
+        const refused = yield* Effect.flip(world.press({ _tag: "apply" }));
         const ownRefused = yield* Effect.flip(
-          command({ _tag: "jobSave", handle: "backend", apply: "fresh" }),
+          world.press({ _tag: "jobSave", handle: "backend", apply: "fresh" }),
         );
         assert.deepStrictEqual(
           [
@@ -2371,26 +2277,24 @@ describe("CrewEngine", () => {
   it.live(
     "a Codex writer runs without crew tools and memory; Runs on names each login's agent",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
-          yield* Ref.set(
-            world.logins,
-            new Map([["codex_work", mateLogin("codex_work", "codex", "work")]]),
-          );
-          writeCrewHome(world.workspace, {
+          yield* world.logins(new Map([["codex_work", mateLogin("codex_work", "codex", "work")]]));
+          world.writeHome({
             "crew.yaml": twoCrewmates("claudeAgent", "codex_work"),
             "jobs/lead.md": "Plan the work.\n",
           });
-          yield* command({ _tag: "apply" });
-          yield* snapshotWhere(everyCopyReady);
-          yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
-          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
-            (entry) => entry.crew.crewmate === "backend",
-          )!;
-          const member = Option.getOrThrow(
-            yield* (yield* CrewThreadDirectory).memberFor(created.threadId),
-          );
-          const snapshot = yield* latest;
+          yield* world.press({ _tag: "apply" });
+          yield* world.snapshotWhere(everyCopyReady);
+          yield* world.press({
+            _tag: "message",
+            handle: "backend",
+            text: "Start",
+            attachments: [],
+          });
+          const created = (yield* opened(world)).find((entry) => entry.handle === "backend")!;
+          const member = Option.getOrThrow(yield* world.member(created.chat));
+          const snapshot = yield* world.snapshot;
           assert.deepStrictEqual(
             {
               prompt: [member.prompt.crewTools, member.prompt.memory],
@@ -2409,11 +2313,10 @@ describe("CrewEngine", () => {
   );
 
   it.live("before any crew exists the crew home reads as an empty set, never a refusal", () =>
-    withCrewEngine(() =>
+    crewJourney((world) =>
       Effect.gen(function* () {
-        const engine = yield* CrewEngine;
         assert.deepStrictEqual(
-          [yield* engine.readFiles, (yield* latest).status],
+          [yield* world.readFiles, (yield* world.snapshot).status],
           [{ files: [] }, "none"],
         );
       }),
@@ -2423,13 +2326,14 @@ describe("CrewEngine", () => {
   it.live(
     "the dev services this Mate mounts show before any crew; opening the crew home reads their databases",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
-          const engine = yield* CrewEngine;
-          const before = yield* snapshotWhere((current) => current.devHosts.length > 0);
-          const sshBefore = yield* Ref.get(world.sshCalls);
-          yield* engine.readFiles;
-          const read = yield* snapshotWhere((current) => current.devHosts[0]?.database !== null);
+          const before = yield* world.snapshotWhere((current) => current.devHosts.length > 0);
+          const sshBefore = yield* world.serviceSessions;
+          yield* world.readFiles;
+          const read = yield* world.snapshotWhere(
+            (current) => current.devHosts[0]?.database !== null,
+          );
           assert.deepStrictEqual(
             [
               before.status,
@@ -2446,16 +2350,21 @@ describe("CrewEngine", () => {
   it.live(
     "a writer's conversation runs in its copy; your tree's branch and head are in the snapshot",
     () =>
-      withCrewEngine((world) =>
+      crewJourney((world) =>
         Effect.gen(function* () {
           yield* applied(world);
-          yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
-          const [created] = yield* dispatchedOf(world, "thread.crew.create");
-          const snapshot = yield* snapshotWhere(
+          yield* world.press({
+            _tag: "message",
+            handle: "backend",
+            text: "Start",
+            attachments: [],
+          });
+          const [created] = yield* opened(world);
+          const snapshot = yield* world.snapshotWhere(
             (current) => current.hosts[0]?.integration !== null,
           );
           assert.deepStrictEqual(
-            [created!.worktreePath, snapshot.hosts[0]!.integration],
+            [created!.copy, snapshot.hosts[0]!.integration],
             [
               `${world.root}/.crew/backend`,
               { branch: "main", head: git(world.root, ["rev-parse", "HEAD"]) },
@@ -2466,22 +2375,22 @@ describe("CrewEngine", () => {
   );
 
   it.live("Try again on a stopped task queues it for its next attempt and starts it", () =>
-    withCrewEngine((world) =>
+    crewJourney((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () =>
           write(world.root, ".crew/backend/.env", "SECRET=1\n"),
         );
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* world.turnEnds(thread);
         // The guard left the file uncommitted: the copy reads dirty with nothing ahead.
-        const parked = yield* snapshotWhere(
+        const parked = yield* world.snapshotWhere(
           (current) =>
             current.board.tasks[0]?.state === "parked" &&
             current.crewmates[0]!.lane?.dirty === true,
         );
         NodeFS.rmSync(NodePath.join(world.root, ".crew/backend/.env"));
-        yield* command({ _tag: "taskRetry", taskId: parked.board.tasks[0]!.id });
-        const retried = yield* snapshotWhere(
+        yield* world.press({ _tag: "taskRetry", taskId: parked.board.tasks[0]!.id });
+        const retried = yield* world.snapshotWhere(
           (current) => current.board.tasks[0]?.state === "working",
         );
         assert.deepStrictEqual(

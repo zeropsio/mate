@@ -4,11 +4,14 @@ import * as Schema from "effect/Schema";
 
 import {
   CommandResult,
+  CREW_OWNER_ID,
   ConversationId,
   EngineEvent,
   ENGINE_EVENT_VERSION,
   Item,
+  OwnerKind,
   Request,
+  RotateSession,
   Run,
   RunEnd,
   effectId,
@@ -35,6 +38,11 @@ describe("engine ids are derived from their cause", () => {
       name: "a wake from its owner, kind and key",
       id: wakeId(conversation, "usage-resume", run),
       expected: "mate/w/usage-resume/mate/r/3",
+    },
+    {
+      name: "a crew wake from the crew owner, kind and key",
+      id: wakeId(CREW_OWNER_ID, "lead-wake", "backend"),
+      expected: "crew/main/w/lead-wake/backend",
     },
   ])("derives $name", ({ id, expected }) => {
     expect(id).toBe(expected);
@@ -289,6 +297,42 @@ describe("a stored event from a newer build still decodes (rule 10)", () => {
         { kind: "person", principal: { kind: "person", subject: "ana" } },
       ),
     ],
+    [
+      "crew card kind",
+      opened(
+        {
+          kind: "note",
+          text: "x",
+          streaming: false,
+          answer: false,
+          card: {
+            kind: "pep-talk",
+            taskId: null,
+            number: null,
+            title: "x",
+            why: "",
+            doneWhen: null,
+            links: [{ kind: "ticket", id: "x" }],
+          },
+        },
+        { kind: "engine" },
+      ),
+    ],
+    [
+      "crew seam",
+      opened({ kind: "marker", marker: { kind: "crew.seam", seam: { seam: "deployed" } } }),
+    ],
+    [
+      "run end detail",
+      {
+        ...header,
+        _tag: "RunEnded",
+        runId: "mate/r/1",
+        end: { kind: "failed", reason: "x", next: null },
+        source: "agent",
+        detail: "melted",
+      },
+    ],
   ] as const)("an event with a newer %s still decodes", (_name, raw) => {
     expect(decodes(raw)).toBe(true);
   });
@@ -380,5 +424,153 @@ describe("an answered question's record", () => {
   it("an approval's answer is its summary alone", () => {
     const answer = { by: { kind: "person", subject: "owner" }, at: 5, summary: "Approved" };
     expect(decodeRequest({ ...request, answer }).answer).toEqual(answer);
+  });
+});
+
+const decodeRotate = Schema.decodeUnknownSync(RotateSession);
+const decodeOwnerKind = Schema.decodeUnknownSync(OwnerKind);
+
+describe("crew on the record", () => {
+  const crewmate = ConversationId.make("crew-game-backend-1");
+  const crewRun = runId(crewmate, 2);
+  const base = {
+    conversationId: crewmate,
+    runId: crewRun,
+    seq: 3,
+    rev: 3,
+    at: 1,
+  };
+
+  it("keeps a crew card on its note and a crew seam on its marker, through the record", () => {
+    const table = [
+      {
+        ...base,
+        id: itemId(crewRun, 1),
+        by: { kind: "engine" },
+        kind: "note",
+        text: "#12 Add pagination to /api/items",
+        streaming: false,
+        answer: false,
+        card: {
+          kind: "task",
+          taskId: "task-12",
+          number: 12,
+          title: "Add pagination to /api/items",
+          why: "Paginate by cursor.",
+          doneWhen: "npm test passes",
+          links: [{ kind: "crewmate", handle: "erik" }],
+        },
+      },
+      {
+        ...base,
+        id: itemId(crewRun, 2),
+        by: { kind: "engine" },
+        kind: "marker",
+        marker: {
+          kind: "crew.seam",
+          seam: {
+            seam: "landed",
+            taskId: "task-12",
+            number: 12,
+            commit: "0a84078f2fd5652d10c3c820786c944d057386e3",
+          },
+        },
+      },
+    ];
+    for (const raw of table) expect(encodeItem(decodeItem(raw))).toEqual(raw);
+  });
+
+  it("decodes a note and a marker an older engine wrote, with no card and no seam", () => {
+    const note = decodeItem({
+      ...base,
+      id: itemId(crewRun, 1),
+      by: { kind: "mate" },
+      kind: "note",
+      text: "Done.",
+      streaming: false,
+      answer: true,
+    });
+    const marker = decodeItem({
+      ...base,
+      id: itemId(crewRun, 2),
+      by: { kind: "engine" },
+      kind: "marker",
+      marker: { kind: "compacted" },
+    });
+    expect(note).not.toHaveProperty("card");
+    expect(marker).toMatchObject({ kind: "marker", marker: { kind: "compacted" } });
+    expect(marker.kind === "marker" && "seam" in marker.marker).toBe(false);
+  });
+
+  it("decodes a card kind, a card link and a seam from a newer build as unknown", () => {
+    const note = decodeItem({
+      ...base,
+      id: itemId(crewRun, 1),
+      by: { kind: "engine" },
+      kind: "note",
+      text: "x",
+      streaming: false,
+      answer: false,
+      card: {
+        kind: "pep-talk",
+        taskId: null,
+        number: null,
+        title: "Keep going",
+        why: "",
+        doneWhen: null,
+        links: [{ kind: "ticket", id: "T-1" }],
+      },
+    });
+    const marker = decodeItem({
+      ...base,
+      id: itemId(crewRun, 2),
+      by: { kind: "engine" },
+      kind: "marker",
+      marker: { kind: "crew.seam", seam: { seam: "deployed", host: "appdev" } },
+    });
+    expect(note).toMatchObject({
+      card: { kind: "unknown", links: [{ kind: "unknown", type: "ticket" }] },
+    });
+    expect(marker).toMatchObject({
+      marker: { seam: { seam: "unknown", type: "deployed" } },
+    });
+  });
+
+  it("keeps a run end's cost, its context at the end, its detail and a refusal's words", () => {
+    const raw = {
+      ...header,
+      conversationId: crewmate,
+      _tag: "RunEnded",
+      runId: crewRun,
+      end: { kind: "failed", reason: "not-allowed", next: null },
+      source: "inferred-from-effect",
+      costUsd: 0.42,
+      contextTokens: 183_000,
+      detail: "refused",
+      refusal: "Not this login's signer.",
+    };
+    expect(encodeEvent(decodeEvent(raw))).toEqual(raw);
+  });
+
+  it("decodes a run end an older engine wrote, without cost, context, detail or refusal", () => {
+    const raw = {
+      ...header,
+      _tag: "RunEnded",
+      runId: run,
+      end: { kind: "completed" },
+      source: "agent",
+    };
+    expect(encodeEvent(decodeEvent(raw))).toEqual(raw);
+  });
+
+  it("decodes a rotation's reason and an owner kind from a newer build as unknown", () => {
+    expect(
+      decodeRotate({ _tag: "RotateSession", reason: "context", fresh: true, seed: "packet" }),
+    ).toEqual({ _tag: "RotateSession", reason: "context", fresh: true, seed: "packet" });
+    expect(
+      decodeRotate({ _tag: "RotateSession", reason: "moon", fresh: false, seed: null }).reason,
+    ).toBe("unknown");
+    expect(decodeOwnerKind("crew")).toBe("crew");
+    expect(decodeOwnerKind("standup")).toBe("unknown");
   });
 });

@@ -31,6 +31,8 @@ import {
   makeMateFeeds,
   makeMateFeedWire,
   classifyMateFeedFailure,
+  crewFrameMark,
+  isNewerCrewFrame,
   type MateFeedEvent,
 } from "./mateFeeds.ts";
 const auth = { available: true, agents: [] } as const;
@@ -659,3 +661,42 @@ it.live(
       r.close();
     }),
 );
+
+describe("the crew feed's frames", () => {
+  it("takes a frame only when it is newer: its revision's epoch first, then its sequence, V1's seq without one", () => {
+    const v1 = (seq: number) => ({ seq });
+    const engine = (epoch: number, seq: number, wallSeq = 0, view?: number) => ({
+      seq: wallSeq,
+      revision: { epoch, seq, ...(view === undefined ? {} : { view }) },
+    });
+    const table = [
+      ["the first V1 frame", null, v1(5), true],
+      ["a later V1 frame", v1(5), v1(6), true],
+      ["the same V1 frame again", v1(5), v1(5), false],
+      ["an older V1 frame", v1(5), v1(4), false],
+      ["the first engine frame", null, engine(2, 0), true],
+      ["the next engine step", engine(2, 7), engine(2, 8), true],
+      ["the same engine step again", engine(2, 7), engine(2, 7), false],
+      ["an older engine step", engine(2, 7), engine(2, 6), false],
+      // A dev service came up or went: the crew's step stands, what its frame shows moved.
+      ["the same engine step, its view moved", engine(2, 7), engine(2, 7, 0, 1), true],
+      ["the same engine step and view again", engine(2, 7, 0, 1), engine(2, 7, 0, 1), false],
+      ["an older view of the same step", engine(2, 7, 0, 2), engine(2, 7, 0, 1), false],
+      ["the next step after a moved view", engine(2, 7, 0, 3), engine(2, 8), true],
+      ["a newer epoch, its sequence started again", engine(2, 7), engine(3, 0), true],
+      ["an older epoch, its sequence ahead", engine(3, 0), engine(2, 9), false],
+      [
+        "an engine frame whose wall-clock seq went back",
+        engine(2, 7, 900),
+        engine(2, 8, 100),
+        true,
+      ],
+    ] as const;
+    for (const [name, last, frame, newer] of table) {
+      expect([name, isNewerCrewFrame(last === null ? null : crewFrameMark(last), frame)]).toEqual([
+        name,
+        newer,
+      ]);
+    }
+  });
+});

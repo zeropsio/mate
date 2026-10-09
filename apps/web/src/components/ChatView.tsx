@@ -14,7 +14,7 @@ import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
-import { timelineEntryTurnId } from "./chat/conversation.logic";
+import { crewCardOf, timelineEntryTurnId } from "./chat/conversation.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
 import { mateLimitAtom } from "@t3tools/client-runtime/data";
 import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
@@ -88,7 +88,7 @@ import {
   resolveProjectScripts,
 } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
-import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isCrewCard, isSlashCommand } from "@t3tools/shared/userAsk";
+import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isSlashCommand } from "@t3tools/shared/userAsk";
 import {
   getTerminalLabel,
   nextTerminalId,
@@ -1436,6 +1436,7 @@ export default function ChatView(props: ChatViewProps) {
   // it holds its Mate until it answers (A9).
   const startThreadTurn = useMateCommand(threadEnvironment.startTurn, { reportFailure: false });
   const sendCrewCommand = useAtomCommand(crewCommands.command, { reportFailure: false });
+  const readCrewTaskPage = useAtomCommand(crewCommands.taskPage, { reportFailure: false });
   const uploadThreadFeedback = useAtomCommand(threadEnvironment.uploadFeedback, {
     reportFailure: false,
   });
@@ -5526,7 +5527,7 @@ export default function ChatView(props: ChatViewProps) {
             (entry) =>
               entry.kind === "message" &&
               entry.message.role === "user" &&
-              isCrewCard(entry.message.text),
+              crewCardOf(entry.message) !== null,
           )
         : undefined;
     return {
@@ -5560,6 +5561,13 @@ export default function ChatView(props: ChatViewProps) {
         crewDoor.crewmate(activeCrewOrigin.crewmate) === null
           ? () => openCrewView(activeThreadRef, { kind: "job", handle: activeCrewOrigin.crewmate })
           : null,
+      // The engine crew's board is bounded: older finished work is read a page at a time.
+      readTaskPage: (input) =>
+        readCrewTaskPage({ environmentId, input }).then((result) =>
+          result._tag === "Success"
+            ? result.value
+            : Promise.reject(new Error("The crew's finished work could not be read.")),
+        ),
     };
   }, [
     activeCrewOrigin,
@@ -5571,6 +5579,7 @@ export default function ChatView(props: ChatViewProps) {
     environmentId,
     loadEarlierTurns,
     navigate,
+    readCrewTaskPage,
     threadId,
     zeropsMates,
   ]);

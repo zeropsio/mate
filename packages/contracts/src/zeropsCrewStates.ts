@@ -53,6 +53,26 @@ export type CrewRunState = typeof CrewRunState.Type;
 export const CrewStintState = Schema.Literals(["open", "active", "rotate-pending", "retired"]);
 export type CrewStintState = typeof CrewStintState.Type;
 
+/**
+ * Why a crewmate's conversation opened a new session between turns, on the engine:
+ * - `context`: it outgrew its context, was compacted `rotateAfter` times, or its transcript is gone;
+ * - `cleared`: *Clear its conversation* or *Start fresh*;
+ * - `job`: a saved brief or job applied fresh or at once;
+ * - `login`: it runs on another login;
+ * - `budget`: a run's cap changed (the session resumes);
+ * - `task`: its next task starts clean (unrelated work, someone else's, a second rework).
+ *
+ * Open on both ends: a reason from a newer build decodes as `unknown`.
+ */
+export const CREW_SESSION_REASONS = [
+  "context",
+  "cleared",
+  "job",
+  "login",
+  "budget",
+  "task",
+] as const;
+
 /** The Show-on-dev claim per dev host (ARCHITECTURE §4). */
 export const CrewClaimState = Schema.Literals([
   "none",

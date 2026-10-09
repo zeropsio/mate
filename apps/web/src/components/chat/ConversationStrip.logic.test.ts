@@ -1,5 +1,11 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import { overlayEngineShell } from "@t3tools/client-runtime/data";
+import { engineRow } from "@t3tools/client-runtime/data/fixtures";
+import {
+  crewConversationId,
+  crewEngineSnapshotFixture,
+  crewSnapshotFixture,
+} from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import {
   EnvironmentId,
@@ -8,8 +14,10 @@ import {
   ThreadId,
   TurnId,
   type CrewSnapshot,
+  type ConversationRow,
 } from "@t3tools/contracts";
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
+import * as Option from "effect/Option";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -392,6 +400,67 @@ describe("lineCrew", () => {
       ["frontend", "Frontend", "coral", "thread-crew-frontend-1", false, false, true],
       ["erik", "Erik", "amber", "thread-crew-erik-1", false, false, true],
     ]);
+  });
+
+  describe("on the engine, each face from its conversation's row", () => {
+    const rowOf = (handle: string, state: ConversationRow["state"]) =>
+      engineRow("env-fen", crewConversationId(handle), {
+        agent: {
+          instanceId: "claudeAgent",
+          driver: "claudeAgent",
+          model: null,
+          profile: { kind: "crewmate", id: handle, name: handle },
+        },
+        ...(state === undefined ? {} : { state }),
+      });
+    const engineView = () => {
+      const shell = overlayEngineShell(
+        {
+          snapshot: Option.some({
+            snapshotSequence: 1,
+            projects: [{ id: "project-fen" }],
+            threads: [],
+            updatedAt: "2026-09-27T09:00:00.000Z",
+          }),
+          status: "live",
+          error: Option.none(),
+        } as unknown as Parameters<typeof overlayEngineShell>[0],
+        [
+          rowOf("lead", { kind: "idle" }),
+          rowOf("backend", { kind: "working", since: 1, waitsOnHelpers: false }),
+          rowOf("frontend", { kind: "idle" }),
+          rowOf("erik", { kind: "idle" }),
+        ],
+      );
+      const threads = (Option.getOrNull(shell.snapshot)?.threads ?? []).map((thread) => ({
+        ...thread,
+        environmentId: "env-fen" as EnvironmentThreadShell["environmentId"],
+      }));
+      return deriveCrewView(crewEngineSnapshotFixture(), threads, (thread) => ({
+        status: resolveThreadStatus(thread),
+        word: null,
+        working: false,
+      }));
+    };
+
+    it("draws a face per crewmate, the lead first, each opening the stint it talks in now", () => {
+      expect(
+        crew({ view: engineView() })?.map(({ handle, threadId }) => [handle, threadId]),
+      ).toEqual([
+        ["lead", "crew-game-lead-1"],
+        ["backend", "crew-game-backend-1"],
+        ["frontend", "crew-game-frontend-1"],
+        ["erik", "crew-game-erik-1"],
+      ]);
+    });
+
+    it("wears each face's state, and says it only in its accessible name", () => {
+      const backend = crew({ view: engineView() })?.find((entry) => entry.handle === "backend");
+      expect(backend?.face).toBe("working");
+      expect(backend === undefined ? null : crewmateAccessibleName(backend)).toBe(
+        "Backend, one of Fen's crew, Working",
+      );
+    });
   });
 
   it("says on hover who each is, and a crewmate's job in its first sentence", () => {

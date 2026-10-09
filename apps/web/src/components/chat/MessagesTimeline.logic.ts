@@ -48,8 +48,8 @@ import {
   isResumePrompt,
   isUserMessageEntry,
   messageReceipt,
+  crewCardOf,
   turnsThatCame,
-  readCrewCard,
   readSlashCommand,
   stretchFace,
   standingIncidents,
@@ -2306,7 +2306,7 @@ export function deriveMessagesTimelineRows(input: {
     }
   };
   const personRow = (entry: MessageEntry, index: number, aside: boolean): MessagesTimelineRow => {
-    const task = readCrewCard(entry.message.text);
+    const task = crewCardOf(entry.message);
     if (task !== null) {
       return { kind: "crew-card", id: entry.id, createdAt: entry.createdAt, task };
     }

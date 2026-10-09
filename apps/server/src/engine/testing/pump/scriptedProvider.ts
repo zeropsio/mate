@@ -637,6 +637,15 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
         }),
       /** A Codex helper's own thread: no conversation owns it. */
       foreign: (thread: string) => emit("turn.started", thread, { turnId: "X" }),
+      /** The open turn ends as the driver reports it: its state, reason and cost. */
+      end: (thread: string, payload: Record<string, unknown>) =>
+        Effect.suspend(() => endTurn(live(thread), payload)),
+      /** Any event the driver sends on the thread, under its open turn when it has one. */
+      emit: (type: string, thread: string, fields: Record<string, unknown> = {}) =>
+        Effect.suspend(() => {
+          const open = sessions.get(thread)?.open ?? null;
+          return emit(type, thread, { ...(open === null ? {} : { turnId: open }), ...fields });
+        }),
     };
 
     return { service, agent, calls, starts, sends, sessions, options };

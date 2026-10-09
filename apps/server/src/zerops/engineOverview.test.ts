@@ -276,6 +276,56 @@ describe("HQ's overview of a Mate on the engine", () => {
       }),
   );
 
+  it("a crewmate's conversation is the crew's: never one of the person's chats, its line reads its run", () => {
+    const crewmate = ConversationId.make("crew-main-backend-1");
+    const threads = [
+      engineShellOf(view()),
+      engineShellOf(
+        view({
+          conversationId: crewmate,
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: "m1",
+            profile: { kind: "crewmate", id: "backend", name: "Backend" },
+          },
+          activeRun: run(1),
+        }),
+      ),
+    ];
+    const overview = mateOverviewOf({
+      identity,
+      threads,
+      auth,
+      crew: {
+        status: "applied",
+        crewmates: [
+          {
+            handle: "backend",
+            displayName: "Backend",
+            tint: "teal",
+            kind: "writer",
+            currentThreadId: crewmate,
+            login: { id: "claudeAgent", label: "Claude" },
+          },
+        ],
+        attention: [],
+        board: { tasks: [] },
+        run: null,
+      } as never,
+    });
+    assert.deepStrictEqual(
+      {
+        chats: overview.threads.list.map((digest) => digest.id),
+        crewmate:
+          overview.crew.status === "applied"
+            ? [overview.crew.crewmates[0]?.threadId, overview.crew.crewmates[0]?.threadKind]
+            : undefined,
+      },
+      { chats: [thread], crewmate: [crewmate, "working"] },
+    );
+  });
+
   it.effect(
     "in mate mode the chats carry the engine's own rows at the Mate's revision, and its protocol",
     () =>

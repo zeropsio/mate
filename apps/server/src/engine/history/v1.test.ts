@@ -2,7 +2,15 @@ import { describe, expect, it } from "@effect/vitest";
 
 import { ConversationId } from "@t3tools/contracts";
 
-import { CALL_DATA_LIMIT, boundedCallData, planOf, recordsOf, type V1Skeleton } from "./v1.ts";
+import {
+  CALL_DATA_LIMIT,
+  boundedCallData,
+  planOf,
+  planOfChain,
+  recordsOf,
+  type V1Segment,
+  type V1Skeleton,
+} from "./v1.ts";
 
 const iso = (minute: number) => `2026-10-05T07:${String(minute).padStart(2, "0")}:00.000Z`;
 
@@ -107,6 +115,132 @@ describe("where the bounds cut", () => {
       "message",
       "message",
     ]);
+  });
+});
+
+/** A stint's thread: `count` turns a minute apart from `minute`, each a message and a note. */
+const stint = (name: string, minute: number, count: number): V1Skeleton => ({
+  turns: Array.from({ length: count }, (_, index) => ({
+    key: `${name}-turn-${index}`,
+    turnId: `${name}-turn-${index}`,
+    pendingMessageId: `${name}-user-${index}`,
+    state: "completed",
+    requestedAt: iso(minute + index),
+    startedAt: iso(minute + index),
+    completedAt: iso(minute + index),
+  })),
+  messages: Array.from({ length: count }, (_, index) => [
+    { id: `${name}-user-${index}`, role: "user", turnId: null, createdAt: iso(minute + index) },
+    {
+      id: `${name}-note-${index}`,
+      role: "assistant",
+      turnId: `${name}-turn-${index}`,
+      createdAt: iso(minute + index).replace(":00.000Z", ":30.000Z"),
+    },
+  ]).flat(),
+  activities: [],
+});
+
+const chain = (counts: ReadonlyArray<number>): ReadonlyArray<V1Segment> =>
+  counts.map((count, index) => ({
+    threadId: `stint-${index + 1}`,
+    boundary:
+      index === 0
+        ? null
+        : { stint: index + 1, reason: index === 1 ? "cleared" : "job", words: `why ${index + 1}` },
+    skeleton: stint(`s${index + 1}`, index * 10, count),
+  }));
+
+describe("a crewmate's stints", () => {
+  const conversation = ConversationId.make("crew-main-ana-1");
+  const empty = { messages: new Map(), activities: new Map() };
+
+  it("read as one conversation with boundaries", () => {
+    const plan = planOfChain(chain([2, 1, 2]));
+    expect(plan.runs.map((run) => [run.threadId, run.turn.turnId])).toEqual([
+      ["stint-1", "s1-turn-0"],
+      ["stint-1", "s1-turn-1"],
+      ["stint-2", "s2-turn-0"],
+      ["stint-3", "s3-turn-0"],
+      ["stint-3", "s3-turn-1"],
+    ]);
+    const { records, data } = recordsOf(conversation, plan, 0, plan.entries.length, empty);
+    const markers = records.flatMap((record) =>
+      record._tag === "ItemImported" && record.body.kind === "marker"
+        ? [[record.itemId, record.body.marker, record.happenedAt] as const]
+        : [],
+    );
+    expect(markers).toEqual([
+      [
+        "crew-main-ana-1/r/3/i/1",
+        { kind: "session-rotated", reason: "cleared" },
+        Date.parse(iso(10)) - 1,
+      ],
+      [
+        "crew-main-ana-1/r/4/i/1",
+        { kind: "session-rotated", reason: "job" },
+        Date.parse(iso(20)) - 1,
+      ],
+    ]);
+    expect(data.find((entry) => entry.itemId === "crew-main-ana-1/r/3/i/1")?.data).toEqual({
+      source: "v1",
+      kind: "stint",
+      stint: 2,
+      threadId: "stint-2",
+      words: "why 2",
+    });
+    // Each stint's records stay in its own runs: the boundary first, then its turn's words.
+    expect(
+      records.flatMap((record) => (record._tag === "ItemImported" ? [record.itemId] : [])),
+    ).toEqual([
+      "crew-main-ana-1/r/1/i/1",
+      "crew-main-ana-1/r/1/i/2",
+      "crew-main-ana-1/r/2/i/1",
+      "crew-main-ana-1/r/2/i/2",
+      "crew-main-ana-1/r/3/i/1",
+      "crew-main-ana-1/r/3/i/2",
+      "crew-main-ana-1/r/3/i/3",
+      "crew-main-ana-1/r/4/i/1",
+      "crew-main-ana-1/r/4/i/2",
+      "crew-main-ana-1/r/4/i/3",
+      "crew-main-ana-1/r/5/i/1",
+      "crew-main-ana-1/r/5/i/2",
+    ]);
+  });
+
+  it.each([
+    [
+      "keep the chain's newest turns, cutting across stints",
+      { turns: 2, records: 100 },
+      [
+        ["stint-3", "s3-turn-0"],
+        ["stint-3", "s3-turn-1"],
+      ],
+      ["run", "cut", "boundary", "message", "message", "run", "message", "message"],
+    ],
+    [
+      "leave a stint begun before the cut without its boundary",
+      { turns: 1, records: 100 },
+      [["stint-3", "s3-turn-1"]],
+      ["run", "cut", "message", "message"],
+    ],
+    [
+      "count their boundaries toward the record limit",
+      { turns: 10, records: 7 },
+      [["stint-3", "s3-turn-1"]],
+      ["run", "cut", "message", "message"],
+    ],
+  ] as const)("%s", (_name, limits, kept, kinds) => {
+    const plan = planOfChain(chain([2, 1, 2]), limits);
+    expect(plan.runs.map((run) => [run.threadId, run.turn.turnId])).toEqual(kept);
+    expect(plan.entries.map((entry) => entry.kind)).toEqual(kinds);
+  });
+
+  it("open with no boundary for a stint that holds no turn", () => {
+    const plan = planOfChain(chain([1, 0, 1]));
+    expect(
+      plan.entries.flatMap((entry) => (entry.kind === "boundary" ? [entry.reason] : [])),
+    ).toEqual(["job"]);
   });
 });
 

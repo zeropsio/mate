@@ -25,6 +25,7 @@ import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import {
+  ForwardCompatibleArray,
   IsoDateTime,
   NonNegativeInt,
   PortSchema,
@@ -44,6 +45,7 @@ import {
   CrewLandingMode,
   CrewMemberKind,
   CrewRunState,
+  CREW_SESSION_REASONS,
   CrewStatus,
   CrewStintState,
   CrewTaskSource,
@@ -105,6 +107,38 @@ export const CrewStint = Schema.Struct({
   retiredAt: Schema.NullOr(IsoDateTime),
 });
 export type CrewStint = typeof CrewStint.Type;
+
+/** Why a session opened, as the snapshot says it. */
+export const CrewSessionReason = Schema.Literals([...CREW_SESSION_REASONS, "unknown"]);
+export type CrewSessionReason = typeof CrewSessionReason.Type;
+
+const knownSessionReasons = new Set<string>(CREW_SESSION_REASONS);
+const LastSessionReason = Schema.NullOr(CrewSessionReason);
+
+/** An engine crewmate's sessions in its one conversation: how many, and why the last one opened. */
+export const CrewSessions = Schema.Struct({
+  count: NonNegativeInt,
+  /**
+   * `null` while its first session is its only one. A reason from a newer server decodes as
+   * `unknown` rather than leaving the crew undrawn: read from the raw value, since a field
+   * default checks the encoded side first.
+   */
+  lastReason: Schema.Unknown.pipe(
+    Schema.decodeTo(
+      LastSessionReason,
+      SchemaTransformation.transform<typeof LastSessionReason.Encoded, unknown>({
+        decode: (raw) =>
+          raw === null
+            ? null
+            : typeof raw === "string" && knownSessionReasons.has(raw)
+              ? (raw as CrewSessionReason)
+              : "unknown",
+        encode: (reason) => reason,
+      }),
+    ),
+  ),
+});
+export type CrewSessions = typeof CrewSessions.Type;
 
 export const CrewCheckState = Schema.Literals(["running", "passed", "failed"]);
 export type CrewCheckState = typeof CrewCheckState.Type;
@@ -196,8 +230,15 @@ export const Crewmate = Schema.Struct({
   host: Schema.NullOr(TrimmedNonEmptyString),
   /** The current stint's thread; `null` before the crewmate's first turn. */
   currentThreadId: Schema.NullOr(ThreadId),
-  /** Every stint, oldest first — *Previous conversations*. */
+  /** Every stint, oldest first — *Previous conversations*. Empty on the engine. */
   stints: Schema.Array(CrewStint),
+  /**
+   * The engine conversation the crewmate talks in, which `currentThreadId` repeats; absent on a V1
+   * Mate, whose crewmates talk in stints.
+   */
+  conversationId: Schema.optionalKey(TrimmedNonEmptyString),
+  /** Its sessions on the engine, in place of `stints`; absent on a V1 Mate. */
+  sessions: Schema.optionalKey(CrewSessions),
   /** The current stint's context against its window; `null` before a turn reports it. */
   context: Schema.NullOr(Schema.Struct({ tokens: NonNegativeInt, window: PositiveInt })),
   /** Compactions in the current stint. */
@@ -499,6 +540,17 @@ export const CrewDevHost = Schema.Struct({
 export type CrewDevHost = typeof CrewDevHost.Type;
 
 /**
+ * Where a crew snapshot stands on the engine, as a conversation's revision does; `view` counts the
+ * frames of one step whose showing moved without a step (a dev service came up or went), absent as 0.
+ */
+export const CrewRevision = Schema.Struct({
+  epoch: Schema.Int,
+  seq: NonNegativeInt,
+  view: Schema.optionalKey(NonNegativeInt),
+});
+export type CrewRevision = typeof CrewRevision.Type;
+
+/**
  * One frame of the crew feed. `crew` is `null` exactly when `status` is not
  * `applied`; a status other than `applied` carries empty lists, `devHosts`
  * aside: the crewmate editor offers them before any crew exists.
@@ -507,6 +559,11 @@ export const CrewSnapshot = Schema.Struct({
   status: CrewStatus,
   /** Rises with every change the engine records; a client keeps the highest. */
   seq: NonNegativeInt,
+  /**
+   * The crew owner's revision on the engine: the Mate's start epoch and the crew's gapless sequence,
+   * which a client compares epoch first. Absent from a V1 Mate, whose `seq` is the only order.
+   */
+  revision: Schema.optionalKey(CrewRevision),
   crew: Schema.NullOr(CrewSummary),
   /** The lead first, then in the crew home's order. */
   crewmates: Schema.Array(Crewmate),
@@ -556,6 +613,31 @@ export const CrewFeedFrame = Schema.Unknown.pipe(
   ),
 );
 export type CrewFeedFrame = typeof CrewFeedFrame.Type;
+
+/**
+ * `crew.taskPage`'s input: a crewmate's finished work older than the board holds, newest first,
+ * from `before` (the previous page's `next`; `null` for the first page past the board).
+ */
+export const CrewTaskPageInput = Schema.Struct({
+  handle: CrewHandle,
+  before: Schema.NullOr(TrimmedNonEmptyString),
+  limit: Schema.optionalKey(PositiveInt),
+});
+export type CrewTaskPageInput = typeof CrewTaskPageInput.Type;
+
+/**
+ * How much of each crewmate's finished work (landed or dropped) an engine frame's board carries,
+ * newest first; the rest pages through `crew.taskPage`. A crewmate with this many finished on the
+ * board may have more.
+ */
+export const CREW_BOARD_FINISHED_PER_CREWMATE = 20;
+
+/** One page of finished work; `next` reads the page after it, `null` at the oldest. */
+export const CrewTaskPage = Schema.Struct({
+  tasks: ForwardCompatibleArray(CrewTask),
+  next: Schema.NullOr(TrimmedNonEmptyString),
+});
+export type CrewTaskPage = typeof CrewTaskPage.Type;
 
 const taskRef = { taskId: CrewTaskId } as const;
 const handleRef = { handle: CrewHandle } as const;
@@ -626,6 +708,11 @@ export const CrewCommand = Schema.TaggedUnion({
     brief: Schema.optional(Schema.String),
     doneWhen: Schema.optional(Schema.String),
     dependsOn: Schema.optional(Schema.Array(CrewTaskId)),
+    /**
+     * The task as the person's board showed it. The engine's crew writes an edit only over that
+     * task and refuses one that carries none; a V1 server ignores it.
+     */
+    seen: Schema.optional(Schema.Struct({ state: CrewTaskState, attempts: NonNegativeInt })),
   },
   /** Discards one task, from any state (ARCHITECTURE §4 *Assignment*). */
   discard: taskRef,

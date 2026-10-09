@@ -5,7 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
-import { ConversationId, runId } from "@t3tools/contracts";
+import { CommandId, ConversationId, runId } from "@t3tools/contracts";
 
 import { conversationRowOf } from "./conversationRow.ts";
 import { makeEngineWorld, mate } from "../testing/pump/engineWorld.ts";
@@ -385,5 +385,52 @@ describe("the views of every conversation", () => {
           yield* w.shutdown;
         }),
       ),
+  );
+});
+
+describe("the crew's door into a conversation", () => {
+  const crew = { kind: "crew", startedBy: "ana" } as const;
+
+  it.effect("a delivery told twice under one command id acts once, answered by its receipt", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const engine = yield* w.engine;
+        const card = { _tag: "Send", text: "Task #3: remember the email." } as const;
+        const id = CommandId.make("crew-deliver:crew/main/e/crew.deliver/1");
+        const first = yield* engine.deliver(mate, card, id, crew);
+        const again = yield* engine.deliver(mate, card, id, crew);
+        assert.deepStrictEqual(again, first);
+        assert.strictEqual(first._tag === "Accepted" ? first.runId : null, runId(mate, 1));
+        const queued = (yield* engine.eventsAfter(mate, 0)).filter(
+          (event) => event._tag === "RunQueued",
+        );
+        assert.strictEqual(queued.length, 1);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("reads a conversation's record past a cursor, in order, with no gap", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const engine = yield* w.engine;
+        yield* w.tell({ _tag: "Send", text: "Deploy the api" });
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const all = yield* engine.eventsAfter(mate, 0);
+        const tail = yield* engine.eventsAfter(mate, 3);
+        assert.deepStrictEqual(
+          all.map((event) => event.seq),
+          all.map((_, i) => i + 1),
+        );
+        assert.deepStrictEqual(tail, all.slice(3));
+        assert.deepStrictEqual(
+          (yield* engine.eventsAfter(mate, 0, 2)).map((event) => event.seq),
+          [1, 2],
+        );
+        yield* w.shutdown;
+      }),
+    ),
   );
 });

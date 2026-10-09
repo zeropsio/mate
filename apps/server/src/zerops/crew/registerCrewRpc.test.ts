@@ -10,13 +10,13 @@ import {
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import { ZEROPS_SUBJECT_PREFIX } from "../ZeropsMembershipWatch.ts";
 import { CrewEngine, inertCrewEngine } from "./CrewEngine.ts";
 import { registerCrewRpc } from "./registerCrewRpc.ts";
 import { eventually, withCrewEngine } from "./testing/crewEngineFixture.ts";
+import { crewJourney } from "./testing/crewWorld.ts";
 import { makeRpcUpdateAdmission } from "../../RpcUpdateAdmission.ts";
 
 const passThrough = {
@@ -71,6 +71,7 @@ describe("registerCrewRpc", () => {
     ["files.get", inert[WS_METHODS.zeropsCrewFilesGet]({})],
     ["files.put", inert[WS_METHODS.zeropsCrewFilesPut]({ files: [] })],
     ["command", inert[WS_METHODS.zeropsCrewCommand]({ _tag: "apply" })],
+    ["taskPage", inert[WS_METHODS.zeropsCrewTaskPage]({ handle: "erik", before: null })],
   ] as const)("inert: refuses %s as unavailable", ([, request]) =>
     Effect.gen(function* () {
       const error = yield* Effect.flip(request);
@@ -78,11 +79,27 @@ describe("registerCrewRpc", () => {
     }),
   );
 
-  it.live("live: saves the crew home, applies it as the session, and streams the crew", () =>
-    withCrewEngine((world) =>
+  it.live("live on V1: the board holds every task, so no finished work pages past it", () =>
+    withCrewEngine(() =>
       Effect.gen(function* () {
         const handlers = registerCrewRpc({
           crew: yield* CrewEngine,
+          subject: SUBJECT,
+          ...passThrough,
+        });
+        expect(
+          yield* handlers[WS_METHODS.zeropsCrewTaskPage]({ handle: "erik", before: null }),
+        ).toEqual({ tasks: [], next: null });
+      }),
+    ),
+  );
+
+  // On the world the crew journeys run on (`CREW_WORLD`): V1's crew, or the engine's.
+  it.live("live: saves the crew home, applies it as the session, and streams the crew", () =>
+    crewJourney((world) =>
+      Effect.gen(function* () {
+        const handlers = registerCrewRpc({
+          crew: yield* world.service,
           subject: SUBJECT,
           ...passThrough,
         });
@@ -112,7 +129,7 @@ describe("registerCrewRpc", () => {
           files: files.files.map((file) => file.path),
           after: [after.crew?.name, after.crewmates.map((mate) => mate.handle)],
           seq: after.seq > before.seq,
-          installs: yield* Ref.get(world.installs),
+          installs: yield* world.profileInstalls,
         }).toEqual({
           before: "none",
           files: ["brief.md", "crew.yaml", "jobs/erik.md"],
@@ -120,7 +137,7 @@ describe("registerCrewRpc", () => {
           seq: true,
           installs: 1,
         });
-      }),
+      }).pipe(Effect.orDie),
     ),
   );
 });

@@ -21,7 +21,8 @@ import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { engineLayer } from "../engine/layer.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
-import { crewLayer } from "./crew/crewLayer.ts";
+import { crewEngineHooks, crewLayer } from "./crew/crewLayer.ts";
+import { crewEngineLinkLayer } from "./crew/engine/CrewEngineLayer.ts";
 import { CrewPlatformProcesses } from "./crew/crewDeployState.ts";
 import { engineAdaptersLayer } from "./engineAdapters.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
@@ -94,12 +95,14 @@ const CrewPlatformProcessesLive = Layer.effect(
   ),
 ).pipe(Layer.provide(ZeropsRestartReadModule.layer));
 
-const ZeropsCrewLive = crewLayer.pipe(
+/**
+ * What the Mate engine runs for the crew (engine crew mode only): the crew's owner kind, its
+ * effects' handlers and its crewmates' workspaces, over the same crew services and the same link
+ * the crew's front completes (memoized by reference).
+ */
+const CrewEngineHooksLive = crewEngineHooks.pipe(
+  Layer.provide(crewEngineLinkLayer),
   Layer.provide(CrewPlatformProcessesLive),
-  Layer.provide(ZeropsTurnAdmissionLive),
-  Layer.provide(ZeropsAgentAuthLive),
-  Layer.provide(ZeropsLoginsLive),
-  Layer.provide(ZeropsProjectSignersModule.layer),
   Layer.provide(providerInstancesLayer),
   Layer.provide(ProcessRunner.layer),
 );
@@ -108,7 +111,8 @@ const ZeropsCrewLive = crewLayer.pipe(
  * The Mate engine (`engine/`, reached only from here, ws.ts and the startup): inert unless
  * T3CODE_MATE_ENGINE is `mate`. Its ports are Zerops's: runs are admitted through the same gate
  * instance and the restart is read by the same own-key reader (memoized by reference). One value,
- * so the sign-out below stops sessions on the very engine the merge runs.
+ * so the sign-out below stops sessions on the very engine the merge runs, and the crew's front
+ * runs on it.
  */
 const MateEngineLive = engineLayer.pipe(
   Layer.provideMerge(
@@ -117,6 +121,19 @@ const MateEngineLive = engineLayer.pipe(
       Layer.provide(ZeropsRestartReadModule.layer),
     ),
   ),
+  Layer.provide(CrewEngineHooksLive),
+);
+
+const ZeropsCrewLive = crewLayer.pipe(
+  Layer.provide(MateEngineLive),
+  Layer.provide(crewEngineLinkLayer),
+  Layer.provide(CrewPlatformProcessesLive),
+  Layer.provide(ZeropsTurnAdmissionLive),
+  Layer.provide(ZeropsAgentAuthLive),
+  Layer.provide(ZeropsLoginsLive),
+  Layer.provide(ZeropsProjectSignersModule.layer),
+  Layer.provide(providerInstancesLayer),
+  Layer.provide(ProcessRunner.layer),
 );
 
 /**

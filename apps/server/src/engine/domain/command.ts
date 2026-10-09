@@ -16,6 +16,7 @@ import type {
   ChatImageAttachment,
   ConversationAgent,
   CommandId,
+  CrewCard,
   CommandResult,
   ConversationId,
   EffectId,
@@ -25,12 +26,14 @@ import type {
   ItemBody,
   KnownEngineEvent,
   Principal,
+  RecordedCrewSeam,
   ProviderInteractionMode,
   ProviderOptionSelection,
   Rejection,
   RequestAsk,
   RequestId,
   RequestState,
+  RotateSession,
   RunId,
   RuntimeMode,
   SessionId,
@@ -104,6 +107,13 @@ export type ProviderSignal =
       readonly turn: TurnHandle;
       readonly outcome: TurnOutcome;
       readonly source: TurnEndSource;
+      /** What the turn cost, as its driver reported it. */
+      readonly costUsd?: number;
+      /**
+       * The context the session held at the turn's end: the last gauge reading before it. A gauge
+       * is never an outcome; the run's end only keeps where it stood.
+       */
+      readonly contextTokens?: number;
     }
   | {
       readonly kind: "usage-limit";
@@ -143,6 +153,11 @@ export type Command =
       readonly attachments?: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
       /** A maintenance command (`/compact`, `/logout`): never continued after a restart. */
       readonly maintenance?: boolean;
+      /**
+       * The crew's card this turn carries: the record opens the run on it, a `note` of the crew's,
+       * never a person's message; the agent gets `text`.
+       */
+      readonly card?: CrewCard;
       /** `plan`: the agent plans the turn and changes nothing. Absent: default. */
       readonly interactionMode?: ProviderInteractionMode;
     }
@@ -181,6 +196,18 @@ export type Command =
   | { readonly _tag: "AssignAgent"; readonly agent: ConversationAgent }
   /** Close the conversation's session from outside: the person signed out. */
   | { readonly _tag: "CloseSession"; readonly reason: "signed-out" }
+  /**
+   * The crew's: close the session between turns and open the next one fresh (or resuming), told
+   * the seed as it starts.
+   */
+  | RotateSession
+  /** The crew's line between turns (a landing, a close, a save): a `crew.seam` marker. */
+  | {
+      readonly _tag: "MarkSeam";
+      readonly seam: RecordedCrewSeam;
+      /** The line's words; `null` leaves them to the reader. */
+      readonly words: string | null;
+    }
   | { readonly _tag: "Archive" }
   | { readonly _tag: "Unarchive" }
   | {
@@ -261,14 +288,16 @@ export type ImportedRecord = Extract<
 >;
 
 /**
- * Where an effect queues; each conversation's lane is FIFO, lanes run side by side. `turn`: the
- * session and what goes into it (open, send, steer) — a send settles once the driver accepted it,
- * so the lane frees while the turn runs. `control`: what must never wait behind a send (interrupt,
- * answer). `close`: a session's close, which never waits behind an interrupt the driver does not
- * answer (a second Stop closes the session). `side`: work beside the agent (the workspace capture,
- * its finish).
+ * Where an effect queues; each owner's lane is FIFO, lanes run side by side. A conversation's:
+ * `turn`: the session and what goes into it (open, send, steer) — a send settles once the driver
+ * accepted it, so the lane frees while the turn runs. `control`: what must never wait behind a
+ * send (interrupt, answer). `close`: a session's close, which never waits behind an interrupt the
+ * driver does not answer (a second Stop closes the session). `side`: work beside the agent (the
+ * workspace capture, its finish). Another owner kind names its own (the crew's `git/<handle>`,
+ * `check/<handle>`, `deliver/<handle>`, `host/<host>`).
  */
-export type EffectLane = "turn" | "control" | "close" | "side";
+export type ConversationLane = "turn" | "control" | "close" | "side";
+export type EffectLane = ConversationLane | (string & {});
 /** Boot cuts a process-bound effect (its process is gone) and requeues a replay-safe one. */
 export type EffectClass = "process-bound" | "replay-safe";
 

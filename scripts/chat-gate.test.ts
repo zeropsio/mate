@@ -11,6 +11,7 @@ import {
   chatGateTestFiles,
   selectLaneChatStages,
   selectsChatGate,
+  type ChatGateCommand,
 } from "./chat-gate.ts";
 
 it.each([
@@ -71,8 +72,38 @@ it("the gate proves the Mate engine on the proof harness's fixed seeds and the r
     "src/engine/domain/decide.model.test.ts",
     "src/engine/outbox/crash.test.ts",
     "src/engine/history/historyImport.test.ts",
+    "src/zerops/crew/engine/importV1Crew.test.ts",
     "src/engine/engine.sim.test.ts",
     "src/engine/engine.pump.test.ts",
+  ]);
+});
+
+it("the gate runs the crew's journeys on the engine's world, beside the unit suite's V1 run", () => {
+  const commands = chatGateStages.flatMap((stage) =>
+    stage.commands.flatMap((command: ChatGateCommand) =>
+      command.args.some((arg) => arg.startsWith("src/zerops/crew/CrewEngine"))
+        ? [
+            [
+              stage.name,
+              command.env?.CREW_WORLD,
+              command.args.filter((arg) => arg.startsWith("src/")),
+            ],
+          ]
+        : [],
+    ),
+  );
+  expect(commands).toEqual([
+    [
+      "F: crew journeys on the engine",
+      "engine",
+      [
+        ...["attachments", "endings", "lead", "memory", "midway", "operations", "runs"].map(
+          (part) => `src/zerops/crew/CrewEngine.${part}.test.ts`,
+        ),
+        "src/zerops/crew/CrewEngine.test.ts",
+        "src/zerops/crew/registerCrewRpc.test.ts",
+      ],
+    ],
   ]);
 });
 
@@ -163,6 +194,8 @@ it.each([
   { path: "apps/web/tsconfig.json", ids: ["C", "C-engine", "types"] },
   { path: "apps/web/test/scenarios/areas/d-change/dsl.ts", ids: [] },
   { path: "apps/server/src/engine/pump/toCore.test.ts", ids: [] },
+  // The engine crew's own code runs its journeys on the engine too.
+  { path: "apps/server/src/zerops/crew/engine/decide.ts", ids: ["C", "C-engine", "F", "types"] },
   { path: "packages/client-runtime/src/data/projections/mateHealth.test.ts", ids: [] },
   { path: "docs/user/chat.md", ids: [] },
   { path: "apps/mobile/src/chat.tsx", ids: [] },
@@ -211,6 +244,7 @@ it.each([
       "B: client wire journeys (C)",
       "B: client wire journeys on the engine (C)",
       "E: engine proof",
+      "F: crew journeys on the engine",
       "Typecheck: wire consumers",
     ],
   },

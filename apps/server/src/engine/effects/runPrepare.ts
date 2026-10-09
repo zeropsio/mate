@@ -53,7 +53,9 @@ export const makeRunPrepare = Effect.gen(function* () {
         ).pipe(
           Effect.as(null),
           Effect.catchCause((cause) =>
-            Cause.hasInterrupts(cause) ? Effect.failCause(cause) : Effect.succeed(wordsOf(cause)),
+            Cause.hasInterrupts(cause)
+              ? Effect.failCause(cause as Cause.Cause<never>)
+              : Effect.succeed(wordsOf(cause)),
           ),
         );
         // Each service the capture could not snapshot is the run's to record, with its reason.

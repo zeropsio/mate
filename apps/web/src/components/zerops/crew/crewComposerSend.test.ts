@@ -1,7 +1,10 @@
 import type { ChatAttachment, ThreadCrewOrigin } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import { overlayEngineShell } from "@t3tools/client-runtime/data";
+import { engineRow } from "@t3tools/client-runtime/data/fixtures";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import * as Option from "effect/Option";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 
 import { crewComposerMentions, crewMessageCommand } from "./crewComposerSend";
@@ -48,6 +51,41 @@ describe("crewMessageCommand", () => {
         attachments: ATTACHMENTS,
       }),
     ).toEqual(command);
+  });
+});
+
+describe("crewMessageCommand on the engine", () => {
+  it("a crewmate's engine conversation sends through the crew, addressed by its crewmate", () => {
+    const shell = overlayEngineShell(
+      {
+        snapshot: Option.some({
+          snapshotSequence: 1,
+          projects: [{ id: "project-fen" }],
+          threads: [],
+          updatedAt: "2026-09-27T09:00:00.000Z",
+        }),
+        status: "live",
+        error: Option.none(),
+      } as unknown as Parameters<typeof overlayEngineShell>[0],
+      [
+        engineRow("env-fen", "crew-game-backend-1", {
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: null,
+            profile: { kind: "crewmate", id: "backend", name: "Backend" },
+          },
+        }),
+        engineRow("env-fen", "thread-fen"),
+      ],
+    );
+    const [crewThread] = Option.getOrNull(shell.snapshot)?.threads ?? [];
+    expect(crewMessageCommand(crewThread, { text: "Go on.", attachments: [] })).toEqual({
+      _tag: "message",
+      handle: "backend",
+      text: "Go on.",
+      attachments: [],
+    });
   });
 });
 

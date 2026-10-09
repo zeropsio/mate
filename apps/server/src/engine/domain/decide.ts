@@ -37,6 +37,7 @@ import {
   type RejectionReason,
   type RequestId,
   type RunEnd,
+  type RunEndDetail,
   type RunEndSource,
   type RunId,
   type RunTrigger,
@@ -58,7 +59,7 @@ import type {
   Decision,
   EffectClass,
   EffectDraft,
-  EffectLane,
+  ConversationLane,
   Envelope,
   EventDraft,
   ItemDataDraft,
@@ -97,6 +98,26 @@ export const BACKGROUND_WORK_WORDS =
 /** How a run reads when its own agent interrupted the turn, no Stop asked. */
 export const AGENT_STOPPED_ITSELF = "The agent stopped the turn itself.";
 
+/**
+ * What a driver's terminal reason says of a run's end: the context outgrew what the model takes,
+ * or the provider broke the turn off. Any other reason is the agent's own end.
+ */
+const END_DETAILS: Readonly<Record<string, RunEndDetail>> = {
+  prompt_too_long: "overflow",
+  rapid_refill_breaker: "overflow",
+  // An ACP agent's turn that ran out of tokens.
+  max_tokens: "overflow",
+  api_error: "provider-error",
+  model_error: "provider-error",
+  turn_setup_failed: "provider-error",
+};
+
+/** What a run's end carries beyond its kind: its cost, its context, why it broke off. */
+type EndFacts = Pick<
+  Extract<EventDraft, { readonly _tag: "RunEnded" }>,
+  "costUsd" | "contextTokens" | "detail" | "refusal"
+>;
+
 /** The effects `decide` asks for, with the lane they queue in and what a restart does to them. */
 export const EFFECT_KINDS = {
   "session.open": { lane: "turn", class: "process-bound" },
@@ -108,7 +129,7 @@ export const EFFECT_KINDS = {
   "workspace.finish": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
   "history.import": { lane: "side", class: "replay-safe" },
-} as const satisfies Record<string, { lane: EffectLane; class: EffectClass }>;
+} as const satisfies Record<string, { lane: ConversationLane; class: EffectClass }>;
 export type EngineEffectKind = keyof typeof EFFECT_KINDS;
 
 /** What a `session.open` effect settles with. */
@@ -240,6 +261,17 @@ const handle = (b: StepBuilder, command: Command): void => {
       return;
     case "CloseSession":
       return closeSession(b, command.reason);
+    case "RotateSession":
+      return rotateSession(b, command);
+    case "MarkSeam":
+      return recordLoose(b, {
+        kind: "marker",
+        marker: {
+          kind: "crew.seam",
+          ...(command.words === null ? {} : { reason: command.words }),
+          seam: command.seam,
+        },
+      });
     case "Archive":
       if (!b.state.archived) b.emit({ _tag: "ConversationArchived", by: b.envelope.principal });
       return;
@@ -386,12 +418,18 @@ const closeSession = (b: StepBuilder, reason: SessionCloseReason): void => {
 };
 
 /**
- * What a live session lacks to run the conversation's next run, or null when it fits. It fits by
+ * What a live session lacks to run the conversation's next run, or null when it fits — the one
+ * place a session is closed to be opened again. A rotation asked since it opened replaces it. It fits by
  * what the engine asked for when it opened it — the model, the instance and the driver, never the
  * driver's own spelling of the model — and by the conversation's settings: its runtime mode, and
  * every model option it does not take per turn (a session opened before the engine said fits any).
  */
-const misfit = (state: ConversationState, session: SessionRecord): "model" | "settings" | null => {
+const misfit = (
+  state: ConversationState,
+  session: SessionRecord,
+): "closed" | "model" | "settings" | null => {
+  // Read loosely: a record from before the rotation was kept carries none.
+  if (state.rotation != null) return "closed";
   const agent = state.agent;
   if (session.requestedModel !== state.model) return "model";
   if (
@@ -488,6 +526,8 @@ const noteLostWork = (b: StepBuilder): void => {
   if (lost.length === 0 || b.state.archived) return;
   const latest = b.state.latestRunId === null ? undefined : b.state.runs[b.state.latestRunId];
   if (latest?.stopAsked != null) return;
+  // A crew's run, or any in a crewmate's chat, is its crew's to carry on: no turn of the engine's.
+  if (crewCarriesOn(b.state, { principal: latest?.principal ?? ENGINE })) return;
   const hows = [...new Set(lost.map((work) => work.how!))];
   const text = hows
     .map((how) =>
@@ -573,7 +613,8 @@ const selectionOf = (state: ConversationState) =>
 /**
  * Sends an admitted run on a fitting session, or asks for one; a session just opened for this run
  * fits. One that does not fit is closed first and the next one resumes it (a model switch or a
- * setting rotates it) — between runs, never under a running turn. A run that needs a new session
+ * setting rotates it), or opens as the crew's rotation says — between runs, never under a running
+ * turn. A run that needs a new session
  * for a setting while the agent's background work lives in this one waits — never ending that
  * work — until the work ends or the setting changes back (a message sent meanwhile is refused in
  * V1's words). A run whose workspace capture has not settled, or a session closing, waits.
@@ -606,6 +647,8 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     b.emit({ _tag: "RunSending", runId: run.id, sessionId: session.id, effectId: effect });
     return;
   }
+  // Read loosely: a record from before the rotation was kept carries none.
+  const rotation = b.state.rotation ?? null;
   b.effect("session.open", run.id, run.sessionOpenAttempts + 1, run.id, {
     runId: run.id,
     instanceId: b.state.agent?.instanceId ?? null,
@@ -613,10 +656,37 @@ const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
     model: b.state.model,
     options: b.state.agent?.options ?? null,
     ...(b.state.runtimeMode === null ? {} : { runtimeMode: b.state.runtimeMode }),
-    resume: b.state.lastNativeRef,
+    // A fresh rotation resumes nothing: its session starts on a thread of its own.
+    resume: rotation?.fresh === true ? null : b.state.lastNativeRef,
     rotateFrom: b.state.rotatingFrom,
     generation: b.state.threadGeneration,
+    ...(rotation === null ? {} : { fresh: rotation.fresh, seed: rotation.seed }),
   });
+};
+
+/**
+ * The crew rotates a conversation's session between turns: the boundary and the seed are recorded
+ * at once (rule 9: what the agent is told is in the record); the next run closes the open session
+ * (dispatch's `misfit`, the one place a session is replaced) and opens the next as the rotation
+ * says, never under a running turn.
+ */
+const rotateSession = (b: StepBuilder, command: Extract<Command, { _tag: "RotateSession" }>) => {
+  if (b.state.archived) throw new Rejected("archived");
+  b.emit({
+    _tag: "SessionRotated",
+    reason: command.reason,
+    fresh: command.fresh,
+    seed: command.seed,
+  });
+  recordLoose(b, { kind: "marker", marker: { kind: "session-rotated", reason: command.reason } });
+  if (command.seed !== null) recordLoose(b, { kind: "context", notes: [command.seed] });
+};
+
+/** An item of the conversation's own, under no run, closed as it opens. */
+const recordLoose = (b: StepBuilder, body: ItemBody): void => {
+  const id = ItemId.make(`${b.state.conversationId}/b/${b.state.headSeq + 1}`);
+  b.emit({ _tag: "ItemOpened", runId: null, itemId: id, key: null, by: ENGINE_ACTOR, body });
+  b.emit({ _tag: "ItemClosed", runId: null, itemId: id, body });
 };
 
 // ── settings ────────────────────────────────────────────────────────────────────────────────
@@ -737,6 +807,7 @@ const endRun = (
   end: RunEnd,
   source: RunEndSource,
   unsent: "refused" | "unknown" = "unknown",
+  facts: EndFacts = {},
 ): void => {
   for (const item of Object.values(b.state.items)) {
     if (item.runId !== run.id || item.body.kind === "work") continue;
@@ -764,7 +835,7 @@ const endRun = (
   if (run.personBody?.delivery.state === "queued") {
     updatePerson(b, run, run.state === "sending" ? unsent : "refused");
   }
-  b.emit({ _tag: "RunEnded", runId: run.id, end, source });
+  b.emit({ _tag: "RunEnded", runId: run.id, end, source, ...facts });
   // Every run that asked for a capture releases it, whatever ended it.
   if (run.prepare !== "none" && !run.maintenance) {
     b.effect("workspace.finish", run.id, 1, run.id, {
@@ -894,15 +965,36 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
     runId: run,
     itemId: item,
     key: null,
-    by: { kind: "person", principal: b.envelope.principal },
-    body: {
-      kind: "person",
-      text: command.text,
-      attachments: [...attachments],
-      sendId: b.envelope.commandId,
-      delivery: { state: "queued", at: null },
-    },
+    by:
+      command.card === undefined
+        ? { kind: "person", principal: b.envelope.principal }
+        : ENGINE_ACTOR,
+    body:
+      command.card === undefined
+        ? {
+            kind: "person",
+            text: command.text,
+            attachments: [...attachments],
+            sendId: b.envelope.commandId,
+            delivery: { state: "queued", at: null },
+          }
+        : { kind: "note", text: command.text, streaming: false, answer: false, card: command.card },
   });
+  if (command.card !== undefined) {
+    // The card is whole as it is sent: closed at once, as a seam is.
+    b.emit({
+      _tag: "ItemClosed",
+      runId: run,
+      itemId: item,
+      body: {
+        kind: "note",
+        text: command.text,
+        streaming: false,
+        answer: false,
+        card: command.card,
+      },
+    });
+  }
   b.result = { ...b.result, itemId: item };
   if (b.state.pausedUntil === "unknown") {
     // A limit whose reset nobody knows holds the queue until its probe or the person: they wrote.
@@ -1246,7 +1338,7 @@ const wakeFired = (
       return;
     }
     case "lost-work": {
-      if (b.state.archived) return;
+      if (b.state.archived || crewCarriesOn(b.state, wake)) return;
       // A message waiting to go carries the note: held for it, never a run of its own.
       if (runPending(b.state)) return rearmLostWork(b, wake, HELD_FOR_SEND);
       startFromWake(b, wake.kind, id, wake);
@@ -1254,7 +1346,12 @@ const wakeFired = (
     }
     case "usage-resume":
     case "usage-probe":
-      if (!b.state.archived && !newerPersonMessage(b.state, wake)) {
+      // A crew run's limit only held the queue: its crew decides how it goes on.
+      if (
+        !b.state.archived &&
+        !newerPersonMessage(b.state, wake) &&
+        !crewCarriesOn(b.state, wake)
+      ) {
         startFromWake(b, wake.kind, id, wake);
       }
       admitNext(b);
@@ -1350,12 +1447,14 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   switch (effect.kind) {
     case "run.prepare": {
       if (outcome.kind === "failed" && outcome.refused === true) {
-        // Only admission refuses a run, and before anything of it ran.
+        // Only admission refuses a run, and before anything of it ran: its words are the refusal.
         endRun(
           b,
           run,
           { kind: "failed", reason: outcome.reason, next: null },
           "inferred-from-effect",
+          undefined,
+          { detail: "refused", refusal: outcome.reason },
         );
         admitNext(b);
         return;
@@ -1616,8 +1715,11 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         if (run.state === "sending") markStarted(b, run, signal.providerTurnId, signal.turn);
         return;
       }
-      if (signal.origin !== "self") return;
-      const joined = selfJoins(b, signal.reportsOn ?? null);
+      // A steer that met no running turn (its run's turn ended first) opened one of its own: the
+      // engine runs it as the agent's own turn on that run's behalf.
+      const steered = steerOpened(b, signal.turn);
+      if (signal.origin !== "self" && steered === undefined) return;
+      const joined = selfJoins(b, signal.reportsOn ?? steered ?? null);
       // Nobody to act for (no run before it): the turn is not the engine's to record as a run.
       if (joined === undefined) return;
       const active = activeRun(b.state);
@@ -1754,7 +1856,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       if (run.state === "sending") markStarted(b, run, null, signal.turn);
       const live = b.run(run.id);
       const end = turnEnd(live, signal.outcome);
-      endRun(b, live, end, signal.source);
+      endRun(b, live, end, signal.source, undefined, endFacts(signal));
       if (end.kind === "usage-limit") limited(b, live, end.resetsAt);
       admitNext(b);
       return;
@@ -1870,6 +1972,20 @@ const updateClosed = (b: StepBuilder, closed: ClosedItem, body: ItemBody): void 
   b.emit({ _tag: "ItemUpdated", runId: closed.runId, itemId: closed.itemId, body: settled });
 };
 
+/** What a turn's end carries onto its run's: its cost, the context it left, why it broke off. */
+const endFacts = (signal: Extract<ProviderSignal, { readonly kind: "turn-ended" }>): EndFacts => {
+  const reason =
+    signal.outcome.kind === "completed" || signal.outcome.kind === "failed"
+      ? signal.outcome.reason
+      : undefined;
+  const detail = reason === undefined ? undefined : END_DETAILS[reason];
+  return {
+    ...(signal.costUsd === undefined ? {} : { costUsd: signal.costUsd }),
+    ...(signal.contextTokens === undefined ? {} : { contextTokens: signal.contextTokens }),
+    ...(detail === undefined ? {} : { detail }),
+  };
+};
+
 /** What a turn's outcome makes of its run, said in one place; the source is always the bridge's. */
 const turnEnd = (run: RunRecord, outcome: TurnOutcome): RunEnd => {
   const stoppedBy = run.stopAsked?.by;
@@ -1954,6 +2070,15 @@ const selfJoins = (
   return { joins: joined.id, principal: joined.principal };
 };
 
+/** The run a steer still in flight was asked into, when `turn` is that steer's message. */
+const steerOpened = (b: StepBuilder, turn: TurnHandle): RunId | undefined => {
+  const prefix = `${turn}/e/provider.steer/`;
+  const effect = Object.values(b.state.effects).find(
+    (entry) => entry.kind === "provider.steer" && entry.id.startsWith(prefix),
+  );
+  return effect?.runId ?? undefined;
+};
+
 const selfStarted = (
   b: StepBuilder,
   turn: TurnHandle,
@@ -1972,6 +2097,15 @@ const selfStarted = (
 };
 
 // ── recovery ────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A run its crew started is its crew's to carry on (CREW-DESIGN §2.2): the engine arms no
+ * continuation and no usage resume for it. So is every run in a crewmate's chat, whoever it ran
+ * for: a person's message reaches it through its crew, which holds it while the crew is paused or
+ * its copy frozen.
+ */
+const crewCarriesOn = (state: ConversationState, run: { readonly principal: Principal }): boolean =>
+  run.principal.kind === "crew" || state.agent?.profile.kind === "crewmate";
 
 /** Why a cut run is not continued, or null when every guard passes. */
 export const continuationRefusal = (state: ConversationState, run: RunRecord): string | null => {
@@ -2015,7 +2149,8 @@ const recovered = (
     if (effect?.kind === "provider.send" && effect.runId !== null) neverSent.add(effect.runId);
   }
   const run = activeRun(b.state);
-  if (run !== undefined && run.state === "sending" && neverSent.has(run.id)) {
+  const crewRun = run !== undefined && crewCarriesOn(b.state, run);
+  if (run !== undefined && run.state === "sending" && neverSent.has(run.id) && !crewRun) {
     // Its send never started: nothing reached the agent, so it goes again, as it was.
     b.emit({
       _tag: "RunRequeued",
@@ -2023,7 +2158,8 @@ const recovered = (
       reason: "the server restarted before it was sent",
     });
   } else if (run !== undefined && isLive(run)) {
-    const refusal = continuationRefusal(b.state, run);
+    // A crew run ends cut with no continuation: its crew sends it again, or holds.
+    const refusal = crewRun ? null : continuationRefusal(b.state, run);
     endRun(
       b,
       run,
@@ -2035,8 +2171,9 @@ const recovered = (
         ...(restart === undefined ? {} : { restart }),
       },
       "inferred-from-restart",
+      neverSent.has(run.id) ? "refused" : "unknown",
     );
-    if (refusal === null) {
+    if (refusal === null && !crewRun) {
       b.emit({
         _tag: "WakeArmed",
         wakeId: deriveWakeId(b.state.conversationId, "restart-continuation", run.id),

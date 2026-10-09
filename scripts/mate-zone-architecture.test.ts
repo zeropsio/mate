@@ -1573,6 +1573,10 @@ const UPDATE_NEUTRAL_SEAMS = [
 ] as const;
 const CREW_DIR = "apps/server/src/zerops/crew";
 const CREW_WIRING_FILES: ReadonlySet<string> = new Set([
+  // The crew's engine switch, read where the config settles which engine a Mate runs.
+  "apps/server/src/cli/config.ts",
+  // The engine's workspace port, which reads a crewmate's workspace off the crew's directory.
+  "apps/server/src/zerops/engineAdapters.ts",
   "apps/server/src/zerops/mateUpdateHttp.ts",
   "apps/server/src/ws.ts",
   "apps/server/src/zerops/zeropsFeedsLayer.ts",
@@ -1621,7 +1625,9 @@ const collectCrewBoundaryViolations = Effect.fn("collectCrewBoundaryViolations")
         .join("/");
       const targetInCrew = target.startsWith(`${CREW_DIR}/`);
       const allowed = insideCrew
-        ? targetInCrew || CREW_ALLOWED_OUTSIDE.has(target)
+        ? targetInCrew ||
+          CREW_ALLOWED_OUTSIDE.has(target) ||
+          isEngineOwnerSeam(relativeFile, target)
         : !targetInCrew || CREW_WIRING_FILES.has(relativeFile);
       if (!allowed) violations.push({ file: relativeFile, specifier });
     }
@@ -1682,6 +1688,25 @@ const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
 ]);
 const ENGINE_ALLOWED_OUTSIDE_DIRS: ReadonlyArray<string> = ["apps/server/src/spi/"];
 
+// The crew on the engine is an owner kind of the engine (CREW-DESIGN §5): `zerops/crew/engine/**`
+// reaches the engine's owner seams — the owner registry and its doors, the effect outbox and
+// worker its effects run in, the command, the turn pump's directory —
+// besides its public surface. The rest of crew never reaches the engine.
+const ENGINE_OWNER_KIND_DIR = `${CREW_DIR}/engine/`;
+const ENGINE_OWNER_SEAMS: ReadonlySet<string> = new Set([
+  "apps/server/src/engine/ConversationActor.ts",
+  "apps/server/src/engine/Conversations.ts",
+  "apps/server/src/engine/domain/command.ts",
+  "apps/server/src/engine/effects/index.ts",
+  "apps/server/src/engine/outbox/EffectOutbox.ts",
+  "apps/server/src/engine/outbox/EffectWorker.ts",
+  "apps/server/src/engine/owners.ts",
+  "apps/server/src/engine/pump/TurnPump.ts",
+]);
+const isEngineOwnerSeam = (file: string, target: string) =>
+  file.startsWith(ENGINE_OWNER_KIND_DIR) &&
+  (ENGINE_OWNER_SEAMS.has(target) || ENGINE_PUBLIC_FILES.has(target));
+
 // The engine is the SPI's one consumer (fork.md §3.1): it reaches the drivers through
 // `ProviderService` and its bridge, and no other provider file. Its tests and the
 // `testing/` harness may record through real drivers.
@@ -1738,7 +1763,8 @@ const collectEngineBoundaryViolations = Effect.fn("collectEngineBoundaryViolatio
           ENGINE_ALLOWED_OUTSIDE.has(target) ||
           ENGINE_ALLOWED_OUTSIDE_DIRS.some((dir) => target.startsWith(dir))
         : !targetInEngine ||
-          (ENGINE_WIRING_FILES.has(relativeFile) && ENGINE_PUBLIC_FILES.has(target));
+          (ENGINE_WIRING_FILES.has(relativeFile) && ENGINE_PUBLIC_FILES.has(target)) ||
+          isEngineOwnerSeam(relativeFile, target);
       if (!allowed) violations.push({ file: relativeFile, specifier });
     }
   }
@@ -1913,6 +1939,38 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           {
             file: "apps/server/src/zerops/crew/CrewEngine.ts",
             specifier: "../../provider/Layers/ClaudeAdapter.ts",
+          },
+        ]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "engine owner-kind fixture: the engine crew reaches the engine's owner seams; V1 crew and the engine's wire stay out",
+    () =>
+      Effect.gen(function* () {
+        const fixtureRoot = yield* makeRepoFixture({
+          "apps/server/src/zerops/crew/engine/CrewOwner.ts": [
+            'import { ownerKind } from "../../../engine/owners.ts";',
+            'import { EngineWire } from "../../../engine/wire/EngineWire.ts";',
+            "",
+          ].join("\n"),
+          "apps/server/src/zerops/crew/crewCore.ts":
+            'import { ownerKind } from "../../engine/owners.ts";\n',
+        });
+        const violations = [
+          ...(yield* collectCrewBoundaryViolations(fixtureRoot)),
+          ...(yield* collectEngineBoundaryViolations(fixtureRoot)),
+        ];
+        assert.deepStrictEqual(violations, [
+          { file: "apps/server/src/zerops/crew/crewCore.ts", specifier: "../../engine/owners.ts" },
+          {
+            file: "apps/server/src/zerops/crew/engine/CrewOwner.ts",
+            specifier: "../../../engine/wire/EngineWire.ts",
+          },
+          { file: "apps/server/src/zerops/crew/crewCore.ts", specifier: "../../engine/owners.ts" },
+          {
+            file: "apps/server/src/zerops/crew/engine/CrewOwner.ts",
+            specifier: "../../../engine/wire/EngineWire.ts",
           },
         ]);
       }).pipe(Effect.scoped),

@@ -201,6 +201,9 @@ export interface EngineWireOptions {
 }
 
 const UNREADABLE = "The Mate engine could not read this conversation now. Try again.";
+/** Why the wire refuses a person's message in a crewmate's chat. */
+export const CREWMATE_SENDS = "A crewmate's chat takes messages through its crew.";
+
 const UNTAKEN = "The Mate engine could not take this now. Try again.";
 
 const wireError = (message: string) => (cause: unknown) =>
@@ -660,7 +663,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
         Effect.gen(function* () {
           const commits = yield* PubSub.subscribe(signals.commits);
           const ids = yield* sql<{ readonly conversation_id: string }>`
-            SELECT conversation_id FROM engine_conversation ORDER BY rowid
+            SELECT conversation_id FROM engine_conversation WHERE owner_kind = 'conversation' ORDER BY rowid
           `;
           const rows = (yield* Effect.forEach(ids, (row) =>
             rowOf(row.conversation_id as ConversationId, caller),
@@ -869,27 +872,42 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       readDetail,
       receipt,
       send: (input, caller) =>
-        Effect.andThen(
-          options.sendsWait ?? Effect.void,
-          withPictures(
-            input.protocol,
-            input.conversationId,
-            input.commandId,
-            caller,
-            input.attachments ?? [],
-            (claimed) => ({
-              _tag: "Send",
-              text: input.text,
-              ...(input.attachments === undefined
-                ? {}
-                : {
-                    attachments: claimed as ReadonlyArray<ChatImageAttachment | ChatFileAttachment>,
-                  }),
-              // A mode a newer client knows and this engine does not: the default.
-              ...(input.interactionMode === undefined || input.interactionMode === "unknown"
-                ? {}
-                : { interactionMode: input.interactionMode }),
-            }),
+        // A crewmate's chat takes a person's message through its crew (`zerops.crew.command`),
+        // which routes it to the crewmate's task; never straight into its conversation.
+        conversations.state(input.conversationId).pipe(
+          Effect.map((state) => state.agent?.profile.kind === "crewmate"),
+          Effect.orElseSucceed(() => false),
+          Effect.flatMap((crewmate) =>
+            crewmate && protocolRefusal(input.protocol) === undefined
+              ? Effect.succeed<EngineCallResult>({
+                  _tag: "Rejected",
+                  rejection: { reason: "unknown", detail: CREWMATE_SENDS },
+                })
+              : Effect.andThen(
+                  options.sendsWait ?? Effect.void,
+                  withPictures(
+                    input.protocol,
+                    input.conversationId,
+                    input.commandId,
+                    caller,
+                    input.attachments ?? [],
+                    (claimed) => ({
+                      _tag: "Send",
+                      text: input.text,
+                      ...(input.attachments === undefined
+                        ? {}
+                        : {
+                            attachments: claimed as ReadonlyArray<
+                              ChatImageAttachment | ChatFileAttachment
+                            >,
+                          }),
+                      // A mode a newer client knows and this engine does not: the default.
+                      ...(input.interactionMode === undefined || input.interactionMode === "unknown"
+                        ? {}
+                        : { interactionMode: input.interactionMode }),
+                    }),
+                  ),
+                ),
           ),
         ),
       stop: (input, caller) =>

@@ -35,6 +35,7 @@ import type { Rng } from "./rng.ts";
 
 export const ana: Principal = { kind: "person", subject: "ana" };
 export const bo: Principal = { kind: "person", subject: "bo" };
+export const crew: Principal = { kind: "crew", startedBy: "ana" };
 const ENGINE: Principal = { kind: "engine" };
 
 export interface Played {
@@ -118,6 +119,7 @@ export class Gen {
       ["dismiss", Object.keys(state.requests).length > 0 ? 0.5 : 0.05],
       ["steer", active !== undefined && isLive(active.state) ? 0.5 : 0.05],
       ["model", 0.3],
+      ["rotate", 0.3],
       ["options", 0.3],
       ["mode", 0.2],
       ["agent", 0.1],
@@ -145,7 +147,8 @@ export class Gen {
               ...(rng.chance(0.05) ? { maintenance: true } : {}),
               ...(rng.chance(0.2) ? { interactionMode: "plan" as const } : {}),
             },
-            rng.chance(0.8) ? ana : bo,
+            // A crew's card now and then: its run is the crew's to carry on.
+            rng.chance(0.1) ? crew : rng.chance(0.8) ? ana : bo,
           ),
           now: at,
         };
@@ -197,6 +200,19 @@ export class Gen {
       case "model":
         return {
           envelope: this.env({ _tag: "SwitchModel", model: rng.pick(["m1", "m2"]) }),
+          now: at,
+        };
+      case "rotate":
+        return {
+          envelope: this.env(
+            {
+              _tag: "RotateSession",
+              reason: rng.pick(["context", "cleared", "job", "login", "budget", "task"] as const),
+              fresh: rng.chance(0.7),
+              seed: rng.chance(0.8) ? "the state packet" : null,
+            },
+            crew,
+          ),
           now: at,
         };
       // A model option a session takes per turn (effort) or only in a new one (fast mode).

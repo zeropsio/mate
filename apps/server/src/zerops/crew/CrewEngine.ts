@@ -23,6 +23,8 @@ import {
   type CrewCommandResult,
   type CrewFiles,
   type CrewSnapshot,
+  type CrewTaskPage,
+  type CrewTaskPageInput,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -50,6 +52,11 @@ export interface CrewEngineService {
     command: CrewCommand,
     principal: TurnPrincipal,
   ) => Effect.Effect<CrewCommandResult, CrewCommandError>;
+  /**
+   * A crewmate's finished work past the board, a page at a time: the engine's crew bounds its
+   * board; V1's board holds every task and has no pages.
+   */
+  readonly taskPage?: (input: CrewTaskPageInput) => Effect.Effect<CrewTaskPage, CrewCommandError>;
 }
 
 export class CrewEngine extends Context.Service<CrewEngine, CrewEngineService>()(
@@ -70,4 +77,5 @@ export const inertCrewEngine: CrewEngineService = {
   readFiles: unavailable,
   writeFiles: () => unavailable,
   command: () => unavailable,
+  taskPage: () => unavailable,
 };

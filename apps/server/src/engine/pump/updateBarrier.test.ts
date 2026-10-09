@@ -21,7 +21,12 @@ import { makeTurnPump } from "./TurnPump.ts";
 
 const dependencies = Layer.mergeAll(
   Layer.mock(ProviderService)({ eventBarrier: undefined }),
-  Layer.mock(Conversations)({}),
+  Layer.mock(Conversations)({
+    kindOf: () => undefined,
+    owner: () => {
+      throw new Error("the pump reads no owner");
+    },
+  }),
   Layer.mock(LiveBus)({}),
 );
 const event: SpiEvent = {

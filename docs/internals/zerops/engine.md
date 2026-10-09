@@ -14,6 +14,9 @@ login live in the [primer](primer.md); runtime vocabulary lives in the [glossary
 - An **effect** is recorded work outside the pure engine: a send, interruption, session change,
   workspace capture or crew step.
 - A **wake** is scheduled work with an owner and an admission guard.
+- An **owner** writes one stream of the log: a conversation, or a Mate's crew (`crew/main`). Every
+  kind has the same machinery: one writer, the receipt, the outbox, wakes, boot recovery. The crew
+  reaches a conversation only by command and reads it only through its gapless log.
 
 ## Rules
 
@@ -22,7 +25,9 @@ another's provider. Commit receipts, events, projections and queued effects toge
 outside action before executing it; reconcile uncertain work by its identity rather than blindly
 repeating it.
 
-Every run names its principal. Server sequences order the record; client clocks are for display.
+Every run names its principal. A run whose principal is the crew, or any run in a crewmate's
+conversation, is the crew's to carry on: the engine arms no continuation, usage resume or
+lost-work turn for it. Server sequences order the record; client clocks are for display.
 Only evidence ends work. A timer may schedule observation or mark unresponsiveness, but cannot
 settle an outcome. Store the context given to the agent without storing vault secrets.
 

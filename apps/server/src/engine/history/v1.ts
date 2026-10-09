@@ -11,6 +11,8 @@
  *   task's is one piece of work.
  * - An approval or a question is a request in its final state, never answerable here.
  * - A compaction, an error, a warning, a plan, a capture's gap is a marker.
+ * - A chain of threads (a crewmate's stints, `planOfChain`) is one record: where a later thread
+ *   begins, a `session-rotated` marker says why, as a live rotation's does.
  *
  * What V1 shows nowhere (a progress tick, the context meter, a checkpoint captured) is not copied.
  *
@@ -151,9 +153,23 @@ export type Entry =
       readonly item: number;
       readonly activity: V1ActivityHead;
       readonly at: number;
+    }
+  /** A later thread of a chain begins: the first thing its first run brought over says why. */
+  | {
+      readonly kind: "boundary";
+      readonly run: number;
+      readonly item: number;
+      readonly threadId: string;
+      /** Its place in the chain, the first thread 1. */
+      readonly stint: number;
+      readonly reason: string;
+      readonly words: string | null;
+      readonly at: number;
     };
 
 export interface PlannedRun {
+  /** The V1 thread the turn was asked in. */
+  readonly threadId: string;
   readonly turn: V1Turn;
   /** The error that ended the turn, as V1 recorded its break. */
   readonly brokeOff: { readonly words: string; readonly turnEnd: string } | null;
@@ -200,6 +216,29 @@ const byTime = <A extends { readonly at: number; readonly order: number; readonl
   left: A,
   right: A,
 ) => left.at - right.at || left.order - right.order || left.id.localeCompare(right.id);
+
+/** A thread of the chain a conversation brings over, and why it began. */
+export interface V1Segment {
+  readonly threadId: string;
+  /** Why it began, for every thread of a chain but the first; `stint` is its place, from 1. */
+  readonly boundary: {
+    readonly stint: number;
+    readonly reason: string;
+    readonly words: string | null;
+  } | null;
+  readonly skeleton: V1Skeleton;
+}
+
+type Placed = { readonly at: number; readonly order: number; readonly id: string };
+
+/** A turn and what it holds: by its turn id, a person's message by the turn it started. */
+interface HeldTurn {
+  readonly turn: V1Turn;
+  readonly messages: ReadonlyArray<Placed & { readonly head: V1MessageHead }>;
+  readonly activities: ReadonlyArray<Placed & { readonly head: V1ActivityHead }>;
+  /** The records it comes to: one per message, one per lifecycle, one per marker. */
+  readonly size: number;
+}
 
 const byActivityTime = (left: V1ActivityHead, right: V1ActivityHead) =>
   ms(left.createdAt) - ms(right.createdAt) ||
@@ -268,17 +307,10 @@ const looseTurns = (skeleton: V1Skeleton): ReadonlyArray<V1Turn> => {
 };
 
 /**
- * The thread's turns in order, the newest `HISTORY_TURN_LIMIT` (fewer when they hold more than
- * `HISTORY_RECORD_LIMIT` records, the newest turn always whole), and what each holds: by its turn
- * id, a person's message by the turn it started, anything else by the turn it was made in.
+ * A thread's turns in order and what each holds: by its turn id, a person's message by the turn it
+ * started, anything else by the turn it was made in. Only the thread's own turns take its records.
  */
-export const planOf = (
-  skeleton: V1Skeleton,
-  limits: { readonly turns: number; readonly records: number } = {
-    turns: HISTORY_TURN_LIMIT,
-    records: HISTORY_RECORD_LIMIT,
-  },
-): Plan => {
+const heldTurns = (skeleton: V1Skeleton): ReadonlyArray<HeldTurn> => {
   const turns = [...skeleton.turns, ...looseTurns(skeleton)].toSorted(
     (left, right) =>
       ms(left.requestedAt) - ms(right.requestedAt) || left.key.localeCompare(right.key),
@@ -307,7 +339,6 @@ export const planOf = (
     return found;
   };
 
-  type Placed = { readonly at: number; readonly order: number; readonly id: string };
   const held = turns.map(() => ({
     messages: [] as Array<Placed & { readonly head: V1MessageHead }>,
     activities: [] as Array<Placed & { readonly head: V1ActivityHead }>,
@@ -376,20 +407,49 @@ export const planOf = (
     }
     return 1 + turn.messages.length + groups.size;
   });
-  let first = Math.max(0, turns.length - limits.turns);
-  let total = sized.slice(first).reduce((sum, size) => sum + size, 0);
+  return turns.map((turn, index) => ({ turn, ...held[index]!, size: sized[index]! }));
+};
+
+const LIMITS = { turns: HISTORY_TURN_LIMIT, records: HISTORY_RECORD_LIMIT };
+
+/**
+ * The thread's turns in order, the newest `HISTORY_TURN_LIMIT` (fewer when they hold more than
+ * `HISTORY_RECORD_LIMIT` records, the newest turn always whole), and what each holds.
+ */
+export const planOf = (
+  skeleton: V1Skeleton,
+  limits: { readonly turns: number; readonly records: number } = LIMITS,
+): Plan => planOfChain([{ threadId: "", boundary: null, skeleton }], limits);
+
+/**
+ * A chain of threads as one record, oldest thread first (a crewmate's stints): each thread's turns
+ * in order with what each holds, the newest turns of the whole chain within the bounds, and where a
+ * later thread begins, a boundary saying why, first in its first run.
+ */
+export const planOfChain = (
+  segments: ReadonlyArray<V1Segment>,
+  limits: { readonly turns: number; readonly records: number } = LIMITS,
+): Plan => {
+  const units = segments.flatMap((segment) =>
+    heldTurns(segment.skeleton).map((held, index) => ({ segment, held, opens: index === 0 })),
+  );
+  const boundaryOf = (unit: (typeof units)[number]) => (unit.opens ? unit.segment.boundary : null);
+  const sizeOf = (unit: (typeof units)[number]) =>
+    unit.held.size + (boundaryOf(unit) === null ? 0 : 1);
+  let first = Math.max(0, units.length - limits.turns);
+  let total = units.slice(first).reduce((sum, unit) => sum + sizeOf(unit), 0);
   // The marker a cut leaves counts too.
-  while (first < turns.length - 1 && total + (first > 0 ? 1 : 0) > limits.records) {
-    total -= sized[first]!;
+  while (first < units.length - 1 && total + (first > 0 ? 1 : 0) > limits.records) {
+    total -= sizeOf(units[first]!);
     first++;
   }
 
   const runs: Array<PlannedRun> = [];
   const entries: Array<Entry> = [];
-  for (let index = first; index < turns.length; index++) {
+  for (let index = first; index < units.length; index++) {
     const run = index - first + 1;
-    const turn = turns[index]!;
-    const { messages, activities } = held[index]!;
+    const unit = units[index]!;
+    const { turn, messages, activities } = unit.held;
     let items = 0;
     let requests = 0;
     let brokeOff: PlannedRun["brokeOff"] = null;
@@ -501,13 +561,24 @@ export const planOf = (
         at: ms(turn.requestedAt) - 1,
       });
     }
+    const boundary = boundaryOf(unit);
+    if (boundary !== null) {
+      entries.push({
+        kind: "boundary",
+        run,
+        item: ++items,
+        threadId: unit.segment.threadId,
+        ...boundary,
+        at: ms(turn.requestedAt) - 1,
+      });
+    }
     let lastAt = ms(turn.requestedAt);
     for (const record of placed.toSorted(byTime)) {
       const entry = record.entry(++items);
       lastAt = Math.max(lastAt, record.at);
       entries.push(entry);
     }
-    runs.push({ turn, brokeOff, lastAt });
+    runs.push({ threadId: unit.segment.threadId, turn, brokeOff, lastAt });
   }
   return { runs, entries, leftTurns: first };
 };
@@ -901,6 +972,27 @@ export const recordsOf = (
           entry.at,
         );
         break;
+      case "boundary": {
+        // The same row a live rotation leaves, so the chain reads as one conversation.
+        const id = item(
+          entry.run,
+          entry.item,
+          ENGINE,
+          { kind: "marker", marker: { kind: "session-rotated", reason: entry.reason } },
+          entry.at,
+        );
+        data.push({
+          itemId: id,
+          data: {
+            source: "v1",
+            kind: "stint",
+            stint: entry.stint,
+            threadId: entry.threadId,
+            words: entry.words,
+          },
+        });
+        break;
+      }
       case "marker": {
         const id = item(entry.run, entry.item, ENGINE, markerOf(entry.activity), entry.at);
         // A plan's steps are its data, as V1 recorded them.

@@ -18,7 +18,12 @@ import {
   type HistoricalLimit,
   type EngineRunCard,
 } from "@t3tools/client-runtime/data";
-import { isEngineItemId, TurnId, type RunRecord } from "@t3tools/contracts";
+import {
+  isEngineItemId,
+  TurnId,
+  type CrewCard as ContractCrewCard,
+  type RunRecord,
+} from "@t3tools/contracts";
 import {
   envChangeWords,
   isReadOperationKind,
@@ -147,6 +152,18 @@ export interface CrewCard {
   readonly title: string;
   /** Its other lines. */
   readonly text: string;
+  /** The engine's typed card, which the card is drawn from; absent on V1's text card. */
+  readonly typed?: ContractCrewCard;
+}
+
+/**
+ * The crew card a message opens its run with: the engine's typed card, or V1's text card read
+ * from its words; null for anything else.
+ */
+export function crewCardOf(message: Pick<ChatMessage, "text" | "crewCard">): CrewCard | null {
+  const typed = message.crewCard;
+  if (typed !== undefined) return { title: typed.title, text: typed.why, typed };
+  return readCrewCard(message.text);
 }
 
 /** A crew task card (`@t3tools/shared/userAsk`) split into its title and text, or null for anything else. */
@@ -2429,6 +2446,9 @@ function takenServices(operation: ZeropsOperation): string[] {
 
 /** The crew task a turn worked: the one its card names — "#12 Camera rig · from you". */
 function crewTaskOf(turn: ConversationTurn): { number: number; title: string } | null {
+  const typed = turn.span.opener?.message.crewCard;
+  if (typed !== undefined)
+    return typed.number === null ? null : { number: typed.number, title: typed.title };
   const card = turn.span.opener === null ? null : readCrewCard(turn.span.opener.message.text);
   const match = card === null ? null : /^#(\d+)\s+(.+?)(?:\s+·\s+[^·]*)?$/u.exec(card.title);
   return match === null ? null : { number: Number(match[1]), title: match[2]!.trim() };
