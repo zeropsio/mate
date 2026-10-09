@@ -101,6 +101,7 @@ it.effect.each(["screenshot", "attachment"] as const)(
                 mimeType: "image/png",
               };
         const resolved = yield* resolveImageAsset({
+          ...(yield* engine.assetContext(ThreadId.make(mate))),
           resource,
           imageMode: "reference",
           preview: { width: 100, height: 60 },

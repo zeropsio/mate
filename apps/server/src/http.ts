@@ -28,7 +28,7 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import { OtlpTracer, OtlpSerialization } from "effect/observability";
 
 import * as ServerConfig from "./config.ts";
-import { resolveAssetContext } from "./assets/AssetContext.ts";
+import { resolveAssetContext } from "./engineSessionDirectory.ts";
 import { contentAssetsAt, ContentAssetError } from "./assets/ContentAssets.ts";
 import { contentAssetFailure, protectedContentAsset } from "./assets/ContentAssetHttp.ts";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery.ts";

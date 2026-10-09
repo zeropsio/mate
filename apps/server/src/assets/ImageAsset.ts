@@ -11,7 +11,6 @@ import {
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 
-import { conversationOfThread } from "../engine/MateEngine.ts";
 import { ServerConfig } from "../config.ts";
 import {
   resolveAttachmentPathById,
@@ -26,6 +25,8 @@ export const resolveImageAsset = Effect.fn("resolveImageAsset")(function* (
   input: AssetCreateUrlInput & {
     readonly projectId?: ProjectId;
     readonly workspaceRoot?: string;
+    /** The conversation wiring recognizes captured provider sessions; V1 uses exact thread ids. */
+    readonly ownsThread?: (thread: ThreadId) => boolean;
     readonly projectFaviconPath?: string;
     readonly projectCheckoutPending?: boolean;
   },
@@ -82,10 +83,9 @@ export const resolveImageAsset = Effect.fn("resolveImageAsset")(function* (
     );
     if (
       (resource._tag === "workspace-file" || resource._tag === "media-file") &&
-      (config.mateEngine === "mate"
-        ? (conversationOfThread(occurrence.threadId) ?? occurrence.threadId) !==
-          (conversationOfThread(resource.threadId) ?? resource.threadId)
-        : occurrence.threadId !== resource.threadId)
+      !(input.ownsThread
+        ? input.ownsThread(occurrence.threadId)
+        : occurrence.threadId === resource.threadId)
     )
       return yield* Effect.fail(new ContentAssetError("object-missing"));
   } else {

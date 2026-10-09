@@ -112,7 +112,7 @@ import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import { withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
 import { backfillThreadMedia, captureConversationEvent } from "./assets/ConversationMedia.ts";
-import { resolveAssetContext } from "./assets/AssetContext.ts";
+import { resolveAssetContext } from "./engineSessionDirectory.ts";
 import { resolveImageAsset } from "./assets/ImageAsset.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
@@ -2425,7 +2425,7 @@ const makeWsRpcLayer = (
               input.imageMode === "reference"
                 ? yield* resolveImageAsset({
                     ...input,
-                    workspaceRoot: context.workspaceRoot,
+                    ...context,
                   }).pipe(
                     Effect.mapError(
                       (cause) =>

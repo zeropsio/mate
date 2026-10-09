@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import sharp from "sharp";
+import { makeEngineWorld, mate } from "../engine/testing/pump/engineWorld.ts";
 import { ServerConfig, layerTest } from "../config.ts";
 import {
   backfillThreadMedia,
@@ -384,6 +385,10 @@ it.effect.each([false, true])(
 it.effect("an engine conversation resolves the screenshot captured by its provider session", () =>
   Effect.gen(function* () {
     const config = yield* ServerConfig;
+    const w = yield* makeEngineWorld({ driver: "codex" });
+    yield* w.boot;
+    yield* w.tell({ _tag: "Send", text: "Check the screenshot" });
+    const engine = yield* w.engine;
     const bytes = yield* Effect.promise(() =>
       sharp({ create: { width: 200, height: 120, channels: 4, background: "red" } })
         .png()
@@ -391,16 +396,17 @@ it.effect("an engine conversation resolves the screenshot captured by its provid
     );
     const occurrence = yield* Effect.promise(() =>
       contentAssetsAt(config.stateDir).ingestBytes(bytes, {
-        threadId: ThreadId.make("conversation/s/1"),
+        threadId: ThreadId.make(`${mate}/s/1`),
         ownerId: "browser-call",
         name: "screenshot.png",
         provenance: "capture",
       }),
     );
     const result = yield* resolveImageAsset({
+      ...(yield* engine.assetContext(ThreadId.make(mate))),
       resource: {
         _tag: "media-file",
-        threadId: ThreadId.make("conversation"),
+        threadId: ThreadId.make(mate),
         path: `mate-asset:${occurrence.id}`,
       },
       imageMode: "reference",
@@ -409,5 +415,6 @@ it.effect("an engine conversation resolves the screenshot captured by its provid
       result._tag,
       "ASSERTION: the engine conversation can resolve its provider-session screenshot",
     ).toBe("Success");
+    yield* w.shutdown;
   }).pipe(Effect.provide(layer)),
 );

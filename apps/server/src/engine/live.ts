@@ -23,6 +23,7 @@ import {
   BootId,
   CommandId,
   ConversationAgent,
+  type ThreadId,
   ConversationId,
   RunEnd,
   RunId,
@@ -397,7 +398,11 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
             WHERE conversation_id = ${id} AND owner_kind = 'conversation' LIMIT 1
           `;
           if (rows.length === 0) return undefined;
-          return { workspaceRoot: (yield* workspace.of(id)).cwd };
+          return {
+            workspaceRoot: (yield* workspace.of(id)).cwd,
+            ownsThread: (owner: ThreadId) =>
+              (TurnPumpModule.conversationOfThread(owner) ?? owner) === id,
+          };
         }).pipe(Effect.mapError(() => new ViewUnreadable({ conversationId: id })));
       },
       conversation: (id) =>

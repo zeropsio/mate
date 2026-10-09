@@ -48,7 +48,7 @@ import { unservedWire, type EngineWireShape } from "./wire/EngineWire.ts";
 export { brokeOffLine, conversationRowOf, restartLine } from "./read/conversationRow.ts";
 
 /** Session identity for the engine's provider wiring. */
-export { providerThreadOf, conversationOfThread } from "./pump/TurnPump.ts";
+export { providerThreadOf } from "./pump/TurnPump.ts";
 /** How a run reads when its own agent interrupted the turn: an owner kind tells it apart. */
 export { AGENT_STOPPED_ITSELF } from "./domain/decide.ts";
 /** A store read or write that failed, as an owner kind's effects meet it. */
@@ -139,9 +139,14 @@ export interface MateEngineService {
    */
   readonly conversations: Effect.Effect<ConversationList>;
   /** A retained image's conversation and workspace, from its conversation or provider-session id. */
-  readonly assetContext: (
-    thread: ThreadId,
-  ) => Effect.Effect<{ readonly workspaceRoot: string } | undefined, ViewUnreadable>;
+  readonly assetContext: (thread: ThreadId) => Effect.Effect<
+    | {
+        readonly workspaceRoot: string;
+        readonly ownsThread: (thread: ThreadId) => boolean;
+      }
+    | undefined,
+    ViewUnreadable
+  >;
   /**
    * One conversation as the grafts read it; none when the engine holds no record of it, and a
    * failure (never none) when its view cannot be read now.
