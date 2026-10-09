@@ -1949,7 +1949,12 @@ function turnActivity(turn: ConversationTurn): OutcomeActivity[] {
   const launches = entries.flatMap((entry) =>
     entry.kind === "work" && entry.entry.agentSpawn !== undefined ? [entry.entry] : [],
   );
-  return activityCounts(calls, launches);
+  // Every call the Mate made counts: its operations' too, though their cards say them.
+  const operationCalls = entries.reduce(
+    (sum, entry) => sum + (entry.kind === "operation" ? entry.operation.callIds.length : 0),
+    0,
+  );
+  return activityCounts(calls, launches, operationCalls);
 }
 
 /**

@@ -9,7 +9,6 @@ import {
   type EngineCardCounts,
   type EngineCardPaging,
 } from "@t3tools/client-runtime/data";
-import { classifyZeropsCall } from "@t3tools/client-runtime/zerops/model";
 
 import {
   ACTIVITY_ORDER,
@@ -18,6 +17,7 @@ import {
   type OutcomeActivity,
   type OutcomeModel,
 } from "../components/chat/conversation.logic";
+import { classifyZeropsCall } from "@t3tools/client-runtime/zerops/model";
 
 /** A call's step as the worked line counts it; a generic or MCP call by its tool. */
 const STEP_KIND: Readonly<Record<string, ActivityKind>> = {
@@ -36,14 +36,16 @@ const NAMED_TOOL_KIND: Readonly<Record<string, ActivityKind>> = {
 };
 
 /**
- * What a tool's calls count as: a Zerops tool by what it did ("the workflow checked"), never one
- * whose result is a row of its card (a deploy, a check) or the timeline leaves out.
+ * What a tool's calls count as: a Zerops tool by what it did ("the workflow checked"), every other
+ * as a tool used — one whose result is a row of its card (a deploy, a check) too: every call the
+ * Mate made counts (Milo's third stress run read "1 tool used" for six Zerops calls).
  */
 function toolKind(name: string): ActivityKind | null {
   const named = NAMED_TOOL_KIND[name];
   if (named !== undefined) return named;
   const bare = name.split("__").at(-1) ?? name;
-  if (classifyZeropsCall(bare, undefined, "completed") !== "generic") return null;
+  // A tool the timeline never draws (the question asked, a tool search) is no effort to count.
+  if (classifyZeropsCall(bare, undefined, "completed") === "hidden") return null;
   return ZEROPS_TOOL_KIND[bare] ?? "tool";
 }
 

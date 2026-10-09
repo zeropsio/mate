@@ -1261,6 +1261,8 @@ export interface OutcomeActivity {
 export function activityCounts(
   calls: ReadonlyArray<WorkLogEntry>,
   launches: ReadonlyArray<WorkLogEntry> = [],
+  /** The calls its operations' cards hold (a deploy, a check): tools it used all the same. */
+  operationCalls = 0,
 ): OutcomeActivity[] {
   const counts = new Map<ActivityKind, number>();
   const edited = new Set<string>();
@@ -1278,6 +1280,7 @@ export function activityCounts(
         : action;
     counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
+  if (operationCalls > 0) counts.set("tool", (counts.get("tool") ?? 0) + operationCalls);
   if (edited.size + unnamedEdits > 0) counts.set("edit", edited.size + unnamedEdits);
   const helpers = launches.reduce(
     (sum, entry) => sum + Math.max(1, entry.agentSpawn?.agentTaskIds.length ?? 1),

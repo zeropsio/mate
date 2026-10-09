@@ -188,7 +188,7 @@ describe("an engine Mate's run card, from the engine's record", () => {
       }),
     );
     expect(runEffortWords(card.outcome)).toBe(
-      "1 file edited · 7 commands · 1 page fetched · 1 tool used · 1 helper",
+      "1 file edited · 7 commands · 1 page fetched · 2 tools used · 1 helper",
     );
   });
 
