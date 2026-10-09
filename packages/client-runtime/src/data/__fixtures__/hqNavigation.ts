@@ -5,11 +5,13 @@
  */
 import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import { hqLifecycleScope, lifecycleReceipt } from "../families/hqLifecycle.ts";
+import type { MateAttention } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { HqOfficialVerdict } from "@t3tools/shared/hqStream";
 
 import type { HqStructure } from "../../zerops/hq/client.ts";
 import { hqMateScope } from "../families/hqMate.ts";
+import { hqMateAttentionScope } from "../families/mateAttention.ts";
 import {
   hqAppsScope,
   hqOrganizationScope,
@@ -22,6 +24,7 @@ import {
   type HqPressValue,
 } from "../families/hqNavigation.ts";
 import { linkKeys, type ScopeKey } from "../model.ts";
+import { graceOver } from "./account.ts";
 import type { Row } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
@@ -31,6 +34,8 @@ export interface SeededHq {
   readonly lifecycle?: ReadonlyArray<HqLifecycleRecord>;
   /** Each Mate HQ relays, by project. */
   readonly mates?: Readonly<Record<string, MateLiveView>>;
+  /** The attention HQ relays live of each of those Mates, by project. */
+  readonly attention?: Readonly<Record<string, MateAttention>>;
   readonly people?: Readonly<
     Record<string, { readonly name: string; readonly clientUserId?: string }>
   >;
@@ -68,7 +73,10 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     hqPressesScope(orgId),
     hqLifecycleScope(orgId),
   ];
-  const mates = Object.keys(seed.mates ?? {}).map((projectId) => hqMateScope(orgId, projectId));
+  const mates = Object.keys(seed.mates ?? {}).flatMap((projectId) => [
+    hqMateScope(orgId, projectId),
+    ...(seed.attention?.[projectId] === undefined ? [] : [hqMateAttentionScope(orgId, projectId)]),
+  ]);
   const live = (key: ScopeKey | ReturnType<typeof linkKeys.hq>) =>
     store.state().streams.get(key)?.phase === "live";
   // What is live already stays so: seeding again moves HQ's word, not its streams.
@@ -220,7 +228,11 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
   }
   for (const [projectId, mate] of Object.entries(seed.mates ?? {})) {
     const { presence, ...overview } = mate;
-    const scopes = generations([hqMateScope(orgId, projectId)]);
+    const attention = seed.attention?.[projectId];
+    const scopes = generations([
+      hqMateScope(orgId, projectId),
+      ...(attention === undefined ? [] : [hqMateAttentionScope(orgId, projectId)]),
+    ]);
     store.dispatch({
       kind: "delivery",
       via: "hq-stream",
@@ -234,20 +246,75 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           value: {
             presence,
             overview: Object.keys(overview).length === 0 ? null : (overview as never),
-            attention: null,
-            attentionState: "none",
+            attention: attention ?? null,
+            attentionState: attention === undefined ? "none" : "live",
           },
         },
+        ...(attention === undefined
+          ? []
+          : [
+              {
+                family: "mateAttention" as const,
+                id: projectId,
+                revision: {
+                  kind: "mate-attention" as const,
+                  environmentId: attention.source.environmentId,
+                  epoch: attention.source.epoch,
+                  incarnation: attention.source.incarnation,
+                  revision: attention.source.revision,
+                  live: true,
+                },
+                value: attention,
+              },
+            ]),
       ],
       removals: [],
     });
     store.dispatch({ kind: "hq-ready", scopes });
   }
   for (const scope of opening) event(scope, { kind: "baseline-committed" });
-  if (seed.live === false)
+  if (seed.live === false) {
     event(linkKeys.hq(orgId), {
       kind: "fault",
       fault: { outcome: "transient", message: "HQ's stream broke." },
       jitter: 0,
     });
+    // Down, not blinking: past the reconnect's grace.
+    for (const input of graceOver(store.state())) store.dispatch(input);
+  }
+}
+
+/** Every HQ scope the store observes in `orgId`, as HQ's next segment asks for them again. */
+const hqScopesOf = (store: AccountStore, orgId: string): ReadonlyArray<ScopeKey> =>
+  [...store.state().streams.keys()].filter(
+    (key): key is ScopeKey => key.startsWith(`hq:${orgId}:`) && key !== linkKeys.hq(orgId),
+  );
+
+/**
+ * HQ ends its segment as planned (`4410`, every 100 s) and the next one asks for each scope again,
+ * as the HQ adapter does: a new registration of each, its handshake made, HQ yet to confirm it.
+ */
+export function hqSegmentEnds(store: AccountStore, orgId: string, now: number): void {
+  for (const key of hqScopesOf(store, orgId)) {
+    store.dispatch({ kind: "stream", key, now, event: { kind: "attempt" } });
+    store.dispatch({ kind: "stream", key, now, event: { kind: "handshake" } });
+  }
+}
+
+/** HQ says each scope it was asked for again is ready: nothing changed meanwhile. */
+export function hqConfirms(store: AccountStore, orgId: string, now: number): void {
+  for (const key of hqScopesOf(store, orgId))
+    store.dispatch({ kind: "stream", key, now, event: { kind: "baseline-committed" } });
+}
+
+/** HQ's socket breaks (no planned end): the link starts recovering and each scope waits on it. */
+export function hqDrops(store: AccountStore, orgId: string, now: number): void {
+  store.dispatch({
+    kind: "stream",
+    key: linkKeys.hq(orgId),
+    now,
+    event: { kind: "fault", fault: { outcome: "transient", message: "closed" }, jitter: 0 },
+  });
+  for (const key of hqScopesOf(store, orgId))
+    store.dispatch({ kind: "stream", key, now, event: { kind: "parent-lost" } });
 }

@@ -6,6 +6,7 @@ import {
   projectValue,
   serviceValue,
   zeropsVersion,
+  pastGrace,
 } from "../__fixtures__/account.ts";
 import { projectsScope } from "../families/project.ts";
 import { servicesScope } from "../families/service.ts";
@@ -133,13 +134,15 @@ describe("projectServices", () => {
     {
       name: "an outage: what was read stays, catching up",
       state: () =>
-        apply(live(), [
-          event(linkKeys.zerops(ORG), {
-            kind: "fault",
-            fault: { outcome: "transient", message: "socket closed" },
-            jitter: 0,
-          }),
-        ]),
+        pastGrace(
+          apply(live(), [
+            event(linkKeys.zerops(ORG), {
+              kind: "fault",
+              fault: { outcome: "transient", message: "socket closed" },
+              jitter: 0,
+            }),
+          ]),
+        ),
       expected: { services: ["db", "zcp"], live: false, reconnecting: true },
     },
     {

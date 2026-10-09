@@ -16,6 +16,7 @@ import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../mod
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
+import { pastGrace } from "../__fixtures__/account.ts";
 import { hqMates } from "./hqMates.ts";
 import {
   hqAppReleaseOffers,
@@ -155,10 +156,11 @@ const rows: ReadonlyArray<Row> = [
 const stream = (
   key: ScopeKey | ReturnType<typeof linkKeys.hq>,
   event: StreamEvent,
+  now = 0,
 ): AccountInput => ({
   kind: "stream",
   key,
-  now: 0,
+  now,
   event,
 });
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
@@ -180,14 +182,16 @@ const read = apply(demanded, [
   { kind: "hq-ready", scopes: generations },
   ...NAV.map((scope) => stream(scope, { kind: "baseline-committed" })),
 ]);
-const down = apply(read, [
-  stream(linkKeys.hq(ORG), {
-    kind: "fault",
-    fault: { outcome: "transient", message: "HQ's stream broke." },
-    jitter: 0,
-  }),
-  ...NAV.map((scope) => stream(scope, { kind: "parent-lost" })),
-]);
+const down = pastGrace(
+  apply(read, [
+    stream(linkKeys.hq(ORG), {
+      kind: "fault",
+      fault: { outcome: "transient", message: "HQ's stream broke." },
+      jitter: 0,
+    }),
+    ...NAV.map((scope) => stream(scope, { kind: "parent-lost" })),
+  ]),
+);
 const refused = apply(read, [
   stream(hqAppsScope(ORG), {
     kind: "fault",
@@ -343,6 +347,45 @@ describe("hqNavigation", () => {
     expect(navigation(asking)).toMatchObject({ live: false, reconnecting: true });
   });
 
+  it("a planned HQ reconnect is no outage: what it read stays current while HQ confirms it again", () => {
+    // HQ ends every segment after 100 s; the new socket asks for each scope again.
+    const reasking = apply(
+      read,
+      NAV.flatMap((scope) => [
+        stream(scope, { kind: "attempt" }, 100_000),
+        stream(scope, { kind: "handshake" }, 100_080),
+      ]),
+    );
+    expect(navigation(reasking)).toMatchObject({ live: true, reconnecting: false });
+    expect(navigation(reasking).downSince).toBeUndefined();
+    const confirmed = apply(reasking, [
+      { kind: "hq-ready", scopes: NAV.map((scope) => ({ scope, generation: 2 })) },
+      ...NAV.map((scope) => stream(scope, { kind: "baseline-committed" }, 100_200)),
+    ]);
+    expect(navigation(confirmed)).toMatchObject({ live: true, reconnecting: false });
+  });
+
+  it("is down only once HQ stays away past the grace, and down since it went away", () => {
+    const lost = apply(read, [
+      stream(
+        linkKeys.hq(ORG),
+        {
+          kind: "fault",
+          fault: { outcome: "transient", message: "HQ's stream broke." },
+          jitter: 0,
+        },
+        60_000,
+      ),
+      ...NAV.map((scope) => stream(scope, { kind: "parent-lost" }, 60_000)),
+    ]);
+    expect(navigation(lost)).toMatchObject({ live: true, reconnecting: false });
+    expect(navigation(pastGrace(lost))).toMatchObject({
+      live: false,
+      reconnecting: true,
+      downSince: 60_000,
+    });
+  });
+
   it("keeps what it read through an outage", () => {
     expect(navigation(down).structure).toEqual(navigation(read).structure);
   });
@@ -384,13 +427,15 @@ describe("hqMates", () => {
   });
 
   it("keeps a Mate's last word through an outage, no longer live", () => {
-    const outage = apply(withMate, [
-      stream(linkKeys.hq(ORG), {
-        kind: "fault",
-        fault: { outcome: "transient", message: "HQ's stream broke." },
-        jitter: 0,
-      }),
-    ]);
+    const outage = pastGrace(
+      apply(withMate, [
+        stream(linkKeys.hq(ORG), {
+          kind: "fault",
+          fault: { outcome: "transient", message: "HQ's stream broke." },
+          jitter: 0,
+        }),
+      ]),
+    );
     expect(hqMates.derive(readsOfState(outage), ORG)).toEqual({
       live: false,
       mates: { ada: { presence } },

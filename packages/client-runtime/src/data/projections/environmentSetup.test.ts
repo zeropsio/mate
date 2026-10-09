@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { hqAppsScope, hqPressesScope, placementsScope } from "../families/hqNavigation.ts";
-import { liveProjects } from "../__fixtures__/account.ts";
+import { liveProjects, pastGrace } from "../__fixtures__/account.ts";
 import { emptyAccount, linkKeys, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
@@ -189,16 +189,18 @@ describe("environmentSetup", () => {
   });
 
   it("does not offer keeping a key while HQ cannot verify its offer", () => {
-    const outage = apply(placed, {
-      kind: "stream",
-      key: apps,
-      now: 1,
-      event: {
-        kind: "fault",
-        fault: { outcome: "transient", message: "HQ unavailable" },
-        jitter: 0,
-      },
-    });
+    const outage = pastGrace(
+      apply(placed, {
+        kind: "stream",
+        key: apps,
+        now: 1,
+        event: {
+          kind: "fault",
+          fault: { outcome: "transient", message: "HQ unavailable" },
+          jitter: 0,
+        },
+      }),
+    );
     expect(of(outage)).toEqual([]);
   });
 });

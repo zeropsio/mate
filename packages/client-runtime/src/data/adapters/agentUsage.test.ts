@@ -8,6 +8,7 @@ import {
   type UsageReportQuery,
   type UsageReport,
 } from "@t3tools/contracts";
+import { graceOver } from "../__fixtures__/account.ts";
 import { hqFixtureWire } from "../__fixtures__/hqWire.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
@@ -256,6 +257,7 @@ it.effect.each(
     yield* settle;
     yield* fixture.endSegment;
     yield* settle;
+    for (const input of graceOver(store.state())) store.dispatch(input);
     expect(fixture.opens()).toBe(2);
     expect(
       fixture.sent

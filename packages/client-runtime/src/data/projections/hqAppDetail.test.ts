@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { pastGrace } from "../__fixtures__/account.ts";
 
 import { hqAppDetailScope } from "../families/hqAppDetail.ts";
 import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../model.ts";
@@ -67,14 +68,16 @@ const read = apply(partial, [
   { kind: "hq-ready", scopes: [{ scope: SCOPE, generation: 1 }] },
   stream(SCOPE, { kind: "baseline-committed" }),
 ]);
-const down = apply(read, [
-  stream(linkKeys.hq(ORG), {
-    kind: "fault",
-    fault: { outcome: "transient", message: "HQ's stream broke." },
-    jitter: 0,
-  }),
-  stream(SCOPE, { kind: "parent-lost" }),
-]);
+const down = pastGrace(
+  apply(read, [
+    stream(linkKeys.hq(ORG), {
+      kind: "fault",
+      fault: { outcome: "transient", message: "HQ's stream broke." },
+      jitter: 0,
+    }),
+    stream(SCOPE, { kind: "parent-lost" }),
+  ]),
+);
 const refused = apply(read, [
   stream(SCOPE, {
     kind: "fault",

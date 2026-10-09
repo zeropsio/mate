@@ -107,6 +107,14 @@ export interface StreamState {
   readonly repaired: boolean;
   readonly fault: StreamFault | null;
   readonly next: NextAction;
+  /** When it last stopped being live, while it is not live again: when an outage began. */
+  readonly lostAt?: number;
+  /**
+   * It stopped being live less than {@link STREAM_POLICY.reconnectGraceMs} ago and is reconnecting:
+   * what it held stands as current ({@link liveOrHeld}). HQ ends every segment on purpose and a
+   * socket blinks; neither is an outage until the grace runs out.
+   */
+  readonly held?: true;
 }
 
 export type StreamEvent =
@@ -132,6 +140,8 @@ export type StreamEvent =
   | { readonly kind: "input-changed" }
   /** The single-flight session repair succeeded. */
   | { readonly kind: "session-repaired" }
+  /** The grace of the loss at `lostAt` ran out: a stream still not live is now down. */
+  | { readonly kind: "grace-over"; readonly lostAt: number }
   /** A child scope's registration starts on its parent's open connection. */
   | { readonly kind: "attempt" }
   /** A child scope's parent connection went down. */
@@ -158,6 +168,11 @@ export const STREAM_POLICY = {
   backoffCapMs: 60_000,
   /** Where realtime is unverified, a demanded sampled source revalidates this often. */
   sampledIntervalMs: 30_000,
+  /**
+   * How long a stream that was live and is reconnecting still reads live: HQ's planned segment
+   * end re-confirms in 90–270 ms, a dropped socket's first retry within about a second.
+   */
+  reconnectGraceMs: 5_000,
 } as const;
 
 /** What a connection or scope that passed its deadline says to the person. */
@@ -258,7 +273,49 @@ const isActive = (phase: Phase): boolean =>
   phase === "recovering" ||
   phase === "reauthenticating";
 
+/** The phases a stream that was live passes through on its way back. */
+const RECONNECTING: ReadonlySet<Phase> = new Set([
+  "connecting",
+  "baselining",
+  "stale",
+  "recovering",
+  "reauthenticating",
+]);
+
+/** Live, or lost within its grace and on its way back: what it holds is current. */
+export const liveOrHeld = (stream: StreamState): boolean =>
+  stream.phase === "live" || stream.held === true;
+
+/**
+ * One rule for every stream: leaving live for a reconnect holds what it read as current for the
+ * grace, and dates the loss; live again forgets both; a refusal, a pause or a close ends the hold.
+ */
+function hold(before: StreamState, after: StreamState, now: number): StreamState {
+  if (after.phase === "live") {
+    if (after.lostAt === undefined && after.held === undefined) return after;
+    const { lostAt: _lostAt, held: _held, ...rest } = after;
+    return rest;
+  }
+  if (!RECONNECTING.has(after.phase)) {
+    if (after.held === undefined) return after;
+    const { held: _held, ...rest } = after;
+    return rest;
+  }
+  return before.phase === "live" ? { ...after, lostAt: now, held: true } : after;
+}
+
 export function transition(state: StreamState, event: StreamEvent, now: number): StreamTransition {
+  if (event.kind === "grace-over") {
+    if (state.held !== true || state.lostAt !== event.lostAt) return settle(state);
+    const { held: _held, ...rest } = state;
+    return settle(rest);
+  }
+  const next = step(state, event, now);
+  const held = hold(state, next.state, now);
+  return held === next.state ? next : { ...next, state: held };
+}
+
+function step(state: StreamState, event: StreamEvent, now: number): StreamTransition {
   if (state.phase === "closed") return settle(state);
   if (event.kind === "close")
     return {
@@ -340,6 +397,8 @@ export function transition(state: StreamState, event: StreamEvent, now: number):
         : settle(state);
     case "resume":
       return state.demanded && state.phase === "recovering" ? attempt(state, now) : settle(state);
+    case "grace-over":
+      return settle(state);
   }
 }
 

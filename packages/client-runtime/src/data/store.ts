@@ -5,10 +5,13 @@
  * `Atom.batch`. A reader never gets a raw record or a writable atom: facts arrive as
  * {@link PublicRead}, withheld payloads never leave.
  *
- * `dispatch` is the adapters' door, never a component's.
+ * `dispatch` is the adapters' door, never a component's. Its one clock of its own is a held
+ * stream's grace (`STREAM_POLICY.reconnectGraceMs`): run out, it tells that stream so.
  *
  * @module data/store
  */
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import { familySpec } from "./families/index.ts";
@@ -27,7 +30,7 @@ import {
   type StreamKey,
 } from "./model.ts";
 import { reduceAccount, streamOf, type AccountInput, type RuntimeDirective } from "./reducer.ts";
-import type { StreamState } from "./streamMachine.ts";
+import { STREAM_POLICY, type StreamState } from "./streamMachine.ts";
 
 /** A scope's membership as a reader sees it: listed ids, unproven departures and owner-proven exclusions. */
 export interface MembershipRead {
@@ -186,6 +189,54 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
     return atom as Atom.Writable<T>;
   };
   let closed = false;
+  /** Each held stream's grace, running: it ends the hold of the loss it was set for. */
+  const graces = new Map<StreamKey, Fiber.Fiber<void>>();
+  const endGrace = (key: StreamKey) => {
+    const grace = graces.get(key);
+    if (grace === undefined) return;
+    graces.delete(key);
+    Effect.runFork(Fiber.interrupt(grace));
+  };
+  const keepGrace = (key: StreamKey, before: StreamState, after: StreamState, now: number) => {
+    if (after.held === true && before.held === true && before.lostAt === after.lostAt) return;
+    endGrace(key);
+    if (after.held !== true || after.lostAt === undefined) return;
+    const { lostAt } = after;
+    graces.set(
+      key,
+      Effect.runFork(
+        Effect.sleep(STREAM_POLICY.reconnectGraceMs).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              graces.delete(key);
+              dispatch({
+                kind: "stream",
+                key,
+                now: now + STREAM_POLICY.reconnectGraceMs,
+                event: { kind: "grace-over", lostAt },
+              });
+            }),
+          ),
+        ),
+      ),
+    );
+  };
+  const dispatch = (input: AccountInput): ReadonlyArray<RuntimeDirective> => {
+    if (closed) return [];
+    const before = input.kind === "stream" ? streamOf(state, input.key) : null;
+    const reduction = reduceAccount(state, input);
+    state = reduction.state;
+    if (input.kind === "stream" && before !== null)
+      keepGrace(input.key, before, streamOf(state, input.key), input.now);
+    Atom.batch(() => {
+      for (const key of reduction.changed) {
+        const atom = cells.get(key);
+        if (atom !== undefined) registry.set(atom, valueOf(state, key));
+      }
+    });
+    if (reduction.changed.size > 0) for (const listener of [...listeners]) listener();
+    return reduction.directives;
+  };
   const projected = new WeakMap<Projection<never, unknown>, Map<string, Atom.Atom<unknown>>>();
   const project = <Key, Value>(projection: Projection<Key, Value>, key: Key): Atom.Atom<Value> => {
     let byKey = projected.get(projection as Projection<never, unknown>);
@@ -213,19 +264,7 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
       stream: (key) => cell(`stream:${key}`),
       project,
     },
-    dispatch: (input) => {
-      if (closed) return [];
-      const reduction = reduceAccount(state, input);
-      state = reduction.state;
-      Atom.batch(() => {
-        for (const key of reduction.changed) {
-          const atom = cells.get(key);
-          if (atom !== undefined) registry.set(atom, valueOf(state, key));
-        }
-      });
-      if (reduction.changed.size > 0) for (const listener of [...listeners]) listener();
-      return reduction.directives;
-    },
+    dispatch,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => void listeners.delete(listener);
@@ -241,6 +280,7 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
     close: () => {
       if (closed) return;
       closed = true;
+      for (const key of graces.keys()) endGrace(key);
       for (const finalizer of finalizers) finalizer();
       finalizers.clear();
       listeners.clear();

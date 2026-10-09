@@ -2,9 +2,9 @@
  * Inputs that bring an account's streams up and its scopes to a committed baseline, the way the
  * adapters would: for projection and publication tests that start from a known account.
  */
-import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
-import type { AccountInput, Row } from "../reducer.ts";
-import type { StreamEvent } from "../streamMachine.ts";
+import { linkKeys, type AccountState, type LinkKey, type ScopeKey } from "../model.ts";
+import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
+import { STREAM_POLICY, type StreamEvent } from "../streamMachine.ts";
 import { runningScope, type ProcessValue } from "../families/process.ts";
 import { projectsScope, type ProjectValue } from "../families/project.ts";
 import { activeScope, type VersionValue } from "../families/version.ts";
@@ -221,3 +221,22 @@ export function liveMateVariables(
     event(scope, { kind: "baseline-committed" }),
   ];
 }
+
+/** What tells each held stream its reconnect grace ran out, as the store's own clock would. */
+export const graceOver = (state: AccountState): ReadonlyArray<AccountInput> =>
+  [...state.streams].flatMap(([key, stream]) =>
+    stream.held === true && stream.lostAt !== undefined
+      ? [
+          {
+            kind: "stream" as const,
+            key,
+            now: stream.lostAt + STREAM_POLICY.reconnectGraceMs,
+            event: { kind: "grace-over" as const, lostAt: stream.lostAt },
+          },
+        ]
+      : [],
+  );
+
+/** The account once each reconnect's grace ran out: a stream still not live is now down. */
+export const pastGrace = (state: AccountState): AccountState =>
+  graceOver(state).reduce((next, input) => reduceAccount(next, input).state, state);

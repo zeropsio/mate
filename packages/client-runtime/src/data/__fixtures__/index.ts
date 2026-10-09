@@ -1,5 +1,11 @@
 /** Test fixtures over the account's data layer, for the apps' own tests. */
-export { seedHqNavigation, type SeededHq } from "./hqNavigation.ts";
+export {
+  hqConfirms,
+  hqDrops,
+  hqSegmentEnds,
+  seedHqNavigation,
+  type SeededHq,
+} from "./hqNavigation.ts";
 export {
   seedHqProjectPeople,
   type SeededProjectPeople,
@@ -13,4 +19,4 @@ export {
   type EngineRecords,
 } from "./engineThread.ts";
 export { callItem, engineRun, engineRow, personItem, noteItem, workItem } from "./mateEngine.ts";
-export { liveZerops, ORG } from "./account.ts";
+export { graceOver, liveZerops, ORG, pastGrace } from "./account.ts";

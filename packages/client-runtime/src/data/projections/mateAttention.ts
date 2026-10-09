@@ -18,6 +18,7 @@ import { hqMateAttentionScope, mateAttentionScope } from "../families/mateAttent
 import { linkKeys, type StreamKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
+import { liveOrHeld } from "../streamMachine.ts";
 
 export interface MateAttentionRead {
   /** The Mate's attention; `null` while none was said — or the Mate predates the value. */
@@ -28,7 +29,7 @@ export interface MateAttentionRead {
   readonly unseen: number | null;
 }
 
-const isLive = (read: ProjectionReads, key: StreamKey) => read.stream(key).phase === "live";
+const isLive = (read: ProjectionReads, key: StreamKey) => liveOrHeld(read.stream(key));
 
 function attentionOf(
   read: ProjectionReads,

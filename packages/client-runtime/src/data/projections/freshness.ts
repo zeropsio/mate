@@ -6,7 +6,7 @@
  */
 import type { LinkKey, ScopeKey } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
-import type { StreamState } from "../streamMachine.ts";
+import { liveOrHeld, type StreamState } from "../streamMachine.ts";
 
 const CATCHING_UP: ReadonlySet<StreamState["phase"]> = new Set(["recovering", "reauthenticating"]);
 
@@ -16,9 +16,12 @@ export type UnavailableReason = "expired-session" | "forbidden" | "refused";
 export interface ScopeFreshness {
   /** The scope committed a baseline: what earns an empty answer. */
   readonly complete: boolean;
+  /** Live, or reconnecting within its grace: a planned reconnect is never an outage. */
   readonly live: boolean;
   /** Read before and not live now: what is held stays, catching up. */
   readonly reconnecting: boolean;
+  /** When it stopped being live (wall ms), while it is not; absent while live or never lost. */
+  readonly downSince?: number;
   readonly unavailableReason?: UnavailableReason;
 }
 
@@ -34,10 +37,13 @@ export function scopeFreshness(read: ProjectionReads, scope: ScopeKey): ScopeFre
   // connect is not.
   const catchingUp =
     CATCHING_UP.has(link.phase) || (stream.phase === "stale" && stream.generation > 0);
+  const live = liveOrHeld(link) && liveOrHeld(stream);
+  const lost = [link.lostAt, stream.lostAt].filter((at) => at !== undefined);
   return {
     complete: read.coverage(scope) === "complete",
-    live: link.phase === "live" && stream.phase === "live",
-    reconnecting: refusal === undefined && catchingUp,
+    live,
+    reconnecting: refusal === undefined && catchingUp && !live,
+    ...(live || lost.length === 0 ? {} : { downSince: Math.min(...lost) }),
     ...(refusal === undefined ? {} : { unavailableReason: refusalReason(refusal) }),
   };
 }

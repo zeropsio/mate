@@ -1,5 +1,6 @@
 import { AtomRegistry } from "effect/reactivity";
 import { expect, it } from "vite-plus/test";
+import { graceOver } from "../__fixtures__/account.ts";
 import { mountRoster } from "../../zerops/testing/accountRoster.ts";
 import {
   ZeropsAccountId,
@@ -144,6 +145,7 @@ it("an app baseline cannot claim unread placement is ungrouped", async () => {
     now: 0,
     event: { kind: "parent-lost" },
   });
+  for (const input of graceOver(store.state())) store.dispatch(input);
   expect(inventoryPlacementStatus.derive(readsOfState(store.state()), "org")).toMatchObject({
     complete: true,
     live: false,
