@@ -333,4 +333,26 @@ describe("an engine Mate's run card, from the engine's record", () => {
       expect(lineOf(cardOf(rows))).toBe(line);
     },
   );
+
+  it.each([
+    { state: "admitted", line: "Saving a snapshot of the workspace" },
+    { state: "sending", line: "Starting its session" },
+  ] as const)(
+    "a run its engine holds $state before it starts says what it waits on: $line",
+    ({ state, line }) => {
+      const rows = render({
+        runs: [
+          stressRun({
+            state,
+            startedAt: null,
+            endedAt: null,
+            end: null,
+          } as never),
+        ],
+        items: [personItem(run1, 1, "Run the stress checks", { at: t0 })],
+        isWorking: true,
+      });
+      expect(lineOf(cardOf(rows))).toBe(line);
+    },
+  );
 });

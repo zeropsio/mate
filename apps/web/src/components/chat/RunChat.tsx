@@ -3047,6 +3047,7 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
     case "waiting":
       return <span className="run-now-verb">{nowLineWords(line)}</span>;
     case "after":
+    case "starting":
       return (
         <>
           <span className="run-now-verb">{nowLineWords(line)}</span>
@@ -3493,6 +3494,7 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
         <span className="run-slot-word">{nowLineWords({ kind: "waiting", on: filler.on })}</span>
       );
     case "after":
+    case "starting":
       return (
         <>
           <span className="run-slot-word">{nowLineWords(filler)}</span>

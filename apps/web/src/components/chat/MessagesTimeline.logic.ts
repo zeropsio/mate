@@ -426,6 +426,8 @@ export type TurnHeaderActivity =
    * what an engine card says it waits on, its helpers or the commands it sent to the background.
    */
   | { readonly kind: "after"; readonly on?: AfterWait }
+  /** Its run is not started yet: what its engine does first (`EngineStart`). */
+  | { readonly kind: "starting"; readonly on: EngineStart }
   /**
    * It asked the person something — a question, an approval — and waits; a
    * question it asked in its own words is the record's item `key` too.
@@ -488,6 +490,19 @@ export type ConversationEvent =
 /** A run as its status says it: who, whether it still works, and for how long. */
 /** What a run whose turns are over still waits on, where its engine says: helpers, commands. */
 export type AfterWait = EngineCardWait;
+
+/**
+ * What an engine run does before it starts: it saves a snapshot of the workspace (`admitted`, the
+ * run's capture), then opens the agent's session and hands it the message (`sending`).
+ */
+export type EngineStart = "workspace" | "session";
+
+/** What an engine card's last run does before it started, or null once it has. */
+function engineStartOf(card: EngineRunCard | undefined): EngineStart | null {
+  const run = card?.runs.at(-1);
+  if (run === undefined || run.startedAt !== null) return null;
+  return run.state === "admitted" ? "workspace" : run.state === "sending" ? "session" : null;
+}
 
 export interface RunStatus {
   readonly interruption?: import("@t3tools/contracts").MateInterruption;
@@ -2817,13 +2832,18 @@ export function deriveMessagesTimelineRows(input: {
           ...status,
         });
       } else if (chatted) {
+        // Not started yet, it says what it does first: never "Thinking" (Milo's stress run sat
+        // 22 s "Thinking" while its engine held the run for a snapshot).
+        const starting = engineStartOf(engineCard);
         const now = waiting
           ? {
               kind: "after" as const,
               ...(engineCard?.waitsOn === undefined ? {} : { on: engineCard.waitsOn }),
             }
           : working && answer === null
-            ? liveActivity(last, turn.writing, tracked, batch)
+            ? starting === null
+              ? liveActivity(last, turn.writing, tracked, batch)
+              : { kind: "starting" as const, on: starting }
             : null;
         const source = {
           kind: "record" as const,

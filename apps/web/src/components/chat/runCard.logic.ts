@@ -22,6 +22,7 @@ import {
 import {
   liveCallsOf,
   type AfterWait,
+  type EngineStart,
   type LiveCall,
   type RecordItem,
   type RunStatus,
@@ -404,6 +405,8 @@ export type NowLine =
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
   /** Its turns are over, and the helpers it launched work on — or what its engine names. */
   | { readonly kind: "after"; readonly on?: AfterWait }
+  /** Its run is not started yet: what its engine does first. */
+  | { readonly kind: "starting"; readonly on: EngineStart }
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
   /** Over: who, what it did and for how long, and what the effort came to. */
@@ -462,6 +465,8 @@ export function nowLineOf(input: {
       return { kind: "waiting", on: now.on };
     case "after":
       return now.on === undefined ? { kind: "after" } : { kind: "after", on: now.on };
+    case "starting":
+      return { kind: "starting", on: now.on };
     case "writing":
       return { kind: "writing" };
     case "thinking":
@@ -490,7 +495,8 @@ export type SlotFiller =
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
-  | { readonly kind: "after"; readonly on?: AfterWait };
+  | { readonly kind: "after"; readonly on?: AfterWait }
+  | { readonly kind: "starting"; readonly on: EngineStart };
 
 /**
  * What the live slot holds (pass 35): what the Mate is doing this moment,
@@ -539,6 +545,8 @@ export function slotModelOf(input: {
         live: [],
         filler: now.on === undefined ? { kind: "after" } : { kind: "after", on: now.on },
       };
+    case "starting":
+      return { live: [], filler: { kind: "starting", on: now.on } };
     case "thinking":
       return now.key !== null &&
         now.messages.some((message) => messageHasText(message, input.liveLines))
@@ -642,6 +650,11 @@ export function afterWords(on: AfterWait | undefined): string {
   return `Waiting for its helpers and ${commandsWords(on.commands)}`;
 }
 
+/** What a run not started yet waits on, in words: its workspace's snapshot, then its session. */
+export function startingWords(on: EngineStart): string {
+  return on === "workspace" ? "Saving a snapshot of the workspace" : "Starting its session";
+}
+
 /** The now line in words. */
 export function nowLineWords(line: NowLine): string {
   switch (line.kind) {
@@ -657,6 +670,8 @@ export function nowLineWords(line: NowLine): string {
       return line.on === "approval" ? "Waiting for your approval" : "Waiting for your answer";
     case "after":
       return afterWords(line.on);
+    case "starting":
+      return startingWords(line.on);
     case "writing":
       return "Writing";
     case "condensing":
@@ -677,6 +692,7 @@ export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
       case "waiting":
         return nowLineWords({ kind: "waiting", on: filler.on });
       case "after":
+      case "starting":
         return nowLineWords(filler);
       case "thinking":
         return nowLineWords({ kind: "thinking", thought: null });
