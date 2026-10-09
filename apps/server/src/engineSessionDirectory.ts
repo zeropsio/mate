@@ -8,10 +8,22 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { ThreadId } from "@t3tools/contracts";
+import { ConversationId, ThreadId } from "@t3tools/contracts";
 
+import { MateEngine, providerThreadOf } from "./engine/MateEngine.ts";
 import { HandedOverResume } from "./engine/ports.ts";
 import { ProviderSessionDirectory } from "./provider/Services/ProviderSessionDirectory.ts";
+
+/** Resolve a client's conversation to the current provider thread, or the V1 thread. */
+export const currentProviderThread = Effect.gen(function* () {
+  const engine = yield* MateEngine;
+  return Effect.fn("currentProviderThread")(function* (threadId: ThreadId | undefined) {
+    if (threadId === undefined || !engine.live) return threadId;
+    const conversation = ConversationId.make(threadId);
+    const generation = yield* engine.generation(conversation);
+    return generation === undefined ? undefined : providerThreadOf(conversation, generation);
+  });
+});
 
 /**
  * What another instance of the driver left on the thread, from the provider's session directory:

@@ -15,7 +15,6 @@
 import * as NodeOS from "node:os";
 
 import {
-  ConversationId,
   McpServerName,
   McpServersError,
   type McpServerAddInput,
@@ -35,8 +34,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
 import { ServerConfig } from "../../config.ts";
-import { MateEngine } from "../../engine/MateEngine.ts";
-import { providerThreadOf } from "../../engine/pump/TurnPump.ts";
+import { currentProviderThread } from "../../engineSessionDirectory.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import * as McpLiveModule from "../../spi/mcpLive.ts";
 import { McpLive, type McpConfigChange, type McpLiveServer } from "../../spi/mcpLive.ts";
@@ -187,18 +185,8 @@ type Planned =
 
 export const make = Effect.fn("McpServers.make")(function* (options: McpServersOptions) {
   const { files, live } = options;
-  const engine = yield* MateEngine;
+  const sessionThread = yield* currentProviderThread;
   const writes = yield* Semaphore.make(1);
-
-  // The panel names a conversation; provider hooks address its current session generation.
-  const sessionThread = Effect.fn("McpServers.sessionThread")(function* (
-    threadId: ThreadId | undefined,
-  ) {
-    if (threadId === undefined || !engine.live) return threadId;
-    const conversation = ConversationId.make(threadId);
-    const generation = yield* engine.generation(conversation);
-    return generation === undefined ? undefined : providerThreadOf(conversation, generation);
-  });
 
   const fail = (operation: string, detail: string, cause?: unknown) =>
     new McpServersError({ operation, detail, ...(cause !== undefined ? { cause } : {}) });
