@@ -304,6 +304,7 @@ const browser = (() => {
   });
   return entry.kind === "operation" ? entry.operation : null;
 })()!;
+const frontPage = { ...browser, subject: "https://shop.example.dev/" };
 const deploy = (() => {
   const entry = operationEntry("d1", "t1", 1, {
     kind: "deploy",
@@ -474,6 +475,13 @@ describe("the now line", () => {
       name: "checking a page in the browser",
       now: { kind: "operation", operation: browser },
       words: "Checking /status in the browser",
+      face: { state: "working" },
+    },
+    {
+      // Milo's stress runs read "Checking / in the browser".
+      name: "checking the front page in the browser, by name",
+      now: { kind: "operation", operation: frontPage },
+      words: "Checking the home page in the browser",
       face: { state: "working" },
     },
     {

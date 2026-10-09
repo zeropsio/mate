@@ -30,6 +30,7 @@ import { useMateBrowserCallFrame } from "../../zerops/browserStreamLinks";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   browserCheckCaption,
+  browserPageWords,
   browserCheckDevice,
   browserCheckFailure,
   browserTakeState,
@@ -236,11 +237,11 @@ export function BrowserStrip({
   };
 
   const heading = running
-    ? `Checking ${caption}`
+    ? `Checking ${browserPageWords(caption)}`
     : frames === 1
       ? failedOnStage
-        ? `${caption} failed`
-        : `Checked ${caption}`
+        ? `${browserPageWords(caption)} failed`
+        : `Checked ${browserPageWords(caption)}`
       : [
           plural(frames, "check", "checks"),
           strip.failures > 0

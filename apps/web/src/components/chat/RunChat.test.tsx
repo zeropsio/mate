@@ -832,7 +832,10 @@ describe("RunChat", () => {
   // Two pages of one host are said by name, as one is; more by their count,
   // and so are pages of two hosts, whose paths do not say which is which.
   it.each([
-    { subjects: ["https://shop.dev/", "https://shop.dev/health"], words: "Checked / and /health" },
+    {
+      subjects: ["https://shop.dev/", "https://shop.dev/health"],
+      words: "Checked the home page and /health",
+    },
     { subjects: ["https://shop.dev/", "https://api.dev/"], words: "Checked 2 pages" },
     // A path names a page on one host only: "/" on another port is not the
     // app's front page (Nova, 2026-09-28: "/missing and /" for port 9's "/").

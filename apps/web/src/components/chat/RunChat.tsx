@@ -116,6 +116,7 @@ import { helpersBubbleOf } from "./helpersBubble.logic";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
 import {
   browserCheckCaption,
+  browserPageWords,
   browserTakeState,
   formatWorkDuration,
   operationLineWords,
@@ -2068,11 +2069,11 @@ function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStripModel }
   // As the now line said it while it ran: "Checking /status in the browser".
   const words = `${
     running
-      ? `Checking ${browserCheckCaption(latest)}`
+      ? `Checking ${browserPageWords(browserCheckCaption(latest))}`
       : strip.views === 1
-        ? `Checked ${browserCheckCaption(latest)}`
+        ? `Checked ${browserPageWords(browserCheckCaption(latest))}`
         : strip.views === 2 && pages.length === 2 && hosts.size === 1
-          ? `Checked ${pages[0]} and ${pages[1]}`
+          ? `Checked ${browserPageWords(pages[0]!)} and ${browserPageWords(pages[1]!)}`
           : `Checked ${strip.views} pages`
   } in the browser`;
   const verdict = running

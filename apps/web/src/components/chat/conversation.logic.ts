@@ -1820,6 +1820,14 @@ export function browserCheckCaption(operation: ZeropsOperation): string {
   return path === "" ? "/" : path;
 }
 
+/**
+ * The page a check looked at, in words: its path, the front page by name — "Checked / in the
+ * browser" said the path, never the page (Milo's stress runs).
+ */
+export function browserPageWords(caption: string): string {
+  return caption === "/" ? "the home page" : caption;
+}
+
 export type BrowserDevice = "desktop" | "tablet" | "phone";
 
 /**
