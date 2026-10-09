@@ -611,7 +611,9 @@ const enginePort = (input: {
           yield* provider.agent.selfTurn(thread);
         }
         yield* waitFor(`a turn in ${chat}`, turnRunning(chat));
-        // The engine holds the turn as a run of the conversation.
+        // The engine holds the turn as a run of the conversation, bound to it, and a message
+        // steered into it has reached the agent: the turn's end is then that run's, not one the
+        // message opened after it.
         yield* waitFor(
           `${chat}'s turn as a run`,
           Effect.map(
@@ -620,7 +622,13 @@ const enginePort = (input: {
                 conversations.state(ConversationId.make(chat)),
               ),
             ).pipe(Effect.orDie),
-            (state) => state.activeRunId !== null,
+            (state) => {
+              const active = state.activeRunId === null ? undefined : state.runs[state.activeRunId];
+              return (
+                (active?.state === "running" || active?.state === "waiting") &&
+                !Object.values(state.effects).some((effect) => effect.kind === "provider.steer")
+              );
+            },
           ),
         );
       }),
