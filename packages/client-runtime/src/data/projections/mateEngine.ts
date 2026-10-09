@@ -262,6 +262,13 @@ function callData(item: Extract<Item, { kind: "call" }>): Record<string, unknown
 }
 
 /**
+ * A call's line before its input arrived: its tool's name and an empty input (`Bash: {}`), which
+ * the agent's adapter writes while the input still streams. It says nothing; the row says what
+ * the call is by its tool until the input comes (Milo's stress run's working line read "Bash: {}").
+ */
+const inputNotArrived = (line: string) => /^[\w.-]+:\s*\{\s*\}$/u.test(line.trim());
+
+/**
  * A call as V1's tool lifecycle: its start (the anchor its row keeps), then its progress while it
  * runs or its completion once it ended, each with the call's line, facts and result. Its title is
  * the activity's summary, as V1's: a V1 tool payload carries none of its own.
@@ -276,7 +283,7 @@ function callActivities(
       STEP_ITEM_KINDS[item.step] ??
       (item.tool.server === undefined ? "dynamic_tool_call" : "mcp_tool_call"),
     toolCallId: item.id,
-    ...(item.input === undefined ? {} : { detail: item.input }),
+    ...(item.input === undefined || inputNotArrived(item.input) ? {} : { detail: item.input }),
     data: callData(item),
     ...(item.presentation === undefined ? {} : { presentation: item.presentation }),
     ...helperOf(item),

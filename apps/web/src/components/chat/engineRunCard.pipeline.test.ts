@@ -308,4 +308,29 @@ describe("an engine Mate's run card, from the engine's record", () => {
     expect(card.status?.live).toBe(false);
     expect(lineOf(card)).toMatch(/^Milo worked /);
   });
+
+  it.each([
+    { tool: "Bash", words: "Command run", line: "Running a command" },
+    { tool: "WebFetch", words: "Tool call", line: "Reading a page" },
+  ])(
+    "a $tool call whose input has not arrived reads $line, never its empty input",
+    ({ tool, words, line }) => {
+      const rows = render({
+        runs: [stressRun({ state: "running", endedAt: null, end: null } as never)],
+        items: [
+          personItem(run1, 1, "Run the stress checks", { at: t0 }),
+          call(2, 45_900, {
+            step: tool === "Bash" ? "command" : "tool",
+            tool: { name: tool },
+            words,
+            state: "running",
+            input: `${tool}: {}`,
+            shows: { toolName: tool },
+          } as never),
+        ],
+        isWorking: true,
+      });
+      expect(lineOf(cardOf(rows))).toBe(line);
+    },
+  );
 });

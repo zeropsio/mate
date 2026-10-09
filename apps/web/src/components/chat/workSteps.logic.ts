@@ -664,6 +664,8 @@ function plainPhrase(entry: WorkLogEntry, kind: StepKind, running: boolean): Ste
     case "web": {
       const url = input?.url ?? detailField(entry.detail, "url");
       if (url !== null) return phraseOf(say("Reading", "Read"), [webTarget(url)]);
+      // A fetch before its address arrived reads a page all the same: it never searches.
+      if (namedToolCall(entry) === "WebFetch") return alone(say("Reading a page", "Read a page"));
       const query = input?.query ?? detailField(entry.detail, "query");
       return query === null
         ? alone(say("Searching the web", "Searched the web"))
@@ -722,6 +724,7 @@ function plainWords(entry: WorkLogEntry, kind: StepKind, running: boolean): stri
     case "web": {
       const url = input?.url ?? detailField(entry.detail, "url");
       if (url !== null) return say(`Reading ${webTarget(url)}`, `Read ${webTarget(url)}`);
+      if (namedToolCall(entry) === "WebFetch") return say("Reading a page", "Read a page");
       const query = input?.query ?? detailField(entry.detail, "query");
       return query === null
         ? say("Searching the web", "Searched the web")
