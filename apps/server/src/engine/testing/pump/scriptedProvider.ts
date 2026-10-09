@@ -57,6 +57,13 @@ interface Session {
   model: string | undefined;
 }
 
+/** Claude names its session with a UUID: one per provider thread here. */
+export const claudeSessionIdOf = (thread: string) =>
+  `00000000-0000-4000-8000-${[...thread]
+    .reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 0xffffffffffff, 7)
+    .toString(16)
+    .padStart(12, "0")}`;
+
 class ScriptedError extends Error {
   readonly _tag: string;
   constructor(tag: string, message: string) {
@@ -89,7 +96,12 @@ export interface ScriptedProviderOptions {
 export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
   Effect.gen(function* () {
     const driver = options.driver;
-    const pubsub = yield* PubSub.unbounded<ProviderRuntimeEvent>();
+    // Numbered as the real ProviderService numbers what it publishes: its event barrier.
+    const pubsub = yield* PubSub.unbounded<{
+      readonly sequence: number;
+      readonly event: ProviderRuntimeEvent;
+    }>();
+    let published = 0;
     const sessions = new Map<string, Session>();
     const calls: Array<string> = [];
     /** Each session start's input, as the engine asked it. */
@@ -103,14 +115,17 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
 
     const emit = (type: string, thread: string, fields: Record<string, unknown> = {}) =>
       PubSub.publish(pubsub, {
-        type,
-        eventId: `e${++events}`,
-        provider: driver,
-        threadId: thread,
-        createdAt: NOW,
-        payload: {},
-        ...fields,
-      } as unknown as ProviderRuntimeEvent);
+        sequence: ++published,
+        event: {
+          type,
+          eventId: `e${++events}`,
+          provider: driver,
+          threadId: thread,
+          createdAt: NOW,
+          payload: {},
+          ...fields,
+        } as unknown as ProviderRuntimeEvent,
+      });
 
     const sessionOf = (thread: string) => {
       const session = sessions.get(thread);
@@ -122,13 +137,27 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
       return Effect.succeed(session);
     };
 
+    /** The resume cursor each adapter reports for a live session, in its own shape. */
+    const cursorOf = (session: Session): unknown =>
+      driver === "claudeAgent"
+        ? {
+            threadId: session.thread,
+            resume: claudeSessionIdOf(session.thread),
+            resumeSessionAt: `assistant-${session.turns}`,
+            turnCount: session.turns,
+            turnStartMessageIds: Array.from({ length: session.turns }, (_, n) => `turn-${n + 1}`),
+          }
+        : driver === "codex"
+          ? { threadId: `native-${session.thread}` }
+          : { thread: session.thread };
+
     const providerSession = (session: Session): ProviderSession =>
       ({
         provider: driver,
         status: session.open === null ? "ready" : "running",
         runtimeMode: "full-access",
         threadId: session.thread as ThreadId,
-        resumeCursor: { thread: session.thread },
+        resumeCursor: cursorOf(session),
         ...(session.model === undefined ? {} : { model: session.model }),
         createdAt: NOW,
         updatedAt: NOW,
@@ -302,7 +331,13 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
         Effect.sync(() =>
           [...sessions.values()].filter((session) => session.alive).map(providerSession),
         ),
-      streamEvents: Stream.fromPubSub(pubsub),
+      streamEvents: Stream.fromPubSub(pubsub).pipe(Stream.map(({ event }) => event)),
+      eventBarrier: {
+        events: Stream.fromPubSub(pubsub),
+        position: Effect.sync(() => ({ published, processing: 0 })),
+        changes: Stream.empty,
+        subscribeChanges: Effect.succeed({ changes: Stream.empty }),
+      },
       compactThread: () => Effect.die("not scripted"),
       // As the adapters declare them: Claude applies effort to a live session, the rest per turn.
       getCapabilities: () =>

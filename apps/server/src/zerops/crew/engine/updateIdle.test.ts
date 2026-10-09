@@ -68,14 +68,16 @@ describe("the engine crew's update facts", () => {
 });
 
 /**
- * The engine's facts less the two its world's scripted provider cannot give: it keeps no receipt
- * boundary and resumes no session natively. Those are the provider's, not the crew's or the record's.
+ * The engine's facts less those its world's scripted provider cannot give: it keeps no receipt
+ * boundary and writes no native resume binding. Those are the provider's, not the crew's or the
+ * record's.
  */
 const ownFacts = (facts: UpdateIdleFacts): UpdateIdleFacts => {
   const blockers = facts.blockers.filter(
     (reason) =>
       !reason.endsWith("provider event receipt boundary unavailable") &&
-      !reason.endsWith("native resume is unsupported"),
+      !reason.endsWith("native resume is unsupported") &&
+      !reason.endsWith("native resume binding is missing or disagrees"),
   );
   return { idle: blockers.length === 0, blockers };
 };

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Queue from "effect/Queue";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -12,14 +15,20 @@ import * as EngineSignalsModule from "./EngineSignals.ts";
 import { TurnPump } from "./pump/TurnPump.ts";
 import * as EngineStoreModule from "./store/EngineStore.ts";
 import { envelope, sqliteWithEngineTables } from "./testing/fixtures.ts";
+import { makeEngineWorld, type EngineWorld } from "./testing/pump/engineWorld.ts";
+import ProviderSessionRuntimeTable from "../persistence/Migrations/004_ProviderSessionRuntime.ts";
+import ProviderSessionRuntimeInstanceId from "../persistence/Migrations/027_ProviderSessionRuntimeInstanceId.ts";
 
 import { makeEngineUpdateDrain, nativeResumeBlocker } from "./updateDrain.ts";
+import { drainMateUpdate, MATE_UPDATE_DRAIN_DEADLINE } from "../zerops/mateUpdateDrain.ts";
+
+const MATE_UPDATE_DRAIN_MS = Duration.toMillis(MATE_UPDATE_DRAIN_DEADLINE);
 
 describe("native session safety during updates", () => {
   it.effect.each([
     {
       name: "Claude's own session id",
-      driver: "claude",
+      driver: "claudeAgent",
       provider: "claudeAgent",
       json: '{"resume":"11111111-1111-4111-8111-111111111111"}',
       safe: true,
@@ -33,7 +42,7 @@ describe("native session safety during updates", () => {
     },
     {
       name: "a Claude cursor without a session id",
-      driver: "claude",
+      driver: "claudeAgent",
       provider: "claudeAgent",
       json: "{}",
       safe: false,
@@ -47,7 +56,7 @@ describe("native session safety during updates", () => {
     },
     {
       name: "another native session",
-      driver: "claude",
+      driver: "claudeAgent",
       provider: "claudeAgent",
       json: '{"resume":"other"}',
       safe: false,
@@ -172,4 +181,114 @@ describe("engine update drain", () => {
       }),
     );
   });
+});
+
+/** The provider's own bindings, as the server's migrations make them and ProviderService writes them. */
+const bindLiveSessions = (w: EngineWorld, instanceId: string) =>
+  w.within(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* ProviderSessionRuntimeTable;
+      yield* ProviderSessionRuntimeInstanceId;
+      for (const session of yield* w.provider.service.listSessions()) {
+        yield* sql`
+          INSERT INTO provider_session_runtime (thread_id, provider_name, provider_instance_id, adapter_key, status, last_seen_at, resume_cursor_json)
+          VALUES (${session.threadId}, ${session.provider}, ${instanceId}, ${session.provider}, 'running', 'now', ${JSON.stringify(session.resumeCursor)})
+          ON CONFLICT (thread_id) DO UPDATE SET resume_cursor_json = excluded.resume_cursor_json
+        `;
+      }
+    }),
+  );
+
+/** The update's drain, as the local drain endpoint runs it over the engine's own facts. */
+const drains = (w: EngineWorld) =>
+  Effect.gen(function* () {
+    const engine = yield* w.engine;
+    const drain = engine.updateDrain;
+    if (drain?.subscribeChanges === undefined) throw new Error("The engine has no update drain");
+    const changed = yield* Queue.unbounded<void>();
+    const drained = yield* w
+      .within(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { changes } = yield* drain.subscribeChanges!;
+            yield* changes.pipe(
+              Stream.runForEach(() => Queue.offer(changed, undefined)),
+              Effect.forkScoped,
+            );
+            return yield* drainMateUpdate({
+              allowed: Effect.succeed(true),
+              begin: drain.begin,
+              cancel: drain.cancel,
+              facts: drain.facts,
+              quiesce: drain.quiesce,
+              changed: Queue.take(changed),
+            });
+          }),
+        ),
+      )
+      .pipe(Effect.forkChild);
+    yield* w.settle;
+    yield* w.advance(MATE_UPDATE_DRAIN_MS);
+    const result = yield* Fiber.join(drained);
+    yield* w.within(drain.cancel);
+    return result;
+  });
+
+describe("an idle engine Mate", () => {
+  it.effect.each(["claudeAgent", "codex"] as const)(
+    "an idle %s conversation proves idle and its update goes ahead, after a restart too",
+    (driver) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* makeEngineWorld({ driver });
+          yield* w.boot;
+          yield* w.tell({
+            _tag: "AssignAgent",
+            agent: { instanceId: driver, driver, model: "m1", profile: { kind: "mate" } },
+          });
+          yield* w.tell({ _tag: "Send", text: "hello" });
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* bindLiveSessions(w, driver);
+          expect(yield* drains(w)).toBe(true);
+
+          yield* w.crash;
+          yield* w.boot;
+          expect(yield* drains(w)).toBe(true);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect.each(["claudeAgent", "codex"] as const)(
+    "a %s conversation whose agent changed proves idle before its next session opens",
+    (driver) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* makeEngineWorld({ driver });
+          yield* w.boot;
+          yield* w.tell({
+            _tag: "AssignAgent",
+            agent: { instanceId: driver, driver, model: "m1", profile: { kind: "mate" } },
+          });
+          yield* w.tell({ _tag: "Send", text: "hello" });
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* bindLiveSessions(w, driver);
+          yield* w.tell({
+            _tag: "AssignAgent",
+            agent: {
+              instanceId: `${driver}:other`,
+              driver,
+              model: "m1",
+              profile: { kind: "mate" },
+            },
+          });
+          expect(yield* drains(w)).toBe(true);
+          yield* w.crash;
+          yield* w.boot;
+          expect(yield* drains(w)).toBe(true);
+          yield* w.shutdown;
+        }),
+      ),
+  );
 });
