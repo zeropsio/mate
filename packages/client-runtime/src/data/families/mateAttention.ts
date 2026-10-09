@@ -9,7 +9,7 @@
  * @module data/families/mateAttention
  */
 import type { MateAttention } from "@t3tools/contracts";
-import { HqAttentionScopeValue } from "@t3tools/shared/hqStream";
+import { HQ_ATTENTION_HEALTH_KEY, HqAttentionScopeValue } from "@t3tools/shared/hqStream";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -31,7 +31,7 @@ export const mateAttentionFamily: FamilySpec<"mateAttention"> = {
   // HQ's relay rides the attention scope `hqMate` demands for each Mate it places.
   hq: {
     scope: "attention",
-    idOf: (key) => key,
+    idOf: (key) => (key === HQ_ATTENTION_HEALTH_KEY ? null : key),
     keyOf: (id) => id,
     decode: (raw) => Option.getOrNull(decodeRelayed(raw))?.attention ?? null,
     revisionOf: ({ source }, raw) => ({

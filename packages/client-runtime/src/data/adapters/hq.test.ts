@@ -4,7 +4,11 @@ import { hqMateHealthScope } from "../families/mateHealth.ts";
 import { hqMateSetup } from "../projections/hqMateSetup.ts";
 import { describe, expect, it } from "@effect/vitest";
 import type { MateAttention } from "@t3tools/contracts";
-import type { HqScopeDelivery, HqStreamMessage } from "@t3tools/shared/hqStream";
+import {
+  HQ_ATTENTION_HEALTH_KEY,
+  type HqScopeDelivery,
+  type HqStreamMessage,
+} from "@t3tools/shared/hqStream";
 import * as Effect from "effect/Effect";
 import * as Clock from "effect/Clock";
 import * as Fiber from "effect/Fiber";
@@ -275,7 +279,7 @@ describe("hqNavigationLink", () => {
                 knownKeys: ["app:shop", "project:ada"],
               },
               // The Mate HQ places is observed with the navigation, across segments too.
-              { scope: { kind: "attention", projectId: "ada" }, knownKeys: [] },
+              { scope: { kind: "attention", projectId: "ada", health: "apart" }, knownKeys: [] },
             ],
           },
         ]);
@@ -412,7 +416,7 @@ describe("hqNavigationLink", () => {
       const store = makeAccountStore(AtomRegistry.make());
       const fixture = hqFixtureWire();
       const { fiber } = yield* live(store, fixture);
-      const attention = { kind: "attention", projectId: "ada" } as const;
+      const attention = { kind: "attention", projectId: "ada", health: "apart" } as const;
       expect(fixture.sent.at(-1)?.request).toEqual({
         type: "subscribe",
         scopes: [{ scope: attention, knownKeys: [] }],
@@ -563,7 +567,7 @@ describe("asking HQ on the open socket", () => {
 });
 
 describe("a Mate's attention, relayed", () => {
-  const ATTENTION = { kind: "attention", projectId: "ada" } as const;
+  const ATTENTION = { kind: "attention", projectId: "ada", health: "apart" } as const;
   const presence = { online: true, since: "2026-10-06T00:00:00Z", overview: "live" } as const;
   const relayed = (value: unknown, state: "live" | "stored") => ({
     presence,
@@ -892,7 +896,7 @@ describe("an HQ outage", () => {
               cursor: { incarnation: "i1", revision: 3 },
               knownKeys: ["app:shop", "project:ada"],
             },
-            { scope: { kind: "attention", projectId: "ada" }, knownKeys: [] },
+            { scope: { kind: "attention", projectId: "ada", health: "apart" }, knownKeys: [] },
           ],
         },
       ]);
@@ -1046,6 +1050,98 @@ describe("HQ lifecycle receipt delivery", () => {
       }),
   );
 });
+
+const decodeHealth = Schema.decodeUnknownSync(MateHealth);
+it.effect(
+  "asks HQ for a Mate's health apart and reads it from that value, or from the whole record of an HQ that sends it inside",
+  () =>
+    Effect.gen(function* () {
+      const sample = (revision: number) =>
+        decodeHealth({
+          source: { environmentId: "env", epoch: 1, incarnation: "run", revision },
+          sampledAt: `2026-10-09T13:00:0${revision}Z`,
+          evidence: {
+            status: "strained",
+            severity: "warning",
+            resources: ["io"],
+            memory: null,
+            cpu: null,
+            io: { some: { avg10: 1.75, total: revision }, full: null },
+            disk: null,
+            unavailable: [],
+          },
+        });
+      const record = {
+        presence: { online: true, since: "2026-10-09T13:00:00Z", overview: "none" },
+        overview: null,
+        attention: null,
+        attentionState: "none",
+      } as const;
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber } = yield* live(store, fixture);
+      const asked = fixture.sent.flatMap(({ request }) =>
+        request.type === "subscribe"
+          ? request.scopes.filter(({ scope }) => scope.kind === "attention")
+          : [],
+      );
+      expect(asked.map(({ scope }) => scope)).toEqual([
+        { kind: "attention", projectId: "ada", health: "apart" },
+      ]);
+      const health = () => {
+        const read = publicRead(factOf(store.state(), "mateHealth", "ada"));
+        return read.kind === "known" ? (read.value as MateHealth).source.revision : read.kind;
+      };
+      // An HQ from before the option answers on the scope it knows, health inside the record.
+      const older = { kind: "attention", projectId: "ada" } as const;
+      yield* fixture.send({
+        type: "scope-reset",
+        scope: older,
+        incarnation: "hq1",
+        revision: 1,
+        values: [{ key: "ada", value: { ...record, health: sample(1), healthState: "live" } }],
+        removals: [],
+      });
+      yield* fixture.send({ type: "scope-ready", scope: older, incarnation: "hq1", revision: 1 });
+      yield* settle;
+      expect(health()).toBe(1);
+      // A newer HQ sends the record without it, and each sample as its own value.
+      const apart = { ...older, health: "apart" } as const;
+      yield* fixture.send({
+        type: "scope-values",
+        scope: apart,
+        incarnation: "hq1",
+        revision: 2,
+        values: [
+          { key: "ada", value: record },
+          { key: HQ_ATTENTION_HEALTH_KEY, value: { health: sample(2), healthState: "live" } },
+        ],
+        removals: [],
+      });
+      yield* settle;
+      expect(health()).toBe(2);
+      yield* fixture.send({
+        type: "scope-values",
+        scope: apart,
+        incarnation: "hq1",
+        revision: 3,
+        values: [
+          { key: HQ_ATTENTION_HEALTH_KEY, value: { health: sample(3), healthState: "live" } },
+        ],
+        removals: [],
+      });
+      yield* settle;
+      expect(health()).toBe(3);
+      expect(publicRead(factOf(store.state(), "hqMate", "ada"))).toMatchObject({
+        kind: "known",
+        value: record,
+      });
+      expect(publicRead(factOf(store.state(), "hqMate", HQ_ATTENTION_HEALTH_KEY)).kind).not.toBe(
+        "known",
+      );
+      yield* Fiber.interrupt(fiber);
+    }),
+);
 
 it.effect("relays health without an overview or attention and keeps it when HQ goes away", () =>
   Effect.gen(function* () {

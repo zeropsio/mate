@@ -6,7 +6,7 @@
  *
  * @module data/families/hqMate
  */
-import { HqAttentionScopeValue } from "@t3tools/shared/hqStream";
+import { HQ_ATTENTION_HEALTH_KEY, HqAttentionScopeValue } from "@t3tools/shared/hqStream";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -29,10 +29,11 @@ export const hqMateFamily: FamilySpec<"hqMate"> = {
   scope: { source: "hq", suffix: "hq-mates", leaving: "removed", demand: "detail" },
   hq: {
     scope: "attention",
-    idOf: (key) => key,
+    // The Mate's health, taken apart from its record, is `mateHealth`'s alone.
+    idOf: (key) => (key === HQ_ATTENTION_HEALTH_KEY ? null : key),
     keyOf: (id) => id,
     decode: (raw) => Option.getOrNull(decodeMate(raw)),
-    wireScope: (projectId) => ({ kind: "attention", projectId }),
+    wireScope: (projectId) => ({ kind: "attention", projectId, health: "apart" }),
   },
 };
 
