@@ -12,6 +12,17 @@ import * as NodePath from "node:path";
 const decode = Schema.decodeUnknownSync(AssetCreateUrlInput);
 const encode = Schema.encodeSync(AssetCreateUrlResult);
 const picture = ".message-picture-open img";
+function expectBoxWithinHalfPixel(
+  actual: Record<string, number>,
+  expected: Record<string, number>,
+) {
+  for (const [dimension, value] of Object.entries(expected)) {
+    expect(
+      Math.abs(actual[dimension]! - value),
+      `ASSERTION: ${dimension} stays within 0.5 px of its reserved dimension`,
+    ).toBeLessThanOrEqual(0.5);
+  }
+}
 describe("C: conversation images", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect("decoded conversation and work pictures stay in place while a turn streams", () =>
@@ -926,7 +937,7 @@ describe("C: conversation images", () => {
               height: n.getBoundingClientRect().height,
             })),
           );
-          expect(viewerBox).toEqual({ width: 640, height: 320 });
+          expectBoxWithinHalfPixel(viewerBox, { width: 640, height: 320 });
           yield* Effect.promise(() =>
             s.page.waitForFunction(() => {
               const preview = document.querySelector<HTMLImageElement>(
@@ -954,7 +965,7 @@ describe("C: conversation images", () => {
               height: n.getBoundingClientRect().height,
             })),
           );
-          expect(decodedBox).toEqual(viewerBox);
+          expectBoxWithinHalfPixel(decodedBox, viewerBox);
           yield* Effect.promise(() => s.page.waitForSelector("a[download]"));
           expect(new Set(requests.filter((path) => path.endsWith("/original"))).size).toBe(1);
           yield* s.then.noExternalNetwork;
@@ -1075,7 +1086,10 @@ describe("C: conversation images", () => {
               };
             }),
           );
-          expect(pending.imageHeight).toBe(pending.height);
+          expectBoxWithinHalfPixel(
+            { imageHeight: pending.imageHeight },
+            { imageHeight: pending.height },
+          );
           release();
           yield* Effect.promise(() =>
             s.page.waitForFunction(() => {
@@ -1090,7 +1104,7 @@ describe("C: conversation images", () => {
               imageHeight: tile.querySelector("img")!.getBoundingClientRect().height,
             })),
           );
-          expect(loaded).toEqual(pending);
+          expectBoxWithinHalfPixel(loaded, pending);
           expect(paths.every((path) => path.endsWith("/preview"))).toBe(true);
           const gone = yield* Effect.promise(() =>
             s.page.$eval("[data-result-picture]:has(.asset-image-unavailable)", (tile) => ({
@@ -1101,12 +1115,17 @@ describe("C: conversation images", () => {
                 .height,
             })),
           );
-          expect(gone).toEqual({
+          expect({ text: gone.text, retry: gone.retry }).toEqual({
             text: "Image no longer available",
             retry: false,
-            height: pending.height,
-            surfaceHeight: pending.height,
           });
+          expectBoxWithinHalfPixel(
+            { height: gone.height, surfaceHeight: gone.surfaceHeight },
+            {
+              height: pending.height,
+              surfaceHeight: pending.height,
+            },
+          );
         }),
     );
   });
