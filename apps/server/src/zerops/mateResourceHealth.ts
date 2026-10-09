@@ -379,3 +379,18 @@ export function publishesAgain(previous: MateResourceHealth, next: MateResourceH
   };
   return JSON.stringify(said(previous)) !== JSON.stringify(said(next));
 }
+
+/**
+ * At most one value a window, the latest: the first leaves at once, and whatever arrives while a
+ * window runs is replaced by what follows it, the last leaving when the window ends. A Mate whose
+ * kernel wakes it many times a second (memory events at its limit) publishes once a window.
+ */
+export const latestAtMostEvery =
+  (millis: number) =>
+  <A, E, R>(self: Stream.Stream<A, E, R>): Stream.Stream<A, E, R> =>
+    self.pipe(
+      Stream.buffer({ capacity: 1, strategy: "sliding" }),
+      Stream.flatMap((value) =>
+        Stream.concat(Stream.make(value), Stream.drain(Stream.fromEffect(Effect.sleep(millis)))),
+      ),
+    );

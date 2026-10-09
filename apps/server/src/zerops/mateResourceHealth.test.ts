@@ -9,6 +9,7 @@ import * as Queue from "effect/Queue";
 import { vi } from "vite-plus/test";
 import * as TestClock from "effect/testing/TestClock";
 import {
+  latestAtMostEvery,
   publishesAgain,
   resourceHealthChanges,
   readResourceHealth as readKernelResourceHealth,
@@ -576,3 +577,30 @@ describe("a Mate publishes a sample again only when its warning, or a number the
     expect(publishesAgain(sample(previous), sample(next))).toBe(verdict === again);
   });
 });
+
+it.effect(
+  "publishes at most one sample a window however often the kernel wakes it, and that the latest",
+  () =>
+    Effect.gen(function* () {
+      const wakes = yield* Queue.unbounded<number>();
+      const published = yield* Queue.unbounded<number>();
+      yield* Effect.forkScoped(
+        Stream.fromQueue(wakes).pipe(
+          latestAtMostEvery(2000),
+          Stream.runForEach((value) => Queue.offer(published, value)),
+        ),
+      );
+      yield* Queue.offerAll(wakes, [1]);
+      expect(yield* Queue.take(published)).toBe(1);
+      // Thirty-three wakes in the next second: one sample leaves, the last, when the window ends.
+      for (let value = 2; value <= 34; value += 1) {
+        yield* Queue.offer(wakes, value);
+        yield* TestClock.adjust(30);
+      }
+      expect(yield* Queue.size(published)).toBe(0);
+      yield* TestClock.adjust(2000);
+      expect(yield* Queue.take(published)).toBe(34);
+      yield* TestClock.adjust(4000);
+      expect(yield* Queue.size(published)).toBe(0);
+    }),
+);
