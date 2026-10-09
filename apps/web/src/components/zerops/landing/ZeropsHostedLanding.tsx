@@ -1,3 +1,4 @@
+import { Button } from "../../ui/button";
 import { useRef, useState } from "react";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { startZeropsHandover } from "~/zerops/handover";
@@ -21,19 +22,19 @@ export function ZeropsHostedLanding() {
     return (
       <ZeropsLandingShell
         title="Could not verify your account"
-        description="Zerops is currently unreachable. Your saved work is still on this device."
+        description="Account verification failed. Try again to check your access."
       >
-        <button type="button" onClick={verifyAgain}>
-          Verify again
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            void signOut();
-          }}
-        >
-          Sign out
-        </button>
+        <div className="flex flex-wrap justify-center gap-3">
+          <Button onClick={verifyAgain}>Verify again</Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              void signOut();
+            }}
+          >
+            Sign out
+          </Button>
+        </div>
         {/* A background retry speaks here, in room the line always holds: nothing moves. */}
         <p className="min-h-4 text-center text-xs text-muted-foreground" aria-live="polite">
           {retrying === true ? "Trying again…" : null}

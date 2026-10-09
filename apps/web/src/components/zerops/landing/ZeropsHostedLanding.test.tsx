@@ -99,6 +99,7 @@ it("offers Verify again beside a terminal verification failure", () => {
   try {
     const markup = renderLanding();
     expect(markup).toContain("Could not verify your account");
+    expect(markup).not.toContain("on this device");
     expect(markup).toContain("Verify again");
     expect(markup).not.toContain("Checking your Zerops account");
   } finally {
