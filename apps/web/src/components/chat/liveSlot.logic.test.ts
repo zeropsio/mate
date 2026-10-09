@@ -464,6 +464,7 @@ describe("slotClock", () => {
     readonly slot: LiveSlot;
     readonly first: { readonly key: string; readonly at: string } | null;
     readonly waitingSince?: string;
+    readonly onHelpers?: boolean;
     readonly clock: {
       readonly from: string;
       readonly stopped: string | null;
@@ -522,8 +523,17 @@ describe("slotClock", () => {
       waitingSince: "2026-10-04T10:00:00.000Z",
       clock: { from: "2026-10-04T10:00:00.000Z", stopped: null, waiting: true },
     },
-  ])("$name", ({ slot: given, first, waitingSince, clock }) => {
-    expect(slotClock(given, first, waitingSince ?? null)).toEqual(clock);
+    // Live, 0.15.6: "Waiting for its helpers" over a clock that said "Waiting for you".
+    {
+      name: "waiting on its helpers after its turn: the wait counting, never a wait on the person",
+      slot: slot([]),
+      first: null,
+      waitingSince: "2026-10-04T10:00:00.000Z",
+      onHelpers: true,
+      clock: { from: "2026-10-04T10:00:00.000Z", stopped: null },
+    },
+  ])("$name", ({ slot: given, first, waitingSince, onHelpers, clock }) => {
+    expect(slotClock(given, first, waitingSince ?? null, onHelpers === true)).toEqual(clock);
   });
 });
 

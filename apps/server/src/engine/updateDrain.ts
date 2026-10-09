@@ -36,10 +36,12 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
       blockers.push(
         ...engineStateBlockers(state).map((reason) => `${row.conversation_id}: ${reason}`),
       );
-      if (state.session === null && state.lastNativeRef === null) continue;
-      const driver = state.session?.driver ?? state.agent?.driver;
-      const nativeRef = state.session?.nativeRef ?? state.lastNativeRef;
+      // Only the thread the next session opens on is resumed; one no session has run on yet (a new
+      // agent, a fresh rotation) starts fresh after an update just as it would without one.
       const thread = providerThreadOf(state.conversationId, state.threadGeneration);
+      if (state.session?.nativeRef !== thread && state.lastNativeRef !== thread) continue;
+      const driver = state.session?.driver ?? state.agent?.driver;
+      const nativeRef = thread;
       const [binding] = yield* sql<ResumeBinding>`
         SELECT provider_name, provider_instance_id, resume_cursor_json FROM provider_session_runtime WHERE thread_id = ${thread}
       `;
@@ -67,8 +69,10 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
       blockers.push("provider state changed during idle proof");
     return { idle: blockers.length === 0, blockers } satisfies UpdateIdleFacts;
   }).pipe(
-    Effect.catchCause(() =>
-      Effect.succeed<UpdateIdleFacts>({ idle: false, blockers: ["engine state unreadable"] }),
+    Effect.catchCause((cause) =>
+      Effect.logWarning("engine update drain: state unreadable", { cause }).pipe(
+        Effect.as<UpdateIdleFacts>({ idle: false, blockers: ["engine state unreadable"] }),
+      ),
     ),
   );
 

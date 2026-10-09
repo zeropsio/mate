@@ -491,6 +491,8 @@ export interface RunStatus {
   readonly waitedMs: number;
   /** Live, when the wait still open began: the clock stands still until the person answers. */
   readonly waitingSince: string | null;
+  /** The open wait is on its helpers, after its turn: never a wait on the person. */
+  readonly waitingOnHelpers?: true;
   /** It did something — a call, a helper, an operation: it "worked", never only "thought". */
   readonly worked: boolean;
   /** It broke off: what its card says under its line (`ConversationTurn.brokeOff`). */
@@ -1120,7 +1122,11 @@ function approvalPending(stretch: Stretch): Extract<TimelineEntry, { kind: "work
  * still open is where the clock stands still; settled, a person's wait
  * lasted to the run's end.
  */
-function waitedOn(turn: ConversationTurn): { waitedMs: number; waitingSince: string | null } {
+function waitedOn(turn: ConversationTurn): {
+  waitedMs: number;
+  waitingSince: string | null;
+  waitingOnHelpers?: true;
+} {
   let waitedMs = 0;
   let since: TimelineEntry | null = null;
   for (const [position, stretch] of turn.stretches.entries()) {
@@ -1139,10 +1145,10 @@ function waitedOn(turn: ConversationTurn): { waitedMs: number; waitingSince: str
     }
   }
   if (since === null) {
-    return {
-      waitedMs,
-      waitingSince: turn.waiting ? (turn.stretches.at(-1)?.endedAt ?? null) : null,
-    };
+    const waitingSince = turn.waiting ? (turn.stretches.at(-1)?.endedAt ?? null) : null;
+    return waitingSince === null
+      ? { waitedMs, waitingSince }
+      : { waitedMs, waitingSince, waitingOnHelpers: true };
   }
   if (turn.live) return { waitedMs, waitingSince: since.createdAt };
   const end = turn.stretches.at(-1)?.endedAt ?? null;

@@ -11,6 +11,7 @@ import {
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
+import { useEngineRunCards } from "../zerops/useEngineCardPaging";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
@@ -5179,6 +5180,7 @@ export default function ChatView(props: ChatViewProps) {
   const shellTaskIds = activeThreadShell?.backgroundTaskIds;
   const shellLiveness = activeThreadShell?.backgroundLiveness ?? null;
   const shellTaskKey = shellTaskIds === undefined ? null : shellTaskIds.join("\n");
+  const engineConversation = useEngineRunCards(activeThreadRef) !== null;
   const liveJobsNow = useMemo(
     () =>
       liveJobsOf({
@@ -5186,8 +5188,9 @@ export default function ChatView(props: ChatViewProps) {
           shellTaskKey === null ? undefined : shellTaskKey.split("\n").filter(Boolean),
         backgroundLiveness: shellLiveness,
         isWorking,
+        engine: engineConversation,
       }),
-    [shellTaskKey, shellLiveness, isWorking],
+    [shellTaskKey, shellLiveness, isWorking, engineConversation],
   );
   const liveJobs = useLiveJobs(liveJobsNow);
   const [isStoppingBackgroundWork, setIsStoppingBackgroundWork] = useState(false);

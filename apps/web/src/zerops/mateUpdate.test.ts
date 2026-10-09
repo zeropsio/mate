@@ -118,9 +118,9 @@ describe("automatic update line", () => {
     expect(
       mateUpdateLine(
         {
-          installed: "0.14.8",
+          installed: phase === "updated" ? "0.15.0" : "0.14.8",
           latest: "0.15.0",
-          available: true,
+          available: phase !== "updated",
           checkedAt: "now",
           automatic: {
             protocol: 1,
@@ -133,6 +133,29 @@ describe("automatic update line", () => {
       ),
     ).toEqual({ text, tone: "default" });
   });
+  it.each(["postponed", "updated"] as const)(
+    "an automatic %s record of an older attempt never reads as current: the line says what is installed",
+    (phase) => {
+      expect(
+        mateUpdateLine(
+          {
+            installed: "0.14.92",
+            latest: "0.14.92",
+            available: false,
+            checkedAt: "now",
+            automatic: {
+              protocol: 1,
+              rollbackCompatible: false,
+              phase,
+              runningVersion: "0.14.70",
+              failedVersion: "0.14.71",
+            },
+          },
+          "0.14.92",
+        ),
+      ).toEqual({ text: "Server 0.14.92", tone: "default" });
+    },
+  );
   it("an incompatible release asks for confirmation", () => {
     expect(
       mateUpdateLine(

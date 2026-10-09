@@ -25,7 +25,13 @@ export function liveJobsOf(input: {
   readonly backgroundTaskIds: ReadonlyArray<string> | undefined;
   readonly backgroundLiveness: "working" | "monitoring" | null | undefined;
   readonly isWorking: boolean;
+  /**
+   * The conversation is the engine's: its record ends its work itself (`lost` once its session
+   * goes), and the shell beside it is V1's, which runs nothing there, so nothing is judged from it.
+   */
+  readonly engine?: boolean;
 }): LiveJobs | null {
+  if (input.engine === true) return null;
   if (input.backgroundTaskIds !== undefined) return { ids: new Set(input.backgroundTaskIds) };
   return !input.isWorking && input.backgroundLiveness == null ? { ids: new Set() } : null;
 }

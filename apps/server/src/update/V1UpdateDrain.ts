@@ -127,9 +127,8 @@ export const makeV1UpdateDrain = Effect.gen(function* () {
       const [binding] =
         yield* sql<ResumeBinding>`SELECT provider_name, provider_instance_id, resume_cursor_json FROM provider_session_runtime WHERE thread_id = ${thread.id}`;
       if (binding === undefined && thread.session === null && live === undefined) continue;
-      const driver = binding?.provider_name === "claudeAgent" ? "claude" : binding?.provider_name;
       const reason = yield* nativeResumeBlocker({
-        driver,
+        driver: binding?.provider_name,
         nativeRef: thread.id,
         thread: thread.id,
         instanceId: thread.session?.providerInstanceId ?? thread.modelSelection.instanceId,

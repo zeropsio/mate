@@ -20,7 +20,13 @@ export function mateUpdateLine(
   if (update === undefined) {
     return { text: `Server ${serverVersion}`, tone: "default" };
   }
-  const automatic = update.automatic;
+  // A settled attempt speaks only while its version is the one installed: a later update (a
+  // manual one) leaves the updater's record behind, and its version is not what runs now.
+  const automatic =
+    (update.automatic?.phase === "updated" || update.automatic?.phase === "postponed") &&
+    update.automatic.runningVersion !== update.installed
+      ? undefined
+      : update.automatic;
   if (automatic !== undefined) {
     const text =
       automatic.phase === "draining"

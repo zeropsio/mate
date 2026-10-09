@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Logger from "effect/Logger";
 import * as Queue from "effect/Queue";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
@@ -79,6 +80,39 @@ describe("Mate drain", () => {
       expect(canceled).toBe(true);
     }),
   );
+});
+
+describe("a refused drain says why", () => {
+  it.effect("a drain refused at its deadline logs, at info, the blockers it waited on", () => {
+    const lines: Array<{ readonly level: string; readonly message: unknown }> = [];
+    const logger = Logger.make(({ logLevel, message }) => {
+      lines.push({ level: logLevel, message });
+    });
+    return Effect.gen(function* () {
+      const changes = yield* Queue.unbounded<void>();
+      const pending = yield* drainMateUpdate(
+        {
+          allowed: Effect.succeed(true),
+          begin: Effect.void,
+          cancel: Effect.void,
+          facts: Effect.succeed({ idle: false, blockers: ["mate: native resume is unsupported"] }),
+          quiesce: Effect.die("a busy Mate must not close"),
+          changed: Queue.take(changes),
+        },
+        1,
+      ).pipe(Effect.forkChild);
+      yield* TestClock.adjust(1);
+      expect(yield* Fiber.join(pending)).toBe(false);
+      expect(
+        lines.some(
+          (line) =>
+            line.level === "Info" &&
+            String(line.message).includes("deadline") &&
+            String(line.message).includes("mate: native resume is unsupported"),
+        ),
+      ).toBe(true);
+    }).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
+  });
 });
 
 describe("native closure participates in the final idle proof", () => {
