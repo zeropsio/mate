@@ -1284,6 +1284,7 @@
       "components": [
         "apps/web/src/components/zerops/ZeropsGitPage.tsx",
         "apps/web/src/components/zerops/ZeropsGitPage.logic.ts",
+        "apps/web/src/components/zerops/ZeropsGitChangeRow.tsx",
         "apps/web/src/components/zerops/ZeropsGitCredentials.tsx",
         "apps/web/src/components/zerops/ZeropsRepositoryBrowser.tsx",
         "apps/web/src/zerops/useGitCredentials.ts",
