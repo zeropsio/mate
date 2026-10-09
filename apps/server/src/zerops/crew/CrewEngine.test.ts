@@ -416,12 +416,17 @@ describe("CrewEngine", () => {
       crewJourney((world) =>
         Effect.gen(function* () {
           const { thread, check } = yield* holdTheCheck(world);
-          const messaged = yield* quick(
+          // Decision: fix the race, never retry or loosen.
+          // Success and delivery must precede check.release; elapsed wall time does not prove that order.
+          const messaged = yield* Effect.exit(
             world.press({ _tag: "message", handle: "backend", text: "More", attachments: [] }),
           );
-          assert.isTrue(
-            Option.isSome(messaged) && Exit.isSuccess(Option.getOrThrow(messaged)),
-            "the message did not go through at once",
+          assert.isTrue(Exit.isSuccess(messaged), "the message did not go through at once");
+          const sent = (yield* turnsSent(world)).at(-1);
+          assert.deepStrictEqual(
+            { chat: sent?.chat, text: sent?.text },
+            { chat: thread, text: "More" },
+            "the message must be delivered before the check is released",
           );
           yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
           // Its turn reports done and ends while the first check still runs.
