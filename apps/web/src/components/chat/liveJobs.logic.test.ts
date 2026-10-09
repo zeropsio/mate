@@ -43,6 +43,16 @@ describe("liveJobsOf", () => {
     });
     expect(judged === null ? null : [...judged.ids]).toEqual(live);
   });
+
+  it("an engine conversation's job runs on after its turn until its own record ends it: the V1 shell beside it holds no live task", () => {
+    const live = liveJobsOf({
+      backgroundTaskIds: [],
+      backgroundLiveness: null,
+      isWorking: false,
+      engine: true,
+    });
+    expect(jobLost({ id: "s1.w1", ofLiveTurn: false }, live)).toBe(false);
+  });
 });
 
 describe("jobLost", () => {
