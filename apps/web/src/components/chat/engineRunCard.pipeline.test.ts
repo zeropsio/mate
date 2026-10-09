@@ -420,4 +420,54 @@ describe("an engine Mate's run card, from the engine's record", () => {
       "3 background jobs: 1 finished, 1 failed, 1 stopped",
     );
   });
+
+  // Milo's second stress run: a helper's own background sleep and poll read as Milo's rows,
+  // "Sleep 40 seconds then print marker finished · in the background".
+  it("a helper's own background job is the helper's, never a row of the Mate's card", () => {
+    const description = "Sleep 40 seconds then print marker";
+    const rows = render({
+      runs: [stressRun()],
+      items: [
+        personItem(run1, 1, "Start two helpers", { at: t0 }),
+        call(2, 40_000, {
+          step: "helper",
+          tool: { name: "Agent" },
+          words: "Subagent task",
+          input: "Helper A: background sleep",
+          shows: { toolName: "Agent", input: { description: "Helper A: background sleep" } },
+        } as never),
+        {
+          ...call(3, 42_000, {
+            step: "command",
+            tool: { name: "Bash" },
+            words: "Command run",
+            input: `Bash: sleep 40 && echo marker`,
+            shows: {
+              toolName: "Bash",
+              command: "sleep 40 && echo marker",
+              input: { description },
+              rawOutput: {
+                content:
+                  "Command running in background with ID: bh1. Output is being written to: /tmp/x",
+              },
+            },
+          } as never),
+          by: { kind: "helper", helperId: "conversation/s/1.w2" },
+        } as Item,
+        {
+          ...workItem(run1, 4, {
+            work: "conversation/s/1.w3",
+            workKind: "shell",
+            status: "completed",
+            title: description,
+          }),
+          at: t0 + 42_400,
+        } as Item,
+        noteItem(run1, 5, "Both helpers are back.", { at: t0 + 77_700 }),
+      ],
+    });
+    const card = cardOf(rows);
+    const said = JSON.stringify([card.items, rows.filter((row) => row.kind === "background")]);
+    expect(said).not.toContain(description);
+  });
 });

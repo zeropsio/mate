@@ -333,11 +333,15 @@ function callActivities(
 function workActivities(
   item: Extract<Item, { kind: "work" }>,
   cardOf: CardOf,
+  helperOfWork: (item: Extract<Item, { kind: "work" }>) => string | undefined,
 ): ReadonlyArray<OrchestrationThreadActivity> {
   const taskType = WORK_TASK_TYPES[item.workKind];
+  const helper = helperOfWork(item);
   const payload = {
     taskId: item.work,
     ...(item.workKind === "helper" ? { agentKind: "agent" } : {}),
+    // A helper's own background job is the helper's, as V1 stamps it: never the Mate's row.
+    ...(helper === undefined ? {} : { agentId: helper }),
     ...(taskType === undefined ? {} : { taskType }),
     ...(item.title === null ? {} : { title: item.title }),
   };
@@ -738,6 +742,24 @@ export function engineThreadOf(
   const requests = valuesOf(read, "mateEngineRequest", "engineRequestsIn", conversationKey).sort(
     (left, right) => left.seq - right.seq,
   );
+  // The background commands each helper sent, by the words it gave them: the work a helper's own
+  // command started bears no helper of its own on the record (Milo's second stress run drew a
+  // helper's sleep and poll as the Mate's "finished · in the background" rows).
+  const helperCommands = new Map<string, string>();
+  for (const item of items) {
+    if (item.kind !== "call" || item.by.kind !== "helper") continue;
+    const input = (
+      item.shows as { readonly input?: { readonly description?: unknown } } | undefined
+    )?.input;
+    if (typeof input?.description === "string")
+      helperCommands.set(`${item.runId}\u0000${input.description.trim()}`, item.by.helperId);
+  }
+  const helperOfWork = (item: Extract<Item, { kind: "work" }>): string | undefined =>
+    item.by.kind === "helper"
+      ? item.by.helperId
+      : item.workKind === "helper" || item.title === null
+        ? undefined
+        : helperCommands.get(`${item.runId}\u0000${item.title.trim()}`);
   const messages: EngineMessage[] = [];
   const activities: OrchestrationThreadActivity[] = [];
   const runById = new Map(runs.map((run) => [run.id as string, run]));
@@ -753,7 +775,7 @@ export function engineThreadOf(
         activities.push(...callActivities(item, cardOf));
         break;
       case "work":
-        activities.push(...workActivities(item, cardOf));
+        activities.push(...workActivities(item, cardOf, helperOfWork));
         break;
       case "marker": {
         const marked = markerActivity(item, cardOf);
