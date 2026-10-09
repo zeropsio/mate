@@ -719,6 +719,30 @@ describe("the running engine", () => {
     ),
   );
 
+  // Milo's second stress run: a helper's row read its current command ("Running List regular
+  // files with sizes recursively") instead of the task it was given.
+  it.effect(
+    "background work keeps the name it started with while it reports what it runs now",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w);
+          const work = yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* w.agent((agent, thread) =>
+            agent.emit("task.progress", thread, {
+              payload: { taskId: work, description: "Running List regular files recursively" },
+            }),
+          );
+          const titles = (yield* w.items(r(1))).flatMap((item) =>
+            item.kind === "work" ? [item.body.title] : [],
+          );
+          assert.deepStrictEqual(titles, ["Watch the build"]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   it.effect(
     "Claude's background-result turn is a self-woken run, joined to the run whose work it reports",
     () =>
