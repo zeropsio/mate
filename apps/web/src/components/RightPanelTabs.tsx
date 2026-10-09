@@ -2,6 +2,7 @@ import type { ContextMenuItem, ResolvedKeybindingsConfig } from "@t3tools/contra
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
+  ChevronDown,
   Cloud,
   Database,
   FileDiff,
@@ -48,6 +49,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 
 import { PreviewPanelShell, type PreviewPanelMode } from "./RightPanelShell";
+import { tabsOutOfView } from "./RightPanelTabs.logic";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 
 interface RightPanelTabsProps {
@@ -593,6 +595,42 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     activeTab?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [props.activeSurfaceId]);
 
+  // The tabs the strip's edges cut off, re-read as it scrolls or resizes: its overflow menu
+  // lists them, so a tab out of view is a click away and never only a sideways scroll.
+  const [hiddenTabIds, setHiddenTabIds] = useState<readonly string[]>([]);
+  useEffect(() => {
+    const viewport = tabListRef.current?.querySelector<HTMLElement>(
+      "[data-slot='scroll-area-viewport']",
+    );
+    if (!viewport) return;
+    const measure = () => {
+      const bounds = viewport.getBoundingClientRect();
+      const next = tabsOutOfView(
+        bounds,
+        Array.from(viewport.querySelectorAll<HTMLElement>("[data-tab-id]"), (tab) => {
+          const box = tab.getBoundingClientRect();
+          return { id: tab.dataset.tabId ?? "", left: box.left, right: box.right };
+        }),
+      );
+      setHiddenTabIds((current) =>
+        current.length === next.length && current.every((id, index) => id === next[index])
+          ? current
+          : next,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    if (viewport.firstElementChild) observer.observe(viewport.firstElementChild);
+    viewport.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      observer.disconnect();
+      viewport.removeEventListener("scroll", measure);
+    };
+    // The strip's row resizes as tabs open and close, so the observer re-reads then too.
+  }, []);
+  const hiddenSurfaces = props.surfaces.filter((surface) => hiddenTabIds.includes(surface.id));
+
   return (
     <PreviewPanelShell
       mode={props.mode}
@@ -628,6 +666,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
               return (
                 <div
                   key={surface.id}
+                  data-tab-id={surface.id}
                   data-active-tab={active}
                   onMouseDown={handleTabMouseDown}
                   onAuxClick={(event) => handleTabAuxClick(event, surface)}
@@ -709,6 +748,31 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             ) : null}
           </div>
         </ScrollArea>
+        {hiddenSurfaces.length > 0 ? (
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  aria-label={`${hiddenSurfaces.length} more tabs`}
+                  className="shrink-0"
+                  data-right-panel-hidden-tabs
+                  size="icon-xs"
+                  variant="ghost-muted"
+                />
+              }
+            >
+              <ChevronDown className="size-3.5" />
+            </MenuTrigger>
+            <MenuPopup align="end" side="bottom" sideOffset={6}>
+              {hiddenSurfaces.map((surface) => (
+                <MenuItem key={surface.id} onClick={() => props.onActivate(surface)}>
+                  <SurfaceIcon surface={surface} theme={resolvedTheme} />
+                  {surfaceTitle(surface, props.terminalLabelsById)}
+                </MenuItem>
+              ))}
+            </MenuPopup>
+          </Menu>
+        ) : null}
         {props.layoutControls}
       </div>
       <div

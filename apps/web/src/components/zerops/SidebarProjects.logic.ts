@@ -183,3 +183,22 @@ function roomTheViewNeeds(scroll: ScrollRoom, natural: number): number {
   if (scroll.scrollTop <= 0) return 0;
   return Math.max(0, scroll.scrollTop + scroll.clientHeight - natural);
 }
+
+/**
+ * Which open Mate's row the menu scrolls into view, and the open Mate it has seen. A reload leaves
+ * the menu where it was: the Mate it opened on is not revealed, even when the route's Mate is found
+ * only after the menu drew (`resolving` until then; `seen` unset while nothing was found). Only a
+ * Mate opened afterwards — Add landing on a new Mate, a link, a page — is scrolled to; the caller
+ * marks it seen once its row is drawn.
+ */
+export function openMateReveal(input: {
+  readonly seen: string | null | undefined;
+  readonly open: string | null;
+  readonly resolving: boolean;
+}): { readonly reveal: string | undefined; readonly seen: string | null | undefined } {
+  const { seen, open } = input;
+  if (input.resolving) return { reveal: undefined, seen };
+  if (seen === undefined) return { reveal: undefined, seen: open };
+  if (open === null || open === seen) return { reveal: undefined, seen };
+  return { reveal: open, seen };
+}

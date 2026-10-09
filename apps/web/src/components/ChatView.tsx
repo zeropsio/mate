@@ -8,7 +8,11 @@ import {
   resolveZeropsProviderAvailability,
   isZeropsInstanceRunnable,
 } from "@t3tools/client-runtime/data";
-import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
+import {
+  OrchestrationDispatchCommandError,
+  agentIdForDriverKind,
+  agentIdForProviderInstance,
+} from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
 import { useEngineRunCards } from "../zerops/useEngineCardPaging";
@@ -3219,6 +3223,13 @@ export default function ChatView(props: ChatViewProps) {
       return mate.kind === "mate" ? mate.mate.name : "This Mate";
     })(),
   });
+  // The agent the conversation runs on, where it is one the agents card signs in.
+  const conversationInstanceId =
+    activeProviderInstanceId ?? activeThread?.modelSelection.instanceId;
+  const conversationAgentId =
+    agentIdForDriverKind(
+      providerStatuses.find((provider) => provider.instanceId === conversationInstanceId)?.driver,
+    ) ?? agentIdForProviderInstance(conversationInstanceId);
   const providerStatusBannerKey = getProviderStatusBannerKey(admission.providerStatus);
   useEffect(() => {
     if (providerStatusBannerKey === null && dismissedProviderStatusBannerKey !== null) {
@@ -8283,6 +8294,7 @@ export default function ChatView(props: ChatViewProps) {
                   agentAuthUnknown={zeropsChrome.agentAuthUnknown}
                   agentAuthSnapshot={zeropsAgentAuth.snapshot}
                   agentSignInDemanded={admission.attention !== null}
+                  conversationAgentId={conversationAgentId}
                   runningToolLabel={zeropsThreadModel.running?.kicker}
                   threadRef={zeropsChrome.threadRef}
                 />

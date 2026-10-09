@@ -200,6 +200,7 @@ import {
 import {
   headingFaces,
   landingAfterDraw,
+  openMateReveal,
   projectRoom,
   slackAfterScroll,
   slackForFold,
@@ -487,6 +488,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly onAskToFix?: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
   readonly activeProjectId?: string | null;
   /**
+   * The route names a Mate whose row is not found yet (its listing still read): the open Mate is
+   * unknown, not none. A reload's open Mate found late is still the one it opened on.
+   */
+  readonly activeProjectResolving?: boolean | undefined;
+  /**
    * What this agent is doing right now.
    *
    * Injected because the answer is a thread's status through the one resolver
@@ -595,6 +601,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   onAskToFix,
   onOpenGroup,
   activeProjectId,
+  activeProjectResolving = false,
   getActivity,
   keyedReadings = false,
   menuOpen = true,
@@ -674,16 +681,24 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
   // page — stands in view in the menu: its row scrolled to the nearest edge
   // once it is drawn (a new Mate's row comes a moment after its view, so every
-  // draw looks until it is there). Not the one open at mount: a reload leaves
-  // the menu where it was.
-  const shownActiveRef = useRef(activeProjectId);
+  // draw looks until it is there). Not the one open at mount, even found late:
+  // a reload leaves the menu where it was (`openMateReveal`).
+  const shownActiveRef = useRef<string | null | undefined>(
+    activeProjectResolving ? undefined : (activeProjectId ?? null),
+  );
   useEffect(() => {
-    if (activeProjectId == null || shownActiveRef.current === activeProjectId) return;
+    const next = openMateReveal({
+      seen: shownActiveRef.current,
+      open: activeProjectId ?? null,
+      resolving: activeProjectResolving,
+    });
+    shownActiveRef.current = next.seen;
+    if (next.reveal === undefined) return;
     const row = treeRef.current?.querySelector<HTMLElement>(
-      `[data-zerops-mate-row="${CSS.escape(activeProjectId)}"]`,
+      `[data-zerops-mate-row="${CSS.escape(next.reveal)}"]`,
     );
     if (row == null) return;
-    shownActiveRef.current = activeProjectId;
+    shownActiveRef.current = next.reveal;
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     row.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
   });
@@ -861,9 +876,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // Until the rows below are drawn, the jump box finds nothing here.
   jumpIndex.current = EMPTY_JUMP_INDEX;
 
-  // A Mate being created is one to draw, whatever the listing holds yet.
+  // A Mate being created is one to draw, whatever the listing holds yet. A project's open
+  // changes alone are drawn only once the listing is complete: before, its Mates are still read,
+  // and a reload would paint them as "Review" rows the Mates' menu then replaces.
   const nothing =
-    appsWithWork.length > 0 || births.some((birth) => birth.placement.kind === "mate")
+    (complete && appsWithWork.length > 0) || births.some((birth) => birth.placement.kind === "mate")
       ? undefined
       : emptyReason;
 
@@ -3107,8 +3124,9 @@ function MateRowView<T extends RosterCandidate>({
             <MateAskLine line={askLine} rises={askChanged} />
           )}
           {outsideHq ? null : status !== null && retainedReply === undefined ? (
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 max-w-full shrink-0">
+            // Held to the other lines' height: a waiting question grew the row 76 -> 82 px.
+            <span className="flex h-4.5 min-w-0 items-center gap-2">
+              <span className="flex min-w-0 max-w-full shrink-0">
                 <MateStatusMarker
                   mateName={name}
                   status={status}

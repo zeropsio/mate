@@ -6,6 +6,7 @@ import {
   headingFaces,
   landingAfterDraw,
   newProjectOffered,
+  openMateReveal,
   projectRoom,
   slackAfterScroll,
   slackForFold,
@@ -250,5 +251,38 @@ describe("newProjectOffered — New project at the menu's foot (D11)", () => {
     },
   ])("$name: $offered", ({ candidates, births, complete, offered }) => {
     expect(newProjectOffered({ candidates, births, complete })).toBe(offered);
+  });
+});
+
+describe("openMateReveal", () => {
+  // Stress run 3 (+17:00): the open Mate was found after the menu drew, the menu then slid to it.
+  it.each([
+    ["a reload on an open Mate", { seen: "milo", open: "milo", resolving: false }, undefined],
+    [
+      "a reload while the open Mate is still being found",
+      { seen: undefined, open: null, resolving: true },
+      undefined,
+    ],
+    [
+      "a reload's open Mate found after the menu drew",
+      { seen: undefined, open: "milo", resolving: false },
+      undefined,
+    ],
+    ["a Mate opened from elsewhere", { seen: "milo", open: "fen", resolving: false }, "fen"],
+    ["a Mate opened where none was", { seen: null, open: "fen", resolving: false }, "fen"],
+    ["no Mate open", { seen: "milo", open: null, resolving: false }, undefined],
+  ] as const)(
+    "A reload leaves the menu where it was; only a Mate opened afterwards scrolls into view: %s",
+    (_case, input, reveal) => {
+      expect(openMateReveal(input).reveal).toBe(reveal);
+    },
+  );
+
+  it("The open Mate a reload finds late is the one it opened on, not one opened afterwards", () => {
+    const found = openMateReveal({ seen: undefined, open: "milo", resolving: false });
+    expect(openMateReveal({ seen: found.seen, open: "milo", resolving: false }).reveal).toBe(
+      undefined,
+    );
+    expect(openMateReveal({ seen: found.seen, open: "fen", resolving: false }).reveal).toBe("fen");
   });
 });

@@ -60,7 +60,8 @@ import { useRef, useState } from "react";
 import type { TerminalContextSelection } from "../../lib/terminalContext";
 import { useEnvironment } from "../../state/environments";
 import { useDatabasePanel, useDatabaseServices } from "../../zerops/useDatabase";
-import { DATABASE_FAILURE_UNEXPLAINED, databaseTreeTarget } from "@t3tools/client-runtime/data";
+import { databaseTreeTarget } from "@t3tools/client-runtime/data";
+import { compareSemverVersions } from "@t3tools/shared/semver";
 import { useZeropsDataConsole } from "../../zerops/useZeropsFeeds";
 import { Button } from "../ui/button";
 import { Chip, FlatCard, MicroLabel, StatusDot } from "./primitives";
@@ -105,6 +106,8 @@ const STATUS_DOT_TONE: Record<
 };
 
 /** Layout guess before the first measurement lands, so the panel does not flash the wrong shape. */
+/** The first Mate server that answers a connection summary. */
+const SUMMARY_SINCE = "0.15.13";
 const ASSUMED_WIDTH_MAXIMIZED = 1200;
 const ASSUMED_WIDTH_INLINE = 420;
 
@@ -140,7 +143,16 @@ export function ZeropsDataPanel({
     service ?? null,
   );
   const database = useDatabasePanel(dataConsoleSupported ? environmentId : null, service ?? null);
-  const summaryError = database.readStates.summary?.error;
+  const summaryRead = database.readStates.summary;
+  // A console that does not offer the summary yet leaves the identity quiet: nothing to retry.
+  const summaryUnoffered = summaryRead?.code === "unsupported";
+  const summaryError = summaryUnoffered ? undefined : summaryRead?.error;
+  // A failure with no reason reads as a server older than the request only on a Mate that is.
+  const summaryNeedsUpdate =
+    summaryError !== undefined &&
+    summaryRead?.code === undefined &&
+    environment !== undefined &&
+    compareSemverVersions(environment.serverVersion, SUMMARY_SINCE) < 0;
   const {
     services,
     tree,
@@ -1272,7 +1284,7 @@ export function ZeropsDataPanel({
                   ? "Copy endpoint/path"
                   : "Copy masked connection"}
               </Button>
-            ) : (
+            ) : summaryUnoffered ? null : (
               <Button
                 size="micro"
                 variant="ghost"
@@ -1286,10 +1298,8 @@ export function ZeropsDataPanel({
           </div>
           {summaryError === undefined || database.summary ? null : (
             <p data-zerops-data-summary-error>
-              {summaryError === DATABASE_FAILURE_UNEXPLAINED
-                ? // No reason given: most often a Mate server older than this
-                  // app, which cannot read the request at all.
-                  "The Mate's server did not take the request. Updating the Mate usually fixes that."
+              {summaryNeedsUpdate
+                ? "The Mate's server did not take the request. Updating the Mate usually fixes that."
                 : summaryError}
             </p>
           )}

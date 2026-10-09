@@ -2353,16 +2353,24 @@ export default function Sidebar() {
   // The row for the environment whose conversation is open. A fresh draft
   // has no thread yet, but it knows its environment — and that is the one
   // the user is about to talk to.
-  const activeZeropsProjectId = useMemo(() => {
-    if (comingMateRoute !== undefined) return comingMateRoute.params.projectId;
-    if (newProjectRoute !== undefined) return newProjectRoute.params.birthId;
+  const activeZeropsProject = useMemo((): {
+    readonly id: string | null;
+    /** The route names a Mate the listing has not found yet: unknown, not none. */
+    readonly resolving: boolean;
+  } => {
+    if (comingMateRoute !== undefined)
+      return { id: comingMateRoute.params.projectId, resolving: false };
+    if (newProjectRoute !== undefined)
+      return { id: newProjectRoute.params.birthId, resolving: false };
     const environmentId = routeThreadRef?.environmentId ?? routeDraftThread?.environmentId;
-    if (environmentId === undefined) return null;
+    if (environmentId === undefined) return { id: null, resolving: false };
     const open = findCandidate(
       zeropsListing,
       (candidate) => candidate.environmentId === environmentId,
     );
-    return open.kind === "found" ? open.row.project.id : null;
+    return open.kind === "found"
+      ? { id: open.row.project.id, resolving: false }
+      : { id: null, resolving: open.kind === "pending" || open.kind === "unknown" };
   }, [
     comingMateRoute,
     newProjectRoute,
@@ -2370,6 +2378,8 @@ export default function Sidebar() {
     routeThreadRef?.environmentId,
     zeropsListing,
   ]);
+  const activeZeropsProjectId = activeZeropsProject.id;
+  const activeZeropsProjectResolving = activeZeropsProject.resolving;
   // Whose Mates the menu lists (the account menu's Mine / Everyone): the
   // tree and the waiting faces read the same answer.
   const [zeropsMateScope] = useMateScope();
@@ -4180,6 +4190,7 @@ export default function Sidebar() {
             <SidebarZeropsTree
               menuOpen={isMobile ? openMobile : open}
               activeProjectId={activeZeropsProjectId}
+              activeProjectResolving={activeZeropsProjectResolving}
               births={zeropsPlacedBirths}
               candidates={zeropsCandidates}
               complete={zeropsMenuComplete}
