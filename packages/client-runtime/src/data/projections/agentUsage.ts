@@ -3,6 +3,7 @@ import type { UsageReport } from "@t3tools/contracts";
 import { agentUsageId, agentUsageScope } from "../families/agentUsage.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
+import { liveOrHeld } from "../streamMachine.ts";
 export type AgentUsageRead =
   | { readonly kind: "reading" }
   | {
@@ -25,7 +26,7 @@ export const agentUsage: Projection<
       return {
         kind: "read",
         report: fact.value,
-        stale: stream.phase !== "live",
+        stale: !liveOrHeld(stream),
         ...(stream.fault?.code === "usage-update-required" ? { updateRequired: true } : {}),
       };
     if (fact.kind === "withheld" || stream.fault !== null)

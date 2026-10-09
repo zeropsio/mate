@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveZerops, ORG, processValue, zeropsVersion } from "../__fixtures__/account.ts";
+import {
+  liveZerops,
+  ORG,
+  processValue,
+  zeropsVersion,
+  pastGrace,
+} from "../__fixtures__/account.ts";
 import { historyScope, runningScope } from "../families/process.ts";
 import { emptyAccount, linkKeys, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
@@ -68,15 +74,17 @@ const live = () =>
     ),
   ]);
 const outage = (state: AccountState) =>
-  apply(state, [
-    event(runningScope(ORG), { kind: "parent-lost" }),
-    event(history, { kind: "parent-lost" }),
-    event(linkKeys.zerops(ORG), {
-      kind: "fault",
-      jitter: 0,
-      fault: { outcome: "transient", message: "socket closed" },
-    }),
-  ]);
+  pastGrace(
+    apply(state, [
+      event(runningScope(ORG), { kind: "parent-lost" }),
+      event(history, { kind: "parent-lost" }),
+      event(linkKeys.zerops(ORG), {
+        kind: "fault",
+        jitter: 0,
+        fault: { outcome: "transient", message: "socket closed" },
+      }),
+    ]),
+  );
 const refused = (state: AccountState, outcome: string) =>
   apply(state, [
     event(linkKeys.zerops(ORG), {

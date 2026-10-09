@@ -13,6 +13,7 @@ import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
 import { sameValue } from "./equal.ts";
+import { liveOrHeld } from "../streamMachine.ts";
 
 export interface HqMatesRead {
   readonly mates: Readonly<Record<string, MateLiveView>>;
@@ -33,8 +34,8 @@ export const hqMates: Projection<string, HqMatesRead> = {
     return {
       mates,
       live:
-        read.stream(linkKeys.hq(orgId)).phase === "live" &&
-        read.stream(placementsScope(orgId)).phase === "live",
+        liveOrHeld(read.stream(linkKeys.hq(orgId))) &&
+        liveOrHeld(read.stream(placementsScope(orgId))),
     };
   },
   equals: sameValue,
@@ -66,9 +67,9 @@ export const hqMatePresence: Projection<
   derive: (read, key) => ({
     presence: overviewOf(read, key)?.presence ?? null,
     live:
-      read.stream(linkKeys.hq(key.orgId)).phase === "live" &&
-      read.stream(placementsScope(key.orgId)).phase === "live" &&
-      read.stream(hqMateScope(key.orgId, key.projectId)).phase === "live",
+      liveOrHeld(read.stream(linkKeys.hq(key.orgId))) &&
+      liveOrHeld(read.stream(placementsScope(key.orgId))) &&
+      liveOrHeld(read.stream(hqMateScope(key.orgId, key.projectId))),
   }),
   equals: sameValue,
 };

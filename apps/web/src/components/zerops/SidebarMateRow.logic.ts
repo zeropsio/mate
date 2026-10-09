@@ -440,7 +440,7 @@ export function mateRowView(
   if (ask === MATE_STAND_UP_MESSAGE) {
     if (state === "working") {
       return {
-        ...view(SETTING_UP_DEVELOPMENT, { kind: "clock", since: activity.at }),
+        ...view(SETTING_UP_DEVELOPMENT, { kind: "clock", since: activity.runSince ?? activity.at }),
         ask: undefined,
       };
     }
@@ -456,7 +456,7 @@ export function mateRowView(
         activity.liveStep === undefined
           ? { kind: "pending" }
           : { kind: "live", words: activity.liveStep.words },
-        { kind: "clock", since: activity.at },
+        { kind: "clock", since: activity.runSince ?? activity.at },
       );
     case "needs":
       return view(

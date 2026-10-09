@@ -78,9 +78,52 @@ export function mateEnvironmentOf(
 export function matesActivityOf(
   input: MatesActivityInput,
   previous?: ReadonlyMap<string, ZeropsAgentActivity>,
+  nowMs = Date.now(),
 ): ReadonlyMap<string, ZeropsAgentActivity> {
   const next = readMatesActivity(input);
+  for (const [projectId, entry] of next) {
+    const runSince = runClockSince(previous?.get(projectId), entry, nowMs);
+    if (runSince !== undefined) next.set(projectId, { ...entry, runSince });
+  }
   return previous === undefined ? next : shareActivities(previous, next);
+}
+
+/** The kinds a run is on in: at work, or waiting on its person within it. */
+const ON_A_RUN: ReadonlySet<ThreadStatusKind> = new Set([
+  "connecting",
+  "working",
+  "monitoring",
+  "approval",
+  "input",
+  "planReady",
+]);
+
+const laterOf = (at: string, other: string | undefined): string =>
+  other !== undefined && Date.parse(other) > Date.parse(at) ? other : at;
+
+/**
+ * Where a Mate's menu clock counts from: this run's start, and only forward. It is set where the
+ * reading first sees the run at work — never before the person's ask, nor before the moment this
+ * page watched the run begin — and held through the waits within the run, whatever date a later
+ * reading brings (the queue's, the provider's start, a relay's, the previous turn's end). Gone once
+ * the run ends.
+ */
+export function runClockSince(
+  previous: ZeropsAgentActivity | undefined,
+  next: ZeropsAgentActivity,
+  nowMs: number,
+): string | undefined {
+  if (!ON_A_RUN.has(next.kind)) return undefined;
+  if (
+    previous?.runSince !== undefined &&
+    previous.threadKey === next.threadKey &&
+    ON_A_RUN.has(previous.kind)
+  )
+    return previous.runSince;
+  if (!UNDER_WAY.has(next.kind)) return undefined;
+  const asked = laterOf(next.at, next.askedAt);
+  const watched = previous !== undefined && previous.remembered !== true;
+  return watched ? laterOf(asked, new Date(nowMs).toISOString()) : asked;
 }
 
 function shareActivities(

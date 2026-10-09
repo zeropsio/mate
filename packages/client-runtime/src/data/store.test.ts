@@ -1,5 +1,5 @@
 import { AtomRegistry, type Atom } from "effect/reactivity";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { liveZerops, ORG, processValue } from "./__fixtures__/account.ts";
 import { placementsScope, type PlacementValue } from "./families/hqNavigation.ts";
@@ -7,6 +7,7 @@ import { mateAttention } from "./projections/mateAttention.ts";
 import { runningScope } from "./families/process.ts";
 import { linkKeys } from "./model.ts";
 import { runningWork, type ProjectKey, type RunningWork } from "./projections/processes.ts";
+import { organizationProjects } from "./projections/projects.ts";
 import type { AccountInput } from "./reducer.ts";
 import { makeAccountStore, type Projection } from "./store.ts";
 
@@ -172,6 +173,72 @@ describe("makeAccountStore", () => {
     expect(
       registry.get(store.data.project(counted, { orgId: ORG, projectId: "project-0" })).kind,
     ).toBe("running");
+  });
+});
+
+describe("a reconnect's grace", () => {
+  it("holds what a link read as current for its grace, then says it is down since it went away", async () => {
+    vi.useFakeTimers();
+    try {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      for (const input of liveZerops({ running: [] })) store.dispatch(input);
+      const projects = store.data.project(organizationProjects, ORG);
+      expect(registry.get(projects)).toMatchObject({ live: true, reconnecting: false });
+      store.dispatch({
+        kind: "stream",
+        key: linkKeys.zerops(ORG),
+        now: 1_000,
+        event: { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "closed" } },
+      });
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(registry.get(projects)).toMatchObject({ live: true, reconnecting: false });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(registry.get(projects)).toMatchObject({
+        live: false,
+        reconnecting: true,
+        downSince: 1_000,
+      });
+      registry.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets a reconnect that comes back within its grace pass unseen", async () => {
+    vi.useFakeTimers();
+    try {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      for (const input of liveZerops({ running: [] })) store.dispatch(input);
+      const projects = store.data.project(organizationProjects, ORG);
+      const seen: Array<boolean> = [];
+      const stop = registry.subscribe(projects, (read) => seen.push(read.live), {
+        immediate: true,
+      });
+      const link = linkKeys.zerops(ORG);
+      store.dispatch({
+        kind: "stream",
+        key: link,
+        now: 1_000,
+        event: { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "closed" } },
+      });
+      await vi.advanceTimersByTimeAsync(800);
+      store.dispatch({ kind: "stream", key: link, now: 1_800, event: { kind: "retry-due" } });
+      store.dispatch({ kind: "stream", key: link, now: 1_900, event: { kind: "handshake" } });
+      store.dispatch({
+        kind: "stream",
+        key: link,
+        now: 2_000,
+        event: { kind: "baseline-committed" },
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(seen.every((live) => live)).toBe(true);
+      stop();
+      registry.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

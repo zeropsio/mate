@@ -1,5 +1,6 @@
 import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
+import { graceOver } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { placementFamily, placementsScope } from "../families/hqNavigation.ts";
 import { emptyAccount, linkKeys } from "../model.ts";
@@ -84,6 +85,7 @@ describe("hqMateSetup", () => {
       now: 1,
       event: { kind: "fault", fault: { outcome: "transient", message: "outage" }, jitter: 0 },
     });
+    for (const input of graceOver(store.state())) store.dispatch(input);
     expect(read()).toEqual({
       closedOff: closedOff ? true : "unknown",
       marker: marker ?? "unknown",

@@ -91,13 +91,14 @@ export const hqDown = (
 ): boolean => !view.live && (view.reconnecting || view.capped || view.refusal !== null);
 
 /**
- * When HQ stopped answering the organization in view, as this tab first saw it (wall ms): said, never
- * decided over. Null while HQ answers, or before it ever did.
+ * When HQ stopped answering the organization in view (wall ms): when its stream went away, not when
+ * its grace ran out — else as this tab first saw it. Null while HQ answers, or before it ever did.
  */
 export const hqDownSinceAtom = Atom.make((get): number | null => {
   const navigation = get(shownHqNavigationAtom);
   const down = navigation.read === "read" && !navigation.live;
-  return down ? (Option.getOrNull(get.self<number | null>()) ?? Date.now()) : null;
+  if (!down) return null;
+  return navigation.downSince ?? Option.getOrNull(get.self<number | null>()) ?? Date.now();
 }).pipe(Atom.keepAlive, Atom.withLabel("zerops:hq-down-since"));
 
 const HQ_STANDING_UNKNOWN: HqStanding = { kind: "unknown" };

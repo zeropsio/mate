@@ -11,6 +11,7 @@ import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/reactivity";
 
+import { graceOver } from "../__fixtures__/account.ts";
 import { hqFixtureWire, type HqFixtureWire } from "../__fixtures__/hqWire.ts";
 import { attention } from "../__fixtures__/mateAttention.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
@@ -248,6 +249,7 @@ describe("hqNavigationLink", () => {
         expect(setup().marker).toBe(true);
         yield* fixture.drop({ outcome: "transient", message: "network" });
         yield* settle;
+        for (const input of graceOver(store.state())) store.dispatch(input);
         expect(setup()).toEqual({ closedOff: "unknown", marker: true });
         yield* Fiber.interrupt(fiber);
       }),
@@ -303,6 +305,7 @@ describe("hqNavigationLink", () => {
       yield* settle;
       yield* fixture.send({ type: "ping" });
       yield* settle;
+      for (const input of graceOver(store.state())) store.dispatch(input);
       const view = () => hqNavigation.derive(readsOfState(store.state()), ORG);
       expect(view()).toMatchObject({ live: false, reconnecting: true });
       expect(appName(store, "shop")).toBe("Shop");
@@ -315,6 +318,30 @@ describe("hqNavigationLink", () => {
       );
       yield* Fiber.interrupt(fiber);
     }),
+  );
+
+  it.effect(
+    "a planned HQ segment end moves nothing: what HQ said stays current while it confirms it again",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* live(store, fixture);
+        const view = () => hqNavigation.derive(readsOfState(store.state()), ORG);
+        const before = view();
+        expect(before).toMatchObject({ live: true, reconnecting: false });
+        yield* fixture.endSegment;
+        yield* settle;
+        expect(fixture.opens()).toBe(2);
+        expect(view()).toMatchObject({ live: true, reconnecting: false });
+        expect(view().downSince).toBeUndefined();
+        expect(view().structure).toEqual(before.structure);
+        yield* fixture.send(ready(3));
+        yield* settle;
+        expect(phase(store, hqAppsScope(ORG))).toBe("live");
+        expect(view()).toMatchObject({ live: true, reconnecting: false });
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 
   it.effect("never commits a delta that does not follow its cursor: the scope is asked whole", () =>

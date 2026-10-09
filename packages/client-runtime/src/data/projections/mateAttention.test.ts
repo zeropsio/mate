@@ -31,12 +31,15 @@ const goLive = (key: StreamKey): ReadonlyArray<AccountInput> => [
   stream(key, { kind: "handshake" }),
   stream(key, { kind: "baseline-committed" }),
 ];
-const fault = (key: StreamKey) =>
+/** A link that broke and stayed away past its reconnect grace. */
+const down = (key: StreamKey): ReadonlyArray<AccountInput> => [
   stream(key, {
     kind: "fault",
     fault: { outcome: "transient", message: "The socket broke." },
     jitter: 0,
-  });
+  }),
+  stream(key, { kind: "grace-over", lostAt: 0 }),
+];
 
 /** An open Mate's own link, live, having said `value`. */
 const direct = (value: MateAttention): ReadonlyArray<AccountInput> => [
@@ -300,8 +303,33 @@ describe("matesAttention", () => {
     },
     {
       name: "a Mate HQ relays, HQ's link down",
-      inputs: [...relay(attention("m1", 3)), fault(linkKeys.hq(ORG))],
+      inputs: [...relay(attention("m1", 3)), ...down(linkKeys.hq(ORG))],
       expected: { attention: attention("m1", 3), live: false, unseen: null },
+    },
+    {
+      name: "a planned HQ reconnect: the Mate's word stays of now while HQ asks for it again",
+      inputs: [
+        ...relay(attention("m1", 3)),
+        stream(hqMateScope(ORG, P), { kind: "attempt" }),
+        stream(hqMateAttentionScope(ORG, P), { kind: "attempt" }),
+        stream(hqMateScope(ORG, P), { kind: "handshake" }),
+        stream(hqMateAttentionScope(ORG, P), { kind: "handshake" }),
+      ],
+      expected: { attention: attention("m1", 3), live: true, unseen: null },
+    },
+    {
+      name: "HQ's link blinks and comes back within its grace: the Mate's word stays of now",
+      inputs: [
+        ...relay(attention("m1", 3)),
+        stream(linkKeys.hq(ORG), {
+          kind: "fault",
+          fault: { outcome: "transient", message: "The socket broke." },
+          jitter: 0,
+        }),
+        stream(hqMateScope(ORG, P), { kind: "parent-lost" }),
+        stream(hqMateAttentionScope(ORG, P), { kind: "parent-lost" }),
+      ],
+      expected: { attention: attention("m1", 3), live: true, unseen: null },
     },
     {
       name: "an open Mate closed again, HQ relaying the same revision live",
@@ -340,7 +368,7 @@ describe("matesAttention", () => {
       name: "the earlier direct run speaks after the later epoch's relay goes down",
       inputs: [
         ...relay(attention("m2", 0, 0, 2)),
-        fault(linkKeys.hq(ORG)),
+        ...down(linkKeys.hq(ORG)),
         ...direct(attention("m1", 10, 1)),
       ],
       expected: { attention: attention("m2", 0, 0, 2), live: false, unseen: null },

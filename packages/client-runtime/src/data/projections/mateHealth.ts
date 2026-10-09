@@ -4,6 +4,7 @@ import { hqMateHealthScope, mateHealthScope } from "../families/mateHealth.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
+import { liveOrHeld } from "../streamMachine.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
 
 export interface MateHealthRead {
@@ -22,16 +23,16 @@ export const mateHealth: Projection<MateProjectKey, MateHealthRead> = {
     const directLive =
       attention.kind === "known" &&
       attention.scope === mateHealthScope(projectId) &&
-      read.stream(linkKeys.mateHealth(projectId)).phase === "live" &&
-      read.stream(mateHealthScope(projectId)).phase === "live";
+      liveOrHeld(read.stream(linkKeys.mateHealth(projectId))) &&
+      liveOrHeld(read.stream(mateHealthScope(projectId)));
     const storedLive =
       health !== null &&
       relay.kind === "known" &&
       relay.value.healthState === "live" &&
       sameValue(relay.value.health?.source, health.source) &&
-      read.stream(linkKeys.hq(orgId)).phase === "live" &&
-      read.stream(hqMateScope(orgId, projectId)).phase === "live" &&
-      read.stream(hqMateHealthScope(orgId, projectId)).phase === "live";
+      liveOrHeld(read.stream(linkKeys.hq(orgId))) &&
+      liveOrHeld(read.stream(hqMateScope(orgId, projectId))) &&
+      liveOrHeld(read.stream(hqMateHealthScope(orgId, projectId)));
     const live = directLive || storedLive;
     return {
       health,
