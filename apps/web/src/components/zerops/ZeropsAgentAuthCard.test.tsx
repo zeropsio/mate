@@ -1,11 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
-import type {
-  ZeropsAgentAuth,
-  ZeropsAgentAuthSnapshot,
-  ZeropsAgentId,
-  ZeropsAgentLoginState,
+import {
+  ProviderInstanceId,
+  type ZeropsAgentAuth,
+  type ZeropsAgentAuthSnapshot,
+  type ZeropsAgentId,
+  type ZeropsAgentLoginState,
 } from "@t3tools/contracts";
+import { agentAdmission } from "@t3tools/client-runtime/data";
 
 import type { MateLoginRow } from "@t3tools/client-runtime/zerops/logins";
 
@@ -28,6 +30,23 @@ const snapshot = (agents: ReadonlyArray<ZeropsAgentAuth>): ZeropsAgentAuthSnapsh
 });
 
 const noop = () => {};
+
+/** Whether the conversation running `instance` is held for a sign-in, as `ChatView` asks it. */
+const demanded = (feed: ZeropsAgentAuthSnapshot, instance: string): boolean =>
+  agentAdmission({
+    environmentId: "env",
+    instanceId: ProviderInstanceId.make(instance),
+    viewerSubject: "viewer",
+    read: {
+      state: "known",
+      value: feed,
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    },
+    providers: [],
+    mateName: "Milo",
+  }).attention !== null;
 
 describe("ZeropsAgentAuthCard", () => {
   it("renders the exact snapshot as branded semantic agent rows", () => {
@@ -52,7 +71,7 @@ describe("ZeropsAgentAuthCard", () => {
     expect(html).toContain("Not signed in");
     expect(html).toContain("Authorized");
     expect(html).toContain("data-zerops-agent-auth-card");
-    expect(html).toContain("Authorize coding agents");
+    expect(html).toContain("Coding agents");
     expect(html.match(/data-zerops-agent-identity/g)).toHaveLength(2);
     expect(html).toContain('data-zerops-agent-logo="claude-code"');
     expect(html).toContain('data-zerops-agent-logo="codex"');
@@ -65,31 +84,60 @@ describe("ZeropsAgentAuthCard", () => {
   // The card is the agents' own home now (D6 round 5): it stays up once
   // nothing demands attention, just with a header that stops demanding.
   it("keeps the demanding header only while some agent needs attention", () => {
+    const signedOut = snapshot([agent({ agentId: "claude-code", state: "not-authorized" })]);
     const demanding = renderToStaticMarkup(
       <ZeropsAgentAuthCard
-        snapshot={snapshot([agent({ agentId: "claude-code", state: "not-authorized" })])}
+        snapshot={signedOut}
+        signInDemanded={demanded(signedOut, "claudeAgent")}
         onSignIn={noop}
         onCancel={noop}
       />,
     );
     expect(demanding).toContain("Authorize coding agents");
 
+    const signedIn = snapshot([
+      agent({
+        agentId: "claude-code",
+        state: "authorized",
+        credPresent: true,
+        providerAuth: "authenticated",
+      }),
+    ]);
     const settled = renderToStaticMarkup(
       <ZeropsAgentAuthCard
-        snapshot={snapshot([
-          agent({
-            agentId: "claude-code",
-            state: "authorized",
-            credPresent: true,
-            providerAuth: "authenticated",
-          }),
-        ])}
+        snapshot={signedIn}
+        signInDemanded={demanded(signedIn, "claudeAgent")}
         onSignIn={noop}
         onCancel={noop}
       />,
     );
     expect(settled).not.toContain("Authorize coding agents");
     expect(settled).toContain("Coding agents");
+  });
+
+  // Milo, signed in to Claude, sat over "Authorize coding agents" because Codex
+  // was not (stress run 2, 2026-10-09): the header speaks for the Mate's own agent.
+  it("stops demanding once the conversation's agent is signed in, while another still offers its sign-in", () => {
+    const feed = snapshot([
+      agent({
+        agentId: "claude-code",
+        state: "authorized",
+        credPresent: true,
+        providerAuth: "authenticated",
+      }),
+      agent({ agentId: "codex", state: "not-authorized" }),
+    ]);
+    const html = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        snapshot={feed}
+        signInDemanded={demanded(feed, "claudeAgent")}
+        onSignIn={noop}
+        onCancel={noop}
+      />,
+    );
+    expect(html).not.toContain("Authorize coding agents");
+    expect(html).toContain("Coding agents");
+    expect(html).toContain("Sign in to Codex");
   });
 
   it("demands a sign-in only while no agent is signed in", () => {

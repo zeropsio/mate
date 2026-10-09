@@ -412,7 +412,11 @@ describe("ZeropsPanel — the Mate's home", () => {
         ...(serviceId === undefined ? {} : { serviceId }),
       });
       const html = renderToStaticMarkup(
-        <ZeropsPanel agentAuthCard={LOGIN_IN_PROGRESS} threadRef={THREAD_REF} />,
+        <ZeropsPanel
+          agentAuthCard={LOGIN_IN_PROGRESS}
+          agentSignInDemanded
+          threadRef={THREAD_REF}
+        />,
       );
       expect(html.match(/data-zerops-agent-auth-card/gu)).toHaveLength(1);
       const matched = serviceId === "svc-zcp" || serviceId === "svc-probe";
@@ -439,7 +443,7 @@ describe("ZeropsPanel — the Mate's home", () => {
       serviceId: "svc-zcp",
     });
     const html = renderToStaticMarkup(
-      <ZeropsPanel agentAuthCard={AGENT_AUTH} threadRef={THREAD_REF} />,
+      <ZeropsPanel agentAuthCard={AGENT_AUTH} agentSignInDemanded threadRef={THREAD_REF} />,
     );
 
     const rowAt = html.indexOf('data-zerops-service-row="control-plane"');
