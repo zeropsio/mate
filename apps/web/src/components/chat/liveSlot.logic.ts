@@ -438,8 +438,13 @@ export function slotClock(
   slot: LiveSlot,
   first: { readonly key: string; readonly at: string } | null,
   waitingSince: string | null = null,
+  /** The wait is on its helpers after its turn, not on the person: counted, never marked one. */
+  onHelpers = false,
 ): { readonly from: string; readonly stopped: string | null; readonly waiting?: true } | null {
-  if (waitingSince !== null) return { from: waitingSince, stopped: null, waiting: true };
+  if (waitingSince !== null)
+    return onHelpers
+      ? { from: waitingSince, stopped: null }
+      : { from: waitingSince, stopped: null, waiting: true };
   if (first === null) {
     return slot.quietSince === null
       ? null

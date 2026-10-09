@@ -3626,6 +3626,7 @@ function LiveSlot({
     slot,
     firstDrawn === undefined ? null : { key: firstDrawn.entry.key, at: firstDrawn.item.at },
     status.waitingSince,
+    status.waitingOnHelpers === true,
   );
   // The thing's own time: what the run waited elsewhere is the run's clock's
   // to leave out, and a wait on the person is counted as itself.
