@@ -2412,7 +2412,10 @@ function ComposerPromptEditorInner({
     [onRemoveTerminalContext],
   );
 
-  useEffect(() => {
+  // The handler and the text it keeps change in one commit, before the text is written: a
+  // keystroke in the moment between that commit and the passive effects reaches the handler of
+  // the text it edited (a question's answer, never the draft it replaced).
+  useLayoutEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
 

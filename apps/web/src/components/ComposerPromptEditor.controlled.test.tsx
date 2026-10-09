@@ -12,7 +12,7 @@
 
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $getRoot, $getSelection, type LexicalEditor } from "lexical";
-import { act, createRef, useEffect, useState } from "react";
+import { act, createRef, useEffect, useLayoutEffect, useState } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -187,5 +187,73 @@ describe("the composer's controlled round trip", () => {
 
     expect(editorRef.current?.readSnapshot().value).toBe("abc");
     expect(changes.at(-1)?.value).toBe("abc");
+  });
+});
+
+/**
+ * The composer hands the editor one text at a time — the thread's draft, or the answer to the
+ * question that just opened — with the handler that keeps it. A keystroke that lands on the text
+ * the editor holds must reach that text's handler, even in the moment a commit has swapped the
+ * text and the browser has not yet run the passive effects (a throttled machine, stress run 3).
+ */
+function OwnedHarness({ owner, text }: { readonly owner: string; readonly text: string }) {
+  return (
+    <>
+      <ComposerPromptEditor
+        value={text}
+        cursor={text.length}
+        terminalContexts={[]}
+        skills={[]}
+        disabled={false}
+        placeholder="Write a prompt"
+        onRemoveTerminalContext={() => {}}
+        onChange={(nextValue) => {
+          owned.push({ owner, value: nextValue });
+        }}
+        onPaste={() => {}}
+        editorRef={editorRef}
+      />
+      <KeystrokeOnCommit owner={owner} />
+    </>
+  );
+}
+
+const owned: Array<{ owner: string; value: string }> = [];
+let keystrokeOnCommit: string | undefined;
+
+/** Types one character in the same commit that handed the editor a new text. */
+function KeystrokeOnCommit({ owner }: { readonly owner: string }) {
+  useLayoutEffect(() => {
+    if (keystrokeOnCommit === undefined) return;
+    const character = keystrokeOnCommit;
+    keystrokeOnCommit = undefined;
+    lexicalEditor.update(() => $typeInto(character), { discrete: true });
+  }, [owner]);
+  return null;
+}
+
+describe("an edit belongs to the text it edited", () => {
+  it("A keystroke on the text a question just put in the composer is the question's, never the draft's", async () => {
+    owned.length = 0;
+    await act(() => {
+      renderer = create(<OwnedHarness owner="draft" text="also tell me the page title" />);
+    });
+    keystrokeOnCommit = "e";
+    await act(() => {
+      renderer!.update(<OwnedHarness owner="question" text="" />);
+    });
+    expect(owned).toEqual([{ owner: "question", value: "e" }]);
+  });
+
+  it("A keystroke on the draft a question hands back is the draft's, never the question's answer", async () => {
+    owned.length = 0;
+    await act(() => {
+      renderer = create(<OwnedHarness owner="question" text="List" />);
+    });
+    keystrokeOnCommit = "!";
+    await act(() => {
+      renderer!.update(<OwnedHarness owner="draft" text="also tell me the page title" />);
+    });
+    expect(owned).toEqual([{ owner: "draft", value: "also tell me the page title!" }]);
   });
 });
