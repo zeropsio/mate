@@ -90,12 +90,14 @@ describe("the running engine", () => {
               ["note", "hi there"],
             ],
           );
-          // The capture is finished by the turn the message went into.
+          // The capture is finished by the turn the message went into, then let go: the next
+          // message's capture never waits on it.
           assert.deepStrictEqual(w.history.calls, [
             `prepare ${r(1)}`,
             `sent ${r(1)} → T1`,
             "bind T1",
             "finish T1",
+            `release ${r(1)}`,
           ]);
           yield* w.shutdown;
         }),
