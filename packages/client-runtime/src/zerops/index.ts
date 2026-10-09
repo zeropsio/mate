@@ -522,6 +522,9 @@ export {
 } from "./deployToken.ts";
 export {
   gitOverview,
+  gitOverviewPresentation,
+  type GitOverviewIdentity,
+  type GitOverviewView,
   gitRepositoryLine,
   type GitOverviewApp,
   type GitOverviewChange,

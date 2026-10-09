@@ -44,6 +44,15 @@ const state = (input: { readonly apps: ReadonlyArray<GitPageApp>; readonly appsK
   });
 
 describe("gitPageState — what the Git page says (SPEC §5.3)", () => {
+  it("Unread changes remain visible in Open changes", () => {
+    const said = state({ apps: [app({ changes: undefined })] });
+    expect(said.kind === "read" && said.apps[0]?.repositories[0]).toMatchObject({
+      name: "appdev",
+      coverage: "unread",
+      open: true,
+    });
+  });
+
   it("lays out each application's repositories and the changes open on them", () => {
     const said = state({ apps: [app()] });
     expect(said.kind).toBe("read");
@@ -74,7 +83,6 @@ describe("gitPageState — what the Git page says (SPEC §5.3)", () => {
     expect(state({ apps: [app({ changes: undefined })] })).toMatchObject({
       kind: "read",
       reading: true,
-      unreadChanges: ["a-todo"],
       apps: [{ repositories: [{ name: "appdev" }, { name: "group" }] }],
     });
   });
@@ -125,7 +133,7 @@ describe("gitPageState — what the Git page says (SPEC §5.3)", () => {
       }),
     ).toEqual({
       kind: "unread",
-      failure: "Read failed.",
+      failure: "Todo: Read failed.",
     });
   });
 
@@ -170,7 +178,7 @@ describe("gitPageState — what the Git page says (SPEC §5.3)", () => {
         }),
       ],
     });
-    expect(said).toMatchObject({ kind: "read", failure: "HQ is not answering right now." });
+    expect(said).toMatchObject({ kind: "read", failure: "CRM: HQ is not answering right now." });
     expect(said.kind === "read" && said.apps.map((entry) => entry.name)).toEqual(["Todo"]);
   });
 
@@ -179,7 +187,7 @@ describe("gitPageState — what the Git page says (SPEC §5.3)", () => {
       state({
         apps: [app({ repositories: undefined, failure: "HQ is not answering right now." })],
       }),
-    ).toEqual({ kind: "unread", failure: "HQ is not answering right now." });
+    ).toEqual({ kind: "unread", failure: "Todo: HQ is not answering right now." });
   });
 
   // The flow reads every application's releases and repositories, the ones the page leaves out

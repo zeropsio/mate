@@ -760,14 +760,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsGitPage.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[15px] in \"min-w-0 truncate text-[15px] font-semibold tracking-tight text-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[13px] in \"flex min-w-0 items-center gap-1.5 text-[13px] text-foreground underline-offset-2 hover:underline\"",

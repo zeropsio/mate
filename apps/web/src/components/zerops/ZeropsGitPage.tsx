@@ -1,25 +1,13 @@
-/**
- * The Git page — the footer's *Git*: every application this person may read the changes of, its
- * repositories and the changes open on them, across the whole account (SPEC §5.3, D26).
- *
- * Not a project's flow, which the left menu draws under each project; this is the one place that
- * answers "what is open, anywhere I can see". One section per application, named the way every
- * other surface names it; under it a row per repository with how many changes are open; under
- * each, the changes themselves, newest first.
- *
- * Everything on it is HQ's, as the flow holds it: each application's repositories, read with its
- * releases (`useHqAppReleases`), and the changes open on them, down its stream. A change's title opens the change's own page, with
- * the same word and the same colour its row wears on the projects screen and in the left menu (the
- * owner, 2026-09-19: "all pages are unified in how they look work feel have ux and abilities"). A
- * repository's name opens its source in HQ, at a branch or commit and path.
- *
- * Structural: what it says is `gitPageState`'s, the grouping, the order and every line
- * `gitOverview`'s (R5). `ZeropsGitPage` composes the account around the view; `ZeropsGitOverview`
- * is the view alone.
- */
-import { changeKindTag, changeState, gitRepositoryLine } from "@t3tools/client-runtime/zerops";
+/** The organization Git overview consumes the shared projection; local state holds presentation IDs only. */
+import {
+  changeKindTag,
+  gitRepositoryLine,
+  gitOverviewPresentation,
+  type GitOverviewIdentity,
+  type GitOverviewView,
+} from "@t3tools/client-runtime/zerops";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useContext, useMemo } from "react";
+import { useContext, useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { InventoryContext, useAccountTrouble } from "~/zerops/inventoryContext";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
@@ -27,7 +15,7 @@ import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 
 import { appBasePath } from "~/basePath";
 import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
-import { StatusDot } from "./primitives";
+import { FlatCard, StatusDot } from "./primitives";
 import { useMateNames, useProjectFlows } from "~/zerops/projectFlows";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
@@ -36,7 +24,6 @@ import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { gitPageState, type GitPageState } from "./ZeropsGitPage.logic";
 import { ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
-import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
 
 function Reading() {
   return (
@@ -62,7 +49,7 @@ function ReadTrouble({
       {onAgain === undefined ? null : (
         <div>
           <Button variant="ghost" size="sm" onClick={onAgain}>
-            Again
+            Read again
           </Button>
         </div>
       )}
@@ -84,6 +71,18 @@ export function ZeropsGitOverview({
   /** Opens a change's own page. */
   readonly onOpenChange?: (appId: string, repository: string, number: number) => void;
 }) {
+  const [view, setView] = useState<GitOverviewView>("open");
+  const [held, setHeld] = useState<ReadonlyArray<GitOverviewIdentity>>();
+  const presentation = gitOverviewPresentation(state.kind === "read" ? state.apps : [], view, held);
+  // Capture the first readable list; purge identities removed by the authoritative projection.
+  if (
+    state.kind === "read" &&
+    (presentation.rows.length > 0 || (!state.reading && state.failure === null)) &&
+    JSON.stringify(held) !== JSON.stringify(presentation.identities)
+  ) {
+    setHeld(presentation.identities);
+  }
+  if (state.kind === "refused" && held !== undefined && held.length > 0) setHeld([]);
   if (state.kind === "refused")
     return (
       <p className="text-sm text-status-failed" role="alert" data-zerops-surface="git-refused">
@@ -96,108 +95,179 @@ export function ZeropsGitOverview({
     ) : (
       <ReadTrouble failure={state.failure} onAgain={onAgain} />
     );
-  const refusals = state.refusals?.map(({ appId, name, reason }) => (
-    <p key={appId} className="text-sm text-muted-foreground" role="status">
-      {name}: {reason}
-    </p>
-  ));
-  if (state.apps.every((app) => app.repositories.length === 0)) {
-    return (
-      <>
-        <ReadTrouble failure={state.failure} onAgain={onAgain} />
-        {refusals}
-        {state.reading ? <Reading /> : null}
-        {state.reading || state.failure !== null ? null : (
-          <p className="text-sm text-muted-foreground" data-zerops-surface="git-empty">
-            No repository yet. The first project brings one.
-          </p>
-        )}
-      </>
-    );
-  }
+
+  const incomplete = presentation.incomplete || state.reading || state.failure !== null;
   return (
     <>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-1" role="group" aria-label="Repository view">
+          {(
+            [
+              ["open", "Open changes"],
+              ["all", "All repositories"],
+            ] as const
+          ).map(([value, label]) => (
+            <Button
+              key={value}
+              variant={view === value ? "outline" : "ghost-muted"}
+              size="sm"
+              aria-pressed={view === value}
+              onClick={() => {
+                setView(value);
+                setHeld(undefined);
+              }}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+        <span className="text-xs text-muted-foreground">Project, then repository A–Z</span>
+      </div>
       <ReadTrouble failure={state.failure} onAgain={onAgain} />
       {state.reading ? <Reading /> : null}
-      {refusals}
-      <div className="flex flex-col gap-10" data-zerops-surface="git-overview">
-        {state.apps.map((app) => (
-          <section className="flex flex-col gap-3" data-zerops-git-app={app.appId} key={app.appId}>
-            <h2 className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-foreground">
-              {app.name}
-            </h2>
-            <ul className="flex flex-col divide-y divide-border/50">
-              {app.repositories.map((repository) => (
-                <li
-                  className="flex flex-col"
-                  data-zerops-git-repository={repository.name}
-                  key={repository.name}
-                >
-                  <div className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-1.5 sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_auto] sm:py-0">
-                    {repositoryHref === undefined ? (
-                      <span className="min-w-0 truncate text-sm text-foreground">
-                        {repository.name}
-                      </span>
-                    ) : (
-                      <a
-                        className="min-w-0 truncate rounded-sm text-sm text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                        href={repositoryHref(app.appId, repository.name)}
-                        onClick={(event) => {
-                          if (
-                            onOpenRepository === undefined ||
-                            event.button !== 0 ||
-                            event.ctrlKey ||
-                            event.metaKey ||
-                            event.altKey ||
-                            event.shiftKey
-                          )
-                            return;
-                          event.preventDefault();
-                          onOpenRepository(app.appId, repository.name);
-                        }}
+      {state.failure !== null && presentation.rows.some((row) => row.coverage !== "unread") ? (
+        <p className="text-xs text-muted-foreground">Showing the last read changes.</p>
+      ) : null}
+      {state.refusals?.map(({ appId, name, reason }) => (
+        <p key={appId} className="text-sm text-muted-foreground" role="status">
+          {name}: {reason}
+        </p>
+      ))}
+      {presentation.changed ? (
+        <div className="flex items-center gap-3" role="status">
+          <span className="text-sm text-muted-foreground">The repository list has changed.</span>
+          <Button variant="outline" size="sm" onClick={() => setHeld(undefined)}>
+            Update list
+          </Button>
+        </div>
+      ) : null}
+      {presentation.rows.length > 0 ? (
+        <section aria-label="Repositories" data-zerops-surface="git-overview">
+          <FlatCard>
+            <div className="divide-y divide-border">
+              {presentation.rows.map((repository) => {
+                const changeRows = repository.changes.map(({ pull, line, status }) => {
+                  return (
+                    <div key={pull.number} className="flex min-w-0 items-center gap-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm" data-zerops-surface="pull-request-title">
+                          {pull.title}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          <span>{line}</span>
+                          <span>{changeKindTag(pull)}</span>
+                          {status === undefined ? null : (
+                            <StatusDot label={status.word} sentence tone={status.tone} />
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={onOpenChange === undefined}
+                        aria-label={`Review ${repository.project} / ${repository.name} #${pull.number}`}
+                        onClick={() =>
+                          onOpenChange?.(repository.appId, pull.repository, pull.number)
+                        }
                       >
-                        {repository.name}
-                      </a>
-                    )}
-                    <span className="col-span-2 min-w-0 truncate text-xs text-muted-foreground sm:col-span-1">
-                      {state.unreadChanges?.includes(app.appId)
-                        ? "Changes not read yet."
-                        : gitRepositoryLine(repository.changes.length)}
-                    </span>
+                        Review
+                      </Button>
+                    </div>
+                  );
+                });
+                return (
+                  <div
+                    className="px-4 py-3"
+                    key={JSON.stringify([repository.appId, repository.name])}
+                    data-zerops-git-app={repository.appId}
+                    data-zerops-git-repository={repository.name}
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">{repository.project}</span>
+                      <span className="text-muted-foreground">/</span>
+                      {repositoryHref === undefined ? (
+                        <span className="font-medium">{repository.name}</span>
+                      ) : (
+                        <a
+                          className="min-w-0 truncate rounded-sm font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                          href={repositoryHref(repository.appId, repository.name)}
+                          onClick={(event) => {
+                            if (
+                              onOpenRepository === undefined ||
+                              event.button !== 0 ||
+                              event.ctrlKey ||
+                              event.metaKey ||
+                              event.altKey ||
+                              event.shiftKey
+                            )
+                              return;
+                            event.preventDefault();
+                            onOpenRepository(repository.appId, repository.name);
+                          }}
+                        >
+                          {repository.name}
+                        </a>
+                      )}
+                      {repository.name === "group" ? (
+                        <span className="text-xs text-muted-foreground">Recipe</span>
+                      ) : null}
+                    </div>
+                    {repository.coverage === "unread" ? (
+                      <p className="mt-2 text-xs text-muted-foreground">Changes not read yet.</p>
+                    ) : null}
+                    {changeRows.length > 1 ? (
+                      <details>
+                        <summary className="mt-2 cursor-pointer text-xs text-muted-foreground">
+                          {repository.changes.some(({ pull }) => pull.merged)
+                            ? `${changeRows.length} changes`
+                            : gitRepositoryLine(changeRows.length)}
+                        </summary>
+                        {changeRows}
+                      </details>
+                    ) : changeRows.length === 1 ? (
+                      changeRows
+                    ) : repository.coverage === "complete" ? (
+                      <p className="mt-2 text-xs text-muted-foreground">No open changes.</p>
+                    ) : null}
                   </div>
-                  {repository.changes.length === 0 ? null : (
-                    <ul className="flex flex-col divide-y divide-border/50 border-t border-border/50 ps-4">
-                      {repository.changes.map(({ pull, line }) => {
-                        const state = changeState(pull);
-                        return (
-                          <ZeropsPullRequestRow
-                            key={pull.number}
-                            line={line}
-                            status={
-                              state === undefined ? undefined : (
-                                <StatusDot label={state.word} sentence tone={state.tone} />
-                              )
-                            }
-                            tag={changeKindTag(pull)}
-                            title={pull.title}
-                            {...(onOpenChange === undefined
-                              ? {}
-                              : {
-                                  onOpen: () => {
-                                    onOpenChange(app.appId, pull.repository, pull.number);
-                                  },
-                                })}
-                          />
-                        );
-                      })}
-                    </ul>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
+                );
+              })}
+            </div>
+          </FlatCard>
+          <p className="mt-3 text-xs text-muted-foreground">
+            {view === "all" ? (
+              <>
+                {presentation.rows.length}{" "}
+                {presentation.rows.length === 1 ? "repository" : "repositories"} ·{" "}
+              </>
+            ) : null}
+            {presentation.openChanges}
+            {incomplete ? " known" : ""} open{" "}
+            {presentation.openChanges === 1 ? "change" : "changes"}
+            {view === "open" ? (
+              <>
+                {" "}
+                in {presentation.rows.length}{" "}
+                {presentation.rows.length === 1 ? "repository" : "repositories"}
+              </>
+            ) : null}
+          </p>
+        </section>
+      ) : incomplete ? null : state.apps.every((app) => app.repositories.length === 0) ? (
+        <div className="flex flex-col gap-2" data-zerops-surface="git-empty">
+          <p className="text-sm text-muted-foreground">
+            No repositories yet. Repositories appear here after a project is set up.
+          </p>
+          <a
+            className="text-sm text-primary underline-offset-2 hover:underline"
+            href={`${appBasePath()}/zerops`}
+          >
+            Open Projects
+          </a>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">No open changes.</p>
+      )}
     </>
   );
 }
@@ -228,6 +298,7 @@ export function ZeropsGitPage() {
           name: group.name,
           read: offers?.read,
           readReason: offers?.why.read,
+          merged: groupFlow?.merged,
           changes: groupFlow?.changesKnown === true ? groupFlow.pullRequests : undefined,
           repositories: groupFlow?.repos,
           failure: flow.releaseFailures.get(group.groupId) ?? groupFlow?.changesFailure,
@@ -246,7 +317,7 @@ export function ZeropsGitPage() {
 
   return (
     <ZeropsHostedFrame
-      width="readable"
+      width="expanded"
       actions={
         <>
           {scoped ? (
@@ -262,11 +333,23 @@ export function ZeropsGitPage() {
         </>
       }
     >
-      <div className="flex min-w-0 flex-col gap-0.5" data-zerops-surface="git-header">
-        <h1 className="text-xl font-medium text-foreground">Git</h1>
-        <p className="text-sm text-muted-foreground">
-          Repositories and changes across your projects.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-0.5" data-zerops-surface="git-header">
+          <h1 className="text-xl font-medium text-foreground">Git</h1>
+          <p className="text-sm text-muted-foreground">
+            Repositories and open changes across your projects.
+          </p>
+        </div>
+        <Button
+          variant="ghost-muted"
+          size="sm"
+          onClick={() => {
+            retryAccount?.();
+            if (inventory?.error || accountTrouble?.trouble) accountTrouble?.retry();
+          }}
+        >
+          Read again
+        </Button>
       </div>
       {search.appId !== undefined && search.repo !== undefined ? (
         <ZeropsRepositoryBrowser
@@ -292,6 +375,7 @@ export function ZeropsGitPage() {
         />
       ) : (
         <ZeropsGitOverview
+          key={activeOrganization?.id ?? "unscoped"}
           onAgain={() => {
             retryAccount?.();
             if (inventory?.error || accountTrouble?.trouble) accountTrouble?.retry();

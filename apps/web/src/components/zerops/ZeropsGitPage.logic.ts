@@ -22,6 +22,8 @@ export interface GitPageApp {
   readonly readReason?: string | undefined;
   /** The changes open on it a push reached, as HQ's stream says them; `undefined` until told. */
   readonly changes: ReadonlyArray<FlowPullRequest> | undefined;
+  /** Current merged facts keep an already displayed change labeled until Update list. */
+  readonly merged?: ReadonlyArray<FlowPullRequest> | undefined;
   /** Its repositories, as HQ last listed them with its releases; `undefined` until it answered. */
   readonly repositories: ReadonlyArray<{ readonly name: string }> | undefined;
   /** Why HQ's last read of its repositories did not answer, beside what it read before. */
@@ -36,7 +38,6 @@ export type GitPageState =
       readonly apps: ReadonlyArray<GitOverviewApp>;
       readonly failure: string | null;
       readonly reading?: boolean;
-      readonly unreadChanges?: ReadonlyArray<string>;
       readonly refusals?: ReadonlyArray<{
         readonly appId: string;
         readonly name: string;
@@ -64,7 +65,7 @@ export function gitPageState(input: {
   const reasons = new Set([
     ...(input.failure === undefined ? [] : [input.failure]),
     ...input.apps.flatMap((app) =>
-      app.read === false || app.failure === undefined ? [] : [app.failure],
+      app.read === false || app.failure === undefined ? [] : [`${app.name}: ${app.failure}`],
     ),
   ]);
   const failure = reasons.size === 0 ? null : [...reasons].join(" ");
@@ -74,7 +75,6 @@ export function gitPageState(input: {
       (app) =>
         app.failure === undefined && (app.changes === undefined || app.repositories === undefined),
     );
-  const unreadChanges = seen.filter((app) => app.changes === undefined).map((app) => app.appId);
   const read = seen.flatMap((app) =>
     app.repositories === undefined
       ? []
@@ -83,7 +83,13 @@ export function gitPageState(input: {
             appId: app.appId,
             name: app.name,
             repositories: app.repositories,
-            changes: app.changes ?? [],
+            changes: [...(app.changes ?? []), ...(app.merged ?? [])],
+            coverage:
+              app.changes === undefined
+                ? ("unread" as const)
+                : app.failure !== undefined || input.failure !== undefined
+                  ? ("failed" as const)
+                  : ("complete" as const),
           },
         ],
   );
@@ -102,7 +108,6 @@ export function gitPageState(input: {
     apps: gitOverview({ apps: read, mateName: input.mateName }),
     failure,
     ...(waiting ? { reading: true } : {}),
-    ...(unreadChanges.length > 0 ? { unreadChanges } : {}),
     ...(refusals.length > 0 ? { refusals } : {}),
   };
 }

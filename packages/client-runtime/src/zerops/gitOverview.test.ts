@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { gitOverview, gitRepositoryLine } from "./gitOverview.ts";
+import { gitOverview, gitOverviewPresentation, gitRepositoryLine } from "./gitOverview.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
 
 /** An open change of `repository`, as HQ's stream says it, moved at hour `hour`. */
@@ -85,5 +85,42 @@ describe("the Git page's overview (SPEC §5.3)", () => {
     [3, "3 open changes"],
   ])("says a repository with %i open as %s", (open, line) => {
     expect(gitRepositoryLine(open)).toBe(line);
+  });
+});
+
+describe("Git overview presentation", () => {
+  it.each(["unread", "failed"] as const)(
+    "A repository with %s coverage is not a quiet repository",
+    (coverage) => {
+      const apps = gitOverview({
+        apps: [
+          { appId: "todo", name: "Todo", repositories: [{ name: "group" }], changes: [], coverage },
+        ],
+        mateName: VERA,
+      });
+      const presentation = gitOverviewPresentation(apps, "open");
+      expect(presentation.rows.map(({ name }) => name)).toEqual(["group"]);
+      expect(presentation.incomplete).toBe(true);
+    },
+  );
+  it("New changes wait for Update list while displayed changes take current facts", () => {
+    const overview = (changes: ReadonlyArray<FlowPullRequest>) =>
+      gitOverview({
+        apps: [{ appId: "todo", name: "Todo", repositories: [{ name: "appdev" }], changes }],
+        mateName: VERA,
+      });
+    const initial = gitOverviewPresentation(overview([change("appdev", 4)]), "open");
+    const apps = overview([
+      change("appdev", 5),
+      { ...change("appdev", 4), title: "Current title" },
+    ]);
+    const held = gitOverviewPresentation(apps, "open", initial.identities);
+    expect(held.rows[0]?.changes.map(({ pull }) => [pull.number, pull.title])).toEqual([
+      [4, "Current title"],
+    ]);
+    expect(held.changed).toBe(true);
+    expect(
+      gitOverviewPresentation(apps, "open").rows[0]?.changes.map(({ pull }) => pull.number),
+    ).toEqual([5, 4]);
   });
 });
