@@ -461,6 +461,8 @@ describe("an engine Mate's run card, from the engine's record", () => {
             status: "completed",
             title: description,
           }),
+          // The engine records whose it is: the helper whose own command started it.
+          by: { kind: "helper", helperId: "conversation/s/1.w2" },
           at: t0 + 42_400,
         } as Item,
         noteItem(run1, 5, "Both helpers are back.", { at: t0 + 77_700 }),
