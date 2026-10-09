@@ -353,6 +353,9 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
           workKind: signal.kind,
           status: signal.status,
           ...(signal.title === undefined ? {} : { title: signal.title }),
+          ...(signal.helper === undefined ? {} : { helper: signal.helper }),
+          ...(signal.call === undefined ? {} : { call: signal.call }),
+          ...(signal.report === undefined ? {} : { report: signal.report }),
         });
         break;
       case "request.opened":

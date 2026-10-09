@@ -1259,3 +1259,200 @@ describe("the running engine", () => {
     ),
   );
 });
+
+/**
+ * Claude's helpers and background work as its adapter reports them: a helper's own calls carry the
+ * launch they run under and the helper's task (`agentId`), a task a helper's tool started names that
+ * helper as its owner, and every report of a task repeats its linkage (`ClaudeAdapter`
+ * `taskLinkageFor`).
+ */
+describe("Claude's helpers and background work, as the engine records them", () => {
+  const claude = (w: EngineWorld) => ({
+    call: (
+      id: string,
+      args: Record<string, unknown>,
+      owner: { readonly helper: string; readonly launch: string } | null = null,
+      tool = "Bash",
+      result = "",
+    ) =>
+      w.agent((agent, thread) =>
+        Effect.gen(function* () {
+          const head = {
+            itemType: tool === "Agent" ? "collab_agent_tool_call" : "command_execution",
+            title: tool === "Agent" ? "Subagent task" : "Command run",
+            ...(owner === null ? {} : { agentId: owner.helper, parentToolUseId: owner.launch }),
+          };
+          yield* agent.emit("item.started", thread, {
+            itemId: id,
+            payload: { ...head, status: "inProgress", data: { toolName: tool, input: args } },
+          });
+          yield* agent.emit("item.completed", thread, {
+            itemId: id,
+            payload: {
+              ...head,
+              status: "completed",
+              data: {
+                toolName: tool,
+                input: args,
+                result: { type: "tool_result", content: result },
+              },
+            },
+          });
+        }),
+      ),
+    task: (type: "task.started" | "task.completed", payload: Record<string, unknown>) =>
+      w.agent((agent, thread) => agent.emit(type, thread, { payload })),
+  });
+
+  const works = (w: EngineWorld, n: number) =>
+    Effect.map(w.items(r(n)), (items) => items.filter((item) => item.kind === "work"));
+
+  // Milo's second stress run drew a helper's background sleep as the Mate's own job, and a nested
+  // helper among the Mate's helpers.
+  it.effect("a helper's own background job and helper are recorded as that helper's", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        const c = claude(w);
+        yield* send(w);
+        yield* c.call(
+          "toolu_h",
+          { description: "Look into it", run_in_background: true },
+          null,
+          "Agent",
+        );
+        yield* c.task("task.started", {
+          taskId: "ah",
+          description: "Look into it",
+          taskType: "local_agent",
+          toolUseId: "toolu_h",
+        });
+        const owner = { helper: "ah", launch: "toolu_h" };
+        yield* c.call("toolu_j", { command: "sleep 30", run_in_background: true }, owner);
+        yield* c.task("task.started", {
+          taskId: "bj",
+          description: "Sleep",
+          taskType: "local_bash",
+          agentId: "ah",
+          toolUseId: "toolu_j",
+        });
+        yield* c.call("toolu_n", { description: "Dig deeper" }, owner, "Agent");
+        yield* c.task("task.started", {
+          taskId: "an",
+          description: "Dig deeper",
+          taskType: "local_agent",
+          agentId: "ah",
+          toolUseId: "toolu_n",
+        });
+        const [helper, job, nested] = yield* works(w, 1);
+        assert.deepStrictEqual(
+          [helper?.by, job?.by, nested?.by],
+          [
+            { kind: "mate" },
+            { kind: "helper", helperId: helper?.body.work },
+            { kind: "helper", helperId: helper?.body.work },
+          ],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "a helper's own call goes on under the run that started its helper, never the next message's",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          const c = claude(w);
+          yield* send(w);
+          yield* c.call("toolu_h", { description: "Look into it" }, null, "Agent");
+          yield* c.task("task.started", {
+            taskId: "ah",
+            description: "Look into it",
+            taskType: "local_agent",
+            toolUseId: "toolu_h",
+          });
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* send(w, "second");
+          yield* c.call("toolu_x", { command: "ls" }, { helper: "ah", launch: "toolu_h" });
+          const calls = (n: number) =>
+            Effect.map(w.items(r(n)), (items) =>
+              items.flatMap((item) =>
+                item.kind === "call" ? [(item.body.tool as { readonly name: string }).name] : [],
+              ),
+            );
+          assert.deepStrictEqual([yield* calls(1), yield* calls(2)], [["Agent", "Bash"], []]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "a background job's record names the call that started it and the line it ended with",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          const c = claude(w);
+          yield* send(w);
+          yield* c.call(
+            "toolu_j",
+            { command: "exit 3", run_in_background: true },
+            null,
+            "Bash",
+            "Command running in background with ID: bj.",
+          );
+          yield* c.task("task.started", {
+            taskId: "bj",
+            description: "Fail on purpose",
+            taskType: "local_bash",
+            toolUseId: "toolu_j",
+          });
+          yield* c.task("task.completed", {
+            taskId: "bj",
+            status: "failed",
+            summary: 'Background command "Fail on purpose" failed with exit code 3',
+            taskType: "local_bash",
+            toolUseId: "toolu_j",
+          });
+          const items = yield* w.items(r(1));
+          const call = items.find((item) => item.kind === "call");
+          const [job] = yield* works(w, 1);
+          assert.deepStrictEqual(
+            [job?.body.call, job?.body.status, job?.body.report],
+            [
+              call?.item_id,
+              "failed",
+              'Background command "Fail on purpose" failed with exit code 3',
+            ],
+          );
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  // Milo's run 2 rig: the job a person's Stop killed read "didn't report back".
+  it.effect(
+    "background work a person's Stop killed with Claude's session is recorded stopped",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          const c = claude(w);
+          yield* send(w);
+          yield* c.call("toolu_j", { command: "sleep 120", run_in_background: true });
+          yield* c.task("task.started", {
+            taskId: "bj",
+            description: "Sleep two minutes",
+            taskType: "local_bash",
+            toolUseId: "toolu_j",
+          });
+          yield* stop(w);
+          const [job] = yield* works(w, 1);
+          assert.strictEqual(job?.body.status, "stopped");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+});

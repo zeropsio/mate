@@ -1885,12 +1885,20 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
     case "work-upserted": {
       // Work a person's Stop cut with its session was stopped, not lost.
       const stopped = signal.status === "lost" && b.state.closing?.reason === "stop";
+      // The call that started it, by its key: still open, or closed in a run the state keeps.
+      const call =
+        signal.call === undefined
+          ? undefined
+          : (b.state.closedItems[signal.call]?.itemId ??
+            Object.values(b.state.items).find((item) => item.key === signal.call)?.id);
       const body: ItemBody = {
         kind: "work",
         work: signal.work,
         workKind: signal.workKind,
         status: stopped ? "stopped" : signal.status,
         title: signal.title ?? null,
+        ...(call === undefined ? {} : { call }),
+        ...(signal.report === undefined ? {} : { report: signal.report }),
       };
       const ends = WORK_ENDED.has(signal.status);
       const closed = b.state.closedItems[signal.work];
@@ -1929,7 +1937,11 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         runId: owner.id,
         itemId: id,
         key: signal.work,
-        by: { kind: "mate" },
+        // A helper's own work is the helper's, as its calls are.
+        by:
+          signal.helper === undefined
+            ? { kind: "mate" }
+            : { kind: "helper", helperId: signal.helper },
         body,
       });
       if (ends) b.emit({ _tag: "ItemClosed", runId: owner.id, itemId: id, body });

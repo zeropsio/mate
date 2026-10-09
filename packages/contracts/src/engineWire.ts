@@ -316,7 +316,8 @@ export type EngineReadEarlierInput = typeof EngineReadEarlierInput.Type;
 /**
  * A run's items, the newest page first (`beforeSeq` pages back); with `afterSeq`, the oldest page
  * after it (`more`: later ones exist). `only: "outcome"` reads just the items a closed card draws
- * its result from: calls with a result or a picture looked at, and background work.
+ * its result from: calls with a result or a picture looked at, and background work with the calls
+ * that started it.
  */
 export const EngineReadRunInput = Schema.Struct({
   ...protocol,
