@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { useGitCredentials } from "~/zerops/useGitCredentials";
@@ -19,11 +21,31 @@ export function ZeropsGitCredentialsView({
   readonly onCopy: () => void;
 }) {
   const busy = state.action.kind === "working";
+  const [commandCopy, setCommandCopy] = useState<string | null>(null);
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <pre className="overflow-auto rounded-md border border-border bg-card p-3 font-mono text-xs text-foreground">
-        <code>git clone {cloneUrl}</code>
-      </pre>
+      <div className="flex min-w-0 items-start gap-3">
+        <pre className="min-w-0 flex-1 overflow-auto rounded-md border border-border bg-card p-3 font-mono text-xs text-foreground">
+          <code>git clone {cloneUrl}</code>
+        </pre>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            void writeTextToClipboard(`git clone ${cloneUrl}`, "clone command").then(
+              () => setCommandCopy("Copied"),
+              () => setCommandCopy("Could not copy. Copy the command manually."),
+            );
+          }}
+        >
+          Copy command
+        </Button>
+      </div>
+      {commandCopy === null ? null : (
+        <p className="text-xs text-muted-foreground" role="status">
+          {commandCopy}
+        </p>
+      )}
       <p className="text-sm text-muted-foreground">
         Use <code>person</code> as the username and your Git password when Git asks. It lasts 12
         hours and uses your current Zerops permissions.

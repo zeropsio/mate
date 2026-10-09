@@ -58,6 +58,7 @@ it("names unverified repository access without offering an inert Read again", ()
   const html = renderToStaticMarkup(
     <ZeropsRepositoryBrowser
       appId="app"
+      project="Shop"
       repo="appdev"
       allowed={undefined}
       query={{ path: "", kind: "tree" }}

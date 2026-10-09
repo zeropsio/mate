@@ -1,6 +1,5 @@
 /** The organization Git overview consumes the shared projection; local state holds presentation IDs only. */
 import {
-  changeKindTag,
   gitRepositoryLine,
   gitOverviewPresentation,
   type GitOverviewIdentity,
@@ -15,7 +14,8 @@ import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 
 import { appBasePath } from "~/basePath";
 import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
-import { FlatCard, StatusDot } from "./primitives";
+import { FlatCard } from "./primitives";
+import { ZeropsGitChangeRow } from "./ZeropsGitChangeRow";
 import { useMateNames, useProjectFlows } from "~/zerops/projectFlows";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
@@ -59,12 +59,14 @@ function ReadTrouble({
 
 export function ZeropsGitOverview({
   state,
+  visible = true,
   onOpenChange,
   repositoryHref,
   onOpenRepository,
   onAgain,
 }: {
   readonly state: GitPageState;
+  readonly visible?: boolean;
   readonly onAgain?: (() => void) | undefined;
   readonly repositoryHref?: (appId: string, repo: string) => string;
   readonly onOpenRepository?: (appId: string, repo: string) => void;
@@ -83,6 +85,7 @@ export function ZeropsGitOverview({
     setHeld(presentation.identities);
   }
   if (state.kind === "refused" && held !== undefined && held.length > 0) setHeld([]);
+  if (!visible) return null;
   if (state.kind === "refused")
     return (
       <p className="text-sm text-status-failed" role="alert" data-zerops-surface="git-refused">
@@ -146,35 +149,19 @@ export function ZeropsGitOverview({
           <FlatCard>
             <div className="divide-y divide-border">
               {presentation.rows.map((repository) => {
-                const changeRows = repository.changes.map(({ pull, line, status }) => {
-                  return (
-                    <div key={pull.number} className="flex min-w-0 items-center gap-3 py-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm" data-zerops-surface="pull-request-title">
-                          {pull.title}
-                        </p>
-                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          <span>{line}</span>
-                          <span>{changeKindTag(pull)}</span>
-                          {status === undefined ? null : (
-                            <StatusDot label={status.word} sentence tone={status.tone} />
-                          )}
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={onOpenChange === undefined}
-                        aria-label={`Review ${repository.project} / ${repository.name} #${pull.number}`}
-                        onClick={() =>
-                          onOpenChange?.(repository.appId, pull.repository, pull.number)
-                        }
-                      >
-                        Review
-                      </Button>
-                    </div>
-                  );
-                });
+                const changeRows = repository.changes.map((change) => (
+                  <ZeropsGitChangeRow
+                    key={change.pull.number}
+                    change={change}
+                    project={repository.project}
+                    repo={repository.name}
+                    onOpen={
+                      onOpenChange === undefined
+                        ? undefined
+                        : () => onOpenChange(repository.appId, repository.name, change.pull.number)
+                    }
+                  />
+                ));
                 return (
                   <div
                     className="px-4 py-3"
@@ -315,6 +302,23 @@ export function ZeropsGitPage() {
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
 
+  const repository = gitOverviewPresentation(
+    state.kind === "read" ? state.apps : [],
+    "all",
+  ).rows.find((row) => row.appId === search.appId && row.name === search.repo);
+  const selectedApp = apps.find((app) => app.appId === search.appId);
+  const detailOpen = search.appId !== undefined && search.repo !== undefined;
+  const readAgain = () => {
+    retryAccount?.();
+    if (inventory?.error || accountTrouble?.trouble) accountTrouble?.retry();
+  };
+  const openChange = (appId: string, repository: string, number: number) => {
+    void navigate({
+      to: "/change/$groupId/$repository/$number",
+      params: { groupId: appId, repository, number: String(number) },
+    });
+  };
+
   return (
     <ZeropsHostedFrame
       width="expanded"
@@ -333,30 +337,30 @@ export function ZeropsGitPage() {
         </>
       }
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-0.5" data-zerops-surface="git-header">
-          <h1 className="text-xl font-medium text-foreground">Git</h1>
-          <p className="text-sm text-muted-foreground">
-            Repositories and open changes across your projects.
-          </p>
+      {detailOpen ? null : (
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-0.5" data-zerops-surface="git-header">
+            <h1 className="text-xl font-medium text-foreground">Git</h1>
+            <p className="text-sm text-muted-foreground">
+              Repositories and open changes across your projects.
+            </p>
+          </div>
+          <Button variant="ghost-muted" size="sm" onClick={readAgain}>
+            Read again
+          </Button>
         </div>
-        <Button
-          variant="ghost-muted"
-          size="sm"
-          onClick={() => {
-            retryAccount?.();
-            if (inventory?.error || accountTrouble?.trouble) accountTrouble?.retry();
-          }}
-        >
-          Read again
-        </Button>
-      </div>
+      )}
       {search.appId !== undefined && search.repo !== undefined ? (
         <ZeropsRepositoryBrowser
           key={`${activeOrganization?.id}:${search.appId}:${search.repo}`}
           allowed={offersOf(search.appId)?.read}
           accessReason={offersOf(search.appId)?.why.read}
           appId={search.appId}
+          project={selectedApp?.name ?? "Project"}
+          repository={repository}
+          changesFailure={selectedApp?.failure ?? flow.readFailure ?? inventory?.error ?? undefined}
+          onReadChanges={readAgain}
+          onOpenChange={(number) => openChange(search.appId!, search.repo!, number)}
           repo={search.repo}
           query={{
             ...(search.rev === undefined ? {} : { rev: search.rev }),
@@ -373,28 +377,25 @@ export function ZeropsGitPage() {
             });
           }}
         />
-      ) : (
-        <ZeropsGitOverview
-          key={activeOrganization?.id ?? "unscoped"}
-          onAgain={() => {
-            retryAccount?.();
-            if (inventory?.error || accountTrouble?.trouble) accountTrouble?.retry();
-          }}
-          repositoryHref={(appId, repo) =>
-            `${appBasePath()}/git?${new URLSearchParams({ appId, repo })}`
-          }
-          onOpenRepository={(appId, repo) => {
-            void navigate({ to: "/git", search: { appId, repo } });
-          }}
-          onOpenChange={(appId, repository, number) => {
-            void navigate({
-              to: "/change/$groupId/$repository/$number",
-              params: { groupId: appId, repository, number: String(number) },
-            });
-          }}
-          state={state}
-        />
-      )}
+      ) : null}
+      {/* Retain only the overview's view and presentation IDs while source is open. */}
+      <div hidden={detailOpen}>
+        <div className="flex flex-col gap-4">
+          <ZeropsGitOverview
+            key={activeOrganization?.id ?? "unscoped"}
+            visible={!detailOpen}
+            onAgain={readAgain}
+            repositoryHref={(appId, repo) =>
+              `${appBasePath()}/git?${new URLSearchParams({ appId, repo })}`
+            }
+            onOpenRepository={(appId, repo) => {
+              void navigate({ to: "/git", search: { appId, repo } });
+            }}
+            onOpenChange={openChange}
+            state={state}
+          />
+        </div>
+      </div>
     </ZeropsHostedFrame>
   );
 }

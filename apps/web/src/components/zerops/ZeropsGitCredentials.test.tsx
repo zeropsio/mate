@@ -1,5 +1,8 @@
+// @vitest-environment happy-dom
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { GitCredentialSnapshot } from "@t3tools/client-runtime/zerops/hq";
 import { selectGitCredentials } from "@t3tools/client-runtime/zerops/hq";
 import { ZeropsGitCredentialsView } from "./ZeropsGitCredentials";
@@ -65,4 +68,47 @@ describe("personal HTTPS Git access", () => {
     expect(html).toContain("Read again");
     expect(html).not.toContain("No Git password");
   });
+});
+
+it("copies the HTTPS clone command and reports a refused clipboard without repeating a write", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const issue = vi.fn();
+  try {
+    await act(() =>
+      root.render(
+        <ZeropsGitCredentialsView
+          state={selectGitCredentials({
+            action: { kind: "idle" },
+            credentials: { state: "unread", waitingFor: null },
+          })}
+          cloneUrl="https://hq.example/git/app/code.git"
+          onIssue={issue}
+          onRevoke={() => {}}
+          onAgain={() => {}}
+          onCopy={() => {}}
+        />,
+      ),
+    );
+    const copy = [...host.querySelectorAll("button")].find(
+      (node) => node.textContent === "Copy command",
+    );
+    expect(copy).toBeDefined();
+    await act(() => copy!.click());
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(
+      "git clone https://hq.example/git/app/code.git",
+    );
+    expect(host.textContent).toContain("Copied");
+    writeText.mockRejectedValueOnce(new Error("Clipboard refused"));
+    await act(() => copy!.click());
+    expect(host.textContent).toContain("Could not copy. Copy the command manually.");
+    expect(issue).not.toHaveBeenCalled();
+  } finally {
+    await act(() => root.unmount());
+    host.remove();
+    vi.unstubAllGlobals();
+  }
 });
