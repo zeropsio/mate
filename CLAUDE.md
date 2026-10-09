@@ -80,8 +80,8 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
   re-run only what the rebase changed in the lane's files. A push rejected because `main` moved is
   rebased and pushed again without re-running. `ci-local` only after touching guard ledgers,
   exceptions, `surfaces.json`, theme tokens or tooling. At most one
-  `gh run watch <id> --exit-status --interval 60` (the default 3 s poll spends GitHub's shared hourly
-  API quota), then read the failures once; never poll logs in a loop.
+  `ci-wait <run-id | commit-sha>` (shared conditional GET cache, 20 s polling, 60 min timeout), then read
+  the failures once; never poll logs in a loop.
 - The integrator runs the full gates before pushing the assembled work: `node scripts/ci-local.ts`
   for CI's Check job, plus the full unit and scenario suites. CI runs the repository-wide checks;
   lanes keep their local checks targeted.
