@@ -989,8 +989,15 @@ describe("the running engine", () => {
           );
           yield* w.advance(0);
           assert.isUndefined(yield* w.run(r(2)));
+          // The next message tells the agent who stopped its work: never read as a restart.
           yield* send(w, "again");
-          assert.strictEqual(w.provider.calls.at(-1), sendLine(w, "again"));
+          assert.strictEqual(
+            w.provider.calls.at(-1),
+            sendLine(
+              w,
+              "Your background work “Watch the build” and “Watch the build” were stopped by the person before they reported.\n\nagain",
+            ),
+          );
           yield* w.shutdown;
         }),
       ),
