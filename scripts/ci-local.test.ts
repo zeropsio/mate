@@ -38,6 +38,16 @@ it("CI and local Check always enforce test sentence retention", () => {
   );
 });
 
+it("CI and local Check run the lane's standalone scenario typecheck", () => {
+  const workflow = NodeFS.readFileSync(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  expect(checkSteps(workflow).map((step) => step.run)).toContain(
+    "vp exec tsc --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json",
+  );
+});
+
 describe("checkSteps", () => {
   it("keeps the job's own run steps in order, each with the job's env under its own", () => {
     expect(checkSteps(WORKFLOW)).toEqual([

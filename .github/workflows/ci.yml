@@ -88,6 +88,9 @@ jobs:
       - name: Typecheck
         run: vpr typecheck
 
+      - name: Typecheck scenarios
+        run: vp exec tsc --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json
+
       # `t3#build` depends on `@t3tools/web#build`: the production web and server
       # bundles, built on every run. The desktop half builds in Desktop Smoke.
       - name: Build server bundle
