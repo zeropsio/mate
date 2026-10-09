@@ -1667,6 +1667,10 @@ export default function ChatView(props: ChatViewProps) {
     if (!composerOverlayElement) return;
 
     const updateHeight = () => {
+      // A question or an approval the agent asks stands over the conversation's end, the room under
+      // it held as it was: opening it pushed the conversation up 250 px in one frame and its answer
+      // pulled it back down (Milo's stress run).
+      if (composerOverlayElement.querySelector("[data-chat-composer-asks]") !== null) return;
       const nextHeight = Math.ceil(composerOverlayElement.getBoundingClientRect().height);
       if (nextHeight <= 0) return;
       setComposerElementHeight((currentHeight) =>

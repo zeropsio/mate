@@ -497,11 +497,60 @@ describe("a client reading more of an engine conversation", () => {
             zerops_workflow: 2,
             zerops_knowledge: 1,
           });
-          // Two files named, and the write that names none counted once.
+          // Two files the patches named, and the one the write named by its `file_path`.
           assert.strictEqual(summary.edited, 3);
           yield* w.shutdown;
         }),
       ),
+  );
+
+  it.effect("a run's counts are its Mate's own calls, never what its helpers ran", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "Count the files with a helper" });
+        const command = (itemId: string, extra: Record<string, unknown>) =>
+          w.agent((agent, thread) =>
+            agent.emit("item.completed", thread, {
+              itemId,
+              payload: {
+                itemType: "command_execution",
+                status: "completed",
+                title: "Command run",
+                data: { command: "find /tmp/s -type f" },
+                ...extra,
+              },
+            }),
+          );
+        yield* command("own", {});
+        yield* command("helpers-own", { agentId: "helper-1" });
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const [snapshot] = yield* Effect.scoped(watch(w, wire));
+        if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+        assert.strictEqual(snapshot.runs.at(-1)!.summary.calls.command, 1);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a file written and then edited again counts as one file edited", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "Write primes.js, then make it print 30" });
+        yield* w.agent((agent, thread) => agent.write(thread, "/tmp/s/primes.js", "20"));
+        yield* w.agent((agent, thread) => agent.write(thread, "/tmp/s/primes.js", "30"));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const [snapshot] = yield* Effect.scoped(watch(w, wire));
+        if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+        const { summary } = snapshot.runs.at(-1)!;
+        assert.strictEqual(summary.calls.edit, 2);
+        assert.strictEqual(summary.edited, 1);
+        yield* w.shutdown;
+      }),
+    ),
   );
 
   it.effect("gets a long message cut to the wire's budget and reads it whole on demand", () =>
@@ -612,6 +661,38 @@ describe("a client subscribed to a Mate's conversation rows", () => {
         const rows = frames.flatMap((frame) => (frame.type === "row" ? [frame.row] : []));
         assert.strictEqual(rows.at(-1)?.subject, "Ship it");
         assert.isAbove(rows.at(-1)!.revision.seq, snapshot.rows[0]!.revision.seq);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  // Milo's second stress run: the chat header and the menu read the steer until the next message.
+  it.effect("a message steered into the running run never retitles the conversation", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const frames: Array<EngineRowsFrame> = [];
+        yield* Stream.runForEach(wire.subscribeRows({ protocol }, ana), (frame) =>
+          Effect.sync(() => frames.push(frame)),
+        ).pipe(Effect.forkScoped);
+        yield* w.tell({ _tag: "Send", text: "Check the storefront" });
+        yield* w.tell({
+          _tag: "Steer",
+          runId: runId(mate, 1),
+          text: "and name the page too",
+        });
+        const steered = (yield* w.items(runId(mate, 1))).find(
+          (item) => item.kind === "person" && item.body.text === "and name the page too",
+        );
+        assert.strictEqual(
+          (steered?.body as { readonly delivery?: { readonly state?: string } } | undefined)
+            ?.delivery?.state,
+          "steered",
+        );
+        yield* w.settle;
+        const rows = frames.flatMap((frame) => (frame.type === "row" ? [frame.row] : []));
+        assert.strictEqual(rows.at(-1)?.subject, "Check the storefront");
         yield* w.shutdown;
       }),
     ),

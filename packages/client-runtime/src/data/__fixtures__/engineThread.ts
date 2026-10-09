@@ -1,5 +1,11 @@
 /** An engine conversation's records held in an account, drawn as the thread the view reads. */
-import type { ConversationRow, Item, OrchestrationThread, RunRecord } from "@t3tools/contracts";
+import type {
+  ConversationRow,
+  Item,
+  OrchestrationThread,
+  Request,
+  RunRecord,
+} from "@t3tools/contracts";
 import * as Option from "effect/Option";
 
 import {
@@ -33,6 +39,7 @@ export interface EngineRecords {
   readonly runs: ReadonlyArray<RunRecord>;
   readonly row?: ConversationRow;
   readonly items: ReadonlyArray<Item>;
+  readonly requests?: ReadonlyArray<Request>;
   /** The stretches held of runs not read whole. */
   readonly spans?: ReadonlyArray<Omit<EngineSpanValue, "environmentId" | "conversationId">>;
 }
@@ -98,6 +105,12 @@ function engineReadsOfRecords(key: EngineConversationKey, records: EngineRecords
       id: engineFactId(environmentId, item.id),
       value: { ...item, environmentId },
       revision: revision(environmentId, item.rev),
+    })),
+    ...(records.requests ?? []).map((request): Row => ({
+      family: "mateEngineRequest",
+      id: engineFactId(environmentId, request.id),
+      value: { ...request, environmentId },
+      revision: revision(environmentId, request.rev),
     })),
     ...(records.spans ?? []).map((span, n): Row => ({
       family: "mateEngineSpan",

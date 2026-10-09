@@ -3446,6 +3446,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           <div
             className="chat-composer-top-drawer"
             data-chat-composer-top-drawer="true"
+            // What the agent asks the person stands over the conversation's end: it never moves it.
+            data-chat-composer-asks={
+              activePendingApproval || pendingUserInputs.length > 0 ? "true" : undefined
+            }
             data-variant={activePendingApproval ? "warning" : "info"}
           >
             {!isComposerCollapsedMobile && activePendingApproval ? (

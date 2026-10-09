@@ -1974,6 +1974,33 @@ describe("RunChat, as the person uses it", () => {
       expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
     });
 
+    // Milo's stress run: the run a job's end woke snapped its folded card open 532 px in one frame.
+    it("keeps a card folded as its run settled while a run it woke goes on in it", () => {
+      const renderer = mount(workOnly({ live: true, status: status() }));
+      settle(renderer);
+      expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat
+              row={record(
+                [
+                  {
+                    kind: "note",
+                    key: "note:woke",
+                    at: at(81),
+                    message: message("woke", "assistant", "The wait printed done."),
+                  },
+                ],
+                { live: true, status: status() },
+              )}
+            />
+          </Rows>,
+        ),
+      );
+      expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
+    });
+
     it("shows a new question when another run joins an automatically folded card", () => {
       const renderer = mount(workOnly({ live: true, status: status() }));
       settle(renderer);

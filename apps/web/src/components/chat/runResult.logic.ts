@@ -797,6 +797,7 @@ const EFFORT_WORDS: Readonly<Record<ActivityKind, (count: number) => string>> = 
   read: (count) => (count === 1 ? "1 file read" : `${count} files read`),
   "code-search": (count) => (count === 1 ? "1 code search" : `${count} code searches`),
   search: (count) => (count === 1 ? "1 web search" : `${count} web searches`),
+  fetch: (count) => (count === 1 ? "1 page fetched" : `${count} pages fetched`),
   workflow: () => "the workflow checked",
   guides: () => "the Zerops guides read",
   tool: (count) => (count === 1 ? "1 tool used" : `${count} tools used`),

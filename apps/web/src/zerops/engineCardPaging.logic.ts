@@ -3,7 +3,12 @@
  * counts its effort from the server's summary of its runs, and its scroll draws the stretch of
  * lines held whole, the rest paging in as the person opens it and scrolls to them.
  */
-import type { EngineCardCounts, EngineCardPaging } from "@t3tools/client-runtime/data";
+import type { RunRecord } from "@t3tools/contracts";
+import {
+  engineCardCounts,
+  type EngineCardCounts,
+  type EngineCardPaging,
+} from "@t3tools/client-runtime/data";
 import { classifyZeropsCall } from "@t3tools/client-runtime/zerops/model";
 
 import {
@@ -24,11 +29,19 @@ const STEP_KIND: Readonly<Record<string, ActivityKind>> = {
   helper: "helpers",
 };
 
+/** A generic call whose tool says what it did: a fetch reads a page, a web search searches. */
+const NAMED_TOOL_KIND: Readonly<Record<string, ActivityKind>> = {
+  WebFetch: "fetch",
+  WebSearch: "search",
+};
+
 /**
  * What a tool's calls count as: a Zerops tool by what it did ("the workflow checked"), never one
  * whose result is a row of its card (a deploy, a check) or the timeline leaves out.
  */
 function toolKind(name: string): ActivityKind | null {
+  const named = NAMED_TOOL_KIND[name];
+  if (named !== undefined) return named;
   const bare = name.split("__").at(-1) ?? name;
   if (classifyZeropsCall(bare, undefined, "completed") !== "generic") return null;
   return ZEROPS_TOOL_KIND[bare] ?? "tool";
@@ -68,6 +81,15 @@ export function withPagedEffort(
 ): OutcomeModel | null {
   if (outcome === null || paging === null) return outcome;
   return { ...outcome, activity: effortOfCounts(paging.counts) };
+}
+
+/**
+ * An engine card's effort: what its runs' summaries count, the same whether its items stream in
+ * live or a reload holds only some of them (Milo's stress run read "6 commands · 1 web search ·
+ * 1 tool used" live and "7 commands · 2 tools used" after a reload).
+ */
+export function engineCardEffort(runs: ReadonlyArray<RunRecord>): OutcomeActivity[] {
+  return effortOfCounts(engineCardCounts(runs));
 }
 
 /** The lines a paging card's scroll draws: those within the stretch held whole. */

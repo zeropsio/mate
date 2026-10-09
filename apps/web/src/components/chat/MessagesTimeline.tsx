@@ -597,10 +597,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => stableRows.flatMap((row) => (pacedRow(row) ? [row.id] : [])),
     [stableRows],
   );
+  // What a settle brings is paced once the conversation worked in sight: one drawn at rest
+  // catches up with its history at once (a reload paced its runs' answers in one by one and
+  // glided ~1,000 px to the end over 1.5 s, Milo's stress run).
+  const [workedInSight, setWorkedInSight] = useState(isWorking);
+  if (isWorking && !workedInSight) setWorkedInSight(true);
   // Out of sight (a kept list), nobody watches: they are simply there.
   const rowsHeld = usePace({
     keys: pacedRowIds,
-    flush: syncing || restoringReadingPosition || !(kept?.shown ?? true),
+    flush: syncing || restoringReadingPosition || !(kept?.shown ?? true) || !workedInSight,
   });
   const rowsHeldKey = [...rowsHeld].join("\n");
   // Read by what they are: the list's data changes only when they do.

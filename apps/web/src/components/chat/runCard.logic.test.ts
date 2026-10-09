@@ -1132,6 +1132,17 @@ describe("the runs a person watched", () => {
     expect(liveRunFold("thread-c", "turn-1")).toBe("watched");
   });
 
+  // Milo's stress run: the run a job's end woke opened its folded card 532 px in one frame.
+  it.each([
+    { name: "a run it woke goes on in it", asks: false, live: "folded" },
+    { name: "a run that asks the person goes on in it", asks: true, live: "watched" },
+  ] as const)("a card folded as its run settled is $live when $name", ({ asks, live }) => {
+    setRunFold("thread-d", "turn-1", "folded");
+    transitionRunFold("thread-d", "turn-1", { kind: "live", rejoined: true, asks });
+    expect(runFoldOf("thread-d", "turn-1")).toBe(live);
+    forgetRunFolds("thread-d");
+  });
+
   it.each([
     {
       name: "following with measured motion",

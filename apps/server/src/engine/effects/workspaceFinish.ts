@@ -39,9 +39,10 @@ export const makeWorkspaceFinish = Effect.gen(function* () {
           if ("_tag" in setup)
             return { _tag: "Retry", reason: setup.message, patient: true } as const;
           yield* history.finish({ threadId: thread, turnId: turn as TurnId, cwd: setup.cwd });
-        } else {
-          yield* history.release(thread, undefined, payload.runId);
         }
+        // Finishing records the end; only the release lets the next run's capture go. A run left
+        // held made every later message on the conversation wait out PREVIOUS_RUN_WAIT, queued.
+        yield* history.release(thread, undefined, payload.runId);
         return ok();
       }),
   } satisfies EffectHandler;

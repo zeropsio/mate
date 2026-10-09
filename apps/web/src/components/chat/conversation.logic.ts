@@ -785,6 +785,18 @@ export function latestFinishedWordsAt(
   return parseMs(last.message.updatedAt ?? last.createdAt);
 }
 
+/**
+ * Whether an engine card's runs are over while what they started runs on: by the background work
+ * the card holds, which ends in the same change as its run — the row's word comes a moment after,
+ * and the card folded for that moment and opened again (Milo's stress run). A card that holds none
+ * of its work goes by the row.
+ */
+function engineCardWaits(card: EngineRunCard | undefined): boolean {
+  if (card === undefined) return false;
+  if (card.holdsWork === true) return card.waitsOn !== undefined;
+  return card.state?.kind === "working" && card.state.waitsOnHelpers;
+}
+
 export function deriveConversationStructure(given: {
   readonly timelineEntries: ReadonlyArray<TimelineEntry>;
   readonly runCards?: Readonly<Record<string, EngineRunCard>>;
@@ -827,12 +839,7 @@ export function deriveConversationStructure(given: {
   const helperWorks = input.helperWorks;
   const waitingSpan =
     input.runCards !== undefined
-      ? spans.find((span) =>
-          span.turnIds.some((id) => {
-            const state = input.runCards?.[id]?.state;
-            return state?.kind === "working" && state.waitsOnHelpers;
-          }),
-        )
+      ? spans.find((span) => span.turnIds.some((id) => engineCardWaits(input.runCards?.[id])))
       : liveSpan === undefined &&
           helperWorks !== undefined &&
           latestSpan !== undefined &&
@@ -1165,7 +1172,7 @@ export function readsAsAnswer(text: string): boolean {
   );
 }
 
-type ActivityAction = "edit" | "command" | "read" | "code-search" | "search" | "other";
+type ActivityAction = "edit" | "command" | "read" | "code-search" | "search" | "fetch" | "other";
 
 /** What a run's calls did, by kind: the effort its worked line counts. */
 export type ActivityKind =
@@ -1182,6 +1189,7 @@ export const ACTIVITY_ORDER: ReadonlyArray<ActivityKind> = [
   "read",
   "code-search",
   "search",
+  "fetch",
   "workflow",
   "guides",
   "tool",
@@ -1199,7 +1207,8 @@ const NAMED_CALL_ACTION: Readonly<Record<string, ActivityAction>> = {
   Grep: "code-search",
   Glob: "code-search",
   WebSearch: "search",
-  WebFetch: "search",
+  // A fetch reads one page it was given: never a search (Milo's stress run, "1 web search").
+  WebFetch: "fetch",
 };
 
 function activityAction(entry: WorkLogEntry): ActivityAction {

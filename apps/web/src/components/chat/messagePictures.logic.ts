@@ -193,15 +193,30 @@ export const GALLERY_PICTURE_MAX_HEIGHT = 160;
  * attachment from the composer or the server, else the size the server read
  * from its header; as wide as it will be, never wider than the message.
  */
+/**
+ * A picture's size as its message holds it: the attachment's own, else its stored original's — a
+ * size the page has before any read, so its room is held from the first paint (a reload's picture
+ * held 16:9 until the server's size came, and pushed the turns under it down 72 px).
+ */
+export function attachedPictureSize(
+  image: Pick<ChatImageAttachment, "width" | "height" | "asset">,
+): PictureSize | undefined {
+  if (image.width !== undefined && image.height !== undefined)
+    return { width: image.width, height: image.height };
+  const original = image.asset?.original;
+  return original?.status === "ready" &&
+    original.width !== undefined &&
+    original.height !== undefined
+    ? { width: original.width, height: original.height }
+    : undefined;
+}
+
 export function reservedPictureBox(
-  image: Pick<ChatImageAttachment, "width" | "height">,
+  image: Pick<ChatImageAttachment, "width" | "height" | "asset">,
   serverSize: PictureSize | undefined,
   maxHeight = PICTURE_MAX_HEIGHT,
 ): { readonly width: string; readonly aspectRatio: string } | null {
-  const size =
-    image.width !== undefined && image.height !== undefined
-      ? { width: image.width, height: image.height }
-      : serverSize;
+  const size = attachedPictureSize(image) ?? serverSize;
   if (!size) return null;
   const widest = Math.min(size.width, (maxHeight * size.width) / size.height);
   return {

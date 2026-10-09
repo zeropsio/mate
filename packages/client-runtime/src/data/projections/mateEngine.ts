@@ -262,6 +262,13 @@ function callData(item: Extract<Item, { kind: "call" }>): Record<string, unknown
 }
 
 /**
+ * A call's line before its input arrived: its tool's name and an empty input (`Bash: {}`), which
+ * the agent's adapter writes while the input still streams. It says nothing; the row says what
+ * the call is by its tool until the input comes (Milo's stress run's working line read "Bash: {}").
+ */
+const inputNotArrived = (line: string) => /^[\w.-]+:\s*\{\s*\}$/u.test(line.trim());
+
+/**
  * A call as V1's tool lifecycle: its start (the anchor its row keeps), then its progress while it
  * runs or its completion once it ended, each with the call's line, facts and result. Its title is
  * the activity's summary, as V1's: a V1 tool payload carries none of its own.
@@ -276,7 +283,7 @@ function callActivities(
       STEP_ITEM_KINDS[item.step] ??
       (item.tool.server === undefined ? "dynamic_tool_call" : "mcp_tool_call"),
     toolCallId: item.id,
-    ...(item.input === undefined ? {} : { detail: item.input }),
+    ...(item.input === undefined || inputNotArrived(item.input) ? {} : { detail: item.input }),
     data: callData(item),
     ...(item.presentation === undefined ? {} : { presentation: item.presentation }),
     ...helperOf(item),
@@ -326,11 +333,15 @@ function callActivities(
 function workActivities(
   item: Extract<Item, { kind: "work" }>,
   cardOf: CardOf,
+  helperOfWork: (item: Extract<Item, { kind: "work" }>) => string | undefined,
 ): ReadonlyArray<OrchestrationThreadActivity> {
   const taskType = WORK_TASK_TYPES[item.workKind];
+  const helper = helperOfWork(item);
   const payload = {
     taskId: item.work,
     ...(item.workKind === "helper" ? { agentKind: "agent" } : {}),
+    // A helper's own background job is the helper's, as V1 stamps it: never the Mate's row.
+    ...(helper === undefined ? {} : { agentId: helper }),
     ...(taskType === undefined ? {} : { taskType }),
     ...(item.title === null ? {} : { title: item.title }),
   };
@@ -731,6 +742,24 @@ export function engineThreadOf(
   const requests = valuesOf(read, "mateEngineRequest", "engineRequestsIn", conversationKey).sort(
     (left, right) => left.seq - right.seq,
   );
+  // The background commands each helper sent, by the words it gave them: the work a helper's own
+  // command started bears no helper of its own on the record (Milo's second stress run drew a
+  // helper's sleep and poll as the Mate's "finished · in the background" rows).
+  const helperCommands = new Map<string, string>();
+  for (const item of items) {
+    if (item.kind !== "call" || item.by.kind !== "helper") continue;
+    const input = (
+      item.shows as { readonly input?: { readonly description?: unknown } } | undefined
+    )?.input;
+    if (typeof input?.description === "string")
+      helperCommands.set(`${item.runId}\u0000${input.description.trim()}`, item.by.helperId);
+  }
+  const helperOfWork = (item: Extract<Item, { kind: "work" }>): string | undefined =>
+    item.by.kind === "helper"
+      ? item.by.helperId
+      : item.workKind === "helper" || item.title === null
+        ? undefined
+        : helperCommands.get(`${item.runId}\u0000${item.title.trim()}`);
   const messages: EngineMessage[] = [];
   const activities: OrchestrationThreadActivity[] = [];
   const runById = new Map(runs.map((run) => [run.id as string, run]));
@@ -746,7 +775,7 @@ export function engineThreadOf(
         activities.push(...callActivities(item, cardOf));
         break;
       case "work":
-        activities.push(...workActivities(item, cardOf));
+        activities.push(...workActivities(item, cardOf, helperOfWork));
         break;
       case "marker": {
         const marked = markerActivity(item, cardOf);
@@ -844,7 +873,23 @@ export interface EngineRunCard {
   readonly runs: ReadonlyArray<RunRecord>;
   readonly openerMessageId?: string;
   readonly state?: ConversationRow["state"];
+  /** Whether it holds any of its runs' background work: then that work says what it waits on. */
+  readonly holdsWork?: true;
+  /**
+   * Its runs over, the background work they started that still runs, by what it is: the card waits
+   * on it, from the same change that ended its run (the row's word on it comes a moment later).
+   */
+  readonly waitsOn?: EngineCardWait;
 }
+
+/** What a card whose runs are over still waits on: its helpers, and the commands it backgrounded. */
+export interface EngineCardWait {
+  readonly helpers: number;
+  readonly commands: number;
+}
+
+/** Background work that still goes on, as the engine's view counts it (`conversationView`). */
+const ALIVE_WORK: ReadonlySet<string> = new Set(["running", "waiting", "idle"]);
 
 /** The typed records on each card, in source order; joining identity decides no run state. */
 export const engineRunCards: Projection<
@@ -860,10 +905,34 @@ export const engineRunCards: Projection<
     const { runs, cardOf } = cardsOf(read, id);
     const cards: Record<
       string,
-      { runs: RunRecord[]; openerMessageId?: string; state?: ConversationRow["state"] }
+      {
+        runs: RunRecord[];
+        openerMessageId?: string;
+        state?: ConversationRow["state"];
+        holdsWork?: true;
+        waitsOn?: EngineCardWait;
+      }
     > = {};
     for (const run of runs) (cards[cardOf(run.id) ?? run.id] ??= { runs: [] }).runs.push(run);
     for (const card of Object.values(cards)) {
+      // What its runs left running in the background, once they are over (a monitor watches for
+      // hours: never waited on).
+      let helpers = 0;
+      let commands = 0;
+      for (const run of card.runs)
+        for (const itemId of read.index(
+          "engineItemsOfRun",
+          engineFactId(key.environmentId, run.id),
+        )) {
+          const item = read.fact("mateEngineItem", itemId);
+          if (item.kind !== "known" || item.value.kind !== "work") continue;
+          card.holdsWork = true;
+          if (!ALIVE_WORK.has(item.value.status) || item.value.workKind === "monitor") continue;
+          if (item.value.workKind === "helper") helpers += 1;
+          else commands += 1;
+        }
+      if (card.runs.at(-1)?.state === "ended" && helpers + commands > 0)
+        card.waitsOn = { helpers, commands };
       const first = card.runs[0];
       if (first?.trigger.kind !== "person") continue;
       const opener = read.fact(
@@ -915,6 +984,23 @@ const sumInto = (into: Record<string, number>, counts: Readonly<Record<string, n
   for (const [name, count] of Object.entries(counts)) into[name] = (into[name] ?? 0) + count;
 };
 
+/**
+ * What a card's runs' calls came to, as the server counts them from its items (`RunSummary`): the
+ * one count of a card's effort, live and after a reload alike, whatever of its items is held.
+ */
+export function engineCardCounts(runs: ReadonlyArray<RunRecord>): EngineCardCounts {
+  const calls: Record<string, number> = {};
+  const tools: Record<string, number> = {};
+  let edited: number | null = 0;
+  for (const run of runs) {
+    sumInto(calls, run.summary.calls);
+    sumInto(tools, run.summary.tools ?? {});
+    edited =
+      edited === null || run.summary.edited === undefined ? null : edited + run.summary.edited;
+  }
+  return { calls, tools, edited };
+}
+
 /** The cards of a conversation not held whole, by the card's id (the turn the view draws). */
 export function engineCardPagingOf(
   read: ProjectionReads,
@@ -960,9 +1046,6 @@ export function engineCardPagingOf(
     );
     const laterSpan = later === undefined ? undefined : spanOf.get(later.id);
     const earlierSpan = earlier === undefined ? undefined : spanOf.get(earlier.id);
-    const calls: Record<string, number> = {};
-    const tools: Record<string, number> = {};
-    let edited: number | null = 0;
     let hasWork = false;
     for (const member of members) {
       // Past the person's words and its answer, something it did. The words counted from the
@@ -971,16 +1054,10 @@ export function engineCardPagingOf(
       const asked = member.trigger.kind === "person" ? Math.max(1, words) : words;
       const answered = member.summary.answerItemId === null ? 0 : 1;
       if (member.summary.items > asked + answered) hasWork = true;
-      sumInto(calls, member.summary.calls);
-      sumInto(tools, member.summary.tools ?? {});
-      edited =
-        edited === null || member.summary.edited === undefined
-          ? null
-          : edited + member.summary.edited;
     }
     cards[card] = {
       pageRuns: { earlier: earlier?.id ?? null, later: later?.id ?? null },
-      counts: { calls, tools, edited },
+      counts: engineCardCounts(members),
       hasWork,
       // None until it first opens: its first run read from its start, nothing of it read yet.
       holdsLines: earlierSpan !== undefined || laterAt !== 0 || laterSpan?.to !== 0,

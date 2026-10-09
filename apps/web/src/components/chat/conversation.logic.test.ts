@@ -1099,7 +1099,7 @@ describe("activityCounts", () => {
         { kind: "edit", count: 1 },
         { kind: "read", count: 1 },
         { kind: "code-search", count: 1 },
-        { kind: "search", count: 1 },
+        { kind: "fetch", count: 1 },
       ],
     },
     {
@@ -1118,7 +1118,7 @@ describe("activityCounts", () => {
       counts: [
         { kind: "read", count: 1 },
         { kind: "code-search", count: 3 },
-        { kind: "search", count: 1 },
+        { kind: "fetch", count: 1 },
         { kind: "workflow", count: 1 },
       ],
     },

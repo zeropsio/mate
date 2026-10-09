@@ -21,6 +21,8 @@ import {
 } from "./conversation.logic";
 import {
   liveCallsOf,
+  type AfterWait,
+  type EngineStart,
   type LiveCall,
   type RecordItem,
   type RunStatus,
@@ -401,8 +403,10 @@ export type NowLine =
   | { readonly kind: "several"; readonly calls: ReadonlyArray<LiveCall> }
   /** It waits on the person: their answer to its question, or their approval. */
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
-  /** Its turns are over, and the helpers it launched work on. */
-  | { readonly kind: "after" }
+  /** Its turns are over, and the helpers it launched work on — or what its engine names. */
+  | { readonly kind: "after"; readonly on?: AfterWait }
+  /** Its run is not started yet: what its engine does first. */
+  | { readonly kind: "starting"; readonly on: EngineStart }
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
   /** Over: who, what it did and for how long, and what the effort came to. */
@@ -410,6 +414,7 @@ export type NowLine =
 
 /** How long a run took of the Mate's own time: its span, less what it waited on the person. */
 function workedMs(status: RunStatus): number {
+  if (status.workedMs !== undefined) return status.workedMs;
   const start = Date.parse(status.startedAt);
   const end = status.endedAt === null ? Number.NaN : Date.parse(status.endedAt);
   return Number.isFinite(start) && Number.isFinite(end)
@@ -459,7 +464,9 @@ export function nowLineOf(input: {
     case "waiting":
       return { kind: "waiting", on: now.on };
     case "after":
-      return { kind: "after" };
+      return now.on === undefined ? { kind: "after" } : { kind: "after", on: now.on };
+    case "starting":
+      return { kind: "starting", on: now.on };
     case "writing":
       return { kind: "writing" };
     case "thinking":
@@ -488,7 +495,8 @@ export type SlotFiller =
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
-  | { readonly kind: "after" };
+  | { readonly kind: "after"; readonly on?: AfterWait }
+  | { readonly kind: "starting"; readonly on: EngineStart };
 
 /**
  * What the live slot holds (pass 35): what the Mate is doing this moment,
@@ -533,7 +541,12 @@ export function slotModelOf(input: {
   if (now === null) return thinking;
   switch (now.kind) {
     case "after":
-      return { live: [], filler: { kind: "after" } };
+      return {
+        live: [],
+        filler: now.on === undefined ? { kind: "after" } : { kind: "after", on: now.on },
+      };
+    case "starting":
+      return { live: [], filler: { kind: "starting", on: now.on } };
     case "thinking":
       return now.key !== null &&
         now.messages.some((message) => messageHasText(message, input.liveLines))
@@ -621,6 +634,27 @@ export function operationNowWords(operation: ZeropsOperation): string {
     : operationLineWords(operation);
 }
 
+/** "a background command", "2 background commands". */
+function commandsWords(count: number): string {
+  return count === 1 ? "a background command" : `${count} background commands`;
+}
+
+/**
+ * What a run whose turns are over waits on, in words: its helpers, unless its engine names a
+ * command it sent to the background — a 17-second wait on a `sleep` read "Waiting for its helpers"
+ * while its one helper had long reported (Milo's stress run).
+ */
+export function afterWords(on: AfterWait | undefined): string {
+  if (on === undefined || on.commands === 0) return "Waiting for its helpers";
+  if (on.helpers === 0) return `Waiting for ${commandsWords(on.commands).replace(/^a /, "its ")}`;
+  return `Waiting for its helpers and ${commandsWords(on.commands)}`;
+}
+
+/** What a run not started yet waits on, in words: its workspace's snapshot, then its session. */
+export function startingWords(on: EngineStart): string {
+  return on === "workspace" ? "Saving a snapshot of the workspace" : "Starting its session";
+}
+
 /** The now line in words. */
 export function nowLineWords(line: NowLine): string {
   switch (line.kind) {
@@ -635,7 +669,9 @@ export function nowLineWords(line: NowLine): string {
     case "waiting":
       return line.on === "approval" ? "Waiting for your approval" : "Waiting for your answer";
     case "after":
-      return "Waiting for its helpers";
+      return afterWords(line.on);
+    case "starting":
+      return startingWords(line.on);
     case "writing":
       return "Writing";
     case "condensing":
@@ -656,7 +692,8 @@ export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
       case "waiting":
         return nowLineWords({ kind: "waiting", on: filler.on });
       case "after":
-        return nowLineWords({ kind: "after" });
+      case "starting":
+        return nowLineWords(filler);
       case "thinking":
         return nowLineWords({ kind: "thinking", thought: null });
       default:
@@ -850,7 +887,13 @@ export function liveRunFold(conversation: string, run: string): "watched" | "fol
 }
 
 type RunFoldInput =
-  | { readonly kind: "live" }
+  | {
+      readonly kind: "live";
+      /** A run goes on in a card that had settled (an engine card draws each run that joins it). */
+      readonly rejoined?: boolean;
+      /** The run waits on the person: their answer or approval. */
+      readonly asks?: boolean;
+    }
   | {
       readonly kind: "settled";
       readonly wasLive: boolean;
@@ -864,6 +907,10 @@ type RunFoldInput =
 function nextRunFold(fold: RunFold, liveChoice: RunFold, input: RunFoldInput): RunFold {
   switch (input.kind) {
     case "live":
+      // A run that goes on by itself in a card folded as it settled (the run a job's end woke) is
+      // drawn in the folded card's line: it opened 532 px in one frame and scrolled the page 768
+      // px (Milo's stress run). One that asks the person opens it, for its question.
+      if (input.rejoined === true && input.asks !== true && fold === "folded") return "folded";
       return liveChoice;
     case "settled":
       if (fold !== "watched") return fold;

@@ -769,10 +769,13 @@ export function makeTranslator(options: TranslatorOptions): Translator {
         ) {
           work.kind = workKind(payload.agentKind, payload.taskType, payload.agentId);
         }
-        work.title =
-          ("description" in payload ? payload.description : undefined) ??
-          payload.title ??
-          work.title;
+        // Its progress says what it runs now, never what it is: a helper's row read its current
+        // command instead of the task it was given (Milo's second stress run).
+        if (event.type !== "task.progress" || work.title === undefined)
+          work.title =
+            ("description" in payload ? payload.description : undefined) ??
+            payload.title ??
+            work.title;
         work.status = taskStatus(event, work.status);
         if (JSON.stringify([work.kind, work.status, work.title, work.origin]) !== before) {
           emitWork(owner, work);

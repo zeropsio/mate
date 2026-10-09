@@ -18,5 +18,13 @@ export {
   engineRunCardsOfRecords,
   type EngineRecords,
 } from "./engineThread.ts";
-export { callItem, engineRun, engineRow, personItem, noteItem, workItem } from "./mateEngine.ts";
+export {
+  callItem,
+  engineRun,
+  engineRequest,
+  engineRow,
+  personItem,
+  noteItem,
+  workItem,
+} from "./mateEngine.ts";
 export { graceOver, liveZerops, ORG, pastGrace } from "./account.ts";

@@ -90,12 +90,14 @@ describe("the running engine", () => {
               ["note", "hi there"],
             ],
           );
-          // The capture is finished by the turn the message went into.
+          // The capture is finished by the turn the message went into, then let go: the next
+          // message's capture never waits on it.
           assert.deepStrictEqual(w.history.calls, [
             `prepare ${r(1)}`,
             `sent ${r(1)} → T1`,
             "bind T1",
             "finish T1",
+            `release ${r(1)}`,
           ]);
           yield* w.shutdown;
         }),
@@ -715,6 +717,30 @@ describe("the running engine", () => {
         yield* w.shutdown;
       }),
     ),
+  );
+
+  // Milo's second stress run: a helper's row read its current command ("Running List regular
+  // files with sizes recursively") instead of the task it was given.
+  it.effect(
+    "background work keeps the name it started with while it reports what it runs now",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w);
+          const work = yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* w.agent((agent, thread) =>
+            agent.emit("task.progress", thread, {
+              payload: { taskId: work, description: "Running List regular files recursively" },
+            }),
+          );
+          const titles = (yield* w.items(r(1))).flatMap((item) =>
+            item.kind === "work" ? [item.body.title] : [],
+          );
+          assert.deepStrictEqual(titles, ["Watch the build"]);
+          yield* w.shutdown;
+        }),
+      ),
   );
 
   it.effect(

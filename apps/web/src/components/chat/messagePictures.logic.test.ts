@@ -232,6 +232,15 @@ describe("reservedPictureBox", () => {
       { width: 600, height: 300 },
       { width: "min(100%, 600px)", aspectRatio: "600 / 300" },
     ],
+    [
+      "a message that names no size holds the room its picture's own original has",
+      {
+        ...picture({}),
+        asset: { original: { status: "ready" as const, width: 1200, height: 900 } },
+      } as never,
+      undefined,
+      { width: "min(100%, 400px)", aspectRatio: "1200 / 900" },
+    ],
     ["no size known, no room held", picture({}), undefined, null],
   ])("%s", (_label, image, serverSize, expected) => {
     expect(reservedPictureBox(image, serverSize)).toEqual(expected);

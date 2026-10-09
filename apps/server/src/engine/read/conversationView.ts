@@ -76,7 +76,11 @@ export interface ConversationView {
   /** A usage limit holds the queue until then (`unknown`: until a probe or the person). */
   readonly pausedUntil: number | "unknown" | null;
   readonly openRequests: ReadonlyArray<ViewRequest>;
-  /** The person's latest message, as they wrote it, with what it carried (a picture's label is in its text). */
+  /**
+   * The person's latest message that opened a run, as they wrote it, with what it carried (a
+   * picture's label is in its text): one steered into a running run is a word on that run, never
+   * the conversation's subject (Milo's second stress run read the steer as its title).
+   */
   readonly lastPerson: {
     readonly text: string;
     readonly at: number;
@@ -184,12 +188,15 @@ export const readConversationView = (conversationId: ConversationId) =>
       readonly kind: string;
       readonly open?: boolean;
       readonly by?: string;
+      /** Leave out a person's message steered into a running run. */
+      readonly opening?: true;
     }) =>
       sql<{ readonly body_json: string; readonly at: number; readonly run_id: string | null }>`
         SELECT body_json, at, run_id FROM engine_item
         WHERE conversation_id = ${conversationId} AND kind = ${where.kind}
           ${where.open === undefined ? sql`` : sql`AND state = ${where.open ? "open" : "closed"}`}
           ${where.by === undefined ? sql`` : sql`AND json_extract(by_json, '$.kind') = ${where.by}`}
+          ${where.opening === undefined ? sql`` : sql`AND json_extract(body_json, '$.delivery.state') IS NOT 'steered'`}
         ORDER BY opened_seq DESC LIMIT 1
       `.pipe(Effect.map((rows) => rows[0]));
     const textOf = (row: { readonly body_json: string; readonly at: number } | undefined) =>
@@ -237,7 +244,7 @@ export const readConversationView = (conversationId: ConversationId) =>
           answerable: row.answerable === 1,
         })),
       ),
-      lastPerson: yield* textOf(yield* items({ kind: "person" })),
+      lastPerson: yield* textOf(yield* items({ kind: "person", opening: true })),
       lastAgent: yield* textOf(yield* items({ kind: "note", open: false, by: "mate" })),
       liveCall:
         callBody?.kind === "call" && call !== undefined

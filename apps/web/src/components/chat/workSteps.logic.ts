@@ -81,7 +81,7 @@ export interface BackgroundJob {
   /** What it was asked to do: the task's words, else the command's own. */
   readonly title: string;
   /** "lost": its session is gone and it never reported — it never will. */
-  readonly state: "running" | "done" | "failed" | "lost";
+  readonly state: "running" | "done" | "failed" | "stopped" | "lost";
   readonly startedAt: string;
   /** When its task ended; null while it runs. */
   readonly endedAt: string | null;
@@ -284,15 +284,27 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
     }),
   );
   const endedNear = commandsEndingNear(commands);
+  // A command sent to the background, by the words its call gave it: a task that names no call but
+  // says those words is that command's job (an engine Mate's job names no call; by timing alone
+  // its end was the failed `ls` that ended just before the job began, and the job read running on).
+  const sentByWords = new Map<string, WorkLogEntry>();
+  for (const command of commands) {
+    const words = command.callInput?.description?.trim();
+    if (command.sentToBackground !== undefined && words && !sentByWords.has(words))
+      sentByWords.set(words, command);
+  }
   for (const task of entries) {
     if (!isTask(task)) continue;
     const words = (task.toolTitle ?? task.label).trim();
     if (task.taskId !== undefined && words.length > 0) jobTitles.set(task.taskId, words);
+    const named = sentByWords.get(words);
     const command =
       task.taskToolUseId !== undefined
         ? byCallId.get(task.taskToolUseId)
         : task.taskType === undefined || task.taskType === "local_bash"
-          ? endedNear(Date.parse(task.createdAt), (candidate) => !byCommand.has(candidate.id))
+          ? named !== undefined && !byCommand.has(named.id)
+            ? named
+            : endedNear(Date.parse(task.createdAt), (candidate) => !byCommand.has(candidate.id))
           : undefined;
     if (command === undefined) continue;
     trackers.add(task.id);
@@ -463,7 +475,9 @@ export function backgroundJobOf(
           ? "lost"
           : failed
             ? "failed"
-            : "done",
+            : task.toolLifecycleStatus === "stopped"
+              ? "stopped"
+              : "done",
     startedAt: command.startedAt ?? command.createdAt,
     endedAt: task !== undefined && ended ? new Date(endOf(task)).toISOString() : null,
     report: task !== undefined && ended ? taskReportWords(taskSaid(task), title) : null,
@@ -664,6 +678,8 @@ function plainPhrase(entry: WorkLogEntry, kind: StepKind, running: boolean): Ste
     case "web": {
       const url = input?.url ?? detailField(entry.detail, "url");
       if (url !== null) return phraseOf(say("Reading", "Read"), [webTarget(url)]);
+      // A fetch before its address arrived reads a page all the same: it never searches.
+      if (namedToolCall(entry) === "WebFetch") return alone(say("Reading a page", "Read a page"));
       const query = input?.query ?? detailField(entry.detail, "query");
       return query === null
         ? alone(say("Searching the web", "Searched the web"))
@@ -722,6 +738,7 @@ function plainWords(entry: WorkLogEntry, kind: StepKind, running: boolean): stri
     case "web": {
       const url = input?.url ?? detailField(entry.detail, "url");
       if (url !== null) return say(`Reading ${webTarget(url)}`, `Read ${webTarget(url)}`);
+      if (namedToolCall(entry) === "WebFetch") return say("Reading a page", "Read a page");
       const query = input?.query ?? detailField(entry.detail, "query");
       return query === null
         ? say("Searching the web", "Searched the web")

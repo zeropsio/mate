@@ -328,6 +328,9 @@ const IN_THE_BACKGROUND = "In the background";
 /** A job whose session is gone before it reported: it never will. */
 const NO_REPORT = "Didn't report back";
 
+/** A job stopped before it finished. */
+const STOPPED = "Stopped";
+
 /** How long a step took; one still running says so, one that never returned says that. */
 function stepTime(step: WorkStep): ReactNode {
   if (step.noResult === "closed") return NO_RESULT;
@@ -335,6 +338,7 @@ function stepTime(step: WorkStep): ReactNode {
   if (step.state === "running") return STILL_RUNNING;
   if (step.background?.state === "running") return IN_THE_BACKGROUND;
   if (step.background?.state === "lost") return NO_REPORT;
+  if (step.background?.state === "stopped") return STOPPED;
   if (!TIMED.has(step.kind) || step.endedAt === null) return null;
   const ms = Date.parse(step.endedAt) - Date.parse(step.startedAt);
   return Number.isFinite(ms) && ms >= 1000 ? formatWorkDuration(ms) : null;
@@ -3047,6 +3051,7 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
     case "waiting":
       return <span className="run-now-verb">{nowLineWords(line)}</span>;
     case "after":
+    case "starting":
       return (
         <>
           <span className="run-now-verb">{nowLineWords(line)}</span>
@@ -3493,9 +3498,10 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
         <span className="run-slot-word">{nowLineWords({ kind: "waiting", on: filler.on })}</span>
       );
     case "after":
+    case "starting":
       return (
         <>
-          <span className="run-slot-word">{nowLineWords({ kind: "after" })}</span>
+          <span className="run-slot-word">{nowLineWords(filler)}</span>
           <TypingDots className="run-now-dots" />
         </>
       );
@@ -3805,10 +3811,20 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const historyRoomsRef = useRef<Rooms | null>(null);
   // What its parts' motions share (`RunMotion`).
   const motionRef = useRef<RunMotion>({ slot: null, budget: { at: -1, grow: 0, shrink: 0 } });
+  // What in it involves the person: a question it asked, their words in it.
+  const personKeys = useMemo(
+    () =>
+      row.items.flatMap((item) =>
+        item.kind === "question" || item.kind === "person" ? [item.key] : [],
+      ),
+    [row.items],
+  );
   const { fold, foldNow, settling, motionAllowed } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
     live: row.live,
+    asks: row.now?.kind === "waiting",
+    personKeys,
     readingRef,
     rootRef,
     aboveRef,
@@ -4230,6 +4246,8 @@ function useRunFold({
   conversation,
   run,
   live,
+  asks,
+  personKeys,
   readingRef,
   rootRef,
   aboveRef,
@@ -4238,6 +4256,10 @@ function useRunFold({
   readonly conversation: string;
   readonly run: string;
   readonly live: boolean;
+  /** Its run waits on the person. */
+  readonly asks: boolean;
+  /** Its items that involve the person: a run that goes on in it with a new one opens it. */
+  readonly personKeys: ReadonlyArray<string>;
   readonly readingRef: { readonly current: boolean };
   readonly rootRef: { readonly current: HTMLElement | null };
   readonly aboveRef: { readonly current: HTMLElement | null };
@@ -4248,10 +4270,15 @@ function useRunFold({
   readonly settling: boolean;
   readonly motionAllowed: boolean;
 } {
-  const read = () => runFoldOf(conversation, run, live ? "watched" : "folded");
+  // A card drawn settled first is folded until it says otherwise, a run going on in it too: it
+  // opens only as `observe` decides, never for a frame before.
+  const [bornLive] = useState(live);
+  const read = () => runFoldOf(conversation, run, live && bornLive ? "watched" : "folded");
   const stored = useSyncExternalStore(subscribeRunFolds, read, read);
   const fold = stored;
   const wasLiveRef = useRef(live);
+  // What of the person it held while it stood settled.
+  const settledPersonKeysRef = useRef<ReadonlySet<string>>(new Set());
   // The draw where the run settled, before its fold is measured: the card
   // holds its live height through it, or it jumps first.
   const [drawnLive, setDrawnLive] = useState(live);
@@ -4277,7 +4304,11 @@ function useRunFold({
       conversation,
       run,
       live
-        ? { kind: "live" }
+        ? {
+            kind: "live",
+            rejoined: !wasLive,
+            asks: asks || personKeys.some((key) => !settledPersonKeysRef.current.has(key)),
+          }
         : {
             kind: "settled",
             wasLive,
@@ -4291,7 +4322,11 @@ function useRunFold({
     wasLiveRef.current = live;
     setDrawnLive(live);
     observe(wasLive);
-  }, [conversation, run, live, readingRef]);
+    // A run that asks the person opens the card it went on in folded.
+  }, [conversation, run, live, asks, readingRef]);
+  useLayoutEffect(() => {
+    if (!live) settledPersonKeysRef.current = new Set(personKeys);
+  }, [live, personKeys]);
   useLayoutEffect(() => {
     if (fold !== "folding") return;
     const from = settledAtRef.current;
