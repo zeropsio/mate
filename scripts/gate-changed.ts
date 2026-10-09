@@ -758,6 +758,19 @@ if (import.meta.main) {
       args: ["exec", "tsc", "--noEmit", "--incremental"],
       cwd: pkg.directory,
     });
+  if (meaningful.paths.some((path) => path.startsWith("apps/web/test/engine-oracle/")))
+    steps.push({
+      name: "typecheck engine oracle",
+      command: "vp",
+      args: [
+        "exec",
+        "tsc",
+        "--noEmit",
+        "--incremental",
+        "-p",
+        "apps/web/test/engine-oracle/tsconfig.json",
+      ],
+    });
   if (meaningful.paths.some((path) => path.startsWith("apps/web/test/scenarios/")))
     steps.push({
       name: "typecheck scenarios",

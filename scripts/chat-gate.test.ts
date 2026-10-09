@@ -51,7 +51,7 @@ it("the gate runs the chat journeys against both wires a Mate can speak", () => 
     stage.commands.flatMap((command) => {
       const at = command.args.indexOf("--project");
       const areas = command.args.find((arg) => arg.startsWith("test/scenarios/areas"));
-      return at === -1 ? [] : [[stage.name, command.args[at + 1], areas]];
+      return at === -1 || areas === undefined ? [] : [[stage.name, command.args[at + 1], areas]];
     }),
   );
   expect(projects).toEqual([
@@ -76,6 +76,7 @@ it("the gate proves the Mate engine on the proof harness's fixed seeds and the r
     "src/zerops/crew/engine/importV1Crew.test.ts",
     "src/engine/engine.sim.test.ts",
     "src/engine/engine.pump.test.ts",
+    "test/engine-oracle/runCard.oracle.test.ts",
   ]);
 });
 
@@ -303,6 +304,7 @@ it.each(["A", "E"])("a %s-only gate runs without installing a scenario browser",
   try {
     NodeFS.mkdirSync(NodePath.join(fixture, "scripts"));
     NodeFS.mkdirSync(NodePath.join(fixture, "apps/server"), { recursive: true });
+    NodeFS.mkdirSync(NodePath.join(fixture, "apps/web"), { recursive: true });
     NodeFS.mkdirSync(NodePath.join(fixture, "node_modules/.bin"), { recursive: true });
     NodeFS.copyFileSync(
       NodePath.join(root, "scripts/chat-gate.ts"),
@@ -373,8 +375,10 @@ it("a contract-only edit retains wire consumer typechecks even without a selecte
     "packages/client-runtime",
     "apps/web",
     ".",
+    ".",
   ]);
-  expect(commands?.at(-1)?.args).toContain("apps/web/test/scenarios/areas/c-mate/tsconfig.json");
+  expect(commands?.at(-2)?.args).toContain("apps/web/test/scenarios/areas/c-mate/tsconfig.json");
+  expect(commands?.at(-1)?.args).toContain("apps/web/test/engine-oracle/tsconfig.json");
 });
 
 it("an empty lane chat selection skips before starting any command", () => {

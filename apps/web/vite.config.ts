@@ -93,6 +93,23 @@ const unitTestProject = {
   },
 } satisfies TestProjectInlineConfiguration;
 
+/**
+ * The run-card oracle: the running engine over its scripted provider, the client's wire and store,
+ * and the card's own logic, in one process (`test/engine-oracle`). Its own tsconfig holds the
+ * server's files it reads; the unit project never imports them.
+ */
+const engineOracleProject = {
+  extends: true,
+  test: {
+    name: "engine-oracle",
+    taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
+    include: ["test/engine-oracle/**/*.test.ts"],
+    testTimeout: 600_000,
+    hookTimeout: 60_000,
+    setupFiles: ["../../packages/shared/src/testing/longTempDir.ts"],
+  },
+} satisfies TestProjectInlineConfiguration;
+
 function resolveDevProxyTarget(
   backendPort: string | undefined,
   wsUrl: string | undefined,
@@ -316,7 +333,7 @@ export default defineConfig(() => {
       },
     },
     test: {
-      projects: [defineProject(unitTestProject)],
+      projects: [defineProject(unitTestProject), defineProject(engineOracleProject)],
     },
   };
 });
