@@ -1,3 +1,4 @@
+import { assembleRecordCard } from "../components/chat/MessagesTimeline.logic";
 /**
  * A run's card in every state it reaches: its heading, its chat in one
  * scroll with the Mate's face beside what it is on, what runs alongside it,
@@ -722,8 +723,8 @@ const SO_FAR: ReadonlyArray<RecordItem> = [
 type RecordRow = Extract<MessagesTimelineRow, { kind: "record" }>;
 
 function record(overrides: Partial<RecordRow>): RecordRow {
-  return {
-    kind: "record",
+  const row = {
+    kind: "record" as const,
     id: "record:turn-1",
     createdAt: ago(134),
     turnKey: "turn-1",
@@ -735,6 +736,7 @@ function record(overrides: Partial<RecordRow>): RecordRow {
     outcome: null,
     ...overrides,
   };
+  return { ...row, ...assembleRecordCard(row) };
 }
 
 const RUNNING_STEP: TurnHeaderActivity = {

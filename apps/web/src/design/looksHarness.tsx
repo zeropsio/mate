@@ -1,3 +1,4 @@
+import { assembleRecordCard } from "../components/chat/MessagesTimeline.logic";
 /**
  * Intake row 6b's looks, each on the surface the conversation draws it on: an answer with a
  * Mermaid diagram (settled, and still streaming), and a run whose commands show their code —
@@ -161,6 +162,7 @@ const RUN: RecordRow = {
   turnKey: "looks",
   live: false,
   items: COMMANDS,
+  ...assembleRecordCard({ items: COMMANDS, now: null, answering: false, outcome: null }),
   now: null,
   answering: false,
   status: {

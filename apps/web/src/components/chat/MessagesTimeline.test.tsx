@@ -1,3 +1,11 @@
+import { RegistryContext } from "@effect/atom-react";
+import {
+  cardAccount,
+  CARD_KEY,
+  CARD_RUN,
+  CARD_RECORDS,
+  useCardTimelineInput,
+} from "./engineCard.test-fixtures";
 import { markupDom } from "../../../test/markupDom";
 import { projectMateLimit } from "@t3tools/client-runtime/data";
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
@@ -2954,4 +2962,59 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
       await act(() => renderer?.unmount());
     }
   });
+});
+
+it("keeps a partly loaded account card's work reachable before and after its first page", async () => {
+  vi.stubGlobal("requestAnimationFrame", () => 0);
+  vi.stubGlobal("cancelAnimationFrame", () => undefined);
+  const read = vi.fn();
+  const account = cardAccount(read);
+  account.publish(CARD_RECORDS);
+  function AccountTimeline() {
+    const input = useCardTimelineInput(account);
+    return (
+      <MessagesTimeline
+        {...buildProps()}
+        {...input}
+        routeThreadKey={`${CARD_KEY.environmentId}:${CARD_KEY.conversationId}`}
+        activeThreadEnvironmentId={EnvironmentId.make(CARD_KEY.environmentId)}
+        syncing
+      />
+    );
+  }
+  let renderer: ReactTestRenderer | null = null;
+  try {
+    await act(async () => {
+      renderer = create(
+        <RegistryContext value={account.registry}>
+          <AccountTimeline />
+        </RegistryContext>,
+      );
+    });
+    const text = () => JSON.stringify(renderer!.toJSON());
+    expect(text()).toContain("300 commands");
+    expect(text()).not.toContain("inspect-service");
+    expect(read).not.toHaveBeenCalled();
+    const opener = renderer!.root
+      .findAllByType("button")
+      .find((node) => node.children.includes("Show work"));
+    expect(opener).toBeDefined();
+    await act(async () => opener!.props.onClick());
+    expect(read).toHaveBeenCalledExactlyOnceWith(CARD_KEY, CARD_RUN, "later");
+    await act(async () =>
+      account.publish({
+        ...CARD_RECORDS,
+        spans: [{ runId: CARD_RUN, from: null, to: 2, reading: null }],
+      }),
+    );
+    expect(text()).toContain("inspect-service");
+    expect(
+      renderer!.root.findAll(
+        (node) => node.type === "div" && node.props["data-chat-kind"] === "step:command",
+      ),
+    ).toHaveLength(1);
+  } finally {
+    if (renderer !== null) await act(async () => renderer!.unmount());
+    account.close();
+  }
 });

@@ -1,3 +1,4 @@
+import { assembleRecordCard } from "../components/chat/MessagesTimeline.logic";
 /**
  * The run's result in the states pass 16's plan draws it: one result over
  * time — just finished, after the person merges its change, after a later
@@ -646,8 +647,8 @@ type RecordRow = Extract<MessagesTimelineRow, { kind: "record" }>;
 
 /** The run as a person who comes back to it reads it: its summary line, "Show work" beside it. */
 function record(key: string, state: ResultState): RecordRow {
-  return {
-    kind: "record",
+  const row: Omit<RecordRow, "chatItems" | "paging" | "hasWork" | "slot"> = {
+    kind: "record" as const,
     id: `record:${key}`,
     createdAt: ago(state.minutes),
     turnKey: key,
@@ -686,6 +687,7 @@ function record(key: string, state: ResultState): RecordRow {
     },
     outcome: state.outcome,
   };
+  return { ...row, ...assembleRecordCard(row) };
 }
 
 export function ResultStates() {

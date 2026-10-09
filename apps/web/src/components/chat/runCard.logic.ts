@@ -26,11 +26,25 @@ import {
   type RunStatus,
   type TurnHeaderActivity,
 } from "./MessagesTimeline.logic";
+import type { ChatMessage } from "../../types";
 import type { StepKind, WorkStep } from "./workSteps.logic";
 
+/** Meaningful streamed text changes structure; its bytes remain a leaf read. */
+export function messageHasText(
+  message: ChatMessage,
+  liveLines?: ReadonlyMap<string, boolean>,
+): boolean {
+  return liveLines?.get(message.id) ?? message.text.trim().length > 0;
+}
+
 /** A wordless thought has no line, in either the slot or the history. */
-export function chatItemHasLine(item: RecordItem): boolean {
-  return item.kind !== "thought" || item.messages.some((message) => message.text.trim().length > 0);
+export function chatItemHasLine(
+  item: RecordItem,
+  liveLines?: ReadonlyMap<string, boolean>,
+): boolean {
+  return (
+    item.kind !== "thought" || item.messages.some((message) => messageHasText(message, liveLines))
+  );
 }
 
 /**
@@ -40,10 +54,11 @@ export function chatItemHasLine(item: RecordItem): boolean {
  */
 export function selectChatItems(
   items: ReadonlyArray<RecordItem>,
+  liveLines?: ReadonlyMap<string, boolean>,
 ): ReadonlyArray<{ readonly item: RecordItem; readonly pairs: boolean }> {
   const selected: { readonly item: RecordItem; readonly pairs: boolean }[] = [];
   for (const item of items) {
-    if (!chatItemHasLine(item)) continue;
+    if (!chatItemHasLine(item, liveLines)) continue;
     const theirs =
       item.kind === "person" || (item.kind === "call" && item.entry.questionAnswer !== undefined);
     if (selected.length === 0 && theirs) continue;
@@ -491,6 +506,7 @@ export function slotModelOf(input: {
   readonly answering: boolean;
   readonly compacting: boolean;
   readonly items: ReadonlyArray<RecordItem>;
+  liveLines?: ReadonlyMap<string, boolean>;
 }): SlotModel {
   const { now } = input;
   if (input.compacting) return { live: [], filler: { kind: "condensing" } };
@@ -499,7 +515,7 @@ export function slotModelOf(input: {
   if (
     now?.kind === "writing" &&
     now.note !== undefined &&
-    now.note.message.text.trim().length > 0
+    messageHasText(now.note.message, input.liveLines)
   ) {
     return {
       live: [
@@ -519,7 +535,8 @@ export function slotModelOf(input: {
     case "after":
       return { live: [], filler: { kind: "after" } };
     case "thinking":
-      return now.key !== null && now.messages.some((message) => message.text.trim().length > 0)
+      return now.key !== null &&
+        now.messages.some((message) => messageHasText(message, input.liveLines))
         ? {
             live: [
               {

@@ -1,3 +1,4 @@
+import { assembleRecordCard } from "./MessagesTimeline.logic";
 import { EnvironmentId, TurnId } from "@t3tools/contracts";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
@@ -217,8 +218,8 @@ const status = (): RunStatus => ({
 });
 
 function record(items: ReadonlyArray<RecordItem>, overrides: Partial<RecordRow> = {}): RecordRow {
-  return {
-    kind: "record",
+  const row = {
+    kind: "record" as const,
     id: "record:turn-1",
     createdAt: at(0),
     turnKey: "turn-1",
@@ -230,6 +231,7 @@ function record(items: ReadonlyArray<RecordItem>, overrides: Partial<RecordRow> 
     outcome: null,
     ...overrides,
   };
+  return { ...row, ...assembleRecordCard(row) };
 }
 
 const STEPS = ["Build", "Prepare", "Deploy"] as const;

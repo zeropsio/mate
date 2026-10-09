@@ -1,3 +1,4 @@
+import { assembleRecordCard } from "../components/chat/MessagesTimeline.logic";
 /**
  * The run's card in the states pass 16's plan draws it, on the plan's own run
  * — Nova building a /status page: the now line in each of its states (a step,
@@ -242,8 +243,8 @@ function status(overrides: Partial<RunStatus>): RunStatus {
 type RecordRow = Extract<MessagesTimelineRow, { kind: "record" }>;
 
 function record(turnKey: string, overrides: Partial<RecordRow>): RecordRow {
-  return {
-    kind: "record",
+  const row = {
+    kind: "record" as const,
     id: `record:${turnKey}`,
     createdAt: ago(80),
     turnKey,
@@ -255,6 +256,7 @@ function record(turnKey: string, overrides: Partial<RecordRow>): RecordRow {
     outcome: null,
     ...overrides,
   };
+  return { ...row, ...assembleRecordCard(row) };
 }
 
 const running = (entry: WorkLogEntry): WorkLogEntry => ({

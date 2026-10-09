@@ -18,13 +18,8 @@ import type { ScrollPages } from "./engineCardPaging.logic";
 
 const NO_CARDS = Atom.make<Readonly<Record<string, EngineCardPaging>>>({});
 
-export interface CardPaging {
-  readonly paging: EngineCardPaging;
-  readonly pages: ScrollPages;
-}
-
 /** A conversation's cards not held whole, by the turn each draws. */
-function useCards(threadRef: ScopedThreadRef | null) {
+export function useEngineCardSnapshots(threadRef: ScopedThreadRef | null) {
   const host = useAtomValue(mateEngineHostAtom);
   const environmentId = threadRef?.environmentId ?? null;
   const conversationId = threadRef?.threadId ?? null;
@@ -33,27 +28,15 @@ function useCards(threadRef: ScopedThreadRef | null) {
       ? NO_CARDS
       : host.store.data.project(engineCardPaging, { environmentId, conversationId }),
   );
-  return { host, environmentId, conversationId, cards };
+  return cards;
 }
 
-/**
- * The turns of a conversation whose work its account does not hold whole, each still a card
- * (`deriveMessagesTimelineRows`' `unheldWork`); none for a V1 Mate's.
- */
-export function useEngineUnheldWork(
-  threadRef: ScopedThreadRef | null,
-): ReadonlySet<string> | undefined {
-  const { cards } = useCards(threadRef);
-  return useMemo(() => {
-    const turns = Object.entries(cards).flatMap(([turnId, card]) => (card.hasWork ? [turnId] : []));
-    return turns.length === 0 ? undefined : new Set(turns);
-  }, [cards]);
-}
-
-/** The card of turn `turnId` as its run's paging holds it; null when it is held whole. */
-export function useEngineCardPaging(turnId: string | null): CardPaging | null {
-  const { host, environmentId, conversationId, cards } = useCards(use(TimelineRowCtx).threadRef);
-  const paging = turnId === null ? null : (cards[turnId] ?? null);
+/** Execute the assembled card's paging intent; coverage is joined by the timeline. */
+export function useEngineCardPages(paging: EngineCardPaging | null): ScrollPages | null {
+  const host = useAtomValue(mateEngineHostAtom);
+  const threadRef = use(TimelineRowCtx).threadRef;
+  const environmentId = threadRef?.environmentId ?? null;
+  const conversationId = threadRef?.threadId ?? null;
   const earlierRun = paging?.pageRuns.earlier ?? null;
   const laterRun = paging?.pageRuns.later ?? null;
   const read = useCallback(
@@ -71,13 +54,10 @@ export function useEngineCardPaging(turnId: string | null): CardPaging | null {
       paging === null
         ? null
         : {
-            paging,
-            pages: {
-              earlier: paging.since !== null,
-              later: paging.through !== null,
-              reading: paging.reading !== null,
-              read,
-            },
+            earlier: paging.since !== null,
+            later: paging.through !== null,
+            reading: paging.reading !== null,
+            read,
           },
     [paging, read],
   );

@@ -1,3 +1,16 @@
+import { RegistryContext } from "@effect/atom-react";
+import { useEngineCardSnapshots } from "../../zerops/useEngineCardPaging";
+import { useEngineLiveStructure } from "../../zerops/useEngineLiveMessage";
+import { deriveMessagesTimelineRows } from "./MessagesTimeline.logic";
+import {
+  cardAccount,
+  CARD_KEY,
+  CARD_RUN,
+  CARD_THREAD,
+  CARD_RECORDS,
+  useCardTimelineInput,
+} from "./engineCard.test-fixtures";
+import { assembleRecordCard } from "./MessagesTimeline.logic";
 import { markupDom } from "../../../test/markupDom";
 import { ApprovalRequestId, EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
@@ -137,8 +150,8 @@ const SCRIPT = [
 type RecordRow = Extract<MessagesTimelineRow, { kind: "record" }>;
 
 function record(items: ReadonlyArray<RecordItem>, overrides: Partial<RecordRow> = {}): RecordRow {
-  return {
-    kind: "record",
+  const row = {
+    kind: "record" as const,
     id: "record:turn-1",
     createdAt: at(0),
     turnKey: "turn-1",
@@ -150,6 +163,7 @@ function record(items: ReadonlyArray<RecordItem>, overrides: Partial<RecordRow> 
     outcome: null,
     ...overrides,
   };
+  return { ...row, ...assembleRecordCard(row) };
 }
 
 const thought = (id: string, text: string): RecordItem => ({
@@ -963,6 +977,66 @@ describe("RunChat, as the person uses it", () => {
     globalThis.ResizeObserver = saved.resize;
     globalThis.requestAnimationFrame = saved.frame;
     vi.unstubAllGlobals();
+  });
+
+  it("shows a partly loaded card's summary and work opener, then opens the first account page once", async () => {
+    const read = vi.fn();
+    const account = cardAccount(read);
+    account.publish(CARD_RECORDS);
+    const shared = { ...SHARED, threadRef: CARD_THREAD, syncing: true };
+    function AccountRun() {
+      const input = useCardTimelineInput(account);
+      const cardPaging = useEngineCardSnapshots(CARD_THREAD);
+      const liveLines = useEngineLiveStructure(CARD_THREAD, input.timelineEntries);
+      const row = deriveMessagesTimelineRows({ ...input, cardPaging, liveLines }).find(
+        (row) => row.kind === "record",
+      );
+      if (row?.kind !== "record") throw new Error("card missing");
+      return <RunChat row={row} />;
+    }
+    let renderer: ReactTestRenderer | null = null;
+    try {
+      await act(async () => {
+        renderer = mounted(
+          <RegistryContext value={account.registry}>
+            <TimelineRowCtx value={shared}>
+              <TimelineRowActivityCtx value={ACTIVITY}>
+                <AccountRun />
+              </TimelineRowActivityCtx>
+            </TimelineRowCtx>
+          </RegistryContext>,
+        );
+      });
+      const text = () => JSON.stringify(renderer!.toJSON());
+      expect(text()).toContain("300 commands");
+      expect(text()).not.toContain("inspect-service");
+      expect(read).not.toHaveBeenCalled();
+      await act(async () => button(renderer!, "Show work").props.onClick());
+      expect(read).toHaveBeenCalledExactlyOnceWith(CARD_KEY, CARD_RUN, "later");
+      expect(text()).not.toContain("inspect-service");
+      await act(async () =>
+        account.publish({
+          ...CARD_RECORDS,
+          spans: [{ runId: CARD_RUN, from: null, to: 0, reading: "later" }],
+        }),
+      );
+      await act(async () =>
+        account.publish({
+          ...CARD_RECORDS,
+          spans: [{ runId: CARD_RUN, from: null, to: 2, reading: null }],
+        }),
+      );
+      expect(text()).toContain("inspect-service");
+      expect(
+        renderer!.root.findAll(
+          (node) => node.type === "div" && node.props["data-chat-kind"] === "step:command",
+        ),
+      ).toHaveLength(1);
+      expect(read).toHaveBeenCalledTimes(1);
+    } finally {
+      if (renderer !== null) await act(async () => renderer!.unmount());
+      account.close();
+    }
   });
 
   it("Continue targets the interrupted turn and leaves when accepted evidence clears it", () => {
