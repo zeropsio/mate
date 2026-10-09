@@ -970,6 +970,10 @@ describe("ZeropsDataPanel", () => {
     // Milo's 0.15.11 server could not decode the 0.15.14 client's summary
     // request (stress run 2, 2026-10-09); the panel said "unavailable" twice.
     it("A summary the Mate's server cannot answer says so once, with what fixes it.", async () => {
+      environmentState.environment = {
+        serverVersion: "0.15.11",
+        capabilities: { dataConsole: true },
+      };
       respond([SERVICE_SUPPORTED]);
       const answer = commandSpy.getMockImplementation()!;
       commandSpy.mockImplementation((args: { input: ZeropsDataConsoleRequest }) =>
@@ -986,6 +990,46 @@ describe("ZeropsDataPanel", () => {
       expect(text).toContain("Updating the Mate");
       expect(text).not.toContain("unavailable");
     });
+
+    // Milo 0.15.18 (stress run 3, 2026-10-09): its zcp's console has no summary yet; the panel told
+    // the up-to-date Mate to update and said "Something went wrong." under the list.
+    it.each([
+      ["the console does not offer it yet", "unsupported"],
+      ["the console fails it", "internal"],
+      ["fails with no reason", undefined],
+    ] as const)(
+      "A summary %s on an up-to-date Mate: it is never told to update, and the list carries no error.",
+      async (_case, code) => {
+        environmentState.environment = {
+          serverVersion: "0.15.18",
+          capabilities: { dataConsole: true },
+        };
+        respond([SERVICE_SUPPORTED]);
+        const answer = commandSpy.getMockImplementation()!;
+        commandSpy.mockImplementation((args: { input: ZeropsDataConsoleRequest }) =>
+          args.input.kind === "summary"
+            ? Promise.resolve(
+                AsyncResult.failure(
+                  code === undefined
+                    ? Cause.die(new Error("boom"))
+                    : Cause.fail(new ZeropsDataConsoleError({ code, message: "raw" })),
+                ),
+              )
+            : answer(args),
+        );
+        await serviceTab();
+        await flush();
+        const tree = render({ service: "db1", widthForTest: 420 });
+        const text = textOf(tree);
+        expect(text).toContain("No connection summary");
+        expect(text).not.toContain("Updating the Mate");
+        expect(findByAttribute(tree, "data-zerops-data-error")).toBeNull();
+        if (code === "unsupported") {
+          expect(text).not.toContain("Retry summary");
+          expect(findByAttribute(tree, "data-zerops-data-summary-error")).toBeNull();
+        }
+      },
+    );
 
     it("Unknown totals stay unknown, and searching loaded items never claims a complete search.", async () => {
       respond([SERVICE_SUPPORTED], (request) =>
