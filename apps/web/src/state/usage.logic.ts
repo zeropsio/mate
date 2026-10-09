@@ -1,3 +1,4 @@
+import { formatUsageCurrency } from "@t3tools/shared/usageFormat";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { UsageReport, UsageReportQuery, UsageSummaryInput } from "@t3tools/contracts";
@@ -75,6 +76,11 @@ export function usageNativeCosts(
       scale === 0
         ? padded
         : `${padded.slice(0, -scale)}.${padded.slice(-scale)}`.replace(/\.?0+$/u, "");
-    return [{ key, value: `${currency} ${decimal} · ${basis}` }];
+    return [
+      {
+        key,
+        value: `${formatUsageCurrency(Number(decimal), currency)} · ${basis === "provider-reported-estimate" ? "Agent-reported estimate" : "Agent-reported amount"}`,
+      },
+    ];
   });
 }

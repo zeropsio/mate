@@ -1,3 +1,4 @@
+import { InlineButton } from "../ui/button";
 import {
   type EnvironmentId,
   type ProviderConsumeResetCreditOutcome,
@@ -537,6 +538,7 @@ export function UsageLimitsSection({
   listed,
   environmentIds,
   unavailableNames = [],
+  onRetry,
 }: {
   readonly now: number;
   readonly identities: UsageEnvironmentIdentities;
@@ -544,6 +546,7 @@ export function UsageLimitsSection({
   readonly listed: boolean;
   readonly environmentIds?: ReadonlySet<EnvironmentId> | undefined;
   readonly unavailableNames?: readonly string[] | undefined;
+  readonly onRetry?: () => void;
 }) {
   const available = useAtomValue(environmentPresentations.presentationsAtom);
   const presentations = new Map<EnvironmentId, LimitsPresentation>(
@@ -590,8 +593,13 @@ export function UsageLimitsSection({
   if (state === "unavailable" || (state === "none" && unavailableNames.length > 0)) {
     return (
       <p className="text-sm text-muted-foreground">
-        Subscription limits could not be read from every environment. Reconnect or retry the
-        unavailable Mates.
+        Subscription limits could not be read from every Mate.
+        {onRetry === undefined ? null : (
+          <>
+            {" "}
+            <InlineButton onClick={onRetry}>Try again</InlineButton>
+          </>
+        )}
       </p>
     );
   }
@@ -599,7 +607,7 @@ export function UsageLimitsSection({
     return (
       <div className="flex flex-col gap-8">
         <p className="text-sm text-muted-foreground">
-          No provider on a connected environment reports subscription limits.
+          No coding agent on your connected Mates reports subscription limits.
         </p>
         {readingLine ? <WaitLine text={READING_LIMITS_LINE} /> : null}
       </div>
@@ -637,7 +645,7 @@ export function UsageLimitsSection({
         <p className="text-xs text-muted-foreground">
           Limits unavailable from{" "}
           {[...unavailableNames, ...placesOf(page.unread).map((place) => place.name)].join(", ")}.
-          Reconnect or retry these Mates.
+          Values from these Mates are not included.
         </p>
       ) : null}
       {/* Under the cards while more are on their way: a late answer joins above it, at the end. */}

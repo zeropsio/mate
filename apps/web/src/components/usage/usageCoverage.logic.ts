@@ -31,26 +31,32 @@ export function usageCoverageView(
     const text = [
       first.deleted ? "Deleted Mate; its recorded usage is retained." : null,
       unreported
-        ? "Hasn't reported usage yet."
+        ? "No usage from this Mate is recorded in this report."
         : dates[0] === undefined
           ? "Recording start is unknown."
           : `First recorded ${ago(dates[0], now)}.`,
+      sources.some((source) => source.value.gaps.includes("before-first-recorded-turn"))
+        ? "Activity before recording began is excluded."
+        : null,
       sources.some((source) => source.value.gaps.includes("codex-resumed-turns-unavailable"))
         ? "Usage from resumed Codex threads is unavailable."
         : null,
     ]
       .filter((value) => value !== null)
       .join(" ");
-    return { id, name: labels.get(id) ?? first.label ?? "Unnamed Mate", text };
+    return {
+      id,
+      mateId: first.mateId,
+      name: labels.get(id) ?? first.label ?? "Unnamed Mate",
+      text,
+    };
   });
   const since = report.recordedSince;
   const summary = [
-    since == null
-      ? "No recorded usage yet"
-      : `Recorded since ${formatDayShort(since.slice(0, 10))}`,
+    since == null ? null : `Recorded since ${formatDayShort(since.slice(0, 10))}`,
     waiting === 0
       ? null
-      : `${waiting}${report.coverageMore ? "+" : ""} ${waiting === 1 ? "Mate hasn't" : "Mates haven't"} reported yet`,
+      : `${waiting}${report.coverageMore ? "+" : ""} ${waiting === 1 ? "Mate has" : "Mates have"} no recorded usage`,
   ]
     .filter((value) => value !== null)
     .join(" · ");

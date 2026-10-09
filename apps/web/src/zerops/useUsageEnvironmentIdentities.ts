@@ -41,10 +41,11 @@ export function useUsageEnvironmentIdentities(): {
   readonly baseline: UsageOwnersStatus;
   readonly projects: ReadonlyMap<string, string>;
   readonly people: ReadonlyMap<string, UsageEnvironmentOwner>;
+  readonly refresh: () => void;
 } {
   const session = useZeropsSession();
   const signedIn = session.status === "signed-in";
-  const { listing } = useZeropsCandidates();
+  const { listing, refresh } = useZeropsCandidates();
   const environments = useAtomValue(zeropsEnvironmentsAtom);
   const people = useAtomValue(hqPeopleAtom);
   const navigation = useAtomValue(hqNavigationAtom);
@@ -106,5 +107,5 @@ export function useUsageEnvironmentIdentities(): {
       }
     return values;
   }, [signedIn, sameOrg, projectPeople, viewerUserId]);
-  return { identities, owners, listed, baseline, projects, people: knownPeople };
+  return { identities, owners, listed, baseline, projects, people: knownPeople, refresh };
 }

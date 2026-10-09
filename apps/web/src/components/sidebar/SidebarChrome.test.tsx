@@ -136,18 +136,13 @@ describe("SidebarChromeHeader", () => {
 });
 
 describe("SidebarUtilityMenu", () => {
-  // The foot keeps one shape across the routes that own it: the account row
-  // everywhere but the two pages that are somewhere else (settings, usage),
-  // where the only sensible control is the way back. The projects screen is
-  // the root of a Zerops account, so it is not "somewhere else" — the account
-  // row's own menu names it as the page that is open.
   it.each([
     { pathname: "/", back: false },
     { pathname: "/zerops", back: false },
     { pathname: "/zerops/", back: false },
     { pathname: "/settings", back: true },
     { pathname: "/settings/appearance", back: true },
-    { pathname: "/usage", back: true },
+    { pathname: "/usage", back: false },
   ])("on $pathname: back=$back", ({ pathname, back }) => {
     router.pathname = pathname;
     const markup = renderToStaticMarkup(<SidebarUtilityMenu />);
@@ -169,4 +164,12 @@ describe("SidebarUtilityMenu", () => {
       expect(markup).not.toContain(`aria-label="${label}"`);
     }
   });
+});
+
+it("Usage keeps its account and organization footer", () => {
+  router.pathname = "/usage";
+  const markup = renderToStaticMarkup(<SidebarUtilityMenu />);
+  expect(markup).toContain('aria-label="Account: Ada"');
+  expect(markup).toContain(">Zerops<");
+  expect(markup).not.toContain(">Back<");
 });

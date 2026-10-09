@@ -24,16 +24,16 @@ describe("Recorded coverage is human and quiet until requested", () => {
       new Map(),
       now,
     );
-    expect(view.summary).toBe("Recorded since Oct 8 · 2 Mates haven't reported yet");
+    expect(view.summary).toBe("Recorded since Oct 8 · 2 Mates have no recorded usage");
     expect(view.details).toHaveLength(30);
     expect(view.details[0]!.text).toContain("First recorded 2 hours ago");
-    expect(view.details[28]!.text).toBe("Hasn't reported usage yet.");
+    expect(view.details[28]!.text).toBe("No usage from this Mate is recorded in this report.");
     expect(JSON.stringify(view)).not.toMatch(
       /2026-10-08T|transcript|pricing cached|before-first-recorded-turn|codex-resumed/,
     );
   });
   it.each([
-    { name: "no turns", since: null, expected: "No recorded usage yet" },
+    { name: "no turns", since: null, expected: "" },
     { name: "recorded turns", since: "2026-10-08T10:00:00.000Z", expected: "Recorded since Oct 8" },
   ])("$name does not infer silence as missing participation", ({ since, expected }) => {
     const view = usageCoverageView(

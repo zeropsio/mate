@@ -21,6 +21,16 @@ export function formatUsd(value: number): string {
   return value > 0 && value < 0.01 ? "<$0.01" : CURRENCY.format(value);
 }
 
+/** Native amounts retain their unit; display precision does not alter the recorded amount. */
+export function formatUsageCurrency(value: number, currency: string): string {
+  if (currency === "USD") return formatUsd(value);
+  if (!/^[A-Z]{3}$/.test(currency))
+    return `${new Intl.NumberFormat("en-US", { maximumSignificantDigits: 3 }).format(value)} ${currency}`;
+  const formatter = new Intl.NumberFormat("en-US", { style: "currency", currency });
+  const smallest = 10 ** -(formatter.resolvedOptions().maximumFractionDigits ?? 2);
+  return value > 0 && value < smallest ? `<${formatter.format(smallest)}` : formatter.format(value);
+}
+
 /** A displayed subtotal keeps its exclusion visible beside the amount. */
 export function formatUsageCost(row: {
   costUsd: number;

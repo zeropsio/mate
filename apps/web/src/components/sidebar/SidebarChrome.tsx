@@ -194,12 +194,8 @@ function sidebarAccountDestinationIcon(id: SidebarAccountDestination["id"]) {
 export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigateToMainApp = useNavigateToMainApp();
   const { isMobile, setOpenMobile, toggleSidebar } = useSidebar();
-  // Where the footer is a way back: the pages that are somewhere else. The
-  // projects screen (/zerops) is the root of a Zerops account, not somewhere
-  // else — there the footer keeps its shape and lights its own icon, so the
-  // sidebar looks the same on every visit to the route.
-  const isOnUtilityPage = useLocation({
-    select: (location) => isSidebarUtilityPage(location.pathname),
+  const showBackFooter = useLocation({
+    select: (location) => location.pathname !== "/usage" && isSidebarUtilityPage(location.pathname),
   });
   // Where each destination goes, and which one is open, is the account row's
   // now: the four glyphs it replaced were the only readers.
@@ -216,7 +212,7 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
 
   return (
     <SidebarMenu className="flex-row items-center">
-      {isOnUtilityPage ? (
+      {showBackFooter ? (
         <SidebarMenuItem className="min-w-0 flex-1">
           <SidebarMenuButton onClick={handleBackClick}>
             <ArrowLeftIcon />

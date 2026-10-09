@@ -11,6 +11,8 @@ const state = vi.hoisted(() => ({
   failedNeighbor: false,
   presentations: new Map(),
   now: 0,
+  retry: vi.fn(),
+  retryRoster: vi.fn(),
 }));
 vi.mock("@effect/atom-react", async (original) => ({
   ...(await original<object>()),
@@ -43,11 +45,12 @@ vi.mock("../../state/usage", async (original) => {
         overall: actual.usageReportView(report),
         report,
         overallReport: report,
+        sections: { models: read, providers: read, periods: read },
         detailPending: false,
         detailUnavailable: false,
         read,
         stale: false,
-        refresh: vi.fn(),
+        refresh: state.retry,
       };
     },
   };
@@ -55,6 +58,7 @@ vi.mock("../../state/usage", async (original) => {
 vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
   useUsageEnvironmentIdentities: () => ({
     baseline: state.baseline,
+    refresh: state.retryRoster,
     listed: state.baseline === "resolved",
     owners: "resolved",
     projects: new Map([["app-a", "Shop"]]),
@@ -147,7 +151,7 @@ describe("Usage source transitions", () => {
   it("a cold scoped URL shows no zero, then the answered estimate", () => {
     const page = <UsagePage scope={{ project: "app-a" }} onScopeChange={vi.fn()} />;
     const tree = mount(page);
-    expect(text(tree)).toContain("Reading organization");
+    expect(text(tree)).toContain("Reading usage");
     expect(text(tree)).not.toContain("$0.00");
     expect(text(tree)).not.toContain("No activity");
     state.baseline = "resolved";
@@ -164,16 +168,16 @@ describe("Usage source transitions", () => {
     const tree = mount(section);
     act(() => vi.advanceTimersByTime(60_000));
     expect(text(tree)).toContain("Reading subscription limits");
-    expect(text(tree)).not.toContain("No provider");
+    expect(text(tree)).not.toContain("No coding agent");
     state.presentations = new Map([[EnvironmentId.make("env-a"), presentation("connected")]]);
     act(() => tree.update(cloneElement(section)));
-    expect(text(tree)).toContain("No provider");
+    expect(text(tree)).toContain("No coding agent");
     state.presentations = new Map([
       [EnvironmentId.make("env-a"), presentation("connected")],
       [EnvironmentId.make("env-b"), presentation("connecting")],
     ]);
     act(() => tree.update(cloneElement(section)));
-    expect(text(tree)).not.toContain("No provider");
+    expect(text(tree)).not.toContain("No coding agent");
     act(() => tree.unmount());
     vi.useRealTimers();
   });
@@ -280,7 +284,7 @@ it("an empty fast answer cannot turn an unresolved subtotal into zero", () => {
   const tree = mount(<UsagePage scope={{}} onScopeChange={vi.fn()} />);
   expect(text(tree)).not.toContain("$0.00");
   expect(text(tree)).not.toContain("No activity in this window");
-  expect(text(tree)).toContain("Reading organization usage from HQ");
+  expect(text(tree)).toContain("Reading usage");
   act(() => tree.unmount());
 });
 
@@ -291,8 +295,8 @@ it("an empty answer beside a terminal failure names the next action without clai
   state.failedNeighbor = true;
   const tree = mount(<UsagePage scope={{}} onScopeChange={vi.fn()} />);
   expect(text(tree)).not.toContain("$0.00");
-  expect(text(tree)).not.toContain("Reading organization usage from HQ");
-  expect(text(tree)).toContain("Reconnect or retry HQ access");
+  expect(text(tree)).not.toContain("Reading usage");
+  expect(text(tree)).toContain("Try again");
   act(() => tree.unmount());
 });
 
@@ -363,4 +367,43 @@ it("Limits receives the current shared clock while Usage stays open", () => {
   expect(text(tree)).toContain("reset confirmation pending");
   act(() => tree.unmount());
   vi.restoreAllMocks();
+});
+
+it("Usage recovery invokes its existing report retry and coverage selects the named Mate", () => {
+  state.baseline = "resolved";
+  state.answered = true;
+  state.failedNeighbor = true;
+  state.retry.mockClear();
+  const onScopeChange = vi.fn();
+  const tree = mount(<UsagePage scope={{}} onScopeChange={onScopeChange} />);
+  const retry = tree.root
+    .findAllByType("button")
+    .find((node) => node.children.includes("Try again"));
+  expect(retry).toBeDefined();
+  act(() => retry!.props.onClick());
+  expect(state.retry).toHaveBeenCalledTimes(1);
+  state.failedNeighbor = false;
+  act(() => tree.update(<UsagePage scope={{}} onScopeChange={onScopeChange} />));
+  const mate = tree.root.findByProps({ "aria-label": "Show usage for A" });
+  act(() => mate.props.onClick());
+  expect(onScopeChange.mock.calls).toEqual([[{ mate: "mate-a" }]]);
+  act(() => tree.unmount());
+});
+
+it("An unread Limits roster retries its roster owner instead of the Usage report", () => {
+  state.baseline = "unavailable";
+  state.retry.mockClear();
+  state.retryRoster.mockClear();
+  const tree = mount(<UsagePage scope={{}} onScopeChange={vi.fn()} />);
+  act(() =>
+    tree.root.findAllByProps({ "aria-label": "Usage metric" })[0]!.props.onValueChange(["limits"]),
+  );
+  const retry = tree.root
+    .findAllByType("button")
+    .find((node) => node.children.includes("Try again"));
+  expect(retry).toBeDefined();
+  act(() => retry!.props.onClick());
+  expect(state.retryRoster).toHaveBeenCalledTimes(1);
+  expect(state.retry).not.toHaveBeenCalled();
+  act(() => tree.unmount());
 });

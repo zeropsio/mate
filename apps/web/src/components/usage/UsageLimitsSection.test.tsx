@@ -21,7 +21,7 @@ vi.mock("../zerops/WaitLine", () => ({
 
 import { READING_LIMITS_LINE, UsageLimitsSection } from "./UsageLimits";
 
-const NONE = "No provider on a connected environment reports subscription limits.";
+const NONE = "No coding agent on your connected Mates reports subscription limits.";
 
 type Phase = "available" | "offline" | "connecting" | "reconnecting" | "connected" | "error";
 
@@ -79,4 +79,10 @@ it("missing Mate identity cannot establish that no account reports limits", () =
   );
   expect(html).not.toContain(NONE);
   expect(html).toContain("Subscription limits could not be read");
+});
+
+it("Limits names coding agents and Mates when every read reports no subscription limits", () => {
+  expect(render(true, ["a", environment("connected", [])])).toContain(
+    "No coding agent on your connected Mates reports subscription limits.",
+  );
 });

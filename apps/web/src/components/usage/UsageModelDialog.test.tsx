@@ -4,11 +4,18 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, expect, it, vi } from "vite-plus/test";
 import { UsageDay } from "@t3tools/contracts";
 import { recordedReport } from "./usageTestFixtures";
-const source = vi.hoisted(() => ({ read: { kind: "reading" } as AgentUsageRead, retry: vi.fn() }));
+const source = vi.hoisted(() => ({
+  read: { kind: "reading" } as AgentUsageRead,
+  retry: vi.fn(),
+  periodRead: null as AgentUsageRead | null,
+}));
 vi.mock("../../zerops/ZeropsAccountData", () => ({
   useAccountDataOptional: () => ({ orgId: "org", retryDetail: source.retry }),
   useDetailDemand: vi.fn(),
-  useProjection: () => source.read,
+  useProjection: (_projection: unknown, key: { owner: string } | null) =>
+    key !== null && JSON.parse(key.owner).groupBy === "day" && source.periodRead !== null
+      ? source.periodRead
+      : source.read,
 }));
 vi.mock("../ui/dialog", () => ({
   Dialog: "div",
@@ -57,6 +64,7 @@ function render() {
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   source.retry.mockClear();
+  source.periodRead = null;
 });
 it.each([
   { name: "pending", read: { kind: "reading" } as AgentUsageRead, text: "Reading model usage…" },
@@ -98,5 +106,14 @@ it("Unknown token categories in the model dialog require recorded unknown compon
   };
   const tree = render();
   expect(JSON.stringify(tree.toJSON())).toContain("Token categories are unknown.");
+  act(() => tree.unmount());
+});
+
+it("A retained model chart names its own freshness while the model totals stay current", () => {
+  source.read = { kind: "read", report, stale: false };
+  source.periodRead = { kind: "read", report, stale: true };
+  const tree = render();
+  expect(JSON.stringify(tree.toJSON())).toContain("Showing last known model chart.");
+  expect(JSON.stringify(tree.toJSON())).not.toContain("Showing last known model usage.");
   act(() => tree.unmount());
 });

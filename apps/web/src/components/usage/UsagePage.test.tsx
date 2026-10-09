@@ -23,6 +23,8 @@ const testState = vi.hoisted(() => ({
   providers: null as UsageReport | null,
   read: null as AgentUsageRead | null,
   stale: false,
+  provenance: "live-responses" as "live-responses" | "legacy-scanner",
+  sectionReads: {} as Partial<Record<string, AgentUsageRead>>,
 }));
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => new Map() }));
 vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
@@ -45,9 +47,11 @@ vi.mock("react", async (original) => {
                 untilTime: "2026-10-07T12:37:00.000Z",
               },
             }
-          : initial === "auto"
-            ? testState.breakdown
-            : initial,
+          : initial === "live-responses"
+            ? testState.provenance
+            : initial === "auto"
+              ? testState.breakdown
+              : initial,
       vi.fn(),
     ],
   };
@@ -75,6 +79,23 @@ vi.mock("../../state/usage", async (original) => {
             overall: actual.usageReportView(testState.report),
             report: testState.report,
             overallReport: testState.report,
+            sections: {
+              models: testState.sectionReads.model ?? {
+                kind: "read",
+                report: testState.models,
+                stale: false,
+              },
+              providers: testState.sectionReads.provider ?? {
+                kind: "read",
+                report: testState.providers,
+                stale: false,
+              },
+              periods: testState.sectionReads.hour ?? {
+                kind: "read",
+                report: testState.periods,
+                stale: false,
+              },
+            },
             detailPending: false,
             detailUnavailable: false,
             read: testState.read ?? {
@@ -94,6 +115,8 @@ vi.mock("../../zerops/ZeropsAccountData", () => ({
     if (key === null) return { kind: "reading" };
     const query = JSON.parse(key.owner) as UsageReportQuery;
     const report = query.ownerUserId === null ? testState.overallReport : testState.report;
+    const section = testState.sectionReads[query.groupBy];
+    if (section !== undefined) return section;
     return {
       kind: "read",
       stale: false,
@@ -211,6 +234,8 @@ it("A sole contributing Mate keeps its owner, project and name in the Usage summ
   expect(renderPage()).toContain("Fern · Shop · Ada");
 });
 beforeEach(() => {
+  testState.provenance = "live-responses";
+  testState.sectionReads = {};
   testState.metric = "cost";
   testState.hourly = true;
   testState.breakdown = "time";
@@ -431,11 +456,11 @@ describe("recorded HQ usage presentation", () => {
     expect(renderPage({ project: "app-a" })).toContain("app-a");
   });
   it.each([
-    { name: "a cold HQ source", read: { kind: "reading" }, message: "Reading organization" },
+    { name: "a cold HQ source", read: { kind: "reading" }, message: "Reading usage" },
     {
       name: "HQ refusal",
       read: { kind: "unavailable", reason: "HQ is offline" },
-      message: "Retry",
+      message: "Try again",
     },
     {
       name: "before the first fact",
@@ -456,7 +481,7 @@ describe("recorded HQ usage presentation", () => {
     testState.stale = true;
     const markup = renderPage();
     expect(markup).toContain("$7.83");
-    expect(markup).toContain("Last-known HQ report");
+    expect(markup).toContain("Showing last known usage.");
   });
   it("shows the recording boundary without inventing earlier consumption", () => {
     const markup = renderPage();
@@ -518,8 +543,8 @@ describe("recorded HQ usage presentation", () => {
   it("provider-reported costs remain separate from the API-equivalent estimate", () => {
     testState.report = recordedReport({ nativeCosts: { '["USD","response",6]': "1250000" } });
     const markup = renderPage();
-    expect(markup).toContain("Provider-reported costs");
-    expect(markup).toContain("USD 1.25");
+    expect(markup).toContain("Agent-reported costs");
+    expect(markup).toContain("$1.25");
     expect(markup).toContain("$7.83");
   });
   it("a turn using two models stays one headline turn and keeps its reported cost separate", () => {
@@ -550,8 +575,8 @@ describe("recorded HQ usage presentation", () => {
     expect(markup).not.toContain("2 turns");
     expect(markup).toContain("parent-model");
     expect(markup).toContain("child-model");
-    expect(markup).toContain("USD 1.25 · turn");
-    expect(markup).not.toContain("USD 2.5");
+    expect(markup).toContain("$1.25 · Agent-reported amount");
+    expect(markup).not.toContain("$2.50");
     expect(markup).toContain("A turn can use several models");
   });
   it.each([
@@ -638,4 +663,142 @@ it("A fully priced zero Usage record remains a known zero amount", () => {
     pricing: { ...recordedReport().pricing, costUsdNanos: "0" },
   });
   expect(renderPage()).toContain("$0.00");
+});
+
+it("Earlier history explains its own source once and names an empty historical period", () => {
+  testState.provenance = "legacy-scanner";
+  testState.hourly = false;
+  testState.report = recordedReport({
+    provenance: "legacy-scanner",
+    recordedSince: null,
+    totals: statistics("0", "0"),
+    coverage: [],
+  });
+  const html = renderPage();
+  expect(html).toContain("No earlier history is recorded for this period.");
+  expect(html.match(/may include activity outside Mate/g)).toHaveLength(1);
+  expect(html).not.toContain("agents and subagents running in Mate");
+  expect(html).not.toContain("No recorded Mate usage yet");
+  expect(html).not.toContain("No recorded usage yet");
+});
+it("Agent-reported amounts use readable currency and explain their separate estimate", () => {
+  testState.report = recordedReport({
+    nativeCosts: { '["USD","provider-reported-estimate",7]': "8265478" },
+  });
+  const html = renderPage();
+  expect(html).toContain("$0.83 · Agent-reported estimate");
+  expect(html).toContain(
+    "Reported by the coding agent, separately from the API-equivalent token-price estimate.",
+  );
+  expect(html).not.toContain("provider-reported-estimate");
+  expect(html).not.toContain("0.8265478");
+  expect(html).toContain("$7.83");
+});
+it("An unread Usage report names the failed read and offers Try again", () => {
+  testState.read = { kind: "unavailable", reason: "HQ denied access" };
+  const html = renderPage();
+  expect(html).toContain("Usage could not be read.");
+  expect(html).toContain("Try again");
+  expect(html).not.toContain("Restore HQ access");
+});
+it.each([
+  { group: "hour", breakdown: "time" as const, label: "hourly usage" },
+  { group: "model", breakdown: "model" as const, label: "model usage" },
+  { group: "provider", breakdown: "time" as const, label: "coding agent usage" },
+])(
+  "A retained $group detail names its own freshness while the primary report stays current",
+  ({ group, breakdown, label }) => {
+    testState.accountObservation = true;
+    testState.overallReport = testState.report;
+    testState.breakdown = breakdown;
+    const report =
+      group === "model"
+        ? testState.models!
+        : group === "provider"
+          ? testState.providers!
+          : testState.periods!;
+    testState.sectionReads[group] = { kind: "read", stale: true, report };
+    const html = renderPage({ person: "alice" });
+    expect(html).toContain(`Showing last known ${label}.`);
+    expect(html).toContain("Try again");
+    expect(html).not.toContain("Showing last known Usage.");
+    expect(html).toContain(
+      group === "model" ? "expensive-model" : group === "provider" ? "$7.83" : "$13.00",
+    );
+  },
+);
+it("Loading reserves the same five totals in the same order as the Usage report", () => {
+  const labels = (html: string) =>
+    [...html.matchAll(/<span class="text-xs text-muted-foreground">([^<]+)<\/span>/g)]
+      .map((match) => match[1])
+      .filter((text) =>
+        [
+          "Processed tokens",
+          "Cached input",
+          "Uncached input",
+          "Output",
+          "Cache write",
+          "Cache writes",
+          "Estimated cache savings",
+        ].includes(text!),
+      );
+  const loaded = labels(renderPage());
+  testState.read = { kind: "reading" };
+  const loading = renderPage();
+  expect(labels(loading)).toEqual(loaded);
+  expect(loading).toContain("Agent-reported costs");
+});
+it("Coverage explains missing records without diagnosing a broken Mate and offers its named scope", () => {
+  testState.report = recordedReport({
+    recordedSince: null,
+    coverage: [
+      {
+        mateId: "fern",
+        label: "Fern",
+        deleted: false,
+        value: { state: "unknown", since: null, through: null, gaps: [] },
+      },
+    ],
+  });
+  const html = renderPage();
+  expect(html).toContain("No usage from this Mate is recorded in this report.");
+  expect(html).toContain("Totals include only recorded activity.");
+  expect(html).toContain('aria-label="Show usage for Fern"');
+  expect(html).not.toContain("Hasn&#x27;t reported usage yet");
+});
+
+it.each([
+  { currency: "USD", quantity: "1", scale: 7, expected: "&lt;$0.01" },
+  { currency: "EUR", quantity: "8265478", scale: 7, expected: "€0.83" },
+  { currency: "JPY", quantity: "1", scale: 7, expected: "&lt;¥1" },
+  { currency: "credits", quantity: "1", scale: 7, expected: "0.0000001 credits" },
+  { currency: "USD", quantity: "0", scale: 7, expected: "$0.00" },
+])(
+  "Reported $currency amounts preserve a positive amount and their source unit",
+  ({ currency, quantity, scale, expected }) => {
+    testState.report = recordedReport({
+      nativeCosts: { [JSON.stringify([currency, "provider-reported-estimate", scale])]: quantity },
+    });
+    expect(renderPage()).toContain(expected);
+  },
+);
+it.each(["reading", "unavailable"] as const)(
+  "The Hour breakdown names its own %s read instead of reporting missing model data",
+  (kind) => {
+    testState.periods = null;
+    testState.sectionReads.hour = kind === "reading" ? { kind } : { kind, reason: "refused" };
+    const html = renderPage();
+    expect(html).toContain(
+      kind === "reading" ? "Reading hourly usage…" : "Hourly usage could not be read.",
+    );
+    expect(html).not.toContain("Model usage unavailable");
+    expect(html).not.toContain("No recorded model data");
+  },
+);
+it("A capped Usage report explains its visible limits without treating missing records as collection failures", () => {
+  testState.report = recordedReport({ groupsMore: true, coverageMore: true });
+  const html = renderPage();
+  expect(html).toContain("This report contains more sources or groups than can be shown.");
+  expect(html).toContain("More Mates are covered than can be listed.");
+  expect(html).not.toContain("could not be read");
 });

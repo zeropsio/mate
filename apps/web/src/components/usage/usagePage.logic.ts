@@ -56,10 +56,9 @@ export function usagePageState(input: {
           : "This old project-name URL is no longer supported. Choose a project to use its stable ID.",
     };
   }
-  if (input.read.kind === "reading")
-    return { kind: "reading", message: "Reading organization usage from HQ…" };
+  if (input.read.kind === "reading") return { kind: "reading", message: "Reading usage…" };
   if (input.read.kind === "unavailable")
-    return { kind: "unavailable", message: `${input.read.reason} Restore HQ access or retry.` };
+    return { kind: "unavailable", message: "Usage could not be read." };
   const report = input.read.report;
   if (report.state === "unsupported-exact-boundary")
     return {
@@ -70,9 +69,11 @@ export function usagePageState(input: {
     return {
       kind: "empty",
       message:
-        report.recordedSince == null
-          ? "No recorded Mate usage yet."
-          : "No recorded usage in this period.",
+        report.provenance === "legacy-scanner"
+          ? "No earlier history is recorded for this period."
+          : report.recordedSince == null
+            ? "No recorded Mate usage yet."
+            : "No recorded usage in this period.",
     };
   return { kind: report.state === "complete" ? "ready" : "partial", message: null };
 }
