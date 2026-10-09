@@ -41,7 +41,6 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   isActiveSubagentStatus,
-  type AgentPanelModel,
   type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
@@ -86,7 +85,6 @@ import { cn } from "~/lib/utils";
 import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
 import { useMateBrowserCallFrames } from "../../zerops/browserStreamLinks";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
-import { UNNAMED_HELPER } from "@t3tools/client-runtime/state/subagentRuntime";
 import { FixAction } from "./FixAction";
 import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
 import { RunShimmer } from "./RunShimmer";
@@ -114,7 +112,7 @@ import {
   type OperationCardRegions,
 } from "../../zerops/activity/useOperationCard";
 import { useZeropsTopology } from "../../zerops/useZeropsFeeds";
-import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
+import { helpersBubbleOf } from "./helpersBubble.logic";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
 import {
   browserCheckCaption,
@@ -2276,50 +2274,20 @@ function HelperFace() {
   );
 }
 
-/** The helpers a launch started, as the helpers panel knows them. */
-function spawnAgents(model: AgentPanelModel, spawn: NonNullable<WorkLogEntry["agentSpawn"]>) {
-  const memberIds = new Set(spawn.agentTaskIds);
-  const workflowGroup = spawn.workflowId
-    ? model.workflows.find((group) => group.workflow.id === spawn.workflowId)
-    : undefined;
-  const agents = workflowGroup
-    ? [...workflowGroup.phases.flatMap((phase) => phase.members), ...workflowGroup.unphasedMembers]
-    : model.directAgents.filter((agent) => memberIds.has(agent.id));
-  const count = Math.max(
-    agents.length,
-    Math.max(memberIds.size - (spawn.workflowId ? 1 : 0), 0),
-    1,
-  );
-  const summary = deriveAgentSpawnSummary({
-    agents,
-    agentCount: count,
-    coordinatorStatus: workflowGroup?.workflow.status,
-  });
-  const workflowName =
-    workflowGroup?.workflow.workflowName ?? workflowGroup?.workflow.title ?? null;
-  return { agents, count, summary, workflowName };
-}
-
 /** Helpers it started: how many and what for; each one, its state and what it said, opened under it. */
 function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
   const ctx = use(TimelineRowCtx);
   const disclosure = useDisclosure();
   const spawn = entry.agentSpawn;
   if (!spawn) return null;
-  const { agents, count, summary, workflowName } = spawnAgents(ctx.agentPanelModel, spawn);
-  const words = count === 1 ? "Started a helper" : `Started ${count} helpers`;
-  // A helper no one named says nothing past "Started a helper".
-  const what =
-    workflowName ??
-    agents
-      .map((agent) => agent.title)
-      .filter((title) => title !== UNNAMED_HELPER)
-      .join(" · ");
-  const failed = summary.tone === "failed";
+  const { agents, summary, words, what, failed, ended } = helpersBubbleOf(
+    ctx.agentPanelModel,
+    spawn,
+  );
   // Helpers not known yet: nothing to open onto.
   const opens = opensOnto({ control: "helpers", agents: agents.length });
   const head = (
-    <Headline column opens={opens} timeTone="muted" time={summary.live ? "Working" : null}>
+    <Headline column opens={opens} timeTone="muted" time={summary.live ? "Working" : ended}>
       <span>
         <span className="text-foreground/75">{words}</span>
         {what ? <span className="text-muted-foreground">{` · ${what}`}</span> : null}
