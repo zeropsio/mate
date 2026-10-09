@@ -59,22 +59,6 @@ export function mateStandUpHoldsComposer(input: {
 }
 
 /**
- * Whether an empty conversation with a Mate holds its composer back: while the stand-up waits on
- * its person, and wherever the Mate has no agent to run at all — nothing typed there could be acted on,
- * and the stage's sign-in is the one thing to do (the owner, of a composer under an unsigned
- * Mate: "this state shouldn't exist").
- */
-export function mateArrivalHoldsComposer(input: {
-  readonly standUpHolds: boolean;
-  /** The Mate has no agent to run (`zeropsAgentSignInRequired`). */
-  readonly signInRequired: boolean;
-  /** The conversation holds no message yet. */
-  readonly empty: boolean;
-}): boolean {
-  return input.standUpHolds || (input.signInRequired && input.empty);
-}
-
-/**
  * Whether one of the Mate's agents is signed in and this person's to run: the server records them
  * as its signer the moment their sign-in succeeds, never while its code is being checked; a token
  * belongs to the project and runs for anybody.
@@ -120,11 +104,11 @@ export function mateStandUpPhase(input: {
  * reads it as theirs; anybody else reading the conversation, as asked.
  */
 export function mateStandUpAskLine(
-  mate: Pick<ZeropsMateIdentity, "name" | "project">,
-  asker: "you" | "someone",
+  mate: Pick<ZeropsMateIdentity, "name" | "project" | "standUp">,
+  viewer: string | undefined,
 ): string {
   const of = mate.project === undefined ? "the project" : mate.project;
-  return asker === "you"
+  return askedOf(mate.standUp, viewer)
     ? `You asked ${mate.name} to stand up development of ${of}`
     : `${mate.name} was asked to stand up development of ${of}`;
 }

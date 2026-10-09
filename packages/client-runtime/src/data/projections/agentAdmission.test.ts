@@ -344,3 +344,46 @@ describe("one admission answer for composer, Send and Continue", () => {
     });
   });
 });
+
+describe("mateArrivalHoldsComposer", () => {
+  it.each([
+    { standUpHolds: true, signInRequired: false, empty: false, holds: true },
+    { standUpHolds: false, signInRequired: true, empty: true, holds: true },
+    // A conversation under way keeps its composer, whatever its sign-in says: it is read.
+    { standUpHolds: false, signInRequired: true, empty: false, holds: false },
+    { standUpHolds: false, signInRequired: false, empty: true, holds: false },
+  ])(
+    "stand-up $standUpHolds, no agent $signInRequired, empty $empty: holds $holds",
+    ({ holds, signInRequired, ...input }) => {
+      expect(
+        agentAdmission({
+          ...input,
+          environmentId: "rig",
+          instanceId: "codex",
+          viewerSubject: "viewer",
+          providers: [],
+          mateName: "Fen",
+          read: {
+            state: "known",
+            asOf: { ordinal: 1, atMs: 0 },
+            coverage: "complete",
+            freshness: { kind: "live" },
+            value: {
+              available: true,
+              agents: [
+                {
+                  agentId: "codex",
+                  credPresent: !signInRequired,
+                  flagOAuth: !signInRequired,
+                  flagToken: false,
+                  providerAuth: signInRequired ? "unauthenticated" : "authenticated",
+                  state: signInRequired ? "not-authorized" : "authorized",
+                },
+              ],
+            },
+          },
+        }).holdsComposer,
+      ).toBe(holds);
+    },
+  );
+});

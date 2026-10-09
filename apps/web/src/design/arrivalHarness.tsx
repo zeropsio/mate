@@ -571,7 +571,7 @@ const SHARED: TimelineRowSharedState = {
   onImageExpand: () => undefined,
   onOpenTurnDiff: () => undefined,
   speaker: { name: WREN.name, tint: WREN.tint, shape: WREN.shape },
-  standUpAsk: mateStandUpAskLine(WREN, "you"),
+  standUpAsk: mateStandUpAskLine(WREN, ADA),
   livePauseId: null,
   usagePause: null,
   onUsageAutoResumeChange: null,

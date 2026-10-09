@@ -20,7 +20,6 @@ import {
   mateStandUpHoldsComposer,
   type MateStandUpConversation,
 } from "./mateStandUp";
-import { useMateReadOnly } from "./useMateReadOnly";
 import { useZeropsMateDirectory } from "./useZeropsMates";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
@@ -31,6 +30,7 @@ import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
  */
 export function useMateStandUpAskLine(threadRef: ScopedThreadRef | null): string | null {
   const directory = useZeropsMateDirectory();
+  const viewer = useZeropsSessionOptional()?.user?.id;
   const threads = useThreadShells();
   const environmentId = threadRef?.environmentId ?? null;
   const whoLivesHere = environmentId === null ? null : zeropsMateAt(directory, environmentId);
@@ -40,12 +40,8 @@ export function useMateStandUpAskLine(threadRef: ScopedThreadRef | null): string
   );
   const main =
     threadRef !== null && resolvePrimaryConversation(own).primary?.id === threadRef.threadId;
-  const instanceId = own.find((thread) => thread.id === threadRef?.threadId)?.modelSelection
-    .instanceId;
-  // Somebody else's agent runs it: the viewer reads the ask, they did not make it.
-  const readOnly = useMateReadOnly(environmentId, instanceId);
   if (whoLivesHere?.kind !== "mate" || !main) return null;
-  return mateStandUpAskLine(whoLivesHere.mate, readOnly ? "someone" : "you");
+  return mateStandUpAskLine(whoLivesHere.mate, viewer);
 }
 
 export function useMateStandUp(input: {
