@@ -860,6 +860,54 @@ describe("ZeropsDataPanel", () => {
       return tree;
     }
 
+    it("leaves paging to the button where IntersectionObserver is missing", async () => {
+      vi.stubGlobal("IntersectionObserver", undefined);
+      try {
+        respond([SERVICE_SUPPORTED], (request) =>
+          request.kind === "tree"
+            ? {
+                kind: "tree",
+                nodes: request.page?.cursor
+                  ? [
+                      {
+                        ...ORDERS,
+                        name: "later",
+                        path: { service: "db1", segments: ["public", "later"] },
+                      },
+                    ]
+                  : [ORDERS],
+                nextCursor: request.page?.cursor ? "" : "next",
+              }
+            : undefined,
+        );
+        await serviceTab();
+        const tree = render({ service: "db1", widthForTest: 1200 });
+        const props = findComponent<Parameters<typeof ZeropsDataTree>[0]>(
+          tree,
+          ZeropsDataTree,
+        )!.props;
+        const renderedTree = ZeropsDataTree(props);
+        const more = findByAttribute(renderedTree, "data-zerops-data-tree-load-more");
+        expect(more).not.toBeNull();
+        (more!.props.onClick as () => void)();
+        await flush();
+        const after = findComponent<Parameters<typeof ZeropsDataTree>[0]>(
+          render({ service: "db1", widthForTest: 1200 }),
+          ZeropsDataTree,
+        )!.props;
+        expect(
+          Object.values(after.tree.entries).flatMap((entry) =>
+            entry.nodes.map((node) => node.name),
+          ),
+        ).toEqual(["later", "orders"]);
+        expect(
+          findByAttribute(ZeropsDataTree(after), "data-zerops-data-tree-load-more"),
+        ).toBeNull();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     it("does not page while a page is already in flight", async () => {
       respond([SERVICE_SUPPORTED]);
       let tree = await serviceTab();

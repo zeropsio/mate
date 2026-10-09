@@ -180,6 +180,21 @@ describe("ZeropsDataTree", () => {
     expect(leaf?.props["data-zerops-data-tree-node"]).toBe(treePathKey(LEAF_NODE.path));
   });
 
+  it("An empty scan page keeps its next cursor reachable.", () => {
+    const onLoadMore = vi.fn();
+    const tree = ZeropsDataTree({
+      onLoadMore,
+      onSelectNode: vi.fn(),
+      onToggleNode: vi.fn(),
+      rootPath: ROOT_PATH,
+      tree: applyTreePage(emptyTree, ROOT_PATH, { nodes: [], nextCursor: "scan-100" }),
+    });
+    const button = findByAttribute(tree, "data-zerops-data-tree-load-more");
+    expect(button).not.toBeNull();
+    (button!.props.onClick as () => void)();
+    expect(onLoadMore).toHaveBeenCalledWith(ROOT_PATH, "scan-100");
+  });
+
   it("Load more calls onLoadMore with the entry's path and cursor", () => {
     const loaded = applyTreePage(emptyTree, ROOT_PATH, {
       nodes: [LEAF_NODE],
