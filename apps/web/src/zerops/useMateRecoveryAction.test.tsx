@@ -12,6 +12,7 @@ import { useRestartMate } from "./mateRestart";
 import { MateRestartError } from "./mateRestartRefusal";
 import { ZeropsRestartMateDialog } from "../components/zerops/ZeropsRestartMateDialog";
 import { RecoveryOutcomeStatus } from "./recoveryOutcomes";
+import type { RecoveryToast } from "./recoveryToasts";
 type OperationReceipt = Extract<
   Parameters<ReturnType<typeof makeAccountStore>["dispatch"]>[0],
   { kind: "operation-receipt" }
@@ -37,6 +38,7 @@ vi.mock("~/components/ui/toast", () => ({ toastManager: { add: () => {} } }));
 vi.mock("@tanstack/react-router", async (actual) => ({
   ...(await actual<typeof import("@tanstack/react-router")>()),
   Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
+  useNavigate: () => () => {},
 }));
 
 vi.mock("../components/ui/dialog", () => {
@@ -117,6 +119,12 @@ function fixture(mode: "lost" | "accepted" | "refused" = "lost", form = false) {
     untilEnvironment: unused,
     readCreation: unused,
   };
+  // The shell's notifications, as the app's toast channel would hold them.
+  const toasts = new Map<string, RecoveryToast>();
+  const sink = {
+    show: (id: string, toast: RecoveryToast) => void toasts.set(id, toast),
+    close: (id: string) => void toasts.delete(id),
+  };
   let recovery: ReturnType<typeof useMateRecoveryAction>;
   function Origin() {
     recovery = useMateRecoveryAction("p");
@@ -147,7 +155,7 @@ function fixture(mode: "lost" | "accepted" | "refused" = "lost", form = false) {
       <AccountDataContext.Provider value={{ data: store.data, orgId: "org" } as AccountData}>
         <AccountOperationsContext.Provider value={operations}>
           {origin ? form ? <Form /> : <Origin /> : null}
-          <RecoveryOutcomeStatus />
+          <RecoveryOutcomeStatus toasts={sink} />
         </AccountOperationsContext.Provider>
       </AccountDataContext.Provider>
     </RegistryContext.Provider>
@@ -167,10 +175,9 @@ function fixture(mode: "lost" | "accepted" | "refused" = "lost", form = false) {
     });
   const shell = () =>
     JSON.stringify(
-      mounted!.root
-        .findByProps({ "aria-label": "Recovery results" })
-        .findAllByProps({ role: "status" })
-        .map((node) => node.findByType("span").children),
+      [...toasts.values()].map((toast) =>
+        [toast.title, toast.description].filter((part) => part !== undefined).join(" "),
+      ),
     );
   return {
     store,
@@ -185,6 +192,7 @@ function fixture(mode: "lost" | "accepted" | "refused" = "lost", form = false) {
     requestIds,
     receipt,
     shell,
+    toasts,
     mode: (next: typeof mode) => {
       mode = next;
     },
@@ -304,9 +312,38 @@ it("Decision: one derivation per state; consumers never recompute it; no new dom
   await f.press("restart");
   const origin = mounted!.root
     .findByProps({ "aria-label": "Recovery origin" })
-    .findByType("span").children;
+    .findByType("span")
+    .children.join("")
+    .trim();
   f.show(false);
   expect(f.shell()).toBe(JSON.stringify([origin]));
+});
+
+it("a recovery result shows over the page and moves nothing: no region is laid out in the page for it", async () => {
+  const f = fixture("refused");
+  f.show(true);
+  await f.press("restart");
+  f.show(false);
+  expect(f.shell()).toContain("Restart refused.");
+  // Only the screen reader's announcer is rendered in the page; the result floats as a toast.
+  expect(mounted!.root.findAllByProps({ role: "status" })).toEqual([]);
+  expect(mounted!.toJSON()).toMatchObject({ props: { "aria-live": "polite" } });
+});
+
+it("a failed recovery result stays until the person dismisses it, then leaves for good", async () => {
+  const f = fixture("refused");
+  f.show(true);
+  await f.press("restart");
+  f.show(false);
+  const [toast] = [...f.toasts.values()];
+  expect(toast?.type).toBe("error");
+  expect(toast?.action.label).toBe("Open Wren");
+  await act(async () => {
+    f.toasts.delete(f.requestIds[0]!);
+    toast!.onDismiss();
+  });
+  f.show(false);
+  expect(f.shell()).toBe("[]");
 });
 
 it("closing and reopening the restart confirmation retains uncertainty and checks the same request", async () => {
