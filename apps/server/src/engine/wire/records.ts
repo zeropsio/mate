@@ -172,7 +172,8 @@ export const makeRecords = Effect.gen(function* () {
           AND json_extract(body_json, '$.step') IN ('tool', 'mcp')
         GROUP BY run_id, tool
       `;
-      // The files an edit names where V1's row reads them (`collectChangedFiles`' keys).
+      // The files an edit names where V1's row reads them (`collectChangedFiles`' keys), and where
+      // Claude's Write and Edit name theirs (`file_path`, a notebook's `notebook_path`).
       const edits = yield* sql<{
         readonly run_id: string;
         readonly item_id: string;
@@ -185,7 +186,10 @@ export const makeRecords = Effect.gen(function* () {
           FROM engine_item AS item, json_tree(item.body_json, '$.shows') AS tree
           WHERE ${sql.in("item.run_id", ids)} AND item.kind = 'call'
             AND json_extract(item.body_json, '$.step') = 'edit' AND tree.type = 'text'
-            AND tree.key IN ('path', 'filePath', 'relativePath', 'filename', 'newPath', 'oldPath')
+            AND tree.key IN (
+              'path', 'filePath', 'file_path', 'notebook_path', 'relativePath', 'filename',
+              'newPath', 'oldPath'
+            )
         ) AS named ON named.item_id = edit.item_id
         WHERE ${sql.in("edit.run_id", ids)} AND edit.kind = 'call'
           AND json_extract(edit.body_json, '$.step') = 'edit'

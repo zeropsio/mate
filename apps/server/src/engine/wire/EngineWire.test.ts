@@ -497,11 +497,30 @@ describe("a client reading more of an engine conversation", () => {
             zerops_workflow: 2,
             zerops_knowledge: 1,
           });
-          // Two files named, and the write that names none counted once.
+          // Two files the patches named, and the one the write named by its `file_path`.
           assert.strictEqual(summary.edited, 3);
           yield* w.shutdown;
         }),
       ),
+  );
+
+  it.effect("a file written and then edited again counts as one file edited", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "Write primes.js, then make it print 30" });
+        yield* w.agent((agent, thread) => agent.write(thread, "/tmp/s/primes.js", "20"));
+        yield* w.agent((agent, thread) => agent.write(thread, "/tmp/s/primes.js", "30"));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const [snapshot] = yield* Effect.scoped(watch(w, wire));
+        if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+        const { summary } = snapshot.runs.at(-1)!;
+        assert.strictEqual(summary.calls.edit, 2);
+        assert.strictEqual(summary.edited, 1);
+        yield* w.shutdown;
+      }),
+    ),
   );
 
   it.effect("gets a long message cut to the wire's budget and reads it whole on demand", () =>
