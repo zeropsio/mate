@@ -912,7 +912,9 @@ export const engineRunCards: Projection<
           if (item.kind !== "known" || item.value.kind !== "work") continue;
           card.holdsWork = true;
           if (!ALIVE_WORK.has(item.value.status) || item.value.workKind === "monitor") continue;
-          if (item.value.workKind === "helper") helpers += 1;
+          // A helper's own command is its helper's work, never one the Mate sent (Milo's third
+          // stress run waited on "its helpers and 2 background commands": the helper's own).
+          if (item.value.workKind === "helper" || item.value.by.kind === "helper") helpers += 1;
           else commands += 1;
         }
       if (card.runs.at(-1)?.state === "ended" && helpers + commands > 0)
