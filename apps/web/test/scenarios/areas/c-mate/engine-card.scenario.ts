@@ -187,6 +187,45 @@ describe("C: an engine Mate's run card in a live conversation", () => {
         }),
     );
 
+    // Milo's third stress run: each message sent moved the conversation 130 px in one frame.
+    it.effect("a message the person sends moves the conversation by a glide, never a jump", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* longConversation;
+        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+        yield* trace(s.page, "The existing conversation is still here");
+        yield* chat.when.send("Check the storefront again");
+        const frames = yield* readTrace(s.page, 1500);
+        expect(frames.length, "ASSERTION: the send was sampled").toBeGreaterThan(20);
+        expect(
+          largestStep(frames, (frame) => frame.anchor),
+          "ASSERTION: the conversation never jumps as the message goes",
+        ).toBeLessThan(60);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Milo's third stress run: a steer landing in the running run moved the conversation 105 px.
+    it.effect(
+      "a message steered into the running run lands above its card without moving the page",
+      () =>
+        Effect.gen(function* () {
+          const { s, chat, engine } = yield* longConversation;
+          const run = engine.personRun("Check both pages");
+          engine.note(run, "Checking the first page now.");
+          yield* chat.then.text("Checking the first page now.");
+          yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+          yield* trace(s.page, "Checking the first page now.");
+          yield* chat.when.send("also tell me the page title");
+          const frames = yield* readTrace(s.page, 1500);
+          expect(frames.length, "ASSERTION: the steer was sampled").toBeGreaterThan(20);
+          expect(
+            largestStep(frames, (frame) => frame.anchor),
+            "ASSERTION: the conversation never jumps as the steer lands",
+          ).toBeLessThan(60);
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
     // Milo's stress run: the question opening in the composer pushed the conversation up 250 px in
     // one frame, and the answer pulled it back down.
     it.effect("a question opening in the composer and its answer never move the conversation", () =>
