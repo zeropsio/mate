@@ -372,25 +372,42 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.then.text("A short story about a lighthouse cat");
         // The message went into that turn: when it ends, nothing else works.
         yield* chat.then.control("Stop generation", "button", false);
-        // The conversation's words in order; the header's subject quotes the last ask as well.
-        const text = yield* Effect.promise(() =>
-          s.page.evaluate(() => {
-            const main = document.querySelector("main");
-            if (main === null) return "";
-            const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
-            let words = "";
-            while (walker.nextNode()) {
-              const node = walker.currentNode;
-              if (!node.parentElement?.closest("[data-conversation-subject]"))
-                words += `${node.textContent ?? ""}\n`;
-            }
-            return words;
-          }),
+        // A retained answer is a message outside the folding work. Seeing its text inside
+        // the closing card alone does not prove that completion kept the answer.
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(
+            () =>
+              [...document.querySelectorAll('[data-message-role="assistant"]')].some(
+                (row) =>
+                  row.textContent?.includes("A short story about a lighthouse cat") &&
+                  row.getBoundingClientRect().height > 0,
+              ),
+            { timeout: 8000 },
+          ),
         );
-        // Where V1 draws a message sent into its running turn: after the answer it settled with.
-        expect(text.indexOf("Change of plan: keep it under 120 words")).toBeGreaterThan(
-          text.indexOf("A short story about a lighthouse cat"),
+        // The virtualized list recycles its DOM out of display order. Read the actual
+        // message boxes: the sent message stays above the run and its retained answer.
+        const messages = yield* Effect.promise(() =>
+          s.page.evaluate(() =>
+            [...document.querySelectorAll("[data-message-role]")].map((row) => ({
+              role: row.getAttribute("data-message-role"),
+              text: row.textContent,
+              top: row.getBoundingClientRect().top,
+              bottom: row.getBoundingClientRect().bottom,
+            })),
+          ),
         );
+        const sent = messages.filter(
+          (row) =>
+            row.role === "user" && row.text?.includes("Change of plan: keep it under 120 words"),
+        );
+        const answers = messages.filter(
+          (row) =>
+            row.role === "assistant" && row.text?.includes("A short story about a lighthouse cat"),
+        );
+        expect(sent).toHaveLength(1);
+        expect(answers).toHaveLength(1);
+        expect(sent[0]!.bottom).toBeLessThanOrEqual(answers[0]!.top);
         yield* chat.then.once("Change of plan: keep it under 120 words");
         yield* s.then.noExternalNetwork;
       }),

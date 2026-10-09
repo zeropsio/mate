@@ -296,7 +296,7 @@ export class MateEngineFake {
         streaming: false,
         answer: true,
       });
-      if (end !== undefined) this.endRun(change, run, end, item);
+      if (end !== undefined) this.endRun(change, run, end);
       return item;
     });
   }
@@ -327,9 +327,9 @@ export class MateEngineFake {
     this.commit((change) => this.setItem(change, itemId, patch));
   }
 
-  /** The run ends; `answer`, the note that is its answer. */
-  end(run: string, end: RunEnd = { kind: "completed" }, answer?: string): void {
-    this.commit((change) => this.endRun(change, run, end, answer));
+  /** The run ends, retaining its latest closed Mate note as the wire's summary does. */
+  end(run: string, end: RunEnd = { kind: "completed" }): void {
+    this.commit((change) => this.endRun(change, run, end));
   }
 
   /** Text streams into an item, never recorded: each subscriber hears it at its offset. */
@@ -444,8 +444,13 @@ export class MateEngineFake {
     change.runs.add(id);
   }
 
-  private endRun(change: Changed, id: string, end: RunEnd, answerItemId?: string) {
+  private endRun(change: Changed, id: string, end: RunEnd) {
     const run = this.runs.get(id)!;
+    // The real wire's records.ts derives this from closed Mate notes in opened-sequence order.
+    const answer = [...this.items.values()].findLast(
+      (item) =>
+        item.runId === id && item.kind === "note" && item.by.kind === "mate" && !item.streaming,
+    );
     this.setRun(change, id, {
       state: "ended",
       turnState:
@@ -460,7 +465,7 @@ export class MateEngineFake {
       end,
       endSource: "agent",
       endedAt: this.stamp(this.seq),
-      summary: { ...run.summary, answerItemId: answerItemId ?? run.summary.answerItemId },
+      summary: { ...run.summary, answerItemId: answer?.id ?? null },
     });
   }
 
