@@ -67,8 +67,10 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
       blockers.push("provider state changed during idle proof");
     return { idle: blockers.length === 0, blockers } satisfies UpdateIdleFacts;
   }).pipe(
-    Effect.catchCause(() =>
-      Effect.succeed<UpdateIdleFacts>({ idle: false, blockers: ["engine state unreadable"] }),
+    Effect.catchCause((cause) =>
+      Effect.logWarning("engine update drain: state unreadable", { cause }).pipe(
+        Effect.as<UpdateIdleFacts>({ idle: false, blockers: ["engine state unreadable"] }),
+      ),
     ),
   );
 

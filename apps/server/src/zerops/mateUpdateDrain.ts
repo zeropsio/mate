@@ -20,6 +20,15 @@ export function drainMateUpdate(
   deadline: Duration.Input = MATE_UPDATE_DRAIN_DEADLINE,
 ): Effect.Effect<boolean> {
   let drained = false;
+  // What the drain last waited on: a refused drain names it in the runtime log.
+  let waitingOn = "";
+  const waitOn = (facts: UpdateIdleFacts) =>
+    Effect.suspend(() => {
+      const words = facts.blockers.join("; ");
+      if (words === waitingOn) return Effect.void;
+      waitingOn = words;
+      return Effect.logInfo(`mate update: waiting on ${words}`);
+    });
   return Effect.gen(function* () {
     if (!(yield* ports.allowed)) return false;
     yield* ports.begin;
@@ -30,12 +39,15 @@ export function drainMateUpdate(
         if (facts.idle) {
           const settled = yield* ports.quiesce;
           if (settled.idle && (yield* ports.allowed)) return true;
-        }
+          yield* waitOn(settled);
+        } else yield* waitOn(facts);
         yield* ports.changed;
       }
     });
     const result = yield* wait.pipe(Effect.timeoutOption(deadline));
     drained = Option.isSome(result) && result.value;
+    if (Option.isNone(result))
+      yield* Effect.logInfo(`mate update: not idle before the drain deadline: ${waitingOn}`);
     return drained;
   }).pipe(Effect.ensuring(Effect.suspend(() => (drained ? Effect.void : ports.cancel))));
 }
