@@ -15,6 +15,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { RightPanelTabs } from "~/components/RightPanelTabs";
+import type { RightPanelSurface } from "~/rightPanelStore";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
 import { VAULT_FIXTURE, vaultFixtureImpact } from "~/components/zerops/vault/vaultFixture";
 import { VAULT_STORE_FIXTURE } from "~/components/zerops/vault/vaultStoreFixture";
@@ -37,6 +38,27 @@ const VIEWS: Record<string, VaultView> = {
   live: { ...VAULT_FIXTURE, notLive: [] },
 };
 const VIEW = params.get("data") === "store" ? VAULT_STORE_FIXTURE : (VIEWS[STATE] ?? VAULT_FIXTURE);
+
+/** `?tabs=many`: the ten tabs a stress run opened, more than the panel's strip holds. */
+const MANY_TABS = params.get("tabs") === "many";
+const TEN_TABS: RightPanelSurface[] = [
+  { id: "browser", kind: "browser" },
+  {
+    id: "terminal:1",
+    kind: "terminal",
+    resourceId: "1",
+    terminalIds: ["1"],
+    activeTerminalId: "1",
+  },
+  { id: "files", kind: "files" },
+  { id: "diff", kind: "diff" },
+  { id: "git", kind: "git" },
+  { id: "zerops", kind: "zerops" },
+  { id: "data", kind: "data" },
+  { id: "mcp", kind: "mcp" },
+  { id: "vault", kind: "vault" },
+  { id: "agents", kind: "agents" },
+];
 
 function Harness() {
   return (
@@ -65,10 +87,14 @@ function Harness() {
         onCloseSurfacesToRight={noop}
         onCopyFilePath={noop}
         pendingSurfaceIds={new Set()}
-        surfaces={[
-          { id: "zerops", kind: "zerops" },
-          { id: "vault", kind: "vault" },
-        ]}
+        surfaces={
+          MANY_TABS
+            ? TEN_TABS
+            : [
+                { id: "zerops", kind: "zerops" },
+                { id: "vault", kind: "vault" },
+              ]
+        }
         terminalLabelsById={new Map()}
         widthStorageKey="mate:design-vault:panel-width"
       >
