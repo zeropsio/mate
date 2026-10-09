@@ -93,7 +93,11 @@ function sourceShape(path: string, text: string): string | undefined {
   const parsed = parseSync(path, text);
   if (parsed.errors.length) return undefined;
   return JSON.stringify(parsed.program, (key, value: unknown) =>
-    key === "start" || key === "end" ? undefined : value,
+    key === "start" || key === "end"
+      ? undefined
+      : typeof value === "bigint"
+        ? value.toString()
+        : value,
   );
 }
 

@@ -1062,3 +1062,35 @@ it("Decision: no check is skipped for changed code; a passing receipt is reused 
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
 });
+
+it("BigInt source edits select checks while comments alone select none", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-bigint-"));
+  const path = "asset.ts";
+  const file = NodePath.join(root, path);
+  const git = (...args: string[]) => {
+    const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr);
+  };
+  try {
+    NodeFS.writeFileSync(file, "export const bytes = 1n;\n");
+    git("init", "-q");
+    git("config", "user.name", "Gate fixture");
+    git("config", "user.email", "gate@example.test");
+    git("add", ".");
+    git("commit", "-qm", "BigInt fixture");
+    for (const [source, expected] of [
+      ["// retained bytes\nexport const bytes = 1n;\n", []],
+      ["export const bytes = 2n;\n", [path]],
+      ['export const bytes = "1";\n', [path]],
+    ] as const) {
+      NodeFS.writeFileSync(file, source);
+      expect(
+        () => meaningfulChanges(root, "HEAD", [path]),
+        "ASSERTION: a BigInt literal cannot prevent the gate from selecting checks",
+      ).not.toThrow();
+      expect(meaningfulChanges(root, "HEAD", [path]).paths).toEqual(expected);
+    }
+  } finally {
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
