@@ -12,6 +12,8 @@ export default defineConfig({
         test: {
           name: "scenarios",
           include: ["test/scenarios/areas/**/*.scenario.ts"],
+          // Journeys of the engine's own records run on its wire alone.
+          exclude: ["**/node_modules/**", "test/scenarios/areas/c-mate/engine-*.scenario.ts"],
           environment: "node",
           globalSetup: [
             "test/scenarios/harness/build.ts",
@@ -26,7 +28,10 @@ export default defineConfig({
       {
         test: {
           name: "scenarios-engine",
-          include: ["test/scenarios/areas/c-mate/chat.scenario.ts"],
+          include: [
+            "test/scenarios/areas/c-mate/chat.scenario.ts",
+            "test/scenarios/areas/c-mate/engine-*.scenario.ts",
+          ],
           environment: "node",
           globalSetup: [
             "test/scenarios/harness/build.ts",
