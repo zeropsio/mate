@@ -1,4 +1,8 @@
-import { inspectDeployLog, type DeployLogTarget } from "@t3tools/client-runtime/zerops/hq";
+import {
+  deployLogProcess,
+  inspectDeployLog,
+  type DeployLogTarget,
+} from "@t3tools/client-runtime/zerops/hq";
 import { useSecondsNowMs } from "../useNowMs";
 import { useBuildLog } from "./useBuildLog";
 import { useProjectActivity } from "./useProjectActivity";
@@ -6,13 +10,7 @@ import { useProjectActivity } from "./useProjectActivity";
 /** A user-opened inspection leases the account's process history and builder log until closed. */
 export function useDeployLog(projectId: string, target: DeployLogTarget, service: string) {
   const activity = useProjectActivity(projectId);
-  const process = activity.processes?.find(
-    (entry) =>
-      entry.projectId === projectId &&
-      (target.processId === null
-        ? entry.appVersion?.id === target.appVersionId
-        : entry.id === target.processId),
-  );
+  const process = deployLogProcess(target, projectId, activity.processes ?? []);
   const nowMs = useSecondsNowMs(process?.status === "RUNNING" || process?.status === "PENDING");
   const read =
     activity.processes === undefined

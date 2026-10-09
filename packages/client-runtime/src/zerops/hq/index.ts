@@ -48,7 +48,12 @@ export {
   type DeployAnswerJob,
   type DeployAnswerSaid,
 } from "./deployAnswer.ts";
-export { deployLogTarget, inspectDeployLog, type DeployLogTarget } from "./deployLog.ts";
+export {
+  deployLogTarget,
+  deployLogProcess,
+  inspectDeployLog,
+  type DeployLogTarget,
+} from "./deployLog.ts";
 export { hqUpdateOffered, hqUpdateState, type HqUpdateState } from "./update.ts";
 export {
   birthIntentOf,

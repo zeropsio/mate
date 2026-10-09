@@ -18,6 +18,7 @@ const mock = vi.hoisted(() => ({
 vi.mock("~/zerops/activity/useProjectActivity", async () => {
   const { useEffect } = await import("react");
   return {
+    useProjectActivityRead: () => mock.activity,
     useProjectActivity: (projectId: string | null) => {
       useEffect(() => {
         mock.demands.push(projectId);
@@ -148,4 +149,12 @@ describe("deploy inspection", () => {
       });
     },
   );
+});
+
+it("discloses known missing deploy history before opening without starting another read", () => {
+  mock.activity = { processes: [], live: false, processHistory: "read" };
+  mount();
+  expect(JSON.stringify(tree.toJSON())).toContain("Deploy history unavailable");
+  expect(JSON.stringify(tree.toJSON())).not.toContain("View deploy");
+  expect(mock.demands).toEqual([]);
 });

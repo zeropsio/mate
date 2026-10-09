@@ -1,5 +1,6 @@
+import { useProjectActivityRead } from "~/zerops/activity/useProjectActivity";
 import { useState } from "react";
-import type { DeployLogTarget } from "@t3tools/client-runtime/zerops/hq";
+import { deployLogProcess, type DeployLogTarget } from "@t3tools/client-runtime/zerops/hq";
 import { useDeployLog } from "~/zerops/activity/useDeployLog";
 import { Button } from "../ui/button";
 import { ZeropsBuildLog } from "./ZeropsBuildLog";
@@ -16,10 +17,20 @@ export function ZeropsDeployLog({
   readonly service: string;
 }) {
   const [open, setOpen] = useState(false);
+  const history = useProjectActivityRead(projectId);
+  const unavailable =
+    history.processHistory === "read" &&
+    history.processes !== undefined &&
+    deployLogProcess(target, projectId, history.processes)?.appVersion === undefined;
   return (
     <div className="pb-2" data-zerops-deploy-job={target.jobId}>
+      {!open && unavailable ? (
+        <p className="text-xs text-muted-foreground">
+          Deploy history unavailable in Zerops’ recent processes.
+        </p>
+      ) : null}
       <Button aria-expanded={open} onClick={() => setOpen(!open)} size="compact" variant="ghost">
-        {open ? "Hide deploy" : "View deploy"}
+        {open ? "Hide deploy" : unavailable ? "Check deploy history" : "View deploy"}
       </Button>
       {open ? (
         <DeployLogDetails

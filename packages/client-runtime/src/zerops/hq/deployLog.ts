@@ -29,13 +29,7 @@ export function inspectDeployLog(
 ):
   | { readonly pipeline: PipelineReadout; readonly query?: BuildLogQuery; readonly live: boolean }
   | undefined {
-  const process = processes.find(
-    (entry) =>
-      entry.projectId === projectId &&
-      (target.processId !== null
-        ? entry.id === target.processId
-        : target.appVersionId !== null && entry.appVersion?.id === target.appVersionId),
-  );
+  const process = deployLogProcess(target, projectId, processes);
   if (process?.appVersion === undefined) return undefined;
   const pipeline = readPipeline(process.appVersion, {
     nowMs,
@@ -50,4 +44,19 @@ export function inspectDeployLog(
       (process.status === "RUNNING" || process.status === "PENDING") &&
       pipelineTerminalOutcome(getPipelineState(process.appVersion)) === undefined,
   };
+}
+
+/** Match the same durable process identity before opening and while inspecting. */
+export function deployLogProcess(
+  target: DeployLogTarget,
+  projectId: string,
+  processes: ReadonlyArray<ActivityProcess>,
+) {
+  return processes.find(
+    (entry) =>
+      entry.projectId === projectId &&
+      (target.processId !== null
+        ? entry.id === target.processId
+        : target.appVersionId !== null && entry.appVersion?.id === target.appVersionId),
+  );
 }
