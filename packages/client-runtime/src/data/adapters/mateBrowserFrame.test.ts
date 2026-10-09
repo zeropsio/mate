@@ -40,6 +40,45 @@ function rig() {
   };
 }
 
+// The agent's browser lives only for each 3-7 s tool call, so the panel said
+// "hasn't opened a browser yet" nearly the whole of Milo's stress run 2.
+describe("the last page the agent's browser showed", () => {
+  const derive = (r: ReturnType<typeof rig>) =>
+    mateBrowserStream.derive(readsOfState(r.store.state()), "mate");
+
+  it("keeps the last frame, its address and when it came once the browser closes", () => {
+    const r = rig();
+    r.sink.event({ type: "state", status: "live", url: "https://app.dev/", title: "App" }, 1000);
+    r.sink.event(image, 1500);
+    r.sink.event({ type: "state", status: "no-browser" }, 4000);
+    expect(derive(r)).toEqual({
+      status: "no-browser",
+      url: "https://app.dev/",
+      title: "App",
+      last: { frame: image, atMs: 1500 },
+    });
+    r.registry.dispose();
+  });
+
+  it("is the live view again as soon as the agent's browser sends a new frame", () => {
+    const r = rig();
+    r.sink.event({ type: "state", status: "live" }, 1000);
+    r.sink.event(image, 1500);
+    r.sink.event({ type: "state", status: "no-browser" }, 4000);
+    r.sink.event({ type: "state", status: "live" }, 9000);
+    r.sink.event({ ...image, data: "B" }, 9500);
+    expect(derive(r)).toEqual({ status: "live", frame: { ...image, data: "B" } });
+    r.registry.dispose();
+  });
+
+  it("has nothing to show before the agent's browser is first used", () => {
+    const r = rig();
+    r.sink.event({ type: "state", status: "no-browser" }, 1000);
+    expect(derive(r)).toEqual({ status: "no-browser" });
+    r.registry.dispose();
+  });
+});
+
 describe("Mate call frame slots", () => {
   it.each([
     { name: "legacy viewport", event: image, freshness: "stale" },
@@ -95,11 +134,13 @@ describe("Mate call frame slots", () => {
       value: { kind: "stream", state: { frame: image } },
     });
     const shown = mateBrowserStream.derive(readsOfState(r.store.state()), "mate");
-    expect(shown).toEqual({ status: "no-browser" });
+    // Not as the live view: as the last page seen, which says it is not live.
+    expect(shown).toEqual({ status: "no-browser", last: { frame: image, atMs: 0 } });
     remounted.event({ type: "state", status: "live" });
     // A reconnect's live status is not proof that the retained viewport is current.
     expect(mateBrowserStream.derive(readsOfState(r.store.state()), "mate")).toEqual({
       status: "live",
+      last: { frame: image, atMs: 0 },
     });
     remounted.event({ ...image, data: "new" });
     expect(mateBrowserStream.derive(readsOfState(r.store.state()), "mate")).toMatchObject({

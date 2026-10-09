@@ -30,7 +30,6 @@ import type {
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
-import { type ZeropsBrowserStreamState } from "@t3tools/client-runtime/zerops/browserStream";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
@@ -46,6 +45,7 @@ import {
 } from "../state/zerops";
 import {
   EMPTY_PROJECT_TOPOLOGY_SNAPSHOT,
+  type MateBrowserStreamRead,
   type ProjectTopologySnapshot,
 } from "@t3tools/client-runtime/data";
 import { useMateOfEnvironment } from "./accountEnvironments";
@@ -119,7 +119,7 @@ export function useZeropsAgentAuth(
  * 0.2.5 and older): the panel says so, never an error toast. Otherwise the
  * accumulated `{status, url, frame}` snapshot (`foldBrowserStreamEvent`).
  */
-export type ZeropsBrowserStreamRead = ZeropsBrowserStreamState | "unavailable" | undefined;
+export type ZeropsBrowserStreamRead = MateBrowserStreamRead | "unavailable" | undefined;
 
 export function useZeropsBrowserStream(
   environmentId: EnvironmentId | null,

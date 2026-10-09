@@ -328,6 +328,8 @@ export {
   mateBrowserStream,
   UNKNOWN_BROWSER_FRAME,
   type MateBrowserFrameRead,
+  type MateBrowserLastSeen,
+  type MateBrowserStreamRead,
 } from "./projections/mateBrowserFrame.ts";
 export {
   makeMateBrowserFrameWire,
