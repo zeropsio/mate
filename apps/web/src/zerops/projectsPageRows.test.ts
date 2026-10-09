@@ -103,7 +103,7 @@ function pageRow(input: ZeropsAgentActivity | undefined, signedOut = false) {
           },
           main: null,
           threads: { list: [], omitted: 0 },
-          logins: { "claude-code": { present: false } },
+          logins: { "claude-code": { present: false, signedInBy: null, token: false } },
           crew: { status: "off" },
         },
       },

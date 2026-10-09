@@ -724,7 +724,7 @@ it("an expanded project shows its current release before a closed history disclo
     detail: undefined,
     line: "app abc123",
     entries: [],
-    taggedAt: undefined,
+    taggedAt: "2026-10-09T10:00:00Z",
     failedEntry: undefined,
   }));
   const html = renderToStaticMarkup(

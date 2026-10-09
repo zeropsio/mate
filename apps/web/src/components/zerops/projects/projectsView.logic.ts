@@ -719,7 +719,10 @@ export function projectRowLine(input: {
       text: (lastTalk.outcome ?? lastTalk.subject)!,
       ...(lastTalk.outcome === undefined
         ? {}
-        : { request: lastTalk.subject, state: lastTalk.state }),
+        : {
+            ...(lastTalk.subject === undefined ? {} : { request: lastTalk.subject }),
+            ...(lastTalk.state === undefined ? {} : { state: lastTalk.state }),
+          }),
       ...(lastTalk.at === undefined ? {} : { at: lastTalk.at }),
     };
   if (merged !== undefined)

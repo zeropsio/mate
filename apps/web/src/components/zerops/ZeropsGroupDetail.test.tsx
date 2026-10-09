@@ -52,6 +52,13 @@ const NOW = vi.hoisted(() => Date.parse("2026-09-25T12:00:00Z"));
 const platform = vi.hoisted(() => ({
   deployments: new Map() as ReadonlyMap<string, unknown>,
 }));
+vi.mock("~/zerops/activity/useProjectActivity", async (original) => {
+  const activity = await original<typeof import("~/zerops/activity/useProjectActivity")>();
+  return {
+    ...activity,
+    useProjectActivityRead: () => activity.EMPTY_PROJECT_ACTIVITY_SNAPSHOT,
+  };
+});
 vi.mock("~/zerops/projectFlows", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useStopDeploymentsShown: () => platform.deployments,

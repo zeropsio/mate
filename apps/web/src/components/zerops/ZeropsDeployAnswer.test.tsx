@@ -5,6 +5,13 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 /** HQ's navigation as the answer follows it: each application's environments with their jobs. */
 const navigation = vi.hoisted(() => ({ environments: {} as Record<string, unknown> }));
+vi.mock("~/zerops/activity/useProjectActivity", async (original) => {
+  const activity = await original<typeof import("~/zerops/activity/useProjectActivity")>();
+  return {
+    ...activity,
+    useProjectActivityRead: () => activity.EMPTY_PROJECT_ACTIVITY_SNAPSHOT,
+  };
+});
 vi.mock("~/zerops/projectFlows", () => ({
   useEveryAppId: () => Object.keys(navigation.environments),
   useAppsEnvironments: () => navigation.environments,
