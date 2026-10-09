@@ -577,27 +577,37 @@ const enginePort = (input: {
     turnStarts: (chat) =>
       Effect.gen(function* () {
         yield* settled;
-        const state = yield* crewState;
-        const member = membersInOrder(state).find((entry) => entry.conversationId === chat);
         const thread = yield* threadOf(chat);
-        const session = provider.sessions.get(thread);
-        const conversation = yield* run(
-          Effect.flatMap(Conversations, (conversations) =>
-            conversations.state(ConversationId.make(chat)),
-          ),
-        ).pipe(Effect.orDie);
         // Nothing the crew sent is on its way: the agent opens a turn of its own (V1's world
-        // publishes a turn's start the same way).
-        if (
-          member !== undefined &&
-          member.active === null &&
-          !delivering(state, member.handle) &&
-          !Object.values(state.effects).some((effect) => effect.handle === member.handle) &&
-          conversation.activeRunId === null &&
-          conversation.queue.length === 0 &&
-          session?.alive === true &&
-          session.open === null
-        ) {
+        // publishes a turn's start the same way). Idle must hold for a beat: under load a press's
+        // delivery can show a moment after the press returned, and a turn opened in that moment
+        // is one the crew never asked for.
+        const idle = Effect.gen(function* () {
+          const state = yield* crewState;
+          const member = membersInOrder(state).find((entry) => entry.conversationId === chat);
+          const session = provider.sessions.get(thread);
+          const conversation = yield* run(
+            Effect.flatMap(Conversations, (conversations) =>
+              conversations.state(ConversationId.make(chat)),
+            ),
+          ).pipe(Effect.orDie);
+          return (
+            member !== undefined &&
+            member.active === null &&
+            !delivering(state, member.handle) &&
+            !Object.values(state.effects).some((effect) => effect.handle === member.handle) &&
+            conversation.activeRunId === null &&
+            conversation.queue.length === 0 &&
+            session?.alive === true &&
+            session.open === null
+          );
+        });
+        let quiet = true;
+        for (let held = 0; held < 1_000 && quiet; held += 50) {
+          quiet = yield* idle;
+          if (quiet) yield* Effect.sleep("50 millis");
+        }
+        if (quiet && (yield* idle)) {
           yield* provider.agent.selfTurn(thread);
         }
         yield* waitFor(`a turn in ${chat}`, turnRunning(chat));
