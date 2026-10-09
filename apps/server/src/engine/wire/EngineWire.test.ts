@@ -665,6 +665,38 @@ describe("a client subscribed to a Mate's conversation rows", () => {
       }),
     ),
   );
+
+  // Milo's second stress run: the chat header and the menu read the steer until the next message.
+  it.effect("a message steered into the running run never retitles the conversation", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const frames: Array<EngineRowsFrame> = [];
+        yield* Stream.runForEach(wire.subscribeRows({ protocol }, ana), (frame) =>
+          Effect.sync(() => frames.push(frame)),
+        ).pipe(Effect.forkScoped);
+        yield* w.tell({ _tag: "Send", text: "Check the storefront" });
+        yield* w.tell({
+          _tag: "Steer",
+          runId: runId(mate, 1),
+          text: "and name the page too",
+        });
+        const steered = (yield* w.items(runId(mate, 1))).find(
+          (item) => item.kind === "person" && item.body.text === "and name the page too",
+        );
+        assert.strictEqual(
+          (steered?.body as { readonly delivery?: { readonly state?: string } } | undefined)
+            ?.delivery?.state,
+          "steered",
+        );
+        yield* w.settle;
+        const rows = frames.flatMap((frame) => (frame.type === "row" ? [frame.row] : []));
+        assert.strictEqual(rows.at(-1)?.subject, "Check the storefront");
+        yield* w.shutdown;
+      }),
+    ),
+  );
 });
 
 describe("a client's calls to an engine conversation", () => {
