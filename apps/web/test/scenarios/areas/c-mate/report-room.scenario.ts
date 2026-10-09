@@ -174,34 +174,65 @@ describe("C: panel to report rooms", () => {
                   await s.page.waitForFunction(
                     () => {
                       const panel = document.querySelector('[data-timeline-row-kind="working"]');
-                      return panel !== null && panel.getBoundingClientRect().height > 300;
+                      return (
+                        panel !== null &&
+                        panel.getBoundingClientRect().height > 300 &&
+                        panel
+                          .getAnimations({ subtree: true })
+                          .every(
+                            (animation) =>
+                              animation.effect?.getComputedTiming().iterations === Infinity ||
+                              animation.playState === "finished",
+                          )
+                      );
                     },
                     { timeout: 8000 },
                   );
                 });
               if (mode !== "first layout")
                 yield* Effect.promise(async () => {
+                  // Put work at its end without relying on a nested wheel chaining to the timeline.
+                  await s.page.$eval("[data-run-scroll]", (work) => {
+                    work.scrollTop = work.scrollHeight;
+                  });
+                  await s.page.waitForFunction(
+                    () => {
+                      const work = document.querySelector<HTMLElement>("[data-run-scroll]")!;
+                      return Math.abs(work.scrollHeight - work.clientHeight - work.scrollTop) <= 2;
+                    },
+                    { timeout: 8000, polling: "raf" },
+                  );
                   const viewport = await s.page.$(".timeline-legend-list");
                   const box = (await viewport!.boundingBox())!;
-                  await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+                  await s.page.mouse.move(box.x + box.width - 8, box.y + box.height / 2);
                   await s.page.mouse.wheel({ deltaY: 10000 });
                 });
               yield* Effect.promise(() =>
-                s.page.waitForFunction(
-                  () => {
-                    const scroll = document.querySelector<HTMLElement>(".timeline-legend-list")!;
-                    return (
-                      Math.abs(scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop) <= 2
-                    );
-                  },
-                  { timeout: 8000, polling: "raf" },
-                ),
+                expect
+                  .poll(
+                    () =>
+                      s.page.evaluate(() => {
+                        const scroll =
+                          document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                        return Math.abs(
+                          scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop,
+                        );
+                      }),
+                    {
+                      timeout: 8000,
+                      message: "ASSERTION: the outer gesture reaches the timeline end",
+                    },
+                  )
+                  .toBeLessThanOrEqual(2),
+              );
+              yield* Effect.promise(() =>
+                s.page.waitForSelector("[data-timeline-follows-end]", { timeout: 8000 }),
               );
               if (!follows)
                 yield* Effect.promise(async () => {
                   const viewport = await s.page.$(".timeline-legend-list");
                   const box = (await viewport!.boundingBox())!;
-                  await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+                  await s.page.mouse.move(box.x + box.width - 8, box.y + box.height / 2);
                   await s.page.mouse.wheel({ deltaY: -1600 });
                   await s.page.waitForFunction(
                     () => !document.querySelector("[data-timeline-follows-end]"),
