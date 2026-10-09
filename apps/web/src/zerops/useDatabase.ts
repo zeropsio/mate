@@ -21,6 +21,9 @@ import { useAccountDataOptional, useProjection } from "./ZeropsAccountData";
 
 const NO_PANEL: DatabasePanelRead = {
   ...emptyDatabasePanel,
+  readStates: {},
+  withheld: false,
+  inventory: [],
   pendingTreeKeys: new Set(),
   tableLoadMorePending: false,
   filteredLoadMorePending: false,

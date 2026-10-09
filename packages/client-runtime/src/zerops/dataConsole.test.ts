@@ -20,6 +20,7 @@ import {
   collapseTreePath,
   describeCell,
   describeDataConsoleError,
+  describeKeyExpiry,
   describeDocumentListingStatus,
   describeRowContext,
   describeServiceContext,
@@ -476,7 +477,7 @@ describe("objectListingModel", () => {
     const listing = objectListingModel([prefix, blob], undefined);
     expect(listing.nodes).toEqual([prefix, blob]);
     expect(listing.model.rows).toEqual([
-      ["uploads/", "", "", ""],
+      ["uploads/", "Unknown", "", ""],
       ["photo.png", "2.5 MB", "2026-01-01T00:00:00Z", "image/png"],
     ]);
     expect(listing.model.columns.map((c) => c.name)).toEqual([
@@ -504,21 +505,25 @@ describe("kvListingModel", () => {
     const key = listingNode({
       name: "session:42",
       kind: "tabular",
-      meta: { entryType: "hash", ttlSeconds: 120, count: 6 },
+      meta: { entryType: "hash", ttlSeconds: 120, ttlState: "expires", count: 6 },
     });
     const listing = kvListingModel([key], undefined);
-    expect(listing.model.rows).toEqual([["session:42", "hash", "2 min", "6"]]);
+    expect(listing.model.rows).toEqual([
+      ["session:42", "hash", "Expires in 2 min (at last read)", "6"],
+    ]);
     expect(listing.model.rowKeyCols).toEqual(["key"]);
   });
 
-  it("leaves type/ttl/count blank for a key (or namespace) the console reports none of", () => {
+  it("reports an unknown TTL when the console provides no expiry information", () => {
     const namespace = listingNode({
       name: "cache",
       kind: "container",
       hasChildren: true,
       meta: {},
     });
-    expect(kvListingModel([namespace], undefined).model.rows).toEqual([["cache", "", "", ""]]);
+    expect(kvListingModel([namespace], undefined).model.rows).toEqual([
+      ["cache", "", "TTL unknown", ""],
+    ]);
   });
 });
 
@@ -1506,4 +1511,13 @@ describe("context labels over a collapsed level", () => {
     expect(result.label).toBe("db · orders · id=7");
     expect(result.text.split("\n")[0]).toBe("## db (postgresql@16) · public.orders · id=7");
   });
+});
+
+it("A key distinguishes expiry, no expiry, unknown TTL and disappearance.", () => {
+  expect(describeKeyExpiry({ ttlState: "expires", ttlSeconds: 120 })).toBe(
+    "Expires in 2 min (at last read)",
+  );
+  expect(describeKeyExpiry({ ttlState: "persistent" })).toBe("No expiry");
+  expect(describeKeyExpiry({})).toBe("TTL unknown");
+  expect(describeDataConsoleError({ code: "not_found" })).toBe("That item isn't there anymore.");
 });

@@ -847,6 +847,13 @@ export const ZeropsDataConsoleServiceAction = Schema.Struct({
 });
 export type ZeropsDataConsoleServiceAction = typeof ZeropsDataConsoleServiceAction.Type;
 
+export const ZeropsDataConsoleSummary = Schema.Struct({
+  maskedConnection: Schema.String,
+  bucket: Schema.optional(Schema.String),
+  size: Schema.optional(Schema.Number),
+});
+export type ZeropsDataConsoleSummary = typeof ZeropsDataConsoleSummary.Type;
+
 export const ZeropsDataConsoleService = Schema.Struct({
   hostname: Schema.String,
   type: Schema.String,
@@ -866,6 +873,7 @@ export const ZeropsDataConsoleNodeMeta = Schema.Struct({
   entryType: Schema.optional(Schema.String),
   count: Schema.optional(Schema.Number),
   ttlSeconds: Schema.optional(Schema.Number),
+  ttlState: Schema.optional(Schema.Literals(["expires", "persistent", "unknown"])),
 });
 export type ZeropsDataConsoleNodeMeta = typeof ZeropsDataConsoleNodeMeta.Type;
 
@@ -936,6 +944,7 @@ export type ZeropsDataConsoleBlob = typeof ZeropsDataConsoleBlob.Type;
 export const ZeropsDataConsoleRequest = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("services") }),
   Schema.Struct({ kind: Schema.Literal("refresh") }),
+  Schema.Struct({ kind: Schema.Literal("summary"), service: Schema.String }),
   Schema.Struct({
     kind: Schema.Literal("tree"),
     path: ZeropsDataConsolePath,
@@ -972,6 +981,7 @@ export type ZeropsDataConsoleRequest = typeof ZeropsDataConsoleRequest.Type;
  * `nodes`/`nextCursor`, identical to the `tree` variant's fields.
  */
 export const ZeropsDataConsoleResponse = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("summary"), ...ZeropsDataConsoleSummary.fields }),
   Schema.Struct({
     kind: Schema.Literal("services"),
     project: Schema.Struct({ id: Schema.String, name: Schema.String }),
@@ -1014,6 +1024,7 @@ export const ZeropsDataConsoleErrorCode = Schema.Literals([
   "timeout",
   "internal",
   "session_unavailable",
+  "denied",
 ]);
 export type ZeropsDataConsoleErrorCode = typeof ZeropsDataConsoleErrorCode.Type;
 

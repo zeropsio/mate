@@ -18,6 +18,7 @@ import type { EnvironmentRegistry } from "../../connection/registry.ts";
 import { request as rpcRequest } from "../../rpc/client.ts";
 import {
   applyTablePage,
+  treePathKey,
   applyTreePage,
   buildDataMentionEntries,
   collapseTreePath,
@@ -117,14 +118,45 @@ export function applyDatabaseAnswer(
   response: ZeropsDataConsoleResponse,
 ): DatabasePanelValue {
   const { request, target, cursor } = intent;
+  if (response.kind === "summary") return { ...value, summary: response };
+  if (response.kind === "node") return { ...value, node: response.node };
   if (response.kind === "services") return { ...value, services: response.services };
   if (response.kind === "tree" && request.kind === "tree")
-    return { ...value, tree: applyTreePage(value.tree, request.path, response, cursor) };
+    return {
+      ...value,
+      tree: applyTreePage(
+        value.tree,
+        request.path,
+        response,
+        cursor,
+        value.services?.find((service) => service.hostname === request.path.service)?.family ===
+          "kv",
+      ),
+    };
   if (response.kind === "blob") {
     const { kind: _kind, ...blob } = response;
     return { ...value, blob };
   }
-  if (response.kind === "count") return { ...value, tableCount: response.count };
+  if (response.kind === "count" && request.kind === "tableCount")
+    return {
+      ...value,
+      tableCount: response.count,
+      tree: {
+        entries: Object.fromEntries(
+          Object.entries(value.tree.entries).map(([key, entry]) => [
+            key,
+            {
+              ...entry,
+              nodes: entry.nodes.map((node) =>
+                treePathKey(node.path) === treePathKey(request.path)
+                  ? { ...node, meta: { ...node.meta, count: response.count } }
+                  : node,
+              ),
+            },
+          ]),
+        ),
+      },
+    };
   if (response.kind === "search" && request.kind === "search") {
     const page = documentListingModel(
       response.nodes,
@@ -280,9 +312,10 @@ export function makeDatabaseReads({
     environmentId: EnvironmentId,
     panelId: DatabaseSlot,
     target: string,
-    source: (
-      signal: AbortSignal,
-    ) => Promise<{ readonly value: DatabaseValue; readonly partial?: boolean }>,
+    source: (signal: AbortSignal) => Promise<{
+      readonly value: DatabaseValue | (() => DatabaseValue);
+      readonly partial?: boolean;
+    }>,
     manual: boolean,
   ): Promise<void> => {
     if (closed) return;
@@ -310,7 +343,14 @@ export function makeDatabaseReads({
       try {
         const result = await source(active.abort.signal);
         if (!current()) return;
-        write(environmentId, panelId, scope, result.value, result.partial, true);
+        write(
+          environmentId,
+          panelId,
+          scope,
+          typeof result.value === "function" ? result.value() : result.value,
+          result.partial,
+          true,
+        );
         signal(scope, { kind: "baseline-committed" });
       } catch (error) {
         if (!current()) return;
@@ -367,7 +407,13 @@ export function makeDatabaseReads({
       async (signal) => {
         const response = await wire.call(environmentId, intent.request, signal);
         return {
-          value: applyDatabaseAnswer(panelAt(environmentId, panelId), intent, response),
+          value: () => ({
+            ...applyDatabaseAnswer(panelAt(environmentId, panelId), intent, response),
+            lastRead: {
+              ...panelAt(environmentId, panelId).lastRead,
+              [intent.target]: Effect.runSync(Clock.currentTimeMillis),
+            },
+          }),
           partial:
             response.kind === "table"
               ? response.page.nextCursor !== ""
@@ -384,7 +430,7 @@ export function makeDatabaseReads({
     let value = panelAt(environmentId, panelId);
     const targets =
       intent.kind === "clear-selection"
-        ? ["table", "blob", "count", "filtered", "search"]
+        ? ["table", "blob", "count", "filtered", "search", "stat"]
         : intent.kind === "clear-query"
           ? ["query"]
           : intent.kind === "clear-filter"
@@ -402,6 +448,10 @@ export function makeDatabaseReads({
       case "clear-selection":
         value = {
           ...value,
+          node: undefined,
+          lastRead: Object.fromEntries(
+            Object.entries(value.lastRead).filter(([key]) => !targets.includes(key)),
+          ),
           tableModel: emptyTable,
           tableCount: undefined,
           filtered: undefined,

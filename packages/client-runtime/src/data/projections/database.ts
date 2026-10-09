@@ -1,7 +1,8 @@
 /** Database surfaces read retained source answers and the standing of each demanded read. */
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ZeropsDataConsoleNode } from "@t3tools/contracts";
 import {
   joinServicesWithTopology,
+  treePathKey,
   describeTableContext,
   type DataMentionEntry,
 } from "../../zerops/dataConsole.ts";
@@ -19,6 +20,18 @@ import { inventoryTopology } from "./inventoryTopology.ts";
 import { sameValue } from "./equal.ts";
 
 export interface DatabasePanelRead extends DatabasePanelValue {
+  readonly withheld: boolean;
+  readonly inventory: ReadonlyArray<ZeropsDataConsoleNode>;
+  readonly readStates: Readonly<
+    Record<
+      string,
+      {
+        readonly pending: boolean;
+        readonly error: string | undefined;
+        readonly code: string | undefined;
+      }
+    >
+  >;
   readonly pendingTreeKeys: ReadonlySet<string>;
   readonly tableLoadMorePending: boolean;
   readonly filteredLoadMorePending: boolean;
@@ -50,6 +63,25 @@ export const databasePanel: Projection<
     const grid = value.gridTarget === undefined ? undefined : stream(value.gridTarget).fault;
     return {
       ...value,
+      withheld: fact.kind === "withheld",
+      inventory: [
+        ...new Map(
+          Object.values(value.tree.entries)
+            .flatMap((entry) => entry.nodes)
+            .filter((node) => node.kind !== "container")
+            .map((node) => [treePathKey(node.path), node]),
+        ).values(),
+      ],
+      readStates: Object.fromEntries(
+        value.targets.map((target) => [
+          target,
+          {
+            pending: pending(target),
+            error: stream(target).fault?.message,
+            code: stream(target).fault?.code,
+          },
+        ]),
+      ),
       pendingTreeKeys: new Set(
         value.targets.flatMap((target) =>
           target.startsWith("tree/") && pending(target) ? [target.slice(5)] : [],
@@ -78,7 +110,9 @@ export const databasePanel: Projection<
       settled:
         value.targets.length > 0 &&
         value.targets.every((target) => stream(target).phase === "live"),
-      refused: value.targets.some((target) => stream(target).phase === "refused"),
+      refused:
+        fact.kind === "withheld" ||
+        value.targets.some((target) => stream(target).phase === "refused"),
     };
   },
   equals: (left, right) =>

@@ -143,7 +143,12 @@ describe("ZeropsDataTable", () => {
       sort: { column: "id", direction: "desc" },
     });
     const header = findByAttribute(tree, "data-zerops-data-table-sort")!;
-    expect(header.props.children).toEqual(["id", " ↓"]);
+    expect(header.props.children).toEqual([
+      "id",
+      " ",
+      expect.objectContaining({ props: expect.objectContaining({ children: ["integer", " PK"] }) }),
+      " ↓",
+    ]);
   });
 
   it("a non-sortable column is not clickable and explains itself with sortReason", () => {
@@ -190,7 +195,7 @@ describe("ZeropsDataTable", () => {
     });
     expect(findByAttribute(tree, "data-zerops-data-table-request-count")).toBeNull();
     const countLabel = findByAttribute(tree, "data-zerops-data-table-count")!;
-    expect(countLabel.props.children).toBe("12,345 rows");
+    expect(countLabel.props.children).toBe("12,345 rows (exact at last read)");
   });
 
   it("hides a hidden column but never a primary key", () => {
@@ -341,102 +346,14 @@ describe("ZeropsDataTable", () => {
     });
   });
 
-  describe("paging by scroll", () => {
-    interface ObserverStub {
-      readonly callback: (entries: ReadonlyArray<{ readonly isIntersecting: boolean }>) => void;
-      readonly options: { readonly root: unknown; readonly rootMargin: string };
-      readonly observed: unknown[];
-      readonly disconnected: () => number;
-    }
-
-    let stubs: ObserverStub[] = [];
-    const original = Reflect.get(globalThis, "IntersectionObserver") as unknown;
-
-    beforeEach(() => {
-      stubs = [];
-      Reflect.set(
-        globalThis,
-        "IntersectionObserver",
-        class {
-          constructor(callback: ObserverStub["callback"], options: ObserverStub["options"]) {
-            const observed: unknown[] = [];
-            let disconnects = 0;
-            stubs.push({ callback, options, observed, disconnected: () => disconnects });
-            Object.assign(this, {
-              observe: (node: unknown) => observed.push(node),
-              disconnect: () => {
-                disconnects += 1;
-              },
-              unobserve: () => {},
-            });
-          }
-        },
-      );
-    });
-
-    afterEach(() => {
-      Reflect.set(globalThis, "IntersectionObserver", original);
-    });
-
-    function renderTable(overrides: Partial<ZeropsDataTableProps> = {}) {
-      hooks.beginRender();
-      return ZeropsDataTable({
-        model: { ...MODEL, nextCursor: "cursor-1" },
-        onLoadMore: vi.fn(),
-        onSort: vi.fn(),
-        ...overrides,
-      });
-    }
-
-    /** Runs the ref callbacks React would run on mount: the scroll region, then the sentinel. */
-    function mount(tree: unknown): void {
-      const grid = findByAttribute(tree, "data-zerops-data-table-grid")!;
-      (grid.props.ref as (node: unknown) => void)({ id: "scroll-region" });
-      const sentinel = findByAttribute(tree, "data-zerops-data-table-sentinel")!;
-      (sentinel.props.ref as (node: unknown) => void)({ id: "sentinel" });
-    }
-
-    it("renders the sentinel only while another page exists", () => {
-      expect(
-        findByAttribute(renderTable({ model: MODEL }), "data-zerops-data-table-sentinel"),
-      ).toBeNull();
-      expect(findByAttribute(renderTable(), "data-zerops-data-table-sentinel")).not.toBeNull();
-    });
-
-    it("roots the observer on the scroll region and watches the sentinel", () => {
-      mount(renderTable());
-      expect(stubs).toHaveLength(1);
-      expect(stubs[0]!.options.root).toEqual({ id: "scroll-region" });
-      expect(stubs[0]!.options.rootMargin).toBe("200px");
-      expect(stubs[0]!.observed).toEqual([{ id: "sentinel" }]);
-    });
-
-    it("pages once when the sentinel comes into view", () => {
-      const onLoadMore = vi.fn();
-      mount(renderTable({ onLoadMore }));
-      stubs[0]!.callback([{ isIntersecting: false }]);
-      expect(onLoadMore).not.toHaveBeenCalled();
-      stubs[0]!.callback([{ isIntersecting: true }]);
-      expect(onLoadMore).toHaveBeenCalledTimes(1);
-    });
-
-    it("does not page while a page is already in flight", () => {
-      const onLoadMore = vi.fn();
-      mount(renderTable({ onLoadMore }));
-      renderTable({ onLoadMore, loadMorePending: true });
-      stubs[0]!.callback([{ isIntersecting: true }]);
-      expect(onLoadMore).not.toHaveBeenCalled();
-    });
-
-    it("leaves paging to the button where IntersectionObserver is missing", () => {
-      Reflect.set(globalThis, "IntersectionObserver", undefined);
-      const onLoadMore = vi.fn();
-      const tree = renderTable({ onLoadMore });
-      mount(tree);
-      expect(stubs).toHaveLength(0);
-      (findByAttribute(tree, "data-zerops-data-table-load-more")!.props.onClick as () => void)();
-      expect(onLoadMore).toHaveBeenCalledTimes(1);
-    });
+  it("requests the next bounded page only from an explicit click", () => {
+    const onLoadMore = vi.fn();
+    hooks.beginRender();
+    const tree = ZeropsDataTable({ model: { ...MODEL, nextCursor: "next" }, onLoadMore });
+    expect(findByAttribute(tree, "data-zerops-data-table-sentinel")).toBeNull();
+    expect(onLoadMore).not.toHaveBeenCalled();
+    (findByAttribute(tree, "data-zerops-data-table-load-more")!.props.onClick as () => void)();
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
   });
 
   describe("status bar", () => {

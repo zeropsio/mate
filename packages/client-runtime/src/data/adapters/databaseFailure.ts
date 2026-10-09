@@ -12,6 +12,8 @@ export function classifyDatabaseFailure(error: unknown): StreamFault {
   if (isFault(error)) return error;
   if (isAuthorizationError(error))
     return { outcome: "authoritative-denial", message: error.message };
+  if (isConsoleError(error) && error.code === "denied")
+    return { outcome: "authoritative-denial", message: "Access denied.", code: "denied" };
   if (isConsoleError(error))
     return {
       outcome: ["unreachable", "upstream", "timeout", "internal", "session_unavailable"].includes(

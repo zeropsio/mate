@@ -11,11 +11,9 @@
  * a value's content type, size and expiry read the same wherever it came
  * from.
  */
-import { classifyBlob } from "@t3tools/client-runtime/zerops/dataBlob";
+import { classifyBlob, canDownloadBlob } from "@t3tools/client-runtime/zerops/dataBlob";
 import type { BlobPreview } from "@t3tools/client-runtime/zerops/dataBlob";
 import type { ZeropsDataConsoleBlob } from "@t3tools/contracts";
-
-import { FlatCard } from "./primitives";
 
 export interface ZeropsDataBlobProps {
   readonly blob: ZeropsDataConsoleBlob;
@@ -123,14 +121,23 @@ export function ZeropsDataBlob({ blob, name }: ZeropsDataBlobProps) {
   const preview = classifyBlob(blob);
 
   return (
-    <FlatCard
-      className="space-y-2 p-3"
-      data-zerops-data-blob
-      data-zerops-data-blob-kind={preview.kind}
-    >
+    <div className="space-y-2 p-3" data-zerops-data-blob data-zerops-data-blob-kind={preview.kind}>
+      {canDownloadBlob(blob) ? (
+        <a
+          data-zerops-data-download
+          className="text-xs text-primary"
+          download={name ?? "preview"}
+          href={`data:application/octet-stream;base64,${blob.data}`}
+        >
+          Download preview
+        </a>
+      ) : (
+        <p className="text-xs text-muted-foreground">Preview limited · download unavailable</p>
+      )}
+
       {preview.truncated ? <TruncatedBanner size={preview.size} /> : null}
       <Body name={name} preview={preview} />
       <MetaLine text={preview.meta} />
-    </FlatCard>
+    </div>
   );
 }

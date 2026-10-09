@@ -371,3 +371,29 @@ it("publishes tree pending changes through its keyed projection atom", async () 
   reads.close();
   registry.dispose();
 });
+
+it("Concurrent inventory and summary reads preserve both answers", async () => {
+  const f = fixture((_, request) =>
+    Promise.resolve(
+      request.kind === "summary"
+        ? { kind: "summary", maskedConnection: "postgresql://••••@db" }
+        : { kind: "tree", nodes: [node], nextCursor: "" },
+    ),
+  );
+  try {
+    await Promise.all([
+      f.database.read(env, "db", {
+        request: { kind: "tree", path: node.path },
+        target: "tree/root",
+      }),
+      f.database.read(env, "db", {
+        request: { kind: "summary", service: "db" },
+        target: "summary",
+      }),
+    ]);
+    expect(Object.values(f.panel().tree.entries).flatMap((entry) => entry.nodes)).toEqual([node]);
+    expect(f.panel().summary?.maskedConnection).toBe("postgresql://••••@db");
+  } finally {
+    f.close();
+  }
+});

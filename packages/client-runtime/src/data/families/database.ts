@@ -2,6 +2,8 @@
 import type {
   EnvironmentId,
   ZeropsDataConsoleBlob,
+  ZeropsDataConsoleSummary,
+  ZeropsDataConsoleNode,
   ZeropsDataConsolePath,
   ZeropsDataConsoleService,
   ZeropsDataConsoleResponse,
@@ -25,6 +27,9 @@ export interface DatabaseQueryValue {
 
 export interface DatabasePanelValue {
   readonly kind: "panel";
+  readonly summary: ZeropsDataConsoleSummary | undefined;
+  readonly node: ZeropsDataConsoleNode | undefined;
+  readonly lastRead: Readonly<Record<string, number>>;
   readonly services: ReadonlyArray<ZeropsDataConsoleService> | undefined;
   readonly tree: DataConsoleTree;
   readonly tableModel: DataConsoleTableModel;
@@ -91,6 +96,9 @@ export const databaseTreeTarget = (path: ZeropsDataConsolePath): string =>
 
 export const emptyDatabasePanel: DatabasePanelValue = {
   kind: "panel",
+  summary: undefined,
+  node: undefined,
+  lastRead: {},
   services: undefined,
   tree: emptyTree,
   tableModel: emptyTable,

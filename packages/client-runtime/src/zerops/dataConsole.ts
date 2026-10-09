@@ -77,12 +77,16 @@ export function applyTreePage(
   path: ZeropsDataConsolePath,
   page: { readonly nodes: ReadonlyArray<ZeropsDataConsoleNode>; readonly nextCursor: string },
   requestCursor?: string,
+  retainScanOrder = false,
 ): DataConsoleTree {
   const key = treePathKey(path);
   const existing = tree.entries[key];
   const isAppend =
     requestCursor !== undefined && existing !== undefined && requestCursor === existing.nextCursor;
-  const nodes = sortNodes(isAppend ? [...existing.nodes, ...page.nodes] : page.nodes);
+  const merged = isAppend ? [...existing.nodes, ...page.nodes] : page.nodes;
+  const nodes = retainScanOrder
+    ? [...new Map(merged.map((node) => [treePathKey(node.path), node])).values()]
+    : sortNodes(merged);
   return {
     entries: {
       ...tree.entries,
@@ -434,7 +438,7 @@ export function objectListingModel(
       columns: OBJECT_LISTING_COLUMNS,
       rows: nodes.map((node) => [
         node.kind === "container" ? `${node.name}/` : node.name,
-        node.meta?.size === undefined ? "" : formatByteSize(node.meta.size),
+        node.meta?.size === undefined ? "Unknown" : formatByteSize(node.meta.size),
         node.meta?.modified ?? "",
         node.meta?.contentType ?? "",
       ]),
@@ -471,7 +475,7 @@ export function kvListingModel(
       rows: nodes.map((node) => [
         node.name,
         node.meta?.entryType ?? "",
-        node.meta?.ttlSeconds === undefined ? "" : humanizeTtl(node.meta.ttlSeconds),
+        describeKeyExpiry(node.meta),
         node.meta?.count === undefined ? "" : String(node.meta.count),
       ]),
       ...(nextCursor !== undefined ? { nextCursor } : {}),
@@ -526,6 +530,8 @@ export function describeDocumentListingStatus(count: number, hasMore: boolean): 
 /** One short, user-facing sentence per `ZeropsDataConsoleError.code` (`dataconsole-api.md` §3 sentinel table). Never echoes `message`/`requestId` — those are for logs, not the panel. */
 export function describeDataConsoleError(err: Pick<ZeropsDataConsoleError, "code">): string {
   switch (err.code) {
+    case "denied":
+      return "Access denied.";
     case "not_found":
       return "That item isn't there anymore.";
     case "read_only":
@@ -1100,4 +1106,14 @@ export function describeServiceContext(
     ...(own.length > 0 ? own.map((entry) => `- ${entry.segments.join(".")}`) : ["No tables."]),
   ];
   return { label: service.label, text: lines.join("\n") };
+}
+
+/** Only explicit TTL evidence can establish persistence; omission stays unknown. */
+export function describeKeyExpiry(
+  meta: import("@t3tools/contracts").ZeropsDataConsoleNodeMeta | undefined,
+): string {
+  if (meta?.ttlState === "persistent") return "No expiry";
+  if (meta?.ttlState === "expires" && meta.ttlSeconds !== undefined)
+    return `Expires in ${humanizeTtl(meta.ttlSeconds)} (at last read)`;
+  return "TTL unknown";
 }

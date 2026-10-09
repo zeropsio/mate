@@ -3,6 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsDataConsoleBlob } from "@t3tools/contracts";
 
+import { applyTreePage, emptyTree } from "@t3tools/client-runtime/zerops/dataConsole";
+import { ZeropsDataTree } from "./ZeropsDataTree";
+
 import { ZeropsDataBlob } from "./ZeropsDataBlob";
 
 const base64 = (input: Uint8Array | string): string => {
@@ -27,6 +30,38 @@ function render(value: ZeropsDataConsoleBlob, name?: string): string {
 }
 
 describe("ZeropsDataBlob", () => {
+  it("An object shows size/date; only a complete small preview can be downloaded.", () => {
+    expect(render(blob())).toContain("Download preview");
+    expect(render(blob({ truncated: true }))).not.toContain("download=");
+    expect(render(blob({ size: 500000 }))).not.toContain("download=");
+    expect(render(blob({ data: "invalid!!!" }))).not.toContain("download=");
+    expect(render(blob())).toContain("5 bytes");
+    const root = { service: "assets", segments: [] };
+    const tree = applyTreePage(emptyTree, root, {
+      nextCursor: "",
+      nodes: [
+        {
+          name: "config.txt",
+          kind: "blob",
+          hasChildren: false,
+          path: { service: "assets", segments: ["config.txt"] },
+          meta: { size: 5, modified: "2026-10-09T14:00:00Z" },
+        },
+      ],
+    });
+    const inventory = renderToStaticMarkup(
+      <ZeropsDataTree
+        rootPath={root}
+        tree={tree}
+        onLoadMore={() => {}}
+        onSelectNode={() => {}}
+        onToggleNode={() => {}}
+      />,
+    );
+    expect(inventory).toContain("5 B");
+    expect(inventory).toContain("2026-10-09T14:00:00Z");
+  });
+
   it("renders text content verbatim under a meta line", () => {
     const html = render(blob());
     expect(html).toContain("hello");
@@ -89,11 +124,11 @@ describe("ZeropsDataBlob", () => {
 
   it("renders an untruncated image from a data URI", () => {
     const data = base64(new Uint8Array([0x89, 0x50]));
-    const html = render(blob({ contentType: "image/png", data, size: 75 }), "pic.png");
+    const html = render(blob({ contentType: "image/png", data, size: 2 }), "pic.png");
     expect(html).toContain('data-zerops-data-blob-kind="image"');
     expect(html).toContain(`src="data:image/png;base64,${data}"`);
     expect(html).toContain('alt="pic.png"');
-    expect(html).toContain("image/png · 75 bytes");
+    expect(html).toContain("image/png · 2 bytes");
   });
 
   it("falls back to a generic alt when the node has no name", () => {

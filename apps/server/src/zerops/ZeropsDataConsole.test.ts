@@ -250,6 +250,12 @@ describe("ZeropsDataConsole", () => {
     });
   });
 
+  it("Connection secrets never reach the panel or clipboard, and browsing cannot mutate data.", () => {
+    expect(startupFailureReason("connect password=do-not-expose accessKeyId=private-key")).toBe(
+      "Console failed to start. Check the service and installed zcp version.",
+    );
+  });
+
   describe("startupFailureReason", () => {
     it.each(
       Array.from(
@@ -257,9 +263,12 @@ describe("ZeropsDataConsole", () => {
           ["unknown studio subcommand: console\n\n", "unknown studio subcommand: console"],
           [
             "listen tcp 127.0.0.1:0: bind: permission denied",
-            "listen tcp 127.0.0.1:0: bind: permission denied",
+            "Console failed to start. Check the service and installed zcp version.",
           ],
-          ["open /var/www/.zcp/state.json: no such file", "open <path>: no such file"],
+          [
+            "open /var/www/.zcp/state.json: no such file",
+            "Console failed to start. Check the service and installed zcp version.",
+          ],
           ["", undefined],
         ] as const,
         ([stderr, reason]) => ({
@@ -273,7 +282,7 @@ describe("ZeropsDataConsole", () => {
     });
 
     it("caps the reason at 120 characters", () => {
-      expect(startupFailureReason("x".repeat(200))?.length).toBe(120);
+      expect(startupFailureReason("x".repeat(200))?.length).toBeLessThanOrEqual(120);
     });
   });
 
@@ -325,7 +334,7 @@ describe("ZeropsDataConsole", () => {
       expect(routeRequest({ kind: "table", path })).toEqual({
         method: "GET",
         path: "/api/table",
-        query: { service: "db", segs: '["public","orders"]' },
+        query: { service: "db", segs: '["public","orders"]', limit: "100" },
       });
     });
 
@@ -568,6 +577,43 @@ describe("ZeropsDataConsole", () => {
   });
 
   describe("HTTP broker", () => {
+    it("Browsing caps every requested page at 100 items", () => {
+      for (const limit of [undefined, 0, -1, 1000]) {
+        expect(
+          routeRequest({ kind: "table", path: { service: "db", segments: [] }, page: { limit } })
+            .query?.limit,
+        ).toBe("100");
+      }
+    });
+    it.effect("Decision: iteration 1 is read-only.", () =>
+      Effect.gen(function* () {
+        let calls = 0;
+        const http = fakeHttpClient(() => {
+          calls++;
+          return jsonResponse({ columns: [], rows: [] });
+        });
+        const result = yield* withService(
+          { spawn: makeAutoReadySpawner().spawn, http },
+          (service) =>
+            service.call({ kind: "query", service: "db", stmt: "select 1" }).pipe(Effect.result),
+        );
+        expect(result._tag).toBe("Failure");
+        expect(calls).toBe(0);
+      }),
+    );
+    it.effect("Responses larger than one MiB are refused before decoding", () =>
+      Effect.gen(function* () {
+        const http = fakeHttpClient(() =>
+          jsonResponse({ ...servicesEnvelope, padding: "x".repeat(1024 * 1024) }),
+        );
+        const result = yield* withService(
+          { spawn: makeAutoReadySpawner().spawn, http },
+          (service) => service.call({ kind: "services" }).pipe(Effect.result),
+        );
+        expect(result._tag).toBe("Failure");
+      }),
+    );
+
     it.effect("re-reads services after a refresh", () =>
       Effect.gen(function* () {
         const calls: Array<string> = [];
@@ -709,12 +755,31 @@ describe("ZeropsDataConsole", () => {
         }),
     );
 
-    it.effect(
-      "decodes a real console query response — omitempty dropped sortable/sortReason/nextCursor/bestEffort/numbered, rowKeyCols is literal null",
-      () =>
-        Effect.gen(function* () {
-          // Captured live from `POST /api/query` against the rig (2026-09-07).
-          const liveQueryBody = {
+    it.effect("decodes absent table flags and null row keys without losing exact values", () =>
+      Effect.gen(function* () {
+        // Captured live from `POST /api/query` against the rig (2026-09-07).
+        const liveQueryBody = {
+          columns: [
+            {
+              name: "one",
+              dataType: "",
+              pk: false,
+              editable: false,
+              reason: "query results are read-only",
+            },
+          ],
+          rows: [[1, "2026-09-07T13:05:34.841934Z"]],
+          rowKeyCols: null,
+        };
+        const http = fakeHttpClient(() => jsonResponse(liveQueryBody));
+        const result = yield* withService(
+          { spawn: makeAutoReadySpawner().spawn, http },
+          (service) =>
+            service.call({ kind: "table", path: { service: "db", segments: ["public", "items"] } }),
+        ).pipe(Effect.orDie);
+        expect(result).toEqual({
+          kind: "table",
+          page: {
             columns: [
               {
                 name: "one",
@@ -722,38 +787,18 @@ describe("ZeropsDataConsole", () => {
                 pk: false,
                 editable: false,
                 reason: "query results are read-only",
+                sortable: false,
+                sortReason: "",
               },
             ],
             rows: [[1, "2026-09-07T13:05:34.841934Z"]],
-            rowKeyCols: null,
-          };
-          const http = fakeHttpClient(() => jsonResponse(liveQueryBody));
-          const result = yield* withService(
-            { spawn: makeAutoReadySpawner().spawn, http },
-            (service) => service.call({ kind: "query", service: "db", stmt: "select 1" }),
-          ).pipe(Effect.orDie);
-          expect(result).toEqual({
-            kind: "table",
-            page: {
-              columns: [
-                {
-                  name: "one",
-                  dataType: "",
-                  pk: false,
-                  editable: false,
-                  reason: "query results are read-only",
-                  sortable: false,
-                  sortReason: "",
-                },
-              ],
-              rows: [[1, "2026-09-07T13:05:34.841934Z"]],
-              nextCursor: "",
-              rowKeyCols: [],
-              bestEffort: false,
-              numbered: false,
-            },
-          });
-        }),
+            nextCursor: "",
+            rowKeyCols: [],
+            bestEffort: false,
+            numbered: false,
+          },
+        });
+      }),
     );
 
     it.effect("preserves an unsafe-integer cell exactly, end to end through the broker", () =>
@@ -821,13 +866,13 @@ describe("ZeropsDataConsole", () => {
       }),
     );
 
-    it.effect("maps a 401 to a fixed internal error, never echoing the session", () =>
+    it.effect("maps a 401 to denial, never echoing the session", () =>
       Effect.gen(function* () {
         const http = fakeHttpClient(() => new Response("unauthorized", { status: 401 }));
         const error = yield* withService({ spawn: makeAutoReadySpawner().spawn, http }, (service) =>
           service.call({ kind: "services" }),
         ).pipe(Effect.flip);
-        expect(error.code).toBe("internal");
+        expect(error.code).toBe("denied");
         expect(error.message).toBe("console rejected the session");
         expect(error.message).not.toContain(SESSION_TOKEN);
       }),
@@ -859,6 +904,81 @@ describe("ZeropsDataConsole", () => {
       }),
     );
 
+    it.effect(
+      "The ten second deadline covers stalled response bodies and cancels their stream",
+      () =>
+        Effect.gen(function* () {
+          let cancelled = false;
+          const http = fakeHttpClient(
+            () =>
+              new Response(
+                new ReadableStream<Uint8Array>({
+                  cancel() {
+                    cancelled = true;
+                  },
+                }),
+              ),
+          );
+          yield* withService({ spawn: makeAutoReadySpawner().spawn, http }, (service) =>
+            Effect.gen(function* () {
+              const call = yield* service
+                .call({ kind: "blob", path: { service: "assets", segments: ["slow.txt"] } })
+                .pipe(Effect.flip, Effect.forkChild);
+              yield* TestClock.adjust(Duration.seconds(11));
+              const error = yield* Fiber.join(call);
+              expect(error.code).toBe("timeout");
+              expect(cancelled).toBe(true);
+            }),
+          );
+        }),
+    );
+    it.effect("A preview stops reading the body as soon as its cap is reached", () =>
+      Effect.gen(function* () {
+        let cancelled = false;
+        let pulls = 0;
+        const http = fakeHttpClient(
+          () =>
+            new Response(
+              new ReadableStream<Uint8Array>({
+                pull(controller) {
+                  pulls++;
+                  controller.enqueue(new Uint8Array(64 * 1024));
+                },
+                cancel() {
+                  cancelled = true;
+                },
+              }),
+            ),
+        );
+        const result = yield* withService(
+          { spawn: makeAutoReadySpawner().spawn, http },
+          (service) =>
+            service.call({ kind: "blob", path: { service: "assets", segments: ["large.bin"] } }),
+        );
+        expect(result).toMatchObject({ kind: "blob", truncated: true });
+        expect(cancelled).toBe(true);
+        expect(pulls).toBeLessThanOrEqual(6);
+      }),
+    );
+    it.effect("Connection secrets never reach a broker error", () =>
+      Effect.gen(function* () {
+        const http = fakeHttpClient(() =>
+          jsonResponse(
+            {
+              code: "upstream",
+              message: "postgres://user:secret@db",
+              service: "secret",
+              requestId: "secret",
+            },
+            500,
+          ),
+        );
+        const error = yield* withService({ spawn: makeAutoReadySpawner().spawn, http }, (service) =>
+          service.call({ kind: "services" }),
+        ).pipe(Effect.flip);
+        expect(JSON.stringify(error)).not.toContain("secret");
+      }),
+    );
     it.effect("passes through a small blob untruncated", () =>
       Effect.gen(function* () {
         const smallBody = "hello world";

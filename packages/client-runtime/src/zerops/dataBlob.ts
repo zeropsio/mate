@@ -21,7 +21,6 @@ const IMAGE_CONTENT_TYPES = new Set([
   "image/jpeg",
   "image/gif",
   "image/webp",
-  "image/svg+xml",
   "image/bmp",
   "image/avif",
 ]);
@@ -168,7 +167,7 @@ export function classifyBlob(blob: ZeropsDataConsoleBlob): BlobPreview {
   const bytes = decodeBase64(blob.data);
   if (bytes === undefined || bytes.length === 0) return { ...common, kind: "empty" };
 
-  if (IMAGE_CONTENT_TYPES.has(blob.contentType) && !blob.truncated) {
+  if (IMAGE_CONTENT_TYPES.has(blob.contentType) && canDownloadBlob(blob)) {
     return { ...common, kind: "image", dataUri: `data:${blob.contentType};base64,${blob.data}` };
   }
 
@@ -202,4 +201,15 @@ export function classifyBlob(blob: ZeropsDataConsoleBlob): BlobPreview {
     };
   }
   return { ...common, kind: "text", text };
+}
+
+/** A download is the exact already-fetched small preview, never a second/full read. */
+export function canDownloadBlob(blob: ZeropsDataConsoleBlob): boolean {
+  const bytes = decodeBase64(blob.data);
+  return (
+    !blob.truncated &&
+    bytes !== undefined &&
+    bytes.length === blob.size &&
+    bytes.length <= 256 * 1024
+  );
 }

@@ -186,7 +186,7 @@ describe("classifyBlob", () => {
 
   it("classifies an untruncated image as a data URI", () => {
     const result = classifyBlob(
-      blob({ contentType: "image/png", data: base64(bytes(0x89, 0x50)), size: 75 }),
+      blob({ contentType: "image/png", data: base64(bytes(0x89, 0x50)), size: 2 }),
     );
     expect(result).toMatchObject({
       kind: "image",
@@ -199,7 +199,6 @@ describe("classifyBlob", () => {
     "image/jpeg",
     "image/gif",
     "image/webp",
-    "image/svg+xml",
     "image/bmp",
     "image/avif",
   ];
@@ -256,4 +255,12 @@ describe("classifyBlob", () => {
   it("classifies a malformed base64 body as empty rather than throwing", () => {
     expect(classifyBlob(blob({ data: "!!!!", size: 3 })).kind).toBe("empty");
   });
+});
+
+it("SVG content is inert text, never an image preview", () => {
+  expect(
+    classifyBlob(
+      blob({ contentType: "image/svg+xml", data: base64("<svg><script>alert(1)</script></svg>") }),
+    ).kind,
+  ).not.toBe("image");
 });

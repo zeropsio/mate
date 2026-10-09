@@ -1,8 +1,7 @@
 /**
  * The Data panel's grid: renders a fetched `DataConsoleTableModel`
  * (client-runtime, `table`/`query` responses share this shape) read-only.
- * Used for a selected `tabular` tree node, for a filtered table, and for a
- * query result.
+ * Used for a selected tabular node and capability-based inventory listings.
  *
  * NOT a protected root (design-system.md R2): a sort click and "Load more"
  * issue a read-only request directly from the user's own click, and nothing
@@ -16,17 +15,7 @@
  * bare `<table>` rather than the shared `Table` wrapper — that wrapper is an
  * `overflow-x-auto` box of its own and would capture the sticky instead.
  *
- * Paging is by scroll, with the button as the fallback: an
- * `IntersectionObserver` rooted on the scroll region watches a sentinel after
- * the last row and calls `onLoadMore` when it comes within `SENTINEL_MARGIN`.
- * The observer is attached from a ref callback held in a ref (stable
- * identity, so it attaches once) rather than from an effect, because this
- * component is exercised by calling it as a plain function and an effect
- * would never run there; `latestRef` carries the current callback, the
- * current "may page" verdict and the panel's `scrollRegionRef` into it, so
- * the observer never has to be rebuilt on a re-render. Where the constructor is missing (jsdom) only the button
- * paginates. Appending a page rewrites this same table inside this same
- * scroll region, so scroll position survives it.
+ * Paging is explicit: only the Load more button requests another bounded page.
  *
  * Row count is on-demand only (`onRequestCount`), never fetched
  * automatically — a `COUNT(*)` can be expensive on a large table; a query
@@ -40,11 +29,7 @@
  * `visibleColumns`/`toggleHiddenColumn` (client-runtime) — a primary key is
  * never hidden, so the checkbox for one renders checked and disabled.
  *
- * `toolbarLeading`/`toolbarTrailing`/`belowToolbar` are the panel's slots in
- * those fixed rows: the filter buttons and the SQL toggle share the toolbar
- * row, and the filter chips, the SQL editor and the query-result bar stack
- * under it. They are the panel's markup because they are the panel's state;
- * the rows they sit in belong to this column's layout.
+ * Toolbar slots carry capability-specific controls, such as document search.
  *
  * Keyboard handling lives on the scroll region (`tabIndex=0`) rather than on
  * each row: a roving `aria-selected` marks the focused row, and ↑/↓, Enter,
@@ -67,7 +52,6 @@ import { MicroLabel } from "./primitives";
 import { ZeropsDataCell } from "./ZeropsDataCell";
 
 /** How far below the last row the next page starts loading. */
-const SENTINEL_MARGIN = "200px";
 
 export interface ZeropsDataTableSort {
   readonly column: string;
@@ -140,12 +124,6 @@ function rowKey(
 
 const NO_HIDDEN_COLUMNS: ReadonlySet<string> = new Set();
 
-interface PagingLatest {
-  readonly onLoadMore: () => void;
-  readonly canPage: boolean;
-  readonly scrollRegionRef: RefObject<HTMLDivElement | null> | undefined;
-}
-
 export function ZeropsDataTable({
   model,
   onLoadMore,
@@ -176,39 +154,11 @@ export function ZeropsDataTable({
   const shown = visibleColumns(model.columns, hiddenColumns);
   const hasMore = model.nextCursor !== undefined && notice === undefined;
 
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const latestRef = useRef<PagingLatest>({ onLoadMore, canPage: false, scrollRegionRef });
-  latestRef.current = { onLoadMore, canPage: hasMore && !loadMorePending, scrollRegionRef };
-
-  const attachScrollRef = useRef<((node: HTMLDivElement | null) => void) | null>(null);
-  if (attachScrollRef.current === null) {
-    attachScrollRef.current = (node) => {
-      scrollRef.current = node;
-      const forwarded = latestRef.current.scrollRegionRef;
-      if (forwarded !== undefined) forwarded.current = node;
-    };
-  }
-
-  const attachSentinelRef = useRef<((node: HTMLDivElement | null) => void) | null>(null);
-  if (attachSentinelRef.current === null) {
-    attachSentinelRef.current = (node) => {
-      observerRef.current?.disconnect();
-      observerRef.current = null;
-      if (node === null) return;
-      if (typeof IntersectionObserver === "undefined") return;
-      const observer = new IntersectionObserver(
-        (entries) => {
-          if (!entries.some((entry) => entry.isIntersecting)) return;
-          if (!latestRef.current.canPage) return;
-          latestRef.current.onLoadMore();
-        },
-        { root: scrollRef.current, rootMargin: SENTINEL_MARGIN },
-      );
-      observer.observe(node);
-      observerRef.current = observer;
-    };
-  }
+  const forwardedRef = useRef(scrollRegionRef);
+  forwardedRef.current = scrollRegionRef;
+  const attachScrollRef = useRef((node: HTMLDivElement | null) => {
+    if (forwardedRef.current !== undefined) forwardedRef.current.current = node;
+  });
 
   const handleSortClick = (column: ZeropsDataConsoleColumn) => {
     if (!column.sortable) return;
@@ -326,7 +276,11 @@ export function ZeropsDataTable({
                       key={column.name}
                       onClick={() => handleSortClick(column)}
                     >
-                      {column.name}
+                      {column.name}{" "}
+                      <span className="font-normal text-muted-foreground">
+                        {column.dataType}
+                        {column.pk ? " PK" : ""}
+                      </span>
                       {sort?.column === column.name
                         ? sort.direction === "asc"
                           ? " ↑"
@@ -339,7 +293,11 @@ export function ZeropsDataTable({
                       key={column.name}
                       title={column.sortReason === "" ? undefined : column.sortReason}
                     >
-                      {column.name}
+                      {column.name}{" "}
+                      <span className="font-normal text-muted-foreground">
+                        {column.dataType}
+                        {column.pk ? " PK" : ""}
+                      </span>
                     </TableHead>
                   ),
                 )}
@@ -381,7 +339,6 @@ export function ZeropsDataTable({
             </TableBody>
           </table>
         )}
-        {hasMore ? <div data-zerops-data-table-sentinel ref={attachSentinelRef.current} /> : null}
       </div>
 
       {notice !== undefined ? null : (
@@ -424,7 +381,7 @@ export function ZeropsDataTable({
             ) : null
           ) : (
             <MicroLabel className="text-muted-foreground" data-zerops-data-table-count>
-              {`${count.toLocaleString()} rows${model.bestEffort ? " (approximate)" : ""}`}
+              {`${count.toLocaleString()} rows (exact at last read)`}
             </MicroLabel>
           )}
         </div>

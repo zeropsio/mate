@@ -28,9 +28,8 @@
  *
  * If the child exits before printing its one-line ready JSON (or never
  * prints one within {@link READY_LINE_TIMEOUT_MS}), the session is
- * `unavailable`, with the first line of its stderr as a sanitized one-line
- * reason ({@link startupFailureReason}: paths redacted, capped at
- * {@link MAX_REASON_LENGTH} characters); `call` fails with
+ * `unavailable`, with a fixed diagnostic category
+ * ({@link startupFailureReason}); `call` fails with
  * `session_unavailable`. Nothing respawns it on its own: the subscription
  * keeps showing `unavailable` with its reason right up until the NEXT
  * `call` — a person's *Try again*, or another request they make — which
@@ -48,6 +47,7 @@ import * as NodeChildProcess from "node:child_process";
 
 import {
   ZeropsDataConsoleError,
+  ZeropsDataConsoleSummary,
   ZeropsDataConsoleNode as ZeropsDataConsoleNodeSchema,
   ZeropsDataConsoleNodeMeta as ZeropsDataConsoleNodeMetaSchema,
   ZeropsDataConsolePath as ZeropsDataConsolePathSchema,
@@ -85,7 +85,6 @@ const IDLE_TIMEOUT = Duration.minutes(10);
 const READY_LINE_TIMEOUT = Duration.seconds(5);
 const REQUEST_TIMEOUT = Duration.seconds(10);
 const BLOB_CAP_BYTES = 256 * 1024;
-const MAX_REASON_LENGTH = 120;
 
 const ZCP_COMMAND = "zcp";
 
@@ -193,18 +192,12 @@ const firstNonEmptyLine = (text: string): string | undefined => {
   return line === undefined ? undefined : line.trim();
 };
 
-/** Redacts anything path-shaped and caps length — a startup failure reason may carry a filesystem path, never surfaced to a client. */
-const sanitizeReason = (line: string): string => {
-  const redacted = line.replace(/(?:[A-Za-z]:)?[/\\][^\s:]*/g, "<path>");
-  return redacted.length > MAX_REASON_LENGTH
-    ? `${redacted.slice(0, MAX_REASON_LENGTH - 3)}...`
-    : redacted;
-};
-
-/** See the module doc comment's "Degrade, never crash-loop" section. */
+/** Only a recognized diagnostic category may cross the process boundary. */
 export const startupFailureReason = (stderr: string): string | undefined => {
   const line = firstNonEmptyLine(stderr);
-  return line === undefined ? undefined : sanitizeReason(line);
+  if (line === undefined) return undefined;
+  if (line === "unknown studio subcommand: console") return line;
+  return "Console failed to start. Check the service and installed zcp version.";
 };
 
 type SessionState =
@@ -280,27 +273,54 @@ const preserveBigIntegers = (
 /** Parses one console JSON body, preserving exact big-integer cell values (see {@link preserveBigIntegers}) — used for every `/api/*` JSON body, success or error envelope. Never used for the ready-line (no numeric cell values there). Exported only for a direct table-driven test. */
 export const parseConsoleJson = (text: string): unknown => JSON.parse(text, preserveBigIntegers);
 
-/** Reads and parses one console JSON response body — `response.json` is never used directly in this module, since Effect's own accessor doesn't run a reviver and would silently round a bigint cell. */
-const readConsoleJson = <E>(response: {
-  readonly text: Effect.Effect<string, E>;
-}): Effect.Effect<unknown, ZeropsDataConsoleError> =>
-  response.text.pipe(
-    Effect.mapError(
-      () =>
-        new ZeropsDataConsoleError({
-          code: "internal",
-          message: "console returned an unreadable response",
-        }),
-    ),
-    Effect.flatMap((text) =>
-      Effect.try({
-        try: () => parseConsoleJson(text),
-        catch: () =>
+/** Stop consuming the HTTP stream at the budget, including a single oversized chunk. */
+const readBoundedBody = <E>(
+  response: { readonly stream: Stream.Stream<Uint8Array, E> },
+  cap: number,
+) =>
+  Effect.suspend(() => {
+    let length = 0;
+    const chunks: Uint8Array[] = [];
+    return response.stream.pipe(
+      Stream.map((chunk) => {
+        const bounded = chunk.slice(0, Math.max(0, cap + 1 - length));
+        chunks.push(bounded);
+        length += bounded.length;
+        return length;
+      }),
+      Stream.takeUntil((size) => size > cap),
+      Stream.runDrain,
+      Effect.mapError(
+        () =>
           new ZeropsDataConsoleError({
             code: "internal",
-            message: "console returned an unreadable response",
+            message: "Console response could not be read.",
           }),
-      }),
+      ),
+      Effect.map(() => Buffer.concat(chunks)),
+    );
+  });
+
+const readConsoleJson = <E>(response: {
+  readonly stream: Stream.Stream<Uint8Array, E>;
+}): Effect.Effect<unknown, ZeropsDataConsoleError> =>
+  readBoundedBody(response, 1024 * 1024).pipe(
+    Effect.flatMap((bytes) =>
+      bytes.length > 1024 * 1024
+        ? Effect.fail(
+            new ZeropsDataConsoleError({
+              code: "too_large",
+              message: "Response exceeds the 1 MiB preview limit.",
+            }),
+          )
+        : Effect.try({
+            try: () => parseConsoleJson(bytes.toString("utf8")),
+            catch: () =>
+              new ZeropsDataConsoleError({
+                code: "internal",
+                message: "Console returned an unreadable response.",
+              }),
+          }),
     ),
   );
 
@@ -310,17 +330,10 @@ const toEnvelopeError = (envelope: unknown, status: number): ZeropsDataConsoleEr
   const code = (
     rawCode !== undefined && KNOWN_ENVELOPE_CODES.has(rawCode) ? rawCode : "internal"
   ) as ZeropsDataConsoleErrorCode;
-  const message =
-    typeof record.message === "string"
-      ? record.message
-      : `console request failed with status ${status}`;
   return new ZeropsDataConsoleError({
-    code,
-    message,
-    ...(typeof record.service === "string" ? { service: record.service } : {}),
-    ...(typeof record.family === "string" ? { family: record.family } : {}),
-    ...(typeof record.action === "string" ? { action: record.action } : {}),
-    ...(typeof record.requestId === "string" ? { requestId: record.requestId } : {}),
+    code: status === 403 ? "denied" : code,
+    // Provider error text can contain connection strings; it never crosses this boundary.
+    message: status === 403 ? "Access denied." : `Data read failed (${code}).`,
   });
 };
 
@@ -337,7 +350,7 @@ const toRequestError = (cause: { readonly _tag: string }): ZeropsDataConsoleErro
   cause._tag === "TimeoutError" ? TIMEOUT_ERROR : toUnreachableError();
 
 const UNAUTHORIZED_ERROR = new ZeropsDataConsoleError({
-  code: "internal",
+  code: "denied",
   message: "console rejected the session",
 });
 
@@ -352,9 +365,12 @@ export interface RoutedRequest {
 const encodeSegments = (segments: ReadonlyArray<string>): string => JSON.stringify(segments);
 
 const pageQuery = (page: ZeropsDataConsolePage | undefined): Record<string, string> => {
-  const query: Record<string, string> = {};
+  const query: Record<string, string> = {
+    limit: String(
+      page?.limit != null && page.limit > 0 ? Math.min(100, Math.floor(page.limit)) : 100,
+    ),
+  };
   if (page?.cursor !== undefined) query.cursor = page.cursor;
-  if (page?.limit !== undefined) query.limit = String(page.limit);
   if (page?.sort !== undefined) query.sort = page.sort;
   if (page?.direction !== undefined) query.direction = page.direction;
   return query;
@@ -371,6 +387,8 @@ export const routeRequest = (
   request: Exclude<ZeropsDataConsoleRequest, { readonly kind: "refresh" }>,
 ): RoutedRequest => {
   switch (request.kind) {
+    case "summary":
+      return { method: "GET", path: "/api/summary", query: { service: request.service } };
     case "services":
       return { method: "GET", path: "/api/services" };
     case "tree":
@@ -530,7 +548,14 @@ const normalizeTablePage = (
     sortable: column.sortable ?? false,
     sortReason: column.sortReason ?? "",
   })),
-  rows: page.rows ?? [],
+  rows: (page.rows ?? []).slice(0, 100).map((row) =>
+    row.map((cell) => {
+      const text = typeof cell === "string" ? cell : JSON.stringify(cell);
+      return text !== undefined && text.length > 4096
+        ? text.slice(0, 4096) + "… [truncated]"
+        : cell;
+    }),
+  ),
   nextCursor: page.nextCursor ?? "",
   rowKeyCols: page.rowKeyCols ?? [],
   bestEffort: page.bestEffort ?? false,
@@ -551,6 +576,12 @@ const decodeResponseBody = (
   body: unknown,
 ): Effect.Effect<ZeropsDataConsoleResponse, ZeropsDataConsoleError> => {
   switch (kind) {
+    case "summary": {
+      const decoded = Schema.decodeUnknownResult(ZeropsDataConsoleSummary)(body);
+      return Result.isFailure(decoded)
+        ? Effect.fail(RESPONSE_DECODE_ERROR)
+        : Effect.succeed({ kind: "summary", ...decoded.success });
+    }
     case "services":
     case "refresh": {
       const decoded = decodeServicesEnvelope(body);
@@ -895,16 +926,7 @@ export const make = (options: { readonly spawnDataConsole: SpawnDataConsole }) =
           );
           return yield* toEnvelopeError(envelope, response.status);
         }
-        const bytes = yield* response.arrayBuffer.pipe(
-          Effect.mapError(
-            () =>
-              new ZeropsDataConsoleError({
-                code: "internal",
-                message: "console returned an unreadable blob",
-              }),
-          ),
-        );
-        const uint8 = new Uint8Array(bytes);
+        const uint8 = yield* readBoundedBody(response, BLOB_CAP_BYTES);
         const capped = uint8.byteLength > BLOB_CAP_BYTES;
         const cappedBytes = capped ? uint8.subarray(0, BLOB_CAP_BYTES) : uint8;
         const declaredTruncated = readHeaderBool(response.headers, "x-dataconsole-truncated");
@@ -919,7 +941,7 @@ export const make = (options: { readonly spawnDataConsole: SpawnDataConsole }) =
           kind: "blob",
           data: Base64.encode(cappedBytes),
           contentType,
-          truncated: declaredTruncated || capped,
+          truncated: declaredTruncated || capped || size > cappedBytes.length,
           size,
           vector: readHeaderBool(response.headers, "x-dataconsole-vector"),
           streamMetadata: readHeaderBool(response.headers, "x-dataconsole-streammetadata"),
@@ -951,9 +973,17 @@ export const make = (options: { readonly spawnDataConsole: SpawnDataConsole }) =
       request: ZeropsDataConsoleRequest,
     ): Effect.Effect<ZeropsDataConsoleResponse, ZeropsDataConsoleError> =>
       Effect.gen(function* () {
+        if (request.kind === "query")
+          return yield* new ZeropsDataConsoleError({
+            code: "read_only",
+            message: "Arbitrary queries are unavailable in the read-only data panel.",
+          });
         const info = yield* ensureSession;
         return yield* performRequest(info, request);
-      });
+      }).pipe(
+        Effect.timeout(REQUEST_TIMEOUT),
+        Effect.catchTags({ TimeoutError: () => Effect.fail(TIMEOUT_ERROR) }),
+      );
 
     const subscribe: Effect.Effect<
       Stream.Stream<ZeropsDataConsoleSessionEvent>,
