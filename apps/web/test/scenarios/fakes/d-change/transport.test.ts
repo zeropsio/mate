@@ -102,6 +102,20 @@ describe("D: controlled transport to real HQ", () => {
       client.send("next-frame");
       expect(await next).toBe("next-frame");
       expect(seen).toEqual(["snapshot", "next-frame"]);
+      frames.hold((frame) => frame === "compare");
+      client.send("compare");
+      await frames.received();
+      const fact = new Promise<string>((resolve) =>
+        client.once("message", (frame) => resolve(String(frame))),
+      );
+      client.send("project-fact");
+      expect(await fact).toBe("project-fact");
+      expect(seen).toEqual(["snapshot", "next-frame", "project-fact"]);
+      const comparison = new Promise<string>((resolve) =>
+        client.once("message", (frame) => resolve(String(frame))),
+      );
+      frames.resume();
+      expect(await comparison).toBe("compare");
     } finally {
       client.terminate();
       await proxy.close();

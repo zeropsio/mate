@@ -10,7 +10,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { useState, type ReactElement } from "react";
+import { useState, type ReactElement, type ReactNode } from "react";
 
 import { MateStateDetails } from "../zerops/MateStateDetails";
 import { Button } from "../ui/button";
@@ -62,8 +62,17 @@ export function mateVoiceBannerItem(input: {
   readonly onContainerAction?: ((action: "start" | "restart") => void) | undefined;
   readonly busy?: boolean;
   readonly projectUrl?: string;
+  readonly recoveryFeedback?: ReactNode;
 }): ComposerBannerStackItem | null {
   const { voice } = input;
+  if (input.recoveryFeedback != null)
+    return {
+      id: `mate-link:${input.environmentId}`,
+      variant: "default",
+      icon: null,
+      layout: "centered",
+      title: input.recoveryFeedback,
+    };
   if (voice.surface !== "banner" || voice.text === null) return null;
   const askAgain = askAgainLabel(voice.actions);
   const containerAction = voice.actions.includes("start")

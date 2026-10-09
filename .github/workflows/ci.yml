@@ -64,6 +64,9 @@ jobs:
       - name: Reconcile guard exceptions
         run: node scripts/check-guard-exceptions.ts
 
+      - name: Check runtime cycle ratchet
+        run: node scripts/check-runtime-cycles.ts
+
       - name: Check test sentence retention
         run: node scripts/check-test-sentences.ts
 
@@ -87,6 +90,9 @@ jobs:
 
       - name: Typecheck
         run: vpr typecheck
+
+      - name: Typecheck scenarios
+        run: vp exec tsc --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json
 
       # `t3#build` depends on `@t3tools/web#build`: the production web and server
       # bundles, built on every run. The desktop half builds in Desktop Smoke.

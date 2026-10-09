@@ -24,6 +24,10 @@ import type { DockModel } from "./conversationDock.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 
 export interface TimelineRowSharedState {
+  /** The child measures its fold; the list owns outer scroll and row placement. Absent in standalone cards. */
+  onFoldWork?: (
+    input: Omit<Parameters<typeof import("./foldWork").foldWork>[0], "outer">,
+  ) => () => void;
   timestampFormat: TimestampFormat;
   routeThreadKey: string;
   threadRef: ScopedThreadRef | null;

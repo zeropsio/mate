@@ -6,7 +6,6 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   isMateStandUpAsk,
   MATE_STAND_UP_MESSAGE,
-  mateArrivalHoldsComposer,
   mateStandUpAskLine,
   mateStandUpHoldsComposer,
   mateStandUpPhase,
@@ -50,7 +49,12 @@ describe("the stand-up's words", () => {
       line: "You asked Fen to stand up development of the project",
     },
   ])("draw the ask, for $asker in $project: $line", ({ asker, project, line }) => {
-    expect(mateStandUpAskLine({ name: "Fen", project }, asker)).toBe(line);
+    expect(
+      mateStandUpAskLine(
+        { name: "Fen", project, standUp: { by: asker === "you" ? "viewer" : "another" } },
+        "viewer",
+      ),
+    ).toBe(line);
   });
 
   it.each([
@@ -61,21 +65,6 @@ describe("the stand-up's words", () => {
   ])("know the ask by its exact words: %j is %s", (text, ask) => {
     expect(isMateStandUpAsk(text)).toBe(ask);
   });
-});
-
-describe("mateArrivalHoldsComposer", () => {
-  it.each([
-    { standUpHolds: true, signInRequired: false, empty: false, holds: true },
-    { standUpHolds: false, signInRequired: true, empty: true, holds: true },
-    // A conversation under way keeps its composer, whatever its sign-in says: it is read.
-    { standUpHolds: false, signInRequired: true, empty: false, holds: false },
-    { standUpHolds: false, signInRequired: false, empty: true, holds: false },
-  ])(
-    "stand-up $standUpHolds, no agent $signInRequired, empty $empty: holds $holds",
-    ({ holds, ...input }) => {
-      expect(mateArrivalHoldsComposer(input)).toBe(holds);
-    },
-  );
 });
 
 describe("mateStandUpHoldsComposer", () => {

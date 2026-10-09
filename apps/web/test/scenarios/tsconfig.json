@@ -9,11 +9,24 @@
       {
         "name": "@effect/language-service",
         "diagnosticSeverity": {
-          "globalDate": "off",
-          "globalTimers": "off",
-          "globalFetch": "off",
-          "globalConsole": "off"
-        }
+          "globalDate": "error",
+          "globalTimers": "error",
+          "globalFetch": "error",
+          "globalConsole": "error"
+        },
+        "overrides": [
+          {
+            "include": ["**/*.ts"],
+            "options": {
+              "diagnosticSeverity": {
+                "globalDate": "off",
+                "globalTimers": "off",
+                "globalFetch": "off",
+                "globalConsole": "off"
+              }
+            }
+          }
+        ]
       }
     ]
   },

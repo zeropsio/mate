@@ -27,6 +27,15 @@ import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
 
 import { rewriteImportPaths } from "./effect-401-codemod.ts";
+import {
+  guardCacheKey,
+  hashGuardContext,
+  hashGuardSource,
+  makeGuardSourceHasher,
+  readGuardCache,
+  writeGuardCache,
+  type CachedGuardFinding,
+} from "./lib/guard-cache.ts";
 
 /**
  * The reviewed source roots scanned by every oxlint-side guard: the client sources, and HQ for the
@@ -92,6 +101,8 @@ interface GuardExceptionCheckOptions<E, R> {
   readonly directory: string;
   readonly ruleNames?: ReadonlyArray<string>;
   readonly baseline?: ReadonlyMap<string, ReadonlyArray<ExceptionEntry>>;
+  readonly cacheDirectory?: string;
+  readonly onCache?: (counts: { readonly hits: number; readonly misses: number }) => void;
   readonly runLint: (request: GuardLintRequest) => Effect.Effect<GuardLintOutput, E, R>;
 }
 
@@ -381,7 +392,11 @@ const discoverRuleNames = (directory: string): ReadonlyArray<string> => {
     .toSorted();
 };
 
-const makeLintRequest = (cwd: string, ruleNames: ReadonlyArray<string>): GuardLintRequest => ({
+const makeLintRequest = (
+  cwd: string,
+  ruleNames: ReadonlyArray<string>,
+  paths: ReadonlyArray<string> = GUARD_SCOPE_PATHS,
+): GuardLintRequest => ({
   cwd,
   args: [
     "lint",
@@ -390,7 +405,7 @@ const makeLintRequest = (cwd: string, ruleNames: ReadonlyArray<string>): GuardLi
     "-A",
     "all",
     ...ruleNames.flatMap((ruleName) => ["-D", `t3code/${ruleName}`]),
-    ...GUARD_SCOPE_PATHS,
+    ...paths,
   ],
   env: { T3CODE_GUARD_REPORT_LEDGERED: "1" },
 });
@@ -436,7 +451,156 @@ const parseFindings = (
     });
 };
 
-/** One AST scan for the selected rules, then reconcile each ledger independently. */
+const collectGuardFindings = <E, R>(
+  options: GuardExceptionCheckOptions<E, R>,
+  ruleNames: ReadonlyArray<string>,
+) =>
+  Effect.gen(function* () {
+    const parse = (output: GuardLintOutput) =>
+      tryDriverOperation("guard exceptions", "failed to parse oxlint findings", () => {
+        if (output.exitCode !== 0 && output.exitCode !== 1) {
+          throw new Error(`oxlint exited ${output.exitCode}: ${output.stderr.trim()}`);
+        }
+        return new Map(
+          ruleNames.map((ruleName) => [ruleName, parseFindings(ruleName, options.cwd, output)]),
+        );
+      });
+    if (options.cacheDirectory === undefined) {
+      return yield* parse(yield* options.runLint(makeLintRequest(options.cwd, ruleNames)));
+    }
+    const metadataRequest = (args: ReadonlyArray<string>): GuardLintRequest => ({
+      cwd: options.cwd,
+      args: ["lint", ...args],
+      env: { T3CODE_GUARD_REPORT_LEDGERED: "1" },
+    });
+    const [version, config, selection] = yield* Effect.all(
+      [
+        options.runLint(metadataRequest(["--version"])),
+        options.runLint(metadataRequest(["--print-config"])),
+        options.runLint(metadataRequest(["--debug=files", ...GUARD_SCOPE_PATHS])),
+      ],
+      { concurrency: "unbounded" },
+    );
+    const context = yield* tryDriverOperation(
+      "guard exceptions",
+      "failed to identify lint inputs",
+      () => {
+        for (const output of [version, config, selection]) {
+          if (output.exitCode !== 0) throw new Error(output.stderr || output.stdout);
+        }
+        if (!/^Version: \S+/u.test(version.stdout.trim()))
+          throw new Error("Missing oxlint version");
+        return hashGuardContext({
+          cwd: options.cwd,
+          config: config.stdout,
+          version: version.stdout.trim(),
+          ruleNames,
+        });
+      },
+    );
+    const files = yield* tryDriverOperation(
+      "guard exceptions",
+      "failed to read selected source files",
+      () => {
+        const paths = selection.stdout
+          .split(/\r?\n/u)
+          .filter(Boolean)
+          .map((filename) => {
+            const path = toRepoPath(options.cwd, filename);
+            if (
+              !GUARD_SCOPE_PATHS.some((root) => path.startsWith(`${root}/`)) ||
+              path.split("/").includes("..")
+            ) {
+              throw new Error(`Unexpected lint selection ${filename}`);
+            }
+            return path;
+          });
+        const hashInputs = makeGuardSourceHasher(options.cwd, paths);
+        return paths.map((path) => {
+          const content = hashGuardSource(NodePath.join(options.cwd, path));
+          const key = guardCacheKey(context, path, hashInputs(path));
+          return {
+            path,
+            content,
+            key,
+            cached: readGuardCache(options.cacheDirectory!, key, ruleNames),
+          };
+        });
+      },
+    );
+    const misses = files.filter((file) => file.cached === undefined);
+    options.onCache?.({ hits: files.length - misses.length, misses: misses.length });
+    const fresh =
+      misses.length === 0
+        ? new Map<string, ReadonlyArray<ExceptionFinding>>()
+        : yield* parse(
+            yield* options.runLint(
+              makeLintRequest(
+                options.cwd,
+                ruleNames,
+                misses.map((file) => file.path),
+              ),
+            ),
+          );
+    const byFile = new Map<string, Array<CachedGuardFinding>>();
+    for (const [ruleName, findings] of fresh) {
+      for (const finding of findings) {
+        const bucket = byFile.get(finding.path) ?? [];
+        bucket.push({ ruleName, kind: finding.kind, fingerprint: finding.fingerprint });
+        byFile.set(finding.path, bucket);
+      }
+    }
+    if (misses.length > 0) {
+      const currentConfig = yield* options.runLint(metadataRequest(["--print-config"]));
+      yield* tryDriverOperation("guard exceptions", "lint inputs changed during guard scan", () => {
+        if (
+          currentConfig.exitCode !== 0 ||
+          hashGuardContext({
+            cwd: options.cwd,
+            config: currentConfig.stdout,
+            version: version.stdout.trim(),
+            ruleNames,
+          }) !== context
+        ) {
+          throw new Error("Guard configuration or implementation changed");
+        }
+        const hashInputs = makeGuardSourceHasher(
+          options.cwd,
+          files.map((file) => file.path),
+        );
+        for (const file of files) {
+          if (guardCacheKey(context, file.path, hashInputs(file.path)) !== file.key)
+            throw new Error(`Source or dependency changed: ${file.path}`);
+        }
+      });
+    }
+    yield* tryDriverOperation("guard exceptions", "failed to publish guard cache", () => {
+      for (const path of byFile.keys()) {
+        if (!misses.some((file) => file.path === path))
+          throw new Error(`Unexpected lint finding ${path}`);
+      }
+      for (const file of misses) {
+        if (hashGuardSource(NodePath.join(options.cwd, file.path)) !== file.content) {
+          throw new Error(`Source changed during guard scan: ${file.path}`);
+        }
+      }
+      for (const file of misses)
+        writeGuardCache(options.cacheDirectory!, file.key, byFile.get(file.path) ?? []);
+    });
+    const findings = new Map<string, Array<ExceptionFinding>>(
+      ruleNames.map((ruleName) => [ruleName, []]),
+    );
+    for (const file of files) {
+      for (const finding of file.cached ?? byFile.get(file.path) ?? []) {
+        findings
+          .get(finding.ruleName)!
+          .push({ path: file.path, kind: finding.kind, fingerprint: finding.fingerprint });
+      }
+    }
+    return findings;
+  });
+
+/** Reconcile every ledger live, using cached and fresh findings from the current lint scope. */
 export const checkGuardExceptions = <E, R>(options: GuardExceptionCheckOptions<E, R>) =>
   Effect.gen(function* () {
     if (options.baseline !== undefined) {
@@ -467,7 +631,7 @@ export const checkGuardExceptions = <E, R>(options: GuardExceptionCheckOptions<E
     const reports: Array<string> = [];
     let problemCount = 0;
 
-    const output = yield* options.runLint(makeLintRequest(options.cwd, ruleNames));
+    const allFindings = yield* collectGuardFindings(options, ruleNames);
     for (const ruleName of ruleNames) {
       const ledger = yield* tryDriverOperation(ruleName, "failed to load exception ledger", () =>
         loadExceptionLedger(ruleName, options.directory),
@@ -492,9 +656,7 @@ export const checkGuardExceptions = <E, R>(options: GuardExceptionCheckOptions<E
         for (const addition of additions)
           reports.push(`${ruleName}: new exception identity/occurrence ${addition}`);
       }
-      const findings = yield* tryDriverOperation(ruleName, "failed to parse oxlint findings", () =>
-        parseFindings(ruleName, options.cwd, output),
-      );
+      const findings = allFindings.get(ruleName) ?? [];
       const result = reconcileExceptions({
         entries: ledger.entries,
         findings,
@@ -517,6 +679,7 @@ export const checkGuardExceptionsCommand = Command.make(
   "check-guard-exceptions",
   {
     base: Flag.String("base").pipe(Flag.withDefault("origin/main")),
+    cache: Flag.Boolean("cache").pipe(Flag.withDefault(true)),
     rule: Flag.String("rule").pipe(
       Flag.atLeast(0),
       Flag.withDescription(
@@ -524,7 +687,7 @@ export const checkGuardExceptionsCommand = Command.make(
       ),
     ),
   },
-  ({ rule, base }) =>
+  ({ rule, base, cache }) =>
     Effect.gen(function* () {
       const directory = NodePath.join(DEFAULT_REPO_ROOT, "oxlint-plugin-t3code", "exceptions");
       const baseline = yield* tryDriverOperation(
@@ -532,13 +695,22 @@ export const checkGuardExceptionsCommand = Command.make(
         "failed to load Git ratchet baseline",
         () => loadRatchetBaseline(DEFAULT_REPO_ROOT, base),
       );
+      let counts: { readonly hits: number; readonly misses: number } | undefined;
       const result = yield* checkGuardExceptions({
         cwd: DEFAULT_REPO_ROOT,
         directory,
         baseline,
+        ...(cache
+          ? { cacheDirectory: NodePath.join(NodeOS.homedir(), ".cache", "mate-guard") }
+          : {}),
+        onCache: (value) => {
+          counts = value;
+        },
         ...(rule.length > 0 ? { ruleNames: rule } : {}),
         runLint: spawnGuardLint,
       });
+      if (counts !== undefined)
+        yield* Console.log(`guard cache: ${counts.hits} hits, ${counts.misses} misses`);
       for (const report of result.reports) {
         yield* Console.log(report);
       }

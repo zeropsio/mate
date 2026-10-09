@@ -2,6 +2,7 @@ import { act, createElement } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { organizationMembers } from "@t3tools/client-runtime/data";
 import { RegistryContext } from "@effect/atom-react";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import {
@@ -1009,14 +1010,25 @@ describe("readOfficialHqNow", () => {
     let members: ReadonlyArray<ZeropsOrganizationMember> = [];
     const registry = AtomRegistry.make();
     const account = makeMemberAccount({ registry, orgId: "org-1", members: async () => members });
-    expect((await readOfficialHqNow(account.value, registry, "org-1")).kind).toBe("none");
+    await expect(readOfficialHqNow(account.value, registry, "org-1")).resolves.toEqual({
+      kind: "none",
+    });
     members = [ANCHOR];
-    expect(await readOfficialHqNow(account.value, registry, "org-1")).toEqual({
+    await expect(readOfficialHqNow(account.value, registry, "org-1")).resolves.toEqual({
       kind: "official",
       projectId: "P_HQ",
       address: "https://hq.example.test",
     });
     expect(account.reads()).toBe(2);
+    expect(
+      registry.get(
+        account.value.data.project(organizationMembers, { orgId: "org-1", clientId: "org-1" }),
+      ),
+    ).toMatchObject({
+      status: "ready",
+      settled: false,
+      stream: { phase: "paused", demanded: false },
+    });
   });
 
   it("does not treat a refusal as proof there is no HQ or automatically retry it", async () => {

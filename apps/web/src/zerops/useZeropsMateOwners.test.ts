@@ -212,3 +212,61 @@ describe("useHqPersonNames", () => {
     expect(named.at(-1)).toBe(name);
   });
 });
+
+it("a retained member list does not make a failed owner read ready for HQ verification", async () => {
+  const registry = AtomRegistry.make();
+  let fail = false;
+  const { makeSampledAccount } = await import("./__fixtures__/sampledAccount");
+  const account = makeSampledAccount({
+    registry,
+    orgId: "org-1",
+    answer: (path) =>
+      path.includes("/user/list")
+        ? Promise.resolve(
+            fail
+              ? { status: 500, body: null }
+              : {
+                  status: 200,
+                  body: { clientUserList: [{ id: "cu-jan", user: { fullName: "Jan Novák" } }] },
+                },
+          )
+        : null,
+  });
+  const seen: Array<ReturnType<typeof useZeropsOrganizationMembersRead>> = [];
+  function Probe() {
+    seen.push(useZeropsOrganizationMembersRead({ clientId: "org-1", enabled: true }));
+    return null;
+  }
+  let root: ReturnType<typeof create>;
+  await act(async () => {
+    root = create(
+      createElement(
+        RegistryContext.Provider,
+        { value: registry },
+        createElement(AccountDataContext.Provider, { value: account }, createElement(Probe)),
+      ),
+    );
+  });
+  await act(async () => {
+    await account.readDetail({ family: "organizationMembers", ownerId: "org-1" });
+  });
+  expect(seen.at(-1)).toMatchObject({
+    status: "ready",
+    settled: true,
+    members: [{ id: "cu-jan" }],
+  });
+  fail = true;
+  await act(async () => {
+    account.revalidate({ family: "organizationMembers", ownerId: "org-1" });
+    await account.readDetail({ family: "organizationMembers", ownerId: "org-1" });
+  });
+  expect(seen.at(-1)).toMatchObject({
+    status: "failed",
+    settled: false,
+    members: [{ id: "cu-jan" }],
+    fact: { kind: "known" },
+    stream: { fault: { outcome: "transient", message: "A detail baseline answer is malformed." } },
+  });
+  await act(async () => root.unmount());
+  registry.dispose();
+});

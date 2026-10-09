@@ -9,7 +9,8 @@ export { seedHqVerdict } from "./hqVerdict.ts";
 export {
   engineCardPagingOfRecords,
   engineThreadOfRecords,
+  engineRunCardsOfRecords,
   type EngineRecords,
 } from "./engineThread.ts";
-export { callItem, engineRow, engineRun, personItem, noteItem, workItem } from "./mateEngine.ts";
+export { callItem, engineRun, engineRow, personItem, noteItem, workItem } from "./mateEngine.ts";
 export { liveZerops, ORG } from "./account.ts";

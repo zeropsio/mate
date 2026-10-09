@@ -688,14 +688,6 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"chat-composer-banner-stack-cap border border-b-0 shadow-[0_6px_18px_rgba(0,0,0,0.06)]\"",
-    "owner": "karel",
-    "reason": "T3 chrome styling in ComposerBannerStack awaiting semantic roles",
-    "expires": "F4"
-  },
-  {
     "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
     "kind": "Literal",
     "fingerprint": "\"absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6\"",

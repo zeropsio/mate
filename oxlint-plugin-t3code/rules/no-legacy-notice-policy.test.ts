@@ -50,6 +50,17 @@ chat.valid(
 
 admissionChat.valid(
   "the chat's existing arrival query stays with its arrival owner",
+  'import { agentAdmission } from "@t3tools/client-runtime/data"; export const state = agentAdmission(input).holdsComposer;',
+);
+const admission = createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
+  filename: "packages/client-runtime/src/data/projections/agentAdmission.ts",
+});
+admission.valid(
+  "The admission owner derives the existing arrival hold",
+  'import { zeropsAgentSignInRequired } from "../../zerops/agentLogin"; export const held = zeropsAgentSignInRequired(feed, providers);',
+);
+admissionChat.invalid(
+  "ChatView cannot restore an arrival admission join",
   'import { zeropsAgentSignInRequired } from "@t3tools/client-runtime/zerops/agentLogin"; export const state = mateArrivalHoldsComposer({signInRequired: zeropsAgentSignInRequired(feed)});',
 );
 const crew = createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
@@ -86,3 +97,24 @@ it.effect(
       }
     }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+for (const policy of [
+  "branchMismatchKey",
+  "isBranchMismatchDismissedForSession",
+  "dismissBranchMismatchForSession",
+]) {
+  admissionChat.invalid(
+    `branch advice callers cannot restore ${policy}`,
+    `import { ${policy} as legacy } from "./BranchToolbar.logic"; const alias = legacy; export const notice = alias(evidence);`,
+  );
+  chat.invalid(
+    `branch advice cannot relocate ${policy}`,
+    `import * as branch from "./BranchToolbar.logic"; const { ${policy}: legacy } = branch; export const notice = legacy(evidence);`,
+  );
+  createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
+    filename: "apps/web/src/components/BranchToolbar.logic.ts",
+  }).valid(
+    `the branch owner retains ${policy}`,
+    `import { ${policy} as legacy } from "./existing"; export const advice = legacy(evidence);`,
+  );
+}

@@ -1,4 +1,4 @@
-import type { EngineCallResult } from "@t3tools/contracts";
+import { RunId, type EngineCallResult } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -134,7 +134,10 @@ function rig(
 describe("the thread commands a view sends, by its Mate's wire", () => {
   // Catches a Stop sent to the card a continuing run draws on: the engine refuses an ended run, and
   // the run that works goes on (a usage-limit resume, an agent's own turn, a restart's continuation).
-  const SESSION = (steer: boolean) => ({
+  const SESSION = (steer: boolean, active = true) => ({
+    activeRunId: active ? RunId.make("thread-ada/r/2") : null,
+    latestRunId: RunId.make(active ? "thread-ada/r/2" : "thread-ada/r/1"),
+    runStatus: active ? ("running" as const) : ("ready" as const),
     session: { driver: "claudeAgent", model: "claude-sonnet-4-5", steer },
   });
   const working = (state: "running" | "waiting" | "admitted") =>
@@ -175,18 +178,27 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     sizeBytes: 9,
   } as const;
   it.effect.each([
-    { name: "no run works", runs: [engineRun("thread-ada", 1)], steer: true, carries: [] },
-    { name: "the run is not started yet", runs: [working("admitted")], steer: true, carries: [] },
+    {
+      name: "no run works",
+      runs: [engineRun("thread-ada", 1)],
+      steer: false,
+      active: false,
+      carries: [],
+    },
+    // The header carries current eligibility, not merely the session's capability.
+    { name: "the run is not started yet", runs: [working("admitted")], steer: false, carries: [] },
     { name: "its session cannot steer", runs: [working("running")], steer: false, carries: [] },
     { name: "it carries pictures", runs: [working("running")], steer: true, carries: [picture] },
     { name: "it carries a file", runs: [working("running")], steer: true, carries: [file] },
-  ])("a message sent when $name goes as the conversation's next run", ({ runs, steer, carries }) =>
-    Effect.gen(function* () {
-      const r = rig(1);
-      r.runs(runs, SESSION(steer));
-      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn(carries)), r.v1));
-      expect(r.calls.map((call) => call.kind)).toEqual(["send"]);
-    }),
+  ])(
+    "a message sent when $name goes as the conversation's next run",
+    ({ runs, steer, active, carries }) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.runs(runs, SESSION(steer, active));
+        yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn(carries)), r.v1));
+        expect(r.calls.map((call) => call.kind)).toEqual(["send"]);
+      }),
   );
 
   // Catches plan mode dropped: a steer carries no interaction mode, and the working run keeps its own.
@@ -238,16 +250,19 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
   it.effect("a Stop on a run that continues another stops the run that works, not its card", () =>
     Effect.gen(function* () {
       const r = rig(1);
-      r.runs([
-        engineRun("thread-ada", 1),
-        engineRun("thread-ada", 2, {
-          joins: "thread-ada/r/1" as never,
-          trigger: { kind: "wake", cause: "self", wakeId: null } as never,
-          state: "running",
-          end: null,
-          endedAt: null,
-        }),
-      ]);
+      r.runs(
+        [
+          engineRun("thread-ada", 1),
+          engineRun("thread-ada", 2, {
+            joins: "thread-ada/r/1" as never,
+            trigger: { kind: "wake", cause: "self", wakeId: null } as never,
+            state: "running",
+            end: null,
+            endedAt: null,
+          }),
+        ],
+        SESSION(true),
+      );
       yield* Effect.forkChild(
         r.run(
           viaEngine(

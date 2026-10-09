@@ -44,6 +44,7 @@ import {
   organizationLocations,
   regionRecommendation,
   demandLocationLatency,
+  initialStream,
   type LocationsRead,
 } from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -91,7 +92,16 @@ export function zeropsNewProjectScopeStepVisible(input: {
 
 /** Mounted once, above every view: the dialog while New project is asked for. */
 const NO_RECOMMENDATION = Atom.make<string | null>(null);
-const UNREAD_LOCATIONS = Atom.make<LocationsRead>({ status: "loading", locations: [] });
+const UNREAD_LOCATIONS = Atom.make<LocationsRead>({
+  fact: { kind: "unknown" },
+  coverage: "unknown",
+  stream: initialStream({ parent: null, mode: "sampled" }),
+  link: null,
+  status: "loading",
+  settled: false,
+  refused: false,
+  locations: [],
+});
 
 export function ZeropsNewProjectHost() {
   const asked = useNewProjectAsk((state) => state.asked);

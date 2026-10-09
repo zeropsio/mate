@@ -6,6 +6,7 @@ import {
   nextVersion,
   parseVersion,
   releaseNotes,
+  releaseMessage,
 } from "./release-mate.ts";
 
 describe("parseVersion", () => {
@@ -96,4 +97,16 @@ describe("releaseNotes", () => {
   it("is empty when nothing reached main", () => {
     expect(releaseNotes("")).toBe("");
   });
+});
+
+it("release commits retain the lane Card trailer", () => {
+  expect(releaseMessage("0.14.105", "- fix: retain recovery outcomes", "notices-s5")).toBe(
+    "chore(release): mate 0.14.105\n\n- fix: retain recovery outcomes\n\nCard: notices-s5",
+  );
+});
+
+it("releases outside a lane do not invent a Card trailer", () => {
+  expect(releaseMessage("0.14.105", "- fix: retain recovery outcomes")).toBe(
+    "chore(release): mate 0.14.105\n\n- fix: retain recovery outcomes",
+  );
 });

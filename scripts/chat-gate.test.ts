@@ -5,7 +5,6 @@ import * as NodePath from "node:path";
 import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
 import { expect, it } from "vite-plus/test";
-import { selectScenarioAreas } from "./gate-changed.ts";
 import { checkSteps } from "./ci-local.ts";
 import {
   chatGateStages,
@@ -96,7 +95,13 @@ it("the gate runs the crew's journeys on the engine's world, beside the unit sui
     [
       "F: crew journeys on the engine",
       "engine",
-      ["src/zerops/crew/CrewEngine", "src/zerops/crew/registerCrewRpc.test.ts"],
+      [
+        ...["attachments", "endings", "lead", "memory", "midway", "operations", "runs"].map(
+          (part) => `src/zerops/crew/CrewEngine.${part}.test.ts`,
+        ),
+        "src/zerops/crew/CrewEngine.test.ts",
+        "src/zerops/crew/registerCrewRpc.test.ts",
+      ],
     ],
   ]);
 });
@@ -195,12 +200,16 @@ it.each([
   { path: "apps/mobile/src/chat.tsx", ids: [] },
   {
     path: "packages/client-runtime/src/zerops/timelineFollow.ts",
-    ids: ["A", "C", "C-engine", "E", "types"],
+    ids: ["C", "C-engine", "types"],
   },
 ])("a lane selects the affected contract layers for $path", ({ path, ids }) => {
-  expect(
-    selectLaneChatStages([path], selectScenarioAreas([path])).map((stage) => stage.id),
-  ).toEqual(ids);
+  const root = NodePath.resolve(import.meta.dirname, "..");
+  // Related files are the graph's input here; the CLI test verifies that derivation separately.
+  const related = chatGateTestFiles(
+    root,
+    chatGateStages.filter((stage) => ids.includes(stage.id)),
+  );
+  expect(selectLaneChatStages([path], related, root).map((stage) => stage.id)).toEqual(ids);
 });
 
 it("each wire stage owns only the journeys its project runs", () => {
@@ -313,4 +322,99 @@ it.each(["A", "E"])("a %s-only gate runs without installing a scenario browser",
   } finally {
     NodeFS.rmSync(fixture, { recursive: true, force: true });
   }
+});
+
+it("lane file selection keeps the affected C journey on both wires without expanding siblings", () => {
+  const file = "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts";
+  const result = NodeChildProcess.spawnSync(
+    process.execPath,
+    ["scripts/chat-gate.ts", "--stages", "C,C-engine", "--files", JSON.stringify([file]), "--list"],
+    { cwd: new URL("../", import.meta.url), encoding: "utf8" },
+  );
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout.split(file.slice("apps/web/".length))).toHaveLength(3);
+  expect(result.stdout).not.toContain("opening.scenario.ts");
+  expect(result.stdout).toContain("--project scenarios ");
+  expect(result.stdout).toContain("--project scenarios-engine ");
+  expect(result.stdout).toContain("reason: explicit related files");
+});
+
+it.each([
+  ["--stages", "C", "--files", "[null]"],
+  [
+    "--stages",
+    "C-engine",
+    "--files",
+    JSON.stringify(["apps/web/test/scenarios/areas/c-mate/opening.scenario.ts"]),
+  ],
+  ["--stages", "A", "--files", JSON.stringify(["apps/server/src/spi/replay/missing.test.ts"])],
+])("invalid lane file selection fails before running a command (%s)", (...args) => {
+  const result = NodeChildProcess.spawnSync(
+    process.execPath,
+    ["scripts/chat-gate.ts", ...args, "--list"],
+    { cwd: new URL("../", import.meta.url), encoding: "utf8" },
+  );
+  expect(result.status).not.toBe(0);
+  expect(result.stdout).toBe("");
+});
+
+it("a contract-only edit retains wire consumer typechecks even without a selected journey", () => {
+  const stages = selectLaneChatStages(["packages/contracts/src/engineWire.ts"], []);
+  const commands = stages.find((stage) => stage.id === "types")?.commands;
+  expect(commands?.map((command) => command.cwd)).toEqual([
+    "apps/server",
+    "packages/contracts",
+    "packages/client-runtime",
+    "apps/web",
+    ".",
+  ]);
+  expect(commands?.at(-1)?.args).toContain("apps/web/test/scenarios/areas/c-mate/tsconfig.json");
+});
+
+it("an empty lane chat selection skips before starting any command", () => {
+  const result = NodeChildProcess.spawnSync(
+    process.execPath,
+    ["scripts/chat-gate.ts", "--stages", "A,C,C-engine,E", "--files", "[]"],
+    { cwd: new URL("../", import.meta.url), encoding: "utf8" },
+  );
+  expect(result.status, result.stderr).toBe(0);
+  for (const id of ["A", "C", "C-engine", "E"])
+    expect(result.stdout).toContain(`Selection ${id}: skip: no selected case files`);
+  expect(result.stdout).not.toContain("no cases ran");
+});
+
+it("a selected client journey skips the engine stage when that project has no matching case", () => {
+  const file = "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts";
+  const result = NodeChildProcess.spawnSync(
+    process.execPath,
+    ["scripts/chat-gate.ts", "--stages", "C,C-engine", "--files", JSON.stringify([file]), "--list"],
+    { cwd: new URL("../", import.meta.url), encoding: "utf8" },
+  );
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain("Selection C-engine: skip: no selected case files");
+  expect(result.stdout).toContain("--project scenarios ");
+  expect(result.stdout).not.toContain("--project scenarios-engine");
+  expect(result.stdout).toContain(file.slice("apps/web/".length));
+});
+
+it("Decision: no test deleted or weakened; only lane selection changes; main CI runs everything", () => {
+  const result = NodeChildProcess.spawnSync(process.execPath, ["scripts/chat-gate.ts", "--list"], {
+    cwd: new URL("../", import.meta.url),
+    encoding: "utf8",
+  });
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain("test/scenarios/areas/c-mate --allowOnly=false");
+  expect(result.stdout).toContain(
+    "--project scenarios-engine test/scenarios/areas/c-mate/chat.scenario.ts",
+  );
+  for (const file of [
+    "src/spi/replay/goldens.test.ts",
+    "src/engine/domain/decide.model.test.ts",
+    "src/engine/outbox/crash.test.ts",
+    "src/engine/history/historyImport.test.ts",
+    "src/engine/engine.sim.test.ts",
+    "src/engine/engine.pump.test.ts",
+  ])
+    expect(result.stdout).toContain(file);
+  expect(result.stdout).not.toContain("skip:");
 });

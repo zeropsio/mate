@@ -20,6 +20,7 @@ import {
 } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import {
+  computeStableMessagesTimelineRows,
   createMessagesTimelineRowsCache,
   deriveMessagesTimelineRows,
   type MessagesTimelineRowsCache,
@@ -29,6 +30,7 @@ interface Frame {
   readonly activities: ReadonlyArray<OrchestrationThreadActivity>;
   readonly messages: ReadonlyArray<ChatMessage>;
   readonly runningTurnId: string | null;
+  readonly isCompacting?: boolean;
 }
 
 /** The thread as it stood after each activity, its words streaming in between. */
@@ -98,6 +100,7 @@ function derive(
     provider: "claudeAgent",
     nowMs: Date.parse(frame.activities.at(-1)!.createdAt) + 60_000,
     ...(cache === undefined ? {} : { cache }),
+    ...(frame.isCompacting === undefined ? {} : { isCompacting: frame.isCompacting }),
   });
   return { projection, work, rows };
 }
@@ -167,6 +170,22 @@ describe("a real thread replayed an activity at a time", () => {
       }
     },
   );
+
+  it("keeps settled rows when only the live card's structural activity changes", () => {
+    const thread = ZEROPS_SHOWCASE_THREADS[0]!;
+    const frames = replay(thread.activities, thread.messages as ReadonlyArray<ChatMessage>);
+    const frame = frames.findLast((frame) => frame.runningTurnId !== null)!;
+    const cache = createMessagesTimelineRowsCache();
+    const first = derive(frame, null, cache);
+    const compacting = derive({ ...frame, isCompacting: true }, first.projection, cache);
+    expect(compacting.rows).toStrictEqual(derive({ ...frame, isCompacting: true }, null).rows);
+    const before = computeStableMessagesTimelineRows(first.rows, { byId: new Map(), result: [] });
+    const after = computeStableMessagesTimelineRows(compacting.rows, before);
+    const settled = before.result.filter((row) => row.kind === "record" && !row.live);
+    expect(settled.length).toBeGreaterThan(0);
+    for (const row of settled)
+      expect(after.result.find((candidate) => candidate.id === row.id)).toBe(row);
+  });
 
   it("hands on the same entries when nothing the conversation shows changed", () => {
     const thread = ZEROPS_SHOWCASE_THREADS[0]!;

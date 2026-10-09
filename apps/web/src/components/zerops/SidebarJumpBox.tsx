@@ -44,7 +44,7 @@ import { formatShortTimestamp } from "~/timestampFormat";
 import { useMateCommand, useMateHeld } from "~/zerops/accountEnvironments";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useSidebarJump } from "~/zerops/sidebarJump";
-import { useMateReadOnly, useMatesReadOnly } from "~/zerops/useMateReadOnly";
+import { useMateReadOnly } from "~/zerops/useMateReadOnly";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { useZeropsChangeLandedEvents } from "~/zerops/useZeropsChangeLandedEvents";
@@ -60,6 +60,8 @@ import {
   type JumpPages,
   type JumpWriteLine,
 } from "./JumpBox";
+
+const NO_READ_ONLY: ReadonlySet<string> = new Set();
 import {
   jumpWritePlan,
   withLiveMates,
@@ -126,7 +128,6 @@ export function SidebarJumpBox({
       }),
     [index.mates, shells],
   );
-  const readOnly = useMatesReadOnly(conversations);
   // The conversations of the Mates the menu shows, searched by the server.
   const environmentIds = useMemo(
     () => conversations.map((entry) => EnvironmentId.make(entry.environmentId)),
@@ -143,7 +144,7 @@ export function SidebarJumpBox({
       })),
     [search.matches],
   );
-  const model = useJumpBoxModel(state, index, hits, readOnly);
+  const model = useJumpBoxModel(state, index, hits, NO_READ_ONLY);
   const showable = useSidebarJump((store) => store.showable);
   const pages = useJumpPages();
   const close = () => {

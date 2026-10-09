@@ -18,7 +18,7 @@ took 53 min, 218 calls, 83 M tokens and 9 commits — +44 lines of CSS, +1,136 l
 - **Change** — behaviour: state, data, protocol, a new control. RED → GREEN on the logic
   (`*.logic.ts`, server, runtime), targeted `vp test run`, package typecheck, one live look for UI.
 - **Pass** — the owner calls it a pass, or it redesigns several surfaces or lands a slice: the loop
-  in `docs/internals/zerops/fork.md` §5.
+  in [Commands](#commands) below.
 
 ## What a doc may hold
 
@@ -38,18 +38,17 @@ shows), so swapping the data source turns it red.
 This file is a MAP, not a knowledge store — it never caches a product fact that already lives in
 code, tests or another document. To answer a question, go to the home:
 
-| Knowledge                                                                                                                | Home                                                                       |
-| ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| The zcp↔mate seam                                                                                                        | `../zcp/docs/spec-mate.md` §2.8                                            |
-| Domain terms — Mate, HQ, application, environments, release and crew                                                     | `docs/internals/zerops/primer.md`                                          |
-| Fork rules — zones, freeze, keep/delete, work loop, intake                                                               | `docs/internals/zerops/fork.md`                                            |
-| Provider runtime SPI contract — version, delivery guarantee, enrichment, typed capabilities, fixtures, porting checklist | `docs/internals/zerops/spi.md`                                             |
-| Per-port compatibility matrix                                                                                            | `docs/internals/zerops/compat.md`                                          |
-| Platform assumptions our code relies on                                                                                  | `docs/internals/zerops/verified.md` or a comment beside the dependent code |
-| Shared UI principles, copy glossary, tokens, guard rules and exception policy                                            | `docs/internals/zerops/design-system.md`                                   |
-| Behavior invariant                                                                                                       | a test whose title is the product sentence                                 |
-| Transient roadmap / journal                                                                                              | `../zcp/plans/` (never cite as a source)                                   |
-| Upstream agent guide (still accurate below the banner)                                                                   | `AGENTS.md`                                                                |
+| Knowledge                                                                     | Home                                                                       |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| The zcp↔mate seam                                                             | `../zcp/docs/spec-mate.md` §2.8                                            |
+| Domain terms — Mate, HQ, application, environments, release and crew          | `docs/internals/zerops/primer.md`                                          |
+| Fork rules — zones, freeze, product constraints, upstream boundaries          | `docs/internals/zerops/fork.md`                                            |
+| Provider runtime SPI boundary and ownership rules                             | `docs/internals/zerops/spi.md`                                             |
+| Platform assumptions our code relies on                                       | `docs/internals/zerops/verified.md` or a comment beside the dependent code |
+| Shared UI principles, copy glossary, tokens, guard rules and exception policy | `docs/internals/zerops/design-system.md`                                   |
+| Behavior invariant                                                            | a test whose title is the product sentence                                 |
+| Transient roadmap / journal                                                   | `../zcp/plans/` (never cite as a source)                                   |
+| Upstream agent guide (still accurate below the banner)                        | `AGENTS.md`                                                                |
 
 ## Zones
 
@@ -70,12 +69,19 @@ Full map, `imported.lock` enforcement, and the adapter SPI contract: `docs/inter
   staged/working/untracked files). It checks guard ledgers, `vp check` on touched files, incremental
   typechecks of touched packages, related tests and only affected scenario areas. `--list` previews
   selection; `--base <ref>` changes the comparison. Use targeted tests while iterating.
+- What a change verifies depends on what it touches: docs, plans and comments run no tests (format
+  and links only); scripts run their own tests; logic runs typechecks of touched packages and the
+  tests that import the changed files; UI adds only the scenarios that render the changed parts; a
+  shared contract adds only that seam's contract suites. The full suites run once per `main` head in
+  CI; a red `main` is repaired by the lane whose commit (its `Card:` trailer) turned it red.
 - A lane's loop: targeted `vp test run <files>` while iterating; the gate once when the change is
-  complete, then only the failed files and the gate once more. Rebase once, right before the push;
+  complete, then only the failed files and the gate once more. Reviewers judge the diff and the
+  gate's receipt and never re-run the gate. Rebase once, right before the push;
   re-run only what the rebase changed in the lane's files. A push rejected because `main` moved is
   rebased and pushed again without re-running. `ci-local` only after touching guard ledgers,
   exceptions, `surfaces.json`, theme tokens or tooling. At most one
-  `gh run watch <id> --exit-status`, then read the failures once; never poll logs in a loop.
+  `ci-wait <run-id | commit-sha>` (shared conditional GET cache, 20 s polling, 60 min timeout), then read
+  the failures once; never poll logs in a loop.
 - The integrator runs the full gates before pushing the assembled work: `node scripts/ci-local.ts`
   for CI's Check job, plus the full unit and scenario suites. CI runs the repository-wide checks;
   lanes keep their local checks targeted.

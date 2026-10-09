@@ -12,7 +12,7 @@ import type { AtomRegistry } from "effect/reactivity";
 
 import { linkKeys } from "../model.ts";
 import { sameValue } from "../projections/equal.ts";
-import { UNOBSERVED_PHASES } from "../projections/operationEnd.ts";
+import { UNOBSERVED_PHASES } from "../streamMachine.ts";
 import type { AccountStore, Projection } from "../store.ts";
 import type { OperationKind } from "./kind.ts";
 import { historyHolding, reflectedByProcess, runningIn, settledByProcess } from "./processEnd.ts";

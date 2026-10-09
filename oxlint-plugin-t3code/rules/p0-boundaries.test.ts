@@ -39,7 +39,7 @@ describe("sanctioned source boundaries retain their counterexamples", () => {
     `export const read = () => fetch("/projects");`,
   );
 
-  const artifacts = io("apps/web/src/zerops/accountHq.ts");
+  const artifacts = io("apps/web/src/zerops/bundledCore.ts");
   for (const file of ["build.json", "core.tgz.bin", "zerops.yml"]) {
     artifacts.valid(
       `the bundled ${file} transfer is allowed`,

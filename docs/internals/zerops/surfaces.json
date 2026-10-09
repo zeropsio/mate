@@ -53,7 +53,9 @@
           "reverse": "none: Clearing consumed registration handoff state is intentionally one-way."
         }
       ],
-      "docs": "docs/user/zerops-account.md",
+      "docs": {
+        "none": "Implemented behaviour belongs in consumer tests, not user docs."
+      },
       "tests": [
         "apps/web/src/AppRoot.test.tsx",
         "apps/web/src/zerops/accountLifetime.test.ts",
@@ -775,7 +777,9 @@
           "reverse": "none: A newer measured sample clears strain; loss of connection labels retained evidence last-known."
         }
       ],
-      "docs": "docs/user/observing-environments.md",
+      "docs": {
+        "none": "Implemented behaviour belongs in consumer tests, not user docs."
+      },
       "tests": [
         "apps/server/src/zerops/mateResourceHealth.test.ts",
         "apps/hq/src/mateOverviews.test.ts",
@@ -938,7 +942,9 @@
           "reverse": "none: Sign out"
         }
       ],
-      "docs": "docs/user/zerops-account.md",
+      "docs": {
+        "none": "Implemented behaviour belongs in consumer tests, not user docs."
+      },
       "tests": [
         "apps/web/src/components/zerops/landing/ZeropsAccountControl.test.tsx",
         "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.test.tsx",
@@ -1030,6 +1036,7 @@
         "apps/web/src/components/zerops/ZeropsDeletionRecovery.tsx",
         "apps/web/src/zerops/useMateActions.tsx",
         "apps/web/src/zerops/RestartMateConfirmation.tsx",
+        "apps/web/src/zerops/recoveryOutcomes.tsx",
         "apps/web/src/components/zerops/ZeropsRestartMateDialog.tsx",
         "apps/web/src/components/zerops/ZeropsRestartMateDialog.logic.ts",
         "apps/web/src/zerops/useSidebarMateMenus.tsx",
@@ -1334,7 +1341,9 @@
           "reverse": "none: An explicit read changes no remote state."
         }
       ],
-      "docs": "docs/user/git.md",
+      "docs": {
+        "none": "Implemented behaviour belongs in consumer tests, not user docs."
+      },
       "tests": [
         "apps/web/src/components/zerops/ZeropsGitPage.test.tsx",
         "apps/web/src/components/zerops/ZeropsGitPage.logic.test.ts",
@@ -1951,7 +1960,9 @@
           "reverse": "none: Its credential is discarded and the account entry is shown."
         }
       ],
-      "docs": "docs/user/zerops-account.md",
+      "docs": {
+        "none": "Implemented behaviour belongs in consumer tests, not user docs."
+      },
       "tests": [
         "apps/web/src/hostedPairing.test.ts",
         "apps/mobile/src/features/connection/pairing.test.ts"
@@ -1967,6 +1978,7 @@
         "packages/client-runtime/src/data/index.ts",
         "apps/web/src/routes/__root.tsx",
         "apps/web/src/zerops/AgentAdmissionComposition.tsx",
+        "apps/web/src/zerops/useMateReadOnly.ts",
         "apps/web/src/components/ChatView.tsx",
         "apps/web/src/components/chat/AgentAdmissionExplanation.tsx",
         "apps/web/src/components/chat/ThreadErrorBanner.tsx",

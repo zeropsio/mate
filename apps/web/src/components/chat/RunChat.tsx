@@ -140,6 +140,7 @@ import {
   type LiveSlot as LiveSlotState,
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
+import { foldWork } from "./foldWork";
 import { usePace } from "./usePace";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { type DrawnRow, landingHosts, rowShifts, slotMoves } from "./slotMoves.logic";
@@ -151,14 +152,8 @@ import {
   type BackgroundLineModel,
 } from "./backgroundLine.logic";
 import { useRunEffortWords } from "./runResultFacts";
-import {
-  heldLines,
-  pageReached,
-  withPagedEffort,
-  type ScrollPages,
-} from "~/zerops/engineCardPaging.logic";
-import { useEngineCardPaging } from "~/zerops/useEngineCardPaging";
-import { foldWork } from "./foldWork";
+import { pageReached, type ScrollPages } from "~/zerops/engineCardPaging.logic";
+import { useEngineCardPages } from "~/zerops/useEngineCardPaging";
 import {
   type EaseBudget,
   ROOM_TAU_MS,
@@ -200,8 +195,6 @@ import {
 } from "./MessagesTimeline.logic";
 import {
   chatOpensAt,
-  chatItemHasLine,
-  selectChatItems,
   cutEdges,
   earlierShown,
   followAfter,
@@ -222,11 +215,10 @@ import {
   reachesEarlier,
   runCardShows,
   chooseLiveRunFold,
-  liveRunFold,
   runFoldOf,
   setRunFold,
+  transitionRunFold,
   severalCallsWords,
-  slotModelOf,
   type SlotFiller,
   stepNowWords,
   subscribeRunFolds,
@@ -3129,7 +3121,7 @@ function useLeavingLine(
  */
 function NowLine({
   status,
-  now,
+  now: recordedNow,
   answering,
   outcome,
   end = null,
@@ -3149,6 +3141,7 @@ function NowLine({
    */
   readonly settledHere?: boolean;
 }) {
+  const now = useEngineLiveNow(recordedNow);
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
   const effort = useRunEffortWords(outcome);
@@ -3533,7 +3526,7 @@ function LiveSlot({
   live,
   items,
   filler,
-  now,
+  now: recordedNow,
   answering,
   status,
   undone,
@@ -3554,6 +3547,7 @@ function LiveSlot({
   /** Its card's motion: the history reads the slot's ease from it. */
   readonly motionRef: { readonly current: RunMotion };
 }) {
+  const now = useEngineLiveNow(recordedNow);
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
   // What the face and a screen reader say stands its dwell, as the slot's
@@ -3621,9 +3615,7 @@ function LiveSlot({
   );
   if (standsOpen !== heldOpen) setHeldOpen(standsOpen);
   const lines = drawn
-    .flatMap(({ item }) => {
-      return chatItemHasLine(item) ? [itemLine(item, undone)] : [];
-    })
+    .map(({ item }) => itemLine(item, undone))
     .map((line, index, all) =>
       line.theirs === true && all[index - 1]?.asks === true ? { ...line, pairs: true } : line,
     );
@@ -3794,10 +3786,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const [carriedOpen] = useState(() => new Map<string, Carried>());
   const ctx = use(TimelineRowCtx);
   // An engine run too long to read whole: its effort from its summary, its lines a page at a time.
-  const paged = useEngineCardPaging(row.turnId ?? null);
-  const paging = paged?.paging ?? null;
-  const outcome = useMemo(() => withPagedEffort(row.outcome, paging), [row.outcome, paging]);
-  const rowItems = useMemo(() => heldLines(row.items, paging), [row.items, paging]);
+  const paging = row.paging;
+  const pages = useEngineCardPages(paging);
+  const outcome = row.outcome;
   const hold = useHoldReading();
   const rootRef = useRef<HTMLDivElement>(null);
   const aboveRef = useRef<HTMLDivElement>(null);
@@ -3810,13 +3801,14 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const historyRoomsRef = useRef<Rooms | null>(null);
   // What its parts' motions share (`RunMotion`).
   const motionRef = useRef<RunMotion>({ slot: null, budget: { at: -1, grow: 0, shrink: 0 } });
-  const { fold, foldNow, settling } = useRunFold({
+  const { fold, foldNow, settling, motionAllowed } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
     live: row.live,
     readingRef,
     rootRef,
     aboveRef,
+    onFoldWork: ctx.onFoldWork ?? foldWork,
   });
   // The card's own height eases (`easeRooms`) as its parts come and go — the
   // history's scroll arriving with its first line, the slot giving way to the
@@ -3863,29 +3855,18 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // The live slot (pass 35): what the Mate is doing this moment, each thing
   // as the row it becomes; it plops into the history once it ended and
   // stood its minimum. Only the run's last record, while it runs, has one.
-  const { isCompacting } = use(TimelineRowActivityCtx);
   const slotted = row.live && row.status !== null;
-  // An engine Mate's thought or note in the slot, with its words streamed so far.
-  const now = useEngineLiveNow(row.now);
-  const model = useMemo(
-    () =>
-      slotModelOf({
-        now,
-        answering: row.answering,
-        compacting: isCompacting,
-        items: row.items,
-      }),
-    [now, row.answering, isCompacting, row.items],
-  );
+  const now = row.now;
+  const model = row.slot;
   // A folded line's own calls are the record's too (`parts`).
   const recordKeys = useMemo(
     () =>
-      row.items.flatMap((item) =>
+      model.record.flatMap((item) =>
         item.kind === "step" && item.parts !== undefined
           ? [item.key, ...item.parts.map((part) => part.key).filter((key) => key !== item.key)]
           : [item.key],
       ),
-    [row.items],
+    [model.record],
   );
   const slotRef = useRef<HTMLDivElement>(null);
   // What goes live enters the slot one after another (`usePace`).
@@ -4035,12 +4016,15 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // left out: it folds in once the call lands.
   const history =
     holds.size === 0
-      ? rowItems
-      : rowItems.flatMap((item): RecordItem[] => {
+      ? row.chatItems
+      : row.chatItems.flatMap((selected): typeof row.chatItems => {
+          const { item } = selected;
           if (holds.has(item.key)) return [];
-          if (item.kind !== "step" || item.parts === undefined) return [item];
-          if (!item.parts.some((part) => holds.has(part.key))) return [item];
-          return item.parts.filter((part) => !holds.has(part.key));
+          if (item.kind !== "step" || item.parts === undefined) return [selected];
+          if (!item.parts.some((part) => holds.has(part.key))) return [selected];
+          return item.parts
+            .filter((part) => !holds.has(part.key))
+            .map((part) => ({ item: part, pairs: false }));
         });
   const feedRef = useRef<HTMLDivElement>(null);
   const fromHeightRef = useRef<number | null>(null);
@@ -4055,14 +4039,14 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   });
   // What joins the history enters one after another (`usePace`): a line
   // landing from the slot at once, what rode along with it after.
-  const historyKeys = useMemo(() => history.map((item) => item.key), [history]);
+  const historyKeys = useMemo(() => history.map(({ item }) => item.key), [history]);
   const historyHeld = usePace({
     keys: historyKeys,
     landing: landing?.hosts ?? NO_HOLDS,
     flush: !slotted || ctx.syncing || outOfSight,
   });
   const entered =
-    historyHeld.size === 0 ? history : history.filter((item) => !historyHeld.has(item.key));
+    historyHeld.size === 0 ? history : history.filter(({ item }) => !historyHeld.has(item.key));
   const lines = above || !folded ? chatLines(entered, undone) : [];
   // The scroll mounts with its first line, so its box is there from its
   // first frame for what keeps it at its foot.
@@ -4078,7 +4062,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         eases={slotted && !ctx.syncing}
         opensAtStart={!above}
         {...(above ? { readingRef } : {})}
-        {...(paged === null ? {} : { pages: paged.pages })}
+        {...(pages === null ? {} : { pages })}
       />
     );
   const settledOutcome = settled ? row.outcome : null;
@@ -4152,28 +4136,26 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               key="line"
               answering={false}
               outcome={outcome}
-              settledHere={watchedLive}
+              settledHere={watchedLive && motionAllowed}
               end={
                 // A chat opens from its first thing the Mate did (`chatLines`),
                 // and only onto a line that shows something.
-                shows.toggle !== null &&
-                ((paging?.hasWork ?? false) ||
-                  opensOnto({ control: "work", lines: selectChatItems(row.items).length })) ? (
+                shows.toggle !== null && row.hasWork ? (
                   <WorkToggle
                     onToggle={() => {
                       // Its lines not read yet: it opens once their first page is held.
-                      if (folded && paged !== null && !paged.paging.holdsLines) {
+                      if (folded && pages !== null && paging !== null && !paging.holdsLines) {
                         if (openingRef.current !== null) return;
                         hold(folded);
                         openingRef.current = { reading: false };
-                        paged.pages.read("later");
+                        pages.read("later");
                         return;
                       }
                       toggleWork();
                     }}
                     open={!folded}
-                    {...(paged !== null && !paged.paging.holdsLines
-                      ? { onIntent: () => paged.pages.read("later") }
+                    {...(pages !== null && paging !== null && !paging.holdsLines
+                      ? { onIntent: () => pages.read("later") }
                       : {})}
                   />
                 ) : null
@@ -4186,7 +4168,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               key="slot"
               folded={liveFolded}
               ref={slotRef}
-              items={row.items}
+              items={model.record}
               live={model.live}
               filler={model.filler}
               now={now}
@@ -4235,8 +4217,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
 }
 
 /** Build bubbles only for the selected history once its work is drawn. */
-function chatLines(items: ReadonlyArray<RecordItem>, undone: ReadonlySet<string>): ChatLine[] {
-  return selectChatItems(items).map(({ item, pairs }) => ({ ...itemLine(item, undone), pairs }));
+function chatLines(items: RecordRow["chatItems"], undone: ReadonlySet<string>): ChatLine[] {
+  return items.map(({ item, pairs }) => ({ ...itemLine(item, undone), pairs }));
 }
 
 /**
@@ -4254,6 +4236,7 @@ function useRunFold({
   readingRef,
   rootRef,
   aboveRef,
+  onFoldWork,
 }: {
   readonly conversation: string;
   readonly run: string;
@@ -4261,7 +4244,13 @@ function useRunFold({
   readonly readingRef: { readonly current: boolean };
   readonly rootRef: { readonly current: HTMLElement | null };
   readonly aboveRef: { readonly current: HTMLElement | null };
-}): { readonly fold: RunFold; readonly foldNow: () => void; readonly settling: boolean } {
+  readonly onFoldWork: NonNullable<TimelineRowSharedState["onFoldWork"]>;
+}): {
+  readonly fold: RunFold;
+  readonly foldNow: () => void;
+  readonly settling: boolean;
+  readonly motionAllowed: boolean;
+} {
   const read = () => runFoldOf(conversation, run, live ? "watched" : "folded");
   const stored = useSyncExternalStore(subscribeRunFolds, read, read);
   const fold = stored;
@@ -4272,48 +4261,63 @@ function useRunFold({
   const settling = !live && drawnLive && stored === "watched";
   // Where the line's words stood as the run settled: the fold starts there.
   const settledAtRef = useRef<number | null>(null);
+  const motionAllowed = () =>
+    !prefersReducedMotion() &&
+    (typeof document === "undefined" || document.visibilityState !== "hidden");
+  const measure = () => {
+    if (!motionAllowed()) return null;
+    return nowWordsOf(rootRef.current)?.getBoundingClientRect().top ?? null;
+  };
   // It folds from where its line's words stand now, easing the work shut
   // into the line — at once under reduced motion.
   const foldNow = () => {
-    const words = nowWordsOf(rootRef.current);
-    // Under reduced motion, or settled in a tab out of sight, it is folded at once.
-    const unseen = typeof document !== "undefined" && document.visibilityState === "hidden";
-    settledAtRef.current =
-      words === null || prefersReducedMotion() || unseen ? null : words.getBoundingClientRect().top;
-    setRunFold(conversation, run, settledAtRef.current === null ? "folded" : "folding");
+    settledAtRef.current = measure();
+    transitionRunFold(conversation, run, { kind: "hide", measured: settledAtRef.current !== null });
   };
-  const foldOnSettle = useEffectEvent(foldNow);
+  const observe = useEffectEvent((wasLive: boolean) => {
+    settledAtRef.current = live ? null : (settledAtRef.current ?? (wasLive ? measure() : null));
+    transitionRunFold(
+      conversation,
+      run,
+      live
+        ? { kind: "live" }
+        : {
+            kind: "settled",
+            wasLive,
+            reading: readingRef.current,
+            measured: settledAtRef.current !== null,
+          },
+    );
+  });
   useLayoutEffect(() => {
     const wasLive = wasLiveRef.current;
     wasLiveRef.current = live;
     setDrawnLive(live);
-    if (live) {
-      setRunFold(conversation, run, liveRunFold(conversation, run));
-      return;
-    }
-    if (runFoldOf(conversation, run) !== "watched") return;
-    // It settled out of sight, or it is drawn again since: nobody reads it.
-    if (!wasLive) {
-      setRunFold(conversation, run, "folded");
-      return;
-    }
-    if (readingRef.current) return;
-    foldOnSettle();
+    observe(wasLive);
   }, [conversation, run, live, readingRef]);
   useLayoutEffect(() => {
     if (fold !== "folding") return;
     const from = settledAtRef.current;
-    settledAtRef.current = null;
     const above = aboveRef.current;
     const words = nowWordsOf(rootRef.current);
-    const done = () => setRunFold(conversation, run, "folded");
+    let active = true;
+    const done = () => {
+      if (!active) return;
+      active = false;
+      settledAtRef.current = null;
+      transitionRunFold(conversation, run, { kind: "finished" });
+    };
     if (from === null || above === null || words === null) {
       done();
       return;
     }
-    return foldAway(above, from - words.getBoundingClientRect().top, done);
-  }, [conversation, run, fold, aboveRef, rootRef]);
-  return { fold, foldNow, settling };
+    const cancel = foldAway(above, from - words.getBoundingClientRect().top, done, onFoldWork);
+    return () => {
+      active = false;
+      cancel();
+    };
+  }, [conversation, run, fold, aboveRef, rootRef, onFoldWork]);
+  return { fold, foldNow, settling, motionAllowed: motionAllowed() };
 }
 
 /** The now line's words in a run's chat: where the line stands. */
@@ -4353,16 +4357,21 @@ function easeFeedHeight(feed: HTMLElement, from: number): void {
 /**
  * Folds the work over a run's line shut (`foldWork`): from its height, less
  * `shift` — how much higher the line stands without its hairline and room,
- * which the fold starts by keeping — to nothing, fading as it closes; `done`
+ * which the fold starts by keeping — to nothing, clipping as it closes; `done`
  * once it is shut.
  */
-function foldAway(above: HTMLElement, shift: number, done: () => void): () => void {
+function foldAway(
+  above: HTMLElement,
+  shift: number,
+  done: () => void,
+  onFoldWork: NonNullable<TimelineRowSharedState["onFoldWork"]>,
+): () => void {
   const from = above.getBoundingClientRect().height + shift;
   if (from < 1) {
     done();
     return () => undefined;
   }
-  return foldWork({ above, from, done });
+  return onFoldWork({ above, from, done });
 }
 
 /** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */

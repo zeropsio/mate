@@ -2,7 +2,8 @@
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import type { Projection } from "../store.ts";
 import { usageOwnerOf, usageScope } from "../families/usage.ts";
-import { projectRestarts, readRestartRecovery, type RestartRecovery } from "./restart.ts";
+import { readRestartRecovery, type RestartRecovery } from "./restart.ts";
+import { projectRestarts } from "./restartEvidence.ts";
 import { sameValue } from "./equal.ts";
 import { projectProcesses, type ProjectKey } from "./processes.ts";
 import { projectStanding, type ProjectStanding } from "./projects.ts";

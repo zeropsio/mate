@@ -8,8 +8,7 @@ import serviceStackFixture from "./__fixtures__/z3-eval.service-stack.json" with
 
 /**
  * `GET /project/{id}/service-stack` and `GET /project/{id}/process` for the
- * `z3-eval` project, captured 2026-09-04 (`docs/internals/zerops/verified.md`
- * "platform websocket from a browser origin"). Every `userData`/`userDataList`
+ * project captured 2026-09-04. Every `userData`/`userDataList`
  * array was emptied at capture time — those carry env values and the
  * projection never reads them.
  */

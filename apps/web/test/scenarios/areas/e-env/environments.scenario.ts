@@ -1,8 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import { HqStreamMessage } from "@t3tools/shared/hqStream";
+import { installArea as installChangeTransport, hqFramesFor } from "../d-change/fake.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { environmentFixture, environmentFixtureWith } from "./fake.ts";
 import { environmentActions } from "./dsl.ts";
+
+const decodeHqFrame = Schema.decodeSync(Schema.fromJsonString(HqStreamMessage));
 
 describe("E: stage, production, release and rollback", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -249,6 +254,67 @@ describe("E: stage, production, release and rollback", () => {
         yield* a.then.releaseDisabled;
         yield* f.s.then.noExternalNetwork;
       }),
+    );
+
+    it.effect(
+      "rollback waits for the comparison before confirmation can be pressed",
+      () =>
+        Effect.gen(function* () {
+          const f = yield* environmentFixture;
+          const a = environmentActions(f);
+          yield* Effect.promise(async () => installChangeTransport(f.s.drivers));
+          yield* Effect.promise(() => f.s.web.setRoutes());
+          const frames = hqFramesFor(f.s.drivers);
+          const earlier = yield* f.merge();
+          yield* a.when.finish("stage");
+          yield* f.release("v0.1.0");
+          yield* a.when.finish("production");
+          yield* f.merge("Improve the storefront");
+          yield* a.when.finish("stage");
+          yield* f.release("v0.1.1");
+          yield* a.when.finish("production");
+          yield* f.s.given.signedIn;
+          yield* a.when.open("production");
+          yield* a.then.rowShows("v0.1.1", "Live");
+          frames.hold((frame) => decodeHqFrame(frame).type === "compare");
+          const submissions: string[] = [];
+          f.s.page.on("request", (request) => {
+            if (
+              request.method() === "POST" &&
+              new URL(request.url()).pathname.endsWith("/rollback")
+            )
+              submissions.push(request.url());
+          });
+          yield* a.when.rollBack("v0.1.0");
+          yield* Effect.promise(() => frames.received());
+          yield* a.then.text("Comparing in HQ…");
+          const confirmation = yield* Effect.promise(() =>
+            f.s.page.locator('::-p-aria(Roll back to v0.1.0[role="button"])').waitHandle(),
+          );
+          expect(
+            yield* Effect.promise(() =>
+              confirmation.evaluate((button) => (button as HTMLButtonElement).disabled),
+            ),
+          ).toBe(true);
+          expect(submissions).toHaveLength(0);
+          frames.resume();
+          yield* a.when.click("Roll back to v0.1.0");
+          const process = yield* a.deployment("production");
+          expect(submissions).toHaveLength(1);
+          const jobs = yield* f.s.drivers.core.sql`
+          SELECT label, sha, process_id FROM hq_deploy_job
+          WHERE project_id = ${"Shop-production"} AND label = ${"v0.1.2"}`;
+          expect(jobs).toEqual([
+            expect.objectContaining({ label: "v0.1.2", sha: earlier, process_id: process.id }),
+          ]);
+          yield* a.when.finish("production");
+          yield* a.then.text("Rolled back to v0.1.0");
+          yield* a.when.click("Close");
+          yield* a.then.rowShows("v0.1.2", "Live");
+          yield* a.then.rowShows("v0.1.2", earlier.slice(0, 7));
+          yield* f.s.then.noExternalNetwork;
+        }),
+      90_000,
     );
 
     // Catches Roll back losing the earlier release's commit or failing to make a new live version.

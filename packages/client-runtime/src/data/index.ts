@@ -293,6 +293,10 @@ export {
   inventoryPlacementStatus,
   type InventoryKey,
   type InventoryRead,
+  findInventoryProjectRef,
+  inventoryProjectRefKey,
+  type InventoryProjection,
+  type InventoryContents,
 } from "./projections/inventory.ts";
 
 export {
@@ -365,7 +369,7 @@ export {
 export { repositorySource } from "./projections/repositorySource.ts";
 export { makeRepositorySourceReads } from "./adapters/hqRepositorySource.ts";
 
-export { workspaceReading } from "./projections/mateWorkspace.ts";
+export { workspaceReading, type WorkspaceReading } from "./projections/mateWorkspace.ts";
 export { makeWorkspaceReads, makeWorkspaceWire } from "./adapters/mateWorkspace.ts";
 export { WORKSPACE_READS } from "./families/mateWorkspace.ts";
 export type { WorkspaceRead, WorkspaceTarget, WorkspaceValue } from "./families/mateWorkspace.ts";
@@ -476,6 +480,7 @@ export {
 export * from "./families/mateFeeds.ts";
 export * from "./projections/mateFeeds.ts";
 export * from "./adapters/mateFeeds.ts";
+export type { MateFeedReading } from "./projections/mateFeeds.ts";
 export * from "./mateFeedReads.ts";
 export * from "./operations/mateActions.ts";
 export * from "./operations/executors/mateActions.ts";
@@ -555,12 +560,14 @@ export {
   engineCardPaging,
   engineCardPagingOf,
   engineRows,
+  engineRunCards,
   engineThread,
   engineThreadOf,
   overlayEngineRow,
   overlayEngineShell,
   type EngineCardCounts,
   type EngineCardPaging,
+  type EngineRunCard,
 } from "./projections/mateEngine.ts";
 
 export {
@@ -581,8 +588,8 @@ export { createMateLimitAtoms, mateLimitAtom } from "./mateLimitReads.ts";
 export { agentUsageOwner } from "./families/agentUsage.ts";
 export { agentUsage, type AgentUsageRead } from "./projections/agentUsage.ts";
 
+export { projectRestarts } from "./projections/restartEvidence.ts";
 export {
-  projectRestarts,
   readRestart,
   restartReadout,
   readRestartRecovery,
@@ -595,9 +602,20 @@ export {
 
 export {
   agentAdmission,
+  resolveZeropsProviderAvailability,
+  isZeropsInstanceRunnable,
   admissionRefusalWords,
   mateAdmissionSummary,
   admissionExplainsRefusal,
   type AgentAdmissionAttention,
   type AgentRefusalSource,
 } from "./projections/agentAdmission.ts";
+
+export { initialStream } from "./streamMachine.ts";
+export { recoveryOutcome } from "./projections/restartEvidence.ts";
+export { recoveryPreparationFailure, type RecoveryOutcome } from "./projections/restart.ts";
+export {
+  makeOutcomePresentation,
+  presentOutcomes,
+  type OutcomeInvocation,
+} from "./notices/outcomes.ts";

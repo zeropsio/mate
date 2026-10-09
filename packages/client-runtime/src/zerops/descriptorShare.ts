@@ -17,7 +17,7 @@ import { ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { readMatePath, type FetchLike, type MatePathReading } from "./containerHealth.ts";
+import { readMatePath, type FetchLike, type MatePathReading } from "../data/adapters/matePath.ts";
 import type { Instant } from "./environments/exchange.ts";
 import type { ExchangeClock } from "./environments/exchange.ts";
 

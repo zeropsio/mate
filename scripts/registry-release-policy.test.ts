@@ -61,32 +61,27 @@ describe("registry-free server releases", () => {
   });
 
   it("documents the GitHub release and zcp pin path without registry instructions", () => {
-    const install = read("docs/user/install.md");
-    expect(install).toContain("https://github.com/zeropsio/mate/releases/latest");
-    expect(install).toContain("zerops-mate-<version>.tgz");
-    expect(install).toContain("zerops-mate-0.1.0.tgz");
+    const docs = read("docs/README.md");
+    expect(docs).toContain("https://github.com/zeropsio/mate/releases");
+    expect(docs).toContain("zcp/docs/spec-mate.md");
 
-    const release = read("docs/operations/release.md");
-    expect(release).toContain(".github/workflows/release.yml");
-    expect(release).toContain("VITE_BASE_PATH=/mate");
-    expect(release).toContain("SHA256SUMS");
-    expect(release).toContain("zcp");
-    expect(release).toContain("nothing is published under the `zerops-mate` name");
+    const workflow = read(".github/workflows/release.yml");
+    expect(workflow).toContain("VITE_BASE_PATH: /mate");
+    expect(workflow).toContain("SHA256SUMS");
+    expect(workflow).not.toMatch(/\b(?:npm|vp pm)\s+publish\b/);
     for (const releaseScript of [
       "scripts/update-release-package-versions.ts",
       "scripts/resolve-nightly-release.ts",
       "scripts/build-desktop-artifact.ts",
       "scripts/merge-update-manifests.ts",
     ]) {
-      expect(release, releaseScript).toContain(releaseScript);
+      expect(exists(releaseScript), releaseScript).toBe(true);
     }
 
     for (const relativePath of [
       "CONTRIBUTING.md",
       ".github/ISSUE_TEMPLATE/via-triage.yml",
-      "docs/internals/server-updates.md",
-      "docs/operations/observability.md",
-      "docs/operations/release.md",
+      "docs/README.md",
     ]) {
       const source = read(relativePath);
       expect(source, relativePath).not.toContain("pingdotgg/t3code");

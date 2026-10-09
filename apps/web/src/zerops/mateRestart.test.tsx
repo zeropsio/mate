@@ -1,7 +1,30 @@
 import { mateArrivalNotice } from "./mateNoticeVoice";
 import { MateRestartError } from "./mateRestartRefusal";
 import { act, useLayoutEffect } from "react";
-import { create } from "react-test-renderer";
+import { create as render, type ReactTestRenderer } from "react-test-renderer";
+import type { ReactNode } from "react";
+import { RegistryContext } from "@effect/atom-react";
+import { AtomRegistry } from "effect/reactivity";
+import { makeAccountStore } from "@t3tools/client-runtime/data";
+import { AccountDataContext, type AccountData } from "./accountData";
+const cleanups: Array<() => void> = [];
+function create(node: ReactNode): ReactTestRenderer {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const mounted = render(
+    <RegistryContext.Provider value={registry}>
+      <AccountDataContext.Provider value={{ orgId: "org-1", data: store.data } as AccountData}>
+        {node}
+      </AccountDataContext.Provider>
+    </RegistryContext.Provider>,
+  );
+  cleanups.push(() => {
+    mounted.unmount();
+    store.close();
+    registry.dispose();
+  });
+  return mounted;
+}
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useRestartMate, useReviveFailedMate } from "./mateRestart";
@@ -20,7 +43,6 @@ vi.mock("./useZeropsCandidates", () => ({
   ],
 }));
 vi.mock("./accountOperations", () => ({ useAccountOperations: () => ({ submit: mock.submit }) }));
-vi.mock("./ZeropsAccountData", () => ({ useAccountData: () => ({ orgId: "org-1" }) }));
 vi.mock("./zeropsContainers", () => ({
   intendContainer: () => true,
   readContainerInitAt: async () => null,
@@ -43,7 +65,12 @@ beforeEach(() => {
   mock.toasts.length = 0;
   mock.submit.mockReset();
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  act(() => {
+    cleanups.splice(0).forEach((close) => close());
+  });
+  vi.unstubAllGlobals();
+});
 
 describe("useReviveFailedMate", () => {
   it("says a stop it could not follow, with starting the Mate as the next step", async () => {

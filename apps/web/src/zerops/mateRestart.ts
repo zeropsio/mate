@@ -6,6 +6,7 @@
  */
 import { restartWay } from "@t3tools/client-runtime/data";
 import type { TargetKey } from "@t3tools/client-runtime/zerops/environments";
+import { useRecoveryCommand } from "./recoveryOutcomes";
 import { useCallback } from "react";
 
 import { toastManager } from "~/components/ui/toast";
@@ -13,9 +14,9 @@ import { toastManager } from "~/components/ui/toast";
 import { useAccountOperations } from "./accountOperations";
 import { MateRestartError } from "./mateRestartRefusal";
 import { restartRefusal } from "./mateNoticeVoice";
-import { useAccountData } from "./ZeropsAccountData";
+import { useAccountData } from "./accountData";
 import { useHeldZeropsCandidates } from "./useZeropsCandidates";
-import { intendContainer, readContainerInitAt } from "./zeropsContainers";
+import { intendContainer } from "./zeropsContainers";
 
 export interface RestartTarget {
   /** The Mate's container. */
@@ -31,26 +32,18 @@ export interface RestartTarget {
  * intended to come back, or rejects with what to tell the person.
  */
 export function useRestartMate(): (target: RestartTarget) => Promise<void> {
-  const operations = useAccountOperations();
-  const { orgId } = useAccountData();
-  return useCallback(
-    async (target) => {
-      if (orgId === null) throw new Error("No organization is open.");
-      // The container's initAt is read before the verb: the restart is over once it moves.
-      const initAt = await readContainerInitAt(target.key);
-      const { progress } = await operations.submit({
-        kind: "mate-restart",
-        orgId,
-        projectId: target.projectId,
-        serviceId: target.serviceId,
-        way: restartWay(target.status),
-      });
-      const refusal = restartRefusal(progress);
-      if (refusal !== null) throw new MateRestartError(progress);
-      intendContainer(target.key, { kind: "restart", initAt });
-    },
-    [operations, orgId],
-  );
+  const command = useRecoveryCommand("restart-confirmation");
+  const rows = useHeldZeropsCandidates();
+  return async (target) => {
+    const { progress } = await command(
+      {
+        ...target,
+        name: rows.find((row) => row.project.id === target.projectId)?.project.name ?? "The Mate",
+      },
+      "restart",
+    );
+    if (restartRefusal(progress) !== null) throw new MateRestartError(progress);
+  };
 }
 
 /**

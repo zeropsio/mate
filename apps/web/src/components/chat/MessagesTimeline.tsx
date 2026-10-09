@@ -51,9 +51,11 @@ import {
 import {
   createEndFollow,
   ownListScrolls,
+  scrollOwn,
   takeOwnScroll,
   type EndFollow,
 } from "./timelineEndFollow";
+import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
@@ -113,7 +115,7 @@ import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
   describeTimelineAnchor,
   judgeTimelinePlacing,
-  keepTimelineEndVisibleAfterOverlayGrowth,
+  type RememberedTimelinePosition,
   readTimelineFirstLineInset,
   readTimelinePosition,
   rememberTimelinePosition,
@@ -168,8 +170,8 @@ import { useZeropsMate } from "~/zerops/useZeropsMates";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { isMateStandUpAsk } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
-import { useEngineLiveMessage } from "~/zerops/useEngineLiveMessage";
-import { useEngineUnheldWork } from "~/zerops/useEngineCardPaging";
+import { useEngineLiveMessage, useEngineLiveStructure } from "~/zerops/useEngineLiveMessage";
+import { useEngineCardSnapshots, useEngineRunCards } from "~/zerops/useEngineCardPaging";
 import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
@@ -186,6 +188,7 @@ import { ConversationAfterWork, ConversationWorking, dockDraws } from "./Convers
 import { useEndingsHeld } from "./useEndingsHeld";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
+import { easeRooms, type Rooms } from "./runRoom";
 import type { LiveJobs } from "./liveJobs.logic";
 import { backgroundLineOf, jobItems, taskItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
@@ -458,16 +461,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const endRepinFrameRef = useRef<number | null>(null);
 
   const previousContentInsetEndAdjustmentRef = useRef(contentInsetEndAdjustment);
-
-  useLayoutEffect(() => {
-    keepTimelineEndVisibleAfterOverlayGrowth({
-      timeline: listRef.current,
-      previousOverlayHeight: previousContentInsetEndAdjustmentRef.current,
-      overlayHeight: contentInsetEndAdjustment,
-      followingEnd: liveFollowEnabled && anchorMessageId === null,
-    });
-    previousContentInsetEndAdjustmentRef.current = contentInsetEndAdjustment;
-  }, [anchorMessageId, contentInsetEndAdjustment, listRef, liveFollowEnabled]);
+  const noticeResizeRef = useRef<{
+    position: RememberedTimelinePosition | undefined;
+    scrollOffset: number;
+  } | null>(null);
+  const [noticeReadingPosition, setNoticeReadingPosition] = useState<RememberedTimelinePosition>();
+  const remeasurePositionRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     return () => {
@@ -538,11 +537,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // What the last derive read and drew: a streamed update reads the live run again, no other.
   const [rowsCache] = useState(createMessagesTimelineRowsCache);
   const timelineThread = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
-  const unheldWork = useEngineUnheldWork(timelineThread);
+  const cardPaging = useEngineCardSnapshots(timelineThread);
+  const liveLines = useEngineLiveStructure(timelineThread, timelineEntries);
+  const runCards = useEngineRunCards(timelineThread);
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
         cache: rowsCache,
+        ...(runCards === null ? {} : { runCards }),
         limit,
         nowMs,
         newSince,
@@ -559,10 +561,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         helperFinishes,
         alongside,
         provider,
-        ...(unheldWork === undefined ? {} : { unheldWork }),
+        cardPaging,
+        liveLines,
+        isCompacting,
       }),
     [
-      unheldWork,
+      cardPaging,
+      liveLines,
+      isCompacting,
+      runCards,
       nowMs,
       newSince,
       timelineEntries,
@@ -692,14 +699,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // The rows a reading position may land on stay drawn while it is put
   // back: its own, the run's line and the row above it.
   const restoringAlwaysRender = useMemo(() => {
-    if (!restoringReadingPosition || !rememberedPosition) return undefined;
-    const { rowId, cardTopId, previousRowId } = rememberedPosition;
+    const position =
+      noticeReadingPosition ?? (restoringReadingPosition ? rememberedPosition : undefined);
+    if (!position) return undefined;
+    const { rowId, cardTopId, previousRowId } = position;
     const indices = [rowId, cardTopId, previousRowId].flatMap((id) => {
       const index = id === null ? -1 : rows.findIndex((row) => row.id === id);
       return index >= 0 ? [index] : [];
     });
     return indices.length > 0 ? { indices } : undefined;
-  }, [rememberedPosition, restoringReadingPosition, rows]);
+  }, [noticeReadingPosition, rememberedPosition, restoringReadingPosition, rows]);
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
   );
@@ -742,12 +751,28 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // once for growth that comes a few pixels a frame, by a glide for a step.
   // The list's own keeping is off: it jumps.
   const endFollowRef = useRef<EndFollow | null>(null);
+  // Execution ownership only: fold compensation and end following cannot write together.
+  const outerFoldsRef = useRef(new Set<() => void>());
+  const foldExecutionsRef = useRef(new Set<ReturnType<typeof foldTimelineWork>>());
+  const arrivingRef = useRef(rowsHeldKey !== "");
+  useLayoutEffect(() => {
+    arrivingRef.current = rowsHeldKey !== "";
+  }, [rowsHeldKey]);
+  useEffect(
+    () => () => {
+      for (const execution of foldExecutionsRef.current) execution.dispose();
+    },
+    [],
+  );
   useEffect(() => {
     const endFollow = createEndFollow({
       viewport: () => listRef.current?.getScrollableNode() ?? null,
       // Whether it stands at its end is the follower's own judgement, from
       // the scrolls it hears: the list's own reading goes stale mid-glide.
       follows: () => followingEndRef.current,
+      placeEnd: () => {
+        void listRef.current?.scrollToEnd({ animated: false });
+      },
     });
     endFollowRef.current = endFollow;
     return () => {
@@ -755,17 +780,69 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       endFollowRef.current = null;
     };
   }, [listRef]);
-  const followEnd = useCallback(() => endFollowRef.current?.follow(), []);
+  const followEnd = useCallback(() => {
+    if (outerFoldsRef.current.size === 0) endFollowRef.current?.follow();
+  }, []);
+  const onFoldWork = useCallback<NonNullable<TimelineRowSharedState["onFoldWork"]>>(
+    (input) => {
+      const release = () => {
+        outerFoldsRef.current.delete(release);
+        foldExecutionsRef.current.delete(execution);
+        followEnd();
+      };
+      const execution = foldTimelineWork({
+        ...input,
+        viewport: () => listRef.current?.getScrollableNode() ?? null,
+        rows: () => {
+          const viewport = listRef.current?.getScrollableNode();
+          const state = listRef.current?.getState();
+          if (!viewport || !state) return [];
+          // Read mounted holders, including a folding row outside the current buffered range.
+          return [...viewport.querySelectorAll<HTMLElement>("[data-timeline-root]")].flatMap(
+            (root) => {
+              const row = root.parentElement;
+              const key = root.dataset.timelineRoot;
+              const index = key === undefined ? undefined : state.indexByKey(key);
+              return row !== null && index !== undefined
+                ? [{ row, position: state.positionAtIndex(index), size: state.sizeAtIndex(index) }]
+                : [];
+            },
+          );
+        },
+        arriving: () => arrivingRef.current,
+        follows: () => followingEndRef.current,
+        start: () => {
+          outerFoldsRef.current.add(release);
+          endFollowRef.current?.stop();
+        },
+        release,
+      });
+      foldExecutionsRef.current.add(execution);
+      return execution.cancel;
+    },
+    [followEnd, listRef],
+  );
+  const placeFolds = useCallback(() => {
+    for (const execution of foldExecutionsRef.current) execution.place();
+  }, []);
   // Rows arriving, and the viewport resizing, move the end too.
   useLayoutEffect(() => {
-    if (!followingEnd || !listPlaced || rows.length === 0) return;
+    if (!followingEnd || rows.length === 0) return;
+    // Composer geometry keeps the followed line in place. Row growth keeps its existing motion.
+    if (previousContentInsetEndAdjustmentRef.current !== contentInsetEndAdjustment) {
+      if (outerFoldsRef.current.size === 0) endFollowRef.current?.place();
+    }
+    if (!listPlaced) return;
     const frame = requestAnimationFrame(followEnd);
     return () => cancelAnimationFrame(frame);
-  }, [followEnd, followingEnd, listPlaced, rows]);
+  }, [contentInsetEndAdjustment, followEnd, followingEnd, listPlaced, rows]);
   useEffect(() => {
     const viewport = timelineViewportElement;
     if (viewport === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(followEnd);
+    const observer = new ResizeObserver(() => {
+      remeasurePositionRef.current?.();
+      followEnd();
+    });
     observer.observe(viewport);
     return () => observer.disconnect();
   }, [followEnd, timelineViewportElement]);
@@ -773,15 +850,21 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // shorter. Read its native clamp in the measurement callback before another
   // layout can hide it, then follow after the list applies its layout.
   const onItemSizeChanged = useCallback(() => {
+    remeasurePositionRef.current?.();
+    placeFolds();
     if (!followingEndRef.current) return;
     endFollowRef.current?.observe();
-    queueMicrotask(followEnd);
+    queueMicrotask(() => {
+      placeFolds();
+      followEnd();
+    });
     if (endRepinFrameRef.current !== null) return;
     endRepinFrameRef.current = requestAnimationFrame(() => {
       endRepinFrameRef.current = null;
+      placeFolds();
       followEnd();
     });
-  }, [followEnd]);
+  }, [followEnd, placeFolds]);
 
   // Where the person is, kept as they move, by row: the row at the reading
   // line, how far into it, how tall it was, the run's line and the row above
@@ -790,7 +873,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const rememberPosition = useCallback((): boolean | undefined => {
     const state = listRef.current?.getState?.();
     // Nothing is the person's place while the list is still being placed.
-    if (restoringReadingPosition || !listPlaced || state === undefined || state.data !== rows) {
+    if (
+      noticeResizeRef.current !== null ||
+      restoringReadingPosition ||
+      !listPlaced ||
+      state === undefined ||
+      state.data !== rows
+    ) {
       return undefined;
     }
     const isAtEnd = resolveTimelineIsAtEnd(state, contentInsetEndAdjustment);
@@ -1114,10 +1203,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const handleScroll = useCallback(() => {
     const node = listRef.current?.getScrollableNode();
     const own = node !== null && node !== undefined && takeOwnScroll(node);
+    placeFolds();
     readList(!own && personIsScrolling(personSessionRef.current, performance.now()), own);
     // A move of the page's own that left the end while it follows: back to the end.
     if (own && followingEndRef.current && listPlacedRef.current) followEnd();
-  }, [followEnd, listRef, readList]);
+  }, [followEnd, listRef, placeFolds, readList]);
 
   // Rows changed under the list: where it stands now is none of the person's doing.
   useEffect(() => {
@@ -1271,6 +1361,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       arrivedAfter,
       syncing,
       onHoldReading: onManualNavigation,
+      onFoldWork,
     }),
     [
       timestampFormat,
@@ -1307,6 +1398,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       arrivedAfter,
       syncing,
       onManualNavigation,
+      onFoldWork,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -1332,7 +1424,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // from TimelineRowCtx, which propagates through LegendList's memo.
   const renderItem = useCallback(
     ({ item }: { item: MessagesTimelineRow }) => (
-      <div className="mx-auto w-full min-w-0 max-w-3xl overflow-x-clip" data-timeline-root="true">
+      <div
+        className="mx-auto w-full min-w-0 max-w-3xl overflow-x-clip"
+        data-timeline-root={item.id}
+      >
         <TimelineRowContent row={item} />
       </div>
     ),
@@ -1404,11 +1499,34 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     rowsRef.current = rows;
   });
   useLayoutEffect(() => {
-    if (!showsList || !listReady || listPlaced) return;
+    // A kept conversation still mounts/places while warming, but navigation
+    // releases an already placed notice anchor before its hidden layout changes.
+    if (!showsList || (!shown && listPlaced)) {
+      noticeResizeRef.current = null;
+      if (noticeReadingPosition !== undefined) setNoticeReadingPosition(undefined);
+      return;
+    }
+    if (!listReady) return;
+    const insetChanged = previousContentInsetEndAdjustmentRef.current !== contentInsetEndAdjustment;
+    previousContentInsetEndAdjustmentRef.current = contentInsetEndAdjustment;
+    if (followingEnd || anchoredEndSpace) {
+      noticeResizeRef.current = null;
+      if (noticeReadingPosition !== undefined) setNoticeReadingPosition(undefined);
+    }
     const list = listRef.current;
     const viewport: HTMLElement | null = list?.getScrollableNode() ?? null;
     if (!list || !viewport) return;
-    const position = restoringReadingPosition ? rememberedPosition : undefined;
+    if (listPlaced && insetChanged && !followingEnd && !anchoredEndSpace) {
+      if (noticeResizeRef.current === null) {
+        const position = readTimelinePosition(routeThreadKey);
+        noticeResizeRef.current = { position, scrollOffset: viewport.scrollTop };
+        setNoticeReadingPosition(position);
+      }
+    }
+    const noticeResize = listPlaced ? noticeResizeRef.current : null;
+    if (listPlaced && noticeResize === null) return;
+    const position =
+      noticeResize?.position ?? (restoringReadingPosition ? rememberedPosition : undefined);
     let cancelled = false;
     let frame: number | null = null;
     let stableFrames = 0;
@@ -1421,8 +1539,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
     // A reading position being put back hands the page to the person's
     // first gesture.
-    const takeOver = () => {
+    const cancel = () => {
       finish();
+      if (noticeResize !== null) {
+        noticeResizeRef.current = null;
+        setNoticeReadingPosition(undefined);
+      }
+    };
+    const takeOver = () => {
+      cancel();
       onManualNavigation();
     };
     const onScrollKey = (event: globalThis.KeyboardEvent) => {
@@ -1435,13 +1560,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       )
         takeOver();
     };
-    if (position !== undefined) {
+    if (position !== undefined || noticeResize !== null) {
       viewport.addEventListener("wheel", takeOver, { passive: true });
       viewport.addEventListener("touchmove", takeOver, { passive: true });
       viewport.addEventListener("pointerdown", takeOver, { passive: true });
+      // Keyboard activation opens content through a click without a pointer gesture.
+      viewport.addEventListener("click", takeOver, { capture: true });
       viewport.ownerDocument.addEventListener("keydown", onScrollKey);
-      onManualNavigation();
-      if (cancelPositionRestoreRef) cancelPositionRestoreRef.current = finish;
+      if (noticeResize === null) onManualNavigation();
+      if (cancelPositionRestoreRef) cancelPositionRestoreRef.current = cancel;
     }
     const rowElement = (rowId: string) => {
       const state = list.getState();
@@ -1453,13 +1580,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     // it lands on is drawn.
     const aim = (): number | null => {
       const end = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
-      if (position === undefined) return end;
+      const fallback =
+        noticeResize === null ? end : Math.max(0, Math.min(noticeResize.scrollOffset, end));
+      if (position === undefined) return fallback;
       const target = resolveTimelineRestoreTarget({
         position,
         rowIds: rowsRef.current.map((row) => row.id),
         heightOf: (rowId) => rowElement(rowId)?.getBoundingClientRect().height,
       });
-      if (target.kind === "end") return end;
+      if (target.kind === "end") return fallback;
       const row = rowElement(target.rowId);
       if (row === undefined) return null;
       const box = row.getBoundingClientRect();
@@ -1476,6 +1605,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       );
     };
     const tick = () => {
+      frame = null;
       if (cancelled) return;
       const target = aim();
       const judged = judgeTimelinePlacing(
@@ -1487,32 +1617,45 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       );
       stableFrames = judged.stableFrames;
       if (judged.verdict === "placed") {
-        finish();
+        if (noticeResize === null) finish();
         return;
       }
       if (judged.verdict === "correct" && target !== null) {
-        viewport.scrollTop = target;
+        scrollOwn(viewport, target);
         // The loaded rows and this measured anchor are now placed. Streaming may move the end
         // every frame, so verify the scroll we applied instead of waiting for silence.
-        if (Math.abs(viewport.scrollTop - target) <= 1) {
+        if (noticeResize === null && Math.abs(viewport.scrollTop - target) <= 1) {
           finish();
           return;
         }
       }
-      frame = requestAnimationFrame(tick);
+      // A missing DOM row waits for measurement rather than spinning.
+      if (noticeResize === null || target !== null) frame = requestAnimationFrame(tick);
     };
+    const remeasure = () => {
+      stableFrames = 0;
+      if (!cancelled && frame === null) frame = requestAnimationFrame(tick);
+    };
+    if (noticeResize !== null) remeasurePositionRef.current = remeasure;
     tick();
     return () => {
       cancelled = true;
       if (frame !== null) cancelAnimationFrame(frame);
-      if (position === undefined) return;
-      if (cancelPositionRestoreRef?.current === finish) cancelPositionRestoreRef.current = null;
+      if (remeasurePositionRef.current === remeasure) remeasurePositionRef.current = null;
+      if (position === undefined && noticeResize === null) return;
+      if (cancelPositionRestoreRef?.current === cancel) cancelPositionRestoreRef.current = null;
       viewport.removeEventListener("wheel", takeOver);
       viewport.removeEventListener("touchmove", takeOver);
       viewport.removeEventListener("pointerdown", takeOver);
+      viewport.removeEventListener("click", takeOver, { capture: true });
       viewport.ownerDocument.removeEventListener("keydown", onScrollKey);
     };
   }, [
+    anchoredEndSpace,
+    contentInsetEndAdjustment,
+    followingEnd,
+    noticeReadingPosition,
+    routeThreadKey,
     cancelPositionRestoreRef,
     listPlaced,
     listReady,
@@ -1520,8 +1663,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     onManualNavigation,
     rememberedPosition,
     restoringReadingPosition,
+    shown,
     showsList,
   ]);
+  useLayoutEffect(() => {
+    remeasurePositionRef.current?.();
+  }, [rows]);
   const content = !showsList ? (
     hideEmptyPlaceholder ? (
       <div
@@ -1589,7 +1736,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               maintainScrollAtEnd={false}
               onItemSizeChanged={onItemSizeChanged}
               maintainVisibleContentPosition={
-                restoringReadingPosition ? false : MAINTAIN_VISIBLE_CONTENT_POSITION
+                restoringReadingPosition || followingEnd ? false : MAINTAIN_VISIBLE_CONTENT_POSITION
               }
               onScroll={handleScroll}
               onLoad={onListLoad}
@@ -2498,18 +2645,32 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
   const ctx = use(TimelineRowCtx);
   const [settling] = useState(() => watchedTurnKeys.delete(row.outcome.turnKey));
   const markerRef = useRef<HTMLDivElement>(null);
+  const roomsRef = useRef<Rooms | null>(null);
   const turnKey = row.outcome.turnKey;
   // The panel it replaces stood here a moment ago: the report's band of the
   // card starts at the panel's height and eases to its own.
   useLayoutEffect(() => {
     const band = markerRef.current?.parentElement;
     if (!band) return;
+    const rooms = easeRooms({
+      root: band,
+      selector: ":not(*)",
+      eases: () => true,
+      rootClips: true,
+    });
+    roomsRef.current = rooms;
     const stand = takePanelStand(turnKey);
-    if (stand !== null) return easeHeight(band, stand.panel, band.getBoundingClientRect().height);
+    if (stand !== null) rooms.easeFrom(band, stand.panel);
     // Its panel already folded into the Mate's last word: the report came
-    // after, and grows in from nothing.
-    if (panelLeftRecently(turnKey)) return easeHeight(band, 0, band.getBoundingClientRect().height);
+    // after. Natural growth, including a handoff from zero, takes its full height.
+    else if (panelLeftRecently(turnKey)) rooms.easeFrom(band, 0);
+    return () => {
+      rooms.stop();
+      roomsRef.current = null;
+    };
   }, [turnKey]);
+  // Hear content changes before the outer list measures this commit.
+  useLayoutEffect(() => roomsRef.current?.flush());
   return (
     // The result stands under the worked line, inside the tray (T5): a
     // hairline, then its rows in the card's grid; nothing at all when the run

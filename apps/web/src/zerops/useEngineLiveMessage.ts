@@ -8,6 +8,9 @@
  * A V1 Mate's message is drawn as it is: the live text never holds its ids.
  */
 import { useAtomValue } from "@effect/atom-react";
+import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { TimelineEntry } from "../session-logic";
+import { messageHasText } from "../components/chat/runCard.logic";
 import { mateEngineHostAtom } from "@t3tools/client-runtime/data";
 import { use, useCallback, useMemo, useSyncExternalStore } from "react";
 
@@ -87,3 +90,47 @@ export function useEngineLiveNow<
 }
 
 const NO_MESSAGES: ReadonlyArray<ChatMessage> = [];
+
+/** Only empty/meaningful transitions reach record assembly, never the streamed bytes. */
+export function useEngineLiveStructure(
+  threadRef: ScopedThreadRef | null,
+  entries: ReadonlyArray<TimelineEntry>,
+): ReadonlyMap<string, boolean> {
+  const host = useAtomValue(mateEngineHostAtom);
+  const live = host?.live ?? null;
+  const environmentId = threadRef?.environmentId ?? null;
+  const messages = useMemo(
+    () =>
+      entries.flatMap((entry) =>
+        entry.kind === "message" && entry.message.streaming ? [entry.message] : [],
+      ),
+    [entries],
+  );
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      if (live === null || environmentId === null) return unwatched();
+      const releases = messages.map((message) => live.watch(environmentId, message.id, listener));
+      return () => releases.forEach((release) => release());
+    },
+    [environmentId, live, messages],
+  );
+  const read = () =>
+    messages
+      .map((message) => {
+        const text =
+          live === null || environmentId === null
+            ? null
+            : live.read(
+                environmentId,
+                message.id,
+                message.role === "reasoning" ? "reasoning" : "text",
+              );
+        return messageHasText(liveMessage(message, text)) ? "1" : "0";
+      })
+      .join("");
+  const visibility = useSyncExternalStore(subscribe, read, read);
+  return useMemo(
+    () => new Map(messages.map((message, index) => [message.id, visibility[index] === "1"])),
+    [messages, visibility],
+  );
+}

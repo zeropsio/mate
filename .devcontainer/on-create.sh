@@ -31,6 +31,4 @@ Zerops Mate devcontainer
 
   vp run dev            start server + web, then open the pairing URL it
                         prints (the bare forwarded port will not authenticate)
-
-Details: docs/internals/devcontainer.md
 EOF

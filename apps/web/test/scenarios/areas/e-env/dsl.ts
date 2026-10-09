@@ -86,6 +86,26 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       Effect.filterOrFail((row) => row !== undefined),
       Effect.retry(Schedule.spaced("25 millis")),
       Effect.timeout("10 seconds"),
+      Effect.tapError(() =>
+        Effect.gen(function* () {
+          const jobs = yield* s.drivers.core.sql`
+            SELECT kind, project_id, sha, label, process_id, state, reason, evidence
+            FROM hq_deploy_job WHERE project_id = ${`Shop-${tier}`}`;
+          yield* Effect.logError("Build receipt missing", {
+            tier,
+            jobs,
+            processes: s.drivers.zerops.rows("process"),
+            versions: s.drivers.zerops.rows("app-version"),
+            browser: yield* Effect.promise(() =>
+              page.evaluate(() => ({
+                route: location.pathname,
+                visibility: document.visibilityState,
+                text: document.body.innerText,
+              })),
+            ),
+          });
+        }),
+      ),
     );
   });
   const finishImport = Effect.fn("e-env.finishImport")(function* (tier: "stage" | "production") {

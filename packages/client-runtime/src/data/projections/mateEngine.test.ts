@@ -39,6 +39,7 @@ import {
   engineHeldTurns,
   engineResendId,
   engineRows,
+  engineRunCards,
   engineStopTarget,
   engineThread,
   overlayEngineRow,
@@ -68,13 +69,21 @@ function held(
   extra: ReadonlyArray<AccountInput> = [],
 ): AccountState {
   const scopes = Object.values(engineConversationScopes(key));
+  const active = records.runs?.findLast((run) => run.turnState === "running");
+  const latest = active ?? records.runs?.findLast((run) => run.state === "ended");
   const rows: Row[] = [
     {
       family: "mateEngineConversation",
       id: engineConversationId(key),
       value: {
         environmentId: ENV,
-        header: engineHeader("thread-ada", records.header),
+        header: engineHeader("thread-ada", {
+          activeRunId: active?.id ?? null,
+          latestRunId: latest?.id ?? null,
+          runStatus:
+            active !== undefined ? "running" : latest?.turnState === "error" ? "error" : "ready",
+          ...records.header,
+        }),
         window: { oldestOrdinal: 1, earlier: false },
       },
       revision: revision(99),
@@ -853,16 +862,15 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
     expect(activitiesOf([unknownItem(run1, 2, null)])).toEqual([]);
   });
 
-  it.each([
-    { end: { kind: "crashed", reason: "The agent exited." }, turnEnd: "crash" },
-    { end: { kind: "failed", reason: "Bad request", next: null }, turnEnd: "failed" },
-    { end: { kind: "usage-limit", resetsAt: null }, turnEnd: "usage-limit" },
-  ] as const)("a run that ended $end.kind ends with V1's break", ({ end, turnEnd }) => {
-    const activities = activitiesOf([], [engineRun("thread-ada", 1, { end })]);
-    expect(activities).toMatchObject([
-      { kind: "runtime.error", tone: "error", turnId: run1, payload: { turnEnd } },
-    ]);
-  });
+  it.each([{ end: { kind: "usage-limit", resetsAt: null }, turnEnd: "usage-limit" }] as const)(
+    "a run that ended $end.kind ends with V1's break",
+    ({ end, turnEnd }) => {
+      const activities = activitiesOf([], [engineRun("thread-ada", 1, { end })]);
+      expect(activities).toMatchObject([
+        { kind: "runtime.error", tone: "error", turnId: run1, payload: { turnEnd } },
+      ]);
+    },
+  );
 
   it.each([
     { end: { kind: "completed" } },
@@ -1078,6 +1086,20 @@ describe("an engine card not held whole, as its worked line and its scroll read 
   });
 });
 
+it("a missing or future server run verdict does not guess work from the run records", () => {
+  for (const runStatus of [undefined, "unknown"] as const) {
+    const view = thread(
+      held({
+        runs: [engineRun("thread-ada", 1, { state: "running", end: null })],
+        header: { runStatus, activeRunId: null, latestRunId: null },
+      }),
+    );
+    expect(view?.session?.status).toBe("stopped");
+    expect(view?.session?.lastError).toContain("does not provide the current run state");
+    expect(view?.latestTurn).toBeNull();
+  }
+});
+
 describe("an engine conversation's row in the menu", () => {
   const shellThread = {
     id: "thread-ada",
@@ -1185,7 +1207,12 @@ describe("an engine conversation's row in the menu", () => {
     const at = Date.parse("2026-10-08T18:00:00.000Z");
     const row = engineRow(ENV, "thread-ada", {
       at,
-      latestRun: { id: run1 as never, end: { kind: "completed" }, endedAt: at + 5 },
+      latestRun: {
+        id: run1 as never,
+        end: { kind: "completed" },
+        endedAt: at + 5,
+        turnState: "completed",
+      },
       subject: "Reply with the single word ROWS.",
       snippet: "ROWS",
     });
@@ -1540,26 +1567,17 @@ it.each([
   { continuedBy: null, notContinued: "a Stop was asked", continuation: "none" },
 ])(
   "restart continuation is shown only as its run records it: $continuation",
-  ({ continuedBy, notContinued, continuation }) => {
+  ({ continuedBy, notContinued }) => {
     const restart = { cause: "replaced" as const, at: "2026-10-08T08:24:39.700Z" };
-    const view = thread(
-      held({
-        runs: [
-          engineRun("thread-ada", 1, {
-            state: "ended",
-            end: {
-              kind: "cut-by-restart",
-              continuedBy: continuedBy === null ? null : RunId.make(continuedBy),
-              restart,
-              ...(notContinued === undefined ? {} : { notContinued }),
-            },
-          }),
-        ],
-      }),
-    );
-    expect(
-      view?.activities.find((activity) => activity.kind === "runtime.interrupted")?.payload,
-    ).toEqual({ interruption: { turnId: run1, restart, continuation } });
+    const end = {
+      kind: "cut-by-restart" as const,
+      continuedBy: continuedBy === null ? null : RunId.make(continuedBy),
+      restart,
+      ...(notContinued === undefined ? {} : { notContinued }),
+    };
+    const state = held({ runs: [engineRun("thread-ada", 1, { end })] });
+    const view = thread(state);
+    expect(engineRunCards.derive(readsOfState(state), key)?.[run1]?.runs[0]?.end).toEqual(end);
     expect(view?.session?.lastError).toBeNull();
   },
 );

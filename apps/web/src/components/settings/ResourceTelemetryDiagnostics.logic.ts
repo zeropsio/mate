@@ -67,7 +67,10 @@ export function resourceHistoryCpuScaleMax(
 
 /** Starting retains the prior sample, but cannot prove a current empty collection. */
 export function resourceTelemetryProcessPresentation(
-  read: Pick<EnvironmentQueryView<ResourceTelemetrySnapshot>, "data" | "error" | "isPending">,
+  read: Pick<
+    EnvironmentQueryView<ResourceTelemetrySnapshot>,
+    "data" | "error" | "isPending" | "read"
+  >,
 ) {
   const native = read.data?.health.native;
   return collectionPresentation(

@@ -1,4 +1,8 @@
-import { type MateLimit } from "@t3tools/client-runtime/data";
+import {
+  type EngineCardPaging,
+  type EngineRunCard,
+  type MateLimit,
+} from "@t3tools/client-runtime/data";
 import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { HISTORY_CUT_KIND } from "@t3tools/client-runtime/data";
 import type { MateTintId } from "@t3tools/shared/brand";
@@ -75,6 +79,8 @@ import {
   type WorkStep,
 } from "./workSteps.logic";
 import type { LiveJobs } from "./liveJobs.logic";
+import { heldLines, withPagedEffort } from "../../zerops/engineCardPaging.logic";
+import { chatItemHasLine, selectChatItems, slotModelOf } from "./runCard.logic";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 
 export type TimelineLatestTurn = Pick<
@@ -541,6 +547,11 @@ type MessagesTimelineRowBody =
       turnId?: TurnId | null;
       live: boolean;
       items: ReadonlyArray<RecordItem>;
+      /** The held, eligible sequence; raw items retain recovery and slot identity evidence. */
+      chatItems: ReturnType<typeof selectChatItems>;
+      paging: EngineCardPaging | null;
+      hasWork: boolean;
+      slot: ReturnType<typeof slotModelOf> & { readonly record: ReadonlyArray<RecordItem> };
       /** What its hands are on right now, the newest bubble; null once the run is over. */
       now: TurnHeaderActivity | null;
       /** Its answer streams under the card: nothing of its own is on its way into the chat. */
@@ -1974,11 +1985,12 @@ function remembered<T>(
   key: string,
   readsOf: () => ReadonlyArray<unknown>,
   compute: () => T,
+  equalReads = sameReads,
 ): T {
   if (store === undefined) return compute();
   const reads = readsOf();
   const known = store.get(key);
-  if (known !== undefined && sameReads(known.reads, reads)) {
+  if (known !== undefined && equalReads(known.reads, reads)) {
     known.used = generation;
     return known.value;
   }
@@ -2057,8 +2069,40 @@ function recordReads(input: {
  */
 const IDLE_SEAM_MS = 60 * 60 * 1000;
 
+/** Finish the structural card once, before browser occupancy, folds and motion. */
+export function assembleRecordCard(input: {
+  items: ReadonlyArray<RecordItem>;
+  now: TurnHeaderActivity | null;
+  answering: boolean;
+  outcome: OutcomeModel | null;
+  paging?: EngineCardPaging | null;
+  compacting?: boolean;
+  liveLines?: ReadonlyMap<string, boolean>;
+}) {
+  const paging = input.paging ?? null;
+  const chatItems = selectChatItems(heldLines(input.items, paging), input.liveLines);
+  return {
+    chatItems,
+    paging,
+    hasWork: (paging?.hasWork ?? false) || chatItems.length > 0,
+    outcome: withPagedEffort(input.outcome, paging),
+    slot: {
+      ...slotModelOf({
+        now: input.now,
+        answering: input.answering,
+        compacting: input.compacting ?? false,
+        items: input.items,
+        ...(input.liveLines === undefined ? {} : { liveLines: input.liveLines }),
+      }),
+      // Dwell admits finished lines too; a wordless thought must never occupy it.
+      record: input.items.filter((item) => chatItemHasLine(item, input.liveLines)),
+    },
+  };
+}
+
 export function deriveMessagesTimelineRows(input: {
   readonly limit?: MateLimit;
+  readonly runCards?: Readonly<Record<string, EngineRunCard>>;
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
   runningTurnId?: TurnId | null;
@@ -2085,12 +2129,11 @@ export function deriveMessagesTimelineRows(input: {
    * (`batchesByTiming`); not known, nothing does.
    */
   provider?: string | null;
-  /**
-   * Turns whose work the account does not hold yet — an engine run read
-   * only for what its closed card draws (`engineCardPaging`): each is a card
-   * all the same, its work behind "Show work".
-   */
-  unheldWork?: ReadonlySet<string>;
+  /** Account coverage and summaries, keyed by rendered card identity. */
+  cardPaging?: Readonly<Record<string, EngineCardPaging>>;
+  isCompacting?: boolean;
+  /** Structural visibility only; streamed bytes stay at the leaf. */
+  liveLines?: ReadonlyMap<string, boolean>;
   /**
    * What the last derive of this conversation read and drew
    * (`createMessagesTimelineRowsCache`): a run whose reads are the same draws
@@ -2112,6 +2155,7 @@ export function deriveMessagesTimelineRows(input: {
   const reading = batchReadingOf(entries, { byTiming: batchesByTiming(input.provider) });
   const structure = deriveConversationStructure({
     timelineEntries: entries,
+    ...(input.runCards === undefined ? {} : { runCards: input.runCards }),
     latestTurn: input.latestTurn ?? null,
     runningTurnId: input.runningTurnId ?? null,
     isWorking: input.isWorking,
@@ -2600,7 +2644,8 @@ export function deriveMessagesTimelineRows(input: {
       );
       extras.push(...built.rows);
     });
-    const unheld = turn.span.turnIds.some((turnId) => input.unheldWork?.has(turnId) ?? false);
+    const paging = input.cardPaging?.[turn.turnId ?? ""] ?? null;
+    const unheld = paging?.hasWork ?? false;
     const hasRecord = unheld || items.some((item) => item.kind !== "person");
     // A live run with nothing in its record whose answer is known already is
     // drawn as it will settle: a result that woke the Mate and was answered in
@@ -2616,6 +2661,8 @@ export function deriveMessagesTimelineRows(input: {
       hasRecord ||
       pausedHere ||
       turn.interruption !== undefined ||
+      turn.brokeOff !== null ||
+      turn.interrupted ||
       extras.length > 0;
     const diffs = turn.span.turnIds.flatMap((turnId) => diffByTurnId.get(turnId) ?? []);
     const outcome =
@@ -2723,23 +2770,66 @@ export function deriveMessagesTimelineRows(input: {
           ...status,
         });
       } else if (chatted) {
-        rows.push({
-          kind: "record",
+        const now = waiting
+          ? { kind: "after" as const }
+          : working && answer === null
+            ? liveActivity(last, turn.writing, tracked, batch)
+            : null;
+        const source = {
+          kind: "record" as const,
           id: `record:${first.key}`,
           createdAt: first.startedAt,
           turnKey: turn.key,
           turnId: turn.turnId,
           live: turn.live || waiting,
           items,
-          now: waiting
-            ? { kind: "after" }
-            : working && answer === null
-              ? liveActivity(last, turn.writing, tracked, batch)
-              : null,
+          now,
           answering: answer !== null,
           status,
           outcome,
-        });
+        };
+        const compacting = source.live && (input.isCompacting ?? false);
+        const messages = [
+          ...items.flatMap((item) =>
+            item.kind === "thought" ? item.messages : item.kind === "note" ? [item.message] : [],
+          ),
+          ...(now?.kind === "thinking"
+            ? now.messages
+            : now?.kind === "writing" && now.note !== undefined
+              ? [now.note.message]
+              : []),
+        ];
+        // The existing record cache also keeps its finished card. Only this card's coverage and
+        // streamed visibility are reads; bytes and other cards' paging never invalidate it.
+        const assembled = remembered(
+          cache?.records,
+          cache?.generation ?? 0,
+          `card:${turn.key}`,
+          () => [
+            source,
+            paging,
+            compacting,
+            ...messages
+              .filter((message) => message.streaming)
+              .map((message) => input.liveLines?.get(message.id)),
+          ],
+          () => ({
+            items,
+            rows: [
+              {
+                ...source,
+                ...assembleRecordCard({
+                  ...source,
+                  paging,
+                  compacting,
+                  ...(input.liveLines === undefined ? {} : { liveLines: input.liveLines }),
+                }),
+              },
+            ],
+          }),
+          sameValue,
+        );
+        rows.push(...assembled.rows);
       }
       rows.push(...extras);
       if (working) {
@@ -3087,6 +3177,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       return (
         a.live === br.live &&
         a.answering === br.answering &&
+        a.hasWork === br.hasWork &&
+        sameValue(a.paging, br.paging) &&
+        sameValue(a.chatItems, br.chatItems) &&
+        sameValue(a.slot, br.slot) &&
         sameValue(a.now, br.now) &&
         // Its now line's clock and its worked line's effort.
         sameValue(a.status, br.status) &&

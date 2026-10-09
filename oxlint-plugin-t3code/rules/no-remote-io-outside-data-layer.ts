@@ -387,7 +387,7 @@ export default defineRule({
     };
 
     const isBundledCoreFetch = (node: ESTree.CallExpression): boolean => {
-      if (path !== "apps/web/src/zerops/accountHq.ts") return false;
+      if (path !== "apps/web/src/zerops/bundledCore.ts") return false;
       const argument = node.arguments[0];
       const fn = enclosingFunction(node);
       if (

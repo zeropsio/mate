@@ -461,6 +461,10 @@ export function easeRooms({
       const records = changes.takeRecords();
       if (records.length > 0) hear(records);
       if (!root.contains(element)) return;
+      if (away()) {
+        for (const box of boxes.values()) letGo(box);
+        return;
+      }
       if (!boxes.has(element)) add(element, true);
       const box = boxes.get(element)!;
       if (box.shown !== null) return;

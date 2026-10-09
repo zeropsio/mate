@@ -28,13 +28,7 @@ export interface ChatGateCommand {
   readonly env?: Readonly<Record<string, string>>;
 }
 
-export interface ChatGateStage {
-  readonly id: string;
-  readonly name: string;
-  readonly commands: ReadonlyArray<ChatGateCommand>;
-}
-
-export const chatGateStages: ReadonlyArray<ChatGateStage> = [
+export const chatGateStages = [
   {
     id: "A",
     name: "A: provider goldens",
@@ -122,8 +116,9 @@ export const chatGateStages: ReadonlyArray<ChatGateStage> = [
   },
   {
     // The crew's journeys on a Mate whose crew runs on the engine; the unit suite runs the same
-    // sentences on V1's crew, so each one holds on both. The files' V1-only tests (skipped off the V1
-    // world: V1's own mechanism) skip here by design, so this run reports without the certifying reporter.
+    // sentences on V1's crew, so each one holds on both. The files' V1-only tests (skipped off the
+    // V1 world: V1's own mechanism) skip here by design, so this run reports without the
+    // certifying reporter.
     id: "F",
     name: "F: crew journeys on the engine",
     commands: [
@@ -133,7 +128,10 @@ export const chatGateStages: ReadonlyArray<ChatGateStage> = [
         args: [
           "test",
           "run",
-          "src/zerops/crew/CrewEngine",
+          ...["attachments", "endings", "lead", "memory", "midway", "operations", "runs"].map(
+            (part) => `src/zerops/crew/CrewEngine.${part}.test.ts`,
+          ),
+          "src/zerops/crew/CrewEngine.test.ts",
           "src/zerops/crew/registerCrewRpc.test.ts",
           "--allowOnly=false",
         ],
@@ -163,69 +161,98 @@ export const chatGateStages: ReadonlyArray<ChatGateStage> = [
       },
     ],
   },
-];
+] satisfies ReadonlyArray<{
+  readonly id: string;
+  readonly name: string;
+  readonly commands: ReadonlyArray<ChatGateCommand>;
+}>;
 
-/** Lane obligations are independent; CI retains the conservative selector and full default. */
-export function selectLaneChatStages(paths: ReadonlyArray<string>, areas: ReadonlyArray<string>) {
-  const selected = new Set<string>();
-  if (areas.includes("c-mate")) {
-    selected.add("C");
-    selected.add("C-engine");
-    selected.add("types");
-  }
-  for (const path of paths) {
-    if (/\.test\.[cm]?[jt]sx?$/u.test(path)) {
-      for (const stage of chatGateStages)
-        if (
-          stage.commands.some((command) =>
-            command.args.some((arg) => NodePath.posix.join(command.cwd, arg) === path),
-          )
-        )
-          selected.add(stage.id);
-      continue;
-    }
-    if (!selectsChatGate([path])) continue;
-    if (
+export interface ChatGateStage {
+  readonly id: string;
+  readonly name: string;
+  readonly commands: ReadonlyArray<ChatGateCommand>;
+  readonly reason?: string;
+}
+
+/** Narrow commands before ownership/exclusions are derived; CI's default stays unchanged. */
+export function filterChatGateFiles(
+  root: string,
+  stages: ReadonlyArray<ChatGateStage>,
+  files: ReadonlyArray<string>,
+): ChatGateStage[] {
+  return stages.flatMap((stage) => {
+    if (stage.id === "types") return [stage];
+    const inventory = chatGateTestFiles(root, [stage]);
+    const selected = inventory.filter((file) => files.includes(file));
+    const commands = stage.commands.flatMap((command) => {
+      const own = selected.filter((file) => file.startsWith(`${command.cwd}/`));
+      if (!own.length) return [];
+      const args = command.args.flatMap((arg) => {
+        if (/\.(?:test|scenario)\.ts$/u.test(arg) || arg.startsWith("test/scenarios/areas/"))
+          return [];
+        return [arg];
+      });
+      return [
+        {
+          ...command,
+          args: [...args, ...own.map((file) => NodePath.posix.relative(command.cwd, file))],
+        },
+      ];
+    });
+    return commands.length ? [{ ...stage, commands }] : [];
+  });
+}
+
+/** A/E need their owning seam AND related tests; C follows exact related C journeys. */
+export function selectLaneChatStages(
+  paths: ReadonlyArray<string>,
+  related: ReadonlyArray<string>,
+  root = NodePath.resolve(import.meta.dirname, ".."),
+): ChatGateStage[] {
+  const seams: Record<string, ReadonlyArray<string>> = {
+    A: paths.filter((path) =>
       /^(?:apps\/server\/src\/(?:provider|spi)\/|packages\/(?:effect-acp|effect-codex-app-server)\/)/u.test(
         path,
+      ),
+    ),
+    E: paths.filter((path) =>
+      /^(?:apps\/server\/src\/engine\/|packages\/contracts\/src\/engine)/u.test(path),
+    ),
+    // The crew's journeys run on the engine for the crew's own paths.
+    F: paths.filter((path) => path.startsWith("apps/server/src/zerops/crew/")),
+    C: paths,
+    "C-engine": paths,
+  };
+  const selected = related.length
+    ? filterChatGateFiles(
+        root,
+        chatGateStages.filter((stage) => stage.id !== "types" && seams[stage.id]?.length),
+        related,
       )
-    ) {
-      selected.add("A");
-    } else if (/^(?:apps\/server\/src\/engine\/|packages\/contracts\/src\/engine)/u.test(path)) {
-      selected.add("E");
-      // Engine records and call metadata also reach the encoded records consumed by C.
-      if (
-        /^(?:apps\/server\/src\/engine\/wire\/|packages\/contracts\/src\/(?:engine\.ts$|engineCall\.ts$|engineWire))/u.test(
-          path,
-        )
-      ) {
-        selected.add("C");
-        selected.add("C-engine");
-        selected.add("types");
-      }
-    } else if (path.startsWith("apps/web/")) {
-      // Area ownership above decides whether a web change reaches chat.
-      continue;
-    } else if (path.startsWith("apps/server/src/")) {
-      // The crew's journeys run on the engine in their own stage.
-      if (path.startsWith("apps/server/src/zerops/crew/")) selected.add("F");
-      selected.add("C");
-      selected.add("C-engine");
-      selected.add("types");
-    } else {
-      // Shared contracts, dependencies and gate tooling have uncertain boundary impact on the
-      // chat; the crew's journeys (F) stay with the crew's own paths.
-      for (const stage of chatGateStages) if (stage.id !== "F") selected.add(stage.id);
-    }
+    : [];
+  const stages: ChatGateStage[] = selected.map((stage) => ({
+    ...stage,
+    reason: `related files: ${chatGateTestFiles(root, [stage]).join(", ")}; inputs: ${seams[stage.id]!.join(", ")}`,
+  }));
+  const contracts = paths.filter(
+    (path) =>
+      path.startsWith("packages/contracts/src/") &&
+      !/\.test\./u.test(path) &&
+      !path.endsWith(".md"),
+  );
+  if (contracts.length || selected.some((stage) => stage.id === "C" || stage.id === "C-engine")) {
+    stages.push({
+      ...chatGateStages.find((stage) => stage.id === "types")!,
+      reason: contracts.length
+        ? `changed wire contract: ${contracts.join(", ")}`
+        : "typecheck consumers of the selected client wire journeys",
+    });
   }
-  return chatGateStages.filter((stage) => selected.has(stage.id));
+  return stages;
 }
 
 /** File ownership comes from the commands that will actually run. */
-export function chatGateTestFiles(
-  root: string,
-  stages: ReadonlyArray<(typeof chatGateStages)[number]>,
-): string[] {
+export function chatGateTestFiles(root: string, stages: ReadonlyArray<ChatGateStage>): string[] {
   const collect = (directory: string): string[] => {
     if (!NodeFS.existsSync(NodePath.join(root, directory)))
       throw new Error(
@@ -294,22 +321,45 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const stageAt = args.indexOf("--stages");
   const stageIds = stageAt === -1 ? undefined : args[stageAt + 1]?.split(",");
-  const remaining =
-    stageAt === -1 ? args : args.filter((_, index) => index !== stageAt && index !== stageAt + 1);
+  const filesAt = args.indexOf("--files");
+  const remaining = args.filter(
+    (_, index) =>
+      index !== stageAt &&
+      index !== stageAt + (stageAt === -1 ? 0 : 1) &&
+      index !== filesAt &&
+      index !== filesAt + (filesAt === -1 ? 0 : 1),
+  );
   if (
     remaining.length > 1 ||
     remaining.some((arg) => arg !== "--list" && arg !== "--select") ||
     (stageAt !== -1 &&
       (!stageIds?.length ||
         stageIds.some((id) => !chatGateStages.some((stage) => stage.id === id)))) ||
-    (args.includes("--select") && (args.length !== 1 || stageAt !== -1))
+    (args.includes("--select") && args.length !== 1)
   )
     throw new Error(
-      "Usage: node scripts/chat-gate.ts [--list | --select (paths on stdin)] [--stages A,C,C-engine,E,types]",
+      "Usage: node scripts/chat-gate.ts [--list | --select (paths on stdin)] [--stages A,C,C-engine,E,types] [--files JSON-array]",
     );
-  const stages = stageIds
+  const root = NodePath.resolve(import.meta.dirname, "..");
+  const requested = stageIds
     ? chatGateStages.filter((stage) => stageIds.includes(stage.id))
     : chatGateStages;
+  let stages: ReadonlyArray<ChatGateStage> = requested;
+  if (filesAt !== -1) {
+    const files: unknown = JSON.parse(args[filesAt + 1] ?? "null");
+    if (!Array.isArray(files) || !files.every((file): file is string => typeof file === "string"))
+      throw new Error("--files needs a JSON array of test paths");
+    const inventory = chatGateTestFiles(root, requested);
+    for (const file of files) {
+      if (!inventory.includes(file)) throw new Error(`File outside selected chat stages: ${file}`);
+      if (!NodeFS.existsSync(NodePath.join(root, file)))
+        throw new Error(`Missing selected file: ${file}`);
+    }
+    stages = filterChatGateFiles(root, requested, files);
+    for (const stage of requested)
+      if (!stages.some((selected) => selected.id === stage.id))
+        console.log(`Selection ${stage.id}: skip: no selected case files`);
+  }
   if (args.includes("--select")) {
     console.log(selectsChatGate(NodeFS.readFileSync(0, "utf8").split(/\r?\n/u)));
   } else if (args.includes("--list")) {
@@ -318,12 +368,13 @@ if (import.meta.main) {
         console.log(
           `${stage.name}: (${command.cwd}) ${Object.entries(command.env ?? {})
             .map(([key, value]) => `${key}=${value} `)
-            .join("")}vp ${command.args.join(" ")}`,
+            .join(
+              "",
+            )}vp ${command.args.join(" ")} [reason: ${filesAt === -1 ? "full stage inventory" : "explicit related files"}]`,
         );
   } else {
     if (process.env.SPI_UPDATE_GOLDENS === "1")
       throw new Error("The chat gate compares goldens; unset SPI_UPDATE_GOLDENS.");
-    const root = NodePath.resolve(import.meta.dirname, "..");
     // Stage B's journeys run in the pinned Chrome for Testing. Installing it here (a no-op once
     // the host has it) keeps one gate command for CI and a fresh worktree alike.
     const browserInstalled = stages.some((stage) =>
@@ -342,6 +393,9 @@ if (import.meta.main) {
       throw new Error("The chat gate could not install the scenarios' Chrome for Testing.");
     const results = await Promise.all(
       stages.map(async (stage) => {
+        console.log(
+          `Selection ${stage.id}: ${chatGateTestFiles(root, [stage]).join(", ") || "typecheck consumers"}; reason: ${filesAt === -1 ? "full stage inventory" : "explicit related files"}`,
+        );
         const started = performance.now();
         let status = 0;
         for (const command of stage.commands) {

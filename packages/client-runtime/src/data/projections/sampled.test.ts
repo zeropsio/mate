@@ -4,7 +4,13 @@ import { ORG } from "../__fixtures__/account.ts";
 import { locationsScope } from "../families/organizationLocations.ts";
 import { membersScope } from "../families/organizationMembers.ts";
 import { agentsScope } from "../families/serviceAgents.ts";
-import { emptyAccount, type AccountState, type Family, type ScopeKey } from "../model.ts";
+import {
+  emptyAccount,
+  type AccountState,
+  type Family,
+  type ScopeKey,
+  type StreamKey,
+} from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamOutcome } from "../streamMachine.ts";
@@ -17,7 +23,7 @@ import {
 
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
   inputs.reduce((current, input) => reduceAccount(current, input).state, state);
-const event = (key: ScopeKey, streamEvent: object): AccountInput =>
+const event = (key: StreamKey, streamEvent: object): AccountInput =>
   ({ kind: "stream", key, now: 0, event: streamEvent }) as AccountInput;
 
 /** A sampled scope demanded and its read begun: what a screen sees before the answer. */
@@ -55,7 +61,7 @@ describe("a sampled read, as a screen reads it", () => {
   it.each<{
     readonly name: string;
     readonly inputs: ReadonlyArray<AccountInput>;
-    readonly expected: MembersRead;
+    readonly expected: Partial<MembersRead>;
   }>([
     {
       name: "nothing demanded: loading, no value",
@@ -73,13 +79,33 @@ describe("a sampled read, as a screen reads it", () => {
       expected: { members: [ANNA], status: "ready", settled: true, refused: false },
     },
     {
+      name: "successful read released: its complete answer remains ready",
+      inputs: [
+        ...begun(MEMBERS),
+        ...answered(MEMBERS, "organizationMembers", [ANNA]),
+        event(MEMBERS, { kind: "demand", demanded: false }),
+      ],
+      expected: { members: [ANNA], status: "ready", settled: false, refused: false },
+    },
+    {
+      name: "failed refresh released: its retained answer remains failed",
+      inputs: [
+        ...begun(MEMBERS),
+        ...answered(MEMBERS, "organizationMembers", [ANNA]),
+        revalidating(MEMBERS),
+        failed(MEMBERS, "transient"),
+        event(MEMBERS, { kind: "demand", demanded: false }),
+      ],
+      expected: { members: [ANNA], status: "failed", settled: false, refused: false },
+    },
+    {
       name: "read again on its cadence: its value shown, not settled",
       inputs: [
         ...begun(MEMBERS),
         ...answered(MEMBERS, "organizationMembers", [ANNA]),
         revalidating(MEMBERS),
       ],
-      expected: { members: [ANNA], status: "ready", settled: false, refused: false },
+      expected: { members: [ANNA], status: "loading", settled: false, refused: false },
     },
     {
       name: "its read lost on the way, nothing read: failed, retried",
@@ -94,7 +120,7 @@ describe("a sampled read, as a screen reads it", () => {
         revalidating(MEMBERS),
         failed(MEMBERS, "transient"),
       ],
-      expected: { members: [ANNA], status: "ready", settled: false, refused: false },
+      expected: { members: [ANNA], status: "failed", settled: false, refused: false },
     },
     {
       name: "refused by its owner: failed for good",
@@ -103,7 +129,9 @@ describe("a sampled read, as a screen reads it", () => {
     },
   ])("$name", ({ inputs, expected }) => {
     const reads = readsOfState(apply(emptyAccount, inputs));
-    expect(organizationMembers.derive(reads, { orgId: ORG, clientId: ORG })).toEqual(expected);
+    expect(organizationMembers.derive(reads, { orgId: ORG, clientId: ORG })).toMatchObject(
+      expected,
+    );
   });
 
   it("reads an organization's locations the same way, under their own scope", () => {
@@ -112,7 +140,7 @@ describe("a sampled read, as a screen reads it", () => {
     const reads = readsOfState(
       apply(emptyAccount, [...begun(scope), ...answered(scope, "organizationLocations", [place])]),
     );
-    expect(organizationLocations.derive(reads, ORG)).toEqual({
+    expect(organizationLocations.derive(reads, ORG)).toMatchObject({
       locations: [place],
       status: "ready",
     });
@@ -132,5 +160,74 @@ describe("a sampled read, as a screen reads it", () => {
     expect(agents.s1).toMatchObject({ value: ["codex"], status: "ready" });
     expect(agents.s2).toMatchObject({ value: undefined, status: "failed" });
     expect(agents.s3).toMatchObject({ value: undefined, status: "loading" });
+  });
+});
+
+it("a failed sampled revalidation retains its PublicRead and failure without claiming ready", () => {
+  const reads = readsOfState(
+    apply(emptyAccount, [
+      ...begun(MEMBERS),
+      ...answered(MEMBERS, "organizationMembers", [ANNA]),
+      revalidating(MEMBERS),
+      failed(MEMBERS, "transient"),
+    ]),
+  );
+  expect(organizationMembers.derive(reads, { orgId: ORG, clientId: ORG })).toMatchObject({
+    members: [ANNA],
+    status: "failed",
+    settled: false,
+    fact: { kind: "known", value: [ANNA] },
+    coverage: "complete",
+    stream: { phase: "recovering", fault: { outcome: "transient", message: "transient" } },
+  });
+});
+
+it.each([
+  { name: "unknown", inputs: [], fact: "unknown", status: "loading" },
+  {
+    name: "confirmed empty",
+    inputs: [...begun(MEMBERS), ...answered(MEMBERS, "organizationMembers", [])],
+    fact: "known",
+    status: "ready",
+  },
+  {
+    name: "withheld",
+    inputs: [
+      ...begun(MEMBERS),
+      ...answered(MEMBERS, "organizationMembers", [ANNA]),
+      { kind: "access", family: "organizationMembers", id: ORG, access: "denied" } as const,
+    ],
+    fact: "withheld",
+    status: "failed",
+  },
+])(
+  "a sampled $name remains distinguishable from the other empty presentations",
+  ({ inputs, fact, status }) => {
+    const reads = readsOfState(apply(emptyAccount, inputs));
+    expect(organizationMembers.derive(reads, { orgId: ORG, clientId: ORG })).toMatchObject({
+      fact: { kind: fact },
+      status,
+      members: [],
+    });
+  },
+);
+
+it("a failed source link stays visible over a retained sampled answer", () => {
+  const reads = readsOfState(
+    apply(emptyAccount, [
+      ...begun(MEMBERS),
+      ...answered(MEMBERS, "organizationMembers", [ANNA]),
+      event(`zerops:${ORG}`, {
+        kind: "fault",
+        jitter: 0,
+        fault: { outcome: "transient", message: "The organization source disconnected." },
+      }),
+    ]),
+  );
+  expect(organizationMembers.derive(reads, { orgId: ORG, clientId: ORG })).toMatchObject({
+    members: [ANNA],
+    status: "failed",
+    settled: false,
+    link: { fault: { outcome: "transient", message: "The organization source disconnected." } },
   });
 });

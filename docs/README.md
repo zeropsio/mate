@@ -1,46 +1,21 @@
-# Zerops Mate docs
+# Zerops Mate documentation
 
-## Using Zerops Mate
+## Canonical homes
 
-- [Install and first run](./user/install.md)
-- [Permission modes](./user/permission-modes.md)
-- [Keyboard shortcuts](./user/keybindings.md)
-- [Organizing threads](./user/thread-sidebar.md)
-- [Review usage](./user/usage.md)
-- [Customize a project icon](./user/project-settings.md)
-- [Mobile appearance](./user/mobile-appearance.md)
-- [Remote access](./user/remote-access.md)
-- [Keeping app and server in sync](./user/updating.md)
-- [Source control integrations](./user/source-control.md)
-- [Background service (Linux)](./user/background-service.md)
-- Providers: [Codex](./user/providers-codex.md) · [Claude](./user/providers-claude.md)
+- [Fork boundaries](internals/zerops/fork.md)
+- [Domain terms](internals/zerops/primer.md)
+- [Client data rules](internals/zerops/data-layer.md)
+- [Design guide](internals/zerops/design-system.md)
+- [Provider runtime contract](internals/zerops/spi.md)
+- [Verified platform assumptions](internals/zerops/verified.md)
+- zcp↔mate seam: `../../zcp/docs/spec-mate.md` §2.8.
+- [Shared runtime terms](internals/glossary.md)
+- [Execution boundaries](internals/overview.md)
+- [Service rules](internals/effect-services.md)
+- [Action names](internals/consistency-action-names.md)
+- [Model catalogue test policy](internals/model-manifest.md)
+- [Instrumentation rules](operations/observability.md)
 
----
-
-## Working on Zerops Mate
-
-Everything below is for maintainers. Setup lives in the [root README](../README.md);
-policy in [CONTRIBUTING.md](../CONTRIBUTING.md); agent rules in [AGENTS.md](../AGENTS.md).
-
-This fork does not publish desktop or mobile clients. For mobile source development, see
-[apps/mobile/README.md](../apps/mobile/README.md).
-
-- [Architecture overview](./internals/overview.md)
-- [Workspace layout](./internals/workspace-layout.md)
-- [Glossary](./internals/glossary.md)
-- [Scripts](./internals/scripts.md)
-- [Connection runtime](./internals/connection-runtime.md)
-- [Providers](./internals/providers.md)
-- [Remote environments](./internals/remote.md)
-- [Server updates](./internals/server-updates.md)
-- [Resource telemetry](./internals/resource-telemetry.md)
-- [Environment auth](./internals/environment-auth.md)
-- [CI gates](./internals/ci.md)
-- [Engineering work artifacts](./internals/work-artifacts.md)
-
-### Runbooks
-
-- [Release](./operations/release.md)
-- [Observability](./operations/observability.md)
-- [Relay observability](./operations/relay-observability.md)
-- [Mobile app store screenshots](./operations/mobile-app-store-screenshots.md)
+- [Repository map](../CLAUDE.md)
+- [Contributor policy](../CONTRIBUTING.md)
+- [Release artifacts](https://github.com/zeropsio/mate/releases)

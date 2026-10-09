@@ -19,6 +19,15 @@ import {
   zeropsLoginUnavailableReason,
   zeropsLoginTitle,
 } from "@t3tools/shared/zeropsAgentAuth";
+import { zeropsAgentSignInRequired } from "../../zerops/agentLogin.ts";
+import {
+  zeropsAgentAvailabilityIsRunnable,
+  zeropsAgentAuthReads,
+  zeropsLoginAuthReads,
+  resolveZeropsAgentAvailability,
+  type ZeropsAgentAvailability,
+  type ZeropsAgentAuthRead,
+} from "../../zerops/agentAvailability.ts";
 import { agentAuthAction } from "../../zerops/agentLogin.ts";
 
 export interface AgentAdmissionAttention {
@@ -49,6 +58,9 @@ export function agentAdmission(input: {
   readonly read: Known<ZeropsAgentAuthSnapshot> | undefined;
   readonly providers: ReadonlyArray<ServerProvider>;
   readonly mateName: string;
+  readonly refusalSource?: AgentAdmissionRefusal | undefined;
+  readonly empty?: boolean;
+  readonly standUpHolds?: boolean;
 }) {
   const snapshot = input.read?.state === "known" ? input.read.value : null;
   const provider = input.providers.find((p) => p.instanceId === input.instanceId) ?? null;
@@ -106,9 +118,21 @@ export function agentAdmission(input: {
               : zeropsLoginTitle(login),
           action: action === "none" || action === "registering" ? "sign-in" : action,
         });
+  const holdsComposer =
+    input.standUpHolds === true ||
+    (input.empty === true &&
+      snapshot !== null &&
+      zeropsAgentSignInRequired(snapshot, input.providers));
   return {
     attention,
     providerStatus: admissionProviderStatus(provider, snapshot, input.providers),
+    explainsRefusal: admissionExplainsRefusal(attention, input.refusalSource),
+    footer: cold ? ("held" as const) : ("composer" as const),
+    canSend: !cold && !holdsComposer && attention === null,
+    sendBlockReason: attention?.text ?? null,
+    // Signer records establish no client permission, including compact HQ records.
+    readOnly: false,
+    holdsComposer,
   };
 }
 
@@ -301,4 +325,65 @@ export function admissionRefusalWords(
   return agent === null
     ? null
     : `${mateName ?? "This Mate"}'s turn could not continue because ${agent} was signed out.`;
+}
+
+/** Web selection follows scoped auth; command permission remains the server's decision. */
+export function resolveZeropsProviderAvailability(input: {
+  readonly entries: ReadonlyArray<{
+    readonly instanceId: ProviderInstanceId;
+    readonly driverKind: string;
+  }>;
+  readonly agentAuth: Known<ZeropsAgentAuthSnapshot> | undefined;
+}): ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined {
+  if (input.agentAuth === undefined) return undefined;
+  // Native availability retains its existing ownership path; web consumes auth facts only.
+  const factsOf = (agent: ZeropsAgentAuthSnapshot["agents"][number]) => ({
+    credPresent: agent.credPresent,
+    flagToken: agent.flagToken,
+    providerAuth: agent.providerAuth,
+    verification: agent.verification,
+    registration: agent.registration,
+    state: agent.state,
+    loginPhase: agent.login?.phase,
+  });
+  const reads = zeropsAgentAuthReads(input.agentAuth, factsOf);
+  if (reads === undefined) return undefined;
+  // A login beyond the defaults answers for itself, as the server's admission
+  // resolves it; until the feed is known, its driver's agent says `unknown`
+  // for it like for every other instance.
+  const loginReads = zeropsLoginAuthReads(input.agentAuth, factsOf);
+  const map = new Map<ProviderInstanceId, ZeropsAgentAvailability>();
+  const authentication = (agent: ZeropsAgentAuthRead): ZeropsAgentAvailability => {
+    if (agent.state !== "known") return { kind: "unknown", read: agent };
+    const auth = classifyZeropsAgentAuth(agent.value).kind;
+    if (auth === "authorized") return { kind: "ready" };
+    if (auth === "registering") return { kind: "registering" };
+    return resolveZeropsAgentAvailability({ agent, viewerSubject: undefined });
+  };
+  for (const entry of input.entries) {
+    const login = loginReads(entry.instanceId);
+    if (login !== undefined) {
+      map.set(entry.instanceId, authentication(login));
+      continue;
+    }
+    const agentId = agentIdForDriverKind(entry.driverKind);
+    if (agentId === undefined) continue;
+    const agent = reads(agentId);
+    if (agent === undefined) continue;
+    map.set(entry.instanceId, authentication(agent));
+  }
+  return map;
+}
+
+/** Unknown auth holds the initial composer without changing the selected login. */
+export function isZeropsInstanceRunnable(
+  availabilityByInstanceId: ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined,
+  instanceId: ProviderInstanceId,
+): boolean {
+  const availability = availabilityByInstanceId?.get(instanceId);
+  return (
+    availability === undefined ||
+    availability.kind === "unknown" ||
+    zeropsAgentAvailabilityIsRunnable(availability)
+  );
 }

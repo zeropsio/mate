@@ -486,15 +486,6 @@
     "class": "review"
   },
   {
-    "path": "packages/client-runtime/src/data/projections/sampled.ts",
-    "kind": "ConditionalExpression",
-    "fingerprint": "fact.kind === \"known\" ? fact.value : undefined",
-    "owner": "maintainers",
-    "reason": "Sampled projection retains read, live and failure status alongside the optional value.",
-    "expires": "never",
-    "class": "justified"
-  },
-  {
     "path": "packages/client-runtime/src/data/projections/usage.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "fact.kind === \"known\" ? [fact.value] : []",

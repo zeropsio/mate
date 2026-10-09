@@ -9,19 +9,24 @@
 import { locationsScope } from "../families/organizationLocations.ts";
 import { membersScope } from "../families/organizationMembers.ts";
 import { agentsScope } from "../families/serviceAgents.ts";
-import type { Family, FamilyValues, ScopeKey } from "../model.ts";
+import type { Coverage, Family, FamilyValues, PublicRead, ScopeKey, StreamKey } from "../model.ts";
+import type { StreamState } from "../streamMachine.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
 export interface SampledRead<T> {
+  readonly fact: PublicRead<T>;
+  readonly coverage: Coverage;
+  readonly stream: StreamState;
+  readonly link: StreamState | null;
   /** The owner's value as the last read answered it; `undefined` until one did. */
   readonly value: T | undefined;
   /**
-   * `ready` once a read answered, whatever reads it again; `failed` with nothing answered and its
-   * read failing or refused; `loading` until then.
+   * `ready` for a complete successful answer with no read under way, including after its demand
+   * is released. Retained values remain visible while loading or failed.
    */
   readonly status: "loading" | "ready" | "failed";
-  /** The value is what a read settled: none is under way or failing over it. */
+  /** The held read settled successfully; a released answer remains ready but is not held. */
   readonly settled: boolean;
   /** Its owner refused it: nothing reads it again until the person tries again. */
   readonly refused: boolean;
@@ -35,14 +40,34 @@ export function sampledRead<F extends Family>(
   ownerId: string,
 ): SampledRead<FamilyValues[F]> {
   const fact = read.fact(family, ownerId);
-  const { phase } = read.stream(scope);
-  const value = fact.kind === "known" ? fact.value : undefined;
-  const failing = phase === "recovering" || phase === "refused";
+  const stream = read.stream(scope);
+  const link = stream.parent === null ? null : read.stream(stream.parent as StreamKey);
+  const fault = link?.fault ?? stream.fault;
+  const coverage = read.coverage(scope);
+  let value: FamilyValues[F] | undefined;
+  switch (fact.kind) {
+    case "known":
+      value = fact.value;
+      break;
+    case "unknown":
+    case "deleted":
+    case "withheld":
+      break;
+  }
+  const refused = stream.phase === "refused" || link?.phase === "refused";
+  const failing = fault !== null || refused || fact.kind === "withheld";
+  const answered =
+    stream.phase === "live" || (stream.phase === "paused" && stream.next.kind === "await-demand");
+  const ready = fact.kind === "known" && coverage === "complete" && answered && !failing;
   return {
+    fact,
+    coverage,
+    stream,
+    link,
     value,
-    status: value !== undefined ? "ready" : failing ? "failed" : "loading",
-    settled: value !== undefined && phase === "live",
-    refused: phase === "refused",
+    status: failing ? "failed" : ready ? "ready" : "loading",
+    settled: ready && stream.phase === "live",
+    refused,
   };
 }
 
@@ -50,7 +75,10 @@ export function sampledRead<F extends Family>(
  * An organization's members as a screen names people from them: nobody until a read answered —
  * `status` says whether one is under way, failed or refused.
  */
-export interface MembersRead extends Omit<SampledRead<unknown>, "value"> {
+export interface MembersRead extends Omit<
+  SampledRead<FamilyValues["organizationMembers"]>,
+  "value"
+> {
   readonly members: FamilyValues["organizationMembers"];
 }
 
@@ -79,8 +107,10 @@ export const organizationMembers: Projection<
 };
 
 /** The places a new project may be put in: none to offer until a read answered them. */
-export interface LocationsRead {
-  readonly status: SampledRead<unknown>["status"];
+export interface LocationsRead extends Omit<
+  SampledRead<FamilyValues["organizationLocations"]>,
+  "value"
+> {
   readonly locations: FamilyValues["organizationLocations"];
 }
 
@@ -91,13 +121,13 @@ export const organizationLocations: Projection<string, LocationsRead> = {
   name: "organizationLocations",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => {
-    const { value, status } = sampledRead(
+    const { value, ...standing } = sampledRead(
       read,
       "organizationLocations",
       locationsScope(orgId),
       orgId,
     );
-    return { status, locations: value ?? NO_LOCATIONS };
+    return { ...standing, locations: value ?? NO_LOCATIONS };
   },
   equals: sameValue,
 };

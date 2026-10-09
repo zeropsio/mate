@@ -1,4 +1,13 @@
-import { resolveZeropsProviderAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
+import {
+  branchMismatchKey,
+  dismissBranchMismatchForSession,
+  isBranchMismatchDismissedForSession,
+  shouldShowBranchMismatchBanner,
+} from "./BranchToolbar.logic";
+import {
+  resolveZeropsProviderAvailability,
+  isZeropsInstanceRunnable,
+} from "@t3tools/client-runtime/data";
 // @effect-diagnostics nodeBuiltinImport:off -- Source ownership guard reads authored files directly.
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
@@ -22,12 +31,10 @@ import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentThreadDetails } from "../state/threads";
 
 import type { Thread, ThreadShell } from "../types";
-import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
 import { deriveProviderInstanceEntries, NO_PROVIDER_MODEL_SELECTION } from "../providerInstances";
 import {
   projectScriptKeybindingWrites,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
-  branchMismatchKey,
   waitForRevertedMessage,
   buildExpiredTerminalContextToastCopy,
   buildLoadingThreadFromShell,
@@ -37,21 +44,17 @@ import {
   deriveComposerSendState,
   deriveLockedProvider,
   diffOpeningShowsWorkingTree,
-  dismissBranchMismatchForSession,
   ENVIRONMENT_RECONNECT_WARNING_GRACE_MS,
   getAntigravitySendBlockReason,
   getStartedThreadModelChangeBlockReason,
   hasEnvironmentReconnectWarningGraceElapsed,
   hasServerAcknowledgedLocalDispatch,
   shouldRefocusComposerOnWindowFocus,
-  isBranchMismatchDismissedForSession,
-  isZeropsInstanceRunnable,
   reconcileMountedTerminalThreadIds,
   recallCheckoutIsRepo,
   rememberCheckoutIsRepo,
   resolveBackgroundDraftWorkspaceOptions,
   resolveComposerInteractionMode,
-  resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
   composerOpenFocus,
   resolveDraftPromotionNavigationTarget,
@@ -70,7 +73,6 @@ import {
   startNewThreadForProject,
   shouldDockDraftHeroForSubmission,
   shouldReleaseTimelineAnchorForToolActivity,
-  shouldShowBranchMismatchBanner,
   shouldWriteThreadErrorToCurrentServerThread,
   conversationContentPending,
   localThreadErrorStanding,
@@ -1456,16 +1458,6 @@ describe("session branch mismatch dismissal", () => {
     expect(isBranchMismatchDismissedForSession("t1:a:b")).toBe(true);
     expect(isBranchMismatchDismissedForSession("t1:a:c")).toBe(false);
     expect(isBranchMismatchDismissedForSession(null)).toBe(false);
-  });
-});
-
-describe("resolveComposerOverlayHeight", () => {
-  it("reserves only the composer's own height when no banner is showing", () => {
-    expect(resolveComposerOverlayHeight({ composerHeight: 120, bannerStackHeight: 0 })).toBe(120);
-  });
-
-  it("adds the floating banner stack's height on top of the composer's own height", () => {
-    expect(resolveComposerOverlayHeight({ composerHeight: 120, bannerStackHeight: 64 })).toBe(184);
   });
 });
 

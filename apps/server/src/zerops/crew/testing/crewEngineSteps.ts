@@ -5,17 +5,20 @@
  *
  * @module crewEngineSteps
  */
+// @effect-diagnostics nodeBuiltinImport:off -- real Git fixture paths on the test host.
 import { type CrewSnapshot, type OrchestrationCommand, type ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as NodePath from "node:path";
 
 import { ZEROPS_SUBJECT_PREFIX } from "../../ZeropsMembershipWatch.ts";
 import type { TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
 import { CrewEngine } from "../CrewEngine.ts";
 import { CrewThreadDirectory, CrewToolHost } from "../crewSeams.ts";
 import { eventually, spiEvent, writeCrewHome, type CrewWorld } from "./crewEngineFixture.ts";
+import { write } from "./crewGitFixture.ts";
 
 export const KAREL: TurnPrincipal = {
   kind: "session",
@@ -77,6 +80,16 @@ export const snapshotWhere = (check: (snapshot: CrewSnapshot) => boolean) =>
     engine.snapshot.pipe(Stream.filter(check), Stream.runHead, Effect.map(Option.getOrThrow)),
   );
 
+/** A ready task can still be finishing its lane read; editing waits for its owner's receipt. */
+export const copyOperationsFinished = (handle: string) =>
+  snapshotWhere(
+    (snapshot) =>
+      snapshot.operations !== undefined &&
+      snapshot.operations.every(
+        (operation) => operation.handle !== handle || operation.status !== "running",
+      ),
+  );
+
 /** Applies the crew home and waits until every copy is ready. */
 export const applied = (world: CrewWorld) =>
   Effect.gen(function* () {
@@ -103,3 +116,16 @@ export const reportDone = (thread: ThreadId) =>
     const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
     yield* (yield* CrewToolHost).report(member, { status: "done", summary: "Done." });
   });
+
+/** Completes a checked task and waits until its copy is free for fixture edits. */
+export const readyTask = Effect.fnUntraced(function* (world: CrewWorld) {
+  yield* applied(world);
+  const thread = yield* firstTurn(world, () =>
+    write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "ok\n"),
+  );
+  yield* reportDone(thread);
+  yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+  yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
+  yield* copyOperationsFinished("backend");
+  return thread;
+});

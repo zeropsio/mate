@@ -1,77 +1,19 @@
 # Effect services
 
-Server features are Effect services. Transports call them: the WebSocket RPC handlers in
-[`ws.ts`](../../apps/server/src/ws.ts), HTTP routes, and the CLI. This page holds the rules for
-writing them.
+A server capability belongs to the service that owns its domain. Extend that service before
+adding another. Transports decode requests, call one service method and map typed errors;
+filesystem, process, persistence, retries and rollback belong in the service. Pure helpers can
+live beside it.
 
-## Where a feature lives
+## Service modules
 
-A server capability is a method on a service in its domain folder (`project/`, `workspace/`, `git/`,
-`provider/`, `zerops/`, ...). Extend the service that already owns the domain; add a new one only
-when none does.
+A service module orders imports, errors and schemas, the `Context.Service` tag with its interface,
+private construction and its layer.
 
-A transport handler does three things: decode the request, call one service method, and map the
-service's typed errors to the transport's error. Nothing else. Filesystem, Git, process, or
-persistence work, folder naming, multi-step dispatch, retries, and rollback belong in the service.
-
-The reason is reach. A capability one transport reaches is soon wanted by another, and logic
-written into one handler is missing from the others; testing it needs a socket. Plain functions for
-pure work (a slug, an SVG, a message) are fine next to the service; the capability itself is the
-method.
-
-```ts
-// ws.ts: a thin handler
-[ORCHESTRATION_WS_METHODS.getTurnDiff]: (input) =>
-  checkpointDiffQuery
-    .getTurnDiff(input)
-    .pipe(Effect.mapError((cause) => new OrchestrationGetTurnDiffError({ message: "…", cause }))),
-```
-
-Handlers don't add their own spans or request metrics. Group middleware authorizes every call
-([`RpcAuthorization.ts`](../../apps/server/src/auth/RpcAuthorization.ts)), and the server's group
-also instruments it
-([`RpcInstrumentation.ts`](../../apps/server/src/observability/RpcInstrumentation.ts)). A handler
-with per-call context, such as a thread id, adds it with `Effect.annotateCurrentSpan`.
-
-## Shape of a service module
-
-A new service is one module, in this order: imports, errors and schemas, the `Context.Service` tag
-with its interface inline, `make`, then `layer`.
-[`WorkspacePaths.ts`](../../apps/server/src/workspace/WorkspacePaths.ts) and
-[`T3ProjectFileLoader.ts`](../../apps/server/src/project/T3ProjectFileLoader.ts) are good
-references.
-
-```ts
-export class FooWriteError extends Schema.TaggedError<FooWriteError>()("FooWriteError", {
-  path: Schema.String,
-  cause: Schema.Defect(),
-}) {
-  override get message(): string {
-    return "Failed to write the foo file.";
-  }
-}
-
-export class Foo extends Context.Service<
-  Foo,
-  { readonly write: (input: { readonly path: string }) => Effect.Effect<void, FooWriteError> }
->()("t3/area/Foo") {}
-
-const make = Effect.gen(function* () {
-  const fileSystem = yield* FileSystem.FileSystem;
-  // ...
-  return Foo.of({ write });
-});
-
-export const layer = Layer.effect(Foo, make);
-```
-
-- **Imports.** Import Effect modules as namespaces from their subpaths:
-  `import * as Effect from "effect/Effect"`, never `import { Effect } from "effect"`. Consumers use
-  a service module the same way: `import * as Foo from "./Foo.ts"`, then `yield* Foo.Foo` and
-  `Foo.layer`. Never `import { layer as fooLayer }`. Named imports are fine for packages like
-  `@t3tools/contracts` and for modules used only for a pure helper, error, schema, config value, or
-  type. A barrel exposes a whole service module as `export * as TokenStore from "./tokenStore.ts"`,
-  not as renamed `make` and `layer` exports.
+- **Imports.** Use namespace imports from Effect subpaths and service modules. Do not rename
+  service layers. Named imports are fine for packages and pure helpers, errors, schemas,
+  configuration and types. A barrel exports whole service modules rather than renamed construction
+  and layer functions.
 - **Dependencies** come from the environment (`yield* FileSystem.FileSystem`), never as parameters
   to `make`, so the types of `make` and `layer` show what they need. Never hide one in a module
   global, a closure over a singleton, or a `Layer.succeed` that calls runtime-backed or imperative
@@ -125,11 +67,3 @@ optional-service layer. Don't route around the layer with an imperative runtime.
 - **Catching.** Catch known tags with `Effect.catchTags({ ... })`, even for one tag, not `catchTag`
   or `catchIf` with a schema predicate. `Effect.catch` is for handling the whole channel; `catchIf`
   is for structural checks like a platform error code.
-
-## Before you push
-
-- Does any handler you touched do more than decode, call, and map errors?
-- Could another transport use this capability? If not, is that deliberate?
-- Did you extend the domain's existing service before adding a new one?
-- Does every directive you added that disables a lint, type-checker, or LSP diagnostic say why, in
-  a `-- reason` suffix or a comment above it?

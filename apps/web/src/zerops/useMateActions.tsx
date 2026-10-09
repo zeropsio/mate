@@ -1,3 +1,4 @@
+import { MateRestartError } from "./mateRestartRefusal";
 import { faceAction, NO_FACE_ACTION } from "@t3tools/client-runtime/data";
 /**
  * What can be done to a Mate, from wherever a Mate is listed.
@@ -561,33 +562,28 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     (candidate: ZeropsCandidatePresentation) => {
       const serviceId = candidate.service?.id;
       if (activeOrganization === null || serviceId === undefined) return;
-      setPress({ pending: true, error: null });
       const isCurrent = captureAccountLifetime();
       const replyToDialog = captureDialogReply();
-      // A container that failed is stopped and started: the platform refuses to restart it.
-      void write(
-        candidate.key,
-        () =>
-          restartMate({
-            key: candidate.key,
-            projectId: candidate.project.id,
-            serviceId,
-            status: candidate.service?.status,
-          })
-            .then(() => {
-              if (isCurrent()) {
-                replyToDialog(null);
-                setPress(UNPRESSED);
-              }
-            })
-            .catch((cause: unknown) => {
-              if (isCurrent()) setPress({ pending: false, error: zeropsErrorMessage(cause) });
-              throw cause;
-            }),
-        refresh,
+      void restartMate({
+        key: candidate.key,
+        projectId: candidate.project.id,
+        serviceId,
+        status: candidate.service?.status,
+      }).then(
+        () => {
+          if (isCurrent()) {
+            replyToDialog(null);
+            refresh();
+          }
+        },
+        (cause: unknown) => {
+          // Receipt guidance belongs to the retained recovery outcome, including after close.
+          if (!(cause instanceof MateRestartError) && isCurrent())
+            setPress({ pending: false, error: zeropsErrorMessage(cause) });
+        },
       );
     },
-    [activeOrganization, refresh, restartMate, captureDialogReply, write],
+    [activeOrganization, refresh, restartMate, captureDialogReply],
   );
 
   /**

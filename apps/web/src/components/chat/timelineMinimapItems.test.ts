@@ -1,3 +1,4 @@
+import { assembleRecordCard } from "./MessagesTimeline.logic";
 import { describe, expect, it } from "vite-plus/test";
 import { MessageId } from "@t3tools/contracts";
 import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
@@ -110,6 +111,7 @@ describe("timeline minimap previews", () => {
       ],
       now: null,
       answering: false,
+      ...assembleRecordCard({ items: [], now: null, answering: false, outcome: null }),
       status: {
         live: false,
         face: face as "produced",
@@ -170,6 +172,7 @@ describe("timeline minimap previews", () => {
       items: [],
       now: null,
       answering: false,
+      ...assembleRecordCard({ items: [], now: null, answering: false, outcome: null }),
       status: {
         live: false,
         face,

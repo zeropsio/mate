@@ -21,7 +21,7 @@ import {
   projectsServicesAtom,
   projectStandingAtom,
 } from "./reads.ts";
-import { makeAccountStore } from "./store.ts";
+import { makeAccountStore, readsOfState } from "./store.ts";
 import { usageOwnerOf, usageScope } from "./families/usage.ts";
 
 describe("projectProcessesAtom", () => {
@@ -51,6 +51,40 @@ describe("projectProcessesAtom", () => {
 });
 
 describe("projectStandingAtom", () => {
+  it.each(["denied", "deleted"] as const)(
+    "A %s project keeps its name for recovery without exposing its protected record",
+    (kind) => {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      liveZerops({
+        running: [],
+        projects: [{ id: "p1", name: "Shop", description: "Private project description" }],
+      }).forEach(store.dispatch);
+      registry.set(accountReadsAtom, {
+        data: store.data,
+        orgId: ORG,
+        demandDetail: () => () => {},
+        renewHeld: () => {},
+      });
+      const atom = projectStandingAtom("p1");
+      const unmount = registry.mount(atom);
+      expect(registry.get(atom)).toMatchObject({ kind: "listed", project: { name: "Shop" } });
+
+      store.dispatch(
+        kind === "denied"
+          ? { kind: "access", family: "project", id: "p1", access: "denied" }
+          : { kind: "proven-deletion", family: "project", id: "p1", evidence: "projectNotFound" },
+      );
+      expect(registry.get(atom)).toEqual({ kind, name: "Shop" });
+      expect(readsOfState(store.state()).fact("project", "p1")).not.toHaveProperty("value");
+
+      registry.set(accountReadsAtom, null);
+      expect(registry.get(atom)).toEqual({ kind: "unknown" });
+      unmount();
+      registry.dispose();
+    },
+  );
+
   it("reads where a project stands through the mounted account, and not known without one", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);

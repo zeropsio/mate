@@ -705,6 +705,7 @@ describe("rollbackReview: a roll back that landed names what it replaced", () =>
     ["rolled back", { kind: "released", at: undefined }, { kind: "done" }, "replaces v0.1.1"],
   ])("%s", (_name, outcome, press, meta) => {
     const model = rollbackReview({
+      comparisons: { leaving: "known", comingBack: "known" },
       tag: "v0.1.0",
       nextTag: "v0.1.2",
       live: "v0.1.1",

@@ -2,16 +2,6 @@ import { isTransportConnectionErrorMessage } from "@t3tools/client-runtime/error
 import { onAccountLifetimeClose } from "../zerops/accountLifetime";
 import { resolveZeropsAgentPickerPanelView } from "./zerops/ZeropsAgentPickerPanel.logic";
 import {
-  zeropsAgentAvailabilityIsRunnable,
-  type ZeropsAgentAvailability,
-} from "@t3tools/client-runtime/zerops/agentAvailability";
-import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
-import {
-  resolveOwnedAgentId,
-  agentOwnershipComposerNotice,
-  type ZeropsAgentOwnership,
-} from "@t3tools/client-runtime/zerops/agentOwnership";
-import {
   ANTIGRAVITY_DEFAULT_MODEL,
   type EnvironmentId,
   isProviderDriverKind,
@@ -31,7 +21,6 @@ import {
   type ScopedThreadRef,
   type ThreadId,
   type TurnId,
-  type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
 import {
   type ChatMessage,
@@ -420,45 +409,12 @@ export function resolveComposerProviderSelection(input: {
   };
 }
 
-/** Unknown auth holds the initial composer without changing the selected login. */
-export function isZeropsInstanceRunnable(
-  availabilityByInstanceId: ReadonlyMap<ProviderInstanceId, ZeropsAgentAvailability> | undefined,
-  instanceId: ProviderInstanceId,
-): boolean {
-  const availability = availabilityByInstanceId?.get(instanceId);
-  return (
-    availability === undefined ||
-    availability.kind === "unknown" ||
-    zeropsAgentAvailabilityIsRunnable(availability)
-  );
-}
-
 /** What a conversation on someone else's agent shows instead of a composer. */
 export interface ZeropsConversationReadOnly {
   /** The ownership line the footer carries — the same words the banner used. */
   readonly notice: string;
   /** Who a pending question or approval waits on — never "you". */
   readonly waitingLabel: string;
-}
-
-/**
- * Whether this conversation is one the viewer only reads (D6): its agent is
- * a personal login recorded as another project member's. Then nothing that
- * would act on the agent renders — no composer, no answers to its questions,
- * no approvals — and the timeline stays browsable. A token-authorized agent
- * belongs to the project, so it never makes a conversation read-only;
- * `unrecorded` keeps the composer with its banner, because the viewer's own
- * sign-in is the way out of it.
- */
-export function resolveZeropsConversationReadOnly(input: {
-  readonly agent: { readonly flagToken: boolean } | undefined;
-  readonly ownership: ZeropsAgentOwnership;
-}): ZeropsConversationReadOnly | null {
-  if (input.agent === undefined || input.agent.flagToken) return null;
-  if (input.ownership !== "someone-else") return null;
-  const notice = agentOwnershipComposerNotice(input.ownership);
-  if (notice === undefined) return null;
-  return { notice, waitingLabel: "Waiting for the agent's owner" };
 }
 
 /**
@@ -476,12 +432,6 @@ export function composerOpenFocus(input: {
 }): boolean {
   return input.composerShown && (!input.late || !input.focusElsewhere);
 }
-
-/** Someone else's conversation as HQ's word paints it, before the Mate's own sign-in is read. */
-export const HQ_SAID_READ_ONLY: ZeropsConversationReadOnly = {
-  notice: agentOwnershipComposerNotice("someone-else")!,
-  waitingLabel: "Waiting for the agent's owner",
-};
 
 /** Keep restored drafts and every plan control on the selected instance's supported mode. */
 export function resolveComposerInteractionMode(input: {
@@ -795,61 +745,6 @@ export function buildExpiredTerminalContextToastCopy(
     title: `${noun} omitted from message`,
     description: "Re-add it if you want that terminal output included.",
   };
-}
-
-export function branchMismatchKey(
-  threadId: string | null,
-  mismatch: { threadBranch: string; currentBranch: string } | null,
-): string | null {
-  if (!threadId || !mismatch) {
-    return null;
-  }
-  return `${threadId}:${mismatch.threadBranch}:${mismatch.currentBranch}`;
-}
-
-// The mismatch banner only matters when the user is about to send: passive
-// reading of an old thread carries no risk (the branch picker tint already
-// covers ambient awareness). Draft content is the intent signal — composer
-// focus is useless here because ChatView autofocuses the composer on every
-// thread open. `wasShownForCurrentMismatch` keeps the banner mounted once
-// revealed so it doesn't flicker away when the draft is cleared.
-export function shouldShowBranchMismatchBanner(input: {
-  hasMismatch: boolean;
-  isDismissed: boolean;
-  composerHasContent: boolean;
-  wasShownForCurrentMismatch: boolean;
-}): boolean {
-  if (!input.hasMismatch || input.isDismissed) {
-    return false;
-  }
-  return input.composerHasContent || input.wasShownForCurrentMismatch;
-}
-
-// The composer's floating banner stack (resume-with-less-context, the merge
-// offer, …) renders from a zero-height anchor and is absolutely positioned
-// above the composer, so it never enlarges the composer overlay element's own
-// measured box — a ResizeObserver on that element alone under-reports the
-// overlay's true footprint whenever a banner is showing. Both the timeline's
-// bottom content inset and the "scroll to end" pill's offset must reserve the
-// combined height, or the list scrolls text in behind/beside the banner and
-// the pill lands mid-banner instead of above the whole stack.
-export function resolveComposerOverlayHeight(input: {
-  composerHeight: number;
-  bannerStackHeight: number;
-}): number {
-  return input.composerHeight + input.bannerStackHeight;
-}
-
-// Session-scoped (module-level so it survives ChatView remounts, e.g. route
-// changes). Durable cross-device dismissal is planned as a server-side ack.
-const sessionDismissedBranchMismatchKeys = new Set<string>();
-
-export function dismissBranchMismatchForSession(key: string): void {
-  sessionDismissedBranchMismatchKeys.add(key);
-}
-
-export function isBranchMismatchDismissedForSession(key: string | null): boolean {
-  return key !== null && sessionDismissedBranchMismatchKeys.has(key);
 }
 
 // Git status for a checkout arrives after the composer paints, and the branch

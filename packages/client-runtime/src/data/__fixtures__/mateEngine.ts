@@ -39,6 +39,22 @@ export const engineRun = (
     unresponsiveSince: null,
     summary: { items: 0, calls: {}, answerItemId: null, lastItemSeq: null },
     ...patch,
+    turnState:
+      patch.turnState !== undefined
+        ? patch.turnState
+        : patch.state !== undefined && patch.state !== "ended"
+          ? patch.state === "queued" || patch.state === "unknown"
+            ? null
+            : "running"
+          : patch.end?.kind === "unknown"
+            ? null
+            : patch.end?.kind === "failed" || patch.end?.kind === "crashed"
+              ? "error"
+              : patch.end?.kind === "stopped" ||
+                  patch.end?.kind === "usage-limit" ||
+                  patch.end?.kind === "cut-by-restart"
+                ? "interrupted"
+                : "completed",
   }) as RunRecord;
 
 export const personItem = (
@@ -106,7 +122,9 @@ export const engineRequest = (
 
 export const engineHeader = (
   conversationId: string,
-  patch: Partial<ConversationHeader> = {},
+  patch: Partial<Omit<ConversationHeader, "runStatus">> & {
+    readonly runStatus?: ConversationHeader["runStatus"] | undefined;
+  } = {},
 ): ConversationHeader =>
   ({
     conversationId,
@@ -117,6 +135,9 @@ export const engineHeader = (
       profile: { kind: "mate" },
     },
     archived: false,
+    runStatus: "ready",
+    activeRunId: null,
+    latestRunId: null,
     model: "claude-sonnet-4-5",
     session: null,
     pausedUntil: null,
@@ -141,6 +162,15 @@ export const engineRow = (
     at,
     askedAt: null,
     ...patch,
+    runStatus:
+      patch.runStatus ??
+      (patch.state?.kind === "working" ||
+      patch.state?.kind === "waiting" ||
+      patch.state?.kind === "queued"
+        ? "running"
+        : patch.state?.kind === "failed" && patch.latestRun?.end?.kind !== "cut-by-restart"
+          ? "error"
+          : "ready"),
   }) as ConversationRow;
 
 const itemBase = (runId: string, ordinal: number) => ({

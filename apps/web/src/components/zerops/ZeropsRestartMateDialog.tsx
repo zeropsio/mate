@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -16,6 +17,8 @@ export function ZeropsRestartMateDialog({
   error,
   onCancel,
   onConfirm,
+  feedback,
+  confirmLabel,
 }: {
   readonly name: string;
   readonly body: string;
@@ -23,6 +26,8 @@ export function ZeropsRestartMateDialog({
   readonly error: string | null;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
+  readonly feedback?: ReactNode;
+  readonly confirmLabel?: string | undefined;
 }) {
   return (
     <Dialog
@@ -36,6 +41,7 @@ export function ZeropsRestartMateDialog({
           <DialogTitle>{`Restart ${name}`}</DialogTitle>
           <DialogDescription>{body}</DialogDescription>
         </DialogHeader>
+        {feedback}
         {error === null ? null : (
           <DialogPanel>
             <p role="alert">{error}</p>
@@ -46,7 +52,7 @@ export function ZeropsRestartMateDialog({
             Cancel
           </Button>
           <Button disabled={pending} onClick={onConfirm}>
-            {pending ? "Restarting…" : "Restart"}
+            {confirmLabel ?? (pending ? "Restarting…" : "Restart")}
           </Button>
         </DialogFooter>
       </DialogPopup>

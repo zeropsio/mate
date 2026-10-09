@@ -189,6 +189,13 @@ async function supervise() {
     const server = NodeNet.createServer({ allowHalfOpen: true }, (socket) => {
       owners.add(socket);
       const databases = new Set<string>();
+      const templates = new Set<string>();
+      const ownedDatabase = (url: string) => {
+        const name = new URL(url).pathname.slice(1);
+        if (!databases.has(name) || url !== urlOf(port, name))
+          throw new Error("Database is not owned by this lease");
+        return name;
+      };
       const lines = NodeReadline.createInterface({ input: socket });
       lines.on("line", (command) => {
         try {
@@ -197,15 +204,39 @@ async function supervise() {
             socket.write(`${JSON.stringify({ url: "" })}\n`);
             return;
           }
+          if (command === "capabilities") {
+            socket.write(`${JSON.stringify({ capabilities: ["freeze", "clone"] })}\n`);
+            return;
+          }
           if (command === "release") {
             void release(true);
             return;
           }
-          if (command !== "create")
+          if (command.startsWith("freeze ")) {
+            const name = ownedDatabase(command.slice("freeze ".length));
+            // Publication requires a closed migration pool; no writer survives the freeze.
+            sql(`ALTER DATABASE ${name} ALLOW_CONNECTIONS false`);
+            if (
+              sql(`SELECT count(*) FROM pg_stat_activity WHERE datname = '${name}'`).trim() !== "0"
+            ) {
+              sql(`ALTER DATABASE ${name} ALLOW_CONNECTIONS true`);
+              throw new Error("Close database connections before freezing a template");
+            }
+            templates.add(name);
+            socket.write(`${JSON.stringify({ url: "" })}\n`);
+            return;
+          }
+          let template = "template0";
+          if (command.startsWith("clone ")) {
+            template = ownedDatabase(command.slice("clone ".length));
+            if (!templates.has(template))
+              throw new Error("Database is not a frozen template owned by this lease");
+          } else if (command !== "create") {
             throw new Error(`Unknown PostgreSQL supervisor command: ${command}`);
+          }
           const name = `mate_test_${NodeCrypto.randomUUID().replaceAll("-", "")}`;
           databases.add(name);
-          sql(`CREATE DATABASE ${name} TEMPLATE template0`);
+          sql(`CREATE DATABASE ${name} TEMPLATE ${template}`);
           socket.write(`${JSON.stringify({ url: urlOf(port, name) })}\n`);
         } catch (error) {
           socket.write(`${JSON.stringify({ error: String(error) })}\n`);

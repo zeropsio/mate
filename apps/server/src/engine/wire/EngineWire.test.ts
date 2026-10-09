@@ -121,6 +121,10 @@ describe("a client subscribed to an engine conversation", () => {
           if (snapshot.type !== "snapshot") return;
           assert.strictEqual(snapshot.epoch, ana.epoch);
           assert.strictEqual(snapshot.header.agent?.instanceId, "claudeAgent");
+          assert.strictEqual(snapshot.header.runStatus, "ready");
+          assert.strictEqual(snapshot.header.activeRunId, null);
+          assert.strictEqual(snapshot.header.latestRunId, runId(mate, 1));
+          assert.strictEqual(snapshot.runs[0]?.turnState, "completed");
           assert.deepStrictEqual(
             snapshot.runs.map((run) => [run.id, run.state, run.summary.answerItemId !== null]),
             [[runId(mate, 1), "ended", true]],

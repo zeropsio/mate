@@ -66,16 +66,21 @@ export interface EndFollow {
   readonly follow: () => void;
   /** A measurement may have clamped the native viewport before the next layout. */
   readonly observe: () => void;
+  /** A changed composer inset realigns measured geometry without a content-growth glide. */
+  readonly place: () => void;
   readonly stop: () => void;
 }
 
 export function createEndFollow({
   viewport,
   follows,
+  placeEnd,
 }: {
   readonly viewport: () => HTMLElement | null;
   /** Whether the conversation follows its end: ChatView's one judgement of it. */
   readonly follows: () => boolean;
+  /** The list commits this measured alignment after pending virtualizer layout. */
+  readonly placeEnd: () => void;
 }): EndFollow {
   let frame = 0;
   let last = 0;
@@ -122,6 +127,12 @@ export function createEndFollow({
     at = element.scrollTop;
   };
   return {
+    place: () => {
+      const element = viewport();
+      if (element === null || !follows()) return;
+      stopGlide();
+      placeEnd();
+    },
     observe: () => {
       const element = viewport();
       if (element !== null && follows()) observe(element);

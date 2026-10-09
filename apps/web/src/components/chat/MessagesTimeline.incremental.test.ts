@@ -1,3 +1,4 @@
+import type { EngineCardPaging } from "@t3tools/client-runtime/data";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
@@ -24,6 +25,9 @@ interface Frame {
   /** The server's live jobs: the same object until they change, as the page holds them. */
   readonly liveJobs?: LiveJobs;
   readonly nowMs?: number;
+  readonly cardPaging?: Readonly<Record<string, EngineCardPaging>>;
+  readonly isCompacting?: boolean;
+  readonly liveLines?: ReadonlyMap<string, boolean>;
 }
 
 function derive(frame: Frame, cache?: MessagesTimelineRowsCache): MessagesTimelineRow[] {
@@ -49,6 +53,9 @@ function derive(frame: Frame, cache?: MessagesTimelineRowsCache): MessagesTimeli
     ...(frame.helperFinishes === undefined ? {} : { helperFinishes: frame.helperFinishes }),
     ...(frame.liveJobs === undefined ? {} : { liveJobs: frame.liveJobs }),
     ...(cache === undefined ? {} : { cache }),
+    ...(frame.cardPaging === undefined ? {} : { cardPaging: frame.cardPaging }),
+    ...(frame.isCompacting === undefined ? {} : { isCompacting: frame.isCompacting }),
+    ...(frame.liveLines === undefined ? {} : { liveLines: frame.liveLines }),
   });
 }
 
@@ -239,8 +246,41 @@ function sameEntriesAgain(): Frame[] {
   ];
 }
 
+function pagingAndStructure(): Frame[] {
+  const blank = reasoning("r-live", "t4", 101);
+  if (blank.kind !== "message") throw new Error("thought missing");
+  const entries = [
+    ...history,
+    user("u4", (4 * perfTurnSeconds(STEPS)) / 60, "Inspect"),
+    { ...blank, message: { ...blank.message, text: " ", streaming: true } },
+  ];
+  const paging: EngineCardPaging = {
+    pageRuns: { earlier: null, later: "t4" },
+    counts: { calls: { command: 300 }, tools: {}, edited: 0 },
+    hasWork: true,
+    holdsLines: false,
+    since: null,
+    through: at(100),
+    reading: null,
+  };
+  return [
+    { entries, live: "t4", cardPaging: { t4: paging } },
+    { entries, live: "t4", cardPaging: { t4: { ...paging, reading: "later" } } },
+    { entries, live: "t4", cardPaging: { t4: { ...paging, holdsLines: true, through: at(101) } } },
+    { entries, live: "t4", cardPaging: { t4: paging }, liveLines: new Map([["r-live", true]]) },
+    { entries, live: "t4", cardPaging: { t4: paging }, isCompacting: true },
+    {
+      entries,
+      live: "t4",
+      cardPaging: { t4: { ...paging, counts: { ...paging.counts, calls: { command: 301 } } } },
+    },
+    { entries, live: "t4" },
+  ];
+}
+
 describe("a conversation derived again as it changes", () => {
   it.each([
+    { name: "account paging and structural slot inputs change", frames: pagingAndStructure() },
     { name: "a live run grows, settles, and the next begins", frames: growingRun() },
     { name: "a call fails mid-run", frames: failingCall() },
     { name: "a task tracks a settled run's command later", frames: laterTask() },
@@ -257,7 +297,10 @@ describe("a conversation derived again as it changes", () => {
 
   it("keeps every settled run's lines while the live run grows", () => {
     const cache = createMessagesTimelineRowsCache();
-    const frames = growingRun().filter((frame) => frame.live === "t4");
+    const frames = [
+      ...growingRun().filter((frame) => frame.live === "t4"),
+      ...pagingAndStructure(),
+    ];
     let previous: MessagesTimelineRow[] | null = null;
     for (const frame of frames) {
       const rows = derive(frame, cache);
@@ -268,6 +311,8 @@ describe("a conversation derived again as it changes", () => {
         for (const row of settled) {
           const earlier = before.get(row.id);
           if (row.kind !== "record" || earlier?.kind !== "record") throw new Error(row.id);
+          expect(row.chatItems).toBe(earlier.chatItems);
+          expect(row.slot).toBe(earlier.slot);
           expect(row.items).toHaveLength(earlier.items.length);
           row.items.forEach((item, index) => expect(item).toBe(earlier.items[index]));
         }
@@ -278,7 +323,10 @@ describe("a conversation derived again as it changes", () => {
 
   it("hands the list the same rows for every settled run while the live run grows", () => {
     const cache = createMessagesTimelineRowsCache();
-    const frames = growingRun().filter((frame) => frame.live === "t4");
+    const frames = [
+      ...growingRun().filter((frame) => frame.live === "t4"),
+      ...pagingAndStructure(),
+    ];
     let state: StableMessagesTimelineRowsState = { byId: new Map(), result: [] };
     for (const frame of frames) {
       const previous = state.result;

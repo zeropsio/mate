@@ -16,6 +16,28 @@ vi.mock("node:v8", async (importOriginal) => {
 });
 
 it.layer(NodeServices.layer)("writeHeapSnapshot", (it) => {
+  it.effect("writes a heap snapshot into the server logs directory", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const logsDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-heap-snapshot-" });
+      vi.mocked(NodeV8.writeHeapSnapshot).mockImplementationOnce((path) => {
+        if (!path) throw new Error("A snapshot needs a destination");
+        NodeFS.writeFileSync(path, "heap snapshot");
+        return path;
+      });
+
+      yield* writeHeapSnapshot(logsDir);
+
+      const files = yield* fs.readDirectory(logsDir);
+      assert.lengthOf(files, 1);
+      assert.match(files[0]!, /^server-.*\.heapsnapshot$/);
+      assert.strictEqual(
+        yield* fs.readFileString(NodePath.join(logsDir, files[0]!)),
+        "heap snapshot",
+      );
+    }),
+  );
+
   it.effect("removes the partial file when the write fails", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

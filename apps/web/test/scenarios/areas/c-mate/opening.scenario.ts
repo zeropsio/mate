@@ -419,6 +419,145 @@ describe("C: the conversation opening follows readiness", () => {
                               (node) => getComputedStyle(node).visibility,
                             ),
                           ).toBe("visible");
+                          const exposure = await s.page.evaluate(() => {
+                            const footer = document.querySelector("[data-conversation-footer]")!;
+                            const input = footer.querySelector('[role="textbox"]')!;
+                            const box = input.getBoundingClientRect();
+                            return {
+                              width: box.width,
+                              height: box.height,
+                              visible: input.checkVisibility({
+                                checkOpacity: true,
+                                checkVisibilityCSS: true,
+                              }),
+                              exposed: [0.2, 0.5, 0.8].every((fraction) =>
+                                input.contains(
+                                  document.elementFromPoint(
+                                    box.left + box.width * fraction,
+                                    box.top + box.height / 2,
+                                  ),
+                                ),
+                              ),
+                            };
+                          });
+                          expect(
+                            exposure.width,
+                            "ASSERTION: ready composer has a visible input",
+                          ).toBeGreaterThan(32);
+                          expect(
+                            exposure.height,
+                            "ASSERTION: ready composer has a visible input",
+                          ).toBeGreaterThan(8);
+                          expect(
+                            exposure.exposed,
+                            "ASSERTION: nothing covers the ready composer",
+                          ).toBe(true);
+                          expect(
+                            exposure.visible,
+                            "ASSERTION: ready composer is effectively visible",
+                          ).toBe(true);
+                          // Pointer hit testing omits painted pointer-transparent layers. Inspect
+                          // Chromium's actual paint order on this page for opaque backgrounds.
+                          const client = await s.page.createCDPSession();
+                          try {
+                            const { root } = await client.send("DOM.getDocument");
+                            const { nodeId } = await client.send("DOM.querySelector", {
+                              nodeId: root.nodeId,
+                              selector: '[data-conversation-footer] [role="textbox"]',
+                            });
+                            const { node } = await client.send("DOM.describeNode", { nodeId });
+                            const { documents, strings } = await client.send(
+                              "DOMSnapshot.captureSnapshot",
+                              {
+                                computedStyles: [
+                                  "background-color",
+                                  "opacity",
+                                  "visibility",
+                                  "overflow-x",
+                                  "overflow-y",
+                                ],
+                                includePaintOrder: true,
+                              },
+                            );
+                            const { nodes, layout } = documents.find((document) =>
+                              document.nodes.backendNodeId?.includes(node.backendNodeId),
+                            )!;
+                            const inputNode = nodes.backendNodeId!.indexOf(node.backendNodeId);
+                            const inputLayout = layout.nodeIndex.indexOf(inputNode);
+                            expect(
+                              inputLayout,
+                              "ASSERTION: composer supplies paint evidence",
+                            ).toBeGreaterThanOrEqual(0);
+                            const box = layout.bounds[inputLayout]!;
+                            const paint = layout.paintOrders![inputLayout]!;
+                            expect(paint, "ASSERTION: composer supplies paint order").toBeTypeOf(
+                              "number",
+                            );
+                            const belongsToInput = (candidate: number) => {
+                              for (
+                                let index = candidate;
+                                index >= 0;
+                                index = nodes.parentIndex![index] ?? -1
+                              )
+                                if (index === inputNode) return true;
+                              return false;
+                            };
+                            const backgrounds = layout.nodeIndex.flatMap((candidate, index) => {
+                              if (layout.paintOrders![index]! <= paint || belongsToInput(candidate))
+                                return [];
+                              const bounds = layout.bounds[index]!;
+                              let left = bounds[0]!,
+                                top = bounds[1]!;
+                              let right = left + bounds[2]!,
+                                bottom = top + bounds[3]!;
+                              let opacity = 1;
+                              for (
+                                let ancestor = candidate;
+                                ancestor >= 0;
+                                ancestor = nodes.parentIndex![ancestor] ?? -1
+                              ) {
+                                const parentLayout = layout.nodeIndex.indexOf(ancestor);
+                                if (parentLayout < 0) continue;
+                                const styles = layout.styles[parentLayout]!;
+                                opacity *= Number(strings[styles[1]!] ?? "1");
+                                if (strings[styles[2]!] === "hidden") return [];
+                                if (ancestor === candidate) continue;
+                                const parent = layout.bounds[parentLayout]!;
+                                if (strings[styles[3]!] !== "visible") {
+                                  left = Math.max(left, parent[0]!);
+                                  right = Math.min(right, parent[0]! + parent[2]!);
+                                }
+                                if (strings[styles[4]!] !== "visible") {
+                                  top = Math.max(top, parent[1]!);
+                                  bottom = Math.min(bottom, parent[1]! + parent[3]!);
+                                }
+                              }
+                              if (
+                                opacity < 1 ||
+                                Math.min(right, box[0]! + box[2]!) - Math.max(left, box[0]!) <= 4 ||
+                                Math.min(bottom, box[1]! + box[3]!) - Math.max(top, box[1]!) <= 4
+                              )
+                                return [];
+                              return [strings[layout.styles[index]![0]!]!];
+                            });
+                            const alpha = await s.page.evaluate((backgrounds) => {
+                              const canvas = document.createElement("canvas");
+                              canvas.width = canvas.height = 1;
+                              const context = canvas.getContext("2d")!;
+                              return backgrounds.map((background) => {
+                                context.clearRect(0, 0, 1, 1);
+                                context.fillStyle = background;
+                                context.fillRect(0, 0, 1, 1);
+                                return context.getImageData(0, 0, 1, 1).data[3];
+                              });
+                            }, backgrounds);
+                            expect(
+                              alpha.every((value) => value !== 255),
+                              "ASSERTION: no opaque painted layer covers the ready composer",
+                            ).toBe(true);
+                          } finally {
+                            await client.detach();
+                          }
                           if (entry === "menu")
                             expect(
                               await stage!.evaluate(

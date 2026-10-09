@@ -153,6 +153,9 @@ export class MateEngineFake {
         profile: { kind: "mate" },
       },
       archived: false,
+      runStatus: "ready",
+      activeRunId: null,
+      latestRunId: null,
       model: mate.thread.modelSelection.model,
       session: null,
       pausedUntil: null,
@@ -293,7 +296,7 @@ export class MateEngineFake {
         streaming: false,
         answer: true,
       });
-      if (end !== undefined) this.endRun(change, run, end, item);
+      if (end !== undefined) this.endRun(change, run, end);
       return item;
     });
   }
@@ -324,9 +327,9 @@ export class MateEngineFake {
     this.commit((change) => this.setItem(change, itemId, patch));
   }
 
-  /** The run ends; `answer`, the note that is its answer. */
-  end(run: string, end: RunEnd = { kind: "completed" }, answer?: string): void {
-    this.commit((change) => this.endRun(change, run, end, answer));
+  /** The run ends, retaining its latest closed Mate note as the wire's summary does. */
+  end(run: string, end: RunEnd = { kind: "completed" }): void {
+    this.commit((change) => this.endRun(change, run, end));
   }
 
   /** Text streams into an item, never recorded: each subscriber hears it at its offset. */
@@ -414,6 +417,7 @@ export class MateEngineFake {
         principal:
           trigger.kind === "person" ? { kind: "person", subject: "owner" } : { kind: "engine" },
         state: "running",
+        turnState: "running",
         maintenance: false,
         waitingOn: null,
         stopAsked: null,
@@ -440,15 +444,28 @@ export class MateEngineFake {
     change.runs.add(id);
   }
 
-  private endRun(change: Changed, id: string, end: RunEnd, answerItemId?: string) {
+  private endRun(change: Changed, id: string, end: RunEnd) {
     const run = this.runs.get(id)!;
+    // The real wire's records.ts derives this from closed Mate notes in opened-sequence order.
+    const answer = [...this.items.values()].findLast(
+      (item) =>
+        item.runId === id && item.kind === "note" && item.by.kind === "mate" && !item.streaming,
+    );
     this.setRun(change, id, {
       state: "ended",
+      turnState:
+        end.kind === "completed"
+          ? "completed"
+          : end.kind === "failed" || end.kind === "crashed"
+            ? "error"
+            : end.kind === "unknown"
+              ? null
+              : "interrupted",
       waitingOn: null,
       end,
       endSource: "agent",
       endedAt: this.stamp(this.seq),
-      summary: { ...run.summary, answerItemId: answerItemId ?? run.summary.answerItemId },
+      summary: { ...run.summary, answerItemId: answer?.id ?? null },
     });
   }
 
@@ -526,6 +543,19 @@ export class MateEngineFake {
       header: false,
     };
     const result = step(change);
+    if (change.runs.size > 0) {
+      const runs = [...this.runs.values()];
+      const active = runs.findLast((run) => run.turnState === "running");
+      const latest = active ?? runs.findLast((run) => run.state === "ended");
+      this.header = {
+        ...this.header,
+        activeRunId: active?.id ?? null,
+        latestRunId: latest?.id ?? null,
+        runStatus:
+          active !== undefined ? "running" : latest?.turnState === "error" ? "error" : "ready",
+      };
+      change.header = true;
+    }
     const frame = encodeFrame({
       type: "changes",
       epoch: this.epoch,
@@ -619,8 +649,16 @@ export class MateEngineFake {
             ? { kind: "working", since: active.queuedAt, waitsOnHelpers: false }
             : { kind: "idle" },
       activeRunId: active?.id ?? null,
+      runStatus: this.header.runStatus,
       latestRun:
-        latest === null ? null : { id: latest.id, end: latest.end, endedAt: latest.endedAt },
+        latest === null
+          ? null
+          : {
+              id: latest.id,
+              end: latest.end,
+              endedAt: latest.endedAt,
+              turnState: latest.turnState,
+            },
       subject: person?.kind === "person" ? person.text.split("\n")[0] : null,
       snippet: note?.kind === "note" ? note.text : null,
       at: this.stamp(this.seq),

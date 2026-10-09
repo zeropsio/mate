@@ -1,3 +1,12 @@
+import { Window } from "happy-dom";
+import { RegistryContext } from "@effect/atom-react";
+import {
+  cardAccount,
+  CARD_KEY,
+  CARD_RUN,
+  CARD_RECORDS,
+  useCardTimelineInput,
+} from "./engineCard.test-fixtures";
 import { markupDom } from "../../../test/markupDom";
 import { projectMateLimit } from "@t3tools/client-runtime/data";
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
@@ -5,6 +14,8 @@ import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   act,
+  use,
+  StrictMode,
   createRef,
   useLayoutEffect,
   useSyncExternalStore,
@@ -19,6 +30,14 @@ import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "../../zerops/zeropsDataContext";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
+import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
+
+let foldContext: TimelineRowSharedState;
+function FoldBoundaryProbe() {
+  foldContext = use(TimelineRowCtx);
+  return null;
+}
+
 import { takeOwnScroll } from "./timelineEndFollow";
 import {
   classifyTimelineScroll,
@@ -85,6 +104,7 @@ vi.mock("@legendapp/list/react", async () => {
             : undefined
         }
       >
+        <FoldBoundaryProbe />
         {props.ListHeaderComponent}
         {props.data.map((item) => (
           <div key={props.keyExtractor(item)}>{props.renderItem({ item })}</div>
@@ -1430,6 +1450,209 @@ describe("MessagesTimeline — the conversation", () => {
     ...overrides,
   });
 
+  describe("Decision: one owner per concern as the report's table assigns; no new state model.", () => {
+    it.each([
+      { mode: "immediate", follows: true },
+      { mode: "immediate", follows: false },
+      { mode: "late", follows: true },
+      { mode: "late", follows: false },
+      { mode: "first layout", follows: true },
+      { mode: "hidden", follows: true },
+      { mode: "kept", follows: true },
+      { mode: "reduced motion", follows: true },
+    ])(
+      "the assembled report takes natural growth and preserves outer follow ($mode, $follows)",
+      async ({ mode, follows }) => {
+        const reportTurn = TurnId.make(`report-room-${mode}-${follows}`);
+        const dom = new Window();
+        const document = dom.document as unknown as Document;
+        for (const [key, value] of Object.entries({
+          document,
+          Element: dom.Element,
+          HTMLElement: dom.HTMLElement,
+          Node: dom.Node,
+          MutationObserver: dom.MutationObserver,
+          IS_REACT_ACT_ENVIRONMENT: true,
+        }))
+          vi.stubGlobal(key, value);
+        vi.stubGlobal("CSS", { escape: (value: string) => value });
+        vi.stubGlobal("window", dom);
+        const media = dom.matchMedia("(prefers-reduced-motion: reduce)");
+        vi.spyOn(media, "matches", "get").mockReturnValue(mode === "reduced motion");
+        vi.spyOn(dom, "matchMedia").mockReturnValue(media);
+        if (mode === "hidden")
+          Object.defineProperty(document, "visibilityState", {
+            value: "hidden",
+            configurable: true,
+          });
+        const frames = new Map<number, FrameRequestCallback>();
+        let nextFrame = 0;
+        vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+          frames.set(++nextFrame, callback);
+          return nextFrame;
+        });
+        vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+        const observers: Array<{ callback: ResizeObserverCallback; nodes: Set<Element> }> = [];
+        vi.stubGlobal(
+          "ResizeObserver",
+          class {
+            readonly nodes = new Set<Element>();
+            constructor(callback: ResizeObserverCallback) {
+              observers.push({ callback, nodes: this.nodes });
+            }
+            observe(node: Element) {
+              this.nodes.add(node);
+            }
+            unobserve(node: Element) {
+              this.nodes.delete(node);
+            }
+            disconnect() {
+              this.nodes.clear();
+            }
+          },
+        );
+        const list = document.body.appendChild(document.createElement("div"));
+        if (mode === "kept") list.setAttribute("data-kept-timeline", "");
+        const panel = list.appendChild(document.createElement("div"));
+        panel.setAttribute("data-timeline-row-id", "panel-fixture");
+        const workingMarker = panel.appendChild(document.createElement("div"));
+        const band = list.appendChild(document.createElement("div"));
+        const marker = band.appendChild(document.createElement("div"));
+        let naturalHeight = 80;
+        panel.getBoundingClientRect = () => ({ height: 300 }) as DOMRect;
+        band.getBoundingClientRect = () =>
+          ({ height: Number.parseFloat(band.style.height) || naturalHeight }) as DOMRect;
+        const viewport = { scrollTop: 1180, scrollHeight: 2000, clientHeight: 800 };
+        const listRef = {
+          current: {
+            getState: () => ({ isWithinMaintainScrollAtEndThreshold: true }),
+            getScrollableNode: () => viewport,
+          } as unknown as LegendListRef,
+        };
+        const entry = (phase: "running" | "done") => ({
+          id: "zerops:op:deploy-1",
+          kind: "operation" as const,
+          createdAt: at(20),
+          operation: operation({ turnId: reportTurn, phase, links: [] }),
+        });
+        const timeline = (stage: "working" | "empty" | "report") =>
+          zeropsStandIns(
+            <StrictMode>
+              <MessagesTimeline
+                {...buildProps()}
+                listRef={listRef}
+                liveFollowEnabled={follows}
+                latestTurn={
+                  stage === "working"
+                    ? { ...settled, turnId: reportTurn, state: "running", completedAt: null }
+                    : { ...settled, turnId: reportTurn }
+                }
+                isWorking={stage === "working"}
+                runningTurnId={stage === "working" ? reportTurn : null}
+                working={
+                  stage === "working"
+                    ? {
+                        operations: [entry("running").operation],
+                        helpers: null,
+                        tasks: null,
+                        background: null,
+                        afterTurn: null,
+                        pause: null,
+                      }
+                    : null
+                }
+                timelineEntries={
+                  stage === "empty" ? [] : [entry(stage === "working" ? "running" : "done")]
+                }
+              />
+            </StrictMode>,
+          );
+        const createNodeMock = (node: { props: unknown }) => {
+          const props = node.props as { className?: string };
+          return props.className === "contents"
+            ? workingMarker
+            : props.className === "run-band"
+              ? marker
+              : null;
+        };
+        let renderer: ReactTestRenderer | undefined;
+        let reportObservers: typeof observers = [];
+        try {
+          if (mode !== "first layout")
+            await act(() => {
+              renderer = create(timeline("working"), { createNodeMock });
+            });
+          // Age the existing presentation window without waiting for wall time.
+          let now = performance.now();
+          if (mode === "late") {
+            vi.spyOn(performance, "now").mockImplementation(() => now);
+            await act(() => renderer!.update(timeline("empty")));
+            now += 1600;
+          }
+          await act(() => {
+            if (renderer) renderer.update(timeline("report"));
+            else renderer = create(timeline("report"), { createNodeMock });
+          });
+          expect(
+            renderer!.root.findAll((node) => node.props["data-turn-report"] !== undefined),
+          ).toHaveLength(1);
+          const shrinking = mode === "immediate";
+          expect(band.getBoundingClientRect().height).toBe(shrinking ? 300 : naturalHeight);
+          if (shrinking) {
+            const pending = [...frames.values()];
+            frames.clear();
+            await act(() => {
+              for (const frame of pending) frame(16);
+            });
+            expect(band.getBoundingClientRect().height).toBeGreaterThan(naturalHeight);
+            expect(band.getBoundingClientRect().height).toBeLessThan(300);
+          }
+          // Decoded pixels change the held box's content without a DOM mutation.
+          naturalHeight = 420;
+          reportObservers = observers.filter((observer) => observer.nodes.has(marker));
+          expect(reportObservers.length).toBeGreaterThan(0);
+          for (const observer of reportObservers)
+            observer.callback(
+              [{ target: marker } as unknown as ResizeObserverEntry],
+              {} as ResizeObserver,
+            );
+          expect(band.getBoundingClientRect().height).toBe(420);
+          expect(band.style.clipPath).toBe("");
+          if (mode === "kept" || mode === "hidden") {
+            list.removeAttribute("data-kept-timeline");
+            Object.defineProperty(document, "visibilityState", {
+              value: "visible",
+              configurable: true,
+            });
+            naturalHeight = 60;
+            for (const observer of reportObservers)
+              observer.callback(
+                [{ target: marker } as unknown as ResizeObserverEntry],
+                {} as ResizeObserver,
+              );
+            expect(band.getBoundingClientRect().height).toBe(60);
+          }
+          const { LegendList } = await import("@legendapp/list/react");
+          renderer!.root
+            .findByType(LegendList)
+            .props.onItemSizeChanged({ index: 0, itemKey: "report", previous: 300, size: 420 });
+          await act(() => {
+            const pending = [...frames.values()];
+            frames.clear();
+            for (const frame of pending) frame(32);
+          });
+          expect(viewport.scrollTop).toBe(follows ? 1200 : 1180);
+        } finally {
+          await act(() => renderer?.unmount());
+          expect(reportObservers.every((observer) => observer.nodes.size === 0)).toBe(true);
+          expect(band.style.height).toBe("");
+          vi.restoreAllMocks();
+          dom.happyDOM.abort();
+        }
+      },
+    );
+  });
+
   it("names the crewmate, never the Mate, on a crewmate's run status", async () => {
     const { CrewTimelineContext } = await import("../zerops/crew/CrewTaskCard");
     const { crewSnapshotFixture } =
@@ -2435,6 +2658,192 @@ describe("MessagesTimeline — placing its rows", () => {
       await act(() => renderer?.unmount());
     }
   });
+
+  const checkNoticeFollowing = async (following: boolean, growth = 20) => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const viewport = {
+      scrollTop: 0,
+      scrollHeight: 2000,
+      clientHeight: 800,
+      setAttribute: vi.fn(),
+      removeAttribute: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      ownerDocument: { addEventListener: vi.fn(), removeEventListener: vi.fn() },
+    };
+    const list = {
+      current: {
+        getState: () => ({ data: [], isWithinMaintainScrollAtEndThreshold: following }),
+        getScrollableNode: () => viewport,
+        scrollToEnd: vi.fn(() => {
+          viewport.scrollTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+        }),
+      } as unknown as LegendListRef,
+    };
+    const render = (inset: number) => (
+      <MessagesTimeline
+        {...buildProps()}
+        listRef={list}
+        liveFollowEnabled={following}
+        routeThreadKey={`environment-local:notice-follow-${following}`}
+        contentInsetEndAdjustment={inset}
+        timelineEntries={[buildUserTimelineEntry("Keep going.")]}
+      />
+    );
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(render(120));
+      });
+      await act(() => renderer!.root.findByType(LegendList).props.onLoad());
+      await settleFrames(4);
+      if (!following) viewport.scrollTop = 500;
+      viewport.scrollHeight = 2000 + growth;
+      await act(() => renderer!.update(render(120 + growth)));
+      if (growth === 300) expect(viewport.scrollTop).toBe(1500);
+      await act(() => renderer!.root.findByType(LegendList).props.onItemSizeChanged());
+      await settleFrames(4);
+      expect(viewport.scrollTop).toBe(following ? 1200 + growth : 500);
+      if (!following) expect(list.current.scrollToEnd).not.toHaveBeenCalled();
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  };
+  it("holds the followed line immediately through a large notice resize", () =>
+    checkNoticeFollowing(true, 300));
+  it("keeps the live edge visible when the composer overlay grows", () =>
+    checkNoticeFollowing(true));
+  it("leaves the scroll position alone while the user reads history", () =>
+    checkNoticeFollowing(false));
+
+  it.each([
+    "arrival",
+    "removal",
+    "delayed measurement",
+    "missing anchor",
+    "user scroll",
+    "navigation",
+    "thread navigation",
+    "keyboard navigation",
+  ])("keeps the reading line through notice %s", async (scenario) => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const { KeptTimelineContext } = await import("./keptTimelineContext");
+    const { rememberTimelinePosition } = await import("./timelineScrollAnchoring");
+    const threadKey = `environment-local:notice-${scenario}`;
+    rememberTimelinePosition(threadKey, {
+      rowId: "entry-1",
+      offsetWithinRow: 30,
+      rowHeight: 200,
+      cardTopId: null,
+      previousRowId: null,
+      atEnd: false,
+    });
+    const listeners = new Map<string, () => void>();
+    const viewport = {
+      scrollTop: 0,
+      scrollHeight: 4000,
+      clientHeight: 800,
+      getBoundingClientRect: () => ({ top: 0 }),
+      addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
+      removeEventListener: (type: string) => listeners.delete(type),
+      ownerDocument: { addEventListener: vi.fn(), removeEventListener: vi.fn() },
+    };
+    let rowTop = 900;
+    let measuredData: unknown[] = [];
+    let present = true;
+    let shown = true;
+    let renderer: ReactTestRenderer | undefined;
+    const row = {
+      getBoundingClientRect: () => ({ top: rowTop - viewport.scrollTop, height: 200 }),
+    };
+    const list = {
+      current: {
+        getScrollableNode: () => viewport,
+        getState: () => ({
+          data: measuredData,
+          scroll: viewport.scrollTop,
+          scrollLength: 800,
+          positionAtIndex: () => rowTop,
+          sizeAtIndex: () => 200,
+          indexByKey: () => (present ? 0 : undefined),
+          elementAtIndex: () => (present ? row : undefined),
+          isWithinMaintainScrollAtEndThreshold: false,
+        }),
+        scrollToEnd: vi.fn(),
+      } as unknown as LegendListRef,
+    };
+    const cancel = { current: null as (() => void) | null };
+    const render = (inset: number) => (
+      <KeptTimelineContext.Provider value={{ shown }}>
+        <MessagesTimeline
+          {...buildProps()}
+          listRef={list}
+          routeThreadKey={threadKey}
+          liveFollowEnabled={false}
+          contentInsetEndAdjustment={inset}
+          cancelPositionRestoreRef={cancel}
+          timelineEntries={[
+            { ...buildUserTimelineEntry("Where were we?"), id: present ? "entry-1" : "entry-2" },
+          ]}
+        />
+      </KeptTimelineContext.Provider>
+    );
+    try {
+      await act(() => {
+        renderer = create(render(scenario === "removal" ? 200 : 120));
+      });
+      measuredData = renderer!.root.findByType(LegendList).props.data;
+      await act(() => renderer!.root.findByType(LegendList).props.onLoad());
+      await settleFrames(4);
+      expect(viewport.scrollTop).toBe(930);
+      await act(() => renderer!.root.findByType(LegendList).props.onScroll());
+      await act(() => renderer!.update(render(scenario === "removal" ? 120 : 200)));
+      await settleFrames(4);
+      if (scenario === "user scroll") await act(() => listeners.get("wheel")?.());
+      if (scenario === "navigation") await act(() => cancel.current?.());
+      if (scenario === "keyboard navigation") await act(() => listeners.get("click")?.());
+      if (scenario === "thread navigation") {
+        shown = false;
+        await act(() => renderer!.update(render(200)));
+      }
+      if (scenario === "missing anchor") {
+        present = false;
+        await act(() => renderer!.update(render(200)));
+        measuredData = renderer!.root.findByType(LegendList).props.data;
+      }
+      // The virtualizer finishes a layout later than the notice's render.
+      rowTop = 1060;
+      viewport.scrollTop =
+        scenario === "user scroll" ||
+        scenario === "navigation" ||
+        scenario === "thread navigation" ||
+        scenario === "keyboard navigation"
+          ? 500
+          : 770;
+      await act(() => renderer!.root.findByType(LegendList).props.onItemSizeChanged());
+      await settleFrames(4);
+      expect(viewport.scrollTop).toBe(
+        scenario === "user scroll" ||
+          scenario === "navigation" ||
+          scenario === "thread navigation" ||
+          scenario === "keyboard navigation"
+          ? 500
+          : scenario === "missing anchor"
+            ? 930
+            : 1090,
+      );
+      if (scenario === "thread navigation") {
+        shown = true;
+        await act(() => renderer!.update(render(200)));
+        await act(() => renderer!.root.findByType(LegendList).props.onItemSizeChanged());
+        await settleFrames(4);
+        expect(viewport.scrollTop).toBe(500);
+      }
+      expect(list.current.scrollToEnd).not.toHaveBeenCalled();
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
 });
 
 describe("KeptTimelines — a conversation seen a moment ago", () => {
@@ -2801,4 +3210,285 @@ describe("KeptTimelines — a conversation seen a moment ago", () => {
       await act(() => renderer?.unmount());
     }
   });
+});
+
+it("keeps a partly loaded account card's work reachable before and after its first page", async () => {
+  vi.stubGlobal("requestAnimationFrame", () => 0);
+  vi.stubGlobal("cancelAnimationFrame", () => undefined);
+  const read = vi.fn();
+  const account = cardAccount(read);
+  account.publish(CARD_RECORDS);
+  function AccountTimeline() {
+    const input = useCardTimelineInput(account);
+    return (
+      <MessagesTimeline
+        {...buildProps()}
+        {...input}
+        routeThreadKey={`${CARD_KEY.environmentId}:${CARD_KEY.conversationId}`}
+        activeThreadEnvironmentId={EnvironmentId.make(CARD_KEY.environmentId)}
+        syncing
+      />
+    );
+  }
+  let renderer: ReactTestRenderer | null = null;
+  try {
+    await act(async () => {
+      renderer = create(
+        <RegistryContext value={account.registry}>
+          <AccountTimeline />
+        </RegistryContext>,
+      );
+    });
+    const text = () => JSON.stringify(renderer!.toJSON());
+    expect(text()).toContain("300 commands");
+    expect(text()).not.toContain("inspect-service");
+    expect(read).not.toHaveBeenCalled();
+    const opener = renderer!.root
+      .findAllByType("button")
+      .find((node) => node.children.includes("Show work"));
+    expect(opener).toBeDefined();
+    await act(async () => opener!.props.onClick());
+    expect(read).toHaveBeenCalledExactlyOnceWith(CARD_KEY, CARD_RUN, "later");
+    await act(async () =>
+      account.publish({
+        ...CARD_RECORDS,
+        spans: [{ runId: CARD_RUN, from: null, to: 2, reading: null }],
+      }),
+    );
+    expect(text()).toContain("inspect-service");
+    expect(
+      renderer!.root.findAll(
+        (node) => node.type === "div" && node.props["data-chat-kind"] === "step:command",
+      ),
+    ).toHaveLength(1);
+  } finally {
+    if (renderer !== null) await act(async () => renderer!.unmount());
+    account.close();
+  }
+});
+
+describe("Decision: one owner per concern as the report's table assigns; no new state model.", () => {
+  it.each([
+    { follows: true, clamp: false, interruption: "none" },
+    { follows: true, clamp: true, interruption: "none" },
+    { follows: true, clamp: true, interruption: "carry" },
+    { follows: false, clamp: false, interruption: "none" },
+    { follows: true, clamp: true, interruption: "reader" },
+    { follows: false, clamp: false, interruption: "cancel" },
+    { follows: false, clamp: false, interruption: "unmount" },
+    { follows: true, clamp: true, interruption: "replay" },
+    { follows: true, clamp: true, interruption: "long-history" },
+  ])(
+    "the list supplies fold geometry and preserves its follow permission ($follows, $clamp, $interruption)",
+    async ({ follows, clamp, interruption }) => {
+      const dom = new Window();
+      const document = dom.document as unknown as Document;
+      for (const [key, value] of Object.entries({
+        window: dom,
+        document,
+        Element: dom.Element,
+        HTMLElement: dom.HTMLElement,
+        Node: dom.Node,
+        IS_REACT_ACT_ENVIRONMENT: true,
+      }))
+        vi.stubGlobal(key, value);
+      vi.stubGlobal("CSS", { escape: (value: string) => value });
+      const frames = new Map<number, FrameRequestCallback>();
+      let id = 0;
+      vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+        frames.set(++id, callback);
+        return id;
+      });
+      vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          observe() {}
+          disconnect() {}
+        },
+      );
+      // No ancestor class or follow attribute: the list's ref and verdict own this viewport.
+      const viewport = document.body.appendChild(document.createElement("div"));
+      const holder = viewport.appendChild(document.createElement("div"));
+      const root = holder.appendChild(document.createElement("div"));
+      const card = root.appendChild(document.createElement("div"));
+      card.dataset.cardSlice = "";
+      if (interruption === "carry" || interruption === "long-history")
+        card.style.translate = "0 30px";
+      const above = card.appendChild(document.createElement("div"));
+      const below = viewport.appendChild(document.createElement("div"));
+      const belowRoot = below.appendChild(document.createElement("div"));
+      let laid = 500;
+      const height = () => Number.parseFloat(above.style.height) || 0;
+      holder.getBoundingClientRect = () =>
+        ({ top: 100, bottom: 140 + height(), height: height() + 40 }) as DOMRect;
+      card.getBoundingClientRect = () =>
+        ({
+          bottom:
+            100 +
+            height() +
+            40 +
+            (Number.parseFloat(card.style.translate.split(" ")[1] ?? "") || 0),
+        }) as DOMRect;
+      below.getBoundingClientRect = () =>
+        ({
+          top: laid + (Number.parseFloat(below.style.translate.split(" ")[1] ?? "") || 0),
+          height: 100,
+        }) as DOMRect;
+      let top = follows ? 1200 : 800;
+      Object.defineProperties(viewport, {
+        scrollTop: {
+          get: () => {
+            if (clamp) top = Math.min(top, 900 + height());
+            return top;
+          },
+          set: (value: number) => {
+            top = Math.max(0, Math.min(value, 900 + height()));
+          },
+        },
+        scrollHeight: { get: () => 1700 + height() },
+        clientHeight: { value: 800 },
+      });
+      let data: Array<{ id: string }> = [];
+      const foldingIndex = interruption === "long-history" ? 8_000 : 0;
+      const belowIndex = foldingIndex + 1;
+      let unmountedLookups = 0;
+      const listRef = {
+        current: {
+          getScrollableNode: () => viewport,
+          getState: () => ({
+            data,
+            // The folding row remains mounted outside the current buffered range.
+            startBuffered: belowIndex,
+            endBuffered: belowIndex,
+            indexByKey: (key: string) =>
+              key === root.dataset.timelineRoot
+                ? foldingIndex
+                : key === belowRoot.dataset.timelineRoot
+                  ? belowIndex
+                  : undefined,
+            elementAtIndex: (index: number) => {
+              if (index === foldingIndex) return holder;
+              if (index === belowIndex) return below;
+              unmountedLookups += 1;
+              return undefined;
+            },
+            positionAtIndex: (index: number) => (index === foldingIndex ? 100 : 200 + height()),
+            sizeAtIndex: () => height() + 40,
+            isWithinMaintainScrollAtEndThreshold: follows,
+          }),
+          scrollToEnd: () => {
+            viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight;
+          },
+        } as unknown as LegendListRef,
+      };
+      let renderer: ReactTestRenderer | undefined;
+      let following = follows;
+      let readerTop: number | null = null;
+      const timeline = () => (
+        <MessagesTimeline
+          {...buildProps()}
+          listRef={listRef}
+          liveFollowEnabled={following}
+          timelineEntries={[buildUserTimelineEntry("Fold this work")]}
+        />
+      );
+      const { LegendList } = await import("@legendapp/list/react");
+      try {
+        await act(async () => {
+          renderer = create(timeline());
+        });
+        data = renderer!.root.findByType(LegendList).props.data;
+        root.dataset.timelineRoot = data[0]!.id;
+        belowRoot.dataset.timelineRoot = data[1]!.id;
+        if (interruption === "long-history") {
+          const mounted = data;
+          data = Array.from({ length: 10_000 }, (_, index) => ({ id: `history:${index}` }));
+          data[foldingIndex] = mounted[0]!;
+          data[belowIndex] = mounted[1]!;
+        }
+        const done = vi.fn();
+        const execute = foldContext.onFoldWork!;
+        let cancel = () => {};
+        await act(async () => {
+          cancel = execute({ above, from: 300, done });
+        });
+        for (let tick = 1; tick <= 120; tick++) {
+          await act(async () => {
+            for (const [key, frame] of [...frames]) {
+              frames.delete(key);
+              frame(tick * 16);
+            }
+            // Commit the list's pending placement after the executor read its geometry.
+            laid = 200 + height();
+            if (interruption === "long-history")
+              expect(
+                unmountedLookups,
+                "ASSERTION: fold placement never probes unmounted history rows",
+              ).toBe(0);
+            if (height() < 300 && height() > 0 && follows)
+              expect(
+                Math.abs(
+                  below.getBoundingClientRect().top - card.getBoundingClientRect().bottom - 60,
+                ),
+                "ASSERTION: panel carry does not become spacing below the folding card",
+              ).toBeLessThan(1);
+
+            if (following && height() < 300)
+              expect(
+                viewport.scrollTop,
+                "ASSERTION: a native clamp and fold compensation consume the shrink once",
+              ).toBeCloseTo(900 + height(), 5);
+          });
+          if (tick === 10 && interruption === "reader") {
+            following = false;
+            viewport.scrollTop -= 400;
+            readerTop = viewport.scrollTop;
+            await act(async () => renderer!.update(timeline()));
+          }
+          if (tick === 10 && interruption === "cancel") {
+            cancel();
+            break;
+          }
+          if (tick === 10 && interruption === "unmount") {
+            await act(async () => renderer!.unmount());
+            renderer = undefined;
+            break;
+          }
+          if (tick === 10 && interruption === "replay") {
+            cancel();
+            cancel = execute({ above, from: height(), done });
+          }
+          if (readerTop !== null)
+            expect(
+              viewport.scrollTop,
+              "ASSERTION: movement during folding stays the reader's",
+            ).toBe(readerTop);
+          if (done.mock.calls.length) break;
+        }
+        expect(done).toHaveBeenCalledTimes(
+          interruption === "cancel" || interruption === "unmount" ? 0 : 1,
+        );
+        if (interruption === "none")
+          expect(
+            top,
+            "ASSERTION: the supplied outer viewport gives back folded height only while following",
+          ).toBeCloseTo(follows ? 900 : 800, 5);
+        // Completion's effect cleanup keeps the following rows held until list placement catches up.
+        cancel();
+        for (let tick = 121; tick <= 130; tick++)
+          await act(async () => {
+            for (const [key, frame] of [...frames]) {
+              frames.delete(key);
+              frame(tick * 16);
+            }
+          });
+        expect(below.style.translate).toBe("");
+        expect(frames.size).toBe(0);
+      } finally {
+        await act(async () => renderer?.unmount());
+        dom.happyDOM.abort();
+      }
+    },
+  );
 });

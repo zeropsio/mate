@@ -88,7 +88,22 @@ function framed(scene: Scene): MessagesTimelineRow[] {
     ...(scene.liveJobs === undefined ? {} : { liveJobs: { ids: new Set(scene.liveJobs) } }),
     ...(scene.unheldWork === undefined
       ? {}
-      : { unheldWork: new Set(scene.unheldWork.map((id) => turn(id))) }),
+      : {
+          cardPaging: Object.fromEntries(
+            scene.unheldWork.map((id) => [
+              turn(id),
+              {
+                pageRuns: { earlier: null, later: id },
+                counts: { calls: {}, tools: {}, edited: 0 },
+                hasWork: true,
+                holdsLines: false,
+                since: at(0),
+                through: at(0),
+                reading: null,
+              },
+            ]),
+          ),
+        }),
   });
 }
 

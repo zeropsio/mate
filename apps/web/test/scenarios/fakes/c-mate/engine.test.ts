@@ -87,6 +87,27 @@ async function connect() {
 
 const conversation = { protocol: 1, conversationId: "thread-Ada" };
 
+it("retains a journey's reply as its answer when the run completes separately", async () => {
+  const r = await connect();
+  try {
+    r.chat.run("story-run", "running");
+    r.chat.reply("story-run", "A short story about a lighthouse cat");
+    r.chat.run("story-run", "completed");
+    r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
+    await r.until(() => r.stream("c").some((frame) => frame.type === "synchronized"));
+    const [snapshot] = r.stream("c");
+    expect(snapshot).toMatchObject({
+      type: "snapshot",
+      items: [{ kind: "note", text: "A short story about a lighthouse cat" }],
+    });
+    expect(snapshot?.type === "snapshot" && snapshot.runs[0]?.summary.answerItemId).toBe(
+      snapshot?.type === "snapshot" && snapshot.items[0]?.id,
+    );
+  } finally {
+    await r.close();
+  }
+});
+
 // Catches an engine fake a client reads by V1's shape instead of the contract's frames.
 it("advertises the engine and opens its conversation on contract frames", async () => {
   const r = await connect();
@@ -278,13 +299,13 @@ it("opens on a window of the newest run groups, the rest a page away", async () 
       state: "done",
       endedAt: null,
     });
-    const answer = engine.item(run, {
+    engine.item(run, {
       kind: "note",
       text: "Deployed.",
       streaming: false,
       answer: true,
     });
-    engine.end(run, { kind: "completed" }, answer);
+    engine.end(run, { kind: "completed" });
     r.request("c", WS_METHODS.subscribeEngineConversation, conversation);
     await r.until(() => r.stream("c").some((frame) => frame.type === "synchronized"));
     const [snapshot] = r.stream("c");

@@ -47,3 +47,7 @@ node_modules/
 
 # Agent worktrees (Claude Code's isolation): whole checkouts that `git add -A` would take as gitlinks.
 .claude/worktrees/
+
+# Local gate evidence must not become part of its own lane diff.
+/.gate-receipt.json
+/.gate-receipt.json.tmp

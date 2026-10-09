@@ -48,16 +48,92 @@ describe("C: opening a Mate and chat", () => {
       }),
     );
 
-    // Catches a broken identity door/OAuth exchange or a slow first opening that never reaches the chosen chat.
-    it.effect("first open crosses the door and OAuth", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        yield* chat.then.path("/env-Ada/thread-Ada");
-        yield* s.then.noExternalNetwork;
-      }),
-    );
+    describe("Decision: catch real breakage only (overlap, overflow, wrong variant/colour role, missing element) — never pixel-exact or 1px nudges; no new expensive visual suites.", () => {
+      // Catches a broken identity door/OAuth exchange or a slow first opening that never reaches the chosen chat.
+      it.effect("first open crosses the door and OAuth", () =>
+        Effect.gen(function* () {
+          const { s, chat } = yield* setup;
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          yield* chat.then.path("/env-Ada/thread-Ada");
+          yield* Effect.promise(async () => {
+            await s.page.evaluate(() => document.fonts.ready);
+            const edges = await s.page.evaluate(() => {
+              const menu = document
+                .querySelector('[data-sidebar="header"]')!
+                .getBoundingClientRect();
+              const header = document.querySelector("[data-chat-header]")!.getBoundingClientRect();
+              return [
+                Math.abs(menu.bottom - header.bottom),
+                Math.abs((menu.top + menu.bottom - header.top - header.bottom) / 2),
+              ];
+            });
+            expect(
+              Math.max(...edges),
+              "ASSERTION: menu and conversation header share their centre and bottom edge",
+            ).toBeLessThanOrEqual(4);
+            await s.page.setViewport({ width: 900, height: 300 });
+            // Observe before opening, including the first paint; a settled check misses cap snaps.
+            await s.page.evaluate(() => {
+              const bounds: number[] = [];
+              let active = true;
+              const sample = () => {
+                const popup = document.querySelector('[data-slot="popover-popup"]');
+                if (popup) {
+                  const box = popup.getBoundingClientRect();
+                  if (
+                    box.width > 0 &&
+                    box.height > 0 &&
+                    getComputedStyle(popup).visibility === "visible" &&
+                    Number(getComputedStyle(popup).opacity) > 0
+                  )
+                    bounds.push(
+                      Math.max(
+                        -box.left,
+                        -box.top,
+                        box.right - innerWidth,
+                        box.bottom - innerHeight,
+                      ),
+                    );
+                }
+                if (active) requestAnimationFrame(sample);
+              };
+              Reflect.set(window, "popoverBounds", bounds);
+              Reflect.set(window, "stopPopoverBounds", () => {
+                active = false;
+              });
+              requestAnimationFrame(sample);
+            });
+            await s.page.locator("[data-chat-provider-model-picker]").click();
+            await s.page.waitForSelector('[data-slot="popover-popup"]');
+            await s.page.waitForFunction(() => {
+              const popup = document.querySelector('[data-slot="popover-popup"]');
+              return (
+                popup &&
+                !popup.hasAttribute("data-starting-style") &&
+                getComputedStyle(popup).opacity === "1"
+              );
+            });
+            const bounds = await s.page.evaluate(async () => {
+              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              Reflect.get(window, "stopPopoverBounds")();
+              return Reflect.get(window, "popoverBounds") as number[];
+            });
+            expect(
+              bounds.length,
+              "ASSERTION: opening popover supplies first and settled frame evidence",
+            ).toBeGreaterThan(1);
+            expect(
+              Math.max(...bounds),
+              "ASSERTION: model popover stays bounded on first and settled frames",
+            ).toBeLessThanOrEqual(4);
+            await s.page.keyboard.press("Escape");
+            await s.page.setViewport({ width: 1280, height: 800 });
+          });
+          yield* s.then.noExternalNetwork;
+        }),
+      );
+    });
 
     // Catches returning to a parked Mate losing its history, opening another chat, or repeating the cold door.
     it.effect("returning to a parked Mate preserves history", () =>
@@ -296,25 +372,42 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.then.text("A short story about a lighthouse cat");
         // The message went into that turn: when it ends, nothing else works.
         yield* chat.then.control("Stop generation", "button", false);
-        // The conversation's words in order; the header's subject quotes the last ask as well.
-        const text = yield* Effect.promise(() =>
-          s.page.evaluate(() => {
-            const main = document.querySelector("main");
-            if (main === null) return "";
-            const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
-            let words = "";
-            while (walker.nextNode()) {
-              const node = walker.currentNode;
-              if (!node.parentElement?.closest("[data-conversation-subject]"))
-                words += `${node.textContent ?? ""}\n`;
-            }
-            return words;
-          }),
+        // A retained answer is a message outside the folding work. Seeing its text inside
+        // the closing card alone does not prove that completion kept the answer.
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(
+            () =>
+              [...document.querySelectorAll('[data-message-role="assistant"]')].some(
+                (row) =>
+                  row.textContent?.includes("A short story about a lighthouse cat") &&
+                  row.getBoundingClientRect().height > 0,
+              ),
+            { timeout: 8000 },
+          ),
         );
-        // Where V1 draws a message sent into its running turn: after the answer it settled with.
-        expect(text.indexOf("Change of plan: keep it under 120 words")).toBeGreaterThan(
-          text.indexOf("A short story about a lighthouse cat"),
+        // The virtualized list recycles its DOM out of display order. Read the actual
+        // message boxes: the sent message stays above the run and its retained answer.
+        const messages = yield* Effect.promise(() =>
+          s.page.evaluate(() =>
+            [...document.querySelectorAll("[data-message-role]")].map((row) => ({
+              role: row.getAttribute("data-message-role"),
+              text: row.textContent,
+              top: row.getBoundingClientRect().top,
+              bottom: row.getBoundingClientRect().bottom,
+            })),
+          ),
         );
+        const sent = messages.filter(
+          (row) =>
+            row.role === "user" && row.text?.includes("Change of plan: keep it under 120 words"),
+        );
+        const answers = messages.filter(
+          (row) =>
+            row.role === "assistant" && row.text?.includes("A short story about a lighthouse cat"),
+        );
+        expect(sent).toHaveLength(1);
+        expect(answers).toHaveLength(1);
+        expect(sent[0]!.bottom).toBeLessThanOrEqual(answers[0]!.top);
         yield* chat.then.once("Change of plan: keep it under 120 words");
         yield* s.then.noExternalNetwork;
       }),

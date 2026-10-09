@@ -1,13 +1,13 @@
+import { useBranchAdvice } from "./useBranchAdvice";
 import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
-import {
-  agentAdmission,
-  admissionExplainsRefusal,
-  type AgentRefusalSource,
-} from "@t3tools/client-runtime/data";
+import { agentAdmission, type AgentRefusalSource } from "@t3tools/client-runtime/data";
 import { useAgentAdmissionPlacement } from "../zerops/AgentAdmissionComposition";
 import { AgentAdmissionExplanation } from "./chat/AgentAdmissionExplanation";
-import { resolveZeropsProviderAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
+import {
+  resolveZeropsProviderAvailability,
+  isZeropsInstanceRunnable,
+} from "@t3tools/client-runtime/data";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
@@ -365,12 +365,7 @@ import {
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
-import {
-  agentAuthAction,
-  zeropsAgentAuthView,
-  zeropsAgentSignInRequired,
-} from "@t3tools/client-runtime/zerops/agentLogin";
-import { mateArrivalHoldsComposer } from "~/zerops/mateStandUp";
+import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useSendTurnReceipts } from "~/zerops/sentAsk";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
@@ -437,7 +432,6 @@ import {
 } from "./chat/draftHeroTransition";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
-  branchMismatchKey,
   waitForRevertedMessage,
   buildExpiredTerminalContextToastCopy,
   buildLocalDraftThread,
@@ -448,15 +442,12 @@ import {
   createLocalDispatchSnapshot,
   deriveComposerSendState,
   projectScriptKeybindingWrites,
-  dismissBranchMismatchForSession,
   hasEnvironmentReconnectWarningGraceElapsed,
   latestTurnStartFailureId,
   scheduleEnvironmentReconnectWarning,
   hasServerAcknowledgedLocalDispatch,
-  isBranchMismatchDismissedForSession,
   shouldDockDraftHeroForSubmission,
   shouldReleaseTimelineAnchorForToolActivity,
-  shouldShowBranchMismatchBanner,
   getStartedThreadModelChangeBlockReason,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
   LastInvokedScriptByProjectSchema,
@@ -470,9 +461,7 @@ import {
   recallCheckoutIsRepo,
   rememberCheckoutIsRepo,
   resolveBackgroundDraftWorkspaceOptions,
-  isZeropsInstanceRunnable,
   resolveComposerInteractionMode,
-  resolveComposerOverlayHeight,
   resolveComposerProviderSelection,
   resolveDraftHeroState,
   composerOpenFocus,
@@ -1646,23 +1635,11 @@ export default function ChatView(props: ChatViewProps) {
   const legendListRef = useRef<LegendListRef | null>(null);
   const [composerOverlayElement, setComposerOverlayElement] = useState<HTMLDivElement | null>(null);
   const [composerElementHeight, setComposerElementHeight] = useState(0);
-  // The banner stack (resume-with-less-context, the merge offer, …) floats
-  // from a zero-height anchor above the composer, so it never enlarges the
-  // composer overlay element's own measured box — it needs its own observer.
-  const [composerBannerStackElement, setComposerBannerStackElement] =
-    useState<HTMLDivElement | null>(null);
-  const [composerBannerStackHeight, setComposerBannerStackHeight] = useState(0);
   // What the composer covers of the list, as each conversation last had it
   // (`timelineInsets.ts`): a list shown in the press frame took the
   // conversation left's inset for that frame, and moved.
   const [composerOverlaySettledFor, setComposerOverlaySettledFor] = useState(routeThreadKey);
-  const composerOverlayHeight = resolveComposerOverlayHeight({
-    composerHeight: composerElementHeight,
-    // Masked at read time rather than reset from the observer effect below:
-    // the stack unmounts (ref goes null) the instant the last banner is
-    // dismissed, before a resize would ever fire to report 0.
-    bannerStackHeight: composerBannerStackElement ? composerBannerStackHeight : 0,
-  });
+  const composerOverlayHeight = composerElementHeight;
   const warmTimelineAsk = useWarmTimelineAsk();
   const rememberedInset = rememberedTimelineInset(routeThreadKey);
   const timelineInsetMeasured = composerOverlaySettledFor === routeThreadKey;
@@ -1704,25 +1681,6 @@ export default function ChatView(props: ChatViewProps) {
     observer.observe(composerOverlayElement);
     return () => observer.disconnect();
   }, [composerOverlayElement]);
-
-  useLayoutEffect(() => {
-    if (!composerBannerStackElement) return;
-
-    const updateHeight = () => {
-      const nextHeight = Math.ceil(composerBannerStackElement.getBoundingClientRect().height);
-      if (nextHeight <= 0) return;
-      setComposerBannerStackHeight((currentHeight) =>
-        currentHeight === nextHeight ? currentHeight : nextHeight,
-      );
-    };
-
-    updateHeight();
-    if (typeof ResizeObserver === "undefined") return;
-
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(composerBannerStackElement);
-    return () => observer.disconnect();
-  }, [composerBannerStackElement]);
 
   const terminalUiState = useTerminalUiStateStore((state) =>
     selectThreadTerminalUiState(state.terminalUiStateByThreadKey, routeThreadRef),
@@ -2508,6 +2466,7 @@ export default function ChatView(props: ChatViewProps) {
         voice: mateLinkVoice,
         onContainerAction: mateRecoveryAction.act,
         busy: mateRecoveryAction.busy,
+        recoveryFeedback: mateRecoveryAction.feedback,
         projectUrl: routeMateAt.mate.projectUrl,
         // A container that failed is stopped and started; any other Mate is asked again, its
         // exchange as well as its link.
@@ -2538,6 +2497,7 @@ export default function ChatView(props: ChatViewProps) {
     mateLinkVoice,
     mateRecoveryAction.act,
     mateRecoveryAction.busy,
+    mateRecoveryAction.feedback,
     reconnectWarningGraceElapsed,
     reviveFailedMate,
     tryMateAgain,
@@ -3247,11 +3207,24 @@ export default function ChatView(props: ChatViewProps) {
   const [dismissedProviderStatusBannerKey, setDismissedProviderStatusBannerKey] = useState<
     string | null
   >(null);
+  const mateStandUp = useMateStandUp({
+    environmentId: activeThreadEnvironmentId,
+    threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
+    messageCount: activeThread?.messages.length ?? 0,
+  });
   const admission = agentAdmission({
     environmentId,
     instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
     viewerSubject: zeropsViewerSubject,
     read: zeropsAgentAuthRead,
+    standUpHolds: mateStandUp.holdsComposer,
+    empty: isServerThread && (activeThread?.messages.length ?? 0) === 0,
+    refusalSource:
+      localServerError !== null
+        ? localServerErrorsByThreadKey[routeThreadKey]?.refusalSource
+        : localDraftError !== null
+          ? localDraftErrorsByDraftId[draftId ?? ""]?.refusalSource
+          : undefined,
     providers: providerStatuses,
     mateName: (() => {
       const mate = zeropsMateAt(zeropsMates, environmentId);
@@ -3264,15 +3237,7 @@ export default function ChatView(props: ChatViewProps) {
       setDismissedProviderStatusBannerKey(null);
     }
   }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
-  const admissionRefusal = admissionExplainsRefusal(
-    admission.attention,
-    localServerError !== null
-      ? localServerErrorsByThreadKey[routeThreadKey]?.refusalSource
-      : localDraftError !== null
-        ? localDraftErrorsByDraftId[draftId ?? ""]?.refusalSource
-        : undefined,
-  );
-  const shownThreadError = admissionRefusal ? null : visibleThreadError;
+  const shownThreadError = admission.explainsRefusal ? null : visibleThreadError;
   const visibleProviderStatus = shouldShowProviderStatusBanner(
     admission.providerStatus,
     dismissedProviderStatusBannerKey,
@@ -4080,33 +4045,14 @@ export default function ChatView(props: ChatViewProps) {
     openProviderSetup,
     zeropsSignInDialog,
   ]);
-  // A cold authentication read holds the input; the server decides permission on every command.
-  const zeropsFooter =
-    zeropsAgentAuthRead?.state === "unread" || zeropsAgentAuthRead?.state === "reading"
-      ? "held"
-      : "composer";
+  const zeropsFooter = admission.footer;
   const admissionPlacement = useAgentAdmissionPlacement(admission.attention);
   const zeropsHeldDraft = useComposerDraftStore((store) =>
     zeropsFooter === "held" ? (store.getComposerDraft(composerDraftTarget)?.prompt ?? "") : "",
   );
   // A started conversation keeps its login; its admission item explains why Send waits.
-  const zeropsSendBlockReason = admission.attention?.text;
-  // A new Mate's stand-up holds the composer while its person waits on it; its server sends it.
-  const mateStandUp = useMateStandUp({
-    environmentId: activeThreadEnvironmentId,
-    threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
-    messageCount: activeThread?.messages.length ?? 0,
-  });
-  // A Mate's empty conversation with no agent to run is its arrival's sign-in: nothing typed
-  // there could be acted on, so the composer waits with the stand-up's. An agent outside the
-  // sign-in (Cursor, OpenCode…) that is ready is one to run.
-  const zeropsArrivalHoldsComposer = mateArrivalHoldsComposer({
-    standUpHolds: mateStandUp.holdsComposer,
-    signInRequired:
-      zeropsAgentAuth.snapshot !== null &&
-      zeropsAgentSignInRequired(zeropsAgentAuth.snapshot, providerStatuses),
-    empty: isServerThread && (activeThread?.messages.length ?? 0) === 0,
-  });
+  const zeropsSendBlockReason = admission.sendBlockReason;
+  const zeropsArrivalHoldsComposer = admission.holdsComposer;
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
     () =>
@@ -5164,33 +5110,13 @@ export default function ChatView(props: ChatViewProps) {
   }, [activeThreadRef, unsnoozeThreadMutation]);
   const [isRestoringThreadBranch, setIsRestoringThreadBranch] = useState(false);
   const [branchRestoreConfirmOpen, setBranchRestoreConfirmOpen] = useState(false);
-  // Once revealed for a given mismatch, the banner stays mounted until the
-  // mismatch changes or resolves, so clearing the draft doesn't flicker it.
-  const [revealedBranchMismatchKey, setRevealedBranchMismatchKey] = useState<string | null>(null);
-  // Dismissal lives in a module-level set (survives remounts); this tick just
-  // forces a re-render so the banner leaves immediately.
-  const [, setBranchMismatchDismissTick] = useState(0);
-  const activeBranchMismatchKey = branchMismatchKey(
-    activeThread?.id ?? null,
-    localCheckoutBranchMismatch,
-  );
-  const showBranchMismatchBanner = shouldShowBranchMismatchBanner({
-    hasMismatch: localCheckoutBranchMismatch !== null,
-    isDismissed: isBranchMismatchDismissedForSession(activeBranchMismatchKey),
+  const branchAdvice = useBranchAdvice({
+    threadKey: activeThread ? routeThreadKey : null,
+    mismatch: localCheckoutBranchMismatch,
     composerHasContent: composerHasUnsentContent,
-    wasShownForCurrentMismatch:
-      revealedBranchMismatchKey !== null && revealedBranchMismatchKey === activeBranchMismatchKey,
   });
-  useEffect(() => {
-    setRevealedBranchMismatchKey((revealed) => {
-      if (showBranchMismatchBanner) {
-        return activeBranchMismatchKey;
-      }
-      // Hysteresis is scoped to an uninterrupted mismatch: reset when the
-      // mismatch resolves or changes so a recurrence re-gates on intent.
-      return revealed !== null && revealed !== activeBranchMismatchKey ? null : revealed;
-    });
-  }, [activeBranchMismatchKey, showBranchMismatchBanner]);
+  const activeBranchMismatchKey = branchAdvice.key;
+  const showBranchMismatchBanner = branchAdvice.visible;
   const handleSwitchCheckoutToThread = useCallback(async () => {
     if (
       !activeProjectCwd ||
@@ -5836,15 +5762,13 @@ export default function ChatView(props: ChatViewProps) {
           </Button>
         ),
         dismissLabel: "Dismiss branch change notice",
-        onDismiss: () => {
-          dismissBranchMismatchForSession(activeBranchMismatchKey);
-          setBranchMismatchDismissTick((tick) => tick + 1);
-        },
+        onDismiss: branchAdvice.dismiss,
       },
       ...parkedThreadItems,
     ];
   }, [
     activeBranchMismatchKey,
+    branchAdvice.dismiss,
     alsoWorkingBannerItem,
     crewBannerItems,
     feedbackBannerItems,
@@ -6560,7 +6484,7 @@ export default function ChatView(props: ChatViewProps) {
       return;
     }
     const sendCtx = composerRef.current?.getSendContext();
-    if (!sendCtx?.providerAvailable) {
+    if (!admission.canSend || !sendCtx?.providerAvailable) {
       return;
     }
     const {
@@ -7471,7 +7395,7 @@ export default function ChatView(props: ChatViewProps) {
     isRevertingCheckpoint ||
     threadDetailLoading ||
     activeProviderStatus === null ||
-    zeropsSendBlockReason !== undefined;
+    !admission.canSend;
   useEffect(() => {
     if (!nextQueuedMessage || isSendBusy || queueBlockedByPendingRequest || queueSendGate) return;
     if (sendInFlightRef.current) return;
@@ -8676,10 +8600,7 @@ export default function ChatView(props: ChatViewProps) {
                   onUsageAutoResumeChange,
                   interruption: activeServerThread?.session?.interruption ?? null,
                   onRestartContinue:
-                    isWorking ||
-                    isSendBusy ||
-                    queueBlockedByPendingRequest ||
-                    zeropsSendBlockReason !== undefined
+                    isWorking || isSendBusy || queueBlockedByPendingRequest || !admission.canSend
                       ? null
                       : (interruption) => {
                           const pending = activeServerThread?.session?.interruption;
@@ -8786,37 +8707,24 @@ export default function ChatView(props: ChatViewProps) {
                 <div className="pointer-events-auto relative z-10">
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full z-0">
-                      {/* The banners float from a zero-height anchor, so the
-                          headline keeps their measured height clear above them. */}
                       <div
                         className="pb-4"
-                        style={{
-                          ...(forceExpandedMobileComposer
+                        style={
+                          forceExpandedMobileComposer
                             ? { viewTransitionName: MOBILE_DRAFT_HEADLINE_VIEW_TRANSITION_NAME }
-                            : {}),
-                          ...(composerBannerStackElement
-                            ? { marginBottom: composerBannerStackHeight }
-                            : {}),
-                        }}
+                            : undefined
+                        }
                       >
                         <DraftHeroHeadline
                           activeProjectRef={activeProjectRef}
                           activeProjectTitle={activeProjectDisplayName ?? null}
                         />
                       </div>
-                      <ComposerBannerStack
-                        className="relative z-0"
-                        items={composerBannerItems}
-                        stackRef={setComposerBannerStackElement}
-                      />
+                      <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                     </div>
                   ) : (
                     <>
-                      <ComposerBannerStack
-                        className="relative z-0"
-                        items={composerBannerItems}
-                        stackRef={setComposerBannerStackElement}
-                      />
+                      <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                       {/* The lead's plan waits above its composer, where its
                           answer ends (PRD §4.6). */}
                       {activeCrewmate?.crewmate.kind === "lead" &&

@@ -3,61 +3,29 @@ import { createContext, useContext, useMemo } from "react";
 import { useDialogState } from "./useDialogState";
 
 import type { InventoryTroubleVoice } from "./inventoryTrouble.logic";
-import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  projectKeyOf,
-  type ProjectRef,
-  type ScopeAuthority,
-} from "@t3tools/client-runtime/zerops/data";
+import { type ScopeAuthority } from "@t3tools/client-runtime/zerops/data";
 import type { ConversationAccess } from "@t3tools/client-runtime/zerops/environments";
 import { knownPresentation, type KnownSurface } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { inventoryCandidates } from "@t3tools/client-runtime/data";
-import { useAccountData } from "./ZeropsAccountData";
+import { useAccountData } from "./accountData";
 import { useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { Atom } from "effect/reactivity";
 import { useAtomValue } from "@effect/atom-react";
 
-export interface Inventory {
-  /**
-   * Projects whose source access projection allows them to be shown. A withheld project's
-   * identity stays in `projectRefs` while its protected content stays out of this list.
-   */
-  readonly projects: ReadonlyArray<ZeropsProject>;
-  readonly isLoading: boolean;
-  readonly error: string | null;
-  /** Operable, account-scoped identities used to filter every shared projection. */
-  readonly projectRefs: ReadonlyMap<string, ProjectRef>;
-  /** Each project's source access at the read, by `inventoryProjectRefKey`. */
-  readonly authority: ReadonlyMap<string, ScopeAuthority>;
-  /** Projects whose source denied access, by project id. */
-  readonly lost: ReadonlySet<string>;
-}
+export type {
+  InventoryContents as Inventory,
+  InventoryProjection,
+} from "@t3tools/client-runtime/data";
+export { findInventoryProjectRef, inventoryProjectRefKey } from "@t3tools/client-runtime/data";
+import {
+  findInventoryProjectRef,
+  inventoryProjectRefKey,
+  type InventoryContents as Inventory,
+} from "@t3tools/client-runtime/data";
 
-/**
- * What the account's product publishes of its inventory for the derived atoms (`state/zerops.ts`):
- * the projection without the round's loading and error words.
- */
-export type InventoryProjection = Pick<Inventory, "projects" | "projectRefs" | "authority">;
-
-export function inventoryProjectRefKey(ref: ProjectRef): string {
-  return projectKeyOf(ref);
-}
-
-export function findInventoryProjectRef(
-  inventory: Pick<Inventory, "projectRefs">,
-  projectId: string,
-  organizationId?: string,
-): ProjectRef | null {
-  const matches = [...inventory.projectRefs.values()].filter(
-    (ref) =>
-      ref.projectId === projectId &&
-      (organizationId === undefined || ref.organization.organizationId === organizationId),
-  );
-  return matches.length === 1 ? (matches[0] ?? null) : null;
-}
 const PROJECT_SURFACE: KnownSurface<never> = {
   subject: "this project",
   entity: "project",

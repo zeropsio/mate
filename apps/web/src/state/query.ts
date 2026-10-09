@@ -3,11 +3,16 @@ import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 
+import type { WorkspaceReading, MateFeedReading } from "@t3tools/client-runtime/data";
+
+type EnvironmentRead<A> = MateFeedReading<A> | WorkspaceReading<A>;
+
 const EMPTY_ASYNC_RESULT_ATOM = Atom.make(AsyncResult.initial<never, never>(false)).pipe(
   Atom.withLabel("web-environment-query:empty"),
 );
 
 export interface EnvironmentQueryView<A> {
+  readonly read?: EnvironmentRead<A>;
   readonly data: A | null;
   readonly error: string | null;
   readonly isPending: boolean;
@@ -26,12 +31,15 @@ export function formatEnvironmentQueryError(cause: Cause.Cause<unknown>): string
 }
 
 export function useEnvironmentQuery<A, E>(
-  atom: Atom.Atom<AsyncResult.AsyncResult<A, E>> | null,
+  atom: Atom.Atom<AsyncResult.AsyncResult<A, E> & { readonly read?: EnvironmentRead<A> }> | null,
 ): EnvironmentQueryView<A> {
-  const selectedAtom = atom ?? EMPTY_ASYNC_RESULT_ATOM;
+  const selectedAtom: Atom.Atom<
+    AsyncResult.AsyncResult<A, E> & { readonly read?: EnvironmentRead<A> }
+  > = atom ?? EMPTY_ASYNC_RESULT_ATOM;
   const result = useAtomValue(selectedAtom);
   const refresh = useAtomRefresh(selectedAtom);
   return {
+    ...(result.read === undefined ? {} : { read: result.read }),
     data: Option.getOrNull(AsyncResult.value(result)),
     error: result._tag === "Failure" ? formatEnvironmentQueryError(result.cause) : null,
     isPending: atom !== null && result.waiting,
@@ -50,16 +58,29 @@ export interface CollectionPresentation<A> {
 
 /** Only a settled successful read can prove an empty collection. */
 export function collectionPresentation<A, Item>(
-  query: Pick<EnvironmentQueryView<A>, "data" | "error" | "isPending">,
+  query: Pick<EnvironmentQueryView<A>, "data" | "error" | "isPending" | "read">,
   select: (data: A) => ReadonlyArray<Item>,
   labels: { readonly loading: string; readonly unavailable: string },
   responseError: string | null = null,
 ): CollectionPresentation<Item> {
   const error = query.error ?? responseError;
+  const read = query.read;
+  const incomplete =
+    query.data !== null &&
+    read !== undefined &&
+    ("state" in read
+      ? (read.evidence?.coverage ?? (read.state === "known" ? read.coverage : "unknown"))
+      : read.coverage) !== "complete";
+  const revalidating =
+    read !== undefined &&
+    "state" in read &&
+    read.state === "known" &&
+    read.freshness.kind !== "live" &&
+    read.freshness.kind !== "settled";
   const state: CollectionReadState =
     error !== null
       ? "failed"
-      : query.isPending
+      : query.isPending || incomplete || revalidating
         ? "loading"
         : query.data === null
           ? "unavailable"

@@ -31,8 +31,7 @@ export const writeHeapSnapshot = Effect.fn("server.heapSnapshot", { root: true }
 
 /**
  * Writes a heap snapshot when the process gets SIGUSR2 (`kill -USR2 <pid>`),
- * so a maintainer can see what a long-running server holds. See "Heap
- * Snapshots" in docs/operations/observability.md.
+ * so a maintainer can see what a long-running server holds.
  *
  * The write blocks the event loop, so two snapshots never overlap: a signal
  * sent during a write waits until it finishes. Windows has no SIGUSR2, so the

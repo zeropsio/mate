@@ -24,6 +24,7 @@ declare module "../model.ts" {
 /** Read from Zerops (the member list) by the account, never registered on a Zerops socket. */
 export const hqVerdictFamily: FamilySpec<"hqVerdict"> = {
   family: "hqVerdict",
+  retainUnverified: true,
   authority: "zerops",
   scope: { source: "zerops", suffix: "hq-verdict", leaving: "removed", demand: "navigation" },
 };

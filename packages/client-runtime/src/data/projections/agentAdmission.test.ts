@@ -284,3 +284,106 @@ it.each(["unsupported", "broken"] as const)(
     });
   },
 );
+
+describe("one admission answer for composer, Send and Continue", () => {
+  const snapshot = {
+    available: true,
+    agents: [
+      {
+        agentId: "codex",
+        credPresent: true,
+        flagOAuth: true,
+        flagToken: false,
+        providerAuth: "authenticated",
+        state: "authorized",
+        authorizedBy: { subject: "another" },
+      },
+    ],
+  } as const;
+  const base = {
+    environmentId: "rig",
+    instanceId: "codex",
+    viewerSubject: "viewer",
+    providers: [],
+    mateName: "Wren",
+  } as const;
+  it.each(["unread", "reading"] as const)(
+    "A cold %s holds Send and Continue without inventing sign-in guidance",
+    (state) => {
+      expect(
+        agentAdmission({
+          ...base,
+          read:
+            state === "unread" ? { state, waitingFor: null } : { state, sinceMs: 0, attempt: 1 },
+        }),
+      ).toMatchObject({
+        attention: null,
+        footer: "held",
+        canSend: false,
+        readOnly: false,
+      });
+    },
+  );
+  it("Decision: admission does not invent signer ownership. Drop unrecorded-login and any blocking derived from who signed in.", () => {
+    expect(
+      agentAdmission({
+        ...base,
+        read: {
+          state: "known",
+          value: snapshot,
+          asOf: { ordinal: 1, atMs: 0 },
+          coverage: "complete",
+          freshness: { kind: "live" },
+        },
+      }),
+    ).toMatchObject({
+      attention: null,
+      footer: "composer",
+      canSend: true,
+      readOnly: false,
+    });
+  });
+});
+
+describe("mateArrivalHoldsComposer", () => {
+  it.each([
+    { standUpHolds: true, signInRequired: false, empty: false, holds: true },
+    { standUpHolds: false, signInRequired: true, empty: true, holds: true },
+    // A conversation under way keeps its composer, whatever its sign-in says: it is read.
+    { standUpHolds: false, signInRequired: true, empty: false, holds: false },
+    { standUpHolds: false, signInRequired: false, empty: true, holds: false },
+  ])(
+    "stand-up $standUpHolds, no agent $signInRequired, empty $empty: holds $holds",
+    ({ holds, signInRequired, ...input }) => {
+      expect(
+        agentAdmission({
+          ...input,
+          environmentId: "rig",
+          instanceId: "codex",
+          viewerSubject: "viewer",
+          providers: [],
+          mateName: "Fen",
+          read: {
+            state: "known",
+            asOf: { ordinal: 1, atMs: 0 },
+            coverage: "complete",
+            freshness: { kind: "live" },
+            value: {
+              available: true,
+              agents: [
+                {
+                  agentId: "codex",
+                  credPresent: !signInRequired,
+                  flagOAuth: !signInRequired,
+                  flagToken: false,
+                  providerAuth: signInRequired ? "unauthenticated" : "authenticated",
+                  state: signInRequired ? "not-authorized" : "authorized",
+                },
+              ],
+            },
+          },
+        }).holdsComposer,
+      ).toBe(holds);
+    },
+  );
+});

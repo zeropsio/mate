@@ -77,19 +77,22 @@ export function MateLinkLine({
 }) {
   const recovery = useMateRecoveryAction(projectId);
   return (
-    <MateLinkLineView
-      onContainerAction={recovery.act}
-      busy={recovery.busy}
-      onTryNow={onTryNow}
-      processes={
-        voice.processes && projectId !== null ? (
-          <MateLinkProcesses mateServiceId={mateServiceId} projectId={projectId} />
-        ) : null
-      }
-      projects={<Link to="/zerops" />}
-      projectUrl={projectUrl}
-      voice={voice}
-    />
+    <>
+      {recovery.feedback}
+      <MateLinkLineView
+        onContainerAction={recovery.feedback === null ? recovery.act : undefined}
+        busy={recovery.busy}
+        onTryNow={onTryNow}
+        processes={
+          voice.processes && projectId !== null ? (
+            <MateLinkProcesses mateServiceId={mateServiceId} projectId={projectId} />
+          ) : null
+        }
+        projects={<Link to="/zerops" />}
+        projectUrl={projectUrl}
+        voice={voice}
+      />
+    </>
   );
 }
 

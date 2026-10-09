@@ -14,6 +14,9 @@ Shared principles and words for every client surface. Domain meanings live in [t
 - Only new arrivals animate. Opening or restoring content places it.
 - A view opens or changes place when the person asks; background work does not choose it.
 - Resolve a view's destination before painting it.
+- Name a Mate's own state in third person; address the person directly for other facts.
+- Give a reset time only from source evidence. Promise automatic continuation only while enabled.
+  A passed clock time does not prove work resumed.
 
 ## 2. Copy glossary
 
@@ -71,30 +74,7 @@ A status mark carries its word or an accessible name. Use scalable vector icons 
 font. Clients share meaning and copy while using their native containers.
 Nested rounded edges run parallel: the outer radius is the inner radius plus the space between them.
 
-### Notices in the web client
-
-- Informational waits use calm grey ink, a soft surface and the standard border. Stopped or
-  blocked work (a usage limit, pause, sign-in or pending answer) uses an amber icon and short label
-  in the menu and conversation, plus the menu attention dot. Red marks a broken
-  action that needs the person now; it belongs on the small mark, rather than tinting the whole notice.
-- When the state is the Mate's own, name it in third person: “Rosa hit the Claude limit.”
-  Other facts address the person directly. Say the state once; a timeline pause owns its notice.
-- Give the next action where it is available, rather than asking the person to type a message again.
-  Give a reset time only when the coding agent supplies it, and promise automatic continuation only
-  while it is enabled. A passed clock time is not evidence that work has resumed.
-- A restart uses the existing waking face, with reduced motion respected. A lost link says it is
-  reconnecting; it does not claim a restart. Opening a conversation has an immediate visible state.
-  Conversation waits and refusals share
-  a compact composition: the known Mate's face, a named state line, one short secondary line and
-  actions aligned with the text. Project services stay in a collapsible list.
-
-- Mate stage and notice headlines use words without icons (the face and named state already identify them); stages centre face → headline → text → steps → kit disclosure → wrapping actions, with word-only external links styled as the other actions. Compact menu status marks retain their severity ink.
-
 ## 4. Rules — machine-checked
-
-Predicates are the plan's (`../../../../zcp/plans/z3-ui-foundations-2026-08-30.md` §3, frozen at
-F0); this table records where each rule is enforced and by which test, and when it landed. A
-rule is "landed" only when its test runs in CI.
 
 - **R1** — `client-runtime/src/zerops/**` is UI-free and platform-free
   - _Enforced by:_ zone rule 5 (import prefixes) + `t3code/no-platform-globals` (resolved globals) +
@@ -158,12 +138,6 @@ no-restyle`
 no-arbitrary-values`
   - _Test(s):_ `oxlint-plugin-t3code/rules/no-arbitrary-values.test.ts`
   - _Status:_ landed (intake row 5, 2026-09-25)
-
-Protected roots (R2, R6): today `apps/web/src/components/zerops/{ZeropsServiceMap,ZeropsLifecycleStrip,ZeropsOperationCard,ZeropsQuickActions}.tsx`;
-after a surface round moves them, `apps/web/src/components/zerops/{map,band,cards,quickActions}/**`
-and the mobile counterparts `apps/mobile/src/features/zerops/{map,band,cards,quickActions}/**`.
-The door, picker, session provider and agent-auth card issue commands legitimately and are not
-protected; their commands are the explicit allowed set.
 
 ## 5. Exceptions
 

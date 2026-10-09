@@ -4,13 +4,8 @@ import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import type { OperationProgress } from "./operation.ts";
 import { runningScope } from "../families/process.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
-import {
-  projectRestarts,
-  readRestart,
-  restartReadout,
-  readRestartRecovery,
-  NO_RESTARTS,
-} from "./restart.ts";
+import { projectRestarts } from "./restartEvidence.ts";
+import { readRestart, restartReadout, readRestartRecovery, NO_RESTARTS } from "./restart.ts";
 
 const key = { orgId: ORG, projectId: "p" };
 const source = {

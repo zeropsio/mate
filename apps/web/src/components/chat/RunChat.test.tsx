@@ -1,3 +1,16 @@
+import { RegistryContext } from "@effect/atom-react";
+import { useEngineCardSnapshots } from "../../zerops/useEngineCardPaging";
+import { useEngineLiveStructure } from "../../zerops/useEngineLiveMessage";
+import { deriveMessagesTimelineRows } from "./MessagesTimeline.logic";
+import {
+  cardAccount,
+  CARD_KEY,
+  CARD_RUN,
+  CARD_THREAD,
+  CARD_RECORDS,
+  useCardTimelineInput,
+} from "./engineCard.test-fixtures";
+import { assembleRecordCard } from "./MessagesTimeline.logic";
 import { markupDom } from "../../../test/markupDom";
 import { ApprovalRequestId, EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
@@ -5,7 +18,7 @@ import {
   emptyAgentPanelModel,
   type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import { act, type ReactNode } from "react";
+import { act, StrictMode, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -20,6 +33,7 @@ import { MateFace } from "../zerops/primitives";
 import { useHelperFocus } from "./helperFocus";
 import { SLOT_HOLD_MS, SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
+import { foldWork } from "./foldWork";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -36,6 +50,9 @@ vi.mock("../../zerops/activity/useOperationCard", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../zerops/activity/useOperationCard")>()),
   useOperationCard: () => ({}),
 }));
+
+// Measured execution is held until the test supplies its completion receipt.
+vi.mock("./foldWork", () => ({ foldWork: vi.fn(() => () => undefined) }));
 
 const at = (second: number) => new Date(Date.UTC(2026, 8, 27, 10, 0, second)).toISOString();
 const turnId = TurnId.make("turn-1");
@@ -137,8 +154,8 @@ const SCRIPT = [
 type RecordRow = Extract<MessagesTimelineRow, { kind: "record" }>;
 
 function record(items: ReadonlyArray<RecordItem>, overrides: Partial<RecordRow> = {}): RecordRow {
-  return {
-    kind: "record",
+  const row = {
+    kind: "record" as const,
     id: "record:turn-1",
     createdAt: at(0),
     turnKey: "turn-1",
@@ -150,6 +167,7 @@ function record(items: ReadonlyArray<RecordItem>, overrides: Partial<RecordRow> 
     outcome: null,
     ...overrides,
   };
+  return { ...row, ...assembleRecordCard(row) };
 }
 
 const thought = (id: string, text: string): RecordItem => ({
@@ -912,6 +930,7 @@ describe("RunChat, as the person uses it", () => {
   };
   beforeEach(() => {
     forgetRunFolds(SHARED.routeThreadKey);
+    vi.mocked(foldWork).mockClear();
     globalThis.ResizeObserver = class {
       observe() {}
       disconnect() {}
@@ -963,6 +982,66 @@ describe("RunChat, as the person uses it", () => {
     globalThis.ResizeObserver = saved.resize;
     globalThis.requestAnimationFrame = saved.frame;
     vi.unstubAllGlobals();
+  });
+
+  it("shows a partly loaded card's summary and work opener, then opens the first account page once", async () => {
+    const read = vi.fn();
+    const account = cardAccount(read);
+    account.publish(CARD_RECORDS);
+    const shared = { ...SHARED, threadRef: CARD_THREAD, syncing: true };
+    function AccountRun() {
+      const input = useCardTimelineInput(account);
+      const cardPaging = useEngineCardSnapshots(CARD_THREAD);
+      const liveLines = useEngineLiveStructure(CARD_THREAD, input.timelineEntries);
+      const row = deriveMessagesTimelineRows({ ...input, cardPaging, liveLines }).find(
+        (row) => row.kind === "record",
+      );
+      if (row?.kind !== "record") throw new Error("card missing");
+      return <RunChat row={row} />;
+    }
+    let renderer: ReactTestRenderer | null = null;
+    try {
+      await act(async () => {
+        renderer = mounted(
+          <RegistryContext value={account.registry}>
+            <TimelineRowCtx value={shared}>
+              <TimelineRowActivityCtx value={ACTIVITY}>
+                <AccountRun />
+              </TimelineRowActivityCtx>
+            </TimelineRowCtx>
+          </RegistryContext>,
+        );
+      });
+      const text = () => JSON.stringify(renderer!.toJSON());
+      expect(text()).toContain("300 commands");
+      expect(text()).not.toContain("inspect-service");
+      expect(read).not.toHaveBeenCalled();
+      await act(async () => button(renderer!, "Show work").props.onClick());
+      expect(read).toHaveBeenCalledExactlyOnceWith(CARD_KEY, CARD_RUN, "later");
+      expect(text()).not.toContain("inspect-service");
+      await act(async () =>
+        account.publish({
+          ...CARD_RECORDS,
+          spans: [{ runId: CARD_RUN, from: null, to: 0, reading: "later" }],
+        }),
+      );
+      await act(async () =>
+        account.publish({
+          ...CARD_RECORDS,
+          spans: [{ runId: CARD_RUN, from: null, to: 2, reading: null }],
+        }),
+      );
+      expect(text()).toContain("inspect-service");
+      expect(
+        renderer!.root.findAll(
+          (node) => node.type === "div" && node.props["data-chat-kind"] === "step:command",
+        ),
+      ).toHaveLength(1);
+      expect(read).toHaveBeenCalledTimes(1);
+    } finally {
+      if (renderer !== null) await act(async () => renderer!.unmount());
+      account.close();
+    }
   });
 
   it("Continue targets the interrupted turn and leaves when accepted evidence clears it", () => {
@@ -1035,6 +1114,37 @@ describe("RunChat, as the person uses it", () => {
             (child) => typeof child.children[0] === "string" && child.children[0] === words,
           ).length > 0),
     );
+
+  it.each([
+    { now: null, words: "Thinking" },
+    { now: { kind: "writing" as const }, words: "Writing" },
+  ])("keeps $words visible when a wordless thought finishes during the run", ({ now, words }) => {
+    vi.useFakeTimers();
+    try {
+      const running = (items: ReadonlyArray<RecordItem>) =>
+        record(items, { live: true, status: status(), now });
+      const renderer = mount(running([]));
+      const says = () => renderer.root.findByProps({ role: "status" }).children.join("");
+      expect(says()).toBe(words);
+      act(() =>
+        renderer.update(
+          <Rows>
+            <RunChat row={running([thought("blank", " \n\t ")])} />
+          </Rows>,
+        ),
+      );
+      expect(says()).toBe(words);
+      expect(
+        renderer.root.findAll(
+          (node) => node.type === "li" && node.props["data-run-key"] === "thought:blank",
+        ),
+      ).toHaveLength(0);
+      act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + SLOT_MIN_SHOW_MS + 100));
+      expect(says()).toBe(words);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   // The Claude adapter starts a call before its input streams in: a bare
   // command's code stands in its box once it arrives, and lands so (E3).
@@ -1689,6 +1799,126 @@ describe("RunChat, as the person uses it", () => {
           </Rows>,
         ),
       );
+
+    const measuredRun = ({ visibilityState = "visible", reduced = false, live = true } = {}) => {
+      vi.stubGlobal("window", {
+        ...window,
+        matchMedia: () => ({
+          matches: reduced,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+        }),
+      });
+      const document = markupDom(
+        '<div><div class="run-now"><span class="run-now-words"></span></div></div>',
+      );
+      Object.defineProperty(document, "visibilityState", { value: visibilityState });
+      vi.stubGlobal("document", document);
+      const root = document.body.firstElementChild!;
+      const above = document.createElement("div");
+      const Rect = document.defaultView!.DOMRect;
+      above.getBoundingClientRect = () => new Rect(0, 40, 300, 200);
+      const words = root.querySelector(".run-now-words")!;
+      words.getBoundingClientRect = () => new Rect(0, 240, 100, 20);
+      const completions: Array<() => void> = [];
+      const cancel = vi.fn();
+      vi.mocked(foldWork).mockImplementation(({ done }) => {
+        completions.push(done);
+        return cancel;
+      });
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = mounted(
+          <StrictMode>
+            <Rows>
+              <RunChat row={workOnly({ live, status: live ? status() : workOnly().status })} />
+            </Rows>
+          </StrictMode>,
+          {
+            createNodeMock: (node) => {
+              const props = node.props as Record<string, unknown>;
+              if (props["data-run-chat"] !== undefined) return root;
+              if (props.className === "run-above") return above;
+              return null;
+            },
+          },
+        );
+      });
+      const draw = (live: boolean) =>
+        act(() =>
+          renderer.update(
+            <StrictMode>
+              <Rows>
+                <RunChat row={workOnly({ live, status: live ? status() : workOnly().status })} />
+              </Rows>
+            </StrictMode>,
+          ),
+        );
+      return { renderer, draw, completions, cancel };
+    };
+
+    it.each([
+      { name: "in a hidden tab", visibilityState: "hidden", reduced: false },
+      { name: "under reduced motion", visibilityState: "visible", reduced: true },
+    ])(
+      "settles $name without a fold or summary entrance animation",
+      ({ visibilityState, reduced }) => {
+        const { renderer, draw } = measuredRun({ visibilityState, reduced });
+        draw(false);
+        expect(scrollsOf(renderer)).toHaveLength(0);
+        expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
+        const summary = renderer.root.findAll(
+          (node) => node.type === "span" && node.props["data-run-now-change"] !== undefined,
+        );
+        expect(summary).toHaveLength(0);
+        expect(foldWork).not.toHaveBeenCalled();
+      },
+    );
+
+    it("folds a visible watched run once through effect replay and removes its work only on completion", () => {
+      const { renderer, draw, completions } = measuredRun();
+      draw(false);
+      expect(scrollsOf(renderer)).toHaveLength(1);
+      expect(foldWork).toHaveBeenCalledTimes(1);
+      expect(
+        renderer.root.findAll((node) => node.props["data-run-now-change"] !== undefined),
+      ).toHaveLength(1);
+      // An unchanged draw cannot launch the settlement again.
+      draw(false);
+      expect(foldWork).toHaveBeenCalledTimes(1);
+      act(() => completions[0]!());
+      expect(scrollsOf(renderer)).toHaveLength(0);
+      expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
+    });
+
+    it.each(["Show work", "joined run"] as const)(
+      "keeps a later %s choice when an obsolete fold completes",
+      (choice) => {
+        const { renderer, draw, completions, cancel } = measuredRun();
+        draw(false);
+        expect(foldWork).toHaveBeenCalledTimes(1);
+        if (choice === "Show work") act(() => button(renderer, "Show work").props.onClick());
+        else draw(true);
+        expect(cancel).toHaveBeenCalledTimes(1);
+        act(() => completions[0]!());
+        expect(scrollsOf(renderer)).toHaveLength(1);
+        expect(button(renderer, "Hide work").props["aria-expanded"]).toBe(true);
+      },
+    );
+
+    it("finishes a remounted automatic fold without playing settlement again", () => {
+      const { renderer, draw, completions, cancel } = measuredRun();
+      draw(false);
+      expect(foldWork).toHaveBeenCalledTimes(1);
+      act(() => renderer.unmount());
+      expect(cancel).toHaveBeenCalledTimes(1);
+      const { renderer: returned } = measuredRun({ live: false });
+      expect(scrollsOf(returned)).toHaveLength(0);
+      expect(button(returned, "Show work").props["aria-expanded"]).toBe(false);
+      act(() => completions[0]!());
+      expect(foldWork).toHaveBeenCalledTimes(1);
+      expect(scrollsOf(returned)).toHaveLength(0);
+    });
 
     // The owner, 2026-09-29, on a run they watched to its end: "why didn't
     // this autocollapse at the end? in this state it looks stupid".

@@ -42,7 +42,7 @@ import { sameValue } from "../lib/sameValue";
 import type { HqStanding } from "../zerops/accountHq";
 import { registeredZeropsOrigins, rowEnvironment } from "../zerops/environmentOrigins";
 export { zeropsFeeds } from "../zerops/feeds";
-import { findInventoryProjectRef, type InventoryProjection } from "../zerops/inventoryContext";
+import { findInventoryProjectRef, type InventoryProjection } from "@t3tools/client-runtime/data";
 import type {
   ZeropsOrganizationStatus,
   ZeropsSessionStatus,

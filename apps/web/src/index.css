@@ -3666,7 +3666,7 @@ code {
   padding: 0 8px;
   border-radius: 10px;
   background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
-  color: var(--muted-foreground);
+  color: var(--sidebar-foreground);
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
