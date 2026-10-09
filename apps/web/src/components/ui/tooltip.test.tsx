@@ -137,3 +137,53 @@ describe("tooltip scroll dismissal", () => {
     }
   });
 });
+
+describe("tooltip trigger element", () => {
+  // A chat file link renders a menu button until its open action is known, then a link.
+  it.each([{ area: "inside the conversation" }, { area: "outside the conversation" }])(
+    "$area, a trigger that becomes a link still opens its tooltip on hover",
+    async ({ area }) => {
+      vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+      vi.useFakeTimers();
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      const tooltip = (link: boolean) => (
+        <Tooltip>
+          <TooltipTrigger
+            delay={50}
+            render={link ? <a href="/workspace/src/summary.ts" /> : <button type="button" />}
+          >
+            summary.ts
+          </TooltipTrigger>
+          <TooltipPopup>/workspace/src/summary.ts</TooltipPopup>
+        </Tooltip>
+      );
+      const render = (link: boolean) =>
+        root.render(
+          area === "inside the conversation" ? (
+            <TooltipScrollDismissArea>{tooltip(link)}</TooltipScrollDismissArea>
+          ) : (
+            tooltip(link)
+          ),
+        );
+      try {
+        await act(async () => render(false));
+        await act(async () => render(true));
+        const trigger = container.querySelector<HTMLAnchorElement>("a")!;
+        await act(async () => {
+          trigger.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+          trigger.dispatchEvent(new MouseEvent("mouseenter"));
+          trigger.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+          await vi.advanceTimersByTimeAsync(60);
+        });
+        expect(openPopupText()).toBe("/workspace/src/summary.ts");
+      } finally {
+        await act(async () => root.unmount());
+        container.remove();
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+});
