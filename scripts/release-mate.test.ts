@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vite-plus/test";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { Effect, FileSystem, Path, Stream } from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { describe, expect, it } from "@effect/vitest";
 
 import {
   bumpVersion,
@@ -108,5 +111,68 @@ it("release commits retain the lane Card trailer", () => {
 it("releases outside a lane do not invent a Card trailer", () => {
   expect(releaseMessage("0.14.105", "- fix: retain recovery outcomes")).toBe(
     "chore(release): mate 0.14.105\n\n- fix: retain recovery outcomes",
+  );
+});
+
+// The batch's green CI receipt belongs to one SHA; a subsequent fetch must not replace it.
+it.layer(NodeServices.layer)("release approval", (it) => {
+  it.effect("a release refuses main that moved after the batch approved CI", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const dir = yield* fs.makeTempDirectoryScoped({ prefix: "release-head-" });
+        const git = path.join(dir, "git");
+        yield* fs.writeFileString(
+          git,
+          `#!/bin/sh
+case "$*" in
+ *"rev-parse --show-toplevel"*) echo "$RELEASE_TEST_ROOT";;
+ *"fetch "*) exit 0;;
+ *"rev-parse origin/main"*) echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;;
+ *) echo unexpected-git-command >&2; exit 1;;
+esac
+`,
+        );
+        yield* fs.chmod(git, 0o700);
+        const child = yield* spawner.spawn(
+          ChildProcess.make(
+            process.execPath,
+            [
+              path.join(import.meta.dirname, "release-mate.ts"),
+              "--expected-sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "--dry-run",
+            ],
+            {
+              cwd: dir,
+              env: {
+                ...process.env,
+                PATH: `${dir}:${process.env.PATH}`,
+                RELEASE_TEST_ROOT: dir,
+              },
+            },
+          ),
+        );
+        const [status, stderr] = yield* Effect.all(
+          [
+            child.exitCode,
+            child.stderr.pipe(
+              Stream.decodeText(),
+              Stream.runFold(
+                () => "",
+                (a, b) => a + b,
+              ),
+            ),
+          ],
+          { concurrency: "unbounded" },
+        );
+        expect(Number(status)).toBe(1);
+        expect(
+          stderr,
+          "ASSERTION: the release must reject a fetched SHA without the batch CI approval",
+        ).toContain("origin/main moved after CI approval");
+      }),
+    ),
   );
 });

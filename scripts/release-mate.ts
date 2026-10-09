@@ -138,9 +138,18 @@ async function waitForManifest(version: string): Promise<void> {
 async function main(args: ReadonlySet<string>): Promise<void> {
   const repo = git(process.cwd(), "rev-parse", "--show-toplevel");
   git(repo, "fetch", "--quiet", "origin", "main");
+  const mainHead = git(repo, "rev-parse", "origin/main");
+  const expected = [...args]
+    .find((arg) => arg.startsWith("--expected-sha="))
+    ?.slice("--expected-sha=".length);
+  if (expected !== undefined && expected !== mainHead) {
+    throw new Error(
+      `origin/main moved after CI approval: expected ${expected}, fetched ${mainHead}`,
+    );
+  }
   // A throwaway tree: the release never touches a checkout someone is working in.
   const tree = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-release-"));
-  git(repo, "worktree", "add", "--quiet", "--detach", tree, "origin/main");
+  git(repo, "worktree", "add", "--quiet", "--detach", tree, mainHead);
   try {
     const versions = VERSIONED_PACKAGES.map(
       (file) =>
