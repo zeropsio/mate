@@ -1545,6 +1545,98 @@ describe("real adapters, driven by a mock or an authored wire", () => {
     ]);
   });
 
+  // Milo, 2026-10-09: three background commands in one response — one that ends, one that runs on,
+  // one that fails. Each is work of its own, and each ends by its own report.
+  it("claudeAgent [mock]: background shells started together are each their own work, with their own end", async () => {
+    const jobs = [
+      ["toolu_ok", "b-ok", "npm run build", "Build the api"],
+      ["toolu_long", "b-long", "npm run dev", "Serve the api"],
+      ["toolu_fail", "b-fail", "npm run lint", "Lint the api"],
+    ] as const;
+    const frame = { session_id: CLAUDE_SESSION, parent_tool_use_id: null };
+    const calls = jobs.map(([id, , command, description]) => ({
+      type: "tool_use",
+      id,
+      name: "Bash",
+      input: { command, description, run_in_background: true },
+    }));
+    const lines = await record(
+      "claudeAgent",
+      recordClaude([
+        ...claudeTurnSoFar,
+        ...calls.map((call, index) => ({
+          ...frame,
+          type: "assistant",
+          uuid: `calls-${index}`,
+          message: {
+            model: "claude-opus-5",
+            id: "msg_jobs",
+            type: "message",
+            role: "assistant",
+            content: [call],
+            stop_reason: null,
+            usage: { input_tokens: 1, output_tokens: 1 },
+          },
+        })),
+        ...jobs.flatMap(([id, task, , description]) => [
+          {
+            ...frame,
+            type: "system",
+            subtype: "task_started",
+            task_id: task,
+            tool_use_id: id,
+            description,
+            task_type: "local_bash",
+            uuid: `started-${task}`,
+          },
+          {
+            ...frame,
+            type: "user",
+            uuid: `result-${task}`,
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: id,
+                  content: `Command running in background with ID: ${task}.`,
+                  is_error: false,
+                },
+              ],
+            },
+          },
+        ]),
+        claudeResult,
+        ...(
+          [
+            ["toolu_fail", "b-fail", "failed"],
+            ["toolu_ok", "b-ok", "completed"],
+          ] as const
+        ).map(([id, task, status]) => ({
+          ...frame,
+          type: "system",
+          subtype: "task_notification",
+          task_id: task,
+          tool_use_id: id,
+          status,
+          output_file: `/tmp/${task}.output`,
+          summary: status,
+          uuid: `ended-${task}`,
+        })),
+      ]),
+    );
+    assert.deepStrictEqual(
+      lines.filter((line) => line.startsWith("s1.w")),
+      [
+        "s1.w1 shell running, from h1",
+        "s1.w2 shell running, from h1",
+        "s1.w3 shell running, from h1",
+        "s1.w3 shell failed, from h1",
+        "s1.w1 shell completed, from h1",
+      ],
+    );
+  });
+
   it("codex [mock]: an app-server exit mid-turn ends nothing, so the bridge ends the turn cut by the crash", async () => {
     assert.deepStrictEqual(
       await record(
