@@ -136,6 +136,11 @@ export interface ZeropsAgentActivity {
    * writes at its right edge, the way a messenger dates its rows.
    */
   readonly at: string;
+  /**
+   * When the run it is on started, as its clock counts (`runClockSince`): held from the first
+   * reading of the run, so the clock only moves forward. Absent while no run is on.
+   */
+  readonly runSince?: string;
   /** Its date records conversation work, rather than an untouched chat's update. */
   readonly hasWork?: true | undefined;
   /**

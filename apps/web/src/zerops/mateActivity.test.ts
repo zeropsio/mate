@@ -16,6 +16,7 @@ import { MateLiveView } from "@t3tools/shared/hqMates";
 import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import type { ZeropsAgentActivity } from "./agentActivity";
 import { matesActivityOf, seenResultsOf, type MatesActivityInput } from "./mateActivity";
 
 const ASKED = "2026-10-03T09:00:00.000Z";
@@ -312,6 +313,74 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
       expect(activity?.liveStep).toBeUndefined();
     },
   );
+
+  it("a working Mate's menu clock counts from this run's start and only moves forward", () => {
+    // Recorded 2026-10-09: the clock opened at the previous run's end (14:23), then jumped six
+    // times as the queue's, the provider's and the relay's dates arrived.
+    const sent = Date.parse(DONE) + 14 * 60_000;
+    const at = (seconds: number) => sent + seconds * 1000;
+    const steps: ReadonlyArray<{
+      readonly second: number;
+      readonly working: number;
+      readonly waiting?: number;
+      readonly state: Record<string, unknown>;
+      readonly clock: number | null;
+    }> = [
+      { second: -1, working: 0, state: { kind: "idle" }, clock: null },
+      // Sent: the attention works before the row has heard of the run.
+      { second: 0, working: 1, state: { kind: "idle" }, clock: 0 },
+      { second: 1, working: 1, state: { kind: "queued", since: at(0.5) }, clock: 1 },
+      {
+        second: 23,
+        working: 1,
+        state: { kind: "working", since: at(22.9), waitsOnHelpers: false },
+        clock: 23,
+      },
+      {
+        second: 61,
+        working: 0,
+        waiting: 1,
+        state: { kind: "waiting", on: "question", words: "Table or list?" },
+        clock: null,
+      },
+      {
+        second: 70,
+        working: 1,
+        state: { kind: "working", since: at(24), waitsOnHelpers: false },
+        clock: 70,
+      },
+      { second: 78, working: 0, state: { kind: "idle" }, clock: null },
+    ];
+    let previous: ReadonlyMap<string, ZeropsAgentActivity> | undefined;
+    const clocks = steps.map(({ second, working, waiting = 0, state }) => {
+      previous = matesActivityOf(
+        {
+          projectIds: ["p-vera"],
+          attention: attention(
+            said({
+              working,
+              waiting,
+              questions:
+                waiting === 0 ? [] : ([{ threadId: "t1", kind: "input", turnId: null }] as never),
+            }),
+          ),
+          overviews: onEngine(engineRow("t1", { state, at: Date.parse(DONE) })),
+          hqCurrent: true,
+          threads: [],
+          sockets: new Map(),
+          standing: new Set(),
+          lastVisitedAtById: {},
+        },
+        previous,
+        at(second),
+      );
+      const { slot } = mateRowView(previous.get("p-vera"), "working");
+      return slot.kind === "clock"
+        ? Math.round((at(second) - Date.parse(slot.since)) / 1000)
+        : null;
+    });
+    expect(clocks).toEqual(steps.map(({ clock }) => clock));
+  });
 
   it("reads its words and what it waits on off its own row, not its main chat's fields", () => {
     const helpers = engineRow("t1", {

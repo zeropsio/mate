@@ -8,6 +8,7 @@ import {
   shownAttentionProjectsAtom,
 } from "@t3tools/client-runtime/data";
 import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
+import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
@@ -118,17 +119,22 @@ export const mateActivityAtom = Atom.family((projectId: string) =>
         return at === undefined ? [] : [[key, at]];
       }),
     );
-    const activity = matesActivityOf({
-      projectIds: [projectId],
-      attention: { [projectId]: attention },
-      overviews: overview === null ? null : new Map([[projectId, overview]]),
-      hqCurrent: presence.live,
-      threads,
-      sockets: socket === null ? new Map() : new Map([[projectId, socket.id]]),
-      standing: socket?.standing ? new Set([socket.id]) : new Set<EnvironmentId>(),
-      lastVisitedAtById: visits,
-      limits: new Map([...keys].map((key) => [key, get(mateLimitAtom(key))])),
-    }).get(projectId);
+    // Its last reading: what its run's clock holds on to (`runClockSince`).
+    const before = Option.getOrUndefined(get.self<ZeropsAgentActivity | undefined>());
+    const activity = matesActivityOf(
+      {
+        projectIds: [projectId],
+        attention: { [projectId]: attention },
+        overviews: overview === null ? null : new Map([[projectId, overview]]),
+        hqCurrent: presence.live,
+        threads,
+        sockets: socket === null ? new Map() : new Map([[projectId, socket.id]]),
+        standing: socket?.standing ? new Set([socket.id]) : new Set<EnvironmentId>(),
+        lastVisitedAtById: visits,
+        limits: new Map([...keys].map((key) => [key, get(mateLimitAtom(key))])),
+      },
+      before === undefined ? undefined : new Map([[projectId, before]]),
+    ).get(projectId);
     return activity;
   }).pipe(Atom.withEquality(sameActivity)),
 );
