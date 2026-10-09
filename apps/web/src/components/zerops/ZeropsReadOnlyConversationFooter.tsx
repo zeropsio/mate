@@ -12,7 +12,7 @@
  * inside the glass host that `ChatView` wraps it in.
  */
 
-import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/agentOwnership";
+import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/agentSignIn";
 
 import type { PendingApproval, PendingUserInput } from "../../session-logic";
 import type { ZeropsConversationReadOnly } from "../ChatView.logic";

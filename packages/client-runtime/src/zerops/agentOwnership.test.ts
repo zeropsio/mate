@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  AGENT_OWNERSHIP_RECOVERY_LABEL,
   agentOwnershipAllowsTurns,
   agentOwnershipComposerNotice,
   agentOwnershipNeedsAttention,
@@ -10,6 +9,8 @@ import {
   resolveOwnedAgentId,
   type ZeropsAgentOwnership,
 } from "./agentOwnership.ts";
+
+import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "./agentSignIn.ts";
 
 const AT = "2026-09-05T10:00:00Z";
 

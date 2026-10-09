@@ -14,7 +14,7 @@
  *
  * Pure: no clock, no I/O; every fact arrives from the crew snapshot.
  */
-import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "../agentOwnership.ts";
+import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "../agentSignIn.ts";
 import type {
   CrewAttention,
   CrewHost,

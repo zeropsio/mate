@@ -1,3 +1,4 @@
+import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/agentSignIn";
 /**
  * One row per agent CLI (Claude Code, Codex): its authorization state and,
  * when the user needs to act, a "Sign in" button — or, while a server-driven
@@ -30,7 +31,6 @@ import type {
 } from "@t3tools/contracts";
 import {
   agentOwnershipNeedsAttention,
-  AGENT_OWNERSHIP_RECOVERY_LABEL,
   agentOwnershipNotice,
   resolveAgentOwnership,
   type ZeropsAgentOwnership,

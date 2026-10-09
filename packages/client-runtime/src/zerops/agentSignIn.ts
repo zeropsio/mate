@@ -71,6 +71,9 @@ export function agentNeedsSignIn(
   return signedOutAgent(error, driver) !== null;
 }
 
+/** The secondary offer for replacing an existing agent sign-in. */
+export const AGENT_OWNERSHIP_RECOVERY_LABEL = "Use my own account instead…";
+
 /** What the banner says in place of a command nobody here can run, where no Mate is named. */
 export const AGENT_SIGN_IN_MESSAGE =
   "This agent is not signed in yet. Authorize it here and start a new thread.";
