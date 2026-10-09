@@ -459,6 +459,10 @@
       "types": "./src/zerops/crew/testing/fixtures.ts",
       "default": "./src/zerops/crew/testing/fixtures.ts"
     },
+    "./work-log/activity-normalization": {
+      "types": "./src/work-log/activityNormalization.ts",
+      "default": "./src/work-log/activityNormalization.ts"
+    },
     "./work-log/presentation": {
       "types": "./src/work-log/presentation.ts",
       "default": "./src/work-log/presentation.ts"

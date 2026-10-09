@@ -170,3 +170,189 @@ describe("deriveWorkLogEntries command output", () => {
     expect(entry?.detail).toBeUndefined();
   });
 });
+
+describe("web activity normalization", () => {
+  function readActivity(payload: Record<string, unknown> | null) {
+    return deriveWorkLogEntries([
+      {
+        ...makeCommandActivity("normalized", {}),
+        kind: "tool.updated",
+        payload,
+      },
+    ])[0];
+  }
+
+  // Compatibility controls use surface records and literal expectations, not the shared parser.
+  it.each([
+    {
+      title: "prefers the item's command to other command evidence",
+      data: {
+        item: {
+          command: "printf item",
+          input: { command: "printf input" },
+          result: { command: "printf result" },
+        },
+        command: "printf data",
+      },
+      command: "printf item",
+    },
+    {
+      title: "reads command input when the item's command is malformed",
+      data: { item: { command: 12, input: { command: "printf input" } } },
+      command: "printf input",
+    },
+    {
+      title: "reads a command from the tool result",
+      data: { item: { result: { command: "printf result" } } },
+      command: "printf result",
+    },
+    {
+      title: "unwraps a supported shell command array",
+      data: { command: ["/bin/zsh", "-lc", "printf hello"] },
+      command: "printf hello",
+      rawCommand: '/bin/zsh -lc "printf hello"',
+    },
+    {
+      title: "unwraps a quoted PowerShell executable",
+      data: { command: '"C:\\Program Files\\PowerShell\\pwsh.exe" -Command "Get-Date"' },
+      command: "Get-Date",
+      rawCommand: '"C:\\Program Files\\PowerShell\\pwsh.exe" -Command "Get-Date"',
+    },
+    {
+      title: "unwraps a Windows command shell",
+      data: { command: 'cmd.exe /c "echo hello"' },
+      command: "echo hello",
+      rawCommand: 'cmd.exe /c "echo hello"',
+    },
+    {
+      title: "keeps unknown command wrappers intact",
+      data: { command: "custom -c hello" },
+      command: "custom -c hello",
+    },
+    {
+      title: "does not invent a command from malformed evidence",
+      data: { command: [null, 42, " "] },
+      command: undefined,
+    },
+  ])("$title", ({ data, command, rawCommand }) => {
+    const entry = readActivity({ itemType: "command_execution", data });
+    expect(entry?.command).toBe(command);
+    expect(entry?.rawCommand).toBe(rawCommand);
+  });
+
+  it("preserves unmatched shell quotes in the visible command", () => {
+    const entry = readActivity({
+      itemType: "command_execution",
+      data: { command: "/bin/zsh -lc 'printf hello" },
+    });
+    expect(entry?.command).toBe("/bin/zsh -lc 'printf hello");
+    expect(entry?.rawCommand).toBeUndefined();
+  });
+
+  it("reads a detail command without its trailing exit code", () => {
+    expect(
+      readActivity({
+        itemType: "command_execution",
+        detail: "printf hello <exited with exit code 0>",
+      })?.command,
+    ).toBe("printf hello");
+    expect(
+      readActivity({ itemType: "file_change", detail: "printf hello" })?.command,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ["inProgress", "inProgress"],
+    ["completed", "completed"],
+    ["failed", "failed"],
+    ["declined", "declined"],
+    ["stopped", "stopped"],
+    ["pending", "inProgress"],
+    ["running", "inProgress"],
+    ["waiting", "inProgress"],
+    ["cancelled", "stopped"],
+    ["interrupted", "stopped"],
+    ["lost", "stopped"],
+    ["idle", undefined],
+    ["unknown", undefined],
+    [12, undefined],
+    [null, undefined],
+  ])("normalizes lifecycle evidence %s to %s", (status, expected) => {
+    expect(readActivity({ itemType: "command_execution", status })?.toolLifecycleStatus).toBe(
+      expected,
+    );
+  });
+
+  it("shows inactive subagent batch tracking as stopped", () => {
+    expect(readActivity({ taskType: "subagent_batch", status: "idle" })?.toolLifecycleStatus).toBe(
+      "stopped",
+    );
+  });
+
+  it("extracts ordered unique changed paths from nested evidence", () => {
+    expect(
+      readActivity({
+        itemType: "file_change",
+        data: {
+          path: " src/one.ts ",
+          filePath: "src/one.ts",
+          relativePath: "src/two.ts",
+          item: {
+            result: {
+              changes: [
+                { filename: "src/three.ts", newPath: "src/new.ts", oldPath: "src/old.ts" },
+                { path: 42, filePath: " " },
+              ],
+            },
+          },
+          operations: [{ edits: [{ path: "src/four.ts" }] }],
+        },
+      })?.changedFiles,
+    ).toEqual([
+      "src/one.ts",
+      "src/two.ts",
+      "src/three.ts",
+      "src/new.ts",
+      "src/old.ts",
+      "src/four.ts",
+    ]);
+  });
+
+  it("bounds changed-file evidence by depth and file count", () => {
+    const entry = readActivity({
+      itemType: "file_change",
+      data: {
+        item: { result: { input: { data: { item: { path: "too-deep.ts" } } } } },
+        files: Array.from({ length: 14 }, (_, index) => ({ path: `file-${index}.ts` })),
+      },
+    });
+    expect(entry?.changedFiles).toEqual([
+      "file-0.ts",
+      "file-1.ts",
+      "file-2.ts",
+      "file-3.ts",
+      "file-4.ts",
+      "file-5.ts",
+      "file-6.ts",
+      "file-7.ts",
+      "file-8.ts",
+      "file-9.ts",
+      "file-10.ts",
+      "file-11.ts",
+    ]);
+  });
+
+  it.each([
+    null,
+    {},
+    { data: "bad", status: {} },
+    { data: { files: [null, "path.ts", { path: false }] } },
+  ])("leaves missing or malformed activity evidence absent: %j", (payload) => {
+    const entry = readActivity(payload);
+    expect(entry).toBeDefined();
+    expect(entry?.command).toBeUndefined();
+    expect(entry?.rawCommand).toBeUndefined();
+    expect(entry?.changedFiles).toBeUndefined();
+    expect(entry?.toolLifecycleStatus).toBeUndefined();
+  });
+});
