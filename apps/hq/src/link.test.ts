@@ -264,6 +264,45 @@ describe("a Mate's link", () => {
         }),
     );
 
+    it.effect(
+      "relays at most one health sample a window from a Mate that sends many, the latest",
+      () =>
+        Effect.gen(function* () {
+          const { call, owner, link, socket } = yield* linked;
+          const apart = { kind: "attention", projectId: "P_MATE", health: "apart" } as const;
+          const reader = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, owner)}`);
+          yield* scopeReset(reader, apart);
+          yield* link.send({ type: "overview", full: true, overview: overviewOf() });
+          const carries = (message: { readonly type: string }, revision?: number) =>
+            message.type === "scope-values" &&
+            (
+              (message as HqScopeDelivery).values as ReadonlyArray<{
+                key: string;
+                value: HqAttentionHealthValue;
+              }>
+            ).some(
+              (value) =>
+                value.key === HQ_ATTENTION_HEALTH_KEY &&
+                (revision === undefined || value.value.health?.source.revision === revision),
+            );
+          const relayed = (revision: number) =>
+            reader.takeWhere(`health ${revision}`, (message) => carries(message, revision));
+          yield* link.send({ type: "health", health: healthAt(1) });
+          yield* relayed(1);
+          // Thirty-three a second, as a Mate at its memory limit sent them.
+          for (const revision of [2, 3, 4, 5, 6, 7, 8, 9]) {
+            yield* link.send({ type: "health", health: healthAt(revision) });
+            yield* Effect.sleep(Duration.millis(30));
+          }
+          yield* relayed(9);
+          // Every sample between went by unrelayed: nothing else carried health before the latest.
+          assert.deepStrictEqual(
+            (yield* reader.collected).filter((message) => carries(message)),
+            [],
+          );
+        }),
+    );
+
     it.effect("closes on an overview that does not decode", () =>
       Effect.gen(function* () {
         const { link } = yield* linked;
