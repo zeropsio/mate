@@ -99,7 +99,8 @@ describe("C: source failures keep the conversation", () => {
         yield* chat.when.press("Start");
         yield* chat.then.text("Zerops accepted the start. Its outcome is not confirmed yet.");
         yield* chat.when.open("Sage");
-        const shell = '[aria-label="Recovery results"]';
+        // The shell shows the result as a toast floating over the page.
+        const shell = '[data-slot="toast-viewport"]';
         yield* Effect.promise(() =>
           s.page.waitForFunction(
             (selector) =>
@@ -139,9 +140,9 @@ describe("C: source failures keep the conversation", () => {
           s.page.evaluate((selector) => {
             const item = document
               .querySelector(selector)!
-              .querySelector("[data-recovery-request]")!;
-            const text = item.querySelector("span")!.getBoundingClientRect();
-            const top = document.elementFromPoint(text.left + 2, text.top + 2);
+              .querySelector<HTMLElement>("[data-recovery-request]")!;
+            const rect = item.getBoundingClientRect();
+            const top = document.elementFromPoint(rect.left + 2, rect.top + 2);
             return {
               visible: top?.closest("[data-recovery-request]") === item,
               hit: top?.outerHTML.slice(0, 400),
