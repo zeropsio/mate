@@ -19,6 +19,8 @@ export type MateBrowserFrameValue =
       readonly currentFrame: boolean;
       /** Exact call revisions observed in this source session, separately from retained values. */
       readonly observedCalls: ReadonlyMap<string, number>;
+      /** When the retained frame arrived, on this client's clock; absent before the first one. */
+      readonly frameAtMs?: number | undefined;
     };
 
 declare module "../model.ts" {

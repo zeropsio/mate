@@ -62,6 +62,7 @@ export function ZeropsPanel({
   agentAuthCard,
   agentAuthUnknown = null,
   agentAuthSnapshot,
+  agentSignInDemanded = false,
   runningToolLabel,
 }: {
   readonly threadRef: ScopedThreadRef | null;
@@ -70,6 +71,8 @@ export function ZeropsPanel({
   /** While the agent-auth feed has no snapshot: that it is checking, or why the read failed. */
   readonly agentAuthUnknown?: KnownMessage | null;
   readonly agentAuthSnapshot?: ZeropsAgentAuthSnapshot | null | undefined;
+  /** Whether the conversation's own agent needs a sign-in (`agentAdmission(...).attention`). */
+  readonly agentSignInDemanded?: boolean | undefined;
   /** The caller's own reading of `ZeropsThreadModel.running` (`ChatView`) — the map never derives this itself. */
   readonly runningToolLabel?: string | undefined;
 }) {
@@ -161,6 +164,7 @@ export function ZeropsPanel({
       )
     ) : (
       <ZeropsAgentAuthCard
+        signInDemanded={agentSignInDemanded}
         onRecheck={(agentId, loginId) => {
           if (threadRef === null) return;
           void checkAuth({

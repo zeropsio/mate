@@ -775,59 +775,6 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
     }),
   );
 
-  it.effect(
-    "engine archive membership replaces parked V1 membership and keeps project metadata",
-    () =>
-      Effect.gen(function* () {
-        const query = yield* ProjectionSnapshotQuery;
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`DELETE FROM projection_threads`;
-        yield* sql`DELETE FROM projection_projects`;
-        yield* sql`INSERT INTO projection_projects
-        (project_id, title, workspace_root, scripts_json, created_at, updated_at)
-        VALUES ('archive-engine-project', 'Gus', '/tmp/gus', '[]',
-          '2026-10-09T00:00:00.000Z', '2026-10-09T00:00:00.000Z')`;
-        for (const [id, archivedAt] of [
-          ["engine-archived", null],
-          ["v1-archived", "2026-10-09T00:00:00.000Z"],
-        ] as const) {
-          yield* sql`INSERT INTO projection_threads
-          (thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
-            created_at, updated_at, archived_at)
-          VALUES (${id}, 'archive-engine-project', ${id}, '{"provider":"codex","model":"gpt-5-codex"}',
-            'full-access', 'default', '2026-10-09T00:00:00.000Z', '2026-10-09T00:00:00.000Z', ${archivedAt})`;
-        }
-        const archived = yield* query.getArchivedShellSnapshot([
-          { conversationId: "engine-archived", archivedAt: "2026-10-09T01:00:00.000Z" },
-        ]);
-        assert.deepStrictEqual(
-          archived.threads.map(({ id, projectId, title, archivedAt }) => ({
-            id,
-            projectId,
-            title,
-            archivedAt,
-          })),
-          [
-            {
-              id: ThreadId.make("engine-archived"),
-              projectId: ProjectId.make("archive-engine-project"),
-              title: "engine-archived",
-              archivedAt: "2026-10-09T01:00:00.000Z",
-            },
-          ],
-        );
-        assert.deepStrictEqual(
-          archived.projects.map(({ id, title }) => ({ id, title })),
-          [{ id: "archive-engine-project", title: "Gus" }],
-        );
-        assert.deepStrictEqual((yield* query.getArchivedShellSnapshot([])).threads, []);
-        assert.deepStrictEqual(
-          (yield* query.getArchivedShellSnapshot()).threads.map(({ id }) => id),
-          ["v1-archived"],
-        );
-      }),
-  );
-
   it.effect("keeps archived threads out of the main shell snapshot", () =>
     Effect.gen(function* () {
       const snapshotQuery = yield* ProjectionSnapshotQuery;

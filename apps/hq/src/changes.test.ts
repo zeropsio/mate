@@ -379,6 +379,18 @@ describe("a Mate's changes in HQ", () => {
             "Shop",
           );
           yield* first.call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
+          // Opening the change must follow the queued main-moved event this test orders first.
+          yield* Stream.runHead(
+            first.gitHost.recorded.pipe(
+              Stream.filterEffect(() =>
+                Effect.map(
+                  first.sql`SELECT 1 FROM hq_git_event
+                    WHERE app_id::text = ${appId} AND repo = 'appdev' AND kind = 'main_moved'`,
+                  (rows) => rows.length > 0,
+                ),
+              ),
+            ),
+          );
           yield* first.call("POST", "/api/mate/changes", {
             headers: auth,
             body: { repo: "appdev", title: "Mate: appdev" },

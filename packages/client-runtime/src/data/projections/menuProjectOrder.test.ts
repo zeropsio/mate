@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
+import { AtomRegistry } from "effect/reactivity";
+import { makeAccountStore } from "../store.ts";
+import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { ThreadId, TurnId } from "@t3tools/contracts";
 import { attention } from "../__fixtures__/mateAttention.ts";
 import {
   activeMenuProject,
+  menuWorkRead,
   menuProjectOpening,
   type MenuProjectRecord,
 } from "./menuProjectOrder.ts";
@@ -18,9 +22,27 @@ const input = (
   projects: ReadonlyArray<MenuProjectRecord>,
   order = "name",
   scope = "account/org",
-) => ({ scope, open: true, order, projects, now, openProjectId: undefined });
+) => ({ ready: true, scope, open: true, order, projects, now, openProjectId: undefined });
 
 describe("menu project opening projection", () => {
+  it("A read baseline with no conversation settles the opening; unread work scopes do not", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    const structure = {
+      apps: [],
+      ungrouped: [{ projectId: "mate", name: "Mate", mate: { face: "" } }],
+    };
+    seedHqNavigation(store, "org", { structure });
+    const read = store.data.project(menuWorkRead, "org");
+    expect(registry.get(read)).toBe(false);
+    seedHqNavigation(store, "org", {
+      structure,
+      mates: { mate: { presence: { online: false, since: old, overview: "none" } } },
+    });
+    expect(registry.get(read)).toBe(true);
+    registry.dispose();
+  });
+
   it("HQ's finished results and current background work count even when the main chat has no activity", () => {
     const value = attention("run", 1);
     const record = (live: boolean, working: number, completedAt?: string): MenuProjectRecord => ({

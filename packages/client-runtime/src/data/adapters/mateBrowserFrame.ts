@@ -47,6 +47,10 @@ export function makeMateBrowserFrameSink({
     retained.kind === "known" && retained.value.kind === "stream"
       ? retained.value.state
       : INITIAL_BROWSER_STREAM_STATE;
+  let frameAtMs =
+    retained.kind === "known" && retained.value.kind === "stream"
+      ? retained.value.frameAtMs
+      : undefined;
   let currentFrame = false;
   let observedCalls: ReadonlyMap<string, number> = new Map();
   let based = false;
@@ -80,8 +84,10 @@ export function makeMateBrowserFrameSink({
         next.frame === undefined && state.frame !== undefined
           ? { ...next, frame: state.frame }
           : next;
-      if (event.type === "frame") currentFrame = true;
-      else if (event.type === "state" && event.status !== "live") currentFrame = false;
+      if (event.type === "frame") {
+        currentFrame = true;
+        frameAtMs = now;
+      } else if (event.type === "state" && event.status !== "live") currentFrame = false;
       const rows: Row[] = [];
       if (
         event.type !== "state" &&
@@ -121,7 +127,7 @@ export function makeMateBrowserFrameSink({
       rows.unshift({
         family: "mateBrowserFrame",
         id: streamId,
-        value: { kind: "stream", state, currentFrame, observedCalls },
+        value: { kind: "stream", state, currentFrame, observedCalls, frameAtMs },
         revision: { kind: "mate-link", sequence: ++sequence },
       });
       if (!based) {

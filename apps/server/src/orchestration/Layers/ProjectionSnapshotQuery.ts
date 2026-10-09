@@ -652,9 +652,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
   });
 
   const listArchivedThreadRows = SqlSchema.findAll({
-    Request: Schema.UndefinedOr(Schema.Array(Schema.String)),
+    Request: Schema.Void,
     Result: ProjectionThreadDbRowSchema,
-    execute: (ids) =>
+    execute: () =>
       sql`
         SELECT
           thread_id AS "threadId",
@@ -694,7 +694,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE deleted_at IS NULL
-          AND ${ids === undefined ? sql`archived_at IS NOT NULL` : sql.in("thread_id", ids)}
+          AND archived_at IS NOT NULL
         ORDER BY project_id ASC, archived_at DESC, thread_id DESC
       `,
   });
@@ -2911,13 +2911,7 @@ pending_approval_requests AS (
         }),
       );
 
-  const getArchivedShellSnapshot: ProjectionSnapshotQueryShape["getArchivedShellSnapshot"] = (
-    archived,
-  ) => {
-    const archivedAt =
-      archived === undefined
-        ? undefined
-        : new Map(archived.map((entry) => [entry.conversationId, entry.archivedAt]));
+  const getArchivedShellSnapshot: ProjectionSnapshotQueryShape["getArchivedShellSnapshot"] = () => {
     return sql
       .withTransaction(
         Effect.all([
@@ -2929,7 +2923,7 @@ pending_approval_requests AS (
               ),
             ),
           ),
-          listArchivedThreadRows(archived?.map((row) => row.conversationId)).pipe(
+          listArchivedThreadRows(undefined).pipe(
             Effect.mapError(
               toPersistenceSqlOrDecodeError(
                 "ProjectionSnapshotQuery.getArchivedShellSnapshot:listThreads:query",
@@ -3033,8 +3027,7 @@ pending_approval_requests AS (
                 latestTurn: latestTurnByThread.get(row.threadId) ?? null,
                 createdAt: row.createdAt,
                 updatedAt: row.updatedAt,
-                archivedAt:
-                  archivedAt === undefined ? row.archivedAt : archivedAt.get(row.threadId)!,
+                archivedAt: row.archivedAt,
                 settledOverride: row.settledOverride,
                 settledAt: row.settledAt,
                 unsettledAt: row.unsettledAt,

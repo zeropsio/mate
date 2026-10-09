@@ -1061,7 +1061,9 @@ function WorkspaceFilePreviewPanel({
             className={cn(
               "flex min-h-0 shrink-0 bg-background",
               previewPath
-                ? "w-[min(22rem,46%)] min-w-64 border-l border-border/60"
+                ? // The code is what the person came for: the tree keeps a
+                  // third of a narrow panel, not half of it.
+                  "w-[min(18rem,32%)] min-w-40 border-l border-border/60"
                 : "min-w-0 flex-1",
             )}
           >

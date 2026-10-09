@@ -19,7 +19,7 @@ import { create, type ReactTestInstance, type ReactTestRenderer } from "react-te
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ProjectId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId, TurnId, type CrewSnapshot } from "@t3tools/contracts";
 import type { CrewDigest } from "@t3tools/shared/mateLink";
 
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
@@ -4148,6 +4148,101 @@ describe("automatic project sections", () => {
     vi.restoreAllMocks();
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "newest", ProjectOrderSchema);
     setLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, [], ProjectCustomOrderSchema);
+  });
+
+  // Decision: the shipped rules stay; fix only where real data defeats them.
+  it("The opening classifies HQ's first work baseline before freezing sections; later work cannot move them", () => {
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const registry = AtomRegistry.make();
+    const structure = {
+      apps: rows.map((row) => ({
+        id: row.project.hq!.appId!,
+        name: row.project.hq!.appName!,
+        projects: [
+          {
+            projectId: row.project.id,
+            name: row.project.name,
+            kind: "mate" as const,
+            mate: { face: "" },
+          },
+        ],
+      })),
+      ungrouped: [],
+    };
+    const hq = mountHqNavigation(registry, "org", { structure });
+    function Menu() {
+      const getActivity = useMateRowActivity(useMatesActivity(true));
+      return menu(getActivity);
+    }
+    const tree = mount(
+      <RegistryContext.Provider value={registry}>
+        <Menu />
+      </RegistryContext.Provider>,
+    );
+    const sections = () =>
+      Object.fromEntries(
+        tree.root
+          .findAll(
+            (node) => node.type === "section" && node.props["data-zerops-group"] !== undefined,
+          )
+          .map((node) => [
+            node.props["data-zerops-group"],
+            node.props["data-zerops-project-section"],
+          ]),
+      );
+    expect(sections()).toEqual({ links: "other", aaa: "other" });
+    // Live reload: placements arrive first; attention follows with this recorded completion.
+    const completedAt = "2026-10-07T12:04:12.943Z";
+    const told = (at: string, revision: number) => ({
+      source: { environmentId: EnvironmentId.make("env"), epoch: 1, incarnation: "run", revision },
+      mainThreadId: ThreadId.make("conversation"),
+      lastThreadId: ThreadId.make("conversation"),
+      working: 0,
+      waiting: 0,
+      results: [
+        { threadId: ThreadId.make("conversation"), turnId: TurnId.make("turn"), completedAt: at },
+      ],
+      questions: [],
+      truncated: false,
+    });
+    const mates = Object.fromEntries(
+      rows.map((row) => [
+        row.project.id,
+        {
+          presence: { online: true, since: completedAt, overview: "live" as const },
+        },
+      ]),
+    );
+    act(() =>
+      hq.seed({
+        structure,
+        mates,
+        attention: {
+          [LINKS_MATE.project.id]: told(completedAt, 3),
+          [CRM_DEV.project.id]: told("2026-09-30T02:00:49.214Z", 3),
+        },
+      }),
+    );
+    expect(
+      sections(),
+      "ASSERTION: recent work arriving in the opening baseline belongs in Active",
+    ).toEqual({ links: "active", aaa: "other" });
+    expect(text(tree.root)).toContain("Active");
+    expect(text(tree.root)).toContain("Other projects");
+    act(() =>
+      hq.seed({
+        structure,
+        mates,
+        attention: {
+          [LINKS_MATE.project.id]: told(completedAt, 4),
+          [CRM_DEV.project.id]: told(completedAt, 4),
+        },
+      }),
+    );
+    expect(sections(), "ASSERTION: background work preserves the completed opening").toEqual({
+      links: "active",
+      aaa: "other",
+    });
   });
 
   // Decision: the owner asked for the most straightforward first iteration; proposal followed as written.

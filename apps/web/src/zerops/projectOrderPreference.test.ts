@@ -205,6 +205,7 @@ describe("automatic sections keep account preferences", () => {
       mates: [{ projectId: id, face: "idle" }],
     }));
     const input = {
+      ready: true,
       scope: "first/org",
       open: true,
       order: "custom",

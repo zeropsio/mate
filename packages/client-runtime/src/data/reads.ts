@@ -1,3 +1,4 @@
+import { menuWorkRead } from "./projections/menuProjectOrder.ts";
 import { mateHealth } from "./projections/mateHealth.ts";
 /**
  * What a screen, and the account runtime's derivations outside React, may reach of the account's
@@ -473,6 +474,12 @@ export const shownAttentionProjectsAtom = Atom.make((get): ReadonlyArray<string>
 export const shownMatesAttentionAtom = Atom.make((get) => {
   const account = get(accountReadsAtom);
   return account?.orgId == null ? {} : get(account.data.project(matesAttention, account.orgId));
+});
+
+export const shownMenuWorkReadAtom = Atom.make((get) => {
+  const account = get(accountReadsAtom);
+  // Injected rows without an account have no remote baseline to await.
+  return account?.orgId == null ? true : get(account.data.project(menuWorkRead, account.orgId));
 });
 
 export const shownHqMenuNavigationAtom = Atom.make(

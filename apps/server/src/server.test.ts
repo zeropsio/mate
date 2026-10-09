@@ -20,6 +20,7 @@ import {
   GitCommandError,
   KeybindingRule,
   MessageId,
+  MATE_ENGINE_PROTOCOLS,
   ExternalLauncherCommandNotFoundError,
   OrchestrationThreadDetailSnapshot,
   type OrchestrationShellStreamItem,
@@ -72,6 +73,7 @@ import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 import * as Tracer from "effect/Tracer";
 import { ChildProcessSpawner } from "effect/process";
@@ -2596,6 +2598,102 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(response.status, 403);
       assert.equal(body.reason, "zerops_turn_refused");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "An engine-native archived conversation is listed without a legacy projection row",
+    () =>
+      Effect.gen(function* () {
+        const w = yield* makeEngineWorld({ driver: "codex" });
+        yield* w.boot;
+        yield* w.tell({ _tag: "Send", text: "Native archive witness" });
+        yield* w.tell({ _tag: "Archive" });
+        const engine = yield* w.engine;
+        assert.deepEqual(
+          yield* w.within(
+            Effect.flatMap(
+              SqlClient.SqlClient,
+              (sql) => sql`SELECT name FROM sqlite_master WHERE name = 'projection_threads'`,
+            ),
+          ),
+          [],
+        );
+        yield* buildAppUnderTest({
+          config: { mateEngine: "mate" },
+          layers: { mateEngine: yield* w.engine },
+        });
+        const wsUrl = yield* getWsServerUrl("/ws");
+        yield* withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const snapshot = yield* client[WS_METHODS.engineGetArchivedShellSnapshot]({
+              protocol: MATE_ENGINE_PROTOCOLS[0]!,
+            });
+            assert.deepEqual(
+              snapshot.threads.map(({ id, title }) => ({ id, title })),
+              [{ id: ThreadId.make(imageConversation), title: "Native archive witness" }],
+              "ASSERTION: the engine archive lists a native conversation without a legacy projection row",
+            );
+            assert.isNotNull(snapshot.threads[0]?.archivedAt);
+            // Decision: server read only; P2 (open archived row read-only) stays card archive-row-open (owner).
+            assert.isTrue((yield* engine.conversation(imageConversation))?.archived);
+            assert.deepEqual(
+              snapshot.projects.flatMap((project) =>
+                snapshot.threads
+                  .filter((thread) => thread.projectId === project.id)
+                  .map(({ id }) => id),
+              ),
+              [ThreadId.make(imageConversation)],
+              "ASSERTION: Settings can group the native archived row under its project",
+            );
+          }),
+        );
+        yield* w.shutdown;
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "engine archive membership replaces parked V1 membership and keeps project metadata",
+    () =>
+      Effect.gen(function* () {
+        const w = yield* makeEngineWorld({ driver: "codex" });
+        yield* w.boot;
+        yield* w.tell({ _tag: "Send", text: "Engine archive membership" });
+        const config = yield* buildAppUnderTest({
+          config: { mateEngine: "mate" },
+          layers: {
+            mateEngine: yield* w.engine,
+            projectionSnapshotQuery: {
+              getArchivedShellSnapshot: () =>
+                Effect.die("The engine archive must not read V1 rows"),
+            },
+          },
+        });
+        const wsUrl = yield* getWsServerUrl("/ws");
+        yield* withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            for (const archived of [true, false, true]) {
+              yield* w.tell({ _tag: archived ? "Archive" : "Unarchive" });
+              const snapshot = yield* client[WS_METHODS.engineGetArchivedShellSnapshot]({
+                protocol: MATE_ENGINE_PROTOCOLS[0]!,
+              });
+              assert.deepEqual(
+                snapshot.threads.map(({ id }) => id),
+                archived ? [ThreadId.make(imageConversation)] : [],
+              );
+              assert.deepEqual(
+                snapshot.projects.map(({ id, title, workspaceRoot }) => ({
+                  id,
+                  title,
+                  workspaceRoot,
+                })),
+                archived ? [{ id: "mate-engine", title: "Mate", workspaceRoot: config.cwd }] : [],
+              );
+              if (archived) assert.equal(snapshot.threads[0]?.projectId, "mate-engine");
+            }
+          }),
+        );
+        yield* w.shutdown;
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect(

@@ -661,7 +661,7 @@ describe("a client's calls to an engine conversation", () => {
           assert.strictEqual(accepted._tag, "Accepted");
           const rows = yield* wire.readArchived(protocol);
           assert.deepStrictEqual(
-            rows.map((row) => row.conversationId),
+            rows.map((row) => row.view.conversationId),
             archived ? [mate] : [],
           );
           if (archived) {

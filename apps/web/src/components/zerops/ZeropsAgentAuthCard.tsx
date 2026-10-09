@@ -12,9 +12,8 @@ import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/a
  * terminal or the RPC layer itself, so it renders with `renderToStaticMarkup`
  * alone. `useAgentLogin` is what the handler actually does (asks the server
  * to run the login and opens the terminal panel so the user can watch it);
- * deciding whether the card is worth showing at all is
- * `zeropsAgentAuthNeedsAttention` (`@t3tools/client-runtime/zerops/agentLogin`), left to the
- * caller so this stays pure.
+ * whether its header demands a sign-in is the conversation's admission
+ * (`agentAdmission`), handed in as `signInDemanded`: the Mate's own agent, not any agent.
  *
  * Crew mode's *Runs on* (PRD §4.3) makes it a list of logins, not two fixed
  * agents: under each agent's own row come its further logins — a second
@@ -50,7 +49,6 @@ import {
   agentAuthLabel,
   agentLoginLabel,
   classifyAgentRowLogin,
-  zeropsAgentAuthNeedsAttention,
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwnership";
@@ -68,6 +66,7 @@ const AGENT_SIGN_IN_LABELS: Record<ZeropsAgentId, string> = {
 
 export function ZeropsAgentAuthCard({
   snapshot,
+  signInDemanded = false,
   viewerSubject,
   onSignIn,
   onCancel,
@@ -79,6 +78,13 @@ export function ZeropsAgentAuthCard({
   ...loginProps
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
+  /**
+   * Whether the conversation's own agent cannot work until somebody signs it in
+   * (`agentAdmission(...).attention`). Another agent's missing sign-in only
+   * offers its row's button: Milo, signed in to Claude, once sat under
+   * "Authorize coding agents" because Codex was not.
+   */
+  readonly signInDemanded?: boolean | undefined;
   /** The signed-in Zerops user id, so a row can say whose login it is (D6). */
   readonly viewerSubject?: string | undefined;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
@@ -90,13 +96,13 @@ export function ZeropsAgentAuthCard({
   readonly signOutError?: ReadonlyMap<ZeropsAgentId, string> | undefined;
 } & ZeropsLoginsProps) {
   // This is where agents are managed, so it stays up as long as the feed is
-  // available; the header alone stops demanding once nothing needs it.
-  const needsAttention = zeropsAgentAuthNeedsAttention(snapshot);
+  // available; the header alone demands, and only while the conversation's own
+  // agent needs a sign-in.
   return (
     <FlatCard className="@container overflow-hidden" data-zerops-agent-auth-card>
       <header className="border-b border-border/60 px-4 py-2.5">
         <h3 className="text-sm font-semibold text-foreground">
-          {needsAttention ? "Authorize coding agents" : "Coding agents"}
+          {signInDemanded ? "Authorize coding agents" : "Coding agents"}
         </h3>
         <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
           Sign in inside this Zerops Control Plane. Access is shared by this project.

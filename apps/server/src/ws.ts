@@ -136,6 +136,7 @@ import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
+import { engineArchiveSnapshotOf } from "./zerops/engineOverview.ts";
 import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
 import { withoutUnworkableSlashCommands } from "./zerops/providerSlashCommands.ts";
 import { ZeropsTurnAdmission } from "./zerops/ZeropsTurnAdmission.ts";
@@ -1636,9 +1637,7 @@ const makeWsRpcLayer = (
           ),
         [WS_METHODS.engineGetArchivedShellSnapshot]: (input) =>
           mateEngine.wire.readArchived(input.protocol).pipe(
-            Effect.flatMap((archived) =>
-              projectionSnapshotQuery.getArchivedShellSnapshot(archived),
-            ),
+            Effect.map((archived) => engineArchiveSnapshotOf(archived, config.cwd)),
             Effect.mapError(
               (cause) =>
                 new OrchestrationGetSnapshotError({

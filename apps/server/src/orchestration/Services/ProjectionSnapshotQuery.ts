@@ -116,10 +116,10 @@ export interface ProjectionSnapshotQueryShape {
    * This query is separate from the main shell snapshot so archived threads
    * are never bootstrapped into normal navigation state.
    */
-  readonly getArchivedShellSnapshot: (
-    /** When supplied, the owning engine's complete archive replaces V1 membership and timestamps. */
-    archived?: ReadonlyArray<{ readonly conversationId: string; readonly archivedAt: string }>,
-  ) => Effect.Effect<OrchestrationShellSnapshot, ProjectionRepositoryError>;
+  readonly getArchivedShellSnapshot: () => Effect.Effect<
+    OrchestrationShellSnapshot,
+    ProjectionRepositoryError
+  >;
 
   /**
    * Search active thread navigation metadata, user messages, and canonical

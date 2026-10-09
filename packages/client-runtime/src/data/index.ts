@@ -212,6 +212,7 @@ export {
   shownHqMatesAtom,
   shownHqNavigationAtom,
   shownHqMenuNavigationAtom,
+  shownMenuWorkReadAtom,
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
@@ -315,6 +316,7 @@ export {
   type DatabaseCatalogRead,
 } from "./projections/database.ts";
 export { emptyDatabasePanel, databaseTreeTarget } from "./families/database.ts";
+export { DATABASE_FAILURE_UNEXPLAINED } from "./adapters/databaseFailure.ts";
 export {
   mateBrowserFrameFamily,
   mateBrowserFrameScope,
@@ -327,6 +329,8 @@ export {
   mateBrowserStream,
   UNKNOWN_BROWSER_FRAME,
   type MateBrowserFrameRead,
+  type MateBrowserLastSeen,
+  type MateBrowserStreamRead,
 } from "./projections/mateBrowserFrame.ts";
 export {
   makeMateBrowserFrameWire,

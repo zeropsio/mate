@@ -8,6 +8,13 @@ const isConsoleError = Schema.is(ZeropsDataConsoleError);
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 const isFault = (value: unknown): value is StreamFault =>
   typeof value === "object" && value !== null && "outcome" in value && "message" in value;
+/**
+ * What a failure says when it is not the console's own: no code, no reason. The
+ * commonest is a Mate server older than the request it was sent, which fails to
+ * decode it (Milo 0.15.11 asked for a 0.15.13 summary).
+ */
+export const DATABASE_FAILURE_UNEXPLAINED = "Something went wrong.";
+
 export function classifyDatabaseFailure(error: unknown): StreamFault {
   if (isFault(error)) return error;
   if (isAuthorizationError(error))
@@ -24,5 +31,5 @@ export function classifyDatabaseFailure(error: unknown): StreamFault {
       message: describeDataConsoleError(error),
       code: error.code,
     };
-  return { outcome: "transient", message: "Something went wrong." };
+  return { outcome: "transient", message: DATABASE_FAILURE_UNEXPLAINED };
 }
