@@ -887,7 +887,13 @@ export function liveRunFold(conversation: string, run: string): "watched" | "fol
 }
 
 type RunFoldInput =
-  | { readonly kind: "live" }
+  | {
+      readonly kind: "live";
+      /** A run goes on in a card that had settled (an engine card draws each run that joins it). */
+      readonly rejoined?: boolean;
+      /** The run waits on the person: their answer or approval. */
+      readonly asks?: boolean;
+    }
   | {
       readonly kind: "settled";
       readonly wasLive: boolean;
@@ -901,6 +907,10 @@ type RunFoldInput =
 function nextRunFold(fold: RunFold, liveChoice: RunFold, input: RunFoldInput): RunFold {
   switch (input.kind) {
     case "live":
+      // A run that goes on by itself in a card folded as it settled (the run a job's end woke) is
+      // drawn in the folded card's line: it opened 532 px in one frame and scrolled the page 768
+      // px (Milo's stress run). One that asks the person opens it, for its question.
+      if (input.rejoined === true && input.asks !== true && fold === "folded") return "folded";
       return liveChoice;
     case "settled":
       if (fold !== "watched") return fold;

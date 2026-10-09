@@ -3807,10 +3807,20 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const historyRoomsRef = useRef<Rooms | null>(null);
   // What its parts' motions share (`RunMotion`).
   const motionRef = useRef<RunMotion>({ slot: null, budget: { at: -1, grow: 0, shrink: 0 } });
+  // What in it involves the person: a question it asked, their words in it.
+  const personKeys = useMemo(
+    () =>
+      row.items.flatMap((item) =>
+        item.kind === "question" || item.kind === "person" ? [item.key] : [],
+      ),
+    [row.items],
+  );
   const { fold, foldNow, settling, motionAllowed } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
     live: row.live,
+    asks: row.now?.kind === "waiting",
+    personKeys,
     readingRef,
     rootRef,
     aboveRef,
@@ -4232,6 +4242,8 @@ function useRunFold({
   conversation,
   run,
   live,
+  asks,
+  personKeys,
   readingRef,
   rootRef,
   aboveRef,
@@ -4240,6 +4252,10 @@ function useRunFold({
   readonly conversation: string;
   readonly run: string;
   readonly live: boolean;
+  /** Its run waits on the person. */
+  readonly asks: boolean;
+  /** Its items that involve the person: a run that goes on in it with a new one opens it. */
+  readonly personKeys: ReadonlyArray<string>;
   readonly readingRef: { readonly current: boolean };
   readonly rootRef: { readonly current: HTMLElement | null };
   readonly aboveRef: { readonly current: HTMLElement | null };
@@ -4250,10 +4266,15 @@ function useRunFold({
   readonly settling: boolean;
   readonly motionAllowed: boolean;
 } {
-  const read = () => runFoldOf(conversation, run, live ? "watched" : "folded");
+  // A card drawn settled first is folded until it says otherwise, a run going on in it too: it
+  // opens only as `observe` decides, never for a frame before.
+  const [bornLive] = useState(live);
+  const read = () => runFoldOf(conversation, run, live && bornLive ? "watched" : "folded");
   const stored = useSyncExternalStore(subscribeRunFolds, read, read);
   const fold = stored;
   const wasLiveRef = useRef(live);
+  // What of the person it held while it stood settled.
+  const settledPersonKeysRef = useRef<ReadonlySet<string>>(new Set());
   // The draw where the run settled, before its fold is measured: the card
   // holds its live height through it, or it jumps first.
   const [drawnLive, setDrawnLive] = useState(live);
@@ -4279,7 +4300,11 @@ function useRunFold({
       conversation,
       run,
       live
-        ? { kind: "live" }
+        ? {
+            kind: "live",
+            rejoined: !wasLive,
+            asks: asks || personKeys.some((key) => !settledPersonKeysRef.current.has(key)),
+          }
         : {
             kind: "settled",
             wasLive,
@@ -4293,7 +4318,11 @@ function useRunFold({
     wasLiveRef.current = live;
     setDrawnLive(live);
     observe(wasLive);
-  }, [conversation, run, live, readingRef]);
+    // A run that asks the person opens the card it went on in folded.
+  }, [conversation, run, live, asks, readingRef]);
+  useLayoutEffect(() => {
+    if (!live) settledPersonKeysRef.current = new Set(personKeys);
+  }, [live, personKeys]);
   useLayoutEffect(() => {
     if (fold !== "folding") return;
     const from = settledAtRef.current;
