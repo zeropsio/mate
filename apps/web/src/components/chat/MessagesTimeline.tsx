@@ -794,14 +794,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         ...input,
         viewport: () => listRef.current?.getScrollableNode() ?? null,
         rows: () => {
+          const viewport = listRef.current?.getScrollableNode();
           const state = listRef.current?.getState();
-          return (
-            state?.data.flatMap((_, index) => {
-              const row = state.elementAtIndex(index);
-              return row instanceof HTMLElement
+          if (!viewport || !state) return [];
+          // Read mounted holders, including a folding row outside the current buffered range.
+          return [...viewport.querySelectorAll<HTMLElement>("[data-timeline-root]")].flatMap(
+            (root) => {
+              const row = root.parentElement;
+              const key = root.dataset.timelineRoot;
+              const index = key === undefined ? undefined : state.indexByKey(key);
+              return row !== null && index !== undefined
                 ? [{ row, position: state.positionAtIndex(index), size: state.sizeAtIndex(index) }]
                 : [];
-            }) ?? []
+            },
           );
         },
         arriving: () => arrivingRef.current,
@@ -1419,7 +1424,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // from TimelineRowCtx, which propagates through LegendList's memo.
   const renderItem = useCallback(
     ({ item }: { item: MessagesTimelineRow }) => (
-      <div className="mx-auto w-full min-w-0 max-w-3xl overflow-x-clip" data-timeline-root="true">
+      <div
+        className="mx-auto w-full min-w-0 max-w-3xl overflow-x-clip"
+        data-timeline-root={item.id}
+      >
         <TimelineRowContent row={item} />
       </div>
     ),

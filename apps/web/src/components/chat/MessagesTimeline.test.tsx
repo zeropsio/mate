@@ -3244,6 +3244,7 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
     { follows: false, clamp: false, interruption: "cancel" },
     { follows: false, clamp: false, interruption: "unmount" },
     { follows: true, clamp: true, interruption: "replay" },
+    { follows: true, clamp: true, interruption: "long-history" },
   ])(
     "the list supplies fold geometry and preserves its follow permission ($follows, $clamp, $interruption)",
     async ({ follows, clamp, interruption }) => {
@@ -3276,11 +3277,14 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
       // No ancestor class or follow attribute: the list's ref and verdict own this viewport.
       const viewport = document.body.appendChild(document.createElement("div"));
       const holder = viewport.appendChild(document.createElement("div"));
-      const card = holder.appendChild(document.createElement("div"));
+      const root = holder.appendChild(document.createElement("div"));
+      const card = root.appendChild(document.createElement("div"));
       card.dataset.cardSlice = "";
-      if (interruption === "carry") card.style.translate = "0 30px";
+      if (interruption === "carry" || interruption === "long-history")
+        card.style.translate = "0 30px";
       const above = card.appendChild(document.createElement("div"));
       const below = viewport.appendChild(document.createElement("div"));
+      const belowRoot = below.appendChild(document.createElement("div"));
       let laid = 500;
       const height = () => Number.parseFloat(above.style.height) || 0;
       holder.getBoundingClientRect = () =>
@@ -3313,13 +3317,30 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
         clientHeight: { value: 800 },
       });
       let data: Array<{ id: string }> = [];
+      const foldingIndex = interruption === "long-history" ? 8_000 : 0;
+      const belowIndex = foldingIndex + 1;
+      let unmountedLookups = 0;
       const listRef = {
         current: {
           getScrollableNode: () => viewport,
           getState: () => ({
             data,
-            elementAtIndex: (index: number) => [holder, below][index],
-            positionAtIndex: (index: number) => (index === 0 ? 100 : 200 + height()),
+            // The folding row remains mounted outside the current buffered range.
+            startBuffered: belowIndex,
+            endBuffered: belowIndex,
+            indexByKey: (key: string) =>
+              key === root.dataset.timelineRoot
+                ? foldingIndex
+                : key === belowRoot.dataset.timelineRoot
+                  ? belowIndex
+                  : undefined,
+            elementAtIndex: (index: number) => {
+              if (index === foldingIndex) return holder;
+              if (index === belowIndex) return below;
+              unmountedLookups += 1;
+              return undefined;
+            },
+            positionAtIndex: (index: number) => (index === foldingIndex ? 100 : 200 + height()),
             sizeAtIndex: () => height() + 40,
             isWithinMaintainScrollAtEndThreshold: follows,
           }),
@@ -3345,6 +3366,14 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
           renderer = create(timeline());
         });
         data = renderer!.root.findByType(LegendList).props.data;
+        root.dataset.timelineRoot = data[0]!.id;
+        belowRoot.dataset.timelineRoot = data[1]!.id;
+        if (interruption === "long-history") {
+          const mounted = data;
+          data = Array.from({ length: 10_000 }, (_, index) => ({ id: `history:${index}` }));
+          data[foldingIndex] = mounted[0]!;
+          data[belowIndex] = mounted[1]!;
+        }
         const done = vi.fn();
         const execute = foldContext.onFoldWork!;
         let cancel = () => {};
@@ -3359,6 +3388,11 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
             }
             // Commit the list's pending placement after the executor read its geometry.
             laid = 200 + height();
+            if (interruption === "long-history")
+              expect(
+                unmountedLookups,
+                "ASSERTION: fold placement never probes unmounted history rows",
+              ).toBe(0);
             if (height() < 300 && height() > 0 && follows)
               expect(
                 Math.abs(

@@ -34,7 +34,8 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
           const chat = mateChat(s);
           const wire = chat.fixture();
           wire.history("Watch this work settle");
-          for (let i = 0; i < 10; i++)
+          const historyLength = mode === "following" ? 200 : 10;
+          for (let i = 0; i < historyLength; i++)
             wire.exchange(`Earlier ask ${i}`, "Earlier conversation stays readable.\n\n".repeat(8));
           wire.message("fold-ask", "user", "Fold this run", "fold-run");
           wire.run("fold-run", "running");
@@ -86,6 +87,13 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
               { polling: "raf", timeout: 8000 },
             ),
           );
+          if (mode === "following")
+            expect(
+              yield* Effect.promise(() =>
+                s.page.$$eval(".timeline-legend-list [data-timeline-root]", (rows) => rows.length),
+              ),
+              "ASSERTION: long conversation folding runs with history rows unmounted",
+            ).toBeLessThan(historyLength);
           if (mode === "opened command") {
             yield* Effect.promise(async () => {
               await s.page
@@ -134,12 +142,12 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
                 const card = [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1);
                 const inner = card?.querySelector<HTMLElement>("[data-run-scroll]");
                 const above = card?.querySelector<HTMLElement>(".run-above");
-                const row = card?.closest<HTMLElement>("[data-timeline-root]");
                 const box = card
                   ?.querySelector<HTMLElement>(":scope > .run-now .run-now-words")
                   ?.getBoundingClientRect();
-                const next = row?.parentElement?.nextElementSibling
-                  ?.querySelector("[data-timeline-root] > [data-timeline-row-kind] > *")
+                // Mounted containers are pooled; DOM sibling order is not timeline order.
+                const next = outer
+                  ?.querySelector('[data-timeline-row-kind="outcome"] .run-band')
                   ?.getBoundingClientRect();
                 if (outer && card)
                   trace.frames.push({
