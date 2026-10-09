@@ -637,6 +637,40 @@ const transitions: ReadonlyArray<Row> = [
     run: { n: 2, state: "running", joins: 1, cause: "self", principal: ana },
   },
   {
+    // The driver took the message as its next turn: unowned, its end would be dropped and the next
+    // send, steered into it, would never end.
+    name: "a message steered in as its turn ended opens a turn of its own, run as the turn it steered",
+    given: [...runningWithSteer, { _tag: "Steer", runId: r(1), text: "more" }, turnEnded],
+    when: signal({
+      kind: "turn-started",
+      turn: `${r(1)}/i/2` as TurnHandle,
+      origin: "engine",
+      providerTurnId: "T2",
+    }),
+    run: { n: 2, state: "running", joins: 1, cause: "self", principal: ana },
+  },
+  {
+    name: "the end of a turn a late steer opened ends the run the engine holds it as",
+    given: [
+      ...runningWithSteer,
+      { _tag: "Steer", runId: r(1), text: "more" },
+      turnEnded,
+      signal({
+        kind: "turn-started",
+        turn: `${r(1)}/i/2` as TurnHandle,
+        origin: "engine",
+        providerTurnId: "T2",
+      }),
+    ],
+    when: signal({
+      kind: "turn-ended",
+      turn: `${r(1)}/i/2` as TurnHandle,
+      outcome: { kind: "completed" },
+      source: "agent",
+    }),
+    run: { n: 2, state: "ended", end: "completed" },
+  },
+  {
     name: "the watchdog marks a silent run unresponsive and never ends it",
     given: running,
     when: fired("watchdog", r(1), T0 + WATCHDOG_SILENCE_MS),

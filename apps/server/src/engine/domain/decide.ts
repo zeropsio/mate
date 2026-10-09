@@ -1715,8 +1715,11 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         if (run.state === "sending") markStarted(b, run, signal.providerTurnId, signal.turn);
         return;
       }
-      if (signal.origin !== "self") return;
-      const joined = selfJoins(b, signal.reportsOn ?? null);
+      // A steer that met no running turn (its run's turn ended first) opened one of its own: the
+      // engine runs it as the agent's own turn on that run's behalf.
+      const steered = steerOpened(b, signal.turn);
+      if (signal.origin !== "self" && steered === undefined) return;
+      const joined = selfJoins(b, signal.reportsOn ?? steered ?? null);
       // Nobody to act for (no run before it): the turn is not the engine's to record as a run.
       if (joined === undefined) return;
       const active = activeRun(b.state);
@@ -2065,6 +2068,15 @@ const selfJoins = (
   const joined = joins === null ? undefined : b.state.runs[joins];
   if (joined === undefined || joined.principal.kind === "engine") return undefined;
   return { joins: joined.id, principal: joined.principal };
+};
+
+/** The run a steer still in flight was asked into, when `turn` is that steer's message. */
+const steerOpened = (b: StepBuilder, turn: TurnHandle): RunId | undefined => {
+  const prefix = `${turn}/e/provider.steer/`;
+  const effect = Object.values(b.state.effects).find(
+    (entry) => entry.kind === "provider.steer" && entry.id.startsWith(prefix),
+  );
+  return effect?.runId ?? undefined;
 };
 
 const selfStarted = (
