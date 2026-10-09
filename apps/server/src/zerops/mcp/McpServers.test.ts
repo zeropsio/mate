@@ -10,7 +10,9 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 
+import { inertMateEngine, MateEngine } from "../../engine/MateEngine.ts";
 import { ProviderMcpError, type McpConfigChange, type McpLiveServer } from "../../spi/mcpLive.ts";
 import { antigravityProfileDirectory } from "../../spi/driverHomes.ts";
 import { mcpAgentPaths, resolveMcpAgentPaths } from "./mcpAgentPaths.ts";
@@ -67,9 +69,11 @@ interface Rig {
 }
 
 const setup = (input: {
+  readonly generation?: number;
   readonly installed?: ReadonlyArray<string>;
   readonly files?: Map<string, string>;
   readonly running?: {
+    readonly thread?: ThreadId;
     readonly driver: string;
     readonly servers: ReadonlyArray<McpLiveServer>;
     readonly reconnectFails?: boolean;
@@ -86,17 +90,18 @@ const setup = (input: {
       ),
       status: (threadId) =>
         Effect.succeed(
-          threadId === THREAD && input.running !== undefined
+          threadId === (input.running?.thread ?? THREAD) && input.running !== undefined
             ? {
                 driver: ProviderDriverKind.make(input.running.driver),
                 servers: input.running.servers,
               }
             : undefined,
         ),
-      reconnect: (_threadId, name) =>
+      reconnect: (threadId, name) =>
         input.running?.reconnectFails
           ? Effect.fail(new ProviderMcpError({ detail: "spawn ENOENT" }))
           : Effect.sync(() => {
+              expect(threadId).toBe(input.running?.thread ?? THREAD);
               rig.calls.push(`reconnect ${name}`);
             }),
       setEnabled: () => Effect.void,
@@ -124,7 +129,15 @@ const setup = (input: {
         locked: (paths, effect) =>
           Effect.sync(() => rig.locks.push(...paths)).pipe(Effect.andThen(effect)),
       },
-    });
+    }).pipe(
+      Effect.provide(
+        Layer.succeed(MateEngine, {
+          ...inertMateEngine,
+          live: input.generation !== undefined,
+          generation: () => Effect.succeed(input.generation),
+        }),
+      ),
+    );
     return { service, rig };
   });
 
@@ -144,6 +157,35 @@ const LINEAR: McpServerAddInput = {
 };
 
 describe("McpServers.list", () => {
+  it.effect.each([
+    {
+      state: "connected" as const,
+      tools: [{ name: "zerops_discover", description: "Inspect the project" }],
+    },
+    { state: "failed" as const, error: "zcp exited with code 1" },
+    { state: "configured" as const },
+  ])("the built-in server reports $state from the engine's current session", (report) =>
+    Effect.gen(function* () {
+      const { service, rig } = yield* setup({
+        generation: 3,
+        installed: ["claudeAgent"],
+        running: {
+          thread: ThreadId.make("thread-1/s/3"),
+          driver: "claudeAgent",
+          servers: report.state === "configured" ? [] : [{ name: "zerops", ...report }],
+        },
+      });
+      const list = yield* service.list({ threadId: THREAD });
+      expect(list.servers.find((server) => server.name === "zerops")?.agents).toEqual([
+        { driver: "claudeAgent", ...report },
+      ]);
+      if (report.state !== "configured") {
+        expect(yield* service.reconnect({ threadId: THREAD, name: "zerops" })).toEqual(list);
+        expect(rig.calls).toEqual(["reconnect zerops"]);
+      }
+    }),
+  );
+
   it.effect("merges every installed agent's servers by name, zcp's first", () =>
     Effect.gen(function* () {
       const { service } = yield* setup({});

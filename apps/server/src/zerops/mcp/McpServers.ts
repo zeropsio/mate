@@ -15,6 +15,7 @@
 import * as NodeOS from "node:os";
 
 import {
+  ConversationId,
   McpServerName,
   McpServersError,
   type McpServerAddInput,
@@ -34,6 +35,8 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
 import { ServerConfig } from "../../config.ts";
+import { MateEngine } from "../../engine/MateEngine.ts";
+import { providerThreadOf } from "../../engine/pump/TurnPump.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import * as McpLiveModule from "../../spi/mcpLive.ts";
 import { McpLive, type McpConfigChange, type McpLiveServer } from "../../spi/mcpLive.ts";
@@ -184,7 +187,18 @@ type Planned =
 
 export const make = Effect.fn("McpServers.make")(function* (options: McpServersOptions) {
   const { files, live } = options;
+  const engine = yield* MateEngine;
   const writes = yield* Semaphore.make(1);
+
+  // The panel names a conversation; provider hooks address its current session generation.
+  const sessionThread = Effect.fn("McpServers.sessionThread")(function* (
+    threadId: ThreadId | undefined,
+  ) {
+    if (threadId === undefined || !engine.live) return threadId;
+    const conversation = ConversationId.make(threadId);
+    const generation = yield* engine.generation(conversation);
+    return generation === undefined ? undefined : providerThreadOf(conversation, generation);
+  });
 
   const fail = (operation: string, detail: string, cause?: unknown) =>
     new McpServersError({ operation, detail, ...(cause !== undefined ? { cause } : {}) });
@@ -238,7 +252,8 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
     Effect.gen(function* () {
       const loaded = yield* loadStores;
       const agents = yield* readAgents(loaded);
-      const liveState = threadId === undefined ? undefined : yield* live.status(threadId);
+      const session = yield* sessionThread(threadId);
+      const liveState = session === undefined ? undefined : yield* live.status(session);
       return {
         servers: mergeMcpServers(agents, liveState),
         agents: loaded.installed,
@@ -412,9 +427,10 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
   const reconnect: McpServers["Service"]["reconnect"] = (input) =>
     Effect.gen(function* () {
       const operation = "mcp.servers.reconnect";
-      if (input.threadId !== undefined && (yield* live.status(input.threadId)) !== undefined) {
+      const session = yield* sessionThread(input.threadId);
+      if (session !== undefined && (yield* live.status(session)) !== undefined) {
         yield* live
-          .reconnect(input.threadId, input.name)
+          .reconnect(session, input.name)
           .pipe(
             Effect.mapError((error) =>
               fail(operation, `${input.name} could not reconnect: ${error.detail}`, error),

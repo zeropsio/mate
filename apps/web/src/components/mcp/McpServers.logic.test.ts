@@ -1,4 +1,9 @@
-import type { McpServerEntry, McpServersList, ProviderDriverKind } from "@t3tools/contracts";
+import type {
+  McpServerAgent,
+  McpServerEntry,
+  McpServersList,
+  ProviderDriverKind,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -26,6 +31,67 @@ const rowNamed = (name: string, driver: ProviderDriverKind | null = CLAUDE) => {
   if (!row) throw new Error(`no row ${name}`);
   return row;
 };
+
+describe("the built-in server's reported state", () => {
+  // The panel's input record is evidence; being built in never proves a connection.
+  it.each<{
+    report: McpServerAgent;
+    expected: object;
+  }>([
+    {
+      report: {
+        driver: CLAUDE,
+        state: "connected",
+        tools: [{ name: "zerops_discover", readOnly: true }],
+      },
+      expected: {
+        state: "connected",
+        tone: "ok",
+        stateLabel: "Connected",
+        note: null,
+        tools: [{ name: "zerops_discover", description: null, mark: "reads" }],
+        actions: { reconnect: true },
+      },
+    },
+    {
+      report: { driver: CLAUDE, state: "failed", error: "zcp exited with code 1" },
+      expected: {
+        state: "failed",
+        tone: "failed",
+        stateLabel: "Failed",
+        note: { kind: "error", text: "zcp exited with code 1" },
+        tools: [],
+        actions: { reconnect: true },
+      },
+    },
+    {
+      report: { driver: CLAUDE, state: "configured" },
+      expected: {
+        state: "configured",
+        tone: "off",
+        note: null,
+        tools: [],
+        actions: { reconnect: false },
+      },
+    },
+  ])(
+    'Decision: the panel shows the state the server actually has; no fake "connected" — $report.state',
+    ({ report, expected }) => {
+      const list: McpServersList = {
+        agents: [CLAUDE],
+        servers: [
+          {
+            name: "zerops" as McpServerEntry["name"],
+            managed: true,
+            transport: { type: "stdio", command: "zcp", args: ["serve"] },
+            agents: [report],
+          },
+        ],
+      };
+      expect(buildMcpRows(list, CLAUDE)[0]).toMatchObject(expected);
+    },
+  );
+});
 
 describe("splitCommandLine — a command line, split the way a shell would", () => {
   it.each<{ line: string; words: string[] }>([
