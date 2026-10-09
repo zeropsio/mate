@@ -1,4 +1,12 @@
 import { describe, expect, it } from "@effect/vitest";
+import {
+  AssetCreateUrlInput,
+  AssetCreateUrlResult,
+  WS_METHODS,
+  ThreadId,
+} from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
+import { EngineChatWire } from "./engine.ts";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
@@ -156,6 +164,170 @@ describe("C: opening a Mate and chat", () => {
         yield* s.then.noExternalNetwork;
       }),
     );
+
+    describe("Decision: V1 behaviour unchanged; engine gets image parity.", () => {
+      it.effect(
+        "a tool screenshot and an attached image render from the Mate's asset references",
+        () =>
+          Effect.gen(function* () {
+            const s = yield* createScenario([installArea]);
+            const bytes = Buffer.from(
+              yield* Effect.promise(() =>
+                s.page.evaluate(() => {
+                  const canvas = document.createElement("canvas");
+                  canvas.width = 160;
+                  canvas.height = 100;
+                  const ctx = canvas.getContext("2d")!;
+                  ctx.fillStyle = "blue";
+                  ctx.fillRect(0, 0, 160, 100);
+                  return canvas.toDataURL("image/png").split(",")[1]!;
+                }),
+              ),
+              "base64",
+            );
+            s.drivers.onMate.push((mate) => {
+              const handle = mate.handle;
+              mate.handle = (request) =>
+                request.url.pathname.includes("/api/assets/objects/")
+                  ? Promise.resolve({
+                      bytes,
+                      headers: {
+                        "content-type": "image/png",
+                        "access-control-allow-headers": "authorization, dpop",
+                      },
+                    })
+                  : handle(request);
+            });
+            yield* s.given.project("Ada", { mate: true });
+            const chat = mateChat(s);
+            const fixture = chat.fixture();
+            const mate = fixture.mate;
+            const asset = {
+              id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+              threadId: ThreadId.make(
+                fixture.wire instanceof EngineChatWire ? `${mate.thread.id}/s/1` : mate.thread.id,
+              ),
+              ownerId: "browser-call",
+              name: "tool-image",
+              provenance: "capture" as const,
+              original: {
+                status: "ready" as const,
+                digest: "a".repeat(64),
+                mimeType: "image/png",
+                sizeBytes: bytes.length,
+                width: 160,
+                height: 100,
+              },
+            };
+            const attachment = {
+              type: "image" as const,
+              id: "attached-picture",
+              name: "attached.png",
+              mimeType: "image/png",
+              sizeBytes: bytes.length,
+              width: 160,
+              height: 100,
+              asset: {
+                ...asset,
+                id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                threadId: mate.thread.id,
+                provenance: "upload" as const,
+              },
+            };
+            const metadata: string[] = [];
+            Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
+            Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
+            mate.rpcHandlers.unshift((request, socket) => {
+              if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
+              const input = Schema.decodeUnknownSync(AssetCreateUrlInput)(request.payload);
+              const resource = input.resource;
+              if (resource._tag === "project-favicon") return false;
+              const attached = resource._tag === "attachment";
+              if (!attached) expect(resource.threadId).toBe(mate.thread.id);
+              metadata.push(attached ? "attachment" : "screenshot");
+              const digest = (attached ? "b" : "a").repeat(64);
+              const relativeUrl = `/api/assets/objects/${digest}/${input.preview ? "preview" : "original"}`;
+              mate.reply(
+                socket,
+                request.id,
+                Schema.encodeSync(AssetCreateUrlResult)({
+                  relativeUrl,
+                  expiresAt: 0,
+                  occurrence: attached ? attachment.asset : asset,
+                  representation: {
+                    digest,
+                    relativeUrl,
+                    mimeType: "image/png",
+                    sizeBytes: bytes.length,
+                    width: 160,
+                    height: 100,
+                  },
+                }),
+              );
+              return true;
+            });
+            const result = {
+              toolName: "zerops_browser",
+              resultText: '{"url":"https://tvstav.cz","steps":[]}',
+              images: [{ mimeType: "image/png", asset, width: 160, height: 1 }],
+            };
+            if (fixture.wire instanceof EngineChatWire) {
+              const engine = fixture.wire.engine;
+              const run = engine.personRun("Check these pictures");
+              const person = [...engine.items.values()].find(
+                (item) => item.runId === run && item.kind === "person",
+              )!;
+              engine.update(person.id, { attachments: [attachment] });
+              engine.item(run, {
+                kind: "call",
+                step: "mcp",
+                words: "Browser",
+                state: "done",
+                endedAt: 1791201600000,
+                tool: { name: "zerops_browser", server: "zerops" },
+                result,
+              });
+              engine.note(run, "Pictures checked", { kind: "completed" });
+            } else {
+              fixture.message("image-person", "user", "Check these pictures", "image-run", {
+                attachments: [attachment],
+              });
+              fixture.run("image-run", "running");
+              fixture.tool(
+                "image-browser",
+                "tool.completed",
+                {
+                  toolName: "mcp__zerops__zerops_browser",
+                  input: { commands: [["open", "https://tvstav.cz"]] },
+                  zerops: result,
+                },
+                "image-run",
+                { itemType: "mcp_tool_call" },
+              );
+              fixture.message("image-done", "assistant", "Pictures checked", "image-run");
+              fixture.run("image-run", "completed", null, "image-done");
+            }
+            yield* s.given.signedIn;
+            yield* chat.when.open("Ada", "Check these pictures");
+            yield* Effect.promise(async () => {
+              await s.page.waitForFunction(() =>
+                ["[data-result-picture] img", 'img[alt="attached.png"]'].every((selector) => {
+                  const img = document.querySelector<HTMLImageElement>(selector);
+                  return img !== null && img.complete && img.naturalWidth === 160;
+                }),
+              );
+              expect(
+                metadata,
+                "ASSERTION: screenshot and attachment resolve through the image data layer",
+              ).toEqual(expect.arrayContaining(["screenshot", "attachment"]));
+              expect(await s.page.evaluate(() => document.body.textContent)).not.toContain(
+                "Image no longer available",
+              );
+            });
+            yield* s.then.noExternalNetwork;
+          }),
+      );
+    });
 
     // Catches a saved conversation link failing in a browser that has never opened this Mate.
     it.effect("cold direct conversation URL opens the named Mate and its history", () =>

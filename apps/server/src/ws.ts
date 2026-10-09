@@ -112,6 +112,7 @@ import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import { withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
 import { backfillThreadMedia, captureConversationEvent } from "./assets/ConversationMedia.ts";
+import { resolveAssetContext } from "./assets/AssetContext.ts";
 import { resolveImageAsset } from "./assets/ImageAsset.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
 import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
@@ -2411,43 +2412,20 @@ const makeWsRpcLayer = (
                 projectCheckoutPending,
               });
             }
-            const thread = yield* projectionSnapshotQuery
-              .getThreadShellById(input.resource.threadId)
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new AssetWorkspaceContextResolutionError({
-                      resource: input.resource,
-                      cause,
-                    }),
-                ),
-              );
-            if (Option.isNone(thread)) {
-              return yield* new AssetWorkspaceContextNotFoundError({
-                resource: input.resource,
-              });
-            }
-            const project = yield* projectionSnapshotQuery
-              .getProjectShellById(thread.value.projectId)
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new AssetWorkspaceContextResolutionError({
-                      resource: input.resource,
-                      cause,
-                    }),
-                ),
-              );
-            if (Option.isNone(project)) {
-              return yield* new AssetWorkspaceContextNotFoundError({
-                resource: input.resource,
-              });
+            const context = yield* resolveAssetContext(input.resource.threadId).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new AssetWorkspaceContextResolutionError({ resource: input.resource, cause }),
+              ),
+            );
+            if (context === undefined) {
+              return yield* new AssetWorkspaceContextNotFoundError({ resource: input.resource });
             }
             const image =
               input.imageMode === "reference"
                 ? yield* resolveImageAsset({
                     ...input,
-                    workspaceRoot: thread.value.worktreePath ?? project.value.workspaceRoot,
+                    workspaceRoot: context.workspaceRoot,
                   }).pipe(
                     Effect.mapError(
                       (cause) =>
@@ -2479,7 +2457,7 @@ const makeWsRpcLayer = (
             if (image !== null) return image;
             return yield* issueAssetUrl({
               resource: input.resource,
-              workspaceRoot: thread.value.worktreePath ?? project.value.workspaceRoot,
+              workspaceRoot: context.workspaceRoot,
             });
           }),
         [WS_METHODS.subscribeVcsStatus]: (input) =>

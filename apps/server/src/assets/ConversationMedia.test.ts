@@ -380,3 +380,34 @@ it.effect.each([false, true])(
       }
     }).pipe(Effect.provide(layer)),
 );
+
+it.effect("an engine conversation resolves the screenshot captured by its provider session", () =>
+  Effect.gen(function* () {
+    const config = yield* ServerConfig;
+    const bytes = yield* Effect.promise(() =>
+      sharp({ create: { width: 200, height: 120, channels: 4, background: "red" } })
+        .png()
+        .toBuffer(),
+    );
+    const occurrence = yield* Effect.promise(() =>
+      contentAssetsAt(config.stateDir).ingestBytes(bytes, {
+        threadId: ThreadId.make("conversation/s/1"),
+        ownerId: "browser-call",
+        name: "screenshot.png",
+        provenance: "capture",
+      }),
+    );
+    const result = yield* resolveImageAsset({
+      resource: {
+        _tag: "media-file",
+        threadId: ThreadId.make("conversation"),
+        path: `mate-asset:${occurrence.id}`,
+      },
+      imageMode: "reference",
+    }).pipe(Effect.provideService(ServerConfig, { ...config, mateEngine: "mate" }), Effect.result);
+    expect(
+      result._tag,
+      "ASSERTION: the engine conversation can resolve its provider-session screenshot",
+    ).toBe("Success");
+  }).pipe(Effect.provide(layer)),
+);

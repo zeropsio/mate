@@ -36,7 +36,7 @@ import { bootEngine } from "./EngineBoot.ts";
 import * as EngineSignalsModule from "./EngineSignals.ts";
 import * as EffectsModule from "./effects/index.ts";
 import { importOrSayGap } from "./effects/historyImport.ts";
-import { MessagePictures } from "./ports.ts";
+import { AgentWorkspace, MessagePictures } from "./ports.ts";
 import * as LiveBusModule from "./LiveBus.ts";
 import {
   DeliveryUnrecorded,
@@ -348,6 +348,7 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       );
 
     const store = yield* EngineStoreModule.EngineStore;
+    const workspace = yield* AgentWorkspace;
 
     const deliver: MateEngineService["deliver"] = (conversationId, command, commandId, principal) =>
       conversations
@@ -388,6 +389,17 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
           ),
         ),
       ),
+      assetContext: (thread) => {
+        const id = TurnPumpModule.conversationOfThread(thread) ?? ConversationId.make(thread);
+        return Effect.gen(function* () {
+          const rows = yield* sql`
+            SELECT 1 FROM engine_conversation
+            WHERE conversation_id = ${id} AND owner_kind = 'conversation' LIMIT 1
+          `;
+          if (rows.length === 0) return undefined;
+          return { workspaceRoot: (yield* workspace.of(id)).cwd };
+        }).pipe(Effect.mapError(() => new ViewUnreadable({ conversationId: id })));
+      },
       conversation: (id) =>
         readConversationView(id).pipe(
           Effect.provideService(Conversations, conversations),

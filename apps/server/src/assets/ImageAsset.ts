@@ -11,6 +11,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 
+import { conversationOfThread } from "../engine/MateEngine.ts";
 import { ServerConfig } from "../config.ts";
 import {
   resolveAttachmentPathById,
@@ -81,7 +82,10 @@ export const resolveImageAsset = Effect.fn("resolveImageAsset")(function* (
     );
     if (
       (resource._tag === "workspace-file" || resource._tag === "media-file") &&
-      occurrence.threadId !== resource.threadId
+      (config.mateEngine === "mate"
+        ? (conversationOfThread(occurrence.threadId) ?? occurrence.threadId) !==
+          (conversationOfThread(resource.threadId) ?? resource.threadId)
+        : occurrence.threadId !== resource.threadId)
     )
       return yield* Effect.fail(new ContentAssetError("object-missing"));
   } else {

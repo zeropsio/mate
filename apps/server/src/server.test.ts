@@ -168,7 +168,10 @@ import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import type { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import { crewLayerInert } from "./zerops/crew/crewLayer.ts";
-import { ENGINE_MOVED, type MateEngine } from "./engine/MateEngine.ts";
+import { makeEngineWorld, mate as imageConversation } from "./engine/testing/pump/engineWorld.ts";
+import { contentAssetsAt } from "./assets/ContentAssets.ts";
+import sharp from "sharp";
+import { ENGINE_MOVED, MateEngine } from "./engine/MateEngine.ts";
 import { engineLayerInert } from "./engine/layer.ts";
 import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
@@ -574,6 +577,7 @@ const buildAppUnderTest = (options?: {
     | ProviderInstanceRegistry
   >;
   layers?: {
+    mateEngine?: MateEngine["Service"];
     httpClient?: HttpClient.HttpClient;
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
     providerRegistry?: Partial<ProviderRegistry.ProviderRegistry["Service"]>;
@@ -1279,7 +1283,9 @@ const buildAppUnderTest = (options?: {
             // `off` and refuse the rest.
             crewLayerInert,
             // The Mate engine inert, whatever the switch says: its doors are V1's to close.
-            engineLayerInert,
+            options?.layers?.mateEngine
+              ? Layer.succeed(MateEngine, options.layers.mateEngine)
+              : engineLayerInert,
             options?.layers?.zeropsSetup === undefined
               ? Layer.empty
               : Layer.mock(ZeropsSetupModule.ZeropsSetup)(options.layers.zeropsSetup),
@@ -2590,6 +2596,63 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(response.status, 403);
       assert.equal(body.reason, "zerops_turn_refused");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect(
+    "an engine screenshot resolves through the asset RPC and serves its protected bytes",
+    () =>
+      Effect.gen(function* () {
+        const w = yield* makeEngineWorld({ driver: "codex" });
+        yield* w.boot;
+        yield* w.tell({ _tag: "Send", text: "Check the page" });
+        const config = yield* buildAppUnderTest({
+          config: { mateEngine: "mate" },
+          layers: { mateEngine: yield* w.engine },
+        });
+        const bytes = yield* Effect.promise(() =>
+          sharp({ create: { width: 120, height: 80, channels: 4, background: "blue" } })
+            .png()
+            .toBuffer(),
+        );
+        const image = yield* Effect.promise(() =>
+          contentAssetsAt(config.stateDir).ingestBytes(bytes, {
+            threadId: ThreadId.make(`${imageConversation}/s/1`),
+            ownerId: "browser",
+            name: "screenshot.png",
+            provenance: "capture",
+          }),
+        );
+        const wsUrl = yield* getWsServerUrl("/ws");
+        yield* withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            const result = yield* client[WS_METHODS.assetsCreateUrl]({
+              resource: {
+                _tag: "media-file",
+                threadId: ThreadId.make(imageConversation),
+                path: `mate-asset:${image.id}`,
+              },
+              imageMode: "reference",
+              preview: { width: 60, height: 40 },
+            }).pipe(Effect.result);
+            assert.equal(
+              result._tag,
+              "Success",
+              "ASSERTION: engine screenshot metadata resolves over the real asset RPC",
+            );
+            if (result._tag !== "Success") return;
+            const response = yield* HttpClient.get(result.success.relativeUrl, {
+              headers: { authorization: yield* getAuthenticatedAuthorizationHeader() },
+            });
+            assert.equal(
+              response.status,
+              200,
+              "ASSERTION: the real asset route serves an engine screenshot",
+            );
+            assert.isAbove((yield* response.arrayBuffer).byteLength, 0);
+          }),
+        );
+        yield* w.shutdown;
+      }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect(
