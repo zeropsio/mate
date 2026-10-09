@@ -394,11 +394,17 @@ describe("owner-reported layout regressions", () => {
                   '[data-zerops-surface="sidebar-project-toggle"]',
                 )) {
                   await toggle.click();
+                  // Folding moves the next heading; wait for completion before aiming its click.
+                  await s.page.waitForFunction(
+                    (heading) =>
+                      heading.getAttribute("aria-expanded") === "false" &&
+                      heading
+                        .closest("section[data-zerops-group]")!
+                        .querySelector('[data-zerops-surface="sidebar-project-rows"]') === null,
+                    { polling: "raf" },
+                    toggle,
+                  );
                 }
-                await s.page.waitForFunction(
-                  () =>
-                    document.querySelector('[data-zerops-surface="sidebar-project-rows"]') === null,
-                );
                 await s.page.waitForSelector('[data-zerops-surface="sidebar-new-project"]');
                 await s.page.$eval('[data-sidebar="content"]', (content) => {
                   content.closest('[data-slot="scroll-area-viewport"]')!.scrollTop = 0;
