@@ -79,7 +79,9 @@ export function backgroundLineOf(
   if (items.length === 1 && only !== undefined) {
     // A short report reads on the line itself: nothing left to open.
     const inline = only.report !== null && reportsInline(only.report);
-    const at = only.state === "running" ? `running ${where}` : where;
+    // An ended job ran in the background: "finished · in the background" read as if it still ran
+    // (Milo's stress runs).
+    const at = only.state === "running" ? `running ${where}` : helpers ? where : `ran ${where}`;
     return {
       words: only.state === "running" ? only.title : `${only.title} ${STATE_WORD[only.state]}`,
       where: inline ? `${at} · ${only.report}` : at,

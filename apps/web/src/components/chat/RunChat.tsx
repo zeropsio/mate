@@ -2352,7 +2352,7 @@ function TaskBubble({ entry }: { readonly entry: WorkLogEntry }) {
   const disclosure = useDisclosure();
   const failed = workEntryDisplayIndicatesToolFailure(entry);
   const words = `${taskTitle(entry)} ${failed ? "failed" : "finished"}`;
-  const where = entry.agentRole !== undefined ? "helper" : "in the background";
+  const where = entry.agentRole !== undefined ? "helper" : "ran in the background";
   const reported = Boolean(entry.detail?.trim());
   const line = (
     <Headline column opens={reported}>
