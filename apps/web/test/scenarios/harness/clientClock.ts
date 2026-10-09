@@ -172,6 +172,10 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
   };
   return {
     install,
+    /** Whether the page's timers run on this clock: its time moves only when advanced. */
+    get installed() {
+      return installed;
+    },
     advance,
     async advanceStepped(ms: number, options: SteppedAdvanceOptions = {}) {
       if (!installed) throw new Error("Install clientClock before sign-in/navigation");
