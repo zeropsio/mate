@@ -1,6 +1,8 @@
 /** Connected-Mate archive demand shares account retention and the common refusal/retry policy. */
 import type { EnvironmentId, OrchestrationShellSnapshot } from "@t3tools/contracts";
-import { ORCHESTRATION_WS_METHODS } from "@t3tools/contracts";
+import { ORCHESTRATION_WS_METHODS, WS_METHODS } from "@t3tools/contracts";
+import * as Option from "effect/Option";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Result from "effect/Result";
 import * as Cause from "effect/Cause";
 import * as Queue from "effect/Queue";
@@ -8,6 +10,9 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import type { EnvironmentRegistry } from "../../connection/registry.ts";
+import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
+import { engineRouteOf } from "../engineHost.ts";
+import { ENGINE_UPDATE_WORDS } from "../projections/mateEngine.ts";
 import { request } from "../../rpc/client.ts";
 import { archiveScope } from "../families/mateArchive.ts";
 import type { AccountStore } from "../store.ts";
@@ -25,7 +30,24 @@ export interface ArchiveWire {
 export const makeArchiveWire = (registry: EnvironmentRegistry["Service"]): ArchiveWire => ({
   read: (environmentId) =>
     registry
-      .run(environmentId, request(ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot, {}))
+      .run(
+        environmentId,
+        Effect.gen(function* () {
+          const supervisor = yield* EnvironmentSupervisor;
+          const prepared = yield* SubscriptionRef.get(supervisor.prepared);
+          const route = Option.isSome(prepared)
+            ? engineRouteOf(prepared.value)
+            : { kind: "unknown" as const };
+          if (route.kind === "update")
+            return yield* Effect.fail({
+              outcome: "definitive-refusal",
+              message: ENGINE_UPDATE_WORDS,
+            } satisfies StreamFault);
+          return yield* route.kind === "engine"
+            ? request(WS_METHODS.engineGetArchivedShellSnapshot, { protocol: route.protocol })
+            : request(ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot, {});
+        }),
+      )
       .pipe(Effect.catchCause((cause) => Effect.fail(workspaceFailure(Cause.squash(cause))))),
 });
 

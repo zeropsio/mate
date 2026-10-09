@@ -116,6 +116,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.subscribeEngineConversation]: "engine",
   [WS_METHODS.subscribeEngineRows]: "engine",
   [WS_METHODS.engineReadEarlier]: "engine",
+  [WS_METHODS.engineGetArchivedShellSnapshot]: "engine",
   [WS_METHODS.engineReadRun]: "engine",
   [WS_METHODS.engineReadDetail]: "engine",
   [WS_METHODS.engineReceipt]: "engine",

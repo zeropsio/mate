@@ -10,12 +10,13 @@
  * boundary record is sent. Calls enter the conversation's actor as the person, under the client's
  * command id, so a retry answers with the stored receipt.
  *
- * In V1 mode the wire is `unservedWire`: every method answers `unserved`, nothing is read.
+ * In V1 mode `unservedWire` refuses engine reads and commands; nothing is read.
  *
  * @module engine/wire/EngineWire
  */
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -82,6 +83,13 @@ export interface WireCaller {
 }
 
 export interface EngineWireShape {
+  /** Archive membership and time belong to the engine; shell metadata stays with its projection. */
+  readonly readArchived: (
+    protocol: number,
+  ) => Effect.Effect<
+    ReadonlyArray<{ readonly conversationId: ConversationId; readonly archivedAt: string }>,
+    EngineWireError
+  >;
   readonly subscribe: (
     input: EngineSubscribeInput,
     caller: WireCaller,
@@ -169,8 +177,9 @@ export const protocolRefusal = (protocol: number): EngineUnserved | undefined =>
 
 const notOnEngine = unserved("not-on-engine", NOT_ON_ENGINE);
 
-/** The wire of a Mate whose conversation is V1's: every method answers unserved. */
+/** The wire of a Mate whose conversations belong to V1 refuses engine reads and commands. */
 export const unservedWire: EngineWireShape = {
+  readArchived: () => Effect.fail(new EngineWireError({ message: NOT_ON_ENGINE })),
   subscribe: () => Stream.make(notOnEngine),
   subscribeRows: () => Stream.make(notOnEngine),
   readEarlier: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
@@ -651,6 +660,36 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       ).pipe(Stream.catch((cause) => Stream.fromEffect(wireError(UNREADABLE)(cause))));
     };
 
+    const readArchived: EngineWireShape["readArchived"] = (protocol) => {
+      const refused = protocolRefusal(protocol);
+      if (refused !== undefined)
+        return Effect.fail(new EngineWireError({ message: refused.message }));
+      return Effect.gen(function* () {
+        const ids = yield* sql<{ readonly conversation_id: string; readonly archived_at: number }>`
+          SELECT conversation_id,
+            (SELECT at FROM engine_event e WHERE e.conversation_id = c.conversation_id
+              AND type = 'ConversationArchived' ORDER BY seq DESC LIMIT 1) AS archived_at
+          FROM engine_conversation c WHERE owner_kind = 'conversation'
+            AND EXISTS (SELECT 1 FROM engine_event e WHERE e.conversation_id = c.conversation_id
+              AND type = 'ConversationArchived')
+        `;
+        return (yield* Effect.forEach(ids, (row) =>
+          conversations.state(row.conversation_id as ConversationId).pipe(
+            Effect.map((state) =>
+              state.archived
+                ? [
+                    {
+                      conversationId: state.conversationId,
+                      archivedAt: DateTime.formatIso(DateTime.makeUnsafe(row.archived_at)),
+                    },
+                  ]
+                : [],
+            ),
+          ),
+        )).flat();
+      }).pipe(Effect.catch(wireError(UNREADABLE)));
+    };
+
     const rowOf = (conversation: ConversationId, caller: WireCaller) =>
       readConversationView(conversation).pipe(
         Effect.provideService(Conversations, conversations),
@@ -873,6 +912,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
     return {
       subscribe,
       subscribeRows,
+      readArchived,
       readEarlier,
       readRun,
       readDetail,

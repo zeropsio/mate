@@ -1634,6 +1634,19 @@ const makeWsRpcLayer = (
               );
             }),
           ),
+        [WS_METHODS.engineGetArchivedShellSnapshot]: (input) =>
+          mateEngine.wire.readArchived(input.protocol).pipe(
+            Effect.flatMap((archived) =>
+              projectionSnapshotQuery.getArchivedShellSnapshot(archived),
+            ),
+            Effect.mapError(
+              (cause) =>
+                new OrchestrationGetSnapshotError({
+                  message: "Failed to load the engine archive",
+                  cause,
+                }),
+            ),
+          ),
         [ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot]: (_input) =>
           projectionSnapshotQuery.getArchivedShellSnapshot().pipe(
             Effect.tapError((cause) =>

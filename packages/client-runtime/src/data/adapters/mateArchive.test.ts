@@ -1,10 +1,24 @@
+import { it as effectIt } from "@effect/vitest";
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AtomRegistry } from "effect/reactivity";
-import { EnvironmentId, type OrchestrationShellSnapshot } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ORCHESTRATION_WS_METHODS,
+  WS_METHODS,
+  OrchestrationShellSnapshot,
+  OrchestrationGetSnapshotError,
+} from "@t3tools/contracts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
-import { makeArchiveReads } from "./mateArchive.ts";
+import type { EnvironmentRegistry } from "../../connection/registry.ts";
+import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
+import { makeArchiveReads, makeArchiveWire } from "./mateArchive.ts";
 import { mateArchive } from "../projections/mateArchive.ts";
+
+const decodeArchive = Schema.decodeUnknownSync(OrchestrationShellSnapshot);
 
 const env = EnvironmentId.make("open");
 const other = EnvironmentId.make("other");
@@ -229,4 +243,120 @@ it("a superseded archive answer cannot clear or overwrite the newer read", async
   release();
   reads.close();
   registry.dispose();
+});
+
+function archiveRegistry(
+  mateEngine: number | undefined,
+  engineAnswer: Effect.Effect<
+    OrchestrationShellSnapshot,
+    OrchestrationGetSnapshotError
+  > = Effect.succeed(empty),
+) {
+  const calls: string[] = [];
+  const registry = {
+    run: (_id, effect) =>
+      Effect.gen(function* () {
+        const prepared = yield* SubscriptionRef.make(Option.some({ mateEngine }));
+        const session = yield* SubscriptionRef.make(
+          Option.some({
+            client: {
+              [ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot]: () =>
+                Effect.sync(() => {
+                  calls.push("v1");
+                  return empty;
+                }),
+              [WS_METHODS.engineGetArchivedShellSnapshot]: () =>
+                Effect.suspend(() => {
+                  calls.push("engine");
+                  return engineAnswer;
+                }),
+            },
+          }),
+        );
+        return yield* effect.pipe(
+          Effect.provideService(EnvironmentSupervisor, {
+            target: { environmentId: env },
+            prepared,
+            session,
+          } as never),
+        );
+      }),
+  } as EnvironmentRegistry["Service"];
+  return { registry, calls };
+}
+
+effectIt.effect("a V1 Mate keeps its archive reader", () =>
+  Effect.gen(function* () {
+    const { registry, calls } = archiveRegistry(undefined);
+    expect(yield* makeArchiveWire(registry).read(env)).toEqual(empty);
+    expect(calls).toEqual(["v1"]);
+  }),
+);
+
+effectIt.effect("an unsupported engine asks for an update without consulting V1 archives", () =>
+  Effect.gen(function* () {
+    const { registry, calls } = archiveRegistry(999);
+    const result = yield* Effect.result(makeArchiveWire(registry).read(env));
+    expect(result).toMatchObject({ _tag: "Failure", failure: { outcome: "definitive-refusal" } });
+    expect(calls).toEqual([]);
+  }),
+);
+
+effectIt.effect("a failed engine archive read does not substitute the parked V1 archive", () =>
+  Effect.gen(function* () {
+    const { registry, calls } = archiveRegistry(
+      1,
+      Effect.fail(new OrchestrationGetSnapshotError({ message: "Archive read failed" })),
+    );
+    const result = yield* Effect.result(makeArchiveWire(registry).read(env));
+    expect(result).toMatchObject({ _tag: "Failure", failure: { message: "Archive read failed" } });
+    expect(calls).toEqual(["engine"]);
+  }),
+);
+
+// Decision: read routing only; P4 (open an archived row read-only) is a separate backlog card.
+it("An engine-archived conversation appears in the archived list", async () => {
+  const atoms = AtomRegistry.make();
+  const store = makeAccountStore(atoms);
+  const archived = decodeArchive({
+    ...empty,
+    snapshotSequence: 466,
+    threads: [
+      {
+        id: "5a0345f1-1ab7-4b01-9fef-4410b3e16067",
+        projectId: "gus",
+        title: "Gus conversation",
+        modelSelection: { instanceId: "codex", model: "gpt-5" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        latestTurn: null,
+        createdAt: empty.updatedAt,
+        updatedAt: empty.updatedAt,
+        archivedAt: empty.updatedAt,
+        settledOverride: null,
+        settledAt: null,
+        session: null,
+        latestUserMessageAt: null,
+        hasPendingApprovals: false,
+        hasPendingUserInput: false,
+        hasActionableProposedPlan: false,
+      },
+    ],
+  });
+  const { registry } = archiveRegistry(1, Effect.succeed(archived));
+  const reads = makeArchiveReads(store, makeArchiveWire(registry));
+  try {
+    const done = until(store, () => !shown(store).isLoading);
+    reads.demand(env);
+    await done;
+    expect(
+      shown(store).snapshots.flatMap(({ snapshot }) => snapshot.threads.map((thread) => thread.id)),
+      "ASSERTION: an engine-archived conversation appears in the archived list",
+    ).toEqual(["5a0345f1-1ab7-4b01-9fef-4410b3e16067"]);
+  } finally {
+    reads.close();
+    atoms.dispose();
+  }
 });

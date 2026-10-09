@@ -6,6 +6,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
@@ -635,6 +636,49 @@ describe("a client's calls to an engine conversation", () => {
         yield* Deferred.succeed(held, undefined);
         const result = yield* Fiber.join(sent);
         assert.strictEqual(result._tag, "Accepted");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("the archive reader follows engine archive and restore decisions", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* send(wire, "Archive read witness");
+        assert.deepStrictEqual(yield* wire.readArchived(protocol), []);
+        for (const [index, archived] of [true, false, true].entries()) {
+          const accepted = yield* wire.setArchived(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make(`archive-read-${index}`),
+              archived,
+            },
+            ana,
+          );
+          assert.strictEqual(accepted._tag, "Accepted");
+          const rows = yield* wire.readArchived(protocol);
+          assert.deepStrictEqual(
+            rows.map((row) => row.conversationId),
+            archived ? [mate] : [],
+          );
+          if (archived) {
+            const [event] = yield* w.within(
+              Effect.flatMap(
+                SqlClient.SqlClient,
+                (sql) =>
+                  sql<{ at: number }>`SELECT at FROM engine_event WHERE conversation_id = ${mate}
+              AND type = 'ConversationArchived' ORDER BY seq DESC LIMIT 1`,
+              ),
+            );
+            assert.strictEqual(
+              rows[0]?.archivedAt,
+              DateTime.formatIso(DateTime.makeUnsafe(event!.at)),
+            );
+          }
+        }
         yield* w.shutdown;
       }),
     ),

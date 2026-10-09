@@ -652,9 +652,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
   });
 
   const listArchivedThreadRows = SqlSchema.findAll({
-    Request: Schema.Void,
+    Request: Schema.UndefinedOr(Schema.Array(Schema.String)),
     Result: ProjectionThreadDbRowSchema,
-    execute: () =>
+    execute: (ids) =>
       sql`
         SELECT
           thread_id AS "threadId",
@@ -694,7 +694,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           deleted_at AS "deletedAt"
         FROM projection_threads
         WHERE deleted_at IS NULL
-          AND archived_at IS NOT NULL
+          AND ${ids === undefined ? sql`archived_at IS NOT NULL` : sql.in("thread_id", ids)}
         ORDER BY project_id ASC, archived_at DESC, thread_id DESC
       `,
   });
@@ -2911,8 +2911,14 @@ pending_approval_requests AS (
         }),
       );
 
-  const getArchivedShellSnapshot: ProjectionSnapshotQueryShape["getArchivedShellSnapshot"] = () =>
-    sql
+  const getArchivedShellSnapshot: ProjectionSnapshotQueryShape["getArchivedShellSnapshot"] = (
+    archived,
+  ) => {
+    const archivedAt =
+      archived === undefined
+        ? undefined
+        : new Map(archived.map((entry) => [entry.conversationId, entry.archivedAt]));
+    return sql
       .withTransaction(
         Effect.all([
           listProjectRows(undefined).pipe(
@@ -2923,7 +2929,7 @@ pending_approval_requests AS (
               ),
             ),
           ),
-          listArchivedThreadRows(undefined).pipe(
+          listArchivedThreadRows(archived?.map((row) => row.conversationId)).pipe(
             Effect.mapError(
               toPersistenceSqlOrDecodeError(
                 "ProjectionSnapshotQuery.getArchivedShellSnapshot:listThreads:query",
@@ -3027,7 +3033,8 @@ pending_approval_requests AS (
                 latestTurn: latestTurnByThread.get(row.threadId) ?? null,
                 createdAt: row.createdAt,
                 updatedAt: row.updatedAt,
-                archivedAt: row.archivedAt,
+                archivedAt:
+                  archivedAt === undefined ? row.archivedAt : archivedAt.get(row.threadId)!,
                 settledOverride: row.settledOverride,
                 settledAt: row.settledAt,
                 unsettledAt: row.unsettledAt,
@@ -3072,6 +3079,7 @@ pending_approval_requests AS (
           );
         }),
       );
+  };
 
   const getSnapshotSequence: ProjectionSnapshotQueryShape["getSnapshotSequence"] = () =>
     listProjectionStateRows(undefined).pipe(

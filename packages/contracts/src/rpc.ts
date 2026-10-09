@@ -393,6 +393,7 @@ export const WS_METHODS = {
   zeropsCrewTaskPage: "zerops.crew.taskPage",
   threadsFileWrites: "threads.fileWrites",
   threadsWrittenFile: "threads.writtenFile",
+  engineGetArchivedShellSnapshot: "engine.getArchivedShellSnapshot",
   engineReadEarlier: "engine.readEarlier",
   engineReadRun: "engine.readRun",
   engineReadDetail: "engine.readDetail",
@@ -954,6 +955,12 @@ const WsOrchestrationSearchThreadsRpc = Rpc.make(ORCHESTRATION_WS_METHODS.search
   payload: OrchestrationSearchThreadsInput,
   success: OrchestrationRpcSchemas.searchThreads.output,
   error: Schema.Union([OrchestrationSearchThreadsError, EnvironmentAuthorizationError]),
+});
+
+const WsEngineGetArchivedShellSnapshotRpc = Rpc.make(WS_METHODS.engineGetArchivedShellSnapshot, {
+  payload: Schema.Struct({ protocol: Schema.Int }),
+  success: OrchestrationRpcSchemas.getArchivedShellSnapshot.output,
+  error: Schema.Union([OrchestrationGetSnapshotError, EnvironmentAuthorizationError]),
 });
 
 const WsOrchestrationGetArchivedShellSnapshotRpc = Rpc.make(
@@ -1536,6 +1543,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetTurnDiffRpc,
   WsOrchestrationGetFullThreadDiffRpc,
   WsOrchestrationSearchThreadsRpc,
+  WsEngineGetArchivedShellSnapshotRpc,
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
