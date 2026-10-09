@@ -939,11 +939,18 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      the footer's own top padding (pt-1.5, sm:pt-2). */
   .chat-composer-dock {
     --chat-composer-dock-gap: calc(var(--spacing) * 1.5);
-    background: linear-gradient(
-      to bottom,
-      transparent var(--chat-composer-dock-gap),
-      var(--background) var(--chat-composer-dock-gap)
-    );
+  }
+
+  /* A solid layer, not a gradient: Chrome dithers a gradient by its tile's
+     origin, so the footer's colour shifted whenever the history above it was
+     repainted. The dock's stacking context keeps it behind the composer. */
+  .chat-composer-dock::before {
+    pointer-events: none;
+    position: absolute;
+    z-index: -1;
+    inset: var(--chat-composer-dock-gap) 0 0;
+    background: var(--background);
+    content: "";
   }
 
   @media (min-width: 40rem) {
