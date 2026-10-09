@@ -1,12 +1,16 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Chrome and the static localhost server are Node test tools.
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
-import { afterAll, expect } from "vite-plus/test";
-import puppeteer, { type Page, type BrowserContext, type HTTPRequest } from "puppeteer-core";
+import { afterAll, expect, inject } from "vite-plus/test";
+import puppeteer, {
+  type Page,
+  type BrowserContext,
+  type HTTPRequest,
+  type Browser,
+} from "puppeteer-core";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
 import { serve } from "./http.ts";
-import { resolveTestBrowser } from "../../testBrowser.ts";
 
 /** A positive send waits for the composer to acknowledge its text and offer Send or Queue. */
 export async function sendConversationMessage(page: Page, message: string, waitForReady = true) {
@@ -50,6 +54,11 @@ export async function sendConversationMessage(page: Page, message: string, waitF
   await page.keyboard.press("Enter");
 }
 
+let workerBrowser: Promise<Browser> | undefined;
+afterAll(async () => {
+  await (await workerBrowser)?.disconnect();
+});
+
 // Vitest inverts afterEach failures inside it.fails too. Retain diagnostics from every opened
 // browser until the file-level hook, which cannot become an expected domain failure.
 // Filtered/skipped tests never open a browser and therefore contribute no diagnostics.
@@ -81,7 +90,6 @@ export async function openBrowser(
   routes: Record<string, string>,
   wallClock?: ScenarioWallClock,
 ) {
-  const executablePath = await resolveTestBrowser(process.env.MATE_CHROME_BIN);
   const web = await serve(async ({ url }) => {
     const path = NodePath.resolve(dist, `.${decodeURIComponent(url.pathname)}`);
     if (!path.startsWith(`${dist}/`) && path !== dist) return { status: 403 };
@@ -100,30 +108,16 @@ export async function openBrowser(
       };
     }
   });
-  const browser = await puppeteer.launch({
-    executablePath,
-    headless: true,
-    // Preserve Chrome's startup cause when a pipe closes before CDP attaches.
-    dumpio: process.env.GITHUB_ACTIONS === "true",
-    // Use the owned child's pipe and create only the routed page the driver needs.
-    pipe: true,
-    waitForInitialPage: false,
-    args: [
-      // Ubuntu runners restrict user namespaces for downloaded Chrome for Testing. This
-      // disposable browser can only reach loopback fakes; personal browsers keep their sandbox.
-      ...(HostProcessPlatform.defaultValue() === "linux" && process.env.GITHUB_ACTIONS === "true"
-        ? ["--no-sandbox"]
-        : []),
-      "--disable-background-networking",
-      "--disable-component-update",
-      "--disable-domain-reliability",
-      "--disable-sync",
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost",
-      "--disable-features=MediaRouter,OptimizationHints,AutofillServerCommunication",
-    ],
-  });
+  const browser = await (workerBrowser ??= puppeteer.connect({
+    browserWSEndpoint: inject("scenarioBrowserEndpoint"),
+  }));
+  const contexts = new Set<BrowserContext>();
+  const newContext = async () => {
+    const context = await browser.createBrowserContext();
+    contexts.add(context);
+    return context;
+  };
+  const scenarioContext = await newContext();
   const errors: string[] = [];
   const pageErrors: string[] = [];
   const blocked: string[] = [];
@@ -140,7 +134,7 @@ export async function openBrowser(
   const contextIdentities = new WeakMap<BrowserContext, string>();
   const clocks = new WeakMap<Page, ReturnType<typeof clientClock>>();
   const routeSetters = new Map<Page, () => Promise<void>>();
-  const newPage = async (context: BrowserContext = browser.defaultBrowserContext()) => {
+  const newPage = async (context: BrowserContext = scenarioContext) => {
     const page = await context.newPage();
     clocks.set(page, clientClock(page, wallClock));
     await page.setBypassServiceWorker(true);
@@ -285,7 +279,7 @@ export async function openBrowser(
       if (!clock) throw new Error("Page belongs to a different scenario");
       return clock;
     },
-    newContext: () => browser.createBrowserContext(),
+    newContext,
     setPerson: (page: Page, token: string) => {
       const context = page.browserContext();
       const existing = contextIdentities.get(context);
@@ -303,7 +297,9 @@ export async function openBrowser(
     blocked,
     networkViolation,
     close: async () => {
-      await browser.close();
+      await Promise.all(
+        [...contexts].filter((context) => !context.closed).map((context) => context.close()),
+      );
       await web.close();
     },
   };

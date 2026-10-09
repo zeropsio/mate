@@ -305,7 +305,12 @@ describe("C: panel to report rooms", () => {
                 await s.page.waitForFunction(
                   (report) => {
                     const marker = document.querySelector<HTMLElement>(report)!;
-                    return marker.parentElement!.style.height === "";
+                    const trace = (window as unknown as { reportTrace: Trace }).reportTrace;
+                    // Picture insertion follows a sampled, laid-out report frame.
+                    return (
+                      marker.parentElement!.style.height === "" &&
+                      trace.readings.some((reading) => reading.content > 0 && !reading.held)
+                    );
                   },
                   { polling: "raf", timeout: 8000 },
                   report,

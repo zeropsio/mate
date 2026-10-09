@@ -7,6 +7,8 @@ export default defineConfig({
   test: {
     include: ["test/scenarios/harness/fixtures/browserHealth.fixture.ts"],
     environment: "node",
+    maxWorkers: 1,
+    globalSetup: ["test/scenarios/harness/browserProcess.ts"],
     testTimeout: 10_000,
   },
 });

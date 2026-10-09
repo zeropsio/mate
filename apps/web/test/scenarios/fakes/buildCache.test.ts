@@ -166,3 +166,27 @@ it("publishes one finished bundle for two concurrent builder processes", async (
     await NodeFSP.rm(root, { recursive: true, force: true });
   }
 });
+
+it("a bundle artifact is reused in another checkout only when its input bytes match", async () => {
+  const builder = await cacheFixture();
+  const consumer = await cacheFixture();
+  try {
+    const built = await cachedBundle(builder, {}, async (dist) => {
+      await NodeFSP.writeFile(NodePath.join(dist, "index.html"), "certified bundle");
+    });
+    const restored = NodePath.join(consumer, NodePath.relative(builder, built));
+    await NodeFSP.cp(built, restored, { recursive: true });
+    const noBuild = async () => {
+      throw new Error("artifact required");
+    };
+    expect(await cachedBundle(consumer, {}, noBuild)).toBe(restored);
+    expect(await NodeFSP.readFile(NodePath.join(restored, "index.html"), "utf8")).toBe(
+      "certified bundle",
+    );
+    await NodeFSP.writeFile(NodePath.join(consumer, "source.ts"), "changed");
+    await expect(cachedBundle(consumer, {}, noBuild)).rejects.toThrow("artifact required");
+  } finally {
+    await NodeFSP.rm(builder, { recursive: true, force: true });
+    await NodeFSP.rm(consumer, { recursive: true, force: true });
+  }
+});

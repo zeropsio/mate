@@ -4,7 +4,7 @@ import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import { WebSocket } from "ws";
-import { tempPostgresLayer } from "../../../../hq/test/harness/tempPostgres.ts";
+import { TempPostgres, tempPostgresLayer } from "../../../../hq/test/harness/tempPostgres.ts";
 import {
   seedCoreWorld,
   sessionFor,
@@ -32,6 +32,18 @@ it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     })),
   )("$title", ({ timings, expected }) =>
     Effect.gen(function* () {
+      const postgres = yield* TempPostgres;
+      let clones = 0;
+      const observedPostgres = TempPostgres.of({
+        ...postgres,
+        createMigratedDatabase: postgres.createMigratedDatabase.pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              clones++;
+            }),
+          ),
+        ),
+      });
       const native = yield* Clock.Clock;
       const scheduled: number[] = [];
       let changed = () => {};
@@ -58,6 +70,7 @@ it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
           timings,
         );
         yield* untilHealth(core.call, "active");
+        expect(clones, "scenario Core consumes the existing migrated database helper").toBe(1);
         const session = yield* sessionFor(core.call, "door-owner");
         const ticket = yield* ticketFor(core.call, session);
         const socket = yield* openScenarioNavigation(core.origin, ticket);
@@ -79,7 +92,10 @@ it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         for (const milliseconds of expected) expect(scheduled).toContain(milliseconds);
         expect(scheduled).not.toContain(200);
         expect(socket.readyState).toBe(WebSocket.OPEN);
-      }).pipe(Effect.provideService(Clock.Clock, observed));
+      }).pipe(
+        Effect.provideService(Clock.Clock, observed),
+        Effect.provideService(TempPostgres, observedPostgres),
+      );
     }),
   );
 });

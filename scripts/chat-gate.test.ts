@@ -4,6 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
+import { parse } from "yaml";
 import { expect, it } from "vite-plus/test";
 import { checkSteps } from "./ci-local.ts";
 import {
@@ -113,7 +114,7 @@ it("CI runs the same named gate as local ports", () => {
     "utf8",
   );
   expect(checkSteps(workflow, "chat_gate").map((step) => step.run)).toEqual([
-    "node scripts/chat-gate.ts",
+    "node scripts/chat-gate.ts --stages A,E,F,types",
   ]);
 });
 
@@ -418,4 +419,94 @@ it("Decision: no test deleted or weakened; only lane selection changes; main CI 
   ])
     expect(result.stdout).toContain(file);
   expect(result.stdout).not.toContain("skip:");
+});
+
+it("Decision: no test deleted or weakened; titles unchanged; crew/actor's crew stage is out of scope (separate backlog card)", () => {
+  const root = NodePath.resolve(import.meta.dirname, "..");
+  const inventory = chatGateTestFiles(
+    root,
+    chatGateStages.filter((stage) => stage.id === "C"),
+  );
+  const shards = ["1/2", "2/2"].map((shard) => {
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/chat-gate.ts", "--list", "--stages", "C", "--shard", shard],
+      { cwd: root, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("--reporter=../../scripts/chat-gate-reporter.ts");
+    return [
+      ...result.stdout.matchAll(/test\/scenarios\/areas\/c-mate\/[\w-]+\.scenario\.ts/gu),
+    ].map(([file]) => `apps/web/${file}`);
+  });
+  expect(shards[0]?.map((file) => NodePath.basename(file, ".scenario.ts")).sort()).toEqual(
+    ["opening", "recovery", "admission", "providerLimits", "image-layout", "rewind"].sort(),
+  );
+  expect(shards.flat().sort()).toEqual([...inventory].sort());
+  expect(new Set(shards.flat()).size).toBe(inventory.length);
+});
+
+it("CI builds once and certifies both complete C shards and C-engine from that artifact", () => {
+  const { jobs } = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
+  ) as {
+    jobs: Record<
+      string,
+      {
+        needs: string;
+        strategy?: { "fail-fast": boolean; matrix: { include: { args: string }[] } };
+        steps: {
+          uses?: string;
+          run?: string;
+          with?: Record<string, unknown>;
+          env?: Record<string, string>;
+        }[];
+      }
+    >;
+  };
+  const build = jobs.chat_bundle!;
+  const journeys = jobs.chat_scenarios!;
+  expect(build.needs).toBe("changes");
+  expect(jobs.chat_gate!.needs).toBe("changes");
+  expect(build.steps.filter((step) => step.run).map((step) => step.run)).toEqual([
+    "vp exec node apps/web/test/scenarios/harness/build.ts",
+  ]);
+  expect(journeys.needs).toBe("chat_bundle");
+  expect(journeys.strategy?.["fail-fast"]).toBe(false);
+  expect(journeys.strategy?.matrix.include.map((row) => row.args)).toEqual([
+    "--stages C --shard 1/2",
+    "--stages C --shard 2/2",
+    "--stages C-engine",
+  ]);
+  const uploaded = build.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"))!;
+  const downloaded = journeys.steps.find((step) =>
+    step.uses?.startsWith("actions/download-artifact@"),
+  )!;
+  expect(uploaded.with).toMatchObject({
+    "include-hidden-files": true,
+    "if-no-files-found": "error",
+  });
+  expect(downloaded.with).toEqual({ name: uploaded.with!.name, path: uploaded.with!.path });
+  expect(journeys.steps.filter((step) => step.run)).toEqual([
+    expect.objectContaining({
+      run: "node scripts/chat-gate.ts ${{ matrix.args }}",
+      env: { MATE_SCENARIO_REQUIRE_BUNDLE: "1" },
+    }),
+  ]);
+});
+
+it.each([
+  ["--stages", "C", "--shard", "3/2"],
+  ["--stages", "C", "--shard"],
+  ["--stages", "E", "--shard", "1/2"],
+  ["--shard", "1/2"],
+  ["--stages", "C", "--shard", "1/2", "--files", "[]"],
+])("refuses a shard that could omit certification: %j", (...args) => {
+  const result = NodeChildProcess.spawnSync(
+    process.execPath,
+    ["scripts/chat-gate.ts", "--list", ...args],
+    { cwd: new URL("../", import.meta.url), encoding: "utf8" },
+  );
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain("Usage:");
 });

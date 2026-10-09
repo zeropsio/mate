@@ -10,10 +10,11 @@ declare module "vite-plus/test" {
   }
 }
 
-export default async function setup(project: TestProject) {
+export async function buildScenarioBundle() {
   const root = NodeURL.fileURLToPath(new URL("../../../../../", import.meta.url));
   const buildEnv: NodeJS.ProcessEnv = {
     ...process.env,
+    NODE_ENV: "production",
     VITE_HOSTED_APP_CHANNEL: "latest",
     VITE_HOSTED_APP_URL: "",
     VITE_BASE_PATH: "",
@@ -25,6 +26,8 @@ export default async function setup(project: TestProject) {
   const started = performance.now();
   let built = false;
   const dist = await cachedBundle(root, buildEnv, async (dist) => {
+    if (process.env.MATE_SCENARIO_REQUIRE_BUNDLE === "1")
+      throw new Error("The scenario bundle artifact is missing or does not match this checkout");
     built = true;
     await new Promise<void>((resolve, reject) => {
       const child = NodeChildProcess.spawn("vp", ["build", "--outDir", dist], {
@@ -46,5 +49,11 @@ export default async function setup(project: TestProject) {
   console.log(
     `scenario web: ${built ? "built" : "reused"} (${((performance.now() - started) / 1000).toFixed(2)}s)`,
   );
-  project.provide("scenarioDist", dist);
+  return dist;
 }
+
+export default async function setup(project: TestProject) {
+  project.provide("scenarioDist", await buildScenarioBundle());
+}
+
+if (import.meta.main) await buildScenarioBundle();

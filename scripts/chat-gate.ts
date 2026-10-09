@@ -322,14 +322,20 @@ if (import.meta.main) {
   const stageAt = args.indexOf("--stages");
   const stageIds = stageAt === -1 ? undefined : args[stageAt + 1]?.split(",");
   const filesAt = args.indexOf("--files");
+  const shardAt = args.indexOf("--shard");
+  const shard = shardAt === -1 ? undefined : args[shardAt + 1];
   const remaining = args.filter(
     (_, index) =>
       index !== stageAt &&
       index !== stageAt + (stageAt === -1 ? 0 : 1) &&
+      index !== shardAt &&
+      index !== shardAt + (shardAt === -1 ? 0 : 1) &&
       index !== filesAt &&
       index !== filesAt + (filesAt === -1 ? 0 : 1),
   );
   if (
+    (shardAt !== -1 &&
+      (!["1/2", "2/2"].includes(shard ?? "") || stageIds?.join(",") !== "C" || filesAt !== -1)) ||
     remaining.length > 1 ||
     remaining.some((arg) => arg !== "--list" && arg !== "--select") ||
     (stageAt !== -1 &&
@@ -338,13 +344,32 @@ if (import.meta.main) {
     (args.includes("--select") && args.length !== 1)
   )
     throw new Error(
-      "Usage: node scripts/chat-gate.ts [--list | --select (paths on stdin)] [--stages A,C,C-engine,E,types] [--files JSON-array]",
+      "Usage: node scripts/chat-gate.ts [--list | --select (paths on stdin)] [--stages A,C,C-engine,E,F,types] [--files JSON-array] [--shard 1/2|2/2 (with --stages C)]",
     );
   const root = NodePath.resolve(import.meta.dirname, "..");
   const requested = stageIds
     ? chatGateStages.filter((stage) => stageIds.includes(stage.id))
     : chatGateStages;
   let stages: ReadonlyArray<ChatGateStage> = requested;
+  if (shard) {
+    // Balanced from the measured C file times; every other C file belongs to shard two.
+    const first = new Set([
+      "opening",
+      "recovery",
+      "admission",
+      "providerLimits",
+      "image-layout",
+      "rewind",
+    ]);
+    const files = chatGateTestFiles(root, requested).filter(
+      (file) => first.has(NodePath.basename(file, ".scenario.ts")) === (shard === "1/2"),
+    );
+    if (!files.length) throw new Error(`Chat contract shard ${shard}: no cases ran`);
+    stages = filterChatGateFiles(root, requested, files).map((stage) => ({
+      ...stage,
+      name: `${stage.name} shard ${shard}`,
+    }));
+  }
   if (filesAt !== -1) {
     const files: unknown = JSON.parse(args[filesAt + 1] ?? "null");
     if (!Array.isArray(files) || !files.every((file): file is string => typeof file === "string"))

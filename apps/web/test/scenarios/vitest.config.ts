@@ -13,7 +13,10 @@ export default defineConfig({
           name: "scenarios",
           include: ["test/scenarios/areas/**/*.scenario.ts"],
           environment: "node",
-          globalSetup: ["test/scenarios/harness/build.ts"],
+          globalSetup: [
+            "test/scenarios/harness/build.ts",
+            "test/scenarios/harness/browserProcess.ts",
+          ],
           fileParallelism: false,
           hookTimeout: 120_000,
           testTimeout: 45_000,
@@ -25,7 +28,10 @@ export default defineConfig({
           name: "scenarios-engine",
           include: ["test/scenarios/areas/c-mate/chat.scenario.ts"],
           environment: "node",
-          globalSetup: ["test/scenarios/harness/build.ts"],
+          globalSetup: [
+            "test/scenarios/harness/build.ts",
+            "test/scenarios/harness/browserProcess.ts",
+          ],
           fileParallelism: false,
           hookTimeout: 120_000,
           testTimeout: 45_000,
@@ -35,6 +41,7 @@ export default defineConfig({
       {
         test: {
           name: "scenario-drivers",
+          globalSetup: ["test/scenarios/harness/browserProcess.ts"],
           // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
           taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
           include: ["test/scenarios/fakes/**/*.test.ts"],

@@ -166,12 +166,80 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  chat_bundle:
+    name: Chat Contract bundle
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.chat != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Build the shared scenario bundle
+        run: vp exec node apps/web/test/scenarios/harness/build.ts
+
+      - name: Upload the content-addressed scenario bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-scenario-bundle
+          path: node_modules/.cache/mate-scenario-web
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
   chat_gate:
-    name: Chat Contract (A + B + Typecheck)
+    name: Chat Contract (A + E + F + Typecheck)
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.chat != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Provider goldens, engine proof, crew journeys and typecheck
+        run: node scripts/chat-gate.ts --stages A,E,F,types
+
+  chat_scenarios:
+    name: Chat Contract (${{ matrix.name }})
+    needs: chat_bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: C shard 1
+            args: --stages C --shard 1/2
+          - name: C shard 2
+            args: --stages C --shard 2/2
+          - name: C-engine
+            args: --stages C-engine
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -194,8 +262,16 @@ jobs:
           path: ~/.cache/mate-test-browser
           key: mate-test-browser-${{ runner.os }}-${{ hashFiles('apps/web/test/testBrowser.ts') }}
 
-      - name: Provider goldens, client wire journeys and typecheck
-        run: node scripts/chat-gate.ts
+      - name: Download the shared scenario bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: chat-scenario-bundle
+          path: node_modules/.cache/mate-scenario-web
+
+      - name: Certify every case in this shard
+        env:
+          MATE_SCENARIO_REQUIRE_BUNDLE: "1"
+        run: node scripts/chat-gate.ts ${{ matrix.args }}
 
   # Everything except `t3` (apps/server), `@t3tools/web` and `@t3tools/mobile`,
   # which have runners of their own. `--parallel` drops the package dependency ordering that

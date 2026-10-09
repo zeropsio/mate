@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { WebSocket } from "ws";
+import { TempPostgres } from "../../../../hq/test/harness/tempPostgres.ts";
 import { startCore } from "../../../../hq/test/harness/runningCore.ts";
 import type { FakeWorld } from "../../../../hq/test/harness/zeropsFake.ts";
 import { deadline } from "./http.ts";
@@ -64,10 +65,14 @@ export function startScenarioCore(
   zeropsHttp: { baseUrl: string; world: FakeWorld },
   timings: HqTimings = {},
 ) {
-  return startCore(true, {
-    zeropsHttp,
-    pingEvery: Duration.millis(timings.pingEvery ?? 20_000),
-    reconcileEvery: Duration.millis(timings.reconcileEvery ?? 60_000),
-    streamRecheck: Duration.millis(timings.streamRecheck ?? 30_000),
+  return Effect.gen(function* () {
+    const url = yield* (yield* TempPostgres).createMigratedDatabase;
+    return yield* startCore(true, {
+      url,
+      zeropsHttp,
+      pingEvery: Duration.millis(timings.pingEvery ?? 20_000),
+      reconcileEvery: Duration.millis(timings.reconcileEvery ?? 60_000),
+      streamRecheck: Duration.millis(timings.streamRecheck ?? 30_000),
+    });
   });
 }
