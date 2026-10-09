@@ -187,6 +187,7 @@ import { ConversationAfterWork, ConversationWorking, dockDraws } from "./Convers
 import { useEndingsHeld } from "./useEndingsHeld";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
+import { easeRooms, type Rooms } from "./runRoom";
 import type { LiveJobs } from "./liveJobs.logic";
 import { backgroundLineOf, jobItems, taskItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
@@ -2575,18 +2576,32 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
   const ctx = use(TimelineRowCtx);
   const [settling] = useState(() => watchedTurnKeys.delete(row.outcome.turnKey));
   const markerRef = useRef<HTMLDivElement>(null);
+  const roomsRef = useRef<Rooms | null>(null);
   const turnKey = row.outcome.turnKey;
   // The panel it replaces stood here a moment ago: the report's band of the
   // card starts at the panel's height and eases to its own.
   useLayoutEffect(() => {
     const band = markerRef.current?.parentElement;
     if (!band) return;
+    const rooms = easeRooms({
+      root: band,
+      selector: ":not(*)",
+      eases: () => true,
+      rootClips: true,
+    });
+    roomsRef.current = rooms;
     const stand = takePanelStand(turnKey);
-    if (stand !== null) return easeHeight(band, stand.panel, band.getBoundingClientRect().height);
+    if (stand !== null) rooms.easeFrom(band, stand.panel);
     // Its panel already folded into the Mate's last word: the report came
-    // after, and grows in from nothing.
-    if (panelLeftRecently(turnKey)) return easeHeight(band, 0, band.getBoundingClientRect().height);
+    // after. Natural growth, including a handoff from zero, takes its full height.
+    else if (panelLeftRecently(turnKey)) rooms.easeFrom(band, 0);
+    return () => {
+      rooms.stop();
+      roomsRef.current = null;
+    };
   }, [turnKey]);
+  // Hear content changes before the outer list measures this commit.
+  useLayoutEffect(() => roomsRef.current?.flush());
   return (
     // The result stands under the worked line, inside the tray (T5): a
     // hairline, then its rows in the card's grid; nothing at all when the run

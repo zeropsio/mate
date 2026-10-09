@@ -95,6 +95,16 @@ function card({
 const reads = () => vi.mocked(Element.prototype.getBoundingClientRect).mock.calls.length;
 
 describe("a run card's rooms", () => {
+  it("a measured handoff in a kept conversation takes its natural height immediately", () => {
+    const { root } = card({ kept: true });
+    rooms!.easeFrom(root, 300);
+    expect(
+      root.style.height,
+      "ASSERTION: an unseen report never holds its departed panel height",
+    ).toBe("");
+    expect(root.style.clipPath).toBe("");
+  });
+
   it("intrinsic image growth releases a shrinking box before decoded pixels can be clipped", () => {
     const { root, bubble, content, grow } = card({ kept: false });
     bubble.style.overflow = "hidden";

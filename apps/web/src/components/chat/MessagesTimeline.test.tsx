@@ -1,3 +1,4 @@
+import { Window } from "happy-dom";
 import { RegistryContext } from "@effect/atom-react";
 import {
   cardAccount,
@@ -13,6 +14,7 @@ import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   act,
+  StrictMode,
   createRef,
   useLayoutEffect,
   useSyncExternalStore,
@@ -1403,6 +1405,209 @@ describe("MessagesTimeline — the conversation", () => {
     target: { hostname: "appstage" },
     hasResult: true,
     ...overrides,
+  });
+
+  describe("Decision: one owner per concern as the report's table assigns; no new state model.", () => {
+    it.each([
+      { mode: "immediate", follows: true },
+      { mode: "immediate", follows: false },
+      { mode: "late", follows: true },
+      { mode: "late", follows: false },
+      { mode: "first layout", follows: true },
+      { mode: "hidden", follows: true },
+      { mode: "kept", follows: true },
+      { mode: "reduced motion", follows: true },
+    ])(
+      "the assembled report takes natural growth and preserves outer follow ($mode, $follows)",
+      async ({ mode, follows }) => {
+        const reportTurn = TurnId.make(`report-room-${mode}-${follows}`);
+        const dom = new Window();
+        const document = dom.document as unknown as Document;
+        for (const [key, value] of Object.entries({
+          document,
+          Element: dom.Element,
+          HTMLElement: dom.HTMLElement,
+          Node: dom.Node,
+          MutationObserver: dom.MutationObserver,
+          IS_REACT_ACT_ENVIRONMENT: true,
+        }))
+          vi.stubGlobal(key, value);
+        vi.stubGlobal("CSS", { escape: (value: string) => value });
+        vi.stubGlobal("window", dom);
+        const media = dom.matchMedia("(prefers-reduced-motion: reduce)");
+        vi.spyOn(media, "matches", "get").mockReturnValue(mode === "reduced motion");
+        vi.spyOn(dom, "matchMedia").mockReturnValue(media);
+        if (mode === "hidden")
+          Object.defineProperty(document, "visibilityState", {
+            value: "hidden",
+            configurable: true,
+          });
+        const frames = new Map<number, FrameRequestCallback>();
+        let nextFrame = 0;
+        vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+          frames.set(++nextFrame, callback);
+          return nextFrame;
+        });
+        vi.stubGlobal("cancelAnimationFrame", (id: number) => frames.delete(id));
+        const observers: Array<{ callback: ResizeObserverCallback; nodes: Set<Element> }> = [];
+        vi.stubGlobal(
+          "ResizeObserver",
+          class {
+            readonly nodes = new Set<Element>();
+            constructor(callback: ResizeObserverCallback) {
+              observers.push({ callback, nodes: this.nodes });
+            }
+            observe(node: Element) {
+              this.nodes.add(node);
+            }
+            unobserve(node: Element) {
+              this.nodes.delete(node);
+            }
+            disconnect() {
+              this.nodes.clear();
+            }
+          },
+        );
+        const list = document.body.appendChild(document.createElement("div"));
+        if (mode === "kept") list.setAttribute("data-kept-timeline", "");
+        const panel = list.appendChild(document.createElement("div"));
+        panel.setAttribute("data-timeline-row-id", "panel-fixture");
+        const workingMarker = panel.appendChild(document.createElement("div"));
+        const band = list.appendChild(document.createElement("div"));
+        const marker = band.appendChild(document.createElement("div"));
+        let naturalHeight = 80;
+        panel.getBoundingClientRect = () => ({ height: 300 }) as DOMRect;
+        band.getBoundingClientRect = () =>
+          ({ height: Number.parseFloat(band.style.height) || naturalHeight }) as DOMRect;
+        const viewport = { scrollTop: 1180, scrollHeight: 2000, clientHeight: 800 };
+        const listRef = {
+          current: {
+            getState: () => ({ isWithinMaintainScrollAtEndThreshold: true }),
+            getScrollableNode: () => viewport,
+          } as unknown as LegendListRef,
+        };
+        const entry = (phase: "running" | "done") => ({
+          id: "zerops:op:deploy-1",
+          kind: "operation" as const,
+          createdAt: at(20),
+          operation: operation({ turnId: reportTurn, phase, links: [] }),
+        });
+        const timeline = (stage: "working" | "empty" | "report") =>
+          zeropsStandIns(
+            <StrictMode>
+              <MessagesTimeline
+                {...buildProps()}
+                listRef={listRef}
+                liveFollowEnabled={follows}
+                latestTurn={
+                  stage === "working"
+                    ? { ...settled, turnId: reportTurn, state: "running", completedAt: null }
+                    : { ...settled, turnId: reportTurn }
+                }
+                isWorking={stage === "working"}
+                runningTurnId={stage === "working" ? reportTurn : null}
+                working={
+                  stage === "working"
+                    ? {
+                        operations: [entry("running").operation],
+                        helpers: null,
+                        tasks: null,
+                        background: null,
+                        afterTurn: null,
+                        pause: null,
+                      }
+                    : null
+                }
+                timelineEntries={
+                  stage === "empty" ? [] : [entry(stage === "working" ? "running" : "done")]
+                }
+              />
+            </StrictMode>,
+          );
+        const createNodeMock = (node: { props: unknown }) => {
+          const props = node.props as { className?: string };
+          return props.className === "contents"
+            ? workingMarker
+            : props.className === "run-band"
+              ? marker
+              : null;
+        };
+        let renderer: ReactTestRenderer | undefined;
+        let reportObservers: typeof observers = [];
+        try {
+          if (mode !== "first layout")
+            await act(() => {
+              renderer = create(timeline("working"), { createNodeMock });
+            });
+          // Age the existing presentation window without waiting for wall time.
+          let now = performance.now();
+          if (mode === "late") {
+            vi.spyOn(performance, "now").mockImplementation(() => now);
+            await act(() => renderer!.update(timeline("empty")));
+            now += 1600;
+          }
+          await act(() => {
+            if (renderer) renderer.update(timeline("report"));
+            else renderer = create(timeline("report"), { createNodeMock });
+          });
+          expect(
+            renderer!.root.findAll((node) => node.props["data-turn-report"] !== undefined),
+          ).toHaveLength(1);
+          const shrinking = mode === "immediate";
+          expect(band.getBoundingClientRect().height).toBe(shrinking ? 300 : naturalHeight);
+          if (shrinking) {
+            const pending = [...frames.values()];
+            frames.clear();
+            await act(() => {
+              for (const frame of pending) frame(16);
+            });
+            expect(band.getBoundingClientRect().height).toBeGreaterThan(naturalHeight);
+            expect(band.getBoundingClientRect().height).toBeLessThan(300);
+          }
+          // Decoded pixels change the held box's content without a DOM mutation.
+          naturalHeight = 420;
+          reportObservers = observers.filter((observer) => observer.nodes.has(marker));
+          expect(reportObservers.length).toBeGreaterThan(0);
+          for (const observer of reportObservers)
+            observer.callback(
+              [{ target: marker } as unknown as ResizeObserverEntry],
+              {} as ResizeObserver,
+            );
+          expect(band.getBoundingClientRect().height).toBe(420);
+          expect(band.style.clipPath).toBe("");
+          if (mode === "kept" || mode === "hidden") {
+            list.removeAttribute("data-kept-timeline");
+            Object.defineProperty(document, "visibilityState", {
+              value: "visible",
+              configurable: true,
+            });
+            naturalHeight = 60;
+            for (const observer of reportObservers)
+              observer.callback(
+                [{ target: marker } as unknown as ResizeObserverEntry],
+                {} as ResizeObserver,
+              );
+            expect(band.getBoundingClientRect().height).toBe(60);
+          }
+          const { LegendList } = await import("@legendapp/list/react");
+          renderer!.root
+            .findByType(LegendList)
+            .props.onItemSizeChanged({ index: 0, itemKey: "report", previous: 300, size: 420 });
+          await act(() => {
+            const pending = [...frames.values()];
+            frames.clear();
+            for (const frame of pending) frame(32);
+          });
+          expect(viewport.scrollTop).toBe(follows ? 1200 : 1180);
+        } finally {
+          await act(() => renderer?.unmount());
+          expect(reportObservers.every((observer) => observer.nodes.size === 0)).toBe(true);
+          expect(band.style.height).toBe("");
+          vi.restoreAllMocks();
+          dom.happyDOM.abort();
+        }
+      },
+    );
   });
 
   it("names the crewmate, never the Mate, on a crewmate's run status", async () => {
