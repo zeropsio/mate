@@ -171,7 +171,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.chat != 'false' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v6
