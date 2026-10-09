@@ -97,6 +97,7 @@ import { RouteStandIn } from "../components/zerops/RouteStandIn";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { RouteGateView } from "./-routeGate";
 import { useHqGate } from "../zerops/hqGate";
+import { staleChunkRecovery } from "../lib/staleChunk";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
@@ -466,6 +467,9 @@ function HostedStaticEnvironmentBootstrap() {
 
 function RootRouteErrorView({ error }: ErrorComponentProps) {
   const router = useRouter();
+  // A lazy surface whose code a deploy replaced reloads to the new build instead.
+  const [reloading] = useState(() => staleChunkRecovery.recover(error));
+  if (reloading) return null;
   const message = errorMessage(error);
   const details = errorDetails(error);
 

@@ -87,6 +87,7 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/zerops/projectOrderPreference.ts",
   // Own-action records: what this browser itself did or owes, never a copy of a source's answer.
   "apps/web/src/lib/backgroundActivityReporter.ts",
+  "apps/web/src/lib/staleChunk.ts",
   "apps/web/src/zerops/creationMemory.ts",
   "apps/web/src/zerops/diagnostics.ts",
   "apps/web/src/zerops/throwawayDebt.ts",
