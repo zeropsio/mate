@@ -315,6 +315,7 @@ export {
   type DatabaseCatalogRead,
 } from "./projections/database.ts";
 export { emptyDatabasePanel, databaseTreeTarget } from "./families/database.ts";
+export { DATABASE_FAILURE_UNEXPLAINED } from "./adapters/databaseFailure.ts";
 export {
   mateBrowserFrameFamily,
   mateBrowserFrameScope,
