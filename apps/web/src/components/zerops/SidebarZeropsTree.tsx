@@ -3107,8 +3107,9 @@ function MateRowView<T extends RosterCandidate>({
             <MateAskLine line={askLine} rises={askChanged} />
           )}
           {outsideHq ? null : status !== null && retainedReply === undefined ? (
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 max-w-full shrink-0">
+            // Held to the other lines' height: a waiting question grew the row 76 -> 82 px.
+            <span className="flex h-4.5 min-w-0 items-center gap-2">
+              <span className="flex min-w-0 max-w-full shrink-0">
                 <MateStatusMarker
                   mateName={name}
                   status={status}
