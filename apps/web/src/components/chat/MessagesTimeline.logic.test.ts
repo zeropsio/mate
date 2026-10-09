@@ -94,7 +94,8 @@ function framed(scene: Scene): MessagesTimelineRow[] {
               turn(id),
               {
                 pageRuns: { earlier: null, later: id },
-                counts: { calls: {}, tools: {}, edited: 0 },
+                // Its summary counts what it did: a call, its work.
+                counts: { calls: { command: 1 }, tools: {}, edited: 0 },
                 hasWork: true,
                 holdsLines: false,
                 since: at(0),
@@ -3786,7 +3787,9 @@ describe("an engine run whose work the account does not hold yet", () => {
     expect(recordOf(rows(scene(["t1"])))).toMatchObject({ kind: "record", items: [] });
     expect(statusOf(rows(scene(["t1"])))).toMatchObject({ worked: true });
     // An outcome its worked line's effort is counted onto from the run's summary.
-    expect(recordOf(rows(scene(["t1"])))?.outcome).toMatchObject({ activity: [] });
+    expect(recordOf(rows(scene(["t1"])))?.outcome).toMatchObject({
+      activity: [{ kind: "command", count: 1 }],
+    });
   });
 
   it("draws an answer alone when its run did nothing else", () => {

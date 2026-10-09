@@ -123,6 +123,10 @@ const DEFECTS: ReadonlyArray<Defect> = [
       { op: "reload" },
     ],
   },
+  {
+    title: "a run that only wrote to the person thought, live and after a reload",
+    tree: [send, { op: "say" }, { op: "say" }, { op: "finish" }, { op: "reload" }],
+  },
 ];
 
 const said = (

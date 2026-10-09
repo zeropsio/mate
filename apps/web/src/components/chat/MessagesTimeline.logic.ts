@@ -2805,9 +2805,11 @@ export function deriveMessagesTimelineRows(input: {
       ...(turn.interruption === undefined ? {} : { interruption: turn.interruption }),
       ...waited,
       ...(engineWorked === undefined ? {} : { workedMs: engineWorked }),
-      // A question it asked is work too: a run that only asked read "thought".
+      // A question it asked is work too: a run that only asked read "thought". A card not held
+      // whole worked when its summary counts a call: its notes alone are no work (it read
+      // "worked" after a reload where it had "thought" live).
       worked:
-        unheld ||
+        (paging !== null && Object.keys(paging.counts.calls).length > 0) ||
         items.some(
           (item) =>
             item.kind !== "thought" &&

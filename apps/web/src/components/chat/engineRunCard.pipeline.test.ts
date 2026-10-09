@@ -595,3 +595,21 @@ it.each([
     expect(card).toBeLessThan(reply);
   },
 );
+
+// The oracle's deep seeds: a run that only wrote to the person read "thought" live and "worked"
+// after a reload, its summary's notes counted as work.
+it.each([
+  { held: "every item, as it streamed in live", paged: false },
+  { held: "only what a reload reads", paged: true },
+])("a run that only wrote to the person thought, holding $held", ({ paged }) => {
+  const run = stressRun({
+    summary: { items: 3, calls: {}, answerItemId: `${run1}/i/3`, lastItemSeq: 3 },
+  } as never);
+  const items = [
+    personItem(run1, 1, "How does it look?", { at: t0 }),
+    noteItem(run1, 2, "Reading the plan.", { answer: false, at: t0 + 30_000 }),
+    noteItem(run1, 3, "It looks fine.", { at: t0 + 40_000, answer: true } as never),
+  ];
+  const card = cardOf(render({ runs: [run], items: paged ? items.slice(0, 1) : items, paged }));
+  expect(workedWords("Milo", card.status!)).toMatch(/^Milo thought /);
+});
