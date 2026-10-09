@@ -91,7 +91,7 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
               {hasStack && !expanded ? (
                 // The edge of the next notice peeks above the front one: more are stacked behind.
                 <div
-                  className="chat-composer-banner-stack-cap pointer-events-none absolute inset-x-0 -top-3 z-0 mx-auto h-3 w-[96%] rounded-t-2xl border border-b-0 border-[var(--chat-composer-attached-outline)] shadow-[0_6px_18px_rgba(0,0,0,0.06)]"
+                  className="chat-composer-banner-stack-cap pointer-events-none absolute inset-x-0 -top-3 z-0 mx-auto h-3 rounded-t-2xl border border-b-0"
                   aria-hidden="true"
                 />
               ) : null}

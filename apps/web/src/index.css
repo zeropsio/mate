@@ -714,6 +714,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     );
     -webkit-backdrop-filter: var(--glass-backdrop);
     backdrop-filter: var(--glass-backdrop);
+    /* The next notice's edge peeking above the front one. */
+    width: 96%;
+    border-color: var(--chat-composer-attached-outline);
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--contrast-foreground) 6%, transparent);
 
     @variant dark {
       --chat-composer-attached-surface: var(
