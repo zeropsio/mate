@@ -1,6 +1,4 @@
 // Dev container for Zerops Mate. Mirrors CI (ubuntu-24.04, Node 24, Rust stable)
-// and the canonical setup in docs/internals/scripts.md: global `vp`, `vp i`.
-// Contributor doc: docs/internals/devcontainer.md
 {
   "name": "Zerops Mate",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
@@ -51,9 +49,6 @@
     }
   },
   "customizations": {
-    "codespaces": {
-      "openFiles": ["docs/internals/devcontainer.md"]
-    },
     "vscode": {
       "extensions": ["oxc.oxc-vscode", "rust-lang.rust-analyzer"],
       "settings": {
