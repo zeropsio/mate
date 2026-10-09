@@ -1528,6 +1528,8 @@ export function thoughtPreview(messages: ReadonlyArray<Pick<ChatMessage, "text">
 function stretchRecord(input: {
   stretch: Stretch;
   answer: MessageEntry | null;
+  /** The card's earlier runs' answers: drawn under it, never lines of its chat. */
+  earlierAnswers: ReadonlyArray<MessageEntry>;
   writing: MessageEntry | null;
   brokeOffEntryId: string | null;
   pauseRow: MessagesTimelineRow | null;
@@ -1717,7 +1719,11 @@ function stretchRecord(input: {
     // them would have the note land between its halves once it is known. The
     // thinking before them ended where they began, though: it stays in the
     // chat while they are on their way.
-    if (entry === input.answer || entry === input.writing) {
+    if (
+      entry === input.answer ||
+      entry === input.writing ||
+      (entry.kind === "message" && input.earlierAnswers.includes(entry))
+    ) {
       flushReasoning(entry.createdAt);
       continue;
     }
@@ -2091,6 +2097,7 @@ function batchReads(
 function recordReads(input: {
   stretch: Stretch;
   answer: MessageEntry | null;
+  earlierAnswers: ReadonlyArray<MessageEntry>;
   writing: MessageEntry | null;
   brokeOffEntryId: string | null;
   tracked: TrackedCommands;
@@ -2104,6 +2111,7 @@ function recordReads(input: {
     stretch.startedAt,
     stretch.endedAt,
     input.answer,
+    ...input.earlierAnswers,
     input.writing,
     input.brokeOffEntryId,
     input.until,
@@ -2672,6 +2680,7 @@ export function deriveMessagesTimelineRows(input: {
       const recordInput = {
         stretch,
         answer: turn.answer,
+        earlierAnswers: turn.earlierAnswers,
         writing: turn.writing,
         brokeOffEntryId: turn.brokeOff?.entryId ?? null,
         tracked,
@@ -2980,6 +2989,18 @@ export function deriveMessagesTimelineRows(input: {
           };
     // A provider pause owns its stage, outside the work card it follows.
     if (pause !== null) rows.push(pause);
+    // Each earlier run's answer stays under the card where it stood; the latest follows them.
+    for (const earlier of turn.earlierAnswers)
+      rows.push({
+        kind: "message",
+        id: earlier.id,
+        createdAt: earlier.createdAt,
+        message: earlier.message,
+        receipt: null,
+        aside: false,
+        imageOnly: false,
+        showAssistantMeta: true,
+      });
     // The answer follows the card, settled or still streaming.
     if (answer !== null) {
       rows.push({

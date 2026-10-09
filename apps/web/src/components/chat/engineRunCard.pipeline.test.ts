@@ -532,3 +532,66 @@ describe("an engine Mate's run card, from the engine's record", () => {
     },
   );
 });
+// Milo's third stress run: a job's end woke Milo, the reply under the folded card ("…hasn't
+// printed yet") vanished into it, and the final answer landed 798 px below the view.
+it.each([
+  { wake: "still at work", answered: false },
+  { wake: "answered", answered: true },
+])(
+  "a wake's answer appears under the reply the person was reading, which stays where it stood: the wake $wake",
+  ({ answered }) => {
+    const first = noteItem(run1, 12, "The background wait hasn't printed yet.", {
+      at: t0 + 77_700,
+      answer: true,
+    } as never);
+    const rows = render({
+      runs: [
+        stressRun({
+          summary: { ...stressSummary, answerItemId: `${run1}/i/12` },
+        } as never),
+        engineRun(key.conversationId, 2, {
+          trigger: { kind: "wake", cause: "self", wakeId: null },
+          joins: RunId.make(run1),
+          queuedAt: t0 + 101_400,
+          admittedAt: t0 + 101_400,
+          startedAt: t0 + 101_400,
+          ...(answered
+            ? {
+                endedAt: t0 + 103_300,
+                summary: {
+                  items: 2,
+                  calls: { command: 1 },
+                  answerItemId: `${run2}/i/21`,
+                  lastItemSeq: 21,
+                },
+              }
+            : { state: "running", turnState: "running", endedAt: null, end: null }),
+        } as never),
+      ],
+      items: [
+        ...stressItems("completed").slice(0, -1),
+        first,
+        {
+          ...bash(20, 101_500, "cat /tmp/s/out", "Read what the wait printed"),
+          runId: run2,
+          id: `${run2}/i/20`,
+        } as Item,
+        ...(answered
+          ? [noteItem(run2, 21, "It printed done.", { at: t0 + 103_000, answer: true } as never)]
+          : []),
+      ],
+      isWorking: !answered,
+    });
+    const said = rows.flatMap((row) =>
+      row.kind === "message" && row.message.role === "assistant" ? [row.message.text] : [],
+    );
+    expect(said).toEqual([
+      "The background wait hasn't printed yet.",
+      ...(answered ? ["It printed done."] : []),
+    ]);
+    // The reply stands under its card, the wake's answer under it.
+    const card = rows.findIndex((row) => row.kind === "record");
+    const reply = rows.findIndex((row) => row.kind === "message" && row.id === first.id);
+    expect(card).toBeLessThan(reply);
+  },
+);

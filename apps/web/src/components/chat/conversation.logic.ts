@@ -568,6 +568,12 @@ export interface ConversationTurn {
   /** The Mate's answer: the turn's last message, once the turn has settled. */
   readonly answer: MessageEntry | null;
   /**
+   * An engine card's earlier runs' answers, oldest first: each stays where the person read it,
+   * under the card, as a run a job's end woke goes on in that card and answers below them
+   * (Milo's third stress run: the reply under the folded card vanished into it at the wake).
+   */
+  readonly earlierAnswers: ReadonlyArray<MessageEntry>;
+  /**
    * The words the Mate is writing while it runs that cannot be placed yet:
    * its last, nothing after them, not reading as its answer. A note if it
    * moves on, the answer if the run ends — drawn nowhere until then.
@@ -1007,6 +1013,19 @@ export function deriveConversationStructure(given: {
                 entry.kind === "message" && String(entry.message.id) === run?.summary.answerItemId,
             ) ?? null)
           : span.terminalEntry;
+    const earlierAnswers = typed
+      ? cardRuns.flatMap((each) => {
+          const id = each.summary.answerItemId;
+          const said =
+            id === null
+              ? undefined
+              : turnEntries.find(
+                  (entry): entry is MessageEntry =>
+                    entry.kind === "message" && String(entry.message.id) === id,
+                );
+          return said === undefined || said === answer ? [] : [said];
+        })
+      : [];
     // Words still streaming, nothing after them: the working row's, as they
     // come. Anything after them — a step, a thought — makes them a note in
     // the record, and so does their end: Codex says nothing of a command
@@ -1137,6 +1156,7 @@ export function deriveConversationStructure(given: {
       span,
       stretches,
       answer,
+      earlierAnswers,
       writing,
       live,
       waiting,
