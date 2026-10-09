@@ -1977,6 +1977,7 @@
         "packages/client-runtime/src/data/index.ts",
         "apps/web/src/routes/__root.tsx",
         "apps/web/src/zerops/AgentAdmissionComposition.tsx",
+        "apps/web/src/zerops/useMateReadOnly.ts",
         "apps/web/src/components/ChatView.tsx",
         "apps/web/src/components/chat/AgentAdmissionExplanation.tsx",
         "apps/web/src/components/chat/ThreadErrorBanner.tsx",
