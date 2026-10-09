@@ -21,6 +21,7 @@ import {
   type MessageId,
   type OrchestrationLatestTurn,
   type TurnId,
+  type RunRecord,
 } from "@t3tools/contracts";
 
 import {
@@ -489,6 +490,8 @@ export interface RunStatus {
   readonly endedAt: string | null;
   /** How long the run waited on the person — its questions and approvals — which is not the Mate's work. */
   readonly waitedMs: number;
+  /** Settled, the time it worked as its engine recorded its runs: never the span less waits. */
+  readonly workedMs?: number;
   /** Live, when the wait still open began: the clock stands still until the person answers. */
   readonly waitingSince: string | null;
   /** The open wait is on its helpers, after its turn: never a wait on the person. */
@@ -1124,10 +1127,13 @@ function approvalPending(stretch: Stretch): Extract<TimelineEntry, { kind: "work
  */
 function waitedOn(turn: ConversationTurn): {
   waitedMs: number;
+  /** Of it, what it waited on the person alone: their answers and approvals. */
+  personMs: number;
   waitingSince: string | null;
   waitingOnHelpers?: true;
 } {
   let waitedMs = 0;
+  let personMs = 0;
   let since: TimelineEntry | null = null;
   for (const [position, stretch] of turn.stretches.entries()) {
     const before = position === 0 ? null : (turn.stretches[position - 1]?.endedAt ?? null);
@@ -1139,21 +1145,38 @@ function waitedOn(turn: ConversationTurn): {
       const kind = entry.entry.sourceActivityKind;
       if (kind === "user-input.requested" || kind === "approval.requested") since ??= entry;
       else if ((kind === "user-input.resolved" || kind === "approval.resolved") && since !== null) {
-        waitedMs += Math.max(0, Date.parse(entry.createdAt) - Date.parse(since.createdAt)) || 0;
+        personMs += Math.max(0, Date.parse(entry.createdAt) - Date.parse(since.createdAt)) || 0;
         since = null;
       }
     }
   }
+  waitedMs += personMs;
   if (since === null) {
     const waitingSince = turn.waiting ? (turn.stretches.at(-1)?.endedAt ?? null) : null;
     return waitingSince === null
-      ? { waitedMs, waitingSince }
-      : { waitedMs, waitingSince, waitingOnHelpers: true };
+      ? { waitedMs, personMs, waitingSince }
+      : { waitedMs, personMs, waitingSince, waitingOnHelpers: true };
   }
-  if (turn.live) return { waitedMs, waitingSince: since.createdAt };
+  if (turn.live) return { waitedMs, personMs, waitingSince: since.createdAt };
   const end = turn.stretches.at(-1)?.endedAt ?? null;
-  const left = end === null ? 0 : Date.parse(end) - Date.parse(since.createdAt);
-  return { waitedMs: waitedMs + (Math.max(0, left) || 0), waitingSince: null };
+  const left = Math.max(0, end === null ? 0 : Date.parse(end) - Date.parse(since.createdAt)) || 0;
+  return { waitedMs: waitedMs + left, personMs: personMs + left, waitingSince: null };
+}
+
+/**
+ * How long an engine card's runs worked, as the engine recorded them: each run from its start to
+ * its end, less what it waited on the person. A run's queue before it started and the wait on its
+ * jobs between the runs are not work (V1 already leaves a wait on helpers out, review of pass 42);
+ * Milo's stress run read "worked 1m 34s" with 22 s queued and 24 s waiting on a job in it.
+ */
+function engineWorkedMs(runs: ReadonlyArray<RunRecord>, personMs: number): number | undefined {
+  let ran = 0;
+  for (const run of runs) {
+    if (run.startedAt === null) continue;
+    if (run.endedAt === null) return undefined;
+    ran += Math.max(0, run.endedAt - run.startedAt);
+  }
+  return Math.max(0, ran - personMs);
 }
 
 /** A call of the stretch, as the batch rule reads it: a call of the Mate's own, or an operation's. */
@@ -2732,6 +2755,11 @@ export function deriveMessagesTimelineRows(input: {
       }
     }
     rows.push(...exchanges);
+    const { personMs, ...waited } = waitedOn(turn);
+    const engineWorked =
+      engineCard === undefined || turn.live || waiting
+        ? undefined
+        : engineWorkedMs(engineCard.runs, personMs);
     const status: RunStatus = {
       // A run that waits on what it started is not over: its clock runs on.
       live: turn.live || waiting,
@@ -2746,7 +2774,8 @@ export function deriveMessagesTimelineRows(input: {
       endedAt: waiting ? null : last.endedAt,
       ...(turn.brokeOff === null || waiting ? {} : { brokeOff: turn.brokeOff }),
       ...(turn.interruption === undefined ? {} : { interruption: turn.interruption }),
-      ...waitedOn(turn),
+      ...waited,
+      ...(engineWorked === undefined ? {} : { workedMs: engineWorked }),
       // A question it asked is work too: a run that only asked read "thought".
       worked:
         unheld ||

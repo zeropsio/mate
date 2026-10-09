@@ -1,7 +1,14 @@
-import { RunRecord, type ConversationRow, type Item } from "@t3tools/contracts";
+import {
+  RunId,
+  RunRecord,
+  type ConversationRow,
+  type Item,
+  type Request,
+} from "@t3tools/contracts";
 import {
   callItem,
   engineCardPagingOfRecords,
+  engineRequest,
   engineRun,
   engineRunCardsOfRecords,
   engineThreadOfRecords,
@@ -15,10 +22,12 @@ import { describe, expect, it } from "vite-plus/test";
 import { deriveTimelineEntries, deriveWorkLogEntries } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import { deriveMessagesTimelineRows } from "./MessagesTimeline.logic";
+import { workedWords } from "./runCard.logic";
 import { runEffortWords } from "./runResult.logic";
 
 const key = { environmentId: "env", conversationId: "conversation" };
 const run1 = "conversation/r/1";
+const run2 = "conversation/r/2";
 const decode = Schema.decodeUnknownSync(RunRecord);
 const t0 = 1_760_000_000_000;
 
@@ -175,5 +184,62 @@ describe("an engine Mate's run card, from the engine's record", () => {
     expect(runEffortWords(card.outcome)).toBe(
       "1 file edited · 7 commands · 1 page fetched · 1 tool used · 1 helper",
     );
+  });
+
+  it("its worked time is the time its runs ran, less the person's answer: never its queue or its wait on a job", () => {
+    // Queued 22.9 s before it started; asked at +61.4 s, answered at +70.0 s; ended at +77.8 s,
+    // its job ran on to +96.7 s, and the run the job's end woke ran +101.4 s to +103.3 s.
+    const question = engineRequest(
+      run1,
+      1,
+      {
+        kind: "question",
+        questions: [
+          {
+            id: "format",
+            header: "Format",
+            question: "How should the final summary be laid out?",
+            options: [{ label: "Table", description: "One row per step" }],
+            multiSelect: false,
+          },
+        ],
+      } as never,
+      {
+        at: t0 + 61_400,
+        state: "answered",
+        answer: {
+          by: { kind: "person", subject: "user-ada" },
+          at: t0 + 70_000,
+          summary: "Table",
+          answers: { format: "Table" },
+        },
+      } as never,
+    );
+    const rows = render({
+      runs: [
+        stressRun(),
+        engineRun(key.conversationId, 2, {
+          trigger: { kind: "wake", cause: "self", wakeId: null },
+          joins: RunId.make(run1),
+          queuedAt: t0 + 101_400,
+          admittedAt: t0 + 101_400,
+          startedAt: t0 + 101_400,
+          endedAt: t0 + 103_300,
+        } as never),
+      ],
+      items: [
+        ...stressItems("completed"),
+        {
+          ...noteItem(run1, 12, ""),
+          kind: "request",
+          by: { kind: "engine" },
+          requestId: question.id,
+          at: t0 + 61_400,
+        } as unknown as Item,
+        noteItem(run2, 20, "All nine steps finished.", { at: t0 + 101_500 }),
+      ],
+      requests: [question],
+    });
+    expect(workedWords("Milo", cardOf(rows).status!)).toBe("Milo worked 48s");
   });
 });

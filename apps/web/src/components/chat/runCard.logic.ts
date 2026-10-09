@@ -410,6 +410,7 @@ export type NowLine =
 
 /** How long a run took of the Mate's own time: its span, less what it waited on the person. */
 function workedMs(status: RunStatus): number {
+  if (status.workedMs !== undefined) return status.workedMs;
   const start = Date.parse(status.startedAt);
   const end = status.endedAt === null ? Number.NaN : Date.parse(status.endedAt);
   return Number.isFinite(start) && Number.isFinite(end)
