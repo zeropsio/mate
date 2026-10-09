@@ -67,6 +67,7 @@ import {
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
+  engineCreateThread,
   engineSetArchived,
   engineSetInteractionMode,
   engineSetRuntimeMode,
@@ -126,7 +127,13 @@ export function createThreadEnvironmentAtoms<R, E>(
   const commands = {
     create: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:create",
-      execute: (input: CreateThreadInput) => createThread(input),
+      execute: (input: CreateThreadInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineCreateThread(environmentId, input),
+          createThread(input),
+        ),
       scheduler,
       concurrency,
     }),

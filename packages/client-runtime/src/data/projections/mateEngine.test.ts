@@ -1406,10 +1406,7 @@ describe("a crewmate's engine conversation", () => {
     ]);
   });
 
-  it("adds no thread for a conversation that is no crewmate's, nor a second for one V1 already has", () => {
-    expect(threadsOf(overlayEngineShell(mateShell([]), [engineRow(ENV, "thread-new")]))).toEqual(
-      [],
-    );
+  it("adds no second thread for a conversation V1 already has", () => {
     const imported = { id: backend, projectId: "project-ada", title: "Backend (V1)" };
     const shell = overlayEngineShell(mateShell([imported]), [
       engineRow(ENV, backend, { agent: crewmateAgent }),

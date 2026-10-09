@@ -1,9 +1,12 @@
 import {
   EnvironmentId,
   ThreadId,
+  ProjectId,
+  ProviderInstanceId,
   ORCHESTRATION_WS_METHODS,
   RunId,
   type EngineCallResult,
+  type ClientOrchestrationCommand,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Crypto from "effect/Crypto";
@@ -70,6 +73,7 @@ function rig(
   });
   registry.set(mateEngineHostAtom, { store, operations } as unknown as MateEngineHost);
   const v1Calls: string[] = [];
+  const v1Commands: ClientOrchestrationCommand[] = [];
   const v1 = Effect.sync(() => {
     v1Calls.push("dispatchCommand");
     return { sequence: 3 } as never;
@@ -84,7 +88,16 @@ function rig(
           target: { environmentId: ENV },
           prepared,
           session: yield* SubscriptionRef.make(
-            Option.some({ client: { [ORCHESTRATION_WS_METHODS.dispatchCommand]: () => v1 } }),
+            Option.some({
+              client: {
+                [ORCHESTRATION_WS_METHODS.dispatchCommand]: (
+                  command: ClientOrchestrationCommand,
+                ) => {
+                  v1Commands.push(command);
+                  return v1;
+                },
+              },
+            }),
           ),
         } as never),
       );
@@ -144,7 +157,7 @@ function rig(
       removals: [],
     });
   };
-  return { registry, calls, v1, v1Calls, run, header, runs };
+  return { registry, calls, v1, v1Calls, v1Commands, run, header, runs };
 }
 
 describe("the thread commands a view sends, by its Mate's wire", () => {
@@ -201,6 +214,148 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
         }),
     );
   });
+
+  describe("Decision: P0+P1 in this card; V1 behaviour unchanged (V1 compatibility tests stay green).", () => {
+    it.effect.each([
+      { creation: "inline", protocol: 1 },
+      { creation: "separate", protocol: 1 },
+      { creation: "inline", protocol: undefined },
+      { creation: "separate", protocol: undefined },
+    ] as const)(
+      "a fresh engine conversation's first send uses the selected agent ($creation, engine $protocol)",
+      ({ creation, protocol }) =>
+        Effect.gen(function* () {
+          const r = rig(protocol);
+          yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+          const runtime = Atom.runtime(
+            Layer.mergeAll(
+              Layer.succeed(EnvironmentRegistry, {
+                run: (_id, effect) => r.run(effect),
+              } as EnvironmentRegistry["Service"]),
+              Layer.succeed(
+                Crypto.Crypto,
+                Crypto.make({
+                  randomBytes: (size) => new Uint8Array(size),
+                  digest: (_algorithm, data) => Effect.succeed(data),
+                }),
+              ),
+            ),
+          );
+          const commands = createThreadEnvironmentAtoms(runtime, () => Atom.make(null));
+          const create = {
+            projectId: ProjectId.make("project-ada"),
+            title: "First ask",
+            createdAt: "2026-10-09T00:00:00.000Z",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("claude"),
+              model: "sonnet",
+              options: [{ id: "effort", value: "low" }],
+            },
+            runtimeMode: "approval-required" as const,
+            interactionMode: "default" as const,
+            branch: null,
+            worktreePath: null,
+          };
+          if (creation === "separate") {
+            const result = yield* Effect.promise(() =>
+              commands.create.run(r.registry, {
+                environmentId: EnvironmentId.make(ENV),
+                input: { threadId: ThreadId.make("thread-ada"), ...create },
+              }),
+            );
+            expect(result._tag).toBe("Success");
+          }
+          const result = yield* Effect.promise(() =>
+            commands.startTurn.run(r.registry, {
+              environmentId: EnvironmentId.make(ENV),
+              input: {
+                ...turn(),
+                ...(creation === "inline" ? { bootstrap: { createThread: create } } : {}),
+              },
+            }),
+          );
+          expect(result._tag).toBe("Success");
+          if (protocol === undefined) {
+            expect(r.calls).toEqual([]);
+            expect(r.v1Calls).toHaveLength(creation === "separate" ? 2 : 1);
+            expect(r.v1Commands.at(-1)).toMatchObject({
+              type: "thread.turn.start",
+              message: turn().message,
+            });
+            expect(
+              creation === "inline"
+                ? r.v1Commands[0]?.type === "thread.turn.start" &&
+                    r.v1Commands[0].bootstrap?.createThread
+                : r.v1Commands[0],
+            ).toMatchObject(create);
+            return;
+          }
+          expect(
+            r.calls.map(({ kind }) => kind),
+            "ASSERTION: a fresh engine conversation's first send uses the selected agent",
+          ).toEqual(["assign-agent", "set-runtime-mode", "send"]);
+          expect(r.calls[0]).toMatchObject({
+            conversationId: "thread-ada",
+            instanceId: "claude",
+            model: "sonnet",
+            options: [{ id: "effort", value: "low" }],
+          });
+          expect(r.calls[1]).toMatchObject({
+            conversationId: "thread-ada",
+            runtimeMode: "approval-required",
+          });
+          expect(r.v1Calls).toEqual([]);
+        }),
+    );
+  });
+
+  it.effect.each(["assign-agent", "set-runtime-mode"] as const)(
+    "a refused fresh conversation %s never admits its first run",
+    (refused) =>
+      Effect.gen(function* () {
+        const r = rig(1, (command) =>
+          command.kind === refused
+            ? {
+                _tag: "Rejected",
+                rejection: { reason: "unknown", detail: "The agent cannot start." },
+              }
+            : ACCEPTED,
+        );
+        yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+        const result = yield* Effect.exit(
+          r.run(
+            viaEngine(
+              r.registry,
+              ENV,
+              engineStartTurn(ENV, {
+                ...turn(),
+                bootstrap: {
+                  createThread: {
+                    projectId: ProjectId.make("project-ada"),
+                    title: "First ask",
+                    createdAt: "2026-10-09T00:00:00.000Z",
+                    modelSelection: {
+                      instanceId: ProviderInstanceId.make("claude"),
+                      model: "sonnet",
+                    },
+                    runtimeMode: "full-access",
+                    interactionMode: "default",
+                    branch: null,
+                    worktreePath: null,
+                  },
+                },
+              }),
+              r.v1,
+            ),
+          ),
+        );
+        expect(result._tag).toBe("Failure");
+        expect(r.calls.map(({ kind }) => kind)).toEqual(
+          refused === "assign-agent" ? ["assign-agent"] : ["assign-agent", "set-runtime-mode"],
+        );
+        expect(r.v1Calls).toEqual([]);
+      }),
+  );
 
   // Catches a Stop sent to the card a continuing run draws on: the engine refuses an ended run, and
   // the run that works goes on (a usage-limit resume, an agent's own turn, a restart's continuation).

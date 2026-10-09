@@ -1172,6 +1172,7 @@ export function overlayEngineRow(
         ? (row.activeRunId ?? null)
         : held.activeTurnId) as OrchestrationSession["activeTurnId"],
       interruption: null,
+      lastError: row.state.kind === "failed" ? row.state.errorLine : null,
       updatedAt: iso(row.at),
     },
     hasPendingApprovals: row.state.kind === "waiting" && row.state.on === "approval",
@@ -1255,25 +1256,25 @@ export function engineCrewOrigin(
 }
 
 /**
- * The thread shell of a crewmate's conversation V1's shell never had: the engine opened it, so the
- * row is all there is of it — its crewmate's name, its agent, the Mate's project.
+ * A conversation V1's shell never had: the engine's row gives fresh drafts and crewmates their
+ * canonical thread identity, agent and verdict in the Mate's project.
  */
-function engineCrewShell(
+function engineConversationShell(
   row: ConversationRow,
-  origin: ThreadCrewOrigin,
+  origin: ThreadCrewOrigin | null,
   projectId: OrchestrationThreadShell["projectId"],
 ): OrchestrationThreadShell {
   const at = iso(row.at);
-  const agent = row.agent!;
+  const agent = row.agent;
   return {
     id: row.conversationId as unknown as OrchestrationThreadShell["id"],
     projectId,
-    title: (agent.profile.kind === "crewmate"
+    title: (agent?.profile.kind === "crewmate"
       ? agent.profile.name
-      : origin.crewmate) as OrchestrationThreadShell["title"],
+      : (row.subject ?? "New thread")) as OrchestrationThreadShell["title"],
     modelSelection: {
-      instanceId: agent.instanceId,
-      model: agent.model ?? "default",
+      instanceId: agent?.instanceId ?? "unknown",
+      model: agent?.model ?? "default",
     } as OrchestrationThreadShell["modelSelection"],
     runtimeMode: "full-access",
     interactionMode: "default",
@@ -1290,13 +1291,13 @@ function engineCrewShell(
     hasPendingApprovals: false,
     hasPendingUserInput: false,
     hasActionableProposedPlan: false,
-    crew: origin,
+    ...(origin === null ? {} : { crew: origin }),
   };
 }
 
 /**
- * A Mate's shell with its engine conversations' rows laid over their thread shells, and a crew
- * thread for each crewmate's conversation the V1 shell does not have.
+ * A Mate's shell with its engine conversations' rows laid over their thread shells, including
+ * fresh conversations the V1 shell never had.
  */
 export function overlayEngineShell(
   shell: EnvironmentShellState,
@@ -1310,15 +1311,15 @@ export function overlayEngineShell(
     snapshot: Option.map(shell.snapshot, (snapshot): OrchestrationShellSnapshot => {
       const known = new Set<string>(snapshot.threads.map((thread) => thread.id));
       const projectId = snapshot.projects[0]?.id ?? snapshot.threads[0]?.projectId;
-      const crewThreads = rows.flatMap((row) => {
+      const engineThreads = rows.flatMap((row) => {
         const origin = engineCrewOrigin(row.conversationId, row.agent);
-        return origin === null || projectId === undefined || known.has(row.conversationId)
+        return projectId === undefined || known.has(row.conversationId)
           ? []
-          : [engineCrewShell(row, origin, projectId)];
+          : [engineConversationShell(row, origin, projectId)];
       });
       return {
         ...snapshot,
-        threads: [...snapshot.threads, ...crewThreads].map((thread) => {
+        threads: [...snapshot.threads, ...engineThreads].map((thread) => {
           const row = byConversation.get(thread.id);
           return row === undefined ? thread : overlayEngineRow(thread, row, held[thread.id]);
         }),

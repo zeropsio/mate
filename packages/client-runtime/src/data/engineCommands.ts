@@ -112,50 +112,68 @@ const isReferenced = Schema.is(Schema.Union([ChatImageAttachment, ChatFileAttach
 const PICTURES_BY_REFERENCE =
   "Pictures reach this Mate once they are uploaded; send the words, then the pictures again.";
 
+/** Creation on the engine assigns the selected agent before any run can be admitted. */
+export const engineCreateThread =
+  (environmentId: string, input: Command<"thread.create">) => (host: MateEngineHost) =>
+    host.operations
+      .assignAgent({
+        environmentId,
+        conversationId: input.threadId,
+        ...input.modelSelection,
+      })
+      .pipe(Effect.flatMap(() => engineSetRuntimeMode(environmentId, input)(host)));
+
 /**
  * A turn's start as the engine's send or steer: the message's own id is the command id. A send
  * carries its files and pictures, and its interaction mode with it (the engine keeps no
  * thread-wide mode).
  */
 export const engineStartTurn =
-  (environmentId: string, input: Command<"thread.turn.start">) => (host: MateEngineHost) => {
-    const attachments = input.message.attachments.filter(isReferenced);
-    if (attachments.length !== input.message.attachments.length)
-      return Effect.fail(
-        new EngineOperationFailed({ outcome: "refused", message: PICTURES_BY_REFERENCE }),
-      );
-    const target = { environmentId, conversationId: input.threadId };
-    const send = (commandId: string) =>
-      host.operations.send({
-        ...target,
-        text: input.message.text,
-        attachments,
-        ...(input.interactionMode === "plan" ? { interactionMode: "plan" as const } : {}),
-        commandId,
-      });
-    // Into the run that works, as V1 sends a message into its running turn; files, pictures and a
-    // plan go as the next run, since a steer carries words only (the run keeps the mode it began in).
-    const steered =
-      attachments.length === 0 && input.interactionMode !== "plan"
-        ? engineSteerTarget(readsOfState(host.store.state()), target)
-        : null;
-    if (steered === null) return send(input.message.messageId);
-    return host.operations
-      .steer({
-        ...target,
-        runId: steered,
-        text: input.message.text,
-        commandId: input.message.messageId,
-      })
-      .pipe(
-        // The run ended (or its session changed) before the steer arrived: as V1 starts a new turn,
-        // the message goes as the next run — never refused as if it were a Stop.
-        Effect.catchIf(
-          (failure) => failure.outcome === "refused" && STEER_MISSED.has(failure.code ?? ""),
-          () => send(engineResendId(input.message.messageId)),
-        ),
-      );
-  };
+  (environmentId: string, input: Command<"thread.turn.start">) => (host: MateEngineHost) =>
+    Effect.gen(function* () {
+      const attachments = input.message.attachments.filter(isReferenced);
+      if (attachments.length !== input.message.attachments.length)
+        return yield* Effect.fail(
+          new EngineOperationFailed({ outcome: "refused", message: PICTURES_BY_REFERENCE }),
+        );
+      if (input.bootstrap?.createThread !== undefined) {
+        yield* engineCreateThread(environmentId, {
+          ...input.bootstrap.createThread,
+          threadId: input.threadId,
+        })(host);
+      }
+      const target = { environmentId, conversationId: input.threadId };
+      const send = (commandId: string) =>
+        host.operations.send({
+          ...target,
+          text: input.message.text,
+          attachments,
+          ...(input.interactionMode === "plan" ? { interactionMode: "plan" as const } : {}),
+          commandId,
+        });
+      // Into the run that works, as V1 sends a message into its running turn; files, pictures and a
+      // plan go as the next run, since a steer carries words only (the run keeps the mode it began in).
+      const steered =
+        attachments.length === 0 && input.interactionMode !== "plan"
+          ? engineSteerTarget(readsOfState(host.store.state()), target)
+          : null;
+      if (steered === null) return yield* send(input.message.messageId);
+      return yield* host.operations
+        .steer({
+          ...target,
+          runId: steered,
+          text: input.message.text,
+          commandId: input.message.messageId,
+        })
+        .pipe(
+          // The run ended (or its session changed) before the steer arrived: as V1 starts a new turn,
+          // the message goes as the next run — never refused as if it were a Stop.
+          Effect.catchIf(
+            (failure) => failure.outcome === "refused" && STEER_MISSED.has(failure.code ?? ""),
+            () => send(engineResendId(input.message.messageId)),
+          ),
+        );
+    });
 
 /** The engine's refusals of a steer that mean the run it aimed at no longer takes one. */
 const STEER_MISSED: ReadonlySet<string> = new Set(["run-not-running", "steer-unsupported"]);
