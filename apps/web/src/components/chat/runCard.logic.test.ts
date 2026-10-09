@@ -32,6 +32,7 @@ import {
   liveRunFold,
   runFoldOf,
   setRunFold,
+  transitionRunFold,
   severalWords,
   slotModelOf,
   standsAtFoot,
@@ -1129,6 +1130,75 @@ describe("the runs a person watched", () => {
     expect(liveRunFold("thread-c", "turn-1")).toBe(live);
     forgetRunFolds("thread-c");
     expect(liveRunFold("thread-c", "turn-1")).toBe("watched");
+  });
+
+  it.each([
+    {
+      name: "following with measured motion",
+      wasLive: true,
+      reading: false,
+      measured: true,
+      work: "above",
+      toggle: "show",
+    },
+    {
+      name: "following without motion",
+      wasLive: true,
+      reading: false,
+      measured: false,
+      work: null,
+      toggle: "show",
+    },
+    {
+      name: "reading on settlement",
+      wasLive: true,
+      reading: true,
+      measured: true,
+      work: "above",
+      toggle: "hide",
+    },
+    {
+      name: "reading without motion",
+      wasLive: true,
+      reading: true,
+      measured: false,
+      work: "above",
+      toggle: "hide",
+    },
+    {
+      name: "remounted after reading",
+      wasLive: false,
+      reading: true,
+      measured: true,
+      work: null,
+      toggle: "show",
+    },
+  ] as const)(
+    "a run $name presents the work and choice from its owning fold",
+    ({ wasLive, reading, measured, work, toggle }) => {
+      transitionRunFold("thread-d", "turn-1", { kind: "live" });
+      transitionRunFold("thread-d", "turn-1", { kind: "settled", wasLive, reading, measured });
+      expect(runCardShows(true, runFoldOf("thread-d", "turn-1"))).toEqual({ work, toggle });
+      forgetRunFolds("thread-d");
+    },
+  );
+
+  it("preserves Show and a joined run when an earlier measured fold reports completion", () => {
+    transitionRunFold("thread-e", "turn-1", { kind: "hide", measured: true });
+    setRunFold("thread-e", "turn-1", "shown");
+    transitionRunFold("thread-e", "turn-1", { kind: "finished" });
+    expect(runCardShows(true, runFoldOf("thread-e", "turn-1"))).toEqual({
+      work: "below",
+      toggle: "hide",
+    });
+    transitionRunFold("thread-e", "turn-1", { kind: "hide", measured: true });
+    transitionRunFold("thread-e", "turn-1", { kind: "live" });
+    transitionRunFold("thread-e", "turn-1", { kind: "finished" });
+    expect(runCardShows(true, runFoldOf("thread-e", "turn-1"))).toEqual({
+      work: "above",
+      toggle: "hide",
+    });
+    forgetRunFolds("thread-e");
   });
 });
 

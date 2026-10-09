@@ -843,6 +843,44 @@ export function liveRunFold(conversation: string, run: string): "watched" | "fol
   return hiddenLive.get(conversation)?.has(run) === true ? "folded" : "watched";
 }
 
+type RunFoldInput =
+  | { readonly kind: "live" }
+  | {
+      readonly kind: "settled";
+      readonly wasLive: boolean;
+      readonly reading: boolean;
+      readonly measured: boolean;
+    }
+  | { readonly kind: "hide"; readonly measured: boolean }
+  | { readonly kind: "finished" };
+
+/** The existing fold's next state; geometry and motion permission come from its renderer. */
+function nextRunFold(fold: RunFold, liveChoice: RunFold, input: RunFoldInput): RunFold {
+  switch (input.kind) {
+    case "live":
+      return liveChoice;
+    case "settled":
+      if (fold !== "watched") return fold;
+      if (!input.wasLive) return "folded";
+      if (input.reading) return "watched";
+      return input.measured ? "folding" : "folded";
+    case "hide":
+      return input.measured ? "folding" : "folded";
+    case "finished":
+      // A measured fold cannot close work the person showed, or a run that joined since.
+      return fold === "folding" ? "folded" : fold;
+  }
+}
+
+/** Observes a run, accepts Hide, or completes its measured fold in the same owning store. */
+export function transitionRunFold(conversation: string, run: string, input: RunFoldInput): void {
+  setRunFold(
+    conversation,
+    run,
+    nextRunFold(runFoldOf(conversation, run), liveRunFold(conversation, run), input),
+  );
+}
+
 /**
  * The person left a conversation: every run in it folds, so when they come
  * back it is folded from the first frame and nothing moves.
