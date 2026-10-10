@@ -2098,5 +2098,100 @@ describe("owner-reported layout regressions", () => {
         );
       });
     });
+
+    // Milo's stress run 5 (A): the Helpers surface folded its earlier helpers away each time one
+    // started and unfolded them each time none worked, CLS up to 0.205 just after a restart.
+    describe("Decision: the Helpers surface keeps its rows where they stand; what is new comes under them.", () => {
+      /** Each helper row's top on the Helpers surface, by its title. */
+      const helperRows = (page: Page) =>
+        page.evaluate(() =>
+          Object.fromEntries(
+            [...document.querySelectorAll("[data-helper-row]")].map((row) => [
+              row.querySelector(".helper-row-name")?.textContent ?? "",
+              row.getBoundingClientRect().top,
+            ]),
+          ),
+        );
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        it.effect("the Helpers surface's rows stay where they stand as helpers start and end", () =>
+          Effect.gen(function* () {
+            const s = yield* createScenario([installEngineArea]);
+            yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+            yield* s.given.project("Ada", { mate: true });
+            const chat = mateChat(s);
+            chat.fixture().exchange("And now?", "The existing conversation is still here");
+            yield* s.given.signedIn;
+            yield* chat.when.open();
+            yield* chat.then.text("The existing conversation is still here");
+            const wire = chat.fixture().wire;
+            if (!(wire instanceof EngineChatWire))
+              throw new Error("This witness runs on the engine's wire");
+            const engine = wire.engine;
+            const helper = (run: string, title: string) =>
+              engine.item(run, {
+                kind: "work",
+                work: `helper-${title}`,
+                workKind: "helper",
+                status: "running",
+                title,
+              });
+            const first = engine.personRun("Start helpers A and B");
+            const a = helper(first, "Helper A");
+            const b = helper(first, "Helper B");
+            engine.note(first, "Both helpers are on it.");
+            yield* chat.then.text("Both helpers are on it.");
+            engine.update(a, { status: "completed", report: "A is done." });
+            engine.update(b, { status: "completed", report: "B is done." });
+            engine.end(first);
+            yield* Effect.promise(async () => {
+              await s.page.locator('button[aria-label^="Toggle right panel"]').click();
+              await s.page.locator("::-p-text(Helpers)").setTimeout(8000).click();
+              await s.page.waitForFunction(
+                () => document.querySelectorAll(".helper-map > li").length >= 2,
+                { timeout: 8000 },
+              );
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            });
+            const states = [yield* Effect.promise(() => helperRows(s.page))];
+            const settle = () =>
+              Effect.promise(async () => {
+                await new Promise((resolve) => setTimeout(resolve, 800));
+                states.push(await helperRows(s.page));
+              });
+            const second = engine.personRun("Start helper C");
+            const c = helper(second, "Helper C");
+            yield* settle();
+            engine.update(c, { status: "completed", report: "C is done." });
+            engine.end(second);
+            yield* settle();
+            const seen = states
+              .map((state) =>
+                Object.entries(state)
+                  .map(([title, top]) => `${title} at ${top}`)
+                  .join(", "),
+              )
+              .join(" | ");
+            for (const [index, after] of states.slice(1).entries()) {
+              const before = states[index]!;
+              for (const [title, top] of Object.entries(before)) {
+                expect(
+                  after[title],
+                  `ASSERTION: ${title} stays on the surface: ${seen}`,
+                ).toBeDefined();
+                expect(
+                  Math.abs(after[title]! - top),
+                  `ASSERTION: ${title} keeps its place: ${seen}`,
+                ).toBeLessThanOrEqual(1);
+              }
+            }
+            expect(
+              Object.keys(states.at(-1)!).length,
+              `ASSERTION: the new helper comes under them: ${seen}`,
+            ).toBe(3);
+            yield* s.then.noExternalNetwork;
+          }),
+        );
+      });
+    });
   });
 });

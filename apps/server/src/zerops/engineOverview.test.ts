@@ -240,6 +240,18 @@ describe("HQ's overview of a Mate on the engine", () => {
     },
   );
 
+  // Milo's stress run 5: after a restart the menu row's subject read the shell's title, with
+  // raw backticks: "(`sleep 25 && echo helper-job-done` and `sh -c …`)".
+  it("names the conversation by the person's first words as plain words, its markdown read", () => {
+    const lastPerson = {
+      text: "---\nStart two helpers (`sleep 25 && echo done` and **`exit 4`**)\nthen report",
+      attachments: [],
+      at: T("2026-10-07T10:05:00.000Z"),
+    };
+    const main = overviewOf([engineShellOf(view({ lastPerson }))]).main;
+    assert.strictEqual(main?.title, "Start two helpers (sleep 25 && echo done and exit 4)");
+  });
+
   it("previews the agent's last words as V1's shell does, its markdown read", () => {
     const lastAgent = { text: "The number is **42**.", at: T("2026-10-07T10:04:00.000Z") };
     const main = overviewOf([engineShellOf(view({ lastAgent }))]).main;
