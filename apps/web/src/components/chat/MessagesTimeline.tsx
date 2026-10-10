@@ -948,7 +948,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     if (!followingEnd || rows.length === 0) return;
     // Composer geometry keeps the followed line in place. Row growth keeps its existing motion.
     if (previousContentInsetEndAdjustmentRef.current !== contentInsetEndAdjustment) {
-      if (outerFoldsRef.current.size === 0) endFollowRef.current?.place();
+      if (outerFoldsRef.current.size === 0)
+        endFollowRef.current?.place(
+          contentInsetEndAdjustment - previousContentInsetEndAdjustmentRef.current,
+        );
     }
     if (!listPlaced) return;
     const frame = requestAnimationFrame(followEnd);

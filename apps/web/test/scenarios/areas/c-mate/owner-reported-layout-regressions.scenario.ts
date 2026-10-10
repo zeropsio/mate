@@ -2129,54 +2129,65 @@ describe("owner-reported layout regressions", () => {
         readonly composer: number;
         /** The sent message's bubble while it is drawn; null before it is. */
         readonly message: { readonly top: number; readonly bottom: number } | null;
+        /** The top of the conversation's words before the send: what the send moves. */
+        readonly conversation: number | null;
       }
+      const EARLIER = "The existing conversation is still here";
       const startSendTrace = (page: Page, text: string) =>
-        page.evaluate((text) => {
-          const frames: SendFrame[] = [];
-          const state = { active: true };
-          const drawn = (element: Element) => {
-            let opacity = 1;
-            for (let at: Element | null = element; at !== null; at = at.parentElement) {
-              const style = getComputedStyle(at);
-              if (style.visibility === "hidden" || style.display === "none") return false;
-              opacity *= Number(style.opacity);
-            }
-            return opacity > 0.01;
-          };
-          const read = (): SendFrame | null => {
-            const composer = document.querySelector('[data-slot="composer-shell"]');
-            if (!composer) return null;
-            const row = [
-              ...document.querySelectorAll('[data-timeline-row-id][data-message-role="user"]'),
-            ].find((each) => each.textContent?.includes(text));
-            // The bubble: the first box inside the row that paints a fill.
-            const bubble =
-              row === undefined
-                ? undefined
-                : [row, ...row.querySelectorAll("*")].find((each) => {
-                    const fill = getComputedStyle(each).backgroundColor;
-                    return fill !== "transparent" && !/\/ 0\)$|, 0\)$/u.test(fill);
-                  });
-            const box = bubble?.getBoundingClientRect();
-            return {
-              at: performance.now(),
-              composer: composer.getBoundingClientRect().top,
-              message:
-                bubble !== undefined && box !== undefined && box.height > 0 && drawn(bubble)
-                  ? { top: box.top, bottom: box.bottom }
-                  : null,
+        page.evaluate(
+          (text, earlier) => {
+            const frames: SendFrame[] = [];
+            const state = { active: true };
+            const drawn = (element: Element) => {
+              let opacity = 1;
+              for (let at: Element | null = element; at !== null; at = at.parentElement) {
+                const style = getComputedStyle(at);
+                if (style.visibility === "hidden" || style.display === "none") return false;
+                opacity *= Number(style.opacity);
+              }
+              return opacity > 0.01;
             };
-          };
-          // After the frame's paint: a rAF alone reads before the list's own frame work.
-          const sample = () =>
-            setTimeout(() => {
-              const frame = read();
-              if (frame) frames.push(frame);
-              if (state.active) requestAnimationFrame(sample);
-            }, 0);
-          (window as unknown as { sendTrace: unknown }).sendTrace = { frames, state };
-          requestAnimationFrame(sample);
-        }, text);
+            const read = (): SendFrame | null => {
+              const composer = document.querySelector('[data-slot="composer-shell"]');
+              if (!composer) return null;
+              const row = [
+                ...document.querySelectorAll('[data-timeline-row-id][data-message-role="user"]'),
+              ].find((each) => each.textContent?.includes(text));
+              // The bubble: the first box inside the row that paints a fill.
+              const bubble =
+                row === undefined
+                  ? undefined
+                  : [row, ...row.querySelectorAll("*")].find((each) => {
+                      const fill = getComputedStyle(each).backgroundColor;
+                      return fill !== "transparent" && !/\/ 0\)$|, 0\)$/u.test(fill);
+                    });
+              const box = bubble?.getBoundingClientRect();
+              const before = [...document.querySelectorAll("[data-timeline-row-id]")]
+                .find((each) => each.textContent?.includes(earlier))
+                ?.getBoundingClientRect();
+              return {
+                at: performance.now(),
+                composer: composer.getBoundingClientRect().top,
+                message:
+                  bubble !== undefined && box !== undefined && box.height > 0 && drawn(bubble)
+                    ? { top: box.top, bottom: box.bottom }
+                    : null,
+                conversation: before === undefined || before.height === 0 ? null : before.top,
+              };
+            };
+            // After the frame's paint: a rAF alone reads before the list's own frame work.
+            const sample = () =>
+              setTimeout(() => {
+                const frame = read();
+                if (frame) frames.push(frame);
+                if (state.active) requestAnimationFrame(sample);
+              }, 0);
+            (window as unknown as { sendTrace: unknown }).sendTrace = { frames, state };
+            requestAnimationFrame(sample);
+          },
+          text,
+          EARLIER,
+        );
       const stopSendTrace = (page: Page, ms: number) =>
         new Promise((resolve) => setTimeout(resolve, ms)).then(() =>
           page.evaluate(() => {
@@ -2200,6 +2211,20 @@ describe("owner-reported layout regressions", () => {
             text: "Now describe it in twenty lines.",
           },
           { from: "this composer, several lines", typed: true, text: LONG },
+          // Milo's stress run 6 (U1): a six-line draft's send stepped 223 px in one frame as the
+          // composer shrank back to one line.
+          {
+            from: "a several-line draft",
+            typed: true,
+            text: [
+              "Live stress test 6U: start two helpers, each with a job of its own,",
+              "then a second wave once the first jobs end.",
+              "Helper A runs sleep 90 and prints a-done.",
+              "Helper B runs sleep 150 and prints b-done.",
+              "You run your own sleep 60 and print mate-done.",
+              "Give a table of every helper and job when all of them have reported.",
+            ].join("\n"),
+          },
           // The composer stays as it was: the end only grows (D2's send, a line long).
           { from: "another tab", typed: false, text: "Now describe the page in twenty lines." },
         ])(
@@ -2251,15 +2276,22 @@ describe("owner-reported layout regressions", () => {
               ).toEqual([]);
               // By elapsed time, never per frame: a loaded machine draws a glide in fewer frames.
               const FRAME_MS = 1000 / 60;
-              const steps = frames.slice(1).flatMap((frame, index) => {
-                const before = frames[index]!;
-                if (frame.message === null || before.message === null) return [];
-                const moved = Math.abs(frame.message.top - before.message.top);
-                return [(moved * FRAME_MS) / Math.max(FRAME_MS, frame.at - before.at)];
-              });
+              const steps = (of: (frame: SendFrame) => number | null) =>
+                frames.slice(1).flatMap((frame, index) => {
+                  const before = frames[index]!;
+                  const [to, from] = [of(frame), of(before)];
+                  if (to === null || from === null) return [];
+                  return [
+                    (Math.abs(to - from) * FRAME_MS) / Math.max(FRAME_MS, frame.at - before.at),
+                  ];
+                });
               expect(
-                Math.max(0, ...steps),
+                Math.max(0, ...steps((frame) => frame.message?.top ?? null)),
                 "ASSERTION: the sent message glides, no frame's step 60 px or more",
+              ).toBeLessThan(60);
+              expect(
+                Math.max(0, ...steps((frame) => frame.conversation)),
+                "ASSERTION: the conversation glides with it, no frame's step 60 px or more",
               ).toBeLessThan(60);
               yield* s.then.noExternalNetwork;
             }),
