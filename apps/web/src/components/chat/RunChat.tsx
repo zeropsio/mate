@@ -3407,9 +3407,6 @@ function rowByKey(root: HTMLElement | null, key: string): HTMLElement | null {
   return null;
 }
 
-/** How long a "Thinking" between steps waits before its word shows: a quick gap never flashes. */
-const THINKING_WORD_DELAY_MS = 300;
-
 /**
  * A line the slot drew live that ended with no line of its own in the record:
  * said over, never still running — a step in its settled words.
@@ -3468,25 +3465,16 @@ function placeSlot(list: HTMLOListElement | null): void {
 }
 
 /**
- * What the slot says when no item stands in it: "Thinking" — muted, its word
- * a moment late, so a quick gap between two steps never flashes it — its
- * words on their way, a wait on the person, the context condensing.
+ * What the slot says when no item stands in it: "Thinking", muted, from its
+ * first frame — a word fading in late left the Mate's face alone on the line
+ * for half a second (run 5, E +0:23.6); a quick gap between two steps is
+ * bridged by the step standing its minimum — its words on their way, a wait
+ * on the person, the context condensing.
  */
 function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
-  // On the slot's first draw it is simply there: a page opening never waits for it.
-  const late = useArrivedLive();
   switch (filler.kind) {
     case "thinking":
-      return late ? (
-        <span
-          className="run-slot-word run-slot-later"
-          style={{ animationDelay: `${THINKING_WORD_DELAY_MS}ms` }}
-        >
-          Thinking
-        </span>
-      ) : (
-        <span className="run-slot-word">Thinking</span>
-      );
+      return <span className="run-slot-word">Thinking</span>;
     case "writing":
       return (
         <>

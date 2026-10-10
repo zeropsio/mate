@@ -4557,11 +4557,6 @@ code {
   font-weight: 500;
   color: var(--color-muted-foreground);
 }
-/* "Thinking" between steps comes a moment late, so a quick gap between two
-   steps never flashes it (the delay is set where it is drawn). */
-.run-slot-later {
-  animation: run-fade 200ms ease backwards;
-}
 .run-slot-more {
   padding-left: 36px;
   font-size: 13px;
