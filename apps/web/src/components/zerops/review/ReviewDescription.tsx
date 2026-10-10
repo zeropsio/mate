@@ -70,15 +70,17 @@ export function ReviewDescription({
           </button>
         )
       }
-      title={shown.kind === "body" ? "Description" : "What it does"}
+      title="What it does"
     >
-      {shown.kind === "body" ? (
-        <DescriptionBody hqAddress={hqAddress} pictures={pictures} text={shown.text} />
-      ) : shown.kind === "run" ? (
-        <p className="rv-words">{shown.words}</p>
-      ) : (
-        <ReviewSkeleton lines={2} />
-      )}
+      <div className="rv-what">
+        {shown.kind === "body" ? (
+          <DescriptionBody hqAddress={hqAddress} pictures={pictures} text={shown.text} />
+        ) : shown.kind === "run" ? (
+          <p className="rv-words">{shown.words}</p>
+        ) : (
+          <ReviewSkeleton lines={2} />
+        )}
+      </div>
     </ReviewSection>
   );
 }

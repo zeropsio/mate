@@ -12,7 +12,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 
 import { commitFold } from "./ZeropsReview.logic";
-import { ReviewFailed, ReviewSection } from "./ZeropsReviewSurface";
+import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
 
 /** How many rows hold the place of commits still being read. */
 const COMMITS_PENDING = 3;
@@ -21,17 +21,24 @@ export function ReviewCommits({
   commits,
   now,
   onRetry,
+  fold,
 }: {
   readonly commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>>;
   readonly now: number;
   readonly onRetry: (() => void) | undefined;
+  /** Folded to its row, in the sheet: one click away. */
+  readonly fold?: ReviewFoldState | undefined;
 }) {
   const [all, setAll] = useState(false);
   if (commits.kind === "none") return null;
   if (commits.kind === "read" && commits.value.length === 0) return null;
   const count = commits.kind === "read" ? commits.value.length : undefined;
   return (
-    <ReviewSection aside={count === undefined ? undefined : String(count)} title="Commits">
+    <ReviewSection
+      aside={count === undefined ? undefined : String(count)}
+      fold={fold}
+      title="Commits"
+    >
       {commits.kind === "reading" ? (
         <ol aria-busy="true" className="rv-commits">
           {Array.from({ length: COMMITS_PENDING }, (_, index) => (

@@ -202,9 +202,9 @@ describe("the release dialog's press", () => {
       return { ok: true, tag: "v0.1.5" };
     });
     await act(async () => container.querySelector<TestButton>("[data-review-primary]")!.click());
-    expect(container.textContent).toContain("replaces v0.1.4·1 change");
+    expect(container.textContent).toContain("1 change since v0.1.4");
     expect(container.textContent).toContain("#6 Set version to 1.0.0");
-    expect(container.textContent).toContain("Roll back to v0.1.4");
+    expect(container.textContent).toContain("roll back to v0.1.4");
     expect(container.textContent).toContain("Released v0.1.5");
   });
 

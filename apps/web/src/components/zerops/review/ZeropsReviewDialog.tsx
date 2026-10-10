@@ -1,8 +1,10 @@
 /**
- * The review as a dialog over the conversation (D12): a decision deserves focus.
+ * The review as a sheet over the page (D12): a decision deserves focus. It stands 12 px in from
+ * the window's top, right and bottom, 460 wide, a scrim over what is behind it.
  *
- * It opens from the thing that was pressed — its scale grows from that point, 200 ms, a touch
- * of lift and a fade — and closes in 150 ms (R7). Esc closes it and so does a press outside it.
+ * It opens from the right — a short slide and a fade, its touch of scale grown from the thing
+ * that was pressed, 240 ms — and closes in 160 ms (R7). Esc closes it, and so do × and a press
+ * outside it.
  * Focus lands on the review itself, never on its one button, so a stray Enter presses nothing
  * (the owner, 2026-10-05: Enter merged); ⌘↵ presses the button while it is safe. Focus goes back
  * to what opened it. Reduced motion keeps only the fade.
