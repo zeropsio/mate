@@ -63,7 +63,7 @@ describe("ZeropsHqCardView — its state", () => {
     });
     expect(html).toContain('data-hq-state="healthy"');
     expect(html).toContain('data-zerops-status-tone="ok"');
-    expect(html).toContain("Healthy");
+    expect(html).toContain("Running");
     expect(html).toContain(">Core 2026-10-03<");
     expect(html).toContain(">Last backup t42<");
     expect(html).toContain("1 project · 1 Mate · 1 online");
