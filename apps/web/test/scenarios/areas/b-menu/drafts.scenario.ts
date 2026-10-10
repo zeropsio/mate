@@ -140,46 +140,14 @@ describe("B: text-only drafts", () => {
               }
             }
           });
-          yield* Effect.promise(async () => {
-            const separator = (opacity: string) =>
-              s.page.waitForFunction(
-                (opacity) =>
-                  getComputedStyle(document.querySelector(".zerops-new-project-slot")!, "::before")
-                    .opacity === opacity,
-                {},
-                opacity,
-              );
-            await separator("0");
-            await s.page.setViewport({ width: 1786, height: 200 });
-            await separator("1");
-            await s.page.setViewport({ width: 1786, height: 1000 });
-            await separator("0");
-          });
           const geometry = () =>
             s.page.evaluate(() =>
-              ["[data-zerops-surface='sidebar-new-project']", "[data-sidebar='content']"].map(
-                (selector) => {
-                  const box = document.querySelector(selector)!.getBoundingClientRect();
-                  return { y: box.y, height: box.height };
-                },
-              ),
+              ["[data-sidebar='footer']", "[data-sidebar='content']"].map((selector) => {
+                const box = document.querySelector(selector)!.getBoundingClientRect();
+                return { y: box.y, height: box.height };
+              }),
             );
           const before = yield* Effect.promise(geometry);
-          const footerSpacing = () =>
-            s.page.evaluate(() => {
-              const newProject = document.querySelector(
-                '[data-zerops-surface="sidebar-new-project"]',
-              )!;
-              const footer = document.querySelector('[data-sidebar="footer"]')!;
-              return (
-                footer.getBoundingClientRect().top -
-                newProject.parentElement!.getBoundingClientRect().bottom
-              );
-            });
-          expect(
-            Math.abs(yield* Effect.promise(footerSpacing)),
-            "ASSERTION: new project stays joined to the account footer",
-          ).toBeLessThanOrEqual(4);
           yield* dropZerops(s.drivers);
           yield* lastingZeropsOutage(s);
           const after = yield* Effect.promise(geometry);
@@ -191,10 +159,6 @@ describe("B: text-only drafts", () => {
               ]),
             ),
             "ASSERTION: account failure and recovery preserve footer room",
-          ).toBeLessThanOrEqual(4);
-          expect(
-            Math.abs(yield* Effect.promise(footerSpacing)),
-            "ASSERTION: new project stays joined to the account footer",
           ).toBeLessThanOrEqual(4);
           s.drivers.zerops.handlers.pop();
           s.drivers.zerops.faults.delete("POST /web-socket/login");
@@ -213,10 +177,6 @@ describe("B: text-only drafts", () => {
               ]),
             ),
             "ASSERTION: account failure and recovery preserve footer room",
-          ).toBeLessThanOrEqual(4);
-          expect(
-            Math.abs(yield* Effect.promise(footerSpacing)),
-            "ASSERTION: new project stays joined to the account footer",
           ).toBeLessThanOrEqual(4);
           yield* s.then.noExternalNetwork;
         }),

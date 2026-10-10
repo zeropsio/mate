@@ -192,11 +192,15 @@ describe("C: reading, replay and attention", () => {
         yield* reportConversation(s.drivers, "Ada", { usagePause: wire.usagePause });
         yield* chat.then.text("Ada hit Codex's 5-hour limit.");
         yield* Effect.promise(async () => {
-          const marker = await s.page.waitForSelector(
-            '[data-zerops-mate-row="Ada"] [role="status"]',
-            { visible: true, timeout: 8000 },
+          // Round 5: no status word on the row — its face sleeps, its line says the limit, and
+          // its accessible name names it.
+          await s.page.waitForFunction(
+            () =>
+              document
+                .querySelector('[data-zerops-mate-row="Ada"] button')
+                ?.getAttribute("aria-label") === "Ada, Provider limit",
+            { timeout: 8000 },
           );
-          expect(await marker?.evaluate((node) => node.textContent)).toContain("Limit");
           expect(
             await s.page.$eval('[data-zerops-mate-row="Ada"] button', (node) =>
               node.getAttribute("aria-label"),

@@ -51,17 +51,23 @@ describe("B: automatic project sections", () => {
           ).toEqual(before);
           // The desktop's deliberate reopen applies the new membership too.
           await s.page.locator('button[aria-label="Collapse sidebar"]').click();
-          await s.page.locator('button[aria-label="Open main sidebar"]').click();
-          await s.page.waitForFunction(() =>
-            [...document.querySelectorAll("h2")].some(
-              (node) => node.textContent === "Other projects",
-            ),
-          );
+          // Closed, the menu is its rail (round 5), whose own control opens it again.
+          await s.page.locator('button[aria-label="Open the menu"]').click();
+          await s.page.waitForSelector('[data-zerops-surface="sidebar-other-projects-fold"]');
           const active = await s.page.$eval(
             '[data-zerops-project-section="active"]',
             (node) => node.textContent,
           );
           expect(active).toContain("Ben");
+          // The menu opens by a width transition: aim the drag once it has settled.
+          await s.page.waitForFunction(
+            () =>
+              new Promise<boolean>((resolve) => {
+                const menu = document.querySelector('[data-sidebar="sidebar"]')!;
+                const before = menu.getBoundingClientRect().width;
+                setTimeout(() => resolve(menu.getBoundingClientRect().width === before), 300);
+              }),
+          );
           const rail = await s.page.$('[data-sidebar="rail"]');
           const box = (await rail!.boundingBox())!;
           const width = await s.page.$eval(
@@ -90,6 +96,10 @@ describe("B: automatic project sections", () => {
           await s.page.setViewport({ width: 430, height: 932 });
           await s.page.locator('[data-slot="sidebar-trigger"]').click();
           await s.page.waitForSelector('[data-mobile="true"]', { visible: true });
+          // Ada's project rests behind "1 other project" (round 5): the person opens it.
+          await s.page
+            .locator('[data-mobile="true"] [data-zerops-surface="sidebar-other-projects-fold"]')
+            .click();
         });
         const mobileBefore = yield* Effect.promise(() =>
           s.page.$$eval(groups, (nodes) =>
@@ -129,9 +139,8 @@ describe("B: automatic project sections", () => {
           await s.page.waitForFunction(
             () =>
               document.querySelectorAll('[data-zerops-project-section="active"]').length === 2 &&
-              ![...document.querySelectorAll("h2")].some(
-                (node) => node.textContent === "Other projects",
-              ),
+              document.querySelector('[data-zerops-surface="sidebar-other-projects-fold"]') ===
+                null,
           );
         });
         yield* s.then.noReload;
