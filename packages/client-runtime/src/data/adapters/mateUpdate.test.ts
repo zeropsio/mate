@@ -2,10 +2,17 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import { AtomRegistry } from "effect/reactivity";
-import { EnvironmentId, ZeropsMateUpdateError } from "@t3tools/contracts";
+import * as Option from "effect/Option";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import { EnvironmentId, WS_METHODS, ZeropsMateUpdateError } from "@t3tools/contracts";
+import { PrimaryConnectionTarget } from "../../connection/model.ts";
+import type { EnvironmentRegistry } from "../../connection/registry.ts";
+import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
+import type { WsRpcProtocolClient } from "../../rpc/protocol.ts";
+import type * as RpcSession from "../../rpc/session.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { mateUpdate, mateUpdateStates } from "../projections/mateUpdate.ts";
-import { makeMateUpdates } from "./mateUpdate.ts";
+import { makeMateUpdates, makeMateUpdateWire } from "./mateUpdate.ts";
 
 const env = EnvironmentId.make("one");
 const other = EnvironmentId.make("two");
@@ -253,4 +260,83 @@ describe("automatic update acceptance", () => {
       });
     host.close();
   });
+});
+
+describe("an update pressed where its Mate is not connected", () => {
+  /** A Mate whose link is down until the press holds it, as a panel outside its view sees it. */
+  const parkedMate = (options: { readonly connects: boolean }) =>
+    Effect.gen(function* () {
+      const sends: Array<string> = [];
+      const client = {
+        [WS_METHODS.zeropsMateUpdate]: () =>
+          Effect.sync(() => {
+            sends.push("update");
+            return updated;
+          }),
+      } as unknown as WsRpcProtocolClient;
+      const link = yield* SubscriptionRef.make<Option.Option<RpcSession.RpcSession>>(Option.none());
+      const supervisor = EnvironmentSupervisor.of({
+        target: new PrimaryConnectionTarget({
+          environmentId: env,
+          label: "Milo",
+          httpBaseUrl: "https://milo.example.test",
+          wsBaseUrl: "wss://milo.example.test",
+        }),
+        session: link,
+      } as unknown as EnvironmentSupervisor["Service"]);
+      const registry = {
+        run: <A, E, R>(_: EnvironmentId, effect: Effect.Effect<A, E, R>) =>
+          Effect.provideService(effect, EnvironmentSupervisor, supervisor),
+      } as unknown as EnvironmentRegistry["Service"];
+      const up = Option.some({ client, closed: Effect.never } as unknown as RpcSession.RpcSession);
+      // The press's hold is what brings the link up, a moment after it was asked for.
+      const held = yield* Deferred.make<void>();
+      if (options.connects)
+        yield* Deferred.await(held).pipe(
+          Effect.andThen(Effect.sleep("5 millis")),
+          Effect.andThen(SubscriptionRef.set(link, up)),
+          Effect.forkChild,
+        );
+      const r = setup({
+        wire: makeMateUpdateWire(registry, { connectWaitMs: 50 }),
+        demand: () => {
+          Deferred.doneUnsafe(held, Effect.void);
+          return () => {};
+        },
+      });
+      return { ...r, sends, connect: SubscriptionRef.set(link, up) };
+    });
+
+  it.live("Update on an idle Mate reaches the Mate and the Mate restarts on the new version", () =>
+    Effect.gen(function* () {
+      const { host, read, sends } = yield* parkedMate({ connects: true });
+      yield* Effect.promise(() => host.update(env, server, "2", null));
+      expect(sends).toEqual(["update"]);
+      expect(read()).toEqual({
+        checked: undefined,
+        state: { phase: "updating", to: "2" },
+        notice: "Waiting for this Mate to return. Check the connection again.",
+      });
+      host.observe(env, { serverVersion: "2", bootId: "new" });
+      expect(read().state).toEqual({ phase: "updated", to: "2" });
+      host.close();
+    }),
+  );
+
+  it.live("An update its Mate never received says it was not sent, and Update sends it again", () =>
+    Effect.gen(function* () {
+      const { host, read, sends, connect } = yield* parkedMate({ connects: false });
+      yield* Effect.promise(() => host.update(env, server, "2", null));
+      expect(sends).toEqual([]);
+      expect(read().state).toEqual({
+        phase: "failed",
+        message: "This Mate is not connected, so the update was not sent. Update again once it is.",
+      });
+      yield* connect;
+      yield* Effect.promise(() => host.update(env, server, "2", null));
+      expect(sends).toEqual(["update"]);
+      expect(read().state).toEqual({ phase: "updating", to: "2" });
+      host.close();
+    }),
+  );
 });
