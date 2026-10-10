@@ -22,6 +22,19 @@ import { menuScenario } from "../b-menu/dsl.ts";
 import { reportConversation } from "../b-menu/fake.ts";
 
 // Use the actual resize control so every witness has the owner's menu width.
+/** Runs the page's animations at `rate` of their speed until restored (CDP's own timeline). */
+async function slowAnimations(page: Page, rate: number) {
+  const cdp = await page.createCDPSession();
+  await cdp.send("Animation.enable");
+  await cdp.send("Animation.setPlaybackRate", { playbackRate: rate });
+  return {
+    restore: async () => {
+      await cdp.send("Animation.setPlaybackRate", { playbackRate: 1 });
+      await cdp.detach();
+    },
+  };
+}
+
 async function ownerMenu(page: Page) {
   const rail = (await page.$('[data-sidebar="rail"]'))!;
   const box = (await rail.boundingBox())!;
@@ -1659,6 +1672,9 @@ describe("owner-reported layout regressions", () => {
                 "ASSERTION: the held message stands above the composer",
               ).toBeLessThan(held.composer);
 
+              // The notice's glide runs at a tenth of its speed while it is sampled: a CI runner that
+              // stalls for a few frames still samples it mid-way, and a cut still has no mid-way.
+              const slowed = yield* Effect.promise(() => slowAnimations(s.page, 0.1));
               yield* Effect.promise(() => startTrace(s.page));
               engine.lift();
               yield* Effect.promise(() =>
@@ -1669,9 +1685,10 @@ describe("owner-reported layout regressions", () => {
                   { polling: "raf", timeout: 8000 },
                 ),
               );
-              const frames = (yield* Effect.promise(() => stopTrace(s.page, 600))).filter(
+              const frames = (yield* Effect.promise(() => stopTrace(s.page, 3000))).filter(
                 (frame) => frame.notice !== null && frame.message !== null,
               );
+              yield* Effect.promise(() => slowed.restore());
               expect(frames.length, "ASSERTION: the lift was sampled").toBeGreaterThan(10);
               const steps = (of: (frame: LimitFrame) => number) =>
                 Math.max(
@@ -1679,17 +1696,17 @@ describe("owner-reported layout regressions", () => {
                     .slice(1)
                     .map((frame, index) => Math.abs(of(frame) - of(frames[index]!))),
                 );
-              // A cut changes the height between two frames; a glide spreads the change over its
-              // duration, however long a frame takes on the machine sampling it.
+              // A cut goes from one height to the other between two frames; a glide shows heights in
+              // between, however long a frame takes on the machine sampling it — slowed tenfold, a
+              // 220 ms glide spans 2.2 s of frames.
               const heights = frames.map((frame) => frame.notice!.bottom - frame.notice!.top);
               const from = heights[0]!;
               const to = heights.at(-1)!;
-              const leaves = heights.findIndex((height) => Math.abs(height - from) > 1);
-              const lands = heights.findIndex(
-                (height, index) => index >= leaves && Math.abs(height - to) <= 1,
+              const between = heights.filter(
+                (height) => Math.min(height - Math.min(from, to), Math.max(from, to) - height) > 1,
               );
               expect(
-                Math.abs(to - from) <= 1 || frames[lands]!.at - frames[leaves - 1]!.at >= 100,
+                Math.abs(to - from) <= 1 || between.length >= 3,
                 "ASSERTION: the notice goes quiet in place by a glide, never a cut",
               ).toBe(true);
               // The run it starts lands under it and the conversation follows, as after any send.
