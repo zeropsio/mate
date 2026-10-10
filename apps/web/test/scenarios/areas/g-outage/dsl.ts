@@ -127,10 +127,23 @@ export const menuRowGone = (page: Page, name: string) =>
     );
   });
 
+/** The menu holds these words, shown or folded away (a quiet project under "other projects"). */
+const menuHolds = (page: Page, words: string) =>
+  Effect.promise(() =>
+    page.waitForFunction(
+      (words) =>
+        [
+          ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-environments"]'),
+        ].some((element) => element.textContent?.includes(words) === true),
+      { timeout: 10_000, polling: "raf" },
+      words,
+    ),
+  );
+
 export const caughtUp = (actor: Actor, name: string) =>
   Effect.gen(function* () {
     yield* Effect.promise(() => actor.page.bringToFront());
-    yield* menuSays(actor.page, name);
+    yield* menuHolds(actor.page, name);
     yield* Effect.promise(() =>
       actor.page.waitForFunction(
         () => !document.querySelector('[data-zerops-surface="sidebar-hq-outage"]'),

@@ -421,6 +421,11 @@ describe("C: provider refusal and its real deadline", () => {
             wire.holdReplay = true;
             const fs = yield* FileSystem.FileSystem;
             const path = yield* Path.Path;
+            /** What the menu's row for Ada says. */
+            const adaRow = () =>
+              s.page.evaluate(
+                () => document.querySelector('[data-zerops-mate-row="Ada"]')?.textContent ?? "",
+              );
             const capture = (state: string) =>
               Effect.gen(function* () {
                 const output = process.env.MATE_LIMIT_EVIDENCE;
@@ -442,8 +447,10 @@ describe("C: provider refusal and its real deadline", () => {
             yield* chat.then.ready("Ada");
             yield* chat.then.text("Ada hit Claude's weekly limit.");
             yield* Effect.promise(async () => {
+              // The header's marker names the limit; the menu's row says it in its line.
               const markers = await s.page.$$('[data-mate-status="limit"]');
-              expect(markers.length).toBeGreaterThanOrEqual(2);
+              expect(markers.length).toBeGreaterThanOrEqual(1);
+              expect(await adaRow()).toContain("At its usage limit");
               for (const marker of markers)
                 expect(await marker.evaluate((node) => node.getAttribute("aria-label"))).toContain(
                   "Ada hit the Claude limit",
@@ -479,11 +486,16 @@ describe("C: provider refusal and its real deadline", () => {
               yield* Effect.promise(() =>
                 s.page.$$('[data-mate-status="limit"]').then((nodes) => nodes.length),
               ),
-            ).toBeGreaterThanOrEqual(2);
+            ).toBeGreaterThanOrEqual(1);
+            expect(yield* Effect.promise(adaRow)).toContain("At its usage limit");
             yield* Effect.promise(() => s.clock.advanceStepped(1));
             yield* Effect.promise(() =>
               s.page.waitForFunction(
-                () => document.querySelectorAll('[data-mate-status="limit"]').length === 0,
+                () =>
+                  document.querySelectorAll('[data-mate-status="limit"]').length === 0 &&
+                  !document
+                    .querySelector('[data-zerops-mate-row="Ada"]')
+                    ?.textContent?.includes("At its usage limit"),
                 { timeout: 8000, polling: "raf" },
               ),
             );
