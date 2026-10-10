@@ -8,7 +8,8 @@ import { V1UpdateDrain } from "../update/V1UpdateDrain.ts";
  * exposes it as the descriptor's `update` field.
  *
  * Runs the check once at start, then hourly (both cache-served through
- * `zcp mate status`), and re-reads the manifest on demand via
+ * `zcp mate status`), again whenever zcp's update state or manifest cache
+ * file changes, and re-reads the manifest on demand via
  * `zerops.mate.checkUpdate` (spec-mate.md §2.9 step 2 "on demand"), passing
  * `--refresh` so `zcp` bypasses its own cache — never fabricating a
  * value: outside a Zerops project, or when `zcp` is not on PATH (MU-3), the
@@ -79,6 +80,8 @@ export interface ZeropsMateUpdateOptions {
     | Pick<MateAutoUpdatePolicy["Service"], "current" | "changes" | "verify">
     | undefined;
   readonly stateFile?: string | undefined;
+  /** zcp's cached release manifest; rewritten whenever anyone's `zcp mate status` fetches one. */
+  readonly manifestFile?: string | undefined;
   readonly recoverAdmission?: Effect.Effect<void> | undefined;
 }
 
@@ -178,25 +181,39 @@ export const make = (options: ZeropsMateUpdateOptions) =>
         ),
       );
     }
-    if (options.stateFile !== undefined && options.isZeropsEnvironment) {
+    // zcp's update state and its release manifest cache both change outside
+    // this server (an update, or a refresh by the Mate's agent, a shell or
+    // zcp's boot): a change re-reads the cache-served `mate status --local`.
+    const watched = [options.stateFile, options.manifestFile].filter(
+      (file): file is string => file !== undefined,
+    );
+    if (watched.length > 0 && options.isZeropsEnvironment) {
       const notices = yield* Queue.unbounded<void>();
-      const stateFile = options.stateFile;
-      const watcher = yield* Effect.acquireRelease(
-        Effect.sync(() => {
-          try {
-            return NodeFS.watch(NodePath.dirname(stateFile), (_event, name) => {
-              if (name === NodePath.basename(stateFile)) Queue.offerUnsafe(notices, undefined);
-            }).on("error", () => {});
-          } catch {
-            return undefined;
-          }
-        }),
-        (watcher) => Effect.sync(() => watcher?.close()),
-      );
-      void watcher;
+      for (const dir of new Set(watched.map((file) => NodePath.dirname(file)))) {
+        const names = new Set(
+          watched
+            .filter((file) => NodePath.dirname(file) === dir)
+            .map((file) => NodePath.basename(file)),
+        );
+        yield* Effect.acquireRelease(
+          Effect.sync(() => {
+            try {
+              return NodeFS.watch(dir, (_event, name) => {
+                if (name !== null && names.has(name)) Queue.offerUnsafe(notices, undefined);
+              }).on("error", () => {});
+            } catch {
+              return undefined;
+            }
+          }),
+          (watcher) => Effect.sync(() => watcher?.close()),
+        );
+      }
       yield* forkParked(
         Queue.take(notices).pipe(
-          Effect.andThen(readStatus({ local: true })),
+          // One write fires several events a few milliseconds apart: one re-read.
+          Effect.andThen(Effect.sleep(Duration.millis(100))),
+          Effect.andThen(Queue.clear(notices)),
+          Effect.andThen(Effect.suspend(() => readStatus({ local: true }))),
           Effect.catch(() => Effect.void),
           Effect.forever,
         ),
@@ -224,6 +241,21 @@ export const make = (options: ZeropsMateUpdateOptions) =>
     } satisfies ZeropsMateUpdate["Service"];
   });
 
+/**
+ * zcp's release manifest cache: `filepath.Join(mate.Prefix(), "manifest.json")`
+ * with `Prefix() = $HOME/.zcp/mate` and HOME falling back to /home/zerops
+ * (zcp internal/mate/manifest.go `manifestCachePath`, internal/runtime `HomeDir`).
+ */
+const zcpManifestCacheFile = (): string => {
+  const home = process.env.HOME;
+  return NodePath.join(
+    home === undefined || home === "" || home === "/" ? "/home/zerops" : home,
+    ".zcp",
+    "mate",
+    "manifest.json",
+  );
+};
+
 export const layer = Layer.effect(
   ZeropsMateUpdate,
   Effect.gen(function* () {
@@ -239,6 +271,7 @@ export const layer = Layer.effect(
       isZeropsEnvironment: isZeropsEnvironment(config),
       policy,
       stateFile: process.env.ZCP_MATE_UPDATE_STATE_FILE,
+      manifestFile: zcpManifestCacheFile(),
       recoverAdmission: (
         (engine.live ? engine.updateDrain : legacyDrain)?.cancel ?? Effect.void
       ).pipe(

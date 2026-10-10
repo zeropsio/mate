@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off
 /**
  * spec-mate.md §2.9 invariants:
  * - MU-2: a failing `zcp mate update` is a successful RPC carrying its JSON.
@@ -5,6 +6,9 @@
  *   `zcp` cannot be run.
  */
 import { describe, expect, it } from "@effect/vitest";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -25,6 +29,7 @@ const STATUS_RESULT: MateStatusResult = {
 const stubCli = (
   mateStatus: (options?: {
     readonly refresh?: boolean;
+    readonly local?: boolean;
   }) => Effect.Effect<MateStatusResult, ZeropsCliNotFound | ZeropsCliFailed>,
 ) => ({
   mateStatus,
@@ -210,5 +215,45 @@ describe("ZeropsMateUpdate's update line, followed", () => {
       const lines = yield* Fiber.join(heard);
       expect(Array.from(lines).map((line) => line?.latest)).toEqual(["0.8.1", "0.8.2"]);
     }).pipe(Effect.scoped),
+  );
+});
+
+describe("ZeropsMateUpdate hears zcp's own reads", () => {
+  // zcp caches the release manifest it fetched (~/.zcp/mate/manifest.json, an
+  // hour's TTL); a refresh by the Mate's agent, a shell or zcp's boot rewrites it.
+  it.live(
+    "a release zcp has already read reaches the app without waiting for the hourly check",
+    () =>
+      Effect.gen(function* () {
+        const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-manifest-"));
+        const manifestFile = NodePath.join(dir, "manifest.json");
+        NodeFS.writeFileSync(manifestFile, JSON.stringify({ manifest: { version: "0.15.30" } }));
+        let cached = "0.15.30";
+        const reads: Array<{ readonly refresh?: boolean; readonly local?: boolean } | undefined> =
+          [];
+        const service = yield* make({
+          cli: stubCli((options) => {
+            reads.push(options);
+            return Effect.succeed({ ...STATUS_RESULT, installed: "0.15.30", latest: cached });
+          }),
+          isZeropsEnvironment: true,
+          refreshInterval: Duration.hours(1),
+          manifestFile,
+        });
+        expect((yield* service.current)?.latest).toBe("0.15.30");
+
+        cached = "0.15.31";
+        reads.length = 0;
+        NodeFS.writeFileSync(manifestFile, JSON.stringify({ manifest: { version: "0.15.31" } }));
+        const heard = yield* service.changes.pipe(
+          Stream.filter((line) => line?.latest === "0.15.31"),
+          Stream.runHead,
+          Effect.timeout(Duration.seconds(5)),
+        );
+
+        expect(heard._tag).toBe("Some");
+        expect(reads.every((options) => options?.local === true)).toBe(true);
+        NodeFS.rmSync(dir, { recursive: true, force: true });
+      }).pipe(Effect.scoped),
   );
 });
