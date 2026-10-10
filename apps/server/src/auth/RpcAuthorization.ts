@@ -153,6 +153,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.engineGetArchivedShellSnapshot]: AuthOrchestrationReadScope,
   [WS_METHODS.engineReadRun]: AuthOrchestrationReadScope,
   [WS_METHODS.engineReadDetail]: AuthOrchestrationReadScope,
+  // A height the person's own view laid a page out at: anyone who can read the page records it.
+  [WS_METHODS.engineRecordPageHeight]: AuthOrchestrationReadScope,
   [WS_METHODS.engineReceipt]: AuthOrchestrationReadScope,
   [WS_METHODS.engineSend]: AuthOrchestrationOperateScope,
   [WS_METHODS.engineStop]: AuthOrchestrationOperateScope,
