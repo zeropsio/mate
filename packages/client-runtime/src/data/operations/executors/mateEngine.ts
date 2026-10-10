@@ -85,6 +85,11 @@ export interface EngineCallWire {
           readonly runId: string | null;
         }
       | {
+          readonly kind: "continue";
+          readonly conversationId: string;
+          readonly commandId: string;
+        }
+      | {
           readonly kind: "answer";
           readonly conversationId: string;
           readonly commandId: string;
@@ -174,6 +179,8 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
               ...(command.runId === null ? {} : { runId: command.runId as never }),
             }),
           );
+        case "continue":
+          return registry.run(id, request(WS_METHODS.engineContinue, base));
         case "answer":
           return registry.run(
             id,
@@ -503,6 +510,15 @@ export function makeMateEngineOperations(options: {
           commandId,
           runId: target.runId ?? null,
         }),
+      ),
+    continue: (target: EngineOperationTarget) =>
+      execute(
+        {
+          kind: "mate-engine-continue",
+          environmentId: target.environmentId,
+          conversationId: target.conversationId,
+        },
+        (commandId) => ({ kind: "continue", conversationId: target.conversationId, commandId }),
       ),
     answer: (
       target: EngineOperationTarget & {

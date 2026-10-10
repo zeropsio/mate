@@ -381,6 +381,7 @@ interface MessagesTimelineProps {
     | ((interruption: import("@t3tools/contracts").MateInterruption) => void)
     | null;
   onUsageContinue?: (() => void) | null;
+  usageContinueTries?: boolean;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
   /** A question or an approval waits on the person: the queue waits with it. */
@@ -443,6 +444,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   interruption = null,
   onRestartContinue = null,
   onUsageContinue = null,
+  usageContinueTries = false,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   queueBlockedByAnswer = false,
@@ -1356,6 +1358,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       interruption,
       onRestartContinue,
       onUsageContinue,
+      usageContinueTries,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
       onOpenAgents,
       onStopBackgroundWork,
@@ -1393,6 +1396,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       interruption,
       onRestartContinue,
       onUsageContinue,
+      usageContinueTries,
       agentPanelModel,
       onOpenAgents,
       onStopBackgroundWork,
@@ -2635,6 +2639,7 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
         nowMs={Date.now()}
         onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
         onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
+        triesBeforeReset={ctx.usageContinueTries === true}
         limit={row.id === ctx.livePauseId ? (ctx.limit ?? NO_MATE_LIMIT) : NO_MATE_LIMIT}
         blockedByAnswer={row.id === ctx.livePauseId && ctx.queueBlockedByAnswer === true}
         row={row}

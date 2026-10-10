@@ -399,6 +399,7 @@ export function PauseBlock({
   limit = NO_MATE_LIMIT,
   onAutoResumeChange,
   onContinue = null,
+  triesBeforeReset = false,
   blockedByAnswer = false,
 }: {
   readonly mate?: Parameters<typeof MateConnectionState>[0]["mate"] | undefined;
@@ -412,6 +413,11 @@ export function PauseBlock({
   readonly limit?: MateLimit;
   readonly onAutoResumeChange: ((enabled: boolean) => void) | null;
   readonly onContinue?: (() => void) | null;
+  /**
+   * The Mate's engine tries the provider itself and pauses again if it still refuses: Continue
+   * asks it before a known reset too (the limit may be gone early: another account signed in).
+   */
+  readonly triesBeforeReset?: boolean;
   readonly blockedByAnswer?: boolean;
 }) {
   const resumed = row.resumedAt !== null;
@@ -451,7 +457,7 @@ export function PauseBlock({
           variant="ghost"
           disabled={blockedByAnswer}
           onClick={() => {
-            if (refused && resetsAt !== null) setWaitingAt(resetsAt);
+            if (refused && resetsAt !== null && !triesBeforeReset) setWaitingAt(resetsAt);
             else onContinue?.();
           }}
         >
