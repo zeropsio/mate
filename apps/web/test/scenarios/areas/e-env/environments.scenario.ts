@@ -18,12 +18,12 @@ describe("E: stage, production, release and rollback", () => {
         Effect.gen(function* () {
           const f = yield* environmentFixtureWith({}, { stage: stage !== "absent" });
           const a = environmentActions(f);
-          const sha = yield* f.merge();
+          yield* f.merge("Ship the storefront");
           if (stage === "failed") yield* a.when.finish("stage", "FAILED");
           yield* f.s.given.signedIn;
           yield* a.when.reviewFromFoldedChip;
-          yield* a.then.releaseEntriesShow(sha);
-          yield* a.when.release("v0.1.0");
+          yield* a.then.releaseEntriesShow("Ship the storefront");
+          yield* a.when.click("Release v0.1.0 to production");
           yield* a.when.finish("production");
           yield* a.then.text("Released");
           yield* a.when.click("Close");

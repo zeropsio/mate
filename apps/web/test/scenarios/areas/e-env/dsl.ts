@@ -54,15 +54,16 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     );
     expect(page.url()).not.toContain(`/Shop-production`);
   });
-  const releaseEntriesShow = (sha: string) =>
+  /** The release's review lists what goes out: the changes it carries, by their titles. */
+  const releaseEntriesShow = (title: string) =>
     Effect.promise(() =>
       page.waitForFunction(
-        (sha) => {
+        (title) => {
           const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
-          return dialog?.innerText.includes(sha.slice(0, 7));
+          return dialog?.innerText.includes("What goes out") && dialog.innerText.includes(title);
         },
         { timeout: 15_000, polling: "raf" },
-        sha,
+        title,
       ),
     );
   const productionBuildCount = Effect.sync(
@@ -190,15 +191,10 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
         expect(words, `Release ${tag} must continuously show ${word}`).toEqual([word]);
       });
     });
-  // The review's one button, by what it does: it reads "Release v0.1.0 to production".
-  const release = (tag: string) =>
-    Effect.promise(() =>
-      page.locator(`[data-zerops-primary-action="Release ${tag}"]`).setTimeout(15_000).click(),
-    );
   const releaseFromReview = Effect.gen(function* () {
     yield* click("Review release");
     yield* text("Version");
-    yield* release("v0.1.0");
+    yield* click("Release v0.1.0 to production");
   });
   const reload = Effect.promise(async () => {
     await page.reload();
@@ -300,7 +296,6 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       finishImport,
       rollBackOnZerops,
       click,
-      release,
       releaseFromReview,
       reload,
       rollBack,
