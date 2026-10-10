@@ -939,17 +939,27 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       const held = yield* engineConversation();
       // Unread is not none: adopting now could give a conversation that exists a second agent.
       if (held === "unknown") return yield* Effect.fail("unread" as const);
-      if (held !== undefined) return;
+      // Every boot says what became of the main conversation: a boot after the flip finds it on
+      // the engine already, its record brought in then (Rhea's boot said nothing at all).
+      if (held !== undefined)
+        return yield* Effect.logInfo("zerops setup: the main conversation is on the engine", {
+          conversationId: held.conversationId,
+        });
       const project = Option.getOrUndefined(
         yield* projection.getActiveProjectByWorkspaceRoot(config.cwd),
       );
-      if (project === undefined) return;
-      const main = resolvePrimaryConversation(
-        (yield* projection.getShellSnapshot()).threads.filter(
-          (thread) => thread.projectId === project.id,
-        ),
-      ).primary;
-      if (main === undefined) return;
+      const main =
+        project === undefined
+          ? undefined
+          : resolvePrimaryConversation(
+              (yield* projection.getShellSnapshot()).threads.filter(
+                (thread) => thread.projectId === project.id,
+              ),
+            ).primary;
+      if (main === undefined)
+        return yield* Effect.logInfo("zerops setup: no main conversation to move to the engine", {
+          reason: project === undefined ? "no project at its workspace" : "no V1 conversation",
+        });
       const conversationId = ConversationId.make(main.id);
       const turns = yield* engine.importHistory(conversationId, {
         kind: "v1",
@@ -962,6 +972,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       if (given)
         yield* Effect.logInfo("zerops setup: the engine took the main conversation", {
           conversationId: main.id,
+          // The turns its import reserved: none when its V1 thread held none.
           turns,
         });
     }).pipe(
