@@ -247,7 +247,7 @@ function SidebarUtilityItem({
  * than in the row: the chrome already owns which icon stands for which place,
  * and the design system keeps one icon map (design-system.md §3).
  */
-function sidebarAccountDestinationIcon(id: SidebarAccountDestination["id"]) {
+export function sidebarAccountDestinationIcon(id: SidebarAccountDestination["id"]) {
   switch (id) {
     case "projects":
       return <LayersIcon />;

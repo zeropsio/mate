@@ -73,12 +73,9 @@ import { onOpenCommandPalette } from "~/commandPaletteBus";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { PanelLayoutControls } from "~/components/chat/PanelLayoutControls";
-import {
-  SidebarChromeHeader,
-  SidebarCornerMark,
-  SidebarCreateButton,
-} from "~/components/sidebar/SidebarChrome";
+import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
 import { SidebarOverviewRow } from "~/components/zerops/SidebarOverview";
+import { SidebarRail, useRailMates } from "~/components/zerops/SidebarRail";
 import { SidebarWaitingRow } from "~/components/zerops/SidebarWaiting";
 import { waitingItemsOf, type WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
 import { Button } from "~/components/ui/button";
@@ -1239,7 +1236,10 @@ function SidebarFrame({
 /** The +'s projects and the Overview row's line, as the fixtures' projects would say them. */
 const HARNESS_PROJECTS = [
   { id: "links", name: "Links" },
+  { id: "shop", name: "Shop" },
   { id: "notes", name: "Notes" },
+  { id: "todo", name: "Todo" },
+  { id: "design-tokens", name: "Design system tokens and primitives" },
 ];
 const HARNESS_HEADLINE = "Links needs attention · 1 more";
 /** Links' stage is ahead of its production: its release waits on the viewer. */
@@ -1422,11 +1422,82 @@ function HarnessJumpBox({
   );
 }
 
-/**
- * `?menu=closed`: the menu folded away and its mark in the window's corner,
- * as the app draws them (`SidebarCornerMark`), the header taking the room.
- */
+/** `?menu=closed`: the menu closed to its rail on a desktop (`RailFrame`). */
 const MENU_CLOSED = new URLSearchParams(location.search).get("menu") === "closed";
+
+/** The rail the app closes the menu to on a desktop (`SidebarRail`). */
+function RailFrame({
+  open,
+  setOpen,
+}: {
+  readonly open: string;
+  readonly setOpen: (projectId: string) => void;
+}) {
+  const [scope] = useMateScope();
+  const shown = useCallback(
+    (item: ZeropsCandidate) =>
+      shownInScope(scope, FIXTURES.owners.get(item.project.id)?.isViewer, item.project.id === open),
+    [open, scope],
+  );
+  const waiting = useSidebarWaiting({
+    candidates: FIXTURES.candidates,
+    activityOf: activityOfCandidate,
+    shown,
+    activeProjectId: open,
+    enabled: true,
+    releases: HARNESS_RELEASES,
+  });
+  const items = WAIT_ALL ?? waiting.items;
+  const groups = useRailMates({
+    candidates: FIXTURES.candidates,
+    activityOf: activityOfCandidate,
+    shown,
+    ownerOf: (item) => FIXTURES.owners.get(item.project.id),
+    projectName: (groupId) => HARNESS_PROJECTS.find((project) => project.id === groupId)?.name,
+    waiting: items,
+  });
+  const verbs = {
+    onOpenMate: (projectId: string) => {
+      setOpen(projectId);
+    },
+    onAskToFix: (projectId: string) => {
+      menuActions.push(`ask ${projectId}`);
+    },
+  };
+  return (
+    <aside
+      className="flex h-screen w-16 shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
+      data-sidebar="sidebar"
+    >
+      <SidebarRail
+        account={
+          <SidebarZeropsAccount
+            account={ACCOUNT}
+            activeOrganization={ORGANIZATION}
+            collapsed
+            destination={null}
+            destinationIcon={() => null}
+            onGo={() => {}}
+            onSelectOrganization={() => {}}
+            onSignOut={() => {}}
+            organizations={[ORGANIZATION]}
+          />
+        }
+        activeProjectId={open === "" ? null : open}
+        groups={groups}
+        headline={HARNESS_HEADLINE}
+        onOpenMenu={() => menuActions.push("open the menu")}
+        onOverview={() => setOpen("")}
+        onSelect={setOpen}
+        openShortcut="⌘B"
+        overviewCurrent={open === ""}
+        showMark
+        verbs={verbs}
+        waiting={items}
+      />
+    </aside>
+  );
+}
 /** `?crew=1`: the open Mate's line carries a crew of three, as a Mate with a crew's does. */
 const LINE_CREW = new URLSearchParams(location.search).get("crew") === "1";
 
@@ -1578,7 +1649,7 @@ function Harness() {
         )}
       </CommandDialog>
       {MENU_CLOSED && !phone ? (
-        <SidebarCornerMark />
+        <RailFrame open={open} setOpen={setOpen} />
       ) : (
         <SidebarFrame
           onJump={() => {

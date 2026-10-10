@@ -4628,6 +4628,202 @@ code {
   }
 }
 
+@layer components {
+  /* Closed on a desktop: a 64 px rail — the mark, the waiting count, Overview, a hairline, the
+     faces by project, and at the foot the viewer and the open button. */
+  .menu-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .menu-rail-top {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 100%;
+    height: var(--workspace-topbar-height);
+  }
+
+  .menu-rail-mark {
+    display: flex;
+    border-radius: 10px;
+    color: var(--sidebar-foreground);
+    outline: none;
+  }
+
+  .menu-rail-mark:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .menu-rail-slot {
+    display: grid;
+    flex: none;
+    place-items: center;
+    height: 44px;
+  }
+
+  .menu-rail-count {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 9999px;
+    background: var(--zerops-status-attention-surface);
+    color: var(--zerops-status-attention-text);
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    outline: none;
+    transition: background-color 150ms var(--ease-out-strong);
+  }
+
+  .menu-rail-count:hover,
+  .menu-rail-count[data-popup-open] {
+    background: color-mix(
+      in oklab,
+      var(--zerops-status-attention) 22%,
+      var(--zerops-status-attention-surface)
+    );
+  }
+
+  .menu-rail-button {
+    position: relative;
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin: 1px 0;
+    border-radius: 12px;
+    color: var(--sidebar-muted-foreground);
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      color 150ms var(--ease-out-strong);
+  }
+
+  .menu-rail-button:hover {
+    background: var(--sidebar-row-hover);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-rail-button[data-current] {
+    background: var(--sidebar-row-active);
+  }
+
+  .menu-rail-button:focus-visible,
+  .menu-rail-count:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .menu-rail-disc {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--sidebar-foreground) 7%, transparent);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-rail-sep {
+    display: block;
+    flex: none;
+    width: 24px;
+    height: 1px;
+    margin: 10px 0;
+    background: var(--sidebar-border);
+  }
+
+  .menu-rail-faces {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+
+  .menu-rail-owner {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    display: flex;
+    border-radius: 9999px;
+    box-shadow: 0 0 0 1.5px var(--sidebar);
+  }
+
+  .menu-rail-dot {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+    box-shadow: 0 0 0 2px var(--sidebar);
+  }
+
+  .menu-rail-button[data-current] .menu-rail-dot,
+  .menu-rail-button[data-current] .menu-rail-owner {
+    box-shadow: 0 0 0 2px var(--sidebar-row-active);
+  }
+
+  .menu-rail-dot[data-dot="attention"] {
+    background: var(--zerops-status-attention);
+  }
+
+  .menu-rail-dot[data-dot="failed"] {
+    background: var(--zerops-status-failed);
+  }
+
+  .menu-rail-dot[data-dot="unread"] {
+    background: var(--info-foreground);
+  }
+
+  .menu-rail-spring {
+    flex: 1 1 auto;
+  }
+
+  .menu-rail-foot {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0 16px;
+  }
+
+  .menu-rail-tip {
+    display: grid;
+    gap: 1px;
+    max-width: 300px;
+  }
+
+  .menu-rail-tip-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+  }
+
+  .menu-rail-tip-key,
+  .menu-rail-tip-line {
+    overflow: hidden;
+    color: var(--muted-foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .menu-round-button:active,
   .menu-wait-button:active {

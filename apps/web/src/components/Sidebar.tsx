@@ -224,6 +224,7 @@ import {
   SidebarChromeFooter,
   SidebarChromeHeader,
   SidebarCreateButton,
+  sidebarAccountDestinationIcon,
 } from "./sidebar/SidebarChrome";
 import { newMateView, useAddMate } from "../zerops/newMate";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
@@ -263,6 +264,8 @@ import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, SidebarOverviewRow, useMenuProjects } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
 import { SidebarWaitingRow } from "./zerops/SidebarWaiting";
+import { SidebarRail, useRailMates } from "./zerops/SidebarRail";
+import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
 
 import { useProjectFlows } from "../zerops/projectFlows";
 import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
@@ -1882,7 +1885,7 @@ export default function Sidebar() {
     [zeropsProjectFlows],
   );
   const router = useRouter();
-  const { isMobile, open, openMobile, setOpenMobile } = useSidebar();
+  const { isMobile, open, openMobile, setOpen, setOpenMobile } = useSidebar();
   /** A stop's page, in place of the thread — the sidebar stays where it is. */
   const openStop = useCallback(
     (groupId: string, row: EnvironmentRow) => {
@@ -2497,6 +2500,19 @@ export default function Sidebar() {
     }),
     [onZeropsAskToFix, onZeropsSelect, zeropsCandidates],
   );
+  // Closed on a desktop, the menu is a rail of faces: the same Mates, grouped by project.
+  const zeropsProjectName = useCallback(
+    (groupId: string) => zeropsMenuProjects.find((project) => project.id === groupId)?.name,
+    [zeropsMenuProjects],
+  );
+  const zeropsRailGroups = useRailMates({
+    candidates: zeropsCandidates,
+    activityOf: zeropsRowActivity,
+    shown: zeropsShown,
+    ownerOf: zeropsMateOwner,
+    projectName: zeropsProjectName,
+    waiting: zeropsWaiting.items,
+  });
 
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells: no archived-snapshot
@@ -3976,6 +3992,26 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
+  if (!isMobile && !open) {
+    return (
+      <SidebarRail
+        account={<SidebarZeropsAccountRow destinationIcon={sidebarAccountDestinationIcon} />}
+        activeProjectId={zeropsOverviewOpen ? null : activeZeropsProjectId}
+        groups={zeropsRailGroups}
+        headline={zeropsHeadline}
+        onOpenMenu={() => {
+          setOpen(true);
+        }}
+        onOverview={navigateToZeropsProjects}
+        onSelect={zeropsWaitingVerbs.onOpenMate}
+        openShortcut={shortcutLabelForCommand(keybindings, "sidebar.toggle") ?? undefined}
+        overviewCurrent={zeropsOverviewOpen}
+        showMark={!(isElectron && isMacPlatform(navigator.platform))}
+        verbs={zeropsWaitingVerbs}
+        waiting={zeropsWaiting.items}
+      />
+    );
+  }
   return (
     <>
       <SidebarChromeHeader

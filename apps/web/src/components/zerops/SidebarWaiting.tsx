@@ -28,6 +28,7 @@ import { useMateWrite } from "~/zerops/useMateWrite";
 
 import { Kbd } from "../ui/kbd";
 import { gatedPortal } from "../ui/portal-gate";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { mateDecision } from "./mateDecision.logic";
 import { MateFace } from "./primitives";
 import {
@@ -73,6 +74,7 @@ export function SidebarWaitingPopover({
   verbs,
   trigger,
   children,
+  tooltip,
 }: {
   readonly items: ReadonlyArray<WaitingItem>;
   readonly verbs: WaitingVerbs;
@@ -82,6 +84,8 @@ export function SidebarWaitingPopover({
    */
   readonly trigger: ReactElement<Record<string, unknown>>;
   readonly children?: ReactNode;
+  /** What the trigger says on hover, beside it (the rail's count). */
+  readonly tooltip?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<Placement>({ sideOffset: 16, alignOffset: -5 });
@@ -100,7 +104,16 @@ export function SidebarWaitingPopover({
       }}
       open={shown}
     >
-      <PopoverPrimitive.Trigger render={trigger}>{children}</PopoverPrimitive.Trigger>
+      {tooltip === undefined ? (
+        <PopoverPrimitive.Trigger render={trigger}>{children}</PopoverPrimitive.Trigger>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger render={<PopoverPrimitive.Trigger render={trigger} />}>
+            {children}
+          </TooltipTrigger>
+          <TooltipPopup side="right">{tooltip}</TooltipPopup>
+        </Tooltip>
+      )}
       <WaitingPortal>
         <PopoverPrimitive.Positioner
           align="start"
