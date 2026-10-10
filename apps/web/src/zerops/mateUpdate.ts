@@ -5,6 +5,7 @@
  * `zcp` unreachable (MU-3) — shows the installed version alone, same as a
  * server that checked and found nothing newer.
  */
+import { MATE_UPDATE_DRAIN_MINUTES } from "@t3tools/shared/mateAutoUpdatePolicy";
 import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 
 export interface MateUpdateLine {
@@ -102,13 +103,29 @@ export function mateUpdateStatus(state: MateUpdateState | undefined): MateUpdate
 }
 
 /**
+ * The status said beside the update line: the person's own answer, unless the line already says
+ * the same — the server's record of the update and the person's both read "Updated to 0.15.31"
+ * (Milo's stress run 6 read it twice).
+ */
+export function mateUpdateStatusBeside(
+  line: MateUpdateLine,
+  state: MateUpdateState | undefined,
+): MateUpdateStatus | null {
+  const status = mateUpdateStatus(state);
+  return status !== null && status.text === line.text ? null : status;
+}
+
+/**
  * What the app's confirm dialog asks before an update: the Mate and the
- * version, and that its running work stops (spec-mate.md §2.9 step 4, said
- * before the click). The line ending in "?" is the dialog's title.
+ * version, and what the update does with its work, said before the click.
+ * The update waits until the Mate's work is done, up to the drain's deadline,
+ * and past it does not happen (`drainMateUpdate`); it never stops the work.
+ * The line ending in "?" is the dialog's title.
  */
 export function mateUpdateQuestion(mateName: string | undefined, latest: string): string {
+  const who = mateName ?? "It";
   return [
     `Update ${mateName ?? "this Mate"} to ${latest}?`,
-    `${mateName ?? "It"} restarts on the new version, which takes about a minute. Work running in it stops; its conversations stay.`,
+    `${who} finishes the work it's doing first, its helpers' too, then restarts on the new version, which takes about a minute. Its conversations stay. If that work isn't done within ${MATE_UPDATE_DRAIN_MINUTES} minutes, ${mateName ?? "it"} doesn't update and keeps working.`,
   ].join("\n");
 }

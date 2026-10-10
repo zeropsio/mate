@@ -1593,6 +1593,22 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
   ])("$case", ({ input, line }) => {
     expect(mateRowAskLine(input)).toEqual(line);
   });
+
+  // Milo's stress run 6: the row's text held the raw "`sleep 20 && …`" of a message just sent.
+  it.each([
+    {
+      case: "a message just sent",
+      input: { ...base, sent: "Start a job (`sleep 20 && echo done`) **now**" },
+      line: { kind: "ask", text: "Start a job (sleep 20 && echo done) now" },
+    },
+    {
+      case: "a draft",
+      input: { ...base, draft: "Start a job (`sleep 20 && echo done`) **now**" },
+      line: { kind: "draft", text: "Start a job (sleep 20 && echo done) now", ask: undefined },
+    },
+  ])("the person's line says their words as plain words: $case", ({ input, line }) => {
+    expect(mateRowAskLine(input)).toEqual(line);
+  });
 });
 
 // A row whose setup stopped offers its menu — *Finish setup* is on it — while one still coming

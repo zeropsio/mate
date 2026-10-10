@@ -328,6 +328,41 @@ describe("createEndFollow", () => {
     expect(scroll.element.scrollTop).toBe(endOf(scroll));
   });
 
+  // Milo's stress run 6 (U1): a six-line draft's message arrived and the composer shrank back
+  // before any glide began, and the list stood at its new end at once, 223 px in one frame.
+  it("a tall message arriving as the composer shrinks glides to the end, never a jump", () => {
+    const scroll = list({ top: 600, height: 1000, client: 400 });
+    const follow = createEndFollow({
+      placeEnd: () => {
+        scroll.element.scrollTop = endOf(scroll);
+      },
+      viewport: () => scroll.element as unknown as HTMLElement,
+      follows: () => scroll.state.follows,
+    });
+    scroll.element.scrollHeight += 283 - 67;
+    follow.place(-67);
+    const tops = [600, scroll.element.scrollTop, ...play(scroll)];
+    const steps = tops.slice(1).map((top, index) => Math.abs(top - tops[index]!));
+    expect(Math.max(...steps)).toBeLessThan(GLIDE_FROM_PX);
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
+  });
+
+  it("a composer growing keeps its line in place at once, and what arrived with it glides", () => {
+    const scroll = list({ top: 600, height: 1000, client: 400 });
+    const follow = createEndFollow({
+      placeEnd: () => {
+        scroll.element.scrollTop = endOf(scroll);
+      },
+      viewport: () => scroll.element as unknown as HTMLElement,
+      follows: () => scroll.state.follows,
+    });
+    scroll.element.scrollHeight += 120 + 200;
+    follow.place(120);
+    expect(scroll.element.scrollTop).toBe(720);
+    play(scroll);
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
+  });
+
   it("a composer that changes height with nothing gliding keeps the end in place at once", () => {
     const placeEnd = vi.fn();
     const scroll = list({ top: 600, height: 1000, client: 400 });
@@ -337,7 +372,7 @@ describe("createEndFollow", () => {
       follows: () => scroll.state.follows,
     });
     scroll.element.scrollHeight += 40;
-    follow.place();
+    follow.place(40);
     expect(placeEnd).toHaveBeenCalledTimes(1);
   });
 

@@ -2,8 +2,9 @@ import type { UpdateIdleFacts } from "../update/MateUpdateDrain.ts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import { MATE_UPDATE_DRAIN_MINUTES } from "@t3tools/shared/mateAutoUpdatePolicy";
 
-export const MATE_UPDATE_DRAIN_DEADLINE = Duration.minutes(10);
+export const MATE_UPDATE_DRAIN_DEADLINE = Duration.minutes(MATE_UPDATE_DRAIN_MINUTES);
 
 export interface DrainPorts {
   readonly allowed: Effect.Effect<boolean>;

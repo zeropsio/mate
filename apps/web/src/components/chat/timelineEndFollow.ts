@@ -66,8 +66,11 @@ export interface EndFollow {
   readonly follow: () => void;
   /** A measurement may have clamped the native viewport before the next layout. */
   readonly observe: () => void;
-  /** A changed composer inset realigns measured geometry without a content-growth glide. */
-  readonly place: () => void;
+  /**
+   * The composer's inset changed by `grew` px: its line keeps its place at once; the end moving
+   * further — a message arriving with it — glides there.
+   */
+  readonly place: (grew?: number) => void;
   /**
    * Where the list stands now is its end, until the end grows: an answer held where its words
    * were read never glides on to the few pixels of its foot under it.
@@ -154,13 +157,25 @@ export function createEndFollow({
     observedViewport = element;
     at = element.scrollTop;
   };
-  return {
-    place: () => {
+  const follower: EndFollow = {
+    place: (grew = 0) => {
       const element = viewport();
       if (element === null || !follows()) return;
       // Mid-glide the glide goes on to the moved end: standing there at once was a step of all
       // that was left (Milo's stress run 4: 77 px in one frame as the composer shrank on a send).
       if (gliding === element) return;
+      // The end moved further than the composer did: a message arrived with it, and standing at
+      // the end at once moved the conversation by all of it (Milo's stress run 6: a six-line
+      // draft's send, 223 px in one frame). The composer's own growth keeps its line in place at
+      // once; the rest glides.
+      if (endOf(element) - element.scrollTop - Math.max(0, grew) >= GLIDE_FROM_PX) {
+        if (grew > 0) {
+          scrollOwn(element, element.scrollTop + grew);
+          at = element.scrollTop;
+        }
+        follower.follow();
+        return;
+      }
       stopGlide();
       placeEnd();
     },
@@ -196,6 +211,7 @@ export function createEndFollow({
     },
     stop: stopGlide,
   };
+  return follower;
 }
 
 /** Says on the list's scroll whether it glides; a stand-in for one (a test's) says nothing. */

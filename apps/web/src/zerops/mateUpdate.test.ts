@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mateUpdateLine, mateUpdateQuestion, mateUpdateStatus } from "./mateUpdate";
+import {
+  mateUpdateLine,
+  mateUpdateQuestion,
+  mateUpdateStatus,
+  mateUpdateStatusBeside,
+} from "./mateUpdate";
 
 describe("mateUpdateLine", () => {
   const cases: ReadonlyArray<{
@@ -88,19 +93,20 @@ describe("mateUpdateStatus", () => {
 
 describe("mateUpdateQuestion", () => {
   // The app's confirm dialog takes the line ending in "?" as its title and
-  // the rest as its description; running work stopping is said before the
-  // click (spec-mate.md §2.9 step 4), and naming the Mate matters when
-  // several are updated one after another.
+  // the rest as its description; what the update does with the Mate's work
+  // is said before the click — it waits for it, up to the drain's deadline,
+  // never stops it (Milo's stress run 6 read "Work running in it stops") —
+  // and naming the Mate matters when several are updated one after another.
   it.each([
     {
       mateName: "Nova",
       expected:
-        "Update Nova to 0.11.49?\nNova restarts on the new version, which takes about a minute. Work running in it stops; its conversations stay.",
+        "Update Nova to 0.11.49?\nNova finishes the work it's doing first, its helpers' too, then restarts on the new version, which takes about a minute. Its conversations stay. If that work isn't done within 10 minutes, Nova doesn't update and keeps working.",
     },
     {
       mateName: undefined,
       expected:
-        "Update this Mate to 0.11.49?\nIt restarts on the new version, which takes about a minute. Work running in it stops; its conversations stay.",
+        "Update this Mate to 0.11.49?\nIt finishes the work it's doing first, its helpers' too, then restarts on the new version, which takes about a minute. Its conversations stay. If that work isn't done within 10 minutes, it doesn't update and keeps working.",
     },
   ])("asks about $mateName by name", ({ mateName, expected }) => {
     expect(mateUpdateQuestion(mateName, "0.11.49")).toBe(expected);
@@ -174,5 +180,28 @@ describe("automatic update line", () => {
         "0.14.8",
       ).text,
     ).toBe("Update available — needs your confirmation");
+  });
+});
+
+// Milo's stress run 6: after the person's Update the Zerops card read "Updated to 0.15.31 Updated
+// to 0.15.31": the server's record of the update on the line, the person's own answer beside it.
+describe("mateUpdateStatusBeside", () => {
+  const record = (phase: "updated" | "idle") => ({
+    installed: "0.15.31",
+    latest: "0.15.31",
+    available: false,
+    checkedAt: "now",
+    automatic: { protocol: 1 as const, rollbackCompatible: true, phase, runningVersion: "0.15.31" },
+  });
+  it.each([
+    { name: "the server records it too", phase: "updated", said: null },
+    { name: "only the person's update says it", phase: "idle", said: "Updated to 0.15.31" },
+  ] as const)("the card says a Mate updated once: $name", ({ phase, said }) => {
+    const line = mateUpdateLine(record(phase), "0.15.31");
+    const status = mateUpdateStatusBeside(line, { phase: "updated", to: "0.15.31" });
+    expect([line.text, status?.text ?? null]).toEqual([
+      phase === "updated" ? "Updated to 0.15.31" : "Server 0.15.31",
+      said,
+    ]);
   });
 });
