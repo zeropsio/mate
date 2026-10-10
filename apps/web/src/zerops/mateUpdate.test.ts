@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mateUpdateLine, mateUpdateQuestion, mateUpdateStatus } from "./mateUpdate";
+import {
+  mateUpdateLine,
+  mateUpdateQuestion,
+  mateUpdateStatus,
+  mateUpdateStatusBeside,
+} from "./mateUpdate";
 
 describe("mateUpdateLine", () => {
   const cases: ReadonlyArray<{
@@ -175,5 +180,28 @@ describe("automatic update line", () => {
         "0.14.8",
       ).text,
     ).toBe("Update available — needs your confirmation");
+  });
+});
+
+// Milo's stress run 6: after the person's Update the Zerops card read "Updated to 0.15.31 Updated
+// to 0.15.31": the server's record of the update on the line, the person's own answer beside it.
+describe("mateUpdateStatusBeside", () => {
+  const record = (phase: "updated" | "idle") => ({
+    installed: "0.15.31",
+    latest: "0.15.31",
+    available: false,
+    checkedAt: "now",
+    automatic: { protocol: 1 as const, rollbackCompatible: true, phase, runningVersion: "0.15.31" },
+  });
+  it.each([
+    { name: "the server records it too", phase: "updated", said: null },
+    { name: "only the person's update says it", phase: "idle", said: "Updated to 0.15.31" },
+  ] as const)("the card says a Mate updated once: $name", ({ phase, said }) => {
+    const line = mateUpdateLine(record(phase), "0.15.31");
+    const status = mateUpdateStatusBeside(line, { phase: "updated", to: "0.15.31" });
+    expect([line.text, status?.text ?? null]).toEqual([
+      phase === "updated" ? "Updated to 0.15.31" : "Server 0.15.31",
+      said,
+    ]);
   });
 });

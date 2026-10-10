@@ -103,6 +103,19 @@ export function mateUpdateStatus(state: MateUpdateState | undefined): MateUpdate
 }
 
 /**
+ * The status said beside the update line: the person's own answer, unless the line already says
+ * the same — the server's record of the update and the person's both read "Updated to 0.15.31"
+ * (Milo's stress run 6 read it twice).
+ */
+export function mateUpdateStatusBeside(
+  line: MateUpdateLine,
+  state: MateUpdateState | undefined,
+): MateUpdateStatus | null {
+  const status = mateUpdateStatus(state);
+  return status !== null && status.text === line.text ? null : status;
+}
+
+/**
  * What the app's confirm dialog asks before an update: the Mate and the
  * version, and what the update does with its work, said before the click.
  * The update waits until the Mate's work is done, up to the drain's deadline,

@@ -25,7 +25,11 @@ import type { EnvironmentId } from "@t3tools/contracts";
 
 import { requestConfirmDialog } from "../../confirmDialog";
 import { useEnvironment } from "../../state/environments";
-import { mateUpdateLine, mateUpdateQuestion, mateUpdateStatus } from "../../zerops/mateUpdate";
+import {
+  mateUpdateLine,
+  mateUpdateQuestion,
+  mateUpdateStatusBeside,
+} from "../../zerops/mateUpdate";
 import { useMateUpdate } from "../../zerops/useMateUpdate";
 import { MateUpdateLine, MateUpdateStatusText } from "./MateUpdateLine";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
@@ -107,7 +111,7 @@ export function ZeropsMateUpdateControl({
   const latest = effectiveUpdate?.available === true ? effectiveUpdate.latest : null;
   // What was asked is answered where the verb stands; a failure keeps the
   // verb, to try again, and says why under the line.
-  const status = automaticBusy ? null : mateUpdateStatus(state);
+  const status = automaticBusy ? null : mateUpdateStatusBeside(line, state);
   const verb =
     status !== null && state.phase !== "failed" ? (
       <MateUpdateStatusText className="text-muted-foreground" status={status} />
