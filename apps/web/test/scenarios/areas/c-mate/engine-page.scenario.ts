@@ -144,7 +144,8 @@ const journey = (
     const run = engine.personRun("Plan the launch");
     yield* s.given.signedIn;
     yield* chat.when.open("Ada", "Plan the launch");
-    const publish = () => {
+    /** The call that publishes the page lands while the run still works. */
+    const publishLive = () =>
       engine.item(run, {
         kind: "call",
         step: "mcp",
@@ -154,9 +155,13 @@ const journey = (
         tool: { name: "zerops_publish_page", server: "zerops" },
         result: { toolName: "zerops_publish_page", resultText: '{"page":{}}', page },
       });
-      engine.note(run, ANSWER, { kind: "completed" });
+    /** The run answers and ends: its card settles and folds. */
+    const answer = () => engine.note(run, ANSWER, { kind: "completed" });
+    const publish = () => {
+      publishLive();
+      answer();
     };
-    return { s, chat, publish };
+    return { s, chat, publish, publishLive, answer };
   });
 
 /** Starts the sampler, lets `act` happen, and reads every frame until the page has stood still. */
@@ -221,6 +226,81 @@ describe("C: a page the Mate publishes", () => {
           yield* s.then.noExternalNetwork;
         }),
     );
+  });
+
+  // Milo, 2026-10-10: every page closed itself 0.4 s after it landed live, saying it had tried to
+  // open something else, with no navigation at all: the run settling around it reloaded its frame.
+  describe("Decision: only the page's own navigation takes it down.", () => {
+    it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      it.effect(
+        "a page published during a live run is still open 3 s after its run settles and folds",
+        () =>
+          Effect.gen(function* () {
+            const { s, publishLive, answer } = yield* journey(180);
+            yield* Effect.sync(publishLive);
+            yield* Effect.promise(() =>
+              s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
+            );
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+            yield* Effect.sync(answer);
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 3000)));
+            const state = yield* Effect.promise(() =>
+              s.page.evaluate(
+                (title) => ({
+                  framed: document.querySelector(`iframe[title="${title}"]`) !== null,
+                  notice:
+                    document.body.textContent?.includes("The page tried to open something else") ??
+                    false,
+                }),
+                TITLE,
+              ),
+            );
+            expect(state, "ASSERTION: the page stands, never closed").toEqual({
+              framed: true,
+              notice: false,
+            });
+            yield* s.then.noExternalNetwork;
+          }),
+      );
+      it.effect("a page whose frame the conversation moves loads again and stays open", () =>
+        Effect.gen(function* () {
+          const { s, publish } = yield* journey(180);
+          yield* Effect.sync(publish);
+          yield* Effect.promise(() =>
+            s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
+          );
+          yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+          // A list moving a row (React reordering keyed rows, the list recycling one) takes the
+          // frame out of the document and puts it back: the browser loads its document again.
+          yield* Effect.promise(() =>
+            s.page.evaluate((title) => {
+              const box = document.querySelector(`figure[aria-label="${title}"] > div`)!;
+              const parent = box.parentElement!;
+              const next = box.nextSibling;
+              box.remove();
+              parent.insertBefore(box, next);
+            }, TITLE),
+          );
+          yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 2000)));
+          const state = yield* Effect.promise(() =>
+            s.page.evaluate(
+              (title) => ({
+                framed: document.querySelector(`iframe[title="${title}"]`) !== null,
+                notice:
+                  document.body.textContent?.includes("The page tried to open something else") ??
+                  false,
+              }),
+              TITLE,
+            ),
+          );
+          expect(state, "ASSERTION: a frame loaded again by a move is still the page").toEqual({
+            framed: true,
+            notice: false,
+          });
+          yield* s.then.noExternalNetwork;
+        }),
+      );
+    });
   });
 
   describe("Decision: a page that navigates its own frame is not the page the Mate published.", () => {
