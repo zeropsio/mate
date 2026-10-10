@@ -65,6 +65,16 @@ describe("SidebarZeropsAccount", () => {
     expect(html).toContain(">O<");
   });
 
+  it("says the viewer's role in the organization under their name, beside one ···", () => {
+    const page = markupDom(render({ activeOrganization: { ...ACME, roleCode: "OWNER" } }));
+    expect(page.querySelector('[data-zerops-surface="sidebar-account-role"]')?.textContent).toBe(
+      "Owner of Acme",
+    );
+    const more = page.querySelector('[data-zerops-surface="sidebar-account"]');
+    expect(more?.textContent).toBe("");
+    expect(more?.getAttribute("aria-label")).toBe("Account: Ada");
+  });
+
   it("collapses to the picture alone, with no name to wrap on a rail", () => {
     const html = render({ collapsed: true });
     expect(html).toContain('data-zerops-avatar="picture"');

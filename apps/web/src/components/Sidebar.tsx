@@ -76,7 +76,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import { useMatch, useParams, useRouter } from "@tanstack/react-router";
+import { useLocation, useMatch, useParams, useRouter } from "@tanstack/react-router";
 
 import {
   isAtomCommandInterrupted,
@@ -220,7 +220,12 @@ import {
   SidebarMenuButton,
   useSidebar,
 } from "./ui/sidebar";
-import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import {
+  SidebarChromeFooter,
+  SidebarChromeHeader,
+  SidebarCreateButton,
+  sidebarAccountDestinationIcon,
+} from "./sidebar/SidebarChrome";
 import { newMateView, useAddMate } from "../zerops/newMate";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
@@ -244,12 +249,10 @@ import { useNowMs } from "../zerops/useNowMs";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import {
   SidebarHqStatus,
-  SidebarNewProject,
   SidebarZeropsTree,
   type SidebarProjectFlow,
   type SidebarZeropsTreeProps,
 } from "./zerops/SidebarZeropsTree";
-import { newProjectOffered } from "./zerops/SidebarProjects.logic";
 import { releaseFailureOf } from "./zerops/SidebarProductionChip.logic";
 import { useMatesActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
@@ -258,7 +261,11 @@ import { shownInScope, useMateScope } from "../zerops/mateScope";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
 import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
-import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
+import { overviewProjectsOf, SidebarOverviewRow, useMenuProjects } from "./zerops/SidebarOverview";
+import { overviewHeadline } from "./zerops/SidebarOverview.logic";
+import { SidebarWaitingRow } from "./zerops/SidebarWaiting";
+import { SidebarRail, useRailMates } from "./zerops/SidebarRail";
+import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
 
 import { useProjectFlows } from "../zerops/projectFlows";
 import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
@@ -1878,7 +1885,7 @@ export default function Sidebar() {
     [zeropsProjectFlows],
   );
   const router = useRouter();
-  const { isMobile, open, openMobile, setOpenMobile } = useSidebar();
+  const { isMobile, open, openMobile, setOpen, setOpenMobile } = useSidebar();
   /** A stop's page, in place of the thread — the sidebar stays where it is. */
   const openStop = useCallback(
     (groupId: string, row: EnvironmentRow) => {
@@ -2331,6 +2338,40 @@ export default function Sidebar() {
     void router.navigate({ to: "/zerops" });
   }, [isMobile, router, setOpenMobile]);
 
+  // The + asks for a Mate in one of the organization's projects, over whatever is on screen.
+  const zeropsMenuProjects = useMenuProjects();
+  const onZeropsNewMate = useCallback(
+    (groupId: string) => {
+      if (isMobile) setOpenMobile(false);
+      addMate(groupId);
+    },
+    [addMate, isMobile, setOpenMobile],
+  );
+  // The Overview row: lit while the overview is open, its line the organization in one sentence.
+  const zeropsOverviewOpen = useLocation({ select: (location) => location.pathname === "/zerops" });
+  const zeropsHeadline = useMemo(
+    () =>
+      overviewHeadline(
+        overviewProjectsOf({
+          projects: zeropsMenuProjects,
+          flows: zeropsProjectFlows,
+          candidates: zeropsCandidates,
+        }),
+      ),
+    [zeropsCandidates, zeropsMenuProjects, zeropsProjectFlows],
+  );
+  // Every project whose next release is offered waits on the viewer too.
+  const zeropsWaitingReleases = useMemo(
+    () =>
+      zeropsMenuProjects.flatMap((project) => {
+        const release = zeropsProjectFlows.get(project.id)?.release;
+        return release?.gate.allowed === true
+          ? [{ groupId: project.id, name: project.name, ahead: release.summary?.total }]
+          : [];
+      }),
+    [zeropsMenuProjects, zeropsProjectFlows],
+  );
+
   // What each Mate is doing, off its attention — the one derivation the
   // projects screen reads too (`mateActivity.ts`), so a Mate says the same
   // thing in both places.
@@ -2434,7 +2475,7 @@ export default function Sidebar() {
     },
     [isMobile, openMate, setOpenMobile],
   );
-  // The Mates waiting on the viewer, for the header's faces and ⌥↓: each read as its row reads it.
+  // What waits on the viewer, for the Waiting on you row and ⌥↓: each Mate read as its row reads it.
   const zeropsWaiting = useSidebarWaiting({
     candidates: zeropsCandidates,
     activityOf: zeropsRowActivity,
@@ -2446,6 +2487,31 @@ export default function Sidebar() {
         }
       : undefined,
     enabled: zeropsSignedIn,
+    releases: zeropsWaitingReleases,
+  });
+  // What the Waiting on you list asks of the menu: a Mate's conversation, and its fix request.
+  const zeropsWaitingVerbs = useMemo(
+    () => ({
+      onOpenMate: (projectId: string) => {
+        const candidate = zeropsCandidates.find((item) => item.project.id === projectId);
+        if (candidate !== undefined) onZeropsSelect(candidate);
+      },
+      onAskToFix: onZeropsAskToFix,
+    }),
+    [onZeropsAskToFix, onZeropsSelect, zeropsCandidates],
+  );
+  // Closed on a desktop, the menu is a rail of faces: the same Mates, grouped by project.
+  const zeropsProjectName = useCallback(
+    (groupId: string) => zeropsMenuProjects.find((project) => project.id === groupId)?.name,
+    [zeropsMenuProjects],
+  );
+  const zeropsRailGroups = useRailMates({
+    candidates: zeropsCandidates,
+    activityOf: zeropsRowActivity,
+    shown: zeropsShown,
+    ownerOf: zeropsMateOwner,
+    projectName: zeropsProjectName,
+    waiting: zeropsWaiting.items,
   });
 
   // Settled threads stay in the live shell stream (settled ≠ archived), so
@@ -3926,6 +3992,26 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
+  if (!isMobile && !open) {
+    return (
+      <SidebarRail
+        account={<SidebarZeropsAccountRow destinationIcon={sidebarAccountDestinationIcon} />}
+        activeProjectId={zeropsOverviewOpen ? null : activeZeropsProjectId}
+        groups={zeropsRailGroups}
+        headline={zeropsHeadline}
+        onOpenMenu={() => {
+          setOpen(true);
+        }}
+        onOverview={navigateToZeropsProjects}
+        onSelect={zeropsWaitingVerbs.onOpenMate}
+        openShortcut={shortcutLabelForCommand(keybindings, "sidebar.toggle") ?? undefined}
+        overviewCurrent={zeropsOverviewOpen}
+        showMark={!(isElectron && isMacPlatform(navigator.platform))}
+        verbs={zeropsWaitingVerbs}
+        waiting={zeropsWaiting.items}
+      />
+    );
+  }
   return (
     <>
       <SidebarChromeHeader
@@ -3940,26 +4026,31 @@ export default function Sidebar() {
             />
           )
         }
-        jump={
+        actions={
           // Every environment is in the roster: there is no thread list to
-          // search, and the jump box finds anything the menu holds — from one
-          // small control in the logo row (M12). A new project is the list's
-          // last row, and one of the box's finds.
+          // search, and the jump box finds anything the menu holds. A new Mate
+          // or project is the +'s.
           rosterOnly ? (
-            <SidebarJumpButton
-              onJump={() => {
-                // A phone's menu steps aside for the box, and comes back
-                // to show what is found in it (`SidebarRevealBridge`).
-                if (isMobile) setOpenMobile(false);
-                openCommandPalette();
-              }}
-              shortcut={shortcutLabelForCommand(keybindings, "commandPalette.toggle") ?? undefined}
-            />
-          ) : undefined
-        }
-        waiting={
-          zeropsSignedIn ? (
-            <SidebarWaitingStack mates={zeropsWaiting.mates} onNext={zeropsWaiting.next} />
+            <>
+              <SidebarJumpButton
+                onJump={() => {
+                  // A phone's menu steps aside for the box, and comes back
+                  // to show what is found in it (`SidebarRevealBridge`).
+                  if (isMobile) setOpenMobile(false);
+                  openCommandPalette();
+                }}
+                shortcut={
+                  shortcutLabelForCommand(keybindings, "commandPalette.toggle") ?? undefined
+                }
+              />
+              {zeropsSignedIn && zeropsSession.organizationStatus !== "needs-selection" ? (
+                <SidebarCreateButton
+                  onNewMate={onZeropsNewMate}
+                  onNewProject={openNewZeropsProject}
+                  projects={zeropsMenuProjects}
+                />
+              ) : null}
+            </>
           ) : undefined
         }
       />
@@ -4186,6 +4277,16 @@ export default function Sidebar() {
         }
       >
         <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
+          {zeropsSignedIn && !isSearchingThreads ? (
+            <div className="mb-2" data-zerops-surface="sidebar-chrome-rows">
+              <SidebarOverviewRow
+                current={zeropsOverviewOpen}
+                headline={zeropsHeadline}
+                onOpen={navigateToZeropsProjects}
+              />
+              <SidebarWaitingRow items={zeropsWaiting.items} verbs={zeropsWaitingVerbs} />
+            </div>
+          ) : null}
           {zeropsSignedIn && !isSearchingThreads ? (
             <SidebarZeropsTree
               menuOpen={isMobile ? openMobile : open}
@@ -4727,19 +4828,6 @@ export default function Sidebar() {
       {/* Account notices sit above the pinned footer controls; without one,
           only the normal list-to-footer gutter remains. */}
       {zeropsSignedIn ? <AccountVoiceLine /> : null}
-      {/* *New project*, pinned just above the account's row whatever the
-          list's length (D11): the list scrolls under it, and fades into the
-          canvas above it only while something is scrolled there. */}
-      {zeropsSignedIn &&
-      !isSearchingThreads &&
-      zeropsSession.organizationStatus !== "needs-selection" &&
-      newProjectOffered({
-        candidates: zeropsCandidates,
-        births: zeropsPlacedBirths,
-        complete: zeropsMenuComplete,
-      }) ? (
-        <SidebarNewProject onNewProject={openNewZeropsProject} />
-      ) : null}
       <SidebarChromeFooter />
     </>
   );

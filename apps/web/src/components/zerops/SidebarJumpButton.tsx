@@ -1,15 +1,14 @@
 /**
- * The way into the jump box, in the logo row: one small control with its key
- * inside it — the search glyph and `⌘K` (M12).
+ * Search, in the menu's top row: a round 34 px button with a hairline ring and
+ * the search glyph, its key in its tooltip ("Search ⌘K").
  *
- * It used to be a row of its own over the projects, *Jump to…* with the key
- * as a chip and *New project* beside it, so ⌘K read as that button's
- * shortcut. Now nothing sits beside it that the key could belong to, and the
- * row of height it took is the list's. The box finds a Mate, a project, a
- * change, a stop or words in a conversation, writes to a Mate after `@`, and
- * starts a new project (`JumpBox.tsx`); `/` opens it too.
+ * It opens the jump box, which finds a Mate, a project, a change, a stop or
+ * words in a conversation, writes to a Mate after `@`, and starts a new
+ * project (`JumpBox.tsx`); `/` opens it too.
  */
 import { SearchIcon } from "lucide-react";
+
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export function SidebarJumpButton({
   shortcut,
@@ -20,19 +19,27 @@ export function SidebarJumpButton({
   readonly onJump: () => void;
 }) {
   return (
-    <button
-      aria-keyshortcuts={shortcut === undefined ? "/" : `${ariaShortcut(shortcut)} /`}
-      aria-label="Jump to a Mate, project, change or stop"
-      className="zerops-jump-button inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md ps-1.75 pe-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      data-zerops-surface="sidebar-jump"
-      onClick={onJump}
-      type="button"
-    >
-      <SearchIcon aria-hidden="true" className="size-3.5 shrink-0" />
-      {shortcut === undefined ? null : (
-        <span className="zerops-jump-key font-mono text-xs font-medium">{shortcut}</span>
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            aria-keyshortcuts={shortcut === undefined ? "/" : `${ariaShortcut(shortcut)} /`}
+            aria-label="Search"
+            className="menu-round-button"
+            data-zerops-surface="sidebar-jump"
+            onClick={onJump}
+            type="button"
+          />
+        }
+      >
+        <SearchIcon aria-hidden="true" className="size-4" />
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">
+        <span data-zerops-surface="sidebar-jump-tip">
+          Search{shortcut === undefined ? "" : ` ${shortcut}`}
+        </span>
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 

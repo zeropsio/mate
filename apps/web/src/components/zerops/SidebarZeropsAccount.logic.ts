@@ -48,6 +48,24 @@ export function sidebarAccountRoleLine(organization: ZeropsOrganization | null):
 }
 
 /**
+ * The foot's line under the viewer's name — "Owner of Acme" — in parts, the organization's name
+ * its own; the name alone where the role is not known yet.
+ */
+export function sidebarAccountRoleParts(organization: ZeropsOrganization | null): {
+  readonly before: string;
+  readonly organization: string;
+  readonly after: string;
+} | null {
+  const name = organization?.name.trim();
+  if (organization === null || name === undefined || name.length === 0) return null;
+  if (organization.roleCode === undefined) return { before: "", organization: name, after: "" };
+  const role = zeropsOrganizationRoleLabel(organization);
+  return organization.roleCode === "OWNER" || organization.roleCode === "ADMIN"
+    ? { before: `${role} of `, organization: name, after: "" }
+    : { before: "", organization: name, after: ` · ${role}` };
+}
+
+/**
  * The organizations the foot offers.
  *
  * A single membership used to be dropped on the grounds that one organization
@@ -83,7 +101,7 @@ export interface SidebarAccountDestination {
  * settings is the one nobody opens twice a day.
  */
 export const SIDEBAR_ACCOUNT_DESTINATIONS: ReadonlyArray<SidebarAccountDestination> = [
-  { id: "projects", label: "Projects", to: "/zerops" },
+  { id: "projects", label: "Overview", to: "/zerops" },
   { id: "git", label: "Git", to: "/git" },
   { id: "usage", label: "Usage", to: "/usage" },
   { id: "settings", label: "Settings", to: "/settings" },

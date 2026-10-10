@@ -489,6 +489,9 @@ function Change({
       onAsk={async () => {}}
       onClose={noop}
       onOpenPage={frame === "page" ? undefined : noop}
+      preview={PREVIEW}
+      project="Beviro"
+      stage="stage"
       onRetry={noop}
       remarks={remarksOf(conversation)}
       onFix={noop}
@@ -506,6 +509,12 @@ function Change({
     />
   );
 }
+
+/** The Mate's preview, its pair's stage half: what "Try it" opens. */
+const PREVIEW = {
+  url: "https://appstage-beviro.prg1.zerops.app",
+  host: "appstage-beviro.prg1.zerops.app",
+};
 
 const RELEASE_ROWS = [
   {
@@ -605,7 +614,9 @@ function Release({
       gate={{ allowed: true }}
       permission={{ allowed: true }}
       hasStage
+      production={{ at: minutesAgo(60 * 24 * 4), host: "beviro.app" }}
       replaces={{ kind: "release", tag: "v0.1.56" }}
+      stage={{ name: "stage", at: minutesAgo(110) }}
       name="Beviro"
       now={NOW}
       onClose={onClose}
@@ -1239,7 +1250,7 @@ export function ReviewStage({
         className="flex justify-center rounded-xl px-5 py-9"
         style={{ background: "color-mix(in oklab, var(--background), var(--color-black) 18%)" }}
       >
-        <div className="rv" style={{ maxHeight: "none" }}>
+        <div className="rv" style={{ maxHeight: "none", width: 460 }}>
           {children}
         </div>
       </div>
@@ -1254,9 +1265,9 @@ const TRY_READ_MS = 600;
  * The real dialog, opened from a button, to try its motion, its focus and its keys — its files
  * arriving a moment after it opens, as they do from HQ.
  */
-export function ReviewDialogTry() {
+export function ReviewDialogTry({ openAtStart = false }: { readonly openAtStart?: boolean }) {
   const [from, setFrom] = useState<HTMLElement | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(openAtStart);
   const [read, setRead] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -1300,6 +1311,9 @@ export function ReviewDialogTry() {
           onOpenPage={() => {
             setOpen(false);
           }}
+          preview={PREVIEW}
+          project="Beviro"
+          stage="stage"
           remarks={read ? remarksOf(TALKING) : []}
           onClose={() => {
             setOpen(false);
@@ -1313,6 +1327,14 @@ export function ReviewDialogTry() {
           press={IDLE}
           pull={pull({
             description: harnessDescription({ after: TRY_READ_MS }),
+            pipeline: {
+              head: HEAD,
+              requirements: "known",
+              checks: [
+                { id: "unit", name: "Unit tests", requirement: "required", state: "passed" },
+                { id: "lint", name: "Lint", requirement: "advisory", state: "passed" },
+              ],
+            },
           })}
           readout={read ? READ : READING}
           run={RUN}
@@ -1366,6 +1388,7 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
             onFix={noop}
             onOpenPage={onClose}
             onOpenRun={noop}
+            project="Beviro"
             onClosing={noop}
             onMerge={noop}
             offers={DEVELOPS}

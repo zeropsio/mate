@@ -7,7 +7,8 @@
  * `?review=<id>` shows one state alone, `?review=all` every one (the default); `?theme=dark` the
  * dark palette. The page's states are `page`, `page-settle` and `page-reading`; `settle` is the
  * dialog's reads landing late, to set its first frame against its settled one. `?release=open`
- * opens the release's dialog, whose change rows step into each change's review and back.
+ * opens the release's sheet, whose change rows step into each change's review and back;
+ * `?sheet=change` opens the change's sheet.
  *
  * Fixtures only. Nothing here ships in the app bundle — `design-change.html` is not
  * `index.html`, and no route imports this module.
@@ -34,13 +35,15 @@ import "../index.css";
 const REVIEW = new URLSearchParams(location.search).get("review") ?? "all";
 /** `?release=open`: the release's dialog open as the page loads, to step into its changes. */
 const RELEASE_OPEN = new URLSearchParams(location.search).get("release") === "open";
+/** `?sheet=change`: the change's sheet open as the page loads. */
+const SHEET_OPEN = new URLSearchParams(location.search).get("sheet") === "change";
 
 function Harness() {
   const shown =
     REVIEW === "all" ? REVIEW_STATES : REVIEW_STATES.filter((entry) => entry.id === REVIEW);
   return (
     <div className="flex flex-col gap-8 bg-background p-6">
-      <ReviewDialogTry />
+      <ReviewDialogTry openAtStart={SHEET_OPEN} />
       <ReleaseDialogTry openAtStart={RELEASE_OPEN} />
       {shown.map((entry) =>
         entry.page === true ? (

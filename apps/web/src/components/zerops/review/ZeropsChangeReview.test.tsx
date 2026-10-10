@@ -143,6 +143,11 @@ vi.mock("~/zerops/useAddEnvironment", () => ({
 vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => () => undefined }));
 vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => [] }));
 vi.mock("~/zerops/useZeropsReviewMates", () => ({ useZeropsReviewMates: () => new Map() }));
+vi.mock("./reviewReads", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./reviewReads")>()),
+  useGroupName: () => undefined,
+  useMatePreview: () => undefined,
+}));
 /** What HQ offers the person of the application's changes; the one function every render. */
 const offers = vi.hoisted(() => {
   const held: { current: ZeropsChangeOffers } = {

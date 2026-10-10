@@ -148,7 +148,7 @@ describe("what a change does, first", () => {
     [
       "its description, with the way back to the run that made it",
       { description: "Adds a **/status** page.", onOpenRun: () => {} },
-      ["Description", "The run that made it", 'data-markdown="Adds a **/status** page."'],
+      ["What it does", "The run that made it", 'data-markdown="Adds a **/status** page."'],
     ],
     [
       "what the run said, where it wrote no description",

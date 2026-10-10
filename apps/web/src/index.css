@@ -4327,12 +4327,754 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 /* ==== end of the menu's projects and production ==== */
 
 /* ==== Pass 41 · the menu's chrome: the top row, Overview, Waiting on you, the foot, the rail ==== */
+@layer components {
+  /* The top row's round buttons (search, +): 34 px, a hairline ring, the glyph muted until the
+     pointer or the open menu wakes it. */
+  .menu-round-button {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 9999px;
+    color: var(--sidebar-muted-foreground);
+    box-shadow: inset 0 0 0 1px var(--sidebar-border);
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      color 150ms var(--ease-out-strong),
+      scale 160ms var(--ease-out-strong);
+  }
+
+  .menu-round-button:hover,
+  .menu-round-button[data-popup-open] {
+    background: var(--sidebar-row-hover);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-round-button:active {
+    scale: 0.96;
+  }
+
+  .menu-round-button:focus-visible {
+    box-shadow:
+      inset 0 0 0 1px var(--sidebar-border),
+      0 0 0 2px var(--ring);
+  }
+}
+
+@layer components {
+  /* Overview and Waiting on you: Grok's measure, as the Mates' rows under them — a 40 px disc in
+     the faces' column, a 16 px name over a 15 px line, 68 px a row. */
+  .menu-chrome-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    height: 68px;
+    padding: 0 8px;
+    border-radius: 12px;
+    text-align: left;
+    cursor: pointer;
+    outline: none;
+    transition: background-color 150ms var(--ease-out-strong);
+  }
+
+  .menu-chrome-row:hover,
+  .menu-chrome-row[data-popup-open] {
+    background: var(--sidebar-row-hover);
+  }
+
+  .menu-chrome-row[data-current] {
+    background: var(--sidebar-row-active);
+  }
+
+  .menu-chrome-row:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .menu-chrome-row + .menu-chrome-row {
+    margin-top: 6px;
+  }
+
+  .menu-chrome-disc,
+  .menu-chrome-count {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 9999px;
+  }
+
+  .menu-chrome-disc {
+    background: color-mix(in oklab, var(--sidebar-foreground) 7%, transparent);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-chrome-count {
+    background: var(--zerops-status-attention-surface);
+    color: var(--zerops-status-attention-text);
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .menu-chrome-text {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+
+  .menu-chrome-name {
+    overflow: hidden;
+    font-size: 16px;
+    line-height: 22px;
+    font-weight: 500;
+    color: var(--sidebar-foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-chrome-line {
+    display: flex;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 15px;
+    line-height: 21px;
+    color: var(--sidebar-muted-foreground);
+    white-space: nowrap;
+  }
+
+  .menu-chrome-line > :first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .menu-chrome-line[data-ink] > :first-child {
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-chrome-line > :not(:first-child) {
+    flex: none;
+  }
+}
+
+@layer components {
+  /* The Waiting on you list, beside the menu: a card 380 wide, each thing a 32 px face, its title,
+     its words in ink and its buttons — 12 px between things. */
+  .menu-wait-list {
+    width: 380px;
+    max-width: calc(100vw - 16px);
+    max-height: var(--available-height);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--card);
+    color: var(--card-foreground);
+    box-shadow: 0 12px 32px color-mix(in oklab, var(--color-black) 14%, transparent);
+    font-size: 14px;
+    line-height: 20px;
+    outline: none;
+    scrollbar-width: none;
+    transform-origin: var(--transform-origin);
+    transition:
+      opacity 150ms var(--ease-out-strong),
+      scale 150ms var(--ease-out-strong);
+  }
+
+  .menu-wait-list[data-starting-style],
+  .menu-wait-list[data-ending-style] {
+    opacity: 0;
+    scale: 0.98;
+  }
+
+  .dark .menu-wait-list {
+    box-shadow: 0 12px 32px color-mix(in oklab, var(--color-black) 45%, transparent);
+  }
+
+  .menu-wait-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 8px;
+  }
+
+  .menu-wait-heading {
+    flex: 1 1 auto;
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 600;
+  }
+
+  .menu-wait-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--muted-foreground);
+  }
+
+  .menu-wait-items {
+    margin-bottom: -12px;
+  }
+
+  .menu-wait-item {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    column-gap: 12px;
+    margin-bottom: 12px;
+    padding: 8px;
+    border-radius: 12px;
+  }
+
+  .menu-wait-face {
+    display: flex;
+    height: 32px;
+  }
+
+  .menu-wait-letter {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--foreground) 7%, transparent);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .menu-wait-body {
+    min-width: 0;
+    padding-top: 6px;
+  }
+
+  .menu-wait-title {
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-wait-text {
+    display: -webkit-box;
+    margin-top: 2px;
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 20px;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .menu-wait-text:empty {
+    display: none;
+  }
+
+  .menu-wait-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .menu-wait-button {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 10px;
+    background: color-mix(in oklab, var(--foreground) 8%, transparent);
+    color: var(--foreground);
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      scale 160ms var(--ease-out-strong);
+  }
+
+  .menu-wait-button:hover {
+    background: color-mix(in oklab, var(--foreground) 13%, transparent);
+  }
+
+  .menu-wait-button[data-main] {
+    background: var(--foreground);
+    color: var(--background);
+  }
+
+  .menu-wait-button[data-main]:hover {
+    background: color-mix(in oklab, var(--foreground) 86%, var(--background));
+  }
+
+  .menu-wait-button:active {
+    scale: 0.97;
+  }
+
+  .menu-wait-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .menu-wait-button:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .menu-wait-reply {
+    display: flex;
+    flex: 1 1 100%;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 6px 0 12px;
+    border-radius: 10px;
+    background: var(--background);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+
+  .menu-wait-reply:focus-within {
+    box-shadow: inset 0 0 0 1px var(--ring);
+  }
+
+  .menu-wait-reply input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--foreground);
+    font: inherit;
+  }
+
+  .menu-wait-reply input::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  .menu-wait-reading,
+  .menu-wait-error {
+    flex: 1 1 100%;
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--muted-foreground);
+  }
+
+  .menu-wait-error {
+    margin-top: 8px;
+    color: var(--zerops-status-failed-text);
+  }
+}
+
+@layer components {
+  /* The foot: the viewer's photo, name and role, one ···; the collapse button after it. */
+  .menu-foot-who {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    height: 64px;
+    padding-inline-start: 8px;
+  }
+
+  .menu-foot-lines {
+    display: grid;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .menu-foot-name {
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 18px;
+    font-weight: 500;
+    color: var(--sidebar-foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-foot-role {
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--sidebar-muted-foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-foot-button {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    color: var(--sidebar-muted-foreground);
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      color 150ms var(--ease-out-strong);
+  }
+
+  .menu-foot-button:hover,
+  .menu-foot-button[data-popup-open] {
+    background: var(--sidebar-row-hover);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-foot-button:focus-visible,
+  .menu-foot-photo:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .menu-foot-photo {
+    display: flex;
+    border-radius: 9999px;
+    cursor: pointer;
+    outline: none;
+    transition: box-shadow 150ms var(--ease-out-strong);
+  }
+
+  .menu-foot-photo:hover,
+  .menu-foot-photo[data-popup-open] {
+    box-shadow: 0 0 0 3px var(--sidebar-row-hover);
+  }
+}
+
+@layer components {
+  /* Closed on a desktop: a 64 px rail — the mark, the waiting count, Overview, a hairline, the
+     faces by project, and at the foot the viewer and the open button. */
+  .menu-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .menu-rail-top {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 100%;
+    height: var(--workspace-topbar-height);
+  }
+
+  .menu-rail-mark {
+    display: flex;
+    border-radius: 10px;
+    color: var(--sidebar-foreground);
+    outline: none;
+  }
+
+  .menu-rail-mark:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .menu-rail-slot {
+    display: grid;
+    flex: none;
+    place-items: center;
+    height: 44px;
+  }
+
+  .menu-rail-count {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 9999px;
+    background: var(--zerops-status-attention-surface);
+    color: var(--zerops-status-attention-text);
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    outline: none;
+    transition: background-color 150ms var(--ease-out-strong);
+  }
+
+  .menu-rail-count:hover,
+  .menu-rail-count[data-popup-open] {
+    background: color-mix(
+      in oklab,
+      var(--zerops-status-attention) 22%,
+      var(--zerops-status-attention-surface)
+    );
+  }
+
+  .menu-rail-button {
+    position: relative;
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin: 1px 0;
+    border-radius: 12px;
+    color: var(--sidebar-muted-foreground);
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      color 150ms var(--ease-out-strong);
+  }
+
+  .menu-rail-button:hover {
+    background: var(--sidebar-row-hover);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-rail-button[data-current] {
+    background: var(--sidebar-row-active);
+  }
+
+  .menu-rail-button:focus-visible,
+  .menu-rail-count:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .menu-rail-disc {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--sidebar-foreground) 7%, transparent);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-rail-sep {
+    display: block;
+    flex: none;
+    width: 24px;
+    height: 1px;
+    margin: 10px 0;
+    background: var(--sidebar-border);
+  }
+
+  .menu-rail-faces {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+
+  .menu-rail-owner {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    display: flex;
+    border-radius: 9999px;
+    box-shadow: 0 0 0 1.5px var(--sidebar);
+  }
+
+  .menu-rail-dot {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 10px;
+    height: 10px;
+    border-radius: 9999px;
+    box-shadow: 0 0 0 2px var(--sidebar);
+  }
+
+  .menu-rail-button[data-current] .menu-rail-dot,
+  .menu-rail-button[data-current] .menu-rail-owner {
+    box-shadow: 0 0 0 2px var(--sidebar-row-active);
+  }
+
+  .menu-rail-dot[data-dot="attention"] {
+    background: var(--zerops-status-attention);
+  }
+
+  .menu-rail-dot[data-dot="failed"] {
+    background: var(--zerops-status-failed);
+  }
+
+  .menu-rail-dot[data-dot="unread"] {
+    background: var(--info-foreground);
+  }
+
+  .menu-rail-spring {
+    flex: 1 1 auto;
+  }
+
+  .menu-rail-foot {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0 16px;
+  }
+
+  .menu-rail-tip {
+    display: grid;
+    gap: 1px;
+    max-width: 300px;
+  }
+
+  .menu-rail-tip-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+  }
+
+  .menu-rail-tip-key,
+  .menu-rail-tip-line {
+    overflow: hidden;
+    color: var(--muted-foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-round-button:active,
+  .menu-wait-button:active {
+    scale: none;
+  }
+
+  .menu-wait-list[data-starting-style],
+  .menu-wait-list[data-ending-style] {
+    scale: none;
+  }
+}
+
 /* ==== end of the menu's chrome ==== */
 
 /* ==== Pass 41 · the overview's cards ==== */
 /* ==== end of the overview's cards ==== */
 
 /* ==== Pass 41 · the review sheet ==== */
+/* The sheet's own pieces; its frame, line and foot are the review's ("Pass 16 · review"). */
+.rv-dot {
+  color: var(--muted-foreground);
+}
+/* What it does: its words in a soft box. */
+.rv-what {
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 20px;
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+/* Try it: the Mate's preview, a soft pill that opens a tab. */
+.rv-try {
+  display: inline-flex;
+  max-width: 100%;
+  height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 0 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--foreground);
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  transition: background-color 150ms ease;
+}
+.rv-try:hover {
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.rv-try svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--muted-foreground);
+}
+.rv-try-host {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A folded section: its label, what it counts, and a chevron on the right edge. */
+.rv-fold-row {
+  display: flex;
+  width: 100%;
+  height: 28px;
+  align-items: center;
+  gap: 10px;
+  margin: -6px 0;
+  color: var(--muted-foreground);
+  text-align: left;
+  cursor: pointer;
+}
+.rv-fold-aside {
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.rv-fold-chev {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  transition: rotate 200ms var(--ease-out-strong);
+}
+.rv-fold-row[aria-expanded="true"] .rv-fold-chev {
+  rotate: 180deg;
+}
+.rv-fold-row:hover {
+  color: var(--foreground);
+}
+.rv-fold-body {
+  margin-top: 12px;
+}
+.rv-fold-body[hidden] {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-fold-chev {
+    transition: none;
+  }
+}
+/* A quiet sentence under a section's rows. */
+.rv-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
+.rv-version {
+  display: grid;
+  gap: 6px;
+}
+.rv-version .rv-note {
+  margin: 0;
+}
+.rv-version-use {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.rv-check-list {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 18px;
+}
 /* ==== end of the review sheet ==== */
 
 /* ==== Pass 16 · the run's card ==== */
@@ -6695,40 +7437,32 @@ a.message-file:focus-visible {
 /* ==== Pass 16 · review ==== */
 
 /* Review: the one door to merging, landing, releasing and rolling back (R1–R8, D12). One
-   surface in two frames: a dialog over the conversation, a quick look, and a change's own page.
-   Both are one reading column, the conversation's width — 768, its words 720 between two text
-   edges 24 in. The title and its one line of provenance, then the verdict — safe and why, or
-   what blocks it and who fixes it — then what it does, what it changes, how it was checked, what
-   was said and its commits, and a foot that says what the one button does. Its type is the
-   scale's, 16 · 14 · 13 · 12; its colour means one thing each. */
+   surface in two frames: a sheet over the page, and a change's own page. The sheet stands 12 in
+   from the window's top, right and bottom, 460 wide: its title, one line of where it stands, then
+   what it does, how to try it and what it changes, and at its foot the buttons with one line of
+   what happens next. Its type is the scale's, 22 · 14 · 13 · 12; its colour means one thing each. */
 .rv-backdrop {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: color-mix(in oklab, var(--color-black) 18%, transparent);
+  background: color-mix(in oklab, var(--color-black) 8%, transparent);
   transition: opacity 200ms var(--ease-out-strong);
 }
 .dark .rv-backdrop {
-  background: color-mix(in oklab, var(--color-black) 40%, transparent);
+  background: color-mix(in oklab, var(--color-black) 30%, transparent);
 }
 .rv-backdrop[data-starting-style],
 .rv-backdrop[data-ending-style] {
   opacity: 0;
 }
 .rv-backdrop[data-ending-style] {
-  transition-duration: 150ms;
+  transition-duration: 160ms;
 }
 
-/* It hangs from a fixed line rather than being centred: a review that grows as its files and
-   diffs arrive grows downward, and its title never moves. */
 .rv-viewport {
   position: fixed;
   inset: 0;
   z-index: 50;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: clamp(16px, 7dvh, 72px) 16px 16px;
 }
 
 .rv {
@@ -6737,30 +7471,40 @@ a.message-file:focus-visible {
   flex-direction: column;
   width: min(768px, 100%);
   /* The steps of a release (p26/release) are held to it too. */
-  --rv-max: calc(100dvh - clamp(16px, 7dvh, 72px) - 16px);
+  --rv-max: calc(100dvh - 24px);
   max-height: var(--rv-max);
   overflow: hidden;
-  border-radius: 20px;
+  border-radius: 16px;
   background: var(--card);
   color: var(--foreground);
   box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent),
-    0 30px 80px -30px color-mix(in oklab, var(--color-black) 45%, transparent);
+    0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
+    0 24px 64px -16px color-mix(in oklab, var(--color-black) 22%, transparent);
   outline: none;
-  transform-origin: var(--rv-origin-x, 50%) var(--rv-origin-y, 50%);
+  transform-origin: var(--rv-origin-x, 100%) var(--rv-origin-y, 50%);
   transition:
-    opacity 200ms var(--ease-out-strong),
-    scale 200ms var(--ease-out-strong),
-    translate 200ms var(--ease-out-strong);
+    opacity 240ms var(--ease-out-strong),
+    scale 240ms var(--ease-out-strong),
+    translate 240ms var(--ease-out-strong);
+}
+/* The sheet: over the page's right edge, the window's height less its 12 px margins. */
+.rv-viewport > .rv {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: min(460px, calc(100% - 24px));
+  max-height: none;
 }
 .rv[data-starting-style],
 .rv[data-ending-style] {
   opacity: 0;
-  scale: 0.98;
-  translate: 0 6px;
+  scale: 0.99;
+  translate: 24px 0;
 }
 .rv[data-ending-style] {
-  transition-duration: 150ms;
+  transition-duration: 160ms;
+  translate: 16px 0;
 }
 @media (prefers-reduced-motion: reduce) {
   .rv,
@@ -6777,19 +7521,20 @@ a.message-file:focus-visible {
     transform: none;
   }
 }
-/* The dialog's own row: what kind of thing this is, its way to its page, and ×. */
+/* The sheet's top line: whose it is — a Mate's face and "Sage · Tea Shop", or the project — its
+   way to its page, and ×. */
 .rv-chrome {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 4px;
-  padding: 14px 14px 0 24px;
+  gap: 2px;
+  padding: 16px 16px 0 22px;
 }
 .rv-head {
   display: grid;
   flex: none;
   gap: 4px;
-  padding: 6px 24px 16px;
+  padding: 14px 22px 22px;
 }
 .rv-kind {
   display: flex;
@@ -6797,55 +7542,50 @@ a.message-file:focus-visible {
   min-width: 0;
   align-items: center;
   gap: 8px;
+  height: 28px;
   font-size: 13px;
-  font-weight: 500;
   line-height: 18px;
   color: var(--muted-foreground);
 }
-.rv-kind svg {
+.rv-kind-words {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rv-kind > svg {
   width: 15px;
   height: 15px;
   flex: none;
 }
-.rv-x,
-.rv-open {
+.rv-x {
   display: flex;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   flex: none;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 999px;
   color: var(--muted-foreground);
   cursor: pointer;
   transition:
     background-color 150ms ease,
     color 150ms ease;
 }
-.rv-x {
-  width: 28px;
+.rv-x:last-child {
+  margin-right: -6px;
 }
-.rv-open {
-  gap: 6px;
-  padding: 0 8px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
-  white-space: nowrap;
-}
-.rv-open svg {
-  width: 14px;
-  height: 14px;
-}
-.rv-x:hover,
-.rv-open:hover {
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+.rv-x:hover {
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
   color: var(--foreground);
 }
-.rv-open:focus-visible,
 .rv-x:focus-visible,
 .rv-file:focus-visible,
 .rv-textbtn:focus-visible,
 .rv-link:focus-visible,
+.rv-fold-row:focus-visible,
+.rv-try:focus-visible,
+.rv-quiet:focus-visible,
 .rv-btn1:focus-visible,
 .rv-btn2:focus-visible {
   outline: 2px solid var(--ring);
@@ -6853,34 +7593,90 @@ a.message-file:focus-visible {
 }
 .rv-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 22px;
   font-weight: 600;
-  line-height: 24px;
+  line-height: 28px;
+  letter-spacing: -0.015em;
   text-wrap: balance;
   overflow-wrap: anywhere;
 }
-.rv-meta {
+.rv-page .rv-title {
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: normal;
+}
+/* Where it stands, in plain words: grey while all is well, amber or red for trouble, blue while
+   it moves. */
+.rv-line {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  column-gap: 6px;
+  margin: 0;
+  font-size: 14px;
   line-height: 20px;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
-.rv-meta code {
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-.rv-meta-who {
+.rv-vt {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
+.rv-line[data-tone="attention"] .rv-vt {
+  color: var(--zerops-status-attention-text);
+}
+.rv-line[data-tone="failed"] .rv-vt {
+  color: var(--zerops-status-failed-text);
+}
+.rv-line[data-tone="busy"] .rv-vt {
+  color: var(--zerops-status-busy-text);
+}
+.rv-checks {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rv-checks svg {
+  width: 13px;
+  height: 13px;
+}
+.rv-checks[data-mark="passed"] {
+  color: var(--foreground);
+}
+.rv-checks[data-mark="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+.rv-why {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+.rv-why[data-tone="attention"],
+.rv-why[data-tone="failed"] {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--foreground);
+}
+.rv-why[data-tone="attention"] {
+  background: color-mix(in oklab, var(--zerops-status-attention) 13%, transparent);
+}
+.rv-why[data-tone="failed"] {
+  background: color-mix(in oklab, var(--zerops-status-failed) 10%, transparent);
+}
+.rv-why .rv-textbtn {
+  margin: -3px 0 -3px -8px;
+}
 
-/* The review as a page: the same column, flush with the page's own edges; the verdict box and
-   the foot's card stand 8 out from the text as in the dialog, and the foot stays in view. */
+/* The review as a page: the same column, flush with the page's own edges; the foot's card stands
+   8 out from the text, and stays in view. */
 .rv-page {
   display: flex;
   min-width: 0;
@@ -6889,22 +7685,16 @@ a.message-file:focus-visible {
 .rv-page .rv-head {
   padding: 0 0 16px;
 }
-.rv-page .rv-verdict {
-  margin: 0 -8px;
-}
 .rv-page .rv-body {
   padding: 20px 0 0;
   overflow: visible;
-}
-.rv-page .rv-verdict + .rv-body {
-  margin-top: 0;
 }
 .rv-page .rv-foot {
   position: sticky;
   bottom: 16px;
   z-index: 1;
   margin: 28px -8px 0;
-  padding: 8px 8px 8px 16px;
+  padding: 12px 16px 14px;
   border: 0;
   border-radius: 18px;
   background: var(--card);
@@ -6917,60 +7707,6 @@ a.message-file:focus-visible {
 }
 .rv-del {
   color: var(--diff-deletion-foreground);
-}
-
-/* The verdict: one box, first. Green passed, amber needs you, red broken, ink when it is over
-   or moving, grey where nothing was checked. */
-.rv-verdict {
-  display: grid;
-  flex: none;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  column-gap: 10px;
-  align-items: center;
-  margin: 0 16px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  font-size: 14px;
-  line-height: 20px;
-  background: color-mix(in oklab, var(--foreground) 5%, transparent);
-}
-.rv-verdict b {
-  display: block;
-  font-weight: 500;
-}
-.rv-why {
-  display: block;
-  font-size: 13px;
-  line-height: 18px;
-  color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-.rv-vi {
-  display: flex;
-  color: var(--muted-foreground);
-}
-.rv-vi svg {
-  width: 18px;
-  height: 18px;
-}
-.rv-verdict[data-tone="ok"] {
-  background: color-mix(in oklab, var(--zerops-status-ok) 11%, transparent);
-}
-.rv-verdict[data-tone="ok"] .rv-vi,
-.rv-verdict[data-tone="done"] .rv-vi {
-  color: var(--zerops-status-ok);
-}
-.rv-verdict[data-tone="attention"] {
-  background: color-mix(in oklab, var(--zerops-status-attention) 15%, transparent);
-}
-.rv-verdict[data-tone="attention"] .rv-vi {
-  color: var(--zerops-status-attention);
-}
-.rv-verdict[data-tone="failed"] {
-  background: color-mix(in oklab, var(--zerops-status-failed) 10%, transparent);
-}
-.rv-verdict[data-tone="failed"] .rv-vi {
-  color: var(--zerops-status-failed);
 }
 
 /* Blue is only for what can be clicked. */
@@ -7003,9 +7739,10 @@ a.message-file:focus-visible {
   flex: 1 1 auto;
   /* One column no wider than the review: a long line inside it wraps, never widens it. */
   grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
+  align-content: start;
+  gap: 22px;
   min-height: 0;
-  padding: 8px 24px 20px;
+  padding: 0 22px 20px;
   overflow: hidden auto;
   overscroll-behavior: contain;
 }
@@ -7015,15 +7752,12 @@ a.message-file:focus-visible {
 .rv-body:empty {
   display: none;
 }
-.rv-verdict + .rv-body {
-  margin-top: 12px;
-}
 .rv-sec-h {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   font-size: 12px;
   font-weight: 500;
   line-height: 16px;
@@ -7621,24 +8355,20 @@ a.message-file:focus-visible {
   width: 48%;
 }
 
-/* A release: what goes out, one row per change with its Mate's face; where it goes; and the way
-   back if it goes wrong. */
+/* A release: what goes out, one line per change — its Mate's face, its number and title, and its
+   Mate on the right. */
 .rv-rel {
   display: grid;
-  overflow: hidden;
-  border-radius: 12px;
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent);
+  margin: 0 -8px;
 }
 .rv-relrow {
   display: grid;
-  min-height: 52px;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  min-height: 34px;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
   column-gap: 10px;
   align-items: center;
-  padding: 8px 12px;
-}
-.rv-relrow + .rv-relrow {
-  border-top: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
+  padding: 0 8px;
+  border-radius: 10px;
 }
 .rv-relrow-t {
   display: block;
@@ -7648,11 +8378,15 @@ a.message-file:focus-visible {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.rv-relrow-n {
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
 .rv-relrow-sub {
   display: block;
   overflow: hidden;
-  font-size: 13px;
-  line-height: 18px;
+  font-size: 12px;
+  line-height: 16px;
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--muted-foreground);
@@ -7661,27 +8395,20 @@ a.message-file:focus-visible {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 13px;
-  line-height: 18px;
+  font-size: 12px;
+  line-height: 16px;
   white-space: nowrap;
-  color: var(--muted-foreground);
-}
-.rv-on svg {
-  width: 13px;
-  height: 13px;
-}
-.rv-on[data-mark="on-stage"] {
-  color: var(--zerops-status-ok);
+  color: var(--zerops-status-busy-text);
 }
 .rv-on[data-mark="failed-on-stage"] {
-  color: var(--zerops-status-failed);
+  color: var(--zerops-status-failed-text);
 }
 
 /* p26/release */
 /* A change row opens its review in place: the whole row presses, the menu's way — a wash under
    the pointer, a deeper one pressed, its Mate's face looking up — with a › at its end. */
 .rv-rel[data-opens] .rv-relrow {
-  grid-template-columns: 20px minmax(0, 1fr) auto 14px;
+  grid-template-columns: 22px minmax(0, 1fr) auto 14px;
 }
 button.rv-relrow {
   width: 100%;
@@ -7703,7 +8430,7 @@ button.rv-relrow:focus-visible {
   width: 14px;
   height: 14px;
   color: var(--muted-foreground);
-  opacity: 0.7;
+  opacity: 0;
   transition:
     opacity 150ms ease,
     color 150ms ease,
@@ -7839,23 +8566,89 @@ button.rv-relrow:hover .rv-relrow-go {
   color: var(--muted-foreground);
 }
 
-/* The foot: what the button does, beside the button. The primary is the only filled control. */
+/* The foot, pinned: the buttons, the one button first and ink-filled, then one line of what
+   happens next. */
 .rv-foot {
   display: flex;
   flex: none;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: auto;
+  padding: 16px 22px 20px;
+  background: var(--card);
+}
+.rv-btns {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding: 14px 16px 14px 24px;
-  border-top: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);
-  background: color-mix(in oklab, var(--foreground) 2%, transparent);
+  gap: 8px;
+}
+.rv-btns:empty {
+  display: none;
 }
 .rv-conseq {
-  flex: 1;
-  min-width: 0;
+  margin: 0;
   font-size: 13px;
   line-height: 18px;
   color: var(--muted-foreground);
   text-wrap: pretty;
+}
+.rv-foot .rv-btn1,
+.rv-foot .rv-btn2 {
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+.rv-foot .rv-btn1 {
+  color: var(--background);
+  background: var(--foreground);
+}
+.rv-foot .rv-btn1 kbd {
+  background: color-mix(in oklab, var(--background) 18%, transparent);
+}
+.rv-foot .rv-btn1:disabled {
+  color: var(--muted-foreground);
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.rv-foot .rv-btn2 {
+  box-shadow: none;
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+.rv-foot .rv-btn2:hover {
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+/* A quiet word after the buttons: "Close without merging…", "Cancel". */
+.rv-quiet {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+.rv-quiet:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+}
+.rv-quiet:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* The sheet's steps — a release and a change it carries — fill its height. */
+.rv-viewport > .rv > .rv-steps,
+.rv-viewport > .rv .rv-step[data-at="here"] {
+  flex: 1 1 auto;
+  max-height: none;
+}
+.rv-viewport > .rv .rv-step:not([data-at="here"]) {
+  bottom: 0;
+  max-height: none;
 }
 .rv-btn2 {
   display: inline-flex;
