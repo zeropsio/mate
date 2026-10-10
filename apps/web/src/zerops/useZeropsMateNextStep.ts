@@ -53,6 +53,20 @@ export type ZeropsMateNextStep =
 const NOTHING: ZeropsMateNextStep = { kind: "none" };
 const UNKNOWN: ZeropsMateNextStep = { kind: "unknown" };
 
+/**
+ * What is known before the application's changes say: a Mate HQ holds in no application has no
+ * change that can wait on review; one whose project, placement or changes are unread may have one
+ * on its way. Null once the changes are read: they say.
+ */
+export function nextStepBeforeChanges(
+  project: Parameters<typeof readZeropsMembership>[0],
+  changesRead: boolean,
+): ZeropsMateNextStep | null {
+  if (project?.hq?.appId === null) return NOTHING;
+  if (readZeropsMembership(project).groupId === undefined || !changesRead) return UNKNOWN;
+  return null;
+}
+
 export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): ZeropsMateNextStep {
   const inventory = useZeropsInventory();
   const projectId = useMateOfEnvironment(threadRef?.environmentId)?.projectId;
@@ -68,7 +82,9 @@ export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): Zerops
   const appChanges = groupId === undefined ? undefined : changes.get(groupId);
 
   if (threadRef === null) return NOTHING;
-  if (groupId === undefined || appChanges === undefined) return UNKNOWN;
+  const before = nextStepBeforeChanges(project, appChanges !== undefined);
+  if (before !== null || groupId === undefined || appChanges === undefined)
+    return before ?? UNKNOWN;
   const step = mateNextStep({
     pullRequests: appChanges.pullRequests,
     mateProjectId: projectId,

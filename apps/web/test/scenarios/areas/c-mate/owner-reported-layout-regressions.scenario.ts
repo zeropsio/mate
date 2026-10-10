@@ -1644,6 +1644,31 @@ describe("owner-reported layout regressions", () => {
             }),
         );
 
+        // Milo's stress runs 4 and 5: while paused, the composer stood 61 px taller than at work, an
+        // empty band at its top reserved for a review its Mate, in no application, could never get.
+        it.effect("while a pause holds a message the composer holds no empty band at its top", () =>
+          Effect.gen(function* () {
+            const { s, chat } = yield* pausedMilo;
+            yield* chat.when.send(HELD);
+            yield* Effect.promise(() =>
+              s.page.waitForSelector('[data-message-receipt="held"]', { timeout: 8000 }),
+            );
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+            const band = yield* Effect.promise(() =>
+              s.page.evaluate(() => {
+                const shell = document.querySelector('[data-slot="composer-shell"]')!;
+                const editor = shell.querySelector('[data-testid="composer-editor"]')!;
+                return editor.getBoundingClientRect().top - shell.getBoundingClientRect().top;
+              }),
+            );
+            expect(
+              band,
+              "ASSERTION: the composer's words start at its own padding, no band above them",
+            ).toBeLessThan(32);
+            yield* s.then.noExternalNetwork;
+          }),
+        );
+
         it.effect(
           "a message sent while paused sits right under the notice, held until the reset, and goes in place when the pause lifts",
           () =>
