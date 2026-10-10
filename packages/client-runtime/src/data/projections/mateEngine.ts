@@ -378,7 +378,9 @@ function workActivities(
       summary,
       { ...payload, status: end, ...(item.report === undefined ? {} : { detail: item.report }) },
       card,
-      item.at,
+      // When it ended, which says what its end woke; a record from before the engine kept it, when
+      // it started.
+      item.endedAt ?? item.at,
       item.rev,
       end === "failed" ? "error" : "info",
     ),
