@@ -152,6 +152,9 @@ function readEnd() {
   };
 }
 
+/** A reading as an assertion message quotes it. */
+const quoted = (reading: object) => JSON.stringify(reading);
+
 /** The end of the conversation once nothing moves: the same reading for half a second. */
 async function settledEnd(page: Page) {
   await page.waitForFunction(
@@ -924,7 +927,16 @@ describe("owner-reported layout regressions", () => {
           readonly arrange: (
             chat: ReturnType<typeof mateChat>,
             engine: EngineChatWire["engine"],
-          ) => Effect.Effect<void, unknown, never>;
+          ) => Effect.Effect<
+            void,
+            Effect.Error<
+              ReturnType<
+                | ReturnType<typeof mateChat>["then"]["text"]
+                | ReturnType<typeof mateChat>["when"]["send"]
+              >
+            >,
+            never
+          >;
         }> = [
           { state: "the conversation at rest", arrange: () => Effect.void },
           {
@@ -1050,7 +1062,7 @@ describe("owner-reported layout regressions", () => {
                       clip: { x: 435, y: 500, width: 1786 - 435, height: 500 },
                     });
                 });
-                const seen = JSON.stringify(end);
+                const seen = quoted(end);
                 expect(
                   end.last.bottom,
                   `ASSERTION: no part of the last row reaches into the composer: ${seen}`,
@@ -1184,7 +1196,7 @@ describe("owner-reported layout regressions", () => {
                     clip: { x: 435, y: 400, width: 1786 - 435, height: 600 },
                   });
               });
-              const seen = JSON.stringify(end);
+              const seen = quoted(end);
               expect(
                 end.last.text,
                 `ASSERTION: the conversation's last row is the run's card: ${seen}`,
@@ -1282,7 +1294,7 @@ describe("owner-reported layout regressions", () => {
             });
             expect(
               geometry.noticeBottom,
-              `ASSERTION: no part of the notice stands under the composer card: ${JSON.stringify(geometry)}`,
+              `ASSERTION: no part of the notice stands under the composer card: ${quoted(geometry)}`,
             ).toBeLessThanOrEqual(geometry.cardTop);
             yield* s.then.noExternalNetwork;
           }),
