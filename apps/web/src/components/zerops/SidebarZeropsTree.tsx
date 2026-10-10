@@ -1826,8 +1826,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       <SidebarSelectedBand current={activeProjectId} />
       {activeSections}
       {ungroupedSection}
-      {otherSections.length === 0 ? null : activeSections.length === 0 &&
-        ungroupedSection === null ? (
+      {otherSections.length === 0 ? null : activeSections.length === 0 ? (
         otherSections
       ) : (
         <div className="flex flex-col">

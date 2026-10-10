@@ -18,14 +18,14 @@ describe("projectRoom", () => {
   // heading that was clicked stays where it is (M9).
   it.each([
     { name: "an open project, another under it", open: true, last: false, room: 28 },
-    { name: "the list's last project, open", open: true, last: true, room: 16 },
+    { name: "the list's last project, open", open: true, last: true, room: 24 },
     {
       name: "a folded project: its heading, then 28 px of air to the next",
       open: false,
       last: false,
       room: 28,
     },
-    { name: "the list's last project, folded", open: false, last: true, room: 0 },
+    { name: "the list's last project, folded", open: false, last: true, room: 24 },
   ])("$name keeps $room px below its rows", ({ open, last, room }) => {
     expect(projectRoom({ open, last })).toBe(room);
   });
