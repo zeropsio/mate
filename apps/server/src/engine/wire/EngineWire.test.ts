@@ -757,6 +757,102 @@ describe("a page the Mate publishes", () => {
   );
 });
 
+describe("a value the Mate asks the person for", () => {
+  /** A value shaped like a live Stripe key, made from parts. */
+  const VALUE = ["sk", "_live_", "Zq".repeat(12)].join("");
+  /** Every row of every table the Mate keeps, as text. */
+  const everyRecord = (w: EngineWorld) =>
+    w.within(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const tables = yield* sql<{ readonly name: string }>`
+          SELECT name FROM sqlite_master WHERE type = 'table'
+        `;
+        const rows = yield* Effect.forEach(tables, ({ name }) =>
+          sql.unsafe(`SELECT * FROM "${name.replaceAll('"', '""')}"`),
+        );
+        return JSON.stringify(rows);
+      }),
+    );
+
+  it.effect("a secret the person gives never reaches the Mate's records or its agent", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const frames: Array<EngineRowsFrame> = [];
+        yield* Stream.runForEach(wire.subscribeRows({ protocol }, ana), (frame) =>
+          Effect.sync(() => frames.push(frame)),
+        ).pipe(Effect.forkScoped);
+        yield* send(wire, "Take card payments");
+        yield* w.settle;
+        yield* w.agent((agent, thread) =>
+          agent.zerops(
+            thread,
+            "zerops_env",
+            { action: "request", key: "STRIPE_SECRET_KEY", project: true, reason: "Stripe." },
+            "request STRIPE_SECRET_KEY",
+            JSON.stringify({
+              requested: {
+                key: "STRIPE_SECRET_KEY",
+                reason: "Stripe charges cards.",
+                scope: "shared",
+                sensitive: true,
+              },
+              nextActions: "Now waiting on the person.",
+            }),
+          ),
+        );
+        yield* w.agent((agent, thread) => agent.say(thread, "I asked for your Stripe key."));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const [request] = yield* w.requests;
+        assert.strictEqual(request?.state, "open");
+        const row = () =>
+          frames.flatMap((frame) => (frame.type === "row" ? [frame.row] : [])).at(-1);
+        // The turn that asked has ended: the conversation waits on the person.
+        assert.deepStrictEqual(row()?.state, {
+          kind: "waiting",
+          on: "vault",
+          words: "Stripe charges cards.",
+        });
+        // A client that sent the value with its answer: neither the answer nor its words keep it.
+        const result = yield* wire.answer(
+          {
+            protocol,
+            conversationId: mate,
+            commandId: CommandId.make("answer-secret"),
+            requestId: RequestId.make(request!.request_id),
+            answer: { kind: "secret", outcome: "saved", value: VALUE } as never,
+            summary: VALUE,
+          },
+          ana,
+        );
+        assert.strictEqual(result._tag, "Accepted");
+        yield* w.advance(0);
+        yield* w.settle;
+        assert.strictEqual((yield* w.requests)[0]?.state, "answered");
+        assert.isTrue(
+          w.provider.calls.some((call) =>
+            call.endsWith(
+              ": Secret request for STRIPE_SECRET_KEY: saved to Shared/STRIPE_SECRET_KEY.",
+            ),
+          ),
+          w.provider.calls.join("\n"),
+        );
+        const [snapshot] = yield* watch(w, wire);
+        if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+        assert.include(snapshot.requests[0]?.answer, {
+          summary: "Saved to Shared/STRIPE_SECRET_KEY",
+        });
+        assert.notInclude(w.provider.calls.join("\n"), VALUE);
+        assert.notInclude(yield* everyRecord(w), VALUE);
+        assert.notInclude(JSON.stringify(frames), VALUE);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
+
 describe("a client subscribed to a Mate's conversation rows", () => {
   it.effect("gets each conversation's row with its agent, then the row again as it changes", () =>
     Effect.scoped(

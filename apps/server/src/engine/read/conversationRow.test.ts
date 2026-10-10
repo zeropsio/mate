@@ -60,6 +60,15 @@ const request = (ask: ViewRequest["ask"]): ViewRequest => ({
   answerable: true,
 });
 
+/** The agent asked the person for a value only they have. */
+const stripeAsk: ViewRequest["ask"] = {
+  kind: "vault",
+  key: "STRIPE_SECRET_KEY",
+  scope: { kind: "shared" },
+  sensitive: true,
+  reason: "Stripe charges cards.",
+};
+
 const revision = { environmentId: "env-1", epoch: 7 };
 
 describe("the menu row", () => {
@@ -150,6 +159,19 @@ describe("the menu row", () => {
         ],
       },
       { kind: "waiting", on: "approval", words: "rm -rf dist" },
+    ],
+    [
+      "the agent asked the person for a value and its run ended: waiting on them, in the ask's words",
+      {
+        lastEnded: ended(1, { kind: "completed" }),
+        openRequests: [request(stripeAsk)],
+      },
+      { kind: "waiting", on: "vault", words: "Stripe charges cards." },
+    ],
+    [
+      "a value is asked while the agent works on: working, the ask waits for the run to end",
+      { activeRun: run(2), openRequests: [request(stripeAsk)] },
+      { kind: "working", since: 120, waitsOnHelpers: false },
     ],
     [
       "a usage limit holds the queue: paused until its reset",
