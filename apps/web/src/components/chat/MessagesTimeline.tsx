@@ -2233,16 +2233,21 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   }, [entering, row.id]);
   const person =
     row.kind === "message" && row.message.role === "user" && !isStandUpAskRow(row, standUpAsk);
+  const ref = useRef<HTMLDivElement>(null);
+  const held = useHeldBehindComposer(ref, entering && person);
   return (
     <div
+      ref={ref}
       className={cn(
         card === undefined || card === "top" ? gap : null,
         card === undefined ? rowInset(row) : null,
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
-        entering &&
-          (person
-            ? "origin-bottom-right animate-bubble-in motion-reduce:animate-none"
-            : "animate-rise-in motion-reduce:animate-none"),
+        held
+          ? "opacity-0"
+          : entering &&
+              (person
+                ? "origin-bottom-right animate-bubble-in motion-reduce:animate-none"
+                : "animate-rise-in motion-reduce:animate-none"),
       )}
       data-card-slice={card}
       data-card-whole={row.cardWhole ? "" : undefined}
@@ -2259,6 +2264,44 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
     </div>
   );
 });
+
+/** The longest a sent message waits out of sight for the list to bring it above the composer. */
+const HELD_BEHIND_COMPOSER_MS = 600;
+
+/**
+ * Whether a message the person just sent is still held out of sight: the list adds it at its end,
+ * under the composer, and glides it up; it is drawn once it stands clear of the composer, never
+ * peeking out from behind it (Milo's stress run 4: born 62 px behind the composer for two frames).
+ */
+function useHeldBehindComposer(
+  ref: React.RefObject<HTMLDivElement | null>,
+  enters: boolean,
+): boolean {
+  const [held, setHeld] = useState(enters);
+  useLayoutEffect(() => {
+    if (!held) return;
+    const started = performance.now();
+    let frame = 0;
+    const clear = () => {
+      const node = ref.current;
+      const composer = document.querySelector('[data-slot="composer-shell"]');
+      if (node === null || composer === null) return true;
+      const box = node.getBoundingClientRect();
+      const viewport = node.closest("[data-timeline-thread]")?.getBoundingClientRect();
+      return (
+        box.bottom <= composer.getBoundingClientRect().top + 1 &&
+        (viewport === undefined || box.bottom > viewport.top)
+      );
+    };
+    const check = () => {
+      if (clear() || performance.now() - started > HELD_BEHIND_COMPOSER_MS) setHeld(false);
+      else frame = requestAnimationFrame(check);
+    };
+    check();
+    return () => cancelAnimationFrame(frame);
+  }, [held, ref]);
+  return held;
+}
 
 /** A message that is a Mate's stand-up ask, where the conversation draws it as its quiet line. */
 function isStandUpAskRow(row: TimelineRow, standUpAsk: string | null): boolean {
