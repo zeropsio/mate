@@ -82,6 +82,8 @@ export interface Model {
   wakeOf: Entity | null;
   /** Work lost since the last lost-work wake, by card. */
   lostCards: Set<string>;
+  /** Cards the Mate said words on: a wake after them draws a card of its own, under them. */
+  readonly answeredCards: Set<string>;
   wakes: number;
   played: Array<Op>;
   skipped: number;
@@ -94,6 +96,7 @@ export const emptyModel = (): Model => ({
   ended: [],
   wakeOf: null,
   lostCards: new Set(),
+  answeredCards: new Set(),
   wakes: 0,
   played: [],
   skipped: 0,
@@ -128,6 +131,8 @@ const STEP_MS = 300;
 const learnRuns = (world: OracleWorld, model: Model) =>
   Effect.gen(function* () {
     const runs = yield* runsOf(world);
+    /** A card the Mate said words on is not one a later run goes on on: it draws its own. */
+    const ownCardPast = (card: string, run: string) => (model.answeredCards.has(card) ? run : card);
     const rootOf = (id: string): string => {
       let at = runs.find((run) => run.id === id);
       for (let hops = 0; at?.joins != null && hops < runs.length; hops++)
@@ -139,8 +144,9 @@ const learnRuns = (world: OracleWorld, model: Model) =>
       if (run.trigger.kind === "person") {
         model.cardOfRun.set(run.id, run.id);
       } else if (run.trigger.kind === "wake" && run.trigger.cause === "self" && model.wakeOf) {
-        // The wake hands the Mate what ended: it goes on on that work's card.
-        model.cardOfRun.set(run.id, model.wakeOf.card ?? rootOf(run.id));
+        // The wake hands the Mate what ended: it goes on on that work's card, or under the words
+        // the Mate said there, on a card of its own.
+        model.cardOfRun.set(run.id, ownCardPast(model.wakeOf.card ?? rootOf(run.id), run.id));
         model.wakeOf = null;
       } else if (run.trigger.kind === "wake" && run.trigger.cause === "lost-work") {
         // The note of lost work goes on on the card of the run the work served while that run is
@@ -148,9 +154,12 @@ const learnRuns = (world: OracleWorld, model: Model) =>
         const root = rootOf(run.id);
         model.cardOfRun.set(
           run.id,
-          run.joins === null || model.lostCards.has(root)
-            ? root
-            : ([...model.lostCards][0] ?? root),
+          ownCardPast(
+            run.joins === null || model.lostCards.has(root)
+              ? root
+              : ([...model.lostCards][0] ?? root),
+            run.id,
+          ),
         );
         model.lostCards.clear();
       } else {
@@ -222,6 +231,8 @@ export const play = (world: OracleWorld, model: Model, op: Op) =>
       }
       case "say": {
         if (!turnOpen()) return false;
+        const card = mateCard()?.card;
+        if (card !== undefined) model.answeredCards.add(card);
         yield* w.agent((agent, thread) => agent.say(thread, "Working on it."));
         break;
       }
@@ -449,7 +460,11 @@ export const drain = (world: OracleWorld, model: Model, rng: Rng) =>
         (session?.alive !== true || session.open === null)
       ) {
         const runs = yield* runsOf(world);
-        if (activeRunOf(runs) === null && !runs.some((run) => run.state !== "ended")) break;
+        // The agent's own turn on what ended may still come: the engine waits its bound out.
+        const due = (yield* world.w.wakes).some(
+          (wake) => wake.kind === "agent-turn-due" && wake.state === "armed",
+        );
+        if (!due && activeRunOf(runs) === null && !runs.some((run) => run.state !== "ended")) break;
       }
     }
     return ops;

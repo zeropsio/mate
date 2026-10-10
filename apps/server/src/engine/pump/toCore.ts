@@ -39,6 +39,7 @@ import type {
 } from "../bridge/spi3.ts";
 import type { ZeropsActivityResult } from "../../zerops/zeropsActivityResult.ts";
 import type { ProviderSignal } from "../domain/command.ts";
+import { AGENT_TURN_DUE_MS } from "../domain/decide.ts";
 
 /** How long a body's text is in the record; the rest is the item's detail. */
 export const ITEM_TEXT_LIMIT = 16 * 1024;
@@ -125,7 +126,7 @@ const KEPT_CLOSED_KEYS = 512;
  * open: Claude opens it within seconds; one that never comes, or one turn that took several
  * results, holds nothing longer.
  */
-export const REPORT_TURN_GRACE_MS = 30_000;
+export const REPORT_TURN_GRACE_MS = AGENT_TURN_DUE_MS;
 const TEXT_KINDS: ReadonlySet<string> = new Set(["text", "reasoning", "plan"]);
 
 /** Sets a key, the oldest going once the map holds more than `cap`. */

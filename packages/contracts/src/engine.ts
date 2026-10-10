@@ -681,6 +681,11 @@ export const ConversationRowState = forwardCompatibleUnion({
       kind: Schema.Literal("working"),
       since: Millis,
       waitsOnHelpers: Schema.Boolean,
+      /**
+       * Its background work ended and the agent's own turn on it is due: the run reads as going on
+       * until that turn opens, or until the engine stops expecting it.
+       */
+      turnDue: Schema.optionalKey(Schema.Literal(true)),
     }),
     Schema.Struct({
       kind: Schema.Literal("waiting"),
@@ -744,6 +749,8 @@ export type SessionCloseReason = typeof SessionCloseReason.Type;
 export const SessionCapabilities = Schema.Struct({
   /** The driver really injects a message into a running turn. */
   steer: Schema.Boolean,
+  /** The agent opens a turn of its own when its background work ends (Claude). Absent: never. */
+  selfTurns: Schema.optionalKey(Schema.Boolean),
   /**
    * The model options the session takes on its next send (`all`: every option goes per turn); a
    * change of any other needs a new session. Absent: none.

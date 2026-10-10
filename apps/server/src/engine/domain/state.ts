@@ -37,10 +37,9 @@ export const KEPT_ENDED_RUNS = 16;
 
 /**
  * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. One
- * above main's 9 (round 3), whose 8 lacked `rotation`, so no snapshot of another shape loads as
- * this one.
+ * above main's 10, which lacked `reportsDue`, so no snapshot of another shape loads as this one.
  */
-export const STATE_VERSION = 10;
+export const STATE_VERSION = 11;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -235,6 +234,11 @@ export interface ConversationState {
   /** Answered requests whose answer the provider has not taken yet, by the answer's effect. */
   readonly answering: Readonly<Record<string, OpenRequest>>;
   readonly wakes: Readonly<Record<string, ArmedWake>>;
+  /**
+   * The Mate's finished background work whose result its agent has not taken yet: an agent that
+   * opens its own turns (Claude) hands each over in a turn of its own, one per turn.
+   */
+  readonly reportsDue: number;
   readonly effects: Readonly<Record<string, EffectInFlight>>;
   /** The earlier record's import, once one was started. */
   readonly history: HistoryImport | null;
@@ -270,6 +274,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   requests: {},
   answering: {},
   wakes: {},
+  reportsDue: 0,
   effects: {},
   history: null,
 });

@@ -194,7 +194,8 @@ describe("an engine Mate's run card, from the engine's record", () => {
 
   it("its worked time is the time its runs ran, less the person's answer: never its queue or its wait on a job", () => {
     // Queued 22.9 s before it started; asked at +61.4 s, answered at +70.0 s; ended at +77.8 s,
-    // its job ran on to +96.7 s, and the run the job's end woke ran +101.4 s to +103.3 s.
+    // its job ran on to +96.7 s with no answer given, and the run the job's end woke went on in
+    // its card from +101.4 s to +103.3 s.
     const question = engineRequest(
       run1,
       1,
@@ -223,7 +224,7 @@ describe("an engine Mate's run card, from the engine's record", () => {
     );
     const rows = render({
       runs: [
-        stressRun(),
+        stressRun({ summary: { ...stressSummary, answerItemId: null } } as never),
         engineRun(key.conversationId, 2, {
           trigger: { kind: "wake", cause: "self", wakeId: null },
           joins: RunId.make(run1),
@@ -234,7 +235,7 @@ describe("an engine Mate's run card, from the engine's record", () => {
         } as never),
       ],
       items: [
-        ...stressItems("completed"),
+        ...stressItems("completed").slice(0, -1),
         {
           ...noteItem(run1, 13, ""),
           kind: "request",
@@ -313,6 +314,40 @@ describe("an engine Mate's run card, from the engine's record", () => {
     expect(card.status?.live).toBe(false);
     expect(lineOf(card)).toMatch(/^Milo worked /);
   });
+
+  // Milo's stress run 4, A and C: the helper finished, the card folded to "Milo worked 22s", and
+  // 1.9 s later the turn its end woke opened it again.
+  it.each([
+    { work: "helper" as const, due: true, live: true },
+    { work: "shell" as const, due: true, live: true },
+    { work: "helper" as const, due: false, live: false },
+  ])(
+    "a helper finishing never folds the card before the wake it causes: a $work, the turn due $due",
+    ({ work, due, live }) => {
+      const items = stressItems("completed").map((item) =>
+        item.kind === "work" ? ({ ...item, workKind: work } as Item) : item,
+      );
+      const card = cardOf(
+        render({
+          runs: [stressRun()],
+          items,
+          row: engineRow(key.environmentId, key.conversationId, {
+            state: due
+              ? { kind: "working", since: t0 + 77_800, waitsOnHelpers: true, turnDue: true }
+              : { kind: "idle" },
+            latestRun: {
+              id: RunId.make(run1),
+              end: { kind: "completed" },
+              endedAt: t0 + 77_800,
+              turnState: "completed",
+            },
+          }),
+        }),
+      );
+      expect(card.status?.live).toBe(live);
+      if (!live) expect(lineOf(card)).toMatch(/^Milo worked /);
+    },
+  );
 
   it.each([
     { tool: "Bash", words: "Command run", line: "Running a command" },
@@ -593,6 +628,125 @@ it.each([
     const card = rows.findIndex((row) => row.kind === "record");
     const reply = rows.findIndex((row) => row.kind === "message" && row.id === first.id);
     expect(card).toBeLessThan(reply);
+  },
+);
+
+// Milo's stress run 4A: the job's end woke Milo, and the card holding the wake's work stood above
+// the answer Milo gave before it ("…Now waiting for the jobs to end."): time read backwards.
+it.each([
+  { cause: "self", wake: "still at work", answered: false },
+  { cause: "self", wake: "answered", answered: true },
+  { cause: "lost-work", wake: "answered", answered: true },
+])(
+  "a turn the agent opens itself after a background job ends stands below the answer it gave before: a $cause wake $wake",
+  ({ cause, answered }) => {
+    const before = noteItem(run1, 12, "Now waiting for the jobs to end.", {
+      at: t0 + 77_700,
+      answer: true,
+    } as never);
+    const rows = render({
+      runs: [
+        stressRun({ summary: { ...stressSummary, answerItemId: `${run1}/i/12` } } as never),
+        engineRun(key.conversationId, 2, {
+          trigger: { kind: "wake", cause, wakeId: null },
+          joins: RunId.make(run1),
+          queuedAt: t0 + 101_400,
+          admittedAt: t0 + 101_400,
+          startedAt: t0 + 101_400,
+          ...(answered
+            ? {
+                endedAt: t0 + 103_300,
+                summary: {
+                  items: 2,
+                  calls: { command: 1 },
+                  answerItemId: `${run2}/i/21`,
+                  lastItemSeq: 21,
+                },
+              }
+            : { state: "running", turnState: "running", endedAt: null, end: null }),
+        } as never),
+      ],
+      items: [
+        ...stressItems("completed").slice(0, -1),
+        before,
+        {
+          ...bash(20, 101_500, "cat /tmp/s/out", "Read what the job printed"),
+          runId: run2,
+          id: `${run2}/i/20`,
+        } as Item,
+        ...(answered
+          ? [noteItem(run2, 21, "Job B ended first.", { at: t0 + 103_000, answer: true } as never)]
+          : []),
+      ],
+      isWorking: !answered,
+    });
+    const read = rows.flatMap((row) =>
+      row.kind === "record"
+        ? [`card of ${row.turnId}`]
+        : row.kind === "message" && row.message.role === "assistant"
+          ? [row.message.text]
+          : [],
+    );
+    expect(read).toEqual([
+      `card of ${run1}`,
+      "Now waiting for the jobs to end.",
+      `card of ${run2}`,
+      ...(answered ? ["Job B ended first."] : []),
+    ]);
+  },
+);
+
+// Milo's stress run 4A: the second wave a wake started joined the first wave's "Started 5 helpers".
+it.each([
+  { first: "left no answer", answered: false },
+  { first: "answered", answered: true },
+])(
+  "helpers a wake starts stand where it started them, never in the first wave's group: the first run $first",
+  ({ answered }) => {
+    const helper = (runId: string, ordinal: number, at: number, title: string) =>
+      ({
+        ...workItem(runId, ordinal, { work: `w-${runId}-${ordinal}`, status: "completed", title }),
+        at: t0 + at,
+      }) as Item;
+    const rows = render({
+      runs: [
+        stressRun({
+          endedAt: t0 + 20_000,
+          summary: {
+            items: 3,
+            calls: { helper: 2 },
+            answerItemId: answered ? `${run1}/i/4` : null,
+            lastItemSeq: 4,
+          },
+        } as never),
+        engineRun(key.conversationId, 2, {
+          trigger: { kind: "wake", cause: "self", wakeId: null },
+          joins: RunId.make(run1),
+          queuedAt: t0 + 30_000,
+          admittedAt: t0 + 30_000,
+          startedAt: t0 + 30_000,
+          endedAt: t0 + 40_000,
+          summary: { items: 2, calls: { helper: 1 }, answerItemId: null, lastItemSeq: 2 },
+        } as never),
+      ],
+      items: [
+        personItem(run1, 1, "Run the stress checks", { at: t0 }),
+        helper(run1, 2, 1_000, "Helper A"),
+        helper(run1, 3, 1_100, "Helper B"),
+        ...(answered
+          ? [noteItem(run1, 4, "Both helpers are off.", { at: t0 + 19_000, answer: true } as never)]
+          : []),
+        helper(run2, 1, 31_000, "Second wave 1"),
+      ],
+    });
+    const groups = rows.flatMap((row) =>
+      row.kind === "record"
+        ? row.items.flatMap((item) =>
+            item.kind === "helpers" ? [item.entry.agentSpawn?.agentTaskIds.length ?? 0] : [],
+          )
+        : [],
+    );
+    expect(groups).toEqual([2, 1]);
   },
 );
 
