@@ -80,16 +80,40 @@ export function vaultAskState(view: VaultView, ask: VaultAsk): VaultAskState {
 
 /**
  * The one write a put makes: an add, or an update of the value the vault holds under that key —
- * `sensitive` always sent, as asked (Zerops turns a value plain when an update leaves it out).
+ * `sensitive` always sent (Zerops turns a value plain when an update leaves it out). Secret is
+ * the person's word on the card (the agent's flag only pre-selects it), and a held secret stays
+ * secret whatever is chosen.
  */
 export function vaultAskWrite(
   ask: VaultAsk,
   held: VaultValue | null,
   value: string,
+  secret: boolean,
 ): Extract<VaultWrite, { kind: "add" | "update" }> {
   return held === null
-    ? { kind: "add", key: ask.key, value, sensitive: ask.sensitive }
-    : { kind: "update", id: held.id, key: ask.key, value, sensitive: ask.sensitive };
+    ? { kind: "add", key: ask.key, value, sensitive: secret }
+    : { kind: "update", id: held.id, key: ask.key, value, sensitive: held.sensitive || secret };
+}
+
+/**
+ * Who can read the value once it is in, and what never goes in, in our words beside the agent's:
+ * a Shared value reaches every app of the project (the platform injects it), the Mate's own
+ * included; an app's own reaches that app, which the Mate works in.
+ */
+export function vaultAskReach(ask: Pick<VaultAsk, "key" | "scope">, mateName: string): string {
+  const reach =
+    ask.scope.kind === "shared"
+      ? `Every app in this project can read it, ${mateName} included.`
+      : `${ask.scope.hostname} reads it, and ${mateName} can reach it.`;
+  return `${reach} Never paste your own password or Zerops token.`;
+}
+
+/** A key named like a Zerops sign-in, or one Mate and zcp keep for themselves. */
+const OWN_KEY = /(^|_)(ZEROPS|ZCP|MATE|GITEA)(_|$)|^GIT_TOKEN$/u;
+
+/** Whether a key looks like the person's own Zerops sign-in: the card warns before it is given. */
+export function vaultAskLooksOwn(key: string): boolean {
+  return OWN_KEY.test(key.toUpperCase());
 }
 
 /** What the person said to the card here: put it in, or not now. Memory only. */
@@ -121,10 +145,9 @@ export function vaultAskFace(
   return state;
 }
 
-/** Where it goes, as the card's second line says it: "Shared · sensitive", "appdev · plain". */
+/** Where it goes, as the card's second line says it: "Shared", "appdev". Secret is the person's. */
 export function vaultAskWhere(ask: VaultAsk): string {
-  const scope = ask.scope.kind === "shared" ? "Shared" : ask.scope.hostname;
-  return `${scope} · ${ask.sensitive ? "sensitive" : "plain"}`;
+  return ask.scope.kind === "shared" ? "Shared" : ask.scope.hostname;
 }
 
 /** The scope an ask names, in a vault read. */

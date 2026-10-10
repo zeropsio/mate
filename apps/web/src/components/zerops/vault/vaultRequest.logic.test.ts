@@ -10,7 +10,9 @@ import {
   vaultAskEngineFace,
   vaultAskFace,
   vaultAskOf,
+  vaultAskLooksOwn,
   vaultAskPickUp,
+  vaultAskReach,
   vaultAskState,
   vaultAskWrite,
 } from "./vaultRequest.logic";
@@ -177,7 +179,7 @@ describe("vaultAskWrite — the one write a put makes", () => {
     askedAt: ago(5 * MINUTE),
   };
   it("adds a key the vault does not hold, kept as asked", () => {
-    expect(vaultAskWrite({ ...ask, key: "NEW_KEY" }, null, "v4lue")).toEqual({
+    expect(vaultAskWrite({ ...ask, key: "NEW_KEY" }, null, "v4lue", ask.sensitive)).toEqual({
       kind: "add",
       key: "NEW_KEY",
       value: "v4lue",
@@ -186,13 +188,78 @@ describe("vaultAskWrite — the one write a put makes", () => {
   });
   it("updates the value it holds, the flag always sent", () => {
     const held = VAULT_FIXTURE.scopes[0]!.values.find((value) => value.key === "LOG_LEVEL")!;
-    expect(vaultAskWrite({ ...ask, sensitive: false }, held, "info")).toEqual({
+    expect(vaultAskWrite({ ...ask, sensitive: false }, held, "info", false)).toEqual({
       kind: "update",
       id: "v-log",
       key: "LOG_LEVEL",
       value: "info",
       sensitive: false,
     });
+  });
+});
+
+describe("vaultAskWrite — whose word makes it secret", () => {
+  const ask = {
+    key: "NEW_KEY",
+    scope: { kind: "shared" } as const,
+    sensitive: false,
+    reason: null,
+    askedAt: ago(5 * MINUTE),
+  };
+  const heldSecret = VAULT_FIXTURE.scopes[0]!.values.find((v) => v.key === "STRIPE_SECRET_KEY")!;
+  const heldPlain = VAULT_FIXTURE.scopes[0]!.values.find((v) => v.key === "LOG_LEVEL")!;
+  it.each([
+    { name: "a new value the person keeps secret", held: null, secret: true, want: true },
+    { name: "a new value the person makes plain", held: null, secret: false, want: false },
+    {
+      name: "a held secret the person would make plain",
+      held: heldSecret,
+      secret: false,
+      want: true,
+    },
+    {
+      name: "a held plain value the person makes secret",
+      held: heldPlain,
+      secret: true,
+      want: true,
+    },
+    { name: "a held plain value kept plain", held: heldPlain, secret: false, want: false },
+  ])(
+    "a secret is stored sensitive unless the person chooses otherwise: $name",
+    ({ held, secret, want }) => {
+      expect(vaultAskWrite(ask, held, "v", secret).sensitive).toBe(want);
+    },
+  );
+});
+
+describe("vaultAskReach — who can read it, in our words", () => {
+  it.each([
+    {
+      name: "Shared reaches every app",
+      ask: { key: "API_KEY", scope: { kind: "shared" } as const },
+      want: "Every app in this project can read it, Fen included. Never paste your own password or Zerops token.",
+    },
+    {
+      name: "an app's own reaches that app",
+      ask: { key: "API_KEY", scope: { kind: "service", hostname: "appdev" } as const },
+      want: "appdev reads it, and Fen can reach it. Never paste your own password or Zerops token.",
+    },
+  ])("$name", ({ ask, want }) => {
+    expect(vaultAskReach(ask, "Fen")).toBe(want);
+  });
+
+  it.each([
+    ["ZEROPS_TOKEN", true],
+    ["MY_ZEROPS_API_TOKEN", true],
+    ["ZCP_SECRET", true],
+    ["MATE_TOKEN", true],
+    ["GITEA_PASSWORD", true],
+    ["GIT_TOKEN", true],
+    ["STRIPE_SECRET_KEY", false],
+    ["SMTP_PASSWORD", false],
+    ["ESTIMATE_URL", false],
+  ] as const)("%s looks like a Zerops sign-in: %s", (key, want) => {
+    expect(vaultAskLooksOwn(key)).toBe(want);
   });
 });
 
