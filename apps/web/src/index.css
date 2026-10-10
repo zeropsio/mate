@@ -4360,7 +4360,7 @@ code {
     border-radius: 16px;
     background: var(--card);
     color: var(--card-foreground);
-    box-shadow: 0 12px 32px color-mix(in oklab, var(--foreground) 14%, transparent);
+    box-shadow: 0 12px 32px color-mix(in oklab, var(--color-black) 14%, transparent);
     font-size: 14px;
     line-height: 20px;
     outline: none;
@@ -4375,6 +4375,10 @@ code {
   .menu-wait-list[data-ending-style] {
     opacity: 0;
     scale: 0.98;
+  }
+
+  .dark .menu-wait-list {
+    box-shadow: 0 12px 32px color-mix(in oklab, var(--color-black) 45%, transparent);
   }
 
   .menu-wait-head {
