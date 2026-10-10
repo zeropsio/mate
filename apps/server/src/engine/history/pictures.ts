@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - a looked-at path resolves as V1's capture resolves it.
 /**
  * A V1 call's inline pictures (a `zerops_browser` screenshot, a preview), brought over as the
  * same reference a live call's picture is (`CallResultPicture`, `engine/calls`' `callPictures.ts`):
@@ -8,6 +9,8 @@
  *
  * @module engine/history/pictures
  */
+import * as NodePath from "node:path";
+
 import * as Schema from "effect/Schema";
 import {
   ImageOccurrence,
@@ -16,7 +19,12 @@ import {
 } from "@t3tools/contracts";
 
 import type { ContentAssets } from "../../assets/ContentAssets.ts";
-import { isInlineImage, keepInlineImage } from "../../assets/ConversationMedia.ts";
+import {
+  isInlineImage,
+  keepInlineImage,
+  keepLookedPicture,
+} from "../../assets/ConversationMedia.ts";
+import { projectActivityPayload } from "../../orchestration/ActivityPayloadProjection.ts";
 import type { V1Bodies } from "./v1.ts";
 
 /** The largest picture the import keeps: the store's limit for a picture a person sends. */
@@ -39,6 +47,8 @@ export const keepPictures = async (
   threadId: ThreadId,
   bodies: V1Bodies,
   limit: number = HISTORY_PICTURE_BYTES,
+  /** Where the thread's relative paths resolve; an absolute path needs none. */
+  workspaceRoot: string | null = null,
 ): Promise<V1Bodies> => {
   const keep = async (activityId: string, value: unknown): Promise<unknown> => {
     if (Array.isArray(value)) {
@@ -65,7 +75,31 @@ export const keepPictures = async (
   };
   const activities = new Map(bodies.activities);
   for (const [id, activity] of bodies.activities) {
-    activities.set(id, { ...activity, payload: await keep(id, activity.payload) });
+    const payload = await keep(id, activity.payload);
+    activities.set(id, { ...activity, payload: await keepLooked(id, payload) });
   }
   return { messages: bodies.messages, activities };
+
+  /**
+   * The picture the call looked at, as V1 keeps it (`keepLookedPicture`): V1 kept it as a snapshot
+   * of the thread was read, never in the payload, so the payload's path is all the import holds —
+   * a /tmp file long gone by then (Rhea, 2026-10-10: six "Image unavailable" tiles).
+   */
+  async function keepLooked(activityId: string, payload: unknown): Promise<unknown> {
+    const record = asRecord(payload);
+    const data = asRecord(record?.data);
+    if (store === null || record === null || data === null) return payload;
+    const looked = asRecord(
+      asRecord(projectActivityPayload({ payload } as never).payload)?.data,
+    )?.imagePath;
+    if (typeof looked !== "string" || looked.startsWith("mate-asset:")) return payload;
+    if (workspaceRoot === null && !NodePath.isAbsolute(looked)) return payload;
+    const kept = await keepLookedPicture(store, threadId, activityId, looked, workspaceRoot ?? "/");
+    return { ...record, data: { ...data, ...kept } };
+  }
 };
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;

@@ -45,6 +45,29 @@ describe("auto-update idle proof", () => {
     ).toContain(reason);
   });
 
+  // Sage, 2026-10-10 13:26Z: switched to the engine, it was restarted onto the next version 21 s
+  // into its V1 history import, which the next boot had to requeue.
+  it.each([
+    { import: "importing", waits: true },
+    { import: "complete", waits: false },
+    { import: "failed", waits: false },
+  ] as const)(
+    "an update waits while a Mate's history import is running: $import",
+    ({ import: state, waits }) => {
+      const history = {
+        state,
+        source: { kind: "v1" as const, threadId: "thread" },
+        runs: 12,
+        cursor: 400,
+      };
+      expect(
+        engineStateBlockers({ ...initialState(ConversationId.make("sage")), history }).includes(
+          "history import",
+        ),
+      ).toBe(waits);
+    },
+  );
+
   it("a conversation with no accepted work is idle", () => {
     expect(engineStateBlockers(initialState(ConversationId.make("idle")))).toEqual([]);
   });

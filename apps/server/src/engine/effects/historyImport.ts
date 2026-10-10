@@ -17,7 +17,7 @@ import type { ContentAssets } from "../../assets/ContentAssets.ts";
 import { Conversations } from "../Conversations.ts";
 import { planOfChain, recordsOf, type Plan, type Records, type V1Bodies } from "../history/v1.ts";
 import { keepPictures } from "../history/pictures.ts";
-import { readBodies, readSkeleton } from "../history/V1History.ts";
+import { readBodies, readSkeleton, readWorkspaceRoot } from "../history/V1History.ts";
 import type { EffectHandler, HandlerResult } from "../outbox/EffectWorker.ts";
 import { failed, ok } from "./shared.ts";
 
@@ -69,6 +69,7 @@ const keepSlicePictures = async (
   plan: Plan,
   entries: Plan["entries"],
   bodies: V1Bodies,
+  rootOf: (threadId: string) => string | null,
 ): Promise<V1Bodies> => {
   const threadOf = new Map<string, string>();
   for (const entry of entries) {
@@ -79,10 +80,13 @@ const keepSlicePictures = async (
   const activities = new Map(bodies.activities);
   for (const threadId of new Set(threadOf.values())) {
     const own = new Map([...bodies.activities].filter(([id]) => threadOf.get(id) === threadId));
-    const kept = await keepPictures(store, ThreadId.make(threadId), {
-      messages: new Map(),
-      activities: own,
-    });
+    const kept = await keepPictures(
+      store,
+      ThreadId.make(threadId),
+      { messages: new Map(), activities: own },
+      undefined,
+      rootOf(threadId),
+    );
     for (const [id, activity] of kept.activities) activities.set(id, activity);
   }
   return { messages: bodies.messages, activities };
@@ -189,8 +193,23 @@ export const makeHistoryImport = Effect.fn("makeHistoryImport")(function* (
         const read = yield* readBodies(plan.entries.slice(from, to)).pipe(
           Effect.provideService(SqlClient.SqlClient, sql),
         );
+        const roots = new Map<string, string | null>();
+        for (const run of plan.runs)
+          if (!roots.has(run.threadId))
+            roots.set(
+              run.threadId,
+              yield* readWorkspaceRoot(run.threadId).pipe(
+                Effect.provideService(SqlClient.SqlClient, sql),
+              ),
+            );
         const bodies = yield* Effect.promise(() =>
-          keepSlicePictures(pictures(), plan, plan.entries.slice(from, to), read),
+          keepSlicePictures(
+            pictures(),
+            plan,
+            plan.entries.slice(from, to),
+            read,
+            (threadId) => roots.get(threadId) ?? null,
+          ),
         );
         let built = recordsOf(row.conversationId, plan, from, to, bodies);
         while (to - from > 1 && sizeOf(built) > batchBytes) {

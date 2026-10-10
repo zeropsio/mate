@@ -195,11 +195,18 @@ function PictureTile({
   readonly onOpen: (() => void) | null;
 }) {
   const intent = useImageIntent(state._tag === "Success" ? state.url : undefined);
-  const [failedUrl, setFailedUrl] = useState<string>();
+  // Its picture could not be shown, and why, as the picture said it (`AssetImage`).
+  const [unread, setUnread] = useState<{ readonly url: string; readonly reason?: string }>();
+  const failedUrl = unread?.url;
   const unavailable =
     state._tag === "Failure" || (state._tag === "Success" && failedUrl === state.url);
   const status = unavailable ? "unavailable" : state._tag === "Success" ? "ready" : "loading";
-  const reason = state._tag === "Failure" ? state.reason : undefined;
+  const reason =
+    state._tag === "Failure"
+      ? state.reason
+      : unread !== undefined && state._tag === "Success" && unread.url === state.url
+        ? unread.reason
+        : undefined;
   const said =
     (more > 0 ? `${picture.label}, and ${more} more` : picture.label) +
     (unavailable ? `. Image unavailable${reason ? ` · ${reason}` : ""}` : "");
@@ -239,14 +246,19 @@ function PictureTile({
         }
       >
         {unavailable ? (
-          <ImageUnavailable reason={reason} />
+          // The count stands alone over a picture that cannot be shown: its words never sit
+          // under it (Rhea's imported run printed "+9" over "Image unavailable").
+          more > 0 ? null : (
+            <ImageUnavailable reason={reason} />
+          )
         ) : state._tag === "Success" ? (
           <AssetImage
             alt=""
             width={size?.width}
             height={size?.height}
             src={state.url}
-            onError={() => setFailedUrl(state.url)}
+            onError={() => setUnread({ url: state.url })}
+            onUnavailable={(why) => setUnread({ url: state.url, ...(why ? { reason: why } : {}) })}
           />
         ) : null}
         {more > 0 ? <span className="run-result-more">+{more}</span> : null}
