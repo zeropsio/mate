@@ -399,6 +399,8 @@ function spokenMoment(iso: string, timestampFormat: TimestampFormat): string {
 export interface ServerUsagePause {
   readonly resetsAt: string;
   readonly autoResume: boolean;
+  /** The window that refused ("7-day"); a stand-in ("usage") names none. */
+  readonly window?: string;
 }
 
 /**
@@ -450,6 +452,7 @@ export function PauseBlock({
   // The refusal's own record names whose limit it was from the first paint; the live limit only
   // when the record does not (a later read of the session would rename it under the reader).
   const provider = row.provider ?? (limit.kind === "none" ? undefined : limit.provider);
+  const window = row.window ?? serverPause?.window;
   const autoResume = serverPause?.autoResume ?? false;
   const history = resumed || passed || !refused;
   const [waitingAt, setWaitingAt] = useState<string | null>(null);
@@ -509,7 +512,7 @@ export function PauseBlock({
       conversationShown: false,
       nowMs,
       mateName: speaker.name,
-      limit: { provider: provider ?? "coding agent", detail },
+      limit: { provider: provider ?? "coding agent", detail, window },
     });
     if (voice.surface === "none") return null;
     return (
@@ -550,8 +553,9 @@ export function PauseBlock({
                 resetsAt,
                 speaker.name,
                 timestampFormat,
+                window,
               )
-            : usageLimitWords(provider ?? "coding agent", undefined, speaker.name)}
+            : usageLimitWords(provider ?? "coding agent", undefined, speaker.name, window)}
         </span>
         {row.held > 0 ? (
           <Tooltip>

@@ -1119,6 +1119,19 @@ describe("decide: a usage limit's end is the refusal's own record", () => {
     const { log } = playAll([...proofRunning, step]);
     expect(limitEnds(log)).toEqual([expect.objectContaining({ driver: "claude" })]);
   });
+  it.each([
+    {
+      how: "parked its turn",
+      step: signal({ kind: "usage-limit", turn: T(1), resetsAt: null, window: "7-day" }),
+    },
+    {
+      how: "ended its turn",
+      step: ended(1, { kind: "usage-limited", resetsAt: "unknown", window: "7-day" }),
+    },
+  ])("a usage limit that $how names the window it hit", ({ step }) => {
+    const { log } = playAll([...proofRunning, step]);
+    expect(limitEnds(log)).toEqual([expect.objectContaining({ window: "7-day" })]);
+  });
 });
 
 describe("decide: a usage limit with an unknown reset", () => {

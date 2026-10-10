@@ -2129,7 +2129,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
     case "usage-limit": {
       const run = routed(b, signal.turn);
       if (run !== undefined && isLive(run)) {
-        endRun(b, run, limitEnd(signal.resetsAt, refusedBy(b, run)), "agent");
+        endRun(b, run, limitEnd(signal.resetsAt, refusedBy(b, run), signal.window), "agent");
         limited(b, run, signal.resetsAt);
         // A parked turn (Claude) sits in its session until the reset: close it; the resume
         // reopens the session with its resume cursor and sends explicitly.
@@ -2187,11 +2187,19 @@ const refusedBy = (b: StepBuilder, run: RunRecord): string | undefined => {
   return session !== null && session.id === run.sessionId ? session.driver : undefined;
 };
 
-/** A usage limit's end names whose limit it was, so a later switch of agent never renames it. */
-const limitEnd = (resetsAt: number | null, driver: string | undefined): RunEnd => ({
+/**
+ * A usage limit's end names whose limit it was, so a later switch of agent never renames it, and
+ * the window that refused, when the driver named one.
+ */
+const limitEnd = (
+  resetsAt: number | null,
+  driver: string | undefined,
+  window: string | undefined,
+): RunEnd => ({
   kind: "usage-limit",
   resetsAt,
   ...(driver === undefined ? {} : { driver }),
+  ...(window === undefined ? {} : { window }),
 });
 
 /** What a turn's outcome makes of its run, said in one place; the source is always the bridge's. */
@@ -2209,7 +2217,7 @@ const turnEnd = (run: RunRecord, outcome: TurnOutcome, driver: string | undefine
     case "undelivered":
       return { kind: "failed", reason: outcome.words, next: null };
     case "usage-limited":
-      return limitEnd(resetTime(outcome.resetsAt), driver);
+      return limitEnd(resetTime(outcome.resetsAt), driver, outcome.window);
     case "cut":
       return stoppedBy !== undefined
         ? { kind: "stopped", by: stoppedBy }

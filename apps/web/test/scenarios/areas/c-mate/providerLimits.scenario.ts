@@ -100,7 +100,7 @@ describe("C: provider refusal and its real deadline", () => {
             );
             yield* s.given.signedIn;
             yield* chat.when.open();
-            yield* chat.then.text("Ada hit the Claude limit.");
+            yield* chat.then.text("Ada hit Claude's weekly limit.");
             yield* chat.when.press("More header actions");
             yield* chat.when.press("Archive and start fresh", "menuitem");
             yield* Effect.promise(() => wire.waitForCommand("thread.archive"));
@@ -329,7 +329,7 @@ describe("C: provider refusal and its real deadline", () => {
           );
           yield* s.given.signedIn;
           yield* chat.when.open();
-          yield* chat.then.text("Ada hit the Claude limit.");
+          yield* chat.then.text("Ada hit Claude's weekly limit.");
           yield* chat.then.text("Limit · until Oct 10, 2099");
           unavailable = true;
           yield* s.drivers.links.get("Ada")!.close;
@@ -440,7 +440,7 @@ describe("C: provider refusal and its real deadline", () => {
             yield* Effect.promise(() => wire.replaySubscribed());
             wire.ready();
             yield* chat.then.ready("Ada");
-            yield* chat.then.text("Ada hit the Claude limit.");
+            yield* chat.then.text("Ada hit Claude's weekly limit.");
             yield* Effect.promise(async () => {
               const markers = await s.page.$$('[data-mate-status="limit"]');
               expect(markers.length).toBeGreaterThanOrEqual(2);

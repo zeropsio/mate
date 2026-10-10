@@ -375,10 +375,12 @@ export function makeTranslator(options: TranslatorOptions): Translator {
   const failureOutcome = (turn: TurnState, words: string, terminalReason?: string): TurnOutcome => {
     const said = turn.lastError;
     if (terminalReason === "usage_limit" || said?.class === "usage_limit") {
+      const window = namedWindow(turn.session.lastBlocked);
       return {
         kind: "usage-limited",
         resetsAt: turn.session.lastBlocked?.resetsAt ?? "unknown",
         words,
+        ...(window === undefined ? {} : { window }),
       };
     }
     if (terminalReason === "process_exit" || said?.class === "process_exit") {
@@ -923,7 +925,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
           emit(owner, {
             type: "usage.limit",
             effect: "between-turns",
-            window: blocked.window,
+            ...windowOf(blocked),
             resetsAt: blocked.resetsAt,
           });
           return;
@@ -934,7 +936,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
           type: "usage.limit",
           effect: "parks-turn",
           turn: turn.handle,
-          window: blocked.window,
+          ...windowOf(blocked),
           resetsAt: blocked.resetsAt,
         });
         return;
@@ -1314,6 +1316,14 @@ function itemBody(
 
 /** The window a refusal names when the driver says only that the turn is refused. */
 const REFUSED_WINDOW = "usage";
+
+/** The window a block names, never the stand-in for a refusal that named none. */
+const namedWindow = (blocked: { readonly window: string } | undefined): string | undefined =>
+  blocked === undefined || blocked.window === REFUSED_WINDOW ? undefined : blocked.window;
+const windowOf = (blocked: { readonly window: string }) => {
+  const window = namedWindow(blocked);
+  return window === undefined ? {} : { window };
+};
 
 function itemStatus(
   event: Extract<

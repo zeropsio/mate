@@ -568,6 +568,7 @@ function usageLimitActivity(run: RunRecord, card: string): OrchestrationThreadAc
       message: "The agent reached its usage limit.",
       turnEnd: "usage-limit",
       ...(provider === undefined ? {} : { provider }),
+      ...(end.window === undefined ? {} : { window: end.window }),
     },
     card,
     run.endedAt ?? run.queuedAt,

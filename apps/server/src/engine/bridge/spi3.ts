@@ -132,7 +132,13 @@ export type TurnOutcome =
       /** The driver's terminal reason, when it gave one: prompt_too_long, api_error… */
       readonly reason?: string;
     }
-  | { readonly kind: "usage-limited"; readonly resetsAt: string | Unknown; readonly words?: string }
+  | {
+      readonly kind: "usage-limited";
+      readonly resetsAt: string | Unknown;
+      readonly words?: string;
+      /** The window that refused, as a person reads it ("7-day"), when the driver named one. */
+      readonly window?: string;
+    }
   | {
       readonly kind: "cut";
       readonly cause: "process-exit" | "session-closed";

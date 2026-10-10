@@ -93,6 +93,40 @@ describe("the usage-limit pause", () => {
       expect(html.replaceAll("&#x27;", "'")).toContain(says);
     },
   );
+  it.each([
+    { resumedAt: null, says: "Nova hit Claude's weekly limit." },
+    { resumedAt: at(30), says: "Nova hit Claude's weekly limit on " },
+  ])(
+    "names the weekly window its record names, live and after ($resumedAt)",
+    ({ resumedAt, says }) => {
+      const reset = new Date(NOW_MS + 3_600_000).toISOString();
+      const html = renderToStaticMarkup(
+        <PauseBlock
+          nowMs={NOW_MS}
+          limit={
+            resumedAt === null
+              ? { kind: "limited", turnId: null, provider: "Claude", resetsAt: reset }
+              : { kind: "none" }
+          }
+          row={{
+            kind: "pause",
+            id: "pause:1",
+            createdAt: at(600),
+            resetsAt: null,
+            resumedAt,
+            held: 0,
+            provider: "Claude",
+            window: "7-day",
+          }}
+          serverPause={null}
+          onAutoResumeChange={null}
+          speaker={NOVA}
+          timestampFormat="24-hour"
+        />,
+      );
+      expect(html.replaceAll("&#x27;", "'")).toContain(says);
+    },
+  );
   it("only promises automatic continuation when the server has enabled it", () => {
     const reset = new Date(NOW_MS + 3_600_000).toISOString();
     expect(render(true, reset)).toContain(

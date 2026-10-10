@@ -231,6 +231,8 @@ export interface LimitHistoryEntry {
     readonly turnEnd?: string;
     /** Whose limit refused the turn, as the turn's own end names it. */
     readonly limitProvider?: string;
+    /** The window that refused the turn ("7-day"), as the turn's own end names it. */
+    readonly limitWindow?: string;
     readonly usageLimit?: { readonly resetsAt: string | null; readonly provider?: string | null };
   };
 }
@@ -238,6 +240,8 @@ export interface LimitHistoryEntry {
 export interface HistoricalLimit extends UsageLimitNotice {
   readonly provider: string | null;
   readonly createdAt: string;
+  /** The window that refused ("7-day"), when its record names one. */
+  readonly window?: string;
 }
 
 /** An entry's refusal remains a historical fact after recovery or expiry. */
@@ -267,6 +271,7 @@ export function projectLimitEntry(
     resetsAt: notice?.resetsAt ?? null,
     provider: work?.limitProvider ?? usageLimitProvider(text, driver),
     createdAt: entry.createdAt,
+    ...(work?.limitWindow === undefined ? {} : { window: work.limitWindow }),
   };
 }
 
@@ -324,6 +329,9 @@ export function projectLimitHistory(input: {
           ...selected,
           provider: record === null ? selected.provider : record.provider,
           createdAt: record?.createdAt ?? selected.createdAt,
+          ...((record?.window ?? selected.window) === undefined
+            ? {}
+            : { window: record?.window ?? selected.window }),
         };
   return {
     limit,

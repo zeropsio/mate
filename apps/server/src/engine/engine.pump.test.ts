@@ -661,6 +661,7 @@ describe("the running engine", () => {
           kind: "usage-limit",
           resetsAt,
           driver: "claudeAgent",
+          window: "5-hour",
         });
         yield* w.advance(resetsAt - 1 - (yield* Clock.currentTimeMillis));
         assert.isUndefined(yield* w.run(r(2)));
