@@ -137,7 +137,7 @@ describe("RollbackReviewView", () => {
       },
     });
     expect(markup).toContain("Leaves production");
-    expect(markup).toContain("#54 Quicker gallery");
+    expect(markup.replace(/<[^>]*>/gu, "")).toContain("#54 Quicker gallery");
     expect(markup).toContain("Juno · merged 1 day ago");
     expect(markup).toContain("Comes back");
     expect(markup).toContain("Nothing comes back.");

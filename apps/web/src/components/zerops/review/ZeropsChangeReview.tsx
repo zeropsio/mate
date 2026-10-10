@@ -19,7 +19,6 @@ import {
   changeAskPrompt,
   changeRemarks,
   changeReview,
-  historyAge,
   recipeReach,
   releaseContentsCommits,
   waitingForProduction,
@@ -36,7 +35,8 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useRouter } from "@tanstack/react-router";
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { CheckIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { buildThreadRouteParams } from "~/threadRoutes";
@@ -63,23 +63,28 @@ import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
-import { MateFace } from "../primitives";
 import { answeredDeploys } from "../ZeropsDeployAnswer";
 import {
+  changeChecks,
   changeReadVerdict,
+  mergeFoot,
   reviewKindLine,
   sizeWords,
+  whySaid,
   type ReviewFrame,
   type ReviewKind,
 } from "./ZeropsReview.logic";
 import { ReviewCommits } from "./ReviewCommits";
+import { mainStageOf, useGroupName, useMatePreview } from "./reviewReads";
 import { ReviewConversation } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
 import {
   ReviewFiles,
   ReviewSection,
+  ReviewTry,
   ReviewWhere,
   ReviewSize,
+  useReviewFold,
   ZeropsReviewSurface,
   type ReviewButton,
   type ReviewDiffState,
@@ -328,6 +333,8 @@ function ChangeReviewData({
     };
   }, [run.reading]);
   const runRef = run.threadRef;
+  const project = useGroupName(target.groupId);
+  const preview = useMatePreview(pull.mateProjectId);
 
   return (
     <ChangeReviewView
@@ -343,6 +350,9 @@ function ChangeReviewData({
       back={back}
       onOpenPage={onOpenPage}
       live={flow?.releases.find((entry) => entry.standing === "live")?.tag}
+      preview={preview}
+      project={project}
+      stage={flow === undefined ? undefined : mainStageOf(flow)?.name}
       release={flow?.release.gate}
       mate={
         mate === undefined
@@ -470,6 +480,12 @@ export interface ChangeReviewViewProps {
   readonly release: ReleaseGate | undefined;
   /** The release production runs. */
   readonly live: string | undefined;
+  /** The project's name: the top line's "Sage · Tea Shop". */
+  readonly project?: string | undefined;
+  /** The stage that follows `main`, by name: "Merge to stage". */
+  readonly stage?: string | undefined;
+  /** The Mate's preview, its pair's stage half: "Try it". */
+  readonly preview?: { readonly url: string; readonly host: string } | undefined;
   readonly now: number;
   readonly titleId?: string | undefined;
   /** Files whose diff stands open from the start — the harness's. */
@@ -571,15 +587,51 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const fromRelease = props.back !== undefined;
   const primary = fromRelease ? undefined : model.primary;
   const secondary = model.secondary;
+  const files = useReviewFold();
+  const checks = useReviewFold();
+  const talk = useReviewFold();
+  const history = useReviewFold();
+  // "Ask Nova to change it…" opens the conversation and puts the cursor in its box.
+  const talkAt = useRef<HTMLDivElement | null>(null);
+  const [asking, setAsking] = useState(0);
+  useEffect(() => {
+    if (asking === 0) return;
+    const box = talkAt.current?.querySelector("textarea");
+    box?.focus({ preventScroll: true });
+    box?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [asking]);
+  const canAsk = mine !== undefined && props.offers?.comment === true && !over && !fromRelease;
+  const checksSaid = changeChecks({
+    state: model.verdict.state,
+    checks: model.pipeline?.checks ?? [],
+  });
+  const pipeline = model.pipeline;
   return (
     <ZeropsReviewSurface
+      ask={
+        canAsk
+          ? {
+              label: `Ask ${mine.name} to change it…`,
+              onPress: () => {
+                talk.show();
+                setAsking((count) => count + 1);
+              },
+            }
+          : undefined
+      }
       back={props.back}
       consequence={
         !over && !asked && props.offers?.merge === false && props.offers.why.merge !== undefined
           ? props.offers.why.merge
-          : model.consequence
+          : mergeFoot({
+              state: model.verdict.state,
+              consequence: model.consequence,
+              stage: props.stage,
+              live: props.live,
+            })
       }
       dismiss={over && !fromRelease ? "Close" : undefined}
+      face={mate.tint === undefined ? undefined : { tint: mate.tint, shape: mate.shape }}
       frame={props.frame}
       fix={
         fix === undefined || mine === undefined
@@ -592,18 +644,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             }
       }
       kind={KIND}
-      kindLabel={reviewKindLine(KIND, pull.kind)}
-      meta={
-        <ChangeMeta
-          age={historyAge(pull.updatedAt, props.now)}
-          base={pull.baseBranch}
-          face={mate.tint}
-          faceShape={mate.shape}
-          number={pull.number}
-          repository={pull.repository}
-          who={mate.name}
-        />
-      }
+      kindLabel={props.project === undefined ? mate.name : `${mate.name} · ${props.project}`}
+      meta={<span>#{pull.number}</span>}
       onOpenPage={props.onOpenPage}
       onClose={props.onClose}
       primary={
@@ -618,6 +660,10 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                   : model.verdict.state === "closing"
                     ? "Closing"
                     : primary.label,
+              text:
+                primary.label === "Merge" && props.stage !== undefined
+                  ? `Merge to ${props.stage}`
+                  : undefined,
               onPress: () => {
                 if (asked) props.onClosing("press");
                 else props.onMerge();
@@ -635,9 +681,18 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             }
       }
       settled={fromRelease ? "Merged" : undefined}
+      status={
+        checksSaid === undefined ? undefined : (
+          <span className="rv-checks" data-mark={checksSaid.mark}>
+            {checksSaid.mark === "passed" ? <CheckIcon aria-hidden="true" /> : null}
+            {checksSaid.words}
+          </span>
+        )
+      }
       title={pull.title}
       titleId={props.titleId}
       verdict={model.verdict}
+      whySaid={whySaid(model.verdict, pull.ready === false)}
     >
       {model.question === undefined || questionClosed ? null : (
         <ReviewQuestionBlock
@@ -655,31 +710,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           <ReviewWhere answer={answer} />
         </ReviewSection>
       )}
-      <ReviewSection title="Pipeline checks">
-        {model.pipeline?.why === undefined ? null : <p>{model.pipeline.why}</p>}
-        {model.pipeline?.checks.length === 0 ? null : (
-          <ul>
-            {model.pipeline?.checks.map((check) => (
-              <li key={check.id}>
-                {check.name} ·{" "}
-                {check.requirement === "required"
-                  ? "Required by repository"
-                  : check.requirement === "advisory"
-                    ? "Advisory"
-                    : "Requirement unknown"}{" "}
-                ·{" "}
-                {check.state === "passed"
-                  ? "Passed"
-                  : check.state === "failed"
-                    ? "Failed"
-                    : check.state === "running"
-                      ? "Running"
-                      : "Status unknown"}
-              </li>
-            ))}
-          </ul>
-        )}
-      </ReviewSection>
       <ReviewDescription
         description={pull.description}
         hqAddress={props.hqAddress}
@@ -687,15 +717,20 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         pictures={props.pictures}
         run={props.run}
       />
+      {props.preview === undefined ? null : (
+        <ReviewTry host={props.preview.host} url={props.preview.url} />
+      )}
       <ReviewSection
         aside={
           size === undefined ? undefined : (
             <>
-              {size.files} · <ReviewSize additions={size.additions} deletions={size.deletions} />
+              {read?.files.length} changed ·{" "}
+              <ReviewSize additions={size.additions} deletions={size.deletions} />
             </>
           )
         }
-        title="Changes"
+        fold={files}
+        title="Files"
       >
         <ReviewFiles
           diffOf={diffOf}
@@ -705,20 +740,60 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           onRetry={props.onRetry}
         />
       </ReviewSection>
-      <ReviewConversation
-        asker={
-          mine === undefined ? undefined : { name: mine.name, tint: mine.tint, shape: mine.shape }
-        }
-        commentable={props.offers?.comment === true}
-        comments={props.comments}
-        count={pull.commentCount}
-        draftKey={`${pull.url ?? pull.repository}#${String(pull.number)}`}
-        frame={props.frame ?? "dialog"}
+      {pipeline === undefined ||
+      (pipeline.checks.length === 0 && pipeline.why === undefined) ? null : (
+        <ReviewSection
+          aside={pipeline.checks.length === 0 ? undefined : String(pipeline.checks.length)}
+          fold={checks}
+          title="Checks"
+        >
+          {pipeline.why === undefined ? null : <p className="rv-words">{pipeline.why}</p>}
+          {pipeline.checks.length === 0 ? null : (
+            <ul className="rv-check-list">
+              {pipeline.checks.map((check) => (
+                <li key={check.id}>
+                  {check.name} ·{" "}
+                  {check.requirement === "required"
+                    ? "Required by repository"
+                    : check.requirement === "advisory"
+                      ? "Advisory"
+                      : "Requirement unknown"}{" "}
+                  ·{" "}
+                  {check.state === "passed"
+                    ? "Passed"
+                    : check.state === "failed"
+                      ? "Failed"
+                      : check.state === "running"
+                        ? "Running"
+                        : "Status unknown"}
+                </li>
+              ))}
+            </ul>
+          )}
+        </ReviewSection>
+      )}
+      <div className="contents" ref={talkAt}>
+        <ReviewConversation
+          asker={
+            mine === undefined ? undefined : { name: mine.name, tint: mine.tint, shape: mine.shape }
+          }
+          commentable={props.offers?.comment === true}
+          comments={props.comments}
+          count={pull.commentCount}
+          draftKey={`${pull.url ?? pull.repository}#${String(pull.number)}`}
+          fold={props.frame === "page" ? undefined : talk}
+          frame={props.frame ?? "dialog"}
+          now={props.now}
+          onAsk={props.onAsk}
+          remarks={props.remarks}
+        />
+      </div>
+      <ReviewCommits
+        commits={commits}
+        fold={props.frame === "page" ? undefined : history}
         now={props.now}
-        onAsk={props.onAsk}
-        remarks={props.remarks}
+        onRetry={props.onRetry}
       />
-      <ReviewCommits commits={commits} now={props.now} onRetry={props.onRetry} />
     </ZeropsReviewSurface>
   );
 }
@@ -756,54 +831,5 @@ export function ReviewQuestionBlock({
         {question.dismiss}
       </button>
     </div>
-  );
-}
-
-/**
- * The one line under a change's title: whose it is, where it goes, which it is and when it last
- * moved — `(face) Nova · appdev → main · #2 · 1d`. Its size is the Changes heading's.
- */
-function ChangeMeta({
-  who,
-  face,
-  faceShape,
-  repository,
-  base,
-  number,
-  age,
-}: {
-  readonly who: string;
-  readonly face: MateTintId | undefined;
-  readonly faceShape: MateShapeId | undefined;
-  readonly repository: string;
-  readonly base: string;
-  readonly number: number;
-  readonly age: string | undefined;
-}) {
-  const parts: Array<{ readonly key: string; readonly node: ReactNode }> = [
-    {
-      key: "who",
-      node: (
-        <span className="rv-meta-who">
-          {face === undefined ? null : (
-            <MateFace className="size-4" shape={faceShape} size="dot" state="idle" tint={face} />
-          )}
-          {who}
-        </span>
-      ),
-    },
-  ];
-  parts.push({ key: "where", node: <span>{`${repository} → ${base}`}</span> });
-  parts.push({ key: "number", node: <span>#{number}</span> });
-  if (age !== undefined) parts.push({ key: "age", node: <span>{age}</span> });
-  return (
-    <>
-      {parts.map((part, index) => (
-        <Fragment key={part.key}>
-          {index === 0 ? null : <span aria-hidden="true">·</span>}
-          {part.node}
-        </Fragment>
-      ))}
-    </>
   );
 }

@@ -23,6 +23,13 @@ import {
   rollbackListNote,
   runWords,
   sizeWords,
+  changeChecks,
+  mergeFoot,
+  productionNowLine,
+  releaseFoot,
+  releaseLine,
+  sinceWords,
+  whySaid,
 } from "./ZeropsReview.logic";
 
 describe("reviewKindLine", () => {
@@ -579,5 +586,146 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
     expect(
       kinds.map((kind) => changeReadVerdict({ ...base, read: { kind } }).tone === "busy"),
     ).toEqual([false, true, false]);
+  });
+});
+
+describe("the sheet's line under a change's title", () => {
+  const check = (state: "passed" | "failed" | "running" | "unknown") => ({ state });
+  it.each([
+    ["every check passed", "ready", [check("passed"), check("passed")], "checks passed"],
+    ["one still runs", "ready", [check("passed"), check("running")], "checks running"],
+    ["one failed, advisory", "ready", [check("failed"), check("passed")], "checks failed"],
+    ["behind main, its checks passed", "behind-clean", [check("passed")], "checks passed"],
+    ["no checks at all", "ready", [], undefined],
+    ["checks nobody read for this head", "ready", [check("unknown")], undefined],
+    ["merged: its checks are history", "merged", [check("passed")], undefined],
+    ["refused: the refusal is the news", "merge-refused", [check("passed")], undefined],
+  ] as const)("says %s", (_case, state, checks, words) => {
+    expect(changeChecks({ state, checks })?.words).toBe(words);
+  });
+
+  it.each([
+    ["a change ready to merge says no more than that", "ready", false, false],
+    ["a draft says why", "ready", true, true],
+    ["a conflict says why", "conflict", false, true],
+    ["a merge says where it went", "merged", false, true],
+    ["a release ready to go says no more than its line", "release-ready", false, false],
+    ["a release on its way says how far", "releasing", false, true],
+  ] as const)("%s", (_case, state, draft, said) => {
+    expect(
+      whySaid(
+        { state, tone: "quiet", title: "", why: "No conflicts with main", fix: undefined },
+        draft,
+      ),
+    ).toBe(said);
+  });
+});
+
+describe("the sheet's footnote: what happens next", () => {
+  it.each([
+    [
+      "a change ready to merge, with a stage and a production",
+      { state: "ready", stage: "stage", live: "v2.3.1" },
+      "Merging puts it on stage. Production keeps v2.3.1 until you release.",
+    ],
+    [
+      "nothing released yet",
+      { state: "ready", stage: "stage", live: undefined },
+      "Merging puts it on stage.",
+    ],
+    [
+      "behind main but clean",
+      { state: "behind-clean", stage: "staging", live: "v1.0.0" },
+      "Merging puts it on staging. Production keeps v1.0.0 until you release.",
+    ],
+    [
+      "no stage: the review's own words",
+      { state: "ready", stage: undefined, live: "v1" },
+      "Squash-merges.",
+    ],
+    [
+      "merged: the review's own words",
+      { state: "merged", stage: "stage", live: "v1" },
+      "Squash-merges.",
+    ],
+  ] as const)("%s", (_case, input, words) => {
+    expect(mergeFoot({ ...input, consequence: "Squash-merges." })).toBe(words);
+  });
+
+  it.each([
+    [
+      "a release ready to go",
+      { state: "release-ready", live: "v2.3.1" },
+      "It takes about a minute. You can roll back to v2.3.1 from production's panel.",
+    ],
+    ["the first release", { state: "release-ready", live: undefined }, "It takes about a minute."],
+    [
+      "a release on its way: the review's own words",
+      { state: "releasing", live: "v1" },
+      "Follows.",
+    ],
+  ] as const)("%s", (_case, input, words) => {
+    expect(releaseFoot({ ...input, consequence: "Follows." })).toBe(words);
+  });
+});
+
+describe("the release sheet's lines", () => {
+  it.each([
+    [
+      "every change on the stage",
+      { changes: 4, stage: "stage", since: "14:10", onStage: { total: 4, running: 4 } },
+      "4 changes, tested on stage since 14:10.",
+    ],
+    [
+      "one change, the stage's time unknown",
+      { changes: 1, stage: "stage", since: undefined, onStage: { total: 1, running: 1 } },
+      "1 change, tested on stage.",
+    ],
+    [
+      "some not on the stage yet",
+      { changes: 3, stage: "stage", since: "14:10", onStage: { total: 3, running: 1 } },
+      "3 changes, 1 of them on stage so far.",
+    ],
+    [
+      "no stage: since the release production runs",
+      { changes: 2, stage: undefined, since: undefined, onStage: undefined, live: "v0.1.4" },
+      "2 changes since v0.1.4.",
+    ],
+    [
+      "no stage, nothing released",
+      { changes: 2, stage: undefined, since: undefined, onStage: undefined },
+      "2 changes, the first release.",
+    ],
+  ] as const)("says %s", (_case, input, words) => {
+    expect(releaseLine({ live: undefined, ...input })).toBe(words);
+  });
+
+  it.each([
+    [
+      "what runs, since when and where",
+      { live: "v2.3.1", since: "Tue", host: "shop.acme.com" },
+      "Runs v2.3.1 since Tue at shop.acme.com.",
+    ],
+    ["what runs alone", { live: "v2.3.1", since: undefined, host: undefined }, "Runs v2.3.1."],
+    [
+      "nothing released",
+      { live: undefined, since: undefined, host: "shop.acme.com" },
+      "Nothing released yet.",
+    ],
+  ] as const)("says %s of production", (_case, input, words) => {
+    expect(productionNowLine(input)).toBe(words);
+  });
+
+  const now = new Date(2026, 9, 10, 16, 0).getTime();
+  it.each([
+    ["today, by the clock", new Date(2026, 9, 10, 14, 10), "14:10"],
+    ["this week, by the day", new Date(2026, 9, 6, 9, 0), "Tue"],
+    ["longer ago, by the date", new Date(2026, 8, 18, 9, 0), "Sep 18"],
+  ])("says when: %s", (_case, at, words) => {
+    expect(sinceWords(at.toISOString(), now)).toBe(words);
+  });
+  it("says nothing of a time it cannot read", () => {
+    expect(sinceWords("never", now)).toBeUndefined();
+    expect(sinceWords(undefined, now)).toBeUndefined();
   });
 });

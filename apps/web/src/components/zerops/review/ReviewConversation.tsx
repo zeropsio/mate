@@ -29,7 +29,7 @@ import type { ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 
 import { Avatar, MateFace } from "../primitives";
 import { remarkFold, type ReviewFrame } from "./ZeropsReview.logic";
-import { ReviewFailed, ReviewSection } from "./ZeropsReviewSurface";
+import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
 
 /** What was being written on each change, kept while the tab is open. */
 const drafts = new Map<string, string>();
@@ -56,6 +56,7 @@ export function ReviewConversation({
   commentable,
   now,
   onAsk,
+  fold,
 }: {
   readonly frame: ReviewFrame;
   /** The change the draft belongs to. */
@@ -74,11 +75,14 @@ export function ReviewConversation({
   readonly now: number;
   /** Keeps the words on the change and hands them to the Mate. */
   readonly onAsk: (said: string) => Promise<void>;
+  /** Folded to its row, in the sheet: one click away. */
+  readonly fold?: ReviewFoldState | undefined;
 }) {
   const { state } = comments;
   return (
     <ReviewSection
       aside={state.kind === "read" ? changeConversationCount(remarks) : undefined}
+      fold={fold}
       title="Conversation"
     >
       {state.kind === "reading" ? (
