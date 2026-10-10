@@ -72,6 +72,11 @@ describe("projectRoad — a project's stage ─▸ prod after its name", () => {
       road: ["stage", "solid", "2 waiting", "prod:amber"],
     },
     {
+      case: "a failed release beside a release offered: ready, prod amber (D28: the fix mends it)",
+      over: { waiting: 2, releaseOffered: true, prod: prod("failed", { version: "v1.8.2" }) },
+      road: ["stage", "solid", "2 ready", "prod:amber"],
+    },
+    {
       case: "a release on its way: blue, its version on the way",
       over: {
         waiting: 3,
@@ -193,14 +198,9 @@ describe("projectRoad — a project's stage ─▸ prod after its name", () => {
       },
     },
     {
-      case: "waiting while production needs fixing says the release waits for it",
-      over: { waiting: 2, prod: prod("down") },
-      tip: { title: "2 waiting", lines: ["The release waits until production is fixed"] },
-    },
-    {
-      case: "waiting while the release is not offered to the viewer says so",
+      case: "waiting says the release is not offered",
       over: { waiting: 1 },
-      tip: { title: "1 waiting", lines: ["Releasing isn't offered to you here"] },
+      tip: { title: "1 waiting", lines: ["The release isn't offered right now"] },
     },
   ])("$case", ({ over, tip }) => {
     expect(road(over)?.mid?.tip).toEqual(tip);

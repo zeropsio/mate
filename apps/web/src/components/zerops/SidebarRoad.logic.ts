@@ -2,7 +2,8 @@
  * A project's road, after its name on the menu's heading: `stage ─▸ prod`. Its places are words;
  * each opens its chip's menu (`SidebarProductionChip`). What is ready to go out rides on the way
  * between them — a white chip, "3 ready", where it waits on the viewer and opens the release's
- * review; grey, "2 waiting", where the release is not offered (production must be fixed first);
+ * review — beside a broken production too, since releasing the fix is how it mends (D28); grey,
+ * "2 waiting", only where the release is not offered;
  * a blue dot and the version while a release is on its way.
  *
  * Grey while all is well. A place's word takes a tone only where someone is needed or there is
@@ -87,9 +88,6 @@ const TONE: Record<ChipState, RoadTone | undefined> = {
 export function roadTone(chip: ProductionChip): RoadTone | "neutral" {
   return TONE[chip.state] ?? "neutral";
 }
-
-/** Production's states a release cannot go to until someone fixes it. */
-const NEEDS_FIXING: ReadonlySet<ChipState> = new Set(["down", "failed", "stopped"]);
 
 /** One place in plain words, as the card's production line says it. */
 function placeWords(chip: ProductionChip, state: ChipState = chip.state): string {
@@ -225,11 +223,7 @@ function midOf(input: RoadInput, prod: ProductionChip): RoadMid | undefined {
     label: `${count} waiting`,
     tip: {
       title: `${count} waiting`,
-      lines: [
-        NEEDS_FIXING.has(prod.state)
-          ? "The release waits until production is fixed"
-          : "Releasing isn't offered to you here",
-      ],
+      lines: ["The release isn't offered right now"],
     },
   };
 }
