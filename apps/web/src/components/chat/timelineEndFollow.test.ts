@@ -380,7 +380,7 @@ describe("createEndFollow", () => {
   // end its foot leaves under it; a glide there moved the line the person was reading.
   it("keeps a place short of the end as the end until the end grows, then follows on", () => {
     const { scroll, follow } = atItsEnd();
-    scroll.element.scrollHeight += 58;
+    scroll.element.scrollHeight += 24;
     follow.keep();
     follow.follow();
     expect(play(scroll), "ASSERTION: nothing glides to the kept place's foot").toEqual([]);
@@ -390,6 +390,34 @@ describe("createEndFollow", () => {
     expect(scroll.element.scrollTop, "ASSERTION: a new row past it is followed").toBe(
       endOf(scroll),
     );
+  });
+
+  // The usage limit holding a message: the composer's inset grew while an answer was held, and
+  // keeping the view where it stood held the end 202 px away for good.
+  it("keeps no place far short of the end: what moved the view there is followed on to the end", () => {
+    const { scroll, follow } = atItsEnd();
+    scroll.element.scrollHeight += 202;
+    follow.keep();
+    follow.follow();
+    play(scroll);
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
+  });
+
+  it("lets a kept place go as the composer's inset moves the end", () => {
+    const placeEnd = vi.fn();
+    const scroll = list({ top: 600, height: 1000, client: 400 });
+    const follow = createEndFollow({
+      placeEnd,
+      viewport: () => scroll.element as unknown as HTMLElement,
+      follows: () => scroll.state.follows,
+    });
+    scroll.element.scrollHeight += 20;
+    follow.keep();
+    follow.place();
+    expect(placeEnd, "ASSERTION: the end is placed anew, the kept place let go").toHaveBeenCalled();
+    follow.follow();
+    play(scroll);
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
   });
 
   it("stops where the person scrolled up mid-glide, and stays", () => {
