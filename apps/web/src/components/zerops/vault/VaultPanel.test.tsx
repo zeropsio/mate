@@ -78,11 +78,11 @@ const plain = (id: string, key: string, value: string): VaultValue => ({
 
 const q = <T extends Element = HTMLElement>(container: Element, selector: string) =>
   container.querySelector(selector) as T | null;
-/** Each card of values: its title, then its rows' keys. */
-const cards = (container: Element) =>
-  [...container.querySelectorAll("[data-vault-group]")].map(
-    (card) =>
-      `${card.querySelector("h3")?.textContent}: ${[...card.querySelectorAll("[data-vault-row]")]
+/** Each part of the list: its title, then its rows' keys. */
+const parts = (container: Element) =>
+  [...container.querySelectorAll("[data-vault-part]")].map(
+    (part) =>
+      `${part.querySelector("h3")?.textContent}: ${[...part.querySelectorAll("[data-vault-row]")]
         .map((row) => row.getAttribute("data-vault-row"))
         .join(",")}`,
   );
@@ -117,17 +117,15 @@ const typeInto = (element: Element | null, value: string) =>
   });
 const openRow = (container: Element, key: string) =>
   click(q(container, `[data-vault-row="${key}"] > button`));
-const openApp = async (container: Element, hostname: string) => {
-  await click(q(container, '[data-vault-view="apps"]'));
-  await click(q(container, `[data-vault-app="${hostname}"] button`));
-};
-/** Opens the "⋯" menu and picks an item from it. */
-const fromMenu = async (container: Element, words: string) => {
-  const trigger = q(container, 'button[aria-label="More"]')!;
+/** Unfolds a service Zerops runs. */
+const openMade = (container: Element, hostname: string) =>
+  click(q(container, `[data-vault-app="${hostname}"] > button`));
+/** Opens a menu by its trigger and picks an item from it. */
+const pick = async (trigger: Element, words: string) => {
   await act(async () => {
     trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
     trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
-    trigger.click();
+    (trigger as HTMLElement).click();
   });
   const item = [...document.querySelectorAll("[role=menuitem]")].find(
     (candidate) => candidate.textContent?.trim() === words,
@@ -135,23 +133,48 @@ const fromMenu = async (container: Element, words: string) => {
   if (item === undefined) throw new Error(`No menu item "${words}"`);
   await click(item);
 };
+/** Opens the "⋯" menu and picks an item from it. */
+const fromMenu = (container: Element, words: string) =>
+  pick(q(container, 'button[aria-label="More"]')!, words);
 
 describe("VaultPanelBody — what the Vault tab shows", () => {
-  it("draws the environment's values in cards named for what each is for, each on one line under its name in words", async () => {
+  it("lists what every app gets, then each app's own, then what Zerops made, each value on one line by its name and key", async () => {
     const { container } = await mount();
-    expect(q(container, '[data-vault-view="values"]')?.getAttribute("aria-selected")).toBe("true");
-    expect(cards(container)).toEqual([
-      "Stripe: STRIPE_SECRET_KEY",
-      "Addresses: API_URL",
-      "Other settings: LEGACY_TOKEN,LOG_LEVEL",
-      "Security keys: SESSION_SECRET",
+    expect(q(container, "[role=tablist]")).toBeNull();
+    expect(parts(container)).toEqual([
+      "Every app: STRIPE_SECRET_KEY,API_URL,LEGACY_TOKEN,LOG_LEVEL,SESSION_SECRET",
+      "appdev: FEATURE_FLAGS",
     ]);
+    expect(q(container, "[data-vault-made]")?.textContent).toBe(
+      "dbDatabase · PostgreSQL5 made by Zerops",
+    );
     expect(q(container, '[data-vault-row="API_URL"] > button')?.textContent).toBe(
-      "API URLhttps://api.acme.dev",
+      "API URLAPI_URLhttps://api.acme.dev",
     );
     expect(q(container, '[data-vault-row="STRIPE_SECRET_KEY"] > button')?.textContent).toBe(
-      "Secret key●●●●●●●●",
+      "Stripe secret keySTRIPE_SECRET_KEY●●●●●●●●",
     );
+  });
+
+  // Milo's Values said "No values yet" beside Apps listing apidev 3, appdev 2
+  // (stress run 2, 2026-10-09): an empty share is not an empty vault.
+  it("leaves out every app's part when the environment shares nothing, and still lists the apps' own", async () => {
+    const view: VaultView = {
+      ...VAULT_FIXTURE,
+      notLive: [],
+      scopes: VAULT_FIXTURE.scopes.map((scope) =>
+        scope.kind === "shared" ? { ...scope, values: [] } : scope,
+      ),
+    };
+    const { container } = await mount({ view });
+    expect(parts(container)).toEqual(["appdev: FEATURE_FLAGS"]);
+    expect(container.textContent).not.toContain("No values yet.");
+  });
+
+  it("marks a value an app still runs the old one of, on its row", async () => {
+    const { container } = await mount();
+    expect(q(container, '[data-vault-row="LOG_LEVEL"] [data-vault-stale]')).not.toBeNull();
+    expect(q(container, '[data-vault-row="API_URL"] [data-vault-stale]')).toBeNull();
   });
 
   it("an open row names the apps whose deploy config uses it, and which of them still run the old value", async () => {
@@ -163,17 +186,16 @@ describe("VaultPanelBody — what the Vault tab shows", () => {
     await openRow(container, "STRIPE_SECRET_KEY");
     expect(
       q(container, '[data-vault-body="STRIPE_SECRET_KEY"] [data-vault-readers]')?.textContent,
-    ).toContain("No app uses it yet: an app's deploy config has to name it.");
+    ).toContain("No app uses it yet.");
   });
 
   it("says what is not live yet, and beside a Mate who makes it live", async () => {
     const { container } = await mount();
-    const block = q(container, "[data-vault-notlive]");
-    expect(
-      [...block!.querySelectorAll("[data-vault-notlive-item]")].map((item) => item.textContent),
-    ).toEqual(["appdev started before LOG_LEVEL changed — a restart applies it"]);
-    expect(block?.textContent).toContain("Fen does it with your next message");
-    expect(block?.textContent).not.toContain("Restart appdev");
+    const line = q(container, "[data-vault-notlive]");
+    expect(line?.textContent).toBe(
+      "1 value isn't live yet — Fen restarts appdev with your next message",
+    );
+    expect(hasButton(container, "Restart appdev")).toBe(false);
   });
 
   it("draws no block when everything is live", async () => {
@@ -240,7 +262,7 @@ describe("VaultPanelBody — a row opens in place", () => {
     const field = body.querySelector<HTMLInputElement>('input[aria-label="Session secret"]')!;
     expect(field.value).toBe("");
     expect(field.type).toBe("password");
-    expect(hasButton(body, "Make secret")).toBe(false);
+    expect(hasButton(body, "Hide it")).toBe(false);
     await typeInto(field, "s3cret");
     await click(button(body, "Save"));
     expect(writes[0]?.write).toEqual({
@@ -257,16 +279,15 @@ describe("VaultPanelBody — a row opens in place", () => {
       view: withShared(plain("v-cookie", "COOKIE_SECRET", "cookie-value")),
     });
     expect(q(container, '[data-vault-row="COOKIE_SECRET"] > button')?.textContent).toBe(
-      "Cookie secret●●●●●●●●",
+      "Cookie secretCOOKIE_SECRET●●●●●●●●",
     );
     await openRow(container, "COOKIE_SECRET");
     const body = q(container, '[data-vault-body="COOKIE_SECRET"]')!;
-    await click(button(body, "Make secret"));
+    await click(button(body, "Hide it"));
     expect(writes).toEqual([]);
-    expect(body.querySelector("[role=alertdialog]")?.textContent).toContain(
-      "Once it's secret it stays hidden",
-    );
-    await click(button(body, "Make it secret"));
+    const ask = body.querySelector("[role=alertdialog]")!;
+    expect(ask.textContent).toContain("Nobody reads it back once it's hidden, Fen included.");
+    await click(button(ask, "Hide it"));
     expect(writes[0]?.write).toEqual({
       kind: "update",
       id: "v-cookie",
@@ -359,12 +380,19 @@ describe("VaultPanelBody — what needs the person", () => {
         plain("v-spk", "STRIPE_PUBLISHABLE_KEY", ""),
       ),
     });
-    const card = q(container, '[data-vault-needs="unset"]')!;
-    expect(card.querySelector("h3")?.textContent).toBe("Stripe isn't set up yet");
-    expect(cards(container)[0]).toBe("Stripe: STRIPE_SECRET_KEY");
-    await typeInto(card.querySelector('input[aria-label="API key"]'), "stripe-api-1");
-    await typeInto(card.querySelector('input[aria-label="Publishable key"]'), "stripe-pub-1");
-    await click(button(card, "Save 2"));
+    const line = q(container, '[data-vault-needs="unset"]')!;
+    expect(line.textContent).toBe("Stripe isn't set up yet — paste them in their rows");
+    await click(line);
+    const first = q(container, '[data-vault-body="STRIPE_API_KEY"]')!;
+    await typeInto(first.querySelector('input[aria-label="Stripe API key"]'), "stripe-api-1");
+    await click(button(first, "Save"));
+    await openRow(container, "STRIPE_PUBLISHABLE_KEY");
+    const second = q(container, '[data-vault-body="STRIPE_PUBLISHABLE_KEY"]')!;
+    await typeInto(
+      second.querySelector('input[aria-label="Stripe publishable key"]'),
+      "stripe-pub-1",
+    );
+    await click(button(second, "Save"));
     expect(writes.map(({ write }) => write)).toEqual([
       {
         kind: "update",
@@ -391,9 +419,10 @@ describe("VaultPanelBody — what needs the person", () => {
         plain("v-admin", "SUPERADMIN_PASSWORD", "admin-value"),
       ),
     });
-    const card = q(container, '[data-vault-needs="readable"]')!;
-    expect(card.querySelector("h3")?.textContent).toBe("3 secrets aren't protected");
-    await click(button(card, "Make secret"));
+    expect(q(container, '[data-vault-needs="readable"]')?.textContent).toBe(
+      "3 secrets can be read by anyone with access",
+    );
+    await click(button(container, "Hide them"));
     expect(
       writes.map(({ write }) => `${write.key} ${write.kind === "update" && write.sensitive}`),
     ).toEqual(["SUPERADMIN_PASSWORD true", "COOKIE_SECRET true", "JWT_SECRET true"]);
@@ -405,11 +434,11 @@ describe("VaultPanelBody — adding", () => {
     const { container, writes } = await mount();
     await click(button(container, "Add"));
     const add = q(container, "[data-vault-add]")!;
-    expect(add.textContent).toContain("New value for every app");
+    expect(add.textContent).toContain("New value forevery app");
     await typeInto(add.querySelector('input[aria-label="Key"]'), "GITHUB_TOKEN");
     expect(add.querySelector("[role=switch]")?.getAttribute("aria-checked")).toBe("true");
     expect(add.querySelector("[data-vault-add-auto]")?.textContent).toBe(
-      "the name says secret — nobody reads it back once saved",
+      "nobody reads it back once saved",
     );
     await typeInto(add.querySelector('input[aria-label="Value"]'), "ghp_x");
     await click(button(add, "Save"));
@@ -425,9 +454,9 @@ describe("VaultPanelBody — adding", () => {
     ["appdev", "NODE_ENV", "appdev's zerops.yml already sets NODE_ENV"],
   ])("in %s refuses %s inline", async (app, key, words) => {
     const { container, writes } = await mount();
-    if (app !== null) await openApp(container, app);
     await click(button(container, "Add"));
     const add = q(container, "[data-vault-add]")!;
+    if (app !== null) await pick(add.querySelector('[aria-label="Where it goes"]')!, `${app} only`);
     await typeInto(add.querySelector('input[aria-label="Key"]'), key);
     expect(add.querySelector("[data-vault-add-error]")?.textContent).toBe(words);
     expect(button(add, "Save").disabled).toBe(true);
@@ -436,58 +465,44 @@ describe("VaultPanelBody — adding", () => {
 });
 
 describe("VaultPanelBody — apps", () => {
-  it("lists each app and each service Zerops runs, in words", async () => {
+  it("names each app with values of its own, and each service Zerops runs, in words", async () => {
     const { container } = await mount();
-    await click(q(container, '[data-vault-view="apps"]'));
-    expect(cards(container).map((card) => card.split(":")[0])).toEqual([
-      "Your apps",
-      "Run by Zerops",
-    ]);
-    const app = (host: string) => q(container, `[data-vault-app="${host}"]`)?.textContent;
-    expect(app("appdev")).toBe("appdevNode.js app1 value");
-    expect(app("appstage")).toBe("appstageNode.js app");
-    expect(app("db")).toBe("dbDatabase · PostgreSQL");
+    expect(q(container, '[data-vault-part="svc-appdev"] header')?.textContent).toBe(
+      "appdevNode.js app",
+    );
+    expect(q(container, '[data-vault-part="svc-appstage"]')).toBeNull();
+    expect(q(container, '[data-vault-app="db"] > button')?.textContent).toBe(
+      "dbDatabase · PostgreSQL5 made by Zerops",
+    );
   });
 
-  it("shows what an app reads from its deploy config and where each comes from", async () => {
-    const { container } = await mount();
-    await openApp(container, "appdev");
-    const reads = q(container, '[data-vault-group="reads"]')!;
-    expect(reads.querySelector("h3")?.textContent).toBe("What it reads from the deploy config");
-    const line = (key: string) => reads.querySelector(`[data-vault-read="${key}"]`)?.textContent;
-    expect(line("NODE_ENV")).toBe("NODE_ENV= development");
-    expect(line("API_URL")).toBe("API_URLAPI_URL· vault");
-    expect(line("FEATURE_FLAGS")).toBe("FEATURE_FLAGSFEATURE_FLAGS· its own");
-    expect(line("DATABASE_URL")).toBe("DATABASE_URLconnectionString· db");
-    expect(line("PUBLIC_HOST")).toBe("PUBLIC_HOSTfrom Zerops");
-    expect(line("SEARCH_URL")).toBe("SEARCH_URLmissing");
-    expect(line("DB_PASSWORD")).toBe("DB_PASSWORDself");
+  it("adds a value to one app from the same card", async () => {
+    const { container, writes } = await mount();
+    await click(button(container, "Add"));
+    const add = q(container, "[data-vault-add]")!;
+    await pick(add.querySelector('[aria-label="Where it goes"]')!, "appstage only");
+    expect(add.textContent).toContain("New value forappstage only");
+    await typeInto(add.querySelector('input[aria-label="Key"]'), "PORT");
+    await typeInto(add.querySelector('input[aria-label="Value"]'), "3000");
+    await click(button(add, "Save"));
+    expect(writes[0]).toEqual({
+      scope: { kind: "service", serviceId: "svc-appstage" },
+      write: { kind: "add", key: "PORT", value: "3000", sensitive: false },
+    });
   });
 
   it("links an app's deploy config where the workspace has it", async () => {
     const { container } = await mount({
       renderDeployConfig: (hostname) => <span data-config>{`${hostname}/zerops.yaml`}</span>,
     });
-    await openApp(container, "appdev");
-    expect(q(container, '[data-vault-group="reads"] [data-config]')?.textContent).toBe(
+    expect(q(container, '[data-vault-part="svc-appdev"] [data-config]')?.textContent).toBe(
       "appdev/zerops.yaml",
     );
   });
 
-  it("goes to the value a read comes from", async () => {
-    const { container } = await mount();
-    await openApp(container, "appdev");
-    await click(q(container, '[data-vault-read="LOG_LEVEL"]'));
-    expect(q(container, '[data-vault-view="values"]')?.getAttribute("aria-selected")).toBe("true");
-    expect(
-      q(container, '[data-vault-row="LOG_LEVEL"] > button')?.getAttribute("aria-expanded"),
-    ).toBe("true");
-  });
-
   it("draws a managed service's values read only, each with its reference", async () => {
     const { container } = await mount();
-    await openApp(container, "db");
-    expect(hasButton(container, "Add")).toBe(false);
+    await openMade(container, "db");
     expect(q(container, '[data-vault-row="password"]')?.textContent).toContain("●●●●●●●●");
     expect(
       q(container, '[data-vault-row="password"] [data-vault-copy]')?.getAttribute(
@@ -501,57 +516,21 @@ describe("VaultPanelBody — apps", () => {
     const { container } = await mount({
       onReveal: async () => ({ ok: true, value: "db-pass" }),
     });
-    await openApp(container, "db");
+    await openMade(container, "db");
     const row = q(container, '[data-vault-row="password"]')!;
     expect(row.querySelector("[data-vault-shown]")).toBeNull();
     await click(row.querySelector('button[aria-label="Show"]'));
     expect(row.querySelector("[data-vault-shown]")?.textContent).toBe("db-pass");
-  });
-
-  // Milo's Values said "No values yet" beside Apps listing apidev 3, appdev 2
-  // (stress run 2, 2026-10-09): the page shows what every app shares, and an
-  // empty share is not an empty vault.
-  it("says the apps keep values of their own when the environment shares none, and goes to them", async () => {
-    const view: VaultView = {
-      ...VAULT_FIXTURE,
-      notLive: [],
-      scopes: VAULT_FIXTURE.scopes.map((scope) =>
-        scope.kind === "shared" ? { ...scope, values: [] } : scope,
-      ),
-    };
-    const own = view.scopes
-      .filter((scope) => scope.kind === "runtime")
-      .reduce((sum, scope) => sum + scope.values.length, 0);
-    expect(own).toBeGreaterThan(0);
-    const { container } = await mount({ view });
-    expect(container.textContent).not.toContain("No values yet.");
-    expect(container.textContent).toContain(
-      `Nothing shared by every app yet. Your apps keep ${String(own)} value${own === 1 ? "" : "s"} of their own.`,
-    );
-    await click(button(container, "See them"));
-    expect(q(container, '[data-vault-view="apps"]')?.getAttribute("aria-selected")).toBe("true");
-  });
-
-  it("says an app has nothing of its own yet, with Add", async () => {
-    const { container } = await mount();
-    await openApp(container, "appstage");
-    expect(container.textContent).toContain("Nothing of its own yet.");
-    await click(button(container, "Add one"));
-    expect(q(container, "[data-vault-add]")?.textContent).toContain("New value for appstage only");
   });
 });
 
 describe("VaultPanelBody — search", () => {
   it("finds values by their name, key or value across every app", async () => {
     const { container } = await mount();
-    await click(q(container, 'button[aria-label="Search"]'));
     await typeInto(q(container, 'input[aria-label="Search"]'), "secret");
-    expect(cards(container)).toEqual([
-      "Stripe: STRIPE_SECRET_KEY",
-      "Security keys: SESSION_SECRET",
-    ]);
+    expect(parts(container)).toEqual(["Every app: STRIPE_SECRET_KEY,SESSION_SECRET"]);
     await typeInto(q(container, 'input[aria-label="Search"]'), "cart-vat");
-    expect(cards(container)).toEqual(["appdev: FEATURE_FLAGS"]);
+    expect(parts(container)).toEqual(["appdev: FEATURE_FLAGS"]);
   });
 });
 
@@ -561,20 +540,20 @@ describe("VaultPanelBody — states", () => {
     const { container } = await mount({ view: unread });
     expect(q(container, "[data-vault-skeleton]")).not.toBeNull();
     expect(container.querySelectorAll("[data-vault-row]")).toHaveLength(0);
-    expect(hasButton(container, "Add")).toBe(false);
+    expect(button(container, "Add").disabled).toBe(true);
   });
 
   it("says it couldn't read the vault above what it kept", async () => {
     const { container } = await mount({ view: { ...VAULT_FIXTURE, status: "failed" } });
     expect(q(container, "[data-vault-failed]")?.textContent).toBe("Couldn't read the vault");
-    expect(cards(container)).toContain("Addresses: API_URL");
+    expect(parts(container)[0]).toContain("API_URL");
   });
 });
 
 describe("VaultPanelBody — edit as text", () => {
   it("reviews each change with what it means and applies them one write each", async () => {
     const { container, writes } = await mount();
-    await fromMenu(container, "Edit as text");
+    await fromMenu(container, "Every app as text");
     const [plainText, sensitive] = [
       ...container.querySelectorAll<HTMLTextAreaElement>("[data-vault-text] textarea"),
     ];
@@ -605,7 +584,7 @@ describe("VaultPanelBody — edit as text", () => {
 
   it("applies a guarded removal once the person says remove anyway", async () => {
     const { container, writes } = await mount();
-    await fromMenu(container, "Edit as text");
+    await fromMenu(container, "Every app as text");
     const sensitive = container.querySelectorAll<HTMLTextAreaElement>(
       "[data-vault-text] textarea",
     )[1];

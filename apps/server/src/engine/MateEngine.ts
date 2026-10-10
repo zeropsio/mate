@@ -45,7 +45,12 @@ import type { WakeKind } from "./ports.ts";
 import type { ConversationList, ConversationView } from "./read/conversationView.ts";
 import { unservedWire, type EngineWireShape } from "./wire/EngineWire.ts";
 
-export { brokeOffLine, conversationRowOf, restartLine } from "./read/conversationRow.ts";
+export {
+  brokeOffLine,
+  conversationRowOf,
+  restartLine,
+  rowStateOf,
+} from "./read/conversationRow.ts";
 
 /** Session identity for the engine's provider wiring. */
 export { providerThreadOf } from "./pump/TurnPump.ts";

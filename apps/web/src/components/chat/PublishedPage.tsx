@@ -1,6 +1,8 @@
-import type { CallResultPage, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import { mateEngineHostAtom } from "@t3tools/client-runtime/data";
+import type { CallResultPage, EnvironmentId, PageHeight, ThreadId } from "@t3tools/contracts";
 import { Maximize2Icon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useMateImage } from "~/assets/MateImages";
 import { useTheme } from "~/hooks/useTheme";
@@ -8,10 +10,12 @@ import { Button } from "../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { keepFrameOnMove } from "./keepFrameOnMove";
 import {
+  knownPageHeights,
+  pageHeightToRecord,
   PAGE_THEME_VARS,
   linkToOpen,
   pageDocument,
-  pageFrameHeight,
+  pageStandHeight,
   readPageMessage,
   themeMessage,
   type PageTheme,
@@ -100,6 +104,10 @@ export interface PublishedPageFrameProps {
   /** The page's HTML; null while it is read. */
   readonly html: string | null;
   readonly theme: PageTheme;
+  /** The heights the page was laid out at, by width: where it stands before it says its own. */
+  readonly heights?: ReadonlyArray<PageHeight>;
+  /** The page settled at a height at its frame's width: once per frame. */
+  readonly onMeasured?: (width: number, height: number) => void;
   /** It could not be read. */
   readonly failed?: boolean;
   /** Drawn full size: the frame takes its box's height, not the page's. */
@@ -108,9 +116,12 @@ export interface PublishedPageFrameProps {
 
 /**
  * The page in its frames: two deep, sandboxed with scripts alone, its navigation refused before
- * it leaves (`@t3tools/client-runtime/zerops/publishedPage`). The frame stands at the shared cap from its first paint
- * until the page says its height, then eases to it, at most the cap: a taller page scrolls inside
- * it. When the page's own frame loads again — a navigation the wrapper refused — the wrapper says
+ * it leaves (`@t3tools/client-runtime/zerops/publishedPage`). The page stands at its full height,
+ * like the answer it is — at most 2000 px, past which it scrolls inside. From its first paint the
+ * frame stands at the height recorded at the nearest width, so a page measured once never moves;
+ * only its very first landing starts from a modest box and glides, once, to the page's height. The
+ * page settled, the frame reports its height at its width (`onMeasured`) for later views. When the
+ * page's own frame loads again — a navigation the wrapper refused — the wrapper says
  * the page left, and it is taken down and never heard from again; the person may show it again.
  *
  * This frame loads again too, whenever the conversation moves it (React reordering its rows, the
@@ -120,12 +131,36 @@ export interface PublishedPageFrameProps {
  * counting them closed every page that landed as its run settled.
  */
 export function PublishedPageFrame(props: PublishedPageFrameProps) {
-  const { title, html, theme, failed = false, full = false } = props;
+  const { title, html, theme, heights = [], onMeasured, failed = false, full = false } = props;
   const boxRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const near = useNearView(boxRef);
   useEffect(() => (boxRef.current === null ? undefined : keepFrameOnMove(boxRef.current)), []);
   const [content, setContent] = useState<number | null>(null);
+  // The frame's width, read before its first paint: which recorded height it stands at.
+  const [width, setWidth] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (box === null) return;
+    const read = () => setWidth(Math.round(box.getBoundingClientRect().width));
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
+  // The page's height once it holds still after it loads is what a later view stands at: once per
+  // frame and width, never what the person's clicks in it made of it later.
+  const reportedAt = useRef<number | null>(null);
+  const measured = useEffectEvent((at: number, tall: number) => {
+    if (reportedAt.current === at) return;
+    reportedAt.current = at;
+    onMeasured?.(at, tall);
+  });
+  useEffect(() => {
+    if (full || content === null || width === null) return;
+    const settled = setTimeout(() => measured(width, content), PAGE_SETTLE_MS);
+    return () => clearTimeout(settled);
+  }, [full, content, width]);
   const [left, setLeft] = useState(false);
   /** Each showing of the page is a frame of its own. */
   const [showing, setShowing] = useState(0);
@@ -166,13 +201,21 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
     frameRef.current?.contentWindow?.postMessage(themeMessage(theme), "*");
   }, [theme, opened]);
 
-  const height = full ? null : pageFrameHeight(content);
+  const height = full || width === null ? null : pageStandHeight({ content, heights, width });
+  // It glides only once it stood: its first height is placed, never eased into from a default.
+  const [glides, setGlides] = useState(false);
+  useEffect(() => {
+    if (height === null || glides) return;
+    const frame = requestAnimationFrame(() => setGlides(true));
+    return () => cancelAnimationFrame(frame);
+  }, [height, glides]);
   const shown = document_ !== null && !left && near;
   return (
     <div
       ref={boxRef}
       className="published-page-frame"
       data-full={full ? "" : undefined}
+      data-glide={glides ? "" : undefined}
       data-state={left ? "left" : failed ? "failed" : document_ === null ? "reading" : "ready"}
       style={height === null ? undefined : { height }}
     >
@@ -208,16 +251,39 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
   );
 }
 
+/** How long a page's height holds still before it is the height a later view stands at. */
+const PAGE_SETTLE_MS = 600;
+
 /**
- * A page the Mate published, above its answer: its title, the page in place, and the page full
- * size on request. Its bytes come from the Mate's asset store by the call's reference.
+ * A page the Mate published, above its answer: its title, the page in place at its full height,
+ * and the page full size on request. Its bytes come from the Mate's asset store by the call's
+ * reference; the height it settles at is recorded on its call for every later view.
  */
 export function PublishedPage(props: {
   readonly page: CallResultPage;
+  /** Its call's engine item, where its heights are recorded. */
+  readonly itemId: string | null;
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
-  const { page, environmentId, threadId } = props;
+  const { page, itemId, environmentId, threadId } = props;
+  const host = useAtomValue(mateEngineHostAtom);
+  const heights = useMemo(
+    () => (itemId === null ? (page.heights ?? []) : knownPageHeights(itemId, page.heights)),
+    [itemId, page.heights],
+  );
+  const onMeasured = (width: number, content: number) => {
+    if (itemId === null || host === null) return;
+    const record = pageHeightToRecord({ itemId, heights, width, content });
+    if (record === null) return;
+    host.pages.recordHeight({
+      environmentId,
+      conversationId: threadId,
+      itemId,
+      width: record[0],
+      height: record[1],
+    });
+  };
   const reference = useMemo(
     () => ({
       environmentId,
@@ -252,7 +318,14 @@ export function PublishedPage(props: {
           <Maximize2Icon />
         </Button>
       </figcaption>
-      <PublishedPageFrame title={page.title} html={html} theme={theme} failed={failed} />
+      <PublishedPageFrame
+        title={page.title}
+        html={html}
+        theme={theme}
+        heights={heights}
+        onMeasured={onMeasured}
+        failed={failed}
+      />
       <Dialog open={full} onOpenChange={setFull}>
         <DialogPopup className="max-w-6xl">
           <DialogHeader>

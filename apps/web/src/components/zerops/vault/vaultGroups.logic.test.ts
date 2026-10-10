@@ -15,6 +15,7 @@ import {
   usedByWords,
   vaultGroups,
   vaultNeeds,
+  vaultSections,
 } from "./vaultGroups.logic";
 
 const value = (key: string, over: Partial<VaultValue> = {}): VaultValue => ({
@@ -140,6 +141,63 @@ describe("groups", () => {
   });
 });
 
+describe("the one list", () => {
+  /** Each part as "title: label, label", then the services Zerops runs. */
+  const listOf = (view: VaultView, query = "") => {
+    const list = vaultSections(view, query);
+    return [
+      ...list.sections.map(
+        (section) => `${section.title}: ${section.entries.map((entry) => entry.label).join(", ")}`,
+      ),
+      ...list.made.map((scope) => `made: ${scope.hostname}`),
+    ];
+  };
+  const withDb = (view: VaultView): VaultView => ({
+    ...view,
+    scopes: [
+      ...view.scopes,
+      {
+        ...SHARED,
+        ref: { kind: "service", serviceId: "svc-db" },
+        id: "svc-db",
+        hostname: "db",
+        kind: "managed",
+        serviceType: "postgresql@17",
+        editable: false,
+        values: [value("password", { madeByZerops: true, sensitive: true })],
+      },
+    ],
+  });
+
+  it("lists what every app gets, then each app's own, then what Zerops made, each name whole in words", () => {
+    const view = withDb(
+      viewOf(
+        [value("LOG_LEVEL"), value("STRIPE_SECRET_KEY"), value("API_URL")],
+        [value("SMTP_HOST")],
+      ),
+    );
+    expect(listOf(view)).toEqual([
+      "Every app: Stripe secret key, API URL, Log level",
+      "mailpit: SMTP host",
+      "made: db",
+    ]);
+  });
+
+  it("leaves out a part that holds nothing", () => {
+    expect(listOf(viewOf([], [value("SMTP_HOST")]))).toEqual(["mailpit: SMTP host"]);
+    expect(listOf(viewOf([value("LOG_LEVEL")]))).toEqual(["Every app: Log level"]);
+  });
+
+  it("keeps what a search finds in every part, by name, key or value", () => {
+    const view = withDb(
+      viewOf([value("LOG_LEVEL", { value: "debug" }), value("API_URL")], [value("SMTP_HOST")]),
+    );
+    expect(listOf(view, "debug")).toEqual(["Every app: Log level"]);
+    expect(listOf(view, "smtp")).toEqual(["mailpit: SMTP host"]);
+    expect(listOf(view, "db")).toEqual(["made: db"]);
+  });
+});
+
 describe("secrets", () => {
   it.each([
     ["JWT_SECRET", true],
@@ -203,9 +261,7 @@ describe("who uses a value", () => {
   it("names the apps whose deploy config uses it, or says none does", () => {
     const api = VAULT_FIXTURE.scopes[0]!.values.find((candidate) => candidate.key === "API_URL")!;
     expect(usedByWords(api)).toBe("Used by appdev and appstage.");
-    expect(usedByWords(value("UNUSED"))).toBe(
-      "No app uses it yet: an app's deploy config has to name it.",
-    );
+    expect(usedByWords(value("UNUSED"))).toBe("No app uses it yet.");
   });
 });
 

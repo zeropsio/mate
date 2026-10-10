@@ -28,6 +28,18 @@ export type CallResultPicture = typeof CallResultPicture.Type;
 /** The largest page a call records: zcp's own cap on a published page (`ops.PageMaxBytes`). */
 export const PAGE_MAX_BYTES = 8 * 1024 * 1024;
 
+/** The tallest a page stands in a conversation, in CSS pixels; a taller one scrolls inside. */
+export const PAGE_MAX_HEIGHT = 2000;
+/** The widest and narrowest a page's frame is measured at, in CSS pixels. */
+export const PAGE_WIDTH_MIN = 200;
+export const PAGE_WIDTH_MAX = 4000;
+/** How many widths a page's heights are kept for: the newest. */
+export const PAGE_HEIGHTS_KEPT = 12;
+
+/** A page's height as a client laid it out: `[width, height]`, in CSS pixels. */
+export const PageHeight = Schema.Tuple([Schema.Int, Schema.Int]);
+export type PageHeight = typeof PageHeight.Type;
+
 /**
  * A page the agent published (`zerops_publish_page`) for the person to see above its reply: a
  * self-contained HTML document kept in the Mate's asset store, by reference as a picture is, with
@@ -38,6 +50,11 @@ export const CallResultPage = Schema.Struct({
   title: Schema.String,
   bytes: Schema.Number,
   publishedAt: Schema.Number,
+  /**
+   * The page's height at each width a client laid it out at (`engine.recordPageHeight`), by
+   * width: a later view paints at the nearest one's from its first frame.
+   */
+  heights: Schema.optionalKey(Schema.Array(PageHeight)),
 });
 export type CallResultPage = typeof CallResultPage.Type;
 

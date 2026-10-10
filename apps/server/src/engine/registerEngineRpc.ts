@@ -31,6 +31,7 @@ type EngineRpcTag =
   | typeof WS_METHODS.engineReadRun
   | typeof WS_METHODS.engineReadDetail
   | typeof WS_METHODS.engineReceipt
+  | typeof WS_METHODS.engineRecordPageHeight
   | typeof WS_METHODS.engineSend
   | typeof WS_METHODS.engineStop
   | typeof WS_METHODS.engineContinue
@@ -84,6 +85,7 @@ export const registerEngineRpc = ({ engine, source, subject, admit }: RegisterEn
     [WS_METHODS.engineReadRun]: (input) => wire.readRun(input),
     [WS_METHODS.engineReadDetail]: (input) => wire.readDetail(input),
     [WS_METHODS.engineReceipt]: (input) => wire.receipt(input),
+    [WS_METHODS.engineRecordPageHeight]: (input) => wire.recordPageHeight(input),
     [WS_METHODS.engineSend]: (input) =>
       admit(
         WS_METHODS.engineSend,

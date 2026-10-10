@@ -44,6 +44,8 @@ import {
   type EngineReadEarlierInput,
   type EngineReadRunInput,
   type EngineReceiptInput,
+  type EngineRecordPageHeightInput,
+  type EngineRecordPageHeightResult,
   type EngineReceiptResult,
   type EngineRowsFrame,
   type EngineSendInput,
@@ -110,6 +112,10 @@ export interface EngineWireShape {
   readonly receipt: (
     input: EngineReceiptInput,
   ) => Effect.Effect<EngineReceiptResult, EngineWireError>;
+  /** A height a client laid a published page out at, kept so a later view paints at it. */
+  readonly recordPageHeight: (
+    input: EngineRecordPageHeightInput,
+  ) => Effect.Effect<EngineRecordPageHeightResult, EngineWireError>;
   readonly send: (
     input: EngineSendInput,
     caller: WireCaller,
@@ -192,6 +198,7 @@ export const unservedWire: EngineWireShape = {
   readRun: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   readDetail: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   receipt: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
+  recordPageHeight: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   send: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   stop: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   continue: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
@@ -851,6 +858,19 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       }).pipe(Effect.catch(wireError(UNREADABLE)));
     };
 
+    const recordPageHeight: EngineWireShape["recordPageHeight"] = (input) => {
+      const refused = protocolRefusal(input.protocol);
+      if (refused !== undefined) return Effect.succeed({ _tag: "Unserved", unserved: refused });
+      return records
+        .recordPageHeight(input.conversationId, input.itemId, input.width, input.height)
+        .pipe(
+          Effect.map((kept) =>
+            kept ? { _tag: "Recorded" as const } : { _tag: "Missing" as const },
+          ),
+          Effect.catch(wireError(UNREADABLE)),
+        );
+    };
+
     /** A person's command, under the client's id: the receipt, a refusal by the engine's rules. */
     const command = (
       protocol: number,
@@ -925,6 +945,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       readEarlier,
       readRun,
       readDetail,
+      recordPageHeight,
       receipt,
       send: (input, caller) =>
         // A crewmate's chat takes a person's message through its crew (`zerops.crew.command`),

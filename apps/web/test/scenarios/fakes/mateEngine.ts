@@ -12,6 +12,7 @@ import {
   EngineCallResult,
   EngineConversationFrame,
   EngineDetail,
+  EngineRecordPageHeightResult,
   EnginePage,
   EngineReceiptResult,
   EngineRowsFrame,
@@ -45,6 +46,7 @@ const encodeCall = Schema.encodeSync(EngineCallResult);
 const encodeReceipt = Schema.encodeSync(EngineReceiptResult);
 const encodePage = Schema.encodeSync(EnginePage);
 const encodeDetail = Schema.encodeSync(EngineDetail);
+const encodeRecordPageHeight = Schema.encodeSync(EngineRecordPageHeightResult);
 const encodeThreadItem = Schema.encodeSync(OrchestrationThreadStreamItem);
 const encodeSnapshot = Schema.encodeSync(OrchestrationThreadDetailSnapshot);
 
@@ -132,6 +134,8 @@ export class MateEngineFake {
   /** Text streaming now, by item and stream: a subscriber that opens hears it whole. */
   private readonly streamed = new Map<string, string>();
   private readonly details = new Map<string, string>();
+  /** Every height a client recorded for a page: its call, the width, the height. */
+  readonly pageHeights: Array<[string, number, number]> = [];
   /** Told when the person answers a request: the fixture's agent replies. */
   readonly onAnswer: Array<(request: Request) => void> = [];
   /** A refusal the next answer gets instead of being applied (the engine's rule word). */
@@ -968,6 +972,28 @@ export class MateEngineFake {
           id,
           encodeDetail({ _tag: "Detail", text: whole, from: 0, to: total, total }),
         );
+        return true;
+      }
+      case WS_METHODS.engineRecordPageHeight: {
+        // As the server keeps them: beside the page's call, read with it on every later view.
+        const item = this.items.get(String(payload.itemId)) as
+          | { kind: string; result?: { page?: { heights?: Array<[number, number]> } } }
+          | undefined;
+        const page = item?.kind === "call" ? item.result?.page : undefined;
+        if (page === undefined) {
+          this.mate.reply(socket, id, encodeRecordPageHeight({ _tag: "Missing" }));
+          return true;
+        }
+        const width = Math.round(Number(payload.width));
+        const height = Math.min(2000, Math.max(1, Math.round(Number(payload.height))));
+        page.heights = [
+          ...(page.heights ?? []).filter(([at]) => at !== width),
+          [width, height] as [number, number],
+        ]
+          .slice(-12)
+          .sort((a, b) => a[0] - b[0]);
+        this.pageHeights.push([String(payload.itemId), width, height]);
+        this.mate.reply(socket, id, encodeRecordPageHeight({ _tag: "Recorded" }));
         return true;
       }
       case ORCHESTRATION_WS_METHODS.subscribeThread:

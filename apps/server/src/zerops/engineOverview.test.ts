@@ -23,6 +23,7 @@ import {
   type ViewRequest,
   type ViewRun,
 } from "../engine/MateEngine.ts";
+import { rowStateOf } from "../engine/read/conversationRow.ts";
 import { chatsSource, engineAttentionReads, engineShellOf } from "./engineOverview.ts";
 import { mateAttentionOf } from "./zeropsAttentionValue.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
@@ -180,6 +181,40 @@ describe("HQ's overview of a Mate on the engine", () => {
     assert.strictEqual(main?.latestTurn?.state ?? null, turn);
     assert.strictEqual(resolveThreadStatus(shell).kind, kind);
   });
+
+  // Milo, 2026-10-10: once the turn that asked ended, the face went done, then idle, and the menu
+  // dropped "Needs an answer", while the card still stood open and the row still waited on it.
+  it.each<[string, Partial<ConversationView>]>([
+    ["while the turn that asked runs on", { activeRun: run(1, { state: "running" }) }],
+    ["after the turn that asked ended", { lastEnded: ended(1, { kind: "completed" }) }],
+  ])(
+    "a value asked of the person reads needs you wherever the row waits on it: %s",
+    (_title, patch) => {
+      const asked = view({
+        ...patch,
+        openRequests: [
+          request({
+            kind: "vault",
+            key: "STRIPE_SECRET_KEY",
+            scope: { kind: "shared" },
+            sensitive: true,
+            reason: "Stripe charges cards.",
+          }),
+        ],
+      });
+      const row = rowStateOf(asked);
+      const shell = engineShellOf(asked);
+      const waits = row.kind === "waiting" && row.on === "vault";
+      assert.strictEqual(shell.hasPendingUserInput, waits);
+      assert.strictEqual(resolveThreadStatus(shell).kind === "input", waits);
+      const attention = mateAttentionOf([shell], undefined, {
+        environmentId: EnvironmentId.make("env-1"),
+        epoch: 3,
+        incarnation: "i",
+      } as never);
+      assert.strictEqual(attention.questions.length, waits ? 1 : 0);
+    },
+  );
 
   it("a guarded restart stays on its run without a session failure", () => {
     const shell = engineShellOf(

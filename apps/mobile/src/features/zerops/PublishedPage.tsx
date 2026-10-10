@@ -1,9 +1,18 @@
-import type { CallResultPage, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import { mateEngineHostAtom } from "@t3tools/client-runtime/data";
 import {
+  PAGE_MAX_HEIGHT,
+  type CallResultPage,
+  type EnvironmentId,
+  type PageHeight,
+  type ThreadId,
+} from "@t3tools/contracts";
+import {
+  knownPageHeights,
   linkToOpen,
-  pageCapHeight,
   pageDocument,
-  pageFrameHeight,
+  pageHeightToRecord,
+  pageStandHeight,
   readPageMessage,
   themeMessage,
   type PageTheme,
@@ -16,6 +25,7 @@ import {
   View,
   useWindowDimensions,
   type GestureResponderEvent,
+  type LayoutChangeEvent,
 } from "react-native";
 import Animated, {
   Easing,
@@ -40,7 +50,10 @@ import {
   type PageTouchPoint,
 } from "./publishedPage.logic";
 
-/** The page eases from the cap to its own height as the web's frame does. */
+/** How long a page's height holds still before it is the height a later view stands at. */
+const PAGE_SETTLE_MS = 600;
+
+/** The page glides to its own height as the web's frame does. */
 const PAGE_GLIDE = { duration: 220, easing: Easing.out(Easing.cubic) } as const;
 
 /**
@@ -80,8 +93,11 @@ function usePageTheme(): PageTheme {
 
 /**
  * The page in a web view: the same wrapper as the web's frame (`pageDocument`), talking to the app
- * through the web view's bridge with a token of its own. It stands at the shared cap until the page
- * says its height, then glides to it; a taller page scrolls inside. When the page's frame loads
+ * through the web view's bridge with a token of its own. It stands at its full height, at most
+ * 2000 pt, past which it scrolls inside: from its first frame at the height recorded at the nearest
+ * width, so a page measured once never moves; only its very first landing starts from a modest box
+ * and glides, once, to the page's height. Settled, it reports that height for later views. When the
+ * page's frame loads
  * again — a navigation the wrapper refused — it is taken down; the person may show it again.
  */
 function PublishedPageFrame(props: {
@@ -90,9 +106,13 @@ function PublishedPageFrame(props: {
   readonly theme: PageTheme;
   readonly failed: boolean;
   readonly full?: boolean;
+  /** The heights the page was laid out at, by width: where it stands before it says its own. */
+  readonly heights?: ReadonlyArray<PageHeight>;
+  /** The page settled at a height at its view's width: once per view and width. */
+  readonly onMeasured?: (width: number, height: number) => void;
 }) {
-  const { title, html, theme, failed, full = false } = props;
-  const cap = pageCapHeight(useWindowDimensions().height);
+  const { title, html, theme, failed, full = false, heights = [], onMeasured } = props;
+  const [width, setWidth] = useState<number | null>(null);
   const [token] = useState(uuidv4);
   // The page is written once, in the colours it opened with; later colours reach it as a message.
   const [opened] = useState(theme);
@@ -110,11 +130,27 @@ function PublishedPageFrame(props: {
   const tappedAt = useRef<number | null>(null);
   const webView = useRef<WebView>(null);
 
-  const target = content === null ? cap : Math.min(cap, pageFrameHeight(content) ?? cap);
+  // Before the view says its width, the window's: the phone's recorded height, from the first frame.
+  const windowWidth = useWindowDimensions().width;
+  const target = pageStandHeight({ content, heights, width: width ?? windowWidth });
   const height = useSharedValue(target);
+  // Its first height is placed, never eased into; every height after it glides.
+  const placed = useRef(false);
   useEffect(() => {
-    height.set(withTiming(target, PAGE_GLIDE));
+    if (placed.current) height.set(withTiming(target, PAGE_GLIDE));
+    else height.set(target);
+    placed.current = true;
   }, [height, target]);
+  // The page's height once it holds still is what a later view stands at: once per view and width.
+  const reportedAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (full || content === null || width === null || reportedAt.current === width) return;
+    const settled = setTimeout(() => {
+      reportedAt.current = width;
+      onMeasured?.(width, content);
+    }, PAGE_SETTLE_MS);
+    return () => clearTimeout(settled);
+  }, [full, content, width, onMeasured]);
   const heightStyle = useAnimatedStyle(() => ({ height: height.get() }));
 
   useEffect(() => {
@@ -191,7 +227,8 @@ function PublishedPageFrame(props: {
           mediaCapturePermissionGrantType="deny"
           mixedContentMode="never"
           setBuiltInZoomControls={false}
-          scrollEnabled={false}
+          // Inside only past its full height: otherwise the conversation scrolls, the page with it.
+          scrollEnabled={content !== null && content > PAGE_MAX_HEIGHT}
           bounces={false}
           overScrollMode="never"
           nestedScrollEnabled
@@ -228,10 +265,14 @@ function PublishedPageFrame(props: {
     );
 
   if (full) return <View className="flex-1">{body}</View>;
+  const measure = (event: LayoutChangeEvent) =>
+    setWidth(Math.round(event.nativeEvent.layout.width));
   return (
+    // The page is the answer: on the conversation's own ground, with no card around it.
     <Animated.View
-      className="overflow-hidden rounded-[14px] border border-border bg-card"
+      className="overflow-hidden rounded-[14px]"
       style={heightStyle}
+      onLayout={measure}
     >
       {body}
     </Animated.View>
@@ -244,10 +285,29 @@ function PublishedPageFrame(props: {
  */
 export function PublishedPage(props: {
   readonly page: CallResultPage;
+  /** Its call's engine item, where its heights are recorded. */
+  readonly itemId: string | null;
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
-  const { page, environmentId, threadId } = props;
+  const { page, itemId, environmentId, threadId } = props;
+  const host = useAtomValue(mateEngineHostAtom);
+  const heights = useMemo(
+    () => (itemId === null ? (page.heights ?? []) : knownPageHeights(itemId, page.heights)),
+    [itemId, page.heights],
+  );
+  const onMeasured = (width: number, content: number) => {
+    if (itemId === null || host === null) return;
+    const record = pageHeightToRecord({ itemId, heights, width, content });
+    if (record === null) return;
+    host.pages.recordHeight({
+      environmentId,
+      conversationId: threadId,
+      itemId,
+      width: record[0],
+      height: record[1],
+    });
+  };
   const key = useMemo(
     () => ({
       environmentId,
@@ -287,7 +347,14 @@ export function PublishedPage(props: {
           />
         </Pressable>
       </View>
-      <PublishedPageFrame title={page.title} html={html} theme={theme} failed={failed} />
+      <PublishedPageFrame
+        title={page.title}
+        html={html}
+        theme={theme}
+        failed={failed}
+        heights={heights}
+        onMeasured={onMeasured}
+      />
       <Modal
         visible={full}
         animationType="slide"

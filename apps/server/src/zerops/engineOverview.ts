@@ -35,6 +35,7 @@ import { userAskPreviewText } from "@t3tools/shared/userAsk";
 import {
   brokeOffLine,
   conversationRowOf,
+  rowStateOf,
   type ConversationView,
   type MateEngineService,
   type ViewRun,
@@ -127,6 +128,12 @@ const sessionOf = (view: ConversationView, run: ViewRun, at: string): Orchestrat
 };
 
 /** The engine conversation as a V1 thread shell, for HQ's overview and the Mate's attention. */
+/** The row waits on a value asked of the person (`rowStateOf`): the one rule for needs you. */
+const waitsOnValue = (view: ConversationView): boolean => {
+  const state = rowStateOf(view);
+  return state.kind === "waiting" && state.on === "vault";
+};
+
 export const engineShellOf = (view: ConversationView): OrchestrationThreadShell => {
   const at = iso(view.updatedAt);
   const run = latestRunOf(view);
@@ -188,7 +195,10 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
         ? null
         : { role: "user", text: personText, createdAt: iso(person.at) },
     hasPendingApprovals: asked.some((request) => request.ask.kind === "approval"),
-    hasPendingUserInput: asked.some((request) => request.ask.kind !== "approval"),
+    // A value asked of the person outlives the turn that asked: the row waits on it, and so does
+    // every face and list read off this shell, until the person answers it.
+    hasPendingUserInput:
+      asked.some((request) => request.ask.kind !== "approval") || waitsOnValue(view),
     hasActionableProposedPlan: false,
     backgroundLiveness: view.activeRun === null ? view.background : null,
     pendingQuestion: typeof firstQuestion === "string" ? lineOf(firstQuestion) : null,

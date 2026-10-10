@@ -7,7 +7,7 @@ import { serviceVariableFamily, serviceVariablesScope } from "../families/servic
 import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
-import { vault } from "./vault.ts";
+import { isMateOwned, vault } from "./vault.ts";
 import type { VaultView } from "./vaultModel.ts";
 
 const PROJECT = "p1";
@@ -444,6 +444,37 @@ describe("vault", () => {
     expect(ready.complete).toBe(true);
     expect(viewOf(base).complete).toBe(false);
   });
+});
+
+// Milo, 2026-10-10: a value the card saved to the project's env was never in the Vault's Shared
+// list, because its name was one the vault keeps hidden: the card now takes only names it lists.
+describe("vault — what the secret card saves", () => {
+  /** The row the platform holds once the card's add lands: a USER row, its secret redacted. */
+  const saved = (key: string) =>
+    env(key, "REDACTED", { sensitive: true, created: T(16), lastUpdate: T(16) });
+  it.each([
+    ["STRIPE_SECRET_KEY", true],
+    ["SMTP_PASSWORD", true],
+    ["MATE_PROBE_TOKEN", false],
+    ["ZCP_API_KEY", false],
+    ["GITEA_URL", false],
+    ["GIT_TOKEN", false],
+  ] as const)(
+    "a secret saved from the card stands in the vault's Shared list: %s, unless its name is the Mate's own",
+    (key, listed) => {
+      const view = viewOf(
+        base,
+        answered(SHARED_SCOPE, "projectVariables", [
+          { id: PROJECT, envList: [...SHARED_ROWS, saved(key)] },
+        ]),
+        answered(SERVICES_SCOPE, "serviceVariable", SERVICE_ROWS),
+      );
+      const shared = view.scopes.find((each) => each.id === "shared")?.values ?? [];
+      expect(shared.find((one) => one.key === key)?.sensitive ?? null).toBe(listed ? true : null);
+      // The card refuses exactly the names the list hides.
+      expect(isMateOwned(key)).toBe(!listed);
+    },
+  );
 });
 
 describe("vault — the Mate's own keys", () => {
