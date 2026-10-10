@@ -2,8 +2,9 @@
  * What the Mate engine needs from the product around it, as ports: who may
  * start a run (`RunAdmission`), what the platform says about the last
  * restart (`RestartEvidence`), where a conversation's agent works
- * (`AgentWorkspace`), how a call's pictures are claimed (`MessagePictures`) and what
- * another instance of a driver left on a thread (`HandedOverResume`). The engine imports these,
+ * (`AgentWorkspace`), how a call's pictures are claimed (`MessagePictures`), what
+ * another instance of a driver left on a thread (`HandedOverResume`) and what each provider
+ * reports of its signed-in account's usage (`ProviderUsageFeed`). The engine imports these,
  * never `zerops/` and no provider file but `ProviderService`;
  * `zerops/engineAdapters.ts` implements them, and outside Zerops they allow
  * and read nothing.
@@ -13,6 +14,7 @@
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import type * as Effect from "effect/Effect";
+import type * as Stream from "effect/Stream";
 import type { MateRestart } from "@t3tools/contracts";
 import type {
   ChatAttachment,
@@ -21,6 +23,8 @@ import type {
   RunTrigger,
   RuntimeMode,
 } from "@t3tools/contracts";
+
+import type { ProviderUsageReport } from "./domain/command.ts";
 
 /**
  * A wake's kind: today's triggers that start a run with no person at the keyboard. The
@@ -143,3 +147,19 @@ export class HandedOverResume extends Context.Service<
     }) => Effect.Effect<unknown>;
   }
 >()("t3/engine/ports/HandedOverResume") {}
+
+/** One provider instance's word on the usage of the account it is signed in to. */
+export interface InstanceUsage {
+  readonly instanceId: string;
+  readonly usage: ProviderUsageReport;
+}
+
+/**
+ * What each provider instance reports of its signed-in account's usage: the reports it holds now,
+ * then the reports again each time one changes (a probe, a sign-in). Only an instance signed in
+ * and whose windows were read reports. Absent, a usage pause waits for its reset or the person.
+ */
+export class ProviderUsageFeed extends Context.Service<
+  ProviderUsageFeed,
+  { readonly reports: Stream.Stream<ReadonlyArray<InstanceUsage>> }
+>()("t3/engine/ports/ProviderUsageFeed") {}

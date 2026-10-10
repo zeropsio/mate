@@ -2,8 +2,8 @@
  * The Mate engine's ports, implemented for Zerops: a run is admitted by
  * `ZeropsTurnAdmission.admitRun` (D6), the restart is read by
  * `ZeropsRestartRead` and worded as V1 words it, and the agent works in the
- * server's own directory, or a crewmate where its crew says. Outside Zerops nothing is gated and
- * nothing is read.
+ * server's own directory, or a crewmate where its crew says; the providers' usage reaches it from
+ * the provider registry everywhere. Outside Zerops nothing is gated and nothing is read.
  *
  * @module engineAdapters
  */
@@ -21,6 +21,7 @@ import {
   claimMessageAttachments,
   releaseClaimedAttachments,
 } from "../orchestration/Services/MessageAttachments.ts";
+import { serverProviderUsage } from "../engineProviderUsage.ts";
 import { serverHandedOverResume } from "../engineSessionDirectory.ts";
 import {
   AgentWorkspace,
@@ -182,4 +183,5 @@ export const engineAdaptersLayer = Layer.mergeAll(
   serverWorkspace,
   serverMessagePictures,
   serverHandedOverResume,
+  serverProviderUsage,
 );
