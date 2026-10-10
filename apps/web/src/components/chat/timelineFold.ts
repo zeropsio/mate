@@ -62,6 +62,30 @@ export function foldTimelineWork({
     for (const { row } of below) row.style.translate = "";
     release();
   };
+  // The rows under the card, held at their distance from its edge: from the first frame the
+  // fold waits on the list, as what the settle swapped in the card already eases its height
+  // (Milo's usage limit: the notice under the card trailed its edge 8.4 px on a 30 fps frame),
+  // and again as the fold starts, once the list has laid out what the settle brought.
+  const capture = () => {
+    below.length = 0;
+    const elements = rows();
+    const own = elements.find(({ row }) => row.contains(above));
+    holder = own?.row ?? null;
+    // Card-local geometry; row identities and the viewport come from the owning list.
+    slice = above.closest<HTMLElement>("[data-card-slice]");
+    if (own === undefined || holder === null || slice === null) return;
+    const bottom = slice.getBoundingClientRect().bottom;
+    // Panel carry translates the card inside its row; it is motion, not layout spacing.
+    const inset = holder.getBoundingClientRect().bottom - bottom + translateOf(slice);
+    for (const { row, position } of elements) {
+      const box = row.getBoundingClientRect();
+      if (row !== holder && position > own.position && box.height > 0)
+        // The list may still place siblings using the holder's previous measured size.
+        // Keep its spacing, rather than capturing that temporary overlap as the offset.
+        below.push({ row, offset: position - own.position - own.size + inset });
+    }
+    placed?.observe(slice);
+  };
   const cancel = foldWork({
     above,
     from,
@@ -73,28 +97,13 @@ export function foldTimelineWork({
           viewport()?.hasAttribute(GLIDING_ATTRIBUTE) === true ||
           arriving();
         if (!busy || waited >= WAIT_AT_MOST_FRAMES) return true;
+        if (waited === 0) capture();
         waited += 1;
         return false;
       },
       start: () => {
         start();
-        const elements = rows();
-        const own = elements.find(({ row }) => row.contains(above));
-        holder = own?.row ?? null;
-        // Card-local geometry; row identities and the viewport come from the owning list.
-        slice = above.closest<HTMLElement>("[data-card-slice]");
-        if (own === undefined || holder === null || slice === null) return;
-        const bottom = slice.getBoundingClientRect().bottom;
-        // Panel carry translates the card inside its row; it is motion, not layout spacing.
-        const inset = holder.getBoundingClientRect().bottom - bottom + translateOf(slice);
-        for (const { row, position } of elements) {
-          const box = row.getBoundingClientRect();
-          if (row !== holder && position > own.position && box.height > 0)
-            // The list may still place siblings using the holder's previous measured size.
-            // Keep its spacing, rather than capturing that temporary overlap as the offset.
-            below.push({ row, offset: position - own.position - own.size + inset });
-        }
-        placed?.observe(slice);
+        capture();
       },
       resize: (taken, shrink) => {
         const scroller = viewport();
