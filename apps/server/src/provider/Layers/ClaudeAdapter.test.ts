@@ -977,6 +977,27 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // Milo's stress run 6 (U3): Claude took two results in one turn, and nothing said so; the engine
+  // reads Claude's idle as its word that every background result reached the model.
+  it.effect("asks Claude to say when it is idle with every background result handed over", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      assert.equal(
+        harness.getLastCreateQueryInput()?.options.env?.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS,
+        "1",
+      );
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("forwards Claude thinking toggle for models that support it", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

@@ -140,6 +140,8 @@ function render(input: {
   isWorking?: boolean;
   /** The helpers' finishes, from their fold, as the conversation passes them. */
   helpers?: boolean;
+  /** The Mate is out of reach: since when, in its notice's words. */
+  away?: { readonly since: string; readonly words: string };
 }) {
   const records = {
     runs: input.runs.map((run) => decode(run)),
@@ -162,6 +164,7 @@ function render(input: {
     turnDiffSummaries: [],
     supportsConversationRollback: false,
     ...(input.paged ? { cardPaging: engineCardPagingOfRecords(key, records) } : {}),
+    ...(input.away === undefined ? {} : { away: input.away }),
     ...(input.helpers
       ? {
           helperFinishes: helperFinishesOf(
@@ -870,6 +873,88 @@ it.each([
       `card of ${run3}`,
       "The third second-wave helper ran again.",
     ]);
+  },
+);
+
+// Milo's stress run 6 (R2, R5): a person's run that only wrote its answer drew no card at all, where
+// run 5 showed "Milo wrote 10s".
+it.each([
+  { held: "live, every item as it streamed in", paged: false },
+  { held: "after a reload", paged: true },
+])("a run that only writes its answer keeps its card, which says it wrote: $held", ({ paged }) => {
+  const rows = render({
+    runs: [
+      engineRun(key.conversationId, 1, {
+        queuedAt: t0,
+        admittedAt: t0,
+        startedAt: t0,
+        endedAt: t0 + 10_000,
+        summary: { items: 2, calls: {}, answerItemId: `${run1}/i/2`, lastItemSeq: 2 },
+      } as never),
+    ],
+    items: [
+      personItem(run1, 1, "Without tools, list ten checks.", { at: t0 }),
+      noteItem(run1, 2, "1. The app builds.", { at: t0 + 9_500, answer: true } as never),
+    ],
+    paged,
+  });
+  const card = rows.find(
+    (row) => (row.kind === "record" || row.kind === "work-line") && row.turnId === run1,
+  );
+  expect(card, "the run's card").toBeDefined();
+  const status = card!.kind === "record" ? card!.status! : (card as never as { live: boolean });
+  expect(
+    nowLineWords(
+      nowLineOf({
+        status: status as never,
+        now: card!.kind === "record" ? card!.now : null,
+        answering: false,
+        compacting: false,
+        speaker: "Milo",
+        effort: null,
+      }),
+    ),
+  ).toMatch(/^Milo wrote /);
+});
+
+// Milo's stress run 6 (V +0:25 → +0:55): through a planned restart the card said "Thinking", its
+// clock ticking 0:06 → 0:36, while the notice said Milo was restarting.
+it.each([
+  { doing: "thinking", items: [] as Item[] },
+  {
+    doing: "running a command",
+    items: [
+      { ...call(2, 2_000, { step: "command", tool: { name: "Bash" }, state: "running" } as never) },
+    ] as Item[],
+  },
+])(
+  "while the Mate is out of reach its live card says what its notice says, its clock standing still: $doing",
+  ({ items }) => {
+    const since = new Date(t0 + 6_000).toISOString();
+    const card = cardOf(
+      render({
+        runs: [
+          stressRun({ state: "running", turnState: "running", endedAt: null, end: null } as never),
+        ],
+        items: [personItem(run1, 1, "Run a short tree", { at: t0 }), ...items],
+        isWorking: true,
+        away: { since, words: "Milo is restarting." },
+      }),
+    );
+    expect(card.status?.live).toBe(true);
+    expect(card.status?.waitingSince).toBe(since);
+    expect(
+      nowLineWords(
+        nowLineOf({
+          status: card.status!,
+          now: card.now,
+          answering: card.answering,
+          compacting: false,
+          speaker: "Milo",
+          effort: null,
+        }),
+      ),
+    ).toBe("Milo is restarting.");
   },
 );
 

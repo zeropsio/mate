@@ -2097,6 +2097,16 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       }
       return;
     }
+    case "agent-caught-up": {
+      // One turn may take several results (Claude folds what finished into the turn that runs,
+      // and hands a batch over at once): its word that nothing waits ends every one still due.
+      const due = b.state.wakes[turnDueWakeId(b)];
+      if (b.state.reportsDue === 0 && due === undefined) return;
+      b.emit({ _tag: "ReportsTaken", reason: "the agent took every finished result" });
+      if (due !== undefined)
+        b.emit({ _tag: "WakeCancelled", wakeId: due.id, reason: "the agent took every result" });
+      return;
+    }
     case "usage-reset-known": {
       // A limit whose reset was unknown: its probe gives way to a resume at the known time.
       const probe = Object.values(b.state.wakes).find((wake) => wake.kind === "usage-probe");

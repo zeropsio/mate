@@ -479,6 +479,68 @@ describe("an update over work a restart lost", () => {
   );
 });
 
+// Milo's stress run 6 (U3): two results reached Milo in the turn that gave the final table, and the
+// update waited 35 s more for turns that never came.
+describe("an update over results one turn took together", () => {
+  it.effect.each([
+    {
+      when: "they finished while the turn worked",
+      script: (w: EngineWorld) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => helper(agent, thread, "h1"));
+          yield* w.agent((agent, thread) => helper(agent, thread, "h2"));
+          yield* w.agent((agent, thread) => reportsBack(agent, thread, "h1"));
+          yield* w.agent((agent, thread) => reportsBack(agent, thread, "h2"));
+          yield* w.agent((agent, thread) => agent.say(thread, "Both helpers are back."));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+        }),
+    },
+    {
+      when: "they finished after it and one turn of its own took both",
+      script: (w: EngineWorld) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => helper(agent, thread, "h1"));
+          yield* w.agent((agent, thread) => helper(agent, thread, "h2"));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.agent((agent, thread) => reportsBack(agent, thread, "h1"));
+          yield* w.agent((agent, thread) => reportsBack(agent, thread, "h2"));
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          yield* w.agent((agent, thread) => agent.say(thread, "Both helpers are back."));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+        }),
+    },
+  ])(
+    "an update goes ahead once the agent says every finished result reached it: $when",
+    ({ script }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* makeEngineWorld({ driver: "claudeAgent" });
+          yield* w.boot;
+          yield* w.tell({
+            _tag: "AssignAgent",
+            agent: {
+              instanceId: "claudeAgent",
+              driver: "claudeAgent",
+              model: "m1",
+              profile: { kind: "mate" },
+            },
+          });
+          yield* w.tell({ _tag: "Send", text: "send helpers off" });
+          yield* script(w);
+          expect(
+            new Set(
+              (yield* blockersNow(w)).map((reason) => reason.slice(reason.indexOf(": ") + 2)),
+            ),
+          ).toEqual(new Set(["finished background work its agent has not taken up"]));
+          yield* w.agent((agent, thread) => agent.caughtUp(thread));
+          yield* w.settle;
+          expect(yield* blockersNow(w)).toEqual([]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+});
+
 describe("an update over finished background work", () => {
   it.effect("an update goes ahead when the agent never takes up its finished background work", () =>
     Effect.scoped(

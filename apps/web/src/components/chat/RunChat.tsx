@@ -3120,6 +3120,9 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
       return <span className="run-now-verb">{severalCallsWords(line.calls)}</span>;
     case "waiting":
       return <span className="run-now-verb">{nowLineWords(line)}</span>;
+    // Out of reach: what the notice says, held, never a sign of work going on.
+    case "away":
+      return <span className="run-now-verb">{line.words}</span>;
     case "after":
     case "starting":
       return (
@@ -3556,6 +3559,8 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
       return (
         <span className="run-slot-word">{nowLineWords({ kind: "waiting", on: filler.on })}</span>
       );
+    case "away":
+      return <span className="run-slot-word">{filler.words}</span>;
     case "after":
     case "starting":
       return (

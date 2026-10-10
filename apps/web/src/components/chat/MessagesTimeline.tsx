@@ -159,6 +159,7 @@ import {
   type RowGap,
   TIMELINE_MINIMAP_MIN_ITEMS,
   type TimelineLatestTurn,
+  type MateAway,
 } from "./MessagesTimeline.logic";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipScrollDismissArea, TooltipTrigger } from "../ui/tooltip";
@@ -422,6 +423,8 @@ interface MessagesTimelineProps {
   /** The server's pause on this thread, when a usage limit holds it now. */
   usagePause?: ServerUsagePause | null;
   limit?: MateLimit;
+  /** The Mate is out of reach: a live card holds and says so (`MateAway`). */
+  away?: MateAway | null;
   onUsageAutoResumeChange?: ((enabled: boolean) => void) | null;
   interruption?: import("@t3tools/contracts").MateInterruption | null;
   onRestartContinue?:
@@ -489,6 +492,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   queuedMessages = EMPTY_QUEUED_MESSAGES,
   usagePause = null,
   limit = NO_MATE_LIMIT,
+  away = null,
   onUsageAutoResumeChange = null,
   interruption = null,
   onRestartContinue = null,
@@ -605,6 +609,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         cache: rowsCache,
         ...(runCards === null ? {} : { runCards }),
         limit,
+        away: away ?? null,
         nowMs,
         newSince,
         timelineEntries,
@@ -646,6 +651,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       provider,
       rowsCache,
       limit,
+      away,
     ],
   );
   const stableRows = useStableRows(rawRows);

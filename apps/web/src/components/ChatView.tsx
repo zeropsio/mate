@@ -381,7 +381,7 @@ import { KeptTimelines } from "./chat/KeptTimelines";
 import { useWarmTimelineAsk } from "./chat/warmTimeline";
 import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
 import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
-import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
+import { resolveTimelineIsAtEnd, type MateAway } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
 import { useAlsoWorkingBanner, useMateWorks } from "./chat/ConversationStrip";
 import { replacementChatToPin } from "./chat/ConversationStrip.logic";
@@ -2446,6 +2446,24 @@ export default function ChatView(props: ChatViewProps) {
   // Who lives here as the directory reads it: the composer says nothing until it is known.
   const whoLivesHereKind = useZeropsMate(environmentId).kind;
   const mateLinkVoice = useMateVoice();
+  // Out of reach while its link is down and its notice speaks: a live card holds where the Mate
+  // was last heard and says what the notice says (Milo's stress run 6: "Thinking", its clock
+  // ticking, through a planned restart).
+  const mateAwayWords =
+    activeEnvironmentUnavailable && mateLinkVoice.surface !== "none"
+      ? (mateLinkVoice.headline ?? mateLinkVoice.text ?? null)
+      : null;
+  const [mateAwaySince, setMateAwaySince] = useState<string | null>(null);
+  // When it went out of reach, kept while it stays there: set as the state changes, never later.
+  if ((mateAwayWords !== null) !== (mateAwaySince !== null))
+    setMateAwaySince(mateAwayWords === null ? null : new Date().toISOString());
+  const mateAway = useMemo<MateAway | null>(
+    () =>
+      mateAwayWords === null || mateAwaySince === null
+        ? null
+        : { since: mateAwaySince, words: mateAwayWords },
+    [mateAwayWords, mateAwaySince],
+  );
   const reviveFailedMate = useReviveFailedMate();
   const recoveryMate = zeropsMateAt(zeropsMates, environmentId);
   const mateRecoveryAction = useMateRecoveryAction(
@@ -8640,6 +8658,7 @@ export default function ChatView(props: ChatViewProps) {
                   queuedMessages,
                   usagePause: activeThreadShell?.usagePause ?? null,
                   limit,
+                  away: mateAway,
                   onUsageAutoResumeChange,
                   interruption: activeServerThread?.session?.interruption ?? null,
                   onRestartContinue:

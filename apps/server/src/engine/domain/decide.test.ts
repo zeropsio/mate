@@ -2009,6 +2009,15 @@ describe("decide: helpers and jobs are items under their run", () => {
   ];
   const turnDue = (state: ConversationState) =>
     Object.values(state.wakes).filter((wake) => wake.kind === "agent-turn-due");
+  const second = (status: "running" | "completed"): Command =>
+    signal({
+      kind: "work-upserted",
+      work: "w2",
+      origin: T(1),
+      workKind: "helper",
+      status,
+      title: "Explore more",
+    });
   it.each([
     {
       when: "its run is over, with an agent that opens its own turns",
@@ -2052,15 +2061,6 @@ describe("decide: helpers and jobs are items under their run", () => {
     expect(turnDue(state).map((wake) => wake.dueAt)).toEqual([T0 + AGENT_TURN_DUE_MS]);
   });
   it("each turn the agent opens itself takes one finished result; the rest stay due", () => {
-    const second = (status: "running" | "completed"): Command =>
-      signal({
-        kind: "work-upserted",
-        work: "w2",
-        origin: T(1),
-        workKind: "helper",
-        status,
-        title: "Explore more",
-      });
     const both = [
       ...selfTurning,
       work("running"),
@@ -2086,6 +2086,54 @@ describe("decide: helpers and jobs are items under their run", () => {
       }),
     ]);
     expect(turnDue(reported.state)).toHaveLength(1);
+  });
+  // Milo's stress run 6 (U3): two helpers finished while the run worked and Claude folded both
+  // results into that run; the conversation read "Waiting for its helpers" 35 s after the table.
+  it.each([
+    {
+      when: "both finished while its run worked",
+      steps: [
+        work("running"),
+        second("running"),
+        work("completed"),
+        second("completed"),
+        turnEnded,
+      ],
+    },
+    {
+      when: "both finished after its run, taken in one turn of its own",
+      steps: [
+        work("running"),
+        second("running"),
+        turnEnded,
+        work("completed"),
+        second("completed"),
+        signal({
+          kind: "turn-started",
+          turn: "bg" as TurnHandle,
+          origin: "self",
+          providerTurnId: "bg",
+        }),
+        signal({
+          kind: "turn-ended",
+          turn: "bg" as TurnHandle,
+          outcome: { kind: "completed" },
+          source: "agent",
+        }),
+      ],
+    },
+  ])("a turn that reports several finished results at once leaves none due: $when", ({ steps }) => {
+    const before = playAll([...selfTurning, ...steps]);
+    expect(turnDue(before.state)).toHaveLength(1);
+    const { state, log } = playAll([...selfTurning, ...steps, signal({ kind: "agent-caught-up" })]);
+    expect(turnDue(state)).toEqual([]);
+    expect(state.reportsDue).toBe(0);
+    expect(log.map((event) => event._tag)).toContain("ReportsTaken");
+  });
+  it("the agent's word that it is caught up changes nothing when nothing is due", () => {
+    const { log } = playAll([...selfTurning, turnEnded]);
+    const after = playAll([...selfTurning, turnEnded, signal({ kind: "agent-caught-up" })]);
+    expect(after.log).toHaveLength(log.length);
   });
   it("the turn a helper's end wakes, or the wait's bound, ends the wait for it", () => {
     const finished = [...selfTurning, work("running"), turnEnded, work("completed")];

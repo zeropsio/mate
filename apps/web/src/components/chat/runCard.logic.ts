@@ -416,6 +416,8 @@ export type NowLine =
   | { readonly kind: "starting"; readonly on: EngineStart }
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
+  /** Its Mate is out of reach: what the Mate's notice says. */
+  | { readonly kind: "away"; readonly words: string }
   /** Over: who, what it did and for how long, and what the effort came to. */
   | { readonly kind: "worked"; readonly words: string; readonly effort: string | null };
 
@@ -469,6 +471,7 @@ export function nowLineOf(input: {
   if (!status.live) {
     return { kind: "worked", words: workedWords(input.speaker, status), effort: input.effort };
   }
+  if (status.away !== undefined) return { kind: "away", words: status.away };
   if (input.compacting) return { kind: "condensing" };
   if (input.answering) return { kind: "writing" };
   if (now === null) return { kind: "thinking", thought: null };
@@ -494,6 +497,8 @@ export function nowLineOf(input: {
         ? { kind: "step", step: now.step }
         : { kind: "operation", operation: now.operation };
     }
+    case "away":
+      return { kind: "away", words: now.words };
   }
 }
 
@@ -508,7 +513,8 @@ export type SlotFiller =
   | { readonly kind: "condensing" }
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
   | { readonly kind: "after"; readonly on?: AfterWait }
-  | { readonly kind: "starting"; readonly on: EngineStart };
+  | { readonly kind: "starting"; readonly on: EngineStart }
+  | { readonly kind: "away"; readonly words: string };
 
 /**
  * What the live slot holds (pass 35): what the Mate is doing this moment,
@@ -529,6 +535,7 @@ export function slotModelOf(input: {
   liveLines?: ReadonlyMap<string, boolean>;
 }): SlotModel {
   const { now } = input;
+  if (now?.kind === "away") return { live: [], filler: now };
   if (input.compacting) return { live: [], filler: { kind: "condensing" } };
   const thinking: SlotModel = { live: [], filler: { kind: "thinking" } };
   // Its words as they come stand in the slot as the note they become (D4).
@@ -688,6 +695,8 @@ export function nowLineWords(line: NowLine): string {
       return "Writing";
     case "condensing":
       return "Condensing the context";
+    case "away":
+      return line.words;
     case "worked":
       return line.words;
   }
@@ -705,6 +714,7 @@ export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
         return nowLineWords({ kind: "waiting", on: filler.on });
       case "after":
       case "starting":
+      case "away":
         return nowLineWords(filler);
       case "thinking":
         return nowLineWords({ kind: "thinking", thought: null });
@@ -778,6 +788,9 @@ export function nowLineFace(
       return { state: "working", gaze: "up" };
     case "writing":
       return { state: "working", gaze: "down" };
+    // Out of reach, it is not seen working: it sleeps, as its faces do through a restart.
+    case "away":
+      return { state: "sleep" };
     default:
       return { state: "working" };
   }

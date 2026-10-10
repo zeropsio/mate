@@ -5577,7 +5577,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         canUseTool,
         onUserDialog,
         supportedDialogKinds: ["resume_return"],
-        env: claudeEnvironment,
+        // Claude says when it is idle: only once every background result reached the model, which
+        // the engine reads as nothing finished still waiting for a turn (`session_state_changed`).
+        env: { ...claudeEnvironment, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
         additionalDirectories,
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
       };

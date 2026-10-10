@@ -714,6 +714,16 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
             },
           });
         }),
+      /** Claude is idle: it handed the model every background result it held. */
+      caughtUp: (thread: string) =>
+        emit("session.state.changed", thread, {
+          payload: { state: "ready", reason: "session_state:idle" },
+          raw: {
+            source: "claude.sdk.message",
+            method: "claude/system/session_state_changed",
+            payload: { type: "system", subtype: "session_state_changed", state: "idle" },
+          },
+        }),
       /** ProviderService re-created the session on its own, as a call that met a dead one does. */
       recover: (thread: string) =>
         Effect.gen(function* () {

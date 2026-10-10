@@ -588,6 +588,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
     }
     case "WakeCancelled":
       return { ...state, wakes: without(state.wakes, event.wakeId) };
+    case "ReportsTaken":
+      return { ...state, reportsDue: 0 };
     case "HistoryImportStarted":
       return {
         ...state,

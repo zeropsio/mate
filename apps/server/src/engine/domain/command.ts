@@ -145,6 +145,11 @@ export type ProviderSignal =
   /** A limit whose reset was unknown learned its reset time (the driver's rate-limit report). */
   | { readonly kind: "usage-reset-known"; readonly resetsAt: number }
   | { readonly kind: "session-exited"; readonly reason: string }
+  /**
+   * The agent is between turns with nothing waiting for it: every result of its finished work has
+   * reached it, however many one turn took (Claude's idle, after it drained what it held).
+   */
+  | { readonly kind: "agent-caught-up" }
   /** Deltas flowed: the turn is alive. Throttled by `decide`, so the pump may send it per batch. */
   | { readonly kind: "activity"; readonly turn: TurnHandle };
 

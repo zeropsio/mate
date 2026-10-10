@@ -428,6 +428,8 @@ export type TurnHeaderActivity =
   | { readonly kind: "after"; readonly on?: AfterWait }
   /** Its run is not started yet: what its engine does first (`EngineStart`). */
   | { readonly kind: "starting"; readonly on: EngineStart }
+  /** The Mate is out of reach (a restart, a lost link): what its notice says, never live work. */
+  | { readonly kind: "away"; readonly words: string }
   /**
    * It asked the person something — a question, an approval — and waits; a
    * question it asked in its own words is the record's item `key` too.
@@ -526,6 +528,17 @@ export interface RunStatus {
   readonly wrote?: true;
   /** It broke off: what its card says under its line (`ConversationTurn.brokeOff`). */
   readonly brokeOff?: BrokeOff | undefined;
+  /** Live while its Mate is out of reach: what the Mate's notice says (`MateAway`). */
+  readonly away?: string;
+}
+
+/**
+ * The Mate is out of reach while a run of it was on (a planned restart, a lost link): since when,
+ * in its notice's words. Its records are the last it said, so a live card holds there.
+ */
+export interface MateAway {
+  readonly since: string;
+  readonly words: string;
 }
 
 type MessagesTimelineRowBody =
@@ -2191,6 +2204,8 @@ export function livePauseStageId(
 
 export function deriveMessagesTimelineRows(input: {
   readonly limit?: MateLimit;
+  /** The Mate is out of reach: a live card says so and its clock stands (`MateAway`). */
+  readonly away?: MateAway | null;
   readonly runCards?: Readonly<Record<string, EngineRunCard>>;
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
@@ -2755,12 +2770,12 @@ export function deriveMessagesTimelineRows(input: {
     // Its turns over, what it started goes on: the card stays open on it.
     const waiting = turn.waiting;
     const working = (last.live && !answeredAlone) || waiting;
-    // A wake an engine Mate opened that only spoke is a run of its own all the same: its card
-    // stands for it, as it does live and after a reload (Milo's stress run 5: wake 92's answer
-    // stood bare under the answer before it).
-    const engineWake = engineCard !== undefined && lead === null && answer !== null;
+    // A run an engine Mate answered with words alone is a run all the same: its card says it
+    // wrote, live and after a reload (Milo's stress run 5: wake 92's answer stood bare under the
+    // answer before it; run 6: a person's "no tools" run lost its "Milo wrote" card).
+    const spokeOnly = engineCard !== undefined && answer !== null;
     const carded =
-      engineWake ||
+      spokeOnly ||
       (turn.live && !answeredAlone) ||
       waiting ||
       hasRecord ||
@@ -2855,6 +2870,12 @@ export function deriveMessagesTimelineRows(input: {
       ...(turn.brokeOff === null || waiting ? {} : { brokeOff: turn.brokeOff }),
       ...(turn.interruption === undefined ? {} : { interruption: turn.interruption }),
       ...waited,
+      // Out of reach, the run's records stop where the Mate was last heard: the card holds there,
+      // its clock standing, and says what the notice says (Milo's stress run 6: "Thinking", 0:06 →
+      // 0:36, through a planned restart).
+      ...((turn.live || waiting) && input.away != null
+        ? { waitingSince: waited.waitingSince ?? input.away.since, away: input.away.words }
+        : {}),
       ...(engineWorked === undefined ? {} : { workedMs: engineWorked }),
       // A question it asked is work too: a run that only asked read "thought". A card not held
       // whole worked when its summary counts a call: its notes alone are no work (it read
@@ -2896,16 +2917,19 @@ export function deriveMessagesTimelineRows(input: {
         // Not started yet, it says what it does first: never "Thinking" (Milo's stress run sat
         // 22 s "Thinking" while its engine held the run for a snapshot).
         const starting = engineStartOf(engineCard);
-        const now = waiting
-          ? {
-              kind: "after" as const,
-              ...(engineCard?.waitsOn === undefined ? {} : { on: engineCard.waitsOn }),
-            }
-          : working && answer === null
-            ? starting === null
-              ? liveActivity(last, turn.writing, tracked, batch)
-              : { kind: "starting" as const, on: starting }
-            : null;
+        const now =
+          status.away !== undefined
+            ? { kind: "away" as const, words: status.away }
+            : waiting
+              ? {
+                  kind: "after" as const,
+                  ...(engineCard?.waitsOn === undefined ? {} : { on: engineCard.waitsOn }),
+                }
+              : working && answer === null
+                ? starting === null
+                  ? liveActivity(last, turn.writing, tracked, batch)
+                  : { kind: "starting" as const, on: starting }
+                : null;
         const source = {
           kind: "record" as const,
           id: `record:${first.key}`,
