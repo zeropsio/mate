@@ -239,7 +239,11 @@ function PictureTile({
         }
       >
         {unavailable ? (
-          <ImageUnavailable reason={reason} />
+          // The count stands alone over a picture that cannot be shown: its words never sit
+          // under it (Rhea's imported run printed "+9" over "Image unavailable").
+          more > 0 ? null : (
+            <ImageUnavailable reason={reason} />
+          )
         ) : state._tag === "Success" ? (
           <AssetImage
             alt=""
@@ -247,6 +251,7 @@ function PictureTile({
             height={size?.height}
             src={state.url}
             onError={() => setFailedUrl(state.url)}
+            onUnavailable={() => setFailedUrl(state.url)}
           />
         ) : null}
         {more > 0 ? <span className="run-result-more">+{more}</span> : null}

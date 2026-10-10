@@ -143,10 +143,15 @@ export function AssetImage(
   props: ComponentPropsWithoutRef<"img"> & {
     readonly retrying?: boolean;
     readonly original?: boolean;
+    /**
+     * Its picture cannot be shown — its read failed, or its bytes did not decode: a place that
+     * says so itself (a result's tile) takes it over instead of the words drawn here.
+     */
+    readonly onUnavailable?: () => void;
   },
 ) {
   const reference = parseMateImageSource(props.src);
-  const { original: _, ...direct } = props;
+  const { original: _, onUnavailable: _unavailable, ...direct } = props;
   return reference === null ? (
     <DirectAssetImage {...direct} />
   ) : (
@@ -158,10 +163,12 @@ function ManagedAssetImage({
   reference,
   original = false,
   retrying: _retrying,
+  onUnavailable,
   ...props
 }: ComponentPropsWithoutRef<"img"> & {
   readonly retrying?: boolean;
   readonly original?: boolean;
+  readonly onUnavailable?: () => void;
   readonly reference: NonNullable<ReturnType<typeof parseMateImageSource>>;
 }) {
   const { ref, near } = useNearViewport<HTMLImageElement>();
@@ -224,7 +231,11 @@ function ManagedAssetImage({
   const [failedUrl, setFailedUrl] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   const decodeFailed = url !== undefined && failedUrl === url;
-  if ((read.kind === "failed" && !url) || decodeFailed)
+  const unavailable = (read.kind === "failed" && !url) || decodeFailed;
+  useEffect(() => {
+    if (unavailable) onUnavailable?.();
+  }, [onUnavailable, unavailable]);
+  if (unavailable)
     return (
       <span
         className={`asset-image-frame ${props.className ?? ""}`}
