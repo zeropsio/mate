@@ -146,7 +146,7 @@ import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { MateUpdateStatusText } from "./MateUpdateLine";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
+import { useMateConversationsRead, useMateRowActivity } from "~/zerops/useMenuMateReadings";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import {
@@ -843,6 +843,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   // Each Mate as its menu row reads it: HQ's word of it, or its socket's.
   const activityOf = useMateRowActivity(useMatesActivity());
+  // Whether a Mate's conversations are read: one with none says nothing was asked yet.
+  const conversationsRead = useMateConversationsRead();
   const updates = useMateUpdateStates();
   // What this person may do with each Mate, from the one role function the
   // door runs too (D5). A `listed` row is shown and never opened.
@@ -2017,7 +2019,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         mine,
         pose: matePoseOf(candidate, nowMs),
       });
-      const reading = cardMateReading({ view, status: activity?.kind, mine, review });
+      const reading = cardMateReading({
+        view,
+        status: activity?.kind,
+        mine,
+        review,
+        read: conversationsRead(candidate),
+      });
       const owner = mine ? undefined : projectPeople[candidate.project.id]?.owner;
       // A Mate whose container has something to say first says it: coming up, a failed
       // connect and its retry, an update under way.

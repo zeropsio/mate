@@ -276,6 +276,9 @@ export type MateLift =
   /** Review change */
   | { readonly kind: "review"; readonly pull: FlowPullRequest };
 
+/** A Mate nobody has asked anything, its conversations read: the menu row's words for it. */
+export const NOTHING_ASKED_YET = "Nothing asked yet";
+
 /** A Mate's two lines on a card: the menu row's words, and what lifts it. */
 export interface CardMateReading {
   /** Its second line; `undefined` while words are on their way (the line keeps its place). */
@@ -297,6 +300,8 @@ export function cardMateReading(input: {
   readonly mine: boolean;
   /** Its change waiting for the viewer's review (`changeShowsReview`). */
   readonly review: FlowPullRequest | undefined;
+  /** Its conversations are read: none asked is then a fact the line says, as the menu's does. */
+  readonly read?: boolean | undefined;
 }): CardMateReading {
   const { view, mine } = input;
   const reply = view.reply;
@@ -308,6 +313,10 @@ export function cardMateReading(input: {
         : reply === undefined
           ? { text: view.ask, tone: "muted" as const }
           : { text: undefined, tone: "muted" as const };
+  const text =
+    said.text === undefined && reply === undefined && view.ask === undefined && input.read === true
+      ? NOTHING_ASKED_YET
+      : said.text;
   const tone = said.tone === "failed" ? "failed" : said.tone === "ink" ? "ink" : "muted";
   const lift: MateLift | undefined = !mine
     ? undefined
@@ -321,7 +330,7 @@ export function cardMateReading(input: {
           ? { kind: "fix" }
           : undefined;
   return {
-    text: said.text,
+    text,
     tone: lift !== undefined && tone === "muted" ? "ink" : tone,
     lift,
   };

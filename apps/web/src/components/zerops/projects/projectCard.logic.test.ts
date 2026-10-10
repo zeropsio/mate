@@ -267,6 +267,16 @@ describe("a Mate on a card", () => {
     expect(cardMateReading(input)).toEqual(expected);
   });
 
+  it.each([
+    { case: "its conversations read", read: true, text: "Nothing asked yet" },
+    { case: "its conversations not read yet", read: false, text: undefined },
+  ])("says nothing was asked of a Mate only once it knows: $case", ({ read, text }) => {
+    const never = view({ ask: undefined, reply: undefined });
+    expect(
+      cardMateReading({ view: never, status: "idle", mine: true, review: undefined, read }).text,
+    ).toBe(text);
+  });
+
   it("says what a working Mate is on", () => {
     const working = view({
       state: "working",
