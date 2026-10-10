@@ -613,3 +613,43 @@ it.each([
   const card = cardOf(render({ runs: [run], items: paged ? items.slice(0, 1) : items, paged }));
   expect(workedWords("Milo", card.status!)).toMatch(/^Milo thought /);
 });
+
+// Milo's stress run 4 (morning): the card read "paused at the limit · 36s · 1 command" live and
+// "· 36s" after a reload. Every word of a settled card's summary is one function of the records,
+// whatever a reload holds of its run.
+it.each([
+  { ended: "completed", end: { kind: "completed" } },
+  {
+    ended: "stopped by the person",
+    end: { kind: "stopped", by: { kind: "person", subject: "user-ada" } },
+  },
+  { ended: "failed", end: { kind: "failed", reason: "The agent's process exited", next: null } },
+  { ended: "crashed", end: { kind: "crashed", reason: "The agent's process exited" } },
+  {
+    ended: "cut by a restart",
+    end: { kind: "cut-by-restart", continuedBy: null, notContinued: "restarted" },
+  },
+  { ended: "at the usage limit", end: { kind: "usage-limit", resetsAt: null } },
+] as const)("a run card's summary is the same live and after a reload: $ended", ({ end }) => {
+  // A reload holds the person's message and the run's last words, none of its work.
+  const answer = noteItem(
+    run1,
+    12,
+    end.kind === "usage-limit"
+      ? "You've hit your weekly limit · resets Oct 11, 11am (UTC)"
+      : "The background wait hasn't printed yet.",
+    { answer: false, at: t0 + 77_700 },
+  );
+  const items = [...stressItems("completed").slice(0, -1), answer];
+  const summaryOf = (paged: boolean) => {
+    const card = cardOf(
+      render({
+        runs: [stressRun({ end } as never)],
+        items: paged ? [items[0]!, answer] : items,
+        paged,
+      }),
+    );
+    return [workedWords("Milo", card.status!), runEffortWords(card.outcome)];
+  };
+  expect(summaryOf(true)).toEqual(summaryOf(false));
+});
