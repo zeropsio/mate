@@ -9,7 +9,8 @@
  * *Copy link*), what this viewer keeps about it (*Mute notifications*,
  * *Mark as unread*, *Rename*, *Change face…*), the verbs the projects screen
  * offers too (`useMateActions`: *Restart* or *Start*, *Register in …*,
- * *Hand over…*, *Move to project…*), while it works *Stop the run*, and last,
+ * *Hand over…*, *Move to project…*) and its update's (*Check for updates*,
+ * *Update to x.y.z*, `ZeropsMateUpdateControl`), while it works *Stop the run*, and last,
  * a line apart and in red, *Delete {name}…* where this viewer may delete it.
  * No snooze and no pin: the owner left both out.
  *
@@ -20,9 +21,12 @@
 import { MoreHorizontalIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import type { EnvironmentId } from "@t3tools/contracts";
+
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "../ui/menu";
 import { CHANGE_FACE_VERB } from "./ZeropsChangeFaceDialog.logic";
-import type { ZeropsMenuEntry } from "./ZeropsProjectMenu";
+import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
+import type { ZeropsMenuAction, ZeropsMenuEntry } from "./ZeropsProjectMenu";
 
 /** One Mate's name, edited where it stands (`useMateActions.renameInPlace`). */
 export interface MateRenameAction {
@@ -51,6 +55,8 @@ export interface MateRowActions {
    * delete, which the menu keeps for its end.
    */
   readonly entries: ReadonlyArray<ZeropsMenuEntry>;
+  /** Where it acts: its update's entries are read off this environment's record, once open. */
+  readonly environmentId?: EnvironmentId | undefined;
   /**
    * Its row is drawn, until the function this returns is called: its project's container is read
    * meanwhile, what *Restart* stands on. The same function on every render.
@@ -85,6 +91,8 @@ export interface MateMenuItemsProps {
   readonly onRename: () => void;
   /** The keys the list answers, shown beside their items. */
   readonly shortcuts: boolean;
+  /** Who *Update to x.y.z* asks about. */
+  readonly name?: string | undefined;
 }
 
 export function MateMenuItems({
@@ -95,6 +103,7 @@ export function MateMenuItems({
   onOpenMate,
   onRename,
   shortcuts,
+  name,
 }: MateMenuItemsProps) {
   const hint = (key: string): ReactNode => (shortcuts ? <MenuShortcut>{key}</MenuShortcut> : null);
   const entries = actions.entries.filter(
@@ -161,21 +170,12 @@ export function MateMenuItems({
           {CHANGE_FACE_VERB}
         </MenuItem>
       )}
-      {verbs.length === 0 ? null : (
-        <>
-          <MenuSeparator />
-          {verbs.map((entry) => (
-            <MenuItem
-              data-zerops-mate-menu={entry.id}
-              disabled={entry.disabled === true}
-              key={entry.id}
-              onClick={entry.onSelect}
-              title={entry.why}
-            >
-              {entry.label}
-            </MenuItem>
-          ))}
-        </>
+      {actions.environmentId === undefined ? (
+        <MateVerbs verbs={verbs} />
+      ) : (
+        <ZeropsMateUpdateControl environmentId={actions.environmentId} mateName={name}>
+          {({ menuActions }) => <MateVerbs verbs={[...verbs, ...menuActions]} />}
+        </ZeropsMateUpdateControl>
       )}
       {actions.stop === undefined ? null : (
         <>
@@ -202,6 +202,26 @@ export function MateMenuItems({
           ))}
         </>
       )}
+    </>
+  );
+}
+
+function MateVerbs({ verbs }: { readonly verbs: ReadonlyArray<ZeropsMenuAction> }) {
+  if (verbs.length === 0) return null;
+  return (
+    <>
+      <MenuSeparator />
+      {verbs.map((entry) => (
+        <MenuItem
+          data-zerops-mate-menu={entry.id}
+          disabled={entry.disabled === true}
+          key={entry.id}
+          onClick={entry.onSelect}
+          title={entry.why}
+        >
+          {entry.label}
+        </MenuItem>
+      ))}
     </>
   );
 }
@@ -248,7 +268,7 @@ export function MateMenu({
         className="w-56"
         data-zerops-surface="sidebar-mate-menu"
       >
-        <MateMenuItems {...items} />
+        <MateMenuItems {...items} name={name} />
       </MenuPopup>
     </Menu>
   );
