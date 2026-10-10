@@ -2887,6 +2887,7 @@ function PageTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "page" }> 
   return (
     <PublishedPage
       page={row.page}
+      itemId={row.itemId}
       environmentId={ctx.threadRef.environmentId}
       threadId={ctx.threadRef.threadId}
     />

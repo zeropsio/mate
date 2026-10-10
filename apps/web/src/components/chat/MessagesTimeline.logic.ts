@@ -723,6 +723,8 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       page: CallResultPage;
+      /** Its call's engine item: where the heights it is laid out at are recorded. */
+      itemId: string | null;
     }
   | {
       /**
@@ -1191,6 +1193,7 @@ function turnPages(turn: ConversationTurn): Array<Extract<MessagesTimelineRow, {
         id: `page:${candidate.entry.toolCallId ?? candidate.id}`,
         createdAt: new Date(page.publishedAt).toISOString(),
         page,
+        itemId: candidate.entry.toolCallId ?? null,
       });
     }
   return pages;
