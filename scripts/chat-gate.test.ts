@@ -8,6 +8,7 @@ import { parse } from "yaml";
 import { expect, it } from "vite-plus/test";
 import { checkSteps } from "./ci-local.ts";
 import {
+  SCENARIO_PROJECT_FILES,
   chatGateStages,
   chatGateTestFiles,
   selectLaneChatStages,
@@ -59,7 +60,7 @@ it("the gate runs the chat journeys against both wires a Mate can speak", () => 
     [
       "B: client wire journeys on the engine (C)",
       "scenarios-engine",
-      "test/scenarios/areas/c-mate/chat.scenario.ts",
+      "test/scenarios/areas/c-mate",
     ],
   ]);
 });
@@ -222,14 +223,67 @@ it("each wire stage owns only the journeys its project runs", () => {
       root,
       chatGateStages.filter((stage) => stage.id === "C-engine"),
     ),
-  ).toEqual(["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"]);
-  expect(
-    chatGateTestFiles(
-      root,
-      chatGateStages.filter((stage) => stage.id === "C"),
-    ),
-  ).toContain("apps/web/test/scenarios/areas/c-mate/opening.scenario.ts");
+  ).toEqual([
+    "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts",
+    "apps/web/test/scenarios/areas/c-mate/engine-card.scenario.ts",
+    "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
+  ]);
+  const plain = chatGateTestFiles(
+    root,
+    chatGateStages.filter((stage) => stage.id === "C"),
+  );
+  expect(plain).toContain("apps/web/test/scenarios/areas/c-mate/opening.scenario.ts");
+  expect(plain).not.toContain("apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts");
   expect(chatGateTestFiles(root, [])).toEqual([]);
+});
+
+it("the gate reads each scenario project's journeys as the scenario config runs them", async () => {
+  // Read at run time: the config belongs to the web package, outside this project's typecheck.
+  const config = (await import(
+    NodeURL.pathToFileURL(
+      NodePath.resolve(import.meta.dirname, "../apps/web/test/scenarios/vitest.config.ts"),
+    ).href
+  )) as {
+    readonly default: {
+      readonly test: {
+        readonly projects: ReadonlyArray<{
+          readonly test: {
+            readonly name: string;
+            readonly include?: ReadonlyArray<string>;
+            readonly exclude?: ReadonlyArray<string>;
+          };
+        }>;
+      };
+    };
+  };
+  for (const [name, files] of Object.entries(SCENARIO_PROJECT_FILES)) {
+    const project = config.default.test.projects.find((candidate) => candidate.test.name === name);
+    expect(project?.test.include, name).toEqual(files.include);
+    expect(project?.test.exclude ?? [], name).toEqual(files.exclude);
+  }
+});
+
+// A lane that changed engine-page.scenario.ts ran it under `--project scenarios`, which excludes
+// it: "no cases ran", and the lane's gate failed on a file it never ran.
+it.each([
+  {
+    path: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
+    ids: ["C-engine", "types"],
+  },
+  {
+    path: "apps/web/test/scenarios/areas/c-mate/engine-card.scenario.ts",
+    ids: ["C-engine", "types"],
+  },
+  { path: "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts", ids: ["C", "types"] },
+])("a changed scenario runs under the project that runs it: $path", ({ path, ids }) => {
+  const root = NodePath.resolve(import.meta.dirname, "..");
+  const stages = selectLaneChatStages([path], [path], root);
+  expect(stages.map((stage) => stage.id)).toEqual(ids);
+  const run = stages.find((stage) => stage.id !== "types")!.commands[0]!.args;
+  expect(run[run.indexOf("--project") + 1]).toBe(
+    ids.includes("C-engine") ? "scenarios-engine" : "scenarios",
+  );
+  expect(run).toContain(NodePath.posix.relative("apps/web", path));
 });
 
 it.each([
@@ -415,7 +469,7 @@ it("Decision: no test deleted or weakened; only lane selection changes; main CI 
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toContain("test/scenarios/areas/c-mate --allowOnly=false");
   expect(result.stdout).toContain(
-    "--project scenarios-engine test/scenarios/areas/c-mate/chat.scenario.ts",
+    "--project scenarios-engine test/scenarios/areas/c-mate --allowOnly",
   );
   for (const file of [
     "src/spi/replay/goldens.test.ts",
