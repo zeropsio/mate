@@ -82,7 +82,7 @@ export const chatGateStages = [
           "test/scenarios/vitest.config.ts",
           "--project",
           "scenarios-engine",
-          "test/scenarios/areas/c-mate/chat.scenario.ts",
+          "test/scenarios/areas/c-mate",
           "--allowOnly=false",
           "--reporter=default",
           "--reporter=../../scripts/chat-gate-reporter.ts",
@@ -278,6 +278,42 @@ export function selectLaneChatStages(
 }
 
 /** File ownership comes from the commands that will actually run. */
+/**
+ * Which journeys each project of `apps/web/test/scenarios/vitest.config.ts` runs, relative to
+ * `apps/web` (a test holds the two equal): a changed journey runs under the project that holds it.
+ */
+export const SCENARIO_PROJECT_FILES = {
+  scenarios: {
+    include: ["test/scenarios/areas/**/*.scenario.ts"],
+    exclude: ["**/node_modules/**", "test/scenarios/areas/c-mate/engine-*.scenario.ts"],
+  },
+  "scenarios-engine": {
+    include: [
+      "test/scenarios/areas/c-mate/chat.scenario.ts",
+      "test/scenarios/areas/c-mate/engine-*.scenario.ts",
+    ],
+    exclude: [],
+  },
+} as const satisfies Record<
+  string,
+  { readonly include: ReadonlyArray<string>; readonly exclude: ReadonlyArray<string> }
+>;
+
+/**
+ * Whether the command's scenario project runs `file` (relative to the command's cwd): a directory
+ * names every journey in it, and its project keeps only its own (`projects.ts`).
+ */
+function projectRuns(command: ChatGateCommand, file: string): boolean {
+  const project = command.args[command.args.indexOf("--project") + 1];
+  const files =
+    project !== undefined && Object.hasOwn(SCENARIO_PROJECT_FILES, project)
+      ? SCENARIO_PROJECT_FILES[project as keyof typeof SCENARIO_PROJECT_FILES]
+      : undefined;
+  if (files === undefined) return true;
+  const matches = (glob: string) => NodePath.posix.matchesGlob(file, glob);
+  return files.include.some(matches) && !files.exclude.some(matches);
+}
+
 export function chatGateTestFiles(root: string, stages: ReadonlyArray<ChatGateStage>): string[] {
   const collect = (directory: string): string[] => {
     if (!NodeFS.existsSync(NodePath.join(root, directory)))
@@ -303,7 +339,9 @@ export function chatGateTestFiles(root: string, stages: ReadonlyArray<ChatGateSt
             if (/\.(?:test|scenario)\.ts$/u.test(arg))
               return [NodePath.posix.join(command.cwd, arg)];
             if (arg.startsWith("test/scenarios/areas/"))
-              return collect(NodePath.posix.join(command.cwd, arg));
+              return collect(NodePath.posix.join(command.cwd, arg)).filter((file) =>
+                projectRuns(command, NodePath.posix.relative(command.cwd, file)),
+              );
             return [];
           }),
         ),

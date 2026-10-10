@@ -4467,6 +4467,12 @@ code {
 .run-slot:first-child:has(> .run-slot-head) {
   padding-top: 24px;
 }
+/* The head's room heads the live card once the history stands over the present too: the first
+   line the present gives up to the history keeps its place, where it moved up 22 px as a
+   question came (Milo's stress run). The history's own room, so its fold takes it along. */
+[data-run-live] > .run-above:first-child {
+  padding-top: 24px;
+}
 .run-slot-list {
   display: flex;
   min-width: 0;
