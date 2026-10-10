@@ -97,16 +97,15 @@ export function mateReachable(reachability: Reachability | null): boolean {
 }
 
 /**
- * The conversation header's events, the one that wins first: the conversation it shows, a
- * restart, a provider limit in the chat on screen, a move, a first arrival.
+ * The events a Mate's face watched, the one that wins first: the conversation a header shows, a
+ * restart, its return, a move, a first arrival. A provider limit and a failure are the Mate's own
+ * (`mateRowCues`), read with these wherever its face is (`mateFace`).
  */
 export function mateHeaderCues(input: {
   readonly conversation: MateFaceCue | undefined;
   readonly restarting: boolean;
-  /** How many restarts came back while the header watched (`restartBeat`). */
+  /** How many restarts came back while the face watched (`restartBeat`). */
   readonly backs: number;
-  /** The chat on screen, while a provider limit pauses it. */
-  readonly limitedThreadId: string | null;
   readonly moved: MateFaceCue | undefined;
   readonly arrived: MateFaceCue | undefined;
 }): ReadonlyArray<MateFaceCue> {
@@ -114,9 +113,6 @@ export function mateHeaderCues(input: {
     input.conversation,
     input.restarting ? { moment: "sneeze", key: "restart" } : undefined,
     input.backs === 0 ? undefined : { moment: "back", key: `back:${input.backs}` },
-    input.limitedThreadId === null
-      ? undefined
-      : { moment: "puff", key: `limit:${input.limitedThreadId}` },
     input.moved,
     input.arrived,
   ];

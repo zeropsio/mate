@@ -36,6 +36,22 @@ vi.mock("~/zerops/useZeropsMates", () => {
     useKnownMate: () => (state.mate ? fen : undefined),
   };
 });
+// The Mate's own record, as the data layer reads it: here, its main chat's.
+vi.mock("~/zerops/useMateFace", async () => {
+  const { threadAgentActivity } = await import("~/zerops/agentActivity");
+  return {
+    useMateFaceFacts: () => {
+      const main = state.shells[0] as EnvironmentThreadShell | undefined;
+      return {
+        connected: true,
+        activity: main === undefined ? undefined : threadAgentActivity(main, undefined),
+        reviewWaits: false,
+        mine: true,
+        restarting: false,
+      };
+    },
+  };
+});
 vi.mock("~/zerops/crew/useCrew", () => ({
   useCrew: () => ({ view: state.view }),
   useMateCrew: () => ({ crew: state.hqCrew, logins: {}, current: false, environmentId: undefined }),
@@ -212,6 +228,8 @@ describe("ConversationStrip", () => {
         clearInterval,
         matchMedia: () => ({ matches: reduced, addEventListener() {}, removeEventListener() {} }),
       });
+      // Its face read, as its row's: a face greets nothing before.
+      state.shells = [shell("main")];
       let renderer: ReactTestRenderer | undefined;
       const draw = (environmentId: EnvironmentId) => (
         <ConversationStrip
