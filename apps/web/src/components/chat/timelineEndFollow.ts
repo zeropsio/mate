@@ -160,6 +160,8 @@ export function createEndFollow({
   const follower: EndFollow = {
     place: (grew = 0) => {
       const element = viewport();
+      // The composer's inset moved the end: what was kept short of it was kept for the old one.
+      kept = null;
       if (element === null || !follows()) return;
       // Mid-glide the glide goes on to the moved end: standing there at once was a step of all
       // that was left (Milo's stress run 4: 77 px in one frame as the composer shrank on a send).
@@ -188,7 +190,12 @@ export function createEndFollow({
       kept = null;
       if (element === null) return;
       const short = endOf(element) - element.scrollTop;
-      if (short > 0.5) kept = { element, short, height: element.scrollHeight };
+      // Only the few pixels of an answer's foot. Farther from the end, something else moved it
+      // while the answer was held — the composer's inset growing as the usage limit held a
+      // message — and keeping that held the end 202 px away for good.
+      if (short > 0.5 && short < GLIDE_FROM_PX) {
+        kept = { element, short, height: element.scrollHeight };
+      }
     },
     follow: () => {
       const element = viewport();
