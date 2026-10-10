@@ -2423,7 +2423,8 @@ export default function Sidebar() {
   const activeZeropsProjectResolving = activeZeropsProject.resolving;
   // Whose Mates the menu lists (the account menu's Mine / Everyone): the
   // tree and the waiting faces read the same answer.
-  const [zeropsMateScope] = useMateScope();
+  const [zeropsMateScope, setZeropsMateScope] = useMateScope();
+  const showEveryoneMates = useCallback(() => setZeropsMateScope("everyone"), [setZeropsMateScope]);
   const zeropsPersonFacts = useAtomValue(shownHqPersonFactsAtom);
   const zeropsShown = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) =>
@@ -4290,6 +4291,7 @@ export default function Sidebar() {
           {zeropsSignedIn && !isSearchingThreads ? (
             <SidebarZeropsTree
               menuOpen={isMobile ? openMobile : open}
+              onShowEveryone={zeropsMateScope === "mine" ? showEveryoneMates : undefined}
               activeProjectId={activeZeropsProjectId}
               activeProjectResolving={activeZeropsProjectResolving}
               births={zeropsPlacedBirths}
