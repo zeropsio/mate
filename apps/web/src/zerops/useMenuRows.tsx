@@ -26,9 +26,10 @@ export function useMenuRows<Row extends CandidateRow>(
  * says nothing of how current its rows are: the menu it hands over to says that in its header.
  */
 export function ZeropsMenuPreview() {
-  const { rows } = useMenuRows(NO_ROWS);
+  const { rows, settled } = useMenuRows(NO_ROWS);
   const slot = typeof document === "undefined" ? null : document.getElementById("boot-shell-menu");
-  if (slot === null) return null;
+  // Until the rows are settled the frame's own loading rows stand (index.html).
+  if (slot === null || !settled) return null;
   return createPortal(
     <div inert className="h-full overflow-y-auto px-4 pt-20">
       <SidebarZeropsTree
