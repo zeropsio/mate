@@ -834,6 +834,38 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
           }),
         ),
     );
+
+    // Milo, 2026-10-10: signed in to another subscription, the agent read "authenticated" before
+    // and after, so the provider never read the new account's usage and its limit stood.
+    it.effect("a credential replaced while signed in has the provider read its account again", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { fs, path, homeDir, envStorePath } = yield* makeEnv();
+          const fake = yield* makeFakeCli(() =>
+            Effect.succeed({ key: "ZCP_AGENT_OAUTH_CLAUDE_CODE", changed: true, migrated: false }),
+          );
+          const fakeProviderAuth = yield* makeFakeProviderAuth(() => "authenticated");
+          const reread = yield* Ref.make<ReadonlyArray<ZeropsAgentId>>([]);
+          const fakeWatch = makeFakeWatch();
+          const feed = yield* ZeropsAgentAuth.make({
+            agentFlag: fake.cli,
+            refreshProviderAuth: fakeProviderAuth.refreshProviderAuth,
+            refreshProviderSnapshot: (agentId) => Ref.update(reread, (all) => [...all, agentId]),
+            homeDir,
+            envStorePath,
+            isZeropsEnvironment: true,
+            watch: fakeWatch.watch,
+          });
+          const subscription = yield* feed.subscribe;
+          const target = credWatchTarget(homeDir, "claude-code");
+          yield* writeCredential(fs, path, homeDir, [".claude", ".credentials.json"]);
+          yield* checkedAgain(feed, subscription, "claude-code", () => fakeWatch.trigger(target));
+          // Another account's credential over the first: the status reads the same.
+          yield* checkedAgain(feed, subscription, "claude-code", () => fakeWatch.trigger(target));
+          assert.deepEqual(yield* Ref.get(reread), ["claude-code", "claude-code"]);
+        }),
+      ),
+    );
   },
 );
 

@@ -20,6 +20,7 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 import {
   CommandId,
@@ -41,10 +42,12 @@ import {
   AgentWorkspace,
   HandedOverResume,
   MessagePictures,
+  ProviderUsageFeed,
   RestartEvidence,
   RunAdmission,
   RunRefused,
   WorkspaceUnavailable,
+  type InstanceUsage,
 } from "../../ports.ts";
 import { providerThreadOf, TurnPump } from "../../pump/TurnPump.ts";
 import { turnPrincipalOf } from "../../../zerops/engineAdapters.ts";
@@ -105,6 +108,8 @@ export const makeEngineWorld = (options: WorldOptions) =>
     let provider: ScriptedProvider = yield* makeScriptedProvider({ driver: options.driver });
     let life: Scope.Closeable | undefined;
     let context: Context.Context<never> = Context.empty();
+    // What the providers report of their accounts' usage: kept across lives, as the registry is.
+    const usage = yield* SubscriptionRef.make<ReadonlyArray<InstanceUsage>>([]);
 
     const ports = Layer.mergeAll(
       Layer.succeed(
@@ -158,6 +163,10 @@ export const makeEngineWorld = (options: WorldOptions) =>
       Layer.succeed(
         HandedOverResume,
         HandedOverResume.of({ of: (input) => Effect.succeed(options.handedOver?.(input)) }),
+      ),
+      Layer.succeed(
+        ProviderUsageFeed,
+        ProviderUsageFeed.of({ reports: SubscriptionRef.changes(usage) }),
       ),
       // Pictures pass as they came: the claim is the server's (`engineAdapters.ts`).
       Layer.succeed(
@@ -359,6 +368,9 @@ export const makeEngineWorld = (options: WorldOptions) =>
           yield* settle;
         }),
       tell,
+      /** The providers report their accounts' usage now, then everything settles. */
+      reportUsage: (reports: ReadonlyArray<InstanceUsage>) =>
+        Effect.andThen(SubscriptionRef.set(usage, reports), settle),
       run,
       runs,
       items,

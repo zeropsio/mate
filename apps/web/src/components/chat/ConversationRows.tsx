@@ -416,6 +416,7 @@ export function PauseBlock({
   limit = NO_MATE_LIMIT,
   onAutoResumeChange,
   onContinue = null,
+  triesBeforeReset = false,
   blockedByAnswer = false,
   stage = true,
 }: {
@@ -430,6 +431,11 @@ export function PauseBlock({
   readonly limit?: MateLimit;
   readonly onAutoResumeChange: ((enabled: boolean) => void) | null;
   readonly onContinue?: (() => void) | null;
+  /**
+   * The Mate's engine tries the provider itself and pauses again if it still refuses: Continue
+   * asks it before a known reset too (the limit may be gone early: another account signed in).
+   */
+  readonly triesBeforeReset?: boolean;
   readonly blockedByAnswer?: boolean;
   /**
    * Whether the server's live pause fills its room with the Mate's face; in a conversation only
@@ -474,7 +480,7 @@ export function PauseBlock({
           variant="ghost"
           disabled={blockedByAnswer}
           onClick={() => {
-            if (refused && resetsAt !== null) setWaitingAt(resetsAt);
+            if (refused && resetsAt !== null && !triesBeforeReset) setWaitingAt(resetsAt);
             else onContinue?.();
           }}
         >

@@ -1116,6 +1116,162 @@ describe("decide: a usage limit with an unknown reset", () => {
   });
 });
 
+describe("decide: a usage pause belongs to the limit the provider still reports", () => {
+  const reset = T0 + 24 * 60 * MINUTE;
+  const pausedOn: ReadonlyArray<Step> = [
+    ...proofRunning,
+    signal({ kind: "usage-limit", resetsAt: reset }),
+  ];
+  const held: ReadonlyArray<Step> = [...pausedOn, send("still there?")];
+  const usage = (
+    windows: ReadonlyArray<{ readonly usedPercent: number; readonly resetsAt: number | null }>,
+    checkedAt = T0 + MINUTE,
+  ): Input => ({
+    command: { _tag: "ProviderUsage", usage: { checkedAt, windows } },
+    by: { kind: "engine" },
+    at: checkedAt,
+  });
+  /** The new account Milo was signed in to: budget left, its windows reset on other days. */
+  const otherAccount = usage([
+    { usedPercent: 17, resetsAt: T0 + 3 * 60 * MINUTE },
+    { usedPercent: 24, resetsAt: T0 + 4 * 24 * 60 * MINUTE },
+  ]);
+  const shape = (state: ConversationState) => ({
+    paused: state.pausedUntil,
+    runs: Object.values(state.runs).map((run) => [
+      run.ordinal,
+      run.state,
+      run.trigger.kind === "wake" ? run.trigger.cause : run.trigger.kind,
+    ]),
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly given: ReadonlyArray<Step>;
+    readonly when: Step;
+    readonly then: ReturnType<typeof shape>;
+  }>([
+    {
+      name: "a sign-in whose account has budget left lifts the pause and the held message goes",
+      given: held,
+      when: otherAccount,
+      then: {
+        paused: null,
+        runs: [
+          [1, "ended", "person"],
+          [2, "admitted", "person"],
+        ],
+      },
+    },
+    {
+      name: "the provider no longer reporting the limit resumes the limited work at once",
+      given: pausedOn,
+      when: otherAccount,
+      then: {
+        paused: null,
+        runs: [
+          [1, "ended", "person"],
+          [2, "admitted", "usage-resume"],
+        ],
+      },
+    },
+    {
+      name: "a usage report that still shows the limit's window keeps the pause",
+      given: held,
+      when: usage([{ usedPercent: 99, resetsAt: reset }]),
+      then: {
+        paused: reset,
+        runs: [
+          [1, "ended", "person"],
+          [2, "queued", "person"],
+        ],
+      },
+    },
+    {
+      name: "a usage report with a full window keeps the pause",
+      given: held,
+      when: usage([{ usedPercent: 100, resetsAt: T0 + 3 * 60 * MINUTE }]),
+      then: {
+        paused: reset,
+        runs: [
+          [1, "ended", "person"],
+          [2, "queued", "person"],
+        ],
+      },
+    },
+    {
+      name: "a usage report read before the limit keeps the pause",
+      given: held,
+      when: usage([{ usedPercent: 24, resetsAt: T0 + 4 * 24 * 60 * MINUTE }], T0 - MINUTE),
+      then: {
+        paused: reset,
+        runs: [
+          [1, "ended", "person"],
+          [2, "queued", "person"],
+        ],
+      },
+    },
+    {
+      name: "Continue during a usage limit tries the provider now",
+      given: pausedOn,
+      when: { _tag: "Continue" },
+      then: {
+        paused: null,
+        runs: [
+          [1, "ended", "person"],
+          [2, "admitted", "usage-resume"],
+        ],
+      },
+    },
+    {
+      name: "Continue during a usage limit sends the held message first",
+      given: held,
+      when: { _tag: "Continue" },
+      then: {
+        paused: null,
+        runs: [
+          [1, "ended", "person"],
+          [2, "admitted", "person"],
+        ],
+      },
+    },
+  ])("$name", ({ given, when, then }) => {
+    const scene = play([...given, when]);
+    expect(scene.decision._tag).toBe("Accept");
+    expect(shape(scene.state)).toEqual(then);
+  });
+
+  it("a try the provider still refuses pauses again until its reset", () => {
+    const later = reset + 60 * MINUTE;
+    const { state, log } = playAll([
+      ...held,
+      { _tag: "Continue" },
+      prepared(2),
+      signal({ kind: "usage-limit", turn: T(2), resetsAt: later }),
+    ]);
+    expect(ends(log)).toEqual(["1:usage-limit/agent", "2:usage-limit/agent"]);
+    expect(state.pausedUntil).toBe(later);
+    expect(state.wakes[wakeId(conversation, "usage-resume", r(2))]?.dueAt).toBe(later);
+  });
+
+  it("a held message withdrawn ends stopped, unsent, and the next held message moves up", () => {
+    const { state, log } = playAll([...held, send("and this"), stop(2)]);
+    expect(ends(log)).toEqual(["1:usage-limit/agent", "2:stopped/stop-asked"]);
+    expect(state.runs[r(2)]?.startedAt ?? null).toBeNull();
+    expect(state.queue).toEqual([r(3)]);
+    const resumed = playAll([...held, send("and this"), stop(2), { _tag: "Continue" }]);
+    expect(resumed.state.runs[r(3)]?.state).toBe("admitted");
+  });
+
+  it("nothing paused, a usage report or a Continue changes nothing", () => {
+    for (const when of [otherAccount, { _tag: "Continue" } as Command]) {
+      const scene = play([...proofRunning, when]);
+      expect(scene.decision._tag).toBe("Accept");
+      expect(scene.events).toEqual([]);
+    }
+  });
+});
+
 describe("decide: a session fits by the model the engine asked for", () => {
   it.each([
     ["a differently spelled model", "opus", "claude-opus-4-5"],

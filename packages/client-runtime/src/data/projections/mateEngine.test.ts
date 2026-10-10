@@ -141,6 +141,27 @@ describe("an engine conversation as the thread the view draws", () => {
     ]);
   });
 
+  it("a message no agent has yet can be withdrawn; one the agent took cannot", () => {
+    const run2 = "thread-ada/r/2";
+    const state = held({
+      runs: [
+        engineRun("thread-ada", 1, { end: { kind: "usage-limit", resetsAt: 9 } }),
+        engineRun("thread-ada", 2, { state: "queued", end: null, endedAt: null, startedAt: null }),
+      ],
+      items: [personItem(run1, 1, "Deploy the api"), personItem(run2, 1, "Still there?")],
+      header: { pausedUntil: 9 },
+    });
+    expect(
+      thread(state)?.messages.map((message) => [
+        message.text,
+        (message as { readonly heldRunId?: string }).heldRunId ?? null,
+      ]),
+    ).toEqual([
+      ["Deploy the api", null],
+      ["Still there?", run2],
+    ]);
+  });
+
   it("shows a message its steer missed, sent as the next run, under the message's own id", () => {
     const state = held({
       runs: [engineRun("thread-ada", 1)],

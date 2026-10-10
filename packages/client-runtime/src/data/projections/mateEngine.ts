@@ -128,6 +128,8 @@ export interface EngineMessage extends OrchestrationMessage {
   readonly crewCard?: CrewCard;
   /** The person's message waits in the engine's queue: no run has taken it yet. */
   readonly queued?: true;
+  /** A person's message whose run is still queued: no agent has it, and the person may withdraw it. */
+  readonly heldRunId?: string;
 }
 
 /** Whether a run ended without ever starting: its message never reached the agent. */
@@ -137,6 +139,7 @@ function messageOf(
   item: Item,
   cardOf: CardOf,
   neverStarted: NeverStarted = () => false,
+  queued: (runId: string) => boolean = () => false,
 ): EngineMessage | null {
   const base = {
     turnId: cardOf(item.runId) as OrchestrationMessage["turnId"],
@@ -150,6 +153,7 @@ function messageOf(
         // A message whose run ended before it began names no run, as a V1 message no run took.
         ...(neverStarted(item.runId) ? { turnId: null } : {}),
         ...(item.delivery.state === "queued" ? { queued: true as const } : {}),
+        ...(item.runId !== null && queued(item.runId) ? { heldRunId: item.runId } : {}),
         id: MessageId.make(personMessageId(item)),
         role: "user",
         text: item.text,
@@ -755,7 +759,12 @@ export function engineThreadOf(
     return run !== undefined && run.state === "ended" && run.startedAt === null;
   };
   for (const item of items) {
-    const message = messageOf(item, cardOf, neverStarted);
+    const message = messageOf(
+      item,
+      cardOf,
+      neverStarted,
+      (runId) => runById.get(runId)?.state === "queued",
+    );
     if (message !== null) messages.push(message);
     switch (item.kind) {
       case "call":

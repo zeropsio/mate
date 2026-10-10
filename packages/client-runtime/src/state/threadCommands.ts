@@ -1,6 +1,8 @@
 import * as Crypto from "effect/Crypto";
+import * as Effect from "effect/Effect";
 import { Atom } from "effect/reactivity";
 import {
+  OrchestrationDispatchCommandError,
   WS_METHODS,
   type EnvironmentId,
   type OrchestrationShellSnapshot,
@@ -67,6 +69,7 @@ import {
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
+  engineContinueAfterLimit,
   engineCreateThread,
   engineSetArchived,
   engineSetInteractionMode,
@@ -290,6 +293,26 @@ export function createThreadEnvironmentAtoms<R, E>(
           environmentId,
           engineInterruptTurn(environmentId, input),
           interruptThreadTurn(input),
+        ),
+      scheduler,
+      concurrency,
+    }),
+    /**
+     * The usage-limit notice's Continue on an engine conversation: the engine tries the provider
+     * now. A V1 thread continues by a message the view sends instead.
+     */
+    continueAfterLimit: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:continue-after-limit",
+      execute: (input: { readonly threadId: string }, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineContinueAfterLimit(environmentId, input),
+          Effect.fail(
+            new OrchestrationDispatchCommandError({
+              message: "This Mate continues by a message: send it from the composer.",
+            }),
+          ),
         ),
       scheduler,
       concurrency,
