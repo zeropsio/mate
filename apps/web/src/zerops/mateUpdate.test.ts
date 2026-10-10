@@ -88,19 +88,20 @@ describe("mateUpdateStatus", () => {
 
 describe("mateUpdateQuestion", () => {
   // The app's confirm dialog takes the line ending in "?" as its title and
-  // the rest as its description; running work stopping is said before the
-  // click (spec-mate.md §2.9 step 4), and naming the Mate matters when
-  // several are updated one after another.
+  // the rest as its description; what the update does with the Mate's work
+  // is said before the click — it waits for it, up to the drain's deadline,
+  // never stops it (Milo's stress run 6 read "Work running in it stops") —
+  // and naming the Mate matters when several are updated one after another.
   it.each([
     {
       mateName: "Nova",
       expected:
-        "Update Nova to 0.11.49?\nNova restarts on the new version, which takes about a minute. Work running in it stops; its conversations stay.",
+        "Update Nova to 0.11.49?\nNova finishes the work it's doing first, its helpers' too, then restarts on the new version, which takes about a minute. Its conversations stay. If that work isn't done within 10 minutes, Nova doesn't update and keeps working.",
     },
     {
       mateName: undefined,
       expected:
-        "Update this Mate to 0.11.49?\nIt restarts on the new version, which takes about a minute. Work running in it stops; its conversations stay.",
+        "Update this Mate to 0.11.49?\nIt finishes the work it's doing first, its helpers' too, then restarts on the new version, which takes about a minute. Its conversations stay. If that work isn't done within 10 minutes, it doesn't update and keeps working.",
     },
   ])("asks about $mateName by name", ({ mateName, expected }) => {
     expect(mateUpdateQuestion(mateName, "0.11.49")).toBe(expected);

@@ -10,3 +10,9 @@ export const HqAutoUpdatePolicy = Schema.Struct({
 export type HqAutoUpdatePolicy = typeof HqAutoUpdatePolicy.Type;
 
 export const SetAutoUpdatePolicy = Schema.Struct({ enabled: Schema.Boolean });
+
+/**
+ * How long an update waits for a Mate's work — its runs, its helpers, their reports — to be done
+ * before it gives up: the Mate stays on its version and keeps working.
+ */
+export const MATE_UPDATE_DRAIN_MINUTES = 10;
