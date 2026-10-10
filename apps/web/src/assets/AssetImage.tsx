@@ -147,7 +147,7 @@ export function AssetImage(
      * Its picture cannot be shown — its read failed, or its bytes did not decode: a place that
      * says so itself (a result's tile) takes it over instead of the words drawn here.
      */
-    readonly onUnavailable?: () => void;
+    readonly onUnavailable?: (reason: string | undefined) => void;
   },
 ) {
   const reference = parseMateImageSource(props.src);
@@ -168,7 +168,7 @@ function ManagedAssetImage({
 }: ComponentPropsWithoutRef<"img"> & {
   readonly retrying?: boolean;
   readonly original?: boolean;
-  readonly onUnavailable?: () => void;
+  readonly onUnavailable?: (reason: string | undefined) => void;
   readonly reference: NonNullable<ReturnType<typeof parseMateImageSource>>;
 }) {
   const { ref, near } = useNearViewport<HTMLImageElement>();
@@ -232,9 +232,14 @@ function ManagedAssetImage({
   const [attempt, setAttempt] = useState(0);
   const decodeFailed = url !== undefined && failedUrl === url;
   const unavailable = (read.kind === "failed" && !url) || decodeFailed;
+  const unavailableReason = decodeFailed
+    ? "Image cannot be displayed."
+    : read.kind === "failed"
+      ? read.reason
+      : undefined;
   useEffect(() => {
-    if (unavailable) onUnavailable?.();
-  }, [onUnavailable, unavailable]);
+    if (unavailable) onUnavailable?.(unavailableReason);
+  }, [onUnavailable, unavailable, unavailableReason]);
   if (unavailable)
     return (
       <span
