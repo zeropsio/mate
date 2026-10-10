@@ -326,7 +326,8 @@ export const makeRecords = Effect.gen(function* () {
 
   /**
    * What a window shows of its runs: the runs, every person message, request and answer, every
-   * open request (wherever it was asked), and the newest items of each run not ended.
+   * page published above an answer, every open request (wherever it was asked), and the newest
+   * items of each run not ended.
    */
   const windowOf = (
     conversation: ConversationId,
@@ -358,6 +359,7 @@ export const makeRecords = Effect.gen(function* () {
               SELECT * FROM engine_item WHERE conversation_id = ${conversation}
                 AND ${sql.in("run_id", runIds)}
                 AND (kind IN ('person', 'request')
+                  OR (kind = 'call' AND json_extract(body_json, '$.result.page') IS NOT NULL)
                   ${answers.length === 0 ? sql`` : sql`OR ${sql.in("item_id", answers)}`})
             `;
       const asked =

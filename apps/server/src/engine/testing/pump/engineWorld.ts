@@ -13,6 +13,8 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import * as NodeServices from "@effect/platform-node/NodeServices";
+
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -31,6 +33,7 @@ import {
   type RunState,
 } from "@t3tools/contracts";
 
+import * as ServerConfigModule from "../../../config.ts";
 import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
 import type { BridgeDriver } from "../../bridge/spi3.ts";
 import { Conversations } from "../../Conversations.ts";
@@ -94,6 +97,8 @@ export interface WorldOptions {
     readonly thread: string;
     readonly instanceId: string;
   }) => unknown;
+  /** The server's config, so a call's pictures and pages reach an asset store; none by default. */
+  readonly assets?: boolean;
 }
 
 let lives = 0;
@@ -178,6 +183,11 @@ export const makeEngineWorld = (options: WorldOptions) =>
       ),
     );
 
+    const config = options.assets
+      ? ServerConfigModule.layerTest(dir, { prefix: "engine-assets-" }).pipe(
+          Layer.provide(NodeServices.layer),
+        )
+      : Layer.empty;
     const lifeLayer = (scripted: ScriptedProvider) =>
       liveEngineLayer({ worker: { pollMillis: 1_000 } }).pipe(
         Layer.provideMerge(
@@ -185,6 +195,7 @@ export const makeEngineWorld = (options: WorldOptions) =>
             scriptedProviderLayer(scripted),
             history.layer,
             ports,
+            config,
             NodeSqliteClient.layer({ filename }),
           ),
         ),
