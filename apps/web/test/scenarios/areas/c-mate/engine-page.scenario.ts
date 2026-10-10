@@ -19,11 +19,11 @@ const TITLE = "Launch plan";
 const ANSWER = "Week one is the hardest.";
 
 /** A page as an agent writes one: it reaches for the network, and it is taller or shorter. */
-const pageOf = (height: number) =>
+const pageOf = (height: number, script = 'fetch("https://example.com/beacon").catch(()=>{});') =>
   `<!doctype html><html><head><title>${TITLE}</title>` +
-  `<style>.plan{height:${height}px;background:var(--muted);color:var(--foreground)}</style></head>` +
+  `<style>.plan{box-sizing:border-box;height:${height}px;padding:16px;color:var(--foreground)}</style></head>` +
   `<body><div class="plan"><h1>Plan</h1><img src="https://example.com/chart.png" alt=""></div>` +
-  `<script>fetch("https://example.com/beacon").catch(()=>{});</script></body></html>`;
+  `<script>${script}</script></body></html>`;
 
 /** One frame of the page's place in the conversation: its frame's height, the answer under it. */
 interface Sample {
@@ -69,11 +69,19 @@ const SAMPLER = (title: string, answer: string) => {
 /** How long the Mate takes to hand the page's bytes over: the page loads that much later. */
 const BYTES_AFTER_MS = 1500;
 
-const journey = (height: number, slowBytes = false) =>
+const journey = (
+  height: number,
+  options: {
+    readonly slowBytes?: boolean;
+    /** The height zcp's browser recorded with the page. */
+    readonly recorded?: number;
+    readonly script?: string;
+  } = {},
+) =>
   Effect.gen(function* () {
     const s = yield* createScenario([installArea]);
     yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
-    const html = Buffer.from(pageOf(height));
+    const html = Buffer.from(pageOf(height, options.script));
     const digest = "c".repeat(64);
     s.drivers.onMate.push((mate) => {
       Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
@@ -91,7 +99,7 @@ const journey = (height: number, slowBytes = false) =>
                       "access-control-allow-headers": "authorization, dpop",
                     },
                   }),
-                slowBytes ? BYTES_AFTER_MS : 0,
+                options.slowBytes ? BYTES_AFTER_MS : 0,
               ),
             )
           : handle(request);
@@ -133,6 +141,7 @@ const journey = (height: number, slowBytes = false) =>
       },
       title: TITLE,
       bytes: html.length,
+      ...(options.recorded === undefined ? {} : { height: options.recorded }),
       publishedAt: 1791201600000,
     };
     const run = engine.personRun("Plan the launch");
@@ -217,13 +226,56 @@ describe("C: a page the Mate publishes", () => {
     );
   });
 
+  describe("Decision: a page that navigates its own frame is not the page the Mate published.", () => {
+    it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      it.effect("a published page that navigates itself is taken down, never shown", () =>
+        Effect.gen(function* () {
+          const { s, publish } = yield* journey(180, {
+            script:
+              'setTimeout(function(){location.href="data:text/html,<h1>Sign in to Zerops</h1>"},400);',
+          });
+          const went: string[] = [];
+          s.page.on("framenavigated", (frame) => went.push(frame.url()));
+          publish();
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(
+              (title) =>
+                document.querySelector(`iframe[title="${title}"]`) === null &&
+                document.body.textContent?.includes("The page tried to open something else"),
+              { timeout: 10_000 },
+              TITLE,
+            ),
+          );
+          expect(
+            went.some((url) => url.startsWith("data:text/html")),
+            "ASSERTION: the page did navigate its frame",
+          ).toBe(true);
+          const readable = yield* Effect.promise(() =>
+            Promise.all(
+              s.page
+                .frames()
+                .map((frame) =>
+                  frame.evaluate(() => document.body?.textContent ?? "").catch(() => ""),
+                ),
+            ),
+          );
+          expect(
+            readable.some((text) => text.includes("Sign in to Zerops")),
+            "ASSERTION: what it navigated to stands nowhere in the conversation",
+          ).toBe(false);
+          yield* s.then.noExternalNetwork;
+        }),
+      );
+    });
+  });
+
   describe("Decision: geometry relations only; no style pins.", () => {
     it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
       it.effect(
         "a page taller than the shared cap holds its frame from its first paint: the answer under it never moves as it loads",
         () =>
           Effect.gen(function* () {
-            const { s, publish } = yield* journey(2400, true);
+            const { s, publish } = yield* journey(2400, { slowBytes: true });
             const samples = yield* sampled(
               s,
               Effect.sync(() => publish()),
@@ -249,23 +301,21 @@ describe("C: a page the Mate publishes", () => {
       );
 
       it.effect(
-        "after a reload a short page paints at its own height from its first frame: nothing under it moves",
+        "a page paints at the height zcp recorded with it from its first frame: nothing under it moves as it loads",
         () =>
           Effect.gen(function* () {
-            const { s, chat, publish } = yield* journey(180);
-            const live = yield* sampled(
+            const { s, publish } = yield* journey(180, { slowBytes: true, recorded: 180 });
+            const samples = yield* sampled(
               s,
               Effect.sync(() => publish()),
             );
-            const settled = live.at(-1)!.frame;
-            const reloaded = yield* sampled(s, chat.when.reload("Ada", ANSWER), true);
-            const heights = new Set(reloaded.map((sample) => sample.frame));
-            expect(
-              [...heights],
-              "ASSERTION: the frame stands at its own height throughout",
-            ).toEqual([settled]);
+            const heights = new Set(samples.map((sample) => sample.frame));
+            expect(heights.size, `ASSERTION: one frame height, saw ${[...heights]}`).toBe(1);
+            const loadedAt = samples.find((sample) => sample.loaded)!.t;
             const offsets = new Set(
-              reloaded.flatMap((sample) => (sample.answer === null ? [] : [sample.answer])),
+              samples
+                .filter((sample) => sample.t >= loadedAt - 500)
+                .flatMap((sample) => (sample.answer === null ? [] : [sample.answer])),
             );
             expect(offsets.size, `ASSERTION: the answer keeps its place, saw ${[...offsets]}`).toBe(
               1,
