@@ -220,6 +220,11 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
       case "session.cursor":
         // ProviderService keeps the binding's cursor; the next open resumes from it.
         break;
+      case "agent.caught-up":
+        // Every finished result reached the agent, however many one turn took.
+        reportDue = null;
+        signals.push({ kind: "agent-caught-up" });
+        break;
       case "session.closed": {
         const asked = ASKED_CLOSES.has(signal.cause);
         const words = signal.words ?? CLOSE_WORDS[signal.cause] ?? CLOSE_WORDS.unknown!;

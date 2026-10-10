@@ -239,6 +239,11 @@ export type SignalBody =
     }
   | { readonly type: "session.cursor"; readonly resume: ResumeToken }
   | { readonly type: "session.closed"; readonly cause: SessionCloseCause; readonly words?: string }
+  /**
+   * The agent says it is between turns with nothing waiting for it: whatever its finished
+   * background work reported has reached the model (Claude's `session_state_changed: idle`).
+   */
+  | { readonly type: "agent.caught-up" }
   // sends
   | {
       readonly type: "send.accepted";

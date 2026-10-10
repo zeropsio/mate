@@ -29,6 +29,8 @@ export function signalLine(signal: DriverSignal): string | undefined {
       return `session ${signal.session} cursor`;
     case "session.closed":
       return `session ${signal.session} closed: ${signal.cause}`;
+    case "agent.caught-up":
+      return `session ${signal.session} caught up`;
     case "send.accepted":
       return `${signal.turn} accepted: ${signal.as}${signal.into === undefined ? "" : ` into ${signal.into}`}`;
     case "send.refused":

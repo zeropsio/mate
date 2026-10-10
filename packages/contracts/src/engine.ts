@@ -974,6 +974,12 @@ export const SessionRotated = event("SessionRotated", {
 /** A usage limit whose reset nobody knew stops holding the queue (the person wrote again). */
 export const UsagePauseLifted = event("UsagePauseLifted", { reason: Schema.String });
 /**
+ * Every result of the Mate's finished background work has reached its agent: the agent's own word
+ * that it is between turns with nothing waiting for it (Claude's idle), however many it took in
+ * one turn. Nothing is due a turn of its own any more.
+ */
+export const ReportsTaken = event("ReportsTaken", { reason: Schema.String });
+/**
  * The conversation is given the agent it belongs to (and runs that agent's model). `keepsThread`:
  * an instance of the same driver whose sessions resume the old one's, so its thread carries over.
  */
@@ -1116,6 +1122,7 @@ const knownEvents = [
   SessionClosed,
   SessionRotated,
   UsagePauseLifted,
+  ReportsTaken,
   AgentAssigned,
   ModelSwitched,
   RuntimeModeSet,

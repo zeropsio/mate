@@ -42,6 +42,8 @@ export function coreLine(signal: ProviderSignal): string {
       return `usage resets at ${signal.resetsAt}`;
     case "session-exited":
       return `session exited: ${signal.reason}`;
+    case "agent-caught-up":
+      return "agent caught up";
     case "activity":
       return `${signal.turn} alive`;
   }

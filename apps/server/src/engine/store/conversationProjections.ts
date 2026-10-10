@@ -192,6 +192,7 @@ const projectWith = (
     case "ModelSwitched":
     case "RuntimeModeSet":
     case "UsagePauseLifted":
+    case "ReportsTaken":
     case "ConversationArchived":
     case "ConversationUnarchived":
     case "EffectRequested":

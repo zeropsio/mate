@@ -724,6 +724,9 @@ export function makeTranslator(options: TranslatorOptions): Translator {
         afterStop(turn);
         return;
       }
+      case "session.state.changed":
+        if (isCaughtUp(event)) emit(owner, { type: "agent.caught-up" });
+        return;
       case "session.exited": {
         const exitKind = event.payload.exitKind;
         const cause: SessionCloseCause =
@@ -1191,6 +1194,15 @@ export function makeTranslator(options: TranslatorOptions): Translator {
  */
 function isSelfTurnStart(event: SpiEvent): boolean {
   return event.raw?.method === "claude/synthetic-turn-start";
+}
+
+/**
+ * Its other read: Claude says it is idle only once it has handed the model every background
+ * result it held (one turn may take several), so nothing finished still waits for a turn.
+ */
+function isCaughtUp(event: SpiEvent): boolean {
+  const payload = event.raw?.payload as { readonly state?: unknown } | undefined;
+  return event.raw?.method === "claude/system/session_state_changed" && payload?.state === "idle";
 }
 
 const definedWords = (words: string | undefined) => (words === undefined ? {} : { words });
