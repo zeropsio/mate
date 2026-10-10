@@ -22,7 +22,7 @@ export function ComposerStandInDock({
 }) {
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-6 sm:pt-7"
       data-composer-stand-in=""
     >
       <div className="w-full ps-(--workspace-gutter-start) pe-(--workspace-gutter-end)">

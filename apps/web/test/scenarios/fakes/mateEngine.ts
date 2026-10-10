@@ -319,6 +319,33 @@ export class MateEngineFake {
     });
   }
 
+  /**
+   * The agent's usage limit pauses the conversation until `resetsAt`, and the person's `text`
+   * waits for the reset as a queued run.
+   */
+  pauseHolding(resetsAt: number, text: string): string {
+    return this.commit((change) => {
+      this.header = decodeHeader({ ...this.header, pausedUntil: resetsAt, queued: 1 });
+      change.header = true;
+      const run = this.openRun(change, { kind: "person" });
+      this.setRun(change, run, {
+        state: "queued",
+        turnState: null,
+        admittedAt: null,
+        startedAt: null,
+      });
+      this.addItem(change, run, {
+        kind: "person",
+        by: { kind: "person", principal: { kind: "person", subject: "owner" } },
+        text,
+        attachments: [],
+        sendId: `held-${this.runs.size}`,
+        delivery: { state: "queued", at: null },
+      });
+      return run;
+    });
+  }
+
   /** An item of `run` opens as the engine records it: still being written, or whole. */
   item(run: string, body: Record<string, unknown>): string {
     return this.commit((change) => this.addItem(change, run, { by: { kind: "mate" }, ...body }));

@@ -37,6 +37,146 @@ async function ownerMenu(page: Page) {
   );
 }
 
+/**
+ * What the conversation's end paints, read from the page: each row's painted parts (its bubble or
+ * card, its text, its pictures), never the row's own box, which carries its spacing.
+ */
+const RESETS_AT = "2099-10-10T00:00:00.000Z";
+
+function readEnd() {
+  type Box = { top: number; bottom: number };
+  const paints = (element: Element, style: CSSStyleDeclaration) => {
+    const alpha = (color: string) => color !== "transparent" && !/\/ 0\)$|, 0\)$/u.test(color);
+    return (
+      alpha(style.backgroundColor) ||
+      style.backgroundImage !== "none" ||
+      style.boxShadow !== "none" ||
+      (["Top", "Right", "Bottom", "Left"] as const).some(
+        (side) =>
+          parseFloat(style.getPropertyValue(`border-${side.toLowerCase()}-width`)) > 0 &&
+          alpha(style.getPropertyValue(`border-${side.toLowerCase()}-color`)),
+      ) ||
+      ["IMG", "svg", "CANVAS", "VIDEO", "TEXTAREA", "INPUT"].includes(element.tagName)
+    );
+  };
+  /** The union of what `root` paints, clipped by every box that clips it; null when nothing. */
+  const painted = (root: Element): Box | null => {
+    let top = Infinity;
+    let bottom = -Infinity;
+    const clipped = (element: Element, box: Box): Box | null => {
+      let { top: from, bottom: to } = box;
+      for (let at = element.parentElement; at !== null; at = at.parentElement) {
+        const style = getComputedStyle(at);
+        if (style.overflowY !== "visible" || style.overflowX !== "visible") {
+          const clip = at.getBoundingClientRect();
+          from = Math.max(from, clip.top);
+          to = Math.min(to, clip.bottom);
+        }
+        if (at === root) break;
+      }
+      return to > from ? { top: from, bottom: to } : null;
+    };
+    const add = (element: Element, box: DOMRect | DOMRectReadOnly) => {
+      if (box.width <= 1 || box.height <= 1) return;
+      const seen = clipped(element, box);
+      if (seen === null) return;
+      top = Math.min(top, seen.top);
+      bottom = Math.max(bottom, seen.bottom);
+    };
+    const walk = (element: Element) => {
+      const style = getComputedStyle(element);
+      if (style.display === "none" || parseFloat(style.opacity) === 0) return;
+      if (style.visibility !== "hidden") {
+        if (paints(element, style)) add(element, element.getBoundingClientRect());
+        for (const node of element.childNodes) {
+          if (node.nodeType !== Node.TEXT_NODE || !node.textContent?.trim()) continue;
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          for (const box of range.getClientRects()) add(element, box);
+        }
+      }
+      if (element.tagName !== "svg") for (const child of element.children) walk(child);
+    };
+    walk(root);
+    return top === Infinity ? null : { top, bottom };
+  };
+  // A card the list lays out in slices is one row: its slices touch.
+  const rows: Array<Box & { text: string; person: boolean }> = [];
+  for (const row of [...document.querySelectorAll(".timeline-legend-list [data-timeline-root]")]
+    .flatMap((row) => {
+      const box = painted(row);
+      return box === null
+        ? []
+        : [
+            {
+              ...box,
+              text: (row.textContent ?? "").slice(0, 80),
+              person: row.querySelector('[data-message-role="user"]') !== null,
+            },
+          ];
+    })
+    .sort((a, b) => a.top - b.top)) {
+    const previous = rows.at(-1);
+    if (previous !== undefined && row.top - previous.bottom <= 1)
+      rows[rows.length - 1] = {
+        top: previous.top,
+        bottom: Math.max(previous.bottom, row.bottom),
+        text: previous.text + row.text,
+        person: previous.person || row.person,
+      };
+    else rows.push(row);
+  }
+  rows.sort((a, b) => a.bottom - b.bottom);
+  const last = rows.at(-1)!;
+  const above = rows.at(-2)!;
+  // The rows of the last turn: from the person's message that opened it. A message that opens its
+  // turn has no row of its turn above it; its turn's rows will stand as the last turn's reply stood
+  // under its message.
+  const opener = rows.findLastIndex((row) => row.person);
+  const opensTurn = opener === rows.length - 1;
+  const previousOpener = rows.slice(0, -1).findLastIndex((row) => row.person);
+  const rowGap = opensTurn
+    ? rows[previousOpener + 1]!.top - rows[previousOpener]!.bottom
+    : last.top - above.bottom;
+  const composer = painted(document.querySelector("[data-chat-composer-overlay]")!)!;
+  return {
+    last,
+    above,
+    opensTurn,
+    composerTop: composer.top,
+    /** The last row's painted bottom against the composer's painted top. */
+    endGap: composer.top - last.bottom,
+    /** How far apart the rows of the last turn stand. */
+    rowGap,
+  };
+}
+
+/** The end of the conversation once nothing moves: the same reading for half a second. */
+async function settledEnd(page: Page) {
+  await page.waitForFunction(
+    () => {
+      const list = document.querySelector<HTMLElement>(".timeline-legend-list");
+      return (
+        list !== null &&
+        !document.querySelector(
+          '[data-conversation-opening]:not([data-conversation-opening="complete"])',
+        ) &&
+        !document.querySelector("[data-timeline-placing]") &&
+        Math.abs(list.scrollHeight - list.clientHeight - list.scrollTop) <= 2
+      );
+    },
+    { polling: "raf", timeout: 8000 },
+  );
+  let previous = "";
+  for (let still = 0; still < 10;) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const now = JSON.stringify(await page.evaluate(readEnd));
+    still = now === previous ? still + 1 : 0;
+    previous = now;
+  }
+  return page.evaluate(readEnd);
+}
+
 describe("owner-reported layout regressions", () => {
   describe("Decision: geometry relations only; no style pins.", () => {
     const shapes = [
@@ -768,6 +908,158 @@ describe("owner-reported layout regressions", () => {
             yield* s.then.noExternalNetwork;
           }),
         );
+      });
+    });
+    describe("Decision: the composer is its own group; the conversation's end stands clear of it.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // Owner, 2026-10-10: "last message way too close to composer" (a person's message 18 px
+        // above the card), and "in some cases, at least previously, some stuff went even into the
+        // composer (like working card when it had helpers etc)". A question the run waits on is
+        // left out: its ask stands over the conversation's end by the decision behind "a question
+        // opening in the composer and its answer never move the conversation".
+        const ends: ReadonlyArray<{
+          readonly state: string;
+          readonly arrange: (
+            chat: ReturnType<typeof mateChat>,
+            engine: EngineChatWire["engine"],
+          ) => Effect.Effect<void, unknown, never>;
+        }> = [
+          { state: "the conversation at rest", arrange: () => Effect.void },
+          {
+            state: "a working card with its helpers running",
+            arrange: (chat, engine) =>
+              Effect.gen(function* () {
+                const run = engine.personRun("Review the api and the web with two helpers");
+                for (const [work, title] of [
+                  ["helper-api", "Review the api"],
+                  ["helper-web", "Review the web"],
+                ])
+                  engine.item(run, {
+                    kind: "work",
+                    work,
+                    workKind: "helper",
+                    status: "running",
+                    title,
+                  });
+                engine.note(run, "Two helpers are reviewing the api and the web.");
+                yield* chat.then.text("Two helpers are reviewing the api and the web.");
+              }),
+          },
+          {
+            state: "a run waiting for its helpers",
+            arrange: (chat, engine) =>
+              Effect.gen(function* () {
+                const run = engine.personRun("Review the api with a helper");
+                engine.item(run, {
+                  kind: "work",
+                  work: "helper-api",
+                  workKind: "helper",
+                  status: "running",
+                  title: "Review the api",
+                });
+                engine.note(run, "The helper is still reviewing the api.", { kind: "completed" });
+                yield* chat.then.text("Waiting for its helpers");
+              }),
+          },
+          {
+            state: "a run waiting for its background command",
+            arrange: (chat, engine) =>
+              Effect.gen(function* () {
+                const run = engine.personRun("Start the wait in the background");
+                engine.item(run, {
+                  kind: "work",
+                  work: "session.w2",
+                  workKind: "shell",
+                  status: "running",
+                  title: "Wait 45 seconds in the background, then print done",
+                });
+                engine.note(run, "The background wait hasn't printed yet.", { kind: "completed" });
+                yield* chat.then.text("Waiting for its background command");
+              }),
+          },
+          {
+            state: "the usage limit holding a message",
+            arrange: (chat, engine) =>
+              Effect.gen(function* () {
+                const driver = chat.fixture();
+                const run = engine.personRun("Deploy the shop again");
+                engine.note(run, "The deploy is halfway through.");
+                engine.end(run, { kind: "usage-limit", resetsAt: Date.parse(RESETS_AT) });
+                engine.pauseHolding(
+                  Date.parse(RESETS_AT),
+                  "Finish the deploy once the limit resets",
+                );
+                driver.usagePause = {
+                  resetsAt: RESETS_AT,
+                  window: "7-day",
+                  held: 1,
+                  pausedAt: "2026-10-08T10:00:00.000Z",
+                  autoResume: false,
+                };
+                driver.shell();
+                yield* chat.then.text("Ada hit the coding agent's limit");
+                yield* chat.then.text("Finish the deploy once the limit resets");
+              }),
+          },
+          {
+            state: "a message steered into the running run",
+            arrange: (chat, engine) =>
+              Effect.gen(function* () {
+                const run = engine.personRun("Check both pages");
+                engine.note(run, "Checking the first page now.");
+                yield* chat.then.text("Checking the first page now.");
+                yield* chat.when.send("also tell me the page title");
+                yield* chat.then.text("also tell me the page title");
+              }),
+          },
+        ];
+        for (const { state, arrange } of ends)
+          it.effect(
+            `the conversation's last row ends clear of the composer card, farther from it than the rows of its turn stand apart (${state})`,
+            () =>
+              Effect.gen(function* () {
+                const s = yield* createScenario([installEngineArea]);
+                yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+                yield* s.given.project("Ada", { mate: true });
+                const chat = mateChat(s);
+                for (const round of [1, 2, 3])
+                  chat
+                    .fixture()
+                    .exchange(
+                      `How did deploy ${round} go?`,
+                      "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                        12,
+                      ),
+                    );
+                chat.fixture().exchange("And now?", "The existing conversation is still here");
+                yield* s.given.signedIn;
+                yield* chat.when.open();
+                yield* chat.then.text("The existing conversation is still here");
+                yield* Effect.promise(() => ownerMenu(s.page));
+                const wire = chat.fixture().wire;
+                if (!(wire instanceof EngineChatWire))
+                  throw new Error("This witness runs on the engine's wire");
+                yield* arrange(chat, wire.engine);
+                const end = yield* Effect.promise(() => settledEnd(s.page));
+                yield* Effect.promise(async () => {
+                  if (process.env.MATE_LAYOUT_EVIDENCE)
+                    await s.page.screenshot({
+                      path: `${process.env.MATE_LAYOUT_EVIDENCE}/end-${state.replaceAll(" ", "-")}.png`,
+                      clip: { x: 435, y: 500, width: 1786 - 435, height: 500 },
+                    });
+                });
+                const seen = JSON.stringify(end);
+                expect(
+                  end.last.bottom,
+                  `ASSERTION: no part of the last row reaches into the composer: ${seen}`,
+                ).toBeLessThanOrEqual(end.composerTop);
+                expect(
+                  end.endGap,
+                  `ASSERTION: the composer stands apart as its own group: ${seen}`,
+                ).toBeGreaterThan(end.rowGap);
+                yield* s.then.noExternalNetwork;
+              }),
+          );
       });
     });
     describe("Decision: restore pre-regression behaviour; no test weakened; titles kept.", () => {
