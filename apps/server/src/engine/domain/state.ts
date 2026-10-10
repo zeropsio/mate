@@ -37,10 +37,10 @@ export const KEPT_ENDED_RUNS = 16;
 
 /**
  * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. One
- * above main's 11, whose closed items lacked `endedAt`, so no snapshot of another shape loads as
- * this one.
+ * above main's 12, whose open requests lacked a vault ask's key and vault, so no snapshot of
+ * another shape loads as this one.
  */
-export const STATE_VERSION = 12;
+export const STATE_VERSION = 13;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -121,7 +121,17 @@ export interface OpenRequest {
   readonly dismissible?: boolean;
   /** A question asked by message: what it asks, by question id, to word the answer's message. */
   readonly questions?: ReadonlyArray<{ readonly id: string; readonly question: string }>;
+  /** A value asked of the person: its key and vault, to word the agent's line on the answer. */
+  readonly vault?: Pick<VaultAsk, "key" | "scope">;
 }
+
+export type VaultAsk = Extract<RequestAsk, { readonly kind: "vault" }>;
+
+/**
+ * A value the agent asked the person for: it outlives the turn that asked, holds no run, no
+ * session and no update, and is answered saved or declined, never with the value.
+ */
+export const isVaultAsk = (request: OpenRequest): boolean => request.kind === "vault";
 
 export interface ArmedWake {
   readonly id: WakeId;

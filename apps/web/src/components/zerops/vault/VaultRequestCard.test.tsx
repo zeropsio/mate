@@ -1,5 +1,9 @@
 // @vitest-environment happy-dom
-import type { VaultScopeRef, VaultWrite } from "@t3tools/client-runtime/data";
+import type {
+  VaultAskActivityPayload,
+  VaultScopeRef,
+  VaultWrite,
+} from "@t3tools/client-runtime/data";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -7,7 +11,12 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { VaultWriteOutcome } from "./VaultPanel";
 import { VaultRequestCard } from "./VaultRequestCard";
 import { VAULT_FIXTURE, VAULT_FIXTURE_NOW } from "./vaultFixture";
-import { type VaultAsk, type VaultAskSaid, vaultAskState } from "./vaultRequest.logic";
+import {
+  type VaultAsk,
+  type VaultAskSaid,
+  vaultAskPickUp,
+  vaultAskState,
+} from "./vaultRequest.logic";
 
 let root: Root | undefined;
 
@@ -37,6 +46,7 @@ async function mount(
   asked: VaultAsk,
   answer: VaultWriteOutcome = { ok: true },
   said: VaultAskSaid | null = null,
+  engine: VaultAskActivityPayload["state"] | null = null,
 ): Promise<Mounted> {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const puts: Mounted["puts"] = [];
@@ -56,6 +66,8 @@ async function mount(
           return answer;
         }}
         said={saying}
+        engine={engine}
+        pickUp={vaultAskPickUp(VAULT_FIXTURE, asked)}
         state={vaultAskState(VAULT_FIXTURE, asked)}
       />
     );
@@ -70,7 +82,8 @@ const field = (container: Element) =>
   );
 const button = (container: Element, words: string) =>
   [...container.querySelectorAll("button")].find(
-    (candidate) => candidate.textContent?.trim() === words,
+    (candidate) =>
+      candidate.textContent?.trim() === words || candidate.getAttribute("aria-label") === words,
   ) as HTMLButtonElement | undefined;
 
 async function type(container: Element, text: string) {
@@ -82,6 +95,9 @@ async function type(container: Element, text: string) {
   });
 }
 
+const secretBox = (container: Element) =>
+  container.querySelector<HTMLElement>('[role="checkbox"]') ?? undefined;
+
 async function click(target: HTMLElement | undefined) {
   await act(async () => target!.click());
 }
@@ -90,19 +106,82 @@ describe("VaultRequestCard — asking for a value", () => {
   it("says who needs what, where it goes and why, behind a password field", async () => {
     const { container } = await mount(ask());
     expect(container.textContent).toContain("Fen needs OPENAI_API_KEY");
-    expect(container.textContent).toContain("Shared · sensitive");
+    expect(container.querySelector("[data-vault-request-where]")?.textContent).toBe("Shared");
     expect(container.textContent).toContain("platform.openai.com › API keys.");
     expect(field(container)?.type).toBe("password");
     expect(button(container, "Put in vault")?.disabled).toBe(true);
     expect(button(container, "Not now")).toBeDefined();
   });
 
-  it("a plain value of a service's own is typed in the open", async () => {
+  it("the field is masked until the person shows it, whatever the agent asked", async () => {
     const { container } = await mount(
       ask({ key: "MAIL_FROM", scope: { kind: "service", hostname: "appdev" }, sensitive: false }),
     );
-    expect(container.textContent).toContain("appdev · plain");
+    expect(container.querySelector("[data-vault-request-where]")?.textContent).toBe("appdev");
+    expect(field(container)?.type).toBe("password");
+    expect(field(container)?.getAttribute("autocomplete")).toBe("new-password");
+    await click(button(container, "Show"));
     expect(field(container)?.type).toBe("text");
+    await click(button(container, "Hide"));
+    expect(field(container)?.type).toBe("password");
+  });
+
+  it.each([
+    { name: "asked secret, left as it is", sensitive: true, untick: false, want: true },
+    { name: "asked secret, made plain by the person", sensitive: true, untick: true, want: false },
+    {
+      name: "asked plain, left as the agent pre-selected",
+      sensitive: false,
+      untick: false,
+      want: false,
+    },
+  ])(
+    "a secret is stored sensitive unless the person chooses otherwise: $name",
+    async ({ sensitive, untick, want }) => {
+      const { container, puts } = await mount(ask({ key: "NEW_KEY", sensitive }));
+      expect(secretBox(container)?.getAttribute("aria-checked")).toBe(String(sensitive));
+      if (untick) await click(secretBox(container));
+      await type(container, "v4lue");
+      await click(button(container, "Put in vault"));
+      expect(puts.map((each) => each.write.kind === "add" && each.write.sensitive)).toEqual([want]);
+    },
+  );
+
+  it("a secret the vault holds stays secret: the person cannot make it plain here", async () => {
+    const { container, puts } = await mount(
+      ask({ key: "LEGACY_TOKEN", sensitive: false }),
+      undefined,
+      null,
+      "open",
+    );
+    expect(secretBox(container)?.getAttribute("aria-checked")).toBe("true");
+    expect(secretBox(container)?.hasAttribute("data-disabled")).toBe(true);
+    await type(container, "v4lue");
+    await click(button(container, "Save"));
+    expect(puts.map((each) => each.write.kind === "update" && each.write.sensitive)).toEqual([
+      true,
+    ]);
+  });
+
+  it("the Mate's reason reads as its words, beside who can read it and what never goes in", async () => {
+    const { container } = await mount(ask());
+    expect(container.querySelector("[data-vault-request-reason]")?.textContent).toBe(
+      "Fen: The chat feature calls OpenAI — platform.openai.com › API keys.",
+    );
+    expect(container.querySelector("[data-vault-request-reason] q")).not.toBeNull();
+    expect(container.querySelector("[data-vault-request-reach]")?.textContent).toBe(
+      "Every app in this project can read it, Fen included. Never paste your own password or Zerops token.",
+    );
+    expect(container.querySelector("[data-vault-request-own]")).toBeNull();
+  });
+
+  it("a key named like a Zerops sign-in is warned of before it is given", async () => {
+    const { container } = await mount(
+      ask({ key: "ZEROPS_TOKEN", reason: "From Settings, Access tokens." }),
+    );
+    expect(container.querySelector("[data-vault-request-own]")?.textContent).toBe(
+      "ZEROPS_TOKEN looks like a Zerops sign-in. Fen never needs yours.",
+    );
   });
 
   it("puts a new key in as an add, folds to one line, and keeps the value nowhere", async () => {
@@ -168,5 +247,54 @@ describe("VaultRequestCard — asking for a value", () => {
     const { container } = await mount(ask({ scope: { kind: "service", hostname: "gone" } }));
     expect(field(container)).toBeNull();
     expect(container.textContent).toContain("gone is not in this project any more.");
+  });
+});
+
+describe("VaultRequestCard — an ask the engine keeps", () => {
+  it("names the key, why, where it goes and what makes it take effect, behind Save and Decline", async () => {
+    const { container } = await mount(ask(), { ok: true }, null, "open");
+    expect(container.textContent).toContain("Fen needs OPENAI_API_KEY");
+    expect(container.querySelector("[data-vault-request-where]")?.textContent).toBe("Shared");
+    expect(container.textContent).toContain("platform.openai.com › API keys.");
+    expect(container.querySelector("[data-vault-request-pickup]")?.textContent).toBe(
+      "It takes effect once a service's zerops.yaml references it and that service is deployed.",
+    );
+    expect(field(container)?.getAttribute("autocomplete")).toBe("new-password");
+    expect(field(container)?.type).toBe("password");
+    expect(button(container, "Save")?.disabled).toBe(true);
+    expect(button(container, "Decline")).toBeDefined();
+  });
+
+  it("Save writes the value to the vault and keeps it nowhere: the card says the Mate was told", async () => {
+    const { container, puts } = await mount(ask(), { ok: true }, null, "open");
+    await type(container, "sk-test-123");
+    await click(button(container, "Save"));
+    expect(puts).toEqual([
+      {
+        scope: { kind: "shared" },
+        write: { kind: "add", key: "OPENAI_API_KEY", value: "sk-test-123", sensitive: true },
+      },
+    ]);
+    expect(field(container)).toBeNull();
+    expect(container.textContent).toContain("OPENAI_API_KEY is in the vault — Fen has been told");
+    expect(container.innerHTML).not.toContain("sk-test-123");
+    expect(JSON.stringify({ ...localStorage })).not.toContain("sk-test-123");
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain("sk-test-123");
+  });
+
+  it("Decline folds it to one line and writes nothing", async () => {
+    const { container, puts } = await mount(ask(), { ok: true }, null, "open");
+    await click(button(container, "Decline"));
+    expect(container.textContent).toBe("Fen asked for OPENAI_API_KEY · Declined");
+    expect(puts).toEqual([]);
+  });
+
+  it.each([
+    ["saved", "OPENAI_API_KEY is in the vault — Fen has been told"],
+    ["declined", "Fen asked for OPENAI_API_KEY · Declined"],
+  ] as const)("the engine's record %s draws it so after a reload", async (engine, words) => {
+    const { container } = await mount(ask(), { ok: true }, null, engine);
+    expect(container.textContent).toContain(words);
+    expect(field(container)).toBeNull();
   });
 });

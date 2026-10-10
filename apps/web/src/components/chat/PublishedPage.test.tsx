@@ -3,7 +3,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { PublishedPageFrame } from "./PublishedPage";
-import { PAGE_POLICY, WRAPPER_POLICY, innerDocumentOf } from "./publishedPage.logic";
+import {
+  PAGE_POLICY,
+  WRAPPER_POLICY,
+  innerDocumentOf,
+} from "@t3tools/client-runtime/zerops/publishedPage";
 
 const theme = { scheme: "light" as const, vars: { "--background": "#fff" } };
 /** A page that tries every way out: the Mate's own API, the network, the person's session. */

@@ -90,14 +90,18 @@ export function budgets(s: Scenario) {
           .setTimeout(15_000)
           .wait();
       }),
+      // The overview's projects: its cards, and the lines of the projects without a Mate.
       projectsReady: Effect.promise(async () => {
-        await s.page.locator('[data-zerops-surface="project-rows"]').setTimeout(15_000).wait();
+        await s.page
+          .locator('[data-zerops-surface="projects-flow"] [data-zerops-group]')
+          .setTimeout(15_000)
+          .wait();
       }),
       projectsAre: (count: number) =>
         Effect.promise(() =>
           s.page.waitForFunction(
             (expected) =>
-              document.querySelectorAll('[data-zerops-surface="project-rows"] [data-zerops-group]')
+              document.querySelectorAll('[data-zerops-surface="projects-flow"] [data-zerops-group]')
                 .length === expected,
             {},
             count,
@@ -107,7 +111,12 @@ export function budgets(s: Scenario) {
         Effect.promise(async () => {
           const id = s.appIds.get(name);
           if (id === undefined) throw new Error(`No application fixture ${name}`);
-          await s.page.locator(`[data-zerops-group="${id}"] [data-zerops-row-toggle]`).click();
+          // A card holds its project's detail only while production's panel is open.
+          await s.page
+            .locator(
+              `[data-zerops-surface="project-cards"] [data-zerops-group="${id}"] [data-zerops-place]`,
+            )
+            .click();
         }),
       appDetailsAre: (names: ReadonlyArray<string>) =>
         Effect.promise(() =>

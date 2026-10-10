@@ -128,6 +128,19 @@ describe("an older client reads a newer engine's wire", () => {
     expect(sent.interactionMode).toBe("unknown");
   });
 
+  it("a secret's answer says only how it ended: a value sent with it never decodes", () => {
+    const value = ["sk", "_live_", "Q".repeat(16)].join("");
+    const decoded = Schema.decodeUnknownSync(EngineAnswer)({
+      kind: "secret",
+      outcome: "saved",
+      value,
+    });
+    expect(decoded).toEqual({ kind: "secret", outcome: "saved" });
+    expect(Schema.decodeUnknownSync(EngineAnswer)({ kind: "secret", outcome: "declined" })).toEqual(
+      { kind: "secret", outcome: "declined" },
+    );
+  });
+
   it("reads an answer kind it does not know as unknown, so the server can refuse it", () => {
     expect(Schema.decodeUnknownSync(EngineAnswer)({ kind: "vault", said: "put" })).toEqual({
       kind: "unknown",

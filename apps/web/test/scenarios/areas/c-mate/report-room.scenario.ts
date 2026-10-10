@@ -406,13 +406,28 @@ describe("C: panel to report rooms", () => {
                   { timeout: 8000, polling: "raf" },
                 ),
               );
-              const readings = yield* Effect.promise(() =>
+              const { readings, settledFrom } = yield* Effect.promise(() =>
                 s.page.evaluate(async () => {
                   const trace = (window as unknown as { reportTrace: Trace }).reportTrace;
-                  for (let index = 0; index < 30; index++)
+                  const settledFrom = trace.readings.length;
+                  // Sampled until ten laid-out frames read the same, at least 30 frames and at
+                  // most 180: a stalled runner still finishing its last layout settles later, and
+                  // what alternates never reads the same ten frames running.
+                  const still = () => {
+                    const last = trace.readings.filter((reading) => reading.content > 0).slice(-10);
+                    return (
+                      last.length === 10 &&
+                      new Set(
+                        last.map(({ height, content, top, end }) =>
+                          JSON.stringify([height, content, top, end]),
+                        ),
+                      ).size === 1
+                    );
+                  };
+                  for (let index = 0; index < 180 && (index < 30 || !still()); index++)
                     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
                   trace.active = false;
-                  return trace.readings;
+                  return { readings: trace.readings, settledFrom };
                 }),
               );
               if (directory)
@@ -436,6 +451,17 @@ describe("C: panel to report rooms", () => {
                 "ASSERTION: the report finishes at its natural height",
               ).toBe(false);
               if (follows) expect(laidOut.at(-1)!.decoded).toBe(true);
+              // Each layout the report and the viewport stood at once all motion was over, in order,
+              // a repeat dropped: one standing again after another is the alternation.
+              const states = readings
+                .slice(settledFrom)
+                .filter((reading) => reading.content > 0)
+                .map(({ height, content, top, end }) => JSON.stringify([height, content, top, end]))
+                .filter((state, index, all) => index === 0 || state !== all[index - 1]);
+              expect(
+                states.filter((state, index) => states.indexOf(state) !== index),
+                "ASSERTION: no report layout or viewport stands again after another took its place",
+              ).toEqual([]);
               const finalFrames = laidOut.slice(-10);
               expect(
                 new Set(

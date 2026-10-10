@@ -15,7 +15,7 @@ const REGISTRATIONS = 10;
 
 describe("H: hosted client budgets", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    // App detail scales with visible rows; adding collapsed applications must add no history reads.
+    // App detail scales with opened panels; adding cards nobody opened must add no history reads.
     it.effect(
       "Projects holds no collapsed app detail as the organization grows; one open row holds one scope",
       () =>
@@ -48,7 +48,7 @@ describe("H: hosted client budgets", () => {
         }),
     );
 
-    // Leaving Projects releases the expanded row; Usage's source migration owns its RPC budget.
+    // Leaving Projects releases the opened panel; Usage's source migration owns its RPC budget.
     it.effect("opening Usage releases Projects detail demand", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installBudget]);
@@ -77,18 +77,24 @@ describe("H: hosted client budgets", () => {
         yield* b.when.browserSettled;
         const other = s.appIds.get("Other")!;
         const before = yield* Effect.promise(() =>
-          s.page.$eval(`[data-zerops-group="${other}"]`, (row) => row.textContent),
+          s.page.$eval(
+            `[data-zerops-surface="project-cards"] [data-zerops-group="${other}"]`,
+            (row) => row.textContent,
+          ),
         );
         yield* reportsWork(s.drivers, "Ada", "Inspect Ada changed checkout");
         yield* Effect.promise(() =>
           s.page.waitForFunction(() =>
             document
-              .querySelector('[data-zerops-surface="project-rows"]')
+              .querySelector('[data-zerops-surface="project-cards"]')
               ?.textContent?.includes("Inspect Ada changed checkout"),
           ),
         );
         const after = yield* Effect.promise(() =>
-          s.page.$eval(`[data-zerops-group="${other}"]`, (row) => row.textContent),
+          s.page.$eval(
+            `[data-zerops-surface="project-cards"] [data-zerops-group="${other}"]`,
+            (row) => row.textContent,
+          ),
         );
         expect(after).toBe(before);
         expect(b.measure.appDetails()).toEqual([]);

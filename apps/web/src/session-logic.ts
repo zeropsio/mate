@@ -6,7 +6,7 @@ import {
   stripTrailingExitCode,
   formatCommandValue,
 } from "@t3tools/client-runtime/work-log/activity-normalization";
-import { projectActivityLimit } from "@t3tools/client-runtime/data";
+import { VAULT_ASK_ACTIVITY_KIND, projectActivityLimit } from "@t3tools/client-runtime/data";
 import {
   requestKindFromRequestType,
   type PendingApproval,
@@ -967,6 +967,8 @@ export function deriveWorkLogEntries(
     if (activity.kind === "task.updated") continue;
     if (activity.kind === "tool.progress") continue;
     if (activity.kind === "context-window.updated") continue;
+    // A value asked of the person draws as its card in the run, after the Mate's words.
+    if (activity.kind === VAULT_ASK_ACTIVITY_KIND) continue;
     if (activity.summary === "Checkpoint captured") continue;
     if (isNoContentRuntimeWarning(activity)) continue;
     if (isPlanBoundaryToolActivity(activity)) continue;
