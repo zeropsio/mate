@@ -20,11 +20,7 @@ import type { CrewStatus } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 
-import {
-  mateFaceAwaitingReview,
-  mateFaceFor,
-  type ZeropsAgentActivity,
-} from "~/zerops/agentActivity";
+import { mateFaceOf, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "@t3tools/client-runtime/data";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 import { nowLineWords } from "../chat/runCard.logic";
@@ -404,7 +400,7 @@ export function mateRowView(
   const state = mateRowState(activity, face);
   const view = (reply: MateRowReply, slot: MateRowSlot = age) => ({
     state,
-    face: state === "failed" ? ("idle" as const) : face,
+    face: state === "failed" && face === "needs" ? ("idle" as const) : face,
     slot,
     dot:
       state === "needs" ||
@@ -559,15 +555,15 @@ export function mateRowReading(input: {
   readonly pose?: MatePoseFacts | undefined;
 }): MateRowView {
   const { activity } = input;
-  const live = activity !== undefined && activity.remembered !== true ? activity : undefined;
   return mateRowView(
     activity,
-    mateFaceAwaitingReview(
-      mateFaceFor(input.connected || live !== undefined, live, input.pose),
-      input.reviewWaits === true,
-      activity?.usageLimited === true || activity?.pausedUntil !== undefined,
-      input.mine,
-    ),
+    mateFaceOf({
+      connected: input.connected,
+      activity,
+      reviewWaits: input.reviewWaits === true,
+      mine: input.mine,
+      pose: input.pose,
+    }),
     input.name,
     input.offlineSince,
     input.timestampFormat,
