@@ -2,11 +2,17 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   PAGE_POLICY,
+  WRAPPER_POLICY,
+  innerDocumentOf,
   linkToOpen,
   pageDocument,
   pageFrameHeight,
   readPageMessage,
+  type PageTheme,
 } from "./publishedPage.logic";
+
+/** The page as it runs, inside the wrapper. */
+const pageOf = (html: string, of: PageTheme = theme) => innerDocumentOf(pageDocument(html, of))!;
 
 const theme = { scheme: "dark" as const, vars: { "--background": "#111", "--foreground": "#eee" } };
 
@@ -22,7 +28,7 @@ describe("a published page's document", () => {
       html: `<meta http-equiv="Content-Security-Policy" content="default-src *"><script>fetch('/api')</script><p>x</p>`,
     },
   ])("puts the policy that allows no network ahead of everything in $title", ({ html }) => {
-    const doc = pageDocument(html, theme);
+    const doc = pageOf(html);
     const policy = doc.indexOf(
       `<meta http-equiv="Content-Security-Policy" content="${PAGE_POLICY}">`,
     );
@@ -31,6 +37,16 @@ describe("a published page's document", () => {
     expect(policy).toBeLessThan(doc.indexOf("<p>x</p>"));
     // The page itself follows whole: nothing of it is rewritten.
     expect(doc.endsWith(html)).toBe(true);
+  });
+
+  it("holds the page in a wrapper that lets no frame of it load anything but its own document", () => {
+    const wrapper = pageDocument("<p>x</p>", theme);
+    expect(wrapper.indexOf(`content="${WRAPPER_POLICY}"`)).toBeGreaterThan(-1);
+    expect(wrapper.indexOf(`content="${WRAPPER_POLICY}"`)).toBeLessThan(wrapper.indexOf("<iframe"));
+    expect(WRAPPER_POLICY).toContain("frame-src 'none'");
+    expect(WRAPPER_POLICY).toContain("default-src 'none'");
+    expect(wrapper).toContain('<iframe id="page" sandbox="allow-scripts"');
+    expect(wrapper).not.toContain("allow-same-origin");
   });
 
   it("allows no network at all: inline scripts, styles and data pictures only", () => {
@@ -51,14 +67,14 @@ describe("a published page's document", () => {
   });
 
   it("carries the conversation's colours as the page's own variables, in its scheme", () => {
-    const doc = pageDocument("<p>x</p>", theme);
+    const doc = pageOf("<p>x</p>");
     expect(doc).toContain("--background:#111;");
     expect(doc).toContain("--foreground:#eee;");
     expect(doc).toContain("color-scheme:dark;");
   });
 
   it("never lets a theme value close its style", () => {
-    const doc = pageDocument("<p>x</p>", {
+    const doc = pageOf("<p>x</p>", {
       scheme: "light",
       vars: { "--background": "red;}</style><script>alert(1)</script>" },
     });
@@ -96,7 +112,23 @@ describe("what a published page says to the conversation", () => {
     { title: "its leaving", data: { mate: "page", kind: "left" }, want: { kind: "left" } },
     { title: "someone else's message", data: { kind: "height", height: 10 }, want: null },
   ])("reads $title", ({ data, want }) => {
-    expect(readPageMessage(data)).toEqual(want);
+    expect(readPageMessage(JSON.stringify(data), "null")).toEqual(want);
+  });
+
+  it.each([
+    {
+      title: "an object rather than the wrapper's string",
+      data: { mate: "page", kind: "left" },
+      origin: "null",
+    },
+    {
+      title: "a message from an origin of its own",
+      data: JSON.stringify({ mate: "page", kind: "left" }),
+      origin: "https://example.com",
+    },
+    { title: "words that are no JSON", data: "left", origin: "null" },
+  ])("ignores $title", ({ data, origin }) => {
+    expect(readPageMessage(data, origin)).toBeNull();
   });
 
   it.each([
@@ -141,27 +173,15 @@ describe("what a published page says to the conversation", () => {
 
 describe("a published page's frame height", () => {
   it.each([
-    {
-      title: "unknown, it stands at the shared cap",
-      content: null,
-      recorded: undefined,
-      want: null,
-    },
-    {
-      title: "before the page says it, the height zcp's browser recorded",
-      content: null,
-      recorded: 612,
-      want: 612,
-    },
-    { title: "once the page says it, its own", content: 212, recorded: 612, want: 212 },
+    { title: "unknown, it stands at the shared cap", content: null, want: null },
+    { title: "once the page says it, its own", content: 212, want: 212 },
     {
       title: "a tall page, its own height: the cap holds the frame and it scrolls inside",
       content: 2400,
-      recorded: undefined,
       want: 2400,
     },
-    { title: "an empty page, still a line tall", content: 0, recorded: undefined, want: 48 },
-  ])("is $title", ({ content, recorded, want }) => {
-    expect(pageFrameHeight(content, recorded)).toBe(want);
+    { title: "an empty page, still a line tall", content: 0, want: 48 },
+  ])("is $title", ({ content, want }) => {
+    expect(pageFrameHeight(content)).toBe(want);
   });
 });

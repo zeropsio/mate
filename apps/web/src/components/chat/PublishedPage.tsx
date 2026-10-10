@@ -12,7 +12,7 @@ import {
   pageDocument,
   pageFrameHeight,
   readPageMessage,
-  themeRule,
+  themeMessage,
   type PageTheme,
 } from "./publishedPage.logic";
 
@@ -64,10 +64,20 @@ function useBlobText(blob: Blob | null): string | null {
   return read !== null && read.blob === blob ? read.text : null;
 }
 
+/** The element's nearest scrolling ancestor: the conversation's list, where it has one. */
+function scrollParentOf(element: HTMLElement): HTMLElement | null {
+  for (let parent = element.parentElement; parent !== null; parent = parent.parentElement) {
+    const overflow = getComputedStyle(parent).overflowY;
+    if (overflow === "auto" || overflow === "scroll" || overflow === "overlay") return parent;
+  }
+  return null;
+}
+
 /**
- * Whether the element is near the view: a page's frame runs only there, so pages far off-screen —
- * a spinning one among them — never hold the conversation. Without an observer (a server render),
- * it always is.
+ * Whether the element is near the view of the list it scrolls in: a page's frame runs only there,
+ * so pages far off-screen — a spinning one among them — never hold the conversation, and the list's
+ * own clipping never unmounts one in sight. A page spinning in view holds the browser as any page
+ * would: a browser's limit, not this frame's. Without an observer (a server render), it always is.
  */
 function useNearView(ref: React.RefObject<HTMLElement | null>): boolean {
   const [near, setNear] = useState(() => typeof IntersectionObserver === "undefined");
@@ -76,7 +86,7 @@ function useNearView(ref: React.RefObject<HTMLElement | null>): boolean {
     if (element === null || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(
       (entries) => setNear(entries.some((entry) => entry.isIntersecting)),
-      { rootMargin: "100% 0px" },
+      { root: scrollParentOf(element), rootMargin: "100% 0px" },
     );
     observer.observe(element);
     return () => observer.disconnect();
@@ -89,8 +99,6 @@ export interface PublishedPageFrameProps {
   /** The page's HTML; null while it is read. */
   readonly html: string | null;
   readonly theme: PageTheme;
-  /** Its height as zcp's browser laid it out when it was published. */
-  readonly recordedHeight?: number;
   /** It could not be read. */
   readonly failed?: boolean;
   /** Drawn full size: the frame takes its box's height, not the page's. */
@@ -98,16 +106,14 @@ export interface PublishedPageFrameProps {
 }
 
 /**
- * The page in its frame: sandboxed with scripts alone, behind a policy that lets it request
- * nothing (`publishedPage.logic.ts`). The frame stands at the page's recorded height from its
- * first paint — at the shared cap while that is unknown — and follows the height the page says,
- * at most the cap: a taller page scrolls inside it. A page that navigates its own frame — a
- * redirect, a script, a link it kept from the conversation — is taken down at once and never
- * heard from again: what loads there is not the page the Mate published. The person may show the
- * published page again.
+ * The page in its frames: two deep, sandboxed with scripts alone, its navigation refused before
+ * it leaves (`publishedPage.logic.ts`). The frame stands at the shared cap from its first paint
+ * until the page says its height, then eases to it, at most the cap: a taller page scrolls inside
+ * it. A page whose frame loads again — a navigation the wrapper refused, a reload — is taken down
+ * at once and never heard from again; the person may show the published page again.
  */
 export function PublishedPageFrame(props: PublishedPageFrameProps) {
-  const { title, html, theme, recordedHeight, failed = false, full = false } = props;
+  const { title, html, theme, failed = false, full = false } = props;
   const boxRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const near = useNearView(boxRef);
@@ -132,7 +138,7 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
     const listen = (event: MessageEvent) => {
       const frame = frameRef.current;
       if (frame === null || event.source !== frame.contentWindow || loads.current > 1) return;
-      const message = readPageMessage(event.data);
+      const message = readPageMessage(event.data, event.origin);
       if (message === null) return;
       if (message.kind === "left") {
         setLeft(true);
@@ -155,13 +161,10 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
 
   useEffect(() => {
     if (theme === opened) return;
-    frameRef.current?.contentWindow?.postMessage(
-      { mate: "page-theme", rule: themeRule(theme) },
-      "*",
-    );
+    frameRef.current?.contentWindow?.postMessage(themeMessage(theme), "*");
   }, [theme, opened]);
 
-  const height = full ? null : pageFrameHeight(content, recordedHeight);
+  const height = full ? null : pageFrameHeight(content);
   const shown = document_ !== null && !left && near;
   return (
     <div
@@ -252,13 +255,7 @@ export function PublishedPage(props: {
           <Maximize2Icon />
         </Button>
       </figcaption>
-      <PublishedPageFrame
-        title={page.title}
-        html={html}
-        theme={theme}
-        failed={failed}
-        {...(page.height === undefined ? {} : { recordedHeight: page.height })}
-      />
+      <PublishedPageFrame title={page.title} html={html} theme={theme} failed={failed} />
       <Dialog open={full} onOpenChange={setFull}>
         <DialogPopup className="max-w-6xl">
           <div className="published-page-full-head">

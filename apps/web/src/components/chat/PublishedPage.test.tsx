@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { PublishedPageFrame } from "./PublishedPage";
-import { PAGE_POLICY } from "./publishedPage.logic";
+import { PAGE_POLICY, WRAPPER_POLICY, innerDocumentOf } from "./publishedPage.logic";
 
 const theme = { scheme: "light" as const, vars: { "--background": "#fff" } };
 /** A page that tries every way out: the Mate's own API, the network, the person's session. */
@@ -24,7 +24,9 @@ describe("a published page in the conversation", () => {
     // Scripts alone: no same origin (the Mate's server, the session), no popups, forms or top navigation.
     expect(frame!.getAttribute("sandbox")).toBe("allow-scripts");
     expect(frame!.getAttribute("src")).toBeNull();
-    const doc = frame!.getAttribute("srcdoc")!;
+    const wrapper = frame!.getAttribute("srcdoc")!;
+    expect(wrapper).toContain(`content="${WRAPPER_POLICY}"`);
+    const doc = innerDocumentOf(wrapper)!;
     const policy = doc.indexOf(`content="${PAGE_POLICY}"`);
     expect(policy).toBeGreaterThan(-1);
     expect(policy).toBeLessThan(doc.indexOf("fetch("));
