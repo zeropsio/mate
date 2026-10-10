@@ -11,6 +11,7 @@
  */
 import type {
   FlowPullRequest,
+  FlowReleaseRow,
   GroupFlow,
   GroupFlowMate,
   GroupFlowProduction,
@@ -392,4 +393,31 @@ export function cardPeople<P extends { readonly userId: string }>(
     people.push(owner);
   }
   return people.length > 1 ? people : [];
+}
+
+/** A release as production's panel reads it: newest first, as the flow lists them. */
+type PanelRelease = Pick<FlowReleaseRow, "tag" | "taggedAt" | "standing" | "rollBack">;
+
+/** The changes the release production runs brought: merged after the one before it was made. */
+export function broughtBy(
+  merged: ReadonlyArray<FlowPullRequest>,
+  releases: ReadonlyArray<PanelRelease>,
+): ReadonlyArray<FlowPullRequest> {
+  const at = releases.findIndex((release) => release.standing === "live");
+  const live = releases[at];
+  if (live === undefined) return [];
+  const before = releases[at + 1];
+  return merged.filter(
+    (pull) =>
+      pull.mergedAt !== undefined &&
+      pull.mergedAt <= live.taggedAt &&
+      (before === undefined || pull.mergedAt > before.taggedAt),
+  );
+}
+
+/** The release production goes back to: the newest one before what it runs that may be rolled back to. */
+export function rollBackTarget(releases: ReadonlyArray<PanelRelease>): string | undefined {
+  const at = releases.findIndex((release) => release.standing === "live");
+  if (at === -1) return undefined;
+  return releases.slice(at + 1).find((release) => release.rollBack)?.tag;
 }

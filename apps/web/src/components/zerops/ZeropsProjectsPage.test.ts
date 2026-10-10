@@ -710,7 +710,8 @@ describe("a group's one line about itself", () => {
 
 it("Decision: the owner asked for the review and its fixes; existing flows are reused, no new concepts.", () => {
   const html = renderToStaticMarkup(createElement(ZeropsProjectsHeader));
-  expect(html).toContain(">Find<");
+  // Find is the menu's search (⌘K) since the round-5 overview: the title row keeps New project.
+  expect(html).toContain(">Overview<");
   expect(html).toContain(">New project<");
 });
 

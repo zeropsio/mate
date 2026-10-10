@@ -5,6 +5,7 @@ import type { ProductionChip } from "../SidebarProductionChip.logic";
 import type { MateRowView } from "../SidebarMateRow.logic";
 import { pull } from "./flowTestFixtures";
 import {
+  broughtBy,
   cardMateReading,
   cardPeople,
   cardReady,
@@ -14,6 +15,7 @@ import {
   placeLines,
   readyLine,
   readyTitle,
+  rollBackTarget,
   siteOf,
   sinceWords,
 } from "./projectCard.logic";
@@ -317,5 +319,35 @@ describe("a card's header", () => {
     const kai = { userId: "kai" };
     expect(cardPeople([ada, null, ada])).toEqual([]);
     expect(cardPeople([ada, kai, ada, undefined])).toEqual([ada, kai]);
+  });
+});
+
+describe("production's panel", () => {
+  const release = (tag: string, taggedAt: string, standing?: "live", rollBack = true) => ({
+    tag,
+    taggedAt,
+    standing,
+    rollBack,
+  });
+  const releases = [
+    release("v2.4.0", "2026-10-09T10:00:00Z", undefined),
+    release("v2.3.1", "2026-10-07T10:00:00Z", "live"),
+    release("v2.3.0", "2026-10-01T10:00:00Z", undefined, false),
+    release("v2.2.0", "2026-09-20T10:00:00Z"),
+  ];
+
+  it("says what the version production runs brought: what was merged since the release before", () => {
+    const merged = [
+      pull({ number: 1, mergedAt: "2026-09-30T10:00:00Z" }),
+      pull({ number: 2, mergedAt: "2026-10-03T10:00:00Z" }),
+      pull({ number: 3, mergedAt: "2026-10-08T10:00:00Z" }),
+    ];
+    expect(broughtBy(merged, releases).map((entry) => entry.number)).toEqual([2]);
+    expect(broughtBy(merged, [])).toEqual([]);
+  });
+
+  it("offers going back to the newest release before it that may be rolled back to", () => {
+    expect(rollBackTarget(releases)).toBe("v2.2.0");
+    expect(rollBackTarget([release("v1.0.0", "2026-09-01T00:00:00Z", "live")])).toBeUndefined();
   });
 });

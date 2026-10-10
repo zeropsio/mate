@@ -287,6 +287,7 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
       "data-test-mate": value.project.id,
       "data-test-layout": options.layout,
       "data-test-preview": options.preview,
+      "data-test-review": options.review?.number,
     }),
   renderMateFace: (value, size) =>
     h("span", { "data-test-face": value.project.id, "data-test-size": size }),

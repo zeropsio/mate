@@ -35,30 +35,8 @@ vi.mock("~/components/ui/tooltip", async () => {
   };
 });
 
-import { ComingMateCard, ComingMateFace, MateChip, matesOf } from "./flowSteps";
-import { entry, mount, UMA, WREN } from "./flowTestFixtures";
-
-describe("a Mate chip", () => {
-  it("that can open is a button named Open {name}, and opens", () => {
-    const onOpen = vi.fn();
-    const chip = mount(<MateChip face={<i data-test-face="wren" />} name="Wren" onOpen={onOpen} />);
-    const button = chip.root.findByType("button");
-    expect(button.props["aria-label"]).toBe("Open Wren");
-    expect(button.props.type).toBe("button");
-    expect(button.props["data-zerops-surface"]).toBe("mate-open");
-    button.props.onClick();
-    expect(onOpen).toHaveBeenCalledTimes(1);
-  });
-
-  it("that cannot open is its face and name, with nothing to press", () => {
-    const html = renderToStaticMarkup(
-      <MateChip face={<i data-test-face="wren" />} name="Wren" onOpen={undefined} />,
-    );
-    expect(html).not.toContain("<button");
-    expect(html).toContain('data-test-face="wren"');
-    expect(html).toContain(">Wren<");
-  });
-});
+import { ComingMateFace, matesOf } from "./flowSteps";
+import { entry, UMA, WREN } from "./flowTestFixtures";
 
 describe("a group's Mates", () => {
   const VERA = {
@@ -122,12 +100,5 @@ describe("a Mate being created", () => {
   ] as const)("$case: its face $state", ({ failed, state }) => {
     const coming = { face: { tint: "coral", shape: "gem" }, failed } as const;
     expect(stateOf(renderToStaticMarkup(<ComingMateFace coming={coming} size="sm" />))).toBe(state);
-    for (const layout of ["card", "row"] as const) {
-      expect(
-        stateOf(
-          renderToStaticMarkup(<ComingMateCard coming={coming} layout={layout} name="Kai" />),
-        ),
-      ).toBe(state);
-    }
   });
 });

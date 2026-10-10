@@ -4211,6 +4211,827 @@ code {
 /* ==== end of the menu's chrome ==== */
 
 /* ==== Pass 41 · the overview's cards ==== */
+/* The row: cards side by side, one width; past the window's edge it scrolls sideways under a fade,
+   a round back and forward button on the side where there is more. */
+@property --ov-fade-left {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --ov-fade-right {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+.ov-rail {
+  position: relative;
+  margin-inline: -20px;
+  transition:
+    --ov-fade-left 200ms var(--ease-out-strong),
+    --ov-fade-right 200ms var(--ease-out-strong);
+}
+
+.ov-rail[data-can-left] {
+  --ov-fade-left: 56px;
+}
+
+.ov-rail[data-can-right] {
+  --ov-fade-right: 96px;
+}
+
+.ov-row {
+  display: grid;
+  grid-auto-columns: min(360px, 100%);
+  grid-auto-flow: column;
+  column-gap: 16px;
+  align-items: stretch;
+  justify-content: start;
+  padding: 0 20px 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 20px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    var(--color-black) var(--ov-fade-left),
+    var(--color-black) calc(100% - var(--ov-fade-right)),
+    transparent
+  );
+}
+
+@media (min-width: 40rem) {
+  .ov-rail {
+    margin-inline: -24px;
+  }
+
+  .ov-row {
+    padding-inline: 24px;
+    scroll-padding-inline: 24px;
+  }
+}
+
+.ov-row::-webkit-scrollbar {
+  display: none;
+}
+
+.ov-nav {
+  position: absolute;
+  top: 10px;
+  z-index: 2;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 2px 8px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 150ms var(--ease-out-strong),
+    scale 160ms var(--ease-out-strong);
+}
+
+.ov-nav-left {
+  left: 12px;
+}
+
+.ov-nav-right {
+  right: 12px;
+}
+
+.ov-rail[data-can-left] .ov-nav-left,
+.ov-rail[data-can-right] .ov-nav-right {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ov-nav:active {
+  scale: 0.94;
+}
+
+/* A card: the project, its Mates, a release ready to go, production's line at its foot. */
+/* The board's three grounds: the page, a card a shade off it, and what waits on you lifted. */
+.ov-card,
+.ov-other {
+  --ov-ground: color-mix(in oklab, var(--foreground) 3.5%, var(--background));
+  --ov-lift: var(--card);
+  --ov-hover: color-mix(in oklab, var(--ov-lift) 60%, transparent);
+}
+
+.dark .ov-card,
+.dark .ov-other {
+  --ov-ground: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --ov-lift: color-mix(in oklab, var(--foreground) 11%, var(--background));
+}
+
+.ov-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 18px 12px 12px;
+  border-radius: 20px;
+  background: var(--ov-ground);
+  scroll-snap-align: start;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ov-card[data-focused] {
+    animation: ov-card-ring 900ms var(--ease-out-strong);
+  }
+}
+
+@keyframes ov-card-ring {
+  30% {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 40%, transparent);
+  }
+}
+
+.ov-card-head {
+  padding: 0 6px;
+}
+
+.ov-card-h1 {
+  display: flex;
+  height: 28px;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.ov-card-name {
+  min-width: 0;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 28px;
+  letter-spacing: -0.015em;
+}
+
+.ov-card-people {
+  display: flex;
+  flex: none;
+  margin-left: auto;
+}
+
+.ov-card-people > * + * {
+  margin-left: -5px;
+}
+
+.ov-card-people > * {
+  box-shadow: 0 0 0 2px var(--ov-ground);
+}
+
+.ov-card-menu {
+  display: flex;
+  flex: none;
+  margin: 0 -4px 0 auto;
+  opacity: 0;
+  transition: opacity 150ms var(--ease-out-strong);
+}
+
+.ov-card-people + .ov-card-menu {
+  margin-left: 0;
+}
+
+.ov-card:hover .ov-card-menu,
+.ov-card-menu:focus-within,
+.ov-card-menu:has([data-popup-open]) {
+  opacity: 1;
+}
+
+.ov-card-site {
+  display: block;
+  max-width: 100%;
+  margin-top: 1px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: underline 1px transparent;
+  text-underline-offset: 3px;
+  transition:
+    color 150ms var(--ease-out-strong),
+    text-decoration-color 150ms var(--ease-out-strong);
+}
+
+a.ov-card-site:hover {
+  color: var(--foreground);
+  text-decoration-color: color-mix(in oklab, currentColor 40%, transparent);
+}
+
+.ov-card-note {
+  margin-top: 8px;
+  padding: 0 6px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+/* A Mate: its face, its name and time, its line; what waits on you lifted onto a white card. */
+.ov-mates {
+  display: grid;
+  gap: 2px;
+  margin-top: 14px;
+}
+
+.ov-mate {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+  padding: 8px 6px;
+  border-radius: 14px;
+  transition:
+    background-color 200ms var(--ease-out-strong),
+    box-shadow 200ms var(--ease-out-strong);
+}
+
+.ov-mate[data-lift] {
+  background: var(--ov-lift);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent),
+    0 1px 1px color-mix(in srgb, var(--contrast-foreground) 3%, transparent);
+}
+
+.ov-mate-face {
+  position: relative;
+  display: flex;
+  height: 32px;
+}
+
+.ov-mate-owner {
+  position: absolute;
+  right: -4px;
+  bottom: -3px;
+  box-shadow: 0 0 0 1.5px var(--ov-ground);
+}
+
+.ov-mate[data-lift] .ov-mate-owner {
+  box-shadow: 0 0 0 1.5px var(--ov-lift);
+}
+
+.ov-mate-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.ov-mate-l1 {
+  display: flex;
+  height: 22px;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.ov-mate-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-mate-open {
+  border-radius: 4px;
+  text-decoration: underline 1px transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 150ms var(--ease-out-strong);
+}
+
+.ov-mate-open::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+}
+
+.ov-mate:not([data-lift]):has(.ov-mate-open:hover) {
+  background: var(--ov-hover);
+}
+
+.ov-mate-open:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ov-mate-time {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-left: 10px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ov-mate-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+}
+
+.ov-mate-dot[data-dot="attention"] {
+  background: var(--zerops-status-attention);
+}
+
+.ov-mate-dot[data-dot="unread"] {
+  background: var(--zerops-status-busy);
+}
+
+.ov-mate-dot[data-dot="failed"] {
+  background: var(--zerops-status-failed);
+}
+
+.ov-mate-l2 {
+  display: block;
+  min-width: 0;
+  min-height: 20px;
+  margin-top: 1px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-mate-l2[data-tone="ink"] {
+  color: var(--foreground);
+}
+
+.ov-mate-l2[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.ov-mate-l2[data-wrap] {
+  display: -webkit-box;
+  white-space: normal;
+  text-wrap: pretty;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.ov-acts,
+.ov-reply {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.ov-reply {
+  flex-wrap: nowrap;
+}
+
+.ov-btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    scale 160ms var(--ease-out-strong);
+}
+
+.ov-btn:hover {
+  background: color-mix(in oklab, var(--foreground) 13%, transparent);
+}
+
+.ov-btn[data-main] {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+.ov-btn[data-main]:hover {
+  background: color-mix(in oklab, var(--foreground) 86%, var(--background));
+}
+
+.ov-btn:active {
+  scale: 0.97;
+}
+
+.ov-btn:focus-visible,
+.ov-fold:focus-visible,
+.ov-place:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ov-reply-in {
+  min-width: 0;
+  height: 32px;
+  flex: 1 1 auto;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 14px;
+  box-shadow: inset 0 0 0 1px var(--border);
+  outline: 0;
+  transition: box-shadow 150ms var(--ease-out-strong);
+}
+
+.ov-reply-in:focus {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--ring) 55%, var(--border)),
+    0 0 0 3px color-mix(in oklab, var(--ring) 14%, transparent);
+}
+
+.ov-fold {
+  display: grid;
+  grid-template-columns: 32px auto;
+  column-gap: 12px;
+  align-items: center;
+  height: 36px;
+  padding: 0 6px;
+  border-radius: 14px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  text-align: left;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
+}
+
+.ov-fold:hover {
+  background: var(--ov-hover);
+  color: var(--foreground);
+}
+
+.ov-fold-faces {
+  display: flex;
+  justify-content: center;
+}
+
+.ov-fold-faces > * + * {
+  margin-left: -6px;
+}
+
+/* A release ready to go, lifted; then production's line, at every card's foot. */
+.ov-card-env {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.ov-ready {
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--ov-lift);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent),
+    0 1px 1px color-mix(in srgb, var(--contrast-foreground) 3%, transparent);
+}
+
+.ov-ready-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.ov-ready-line {
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.ov-foot {
+  display: grid;
+  gap: 2px;
+}
+
+.ov-place {
+  display: flex;
+  width: 100%;
+  height: 40px;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+  border-radius: 12px;
+  color: var(--foreground);
+  font-size: 14px;
+  text-align: left;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+.ov-place:hover,
+.ov-place[data-open] {
+  background: var(--ov-hover);
+}
+
+.ov-place-name {
+  flex: none;
+  font-weight: 600;
+}
+
+.ov-place-words {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-place-words[data-dot="failed"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.ov-place-words[data-dot="down"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.ov-place-words[data-dot="releasing"] {
+  color: var(--zerops-status-busy-text);
+}
+
+.ov-place-words[data-dot="none"],
+.ov-place-words[data-dot="unknown"] {
+  color: var(--muted-foreground);
+}
+
+.ov-sep {
+  margin: 0 6px;
+  color: var(--muted-foreground);
+}
+
+.ov-place-go {
+  flex: none;
+  margin-left: auto;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition: opacity 150ms var(--ease-out-strong);
+}
+
+.ov-place:hover .ov-place-go,
+.ov-place[data-open] .ov-place-go,
+.ov-place:focus-visible .ov-place-go {
+  opacity: 1;
+}
+
+.ov-dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin: 0 2px 0 4px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
+}
+
+.ov-dot[data-dot="failed"] {
+  background: var(--zerops-status-attention);
+}
+
+.ov-dot[data-dot="down"] {
+  background: var(--zerops-status-failed);
+}
+
+.ov-dot[data-dot="releasing"] {
+  background: var(--zerops-status-busy);
+}
+
+.ov-dot[data-dot="none"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--muted-foreground);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ov-dot[data-dot="releasing"] {
+    animation: menu-clock-breathe 2.4s steps(8, jump-none) infinite alternate;
+  }
+}
+
+.ov-reads {
+  display: contents;
+}
+
+.ov-read:empty {
+  display: none;
+}
+
+.ov-read {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+/* A place's panel: what runs there, what it brought, what went wrong, and what to do. */
+.ov-panel {
+  width: 344px;
+  max-width: 100%;
+  padding: 6px 6px 8px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ov-panel-head {
+  display: flex;
+  height: 36px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  font-size: 15px;
+}
+
+.ov-panel-head b {
+  font-weight: 600;
+}
+
+.ov-panel-sub {
+  margin-top: -6px;
+  padding: 0 10px 0 34px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.ov-panel-sec {
+  padding: 12px 10px 0 34px;
+}
+
+.ov-panel-k {
+  margin-bottom: 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ov-panel-note[data-tone="attention"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.ov-panel-note[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.ov-panel-li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 26px;
+  margin-left: -26px;
+}
+
+.ov-panel-li .ov-dot {
+  justify-self: center;
+  margin: 0;
+}
+
+.ov-panel-lt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-panel-w {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ov-panel-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 0 4px 0 34px;
+}
+
+.ov-panel-acts .ov-btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.ov-panel-host {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  margin-left: -26px;
+  padding: 2px 6px 2px 4px;
+  border-radius: 6px;
+  color: var(--foreground);
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+.ov-panel-host:hover {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+
+.ov-panel-runs {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+/* Under the cards: the projects without a Mate, a line each, then HQ. */
+.ov-other {
+  display: grid;
+  justify-items: start;
+  margin-top: 40px;
+}
+
+.ov-other-title {
+  margin-bottom: 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ov-other ul {
+  display: grid;
+  width: min(100%, 560px);
+}
+
+.ov-other-row {
+  display: flex;
+  height: 40px;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  margin-left: -8px;
+  padding: 0 8px;
+  border-radius: 12px;
+  font-size: 14px;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+.ov-other-row:hover {
+  background: var(--ov-hover);
+}
+
+.ov-other-name {
+  display: flex;
+  width: 150px;
+  flex: none;
+  font-weight: 500;
+}
+
+.ov-other-name > * {
+  font-weight: 500;
+}
+
+.ov-other-menu {
+  display: flex;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 150ms var(--ease-out-strong);
+}
+
+.ov-other-row:hover .ov-other-menu,
+.ov-other-menu:focus-within,
+.ov-other-menu:has([data-popup-open]) {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-mate,
+  .ov-btn,
+  .ov-nav,
+  .ov-rail,
+  .ov-fold,
+  .ov-place {
+    transition: opacity 150ms linear;
+  }
+
+  .ov-btn:active,
+  .ov-nav:active {
+    scale: none;
+  }
+}
 /* ==== end of the overview's cards ==== */
 
 /* ==== Pass 41 · the review sheet ==== */

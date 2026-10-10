@@ -1,4 +1,3 @@
-import { openCommandPalette } from "~/commandPaletteBus";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useProjectsPageRows } from "~/zerops/projectsPageRows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
@@ -28,21 +27,15 @@ import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { MateMarkState } from "@t3tools/shared/brand";
-import { ArrowDownUpIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
+import { PlayIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { hqPlacementsAtom, hqNavigationAtom, hqPlacementStatusAtom } from "~/state/zerops";
-import {
-  PROJECT_ORDER_CHOICES,
-  readProjectsOnScreen,
-  useProjectOrder,
-  useProjectOrderOptions,
-} from "~/zerops/projectOrderPreference";
+import { useProjectOrderOptions } from "~/zerops/projectOrderPreference";
 import {
   applyFirstBuildVerdict,
   firstBuildOverdue,
@@ -143,7 +136,13 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
-import { MateFace, MicroLabel, StatusDot } from "./primitives";
+import { Avatar, MateFace, MicroLabel, StatusDot } from "./primitives";
+import { mateRowReading } from "./SidebarMateRow.logic";
+import { CardMate, CardMateLiftActions, CardMateTime } from "./projects/ProjectCards";
+import { cardMateReading } from "./projects/projectCard.logic";
+import { CardMateSlot, useOverviewSlots } from "./projects/overviewSlots";
+import { useAskMate } from "~/zerops/useAskMate";
+import { useAskMateToFix } from "~/zerops/fixRequest";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
 import { ZeropsHqCard } from "./ZeropsHqCard";
@@ -480,52 +479,9 @@ function SignedOutNotice({ message }: { readonly message: string }) {
 }
 
 /**
- * The page's title row: the title, then the sort and the reload as a glyph.
- * No creating action here — the left menu's
- * "New project" is the entry, and a filled pill beside the title was the
- * loudest thing on a page whose loud thing should be the Mate. No sentence
- * under the title either: the projects below say what the page is.
+ * The overview's title row: "Overview", and New project on its end — with the reload, a glyph,
+ * beside it.
  */
-
-/**
- * How the page and the left sidebar tree (`SidebarZeropsTree.tsx`) order
- * their projects — a per-browser preference, not project state
- * (`projectOrderPreference.ts`), read and written live so both surfaces turn
- * around together the moment it changes. *Custom* starts from the order on
- * screen; the account menu offers the same three.
- */
-function ZeropsProjectOrderControl() {
-  const control = useProjectOrder();
-  return (
-    <Select
-      onValueChange={(value) => {
-        const choice = PROJECT_ORDER_CHOICES.find((entry) => entry.value === value);
-        if (choice !== undefined) control.choose(choice.value, readProjectsOnScreen());
-      }}
-      value={control.order}
-    >
-      <SelectTrigger
-        aria-label="Sort projects"
-        className="w-auto min-w-0"
-        size="sm"
-        variant="ghost"
-      >
-        <ArrowDownUpIcon className="size-3.5" />
-        <SelectValue>
-          {PROJECT_ORDER_CHOICES.find((choice) => choice.value === control.order)?.label}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectPopup align="end">
-        {PROJECT_ORDER_CHOICES.map((choice) => (
-          <SelectItem key={choice.value} value={choice.value}>
-            {choice.label}
-          </SelectItem>
-        ))}
-      </SelectPopup>
-    </Select>
-  );
-}
-
 export function ZeropsProjectsHeader({
   onRefresh,
   refreshing = false,
@@ -534,21 +490,9 @@ export function ZeropsProjectsHeader({
   readonly refreshing?: boolean;
 }) {
   return (
-    <div
-      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 sm:flex sm:justify-between"
-      data-zerops-project-scope="true"
-    >
-      <h1 className="text-xl font-medium text-foreground">Projects</h1>
-      <div className="col-span-2 row-start-2 flex flex-wrap items-center gap-2 sm:ml-auto">
-        <Button onClick={() => openCommandPalette()} size="sm" variant="outline">
-          Find
-        </Button>
-        <Button onClick={askNewProject} size="sm">
-          New project
-        </Button>
-        <ZeropsProjectOrderControl />
-      </div>
-      <span className="col-start-2 row-start-1">
+    <div className="flex items-center justify-between gap-3" data-zerops-project-scope="true">
+      <h1 className="text-xl font-medium text-foreground">Overview</h1>
+      <div className="flex items-center gap-2">
         {onRefresh === undefined ? null : (
           <Tooltip>
             <TooltipTrigger
@@ -568,7 +512,11 @@ export function ZeropsProjectsHeader({
             <TooltipPopup>Refresh</TooltipPopup>
           </Tooltip>
         )}
-      </span>
+        <Button onClick={askNewProject} size="sm" variant="outline">
+          <PlusIcon />
+          New project
+        </Button>
+      </div>
     </div>
   );
 }
@@ -1977,6 +1925,22 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ),
     [groupTree.groups, finishing.unfinished, finishing.finishing, halfMade],
   );
+  const askMate = useAskMate();
+  const askToFix = useAskMateToFix();
+  // The cards' places as the menu's chips read them, their panels, and the people on each.
+  const overview = useOverviewSlots<ZeropsCandidatePresentation>({
+    flows: groupDeploys,
+    deployments,
+    fixerOf: (entry) => {
+      const mine = [...entry.mates.values()].find(
+        (candidate) => projectPeople[candidate.project.id]?.waitsOnViewer === true,
+      );
+      return mine === undefined
+        ? undefined
+        : { projectId: mine.project.id, name: projectNameInApp(mine.project) };
+    },
+    nowMs,
+  });
   const flowGroups = useProjectsPageRows({
     groups: groupTree.groups,
     flows: projectFlow,
@@ -2129,7 +2093,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 
   const renderMate = (
     candidate: ZeropsCandidatePresentation,
-    { layout, preview }: { readonly layout: "card" | "row"; readonly preview: string | undefined },
+    {
+      layout,
+      preview,
+      review,
+    }: {
+      readonly layout: "card" | "row";
+      readonly preview: string | undefined;
+      readonly review?: FlowPullRequest | undefined;
+    },
   ): React.ReactNode => {
     const role = roleOf.get(candidate.project.id);
     const input = rowInput(candidate, role);
@@ -2185,6 +2157,95 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ) : (
         <MateUpdateStatusText status={updateStatus} />
       );
+
+    // On its project's card: the menu row's reading of it, lifted where it waits on the viewer.
+    if (layout === "row") {
+      const groupId = tags.groupId;
+      const mine = projectPeople[candidate.project.id]?.waitsOnViewer === true;
+      const activity = activityOf(candidate);
+      const view = mateRowReading({
+        name,
+        connected: connected && candidate.environmentId !== undefined,
+        activity,
+        reviewWaits: mateReviewWaits(
+          groupId === undefined ? undefined : projectFlow.flows.get(groupId),
+          candidate.project.id,
+        ),
+        mine,
+        pose: matePoseOf(candidate, nowMs),
+      });
+      const reading = cardMateReading({ view, status: activity?.kind, mine, review });
+      const owner = mine ? undefined : projectPeople[candidate.project.id]?.owner;
+      // A Mate whose container has something to say first says it: coming up, a failed
+      // connect and its retry, an update under way.
+      const containerLine =
+        updateStatus !== null ? (
+          <MateUpdateStatusText status={updateStatus} />
+        ) : !connected && activity === undefined ? (
+          renderMateLine(candidate, presentation, action, live, busy)
+        ) : undefined;
+      return (
+        <CardMate
+          actions={
+            reading.lift === undefined ? (
+              (startAction ?? removeAction)
+            ) : (
+              <CardMateLiftActions
+                lift={reading.lift}
+                name={name}
+                onApprove={() => select?.()}
+                onFix={() => {
+                  askToFix(candidate.project.id, {
+                    what: `${name}'s last run stopped on an error`,
+                    error: activity?.errorLine,
+                    ask: "Find out why, fix it, and carry on.",
+                  });
+                }}
+                onReply={(text) => {
+                  askMate(candidate.project.id, text);
+                }}
+                onReview={(from) => {
+                  if (groupId === undefined || reading.lift?.kind !== "review") return;
+                  const { pull } = reading.lift;
+                  openReview(
+                    {
+                      kind: "change",
+                      groupId,
+                      repository: pull.repository,
+                      number: pull.number,
+                    },
+                    { from },
+                  );
+                }}
+              />
+            )
+          }
+          face={
+            <>
+              <MateFace className="size-8" shape={shape} size="md" state={view.face} tint={tint} />
+              {owner == null ? null : (
+                <Avatar
+                  className="ov-mate-owner"
+                  initials={owner.name.charAt(0).toLocaleUpperCase()}
+                  size="xs"
+                  src={owner.avatarUrl ?? null}
+                />
+              )}
+            </>
+          }
+          key={candidate.key}
+          line={containerLine}
+          name={name}
+          onOpen={select}
+          reading={reading}
+          time={
+            <CardMateTime dot={view.dot}>
+              <CardMateSlot at={activity?.at} slot={view.slot} />
+            </CardMateTime>
+          }
+        />
+      );
+    }
 
     if (connected && candidate.environmentId !== undefined) {
       const environmentId = candidate.environmentId;
@@ -2546,6 +2607,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         }}
         renderNextStep={renderNextStep}
         renderPullRequest={pullRequestRowOf}
+        cardPlaces={overview.cardPlaces}
+        renderPlacePanel={overview.renderPlacePanel}
+        renderCardPeople={overview.renderCardPeople}
         renderReleaseVerb={({ group, flow }) => {
           const { production } = flow;
           const candidate =
@@ -2671,7 +2735,7 @@ export function ZeropsProjectsPage() {
 
   return (
     <ZeropsHostedFrame
-      width="expanded"
+      width="full"
       actions={
         <>
           {scoped ? (

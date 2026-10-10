@@ -736,29 +736,6 @@ export function projectRowLine(input: {
 }
 
 /**
- * Production's version beside the project's name, where production exists and runs one: what it
- * runs and the tone of its last deploy. Nothing at all without production — adding one is the
- * row's menu's offer, never a word in the row.
- */
-export function productionMark(
-  flow: GroupFlow,
-): { readonly version: string; readonly tone: ServiceStatusToneId } | undefined {
-  const { production } = flow;
-  if (production.kind === "absent" || production.kind === "creating") return undefined;
-  const version = production.stop.version?.label;
-  if (version === undefined) return undefined;
-  return { version, tone: STOP_TONE[production.stop.state] };
-}
-
-/** The rows that rise first, then the rest, each keeping the order it was given. */
-export function risenFirst<E>(
-  rows: ReadonlyArray<E>,
-  rises: (row: E) => boolean,
-): ReadonlyArray<E> {
-  return [...rows.filter(rises), ...rows.filter((row) => !rises(row))];
-}
-
-/**
  * The row's Mates' activity, as each one's menu row reads it (`useMateRowActivity`): HQ's word or
  * its socket's. A word at rest (`activityOfNow`) — HQ's last of a Mate it holds no live link of,
  * a kept shell gone quiet — still names its last task, and never says it works while its face

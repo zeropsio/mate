@@ -18,98 +18,74 @@ describe("Projects layout", () => {
         );
         yield* f.release("v0.2.0");
         yield* a.when.finish("production");
-        const changeTitle =
-          "Explain the delivery schedule and confirmation details for every storefront checkout";
-        yield* f.change(changeTitle);
+        yield* f.change(
+          "Explain the delivery schedule and confirmation details for every storefront checkout",
+        );
         yield* f.s.given.signedIn;
         yield* Effect.promise(async () => {
           const page = f.s.page;
           await page.goto(`${f.s.web.origin}/zerops`);
-          const rowSelector = `[data-zerops-surface="project-rows"] [data-zerops-group="${f.appId}"]`;
-          const row = await page.waitForSelector(rowSelector);
-          expect(row).not.toBeNull();
-          await page.locator(`${rowSelector} [data-zerops-row-toggle]`).click();
-          await page.waitForSelector(`${rowSelector} [data-zerops-release-history]`);
-          await page.waitForSelector(`${rowSelector} [data-zerops-surface="pull-request-title"]`);
+          const cardSelector = `[data-zerops-surface="project-cards"] [data-zerops-group="${f.appId}"]`;
+          const card = await page.waitForSelector(cardSelector);
+          expect(card).not.toBeNull();
+          const placeSelector = `${cardSelector} [data-zerops-place="production"]`;
           for (const width of [1786, 390]) {
             await page.setViewport({ width, height: width === 390 ? 844 : 1000 });
-            await page.waitForSelector(`${rowSelector} [aria-label="Production runs v0.2.0"]`, {
-              visible: true,
-            });
-            const geometry = await page.evaluate((selector) => {
-              const row = document.querySelector(selector)!;
-              const version = row.querySelector('[aria-label="Production runs v0.2.0"]')!;
-              const history = row.querySelector<HTMLDetailsElement>(
-                "details[data-zerops-release-history]",
-              )!;
-              const rect = row.getBoundingClientRect();
-              const mark = version.getBoundingClientRect();
-              return {
-                row: { left: rect.left, right: rect.right },
-                version: { left: mark.left, right: mark.right, height: mark.height },
-                historyOpen: history.open,
-                overflow: document.documentElement.scrollWidth > innerWidth,
-              };
-            }, rowSelector);
-            expect(geometry.version.height).toBeGreaterThan(0);
-            expect(geometry.version.left).toBeGreaterThanOrEqual(geometry.row.left);
-            expect(geometry.version.right).toBeLessThanOrEqual(geometry.row.right);
-            expect(geometry.historyOpen).toBe(false);
-            expect(geometry.overflow).toBe(false);
-            const title = await page.$eval(
-              `${rowSelector} [data-zerops-surface="pull-request-title"]`,
-              (element) => ({
-                text: element.textContent,
-                width: element.clientWidth,
-                scroll: element.scrollWidth,
-                height: element.getBoundingClientRect().height,
-                line: Number.parseFloat(getComputedStyle(element).lineHeight),
-              }),
+            await page.waitForFunction(
+              (selector) => document.querySelector(selector)?.textContent?.includes("v0.2.0"),
+              {},
+              placeSelector,
             );
-            expect(title.text).toBe(changeTitle);
-            expect(title.scroll).toBeLessThanOrEqual(title.width);
-            if (width === 390) expect(title.height).toBeGreaterThan(title.line);
+            const geometry = await page.evaluate(
+              (cardAt, placeAt) => {
+                const rect = document.querySelector(cardAt)!.getBoundingClientRect();
+                const line = document.querySelector(placeAt)!.getBoundingClientRect();
+                return {
+                  card: { left: rect.left, right: rect.right },
+                  line: { left: line.left, right: line.right, height: line.height },
+                  overflow: document.documentElement.scrollWidth > innerWidth,
+                };
+              },
+              cardSelector,
+              placeSelector,
+            );
+            // Production's line stands inside its card, and the page never scrolls sideways:
+            // only the row of cards does.
+            expect(geometry.line.height).toBeGreaterThan(0);
+            expect(geometry.line.left).toBeGreaterThanOrEqual(geometry.card.left);
+            expect(geometry.line.right).toBeLessThanOrEqual(geometry.card.right);
+            expect(geometry.overflow).toBe(false);
             const controls = await page.$eval("[data-zerops-project-scope]", (element) => {
-              const buttons = [...element.querySelectorAll("button")];
-              const find = buttons
-                .find((button) => button.textContent === "Find")!
+              const create = [...element.querySelectorAll("button")]
+                .find((button) => button.textContent?.includes("New project"))!
                 .getBoundingClientRect();
-              const create = buttons
-                .find((button) => button.textContent === "New project")!
-                .getBoundingClientRect();
-              return {
-                findRight: find.right,
-                newLeft: create.left,
-                findTop: find.top,
-                newTop: create.top,
-              };
+              const title = element.querySelector("h1")!.getBoundingClientRect();
+              return { titleRight: title.right, newLeft: create.left };
             });
-            expect(controls.findRight).toBeLessThanOrEqual(controls.newLeft);
-            expect(controls.findTop).toBe(controls.newTop);
+            expect(controls.titleRight).toBeLessThanOrEqual(controls.newLeft);
             if (process.env.PROJECTS_EVIDENCE) {
               await page.screenshot({
                 path: `${process.env.PROJECTS_EVIDENCE}-${width}.png`,
                 fullPage: true,
               });
-              await row!.screenshot({ path: `${process.env.PROJECTS_EVIDENCE}-${width}-row.png` });
-              const header = await page.$("[data-zerops-project-scope]");
-              await header!.screenshot({
-                path: `${process.env.PROJECTS_EVIDENCE}-${width}-header.png`,
+              await card!.screenshot({
+                path: `${process.env.PROJECTS_EVIDENCE}-${width}-card.png`,
               });
             }
           }
-          await page.locator(`${rowSelector} details summary`).click();
+          // Production's panel keeps its release history in reach: the way back, and History.
+          await page.setViewport({ width: 1786, height: 1000 });
+          await page.locator(placeSelector).click();
+          const panel = await page.waitForSelector('[data-zerops-surface="place-panel"]', {
+            visible: true,
+          });
           await page.waitForFunction(
-            (selector) =>
-              document.querySelector<HTMLDetailsElement>(`${selector} details`)?.open === true,
-            {},
-            rowSelector,
+            () =>
+              document
+                .querySelector('[data-zerops-surface="place-panel"]')
+                ?.textContent?.includes("Roll back to v0.1.0") === true,
           );
-          expect(
-            await page.$eval(`${rowSelector} details`, (element) => element.textContent),
-          ).toContain("v0.1.0");
-          await page.locator("[data-zerops-project-scope] ::-p-aria(Find)").click();
-          await page.waitForSelector('[role="dialog"]', { visible: true });
+          expect(await panel!.evaluate((element) => element.textContent)).toContain("History");
           await page.keyboard.press("Escape");
           await page.locator("[data-zerops-project-scope] ::-p-aria(New project)").click();
           await page.waitForSelector('[role="dialog"]', { visible: true });
