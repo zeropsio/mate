@@ -1999,42 +1999,44 @@ describe("owner-reported layout regressions", () => {
             return held.frames;
           }),
         );
-      const miloAtWork = Effect.gen(function* () {
-        const s = yield* createScenario([installEngineArea]);
-        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
-        yield* Effect.promise(() =>
-          s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
-        );
-        yield* s.given.project("Ada", { mate: true });
-        const chat = mateChat(s);
-        chat.fixture().exchange("How did the deploy go?", "It built and the storefront answers.");
-        chat.fixture().exchange("And now?", "The existing conversation is still here");
-        const wire = chat.fixture().wire;
-        if (!(wire instanceof EngineChatWire)) throw new Error("Milo's run is the engine's");
-        const engine = wire.engine;
-        yield* s.given.signedIn;
-        yield* Effect.promise(() => ownerMenu(s.page));
-        yield* chat.when.open();
-        yield* chat.when.send("Live stress test 4A: start two helpers");
-        const run = [...engine.runs.values()].at(-1)!.id;
-        engine.item(run, {
-          kind: "call",
-          step: "command",
-          tool: { name: "Bash" },
-          words: "Command run",
-          state: "done",
-          endedAt: yield* Clock.currentTimeMillis,
-          input: "Bash: sleep 25 && echo helper-job-done",
+      /** Milo at work in a run: held in no application, or placed in `app`. */
+      const miloAtWork = (app?: string) =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installEngineArea]);
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* Effect.promise(() =>
+            s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
+          );
+          yield* s.given.project("Ada", app === undefined ? { mate: true } : { mate: true, app });
+          const chat = mateChat(s);
+          chat.fixture().exchange("How did the deploy go?", "It built and the storefront answers.");
+          chat.fixture().exchange("And now?", "The existing conversation is still here");
+          const wire = chat.fixture().wire;
+          if (!(wire instanceof EngineChatWire)) throw new Error("Milo's run is the engine's");
+          const engine = wire.engine;
+          yield* s.given.signedIn;
+          yield* Effect.promise(() => ownerMenu(s.page));
+          yield* chat.when.open();
+          yield* chat.when.send("Live stress test 4A: start two helpers");
+          const run = [...engine.runs.values()].at(-1)!.id;
+          engine.item(run, {
+            kind: "call",
+            step: "command",
+            tool: { name: "Bash" },
+            words: "Command run",
+            state: "done",
+            endedAt: yield* Clock.currentTimeMillis,
+            input: "Bash: sleep 25 && echo helper-job-done",
+          });
+          return { s, engine, run };
         });
-        return { s, engine, run };
-      });
 
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         it.effect(
           "the work toggle and Stop stand inside the run's card, on a line of their own clear of the working line's words",
           () =>
             Effect.gen(function* () {
-              const { s, engine, run } = yield* miloAtWork;
+              const { s, engine, run } = yield* miloAtWork();
               engine.item(run, {
                 kind: "note",
                 text: "Helper B's job ended first: exit code 4, as it was told to fail. Helper A's is still sleeping. Reacting with the first second-wave helper: it reads what B printed and checks the exit code against the plan.",
@@ -2093,7 +2095,7 @@ describe("owner-reported layout regressions", () => {
           "a long answer being written grows to the item height and is readable while it is written",
           () =>
             Effect.gen(function* () {
-              const { s, engine, run } = yield* miloAtWork;
+              const { s, engine, run } = yield* miloAtWork();
               const note = engine.item(run, {
                 kind: "note",
                 text: "",
@@ -2163,82 +2165,90 @@ describe("owner-reported layout regressions", () => {
 
         // Run 5 (C +0:15.29): at its last words the live box showed lines 11-25 at its foot; the
         // answer then landed from its first line and the page glided 1033 px in 431 ms.
+        /** The landing, with Milo held in no application or placed in one (its review band). */
+        const landsInPlace = (app?: string) =>
+          Effect.gen(function* () {
+            const { s, engine, run } = yield* miloAtWork(app);
+            const note = engine.item(run, {
+              kind: "note",
+              text: "",
+              streaming: true,
+              answer: false,
+            });
+            const lines = Array.from({ length: 40 }, (_, index) =>
+              index === 39
+                ? "Line 40, the very last line."
+                : `Line ${index + 1} of the table of every helper and job.`,
+            );
+            const text = lines.join("\n\n");
+            engine.stream(note, text);
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(
+                () =>
+                  [
+                    ...document.querySelectorAll(
+                      '[data-run-chat][data-run-live] [data-chat-kind="note"]',
+                    ),
+                  ]
+                    .at(-1)
+                    ?.textContent?.includes("the very last line"),
+                { polling: "raf", timeout: 8000 },
+              ),
+            );
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+            yield* Effect.promise(() => startLastLineTrace(s.page));
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 200)));
+            // As on Milo (run 6, R +1:22.4): its streamed words settle a moment before its record
+            // says them whole, and the run ends 400 ms after its last words.
+            engine.settle(note);
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
+            engine.update(note, { text, streaming: false });
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 400)));
+            engine.end(run);
+            const frames = yield* Effect.promise(() => stopLastLineTrace(s.page, 2000));
+            const first = frames[0]!;
+            expect(
+              first.top,
+              "ASSERTION: the last words stood in view before the answer landed",
+            ).not.toBeNull();
+            const away = frames.filter(
+              (frame) => frame.top === null || Math.abs(frame.top - first.top!) > 4,
+            );
+            expect(
+              frames.at(-1)!.at - first.at,
+              "ASSERTION: the landing was sampled",
+            ).toBeGreaterThan(1000);
+            // Before #182: gone for 420 ms, then a 1033 px glide back over 431 ms; before this,
+            // the box went blank and back to its first line as its live words settled ahead of
+            // their record (run 6). The swap of the slot's box for the answer's row takes the list
+            // a frame or two to place.
+            expect(
+              away.length === 0 ? 0 : away.at(-1)!.at - away[0]!.at,
+              "ASSERTION: the answer's last line is away from where it was read for no more than the swap's frames",
+            ).toBeLessThan(80);
+            expect(
+              frames
+                .filter((frame) => away.length === 0 || frame.at > away.at(-1)!.at)
+                .every((frame) => frame.top !== null && Math.abs(frame.top - first.top!) <= 4),
+              "ASSERTION: once landed the answer's last line stands where it was read, and nothing glides",
+            ).toBe(true);
+            yield* s.then.noExternalNetwork;
+          });
+
         it.effect(
           "a long answer landing keeps the lines the person was reading where they were",
-          () =>
-            Effect.gen(function* () {
-              const { s, engine, run } = yield* miloAtWork;
-              const note = engine.item(run, {
-                kind: "note",
-                text: "",
-                streaming: true,
-                answer: false,
-              });
-              const lines = Array.from({ length: 40 }, (_, index) =>
-                index === 39
-                  ? "Line 40, the very last line."
-                  : `Line ${index + 1} of the table of every helper and job.`,
-              );
-              const text = lines.join("\n\n");
-              engine.stream(note, text);
-              yield* Effect.promise(() =>
-                s.page.waitForFunction(
-                  () =>
-                    [
-                      ...document.querySelectorAll(
-                        '[data-run-chat][data-run-live] [data-chat-kind="note"]',
-                      ),
-                    ]
-                      .at(-1)
-                      ?.textContent?.includes("the very last line"),
-                  { polling: "raf", timeout: 8000 },
-                ),
-              );
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
-              yield* Effect.promise(() => startLastLineTrace(s.page));
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 200)));
-              // As on Milo (run 6, R +1:22.4): its streamed words settle a moment before its record
-              // says them whole, and the run ends 400 ms after its last words.
-              engine.settle(note);
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
-              engine.update(note, { text, streaming: false });
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 400)));
-              engine.end(run);
-              const frames = yield* Effect.promise(() => stopLastLineTrace(s.page, 2000));
-              const first = frames[0]!;
-              expect(
-                first.top,
-                "ASSERTION: the last words stood in view before the answer landed",
-              ).not.toBeNull();
-              const away = frames.filter(
-                (frame) => frame.top === null || Math.abs(frame.top - first.top!) > 4,
-              );
-              expect(
-                frames.at(-1)!.at - first.at,
-                "ASSERTION: the landing was sampled",
-              ).toBeGreaterThan(1000);
-              // Before #182: gone for 420 ms, then a 1033 px glide back over 431 ms; before this,
-              // the box went blank and back to its first line as its live words settled ahead of
-              // their record (run 6). The swap of the slot's box for the answer's row takes the list
-              // a frame or two to place.
-              expect(
-                away.length === 0 ? 0 : away.at(-1)!.at - away[0]!.at,
-                "ASSERTION: the answer's last line is away from where it was read for no more than the swap's frames",
-              ).toBeLessThan(80);
-              expect(
-                frames
-                  .filter((frame) => away.length === 0 || frame.at > away.at(-1)!.at)
-                  .every((frame) => frame.top !== null && Math.abs(frame.top - first.top!) <= 4),
-                "ASSERTION: once landed the answer's last line stands where it was read, and nothing glides",
-              ).toBe(true);
-              yield* s.then.noExternalNetwork;
-            }),
+          () => landsInPlace(),
+        );
+
+        it.effect(
+          "a long answer landing keeps the lines the person was reading where they were, its Mate in an application",
+          () => landsInPlace("Shop"),
         );
 
         // Run 5 (C +0:09.6): a big chunk of words grew the live box 125 -> 497 px in one frame.
         it.effect("words arriving in a burst grow their box by a glide, never a leap", () =>
           Effect.gen(function* () {
-            const { s, engine, run } = yield* miloAtWork;
+            const { s, engine, run } = yield* miloAtWork();
             const note = engine.item(run, {
               kind: "note",
               text: "",
