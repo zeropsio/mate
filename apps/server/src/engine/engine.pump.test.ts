@@ -1450,6 +1450,43 @@ describe("Claude's helpers and background work, as the engine records them", () 
       ),
   );
 
+  // Milo's stress run 4: helper B reported, then its own job's end re-woke it, and the helpers'
+  // surface read the re-wake's "has now exited with code 4 … No action needed" for its report.
+  it.effect("a helper's entry keeps the report it returned, not a re-wake's later words", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        const c = claude(w);
+        yield* send(w);
+        yield* c.call("toolu_h", { description: "Start a failing job" }, null, "Agent");
+        const helper = {
+          taskId: "ah",
+          description: "Start a failing job",
+          taskType: "local_agent",
+          toolUseId: "toolu_h",
+        };
+        yield* c.task("task.started", helper);
+        yield* c.task("task.completed", {
+          ...helper,
+          status: "completed",
+          summary: "Started `sh -c 'sleep 10; exit 4'` in the background as job bll6s0e1g.",
+        });
+        yield* c.task("task.started", helper);
+        yield* c.task("task.completed", {
+          ...helper,
+          status: "completed",
+          summary: "The background job (ID `bll6s0e1g`) has now exited with code 4, as expected.",
+        });
+        const [entry] = yield* works(w, 1);
+        assert.deepStrictEqual(
+          [entry?.body.status, entry?.body.report],
+          ["completed", "Started `sh -c 'sleep 10; exit 4'` in the background as job bll6s0e1g."],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect(
     "a background job's record names the call that started it and the line it ended with",
     () =>

@@ -2297,7 +2297,9 @@ export function deriveMessagesTimelineRows(input: {
       const didWork = turn.stretches.some((stretch) => stretch.entries.length > 0) || turn.live;
       if (openPause && didWork) {
         const index = pauseRows.indexOf(openPause);
-        const resumed = { ...openPause, resumedAt: turn.stretches[0]?.startedAt ?? null };
+        // Picked up when it ran again: a held message was sent long before.
+        const resumedAt = turn.ranFrom ?? turn.stretches[0]?.startedAt ?? null;
+        const resumed = { ...openPause, resumedAt };
         pauseRows[index] = resumed;
         for (const [key, value] of pauseByTurnKey)
           if (value.row === openPause) pauseByTurnKey.set(key, { row: resumed });
