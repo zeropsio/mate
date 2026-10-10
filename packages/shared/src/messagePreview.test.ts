@@ -28,6 +28,11 @@ describe("messagePreviewText", () => {
     ["a rule between paragraphs", "Before\n\n---\n\nAfter", "Before After"],
     ["runs of whitespace", "please   do\n\n\nthe thing  ", "please do the thing"],
     ["snake_case left alone", "*emphasis* and snake_case_name", "emphasis and snake_case_name"],
+    [
+      "a table, its cells' words without its pipes or rule",
+      "Deploys:\n\n| Service | State |\n|:--------|------:|\n| api | **up** |\n| web | down |",
+      "Deploys: Service State api up web down",
+    ],
   ])("quotes %s as plain words", (_, markdown, expected) => {
     expect(messagePreviewText(markdown)).toBe(expected);
   });

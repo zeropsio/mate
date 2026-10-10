@@ -1641,11 +1641,15 @@ export default function ChatView(props: ChatViewProps) {
   const legendListRef = useRef<LegendListRef | null>(null);
   const [composerOverlayElement, setComposerOverlayElement] = useState<HTMLDivElement | null>(null);
   const [composerElementHeight, setComposerElementHeight] = useState(0);
+  // The whole overlay while the agent asks (a question or an approval over the composer), 0 else.
+  const [composerAskingHeight, setComposerAskingHeight] = useState(0);
   // What the composer covers of the list, as each conversation last had it
   // (`timelineInsets.ts`): a list shown in the press frame took the
   // conversation left's inset for that frame, and moved.
   const [composerOverlaySettledFor, setComposerOverlaySettledFor] = useState(routeThreadKey);
   const composerOverlayHeight = composerElementHeight;
+  const composerAskRoom =
+    composerAskingHeight > 0 ? Math.max(0, composerAskingHeight - composerOverlayHeight) : 0;
   const warmTimelineAsk = useWarmTimelineAsk();
   const rememberedInset = rememberedTimelineInset(routeThreadKey);
   const timelineInsetMeasured = composerOverlaySettledFor === routeThreadKey;
@@ -1673,12 +1677,16 @@ export default function ChatView(props: ChatViewProps) {
     if (!composerOverlayElement) return;
 
     const updateHeight = () => {
-      // A question or an approval the agent asks stands over the conversation's end, the room under
-      // it held as it was: opening it pushed the conversation up 250 px in one frame and its answer
-      // pulled it back down (Milo's stress run).
-      if (composerOverlayElement.querySelector("[data-chat-composer-asks]") !== null) return;
       const nextHeight = Math.ceil(composerOverlayElement.getBoundingClientRect().height);
       if (nextHeight <= 0) return;
+      // A question or an approval the agent asks stands over the conversation's end, the inset held
+      // as it was: opening it pushed the conversation up 250 px in one frame and its answer pulled
+      // it back down (Milo's stress run). What it covers more is room the person scrolls into.
+      if (composerOverlayElement.querySelector("[data-chat-composer-asks]") !== null) {
+        setComposerAskingHeight(nextHeight);
+        return;
+      }
+      setComposerAskingHeight(0);
       setComposerElementHeight((currentHeight) =>
         currentHeight === nextHeight ? currentHeight : nextHeight,
       );
@@ -8614,6 +8622,7 @@ export default function ChatView(props: ChatViewProps) {
                   anchorMessageId: timelineAnchorMessageId,
                   onAnchorReady: onTimelineAnchorReady,
                   contentInsetEndAdjustment: zeropsArrivalHoldsComposer ? 0 : timelineInsetEnd,
+                  askRoomEnd: zeropsArrivalHoldsComposer ? 0 : composerAskRoom,
                   liveFollowEnabled: timelineLiveFollowEnabled,
                   onIsAtEndChange,
                   onPersonInput: onTimelinePersonInput,

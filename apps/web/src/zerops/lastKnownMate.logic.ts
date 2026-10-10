@@ -1,4 +1,5 @@
 import type { TimestampFormat } from "@t3tools/contracts/settings";
+import { messagePreviewText } from "@t3tools/shared/messagePreview";
 import { formatDayAwareTimestamp } from "../timestampFormat";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { mateFailureWords, usageLimitHistoryWords } from "./noticeWords";
@@ -32,11 +33,15 @@ export function lastKnownMateWords(
               : `${name} was waiting for an answer: ${activity.question}`
             : held.kind === "planReady"
               ? `${name} had a plan ready for review.`
-              : held.kind === "working" || held.kind === "connecting" || held.kind === "monitoring"
-                ? `${name} was working.`
-                : held.kind === "done"
-                  ? `${name} had finished the work.`
-                  : `${name} had no active work.`;
+              : held.waitsOnHelpers === true
+                ? `${name} was waiting for its helpers.`
+                : held.kind === "working" ||
+                    held.kind === "connecting" ||
+                    held.kind === "monitoring"
+                  ? `${name} was working.`
+                  : held.kind === "done"
+                    ? `${name} had finished the work.`
+                    : `${name} had no active work.`;
   const preview =
     activity.limitHistory !== undefined ||
     held.usageLimited ||
@@ -44,7 +49,10 @@ export function lastKnownMateWords(
     held.kind === "failed" ||
     held.kind === "input"
       ? undefined
-      : activity.snippet;
+      : // Plain words on one line, cut with an ellipsis: a row quotes the agent's markdown raw.
+        activity.snippet === undefined
+        ? undefined
+        : (messagePreviewText(activity.snippet) ?? undefined);
   return `Last known ${formatDayAwareTimestamp(held.at, timestampFormat)}: ${words}${preview === undefined ? "" : ` ${preview}`}`;
 }
 
