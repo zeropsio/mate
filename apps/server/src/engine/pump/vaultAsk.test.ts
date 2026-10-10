@@ -60,6 +60,26 @@ describe("a zcp call that asks the person for a value", () => {
       },
     ],
     [
+      "asked by a zcp that names it for people",
+      call(
+        requested({
+          key: "STRIPE_SECRET_KEY",
+          label: "Stripe secret key",
+          why: "for checkout",
+          scope: "shared",
+          sensitive: true,
+        }),
+      ),
+      {
+        kind: "vault",
+        key: "STRIPE_SECRET_KEY",
+        label: "Stripe secret key",
+        scope: { kind: "shared" },
+        sensitive: true,
+        reason: "for checkout",
+      },
+    ],
+    [
       "asked by a zcp that does not say why",
       call(requested({ key: "API_KEY", scope: "shared", sensitive: true })),
       { kind: "vault", key: "API_KEY", scope: { kind: "shared" }, sensitive: true, reason: null },

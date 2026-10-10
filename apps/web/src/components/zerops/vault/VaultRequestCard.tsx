@@ -1,16 +1,12 @@
 /**
  * The Mate asks for a value only the person has: its name, where it goes and why, a field that
  * writes straight to the vault — never to the chat — and "Not now". Given, it folds to one line.
- * An ask the engine keeps reads Save and Decline, and says what makes the value take effect.
+ * A V1 conversation's: an ask the engine keeps is the composer's drawer (`ComposerVaultAsk`).
  * The field is masked until the person shows it, and secret is the person's word (the agent's flag
  * only pre-selects it). The agent's reason reads as its words; who can read the value, and what
  * never goes in, is ours. Props only: the container reads the vault and submits the write.
  */
-import type {
-  VaultAskActivityPayload,
-  VaultScopeRef,
-  VaultWrite,
-} from "@t3tools/client-runtime/data";
+import type { VaultScopeRef, VaultWrite } from "@t3tools/client-runtime/data";
 import { CircleAlertIcon, EyeIcon, EyeOffIcon, LockKeyholeIcon } from "lucide-react";
 import { useId, useState } from "react";
 
@@ -24,7 +20,6 @@ import {
   type VaultAsk,
   type VaultAskSaid,
   type VaultAskState,
-  vaultAskEngineFace,
   vaultAskFace,
   vaultAskLooksLikeZeropsSignIn,
   vaultAskReach,
@@ -38,10 +33,6 @@ export interface VaultRequestCardProps {
   readonly mateName: string;
   readonly state: VaultAskState;
   readonly said: VaultAskSaid | null;
-  /** The engine's record of the ask, on a conversation it keeps; `null` elsewhere. */
-  readonly engine?: VaultAskActivityPayload["state"] | null;
-  /** What the person does for the value to take effect; `null` before the vault is read. */
-  readonly pickUp?: string | null;
   /** Submits the write and says how it ended; the container records it for the Mate's next message. */
   readonly onPut: (scope: VaultScopeRef, write: VaultWrite) => Promise<VaultWriteOutcome>;
   readonly onNotNow: () => void;
@@ -51,12 +42,7 @@ const PASTE_LABEL = "Paste it here — it goes to the vault, not the chat";
 
 export function VaultRequestCard(props: VaultRequestCardProps) {
   const { ask, mateName, state } = props;
-  const engine = props.engine ?? null;
-  const pickUp = props.pickUp ?? null;
-  const face =
-    engine === null
-      ? vaultAskFace(state.kind, props.said)
-      : vaultAskEngineFace(engine, state.kind, props.said);
+  const face = vaultAskFace(state.kind, props.said);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -77,28 +63,18 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
         />
         <div className="grid min-w-0 gap-0.5">
           <span className="min-w-0 truncate text-muted-foreground">
-            {face === "not-now" || face === "declined" || face === "closed" ? (
+            {face === "not-now" ? (
               <>
-                {mateName} asked for <span className="font-mono text-foreground">{ask.key}</span> ·{" "}
-                {face === "not-now"
-                  ? "Not now"
-                  : face === "declined"
-                    ? "Declined"
-                    : "No longer asked"}
+                {mateName} asked for <span className="font-mono text-foreground">{ask.key}</span> ·
+                Not now
               </>
             ) : (
               <>
                 <span className="font-mono text-foreground">{ask.key}</span> is in the vault
                 {face === "put" ? ` — ${mateName} hears it with your next message` : ""}
-                {face === "saved" ? ` — ${mateName} has been told` : ""}
               </>
             )}
           </span>
-          {face === "saved" && pickUp !== null ? (
-            <span className="text-muted-foreground" data-vault-request-pickup>
-              {pickUp}
-            </span>
-          ) : null}
         </div>
       </FlatCard>
     );
@@ -154,11 +130,6 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
               {ask.key} looks like a Zerops sign-in. {mateName} never needs yours.
             </p>
           ) : null}
-          {engine === null || pickUp === null ? null : (
-            <p className="text-xs leading-4.5 text-muted-foreground" data-vault-request-pickup>
-              {pickUp}
-            </p>
-          )}
         </div>
         {face === "unplaced" ? (
           <p className="text-xs text-muted-foreground" data-vault-request-unplaced>
@@ -174,7 +145,7 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
             </p>
             <div className="flex items-center gap-2">
               <Button onClick={props.onNotNow} size="xs" variant="ghost-muted">
-                {engine === null ? "Not now" : "Decline"}
+                Not now
               </Button>
             </div>
           </>
@@ -234,10 +205,10 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
             <div className="flex items-center gap-2">
               <Button disabled={!canPut} onClick={() => void put()} size="xs">
                 {busy ? <Spinner size="xs" /> : null}
-                {engine === null ? "Put in vault" : "Save"}
+                Put in vault
               </Button>
               <Button disabled={busy} onClick={props.onNotNow} size="xs" variant="ghost-muted">
-                {engine === null ? "Not now" : "Decline"}
+                Not now
               </Button>
             </div>
           </>

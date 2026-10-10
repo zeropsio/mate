@@ -11,7 +11,9 @@ export type MateStatus = {
   readonly until?: string | undefined;
   readonly provider?: string | undefined;
 } & (
-  | { readonly kind: "limit" | "sign-in" | "answer" | "broken" }
+  | { readonly kind: "limit" | "sign-in" | "broken" }
+  /** It waits on the person's answer: a question or an approval, or a key it asked for. */
+  | { readonly kind: "answer"; readonly key?: true }
   | {
       readonly kind: "interrupted";
       readonly interruption: import("@t3tools/contracts").MateInterruption;
@@ -45,7 +47,11 @@ export function mateStatus(
     activity?.kind === "input" ||
     activity?.kind === "planReady"
   ) {
-    return { kind: "answer", severity: "attention" };
+    return {
+      kind: "answer",
+      severity: "attention",
+      ...(activity.kind === "input" && activity.asksFor === "key" ? { key: true as const } : {}),
+    };
   }
   if (activity?.interruption?.continuation === "manual") {
     return { kind: "interrupted", severity: "attention", interruption: activity.interruption };
@@ -68,7 +74,9 @@ export function mateStatusWords(
         : status.kind === "sign-in"
           ? (status.admission?.summary ?? "Sign in")
           : status.kind === "answer"
-            ? "Needs an answer"
+            ? status.key === true
+              ? "Needs a key"
+              : "Needs an answer"
             : "Needs attention";
   const cause =
     status.kind === "limit"

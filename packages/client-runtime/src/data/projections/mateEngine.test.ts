@@ -253,6 +253,7 @@ describe("an engine conversation as the thread the view draws", () => {
     expect(activities[0]?.payload).toEqual({
       requestId: request.id,
       key: "STRIPE_SECRET_KEY",
+      label: null,
       scope: { kind: "shared" },
       sensitive: true,
       reason: "Stripe charges cards.",
@@ -1236,6 +1237,9 @@ describe("an engine conversation's row in the menu", () => {
     expect(overlaid.session?.status).toBe(expected.session);
     expect(overlaid.hasPendingApprovals).toBe(expected.approvals);
     expect(overlaid.hasPendingUserInput).toBe(expected.input);
+    expect(overlaid.pendingAsk ?? null).toBe(
+      row.state.kind === "waiting" && row.state.on === "vault" ? "key" : null,
+    );
     expect(overlaid.modelSelection.instanceId).toBe("claudeAgent");
   });
 

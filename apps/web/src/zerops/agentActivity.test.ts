@@ -1200,7 +1200,7 @@ describe("rowAgentActivity — an engine Mate's menu state off its own row", () 
     [
       "waiting on a vault value",
       { state: { kind: "waiting", on: "vault", words: null } },
-      { kind: "input", face: "needs" },
+      { kind: "input", face: "needs", asksFor: "key" },
     ],
     [
       "waiting on its plan",

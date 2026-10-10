@@ -1,4 +1,7 @@
-import { EnvironmentId, TurnId } from "@t3tools/contracts";
+import type { VaultAskActivityPayload } from "@t3tools/client-runtime/data";
+import { EnvironmentId, TurnId, type OrchestrationThreadActivity } from "@t3tools/contracts";
+import { VAULT_FIXTURE } from "../zerops/vault/vaultFixture";
+import type { VaultAsk } from "../zerops/vault/vaultRequest.logic";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -1206,5 +1209,85 @@ describe("runEffortWords", () => {
   it("says nothing for a run with no outcome", () => {
     expect(runEffortWords(null)).toBeNull();
     expect(runEffortWords(undefined)).toBeNull();
+  });
+});
+
+describe("resultRows — a value the run asked the person for", () => {
+  const asked: VaultAsk = {
+    key: "STRIPE_SECRET_KEY",
+    label: "Stripe secret key",
+    scope: { kind: "shared" },
+    sensitive: true,
+    reason: "for checkout",
+    askedAt: "2026-10-10T10:00:00.000Z",
+  };
+  const record = (
+    state: VaultAskActivityPayload["state"],
+    key = asked.key,
+  ): OrchestrationThreadActivity =>
+    ({
+      id: `ask-${key}`,
+      kind: "vault.requested",
+      tone: "info",
+      summary: "Secret requested",
+      turnId: null,
+      createdAt: "2026-10-10T10:00:01.000Z",
+      payload: {
+        requestId: "mate/r/1/q/1",
+        key,
+        label: "Stripe secret key",
+        scope: { kind: "shared" },
+        sensitive: true,
+        reason: "for checkout",
+        state,
+        answer: null,
+      },
+    }) as unknown as OrchestrationThreadActivity;
+  const rowsOf = (key: string, state: VaultAskActivityPayload["state"] | null) =>
+    resultRows(outcome({ asks: [{ ...asked, key }] }), {
+      asks: { activities: state === null ? [] : [record(state, key)], vault: VAULT_FIXTURE },
+    }).map(({ title, words, sub, action, tone }) => ({ title, words, sub, action, tone }));
+
+  it.each([
+    {
+      name: "saved: added for every app, hidden",
+      key: "STRIPE_SECRET_KEY",
+      state: "saved",
+      want: [
+        {
+          title: "Stripe secret key",
+          words: "added for every app · hidden",
+          sub: null,
+          action: null,
+          tone: "ok",
+        },
+      ],
+    },
+    {
+      name: "saved, and an app runs the value it started with: restart it",
+      key: "LOG_LEVEL",
+      state: "saved",
+      want: [
+        {
+          title: "Stripe secret key",
+          words: "added for every app",
+          sub: { kind: "text", text: "restart appdev to use it" },
+          action: { kind: "restart", services: [{ serviceId: "svc-appdev", hostname: "appdev" }] },
+          tone: "ok",
+        },
+      ],
+    },
+    {
+      name: "not given: Not now",
+      key: "STRIPE_SECRET_KEY",
+      state: "declined",
+      want: [
+        { title: "Stripe secret key", words: "Not now", sub: null, action: null, tone: "muted" },
+      ],
+    },
+    { name: "still asked: the drawer holds it", key: "STRIPE_SECRET_KEY", state: "open", want: [] },
+    { name: "an ask the engine does not keep", key: "STRIPE_SECRET_KEY", state: null, want: [] },
+  ] as const)("$name", ({ key, state, want }) => {
+    expect(rowsOf(key, state)).toEqual(want);
   });
 });

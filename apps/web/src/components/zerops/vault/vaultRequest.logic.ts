@@ -20,6 +20,8 @@ import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
 export interface VaultAsk {
   readonly key: string;
+  /** What it is, in people's words ("Stripe secret key"); `null` from an older zcp. */
+  readonly label: string | null;
   /** Shared, or one service's own vault by its hostname — what the agent named. */
   readonly scope:
     | { readonly kind: "shared" }
@@ -41,6 +43,7 @@ export function vaultAskOf(operation: ZeropsOperation): VaultAsk | null {
   if (change.scope === "service" && change.service === undefined) return null;
   return {
     key: request.key,
+    label: request.label ?? null,
     scope:
       change.scope === "project" || change.service === undefined
         ? { kind: "shared" }
@@ -138,11 +141,7 @@ export type VaultAskFace =
   | "open"
   | "put"
   | "filled"
-  | "not-now"
-  /** The engine's record: saved, or declined, as the person answered; or closed some other way. */
-  | "saved"
-  | "declined"
-  | "closed";
+  | "not-now";
 
 /**
  * What the card draws: the person's own put says the Mate hears it next; given since (a reload, the
@@ -198,46 +197,138 @@ export function engineVaultAskFor(
   return found?.payload ?? null;
 }
 
-/**
- * What the card of an ask the engine keeps draws: the engine's record first, and the person's own
- * answer here until the record says so. Open, it stays the person's to answer even when the key
- * reached the vault some other way: only Save or Decline tells the Mate.
- */
-export function vaultAskEngineFace(
-  engine: VaultAskActivityPayload["state"],
-  vault: VaultAskState["kind"],
-  said: VaultAskSaid | null,
-): VaultAskFace {
-  if (engine === "saved" || (engine === "open" && said === "put")) return "saved";
-  if (engine === "declined" || (engine === "open" && said === "not-now")) return "declined";
-  if (engine === "closed") return "closed";
-  return vault === "filled" ? "open" : vault;
-}
-
 const listed = (names: ReadonlyArray<string>): string =>
   names.length <= 1
     ? (names[0] ?? "")
     : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 
+// ---------------------------------------------------------------------------
+// The ask in the composer's drawer, and its answer in the run that asked
+// ---------------------------------------------------------------------------
+
+/** What the value is, as people name it: the agent's label, else its key. */
+export function vaultAskLabel(ask: Pick<VaultAsk, "key" | "label">): string {
+  return ask.label ?? ask.key;
+}
+
+/** The agent's why as a phrase that follows the label: no capital, no full stop. */
+const whyPhrase = (why: string): string => {
+  const trimmed = why.trim().replace(/[.\s]+$/u, "");
+  const first = trimmed.split(/\s/u)[0] ?? "";
+  // "For the API." → "for the API", but an acronym or a name keeps its case.
+  return first.length > 1 && first === first[0] + first.slice(1).toLowerCase()
+    ? trimmed[0]!.toLowerCase() + trimmed.slice(1)
+    : trimmed;
+};
+
+/** The drawer's one line: who needs what, and why, in the agent's words. */
+export function vaultAskLine(ask: VaultAsk, mateName: string): string {
+  const line = `${mateName} needs your ${vaultAskLabel(ask)}`;
+  return ask.reason === null || ask.reason.trim() === ""
+    ? line
+    : `${line}, ${whyPhrase(ask.reason)}`;
+}
+
+/** The drawer's one plain sentence of what happens, in the state the vault says. */
+export function vaultAskNote(
+  ask: VaultAsk,
+  state: VaultAskState["kind"],
+  mateName: string,
+): string {
+  switch (state) {
+    case "filled":
+      return "You added it in the Vault.";
+    case "reserved":
+      return `${ask.key} is a name ${mateName} keeps for itself, so the vault won't list it.`;
+    case "unplaced":
+      return `${ask.scope.kind === "service" ? ask.scope.hostname : "This vault"} isn't in this project any more.`;
+    default:
+      return ask.scope.kind === "shared"
+        ? "Goes to this project's vault for every app, never into this chat."
+        : `Goes to ${ask.scope.hostname}'s vault, never into this chat.`;
+  }
+}
+
+/** The one warning that matters: a Zerops sign-in is never the Mate's to have. */
+export function vaultAskWarning(ask: Pick<VaultAsk, "key">, mateName: string): string | null {
+  return vaultAskLooksLikeZeropsSignIn(ask.key)
+    ? `Looks like a Zerops sign-in. ${mateName} never needs yours.`
+    : null;
+}
+
+/** A service the result row offers to restart, so it runs the new value. */
+export interface VaultAskRestart {
+  readonly serviceId: string;
+  readonly hostname: string;
+}
+
+/** The answered ask in the run that asked: what it is, how it ended, what still needs doing. */
+export interface VaultAskResultRow {
+  readonly title: string;
+  readonly words: string;
+  readonly restart: ReadonlyArray<VaultAskRestart>;
+}
+
 /**
- * What the person does for the value to take effect, by the platform's rules: a deploy activates
- * a reference (zerops.yaml is baked into the app version), a restart activates a changed value (a
- * running process keeps the environment it booted with). `null` before the vault is read.
+ * The result row of an answered ask, off the engine's record and the vault: saved, it is added
+ * for every app or for one, hidden when the vault keeps it so, and an app that runs the value it
+ * started with is offered a restart; not given, "Not now". Nothing while it is still asked.
  */
-export function vaultAskPickUp(view: VaultView, ask: VaultAsk): string | null {
-  if (view.status === "unread") return null;
-  const held = askScope(view, ask)?.values.find((value) => value.key === ask.key);
-  const readers = held?.readers ?? [];
-  if (readers.length === 0) {
-    return ask.scope.kind === "service"
-      ? `It takes effect once ${ask.scope.hostname}'s zerops.yaml references it and ${ask.scope.hostname} is deployed.`
-      : "It takes effect once a service's zerops.yaml references it and that service is deployed.";
+export function vaultAskResult(
+  ask: VaultAsk,
+  engine: VaultAskActivityPayload["state"],
+  view: VaultView,
+): VaultAskResultRow | null {
+  const title = vaultAskLabel(ask);
+  if (engine === "declined") return { title, words: "Not now", restart: [] };
+  if (engine !== "saved") return null;
+  const held =
+    view.status === "unread"
+      ? undefined
+      : askScope(view, ask)?.values.find((value) => value.key === ask.key);
+  const place = ask.scope.kind === "shared" ? "every app" : ask.scope.hostname;
+  const restart = (held?.readers ?? [])
+    .filter((reader) => reader.state === "restart")
+    .map(({ serviceId, hostname }) => ({ serviceId, hostname }));
+  return {
+    title,
+    words: `added for ${place}${held?.sensitive === true ? " · hidden" : ""}`,
+    restart,
+  };
+}
+
+/** The restart a result row offers, in words. */
+export function vaultAskRestartWords(restart: ReadonlyArray<VaultAskRestart>): string {
+  return `restart ${listed(restart.map((service) => service.hostname))} to use it`;
+}
+
+/** The ask the composer's drawer holds: the oldest the engine keeps open, read as its words need. */
+export function openVaultAsk(
+  activities: ReadonlyArray<OrchestrationThreadActivity> | undefined,
+): { readonly requestId: string; readonly ask: VaultAsk } | null {
+  let oldest: {
+    readonly at: number;
+    readonly payload: VaultAskActivityPayload;
+    readonly createdAt: string;
+  } | null = null;
+  for (const activity of activities ?? []) {
+    if (activity.kind !== VAULT_ASK_ACTIVITY_KIND) continue;
+    const payload = activity.payload as VaultAskActivityPayload;
+    if (payload.state !== "open") continue;
+    const at = Date.parse(activity.createdAt);
+    if (oldest === null || at < oldest.at) oldest = { at, payload, createdAt: activity.createdAt };
   }
-  const stale = readers
-    .filter((reader) => reader.state !== "live")
-    .map((reader) => reader.hostname);
-  if (stale.length === 0) {
-    return `${listed(readers.map((reader) => reader.hostname))} ${readers.length === 1 ? "uses" : "use"} it.`;
-  }
-  return `Restart ${listed(stale)} to use it: a running app keeps the value it started with.`;
+  if (oldest === null) return null;
+  const { payload } = oldest;
+  return {
+    requestId: payload.requestId,
+    ask: {
+      key: payload.key,
+      label: payload.label ?? null,
+      scope: payload.scope,
+      sensitive: payload.sensitive,
+      reason: payload.reason,
+      askedAt: oldest.createdAt,
+    },
+  };
 }

@@ -607,7 +607,10 @@ export const RequestAsk = forwardCompatibleUnion({
         Schema.Struct({ kind: Schema.Literal("service"), hostname: Schema.String }),
       ]),
       sensitive: Schema.Boolean,
+      /** What it is for, in the agent's words: one line ("for checkout"). */
       reason: Schema.NullOr(Schema.String),
+      /** What it is, in people's words ("Stripe secret key"); absent from an older zcp. */
+      label: Schema.optionalKey(Schema.String),
     }),
     Schema.Struct({ kind: Schema.Literal("plan"), planItemId: ItemId }),
   ],

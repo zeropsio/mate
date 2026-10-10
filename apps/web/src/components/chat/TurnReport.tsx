@@ -32,6 +32,7 @@ import {
 import { useAssetUrlStates, type AssetUrlState } from "../../assets/assetUrls";
 import { formatDayAwareTimestamp } from "../../timestampFormat";
 import { FixAction } from "./FixAction";
+import { RestartAction } from "./RestartAction";
 import { useOpenReview } from "../../zerops/review";
 import { ServiceBrowserLink } from "../ServiceBrowserLink";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -132,10 +133,12 @@ function RowEnd({ row, mate }: { readonly row: ResultRow; readonly mate: MateOfR
   const { action, url, tryIt } = row;
   const review = action?.kind === "review" ? action.target : null;
   const fix = action?.kind === "fix" ? action.problem : null;
+  const restart = action?.kind === "restart" ? action.services : null;
   if (action === null && url === null) return <span />;
   return (
     <span className="run-result-end">
       {fix === null ? null : <FixAction mate={mate} problem={fix} />}
+      {restart === null ? null : <RestartAction services={restart} />}
       {tryIt === undefined ? null : (
         <CrewTryIt environmentId={tryIt.environmentId} handle={tryIt.handle} title={row.title} />
       )}

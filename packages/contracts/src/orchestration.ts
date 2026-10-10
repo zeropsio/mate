@@ -890,6 +890,12 @@ export const OrchestrationThreadShell = Schema.Struct({
    */
   pendingQuestion: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   /**
+   * What the thread waits on the person for when it is no question: `key`, a value its agent asked
+   * for (a vault request), set while `hasPendingUserInput` is for it. Optional so old
+   * servers/clients interop; absent or null = a question, or nothing asked.
+   */
+  pendingAsk: Schema.optional(Schema.NullOr(Schema.Literal("key"))),
+  /**
    * The usage limit pausing the thread, while it does (see ThreadUsagePause).
    * Optional so old servers/clients interop; absent or null = not paused.
    */

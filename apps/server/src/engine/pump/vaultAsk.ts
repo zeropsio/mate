@@ -1,6 +1,7 @@
 /**
  * A value the agent asks the person for, read off zcp's answer to `zerops_env action=request`:
- * the key, the vault it goes to, plain or sensitive, and one line of why. zcp writes nothing and
+ * the key, what it is in people's words, the vault it goes to, plain or sensitive, and one line of
+ * why. zcp writes nothing and
  * answers at once; the engine opens the ask on that call and the person answers it on a card,
  * their value going from their client to the vault — never through this answer, which holds none.
  *
@@ -13,8 +14,9 @@ export const VAULT_REQUEST_TOOL = "zerops_env";
 
 /** A name the vault stores a value under (zcp's `ops.ValidateEnvKey`). */
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/u;
-/** The longest reason a card shows (zcp refuses longer). */
+/** The longest why and label a person is shown (zcp refuses longer). */
 const REASON_MAX = 280;
+const LABEL_MAX = 80;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -32,7 +34,9 @@ export function vaultAskOfCall(body: ItemBody): Extract<RequestAsk, { kind: "vau
   }
   const requested = isRecord(answer) ? answer.requested : undefined;
   if (!isRecord(requested)) return null;
-  const { key, scope, serviceHostname, sensitive, reason } = requested;
+  const { key, scope, serviceHostname, sensitive, label } = requested;
+  // `why`, from a zcp that names the value; `reason`, from one before it.
+  const reason = requested.why ?? requested.reason;
   if (typeof key !== "string" || !ENV_KEY.test(key) || typeof sensitive !== "boolean") return null;
   const vault =
     scope === "shared"
@@ -42,5 +46,13 @@ export function vaultAskOfCall(body: ItemBody): Extract<RequestAsk, { kind: "vau
         : null;
   if (vault === null) return null;
   const why = typeof reason === "string" ? reason.trim().slice(0, REASON_MAX) : "";
-  return { kind: "vault", key, scope: vault, sensitive, reason: why === "" ? null : why };
+  const named = typeof label === "string" ? label.trim().slice(0, LABEL_MAX) : "";
+  return {
+    kind: "vault",
+    key,
+    scope: vault,
+    sensitive,
+    reason: why === "" ? null : why,
+    ...(named === "" ? {} : { label: named }),
+  };
 }

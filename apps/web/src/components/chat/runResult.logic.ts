@@ -21,11 +21,18 @@
  * facts from outside it, each undefined while unread — a row stays as the run
  * left it until its fact is known.
  */
-import type { EnvironmentId, TurnId } from "@t3tools/contracts";
+import type { VaultView } from "@t3tools/client-runtime/data";
+import type { EnvironmentId, OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { zeropsStatusWord } from "@t3tools/client-runtime/zerops/serviceMap";
 
 import type { FixProblem } from "../../zerops/fixRequest";
+import {
+  engineVaultAskFor,
+  vaultAskRestartWords,
+  vaultAskResult,
+  type VaultAskRestart,
+} from "../zerops/vault/vaultRequest.logic";
 import type { ReviewTarget } from "../../zerops/review";
 import {
   browserCheckCaption,
@@ -88,6 +95,17 @@ export interface ResultFacts {
     | undefined;
   /** The Mate's project's services, by hostname. */
   readonly services?: ReadonlyMap<string, ResultServiceNow> | undefined;
+  /**
+   * What became of the values the run asked the person for: the engine's records of them (the
+   * thread's `vault.requested` activities) and the project's vault, for where each went and who
+   * reads it. Absent while not read.
+   */
+  readonly asks?:
+    | {
+        readonly activities: ReadonlyArray<OrchestrationThreadActivity>;
+        readonly vault: VaultView;
+      }
+    | undefined;
   /** The crew's tasks by number, and where they land. */
   readonly crew?:
     | {
@@ -133,7 +151,9 @@ export type ResultAction =
   /** Review: the one door to merging and landing (R1). */
   | { readonly kind: "review"; readonly target: ReviewTarget }
   /** Ask the person's Mate to fix it, the problem written for it (S6). */
-  | { readonly kind: "fix"; readonly problem: FixProblem };
+  | { readonly kind: "fix"; readonly problem: FixProblem }
+  /** Restart the apps that run a value's old copy, so they use the new one. */
+  | { readonly kind: "restart"; readonly services: ReadonlyArray<VaultAskRestart> };
 
 export interface ResultRow {
   readonly key: string;
@@ -637,6 +657,27 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
     else loose.set(page.host, [page]);
   }
   for (const [host, list] of loose) rows.push(pagesRow(host, list));
+
+  // What became of each value it asked the person for; one still asked stands in the drawer.
+  if (facts.asks !== undefined) {
+    for (const ask of outcome.asks ?? []) {
+      const record = engineVaultAskFor(facts.asks.activities, ask);
+      const result = record === null ? null : vaultAskResult(ask, record.state, facts.asks.vault);
+      if (result === null) continue;
+      rows.push({
+        key: `ask:${ask.key}:${ask.askedAt}`,
+        group: "running",
+        mark: "dot",
+        tone: record?.state === "saved" ? "ok" : "muted",
+        title: result.title,
+        words: result.words,
+        version: null,
+        sub: result.restart.length === 0 ? null : textSub(vaultAskRestartWords(result.restart)),
+        url: null,
+        action: result.restart.length === 0 ? null : { kind: "restart", services: result.restart },
+      });
+    }
+  }
 
   const running = new Set(outcome.live.map((service) => service.hostname));
   for (const name of outcome.created.flatMap((subject) => subject.split(/,\s*/u))) {

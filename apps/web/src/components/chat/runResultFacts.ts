@@ -14,12 +14,21 @@ import {
   type ZeropsProject,
   type ZeropsService,
 } from "@t3tools/client-runtime/zerops";
-import type { EnvironmentId } from "@t3tools/contracts";
+import {
+  NOT_READ_VAULT,
+  VAULT_ASK_ACTIVITY_KIND,
+  vaultAtom,
+  type VaultAskActivityPayload,
+} from "@t3tools/client-runtime/data";
+import type { EnvironmentId, OrchestrationThreadActivity } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
 import { useContext, useMemo } from "react";
 
 import { useCrew } from "../../zerops/crew/useCrew";
 import { InventoryContext } from "../../zerops/inventoryContext";
-import { useProjectServices } from "../../zerops/ZeropsAccountData";
+import { useDetailDemand, useProjectServices } from "../../zerops/ZeropsAccountData";
+import { useThreadDetail } from "../../state/entities";
 import { useAppsChanges } from "../../zerops/projectFlows";
 import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
 import type { OutcomeModel } from "./conversation.logic";
@@ -123,6 +132,39 @@ export function readRunResultFacts(input: {
  * knows nothing, and the rows stand as the run left them.
  */
 const NO_APPS: ReadonlyArray<string> = [];
+const UNREAD_VAULT = Atom.make(NOT_READ_VAULT);
+
+/**
+ * The thread's asks for values as one string — a line each: its request, key, vault, state and
+ * time — so a change elsewhere in the thread draws nothing here.
+ */
+const vaultAskRecordsKey = (detail: { readonly activities?: unknown } | null): string =>
+  ((detail?.activities ?? []) as ReadonlyArray<OrchestrationThreadActivity>)
+    .filter((activity) => activity.kind === VAULT_ASK_ACTIVITY_KIND)
+    .map((activity) => {
+      const ask = activity.payload as VaultAskActivityPayload;
+      const host = ask.scope.kind === "service" ? ask.scope.hostname : "";
+      return [ask.requestId, ask.key, host, ask.state, activity.createdAt].join("\t");
+    })
+    .join("\n");
+
+/** The records back from their string: what the result rows read of each. */
+const vaultAskRecords = (key: string): ReadonlyArray<OrchestrationThreadActivity> =>
+  key === ""
+    ? []
+    : key.split("\n").map((line) => {
+        const [requestId, askKey, host, state, createdAt] = line.split("\t");
+        return {
+          kind: VAULT_ASK_ACTIVITY_KIND,
+          createdAt,
+          payload: {
+            requestId,
+            key: askKey,
+            scope: host === "" ? { kind: "shared" } : { kind: "service", hostname: host },
+            state,
+          },
+        } as unknown as OrchestrationThreadActivity;
+      });
 
 export function useRunResultFacts(outcome: OutcomeModel | null | undefined): ResultFacts {
   // The row context is absent where a result is drawn on its own.
@@ -148,16 +190,36 @@ export function useRunResultFacts(outcome: OutcomeModel | null | undefined): Res
   // The crew's feed only for a run that worked a crew task.
   const crew = useCrew((outcome?.crewTask ?? null) === null ? null : environmentId);
   const tasks = crew.snapshot?.board.tasks;
-  return useMemo(
+  // The asks' records and the vault only for a run that asked the person for a value.
+  const asked = (outcome?.asks?.length ?? 0) > 0;
+  const askProject = asked ? (projectId ?? null) : null;
+  useDetailDemand("projectVariables", undefined, askProject);
+  useDetailDemand("serviceVariable", undefined, askProject);
+  useDetailDemand("process", "history", askProject);
+  const vault = useAtomValue(askProject === null ? UNREAD_VAULT : vaultAtom(askProject));
+  const askRecords = useThreadDetail(asked ? (row?.threadRef ?? null) : null, vaultAskRecordsKey);
+  const asks = useMemo(
     () =>
-      readRunResultFacts({
+      asked
+        ? {
+            activities: vaultAskRecords(askRecords),
+            vault,
+          }
+        : undefined,
+    [askRecords, asked, vault],
+  );
+  return useMemo(
+    () => ({
+      ...readRunResultFacts({
         projectId,
         inventory,
         services,
         flows,
         crew: environmentId === null || tasks === undefined ? null : { environmentId, tasks },
       }),
-    [environmentId, flows, inventory, projectId, services, tasks],
+      ...(asks === undefined ? {} : { asks }),
+    }),
+    [asks, environmentId, flows, inventory, projectId, services, tasks],
   );
 }
 

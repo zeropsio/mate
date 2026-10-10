@@ -2,7 +2,7 @@ import { agentAdmission, projectMateLimit } from "@t3tools/client-runtime/data";
 import { ThreadId, TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsAgentActivity } from "./agentActivity";
-import { mateStatus } from "./mateStatus.logic";
+import { mateStatus, mateStatusWords } from "./mateStatus.logic";
 
 const admission = agentAdmission({
   environmentId: "rig",
@@ -63,6 +63,14 @@ describe("Mate status across menu and conversation", () => {
     [{ kind: "failed", errorLine: "The work failed." }, "broken", "danger"],
   ] as const)("%j is visible as %s", (patch, kind, severity) => {
     expect(mateStatus(activity(patch))).toMatchObject({ kind, severity });
+  });
+  it.each([
+    [{ kind: "input", asksFor: "key" }, "Needs a key"],
+    [{ kind: "input" }, "Needs an answer"],
+    [{ kind: "approval" }, "Needs an answer"],
+  ] as const)("the pill says what the Mate waits for: %j reads %s", (patch, label) => {
+    const status = mateStatus(activity(patch));
+    expect(status === null ? null : mateStatusWords(status, "Milo").label).toBe(label);
   });
   it("an expired provider reset is no longer a current menu limit", () => {
     expect(mateStatus(activity({ pausedUntil: "2020-01-01T16:00:00Z" }))).toBeNull();

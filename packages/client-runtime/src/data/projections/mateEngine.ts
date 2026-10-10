@@ -589,6 +589,8 @@ export const VAULT_ASK_ACTIVITY_KIND = "vault.requested";
 export interface VaultAskActivityPayload {
   readonly requestId: string;
   readonly key: string;
+  /** What it is, in people's words ("Stripe secret key"); `null` from an older zcp. */
+  readonly label: string | null;
   readonly scope: Extract<RequestAsk, { readonly kind: "vault" }>["scope"];
   readonly sensitive: boolean;
   readonly reason: string | null;
@@ -610,6 +612,7 @@ function vaultAskActivity(
   const payload: VaultAskActivityPayload = {
     requestId: request.id,
     key: ask.key,
+    label: ask.label ?? null,
     scope: ask.scope,
     sensitive: ask.sensitive,
     reason: ask.reason,
@@ -1351,6 +1354,7 @@ export function overlayEngineRow(
     hasPendingApprovals: row.state.kind === "waiting" && row.state.on === "approval",
     hasPendingUserInput:
       row.state.kind === "waiting" && (row.state.on === "question" || row.state.on === "vault"),
+    pendingAsk: row.state.kind === "waiting" && row.state.on === "vault" ? "key" : null,
     updatedAt: iso(row.at),
   };
 }
