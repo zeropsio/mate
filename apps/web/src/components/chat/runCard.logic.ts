@@ -40,11 +40,17 @@ export function messageHasText(
   return liveLines?.get(message.id) ?? message.text.trim().length > 0;
 }
 
-/** A wordless thought has no line, in either the slot or the history. */
+/**
+ * A wordless thought or note has no line, in either the slot or the history: the working line
+ * names what the Mate does until its words come, never its face beside an empty bubble.
+ */
 export function chatItemHasLine(
   item: RecordItem,
   liveLines?: ReadonlyMap<string, boolean>,
 ): boolean {
+  if (item.kind === "note") {
+    return messageHasText(item.message, liveLines) || (item.message.attachments?.length ?? 0) > 0;
+  }
   return (
     item.kind !== "thought" || item.messages.some((message) => messageHasText(message, liveLines))
   );

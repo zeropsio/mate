@@ -489,6 +489,27 @@ describe("RunChat", () => {
     expect(markupDom(markup).querySelector('[role="status"]')?.textContent).toBe("Thinking");
   });
 
+  // The owner, 2026-10-10: "states where the agents like talk tab has no content only the avatar"
+  // — the engine opens a note with no words and fills it a moment later.
+  it("the working line always says something: words not written yet leave it naming what the Mate does, never its face alone", () => {
+    const wordless = (text: string): RecordItem => ({
+      kind: "note",
+      key: "note:a9",
+      at: at(10),
+      message: { ...message("a9", "assistant", text), streaming: false },
+    });
+    for (const text of ["", " \n"]) {
+      const markup = draw(
+        record([step(command("w1", "pnpm build")), wordless(text)], {
+          live: true,
+          status: status(),
+        }),
+      );
+      expect(markup).not.toContain('data-chat-kind="note"');
+      expect(markupDom(markup).querySelector('[role="status"]')?.textContent).toBe("Thinking");
+    }
+  });
+
   // Several at once (pass 35): a row each in the live slot, three at most,
   // then how many more run.
   it("draws several steps at once as a row each, three at most, then how many more", () => {
