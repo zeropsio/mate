@@ -10,7 +10,7 @@ import {
   vaultAskEngineFace,
   vaultAskFace,
   vaultAskOf,
-  vaultAskLooksOwn,
+  vaultAskLooksLikeZeropsSignIn,
   vaultAskPickUp,
   vaultAskReach,
   vaultAskState,
@@ -170,6 +170,31 @@ describe("vaultAskState — where the asked value stands, read off the vault", (
   });
 });
 
+describe("vaultAskState — a name the vault keeps hidden", () => {
+  const ask = (key: string): VaultAsk => ({
+    key,
+    scope: { kind: "shared" },
+    sensitive: true,
+    reason: null,
+    askedAt: ago(5 * MINUTE),
+  });
+  it.each([
+    ["MATE_PROBE_TOKEN", "reserved"],
+    ["ZCP_API_KEY", "reserved"],
+    ["GITEA_URL", "reserved"],
+    ["GIT_TOKEN", "reserved"],
+    ["NEW_KEY", "open"],
+  ] as const)(
+    "a name the Mate keeps for itself is never saved from the card, since the vault would hide it: %s → %s",
+    (key, want) => {
+      expect(vaultAskState(VAULT_FIXTURE, ask(key)).kind).toBe(want);
+      expect(
+        vaultAskState({ ...VAULT_FIXTURE, status: "unread" } as VaultView, ask(key)).kind,
+      ).toBe(want === "reserved" ? "reserved" : "reading");
+    },
+  );
+});
+
 describe("vaultAskWrite — the one write a put makes", () => {
   const ask = {
     key: "LOG_LEVEL",
@@ -248,18 +273,24 @@ describe("vaultAskReach — who can read it, in our words", () => {
     expect(vaultAskReach(ask, "Fen")).toBe(want);
   });
 
+  // Milo, 2026-10-10: "MATE_PROBE_TOKEN looks like a Zerops sign-in" fired on the MATE prefix.
   it.each([
     ["ZEROPS_TOKEN", true],
     ["MY_ZEROPS_API_TOKEN", true],
-    ["ZCP_SECRET", true],
-    ["MATE_TOKEN", true],
-    ["GITEA_PASSWORD", true],
-    ["GIT_TOKEN", true],
+    ["ZEROPS_TOKEN_PROD", true],
+    ["ZEROPS_PASSWORD", true],
+    ["ZCP_API_KEY", true],
+    ["ZCP_TOKEN", true],
+    ["ZCP_SETUP_RUNTIMES", false],
+    ["ZEROPS_SUBDOMAIN", false],
+    ["MATE_PROBE_TOKEN", false],
+    ["GITEA_PASSWORD", false],
+    ["GIT_TOKEN", false],
     ["STRIPE_SECRET_KEY", false],
     ["SMTP_PASSWORD", false],
     ["ESTIMATE_URL", false],
   ] as const)("%s looks like a Zerops sign-in: %s", (key, want) => {
-    expect(vaultAskLooksOwn(key)).toBe(want);
+    expect(vaultAskLooksLikeZeropsSignIn(key)).toBe(want);
   });
 });
 

@@ -7,6 +7,7 @@
  */
 import {
   VAULT_ASK_ACTIVITY_KIND,
+  isMateOwned,
   type VaultAskActivityPayload,
   type VaultScope,
   type VaultScopeRef,
@@ -51,6 +52,11 @@ export function vaultAskOf(operation: ZeropsOperation): VaultAsk | null {
 }
 
 export type VaultAskState =
+  /**
+   * A name the Mate and zcp keep for themselves (`isMateOwned`): the vault never lists one, so
+   * a value saved under it could be neither seen nor removed. The card takes none.
+   */
+  | { readonly kind: "reserved" }
   /** The vault has not answered yet: nothing is known of the key. */
   | { readonly kind: "reading" }
   /** The service it names is not in the project. */
@@ -67,6 +73,7 @@ export type VaultAskState =
 
 /** Where the asked value stands, read off the vault. */
 export function vaultAskState(view: VaultView, ask: VaultAsk): VaultAskState {
+  if (isMateOwned(ask.key)) return { kind: "reserved" };
   if (view.status === "unread") return { kind: "reading" };
   const scope = askScope(view, ask);
   if (scope === undefined) return view.complete ? { kind: "unplaced" } : { kind: "reading" };
@@ -108,18 +115,24 @@ export function vaultAskReach(ask: Pick<VaultAsk, "key" | "scope">, mateName: st
   return `${reach} Never paste your own password or Zerops token.`;
 }
 
-/** A key named like a Zerops sign-in, or one Mate and zcp keep for themselves. */
-const OWN_KEY = /(^|_)(ZEROPS|ZCP|MATE|GITEA)(_|$)|^GIT_TOKEN$/u;
+/**
+ * A name a Zerops credential goes by: a Zerops token or password (`ZEROPS_TOKEN`,
+ * `ZEROPS_TOKEN_PROD`), or zcp's own sign-in to Zerops (`ZCP_API_KEY`). Only these are said to look
+ * like a Zerops sign-in; a name the Mate keeps for itself is told apart (`reserved`).
+ */
+const ZEROPS_SIGN_IN =
+  /(^|_)ZEROPS_(.*_)?(TOKEN|PASSWORD|SECRET|API_KEY)(_|$)|^ZCP_(.*_)?(TOKEN|API_KEY|PASSWORD|SECRET)$/u;
 
-/** Whether a key looks like the person's own Zerops sign-in: the card warns before it is given. */
-export function vaultAskLooksOwn(key: string): boolean {
-  return OWN_KEY.test(key.toUpperCase());
+/** Whether a key is named like a Zerops credential: the card warns before it is given. */
+export function vaultAskLooksLikeZeropsSignIn(key: string): boolean {
+  return ZEROPS_SIGN_IN.test(key.toUpperCase());
 }
 
 /** What the person said to the card here: put it in, or not now. Memory only. */
 export type VaultAskSaid = "put" | "not-now";
 
 export type VaultAskFace =
+  | "reserved"
   | "reading"
   | "unplaced"
   | "open"

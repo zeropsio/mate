@@ -26,7 +26,7 @@ import {
   type VaultAskState,
   vaultAskEngineFace,
   vaultAskFace,
-  vaultAskLooksOwn,
+  vaultAskLooksLikeZeropsSignIn,
   vaultAskReach,
   vaultAskWhere,
   vaultAskWrite,
@@ -64,7 +64,7 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
   const secretLabel = useId();
   const [chosenSecret, setSecret] = useState(ask.sensitive);
 
-  if (face !== "reading" && face !== "unplaced" && face !== "open") {
+  if (face !== "reading" && face !== "unplaced" && face !== "open" && face !== "reserved") {
     return (
       <FlatCard
         className="flex items-start gap-2 px-3.5 py-2 text-xs"
@@ -145,7 +145,7 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
           <p className="text-xs leading-4.5 text-muted-foreground" data-vault-request-reach>
             {vaultAskReach(ask, mateName)}
           </p>
-          {vaultAskLooksOwn(ask.key) ? (
+          {vaultAskLooksLikeZeropsSignIn(ask.key) ? (
             <p
               className="flex items-center gap-1.5 text-xs leading-4 text-destructive-foreground"
               data-vault-request-own
@@ -165,6 +165,19 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
             {ask.scope.kind === "service" ? ask.scope.hostname : "This vault"} is not in this
             project any more.
           </p>
+        ) : face === "reserved" ? (
+          <>
+            <p className="text-xs text-muted-foreground" data-vault-request-reserved>
+              {ask.key} is a name {mateName} keeps for itself, so the vault never lists it: a value
+              kept under it could not be seen or removed. Decline, and {mateName} can ask for it
+              under another name.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button onClick={props.onNotNow} size="xs" variant="ghost-muted">
+                {engine === null ? "Not now" : "Decline"}
+              </Button>
+            </div>
+          </>
         ) : (
           <>
             <div className="flex min-w-0 items-center gap-1">
