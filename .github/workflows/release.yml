@@ -89,7 +89,17 @@ jobs:
           version="$(node -p "require('./apps/server/node_modules/node-pty/package.json').version")"
           out="${RUNNER_TEMP}/node-pty-linux-x64"
           mkdir -p "$out"
-          docker run --rm -v "$out:/out" -e "NODE_PTY_VERSION=$version" node:22-bullseye bash -ec '
+          # Docker Hub refuses unauthenticated pulls from shared runners at times (rate limit, auth
+          # outages: v0.15.23 failed twice), so the image comes from Google's Hub mirror first.
+          image=""
+          for candidate in mirror.gcr.io/library/node:22-bullseye node:22-bullseye; do
+            for attempt in 1 2 3; do
+              if docker pull -q "$candidate"; then image="$candidate"; break 2; fi
+              sleep $((attempt * 10))
+            done
+          done
+          [ -n "$image" ] || { echo "no node:22-bullseye image could be pulled"; exit 1; }
+          docker run --rm -v "$out:/out" -e "NODE_PTY_VERSION=$version" "$image" bash -ec '
             mkdir /w && cd /w && npm init -y >/dev/null
             npm install --no-audit --no-fund "node-pty@${NODE_PTY_VERSION}"
             cp node_modules/node-pty/build/Release/pty.node /out/pty.node

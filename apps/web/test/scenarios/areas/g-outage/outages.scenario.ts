@@ -25,6 +25,7 @@ import {
   startHq,
   declareNewerProtocol,
   endHqSession,
+  resubscribesOnResume,
   refuseHq,
   resumeTab,
   hqRefusalShown,
@@ -93,9 +94,10 @@ describe("G: outages, sleep and several tabs", () => {
         yield* s.given.signedIn;
         yield* caughtUp(s, "Shop");
         for (let end = 0; end < 3; end++) {
-          yield* endHqSession(s);
-          yield* s.then.hq.isUnavailable;
-          yield* resumeTab(s, "online");
+          // A renewal within the reconnect grace is not an outage, so the menu says nothing of
+          // the ending; the renewal shows as a new subscription.
+          const opened = yield* endHqSession(s);
+          yield* resubscribesOnResume(s, "online", opened);
           yield* caughtUp(s, "Shop");
         }
         yield* checkpoint(s);

@@ -5,6 +5,8 @@ import * as Schema from "effect/Schema";
 import type { Page, BrowserContext } from "puppeteer-core";
 import { inject } from "vite-plus/test";
 import { expect } from "@effect/vitest";
+// The policy module alone: the data barrel would put the whole data layer in every scenario's graph.
+import { STREAM_POLICY } from "../../../../../packages/client-runtime/src/data/streamMachine.ts";
 import { HqAttentionScopeValue } from "@t3tools/shared/hqStream";
 import { MateLinkUp, MateOverview } from "@t3tools/shared/mateLink";
 import {
@@ -352,10 +354,20 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     const then = {
       hq: {
         isUnavailable: Effect.promise(async () => {
-          await page.waitForSelector('[data-zerops-surface="sidebar-hq-outage"]', {
-            visible: true,
-            timeout: 10_000,
-          });
+          const outage = '[data-zerops-surface="sidebar-hq-outage"]';
+          const clock = web.clock(page);
+          // A lost link reads as an outage only once its reconnect grace runs out, counted from
+          // when the tab noticed the loss. On a scenario clock that time passes only when
+          // advanced, so it passes a grace at a time until the tab says so (about 10 s at most).
+          for (let look = 0; clock.installed && look < 40; look++) {
+            const shown = await page
+              .waitForSelector(outage, { visible: true, timeout: 250 })
+              .then(() => true)
+              .catch(() => false);
+            if (shown) return;
+            await clock.advance(STREAM_POLICY.reconnectGraceMs);
+          }
+          await page.waitForSelector(outage, { visible: true, timeout: 10_000 });
         }),
       },
       menu: {
