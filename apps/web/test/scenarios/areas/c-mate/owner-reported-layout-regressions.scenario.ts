@@ -1669,6 +1669,120 @@ describe("owner-reported layout regressions", () => {
           }),
         );
 
+        // Milo's stress run 5: as the pause lifted the conversation moved 33 px. Above the new run
+        // nothing changed, yet the view followed it up, then sank back as the notice went quiet and
+        // the composer's empty band left (27 px up, 34 down, measured here before the fix).
+        it.effect(
+          "when the pause lifts nothing above the live tail moves: the view only follows the run it starts, never back",
+          () =>
+            Effect.gen(function* () {
+              const { s, chat, engine } = yield* pausedMilo;
+              yield* chat.when.send(HELD);
+              yield* Effect.promise(() =>
+                s.page.waitForSelector('[data-message-receipt="held"]', { timeout: 8000 }),
+              );
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+              // Slowed tenfold, the notice's 220 ms glide spans 2.2 s of frames on any runner.
+              const slowed = yield* Effect.promise(() => slowAnimations(s.page, 0.1));
+              yield* Effect.promise(() =>
+                s.page.evaluate(() => {
+                  const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                  const notice = document.querySelector('[data-timeline-row-kind="pause"]')!;
+                  // The run the limit stopped: the card right above the notice.
+                  const card = [...list.querySelectorAll("[data-run-chat]")]
+                    .filter(
+                      (node) =>
+                        node.getBoundingClientRect().bottom <= notice.getBoundingClientRect().top,
+                    )
+                    .at(-1)!;
+                  const frames: Array<{
+                    at: number;
+                    card: number | null;
+                    notice: number | null;
+                    scroll: number;
+                    composer: number;
+                    height: number | null;
+                  }> = [];
+                  const state = { active: true };
+                  const sample = () => {
+                    const top = (node: Element) =>
+                      node.isConnected ? node.getBoundingClientRect().top : null;
+                    frames.push({
+                      at: performance.now(),
+                      card: top(card),
+                      notice: top(notice),
+                      scroll: list.scrollTop,
+                      composer: document
+                        .querySelector('[data-slot="composer-shell"]')!
+                        .getBoundingClientRect().top,
+                      height: notice.isConnected ? notice.getBoundingClientRect().height : null,
+                    });
+                    if (state.active) requestAnimationFrame(sample);
+                  };
+                  (window as unknown as { liftTrace: unknown }).liftTrace = { frames, state };
+                  sample();
+                }),
+              );
+              engine.lift();
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 3000)));
+              const frames = yield* Effect.promise(() =>
+                s.page.evaluate(() => {
+                  const trace = (
+                    window as unknown as {
+                      liftTrace: {
+                        frames: Array<{
+                          at: number;
+                          card: number | null;
+                          notice: number | null;
+                          scroll: number;
+                          composer: number;
+                          height: number | null;
+                        }>;
+                        state: { active: boolean };
+                      };
+                    }
+                  ).liftTrace;
+                  trace.state.active = false;
+                  return trace.frames;
+                }),
+              );
+              yield* Effect.promise(() => slowed.restore());
+              const drawn = frames.filter((frame) => frame.card !== null && frame.notice !== null);
+              expect(
+                drawn.at(-1)!.at - drawn[0]!.at,
+                "ASSERTION: the lift was sampled for as long as its slowed glide runs",
+              ).toBeGreaterThan(2500);
+              const heights = drawn.map((frame) => frame.height!);
+              expect(
+                Math.max(...heights) - Math.min(...heights),
+                "ASSERTION: the notice went quiet while sampled",
+              ).toBeGreaterThan(8);
+              const first = drawn[0]!;
+              expect(
+                Math.max(
+                  ...drawn.map((frame) =>
+                    Math.max(
+                      Math.abs(frame.card! + frame.scroll - (first.card! + first.scroll)),
+                      Math.abs(frame.notice! + frame.scroll - (first.notice! + first.scroll)),
+                    ),
+                  ),
+                ),
+                "ASSERTION: the notice and the run above it keep their place in the conversation",
+              ).toBeLessThanOrEqual(1);
+              expect(
+                Math.max(
+                  ...drawn.slice(1).map((frame, index) => frame.card! - drawn[index]!.card!),
+                ),
+                "ASSERTION: the view never sinks back: what stands above the new run only rises with it",
+              ).toBeLessThanOrEqual(1);
+              expect(
+                Math.max(...frames.map((frame) => Math.abs(frame.composer - first.composer))),
+                "ASSERTION: the composer stands still as the pause lifts",
+              ).toBeLessThanOrEqual(1);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
         it.effect(
           "a message sent while paused sits right under the notice, held until the reset, and goes in place when the pause lifts",
           () =>
