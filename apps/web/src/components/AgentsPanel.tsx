@@ -630,7 +630,16 @@ function HelperTree({ agents }: { agents: ReadonlyArray<RuntimeSubagent> }) {
     () => rows.filter((row) => row.depth === 0).map((row) => row.helper),
     [rows],
   );
-  const { earlier } = splitEarlier(roots);
+  // Which earlier helpers fold is decided as the map first shows helpers, and stands while it
+  // is open: folding them as one started and unfolding them as none worked moved every row on
+  // the surface (Milo's stress run 5, CLS 0.205). What comes later goes under them; one woken
+  // again shows where it stood.
+  const [folded, setFolded] = useState<ReadonlySet<string> | null>(null);
+  if (folded === null && roots.length > 0)
+    setFolded(new Set(splitEarlier(roots).earlier.map((agent) => agent.id)));
+  const earlier = roots.filter(
+    (agent) => folded?.has(agent.id) === true && isTerminalSubagentStatus(agent.status),
+  );
   const [chosen, setShowEarlier] = useState(false);
   // The earlier ones stand unfolded while one of theirs is opened on the map.
   const { openId, onToggle } = use(MapCtx);
