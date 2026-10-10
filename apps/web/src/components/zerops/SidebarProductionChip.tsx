@@ -1,13 +1,13 @@
 /**
- * A project's production and its stages as two chips on its heading — `prod`
- * and `stage` — and the menu each opens (M2, D1).
+ * A project's road on its heading — `stage ─▸ prod` (`SidebarRoad.logic.ts`) —
+ * and the menu each of its places opens (M2, D1).
  *
- * A chip is its word alone. Its whole ground and ink say what is wrong: amber
- * while the last release or deploy did not go through and the old one still
- * serves, red while it is down, hollow while it is stopped on purpose,
- * neutral otherwise; a tone change cross-fades, and nothing else about it
- * ever moves or changes size. It stays on the heading when the project is
- * folded. Its menu holds the rest: the state in words and what it runs, what
+ * A place is its word alone. Its ink says what is wrong or new: amber while
+ * the last release or deploy did not go through and the old one still serves,
+ * red while it is down, blue while releasing, dim while it is stopped on
+ * purpose or nothing is released, grey otherwise; a tone change cross-fades,
+ * and nothing else about it ever moves or changes size. It stays on the
+ * heading when the project is folded. Its menu holds the rest: the state in words and what it runs, what
  * went wrong and the way to fix it (S6), the public links, what waits for a
  * release (Review), and the way to Zerops — for each stage, on the stages'.
  *
@@ -21,9 +21,10 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { ArrowUpRightIcon, ChevronDownIcon } from "lucide-react";
-import { Fragment, useRef, useState, type ReactNode } from "react";
+import { Fragment, useRef, useState, type ReactElement, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import type { OpenReviewOptions } from "~/zerops/review";
 import { useUiStateStore } from "~/uiStateStore";
 import { fixMatesOf } from "~/zerops/fixMates";
 import { fixRequestPrompt, type FixProblem } from "~/zerops/fixRequest";
@@ -41,6 +42,7 @@ import {
   type ChipMenuStop,
   type ProductionChip,
 } from "./SidebarProductionChip.logic";
+import { roadTone, type Road, type RoadPlace, type RoadTip } from "./SidebarRoad.logic";
 
 const ChipPortal = gatedPortal(PopoverPrimitive.Portal);
 
@@ -69,8 +71,11 @@ export function SidebarProductionChip({
   onAskToFix,
   onOpenStop,
   onReviewRelease,
+  tip,
 }: {
   readonly chip: ProductionChip;
+  /** What its tooltip says: the place and each of its stops by name, in words; else its state. */
+  readonly tip?: RoadTip | undefined;
   /**
    * What its menu says as of a moment (`productionMenu`, `stageMenu`): each
    * stop's state in words, what broke, its links, what waits.
@@ -100,8 +105,8 @@ export function SidebarProductionChip({
               render={
                 <button
                   aria-label={face.words}
-                  className="zerops-envchip relative z-1"
-                  data-tone={face.tone}
+                  className="zerops-road-place relative z-1"
+                  data-tone={roadTone(chip)}
                   data-zerops-chip={chip.label}
                   data-zerops-stops={stops.join(" ")}
                   data-zerops-surface="sidebar-production-chip"
@@ -114,7 +119,11 @@ export function SidebarProductionChip({
         >
           {face.label}
         </TooltipTrigger>
-        {open ? null : <TooltipPopup side="bottom">{face.words}</TooltipPopup>}
+        {open ? null : (
+          <TooltipPopup side="bottom">
+            {tip === undefined ? face.words : <RoadTipWords tip={tip} />}
+          </TooltipPopup>
+        )}
       </Tooltip>
       <ChipPortal>
         <PopoverPrimitive.Positioner align="end" className="z-130" side="bottom" sideOffset={6}>
@@ -164,6 +173,146 @@ export function SidebarProductionChip({
         </PopoverPrimitive.Positioner>
       </ChipPortal>
     </PopoverPrimitive.Root>
+  );
+}
+
+/** A road tooltip: what it is, then each line of it. */
+function RoadTipWords({ tip }: { readonly tip: RoadTip }) {
+  return (
+    <span className="flex flex-col">
+      <span className="font-medium">{tip.title}</span>
+      {tip.lines.map((line) => (
+        <span className="text-muted-foreground" key={line}>
+          {line}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Words with a tooltip of the road's: `render` is the element, `children` what it says. */
+function RoadTipped({
+  tip,
+  render,
+  children,
+}: {
+  readonly tip: RoadTip;
+  readonly render: ReactElement;
+  readonly children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={render}>{children}</TooltipTrigger>
+      <TooltipPopup side="bottom">
+        <RoadTipWords tip={tip} />
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/** A place that is no door: production the project does not have, or one not read yet. */
+function RoadWord({ place }: { readonly place: RoadPlace }) {
+  return (
+    <RoadTipped
+      render={
+        <span
+          className="zerops-road-place"
+          data-none={place.none ? "true" : undefined}
+          data-tone="neutral"
+          tabIndex={0}
+        />
+      }
+      tip={place.tip}
+    >
+      {place.word}
+    </RoadTipped>
+  );
+}
+
+/**
+ * The road on a project's heading, after its name: a soft capsule holding its places — the
+ * stages' and production's own chips (`SidebarProductionChip`) — and the way between them, with
+ * what rides on it: *N ready* (white: it waits on you, and opens the release's review), *N
+ * waiting* (grey: production must be fixed first), or the release on its way (blue).
+ */
+export function SidebarRoad({
+  road,
+  stage,
+  prod,
+  onReviewRelease,
+}: {
+  readonly road: Road;
+  /** The stages' chip, where the road has a stage. */
+  readonly stage: ReactNode;
+  /** Production's chip, where the project has one. */
+  readonly prod: ReactNode;
+  readonly onReviewRelease: ((options: OpenReviewOptions) => void) | undefined;
+}) {
+  const { mid } = road;
+  return (
+    <span className="zerops-road" data-zerops-surface="sidebar-road">
+      {road.stage === undefined ? null : road.stage.unread ? (
+        <RoadWord place={road.stage} />
+      ) : (
+        stage
+      )}
+      {road.way === "none" ? null : (
+        <span
+          className="zerops-road-way"
+          data-bare={mid === undefined ? "true" : undefined}
+          data-way={road.way}
+        >
+          <i aria-hidden="true" className="zerops-road-line" />
+          {mid === undefined ? null : mid.kind === "ready" ? (
+            <RoadTipped
+              render={
+                <button
+                  className="zerops-road-ready"
+                  data-zerops-surface="sidebar-road-ready"
+                  disabled={onReviewRelease === undefined}
+                  onClick={(event) => {
+                    onReviewRelease?.({ from: event.currentTarget });
+                  }}
+                  type="button"
+                />
+              }
+              tip={mid.tip}
+            >
+              {mid.label}
+            </RoadTipped>
+          ) : mid.kind === "waiting" ? (
+            <RoadTipped
+              render={
+                <span
+                  className="zerops-road-wait"
+                  data-zerops-surface="sidebar-road-waiting"
+                  tabIndex={0}
+                />
+              }
+              tip={mid.tip}
+            >
+              {mid.label}
+            </RoadTipped>
+          ) : (
+            <RoadTipped
+              render={
+                <span
+                  className="zerops-road-going"
+                  data-zerops-surface="sidebar-road-releasing"
+                  tabIndex={0}
+                />
+              }
+              tip={mid.tip}
+            >
+              <i aria-hidden="true" />
+              {mid.label === undefined ? null : <span className="tabular-nums">{mid.label}</span>}
+            </RoadTipped>
+          )}
+          <i aria-hidden="true" className="zerops-road-line zerops-road-arrow" />
+        </span>
+      )}
+      {road.prod.none || road.prod.unread ? <RoadWord place={road.prod} /> : prod}
+    </span>
   );
 }
 

@@ -215,13 +215,13 @@ describe("a chip on the project's heading", () => {
     {
       name: "releasing",
       chip: { label: "prod", state: "releasing", version: "v1.2.0", next: "v1.2.1" },
-      tone: "neutral",
+      tone: "blue",
       words: "Production v1.2.0, releasing v1.2.1",
     },
     {
       name: "the last release failed: production still serves the one before",
       chip: { label: "prod", state: "failed", version: "v0.1.56" },
-      tone: "neutral",
+      tone: "amber",
       words: "Production v0.1.56, healthy",
     },
     {

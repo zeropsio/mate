@@ -199,9 +199,6 @@ function said(moment: Moment) {
         building: false,
       },
     ],
-    waiting: 0,
-    waitingAtLeast: false,
-    allOnStage: false,
   };
   const line = headingLine(heading, undefined);
   const cell = stopLine(stop);

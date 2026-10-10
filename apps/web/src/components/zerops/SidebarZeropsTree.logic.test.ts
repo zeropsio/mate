@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   formatWorkingTime,
   isQuietMate,
+  projectHeadingMenu,
   QUIET_AFTER_MS,
   sidebarMateKey,
 } from "./SidebarZeropsTree.logic";
@@ -116,5 +117,77 @@ describe("sidebarMateKey — the list's own keys on a Mate's row", () => {
 
   it("leaves every key with a modifier to whoever bound it", () => {
     expect(sidebarMateKey({ key: "j", modified: true })).toBeUndefined();
+  });
+});
+
+describe("projectHeadingMenu — a project heading's ···", () => {
+  const menu = (over: Partial<Parameters<typeof projectHeadingMenu>[0]> = {}) =>
+    projectHeadingMenu({
+      collapsed: false,
+      onToggle: () => {},
+      onAddMate: () => {},
+      onOpen: () => {},
+      reorder: undefined,
+      setUp: [],
+      onBrowseProjects: () => {},
+      ...over,
+    }).map((entry) =>
+      entry.kind === "separator" ? "—" : `${entry.label}${entry.disabled ? " (off)" : ""}`,
+    );
+
+  it.each([
+    {
+      case: "an open project: Fold, Add a Mate, Open project, then where projects are added",
+      over: {},
+      items: ["Fold", "Add a Mate", "Open project", "—", "All projects"],
+    },
+    {
+      case: "a folded one unfolds",
+      over: { collapsed: true },
+      items: ["Unfold", "Add a Mate", "Open project", "—", "All projects"],
+    },
+    {
+      case: "a heading that does not fold has no Fold",
+      over: { onToggle: undefined },
+      items: ["Add a Mate", "Open project", "—", "All projects"],
+    },
+    {
+      case: "moves, the first one up and the last one down off",
+      over: {
+        reorder: { canMoveUp: false, canMoveDown: true, onMove: () => {} },
+      },
+      items: [
+        "Fold",
+        "Add a Mate",
+        "Open project",
+        "—",
+        "Move up (off)",
+        "Move down",
+        "—",
+        "All projects",
+      ],
+    },
+    {
+      case: "a missing stage or production to add",
+      over: { setUp: [{ label: "Add stage", act: () => {} }] },
+      items: ["Fold", "Add a Mate", "Open project", "—", "Add stage", "All projects"],
+    },
+  ])("$case", ({ over, items }) => {
+    expect(menu(over)).toEqual(items);
+  });
+
+  it("does what each item says", () => {
+    const did: Array<string> = [];
+    const entries = projectHeadingMenu({
+      collapsed: false,
+      onToggle: () => did.push("fold"),
+      onAddMate: () => did.push("add"),
+      onOpen: () => did.push("open"),
+      reorder: { canMoveUp: true, canMoveDown: true, onMove: (to) => did.push(to) },
+      setUp: [],
+      onBrowseProjects: () => did.push("browse"),
+    });
+    for (const entry of entries) if (entry.kind === "item") entry.act();
+    expect(did).toEqual(["fold", "add", "open", "up", "down", "browse"]);
   });
 });
