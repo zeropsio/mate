@@ -29,7 +29,9 @@ import {
   type OrchestrationThread,
   type OrchestrationThreadActivity,
   type OrchestrationThreadShell,
+  type Principal,
   type Request,
+  type RequestAsk,
   type ThreadCrewOrigin,
   type RunRecord,
 } from "@t3tools/contracts";
@@ -577,6 +579,54 @@ function usageLimitActivity(run: RunRecord, card: string): OrchestrationThreadAc
   );
 }
 
+/** The activity a value asked of the person is: one card in its run, its state as it stands. */
+export const VAULT_ASK_ACTIVITY_KIND = "vault.requested";
+
+/**
+ * What the card for a value asked of the person reads: the ask, and how it stands — open, saved
+ * or declined (who and when), or closed some other way. Never a value: the engine holds none.
+ */
+export interface VaultAskActivityPayload {
+  readonly requestId: string;
+  readonly key: string;
+  readonly scope: Extract<RequestAsk, { readonly kind: "vault" }>["scope"];
+  readonly sensitive: boolean;
+  readonly reason: string | null;
+  readonly state: "open" | "saved" | "declined" | "closed";
+  readonly answer: { readonly by: Principal; readonly at: number } | null;
+}
+
+const VAULT_ASK_STATES: Readonly<Record<string, VaultAskActivityPayload["state"]>> = {
+  open: "open",
+  answered: "saved",
+  declined: "declined",
+};
+
+function vaultAskActivity(
+  request: Request,
+  ask: Extract<RequestAsk, { readonly kind: "vault" }>,
+  card: string | null,
+): OrchestrationThreadActivity {
+  const payload: VaultAskActivityPayload = {
+    requestId: request.id,
+    key: ask.key,
+    scope: ask.scope,
+    sensitive: ask.sensitive,
+    reason: ask.reason,
+    state: VAULT_ASK_STATES[request.state] ?? "closed",
+    answer: request.answer === undefined ? null : { by: request.answer.by, at: request.answer.at },
+  };
+  return activity(
+    `${request.id}#vault`,
+    VAULT_ASK_ACTIVITY_KIND,
+    "Secret requested",
+    { ...payload },
+    card,
+    request.at,
+    request.seq,
+  );
+}
+
 /** A request as the asks the panels answer, and its resolution once it is no longer open. */
 function requestActivities(
   request: Request,
@@ -584,6 +634,7 @@ function requestActivities(
 ): ReadonlyArray<OrchestrationThreadActivity> {
   const { ask } = request;
   const card = cardOf(request.runId);
+  if (ask.kind === "vault") return [vaultAskActivity(request, ask, card)];
   const asked =
     ask.kind === "approval"
       ? activity(

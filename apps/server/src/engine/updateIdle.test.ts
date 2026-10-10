@@ -68,6 +68,14 @@ describe("auto-update idle proof", () => {
     },
   );
 
+  // An ask lives in the engine's own record: an update keeps it, and the person answers it after.
+  it("a value asked of the person does not postpone an update", () => {
+    const requests = { ask: { kind: "vault" } };
+    expect(engineStateBlockers({ ...initialState(ConversationId.make("idle")), requests })).toEqual(
+      [],
+    );
+  });
+
   it("a conversation with no accepted work is idle", () => {
     expect(engineStateBlockers(initialState(ConversationId.make("idle")))).toEqual([]);
   });

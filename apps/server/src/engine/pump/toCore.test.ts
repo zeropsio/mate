@@ -325,6 +325,56 @@ describe("the pump's mapping", () => {
     return closed?.kind === "item-closed" && closed.body.kind === "call" ? closed.body : undefined;
   };
 
+  it("a call that asks the person for a value opens the ask on its turn as it closes, once", () => {
+    const toCore = makeToCore();
+    const asking = (status: string) =>
+      sig({
+        type: "item.upsert",
+        turn: H1,
+        item: "h1.i1",
+        body: {
+          kind: "tool",
+          toolKind: "mcp_tool_call",
+          title: "MCP tool call",
+          call: { name: "zerops_env", server: "zerops" },
+          facts: {
+            result: {
+              toolName: "zerops_env",
+              resultText: JSON.stringify({
+                requested: {
+                  key: "API_KEY",
+                  reason: "Payments.",
+                  scope: "shared",
+                  sensitive: true,
+                },
+              }),
+            },
+          },
+        },
+        status,
+      });
+    toCore.step(asking("running"), 0);
+    const closed = toCore.step(asking("completed"), 0).signals;
+    assert.deepStrictEqual(
+      closed.map((signal) => signal.kind),
+      ["item-closed", "request-opened"],
+    );
+    assert.deepStrictEqual(closed[1], {
+      kind: "request-opened",
+      turn: H1,
+      key: "vault:h1.i1",
+      ask: {
+        kind: "vault",
+        key: "API_KEY",
+        scope: { kind: "shared" },
+        sensitive: true,
+        reason: "Payments.",
+      },
+    });
+    // The same end said again is no second ask.
+    assert.deepStrictEqual(toCore.step(asking("completed"), 0).signals, []);
+  });
+
   it.each([
     ["completed", "done"],
     ["failed", "failed"],

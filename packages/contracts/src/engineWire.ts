@@ -385,7 +385,7 @@ export type EngineStopInput = typeof EngineStopInput.Type;
 /** The person's answer to a request, as its kind takes it. */
 export const EngineAnswer = forwardCompatibleUnion({
   key: "kind",
-  known: ["approval", "input", "unknown"],
+  known: ["approval", "input", "secret", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("approval"), decision: ProviderApprovalDecision }),
     Schema.Struct({
@@ -393,6 +393,14 @@ export const EngineAnswer = forwardCompatibleUnion({
       answers: ProviderUserInputAnswers,
       /** The pictures attached to each question's answer, by reference (V1's shape). */
       attachmentsByQuestionId: Schema.optionalKey(UserInputAttachments),
+    }),
+    /**
+     * A value asked of the person (a `vault` request): how it ended, never the value — the
+     * person's client wrote that to the vault itself. Nothing else it carries decodes.
+     */
+    Schema.Struct({
+      kind: Schema.Literal("secret"),
+      outcome: Schema.Literals(["saved", "declined"]),
     }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),

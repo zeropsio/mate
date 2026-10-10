@@ -59,14 +59,17 @@ describe("B: automatic project sections", () => {
             (node) => node.textContent,
           );
           expect(active).toContain("Ben");
-          // The menu opens by a width transition: aim the drag once it has settled.
-          await s.page.waitForFunction(
-            () =>
-              new Promise<boolean>((resolve) => {
-                const menu = document.querySelector('[data-sidebar="sidebar"]')!;
-                const before = menu.getBoundingClientRect().width;
-                setTimeout(() => resolve(menu.getBoundingClientRect().width === before), 300);
-              }),
+          // The sidebar has slid open before its rail is dragged: read mid-slide, the rail is
+          // not where the pointer lands, and the drag resizes nothing.
+          await s.page.waitForFunction(() =>
+            document
+              .querySelector('[data-sidebar="sidebar"]')!
+              .closest("[data-state]")!
+              .getAnimations({ subtree: true })
+              .every(
+                (animation) =>
+                  !(animation instanceof CSSTransition) || animation.playState !== "running",
+              ),
           );
           const rail = await s.page.$('[data-sidebar="rail"]');
           const box = (await rail!.boundingBox())!;

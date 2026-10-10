@@ -2078,6 +2078,22 @@ describe("deriveWorkLogEntries context window handling", () => {
   });
 });
 
+describe("deriveWorkLogEntries — a value asked of the person", () => {
+  it("is its card in the run, never a step in the work log", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        id: "ask-1",
+        turnId: "turn-1",
+        kind: "vault.requested",
+        summary: "Secret requested",
+        tone: "info",
+        payload: { requestId: "mate/r/1/q/1", key: "STRIPE_SECRET_KEY", state: "open" },
+      }),
+    ]);
+    expect(entries).toEqual([]);
+  });
+});
+
 describe("deriveWorkLogEntries crew seams", () => {
   it("carries a crew seam's payload, the line its words", () => {
     const entries = deriveWorkLogEntries([

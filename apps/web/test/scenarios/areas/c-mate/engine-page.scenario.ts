@@ -17,6 +17,7 @@ const decodeCreateUrl = Schema.decodeUnknownSync(AssetCreateUrlInput);
 const encodeCreateUrl = Schema.encodeSync(AssetCreateUrlResult);
 const TITLE = "Launch plan";
 const ANSWER = "Week one is the hardest.";
+const EARLIER_TITLE = "Overview";
 
 /** A page as an agent writes one: it reaches for the network, and it is taller or shorter. */
 const pageOf = (height: number, script = 'fetch("https://example.com/beacon").catch(()=>{});') =>
@@ -74,6 +75,8 @@ const journey = (
   options: {
     readonly slowBytes?: boolean;
     readonly script?: string;
+    /** An earlier run published a page of its own, and a long exchange followed it. */
+    readonly earlierPage?: boolean;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -141,6 +144,33 @@ const journey = (
       bytes: html.length,
       publishedAt: 1791201600000,
     };
+    if (options.earlierPage === true) {
+      const first = engine.personRun("Sketch the overview");
+      engine.item(first, {
+        kind: "call",
+        step: "mcp",
+        words: "MCP tool call",
+        state: "done",
+        endedAt: 1791201500000,
+        tool: { name: "zerops_publish_page", server: "zerops" },
+        result: {
+          toolName: "zerops_publish_page",
+          resultText: '{"page":{}}',
+          page: {
+            ...page,
+            asset: { ...page.asset, id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd" },
+            title: EARLIER_TITLE,
+            publishedAt: 1791201500000,
+          },
+        },
+      });
+      engine.note(first, "The overview stands above.", { kind: "completed" });
+      engine.note(
+        engine.personRun("Tell me more"),
+        "A long line of the Mate's words that fills the conversation. ".repeat(40),
+        { kind: "completed" },
+      );
+    }
     const run = engine.personRun("Plan the launch");
     yield* s.given.signedIn;
     yield* chat.when.open("Ada", "Plan the launch");
@@ -161,7 +191,17 @@ const journey = (
       publishLive();
       answer();
     };
-    return { s, chat, publish, publishLive, answer };
+    /** The run goes on working: another call opens after the page landed. */
+    const workOn = () =>
+      engine.item(run, {
+        kind: "call",
+        step: "mcp",
+        words: "MCP tool call",
+        state: "running",
+        endedAt: null,
+        tool: { name: "zerops_browser", server: "zerops" },
+      });
+    return { s, chat, publish, publishLive, workOn, answer };
   });
 
 /** Starts the sampler, lets `act` happen, and reads every frame until the page has stood still. */
@@ -259,6 +299,61 @@ describe("C: a page the Mate publishes", () => {
               framed: true,
               notice: false,
             });
+            yield* s.then.noExternalNetwork;
+          }),
+      );
+      // Milo, 2026-10-10: a new page's row was born twice, half a second apart: the list handed it
+      // the earlier page's container, out of order, then sorted its containers, and a frame moved
+      // in the document loads its page again.
+      it.effect(
+        "a page published during a live run loads once as it lands and its run settles",
+        () =>
+          Effect.gen(function* () {
+            const { s, publishLive, workOn, answer } = yield* journey(180, { earlierPage: true });
+            yield* Effect.promise(() =>
+              s.page.evaluate((title) => {
+                const loads: number[] = [];
+                (window as unknown as { pageLoads: number[] }).pageLoads = loads;
+                document.addEventListener(
+                  "load",
+                  (event) => {
+                    const target = event.target;
+                    if (target instanceof HTMLIFrameElement && target.title === title)
+                      loads.push(performance.now());
+                  },
+                  true,
+                );
+              }, TITLE),
+            );
+            // The conversation stands placed before the page lands: its rows in the document in
+            // the order they show.
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(
+                () => {
+                  const tops = [...document.querySelectorAll("[data-timeline-row-id]")].map(
+                    (row) => row.getBoundingClientRect().top,
+                  );
+                  return tops.length > 0 && tops.every((top, i) => i === 0 || top >= tops[i - 1]!);
+                },
+                { polling: 100, timeout: 10_000 },
+              ),
+            );
+            yield* Effect.sync(publishLive);
+            yield* Effect.promise(() =>
+              s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
+            );
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 300)));
+            yield* Effect.sync(workOn);
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1500)));
+            yield* Effect.sync(answer);
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 2000)));
+            const loads = yield* Effect.promise(
+              () =>
+                s.page.evaluate(
+                  () => (window as unknown as { pageLoads: number[] }).pageLoads.length,
+                ) as Promise<number>,
+            );
+            expect(loads, "ASSERTION: the frame loads once on landing").toBe(1);
             yield* s.then.noExternalNetwork;
           }),
       );

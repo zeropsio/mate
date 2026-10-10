@@ -2,7 +2,8 @@
  * The card a Mate's request for a vault value draws in its conversation, in the conversation's
  * column at the owner's size (1786 wide, the left menu at 435, `?menu=` for another): a Shared
  * secret, a service's plain value, one given since, one set aside. Puts answer after 600 ms;
- * `?fail=1` refuses each. `?theme=dark` for dark.
+ * `?fail=1` refuses each. `?theme=dark` for dark. `?engine=1`: asks the engine keeps (Save, Decline,
+ * what makes the value take effect).
  *
  * Served by the dev server at `/design-vault-request.html`. Fixtures only: nothing here ships, and
  * no route imports this module.
@@ -15,6 +16,7 @@ import { VAULT_FIXTURE, VAULT_FIXTURE_NOW } from "~/components/zerops/vault/vaul
 import {
   type VaultAsk,
   type VaultAskSaid,
+  vaultAskPickUp,
   vaultAskState,
 } from "~/components/zerops/vault/vaultRequest.logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
@@ -23,6 +25,7 @@ import "../index.css";
 const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const FAIL = params.get("fail") === "1";
+const ENGINE = params.get("engine") === "1";
 const MENU = Number(params.get("menu") ?? 435);
 const ASKED = new Date(VAULT_FIXTURE_NOW - 5 * 60_000).toISOString();
 
@@ -74,6 +77,8 @@ function Ask({ ask, said: initial }: (typeof ASKS)[number]) {
   return (
     <VaultRequestCard
       ask={ask}
+      engine={ENGINE ? "open" : null}
+      pickUp={vaultAskPickUp(VAULT_FIXTURE, ask)}
       mateName="Fen"
       onNotNow={() => setSaid("not-now")}
       onPut={async () => {

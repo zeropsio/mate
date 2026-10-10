@@ -3496,6 +3496,7 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
         <VaultRequestCardContainer
           environmentId={ctx.activeThreadEnvironmentId}
           operation={row.operation}
+          threadRef={ctx.threadRef}
         />
       </div>
     );
@@ -3519,6 +3520,7 @@ const VaultRequestTimelineRow = memo(function VaultRequestTimelineRow({
       <VaultRequestCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
         operation={row.operation}
+        threadRef={ctx.threadRef}
       />
     </div>
   );
