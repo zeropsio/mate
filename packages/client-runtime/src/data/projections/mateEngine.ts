@@ -126,6 +126,8 @@ type CardOf = (runId: string | null) => string | null;
  */
 export interface EngineMessage extends OrchestrationMessage {
   readonly crewCard?: CrewCard;
+  /** The person's message waits in the engine's queue: no run has taken it yet. */
+  readonly queued?: true;
 }
 
 /** Whether a run ended without ever starting: its message never reached the agent. */
@@ -147,6 +149,7 @@ function messageOf(
         ...base,
         // A message whose run ended before it began names no run, as a V1 message no run took.
         ...(neverStarted(item.runId) ? { turnId: null } : {}),
+        ...(item.delivery.state === "queued" ? { queued: true as const } : {}),
         id: MessageId.make(personMessageId(item)),
         role: "user",
         text: item.text,

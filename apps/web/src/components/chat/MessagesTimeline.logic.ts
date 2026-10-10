@@ -531,8 +531,8 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       message: ChatMessage;
-      /** User messages: whether the Mate has read it. */
-      receipt: "sent" | "seen" | null;
+      /** User messages: whether the Mate has read it, or the usage limit holds it unsent. */
+      receipt: "sent" | "seen" | "held" | null;
       /** User messages sent into a running turn. */
       aside: boolean;
       /** The client's own placeholder stands in for the text: show the images alone. */
@@ -2164,6 +2164,21 @@ export function assembleRecordCard(input: {
   };
 }
 
+/**
+ * The live usage-limit pause that fills the conversation as its stage: the server's own pause,
+ * while the limit holds, with nothing after it. Otherwise the pause is a notice card where the run
+ * ended, and what follows it (a message held for the reset) sits right under it.
+ */
+export function livePauseStageId(
+  rows: ReadonlyArray<MessagesTimelineRow>,
+  limit: MateLimit,
+  serverPause: { readonly resetsAt: string } | null,
+): string | null {
+  if (limit.kind !== "limited" || serverPause === null) return null;
+  const last = rows.at(-1);
+  return last?.kind === "pause" && last.resumedAt === null ? last.id : null;
+}
+
 export function deriveMessagesTimelineRows(input: {
   readonly limit?: MateLimit;
   readonly runCards?: Readonly<Record<string, EngineRunCard>>;
@@ -2409,7 +2424,11 @@ export function deriveMessagesTimelineRows(input: {
       id: entry.id,
       createdAt: entry.createdAt,
       message: entry.message,
-      receipt: messageReceipt(entry.message, structure, index, came),
+      // The engine queued it while the limit holds: it goes when the limit resets.
+      receipt:
+        entry.message.queued === true && input.limit?.kind === "limited"
+          ? "held"
+          : messageReceipt(entry.message, structure, index, came),
       aside,
       imageOnly: isImageOnlyPlaceholder(entry.message.text),
       showAssistantMeta: false,

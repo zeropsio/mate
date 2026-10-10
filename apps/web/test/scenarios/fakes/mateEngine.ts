@@ -334,6 +334,25 @@ export class MateEngineFake {
     this.commit((change) => this.endRun(change, run, end));
   }
 
+  /** The run hits the provider's usage limit: it ends there and the conversation pauses until the reset. */
+  limit(run: string, resetsAt: number): void {
+    this.commit((change) => {
+      this.endRun(change, run, { kind: "usage-limit", resetsAt });
+      this.header = decodeHeader({ ...this.header, pausedUntil: resetsAt });
+      change.header = true;
+    });
+  }
+
+  /** The pause lifts (the reset came, or the person signed in again): each queued run starts. */
+  lift(): void {
+    const queued = [...this.runs.values()].filter((run) => run.state === "queued");
+    this.commit((change) => {
+      this.header = decodeHeader({ ...this.header, pausedUntil: null, queued: 0 });
+      change.header = true;
+      for (const run of queued) this.admit(change, run.id);
+    });
+  }
+
   /** Text streams into an item, never recorded: each subscriber hears it at its offset. */
   stream(itemId: string, text: string, stream = "text"): void {
     const held = this.streamed.get(`${itemId}\u0000${stream}`);
@@ -437,6 +456,21 @@ export class MateEngineFake {
     );
     change.runs.add(id);
     return id;
+  }
+
+  /** A queued run is taken: its message delivered, the run at work. */
+  private admit(change: Changed, id: string) {
+    this.openSession(change);
+    const at = this.stamp(this.seq);
+    for (const item of this.items.values())
+      if (item.runId === id && item.kind === "person" && item.delivery.state === "queued")
+        this.setItem(change, item.id, { delivery: { state: "delivered", at } });
+    this.setRun(change, id, {
+      state: "running",
+      turnState: "running",
+      admittedAt: at,
+      startedAt: at,
+    });
   }
 
   private setRun(change: Changed, id: string, patch: Record<string, unknown>) {
@@ -627,8 +661,9 @@ export class MateEngineFake {
 
   row(): ConversationRow {
     const runs = [...this.runs.values()];
-    const active = runs.findLast((run) => run.state !== "ended") ?? null;
-    const latest = runs.at(-1) ?? null;
+    // A queued run waits for its turn (a pause holds it): the conversation is not at work.
+    const active = runs.findLast((run) => run.state !== "ended" && run.state !== "queued") ?? null;
+    const latest = runs.findLast((run) => run.state !== "queued") ?? null;
     const open = [...this.requests.values()].find((request) => request.state === "open");
     const person = [...this.items.values()].findLast((item) => item.kind === "person");
     const note = [...this.items.values()].findLast((item) => item.kind === "note");
@@ -641,15 +676,17 @@ export class MateEngineFake {
         seq: this.seq,
       },
       state:
-        open !== undefined
-          ? {
-              kind: "waiting",
-              on: open.ask.kind === "approval" ? "approval" : "question",
-              words: open.ask.kind === "approval" ? open.ask.detail : null,
-            }
-          : active !== null
-            ? { kind: "working", since: active.queuedAt, waitsOnHelpers: false }
-            : { kind: "idle" },
+        this.header.pausedUntil !== null
+          ? { kind: "paused", resetsAt: this.header.pausedUntil }
+          : open !== undefined
+            ? {
+                kind: "waiting",
+                on: open.ask.kind === "approval" ? "approval" : "question",
+                words: open.ask.kind === "approval" ? open.ask.detail : null,
+              }
+            : active !== null
+              ? { kind: "working", since: active.queuedAt, waitsOnHelpers: false }
+              : { kind: "idle" },
       activeRunId: active?.id ?? null,
       runStatus: this.header.runStatus,
       latestRun:
@@ -928,7 +965,16 @@ export class MateEngineFake {
             change.header = true;
           }
           const run = this.openRun(change, { kind: "person" });
-          this.setRun(change, run, { state: "admitted", startedAt: null });
+          const paused = this.header.pausedUntil !== null;
+          this.setRun(
+            change,
+            run,
+            paused
+              ? { state: "queued", turnState: null, admittedAt: null, startedAt: null }
+              : { state: "admitted", startedAt: null },
+          );
+          if (paused)
+            this.header = decodeHeader({ ...this.header, queued: this.header.queued + 1 });
           const item = this.addItem(change, run, {
             kind: "person",
             by: { kind: "person", principal: { kind: "person", subject: "owner" } },
@@ -940,6 +986,8 @@ export class MateEngineFake {
           return [run, item] as const;
         });
         const accepted = { _tag: "Accepted" as const, seq: this.seq, runId, itemId };
+        // A paused conversation holds the run queued until the pause lifts (`lift`).
+        if (this.runs.get(runId)?.state === "queued") return accepted as never;
         // The run is sent as its session opens, then runs: each its own commit, as the engine's.
         queueMicrotask(() => {
           this.commit((change) => {
