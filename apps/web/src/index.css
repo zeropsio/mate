@@ -4208,6 +4208,150 @@ code {
 /* ==== end of the menu's projects and production ==== */
 
 /* ==== Pass 41 · the menu's chrome: the top row, Overview, Waiting on you, the foot, the rail ==== */
+@layer components {
+  /* The top row's round buttons (search, +): 34 px, a hairline ring, the glyph muted until the
+     pointer or the open menu wakes it. */
+  .menu-round-button {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 9999px;
+    color: var(--sidebar-muted-foreground);
+    box-shadow: inset 0 0 0 1px var(--sidebar-border);
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      color 150ms var(--ease-out-strong),
+      scale 160ms var(--ease-out-strong);
+  }
+
+  .menu-round-button:hover,
+  .menu-round-button[data-popup-open] {
+    background: var(--sidebar-row-hover);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-round-button:active {
+    scale: 0.96;
+  }
+
+  .menu-round-button:focus-visible {
+    box-shadow:
+      inset 0 0 0 1px var(--sidebar-border),
+      0 0 0 2px var(--ring);
+  }
+}
+
+@layer components {
+  /* Overview and Waiting on you: Grok's measure, as the Mates' rows under them — a 40 px disc in
+     the faces' column, a 16 px name over a 15 px line, 68 px a row. */
+  .menu-chrome-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    height: 68px;
+    padding: 0 8px;
+    border-radius: 12px;
+    text-align: left;
+    cursor: pointer;
+    outline: none;
+    transition: background-color 150ms var(--ease-out-strong);
+  }
+
+  .menu-chrome-row:hover,
+  .menu-chrome-row[data-popup-open] {
+    background: var(--sidebar-row-hover);
+  }
+
+  .menu-chrome-row[data-current] {
+    background: var(--sidebar-row-active);
+  }
+
+  .menu-chrome-row:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .menu-chrome-row + .menu-chrome-row {
+    margin-top: 6px;
+  }
+
+  .menu-chrome-disc,
+  .menu-chrome-count {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 9999px;
+  }
+
+  .menu-chrome-disc {
+    background: color-mix(in oklab, var(--sidebar-foreground) 7%, transparent);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-chrome-count {
+    background: var(--zerops-status-attention-surface);
+    color: var(--zerops-status-attention-text);
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .menu-chrome-text {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+
+  .menu-chrome-name {
+    overflow: hidden;
+    font-size: 16px;
+    line-height: 22px;
+    font-weight: 500;
+    color: var(--sidebar-foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-chrome-line {
+    display: flex;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 15px;
+    line-height: 21px;
+    color: var(--sidebar-muted-foreground);
+    white-space: nowrap;
+  }
+
+  .menu-chrome-line > :first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .menu-chrome-line[data-ink] > :first-child {
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-chrome-line > :not(:first-child) {
+    flex: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-round-button:active {
+    scale: none;
+  }
+}
+
 /* ==== end of the menu's chrome ==== */
 
 /* ==== Pass 41 · the overview's cards ==== */

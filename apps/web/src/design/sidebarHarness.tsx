@@ -73,7 +73,12 @@ import { onOpenCommandPalette } from "~/commandPaletteBus";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { PanelLayoutControls } from "~/components/chat/PanelLayoutControls";
-import { SidebarChromeHeader, SidebarCornerMark } from "~/components/sidebar/SidebarChrome";
+import {
+  SidebarChromeHeader,
+  SidebarCornerMark,
+  SidebarCreateButton,
+} from "~/components/sidebar/SidebarChrome";
+import { SidebarOverviewRow } from "~/components/zerops/SidebarOverview";
 import { Button } from "~/components/ui/button";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { ZeropsMark } from "~/components/ZeropsMark";
@@ -93,13 +98,10 @@ import {
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
-import { SidebarWaitingStack } from "~/components/zerops/SidebarWaitingStack";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
 import type { MateDecision } from "~/components/zerops/mateDecision.logic";
 import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewLine";
-import { newProjectOffered } from "~/components/zerops/SidebarProjects.logic";
 import {
-  SidebarNewProject,
   SidebarAccountLine,
   SidebarZeropsTree,
   type SidebarProjectFlow,
@@ -1088,6 +1090,7 @@ function SidebarFrame({
       shownInScope(scope, FIXTURES.owners.get(item.project.id)?.isViewer, item.project.id === open),
     [open, scope],
   );
+  const overviewOpen = open === "";
   const waiting = useSidebarWaiting({
     candidates: FIXTURES.candidates,
     activityOf: activityOfCandidate,
@@ -1109,13 +1112,31 @@ function SidebarFrame({
           beside macOS's traffic lights; the waiting faces and ⌘K at its end. */}
       <SidebarChromeHeader
         isElectron={false}
-        jump={<SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />}
-        waiting={<SidebarWaitingStack mates={waiting.mates} onNext={waiting.next} />}
+        actions={
+          <>
+            <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />
+            <SidebarCreateButton
+              onNewMate={(groupId) => menuActions.push(`new mate ${groupId}`)}
+              onNewProject={() => menuActions.push("new project")}
+              projects={HARNESS_PROJECTS}
+            />
+          </>
+        }
       />
       {/* The list scrolls as the app's does (`SidebarContent`): fading into
           the canvas at an edge only while something is scrolled under it. */}
       <SidebarContent>
         <div className="ps-2.25 pe-2 pb-1">
+          <div className="mb-2">
+            <SidebarOverviewRow
+              current={overviewOpen}
+              headline={HARNESS_HEADLINE}
+              onOpen={() => {
+                menuActions.push("overview");
+                setOpen("");
+              }}
+            />
+          </div>
           <SidebarZeropsTree
             births={coming?.births}
             candidates={RELOAD_MS === null ? candidates : reloaded.rows}
@@ -1166,15 +1187,6 @@ function SidebarFrame({
           />
         </div>
       </SidebarContent>
-      {/* *New project* pinned above the account's row, as the app's
-          (`Sidebar.tsx`): the list scrolls under it. */}
-      {newProjectOffered({ candidates: FIXTURES.candidates, births: [], complete: true }) ? (
-        <SidebarNewProject
-          onNewProject={() => {
-            menuActions.push("new project");
-          }}
-        />
-      ) : null}
       {FOOT_LINE === null ? null : (
         <SidebarAccountLine
           sentence={FOOT_LINE.sentence}
@@ -1201,6 +1213,13 @@ function SidebarFrame({
     </aside>
   );
 }
+
+/** The +'s projects and the Overview row's line, as the fixtures' projects would say them. */
+const HARNESS_PROJECTS = [
+  { id: "links", name: "Links" },
+  { id: "notes", name: "Notes" },
+];
+const HARNESS_HEADLINE = "Links needs attention · 1 more";
 
 const JUMP_KEY = isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K";
 
