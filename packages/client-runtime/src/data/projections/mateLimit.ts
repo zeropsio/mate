@@ -229,6 +229,8 @@ export interface LimitHistoryEntry {
     readonly label: string;
     readonly detail?: string;
     readonly turnEnd?: string;
+    /** Whose limit refused the turn, as the turn's own end names it. */
+    readonly limitProvider?: string;
     readonly usageLimit?: { readonly resetsAt: string | null; readonly provider?: string | null };
   };
 }
@@ -263,7 +265,7 @@ export function projectLimitEntry(
   if (notice === null && work?.turnEnd !== "usage-limit") return null;
   return {
     resetsAt: notice?.resetsAt ?? null,
-    provider: usageLimitProvider(text, driver),
+    provider: work?.limitProvider ?? usageLimitProvider(text, driver),
     createdAt: entry.createdAt,
   };
 }

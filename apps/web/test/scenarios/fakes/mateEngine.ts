@@ -373,7 +373,12 @@ export class MateEngineFake {
   /** The run hits the provider's usage limit: it ends there and the conversation pauses until the reset. */
   limit(run: string, resetsAt: number): void {
     this.commit((change) => {
-      this.endRun(change, run, { kind: "usage-limit", resetsAt });
+      // As the engine: the end names the driver whose limit it was.
+      this.endRun(change, run, {
+        kind: "usage-limit",
+        resetsAt,
+        driver: this.header.agent?.driver ?? "codex",
+      });
       this.header = decodeHeader({ ...this.header, pausedUntil: resetsAt });
       change.header = true;
     });

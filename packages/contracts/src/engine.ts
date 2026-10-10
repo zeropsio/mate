@@ -208,7 +208,12 @@ export const RunEnd = forwardCompatibleUnion({
       next: Schema.NullOr(Schema.String),
     }),
     Schema.Struct({ kind: Schema.Literal("crashed"), reason: Schema.String }),
-    Schema.Struct({ kind: Schema.Literal("usage-limit"), resetsAt: Schema.NullOr(Millis) }),
+    Schema.Struct({
+      kind: Schema.Literal("usage-limit"),
+      resetsAt: Schema.NullOr(Millis),
+      /** The driver of the session that was refused: whose limit it was, whatever runs later. */
+      driver: Schema.optionalKey(Schema.String),
+    }),
     Schema.Struct({
       kind: Schema.Literal("cut-by-restart"),
       continuedBy: Schema.NullOr(RunId),

@@ -1106,6 +1106,21 @@ describe("decide: a turn's signals land on its own run", () => {
   });
 });
 
+describe("decide: a usage limit's end is the refusal's own record", () => {
+  const limitEnds = (log: ReadonlyArray<KnownEngineEvent>) =>
+    log.flatMap((e) => (e._tag === "RunEnded" && e.end.kind === "usage-limit" ? [e.end] : []));
+  it.each([
+    { how: "parked its turn", step: signal({ kind: "usage-limit", turn: T(1), resetsAt: null }) },
+    {
+      how: "ended its turn",
+      step: ended(1, { kind: "usage-limited", resetsAt: "unknown", words: "limit" }),
+    },
+  ])("a usage limit that $how names the agent whose limit it hit", ({ step }) => {
+    const { log } = playAll([...proofRunning, step]);
+    expect(limitEnds(log)).toEqual([expect.objectContaining({ driver: "claude" })]);
+  });
+});
+
 describe("decide: a usage limit with an unknown reset", () => {
   it("queued work waits instead of walking into the limit", () => {
     const { state, log } = playAll([

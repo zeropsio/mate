@@ -62,6 +62,37 @@ describe("the usage-limit pause", () => {
     expect(render(false, null)).toContain("Nova hit the Codex limit.");
     expect(render(false, null)).toContain("hasn&#x27;t given a reset time");
   });
+  // CI saw "the coding agent's limit", then "the Codex limit": the live limit learnt the agent late.
+  it.each([
+    { record: "Claude", live: "coding agent", says: "Nova hit the Claude limit." },
+    { record: "Codex", live: "Claude", says: "Nova hit the Codex limit." },
+    { record: undefined, live: "coding agent", says: "Nova hit the coding agent's limit." },
+  ])(
+    "names the agent its own record names from the first paint ($record, live $live)",
+    ({ record, live, says }) => {
+      const reset = new Date(NOW_MS + 3_600_000).toISOString();
+      const html = renderToStaticMarkup(
+        <PauseBlock
+          nowMs={NOW_MS}
+          limit={{ kind: "limited", turnId: null, provider: live, resetsAt: reset }}
+          row={{
+            kind: "pause",
+            id: "pause:1",
+            createdAt: at(600),
+            resetsAt: null,
+            resumedAt: null,
+            held: 0,
+            ...(record === undefined ? {} : { provider: record }),
+          }}
+          serverPause={null}
+          onAutoResumeChange={null}
+          speaker={NOVA}
+          timestampFormat="24-hour"
+        />,
+      );
+      expect(html.replaceAll("&#x27;", "'")).toContain(says);
+    },
+  );
   it("only promises automatic continuation when the server has enabled it", () => {
     const reset = new Date(NOW_MS + 3_600_000).toISOString();
     expect(render(true, reset)).toContain(

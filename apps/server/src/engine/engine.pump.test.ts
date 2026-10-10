@@ -657,7 +657,11 @@ describe("the running engine", () => {
           agent.limit(thread, DateTime.formatIso(DateTime.makeUnsafe(resetsAt))),
         );
         const limited = yield* w.run(r(1));
-        assert.deepStrictEqual(limited?.end, { kind: "usage-limit", resetsAt });
+        assert.deepStrictEqual(limited?.end, {
+          kind: "usage-limit",
+          resetsAt,
+          driver: "claudeAgent",
+        });
         yield* w.advance(resetsAt - 1 - (yield* Clock.currentTimeMillis));
         assert.isUndefined(yield* w.run(r(2)));
         yield* w.advance(1);
@@ -732,6 +736,7 @@ describe("the running engine", () => {
             assert.deepStrictEqual((yield* w.run(r(run)))?.end, {
               kind: "usage-limit",
               resetsAt: null,
+              driver: "codex",
             });
             const now = yield* Clock.currentTimeMillis;
             const probe = (yield* w.wakes).find(
@@ -755,7 +760,11 @@ describe("the running engine", () => {
         const w = yield* world("claudeAgent");
         yield* send(w);
         yield* w.agent((agent, thread) => agent.limit(thread, null));
-        assert.deepStrictEqual((yield* w.run(r(1)))?.end, { kind: "usage-limit", resetsAt: null });
+        assert.deepStrictEqual((yield* w.run(r(1)))?.end, {
+          kind: "usage-limit",
+          resetsAt: null,
+          driver: "claudeAgent",
+        });
         assert.strictEqual(w.provider.calls.at(-1), `stop ${w.thread}`);
         assert.deepStrictEqual(
           (yield* w.sessionsOpen).map((session) => session.close_reason),

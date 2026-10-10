@@ -2000,7 +2000,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       // A turn that ends before it was seen to start still started: the message reached the agent.
       if (run.state === "sending") markStarted(b, run, null, signal.turn);
       const live = b.run(run.id);
-      const end = turnEnd(live, signal.outcome);
+      const end = turnEnd(live, signal.outcome, refusedBy(b, live));
       endRun(b, live, end, signal.source, undefined, endFacts(signal));
       if (end.kind === "usage-limit") limited(b, live, end.resetsAt);
       admitNext(b);
@@ -2129,7 +2129,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
     case "usage-limit": {
       const run = routed(b, signal.turn);
       if (run !== undefined && isLive(run)) {
-        endRun(b, run, { kind: "usage-limit", resetsAt: signal.resetsAt }, "agent");
+        endRun(b, run, limitEnd(signal.resetsAt, refusedBy(b, run)), "agent");
         limited(b, run, signal.resetsAt);
         // A parked turn (Claude) sits in its session until the reset: close it; the resume
         // reopens the session with its resume cursor and sends explicitly.
@@ -2181,8 +2181,21 @@ const endFacts = (signal: Extract<ProviderSignal, { readonly kind: "turn-ended" 
   };
 };
 
+/** The driver of the session `run` ran on, while it is the open one: whose limit refused it. */
+const refusedBy = (b: StepBuilder, run: RunRecord): string | undefined => {
+  const session = b.state.session;
+  return session !== null && session.id === run.sessionId ? session.driver : undefined;
+};
+
+/** A usage limit's end names whose limit it was, so a later switch of agent never renames it. */
+const limitEnd = (resetsAt: number | null, driver: string | undefined): RunEnd => ({
+  kind: "usage-limit",
+  resetsAt,
+  ...(driver === undefined ? {} : { driver }),
+});
+
 /** What a turn's outcome makes of its run, said in one place; the source is always the bridge's. */
-const turnEnd = (run: RunRecord, outcome: TurnOutcome): RunEnd => {
+const turnEnd = (run: RunRecord, outcome: TurnOutcome, driver: string | undefined): RunEnd => {
   const stoppedBy = run.stopAsked?.by;
   switch (outcome.kind) {
     case "completed":
@@ -2196,7 +2209,7 @@ const turnEnd = (run: RunRecord, outcome: TurnOutcome): RunEnd => {
     case "undelivered":
       return { kind: "failed", reason: outcome.words, next: null };
     case "usage-limited":
-      return { kind: "usage-limit", resetsAt: resetTime(outcome.resetsAt) };
+      return limitEnd(resetTime(outcome.resetsAt), driver);
     case "cut":
       return stoppedBy !== undefined
         ? { kind: "stopped", by: stoppedBy }

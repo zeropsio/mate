@@ -50,12 +50,17 @@ function milo(
     reload = false,
     answer = LIMIT_WORDS,
     liftedAt = null,
-  }: { reload?: boolean; answer?: string; liftedAt?: number | null } = {},
+    driver,
+  }: { reload?: boolean; answer?: string; liftedAt?: number | null; driver?: string } = {},
 ) {
   const runs = [
     decode(
       engineRun(key.conversationId, 1, {
-        end: { kind: "usage-limit", resetsAt: RESETS_AT },
+        end: {
+          kind: "usage-limit",
+          resetsAt: RESETS_AT,
+          ...(driver === undefined ? {} : { driver }),
+        },
         summary: {
           items: 4,
           calls: { command: 1 },
@@ -188,6 +193,22 @@ describe("a conversation paused at the usage limit", () => {
       resumedAt: new Date(LIFTED_AT).toISOString(),
     });
   });
+
+  // The flicker on CI: "the coding agent's limit" until the session was read, then "Codex limit".
+  it.each([
+    { driver: "claudeAgent", provider: "Claude" },
+    { driver: "codex", provider: "Codex" },
+    { driver: undefined, provider: undefined },
+  ])(
+    "names the agent whose limit it was from the run's own end, before any session is read ($driver)",
+    ({ driver, provider }) => {
+      for (const phase of ["paused", "held", "lifted"] as const) {
+        const { rows } = milo(phase, driver === undefined ? {} : { driver });
+        const pause = rows[pauseIndex(rows)];
+        expect(pause?.kind === "pause" ? pause.provider : "no pause").toBe(provider);
+      }
+    },
+  );
 
   it("draws nothing for an answer the limit left empty", () => {
     const { rows } = milo("paused", { answer: "" });

@@ -13,6 +13,7 @@
 import {
   CREW_SEAM_ACTIVITY_KIND,
   MessageId,
+  PROVIDER_DISPLAY_NAMES,
   STEP_ITEM_KINDS,
   TurnId,
   type ChatAttachment,
@@ -552,12 +553,22 @@ function gaugeActivities(
 
 /** The usage-limit notice still read by the separate limit presentation. */
 function usageLimitActivity(run: RunRecord, card: string): OrchestrationThreadActivity | null {
-  if (run.end?.kind !== "usage-limit") return null;
+  const end = run.end;
+  if (end?.kind !== "usage-limit") return null;
+  // Whose limit it was, on the record itself: never read later from the session or the composer.
+  const provider =
+    end.driver === undefined
+      ? undefined
+      : Object.entries(PROVIDER_DISPLAY_NAMES).find(([driver]) => driver === end.driver)?.[1];
   return activity(
     `${run.id}#limit`,
     "runtime.error",
     "Runtime error",
-    { message: "The agent reached its usage limit.", turnEnd: "usage-limit" },
+    {
+      message: "The agent reached its usage limit.",
+      turnEnd: "usage-limit",
+      ...(provider === undefined ? {} : { provider }),
+    },
     card,
     run.endedAt ?? run.queuedAt,
     run.rev,

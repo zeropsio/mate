@@ -447,7 +447,9 @@ export function PauseBlock({
   const resetsAt = limit.kind === "none" ? row.resetsAt : limit.resetsAt;
   const refused = limit.kind === "limited";
   const passed = limit.kind === "expired";
-  const provider = limit.kind === "none" ? row.provider : limit.provider;
+  // The refusal's own record names whose limit it was from the first paint; the live limit only
+  // when the record does not (a later read of the session would rename it under the reader).
+  const provider = row.provider ?? (limit.kind === "none" ? undefined : limit.provider);
   const autoResume = serverPause?.autoResume ?? false;
   const history = resumed || passed || !refused;
   const [waitingAt, setWaitingAt] = useState<string | null>(null);
@@ -549,9 +551,7 @@ export function PauseBlock({
                 speaker.name,
                 timestampFormat,
               )
-            : provider === undefined
-              ? usageLimitWords("coding agent", undefined, speaker.name)
-              : usageLimitWords(provider, undefined, speaker.name)}
+            : usageLimitWords(provider ?? "coding agent", undefined, speaker.name)}
         </span>
         {row.held > 0 ? (
           <Tooltip>
