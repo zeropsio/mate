@@ -52,6 +52,8 @@ export interface ChatMessage extends Omit<OrchestrationMessage, "attachments"> {
   readonly attachments?: ReadonlyArray<ChatAttachment> | undefined;
   /** On an engine conversation, the crew's typed card this message opens its run with. */
   readonly crewCard?: ContractCrewCard | undefined;
+  /** On an engine conversation, the message waits in the engine's queue: no run took it yet. */
+  readonly queued?: true | undefined;
   /** On an engine conversation, the queued run of a message no agent has yet: it can be withdrawn. */
   readonly heldRunId?: string | undefined;
 }

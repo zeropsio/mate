@@ -52,6 +52,8 @@ export interface TimelineRowSharedState {
   usagePause: ServerUsagePause | null;
   /** The live pause occupies the measured message room; history stays in the same scroll. */
   pauseStage?: {
+    /** The pause that stands as the stage (`livePauseStageId`); null when it is a notice card. */
+    readonly id: string | null;
     readonly mate: Parameters<typeof PauseBlock>[0]["mate"];
     readonly height: number | undefined;
   };

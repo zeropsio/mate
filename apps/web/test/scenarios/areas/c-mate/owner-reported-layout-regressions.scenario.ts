@@ -15,7 +15,8 @@ import * as Schema from "effect/Schema";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
-import { installArea, reportContainer } from "./fake.ts";
+import { installArea, installEngineArea, reportContainer } from "./fake.ts";
+import { EngineChatWire } from "./engine.ts";
 import { menuScenario } from "../b-menu/dsl.ts";
 import { reportConversation } from "../b-menu/fake.ts";
 
@@ -884,6 +885,244 @@ describe("owner-reported layout regressions", () => {
                 yield* s.then.noExternalNetwork;
               }),
           );
+      });
+    });
+
+    // Milo's stress run 4 (2026-10-10, engine): at the usage limit the notice stood at the top of a
+    // viewport-tall row with ~520 px blank under it, then scrolled half out of view; a message sent
+    // while paused sat a viewport below it with no sign it was held.
+    describe("Decision: the limit's notice ends the run's card; what waits for the reset sits under it.", () => {
+      interface LimitFrame {
+        /** When the frame was sampled (ms, the page's clock). */
+        readonly at: number;
+        readonly listTop: number;
+        /** How far the view stands from the list's end. */
+        readonly end: number;
+        readonly composer: number;
+        readonly notice: { readonly top: number; readonly bottom: number } | null;
+        /** The top of the held message's words; null off screen. */
+        readonly message: number | null;
+        /** The bottom of the run's card the notice follows. */
+        readonly card: number | null;
+      }
+      const HELD = "Then write the table of every helper and job";
+      const startTrace = (page: Page) =>
+        page.evaluate((text) => {
+          const frames: LimitFrame[] = [];
+          const state = { active: true };
+          const read = (): LimitFrame | null => {
+            const list = document.querySelector<HTMLElement>(".timeline-legend-list");
+            const composer = document.querySelector('[data-slot="composer-shell"]');
+            if (!list || !composer) return null;
+            // The notice's row: what stands between the run's card and what follows it.
+            const notice = document.querySelector('[data-timeline-row-kind="pause"]');
+            const box = notice?.getBoundingClientRect();
+            let message: number | null = null;
+            const walker = document.createTreeWalker(list, NodeFilter.SHOW_TEXT);
+            while (walker.nextNode()) {
+              if (!walker.currentNode.textContent?.includes(text)) continue;
+              const rect = walker.currentNode.parentElement?.getBoundingClientRect();
+              if (rect && rect.height > 0) message = rect.top;
+              break;
+            }
+            return {
+              at: performance.now(),
+              listTop: list.getBoundingClientRect().top,
+              end: list.scrollHeight - list.clientHeight - list.scrollTop,
+              composer: composer.getBoundingClientRect().top,
+              notice: box && box.height > 0 ? { top: box.top, bottom: box.bottom } : null,
+              message,
+              card:
+                [...list.querySelectorAll("[data-run-chat]")].at(-1)?.getBoundingClientRect()
+                  .bottom ?? null,
+            };
+          };
+          const sample = () => {
+            const frame = read();
+            if (frame) frames.push(frame);
+            if (state.active) requestAnimationFrame(sample);
+          };
+          (window as unknown as { limitTrace: unknown }).limitTrace = { frames, state };
+          sample();
+        }, HELD);
+      const stopTrace = (page: Page, ms: number) =>
+        new Promise((resolve) => setTimeout(resolve, ms)).then(() =>
+          page.evaluate(() => {
+            const held = (
+              window as unknown as {
+                limitTrace: { frames: LimitFrame[]; state: { active: boolean } };
+              }
+            ).limitTrace;
+            held.state.active = false;
+            return held.frames;
+          }),
+        );
+      const pausedMilo = Effect.gen(function* () {
+        const s = yield* createScenario([installEngineArea]);
+        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        yield* Effect.promise(() =>
+          s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
+        );
+        yield* s.given.project("Ada", { mate: true });
+        const chat = mateChat(s);
+        for (const round of [1, 2, 3])
+          chat
+            .fixture()
+            .exchange(
+              `How did deploy ${round} go?`,
+              "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                12,
+              ),
+            );
+        chat.fixture().exchange("And now?", "The existing conversation is still here");
+        const wire = chat.fixture().wire;
+        if (!(wire instanceof EngineChatWire)) throw new Error("Milo's run is the engine's");
+        const engine = wire.engine;
+        yield* s.given.signedIn;
+        yield* Effect.promise(() => ownerMenu(s.page));
+        yield* chat.when.open();
+        // The person starts the run, as on Milo: its records carry the wall clock from here.
+        yield* chat.when.send("Live stress test 4A: start two helpers");
+        const run = [...engine.runs.values()].at(-1)!.id;
+        engine.item(run, {
+          kind: "call",
+          step: "command",
+          tool: { name: "Bash" },
+          words: "Command run",
+          state: "done",
+          endedAt: yield* Clock.currentTimeMillis,
+          input: "Bash: sleep 25 && echo helper-job-done",
+        });
+        // Claude's words: the run's end carried its answer empty, its words came 154 ms later.
+        const said = engine.item(run, { kind: "note", text: "", streaming: false, answer: false });
+        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+        yield* Effect.promise(() => startTrace(s.page));
+        engine.limit(run, (yield* Clock.currentTimeMillis) + 18 * 3_600_000);
+        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 154)));
+        engine.update(said, { text: "You've hit your weekly limit · resets 1pm (UTC)" });
+        yield* Effect.promise(() =>
+          s.page.waitForSelector('[data-conversation-pause="paused"]', { timeout: 8000 }),
+        );
+        const frames = yield* Effect.promise(() => stopTrace(s.page, 1500));
+        return { s, chat, engine, frames };
+      });
+
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        it.effect(
+          "at the usage limit the notice lands where the run's card ends and the conversation stays at its end, fully visible above the composer",
+          () =>
+            Effect.gen(function* () {
+              const { s, frames } = yield* pausedMilo;
+              const shown = frames.filter((frame) => frame.notice !== null);
+              expect(shown.length, "ASSERTION: the notice was sampled").toBeGreaterThan(20);
+              const last = shown.at(-1)!;
+              expect(last.end, "ASSERTION: the conversation stays at its end").toBeLessThanOrEqual(
+                1,
+              );
+              expect(
+                last.composer - last.notice!.bottom,
+                "ASSERTION: no blank stands between the notice and the composer",
+              ).toBeLessThan(80);
+              expect(
+                last.notice!.top >= last.listTop && last.notice!.bottom <= last.composer,
+                "ASSERTION: the notice ends fully visible above the composer",
+              ).toBe(true);
+              const under = shown.flatMap((frame) =>
+                frame.card === null ? [] : [frame.notice!.top - frame.card],
+              );
+              expect(
+                Math.max(...under) - Math.min(...under),
+                "ASSERTION: the notice stands right under the run's card, nothing drawn between",
+              ).toBeLessThan(8);
+              expect(
+                shown.every((frame) => frame.notice!.top >= frame.listTop - 1),
+                "ASSERTION: no scroll ever takes the notice past the top, not even in part",
+              ).toBe(true);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
+        it.effect(
+          "a message sent while paused sits right under the notice, held until the reset, and goes in place when the pause lifts",
+          () =>
+            Effect.gen(function* () {
+              const { s, chat, engine } = yield* pausedMilo;
+              yield* chat.when.send(HELD);
+              const receipt = yield* Effect.promise(() =>
+                s.page.waitForSelector('[data-message-receipt="held"]', { timeout: 8000 }),
+              );
+              expect(
+                yield* Effect.promise(() => receipt!.evaluate((node) => node.ariaLabel)),
+              ).toMatch(/^Sends when the limit resets /);
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+              yield* Effect.promise(() => startTrace(s.page));
+              const held = (yield* Effect.promise(() => stopTrace(s.page, 100))).at(-1)!;
+              expect(held.end, "ASSERTION: the conversation stays at its end").toBeLessThanOrEqual(
+                1,
+              );
+              expect(held.notice, "ASSERTION: the notice stays in view").not.toBeNull();
+              expect(
+                held.message! - held.notice!.bottom,
+                "ASSERTION: the held message sits right under the notice",
+              ).toBeLessThan(96);
+              expect(
+                held.message!,
+                "ASSERTION: the held message stands above the composer",
+              ).toBeLessThan(held.composer);
+
+              yield* Effect.promise(() => startTrace(s.page));
+              engine.lift();
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () =>
+                    !document.querySelector('[data-message-receipt="held"]') &&
+                    document.querySelector('[data-conversation-pause="resumed"]'),
+                  { polling: "raf", timeout: 8000 },
+                ),
+              );
+              const frames = (yield* Effect.promise(() => stopTrace(s.page, 600))).filter(
+                (frame) => frame.notice !== null && frame.message !== null,
+              );
+              expect(frames.length, "ASSERTION: the lift was sampled").toBeGreaterThan(10);
+              const steps = (of: (frame: LimitFrame) => number) =>
+                Math.max(
+                  ...frames
+                    .slice(1)
+                    .map((frame, index) => Math.abs(of(frame) - of(frames[index]!))),
+                );
+              // A cut changes the height between two frames; a glide spreads the change over its
+              // duration, however long a frame takes on the machine sampling it.
+              const heights = frames.map((frame) => frame.notice!.bottom - frame.notice!.top);
+              const from = heights[0]!;
+              const to = heights.at(-1)!;
+              const leaves = heights.findIndex((height) => Math.abs(height - from) > 1);
+              const lands = heights.findIndex(
+                (height, index) => index >= leaves && Math.abs(height - to) <= 1,
+              );
+              expect(
+                Math.abs(to - from) <= 1 || frames[lands]!.at - frames[leaves - 1]!.at >= 100,
+                "ASSERTION: the notice goes quiet in place by a glide, never a cut",
+              ).toBe(true);
+              // The run it starts lands under it and the conversation follows, as after any send.
+              expect(
+                steps((frame) => frame.message!),
+                "ASSERTION: the message moves by a glide as its run starts, never a jump",
+              ).toBeLessThan(60);
+              expect(
+                Math.abs(
+                  frames.at(-1)!.message! -
+                    frames.at(-1)!.notice!.bottom -
+                    (frames[0]!.message! - frames[0]!.notice!.bottom),
+                ),
+                "ASSERTION: the message keeps its place under the notice as its mark clears",
+              ).toBeLessThanOrEqual(2);
+              expect(
+                [...engine.runs.values()].at(-1)!.state,
+                "ASSERTION: the held message's run starts",
+              ).toBe("running");
+              yield* s.then.noExternalNetwork;
+            }),
+        );
       });
     });
   });

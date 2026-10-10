@@ -25,6 +25,7 @@ export {
   engineRow,
   personItem,
   noteItem,
+  thoughtItem,
   workItem,
 } from "./mateEngine.ts";
 export { graceOver, liveZerops, ORG, pastGrace } from "./account.ts";

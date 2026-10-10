@@ -119,12 +119,23 @@ export function ElapsedSince({
 export function MessageReceipt({
   receipt,
   speaker,
+  resetsAt = null,
+  timestampFormat = "locale",
 }: {
-  readonly receipt: "sent" | "seen";
+  readonly receipt: "sent" | "seen" | "held";
   readonly speaker: ConversationSpeaker;
+  /** A held message's reset, when the limit names one. */
+  readonly resetsAt?: string | null;
+  readonly timestampFormat?: TimestampFormat;
 }) {
   if (receipt === "seen") return null;
-  const label = `Not read yet — ${speaker.name} reads it at its next step`;
+  const label =
+    receipt === "held"
+      ? resetsAt === null
+        ? "Sends when the limit resets"
+        : `Sends when the limit resets ${spokenUpcoming(resetsAt, timestampFormat)}`
+      : `Not read yet — ${speaker.name} reads it at its next step`;
+  const Icon = receipt === "held" ? PauseIcon : ClockIcon;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -137,11 +148,17 @@ export function MessageReceipt({
           />
         }
       >
-        <ClockIcon aria-hidden="true" className="size-3 text-muted-foreground" />
+        <Icon aria-hidden="true" className="size-3 text-muted-foreground" />
       </TooltipTrigger>
       <TooltipPopup side="left">{label}</TooltipPopup>
     </Tooltip>
   );
+}
+
+/** A coming moment as a sentence says it: "at 1:00 PM", "tomorrow at 1:00 PM", "on Oct 12 1:00 PM". */
+function spokenUpcoming(iso: string, timestampFormat: TimestampFormat): string {
+  const stamp = formatUpcomingTimestamp(iso, timestampFormat);
+  return stamp.startsWith("tomorrow ") ? stamp : /^\d/.test(stamp) ? `at ${stamp}` : `on ${stamp}`;
 }
 
 const WEEKDAY = new Intl.DateTimeFormat(undefined, {
@@ -401,6 +418,7 @@ export function PauseBlock({
   onContinue = null,
   triesBeforeReset = false,
   blockedByAnswer = false,
+  stage = true,
 }: {
   readonly mate?: Parameters<typeof MateConnectionState>[0]["mate"] | undefined;
   readonly row: Extract<MessagesTimelineRow, { kind: "pause" }>;
@@ -419,6 +437,11 @@ export function PauseBlock({
    */
   readonly triesBeforeReset?: boolean;
   readonly blockedByAnswer?: boolean;
+  /**
+   * Whether the server's live pause fills its room with the Mate's face; in a conversation only
+   * the pause with nothing after it does (`livePauseStageId`), else it is the notice card.
+   */
+  readonly stage?: boolean;
 }) {
   const resumed = row.resumedAt !== null;
   const resetsAt = limit.kind === "none" ? row.resetsAt : limit.resetsAt;
@@ -478,7 +501,7 @@ export function PauseBlock({
       )}
     </div>
   ) : null;
-  if (!history && serverPause !== null) {
+  if (stage && !history && serverPause !== null) {
     const voice = mateNoticeVoice({
       reachability: null,
       conversationShown: false,
