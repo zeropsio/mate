@@ -4662,8 +4662,23 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
     align-items: center;
     gap: 12px;
     min-width: 0;
-    height: 64px;
-    padding-inline-start: 8px;
+    height: 52px;
+    margin-block: 6px;
+    padding-inline: 8px 4px;
+    border-radius: 12px;
+    text-align: start;
+    cursor: pointer;
+    outline: none;
+    transition: background-color 150ms var(--ease-out-strong);
+  }
+
+  .menu-foot-who:hover,
+  .menu-foot-who[data-popup-open] {
+    background: var(--sidebar-row-hover);
+  }
+
+  .menu-foot-who:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
   }
 
   .menu-foot-lines {
@@ -4706,13 +4721,11 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
       color 150ms var(--ease-out-strong);
   }
 
-  .menu-foot-button:hover,
-  .menu-foot-button[data-popup-open] {
-    background: var(--sidebar-row-hover);
+  .menu-foot-who:hover .menu-foot-button,
+  .menu-foot-who[data-popup-open] .menu-foot-button {
     color: var(--sidebar-foreground);
   }
 
-  .menu-foot-button:focus-visible,
   .menu-foot-photo:focus-visible {
     box-shadow: 0 0 0 2px var(--ring);
   }

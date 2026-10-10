@@ -123,38 +123,39 @@ export function SidebarZeropsAccount({
     );
   }
 
+  // The viewer's photo, name and role are the one control, its ··· the sign that it opens: how the
+  // list reads, the organization, the places, and the way out.
   return (
-    <div className="menu-foot-who">
-      <Avatar initials={account.initials} size="md" src={account.avatarUrl} />
-      <span className="menu-foot-lines">
-        <span className="menu-foot-name">{lines.name}</span>
-        {/* An organization still being resolved is absent, never a placeholder: the foot must
-            paint nothing it takes back. */}
-        {role === null ? null : (
-          <span className="menu-foot-role" data-zerops-surface="sidebar-account-role">
-            {role.before}
-            <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
-            {role.after}
-          </span>
-        )}
-      </span>
-      {/* One ···: how the list reads, the organization, the places, and the way out. */}
-      <Menu>
-        <MenuTrigger
-          render={
-            <button
-              aria-label={`Account: ${account.name}`}
-              className="menu-foot-button"
-              data-zerops-surface="sidebar-account"
-              type="button"
-            />
-          }
-        >
-          <EllipsisIcon aria-hidden="true" className="size-4" />
-        </MenuTrigger>
-        {menu}
-      </Menu>
-    </div>
+    <Menu>
+      <MenuTrigger
+        render={
+          <button
+            aria-label={`Account: ${account.name}`}
+            className="menu-foot-who"
+            data-zerops-surface="sidebar-account"
+            type="button"
+          />
+        }
+      >
+        <Avatar initials={account.initials} size="md" src={account.avatarUrl} />
+        <span className="menu-foot-lines">
+          <span className="menu-foot-name">{lines.name}</span>
+          {/* An organization still being resolved is absent, never a placeholder: the foot must
+              paint nothing it takes back. */}
+          {role === null ? null : (
+            <span className="menu-foot-role" data-zerops-surface="sidebar-account-role">
+              {role.before}
+              <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
+              {role.after}
+            </span>
+          )}
+        </span>
+        <span aria-hidden="true" className="menu-foot-button">
+          <EllipsisIcon className="size-4" />
+        </span>
+      </MenuTrigger>
+      {menu}
+    </Menu>
   );
 }
 
