@@ -15,7 +15,7 @@ import * as Schema from "effect/Schema";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
-import { installArea } from "./fake.ts";
+import { installArea, reportContainer } from "./fake.ts";
 import { menuScenario } from "../b-menu/dsl.ts";
 import { reportConversation } from "../b-menu/fake.ts";
 
@@ -604,6 +604,168 @@ describe("owner-reported layout regressions", () => {
               });
               yield* s.then.noReload;
             }),
+        );
+      });
+    });
+    describe("Decision: recovery results float as toasts; the docked footer is clear above the card.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        const frame = (page: Page) =>
+          page.evaluate(() => {
+            const box = (selector: string) => {
+              const { top, bottom, left, right } = document
+                .querySelector(selector)!
+                .getBoundingClientRect();
+              return { top, bottom, left, right };
+            };
+            return {
+              window: innerHeight,
+              footer: box("[data-chat-composer-overlay]"),
+              card: box('[data-slot="composer-shell"]'),
+              conversation: box(".timeline-legend-list"),
+              // The column's side gutter: the docked footer's inline inset around the card.
+              gutter: parseFloat(
+                getComputedStyle(document.querySelector("[data-chat-composer-overlay] > div")!)
+                  .paddingLeft,
+              ),
+            };
+          });
+
+        // Owner, 2026-10-09: "a huge space at the bottom, cutting deeply into the chat".
+        it.effect(
+          "the conversation runs to the window's bottom and a recovery result arriving moves neither the composer nor the conversation",
+          () =>
+            Effect.gen(function* () {
+              const s = yield* createScenario([installArea]);
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.project("Ada", { mate: true });
+              yield* s.given.project("Wren", { mate: true });
+              const chat = mateChat(s);
+              const ada = chat.fixture("Ada");
+              ada.history("Read this conversation");
+              for (let i = 0; i < 6; i++) ada.exchange(`Question ${i}`, `Answer ${i}`);
+              const wren = chat.fixture("Wren");
+              wren.history();
+              s.drivers.zerops.writes.autoComplete = false;
+              let processId: string | undefined;
+              s.drivers.zerops.handlers.unshift(async (request) => {
+                if (
+                  request.method !== "PUT" ||
+                  !request.url.pathname.endsWith("/service-stack/service-Wren/start")
+                )
+                  return undefined;
+                processId = s.drivers.zerops.writes.start("Wren", "stack.start", ["service-Wren"]);
+                return { body: { id: processId } };
+              });
+              yield* s.given.signedIn;
+              yield* chat.when.open("Ada", "Read this conversation");
+              yield* chat.then.text("Answer 5");
+              yield* Effect.promise(() => ownerMenu(s.page));
+              const quiet = yield* Effect.promise(() => frame(s.page));
+              expect(
+                quiet.footer.bottom,
+                "ASSERTION: nothing is laid out under the conversation",
+              ).toBe(quiet.window);
+              expect(
+                quiet.window - quiet.card.bottom,
+                "ASSERTION: the card sits one gutter above the window's bottom",
+              ).toBe(quiet.gutter);
+
+              yield* chat.when.open("Wren");
+              reportContainer(s.drivers, "Wren", "STOPPED");
+              wren.disconnect();
+              yield* chat.when.press("Start");
+              yield* chat.then.text("Zerops accepted the start. Its outcome is not confirmed yet.");
+              yield* chat.when.open("Ada", "Read this conversation");
+              yield* chat.then.text("Answer 5");
+              const toast = (text: string) =>
+                Effect.promise(() =>
+                  s.page.waitForFunction(
+                    (wanted) =>
+                      document
+                        .querySelector('[data-slot="toast-viewport"]')
+                        ?.textContent?.includes(wanted),
+                    {},
+                    text,
+                  ),
+                );
+              yield* toast("Wren: Zerops accepted the start.");
+              const shown = yield* Effect.promise(() => frame(s.page));
+              expect(processId).toBeDefined();
+              s.drivers.zerops.writes.transition(
+                processId!,
+                "FAILED",
+                "The start was refused by the container.",
+              );
+              yield* toast("Start failed.");
+              const changed = yield* Effect.promise(() => frame(s.page));
+              for (const after of [shown, changed]) {
+                expect(
+                  after.card,
+                  "ASSERTION: a recovery result does not move the composer",
+                ).toEqual(quiet.card);
+                expect(
+                  after.conversation,
+                  "ASSERTION: a recovery result does not shrink the conversation",
+                ).toEqual(quiet.conversation);
+              }
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
+        // Owner, 2026-10-09: "it doesn't go to the top edge either". Paint, not hit-testing:
+        // the docked footer ignores the pointer, so only pixels can tell its band apart.
+        // Nothing painting below the card is "history does not paint through the composer footer".
+        it.effect("the conversation shows right up to the composer card's top edge", () =>
+          Effect.gen(function* () {
+            const { s } = yield* composerLayout("plain");
+            yield* Effect.promise(() => ownerMenu(s.page));
+            const list = (yield* Effect.promise(() => s.page.$(".timeline-legend-list")))!;
+            yield* Effect.promise(async () => {
+              const bounds = (await list.boundingBox())!;
+              await s.page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 100);
+              await s.page.mouse.wheel({ deltaY: -350 });
+              await s.page.waitForFunction(
+                () => !document.querySelector("[data-timeline-follows-end]"),
+                { polling: "raf", timeout: 8000 },
+              );
+            });
+            // The two pixel rows just above the card's top edge, across the card.
+            const showsThrough = () =>
+              Effect.promise(async () => {
+                const { card } = await frame(s.page);
+                const clip = {
+                  x: Math.ceil(card.left),
+                  y: Math.floor(card.top) - 2,
+                  width: Math.floor(card.right) - Math.ceil(card.left),
+                  height: 2,
+                };
+                const visible = await s.page.screenshot({ clip });
+                await list.evaluate((node) => {
+                  (node as HTMLElement).style.visibility = "hidden";
+                });
+                const hidden = await s.page.screenshot({ clip });
+                await list.evaluate((node) => {
+                  (node as HTMLElement).style.visibility = "";
+                });
+                return Buffer.compare(visible, hidden) !== 0;
+              });
+            // Step a line's height in small moves so text, not a gap between lines, passes the edge.
+            let seen = false;
+            for (let step = 0; step < 12 && !seen; step++) {
+              seen = yield* showsThrough();
+              if (!seen)
+                yield* Effect.promise(() =>
+                  list.evaluate((node) => {
+                    node.scrollTop -= 5;
+                  }),
+                );
+            }
+            expect(
+              seen,
+              "ASSERTION: the conversation paints right up to the composer card's top edge",
+            ).toBe(true);
+            yield* s.then.noExternalNetwork;
+          }),
         );
       });
     });
