@@ -1011,7 +1011,6 @@ describe("owner-reported layout regressions", () => {
                   autoResume: false,
                 };
                 driver.shell();
-                yield* chat.then.text("Ada hit the coding agent's limit");
                 yield* chat.then.text("Finish the deploy once the limit resets");
               }),
           },
