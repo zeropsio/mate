@@ -5,7 +5,7 @@
  */
 import type { VaultScope, VaultValue, VaultView } from "@t3tools/client-runtime/data";
 
-import { joinNames } from "./vault.logic";
+import { joinNames, scopeName } from "./vault.logic";
 
 const ACRONYMS = new Set([
   "AI",
@@ -380,6 +380,60 @@ export function vaultGroups(
     .toSorted((a, b) => a.order - b.order || a.title.localeCompare(b.title));
 }
 
+/** One part of the vault's one list: what every app gets, or one app's own values. */
+export interface VaultSection {
+  readonly scope: VaultScope;
+  /** "Every app", or the app's hostname. */
+  readonly title: string;
+  /** What the app is, in words ("Node.js app"); none for every app. */
+  readonly words: string | null;
+  /** Its values, related ones together, each named whole ("Stripe secret key"). */
+  readonly entries: ReadonlyArray<VaultEntry>;
+}
+
+/**
+ * The Vault's one list: what every app gets, then each app's own, then the services Zerops runs
+ * (folded, read only). A part that holds nothing, or nothing the search finds, is left out.
+ */
+export function vaultSections(
+  view: VaultView,
+  query: string,
+): {
+  readonly sections: ReadonlyArray<VaultSection>;
+  readonly made: ReadonlyArray<VaultScope>;
+} {
+  const sections = view.scopes
+    .filter((scope) => scope.kind !== "managed")
+    .toSorted((a, b) => (a.kind === "shared" ? -1 : b.kind === "shared" ? 1 : 0))
+    .map((scope): VaultSection => {
+      const filter: VaultFilter =
+        scope.kind === "shared" ? { kind: "all" } : { kind: "app", id: scope.id };
+      const entries = vaultGroups(view, filter, "")
+        .flatMap((group) => group.entries)
+        .map((entry) => ({ ...entry, label: labelOf(keyWords(entry.value.key)) }))
+        .filter((entry) => entryMatches(entry, query));
+      return {
+        scope,
+        title: scopeName(scope),
+        words: scope.kind === "shared" ? null : serviceWords(scope).words,
+        entries,
+      };
+    })
+    .filter((section) => section.entries.length > 0);
+  const needle = query.toLowerCase();
+  const made = view.scopes.filter(
+    (scope) =>
+      scope.kind === "managed" &&
+      (needle === "" ||
+        [
+          scope.hostname ?? "",
+          serviceWords(scope).words ?? "",
+          ...scope.values.map((v) => v.key),
+        ].some((text) => text.toLowerCase().includes(needle))),
+  );
+  return { sections, made };
+}
+
 // ── what needs the person ───────────────────────────────────────────────────
 
 export interface VaultNeeds {
@@ -413,8 +467,7 @@ export function unsetTitle(unset: ReadonlyArray<VaultEntry>): string {
  * isolation lands, but nothing should rely on that (spec-mate §5.8).
  */
 export function usedByWords(value: VaultValue): string {
-  if (value.readers.length === 0)
-    return "No app uses it yet: an app's deploy config has to name it.";
+  if (value.readers.length === 0) return "No app uses it yet.";
   return `Used by ${joinNames(value.readers.map((reader) => reader.hostname))}.`;
 }
 

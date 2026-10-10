@@ -324,7 +324,7 @@
       "title": "Zerops Vault tab",
       "components": [
         "apps/web/src/components/zerops/vault/VaultEditors.tsx",
-        "apps/web/src/components/zerops/vault/VaultNotLive.tsx",
+        "apps/web/src/components/zerops/vault/VaultLines.tsx",
         "apps/web/src/components/zerops/vault/VaultPanel.tsx",
         "apps/web/src/components/zerops/vault/VaultPanelContainer.tsx",
         "apps/web/src/components/zerops/vault/VaultRow.tsx",

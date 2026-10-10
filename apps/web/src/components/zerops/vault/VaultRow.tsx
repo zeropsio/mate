@@ -1,8 +1,7 @@
 /**
- * The vault's pieces inside its cards: one value as a one-line row that opens in place, a card
- * with its header, a service Zerops runs as read-only rows, and the list of what an app reads
- * from its deploy config. Drawn from props only; the panel (`VaultPanel.tsx`) holds which row is
- * open and what is in flight.
+ * The vault's rows: one value as a one-line row that opens in place, and a service Zerops runs as
+ * read-only rows. Drawn from props only; the panel (`VaultPanel.tsx`) holds which row is open and
+ * what is in flight.
  */
 import type {
   VaultImpact,
@@ -22,7 +21,6 @@ import {
   LockIcon,
   RotateCwIcon,
   TriangleAlertIcon,
-  type LucideIcon,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -35,10 +33,8 @@ import { Spinner } from "../../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import {
   generateVaultValue,
-  readSource,
   referenceFor,
   removeGuardWords,
-  scopeName,
   type VaultWordPart,
 } from "./vault.logic";
 import {
@@ -99,7 +95,11 @@ function Tip({ tip, children }: { readonly tip: string; readonly children: React
 function CopyReference({ text, label }: { readonly text: string; readonly label?: string }) {
   const { copyToClipboard, isCopied } = useCopyToClipboard();
   return (
-    <Tip tip={isCopied ? "Copied" : "Copy"}>
+    <Tip
+      tip={
+        isCopied ? "Copied" : label === undefined ? `Copy ${text}` : "Copy it into a deploy config"
+      }
+    >
       <Button
         aria-label={`Copy ${text}`}
         data-vault-copy={text}
@@ -117,39 +117,12 @@ function CopyReference({ text, label }: { readonly text: string; readonly label?
   );
 }
 
-/**
- * A card of the vault: its icon and title, an optional note or link at the right, and its rows
- * with hairlines between them.
- */
-export function VaultBox(props: {
-  readonly icon: LucideIcon;
-  readonly title: ReactNode;
-  readonly aside?: ReactNode;
-  readonly children: ReactNode;
-  readonly id?: string;
-}) {
-  const Icon = props.icon;
-  return (
-    <section className="vault-box" data-vault-group={props.id}>
-      <header className="vault-box-head flex min-h-10 items-center gap-2 px-3.5 py-2">
-        <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-        <h3 className="min-w-0 truncate font-semibold text-line text-foreground">{props.title}</h3>
-        <span className="grow" />
-        {props.aside}
-      </header>
-      <div className="vault-rows">{props.children}</div>
-    </section>
-  );
-}
-
 export interface VaultRowProps {
   readonly view: VaultView;
   readonly scope: VaultScope;
   readonly value: VaultValue;
-  /** The value's name in words; its key shows when the row opens. */
+  /** The value's name in words; its key stands beside it. */
   readonly label: string;
-  /** The one app that has it, when the list shows every app's values. */
-  readonly only: string | null;
   readonly open: boolean;
   readonly flash: boolean;
   readonly activity: VaultRowActivity;
@@ -165,9 +138,13 @@ export interface VaultRowProps {
   readonly onReveal?: ((scope: VaultScopeRef, id: string) => Promise<VaultRevealed>) | undefined;
 }
 
-/** One value on one line: its name in words at the left, the value at the right; open, its verbs. */
+/**
+ * One value on one line: its name in words and its key at the left, the value at the right, a
+ * mark when an app still runs the old one; open, its verbs.
+ */
 export function VaultRow(props: VaultRowProps) {
   const { value, open, activity } = props;
+  const stale = value.readers.some((reader) => reader.state === "restart");
   return (
     <div
       className="vault-row"
@@ -183,14 +160,20 @@ export function VaultRow(props: VaultRowProps) {
       >
         <span className="flex min-w-0 shrink items-center gap-2">
           <span className="truncate text-line text-foreground">{props.label}</span>
-          {props.only === null ? null : (
-            <span className="vault-only shrink-0 truncate text-2xs text-muted-foreground">
-              only {props.only}
-            </span>
-          )}
+          <code className="min-w-0 truncate font-mono text-2xs text-muted-foreground">
+            {value.key}
+          </code>
         </span>
         <span className="vault-row-value ml-auto flex min-w-0 max-w-[62%] items-center justify-end gap-1.5 text-line text-muted-foreground">
           {activity.kind === "busy" ? <Spinner size="sm" tone="muted" /> : null}
+          {stale && activity.kind !== "busy" ? (
+            <RotateCwIcon
+              aria-label="An app still runs the old value"
+              className="size-3 shrink-0 text-warning-foreground"
+              data-vault-stale=""
+              role="img"
+            />
+          ) : null}
           {activity.kind === "settled" && activity.check ? (
             <span
               aria-label="Saved"
@@ -307,6 +290,8 @@ function RowBody(props: VaultRowProps) {
   const restarts = value.readers.filter((reader) => reader.state === "restart");
   const { copyToClipboard, isCopied } = useCopyToClipboard();
 
+  // A value not set yet whose name says secret is saved hidden.
+  const unset = !value.sensitive && (value.value ?? "") === "";
   const save = () => {
     if (!changed || busy) return;
     props.onWrite({
@@ -314,7 +299,7 @@ function RowBody(props: VaultRowProps) {
       id: value.id,
       key: value.key,
       value: draft,
-      sensitive: value.sensitive,
+      sensitive: value.sensitive || (unset && looksSecret(value.key)),
     });
   };
   const remove = () => {
@@ -335,7 +320,9 @@ function RowBody(props: VaultRowProps) {
             if (event.key === "Enter") save();
             if (event.key === "Escape") props.onToggle();
           }}
-          placeholder={value.sensitive ? "Hidden · paste a new value to replace it" : "Not set"}
+          placeholder={
+            value.sensitive ? "Hidden · paste a new value to replace it" : "Paste it here"
+          }
           spellCheck={false}
           type={(value.sensitive || masked) && !reveal ? "password" : "text"}
           value={draft}
@@ -399,8 +386,7 @@ function RowBody(props: VaultRowProps) {
         {value.sensitive ? (
           <p className="flex items-center gap-1.5">
             <LockIcon aria-hidden="true" className="size-3 shrink-0" />
-            Secret — hidden here and from {props.mateName ?? "your Mate"}. Show reveals it to you;
-            your apps still get it.
+            Hidden from everyone, {props.mateName ?? "your Mate"} included. Your apps still get it.
           </p>
         ) : null}
         {revealRefusal === null ? null : (
@@ -440,15 +426,12 @@ function RowBody(props: VaultRowProps) {
       </div>
 
       <div className="flex flex-wrap items-center gap-0.5 border-t border-border/60 pt-2">
-        <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-          <code className="truncate font-mono">{value.key}</code>
-          <CopyReference text={reference.own} />
-        </span>
+        <CopyReference label={reference.own} text={reference.own} />
         <span className="grow" />
         {!masked ? null : (
           <Button disabled={busy} onClick={() => setLocking(true)} size="xs" variant="ghost-muted">
-            <LockIcon />
-            Make secret
+            <EyeOffIcon />
+            Hide it
           </Button>
         )}
         <Button disabled={busy} onClick={remove} size="xs" variant="ghost-destructive">
@@ -458,13 +441,13 @@ function RowBody(props: VaultRowProps) {
 
       {locking ? (
         <div
-          aria-label={`Make ${props.label} secret`}
+          aria-label={`Hide ${props.label}`}
           className="grid gap-2.5 rounded-md bg-muted/60 px-3 py-2.5 text-line leading-4.75"
           role="alertdialog"
         >
           <p>
-            Once it's secret it stays hidden from everyone who opens this environment and from{" "}
-            {props.mateName ?? "your Mate"}. You can still show it here; your apps still get it.
+            Nobody reads it back once it's hidden, {props.mateName ?? "your Mate"} included. You can
+            still show it to yourself here, and your apps still get it.
           </p>
           <div className="flex justify-end gap-1.5">
             <Button onClick={() => setLocking(false)} size="xs" variant="ghost-muted">
@@ -483,7 +466,7 @@ function RowBody(props: VaultRowProps) {
               }}
               size="xs"
             >
-              Make it secret
+              Hide it
             </Button>
           </div>
         </div>
@@ -590,99 +573,4 @@ function VaultManagedRow({
       )}
     </div>
   );
-}
-
-/** What a runtime app reads from its deploy config: each key, and where its value comes from. */
-export function VaultReadRows({
-  view,
-  scope,
-  onGoto,
-}: {
-  readonly view: VaultView;
-  readonly scope: VaultScope;
-  readonly onGoto: (scopeId: string, key: string) => void;
-}) {
-  const host = scopeName(scope);
-  if (scope.reads.length === 0) {
-    return <p className="px-3.5 py-3 text-line text-muted-foreground">Nothing deployed yet.</p>;
-  }
-  return (
-    <>
-      {scope.reads.map((read) => {
-        const source = readSource(view, scope, read);
-        const target = source.kind === "source" ? source.target : null;
-        const content = (
-          <>
-            <span className="min-w-0 shrink truncate font-mono text-xs text-foreground">
-              {read.key}
-            </span>
-            <span className="ml-auto flex min-w-0 max-w-[62%] items-center justify-end">
-              <ReadSourceLabel host={host} source={source} />
-            </span>
-          </>
-        );
-        return target === null ? (
-          <div
-            className="vault-row flex h-10 items-center gap-3 px-3.5"
-            data-static=""
-            data-vault-read={read.key}
-            key={read.key}
-          >
-            {content}
-          </div>
-        ) : (
-          <button
-            className="vault-row vault-read-link flex h-10 w-full items-center gap-3 px-3.5 text-left"
-            data-vault-read={read.key}
-            key={read.key}
-            onClick={() => onGoto(target.scopeId, target.key)}
-            type="button"
-          >
-            {content}
-          </button>
-        );
-      })}
-    </>
-  );
-}
-
-function ReadSourceLabel({
-  host,
-  source,
-}: {
-  readonly host: string;
-  readonly source: ReturnType<typeof readSource>;
-}) {
-  if (source.kind === "literal") {
-    return (
-      <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
-        {source.text}
-      </span>
-    );
-  }
-  if (source.kind === "bad") {
-    return (
-      <Tip
-        tip={
-          source.text === "self"
-            ? `${host}'s zerops.yml sets it to \${${source.name}}, so the app gets that literal text`
-            : `Nothing has \${${source.name}}, so ${host} gets the literal text`
-        }
-      >
-        <span className="inline-flex items-center gap-0.75 font-medium text-2xs text-warning-foreground">
-          <TriangleAlertIcon aria-hidden="true" className="size-[11px]" />
-          {source.text}
-        </span>
-      </Tip>
-    );
-  }
-  if (source.target !== null) {
-    return (
-      <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-        <span className="truncate font-mono text-foreground/80">{source.target.key}</span>
-        <span className="shrink-0">· {source.text}</span>
-      </span>
-    );
-  }
-  return <span className="truncate text-xs text-muted-foreground">from {source.text}</span>;
 }
