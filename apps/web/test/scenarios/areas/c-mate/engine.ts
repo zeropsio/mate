@@ -24,11 +24,16 @@ export class EngineChatWire implements ChatWire {
     // The fixture's agent acknowledges an answer and ends the run it waited in, unless the
     // journey runs that run itself: then the journey ends it, as on V1.
     this.engine.onAnswer.push((request) =>
-      this.engine.note(
-        request.runId,
-        RESPONSE_RECEIVED,
-        [...this.journeyRuns.values()].includes(request.runId) ? undefined : { kind: "completed" },
-      ),
+      // A value asked of the person resumes the agent in a run of its own, not the one that asked.
+      request.ask.kind === "vault"
+        ? undefined
+        : this.engine.note(
+            request.runId,
+            RESPONSE_RECEIVED,
+            [...this.journeyRuns.values()].includes(request.runId)
+              ? undefined
+              : { kind: "completed" },
+          ),
     );
   }
 

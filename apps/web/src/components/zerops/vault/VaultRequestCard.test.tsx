@@ -1,5 +1,9 @@
 // @vitest-environment happy-dom
-import type { VaultScopeRef, VaultWrite } from "@t3tools/client-runtime/data";
+import type {
+  VaultAskActivityPayload,
+  VaultScopeRef,
+  VaultWrite,
+} from "@t3tools/client-runtime/data";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -7,7 +11,12 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { VaultWriteOutcome } from "./VaultPanel";
 import { VaultRequestCard } from "./VaultRequestCard";
 import { VAULT_FIXTURE, VAULT_FIXTURE_NOW } from "./vaultFixture";
-import { type VaultAsk, type VaultAskSaid, vaultAskState } from "./vaultRequest.logic";
+import {
+  type VaultAsk,
+  type VaultAskSaid,
+  vaultAskPickUp,
+  vaultAskState,
+} from "./vaultRequest.logic";
 
 let root: Root | undefined;
 
@@ -37,6 +46,7 @@ async function mount(
   asked: VaultAsk,
   answer: VaultWriteOutcome = { ok: true },
   said: VaultAskSaid | null = null,
+  engine: VaultAskActivityPayload["state"] | null = null,
 ): Promise<Mounted> {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const puts: Mounted["puts"] = [];
@@ -56,6 +66,8 @@ async function mount(
           return answer;
         }}
         said={saying}
+        engine={engine}
+        pickUp={vaultAskPickUp(VAULT_FIXTURE, asked)}
         state={vaultAskState(VAULT_FIXTURE, asked)}
       />
     );
@@ -168,5 +180,54 @@ describe("VaultRequestCard — asking for a value", () => {
     const { container } = await mount(ask({ scope: { kind: "service", hostname: "gone" } }));
     expect(field(container)).toBeNull();
     expect(container.textContent).toContain("gone is not in this project any more.");
+  });
+});
+
+describe("VaultRequestCard — an ask the engine keeps", () => {
+  it("names the key, why, where it goes and what makes it take effect, behind Save and Decline", async () => {
+    const { container } = await mount(ask(), { ok: true }, null, "open");
+    expect(container.textContent).toContain("Fen needs OPENAI_API_KEY");
+    expect(container.textContent).toContain("Shared · sensitive");
+    expect(container.textContent).toContain("platform.openai.com › API keys.");
+    expect(container.querySelector("[data-vault-request-pickup]")?.textContent).toBe(
+      "It takes effect once a service's zerops.yaml references it and that service is deployed.",
+    );
+    expect(field(container)?.getAttribute("autocomplete")).toBe("off");
+    expect(field(container)?.type).toBe("password");
+    expect(button(container, "Save")?.disabled).toBe(true);
+    expect(button(container, "Decline")).toBeDefined();
+  });
+
+  it("Save writes the value to the vault and keeps it nowhere: the card says the Mate was told", async () => {
+    const { container, puts } = await mount(ask(), { ok: true }, null, "open");
+    await type(container, "sk-test-123");
+    await click(button(container, "Save"));
+    expect(puts).toEqual([
+      {
+        scope: { kind: "shared" },
+        write: { kind: "add", key: "OPENAI_API_KEY", value: "sk-test-123", sensitive: true },
+      },
+    ]);
+    expect(field(container)).toBeNull();
+    expect(container.textContent).toContain("OPENAI_API_KEY is in the vault — Fen has been told");
+    expect(container.innerHTML).not.toContain("sk-test-123");
+    expect(JSON.stringify({ ...localStorage })).not.toContain("sk-test-123");
+    expect(JSON.stringify({ ...sessionStorage })).not.toContain("sk-test-123");
+  });
+
+  it("Decline folds it to one line and writes nothing", async () => {
+    const { container, puts } = await mount(ask(), { ok: true }, null, "open");
+    await click(button(container, "Decline"));
+    expect(container.textContent).toBe("Fen asked for OPENAI_API_KEY · Declined");
+    expect(puts).toEqual([]);
+  });
+
+  it.each([
+    ["saved", "OPENAI_API_KEY is in the vault — Fen has been told"],
+    ["declined", "Fen asked for OPENAI_API_KEY · Declined"],
+  ] as const)("the engine's record %s draws it so after a reload", async (engine, words) => {
+    const { container } = await mount(ask(), { ok: true }, null, engine);
+    expect(container.textContent).toContain(words);
+    expect(field(container)).toBeNull();
   });
 });

@@ -1,9 +1,14 @@
 /**
  * The Mate asks for a value only the person has: its name, where it goes and why, a field that
  * writes straight to the vault — never to the chat — and "Not now". Given, it folds to one line.
+ * An ask the engine keeps reads Save and Decline, and says what makes the value take effect.
  * Props only: the container reads the vault and submits the write.
  */
-import type { VaultScopeRef, VaultWrite } from "@t3tools/client-runtime/data";
+import type {
+  VaultAskActivityPayload,
+  VaultScopeRef,
+  VaultWrite,
+} from "@t3tools/client-runtime/data";
 import { CircleAlertIcon, LockKeyholeIcon } from "lucide-react";
 import { useState } from "react";
 
@@ -16,6 +21,7 @@ import {
   type VaultAsk,
   type VaultAskSaid,
   type VaultAskState,
+  vaultAskEngineFace,
   vaultAskFace,
   vaultAskWhere,
   vaultAskWrite,
@@ -27,6 +33,10 @@ export interface VaultRequestCardProps {
   readonly mateName: string;
   readonly state: VaultAskState;
   readonly said: VaultAskSaid | null;
+  /** The engine's record of the ask, on a conversation it keeps; `null` elsewhere. */
+  readonly engine?: VaultAskActivityPayload["state"] | null;
+  /** What the person does for the value to take effect; `null` before the vault is read. */
+  readonly pickUp?: string | null;
   /** Submits the write and says how it ended; the container records it for the Mate's next message. */
   readonly onPut: (scope: VaultScopeRef, write: VaultWrite) => Promise<VaultWriteOutcome>;
   readonly onNotNow: () => void;
@@ -36,32 +46,52 @@ const PASTE_LABEL = "Paste it here — it goes to the vault, not the chat";
 
 export function VaultRequestCard(props: VaultRequestCardProps) {
   const { ask, mateName, state } = props;
-  const face = vaultAskFace(state.kind, props.said);
+  const engine = props.engine ?? null;
+  const pickUp = props.pickUp ?? null;
+  const face =
+    engine === null
+      ? vaultAskFace(state.kind, props.said)
+      : vaultAskEngineFace(engine, state.kind, props.said);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
 
-  if (face === "put" || face === "filled" || face === "not-now") {
+  if (face !== "reading" && face !== "unplaced" && face !== "open") {
     return (
       <FlatCard
-        className="flex items-center gap-2 px-3.5 py-2 text-xs"
+        className="flex items-start gap-2 px-3.5 py-2 text-xs"
         data-vault-request={ask.key}
         data-vault-request-face={face}
       >
-        <LockKeyholeIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 truncate text-muted-foreground">
-          {face === "not-now" ? (
-            <>
-              {mateName} asked for <span className="font-mono text-foreground">{ask.key}</span> ·
-              Not now
-            </>
-          ) : (
-            <>
-              <span className="font-mono text-foreground">{ask.key}</span> is in the vault
-              {face === "put" ? ` — ${mateName} hears it with your next message` : ""}
-            </>
-          )}
-        </span>
+        <LockKeyholeIcon
+          aria-hidden="true"
+          className="mt-px size-3.5 shrink-0 text-muted-foreground"
+        />
+        <div className="grid min-w-0 gap-0.5">
+          <span className="min-w-0 truncate text-muted-foreground">
+            {face === "not-now" || face === "declined" || face === "closed" ? (
+              <>
+                {mateName} asked for <span className="font-mono text-foreground">{ask.key}</span> ·{" "}
+                {face === "not-now"
+                  ? "Not now"
+                  : face === "declined"
+                    ? "Declined"
+                    : "No longer asked"}
+              </>
+            ) : (
+              <>
+                <span className="font-mono text-foreground">{ask.key}</span> is in the vault
+                {face === "put" ? ` — ${mateName} hears it with your next message` : ""}
+                {face === "saved" ? ` — ${mateName} has been told` : ""}
+              </>
+            )}
+          </span>
+          {face === "saved" && pickUp !== null ? (
+            <span className="text-muted-foreground" data-vault-request-pickup>
+              {pickUp}
+            </span>
+          ) : null}
+        </div>
       </FlatCard>
     );
   }
@@ -101,6 +131,11 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
               {ask.reason}
             </p>
           )}
+          {engine === null || pickUp === null ? null : (
+            <p className="text-xs leading-4.5 text-muted-foreground" data-vault-request-pickup>
+              {pickUp}
+            </p>
+          )}
         </div>
         {face === "unplaced" ? (
           <p className="text-xs text-muted-foreground" data-vault-request-unplaced>
@@ -112,6 +147,10 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
             <Input
               aria-label={PASTE_LABEL}
               autoComplete="off"
+              data-1p-ignore=""
+              data-bwignore=""
+              data-form-type="other"
+              data-lpignore="true"
               disabled={open === null || busy}
               onChange={(event) => setValue(event.currentTarget.value)}
               onKeyDown={(event) => {
@@ -136,10 +175,10 @@ export function VaultRequestCard(props: VaultRequestCardProps) {
             <div className="flex items-center gap-2">
               <Button disabled={!canPut} onClick={() => void put()} size="xs">
                 {busy ? <Spinner size="xs" /> : null}
-                Put in vault
+                {engine === null ? "Put in vault" : "Save"}
               </Button>
               <Button disabled={busy} onClick={props.onNotNow} size="xs" variant="ghost-muted">
-                Not now
+                {engine === null ? "Not now" : "Decline"}
               </Button>
             </div>
           </>
