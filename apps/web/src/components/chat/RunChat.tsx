@@ -1625,7 +1625,10 @@ function StepBubble({
       timeTone={failure === "broken" ? "failed" : "muted"}
     >
       {step.kind === "command" ? (
-        step.words === null ? (
+        step.words === null && step.code === null ? (
+          // Its input not streamed in yet: what it does, never an empty bubble (run 5).
+          <span className="text-foreground/75">{running ? stepNowWords(step) : title}</span>
+        ) : step.words === null ? (
           <span className="font-mono text-foreground">{step.code}</span>
         ) : (
           <span className="text-foreground/75">{step.words}</span>
