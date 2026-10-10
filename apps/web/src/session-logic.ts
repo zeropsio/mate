@@ -23,6 +23,7 @@ import {
   extractCommandOutputText,
 } from "@t3tools/client-runtime/work-log/presentation";
 import {
+  type CallResultPage,
   CREW_SEAM_ACTIVITY_KIND,
   MateInterruption,
   CrewSeam,
@@ -178,6 +179,8 @@ function readCallInput(input: Record<string, unknown> | null): WorkCallInput | u
 
 export interface WorkLogEntry {
   interruption?: MateInterruption;
+  /** A page the call published for the person (`zerops_publish_page`), by reference. */
+  publishedPage?: CallResultPage;
   /**
    * `runtime.error`: how the server says its turn ended — its agent died
    * (`crash`), it failed (`failed`), or the usage limit refused it
@@ -1951,6 +1954,7 @@ export function zeropsCallToWorkLogEntry(call: ZeropsCall): WorkLogEntry {
     toolInput: call.input,
     toolLifecycleStatus: zeropsCallToolLifecycleStatus(call.status),
     ...(call.resultText !== undefined ? { detail: call.resultText } : {}),
+    ...(call.page !== undefined ? { publishedPage: call.page } : {}),
   };
 }
 

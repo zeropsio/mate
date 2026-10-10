@@ -24,6 +24,7 @@ import {
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
+import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 import { deriveTimelineEntries, deriveWorkLogEntries } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import { backgroundLineOf, jobItems } from "./backgroundLine.logic";
@@ -142,6 +143,8 @@ function render(input: {
   helpers?: boolean;
   /** The Mate is out of reach: since when, in its notice's words. */
   away?: { readonly since: string; readonly words: string };
+  /** Its Zerops calls drawn from their own model, as the conversation draws them. */
+  zerops?: boolean;
 }) {
   const records = {
     runs: input.runs.map((run) => decode(run)),
@@ -151,12 +154,20 @@ function render(input: {
     ...(input.paged ? { spans: [{ runId: run1, from: null, to: 0, reading: null }] } : {}),
   };
   const thread = engineThreadOfRecords(key, records)!;
+  const zerops = input.zerops
+    ? deriveZeropsThreadModel({ activities: thread.activities, runningTurnId: null })
+    : null;
   return deriveMessagesTimelineRows({
     runCards: engineRunCardsOfRecords(key, records)!,
     timelineEntries: deriveTimelineEntries(
       thread.messages as ReadonlyArray<ChatMessage>,
       [],
-      deriveWorkLogEntries(thread.activities),
+      deriveWorkLogEntries(
+        thread.activities,
+        zerops === null ? undefined : { exclude: zerops.zeropsActivityIds },
+      ),
+      [],
+      zerops?.entries ?? [],
     ),
     latestTurn: thread.latestTurn,
     isWorking: input.isWorking ?? false,
@@ -1015,4 +1026,70 @@ it.each([
     return [workedWords("Milo", card.status!), runEffortWords(card.outcome)];
   };
   expect(summaryOf(true)).toEqual(summaryOf(false));
+});
+
+describe("a page the Mate publishes", () => {
+  const page = {
+    asset: {
+      id: "6f1c2b9e-0000-4000-8000-000000000001",
+      threadId: "conversation",
+      ownerId: `${run1}/i/2`,
+      name: "page-0123456789abcdef.html",
+      provenance: "capture",
+      original: { status: "ready", digest: "b".repeat(64), mimeType: "text/html", sizeBytes: 17 },
+    },
+    title: "Launch plan",
+    bytes: 17,
+    publishedAt: t0 + 40_500,
+  };
+  const publish = call(2, 40_000, {
+    step: "mcp",
+    tool: { name: "mcp__zerops__zerops_publish_page", server: "zerops" },
+    words: "MCP tool call",
+    input: 'mcp__zerops__zerops_publish_page: {"title":"Launch plan"}',
+    result: { toolName: "zerops_publish_page", resultText: '{"page":{}}', page },
+  } as never);
+  const answer = noteItem(run1, 3, "Week one is the hardest.", { at: t0 + 41_000, answer: true });
+  const summary = {
+    items: 3,
+    calls: { mcp: 1 },
+    tools: { mcp__zerops__zerops_publish_page: 1 },
+    answerItemId: `${run1}/i/3`,
+    lastItemSeq: 3,
+  };
+
+  it.each([
+    { held: "live, before its answer", live: true, paged: false },
+    { held: "settled, every item held", live: false, paged: false },
+    { held: "after a reload, its page and answer held", live: false, paged: true },
+  ])(
+    "a page the Mate publishes stands in its run above the answer, the same live and after a reload: $held",
+    ({ live, paged }) => {
+      const rows = render({
+        runs: [
+          stressRun(
+            live
+              ? ({ state: "running", turnState: "running", endedAt: null, end: null } as never)
+              : ({ endedAt: t0 + 42_000, summary } as never),
+          ),
+        ],
+        items: [
+          personItem(run1, 1, "Plan the launch", { at: t0 }),
+          publish,
+          ...(live ? [] : [answer]),
+        ],
+        paged,
+        isWorking: live,
+        zerops: true,
+      });
+      const pageRow = rows.findIndex((row) => row.kind === "page");
+      const shown = rows[pageRow];
+      expect(shown?.kind === "page" ? shown.page : null).toEqual(page);
+      expect(pageRow).toBeGreaterThan(rows.findIndex((row) => row.kind === "record"));
+      const reply = rows.findIndex((row) => row.kind === "message" && row.id === answer.id);
+      if (live) expect(reply).toBe(-1);
+      else expect(reply).toBe(pageRow + 1);
+      expect(rows.filter((row) => row.kind === "page")).toHaveLength(1);
+    },
+  );
 });
