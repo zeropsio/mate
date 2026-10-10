@@ -94,7 +94,6 @@ import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useZeropsFirstBuilds } from "~/zerops/useZeropsFirstBuilds";
 import { drawnMateProjects, useVisibleProjectAccess } from "~/zerops/useVisibleProjectAccess";
 import { useNowMs } from "~/zerops/useNowMs";
-import { useClientSettings } from "~/hooks/useSettings";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useMateUpdateStates } from "~/zerops/useMateUpdate";
 import { useAccountOperations } from "~/zerops/accountOperations";
@@ -132,13 +131,9 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
-import { Avatar, MateFace, StatusDot } from "./primitives";
-import { mateRowAskLine, mateRowReading, mateRowSecond } from "./SidebarMateRow.logic";
-import { CardMate, CardMateTime } from "./projects/ProjectCards";
-import { cardMateReading, cardSecondWords } from "./projects/projectCard.logic";
-import { CardMateSlot, CardMateWrite, useOverviewSlots } from "./projects/overviewSlots";
-import { useAskMate } from "~/zerops/useAskMate";
-import { useAskMateToFix } from "~/zerops/fixRequest";
+import { MateFace, StatusDot } from "./primitives";
+import { useOverviewSlots } from "./projects/overviewSlots";
+import { OverviewCardMate } from "./projects/OverviewCardMate";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
 import { ZeropsHqCard } from "./ZeropsHqCard";
@@ -146,7 +141,7 @@ import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { MateUpdateStatusText } from "./MateUpdateLine";
 import { cn } from "~/lib/utils";
-import { formatRelativeTimeLabel, formatShortTimestamp } from "~/timestampFormat";
+import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useMateConversationsRead, useMateRowActivity } from "~/zerops/useMenuMateReadings";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
@@ -846,7 +841,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const activityOf = useMateRowActivity(useMatesActivity());
   // Whether a Mate's conversations are read: one with none says nothing was asked yet.
   const conversationsRead = useMateConversationsRead();
-  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const updates = useMateUpdateStates();
   // What this person may do with each Mate, from the one role function the
   // door runs too (D5). A `listed` row is shown and never opened.
@@ -1772,8 +1766,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ),
     [groupTree.groups, finishing.unfinished, finishing.finishing, halfMade],
   );
-  const askMate = useAskMate();
-  const askToFix = useAskMateToFix();
   // The cards' places as the menu's chips read them, their panels, and the people on each.
   const overview = useOverviewSlots<ZeropsCandidatePresentation>({
     flows: groupDeploys,
@@ -2005,146 +1997,32 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         <MateUpdateStatusText status={updateStatus} />
       );
 
-    // On its project's card: the menu row's reading of it, lifted where it waits on the viewer.
+    // On its project's card: read as its menu row reads it — one face, one line 2, one time.
     if (layout === "row") {
-      const groupId = tags.groupId;
-      const mine = projectPeople[candidate.project.id]?.waitsOnViewer === true;
-      const activity = activityOf(candidate);
-      const view = mateRowReading({
-        name,
-        connected: connected && candidate.environmentId !== undefined,
-        activity,
-        reviewWaits: mateReviewWaits(
-          groupId === undefined ? undefined : projectFlow.flows.get(groupId),
-          candidate.project.id,
-        ),
-        mine,
-        pose: matePoseOf(candidate, nowMs),
-      });
-      // Its line 2 as the menu's row says it (`mateRowSecond`): the same words in both places.
-      const people = projectPeople[candidate.project.id];
-      const askLine = mateRowAskLine({
-        view,
-        signIn: undefined,
-        draft: undefined,
-        sent: undefined,
-        deleting: false,
-        finishing: false,
-        read: conversationsRead(candidate),
-      });
-      const asks =
-        activity !== undefined &&
-        (activity.question !== undefined ||
-          activity.kind === "approval" ||
-          activity.kind === "input" ||
-          activity.kind === "planReady");
-      const second = mateRowSecond({
-        view,
-        askLine,
-        deleting: false,
-        finishing: false,
-        outsideHq: input.outsideHq === true,
-        mine: people?.waitsOnViewer,
-        // A colleague's Mate waiting on its person says whom it waits on, never their question.
-        waitsOn:
-          people?.waitsOnViewer === false &&
-          activity !== undefined &&
-          (activity.kind === "approval" ||
-            activity.kind === "input" ||
-            activity.kind === "planReady")
-            ? (people.owner?.name.split(" ")[0] ?? "its person")
-            : undefined,
-        asks,
-        change:
-          review === undefined
-            ? undefined
-            : { title: review.title, mine: people?.waitsOnViewer !== false },
-      });
-      const reading = cardMateReading({
-        view,
-        status: activity?.kind,
-        mine,
-        review: mine ? review : undefined,
-        read: conversationsRead(candidate),
-        line: cardSecondWords({
-          second,
-          reply: view.reply,
-          askLine,
-          pausedUntil: (at) => formatShortTimestamp(at, timestampFormat),
-        }),
-      });
-      const owner = mine ? undefined : projectPeople[candidate.project.id]?.owner;
-      // A Mate whose container has something to say first says it: coming up, a failed
-      // connect and its retry, an update under way.
-      const containerLine =
-        updateStatus !== null ? (
-          <MateUpdateStatusText status={updateStatus} />
-        ) : !connected && activity === undefined ? (
-          renderMateLine(candidate, presentation, action, live, busy)
-        ) : undefined;
       return (
-        <CardMate
-          actions={
-            reading.lift === undefined ? (
-              (startAction ?? removeAction)
-            ) : (
-              <CardMateWrite
-                environmentId={
-                  candidate.group === "connected" ? candidate.environmentId : undefined
-                }
-                lift={reading.lift}
-                name={name}
-                onAsk={(text) => {
-                  askMate(candidate.project.id, text);
-                }}
-                onFix={() => {
-                  askToFix(candidate.project.id, {
-                    what: `${name}'s last run stopped on an error`,
-                    error: activity?.errorLine,
-                    ask: "Find out why, fix it, and carry on.",
-                  });
-                }}
-                onOpen={() => select?.()}
-                onReview={(from) => {
-                  if (groupId === undefined || reading.lift?.kind !== "review") return;
-                  const { pull } = reading.lift;
-                  openReview(
-                    {
-                      kind: "change",
-                      groupId,
-                      repository: pull.repository,
-                      number: pull.number,
-                    },
-                    { from },
-                  );
-                }}
-                threadId={activity?.threadId}
-              />
-            )
+        <OverviewCardMate
+          activity={activityOf(candidate)}
+          candidate={candidate}
+          change={review}
+          // A Mate whose container has something to say first says it: coming up, a failed
+          // connect and its retry, an update under way.
+          containerActions={startAction ?? removeAction}
+          containerLine={
+            updateStatus !== null ? (
+              <MateUpdateStatusText status={updateStatus} />
+            ) : !connected && activityOf(candidate) === undefined ? (
+              renderMateLine(candidate, presentation, action, live, busy)
+            ) : undefined
           }
-          face={
-            <>
-              <MateFace className="size-8" shape={shape} size="md" state={view.face} tint={tint} />
-              {owner == null ? null : (
-                <Avatar
-                  className="ov-mate-owner"
-                  initials={owner.name.charAt(0).toLocaleUpperCase()}
-                  size="xs"
-                  src={owner.avatarUrl ?? null}
-                />
-              )}
-            </>
-          }
+          conversationsRead={conversationsRead(candidate)}
+          flow={tags.groupId === undefined ? undefined : projectFlow.flows.get(tags.groupId)}
+          groupId={tags.groupId}
           key={candidate.key}
-          line={containerLine}
           name={name}
           onOpen={select}
-          reading={reading}
-          time={
-            <CardMateTime dot={view.dot}>
-              <CardMateSlot at={activity?.at} slot={view.slot} />
-            </CardMateTime>
-          }
+          outsideHq={input.outsideHq === true}
+          shape={shape}
+          tint={tint}
         />
       );
     }
