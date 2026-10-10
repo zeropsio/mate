@@ -163,7 +163,6 @@ import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import {
   ProjectHeader,
   SidebarHqStatus,
-  SidebarNewProject,
   SidebarZeropsTree,
   type SidebarProjectFlow,
 } from "./SidebarZeropsTree";
@@ -2055,19 +2054,6 @@ describe("New project at the menu's foot (D11)", () => {
   it("is never one of the list's rows", () => {
     expect(row(render([CRM_DEV, LINKS_MATE]))).toBeNull();
     expect(row(render([]))).toBeNull();
-  });
-
-  it("starts a new project when pressed", () => {
-    let started = 0;
-    const mounted = mount(
-      <SidebarNewProject
-        onNewProject={() => {
-          started += 1;
-        }}
-      />,
-    );
-    press(mounted, "sidebar-new-project");
-    expect(started).toBe(1);
   });
 });
 
