@@ -1,3 +1,4 @@
+import { messagePreviewText } from "@t3tools/shared/messagePreview";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { lastKnownMateWords, mateUnreachableWords } from "../../zerops/lastKnownMate.logic";
 import { mateStatus } from "../../zerops/mateStatus.logic";
@@ -627,8 +628,12 @@ export function mateRowAskLine(input: {
     return view.ask === undefined ? undefined : { kind: "ask", text: view.ask };
   }
   if (input.signIn !== undefined) return { kind: "sign-in", ...input.signIn };
-  if (input.draft !== undefined) return { kind: "draft", text: input.draft, ask: view.ask };
-  if (input.sent !== undefined) return { kind: "ask", text: input.sent };
+  // The person's words as the row quotes every message: plain words (Milo's stress run 6 kept a
+  // just-sent message's raw backticks in the row).
+  const draft = input.draft === undefined ? null : messagePreviewText(input.draft);
+  if (draft !== null) return { kind: "draft", text: draft, ask: view.ask };
+  const sent = input.sent === undefined ? null : messagePreviewText(input.sent);
+  if (sent !== null) return { kind: "ask", text: sent };
   if (view.ask !== undefined) return { kind: "ask", text: view.ask };
   return view.reply === undefined && input.read ? { kind: "nothing-asked" } : undefined;
 }
