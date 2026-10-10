@@ -12,12 +12,38 @@ export function pageRequestAllowed(request: { readonly url: string }): boolean {
   return request.url === "about:blank" || request.url === "about:srcdoc";
 }
 
-/** How long after the person touched the page a link it asks to open is still their tap. */
-export const PAGE_TAP_WINDOW_MS = 1000;
+/** Where and when a finger touched the page or left it. */
+export interface PageTouchPoint {
+  readonly at: number;
+  readonly x: number;
+  readonly y: number;
+}
 
-/** Whether the person touched the page just now: a link it asks to open is then theirs. */
-export function tappedJustNow(lastTouchAt: number | null, now: number): boolean {
-  return lastTouchAt !== null && now - lastTouchAt >= 0 && now - lastTouchAt <= PAGE_TAP_WINDOW_MS;
+/** The longest a tap lasts: a finger held longer is a press, not a tap. */
+export const PAGE_TAP_MAX_MS = 300;
+/** The farthest a tapping finger moves: one that moved farther scrolled the conversation. */
+export const PAGE_TAP_SLOP_PX = 10;
+/** How long after a tap a link the page asks to open is still the person's. */
+export const PAGE_TAP_WINDOW_MS = 500;
+
+/**
+ * When the person tapped the page, if the finger that just left it tapped: it lifted soon after it
+ * landed and near where it landed. A finger that scrolled the conversation past the page, or held
+ * it, never tapped — the page sees its own touches and could time a link to any of them.
+ */
+export function tapEnded(start: PageTouchPoint | null, end: PageTouchPoint): number | null {
+  if (start === null) return null;
+  const lasted = end.at - start.at;
+  const moved = Math.hypot(end.x - start.x, end.y - start.y);
+  return lasted >= 0 && lasted <= PAGE_TAP_MAX_MS && moved <= PAGE_TAP_SLOP_PX ? end.at : null;
+}
+
+/**
+ * Whether a link the page asks to open now is the person's: they tapped just before. A tap opens
+ * one link at most — the caller clears it on every ask.
+ */
+export function openFromTap(tappedAt: number | null, now: number): boolean {
+  return tappedAt !== null && now - tappedAt >= 0 && now - tappedAt <= PAGE_TAP_WINDOW_MS;
 }
 
 /** The app's colours, as a page reads them: the web's variable names, filled from the phone's. */

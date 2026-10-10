@@ -9,7 +9,14 @@ import {
   type PageTheme,
 } from "@t3tools/client-runtime/zerops/publishedPage";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, View, useWindowDimensions } from "react-native";
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  View,
+  useWindowDimensions,
+  type GestureResponderEvent,
+} from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -25,7 +32,13 @@ import { AppText as Text } from "../../components/AppText";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { uuidv4 } from "../../lib/uuid";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
-import { mobilePageTheme, pageRequestAllowed, tappedJustNow } from "./publishedPage.logic";
+import {
+  mobilePageTheme,
+  openFromTap,
+  pageRequestAllowed,
+  tapEnded,
+  type PageTouchPoint,
+} from "./publishedPage.logic";
 
 /** The page eases from the cap to its own height as the web's frame does. */
 const PAGE_GLIDE = { duration: 220, easing: Easing.out(Easing.cubic) } as const;
@@ -91,7 +104,10 @@ function PublishedPageFrame(props: {
   const [left, setLeft] = useState(false);
   /** Each showing of the page is a web view of its own. */
   const [showing, setShowing] = useState(0);
-  const lastTouchAt = useRef<number | null>(null);
+  /** Where the finger on the page landed; null when none is down, or more than one. */
+  const touchStart = useRef<PageTouchPoint | null>(null);
+  /** When the person last tapped the page; one link opens from it at most. */
+  const tappedAt = useRef<number | null>(null);
   const webView = useRef<WebView>(null);
 
   const target = content === null ? cap : Math.min(cap, pageFrameHeight(content) ?? cap);
@@ -116,20 +132,38 @@ function PublishedPageFrame(props: {
       setContent(message.height);
       return;
     }
-    const url = linkToOpen(message, {
-      fromFrame: true,
-      focused: true,
-      activated: tappedJustNow(lastTouchAt.current, Date.now()),
-    });
+    const activated = openFromTap(tappedAt.current, Date.now());
+    tappedAt.current = null;
+    const url = linkToOpen(message, { fromFrame: true, focused: true, activated });
     if (url !== null) void tryOpenExternalUrl(url, "published-page");
   };
-  const touched = () => {
-    lastTouchAt.current = Date.now();
+  const pointOf = (event: GestureResponderEvent): PageTouchPoint => ({
+    at: Date.now(),
+    x: event.nativeEvent.pageX,
+    y: event.nativeEvent.pageY,
+  });
+  // The app sees the finger on the web view through React Native's touch events. iOS delivers them
+  // over a WKWebView; on Android it is yet to be confirmed on a device that they fire over the web
+  // view. If they do not, no tap is ever counted and links never open there — which fails safe.
+  const touchStarted = (event: GestureResponderEvent) => {
+    touchStart.current = event.nativeEvent.touches.length > 1 ? null : pointOf(event);
+  };
+  const touchEnded = (event: GestureResponderEvent) => {
+    tappedAt.current = tapEnded(touchStart.current, pointOf(event));
+    touchStart.current = null;
+  };
+  const touchCancelled = () => {
+    touchStart.current = null;
   };
 
   const body =
     document !== null && !left ? (
-      <View className="flex-1" onTouchStart={touched} onTouchEnd={touched}>
+      <View
+        className="flex-1"
+        onTouchStart={touchStarted}
+        onTouchEnd={touchEnded}
+        onTouchCancel={touchCancelled}
+      >
         <WebView
           key={showing}
           ref={webView}

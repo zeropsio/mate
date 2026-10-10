@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { pageRequestAllowed, tappedJustNow } from "./publishedPage.logic";
+import {
+  openFromTap,
+  pageRequestAllowed,
+  tapEnded,
+  type PageTouchPoint,
+} from "./publishedPage.logic";
 
 describe("a published page on mobile cannot navigate or reach the network", () => {
   it.each([
@@ -20,11 +25,54 @@ describe("a published page on mobile cannot navigate or reach the network", () =
     expect(pageRequestAllowed({ url })).toBe(allowed);
   });
 
+  /** What the person's finger did, then the page asking to open links: whether each one opens. */
+  const opens = (
+    touches: ReadonlyArray<{ start: PageTouchPoint; end: PageTouchPoint }>,
+    asks: ReadonlyArray<number>,
+  ) => {
+    let tappedAt: number | null = null;
+    for (const touch of touches) tappedAt = tapEnded(touch.start, touch.end);
+    return asks.map((now) => {
+      const open = openFromTap(tappedAt, now);
+      tappedAt = null;
+      return open;
+    });
+  };
+  const at = (time: number, x = 100, y = 200): PageTouchPoint => ({ at: time, x, y });
+
   it.each([
-    { title: "a tap just now", lastTouchAt: 10_000, now: 10_300, opens: true },
-    { title: "a tap long ago", lastTouchAt: 10_000, now: 12_000, opens: false },
-    { title: "no tap at all", lastTouchAt: null, now: 10_000, opens: false },
+    {
+      title: "a tap just now",
+      touches: [{ start: at(10_000), end: at(10_120, 103, 198) }],
+      asks: [10_200],
+      want: [true],
+    },
+    {
+      title: "a finger that scrolled the conversation",
+      touches: [{ start: at(10_000), end: at(10_150, 100, 260) }],
+      asks: [10_200],
+      want: [false],
+    },
+    {
+      title: "a long press",
+      touches: [{ start: at(10_000), end: at(10_800) }],
+      asks: [10_850],
+      want: [false],
+    },
+    {
+      title: "a second link after one tap",
+      touches: [{ start: at(10_000), end: at(10_100) }],
+      asks: [10_150, 10_200],
+      want: [true, false],
+    },
+    {
+      title: "a tap long ago",
+      touches: [{ start: at(10_000), end: at(10_100) }],
+      asks: [10_700],
+      want: [false],
+    },
+    { title: "no tap at all", touches: [], asks: [10_000], want: [false] },
   ])("opens a link in the system browser only on the person's tap: $title", (input) => {
-    expect(tappedJustNow(input.lastTouchAt, input.now)).toBe(input.opens);
+    expect(opens(input.touches, input.asks)).toEqual(input.want);
   });
 });
