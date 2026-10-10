@@ -1,11 +1,11 @@
 import type { CallResultPage, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { Maximize2Icon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useMateImage } from "~/assets/MateImages";
 import { useTheme } from "~/hooks/useTheme";
 import { Button } from "../ui/button";
-import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
+import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import {
   PAGE_THEME_VARS,
   linkToOpen,
@@ -109,8 +109,13 @@ export interface PublishedPageFrameProps {
  * The page in its frames: two deep, sandboxed with scripts alone, its navigation refused before
  * it leaves (`publishedPage.logic.ts`). The frame stands at the shared cap from its first paint
  * until the page says its height, then eases to it, at most the cap: a taller page scrolls inside
- * it. A page whose frame loads again — a navigation the wrapper refused, a reload — is taken down
- * at once and never heard from again; the person may show the published page again.
+ * it. When the page's own frame loads again — a navigation the wrapper refused — the wrapper says
+ * the page left, and it is taken down and never heard from again; the person may show it again.
+ *
+ * This frame loads again too, whenever the conversation moves it (React reordering its rows, the
+ * list recycling one): a frame taken out of the document and put back loads its document anew. It
+ * always holds the wrapper and nothing else — the sandbox lets no page navigate it — so its own
+ * loads are never counted: counting them closed every page that landed as its run settled.
  */
 export function PublishedPageFrame(props: PublishedPageFrameProps) {
   const { title, html, theme, failed = false, full = false } = props;
@@ -119,14 +124,8 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
   const near = useNearView(boxRef);
   const [content, setContent] = useState<number | null>(null);
   const [left, setLeft] = useState(false);
-  /** Each showing of the page is a frame of its own: its loads are counted from none. */
+  /** Each showing of the page is a frame of its own. */
   const [showing, setShowing] = useState(0);
-  const loads = useRef(0);
-  // Each frame element counts its own loads: one mounted again as it nears the view starts at none.
-  const attach = useCallback((frame: HTMLIFrameElement | null) => {
-    frameRef.current = frame;
-    loads.current = 0;
-  }, []);
   // The page is written once, in the colours it opened with; later colours reach it as a message.
   const [opened] = useState(theme);
   const document_ = useMemo(
@@ -137,7 +136,7 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
   useEffect(() => {
     const listen = (event: MessageEvent) => {
       const frame = frameRef.current;
-      if (frame === null || event.source !== frame.contentWindow || loads.current > 1) return;
+      if (frame === null || event.source !== frame.contentWindow) return;
       const message = readPageMessage(event.data, event.origin);
       if (message === null) return;
       if (message.kind === "left") {
@@ -177,17 +176,12 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
       {shown ? (
         <iframe
           key={showing}
-          ref={attach}
+          ref={frameRef}
           title={title}
           sandbox="allow-scripts"
           allow=""
           referrerPolicy="no-referrer"
           srcDoc={document_}
-          onLoad={() => {
-            // Its own document loads once; any load after it is somewhere else.
-            loads.current += 1;
-            if (loads.current > 1) setLeft(true);
-          }}
         />
       ) : left ? (
         <div className="published-page-left">
@@ -258,10 +252,12 @@ export function PublishedPage(props: {
       <PublishedPageFrame title={page.title} html={html} theme={theme} failed={failed} />
       <Dialog open={full} onOpenChange={setFull}>
         <DialogPopup className="max-w-6xl">
-          <div className="published-page-full-head">
+          <DialogHeader>
             <DialogTitle>{page.title}</DialogTitle>
-          </div>
-          {full ? <PublishedPageFrame title={page.title} html={html} theme={theme} full /> : null}
+          </DialogHeader>
+          <DialogPanel>
+            {full ? <PublishedPageFrame title={page.title} html={html} theme={theme} full /> : null}
+          </DialogPanel>
         </DialogPopup>
       </Dialog>
     </figure>
