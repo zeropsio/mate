@@ -893,6 +893,8 @@ describe("owner-reported layout regressions", () => {
     // while paused sat a viewport below it with no sign it was held.
     describe("Decision: the limit's notice ends the run's card; what waits for the reset sits under it.", () => {
       interface LimitFrame {
+        /** When the frame was sampled (ms, the page's clock). */
+        readonly at: number;
         readonly listTop: number;
         /** How far the view stands from the list's end. */
         readonly end: number;
@@ -924,6 +926,7 @@ describe("owner-reported layout regressions", () => {
               break;
             }
             return {
+              at: performance.now(),
               listTop: list.getBoundingClientRect().top,
               end: list.scrollHeight - list.clientHeight - list.scrollTop,
               composer: composer.getBoundingClientRect().top,
@@ -1087,10 +1090,19 @@ describe("owner-reported layout regressions", () => {
                     .slice(1)
                     .map((frame, index) => Math.abs(of(frame) - of(frames[index]!))),
                 );
+              // A cut changes the height between two frames; a glide spreads the change over its
+              // duration, however long a frame takes on the machine sampling it.
+              const heights = frames.map((frame) => frame.notice!.bottom - frame.notice!.top);
+              const from = heights[0]!;
+              const to = heights.at(-1)!;
+              const leaves = heights.findIndex((height) => Math.abs(height - from) > 1);
+              const lands = heights.findIndex(
+                (height, index) => index >= leaves && Math.abs(height - to) <= 1,
+              );
               expect(
-                steps((frame) => frame.notice!.bottom - frame.notice!.top),
+                Math.abs(to - from) <= 1 || frames[lands]!.at - frames[leaves - 1]!.at >= 100,
                 "ASSERTION: the notice goes quiet in place by a glide, never a cut",
-              ).toBeLessThan(16);
+              ).toBe(true);
               // The run it starts lands under it and the conversation follows, as after any send.
               expect(
                 steps((frame) => frame.message!),
