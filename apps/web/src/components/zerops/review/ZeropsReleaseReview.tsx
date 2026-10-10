@@ -571,13 +571,24 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       {props.comparisonFailure === undefined ? null : (
         <ZeropsReadFailure action="Compare again" {...props.comparisonFailure} />
       )}
-      {rows.length === 0 && untold.length === 0 && untoldDeploying.length === 0 ? null : (
+      {rows.length === 0 &&
+      untold.length === 0 &&
+      untoldDeploying.length === 0 &&
+      (answer !== undefined || props.where.length === 0) ? null : (
         <ReviewSection title="What goes out">
           {rows.length === 0 ? null : <ReviewReleaseRows onOpen={props.onOpenChange} rows={rows} />}
           {untoldDeploying.length === 0 ? null : (
             <p className="rv-note">{servicesDeploying(untoldDeploying)}.</p>
           )}
           {untold.length === 0 ? null : <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>}
+          {/* Which commit each service redeploys from, until HQ answers where it went. */}
+          {answer === undefined
+            ? props.where.map((entry) => (
+                <p className="rv-note" key={entry.service}>
+                  {entry.service} {entry.line}.
+                </p>
+              ))
+            : null}
         </ReviewSection>
       )}
       {props.replaces.kind === "first" ? null : (
