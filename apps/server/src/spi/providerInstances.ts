@@ -88,6 +88,8 @@ export class ProviderInstances extends Context.Service<
       agentId: ZeropsAgentId,
       verified: ServerProviderAuthStatus,
     ) => Effect.Effect<void>;
+    /** Has the registry read an agent's default instance again: its account, its usage. */
+    readonly refreshAgent: (agentId: ZeropsAgentId) => Effect.Effect<void>;
     /**
      * {@link reconcileAgentAuth} for one instance by its id — a login beyond
      * the defaults, whose own CLI check is the one that changed.
@@ -130,6 +132,8 @@ export const layer = Layer.effect(
     return {
       reconcileAgentAuth: (agentId, verified) =>
         reconcileInstanceAuth(agentDefaultInstanceId(agentId), verified),
+      refreshAgent: (agentId) =>
+        Effect.asVoid(registry.refreshInstance(agentDefaultInstanceId(agentId))),
       reconcileInstanceAuth: (instanceId, verified) =>
         reconcileInstanceAuth(ProviderInstanceId.make(instanceId), verified),
       driverKindOf: (instanceId) =>

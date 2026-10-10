@@ -3409,6 +3409,21 @@ export default function ChatView(props: ChatViewProps) {
       );
     }
   }, [interruptThreadTurn]);
+  /** A held message withdrawn: the engine's Stop ends its queued run before any agent has it. */
+  const onWithdrawHeldMessage = async (runId: string) => {
+    if (!activeThread) return;
+    const result = await interruptThreadTurn({
+      environmentId: activeThread.environmentId,
+      input: { threadId: activeThread.id, turnId: runId as TurnId },
+    });
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const error = squashAtomCommandFailure(result);
+      setThreadError(
+        activeThread.id,
+        error instanceof Error ? error.message : "The message could not be withdrawn.",
+      );
+    }
+  };
   const canInterruptRunningThread =
     buildRunningThreadTurnInterruptInput(activeThread, phase) !== null;
 
@@ -8673,6 +8688,7 @@ export default function ChatView(props: ChatViewProps) {
                           void onSend(undefined, "foreground", message);
                         },
                   usageContinueTries: engineConversation,
+                  onWithdrawHeldMessage: engineConversation ? onWithdrawHeldMessage : null,
                   onSteerQueuedMessage,
                   queueBlockedByAnswer: queueBlockedByPendingRequest,
                   steerQueuedMessageShortcutLabel: shortcutLabelForCommand(
