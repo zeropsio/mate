@@ -214,6 +214,52 @@ describe("an engine conversation as the thread the view draws", () => {
     expect(thread(state)?.activities[0]?.payload).toMatchObject({ requestId: request.id });
   });
 
+  const stripe = {
+    kind: "vault",
+    key: "STRIPE_SECRET_KEY",
+    scope: { kind: "shared" },
+    sensitive: true,
+    reason: "Stripe charges cards.",
+  } as const;
+  const ana = { kind: "person", subject: "user-ada" } as const;
+  it.each([
+    {
+      name: "open: waiting on the person",
+      request: engineRequest(run1, 1, stripe),
+      said: { state: "open", answer: null },
+    },
+    {
+      name: "saved: who and when",
+      request: engineRequest(run1, 1, stripe, {
+        state: "answered",
+        answerable: true,
+        answer: { by: ana, at: 9, summary: "Saved to Shared/STRIPE_SECRET_KEY" },
+      }),
+      said: { state: "saved", answer: { by: ana, at: 9 } },
+    },
+    {
+      name: "declined: who and when",
+      request: engineRequest(run1, 1, stripe, {
+        state: "declined",
+        answerable: false,
+        answer: { by: ana, at: 9, summary: "Declined" },
+      }),
+      said: { state: "declined", answer: { by: ana, at: 9 } },
+    },
+  ])("a value asked of the person is one card in its run, $name", ({ request, said }) => {
+    const state = held({ runs: [engineRun("thread-ada", 1)], requests: [request] });
+    const activities = thread(state)?.activities ?? [];
+    expect(activities.map((activity) => activity.kind)).toEqual(["vault.requested"]);
+    expect(activities[0]?.payload).toEqual({
+      requestId: request.id,
+      key: "STRIPE_SECRET_KEY",
+      scope: { kind: "shared" },
+      sensitive: true,
+      reason: "Stripe charges cards.",
+      ...said,
+    });
+  });
+
   it("an answered question shows what the person answered and the pictures attached to it", () => {
     const preview = {
       type: "image" as const,
@@ -1167,6 +1213,15 @@ describe("an engine conversation's row in the menu", () => {
       name: "waiting on a question",
       row: { state: { kind: "waiting", on: "question", words: null } },
       expected: { session: "running", approvals: false, input: true },
+    },
+    {
+      // Its run has ended: the face reads needs you while the ask waits, never idle.
+      name: "waiting on a value asked of the person",
+      row: {
+        state: { kind: "waiting", on: "vault", words: "Stripe charges cards." },
+        runStatus: "ready",
+      },
+      expected: { session: "ready", approvals: false, input: true },
     },
     {
       name: "idle",

@@ -570,6 +570,8 @@ export {
   engineThreadOf,
   overlayEngineRow,
   overlayEngineShell,
+  VAULT_ASK_ACTIVITY_KIND,
+  type VaultAskActivityPayload,
   type EngineCardCounts,
   type EngineCardWait,
   type EngineCardPaging,

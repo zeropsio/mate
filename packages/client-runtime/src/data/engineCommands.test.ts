@@ -27,6 +27,7 @@ import {
   engineInterruptTurn,
   engineRespondToApproval,
   engineRespondToUserInput,
+  engineAnswerVaultAsk,
   engineStartTurn,
   viaEngine,
 } from "./engineCommands.ts";
@@ -617,6 +618,35 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
         summary: "Approved",
       });
     }),
+  );
+
+  it.effect.each(["saved", "declined"] as const)(
+    "a value asked of the person is answered %s on the engine, with nothing but how it ended",
+    (outcome) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineAnswerVaultAsk(ENV, {
+              threadId: "thread-ada",
+              requestId: "thread-ada/r/2/q/1",
+              outcome,
+            }),
+            r.v1,
+          ),
+        );
+        expect(r.calls).toEqual([
+          expect.objectContaining({
+            kind: "answer",
+            requestId: "thread-ada/r/2/q/1",
+            answer: { kind: "secret", outcome },
+            summary: outcome,
+          }),
+        ]);
+        expect(r.v1Calls).toEqual([]);
+      }),
   );
 
   it.effect("an answer carrying pictures goes to the engine with them, never without them", () =>

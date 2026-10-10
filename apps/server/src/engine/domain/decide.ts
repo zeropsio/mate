@@ -72,6 +72,7 @@ import { evolve, isUsageWake, stampEvents } from "./evolve.ts";
 import {
   activeRun,
   contentDigest,
+  isVaultAsk,
   runOfTurn,
   type ClosedItem,
   type ConversationState,
@@ -79,6 +80,7 @@ import {
   type OpenRequest,
   type RunRecord,
   type SessionRecord,
+  type VaultAsk,
 } from "./state.ts";
 
 /** Silence after which the watchdog marks a run unresponsive. */
@@ -917,8 +919,9 @@ const endRun = (
     });
   }
   for (const request of Object.values(b.state.requests)) {
-    // A question asked by message outlives its turn: the person answers it with a message.
-    if (request.runId !== run.id || request.dismissible === true) continue;
+    // A question asked by message outlives its turn: the person answers it with a message. A
+    // value asked of the person outlives it too: they answer it on its card.
+    if (request.runId !== run.id || request.dismissible === true || isVaultAsk(request)) continue;
     b.emit({ _tag: "RequestClosed", runId: run.id, requestId: request.id, state: "lapsed" });
   }
   const carried = answerCarried(b, run);
@@ -1177,6 +1180,7 @@ const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): 
   const request = b.state.requests[command.requestId];
   if (request === undefined) throw new Rejected("unknown-request");
   if (!request.answerable) throw new Rejected("not-answerable");
+  if (isVaultAsk(request)) return answerVault(b, request, command);
   if (request.dismissible === true) return answerByMessage(b, request, command);
   const run = b.run(request.runId);
   const effect = b.effect("provider.respond", request.id, request.answers + 1, run.id, {
@@ -1260,6 +1264,80 @@ const answerByMessage = (
   b.result = { ...b.result, requestId: request.id, runId: carrier };
 };
 
+/** How a value asked of the person ended: put in the vault, or not given. */
+export type VaultOutcome = "saved" | "declined";
+
+const VAULT_OUTCOMES: ReadonlySet<unknown> = new Set<VaultOutcome>(["saved", "declined"]);
+
+/** An answer that says only how it ended (`{ outcome }`); anything more is none. */
+const vaultOutcome = (answer: unknown): VaultOutcome | null => {
+  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
+  const keys = Object.keys(answer);
+  const outcome = (answer as { readonly outcome?: unknown }).outcome;
+  return keys.length === 1 && VAULT_OUTCOMES.has(outcome) ? (outcome as VaultOutcome) : null;
+};
+
+/** Where an asked value goes, as people and the agent read it: `Shared/KEY`, `api/KEY`. */
+const vaultPlace = (ask: Pick<VaultAsk, "key" | "scope">): string =>
+  `${ask.scope.kind === "shared" ? "Shared" : ask.scope.hostname}/${ask.key}`;
+
+/** The agent's line on a value it asked for: where it went, or that it was not given. Never a value. */
+export const vaultAnswerWords = (
+  ask: Pick<VaultAsk, "key" | "scope">,
+  outcome: VaultOutcome,
+): string =>
+  `Secret request for ${ask.key}: ${outcome === "saved" ? `saved to ${vaultPlace(ask)}` : "declined"}.`;
+
+/**
+ * A value asked of the person is answered on its card: the person's client writes it to the vault
+ * as them, and the engine is told only how it ended. The record keeps who and when in the
+ * engine's own words — never the client's, which could carry the value — and the agent hears its
+ * line in a run of its own, a wake that joins the run that asked while that is the latest.
+ */
+const answerVault = (
+  b: StepBuilder,
+  request: OpenRequest,
+  command: Extract<Command, { _tag: "Answer" }>,
+): void => {
+  const outcome = vaultOutcome(command.answer);
+  if (outcome === null || request.vault === undefined) {
+    throw new Rejected(
+      "not-answerable",
+      "A value asked of the person is answered saved or declined, never with the value.",
+    );
+  }
+  b.emit({
+    _tag: "RequestAnswered",
+    runId: request.runId,
+    requestId: request.id,
+    by: b.envelope.principal,
+    summary: outcome === "saved" ? `Saved to ${vaultPlace(request.vault)}` : "Declined",
+  });
+  if (outcome === "declined") {
+    b.emit({
+      _tag: "RequestClosed",
+      runId: request.runId,
+      requestId: request.id,
+      state: "declined",
+    });
+  }
+  const wake = deriveWakeId(b.state.conversationId, VAULT_ANSWER_WAKE, request.id);
+  b.emit({
+    _tag: "WakeArmed",
+    wakeId: wake,
+    kind: VAULT_ANSWER_WAKE,
+    dueAt: b.now,
+    cron: null,
+    principal: b.envelope.principal,
+    joins: request.runId === b.state.latestRunId ? request.runId : null,
+    text: vaultAnswerWords(request.vault, outcome),
+  });
+  b.result = { ...b.result, requestId: request.id, runId: request.runId, wakeId: wake };
+};
+
+/** The wake that tells the agent how a value it asked for ended. */
+export const VAULT_ANSWER_WAKE = "vault-answer";
+
 /** The answer a run's message carries: its own, or the one of the run it continues after a restart. */
 const answerCarried = (b: StepBuilder, run: RunRecord): OpenRequest | undefined => {
   const own = b.state.answering[run.id];
@@ -1319,7 +1397,8 @@ const resumeIfAnswered = (b: StepBuilder, id: RunId): void => {
   // A question asked by message outlives its run, which the state may no longer hold.
   const run = b.state.runs[id];
   if (run === undefined || run.state !== "waiting") return;
-  if (Object.values(b.state.requests).some((request) => request.runId === id)) return;
+  const holds = (request: OpenRequest) => request.runId === id && !isVaultAsk(request);
+  if (Object.values(b.state.requests).some(holds)) return;
   markResumed(b, run);
 };
 
@@ -1439,7 +1518,7 @@ const wakeFired = (
         session !== null &&
         id === idleWakeId(b, session.id) &&
         b.state.activeRunId === null &&
-        Object.keys(b.state.requests).length === 0;
+        Object.values(b.state.requests).every(isVaultAsk);
       if (idle) closeSession(b, "idle");
       return;
     }
@@ -1949,7 +2028,9 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       const id = deriveRequestId(run.id, run.nextRequestOrdinal);
       const live = isLive(run);
       // Asked by message: the agent does not wait on it, and a message answers it after its turn.
-      const byMessage = signal.ask.kind === "question" && signal.ask.dismissible;
+      // A value asked of the person is not waited on either: its card answers it after the turn.
+      const byMessage =
+        (signal.ask.kind === "question" && signal.ask.dismissible) || signal.ask.kind === "vault";
       b.emit({
         _tag: "RequestOpened",
         runId: run.id,

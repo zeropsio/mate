@@ -71,6 +71,7 @@ import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
   engineContinueAfterLimit,
   engineCreateThread,
+  engineAnswerVaultAsk,
   engineSetArchived,
   engineSetInteractionMode,
   engineSetRuntimeMode,
@@ -82,6 +83,7 @@ import {
   engineRespondToUserInput,
   engineStartTurn,
   viaEngine,
+  type VaultAskAnswerInput,
 } from "../data/engineCommands.ts";
 
 export type {
@@ -311,6 +313,26 @@ export function createThreadEnvironmentAtoms<R, E>(
           Effect.fail(
             new OrchestrationDispatchCommandError({
               message: "This Mate continues by a message: send it from the composer.",
+            }),
+          ),
+        ),
+      scheduler,
+      concurrency,
+    }),
+    /**
+     * A value the Mate asked the person for, answered on its card: saved (the card wrote it to
+     * the vault itself) or declined. Only the outcome travels; an engine conversation only.
+     */
+    answerVaultAsk: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:answer-vault-ask",
+      execute: (input: VaultAskAnswerInput, registry, environmentId) =>
+        viaEngine(
+          registry,
+          environmentId,
+          engineAnswerVaultAsk(environmentId, input),
+          Effect.fail(
+            new OrchestrationDispatchCommandError({
+              message: "This Mate hears of a vault value with your next message.",
             }),
           ),
         ),
