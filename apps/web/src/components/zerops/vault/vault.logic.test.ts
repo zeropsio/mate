@@ -6,11 +6,9 @@ import {
   generateVaultValue,
   impactLine,
   keyProblem,
-  notLiveClosing,
+  notLiveLine,
   notLiveTarget,
-  notLiveWords,
   readerStateWords,
-  readSource,
   referenceFor,
   refusalWords,
   removeGuardWords,
@@ -19,7 +17,6 @@ import {
   scopeName,
   scopeSections,
   sensitiveWordIn,
-  serviceMonograms,
   valueLine,
 } from "./vault.logic";
 import { VAULT_FIXTURE, VAULT_FIXTURE_NOW, vaultFixtureScope } from "./vaultFixture";
@@ -118,8 +115,8 @@ describe("agoWords", () => {
 });
 
 describe("names and references", () => {
-  it("names the environment's own values All apps, and a service by its hostname", () => {
-    expect(scopeName(SHARED)).toBe("All apps");
+  it("names the environment's own values Every app, and a service by its hostname", () => {
+    expect(scopeName(SHARED)).toBe("Every app");
     expect(scopeName(APPDEV)).toBe("appdev");
   });
 
@@ -215,53 +212,6 @@ describe("readerStateWords", () => {
   });
 });
 
-describe("notLiveWords", () => {
-  it.each([
-    [
-      { kind: "restart", serviceId: "s", hostname: "appdev", keys: ["LOG_LEVEL"] },
-      "appdev started before LOG_LEVEL changed",
-      "a restart applies it",
-    ],
-    [
-      { kind: "restart", serviceId: "s", hostname: "appdev", keys: ["LOG_LEVEL", "API_URL"] },
-      "appdev started before LOG_LEVEL and API_URL changed",
-      "a restart applies them",
-    ],
-    [
-      { kind: "unread", scope: { kind: "shared" }, key: "STRIPE_SECRET_KEY" },
-      "Nothing reads STRIPE_SECRET_KEY yet",
-      "it needs a reference in zerops.yml and a deploy",
-    ],
-    [
-      { kind: "missing", serviceId: "s", hostname: "appdev", entry: "SEARCH_URL", name: "NOPE" },
-      "appdev reads ${NOPE}, which nothing has",
-      "the app gets that literal text",
-    ],
-    [
-      { kind: "self", serviceId: "s", hostname: "appdev", entry: "DB_PASSWORD" },
-      "appdev's zerops.yml sets DB_PASSWORD to ${DB_PASSWORD}",
-      "the app gets that literal text",
-    ],
-  ] satisfies ReadonlyArray<[VaultNotLive, string, string]>)("%o", (item, fact, fix) => {
-    const words = notLiveWords(item);
-    expect(text(words.fact)).toBe(fact);
-    expect(words.fix).toBe(fix);
-  });
-
-  it("marks the hostname strong and the key as code", () => {
-    const words = notLiveWords({
-      kind: "restart",
-      serviceId: "s",
-      hostname: "appdev",
-      keys: ["LOG_LEVEL"],
-    });
-    expect(words.fact.filter((part) => part.kind !== "text")).toEqual([
-      { kind: "strong", text: "appdev" },
-      { kind: "code", text: "LOG_LEVEL" },
-    ]);
-  });
-});
-
 describe("notLiveTarget", () => {
   it.each([
     [VAULT_FIXTURE.notLive[0]!, { scopeId: "shared", valueId: "v-log" }],
@@ -273,12 +223,37 @@ describe("notLiveTarget", () => {
   });
 });
 
-describe("notLiveClosing", () => {
+describe("the not-live line", () => {
+  const restart = (hostname: string, keys: ReadonlyArray<string>): VaultNotLive => ({
+    kind: "restart",
+    serviceId: `svc-${hostname}`,
+    hostname,
+    keys,
+  });
   it.each([
-    [1, "Fen", "Fen does it with your next message"],
-    [3, "Fen", "Fen does these with your next message"],
-  ])("%d items beside %s", (count, mate, words) => {
-    expect(notLiveClosing(count, mate)).toBe(words);
+    [
+      [restart("appdev", ["LOG_LEVEL"])],
+      "Fen",
+      "1 value isn't live yet — Fen restarts appdev with your next message",
+    ],
+    [
+      [restart("apidev", ["A", "B"]), restart("apistage", ["B"])],
+      "Fen",
+      "2 values aren't live yet — Fen restarts apidev and apistage with your next message",
+    ],
+    [[restart("apidev", ["A", "B"])], null, "2 values aren't live yet — restart apidev"],
+  ] satisfies ReadonlyArray<[ReadonlyArray<VaultNotLive>, string | null, string]>)(
+    "says how many values wait and what makes them live (%#)",
+    (items, mate, words) => {
+      expect(notLiveLine(items, mate)?.text).toBe(words);
+    },
+  );
+
+  it("says nothing when everything is live, or only a deploy would change it", () => {
+    expect(notLiveLine([], "Fen")).toBeNull();
+    expect(
+      notLiveLine([{ kind: "unread", scope: { kind: "shared" }, key: "K" }], "Fen"),
+    ).toBeNull();
   });
 });
 
@@ -362,70 +337,6 @@ describe("removeGuardWords", () => {
     ],
   ])("%s", (key, hosts, words) => {
     expect(text(removeGuardWords(key, hosts))).toBe(words);
-  });
-});
-
-describe("serviceMonograms", () => {
-  it("never gives two services one mark: two families of dev and stage", () => {
-    const marks = serviceMonograms(["medusadev", "medusastage", "nextstoredev", "nextstorestage"]);
-    expect(marks).toEqual(
-      new Map([
-        ["medusadev", "MD"],
-        ["medusastage", "MS"],
-        ["nextstoredev", "ND"],
-        ["nextstorestage", "NS"],
-      ]),
-    );
-    expect(new Set(marks.values()).size).toBe(marks.size);
-  });
-
-  it("names each service by what tells it from the others", () => {
-    expect(serviceMonograms(["appdev", "appstage", "db"])).toEqual(
-      new Map([
-        ["appdev", "D"],
-        ["appstage", "S"],
-        ["db", "db"],
-      ]),
-    );
-  });
-
-  it("keeps a name that is a prefix of another as its first letter", () => {
-    expect(serviceMonograms(["app", "appdev", "api"])).toEqual(
-      new Map([
-        ["app", "A"],
-        ["appdev", "D"],
-        ["api", "I"],
-      ]),
-    );
-  });
-
-  it("uses the first letter of a lone long name", () => {
-    expect(serviceMonograms(["storage"])).toEqual(new Map([["storage", "S"]]));
-  });
-});
-
-describe("readSource", () => {
-  const read = (key: string) => {
-    const found = APPDEV.reads.find((entry) => entry.key === key);
-    if (found === undefined) throw new Error(key);
-    return found;
-  };
-  it.each([
-    ["NODE_ENV", { kind: "literal", text: "= development" }],
-    ["API_URL", { kind: "source", text: "vault", target: { scopeId: "shared", key: "API_URL" } }],
-    [
-      "FEATURE_FLAGS",
-      { kind: "source", text: "its own", target: { scopeId: "svc-appdev", key: "FEATURE_FLAGS" } },
-    ],
-    [
-      "DATABASE_URL",
-      { kind: "source", text: "db", target: { scopeId: "svc-db", key: "connectionString" } },
-    ],
-    ["PUBLIC_HOST", { kind: "source", text: "Zerops", target: null }],
-    ["SEARCH_URL", { kind: "bad", text: "missing", name: "NOPE" }],
-    ["DB_PASSWORD", { kind: "bad", text: "self", name: "DB_PASSWORD" }],
-  ] as const)("%s", (key, source) => {
-    expect(readSource(VAULT_FIXTURE, APPDEV, read(key))).toEqual(source);
   });
 });
 

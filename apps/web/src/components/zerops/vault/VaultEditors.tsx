@@ -1,15 +1,16 @@
 /**
- * The vault's two editors: the add card at the top of a scope's list (a key, a value, the
- * sensitive switch that turns itself on for a secret-sounding name, inline validation; a pasted
- * `.env` jumps to the text), and the scope as `.env` text with its review — one line per change
+ * The vault's two editors: the add card on top of the list (where the value goes, a key, a value,
+ * the Hidden switch that turns itself on for a secret-sounding name, inline validation; a pasted
+ * `.env` jumps to the text), and one part as `.env` text with its review — one line per change
  * and what it means, a removal that services read held until the person says remove anyway.
  */
 import type { VaultImpact, VaultScope, VaultWrite } from "@t3tools/client-runtime/data";
-import { CircleAlertIcon, DicesIcon, LockIcon, PlusIcon } from "lucide-react";
+import { ChevronDownIcon, CircleAlertIcon, DicesIcon, LockIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Spinner } from "../../ui/spinner";
 import { Switch } from "../../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
@@ -29,18 +30,20 @@ import {
 } from "./vaultText.logic";
 
 export interface VaultAddCardProps {
-  readonly scope: VaultScope;
+  /** Where a value can go: every app first, then each app; the first is where it starts. */
+  readonly scopes: ReadonlyArray<VaultScope>;
   /** Why the platform refused the last add, if it did. */
   readonly refusal: string | null;
   readonly busy: boolean;
-  readonly onAdd: (write: Extract<VaultWrite, { kind: "add" }>) => void;
+  readonly onAdd: (scope: VaultScope, write: Extract<VaultWrite, { kind: "add" }>) => void;
   readonly onCancel: () => void;
-  /** A multi-line `.env` pasted into the key: the panel opens the text with it. */
-  readonly onPasteEnv: (pasted: string) => void;
+  /** A multi-line `.env` pasted into the key: the panel opens that part's text with it. */
+  readonly onPasteEnv: (scope: VaultScope, pasted: string) => void;
 }
 
 export function VaultAddCard(props: VaultAddCardProps) {
-  const { scope } = props;
+  const [scopeId, setScopeId] = useState(props.scopes[0]?.id ?? "");
+  const scope = props.scopes.find((candidate) => candidate.id === scopeId) ?? props.scopes[0]!;
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
   /** The person's own say on the switch; until then the name decides. */
@@ -53,7 +56,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
 
   const save = () => {
     if (!canSave) return;
-    props.onAdd({ kind: "add", key, value, sensitive });
+    props.onAdd(scope, { kind: "add", key, value, sensitive });
   };
   const onKeys = (event: React.KeyboardEvent) => {
     if (event.key === "Enter") save();
@@ -61,12 +64,26 @@ export function VaultAddCard(props: VaultAddCardProps) {
   };
 
   return (
-    <div className="mx-2 mt-0.5 mb-2 vault-card rounded-xl bg-card p-px" data-vault-add>
-      <div className="flex items-center gap-1.5 px-3 pt-2.5 font-medium text-xs text-foreground">
-        <PlusIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
-        {scope.hostname === null
-          ? "New value for every app"
-          : `New value for ${scope.hostname} only`}
+    <div className="vault-card rounded-xl bg-card p-px" data-vault-add>
+      <div className="flex items-center gap-1 px-3 pt-2 font-medium text-xs text-foreground">
+        New value for
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button aria-label="Where it goes" size="xs" variant="ghost" className="-ml-0.5" />
+            }
+          >
+            {scope.hostname === null ? "every app" : `${scope.hostname} only`}
+            <ChevronDownIcon />
+          </MenuTrigger>
+          <MenuPopup align="start" className="min-w-44">
+            {props.scopes.map((candidate) => (
+              <MenuItem key={candidate.id} onClick={() => setScopeId(candidate.id)}>
+                {candidate.hostname === null ? "Every app" : `${candidate.hostname} only`}
+              </MenuItem>
+            ))}
+          </MenuPopup>
+        </Menu>
       </div>
       <div className="grid gap-2 px-3 pt-2.5 pb-3">
         <div className="grid grid-cols-[156px_minmax(0,1fr)_auto] items-center gap-2">
@@ -82,7 +99,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
               const pasted = event.clipboardData.getData("text");
               if (envPasteLines(pasted) === null) return;
               event.preventDefault();
-              props.onPasteEnv(pasted);
+              props.onPasteEnv(scope, pasted);
             }}
             placeholder="NAME"
             size="sm"
@@ -130,19 +147,15 @@ export function VaultAddCard(props: VaultAddCardProps) {
         <div className="flex items-center gap-2">
           <label className="flex h-7 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
             <Switch
-              aria-label="Secret"
+              aria-label="Hidden"
               checked={sensitive}
               onCheckedChange={(next) => setChosen(next)}
             />
             <LockIcon aria-hidden="true" className="size-3" />
-            <span className={sensitive ? "text-foreground" : undefined}>Secret</span>
+            <span className={sensitive ? "text-foreground" : undefined}>Hidden</span>
           </label>
           <span className="truncate text-xs text-muted-foreground" data-vault-add-auto>
-            {sensitive && chosen === null && word !== null
-              ? "the name says secret — nobody reads it back once saved"
-              : sensitive
-                ? "nobody reads it back once saved"
-                : ""}
+            {sensitive ? "nobody reads it back once saved" : ""}
           </span>
           <span className="grow" />
           <Button onClick={props.onCancel} size="xs" variant="ghost-muted">
@@ -154,7 +167,7 @@ export function VaultAddCard(props: VaultAddCardProps) {
           </Button>
         </div>
         <p className="text-xs leading-4 text-muted-foreground">
-          Enter saves · Esc cancels · paste a whole .env into NAME to add many
+          Paste a whole .env into the name to add many at once.
         </p>
       </div>
     </div>
@@ -225,7 +238,7 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
     );
   };
   return (
-    <section className="grid gap-3 px-4 pt-1 pb-2" data-vault-text>
+    <section className="grid gap-3 px-1 pt-1 pb-2" data-vault-text>
       <div className="flex items-center gap-2">
         <span className="font-medium text-line">{scopeName(props.scope)}</span>
         <span className="text-xs text-muted-foreground">as text</span>
@@ -241,8 +254,8 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
           {changes === 0 ? "Review" : `Review ${changes} change${changes > 1 ? "s" : ""}`}
         </Button>
       </div>
-      {section("plain", "Plain")}
-      {section("sensitive", "Sensitive")}
+      {section("plain", "Readable")}
+      {section("sensitive", "Hidden")}
       {diff.problems.length === 0 ? null : (
         <ul className="grid gap-1" data-vault-text-problems>
           {diff.problems.map((problem) => (
@@ -289,7 +302,7 @@ export function VaultReview(props: VaultReviewProps) {
   }));
   const applied = lines.filter(({ write, line }) => !line.guarded || forced.has(write.key));
   return (
-    <section className="grid px-4 pt-1 pb-2" data-vault-review>
+    <section className="grid px-1 pt-1 pb-2" data-vault-review>
       <div className="flex items-center gap-2 pb-2">
         <span className="font-medium text-line">Review changes</span>
         <span className="text-xs text-muted-foreground">{scopeName(props.scope)}</span>
@@ -319,7 +332,7 @@ export function VaultReview(props: VaultReviewProps) {
                   ? ""
                   : write.sensitive
                     ? write.kind === "add"
-                      ? "sensitive"
+                      ? "hidden"
                       : "new value"
                     : write.value}
               </span>
