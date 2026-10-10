@@ -233,21 +233,27 @@ export interface CardReady {
   readonly stage: string | undefined;
   /** What production runs now; `undefined` where nothing is released yet. */
   readonly from: string | undefined;
+  /** Production's last release failed: it still runs `from`. */
+  readonly failed: boolean;
 }
 
 /**
- * A release ready to go, where one is offered: never while production must be fixed first, nor
- * while one is on its way.
+ * A release ready to go, wherever the release gate offers one — beside a production whose last
+ * release failed too (D28): releasing the fix is how it is mended. Never while one is on its way.
  */
 export function cardReady(flow: Pick<GroupFlow, "production" | "stages" | "main">) {
   const { production } = flow;
-  if (production.kind !== "ready-to-release") return undefined;
+  const offered =
+    production.kind === "ready-to-release" ||
+    (production.kind === "deploy-failed" && production.candidate !== undefined);
+  if (!offered || production.candidate === undefined) return undefined;
   const stage = flow.stages.find((stop) => stop.state === "deployed") ?? flow.stages[0];
   return {
     count: production.candidate.waiting,
     atLeast: flow.main.notLiveAtLeast,
     stage: stage?.name,
     from: production.stop.version?.label,
+    failed: production.kind === "deploy-failed",
   } satisfies CardReady;
 }
 
@@ -260,8 +266,13 @@ export function readyTitle(ready: CardReady): string {
 /** "On stage, tested. Production runs v2.3.1." */
 export function readyLine(ready: CardReady): string {
   const where = ready.stage === undefined ? "Merged." : `On ${ready.stage}, tested.`;
-  const runs =
-    ready.from === undefined ? "Nothing is released yet." : `Production runs ${ready.from}.`;
+  const runs = ready.failed
+    ? ready.from === undefined
+      ? "Production's last release failed."
+      : `Production's last release failed; it still runs ${ready.from}.`
+    : ready.from === undefined
+      ? "Nothing is released yet."
+      : `Production runs ${ready.from}.`;
   return `${where} ${runs}`;
 }
 

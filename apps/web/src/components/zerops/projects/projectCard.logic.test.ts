@@ -143,6 +143,24 @@ describe("since when production runs what it runs", () => {
 
 describe("a release ready to go", () => {
   const stage = stop({ projectId: "stage", name: "stage", source: "main" });
+
+  // D28: releasing the fix is how a broken production is mended, so the release stays offered.
+  it("is offered beside a production whose last release failed, and says so plainly", () => {
+    const ready = cardReady({
+      production: {
+        kind: "deploy-failed",
+        stop: stop({ version: { ...stop().version!, label: "v1.8.2" } }),
+        line: "",
+        candidate: { tag: "v1.9.1", waiting: 2 },
+      },
+      stages: [stage],
+      main: { head: undefined, hasCode: true, notLive: 2, notLiveAtLeast: false },
+    });
+    expect(ready === undefined ? undefined : [readyTitle(ready), readyLine(ready)]).toEqual([
+      "2 changes ready to release",
+      "On stage, tested. Production's last release failed; it still runs v1.8.2.",
+    ]);
+  });
   it("says how many changes, where they were tested and what production runs", () => {
     const ready = cardReady({
       production: {
@@ -161,15 +179,6 @@ describe("a release ready to go", () => {
   });
 
   it.each([
-    {
-      case: "production must be fixed first",
-      production: {
-        kind: "deploy-failed",
-        stop: stop(),
-        line: "",
-        candidate: { tag: "v2.4.0", waiting: 1 },
-      },
-    },
     {
       case: "a release is on its way",
       production: { kind: "releasing", stop: stop(), line: "", tag: "v2.4.0" },

@@ -98,6 +98,7 @@ vi.mock("~/components/ui/popover", async () => {
 
 import {
   born,
+  brokenProduction,
   entry,
   FLOW_PROPS,
   FRESH,
@@ -278,6 +279,15 @@ describe("a row's Mates", () => {
       ).toBe(review);
     },
   );
+});
+
+describe("a card's release", () => {
+  it("still offers the release beside a broken production, not just the build (D28)", () => {
+    const html = section(render({ groups: [brokenProduction()] }), 'data-zerops-group="aaa"');
+    expect(html).toContain("Release failed");
+    expect(html).toContain('data-test-release-verb="true"');
+    expect(html).toContain("Production&#x27;s last release failed");
+  });
 });
 
 describe("production's version", () => {
