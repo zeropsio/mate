@@ -11,11 +11,14 @@
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
+import * as NodeFS from "node:fs";
+
 import {
   PAGE_MAX_BYTES,
   type CallResult,
   type CallResultPicture,
   type ImageOccurrence,
+  type PageOccurrence,
   type SpiToolCallImage,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -52,7 +55,7 @@ export interface CallPictures {
     thread: ThreadId,
     key: string,
     file: string,
-  ) => Effect.Effect<{ readonly asset: ImageOccurrence; readonly bytes: number } | null>;
+  ) => Effect.Effect<{ readonly asset: PageOccurrence; readonly bytes: number } | null>;
 }
 
 /** The tool a Mate's agent publishes a page with (zcp's `zerops_publish_page`). */
@@ -60,24 +63,60 @@ export const PUBLISH_PAGE_TOOL = "zerops_publish_page";
 
 /**
  * Where zcp keeps a page it published, as its result names it: a file named by its content in
- * the `pages` directory of a `.zcp/state` (`docs/spec-mate.md` §5.9 in zcp). Nothing else is read.
+ * the session's own `.zcp/state/pages` (`docs/spec-mate.md` §5.9 in zcp). Nothing else is read.
  */
-const PAGE_FILE = /\/\.zcp\/state\/pages\/page-[0-9a-f]{16}\.html$/;
+const PAGE_NAME = /^page-[0-9a-f]{16}\.html$/;
 
-/** The page a call's result says it published: its file and title, else none. */
+/** The page a call's result says it published: its file, title and measured height, else none. */
 export function publishedPage(
   result: Pick<CallResult, "toolName" | "resultText">,
-): { readonly file: string; readonly title: string } | null {
+): { readonly file: string; readonly title: string; readonly height?: number } | null {
   if (result.toolName !== PUBLISH_PAGE_TOOL || result.resultText === undefined) return null;
   try {
     const page = (JSON.parse(result.resultText) as { readonly page?: unknown }).page;
     if (typeof page !== "object" || page === null) return null;
-    const { file, title } = page as { readonly file?: unknown; readonly title?: unknown };
-    return typeof file === "string" && typeof title === "string" && title.length > 0
-      ? { file, title }
-      : null;
+    const { file, title, height } = page as {
+      readonly file?: unknown;
+      readonly title?: unknown;
+      readonly height?: unknown;
+    };
+    if (typeof file !== "string" || typeof title !== "string" || title.length === 0) return null;
+    return typeof height === "number" && Number.isFinite(height) && height > 0
+      ? { file, title, height: Math.ceil(height) }
+      : { file, title };
   } catch {
     return null;
+  }
+}
+
+/**
+ * A page file's bytes, read as a picture the call looked at is (`ContentAssets.ingestFile`): only
+ * a regular file named like zcp's pages, directly in the session's own `.zcp/state/pages`, opened
+ * without following a link and without waiting on a FIFO, checked on the open handle, at most the
+ * cap. Anything else is none.
+ */
+async function readPage(cwd: string, file: string): Promise<Uint8Array | null> {
+  if (!NodePath.isAbsolute(file) || !PAGE_NAME.test(NodePath.basename(file))) return null;
+  const pages = await NodeFSP.realpath(NodePath.join(cwd, ".zcp", "state", "pages"));
+  if ((await NodeFSP.realpath(NodePath.dirname(file))) !== pages) return null;
+  const handle = await NodeFSP.open(
+    NodePath.join(pages, NodePath.basename(file)),
+    NodeFS.constants.O_RDONLY | NodeFS.constants.O_NOFOLLOW | NodeFS.constants.O_NONBLOCK,
+  );
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > PAGE_MAX_BYTES) return null;
+    const buffer = Buffer.alloc(PAGE_MAX_BYTES + 1);
+    let read = 0;
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, read, buffer.length - read, read);
+      if (bytesRead === 0) break;
+      read += bytesRead;
+      if (read > PAGE_MAX_BYTES) return null;
+    }
+    return buffer.subarray(0, read);
+  } finally {
+    await handle.close();
   }
 }
 
@@ -153,18 +192,19 @@ export const makeCallPictures = (
         };
       }).pipe(Effect.orElseSucceed(() => null)),
     page: (thread, key, file) =>
-      Effect.tryPromise(async () => {
-        // A regular file where zcp keeps pages, under the cap: never a link out of there.
-        if (!NodePath.isAbsolute(file) || !PAGE_FILE.test(file)) return null;
-        const stat = await NodeFSP.lstat(file);
-        if (!stat.isFile() || stat.size > PAGE_MAX_BYTES) return null;
-        const bytes = await NodeFSP.readFile(file);
-        if (bytes.byteLength > PAGE_MAX_BYTES) return null;
-        const store = assets();
-        const asset = (await store.legacy([thread, key, file], () =>
-          store.ingestPage(bytes, { ...owner(thread, key), name: NodePath.basename(file) }),
-        )) as ImageOccurrence;
-        return asset.original.status === "ready" ? { asset, bytes: bytes.byteLength } : null;
+      Effect.gen(function* () {
+        const cwd = yield* cwdOf(thread);
+        if (cwd === undefined) return null;
+        return yield* Effect.tryPromise(async () => {
+          const bytes = await readPage(cwd, file);
+          if (bytes === null || bytes.byteLength === 0) return null;
+          const asset = await assets().ingestPage(["page", thread, key, file], bytes, {
+            threadId: thread,
+            ownerId: key,
+            name: NodePath.basename(file),
+          });
+          return { asset, bytes: bytes.byteLength };
+        });
       }).pipe(Effect.orElseSucceed(() => null)),
   };
 };

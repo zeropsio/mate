@@ -149,16 +149,13 @@ it.effect("serves a published page as a document that runs nothing at its own ad
     // A page that opens with an SVG still is a page, never a picture.
     const html = '<svg xmlns="http://www.w3.org/2000/svg"></svg><script>fetch("/api")</script>';
     const page = yield* Effect.promise(() =>
-      store.ingestPage(Buffer.from(html), {
+      store.ingestPage(["call"], Buffer.from(html), {
         threadId: ThreadId.make("thread"),
         ownerId: "call",
         name: "page-1.html",
-        provenance: "capture",
       }),
     );
-    const original = page.original;
-    if (original.status !== "ready") throw new Error(`page refused: ${original.code}`);
-    const object = yield* Effect.promise(() => store.object(original.digest));
+    const object = yield* Effect.promise(() => store.object(page.original.digest));
     const response = yield* protectedContentAsset(Effect.succeed(null), Effect.succeed(object), {
       method: "GET",
       headers: {},

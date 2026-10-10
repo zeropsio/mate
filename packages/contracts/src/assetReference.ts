@@ -14,8 +14,7 @@ export const ImageOccurrence = Schema.Struct({
     Schema.Struct({
       status: Schema.Literal("ready"),
       digest: AssetDigest,
-      // A picture, or the one other kind the store keeps: a page an agent published (`text/html`).
-      mimeType: Schema.String.check(Schema.isPattern(/^(?:image\/|text\/html$)/)),
+      mimeType: Schema.String.check(Schema.isPattern(/^image\//)),
       sizeBytes: PositiveInt,
       width: Schema.optionalKey(PositiveInt),
       height: Schema.optionalKey(PositiveInt),
@@ -33,6 +32,26 @@ export const ImageOccurrence = Schema.Struct({
   ]),
 });
 export type ImageOccurrence = typeof ImageOccurrence.Type;
+
+/**
+ * A page an agent published, as the asset store keeps it: apart from its pictures, in an index of
+ * its own, so a Mate that reads only pictures never meets one.
+ */
+export const PageOccurrence = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  threadId: ThreadId,
+  projectId: Schema.optionalKey(ProjectId),
+  ownerId: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  provenance: Schema.Literal("capture"),
+  original: Schema.Struct({
+    status: Schema.Literal("ready"),
+    digest: AssetDigest,
+    mimeType: Schema.Literal("text/html"),
+    sizeBytes: PositiveInt,
+  }),
+});
+export type PageOccurrence = typeof PageOccurrence.Type;
 
 export const AssetRepresentation = Schema.Struct({
   digest: AssetDigest,

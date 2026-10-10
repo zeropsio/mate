@@ -6,7 +6,7 @@ import * as NodePath from "node:path";
 
 import { ThreadId } from "@t3tools/contracts";
 import sharp from "sharp";
-import { afterEach, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { ContentAssets } from "./ContentAssets.ts";
 
@@ -239,4 +239,56 @@ it("a pressure retry of the preview recipe never publishes a reference to reclai
   } finally {
     await NodeFSP.rm(directory, { recursive: true, force: true });
   }
+});
+
+describe("a page an agent published, in the asset store", () => {
+  const pageOwner = { threadId: ThreadId.make("thread"), ownerId: "call", name: "page-1.html" };
+
+  it("is kept apart from the pictures, so a build that reads only pictures never meets it", async () => {
+    const { root, store } = await fixture();
+    const picture = await store.ingestBytes(await image(), owner);
+    const page = await store.ingestPage(["call"], Buffer.from("<h1>Plan</h1>"), pageOwner);
+    const pictures = await NodeFSP.readdir(NodePath.join(root, "home", "occurrences"));
+    expect(pictures).toEqual([`${picture.id}.json`]);
+    expect(await store.pageOccurrence(page.id)).toEqual(page);
+    expect(await store.pageOwners(page.original.digest)).toEqual([page]);
+    expect(await store.owners(page.original.digest)).toEqual([]);
+  });
+
+  it("is kept once for the same call, however often it is told", async () => {
+    const { store } = await fixture();
+    const first = await store.ingestPage(["call"], Buffer.from("<h1>Plan</h1>"), pageOwner);
+    const again = await store.ingestPage(["call"], Buffer.from("<h1>Plan</h1>"), pageOwner);
+    expect(again.id).toBe(first.id);
+  });
+
+  it("is never the same object as the same bytes kept as a picture", async () => {
+    const { store } = await fixture();
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"/>');
+    const picture = await store.ingestBytes(svg, { ...owner, name: "dot.svg" });
+    const page = await store.ingestPage(["call"], svg, pageOwner);
+    if (picture.original.status !== "ready") throw new Error("picture refused");
+    expect(page.original.digest).not.toBe(picture.original.digest);
+    expect((await store.object(picture.original.digest)).mimeType).toBe("image/svg+xml");
+    expect((await store.object(page.original.digest)).mimeType).toBe("text/html");
+  });
+});
+
+it("an occurrence this build cannot read never hides every other picture's readers", async () => {
+  const { root, store } = await fixture();
+  const picture = await store.ingestBytes(await image(), owner);
+  if (picture.original.status !== "ready") throw new Error("picture refused");
+  await NodeFSP.writeFile(
+    NodePath.join(root, "home", "occurrences", "00000000-0000-4000-8000-000000000000.json"),
+    JSON.stringify({
+      ...picture,
+      id: "x",
+      original: { ...picture.original, mimeType: "text/x-newer" },
+    }),
+  );
+  expect(
+    (await new ContentAssets(NodePath.join(root, "home")).owners(picture.original.digest)).map(
+      (each) => each.id,
+    ),
+  ).toEqual([picture.id]);
 });

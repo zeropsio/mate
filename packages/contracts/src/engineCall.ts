@@ -7,7 +7,7 @@
  */
 import * as Schema from "effect/Schema";
 
-import { ImageOccurrence } from "./assetReference.ts";
+import { ImageOccurrence, PageOccurrence } from "./assetReference.ts";
 
 /** The longest input line a call's record keeps, in UTF-16 code units (V1's activity detail). */
 export const CALL_INPUT_MAX = 180;
@@ -31,12 +31,15 @@ export const PAGE_MAX_BYTES = 8 * 1024 * 1024;
 /**
  * A page the agent published (`zerops_publish_page`) for the person to see above its reply: a
  * self-contained HTML document kept in the Mate's asset store, by reference as a picture is, with
- * its title, its size in bytes and when the call that published it ended.
+ * its title, its size in bytes, its height as zcp's browser laid it out (CSS pixels, at the
+ * conversation's width; absent when nothing measured it) and when the call that published it
+ * ended.
  */
 export const CallResultPage = Schema.Struct({
-  asset: ImageOccurrence,
+  asset: PageOccurrence,
   title: Schema.String,
   bytes: Schema.Number,
+  height: Schema.optionalKey(Schema.Number),
   publishedAt: Schema.Number,
 });
 export type CallResultPage = typeof CallResultPage.Type;

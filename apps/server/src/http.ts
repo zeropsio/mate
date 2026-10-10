@@ -422,7 +422,11 @@ export const assetRouteLayer = HttpRouter.add(
           return yield* Effect.fail(contentAssetFailure("access-unverified", 503));
         const preview = match[2] === "preview";
         const owners = yield* Effect.tryPromise({
-          try: () => store.owners(match[1]!, preview),
+          // A page's readers are its own index's: pages are kept apart from pictures.
+          try: async () => [
+            ...(await store.owners(match[1]!, preview)),
+            ...(preview ? [] : await store.pageOwners(match[1]!)),
+          ],
           catch: () => contentAssetFailure("access-unverified", 503),
         });
         let readable = false;

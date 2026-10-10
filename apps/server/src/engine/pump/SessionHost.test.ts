@@ -233,7 +233,7 @@ describe("SessionHost", () => {
     );
 
     it.effect(
-      "a page the Mate publishes is recorded on its call by reference, with its title, size and time",
+      "a page the Mate publishes is recorded on its call by reference, with its title, size, height and time",
       () =>
         Effect.scoped(
           Effect.gen(function* () {
@@ -254,7 +254,13 @@ describe("SessionHost", () => {
                       {
                         type: "text",
                         text: JSON.stringify({
-                          page: { id: "page-0123456789abcdef", title: "Plan", file, bytes: 13 },
+                          page: {
+                            id: "page-0123456789abcdef",
+                            title: "Plan",
+                            file,
+                            bytes: 13,
+                            height: 612,
+                          },
                           message: "Published",
                         }),
                       },
@@ -269,6 +275,7 @@ describe("SessionHost", () => {
               asset: PAGE_ASSET,
               title: "Plan",
               bytes: 13,
+              height: 612,
               publishedAt: call?.body.kind === "call" ? call.body.endedAt! : -1,
             });
           }),

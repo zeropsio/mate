@@ -60,9 +60,14 @@ describe("a page the Mate publishes, in its asset store", () => {
       Buffer.alloc(PAGE_MAX_BYTES + 1, 0x61),
     );
     NodeFS.mkdirSync(NodePath.join(pages, "page-3333333333333333.html"));
+    // Another session's pages: named as zcp names them, not this session's.
+    const theirs = NodePath.join(root, "other", ".zcp", "state", "pages");
+    NodeFS.mkdirSync(theirs, { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(theirs, "page-5555555555555555.html"), "<p>theirs</p>");
     return {
       pages,
       outside,
+      theirs,
       store: makeCallPictures(NodePath.join(root, "state"), () =>
         Effect.succeed(NodePath.join(root, "work")),
       ),
@@ -89,15 +94,18 @@ describe("a page the Mate publishes, in its asset store", () => {
     ["a directory", "page-3333333333333333.html"],
     ["a page that is not there", "page-4444444444444444.html"],
     ["a relative name", "relative"],
+    ["another session's page", "theirs"],
   ] as const)("never reads %s", ([_what, name]) =>
     Effect.gen(function* () {
-      const { pages, outside, store } = pagesOf();
+      const { pages, outside, theirs, store } = pagesOf();
       const file =
         name === "outside"
           ? outside
           : name === "relative"
             ? ".zcp/state/pages/page-0123456789abcdef.html"
-            : NodePath.join(pages, name);
+            : name === "theirs"
+              ? NodePath.join(theirs, "page-5555555555555555.html")
+              : NodePath.join(pages, name);
       assert.isNull(yield* store.page(thread, "call-5", file));
     }),
   );
@@ -115,6 +123,16 @@ describe("the page a call published", () => {
         }),
       },
       { title: "Plan", file: "/w/.zcp/state/pages/page-1.html" },
+    ],
+    [
+      "zcp's result with the page's measured height",
+      {
+        toolName: "zerops_publish_page",
+        resultText: JSON.stringify({
+          page: { title: "Plan", file: "/w/.zcp/state/pages/page-1.html", height: 611.5 },
+        }),
+      },
+      { title: "Plan", file: "/w/.zcp/state/pages/page-1.html", height: 612 },
     ],
     ["another tool's", { toolName: "zerops_browser", resultText: '{"page":{}}' }, null],
     ["a refusal", { toolName: "zerops_publish_page", resultText: '{"code":"X"}' }, null],

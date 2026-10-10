@@ -272,7 +272,13 @@ export const makeSessionHost = Effect.fnUntraced(function* (
             ...body,
             result: {
               ...body.result,
-              page: { asset: kept.asset, title: published.title, bytes: kept.bytes, publishedAt },
+              page: {
+                asset: kept.asset,
+                title: published.title,
+                bytes: kept.bytes,
+                ...(published.height === undefined ? {} : { height: published.height }),
+                publishedAt,
+              },
             },
           };
         }

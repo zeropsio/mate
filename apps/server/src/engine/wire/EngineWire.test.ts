@@ -1,6 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -709,12 +708,8 @@ describe("a page the Mate publishes", () => {
             profile: { kind: "mate" },
           },
         });
-        const pages = NodePath.join(
-          NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "engine-page-")),
-          ".zcp",
-          "state",
-          "pages",
-        );
+        // zcp keeps it in the session's own workspace, where the pump reads it.
+        const pages = NodePath.join(w.dir, ".zcp", "state", "pages");
         NodeFS.mkdirSync(pages, { recursive: true });
         const file = NodePath.join(pages, "page-0123456789abcdef.html");
         NodeFS.writeFileSync(file, "<h1>The plan</h1>");
@@ -729,7 +724,13 @@ describe("a page the Mate publishes", () => {
             { title: "Launch plan", path: "plan.html" },
             '{"title":"Launch plan"}',
             JSON.stringify({
-              page: { id: "page-0123456789abcdef", title: "Launch plan", file, bytes: 17 },
+              page: {
+                id: "page-0123456789abcdef",
+                title: "Launch plan",
+                file,
+                bytes: 17,
+                height: 640,
+              },
               message: "Published",
             }),
           ),
@@ -743,7 +744,7 @@ describe("a page the Mate publishes", () => {
         if (reload?.type !== "snapshot") throw new Error("no snapshot");
         const reloadCall = reload.items.find((item) => item.kind === "call");
         const page = liveCall?.kind === "call" ? liveCall.result?.page : undefined;
-        assert.include(page, { title: "Launch plan", bytes: 17 });
+        assert.include(page, { title: "Launch plan", bytes: 17, height: 640 });
         assert.include(page?.asset.original, { status: "ready", mimeType: "text/html" });
         assert.deepStrictEqual(reloadCall?.kind === "call" ? reloadCall.result?.page : null, page);
         // A reload's window holds the page with the answer, never the rest of the run's work.
