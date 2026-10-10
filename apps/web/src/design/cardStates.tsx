@@ -412,6 +412,15 @@ const THINKING: TurnHeaderActivity = {
 
 // A run come back to is closed to its summary line, and opened once they ask
 // for the work.
+setRunFold(CONVERSATION, "status-folded-live", "folded");
+
+const LONG_WORDS = [
+  "Helper B's job ended first: exit code 4, as it was told to fail. Helper A's is still sleeping.",
+  "",
+  "Reacting with the first second-wave helper: it reads what B printed and checks the exit code against the plan, then reports back before the next one starts.",
+  "",
+  "Once A's job ends too, the second wave runs both checks again and I compare the two reports line by line.",
+].join("\n");
 setRunFold(CONVERSATION, "status-shown", "shown");
 setRunFold(CONVERSATION, "tests-shown", "shown");
 
@@ -682,6 +691,58 @@ export function CardStates() {
             items: upTo("person:a1"),
             now: { kind: "waiting", on: "answer" },
             status: status({ waitingSince: ago(58) }),
+          })}
+        />
+      </CardState>
+      <CardState
+        label="Writing its words"
+        note="Its words stand in the slot as they come, four lines at most and scrolling inside with a fade; three dots at their foot say they are still being written. The clock and Hide work stand on the card's foot."
+      >
+        <Turn
+          row={record("status-words", {
+            items: upTo("step:w3"),
+            now: {
+              kind: "writing",
+              note: {
+                key: "note:a7",
+                message: { ...said("a7", "assistant", LONG_WORDS, 1), streaming: true },
+              },
+            },
+          })}
+        />
+      </CardState>
+      <CardState
+        label="Its words not written yet"
+        note="The engine opens a note empty and fills it a moment later: the line names what the Mate does, never its face alone."
+      >
+        <Turn
+          row={record("status-wordless", {
+            items: [
+              ...upTo("step:w3"),
+              { kind: "note", key: "note:a8", at: ago(1), message: said("a8", "assistant", "", 1) },
+            ],
+          })}
+        />
+      </CardState>
+      <CardState
+        label="Folded while it works"
+        note="Hide work pressed: the line alone, its clock and Show work where Hide work stood."
+      >
+        <Turn
+          row={record("status-folded-live", {
+            items: upTo("step:w3"),
+            now: { kind: "step", step: stepOf(running(read("w1", "index.ts", 4))) },
+          })}
+        />
+      </CardState>
+      <CardState
+        label="Waiting for its helpers"
+        note="Its turns are over and its helpers work on: Stop stands on the card's foot beside the clock."
+      >
+        <Turn
+          row={record("status-after", {
+            items: upTo("step:w3"),
+            now: { kind: "after" },
           })}
         />
       </CardState>
