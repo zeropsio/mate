@@ -158,6 +158,22 @@ describe("a conversation paused at the usage limit", () => {
     expect(rows[sentIndex(rows)]).not.toMatchObject({ receipt: "held" });
   });
 
+  it("draws nothing for an answer the limit left empty", () => {
+    const { rows } = milo("paused", { answer: "" });
+    expect(
+      rows.filter((row) => row.kind === "message" && row.message.role === "assistant"),
+    ).toEqual([]);
+    expect(rows.at(-1)).toMatchObject({ kind: "pause" });
+  });
+
+  it("counts the run's work on its paused card the same live and after a reload", () => {
+    const effort = (rows: ReturnType<typeof milo>["rows"]) =>
+      rows.flatMap((row) => (row.kind === "record" && row.status !== null ? [row.outcome] : []));
+    const live = effort(milo("paused").rows);
+    expect(live).toEqual([expect.objectContaining({ activity: [{ kind: "command", count: 1 }] })]);
+    expect(effort(milo("paused", { reload: true }).rows)).toEqual(live);
+  });
+
   // Decision (2026-10-10, Milo run 4): only the server's own pause, with nothing after it, fills the
   // conversation; the engine's pause is the notice card, so nothing below it stands a viewport away.
   it.each([

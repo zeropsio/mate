@@ -2613,8 +2613,16 @@ export function deriveMessagesTimelineRows(input: {
       }
     }
 
-    // An answer that is the limit's own notice is the pause's to tell.
-    const answer = turn.answerIsRefusal ? null : turn.answer;
+    // An answer that is the limit's own notice is the pause's to tell; one with no words draws
+    // nothing (Milo's run 4: the limit's end carried its answer empty for 154 ms).
+    const answer =
+      turn.answerIsRefusal ||
+      (turn.answer !== null &&
+        !turn.answer.message.streaming &&
+        turn.answer.message.text.trim().length === 0 &&
+        (turn.answer.message.attachments?.length ?? 0) === 0)
+        ? null
+        : turn.answer;
     const pause = pauseByTurnKey.get(turn.key)?.row ?? null;
     const pausedHere = pause !== null || turn.limitOnly;
 
