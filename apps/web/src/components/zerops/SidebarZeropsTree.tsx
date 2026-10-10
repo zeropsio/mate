@@ -2851,12 +2851,15 @@ function MateRowView<T extends RosterCandidate>({
     finishing: finishing !== undefined,
     read: conversationsRead,
   });
-  // A colleague's Mate waiting on its person says whom it waits on, never their question.
+  // A colleague's Mate waiting on its person says whom it waits on, never their question. A Mate
+  // nobody owns yet waits on nobody in particular: its question stands.
   const waitsOn =
     hqPeople?.waitsOnViewer === false &&
+    owner !== undefined &&
+    !owner.isViewer &&
     activity !== undefined &&
     (activity.kind === "approval" || activity.kind === "input" || activity.kind === "planReady")
-      ? (owner?.name.split(" ")[0] ?? "its person")
+      ? owner.name.split(" ")[0]
       : undefined;
   // The one line under the name (round 5, `mateRowSecond`).
   const second = mateRowSecond({

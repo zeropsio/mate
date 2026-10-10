@@ -38,7 +38,10 @@ export function lastKnownMateWords(
                 : held.kind === "working" ||
                     held.kind === "connecting" ||
                     held.kind === "monitoring"
-                  ? `${name} was working.`
+                  ? // What it was on, as its row said it: the row's one line is this line now.
+                    activity.task === undefined
+                    ? `${name} was working.`
+                    : `${name} was working on: ${activity.task}`
                   : held.kind === "done"
                     ? `${name} had finished the work.`
                     : `${name} had no active work.`;
