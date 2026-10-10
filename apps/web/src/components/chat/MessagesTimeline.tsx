@@ -382,6 +382,7 @@ interface MessagesTimelineProps {
     | null;
   onUsageContinue?: (() => void) | null;
   usageContinueTries?: boolean;
+  onWithdrawHeldMessage?: ((runId: string) => void) | null;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
   /** A question or an approval waits on the person: the queue waits with it. */
@@ -445,6 +446,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onRestartContinue = null,
   onUsageContinue = null,
   usageContinueTries = false,
+  onWithdrawHeldMessage = null,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   queueBlockedByAnswer = false,
@@ -1359,6 +1361,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRestartContinue,
       onUsageContinue,
       usageContinueTries,
+      onWithdrawHeldMessage,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
       onOpenAgents,
       onStopBackgroundWork,
@@ -1397,6 +1400,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onRestartContinue,
       onUsageContinue,
       usageContinueTries,
+      onWithdrawHeldMessage,
       agentPanelModel,
       onOpenAgents,
       onStopBackgroundWork,
@@ -3005,6 +3009,24 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             {displayedUserMessage.copyText && (
               <MessageCopyButton text={displayedUserMessage.copyText} variant="ghost" />
             )}
+            {row.message.heldRunId !== undefined && ctx.onWithdrawHeldMessage ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="icon-xs"
+                      variant="ghost"
+                      aria-label="Don't send"
+                      onClick={() => ctx.onWithdrawHeldMessage?.(row.message.heldRunId!)}
+                    />
+                  }
+                >
+                  <XIcon className="size-3.5" aria-hidden />
+                </TooltipTrigger>
+                <TooltipPopup>Don't send</TooltipPopup>
+              </Tooltip>
+            ) : null}
           </div>
         </div>
       </div>

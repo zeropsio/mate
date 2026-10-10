@@ -2248,6 +2248,47 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).not.toContain("is opening the conversation");
   });
 
+  it("a held message the agent has not taken can be withdrawn, its run named", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const withdrawn = vi.fn();
+    const held = buildUserTimelineEntry("Still there?");
+    const sent = { ...buildUserTimelineEntry("Deploy the api"), id: "entry-0" };
+    let renderer: ReactTestRenderer | undefined;
+    try {
+      await act(() => {
+        renderer = create(
+          <MessagesTimeline
+            {...buildProps()}
+            latestTurn={settled}
+            onWithdrawHeldMessage={withdrawn}
+            timelineEntries={[
+              { ...sent, message: { ...sent.message, id: MessageId.make("message-0") } },
+              { ...held, message: { ...held.message, heldRunId: "mate/r/2" } },
+            ]}
+          />,
+        );
+      });
+      const withdraw = renderer!.root.findAll(
+        (node) => node.type === "button" && node.props["aria-label"] === "Don't send",
+      );
+      expect(withdraw).toHaveLength(1);
+      await act(() =>
+        withdraw[0]!.props.onClick({
+          nativeEvent: {},
+          preventDefault: () => {},
+          stopPropagation: () => {},
+          isPropagationStopped: () => false,
+          isDefaultPrevented: () => false,
+        }),
+      );
+      expect(withdrawn).toHaveBeenCalledWith("mate/r/2");
+    } finally {
+      await act(() => renderer?.unmount());
+    }
+  });
+
   it("draws a slash command as an event, never the person's bubble", () => {
     const markup = renderToStaticMarkup(
       <MessagesTimeline
