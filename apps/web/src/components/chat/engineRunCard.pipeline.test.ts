@@ -140,6 +140,8 @@ function render(input: {
   isWorking?: boolean;
   /** The helpers' finishes, from their fold, as the conversation passes them. */
   helpers?: boolean;
+  /** The Mate is out of reach: since when, in its notice's words. */
+  away?: { readonly since: string; readonly words: string };
 }) {
   const records = {
     runs: input.runs.map((run) => decode(run)),
@@ -162,6 +164,7 @@ function render(input: {
     turnDiffSummaries: [],
     supportsConversationRollback: false,
     ...(input.paged ? { cardPaging: engineCardPagingOfRecords(key, records) } : {}),
+    ...(input.away === undefined ? {} : { away: input.away }),
     ...(input.helpers
       ? {
           helperFinishes: helperFinishesOf(
@@ -913,6 +916,47 @@ it.each([
     ),
   ).toMatch(/^Milo wrote /);
 });
+
+// Milo's stress run 6 (V +0:25 → +0:55): through a planned restart the card said "Thinking", its
+// clock ticking 0:06 → 0:36, while the notice said Milo was restarting.
+it.each([
+  { doing: "thinking", items: [] as Item[] },
+  {
+    doing: "running a command",
+    items: [
+      { ...call(2, 2_000, { step: "command", tool: { name: "Bash" }, state: "running" } as never) },
+    ] as Item[],
+  },
+])(
+  "while the Mate is out of reach its live card says what its notice says, its clock standing still: $doing",
+  ({ items }) => {
+    const since = new Date(t0 + 6_000).toISOString();
+    const card = cardOf(
+      render({
+        runs: [
+          stressRun({ state: "running", turnState: "running", endedAt: null, end: null } as never),
+        ],
+        items: [personItem(run1, 1, "Run a short tree", { at: t0 }), ...items],
+        isWorking: true,
+        away: { since, words: "Milo is restarting." },
+      }),
+    );
+    expect(card.status?.live).toBe(true);
+    expect(card.status?.waitingSince).toBe(since);
+    expect(
+      nowLineWords(
+        nowLineOf({
+          status: card.status!,
+          now: card.now,
+          answering: card.answering,
+          compacting: false,
+          speaker: "Milo",
+          effort: null,
+        }),
+      ),
+    ).toBe("Milo is restarting.");
+  },
+);
 
 // The oracle's deep seeds: a run that only wrote to the person read "thought" live and "worked"
 // after a reload, its summary's notes counted as work. Run 4 (2026-10-10): a 32-line answer with no
