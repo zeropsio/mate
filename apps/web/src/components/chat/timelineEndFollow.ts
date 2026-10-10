@@ -142,6 +142,9 @@ export function createEndFollow({
     place: () => {
       const element = viewport();
       if (element === null || !follows()) return;
+      // Mid-glide the glide goes on to the moved end: standing there at once was a step of all
+      // that was left (Milo's stress run 4: 77 px in one frame as the composer shrank on a send).
+      if (gliding === element) return;
       stopGlide();
       placeEnd();
     },

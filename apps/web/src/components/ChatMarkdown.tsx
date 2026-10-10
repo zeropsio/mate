@@ -1265,9 +1265,8 @@ function useImageRoom(
         ? undefined
         : { width: `min(${size.width}px, 30rem, calc(30rem * ${size.width / size.height}))` },
     className: cn(
-      placeholder && "aspect-video w-full rounded-lg bg-muted/60",
-      // Its box stands at its size while its bytes come, a quiet fill in it.
-      holdsPlace && !loaded && "bg-muted/60",
+      // Its room stands at its size while its bytes come, nothing painted in it.
+      placeholder && "aspect-video w-full rounded-lg",
     ),
     openerClassName: placeholder ? "w-full max-w-[30rem]" : undefined,
     onLoad: (event: React.SyntheticEvent<HTMLImageElement>) => {
@@ -1409,7 +1408,7 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
         role="status"
         aria-label="Loading image"
         className={cn(
-          "my-1 block max-w-full rounded-lg bg-muted/60",
+          "my-1 block max-w-full rounded-lg",
           room.width === undefined && "aspect-video w-full max-w-[30rem]",
         )}
         style={

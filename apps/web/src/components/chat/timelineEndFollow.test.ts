@@ -302,6 +302,45 @@ describe("createEndFollow", () => {
     expect(frames).toHaveLength(0);
   });
 
+  // Milo's stress run 4 (D1): the composer shrank back as a sent message glided in, and the list
+  // stood at its new end at once, a 77 px step in one frame.
+  it("a composer that changes height mid-glide moves the end the glide goes to, never a jump", () => {
+    const scroll = list({ top: 600, height: 1000, client: 400 });
+    const follow = createEndFollow({
+      placeEnd: () => {
+        scroll.element.scrollTop = endOf(scroll);
+      },
+      viewport: () => scroll.element as unknown as HTMLElement,
+      follows: () => scroll.state.follows,
+    });
+    grow(scroll, follow, 176);
+    const tops = [scroll.element.scrollTop];
+    for (const _ of [1, 2]) {
+      now += FRAME_MS;
+      for (const frame of frames.splice(0)) frame(now);
+      tops.push(scroll.element.scrollTop);
+    }
+    scroll.element.scrollHeight -= 72;
+    follow.place();
+    tops.push(scroll.element.scrollTop, ...play(scroll));
+    const steps = tops.slice(1).map((top, index) => Math.abs(top - tops[index]!));
+    expect(Math.max(...steps)).toBeLessThan(GLIDE_FROM_PX);
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
+  });
+
+  it("a composer that changes height with nothing gliding keeps the end in place at once", () => {
+    const placeEnd = vi.fn();
+    const scroll = list({ top: 600, height: 1000, client: 400 });
+    const follow = createEndFollow({
+      placeEnd,
+      viewport: () => scroll.element as unknown as HTMLElement,
+      follows: () => scroll.state.follows,
+    });
+    scroll.element.scrollHeight += 40;
+    follow.place();
+    expect(placeEnd).toHaveBeenCalledTimes(1);
+  });
+
   it("stops where the person scrolled up mid-glide, and stays", () => {
     const { scroll, follow } = atItsEnd();
     grow(scroll, follow, 600);

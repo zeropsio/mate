@@ -30,6 +30,10 @@ const decode = Schema.decodeUnknownSync(RunRecord);
 const RESETS_AT = Date.parse("2099-10-11T11:00:00.000Z");
 const PROMPT = "Live stress test 4A: start two helpers";
 
+/** Milo's held message went at 8:47 and the pause lifted at 10:20 (run 4, local time). */
+const SENT_AT = Date.parse("2099-10-10T06:47:27.000Z");
+const LIFTED_AT = Date.parse("2099-10-10T08:20:39.900Z");
+
 const LIMIT_WORDS = "You've hit your weekly limit · resets Oct 11, 11am (UTC)";
 
 /**
@@ -42,7 +46,11 @@ const LIMIT_WORDS = "You've hit your weekly limit · resets Oct 11, 11am (UTC)";
  */
 function milo(
   phase: "paused" | "held" | "lifted",
-  { reload = false, answer = LIMIT_WORDS }: { reload?: boolean; answer?: string } = {},
+  {
+    reload = false,
+    answer = LIMIT_WORDS,
+    liftedAt = null,
+  }: { reload?: boolean; answer?: string; liftedAt?: number | null } = {},
 ) {
   const runs = [
     decode(
@@ -71,7 +79,14 @@ function milo(
                     startedAt: null,
                     endedAt: null,
                   }
-                : { state: "running", end: null, endedAt: null },
+                : {
+                    state: "running",
+                    end: null,
+                    endedAt: null,
+                    ...(liftedAt === null
+                      ? {}
+                      : { queuedAt: SENT_AT, admittedAt: liftedAt, startedAt: liftedAt }),
+                  },
             ),
           ),
         ]),
@@ -89,9 +104,18 @@ function milo(
       ? []
       : [
           personItem(held, 5, "Then write the table", {
+            ...(liftedAt === null ? {} : { at: SENT_AT }),
             delivery:
               phase === "held" ? { state: "queued", at: null } : { state: "delivered", at: 5 },
           }),
+          ...(liftedAt === null
+            ? []
+            : [
+                {
+                  ...thoughtItem(held, 6, "Reading the notes file first"),
+                  at: liftedAt + 4_000,
+                } as Item,
+              ]),
         ]),
   ];
   const state: ConversationRowState =
@@ -156,6 +180,13 @@ describe("a conversation paused at the usage limit", () => {
     expect(rows[pauseIndex(rows)]).not.toMatchObject({ resumedAt: null });
     expect(sentIndex(rows)).toBe(pauseIndex(rows) + 1);
     expect(rows[sentIndex(rows)]).not.toMatchObject({ receipt: "held" });
+  });
+
+  it("the pause row says when the Mate really picked up again", () => {
+    const { rows } = milo("lifted", { liftedAt: LIFTED_AT });
+    expect(rows[pauseIndex(rows)]).toMatchObject({
+      resumedAt: new Date(LIFTED_AT).toISOString(),
+    });
   });
 
   it("draws nothing for an answer the limit left empty", () => {
