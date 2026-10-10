@@ -1,4 +1,4 @@
-import { ImageOccurrence } from "@t3tools/contracts";
+import { CallResultPage, ImageOccurrence } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
 /**
@@ -158,6 +158,19 @@ function readZeropsImages(
   const images = readImages(raw);
   imagesRead.set(raw, images);
   return images;
+}
+
+const decodePage = Schema.decodeUnknownOption(CallResultPage);
+/** Each row's page, read once: a row read again gives the page it gave before (as `imagesRead`). */
+const pagesRead = new WeakMap<object, CallResultPage | undefined>();
+/** The page a row's result says its call published; one that does not decode is none. */
+function readZeropsPage(payload: Record<string, unknown>): CallResultPage | undefined {
+  const data = readRecord(payload.data);
+  const zerops = data !== undefined ? readRecord(data.zerops) : undefined;
+  const raw = zerops?.page;
+  if (typeof raw !== "object" || raw === null) return undefined;
+  if (!pagesRead.has(raw)) pagesRead.set(raw, Option.getOrUndefined(decodePage(raw)));
+  return pagesRead.get(raw);
 }
 
 const decodeImageOccurrence = Schema.decodeUnknownOption(ImageOccurrence);
@@ -353,6 +366,9 @@ function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {
     }
   }
 
+  let page: CallResultPage | undefined;
+  for (const row of rows) page = readZeropsPage(row.payload) ?? page;
+
   // The start says the response it was written in; its other rows never do.
   let responseId: string | undefined;
   for (const row of rows) {
@@ -372,6 +388,7 @@ function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {
     ...(resultText !== undefined ? { resultText } : {}),
     truncated,
     ...(images !== undefined ? { images } : {}),
+    ...(page !== undefined ? { page } : {}),
     startedAt: first.createdAt,
     anchorActivityId: first.id,
     ...(settledRow !== undefined ? { settledAt: settledRow.createdAt } : {}),

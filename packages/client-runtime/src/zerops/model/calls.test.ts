@@ -297,6 +297,55 @@ describe("collectZeropsCalls — the lattice properties", () => {
     expect(calls[0]!.id).toBe("anon:solo");
   });
 
+  it.each([
+    {
+      title: "a page the engine recorded carries into its call by reference",
+      page: {
+        asset: {
+          id: "6f1c2b9e-0000-4000-8000-000000000001",
+          threadId: "thread",
+          ownerId: "call",
+          name: "page-0123456789abcdef.html",
+          provenance: "capture",
+          original: {
+            status: "ready",
+            digest: "b".repeat(64),
+            mimeType: "text/html",
+            sizeBytes: 17,
+          },
+        },
+        title: "Launch plan",
+        bytes: 17,
+        publishedAt: 1_760_000_000_000,
+      },
+      carried: true,
+    },
+    {
+      title: "a page with no asset of its own is no page",
+      page: { title: "Launch plan", bytes: 17, publishedAt: 1 },
+      carried: false,
+    },
+  ])("$title", ({ page, carried }) => {
+    const activities = [
+      started({
+        id: "a1",
+        payload: { toolCallId: "p1", data: { toolName: "mcp__zerops__zerops_publish_page" } },
+      }),
+      completed({
+        id: "a2",
+        payload: {
+          toolCallId: "p1",
+          data: {
+            toolName: "mcp__zerops__zerops_publish_page",
+            zerops: { toolName: "zerops_publish_page", resultText: "{}", page },
+          },
+        },
+      }),
+    ];
+    const [call] = collectZeropsCalls(activities, "t1");
+    expect(call!.page).toEqual(carried ? page : undefined);
+  });
+
   it("a non-zerops call never appears in the ledger", () => {
     const activities = [
       started({
