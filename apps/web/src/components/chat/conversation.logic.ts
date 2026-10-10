@@ -2695,7 +2695,9 @@ export function deriveOutcome(input: {
   readonly unheld?: boolean;
 }): OutcomeModel | null {
   const { turn } = input;
-  if (turn.live || turn.limitOnly) return null;
+  // A run the limit refused before it did anything has no outcome; one whose work is not held
+  // (a reload holds only its words, here the refusal) did work all the same.
+  if (turn.live || (turn.limitOnly && input.unheld !== true)) return null;
   const operations = turn.stretches
     .flatMap(stretchOperations)
     .flatMap(splitBatchDeploy)

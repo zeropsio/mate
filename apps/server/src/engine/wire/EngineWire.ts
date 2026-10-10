@@ -53,6 +53,7 @@ import {
   type EngineSetRuntimeModeInput,
   type EngineAssignAgentInput,
   type EngineStopInput,
+  type EngineContinueInput,
   type EngineSubscribeInput,
   type EngineSubscribeRowsInput,
   type EngineUnserved,
@@ -115,6 +116,10 @@ export interface EngineWireShape {
   ) => Effect.Effect<EngineCallResult, EngineWireError>;
   readonly stop: (
     input: EngineStopInput,
+    caller: WireCaller,
+  ) => Effect.Effect<EngineCallResult, EngineWireError>;
+  readonly continue: (
+    input: EngineContinueInput,
     caller: WireCaller,
   ) => Effect.Effect<EngineCallResult, EngineWireError>;
   readonly answer: (
@@ -189,6 +194,7 @@ export const unservedWire: EngineWireShape = {
   receipt: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   send: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   stop: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
+  continue: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   answer: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   dismiss: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
   steer: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
@@ -963,6 +969,10 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {
           _tag: "Stop",
           ...(input.runId === undefined ? {} : { runId: input.runId }),
+        }),
+      continue: (input, caller) =>
+        command(input.protocol, input.conversationId, input.commandId, caller, {
+          _tag: "Continue",
         }),
       answer: (input, caller) => {
         const answer = input.answer;

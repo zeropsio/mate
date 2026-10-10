@@ -38,6 +38,7 @@ import {
   EngineSetRuntimeModeInput,
   EngineAssignAgentInput,
   EngineStopInput,
+  EngineContinueInput,
   EngineSubscribeInput,
   EngineSubscribeRowsInput,
   EngineWireError,
@@ -400,6 +401,7 @@ export const WS_METHODS = {
   engineReceipt: "engine.receipt",
   engineSend: "engine.send",
   engineStop: "engine.stop",
+  engineContinue: "engine.continue",
   engineAnswer: "engine.answer",
   engineDismiss: "engine.dismiss",
   engineSteer: "engine.steer",
@@ -1349,6 +1351,12 @@ const WsEngineStopRpc = Rpc.make(WS_METHODS.engineStop, {
   error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
 });
 
+const WsEngineContinueRpc = Rpc.make(WS_METHODS.engineContinue, {
+  payload: EngineContinueInput,
+  success: EngineCallResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
 const WsEngineAnswerRpc = Rpc.make(WS_METHODS.engineAnswer, {
   payload: EngineAnswerInput,
   success: EngineCallResult,
@@ -1531,6 +1539,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsEngineReceiptRpc,
   WsEngineSendRpc,
   WsEngineStopRpc,
+  WsEngineContinueRpc,
   WsEngineAnswerRpc,
   WsEngineDismissRpc,
   WsEngineSteerRpc,

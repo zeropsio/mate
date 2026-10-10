@@ -1449,6 +1449,7 @@ export default function ChatView(props: ChatViewProps) {
   const interruptThreadTurn = useAtomCommand(threadEnvironment.interruptTurn, {
     reportFailure: false,
   });
+  const continueAfterLimit = useAtomCommand(threadEnvironment.continueAfterLimit);
   const respondToThreadApproval = useAtomCommand(threadEnvironment.respondToApproval, {
     reportFailure: false,
   });
@@ -3408,6 +3409,21 @@ export default function ChatView(props: ChatViewProps) {
       );
     }
   }, [interruptThreadTurn]);
+  /** A held message withdrawn: the engine's Stop ends its queued run before any agent has it. */
+  const onWithdrawHeldMessage = async (runId: string) => {
+    if (!activeThread) return;
+    const result = await interruptThreadTurn({
+      environmentId: activeThread.environmentId,
+      input: { threadId: activeThread.id, turnId: runId as TurnId },
+    });
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const error = squashAtomCommandFailure(result);
+      setThreadError(
+        activeThread.id,
+        error instanceof Error ? error.message : "The message could not be withdrawn.",
+      );
+    }
+  };
   const canInterruptRunningThread =
     buildRunningThreadTurnInterruptInput(activeThread, phase) !== null;
 
@@ -8647,7 +8663,16 @@ export default function ChatView(props: ChatViewProps) {
                     isWorking || isSendBusy || queueBlockedByPendingRequest
                       ? null
                       : () => {
-                          if (activeThreadKey === null) return;
+                          if (activeThreadKey === null || activeThread === undefined) return;
+                          // The engine tries the provider itself: the held message, else the
+                          // limited work's resume. V1 continues by a message.
+                          if (engineConversation) {
+                            void continueAfterLimit({
+                              environmentId: activeThread.environmentId,
+                              input: { threadId: activeThread.id },
+                            });
+                            return;
+                          }
                           const message = useQueuedMessageStore
                             .getState()
                             .enqueue(activeThreadKey, {
@@ -8662,6 +8687,8 @@ export default function ChatView(props: ChatViewProps) {
                             });
                           void onSend(undefined, "foreground", message);
                         },
+                  usageContinueTries: engineConversation,
+                  onWithdrawHeldMessage: engineConversation ? onWithdrawHeldMessage : null,
                   onSteerQueuedMessage,
                   queueBlockedByAnswer: queueBlockedByPendingRequest,
                   steerQueuedMessageShortcutLabel: shortcutLabelForCommand(

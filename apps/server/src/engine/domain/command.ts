@@ -148,6 +148,18 @@ export type ProviderSignal =
   /** Deltas flowed: the turn is alive. Throttled by `decide`, so the pump may send it per batch. */
   | { readonly kind: "activity"; readonly turn: TurnHandle };
 
+/**
+ * A provider's word on the signed-in account's usage: when it was asked, and each window it
+ * keeps, how full and when it resets. An account that keeps no windows (an API key) reports none.
+ */
+export interface ProviderUsageReport {
+  readonly checkedAt: number;
+  readonly windows: ReadonlyArray<{
+    readonly usedPercent: number;
+    readonly resetsAt: number | null;
+  }>;
+}
+
 export type Command =
   | {
       readonly _tag: "Send";
@@ -168,6 +180,10 @@ export type Command =
       readonly interactionMode?: ProviderInteractionMode;
     }
   | { readonly _tag: "Stop"; readonly runId?: RunId }
+  /** The person asks the work a usage limit holds to try the provider now. */
+  | { readonly _tag: "Continue" }
+  /** What the provider reports now of the usage of the account the agent is signed in to. */
+  | { readonly _tag: "ProviderUsage"; readonly usage: ProviderUsageReport }
   | {
       readonly _tag: "Answer";
       readonly requestId: RequestId;

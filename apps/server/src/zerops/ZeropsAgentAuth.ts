@@ -277,6 +277,11 @@ export interface ZeropsAgentAuthOptions {
     agentId: ZeropsAgentId,
     verified: ServerProviderAuthStatus,
   ) => Effect.Effect<void>;
+  /**
+   * Has the provider registry read the agent's instance again (`ProviderInstances.refreshAgent`):
+   * after a credential event that still reads signed in, the account behind it may be another.
+   */
+  readonly refreshProviderSnapshot?: (agentId: ZeropsAgentId) => Effect.Effect<void>;
   /** Resolved the same way the provider drivers do by default: `os.homedir()`, never `CLAUDE_CONFIG_DIR`. */
   readonly homeDir: string;
   readonly envStorePath: string;
@@ -397,6 +402,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       agentFlag,
       refreshProviderAuth,
       reconcileProviderAuth,
+      refreshProviderSnapshot,
       homeDir,
       envStorePath,
       readSigners,
@@ -599,6 +605,11 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         // Claude probe takes seconds) follows on this agent's own queue.
         if (reconcileProviderAuth !== undefined && status !== before.providerAuth[agentId]) {
           yield* reconcileProviderAuth(agentId, status);
+        }
+        // A credential replaced while signed in may be another account: the provider reads its
+        // account (and that account's usage) again, whatever the status said before.
+        if (refreshProviderSnapshot !== undefined && allowMarkOAuth && status === "authenticated") {
+          yield* refreshProviderSnapshot(agentId);
         }
         completedChecks[agentId] = generation;
         yield* checks[agentId].complete;
@@ -855,6 +866,7 @@ export const layer = Layer.effect(
       agentFlag,
       refreshProviderAuth: layerVerifyAgentAuth(spawnProbe),
       reconcileProviderAuth: providerInstances.reconcileAgentAuth,
+      refreshProviderSnapshot: providerInstances.refreshAgent,
       homeDir: NodeOS.homedir(),
       envStorePath: ZEMBED_ENV_FILE,
       readSigners: projectSigners.signers,

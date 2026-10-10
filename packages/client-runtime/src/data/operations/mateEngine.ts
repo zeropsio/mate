@@ -35,6 +35,8 @@ declare module "../model.ts" {
       readonly pictures: number;
     };
     readonly "mate-engine-stop": EngineOperationTarget & { readonly runId: string | null };
+    /** The work a usage limit holds tries the provider now. */
+    readonly "mate-engine-continue": EngineOperationTarget;
     /** Only the answer's summary is retained: what the record shows, never a secret's value. */
     readonly "mate-engine-answer": EngineOperationTarget & {
       readonly requestId: string;
@@ -61,6 +63,7 @@ declare module "../model.ts" {
   interface OperationResults {
     readonly "mate-engine-send": EngineAcceptance;
     readonly "mate-engine-stop": EngineAcceptance;
+    readonly "mate-engine-continue": EngineAcceptance;
     readonly "mate-engine-answer": EngineAcceptance;
     readonly "mate-engine-dismiss": EngineAcceptance;
     readonly "mate-engine-steer": EngineAcceptance;
@@ -191,6 +194,13 @@ export const mateEngineSwitchModel: OperationKind<"mate-engine-switch-model"> = 
   },
 };
 
+/** A Continue shows once no usage limit holds the conversation (a refusal brings one back). */
+export const mateEngineContinue: OperationKind<"mate-engine-continue"> = {
+  kind: "mate-engine-continue",
+  executor: "mate",
+  reflected: (read, intent) => headerOf(read, intent)?.pausedUntil === null,
+};
+
 /** Archiving or restoring shows once the conversation header agrees. */
 export const mateEngineSetArchived: OperationKind<"mate-engine-set-archived"> = {
   kind: "mate-engine-set-archived",
@@ -214,6 +224,7 @@ export const mateEngineAssignAgent: OperationKind<"mate-engine-assign-agent"> = 
 export const MATE_ENGINE_KINDS = [
   mateEngineSend,
   mateEngineStop,
+  mateEngineContinue,
   mateEngineAnswer,
   mateEngineDismiss,
   mateEngineSteer,

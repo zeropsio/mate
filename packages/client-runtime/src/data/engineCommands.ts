@@ -195,6 +195,11 @@ export const engineInterruptTurn =
           }),
     });
 
+/** The notice's Continue: the work a usage limit holds tries the provider now. */
+export const engineContinueAfterLimit =
+  (environmentId: string, input: { readonly threadId: string }) => (host: MateEngineHost) =>
+    host.operations.continue({ environmentId, conversationId: input.threadId });
+
 export const engineSetArchived =
   (
     environmentId: string,

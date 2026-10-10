@@ -135,6 +135,7 @@ import {
   createMessagesTimelineRowsCache,
   conversationSpeaker,
   deriveMessagesTimelineRows,
+  livePauseStageId,
   earlierTurnsAnchor,
   helperFinishesOf,
   normalizeCompactToolLabel,
@@ -381,6 +382,8 @@ interface MessagesTimelineProps {
     | ((interruption: import("@t3tools/contracts").MateInterruption) => void)
     | null;
   onUsageContinue?: (() => void) | null;
+  usageContinueTries?: boolean;
+  onWithdrawHeldMessage?: ((runId: string) => void) | null;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
   /** A question or an approval waits on the person: the queue waits with it. */
@@ -443,6 +446,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   interruption = null,
   onRestartContinue = null,
   onUsageContinue = null,
+  usageContinueTries = false,
+  onWithdrawHeldMessage = null,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   queueBlockedByAnswer = false,
@@ -696,10 +701,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => rows.findLast((row) => row.kind === "pause" && row.resumedAt === null)?.id ?? null,
     [rows],
   );
-  const activePause =
-    limit.kind !== "limited"
-      ? undefined
-      : rows.find((row) => row.kind === "pause" && row.id === livePauseId);
+  // Only the server's own pause with nothing after it fills the conversation; the engine's pause
+  // is a notice card where its run ended (Milo's run 4 drew it a viewport tall, blank below).
+  const pauseStageId = useMemo(
+    () => livePauseStageId(rows, limit, usagePause),
+    [limit, rows, usagePause],
+  );
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
   // The rows a reading position may land on stay drawn while it is put
   // back: its own, the run's line and the row above it.
@@ -1345,6 +1352,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       livePauseId,
       usagePause,
       pauseStage: {
+        id: pauseStageId,
         mate: mate ?? null,
         height:
           pauseViewportHeight === undefined
@@ -1356,6 +1364,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       interruption,
       onRestartContinue,
       onUsageContinue,
+      usageContinueTries,
+      onWithdrawHeldMessage,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
       onOpenAgents,
       onStopBackgroundWork,
@@ -1384,6 +1394,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       speaker,
       standUpAsk,
       livePauseId,
+      pauseStageId,
       usagePause,
       mate,
       pauseViewportHeight,
@@ -1393,6 +1404,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       interruption,
       onRestartContinue,
       onUsageContinue,
+      usageContinueTries,
+      onWithdrawHeldMessage,
       agentPanelModel,
       onOpenAgents,
       onStopBackgroundWork,
@@ -1762,7 +1775,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   TIMELINE_LIST_HEADER
                 )
               }
-              ListFooterComponent={activePause === undefined ? TIMELINE_LIST_FOOTER : null}
+              ListFooterComponent={pauseStageId === null ? TIMELINE_LIST_FOOTER : null}
             />
             <TimelineMinimap
               items={minimapItems}
@@ -1792,7 +1805,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       <div className="h-full min-h-0" data-conversation-content="">
         {content}
       </div>
-      {kept?.shown === false || activePause !== undefined ? null : (
+      {kept?.shown === false || pauseStageId !== null ? null : (
         <ConversationOpeningStage
           ready={standing}
           readPending={onItsWay}
@@ -2622,19 +2635,55 @@ function CrewCardTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "crew-
 
 function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }> }) {
   const ctx = use(TimelineRowCtx);
+  const ref = useRef<HTMLDivElement>(null);
+  const settledHeight = useRef<number | null>(null);
+  const shownPhase = useRef<string | null>(null);
+  // What the notice says changes when the pause lifts (Continue goes, the line goes quiet): its
+  // height glides to the new one rather than cutting, so nothing around it jumps.
+  const phase = `${row.resumedAt !== null}:${row.id === ctx.livePauseId ? ctx.limit?.kind : "none"}`;
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (node === null) return;
+    const observer = new ResizeObserver(() => {
+      if (node.getAnimations().length === 0)
+        settledHeight.current = node.getBoundingClientRect().height;
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    const before = shownPhase.current;
+    shownPhase.current = phase;
+    if (node === null || before === null || before === phase) return;
+    // A glide still running is taken up where it stands: the lift can change the notice twice.
+    const running = node.getAnimations();
+    const from = running.length > 0 ? node.getBoundingClientRect().height : settledHeight.current;
+    for (const glide of running) glide.cancel();
+    const to = node.getBoundingClientRect().height;
+    settledHeight.current = to;
+    if (from === null || Math.abs(from - to) < 1 || reducedMotion()) return;
+    node.style.overflow = "clip";
+    const glide = node.animate([{ height: `${from}px` }, { height: `${to}px` }], {
+      duration: 220,
+      easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+    });
+    glide.onfinish = () => {
+      node.style.overflow = "";
+    };
+  }, [phase]);
   return (
     <div
-      style={
-        row.id === ctx.livePauseId && ctx.limit?.kind === "limited"
-          ? { height: ctx.pauseStage?.height }
-          : undefined
-      }
+      ref={ref}
+      style={row.id === ctx.pauseStage?.id ? { height: ctx.pauseStage.height } : undefined}
     >
       <PauseBlock
+        stage={row.id === ctx.pauseStage?.id}
         mate={ctx.pauseStage?.mate ?? null}
         nowMs={Date.now()}
         onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
         onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
+        triesBeforeReset={ctx.usageContinueTries === true}
         limit={row.id === ctx.livePauseId ? (ctx.limit ?? NO_MATE_LIMIT) : NO_MATE_LIMIT}
         blockedByAnswer={row.id === ctx.livePauseId && ctx.queueBlockedByAnswer === true}
         row={row}
@@ -2980,7 +3029,12 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       </div>
       {row.receipt ? (
         <span className="flex shrink-0 pb-1.5">
-          <MessageReceipt receipt={row.receipt} speaker={ctx.speaker} />
+          <MessageReceipt
+            receipt={row.receipt}
+            speaker={ctx.speaker}
+            resetsAt={ctx.limit?.kind === "limited" ? ctx.limit.resetsAt : null}
+            timestampFormat={ctx.timestampFormat}
+          />
         </span>
       ) : null}
       <div className="flex shrink-0 items-center pb-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
@@ -3000,6 +3054,24 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             {displayedUserMessage.copyText && (
               <MessageCopyButton text={displayedUserMessage.copyText} variant="ghost" />
             )}
+            {row.message.heldRunId !== undefined && ctx.onWithdrawHeldMessage ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="icon-xs"
+                      variant="ghost"
+                      aria-label="Don't send"
+                      onClick={() => ctx.onWithdrawHeldMessage?.(row.message.heldRunId!)}
+                    />
+                  }
+                >
+                  <XIcon className="size-3.5" aria-hidden />
+                </TooltipTrigger>
+                <TooltipPopup>Don't send</TooltipPopup>
+              </Tooltip>
+            ) : null}
           </div>
         </div>
       </div>

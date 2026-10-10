@@ -52,6 +52,8 @@ export interface TimelineRowSharedState {
   usagePause: ServerUsagePause | null;
   /** The live pause occupies the measured message room; history stays in the same scroll. */
   pauseStage?: {
+    /** The pause that stands as the stage (`livePauseStageId`); null when it is a notice card. */
+    readonly id: string | null;
     readonly mate: Parameters<typeof PauseBlock>[0]["mate"];
     readonly height: number | undefined;
   };
@@ -62,6 +64,10 @@ export interface TimelineRowSharedState {
     | ((interruption: import("@t3tools/contracts").MateInterruption) => void)
     | null;
   onUsageContinue?: (() => void) | null;
+  /** The Mate's engine tries the provider on Continue before a known reset too. */
+  usageContinueTries?: boolean;
+  /** Withdraws a message no agent has yet: its queued run ends, stopped by the person. */
+  onWithdrawHeldMessage?: ((runId: string) => void) | null;
   agentPanelModel: AgentPanelModel;
   onOpenAgents: () => void;
   /** Stops the work that outlived the turn. */

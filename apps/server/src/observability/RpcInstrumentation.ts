@@ -122,6 +122,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.engineReceipt]: "engine",
   [WS_METHODS.engineSend]: "engine",
   [WS_METHODS.engineStop]: "engine",
+  [WS_METHODS.engineContinue]: "engine",
   [WS_METHODS.engineAnswer]: "engine",
   [WS_METHODS.engineDismiss]: "engine",
   [WS_METHODS.engineSteer]: "engine",

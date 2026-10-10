@@ -371,6 +371,13 @@ export const EngineSendInput = Schema.Struct({
 });
 export type EngineSendInput = typeof EngineSendInput.Type;
 
+/**
+ * Try the work a usage limit holds now: the held message first, else the limited run's resume. A
+ * provider that still refuses ends the try as a usage limit again.
+ */
+export const EngineContinueInput = Schema.Struct({ ...call });
+export type EngineContinueInput = typeof EngineContinueInput.Type;
+
 /** Stop the run on (or the named one). */
 export const EngineStopInput = Schema.Struct({ ...call, runId: Schema.optionalKey(RunId) });
 export type EngineStopInput = typeof EngineStopInput.Type;

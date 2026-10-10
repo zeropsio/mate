@@ -217,6 +217,39 @@ describe("the pause's automatic-resume choice", () => {
     );
   });
 
+  // Milo, 2026-10-10: signed in to another subscription, the limit was gone a day before its
+  // reset, and Continue only said it could not continue before then.
+  it("on the Mate's engine, Continue before a known reset asks the Mate to try now", async () => {
+    const continued = vi.fn();
+    const resetsAt = new Date(NOW_MS + 3_600_000).toISOString();
+    await act(() =>
+      root!.render(
+        <PauseBlock
+          nowMs={NOW_MS}
+          row={{
+            kind: "pause",
+            id: "waiting",
+            createdAt: at(600),
+            resetsAt,
+            resumedAt: null,
+            held: 0,
+            provider: "Claude",
+          }}
+          serverPause={{ resetsAt, autoResume: false }}
+          limit={limitAt(resetsAt)}
+          onAutoResumeChange={null}
+          onContinue={continued}
+          triesBeforeReset
+          speaker={NOVA}
+          timestampFormat="24-hour"
+        />,
+      ),
+    );
+    await act(() => document.querySelector<HTMLButtonElement>("button")!.click());
+    expect(continued).toHaveBeenCalledOnce();
+    expect(document.body.textContent).not.toContain("can't continue");
+  });
+
   it("an early recovery leaves the dated refusal but Continue submits immediately", async () => {
     const continued = vi.fn();
     const resetsAt = new Date(NOW_MS + 3_600_000).toISOString();
