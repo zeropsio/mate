@@ -1175,6 +1175,20 @@ export const NATIVE_UPDATE_WORDS =
  * that thread's words are from before the flip, and a menu read off it showed them days old.
  * A row with no words yet leaves the thread's.
  */
+/**
+ * When the row's run began, as the engine's records give it: the run on, or the message waiting its
+ * turn, from its own start (`since`) — never the row's last change. Otherwise its last run ended,
+ * and what was asked of it was asked before then: a row rewritten later (a restart rereads every
+ * row) names no new message.
+ */
+const rowRunAt = (row: ConversationRow): number => {
+  const { state } = row;
+  if (state.kind === "queued" || (state.kind === "working" && !state.waitsOnHelpers))
+    return state.since;
+  const ended = row.latestRun?.endedAt ?? null;
+  return ended === null ? row.at : Math.min(row.at, ended);
+};
+
 const rowWords = (
   row: ConversationRow,
 ): Pick<
@@ -1182,7 +1196,7 @@ const rowWords = (
   "latestUserMessageAt" | "latestUserMessagePreview" | "latestMessagePreview"
 > | null => {
   if (row.subject === null && row.snippet === null) return null;
-  const createdAt = iso(row.at);
+  const createdAt = iso(rowRunAt(row));
   const asked =
     row.subject === null ? null : { role: "user" as const, text: row.subject, createdAt };
   return {
@@ -1206,8 +1220,8 @@ export function overlayEngineRow(
       : {
           turnId: TurnId.make(latest.id),
           state: latest.turnState,
-          requestedAt: iso(row.at),
-          startedAt: iso(row.at),
+          requestedAt: iso(rowRunAt(row)),
+          startedAt: iso(rowRunAt(row)),
           completedAt: latest.endedAt === null ? null : iso(latest.endedAt),
           assistantMessageId: null,
         };
@@ -1225,6 +1239,8 @@ export function overlayEngineRow(
     // Held, its records name the turn; until they do, the row's run — never the V1 thread's.
     latestTurn: held?.latestTurn ?? latestTurn,
     ...rowWords(row),
+    // Its turn over, its helpers work on: the row says so, never the V1 thread's liveness.
+    backgroundLiveness: row.state.kind === "working" && row.state.waitsOnHelpers ? "working" : null,
     // A conversation the engine started never had a V1 session: the row is its session.
     session: {
       ...(thread.session ?? {
