@@ -280,7 +280,9 @@ describe("CrewEngine", () => {
       const ended = yield* Effect.forkChild(world.turnEnds(stint!.chat));
       yield* turnCommit.reached;
       const pressed = yield* Effect.forkChild(Effect.exit(world.press(press(first))));
-      const atOnce = yield* Fiber.await(pressed).pipe(Effect.timeoutOption("300 millis"));
+      // Awaited while the commit is held: a press that waited on the turn's end never returns, and
+      // a slow one under load is no wait on it (a 300 ms bound read it as one).
+      const atOnce = Option.some(yield* Fiber.await(pressed));
       yield* turnCommit.release;
       yield* Fiber.join(ended);
       yield* Fiber.join(pressed);
@@ -394,15 +396,13 @@ describe("CrewEngine", () => {
       return { thread, check, taskId };
     });
 
-  const quick = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    Effect.exit(effect).pipe(Effect.timeoutOption("300 millis"));
-
   it.live("a discard while the check runs is refused as busy, and the check is not undone", () =>
     crewJourney((world) =>
       Effect.gen(function* () {
         const { check, taskId } = yield* holdTheCheck(world);
-        const pressed = yield* quick(world.press({ _tag: "discard", taskId }));
-        refusedAsBusy(Option.map(pressed, (exit) => Exit.succeed(exit)));
+        // Awaited before the check is released: a discard that waited on it never returns.
+        const pressed = yield* Effect.exit(world.press({ _tag: "discard", taskId }));
+        refusedAsBusy(Option.some(Exit.succeed(pressed)));
         yield* check.release;
         // No ok.txt: the check fails, and the task goes back for rework — never discarded.
         yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "rework");
@@ -526,21 +526,30 @@ describe("CrewEngine", () => {
   it.live("a message during a Land now's check goes through", () =>
     crewJourney((world) =>
       Effect.gen(function* () {
-        const { taskId } = yield* turnEndedWorking(world);
+        const { thread, taskId } = yield* turnEndedWorking(world);
         const check = yield* world.hold({ step: "check" });
         const landing = yield* Effect.forkChild(
           Effect.exit(world.press({ _tag: "landNow", taskId })),
         );
         yield* check.reached;
-        const messaged = yield* quick(
+        // Decision: fix the race, never retry or loosen. The message must go through while the
+        // check is still held: awaited before the release, which a message that waited on the
+        // check never reaches (the test times out). A 300 ms bound failed it under CI's load.
+        const messaged = yield* Effect.exit(
           world.press({ _tag: "message", handle: "backend", text: "More", attachments: [] }),
+        );
+        assert.isTrue(
+          Exit.isSuccess(messaged),
+          "the message waited on, or was refused by, the Land's check",
+        );
+        const sent = (yield* turnsSent(world)).at(-1);
+        assert.deepStrictEqual(
+          { chat: sent?.chat, text: sent?.text },
+          { chat: thread, text: "More" },
+          "the message is delivered before the check is released",
         );
         yield* check.release;
         yield* Fiber.join(landing);
-        assert.isTrue(
-          Option.isSome(messaged) && Exit.isSuccess(Option.getOrThrow(messaged)),
-          "the message waited on, or was refused by, the Land's check",
-        );
       }),
     ),
   );
@@ -570,8 +579,8 @@ describe("CrewEngine", () => {
         const ended = yield* Effect.forkChild(world.turnEnds(thread));
         yield* turnCommit.reached;
         const turnsBefore = (yield* turnsSent(world)).length;
-        const started = yield* quick(world.press(RUN_NOW));
-        assert.isTrue(Option.isSome(started), "Start waited on the turn end");
+        // Awaited before the copy is released: a Start that waited on the turn end never returns.
+        yield* world.press(RUN_NOW);
         assert.strictEqual(
           (yield* turnsSent(world)).length,
           turnsBefore,
