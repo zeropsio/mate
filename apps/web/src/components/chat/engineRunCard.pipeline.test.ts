@@ -17,13 +17,17 @@ import {
   personItem,
   workItem,
 } from "@t3tools/client-runtime/data/fixtures";
+import {
+  deriveAgentPanelModel,
+  foldSubagentActivities,
+} from "@t3tools/client-runtime/state/subagentRuntime";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import { deriveTimelineEntries, deriveWorkLogEntries } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import { backgroundLineOf, jobItems } from "./backgroundLine.logic";
-import { deriveMessagesTimelineRows } from "./MessagesTimeline.logic";
+import { deriveMessagesTimelineRows, helperFinishesOf } from "./MessagesTimeline.logic";
 import { nowLineOf, nowLineWords, workedWords } from "./runCard.logic";
 import { runEffortWords } from "./runResult.logic";
 
@@ -134,6 +138,8 @@ function render(input: {
   row?: ConversationRow;
   paged?: boolean;
   isWorking?: boolean;
+  /** The helpers' finishes, from their fold, as the conversation passes them. */
+  helpers?: boolean;
 }) {
   const records = {
     runs: input.runs.map((run) => decode(run)),
@@ -156,6 +162,15 @@ function render(input: {
     turnDiffSummaries: [],
     supportsConversationRollback: false,
     ...(input.paged ? { cardPaging: engineCardPagingOfRecords(key, records) } : {}),
+    ...(input.helpers
+      ? {
+          helperFinishes: helperFinishesOf(
+            deriveAgentPanelModel({
+              agents: foldSubagentActivities(thread.activities, { sessionLive: true }),
+            }),
+          ),
+        }
+      : {}),
   });
 }
 
@@ -747,6 +762,114 @@ it.each([
         : [],
     );
     expect(groups).toEqual([2, 1]);
+  },
+);
+
+// Milo's stress run 5 (A +1:37.6): wake 92 fired as a planned restart began and only spoke, so it
+// drew no card of its own; the wake after the restart was headed by the helper it had itself started
+// after a reload, and by nothing live: the engine dated a job's end at its start.
+it.each([
+  { held: "live, every line as it streamed in", reload: false },
+  { held: "after a reload, the wake's first lines not paged in yet", reload: true },
+])(
+  "a wake that fires while the Mate restarts gets its card, the same live and after a reload: $held",
+  ({ reload }) => {
+    const run3 = "conversation/r/3";
+    const ended = (at: number) => ({ endedAt: t0 + at });
+    const work = (runId: string, n: number, at: number, patch: Record<string, unknown>) =>
+      ({ ...workItem(runId, n, patch as never), at: t0 + at }) as Item;
+    const rows = render({
+      runs: [
+        stressRun({
+          endedAt: t0 + 20_000,
+          summary: { items: 4, calls: { helper: 2 }, answerItemId: `${run1}/i/4`, lastItemSeq: 4 },
+        } as never),
+        engineRun(key.conversationId, 2, {
+          trigger: { kind: "wake", cause: "self", wakeId: null },
+          joins: RunId.make(run1),
+          queuedAt: t0 + 30_000,
+          admittedAt: t0 + 30_000,
+          startedAt: t0 + 30_000,
+          endedAt: t0 + 31_000,
+          summary: { items: 1, calls: {}, answerItemId: `${run2}/i/1`, lastItemSeq: 1 },
+        } as never),
+        engineRun(key.conversationId, 3, {
+          trigger: { kind: "wake", cause: "lost-work", wakeId: null },
+          queuedAt: t0 + 50_000,
+          admittedAt: t0 + 50_000,
+          startedAt: t0 + 50_000,
+          endedAt: t0 + 90_000,
+          summary: {
+            items: 4,
+            calls: { command: 1, helper: 1 },
+            answerItemId: `${run3}/i/4`,
+            lastItemSeq: 4,
+          },
+        } as never),
+      ],
+      items: [
+        personItem(run1, 1, "Run the stress checks", { at: t0 }),
+        work(run1, 2, 1_000, {
+          work: "w2",
+          title: "Second wave 2",
+          status: "completed",
+          ...ended(29_000),
+        }),
+        work(run1, 3, 1_100, {
+          work: "w3",
+          title: "Second wave 3",
+          status: "lost",
+          ...ended(45_000),
+        }),
+        noteItem(run1, 4, "Two second-wave helpers are running.", {
+          at: t0 + 19_000,
+          answer: true,
+        } as never),
+        noteItem(run2, 1, "The second second-wave helper is back.", {
+          at: t0 + 30_500,
+          answer: true,
+        } as never),
+        ...(reload
+          ? []
+          : [
+              {
+                ...bash(1, 50_500, "cat /tmp/notes", "Read the notes"),
+                runId: run3,
+                id: `${run3}/i/1`,
+              } as Item,
+            ]),
+        work(run3, 3, 77_000, {
+          work: "w4",
+          title: "Second wave 3, again",
+          status: "completed",
+          ...ended(85_000),
+        }),
+        noteItem(run3, 4, "The third second-wave helper ran again.", {
+          at: t0 + 89_000,
+          answer: true,
+        } as never),
+      ],
+      helpers: true,
+    });
+    const read = rows.flatMap((row) =>
+      row.kind === "record" || row.kind === "work-line"
+        ? [`card of ${row.turnId}`]
+        : row.kind === "background" && row.id.startsWith("woke:")
+          ? [`woke by ${row.title}`]
+          : row.kind === "message" && row.message.role === "assistant"
+            ? [row.message.text]
+            : [],
+    );
+    expect(read).toEqual([
+      `card of ${run1}`,
+      "Two second-wave helpers are running.",
+      "woke by Second wave 2",
+      `card of ${run2}`,
+      "The second second-wave helper is back.",
+      "woke by Second wave 3",
+      `card of ${run3}`,
+      "The third second-wave helper ran again.",
+    ]);
   },
 );
 

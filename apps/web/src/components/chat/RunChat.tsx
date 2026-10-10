@@ -2624,7 +2624,7 @@ export function recordEventWords(
             ? event.title
             : `${event.title} and ${event.tasks - 1} more`;
       return {
-        words: `${what} ${event.failed > 0 ? "failed" : "finished"}`,
+        words: `${what} ${(event.lost ?? 0) > 0 ? "didn't report back" : event.failed > 0 ? "failed" : "finished"}`,
         detail: `${speaker} went on`,
       };
     }

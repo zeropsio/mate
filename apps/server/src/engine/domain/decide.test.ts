@@ -2108,6 +2108,59 @@ describe("decide: helpers and jobs are items under their run", () => {
     expect(Object.keys(bounded.state.runs)).toEqual([r(1)]);
   });
 
+  // Milo's stress run 5: a job's end was dated at its start, so the wake it caused was headed by
+  // the helper that wake started itself, and a finished job's row read "1s".
+  const endedAtOf = (log: ReadonlyArray<KnownEngineEvent>) =>
+    log.flatMap((e) =>
+      (e._tag === "ItemClosed" || e._tag === "ItemUpdated") && e.body.kind === "work"
+        ? [e.body.endedAt]
+        : [],
+    );
+  it.each([
+    { how: "its own end", steps: [work("completed")], at: [T0 + 5_000] },
+    {
+      how: "its session's end",
+      steps: [signal({ kind: "session-exited", reason: "exit 137" })],
+      at: [T0 + 5_000],
+    },
+    {
+      how: "its end, then a word on it delivered again",
+      steps: [work("completed"), { command: work("completed"), at: T0 + 9_000 }],
+      at: [T0 + 5_000],
+    },
+  ])("background work records when it ended, by $how", ({ steps, at }) => {
+    const [first, ...rest] = steps;
+    const { log } = playAll([
+      ...proofRunning,
+      work("running"),
+      turnEnded,
+      { command: first as Command, at: T0 + 5_000 },
+      ...rest,
+    ]);
+    expect(endedAtOf(log)).toEqual(at);
+  });
+  it("a word on work that ended keeps the time it ended", () => {
+    const { log } = playAll([
+      ...proofRunning,
+      work("running"),
+      turnEnded,
+      { command: work("completed"), at: T0 + 5_000 },
+      {
+        command: signal({
+          kind: "work-upserted",
+          work: "w1",
+          origin: T(1),
+          workKind: "helper",
+          status: "completed",
+          title: "Explore",
+          report: "Explored again.",
+        }),
+        at: T0 + 9_000,
+      },
+    ]);
+    expect(endedAtOf(log)).toEqual([T0 + 5_000, T0 + 5_000]);
+  });
+
   const workClosed = (log: ReadonlyArray<KnownEngineEvent>) =>
     log.flatMap((e) =>
       e._tag === "ItemClosed" && e.body.kind === "work" ? [`${e.runId}:${e.body.status}`] : [],

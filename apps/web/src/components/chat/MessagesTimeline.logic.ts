@@ -483,6 +483,8 @@ export type ConversationEvent =
       readonly type: "woke";
       readonly tasks: number;
       readonly failed: number;
+      /** Of them, how many its session took before they reported. */
+      readonly lost?: number;
       readonly helpers: boolean;
       readonly title: string | null;
     };
@@ -666,6 +668,8 @@ type MessagesTimelineRowBody =
       /** How many tasks — a task that reported twice is still one. */
       tasks: number;
       failed: number;
+      /** Of them, how many its session took before they reported (a restart's lost work). */
+      lost?: number;
       /** Every task a helper's: said as helpers, not as background tasks. */
       helpers: boolean;
       /** The latest task's, in the words it was given. */
@@ -1075,9 +1079,11 @@ export interface HelperFinish {
   readonly title: string;
   readonly finishedAt: string;
   readonly failed: boolean;
+  /** Its session went before it reported (a restart): the note of it is what woke the Mate. */
+  readonly lost?: true;
 }
 
-/** Every helper the panel knows to have finished, done or failed, with its time. */
+/** Every helper the panel knows to have ended, done, failed or lost, with its time. */
 export function helperFinishesOf(model: AgentPanelModel): HelperFinish[] {
   const agents = [
     ...model.directAgents,
@@ -1087,13 +1093,15 @@ export function helperFinishesOf(model: AgentPanelModel): HelperFinish[] {
     ]),
   ];
   return agents.flatMap((agent) =>
-    (agent.status === "completed" || agent.status === "failed") && agent.completedAt
+    (agent.status === "completed" || agent.status === "failed" || agent.status === "interrupted") &&
+    agent.completedAt
       ? [
           {
             id: agent.id,
             title: agent.title,
             finishedAt: agent.completedAt,
             failed: agent.status === "failed",
+            ...(agent.status === "interrupted" ? { lost: true as const } : {}),
           },
         ]
       : [],
@@ -2698,6 +2706,7 @@ export function deriveMessagesTimelineRows(input: {
               : {
                   tasks: 1,
                   failed: wake.helper!.failed ? 1 : 0,
+                  ...(wake.helper!.lost ? { lost: 1 } : {}),
                   helpers: true,
                   title: wake.helper!.title,
                 }),
@@ -2746,7 +2755,12 @@ export function deriveMessagesTimelineRows(input: {
     // Its turns over, what it started goes on: the card stays open on it.
     const waiting = turn.waiting;
     const working = (last.live && !answeredAlone) || waiting;
+    // A wake an engine Mate opened that only spoke is a run of its own all the same: its card
+    // stands for it, as it does live and after a reload (Milo's stress run 5: wake 92's answer
+    // stood bare under the answer before it).
+    const engineWake = engineCard !== undefined && lead === null && answer !== null;
     const carded =
+      engineWake ||
       (turn.live && !answeredAlone) ||
       waiting ||
       hasRecord ||
@@ -2809,6 +2823,7 @@ export function deriveMessagesTimelineRows(input: {
           entries: [],
           tasks: 1,
           failed: helper.failed ? 1 : 0,
+          ...(helper.lost ? { lost: 1 } : {}),
           helpers: true,
           title: helper.title,
         });

@@ -6,7 +6,7 @@ import * as Queue from "effect/Queue";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
-import { ConversationId } from "@t3tools/contracts";
+import { ConversationId, RunId } from "@t3tools/contracts";
 
 import { ProviderService } from "../provider/Services/ProviderService.ts";
 import * as ConversationsModule from "./Conversations.ts";
@@ -424,6 +424,54 @@ describe("an update over a Mate's background work", () => {
           new Set((yield* blockersNow(w)).map((reason) => reason.slice(reason.indexOf(": ") + 2))),
         ).toEqual(new Set([waitsOn]));
         yield* finish(w);
+        expect(yield* blockersNow(w)).toEqual([]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
+
+// Milo's stress run 5: a helper lost at run 4's restart still read as running an hour on. An update
+// that counted it would wait out its whole deadline.
+describe("an update over work a restart lost", () => {
+  it.effect.each([
+    { how: "a helper", start: (w: EngineWorld) => w.agent((a, t) => helper(a, t, "h1")) },
+    {
+      how: "a helper's own job",
+      start: (w: EngineWorld) =>
+        Effect.gen(function* () {
+          yield* w.agent((a, t) => helper(a, t, "h1"));
+          yield* w.agent((a, t) => helper(a, t, "s1", "h1"));
+        }),
+    },
+  ])("an update never waits on work lost to a restart: $how", ({ start }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* makeEngineWorld({ driver: "claudeAgent" });
+        yield* w.boot;
+        yield* w.tell({
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: "m1",
+            profile: { kind: "mate" },
+          },
+        });
+        yield* w.tell({ _tag: "Send", text: "send helpers off" });
+        yield* start(w);
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.crash;
+        yield* w.boot;
+        // The note of what the restart lost wakes the Mate once; its turn ends.
+        yield* w.agent((agent, thread) => agent.finish(thread)).pipe(Effect.ignore);
+        yield* w.settle;
+        const first = (yield* w.runs)[0]!;
+        const work = (yield* w.items(RunId.make(first.run_id))).filter(
+          (item) => item.body.kind === "work",
+        );
+        expect(work.map((item) => item.body.status)).toEqual(work.map(() => "lost"));
+        expect(work.length).toBeGreaterThan(0);
         expect(yield* blockersNow(w)).toEqual([]);
         yield* w.shutdown;
       }),

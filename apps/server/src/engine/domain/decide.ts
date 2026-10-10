@@ -512,7 +512,7 @@ const sessionClosed = (b: StepBuilder, sessionId: SessionId, reason: SessionClos
       _tag: "ItemClosed",
       runId: item.runId,
       itemId: item.id,
-      body: { ...item.body, status: reason === "stop" ? "stopped" : "lost" },
+      body: { ...item.body, status: reason === "stop" ? "stopped" : "lost", endedAt: b.now },
     });
     b.lost.push({ title: item.body.title, runId: item.runId, how: LOST_HOW[reason] });
   }
@@ -2029,11 +2029,24 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       };
       const ends = WORK_ENDED.has(signal.status);
       const closed = b.state.closedItems[signal.work];
-      if (closed !== undefined) return updateClosed(b, closed, body);
+      // A word on work that already ended keeps the time it ended.
+      if (closed !== undefined)
+        return updateClosed(
+          b,
+          closed,
+          body.kind === "work" && closed.endedAt !== undefined
+            ? { ...body, endedAt: closed.endedAt }
+            : body,
+        );
       const open = Object.values(b.state.items).find((item) => item.key === signal.work);
       if (open !== undefined) {
         if (ends) {
-          b.emit({ _tag: "ItemClosed", runId: open.runId, itemId: open.id, body });
+          b.emit({
+            _tag: "ItemClosed",
+            runId: open.runId,
+            itemId: open.id,
+            body: { ...body, endedAt: b.now },
+          });
           expectAgentTurn(b);
           // The bridge's word that the work's session is closing: asked, for the reason asked;
           // else it died.
@@ -2074,7 +2087,12 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         body,
       });
       if (ends) {
-        b.emit({ _tag: "ItemClosed", runId: owner.id, itemId: id, body });
+        b.emit({
+          _tag: "ItemClosed",
+          runId: owner.id,
+          itemId: id,
+          body: { ...body, endedAt: b.now },
+        });
         expectAgentTurn(b);
       }
       return;

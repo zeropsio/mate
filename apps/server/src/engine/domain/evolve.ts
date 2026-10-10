@@ -341,6 +341,9 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
                   itemId: event.itemId,
                   runId: event.runId,
                   digest: contentDigest(event.body),
+                  ...(event.body.kind === "work" && event.body.endedAt !== undefined
+                    ? { endedAt: event.body.endedAt }
+                    : {}),
                 },
               },
       };

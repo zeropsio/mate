@@ -2767,7 +2767,12 @@ function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "bac
             {
               key: row.id,
               title: row.title ?? (row.helpers ? "A helper" : "A background task"),
-              state: row.failed > 0 ? ("failed" as const) : ("done" as const),
+              state:
+                (row.lost ?? 0) > 0
+                  ? ("lost" as const)
+                  : row.failed > 0
+                    ? ("failed" as const)
+                    : ("done" as const),
               report: null,
               mono: false,
             },

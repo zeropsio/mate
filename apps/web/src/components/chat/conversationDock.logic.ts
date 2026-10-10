@@ -344,7 +344,8 @@ const HELPER_STATE: Record<
   completed: { tone: "ok", word: "Done" },
   failed: { tone: "failed", word: "Failed" },
   cancelled: { tone: "off", word: "Stopped" },
-  interrupted: { tone: "attention", word: "Cut off" },
+  // Its session went before it reported (a restart's `lost`): ended, and waiting on no one.
+  interrupted: { tone: "off", word: "Cut off" },
 };
 
 function helperTitle(agent: RuntimeSubagent): string {
