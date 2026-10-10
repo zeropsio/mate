@@ -378,6 +378,31 @@ describe("an update over a Mate's background work", () => {
           yield* w.agent((agent, thread) => agent.finish(thread));
         }),
     },
+    {
+      // Milo, 2026-10-10: helper three finished, Claude's next turn reported helper two, and the
+      // update restarted the Mate before helper three's report reached it.
+      title:
+        "an update waits while a finished helper's report has not reached the agent yet, even after a turn that reported another",
+      waitsOn: "finished background work its agent has not taken up",
+      script: (w: EngineWorld) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => helper(agent, thread, "h2"));
+          yield* w.agent((agent, thread) => helper(agent, thread, "h3"));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.agent((agent, thread) => reportsBack(agent, thread, "h2"));
+          yield* w.agent((agent, thread) => reportsBack(agent, thread, "h3"));
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          yield* w.agent((agent, thread) =>
+            agent.say(thread, "Helper two is back. One more to go."),
+          );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+        }),
+      finish: (w: EngineWorld) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+        }),
+    },
   ])("$title", ({ waitsOn, script, finish }) =>
     Effect.scoped(
       Effect.gen(function* () {

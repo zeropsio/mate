@@ -122,7 +122,8 @@ const KEPT_TURNS = 64;
 const KEPT_CLOSED_KEYS = 512;
 /**
  * How long finished work waits for the turn its agent opens to take the result, once no turn is
- * open: Claude opens it within seconds; one that never comes holds nothing longer.
+ * open: Claude opens it within seconds; one that never comes, or one turn that took several
+ * results, holds nothing longer.
  */
 export const REPORT_TURN_GRACE_MS = 30_000;
 const TEXT_KINDS: ReadonlySet<string> = new Set(["text", "reasoning", "plan"]);
@@ -171,8 +172,11 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
   const selfReports = new Map<string, RunId | null>();
   let lastEndedWorkOrigin: string | null = null;
   const openTurns = new Set<string>();
-  /** The agent's own work ended and its result has no turn yet; `since`: no turn open since. */
-  let reportDue: { since: number | null } | null = null;
+  /**
+   * The agent's own work that ended with no turn taken its result yet: Claude hands each over in a
+   * turn it opens itself, one at a time; `since`: no turn open since.
+   */
+  let reportDue: { count: number; since: number | null } | null = null;
   const lastActivity = new Map<string, number>();
   /** The session's last context reading: a turn's end keeps where it stood. */
   let lastContext: number | undefined;
@@ -239,8 +243,10 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         break;
       case "turn.opened": {
         openTurns.add(signal.turn);
-        if (signal.origin === "self") reportDue = null;
-        else if (reportDue !== null) reportDue.since = null;
+        if (reportDue !== null) {
+          if (signal.origin === "self") reportDue.count -= 1;
+          reportDue = reportDue.count > 0 ? { count: reportDue.count, since: null } : null;
+        }
         if (signal.origin === "engine") keep(engineTurns, signal.turn, true, KEPT_TURNS);
         const reports = signal.origin === "self" ? reportsOn() : null;
         if (signal.origin === "self") keep(selfReports, signal.turn, reports, KEPT_TURNS);
@@ -369,7 +375,10 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
           if (signal.origin !== "unknown") lastEndedWorkOrigin = signal.origin;
           // A helper's own work reports to its helper; the agent's own wakes the agent.
           if (ended && options.selfTurns === true && signal.helper === undefined)
-            reportDue = { since: openTurns.size > 0 ? null : now };
+            reportDue = {
+              count: (reportDue?.count ?? 0) + 1,
+              since: openTurns.size > 0 ? null : now,
+            };
         }
         signals.push({
           kind: "work-upserted",
