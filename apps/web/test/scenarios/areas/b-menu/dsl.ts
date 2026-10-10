@@ -136,11 +136,14 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
           );
         if (shown) throw new Error(`Menu ${name} showed ${surface} within ${during} ms`);
       }),
-    /** The row of Mate `name` shows a `tone` dot within `within` ms. */
-    dot: (name: string, tone: string, within: number) =>
+    /**
+     * The row of Mate `name` says `tone` within `within` ms: no dot since round 5 — its face carries
+     * the state, and its accessible name says it in words.
+     */
+    dot: (name: string, tone: "attention" | "unread" | "failed", within: number) =>
       Effect.promise(() =>
         s.page.waitForFunction(
-          (name, tone) =>
+          (name, words) =>
             [
               ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-mate"]'),
             ].some(
@@ -148,13 +151,13 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
                 row
                   .querySelector<HTMLElement>('[data-zerops-surface="sidebar-mate-name"]')
                   ?.innerText.trim() === name &&
-                row.querySelector(
-                  `[data-zerops-surface="sidebar-mate-dot"][data-tone="${tone}"]`,
-                ) !== null,
+                row.getAttribute("aria-label") === `${name}, ${words}`,
             ),
           { timeout: within, polling: "raf" },
           name,
-          tone,
+          { attention: "Waiting for you", unread: "Unseen reply", failed: "Stopped on an error" }[
+            tone
+          ],
         ),
       ),
     absent: (name: string) =>

@@ -28,7 +28,7 @@ describe("D: change review, comments and merge", () => {
         yield* r.open;
         yield* r.text(change.title);
         yield* r.text(change.description);
-        yield* r.text("summary.txt");
+        yield* r.file("summary.txt");
         yield* r.mergeEnabled;
         yield* Effect.promise(async () => {
           await s.page.locator(".rv-file").click();
@@ -81,7 +81,7 @@ describe("D: change review, comments and merge", () => {
         yield* r.text(change.description);
         yield* Effect.promise(() => s.page.reload());
         yield* r.text(change.title);
-        yield* r.text("summary.txt");
+        yield* r.file("summary.txt");
         yield* r.mergeEnabled;
         yield* s.then.noExternalNetwork;
       }),
@@ -192,7 +192,7 @@ describe("D: change review, comments and merge", () => {
           yield* r.askClose;
           yield* r.text("Close #1 without merging?");
           yield* change.pushAgain;
-          yield* r.text("tax.txt");
+          yield* r.file("tax.txt");
           yield* r.text("Draft");
           yield* r.askClose;
           yield* r.text("Close #1 without merging?");
@@ -213,7 +213,7 @@ describe("D: change review, comments and merge", () => {
         s.given.asPerson("reader");
         yield* s.given.signedIn;
         yield* r.direct(change.direct);
-        yield* r.text("summary.txt");
+        yield* r.file("summary.txt");
         yield* r.text("You need at least Basic user access");
         yield* r.cannotMerge;
         yield* s.then.noExternalNetwork;
@@ -239,7 +239,7 @@ describe("D: change review, comments and merge", () => {
         area.hqFrames.hold();
         yield* r.switchOrganization(organizations.other);
         yield* r.switchOrganization(organizations.original);
-        yield* r.text("summary.txt");
+        yield* r.file("summary.txt");
         yield* Effect.promise(() => area.hqFrames.received());
         area.hqFrames.resume();
         yield* r.mergeEnabled;

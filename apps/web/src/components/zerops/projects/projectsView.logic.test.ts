@@ -28,8 +28,6 @@ import {
   parseProjectsSearch,
   tiersAddable,
   rowMateActivitiesOf,
-  risenFirst,
-  productionMark,
   projectRowLine,
   withoutOfficialHq,
   shownUngrouped,
@@ -889,48 +887,6 @@ describe("projectRowLine — a project row's second line", () => {
     };
     const flow: GroupFlow = { ...FLOWS.none, stages: [stage] };
     expect(projectRowLine({ ...quiet, flow })).toEqual({ kind: "under-way", text });
-  });
-});
-
-describe("productionMark — production's version, only where production exists", () => {
-  const production = (over: Partial<GroupFlowStop>): GroupFlow =>
-    ({
-      ...FLOWS.none,
-      production: {
-        kind: over.state === "deployed" ? "live" : "empty",
-        line: "",
-        stop: {
-          projectId: "p-prod",
-          name: "production",
-          state: "empty",
-          version: undefined,
-          source: "release",
-          route: undefined,
-          ...over,
-        },
-      },
-    }) as GroupFlow;
-  it.each([
-    ["no production: nothing at all", FLOWS.none, undefined],
-    [
-      "production runs a version: the version and its tone",
-      production({ state: "deployed", version: { label: "v0.1.59" } as GroupFlowStop["version"] }),
-      { version: "v0.1.59", tone: "ok" },
-    ],
-    ["production runs nothing yet: nothing to show", production({}), undefined],
-  ] as const)("%s", (_name, flow, expected) => {
-    expect(productionMark(flow)).toEqual(expected);
-  });
-});
-
-describe("risenFirst — the rows that need the person rise, the custom order kept within", () => {
-  it.each([
-    ["none rise: the order as given", [false, false, false], ["a", "b", "c"]],
-    ["one rises", [false, true, false], ["b", "a", "c"]],
-    ["two rise: their own order kept", [false, true, true], ["b", "c", "a"]],
-  ] as const)("%s", (_name, rises, expected) => {
-    const rows = ["a", "b", "c"];
-    expect(risenFirst(rows, (row) => rises[rows.indexOf(row)] === true)).toEqual(expected);
   });
 });
 

@@ -1,10 +1,11 @@
 /**
- * The Mates that wait on the viewer, for the header's faces, and the way to
- * the next one — the header's button and ⌥↓.
+ * What waits on the viewer, for the menu's Waiting on you row and its list, and the way to the
+ * next one — ⌥↓.
  *
- * Waiting is the one resolver's word (R5): a Mate whose face says it needs
- * somebody. The order is the menu's own (`sidebarReveal.ts`'s `mateOrder`), so
- * "the next one" is the next one down the list the viewer is looking at.
+ * Waiting is the one resolver's word (R5): a Mate whose face says it needs somebody, or a Mate of
+ * theirs stopped on an error; and every project whose release is offered. The order is the menu's
+ * own (`sidebarReveal.ts`'s `mateOrder`), so "the next one" is the next one down the list the
+ * viewer is looking at.
  */
 import {
   assignCandidateMateTints,
@@ -17,7 +18,16 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { MateTintId } from "@t3tools/shared/brand";
 import { useCallback, useEffect, useMemo } from "react";
 
-import type { WaitingMate } from "~/components/zerops/SidebarWaitingStack";
+import {
+  waitingItemsOf,
+  waitingKindOf,
+  type WaitingChange,
+  type WaitingItem,
+  type WaitingMate,
+  type WaitingRelease,
+} from "~/components/zerops/SidebarWaiting.logic";
+
+import { mateNextStep } from "@t3tools/client-runtime/zerops";
 
 import { mateFaceOf, mateReviewWaits, type ZeropsAgentActivity } from "./agentActivity";
 import { useAppsChanges, useEveryAppId } from "./projectFlows";
@@ -25,8 +35,9 @@ import { nextWaitingMate, useSidebarReveal } from "./sidebarReveal";
 import { useWaitsOnViewer } from "./useZeropsMateOwners";
 
 /**
- * The Mates that wait on the viewer — their own, asking or with a change for review — in the
- * menu's order; one the menu does not hold, last. Another's Mate waits on its owner, not here.
+ * The Mates that wait on the viewer — their own, asking, with a change for review, or stopped on
+ * an error — in the menu's order; one the menu does not hold, last. Another's Mate waits on its
+ * owner, not here.
  */
 export function waitingMatesOf<T extends ZeropsCandidate>(input: {
   readonly candidates: ReadonlyArray<T>;
@@ -39,6 +50,8 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
   readonly tints: ReadonlyMap<string, MateTintId>;
   readonly order: ReadonlyArray<string>;
   readonly shown: (candidate: T) => boolean;
+  /** Its change that waits for review, as the review opens it; absent where none is read. */
+  readonly changeOf?: ((candidate: T) => WaitingChange | undefined) | undefined;
 }): ReadonlyArray<WaitingMate> {
   const place = (projectId: string) => {
     const at = input.order.indexOf(projectId);
@@ -47,17 +60,32 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
   return input.candidates
     .flatMap((candidate): ReadonlyArray<WaitingMate> => {
       if (!hasMate(candidate) || !input.shown(candidate)) return [];
+      const activity = input.activityOf(candidate);
+      const reviewWaits = input.reviewWaits(candidate);
+      const mine = input.waitsOnViewer(candidate.project.id);
       // The face its row wears (`mateFaceOf`): asking, or its change waiting for your review —
       // read from HQ or its socket, as the row reads it; a word at rest asks nothing now.
       const face = mateFaceOf({
         connected: candidate.group === "connected",
-        activity: input.activityOf(candidate),
-        reviewWaits: input.reviewWaits(candidate),
-        mine: input.waitsOnViewer(candidate.project.id),
+        activity,
+        reviewWaits,
+        mine,
         // Only a face that needs you stands here, and no pose of its life gives that.
         pose: undefined,
       });
-      if (face !== "needs") return [];
+      // Stopped on an error, a Mate of the viewer's waits on them for help: its face stands still.
+      const failed = mine && activity?.remembered !== true && activity?.kind === "failed";
+      if (face !== "needs" && !failed) return [];
+      const kind = waitingKindOf({ activityKind: activity?.kind, reviewWaits });
+      const change = kind === "change" ? input.changeOf?.(candidate) : undefined;
+      const text =
+        kind === "failed"
+          ? activity?.errorLine
+          : kind === "change"
+            ? change?.title
+            : kind === "question"
+              ? (activity?.question ?? activity?.snippet)
+              : activity?.snippet;
       const tint = input.tints.get(candidate.project.id) ?? "slate";
       return [
         {
@@ -66,6 +94,13 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
           tint,
           shape: mateShapeOf(candidate.project, tint),
           face,
+          kind,
+          ...(text === undefined ? {} : { text }),
+          ...(candidate.environmentId === undefined
+            ? {}
+            : { environmentId: candidate.environmentId }),
+          ...(activity?.threadId === undefined ? {} : { threadId: activity.threadId }),
+          ...(change === undefined ? {} : { change }),
         },
       ];
     })
@@ -88,7 +123,13 @@ export function useSidebarWaiting<T extends ZeropsCandidate>(input: {
   /** Called before a Mate is shown — a phone's menu opens first. */
   readonly beforeReveal?: (() => void) | undefined;
   readonly enabled: boolean;
-}): { readonly mates: ReadonlyArray<WaitingMate>; readonly next: () => void } {
+  /** Every project whose next release is offered. */
+  readonly releases?: ReadonlyArray<WaitingRelease> | undefined;
+}): {
+  readonly mates: ReadonlyArray<WaitingMate>;
+  readonly items: ReadonlyArray<WaitingItem>;
+  readonly next: () => void;
+} {
   const order = useSidebarReveal((state) => state.mateOrder);
   const tints = useMemo(() => assignCandidateMateTints(input.candidates), [input.candidates]);
   const { activityOf, candidates, shown, activeProjectId, beforeReveal, enabled } = input;
@@ -105,10 +146,45 @@ export function useSidebarWaiting<T extends ZeropsCandidate>(input: {
     },
     [changes],
   );
+  // The change the review opens: the newest of its own waiting, as the composer's top reads it.
+  const changeOf = useCallback(
+    (candidate: T): WaitingChange | undefined => {
+      const groupId = readZeropsMembership(candidate.project).groupId;
+      if (groupId === undefined) return undefined;
+      const step = mateNextStep({
+        pullRequests: changes.get(groupId)?.pullRequests,
+        mateProjectId: candidate.project.id,
+        mateName: undefined,
+      });
+      return step.kind === "review"
+        ? {
+            groupId,
+            repository: step.pull.repository,
+            number: step.pull.number,
+            title: step.detail,
+          }
+        : undefined;
+    },
+    [changes],
+  );
   const mates = useMemo(
     () =>
-      waitingMatesOf({ candidates, activityOf, reviewWaits, waitsOnViewer, tints, order, shown }),
-    [activityOf, candidates, order, reviewWaits, shown, tints, waitsOnViewer],
+      waitingMatesOf({
+        candidates,
+        activityOf,
+        reviewWaits,
+        waitsOnViewer,
+        tints,
+        order,
+        shown,
+        changeOf,
+      }),
+    [activityOf, candidates, changeOf, order, reviewWaits, shown, tints, waitsOnViewer],
+  );
+  const releases = input.releases;
+  const items = useMemo(
+    () => waitingItemsOf({ mates, releases: releases ?? [] }),
+    [mates, releases],
   );
   const next = useCallback(() => {
     const { cursor, reveal, mateOrder } = useSidebarReveal.getState();
@@ -139,5 +215,5 @@ export function useSidebarWaiting<T extends ZeropsCandidate>(input: {
     };
   }, [enabled, next]);
 
-  return { mates, next };
+  return { mates, items, next };
 }

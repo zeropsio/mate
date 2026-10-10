@@ -8,6 +8,7 @@ import {
   sidebarAccountLines,
   sidebarAccountOrganizationChoices,
   sidebarAccountRoleLine,
+  sidebarAccountRoleParts,
 } from "./SidebarZeropsAccount.logic";
 
 const organization = (name: string, id = name): ZeropsOrganization => ({
@@ -36,6 +37,30 @@ describe("sidebarAccountRoleLine", () => {
   it("says nothing until an organization is known", () => {
     expect(sidebarAccountRoleLine(null)).toBeNull();
     expect(sidebarAccountRoleLine(organization("  "))).toBeNull();
+  });
+});
+
+// The foot says the same line under the viewer's name, the organization's name its own part.
+describe("sidebarAccountRoleParts", () => {
+  it.each([
+    ["OWNER", ["Owner of ", "Acme", ""]],
+    ["ADMIN", ["Admin of ", "Acme", ""]],
+    ["BASIC_USER", ["", "Acme", " · Basic user"]],
+  ] as const)("%s: %j", (roleCode, [before, name, after]) => {
+    expect(sidebarAccountRoleParts({ ...organization("Acme"), roleCode })).toEqual({
+      before,
+      organization: name,
+      after,
+    });
+  });
+
+  it("says the organization alone where no role is known", () => {
+    expect(sidebarAccountRoleParts(organization("Acme"))).toEqual({
+      before: "",
+      organization: "Acme",
+      after: "",
+    });
+    expect(sidebarAccountRoleParts(null)).toBeNull();
   });
 });
 

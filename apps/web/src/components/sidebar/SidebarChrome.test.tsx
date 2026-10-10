@@ -105,21 +105,20 @@ describe("SidebarChromeHeader", () => {
     expect(markup).toContain('data-mate-mark="live"');
   });
 
-  it("ends the logo row in the jump box's way in, after the waiting faces' slot", () => {
+  it("ends the top row in its round buttons, after the mark, with no waiting faces in it", () => {
     const markup = renderToStaticMarkup(
       <SidebarChromeHeader
         isElectron={false}
-        jump={<button data-zerops-surface="sidebar-jump" type="button" />}
-        waiting={<span data-zerops-surface="sidebar-waiting" />}
+        actions={<button data-zerops-surface="sidebar-jump" type="button" />}
       />,
     );
-    expect(markup.indexOf("sidebar-waiting-slot")).toBeGreaterThan(-1);
     expect(markup.indexOf('data-zerops-surface="sidebar-jump"')).toBeGreaterThan(
-      markup.indexOf("sidebar-waiting-slot"),
+      markup.indexOf('data-mate-mark="live"'),
     );
-    // Without either, the row is the mark alone.
+    expect(markup).not.toContain("sidebar-waiting");
+    // Without them, the row is the mark alone.
     expect(renderToStaticMarkup(<SidebarChromeHeader isElectron={false} />)).not.toContain(
-      "sidebar-jump",
+      "sidebar-top-actions",
     );
   });
 

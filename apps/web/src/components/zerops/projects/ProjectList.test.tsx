@@ -59,6 +59,43 @@ vi.mock("../StopReadAgain", async () => {
   };
 });
 
+// The shared minute clock runs a window timer: a card reads a fixed now here.
+vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => 0 }));
+
+// Base UI's popover portals out of a node render: here it draws its trigger, and its popup while
+// open, in place.
+vi.mock("~/components/ui/popover", async () => {
+  const { cloneElement, createContext, createElement, Fragment, useContext } =
+    await import("react");
+  const Open = createContext<{ open: boolean; set: (open: boolean) => void }>({
+    open: false,
+    set: () => {},
+  });
+  return {
+    Popover: ({
+      children,
+      open,
+      onOpenChange,
+    }: {
+      readonly children: React.ReactNode;
+      readonly open: boolean;
+      readonly onOpenChange: (open: boolean) => void;
+    }) => createElement(Open.Provider, { value: { open, set: onOpenChange } }, children),
+    PopoverTrigger: ({
+      children,
+      render,
+    }: {
+      readonly children: React.ReactNode;
+      readonly render: React.ReactElement;
+    }) => {
+      const { open, set } = useContext(Open);
+      return cloneElement(render, { onClick: () => set(!open) } as never, children);
+    },
+    PopoverPopup: ({ children }: { readonly children: React.ReactNode }) =>
+      useContext(Open).open ? createElement(Fragment, null, children) : null,
+  };
+});
+
 import {
   born,
   brokenProduction,
@@ -76,16 +113,12 @@ import {
   section,
   STAGE,
   STAGE_STOP,
-  UMA,
   VERA_COMING,
   WREN,
   type Item,
 } from "./flowTestFixtures";
+import { CardMateLiftActions } from "./ProjectCards";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
-
-/** The rows' order, by group. */
-const order = (html: string) =>
-  [...html.matchAll(/data-zerops-group="([^"]+)"/gu)].map((match) => match[1]);
 
 /** A quiet group of its own id: one Mate who was spoken to, nothing waiting. */
 function quiet(groupId: string) {
@@ -93,18 +126,12 @@ function quiet(groupId: string) {
 }
 
 describe("a project's row", () => {
-  it("says the one thing that needs the person as a sentence, with its title, and its verb at the end", () => {
-    const row = section(render({ groups: [MERGING] }), 'data-zerops-group="aaa"');
-    expect(row).toContain(MERGING.flow.nextStep.text);
-    expect(row).toContain(pull().title);
-    expect(row).toContain('data-test-verb="merge"');
-    expect(row.match(/data-test-verb=/gu)).toHaveLength(1);
-  });
-
   it("offers no verb on a row where nothing needs the person", () => {
     const row = section(render({ groups: [FRESH] }), 'data-zerops-group="bbb"');
-    expect(row).toContain("Give Uma a first task");
+    expect(row).toContain('data-test-mate="uma-dev"');
     expect(row).not.toContain("data-test-verb=");
+    expect(row).not.toContain("data-test-release-verb=");
+    expect(row).not.toContain("data-test-review=");
   });
 
   it("says nothing for nothing: no empty step words anywhere", () => {
@@ -137,28 +164,32 @@ describe("a project's row", () => {
   it("holds its line while its reads are out, claiming nothing and offering nothing", () => {
     const unread = entry([WREN], { pullRequests: [pull()] }, false);
     const row = section(render({ groups: [unread] }), 'data-zerops-group="aaa"');
-    expect(row).toContain('data-zerops-row-line="pending"');
+    expect(row).toContain('data-test-mate="wren-dev"');
     expect(row).not.toContain("waits for your merge");
+    expect(row).not.toContain("data-test-review=");
     expect(row).not.toContain("data-test-verb=");
   });
 
   it("says a Mate stopped on an error before the reads answer: its own state decides it", () => {
-    const stopped = entry([WREN], {}, false);
-    const failed = {
-      ...stopped,
-      flow: {
-        ...stopped.flow,
-        nextStep: {
-          kind: "fix-mate" as const,
-          text: "Wren stopped on an error",
-          verb: "Open",
-          target: { kind: "mate" as const, projectId: "wren-dev" },
-        },
+    const stopped = entry(
+      [WREN],
+      {
+        mates: [
+          {
+            projectId: "wren-dev",
+            name: "Wren",
+            preview: undefined,
+            waiting: false,
+            failed: true,
+            talked: true,
+          },
+        ],
       },
-    };
-    const row = section(render({ groups: [failed] }), 'data-zerops-group="aaa"');
-    expect(row).toContain("Wren stopped on an error");
-    expect(row).toContain('data-test-verb="fix-mate"');
+      false,
+    );
+    const row = section(render({ groups: [stopped] }), 'data-zerops-group="aaa"');
+    // Its own row says it, from its own reading, whatever the project's reads say yet.
+    expect(row).toContain('data-test-mate="wren-dev"');
   });
 
   it.each([
@@ -171,6 +202,7 @@ describe("a project's row", () => {
       const row = section(render({ groups: [unknown] }), 'data-zerops-group="aaa"');
       expect(row).toContain(line);
       expect(row).not.toContain("waits for your merge");
+      expect(row).not.toContain("data-test-review=");
       expect(row).not.toContain("data-test-verb=");
     },
   );
@@ -192,56 +224,69 @@ describe("a project's row", () => {
       expect(html).not.toContain("No Mate yet");
     },
   );
-
-  it("says what a working Mate is on", () => {
-    const working = {
-      ...quiet("ddd"),
-      activities: [{ name: "Wren", working: true, subject: "Add a health check", at: undefined }],
-    };
-    const row = section(render({ groups: [working] }), 'data-zerops-group="ddd"');
-    expect(row).toContain("Add a health check");
-    expect(row).toContain(">Wren<");
-  });
 });
 
 describe("a row's Mates", () => {
-  it("names two in full and counts the rest; each listed one opens its conversation", () => {
-    const opened: Array<string> = [];
-    const KAI = item("kai-dev", placed("aaa", "sm-fixture"));
-    const group = entry([WREN, UMA, KAI], { pullRequests: [pull()] });
-    const tree = mount(
-      <ZeropsProjectsFlow<Item>
-        {...FLOW_PROPS}
-        groups={[group]}
-        openMate={(value) =>
-          value.project.id === "uma-dev" ? undefined : () => opened.push(value.project.id)
-        }
-      />,
-    );
-    const mates = tree.root.findByProps({ "data-zerops-step": "mates" });
-    const chips = mates.findAllByType("button");
-    expect(chips.map((chip) => chip.props["aria-label"])).toEqual(["Open Wren"]);
-    expect(mates.findAll((node) => node.children.includes("Uma"))).not.toHaveLength(0);
-    expect(mates.findAll((node) => node.children.join("") === "+1")).not.toHaveLength(0);
-    act(() => chips[0]!.props.onClick());
-    expect(opened).toEqual(["wren-dev"]);
-  });
-
   it("draws a Mate being created beside the listed one: waking, named, nothing to press", () => {
     const group = entry([WREN], { pullRequests: [pull()], pending: [VERA_COMING] });
     const row = section(
       render({ groups: [group], openMate: () => () => {} }),
       'data-zerops-group="aaa"',
     );
+    expect(row).toContain('data-test-mate="wren-dev"');
     const at = row.indexOf('data-zerops-surface="mate-coming"');
-    const coming = row.slice(row.lastIndexOf("<span", at));
+    const coming = row.slice(row.lastIndexOf("<div", at));
     expect(coming).toContain('data-mate-face-state="waking"');
     expect(coming).toContain(">Vera<");
-    expect(row.match(/aria-label="Open /gu)).toHaveLength(1);
+    expect(coming).not.toContain('aria-label="Open ');
   });
 
   it("draws a brand-new project's row from its birth alone", () => {
-    expect(order(render({ groups: born([WREN]) }))).toContain("ccc");
+    expect(render({ groups: born([WREN]) })).toContain('data-zerops-group="ccc"');
+  });
+
+  // D7, one rule with the menu (`changeShowsReview`): while Wren works, its described changes
+  // show no Review; at rest, they do.
+  it.each([
+    { case: "at work", working: true, review: undefined },
+    { case: "at rest", working: false, review: 2 },
+  ])(
+    "shows its changes' Review by the rule the menu reads, its Mate $case",
+    ({ working, review }) => {
+      const tree = mount(
+        <ZeropsProjectsFlow<Item>
+          {...FLOW_PROPS}
+          groups={[
+            entry([WREN, STAGE], {
+              mates: [
+                {
+                  projectId: "wren-dev",
+                  name: "Wren",
+                  preview: undefined,
+                  waiting: false,
+                  talked: true,
+                  working,
+                },
+              ],
+              pullRequests: [pull(), pull({ number: 2 })],
+              stops: [STAGE_STOP],
+            }),
+          ]}
+        />,
+      );
+      expect(
+        tree.root.findByProps({ "data-test-mate": "wren-dev" }).props["data-test-review"],
+      ).toBe(review);
+    },
+  );
+});
+
+describe("a card's release", () => {
+  it("still offers the release beside a broken production, not just the build (D28)", () => {
+    const html = section(render({ groups: [brokenProduction()] }), 'data-zerops-group="aaa"');
+    expect(html).toContain("Release failed");
+    expect(html).toContain('data-test-release-verb="true"');
+    expect(html).toContain("Production&#x27;s last release failed");
   });
 });
 
@@ -271,21 +316,16 @@ describe("production's version", () => {
     ],
   });
 
-  it("shows beside the name where production runs one", () => {
-    const row = section(render({ groups: [running] }), 'data-zerops-group="aaa"');
-    expect(row).toContain('aria-label="Production runs v0.1.9"');
-  });
-
   it("shows while the project's changes and releases are still being read", () => {
     const reading = { ...running, awaiting: true, changesAwaiting: true };
     const row = section(render({ groups: [reading] }), 'data-zerops-group="aaa"');
-    expect(row).toContain('data-zerops-row-line="pending"');
-    expect(row).toContain('aria-label="Production runs v0.1.9"');
+    expect(row).toContain(">v0.1.9<");
   });
 
   it("is nowhere without production", () => {
     const row = section(render({ groups: [MERGING] }), 'data-zerops-group="aaa"');
-    expect(row).not.toContain('data-zerops-step="production"');
+    expect(row).toContain("Not released yet");
+    expect(row).not.toContain(">Running<");
   });
 });
 
@@ -295,7 +335,7 @@ describe("a row's stops", () => {
       groups: [entry([WREN, STAGE, PROD], { stops: [STAGE_STOP, PRODUCTION_STOP] })],
     });
     const row = section(html, 'data-zerops-group="aaa"');
-    expect(row).not.toContain('data-zerops-surface="group-detail"');
+    expect(row).not.toContain('data-zerops-surface="place-panel"');
     expect(row.match(/data-test-again="fixture-prod"/gu)).toHaveLength(1);
     expect(row.match(/data-test-again="fixture-stage"/gu)).toHaveLength(1);
   });
@@ -318,96 +358,8 @@ describe("a row's stops", () => {
   });
 });
 
-describe("the list's order", () => {
-  it("raises the rows that need the person, keeping the given order within each part", () => {
-    const needs = { ...MERGING, group: { ...MERGING.group, groupId: "m2" } };
-    const html = render({ groups: [quiet("q1"), MERGING, quiet("q2"), needs] });
-    expect(order(html)).toEqual(["aaa", "m2", "q1", "q2"]);
-    expect(html).toContain("Needs attention");
-    expect(html).toContain("Other projects");
-  });
-});
-
-describe("an opened row", () => {
-  it("opens from its name into the Mates' cards, the pull requests and the environments", () => {
-    const tree = mount(
-      <ZeropsProjectsFlow<Item>
-        {...FLOW_PROPS}
-        groups={[
-          entry([WREN, STAGE], {
-            pullRequests: [pull(), pull({ number: 2 })],
-            stops: [STAGE_STOP],
-          }),
-        ]}
-      />,
-    );
-    expect(tree.root.findAllByProps({ "data-zerops-surface": "group-detail" })).toHaveLength(0);
-    act(() => tree.root.findByProps({ "aria-expanded": false }).props.onClick());
-    expect(tree.root.findAllByProps({ "data-test-mate": "wren-dev" })).toHaveLength(1);
-    expect(tree.root.findAllByProps({ "data-test-environment": "fixture-stage" })).toHaveLength(1);
-    // The step merges #2, the newest; #1 keeps its own Merge.
-    const withMerge = (number: number) =>
-      tree.root.findByProps({ "data-test-pull": number }).props["data-test-with-merge"];
-    expect(withMerge(2)).toBe("false");
-    expect(withMerge(1)).toBe("true");
-  });
-
-  // D7, one rule with the menu (`changeShowsReview`): while Wren works, its described changes
-  // show no Review; at rest, they do.
-  it.each([
-    { case: "at work", working: true, review: "false" },
-    { case: "at rest", working: false, review: "true" },
-  ])(
-    "shows its changes' Review by the rule the menu reads, its Mate $case",
-    ({ working, review }) => {
-      const tree = mount(
-        <ZeropsProjectsFlow<Item>
-          {...FLOW_PROPS}
-          groups={[
-            entry([WREN, STAGE], {
-              mates: [
-                {
-                  projectId: "wren-dev",
-                  name: "Wren",
-                  preview: undefined,
-                  waiting: false,
-                  talked: true,
-                  working,
-                },
-              ],
-              pullRequests: [pull(), pull({ number: 2 })],
-              stops: [STAGE_STOP],
-            }),
-          ]}
-        />,
-      );
-      act(() => tree.root.findByProps({ "aria-expanded": false }).props.onClick());
-      const reviewOf = (number: number) =>
-        tree.root.findByProps({ "data-test-pull": number }).props["data-test-review"];
-      expect([reviewOf(1), reviewOf(2)]).toEqual([review, review]);
-    },
-  );
-
-  it("opens by itself when the page names its project", () => {
-    const html = render({ groups: [MERGING, FRESH], focusGroup: "bbb" });
-    expect(section(html, 'data-zerops-group="bbb"')).toContain(
-      'data-zerops-surface="group-detail"',
-    );
-    expect(section(html, 'data-zerops-group="aaa"')).not.toContain(
-      'data-zerops-surface="group-detail"',
-    );
-  });
-
-  it("still offers the release beside a broken production, not just the build (D28)", () => {
-    const tree = mount(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={[brokenProduction()]} />);
-    expect(tree.root.findAllByProps({ "data-test-verb": "fix-deploy" })).toHaveLength(1);
-    act(() => tree.root.findByProps({ "aria-expanded": false }).props.onClick());
-    expect(tree.root.findAllByProps({ "data-test-release-verb": "true" })).toHaveLength(1);
-  });
-});
-
 describe("a row the page names (?group=)", () => {
-  /** A document whose rows record each time they are scrolled into view. */
+  /** A document whose cards record each time they are scrolled into view. */
   function stubDocument() {
     const scrolled: Array<string> = [];
     const listeners = new Map<string, () => void>();
@@ -417,27 +369,23 @@ describe("a row the page names (?group=)", () => {
     vi.stubGlobal("window", {
       addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
       removeEventListener: (type: string) => listeners.delete(type),
+      matchMedia: () => ({ matches: false }),
     });
     return { scrolled, interact: (type: string) => listeners.get(type)?.() };
   }
   const FOCUS = { ...FRESH, group: { ...FRESH.group, groupId: "fff" } };
-  // A group no other test drew, so the list's memory of risen rows holds nothing of it.
-  const regroup = (value: typeof FRESH) => ({
-    ...value,
-    group: { ...value.group, groupId: "ggg" },
-  });
-  const UNREAD = regroup(entry([WREN], { pullRequests: [pull()] }, false));
-  const READ = regroup(entry([WREN], { pullRequests: [pull()] }));
+  // A project whose card arrives before the named one as its reads answer.
+  const ARRIVING = { ...quiet("ggg") };
 
   it("stays in view while rows above it rise as their reads answer", () => {
     const { scrolled } = stubDocument();
     const tree = mount(
-      <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[FOCUS, UNREAD]} />,
+      <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[FOCUS]} />,
     );
     expect(scrolled).toEqual(["project-fff"]);
     act(() =>
       tree.update(
-        <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[FOCUS, READ]} />,
+        <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[ARRIVING, FOCUS]} />,
       ),
     );
     expect(scrolled).toEqual(["project-fff", "project-fff"]);
@@ -447,12 +395,12 @@ describe("a row the page names (?group=)", () => {
   it("lets the person's own scroll win", () => {
     const { scrolled, interact } = stubDocument();
     const tree = mount(
-      <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[FOCUS, UNREAD]} />,
+      <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[FOCUS]} />,
     );
     interact("wheel");
     act(() =>
       tree.update(
-        <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[FOCUS, READ]} />,
+        <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[ARRIVING, FOCUS]} />,
       ),
     );
     expect(scrolled).toEqual(["project-fff"]);
@@ -468,38 +416,59 @@ describe("Projects detail demand", () => {
       const groups = Array.from({ length: count }, (_, index) => quiet(`app-${index}`));
       const tree = mount(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={groups} />);
       expect([...detailHolds]).toEqual([]);
-      const row = tree.root.findByProps({ "data-zerops-group": "app-0" });
-      const toggle = row.findByProps({ "data-zerops-row-toggle": "true" });
-      act(() => toggle.props.onClick());
+      const card = tree.root.findByProps({ "data-zerops-group": "app-0" });
+      const place = card.findByProps({ "data-zerops-place": "production" });
+      act(() => place.props.onClick());
       expect([...detailHolds]).toEqual([["app-0", 1]]);
-      act(() => toggle.props.onClick());
+      act(() => place.props.onClick());
       expect([...detailHolds]).toEqual([]);
       act(() => tree.unmount());
     },
   );
 });
 
-it("a project's latest outcome leads its request and keeps its state and time", () => {
-  const row = quiet("checkout");
-  const html = render({
-    groups: [
-      {
-        ...row,
-        activities: [
-          {
-            name: "Ada",
-            working: false,
-            subject: "Redesign checkout",
-            outcome: "Checkout is ready.",
-            state: "Done",
-            at: "2026-10-08T00:00:00Z",
-          },
-        ],
-      },
-    ],
+describe("a lifted Mate's buttons", () => {
+  const lifted = (lift: Parameters<typeof CardMateLiftActions>[0]["lift"], over = {}) => {
+    const acted: Array<string> = [];
+    const tree = mount(
+      <CardMateLiftActions
+        choices={[
+          { label: "Stripe", primary: false, onPick: () => acted.push("pick:Stripe") },
+          { label: "Adyen", primary: false, onPick: () => acted.push("pick:Adyen") },
+        ]}
+        lift={lift}
+        name="Rhea"
+        onApprove={() => acted.push("approve")}
+        onFix={() => acted.push("fix")}
+        onReply={(text) => acted.push(`reply:${text}`)}
+        onReview={() => acted.push("review")}
+        {...over}
+      />,
+    );
+    const press = (label: string) =>
+      act(() =>
+        tree.root
+          .findAll((node) => node.type === "button" && node.children.join("") === label)[0]!
+          .props.onClick({ currentTarget: null }),
+      );
+    return { tree, acted, press };
+  };
+
+  it("answers a question by its options in place, beside Answer…", () => {
+    const { acted, press, tree } = lifted({ kind: "question" });
+    press("Adyen");
+    expect(acted).toEqual(["pick:Adyen"]);
+    expect(tree.root.findAll((node) => node.children.join("") === "Answer…")).not.toHaveLength(0);
   });
-  expect(html).toContain("Checkout is ready.");
-  expect(html).toContain("Done");
-  expect(html).toContain("Request: ");
-  expect(html.indexOf("Checkout is ready.")).toBeLessThan(html.indexOf("Redesign checkout"));
+
+  it("approves a plan in place, and holds Approve plan while its plan is still being read", () => {
+    const ready = lifted({ kind: "plan" });
+    ready.press("Approve plan");
+    expect(ready.acted).toEqual(["approve"]);
+    const reading = lifted({ kind: "plan" }, { onApprove: undefined });
+    const approve = reading.tree.root.findAll(
+      (node) => node.type === "button" && node.children.join("") === "Approve plan",
+    )[0]!;
+    expect(approve.props.disabled).toBe(true);
+  });
 });

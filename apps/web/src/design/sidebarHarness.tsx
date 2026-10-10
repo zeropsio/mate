@@ -67,13 +67,17 @@ import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { changeUrl } from "@t3tools/shared/hqChanges";
 import type { MateThreadKind } from "@t3tools/shared/mateLink";
-import { EllipsisIcon } from "lucide-react";
+import { EllipsisIcon, PanelLeftCloseIcon } from "lucide-react";
 
 import { onOpenCommandPalette } from "~/commandPaletteBus";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { PanelLayoutControls } from "~/components/chat/PanelLayoutControls";
-import { SidebarChromeHeader, SidebarCornerMark } from "~/components/sidebar/SidebarChrome";
+import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
+import { SidebarOverviewRow } from "~/components/zerops/SidebarOverview";
+import { SidebarRail, useRailMates } from "~/components/zerops/SidebarRail";
+import { SidebarWaitingRow } from "~/components/zerops/SidebarWaiting";
+import { waitingItemsOf, type WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
 import { Button } from "~/components/ui/button";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { ZeropsMark } from "~/components/ZeropsMark";
@@ -93,13 +97,10 @@ import {
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
-import { SidebarWaitingStack } from "~/components/zerops/SidebarWaitingStack";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
 import type { MateDecision } from "~/components/zerops/mateDecision.logic";
 import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewLine";
-import { newProjectOffered } from "~/components/zerops/SidebarProjects.logic";
 import {
-  SidebarNewProject,
   SidebarAccountLine,
   SidebarZeropsTree,
   type SidebarProjectFlow,
@@ -929,7 +930,12 @@ const ACCOUNT = zeropsAccountDisplay({
   fullName: "Ada Lovelace",
   firstName: "Ada",
 });
-const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
+const ORGANIZATION = {
+  id: "org-acme",
+  name: "Acme",
+  membershipId: "m-acme",
+  roleCode: "OWNER",
+};
 
 /**
  * One sidebar, as the app lays it out: its header, the listing, its foot —
@@ -1088,12 +1094,14 @@ function SidebarFrame({
       shownInScope(scope, FIXTURES.owners.get(item.project.id)?.isViewer, item.project.id === open),
     [open, scope],
   );
+  const overviewOpen = open === "";
   const waiting = useSidebarWaiting({
     candidates: FIXTURES.candidates,
     activityOf: activityOfCandidate,
     shown,
     activeProjectId: open,
     enabled: true,
+    releases: HARNESS_RELEASES,
   });
   return (
     <aside
@@ -1109,13 +1117,43 @@ function SidebarFrame({
           beside macOS's traffic lights; the waiting faces and ⌘K at its end. */}
       <SidebarChromeHeader
         isElectron={false}
-        jump={<SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />}
-        waiting={<SidebarWaitingStack mates={waiting.mates} onNext={waiting.next} />}
+        actions={
+          <>
+            <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />
+            <SidebarCreateButton
+              onNewMate={(groupId) => menuActions.push(`new mate ${groupId}`)}
+              onNewProject={() => menuActions.push("new project")}
+              projects={HARNESS_PROJECTS}
+            />
+          </>
+        }
       />
       {/* The list scrolls as the app's does (`SidebarContent`): fading into
           the canvas at an edge only while something is scrolled under it. */}
       <SidebarContent>
         <div className="ps-2.25 pe-2 pb-1">
+          <div className="mb-2">
+            <SidebarOverviewRow
+              current={overviewOpen}
+              headline={HARNESS_HEADLINE}
+              onOpen={() => {
+                menuActions.push("overview");
+                setOpen("");
+              }}
+            />
+            <SidebarWaitingRow
+              items={WAIT_ALL ?? waiting.items}
+              verbs={{
+                onOpenMate: (projectId) => {
+                  menuActions.push(`open ${projectId}`);
+                  setOpen(projectId);
+                },
+                onAskToFix: (projectId, problem) => {
+                  menuActions.push(`ask ${projectId}: ${problem.what}`);
+                },
+              }}
+            />
+          </div>
           <SidebarZeropsTree
             births={coming?.births}
             candidates={RELOAD_MS === null ? candidates : reloaded.rows}
@@ -1166,15 +1204,6 @@ function SidebarFrame({
           />
         </div>
       </SidebarContent>
-      {/* *New project* pinned above the account's row, as the app's
-          (`Sidebar.tsx`): the list scrolls under it. */}
-      {newProjectOffered({ candidates: FIXTURES.candidates, births: [], complete: true }) ? (
-        <SidebarNewProject
-          onNewProject={() => {
-            menuActions.push("new project");
-          }}
-        />
-      ) : null}
       {FOOT_LINE === null ? null : (
         <SidebarAccountLine
           sentence={FOOT_LINE.sentence}
@@ -1184,23 +1213,93 @@ function SidebarFrame({
           }))}
         />
       )}
-      <footer className="flex shrink-0 items-center gap-1 p-2">
-        <div className="min-w-0 flex-1">
-          <SidebarZeropsAccount
-            account={ACCOUNT}
-            activeOrganization={ORGANIZATION}
-            destination={null}
-            destinationIcon={() => null}
-            onGo={() => {}}
-            onSelectOrganization={() => {}}
-            onSignOut={() => {}}
-            organizations={[ORGANIZATION]}
-          />
-        </div>
+      {/* The app's foot (`SidebarChromeFooter`): the account, then the collapse button. */}
+      <footer className="flex shrink-0 items-center gap-2 px-2 py-1">
+        <SidebarZeropsAccount
+          account={ACCOUNT}
+          activeOrganization={ORGANIZATION}
+          destination={null}
+          destinationIcon={() => null}
+          onGo={() => {}}
+          onSelectOrganization={() => {}}
+          onSignOut={() => {}}
+          organizations={[ORGANIZATION]}
+        />
+        <button aria-label="Collapse sidebar" className="menu-foot-button" type="button">
+          <PanelLeftCloseIcon aria-hidden="true" className="size-4" />
+        </button>
       </footer>
     </aside>
   );
 }
+
+/** The +'s projects and the Overview row's line, as the fixtures' projects would say them. */
+const HARNESS_PROJECTS = [
+  { id: "links", name: "Links" },
+  { id: "shop", name: "Shop" },
+  { id: "notes", name: "Notes" },
+  { id: "todo", name: "Todo" },
+  { id: "design-tokens", name: "Design system tokens and primitives" },
+];
+const HARNESS_HEADLINE = "Todo needs attention";
+/** Links' stage is ahead of its production: its release waits on the viewer. */
+const HARNESS_RELEASES = [{ groupId: "links", name: "Links", ahead: 3 }];
+
+/**
+ * `?wait=all`: one of each thing that waits on the viewer, as the board drew them — a Mate of
+ * theirs stopped on an error, a plan, a question, a change, a release. None has a conversation
+ * here, so a question offers its conversation and a plan waits for its read.
+ */
+const WAIT_ALL: ReadonlyArray<WaitingItem> | null =
+  new URLSearchParams(location.search).get("wait") === "all"
+    ? waitingItemsOf({
+        mates: [
+          {
+            projectId: "fen",
+            name: "Fen",
+            tint: "coral",
+            shape: "gem",
+            face: "idle",
+            kind: "failed",
+            text: "The stage build failed: EXPO_TOKEN is missing.",
+          },
+          {
+            projectId: "wren",
+            name: "Wren",
+            tint: "violet",
+            shape: "squircle",
+            face: "needs",
+            kind: "plan",
+            text: "Plan: move search into its own service, in 4 steps. Go ahead?",
+          },
+          {
+            projectId: "rhea",
+            name: "Rhea",
+            tint: "rose",
+            shape: "seal",
+            face: "needs",
+            kind: "question",
+            text: "Stripe or Adyen? Adyen needs a merchant account first.",
+          },
+          {
+            projectId: "noibit",
+            name: "Noibit",
+            tint: "olive",
+            shape: "hexagon",
+            face: "needs",
+            kind: "change",
+            text: "Nightly invoice export to S3",
+            change: {
+              groupId: "links",
+              repository: "app",
+              number: 31,
+              title: "Nightly invoice export to S3",
+            },
+          },
+        ],
+        releases: [{ groupId: "tea", name: "Tea Shop", ahead: 3 }],
+      })
+    : null;
 
 const JUMP_KEY = isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K";
 
@@ -1323,11 +1422,82 @@ function HarnessJumpBox({
   );
 }
 
-/**
- * `?menu=closed`: the menu folded away and its mark in the window's corner,
- * as the app draws them (`SidebarCornerMark`), the header taking the room.
- */
+/** `?menu=closed`: the menu closed to its rail on a desktop (`RailFrame`). */
 const MENU_CLOSED = new URLSearchParams(location.search).get("menu") === "closed";
+
+/** The rail the app closes the menu to on a desktop (`SidebarRail`). */
+function RailFrame({
+  open,
+  setOpen,
+}: {
+  readonly open: string;
+  readonly setOpen: (projectId: string) => void;
+}) {
+  const [scope] = useMateScope();
+  const shown = useCallback(
+    (item: ZeropsCandidate) =>
+      shownInScope(scope, FIXTURES.owners.get(item.project.id)?.isViewer, item.project.id === open),
+    [open, scope],
+  );
+  const waiting = useSidebarWaiting({
+    candidates: FIXTURES.candidates,
+    activityOf: activityOfCandidate,
+    shown,
+    activeProjectId: open,
+    enabled: true,
+    releases: HARNESS_RELEASES,
+  });
+  const items = WAIT_ALL ?? waiting.items;
+  const groups = useRailMates({
+    candidates: FIXTURES.candidates,
+    activityOf: activityOfCandidate,
+    shown,
+    ownerOf: (item) => FIXTURES.owners.get(item.project.id),
+    projectName: (groupId) => HARNESS_PROJECTS.find((project) => project.id === groupId)?.name,
+    waiting: items,
+  });
+  const verbs = {
+    onOpenMate: (projectId: string) => {
+      setOpen(projectId);
+    },
+    onAskToFix: (projectId: string) => {
+      menuActions.push(`ask ${projectId}`);
+    },
+  };
+  return (
+    <aside
+      className="flex h-screen w-16 shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
+      data-sidebar="sidebar"
+    >
+      <SidebarRail
+        account={
+          <SidebarZeropsAccount
+            account={ACCOUNT}
+            activeOrganization={ORGANIZATION}
+            collapsed
+            destination={null}
+            destinationIcon={() => null}
+            onGo={() => {}}
+            onSelectOrganization={() => {}}
+            onSignOut={() => {}}
+            organizations={[ORGANIZATION]}
+          />
+        }
+        activeProjectId={open === "" ? null : open}
+        groups={groups}
+        headline={HARNESS_HEADLINE}
+        onOpenMenu={() => menuActions.push("open the menu")}
+        onOverview={() => setOpen("")}
+        onSelect={setOpen}
+        openShortcut="⌘B"
+        overviewCurrent={open === ""}
+        showMark
+        verbs={verbs}
+        waiting={items}
+      />
+    </aside>
+  );
+}
 /** `?crew=1`: the open Mate's line carries a crew of three, as a Mate with a crew's does. */
 const LINE_CREW = new URLSearchParams(location.search).get("crew") === "1";
 
@@ -1479,7 +1649,7 @@ function Harness() {
         )}
       </CommandDialog>
       {MENU_CLOSED && !phone ? (
-        <SidebarCornerMark />
+        <RailFrame open={open} setOpen={setOpen} />
       ) : (
         <SidebarFrame
           onJump={() => {

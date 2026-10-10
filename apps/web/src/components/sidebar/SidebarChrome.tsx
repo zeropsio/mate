@@ -1,9 +1,10 @@
 import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
-  CloudIcon,
   GitPullRequestIcon,
+  LayersIcon,
   PanelLeftCloseIcon,
+  PlusIcon,
   SettingsIcon,
 } from "lucide-react";
 import type { SidebarAccountDestination } from "../zerops/SidebarZeropsAccount.logic";
@@ -24,6 +25,15 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "../ui/sidebar";
+import {
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
@@ -32,35 +42,27 @@ import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUp
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
   status,
-  waiting,
-  jump,
+  actions,
 }: {
   isElectron: boolean;
   /**
-   * How current the menu is, while it is not (`SidebarHqStatus`): before the waiting faces, in
-   * the row, so saying it moves nothing under it.
+   * How current the menu is, while it is not (`SidebarHqStatus`): between the mark and the
+   * round buttons, so saying it moves neither.
    */
   status?: ReactNode;
   /**
-   * The Mates waiting on the viewer (`SidebarWaitingStack`), in a slot kept
-   * whether or not anybody waits, so the header never moves. Absent where the
-   * menu lists no Mates.
+   * The row's round buttons, on its end edge 16 px in from the divider: search, and + for a
+   * new Mate or project. Absent where the menu offers neither.
    */
-  waiting?: ReactNode;
-  /**
-   * The way into the jump box (`SidebarJumpButton`), on the row's end edge,
-   * 12 px from the menu's edge. Absent where the menu has no jump box.
-   */
-  jump?: ReactNode;
+  actions?: ReactNode;
 }) {
   return (
     // The row is the top bar's (`--workspace-topbar-height`), so a page's
     // header beside it shares its centre and its bottom edge. On the web
     // that is 65 px, so the mark (33 px, centred) stands 16 px from the top
     // as it stands 16 px from the left (the owner, 2026-09-29: "visually logo
-    // has smaller padding on top than on the left"), and ⌘K and the waiting
-    // faces share its centre. Beside a desktop's traffic lights the bar is
-    // the title bar's height, centred on them.
+    // has smaller padding on top than on the left"). Beside a desktop's
+    // traffic lights the bar is the title bar's height, centred on them.
     <SidebarHeader
       className={cn(
         "@container/sidebar-header relative h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center px-3 py-0 md:px-0",
@@ -69,40 +71,107 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     >
       <SidebarTrigger className="md:hidden" />
       <SidebarBrand />
-      {status === undefined && waiting === undefined && jump === undefined ? null : (
-        // The room the mark leaves: ⌘K on the end edge, whole, and the
-        // waiting faces before it in a slot of at most 96 px that gives way
-        // first — fewer faces where the row is narrow (`waitingFacesThatFit`).
-        // Its end is the menu's end edge, 16 px short of the divider, as the
-        // mark is 16 px in from the window (the owner, 2026-09-29: "padding
-        // around this whole column feels a little inconsistent").
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 md:pe-4">
+      {status === undefined && actions === undefined ? null : (
+        <div
+          className="flex min-w-0 flex-1 items-center justify-end gap-2 md:pe-4"
+          data-zerops-surface="sidebar-top-actions"
+        >
           {status}
-          {waiting === undefined ? null : (
-            <div
-              className="flex min-w-0 max-w-24 flex-1 items-center justify-end"
-              data-zerops-surface="sidebar-waiting-slot"
-            >
-              {waiting}
-            </div>
-          )}
-          {jump}
+          {actions}
         </div>
       )}
     </SidebarHeader>
   );
 });
 
+/** A project New Mate may be asked in: its id (the group) and its name. */
+export interface SidebarCreateProject {
+  readonly id: string;
+  readonly name: string;
+}
+
+/**
+ * The top row's +: a small menu with New Mate and New project, the menu's own
+ * flows (`useAddMate`, `useAskNewProject`). New Mate asks in a project: where
+ * there is one, at once; with several, it lists them.
+ */
+export function SidebarCreateButton({
+  projects,
+  onNewMate,
+  onNewProject,
+}: {
+  readonly projects: ReadonlyArray<SidebarCreateProject>;
+  readonly onNewMate: (projectId: string) => void;
+  readonly onNewProject: () => void;
+}) {
+  const [only] = projects;
+  return (
+    <Menu>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <MenuTrigger
+              render={
+                <button
+                  aria-label="New Mate or project"
+                  className="menu-round-button"
+                  data-zerops-surface="sidebar-create"
+                  type="button"
+                />
+              }
+            />
+          }
+        >
+          <PlusIcon aria-hidden="true" className="size-4" />
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">New Mate or project</TooltipPopup>
+      </Tooltip>
+      <MenuPopup align="end" className="w-50">
+        {only === undefined ? null : projects.length === 1 ? (
+          <MenuItem
+            data-zerops-create="mate"
+            onClick={() => {
+              onNewMate(only.id);
+            }}
+          >
+            New Mate
+          </MenuItem>
+        ) : (
+          <MenuSub>
+            <MenuSubTrigger data-zerops-create="mate">New Mate</MenuSubTrigger>
+            <MenuSubPopup>
+              {projects.map((project) => (
+                <MenuItem
+                  data-zerops-create-in={project.id}
+                  key={project.id}
+                  onClick={() => {
+                    onNewMate(project.id);
+                  }}
+                >
+                  {project.name}
+                </MenuItem>
+              ))}
+            </MenuSubPopup>
+          </MenuSub>
+        )}
+        <MenuItem data-zerops-create="project" onClick={onNewProject}>
+          New project
+        </MenuItem>
+      </MenuPopup>
+    </Menu>
+  );
+}
+
 function SidebarBrand() {
   return (
-    // The mark stands in the menu's face column: 16 px in, as wide as the
+    // The mark leads to the overview. It stands in the menu's face column: 16 px in, as wide as the
     // Mates' faces under it (the owner, 2026-09-29: "remove the 'mate' and
     // make the width of the logo as wide as the mate below") — except on
     // macOS, where the traffic lights push the whole titlebar's content right.
     <Link
       aria-label={APP_BASE_NAME}
       className="ml-[max(var(--workspace-controls-left),1rem)] hidden h-8.25 w-fit min-w-0 shrink-0 items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2 md:flex"
-      to="/"
+      to="/zerops"
     >
       {/* The live mark alone, 28 px wide: its 44 × 52 box stands 33 px tall. Awake as it mounts:
           the boot frame painted the open mark here, and this one takes over from it. */}
@@ -178,10 +247,10 @@ function SidebarUtilityItem({
  * than in the row: the chrome already owns which icon stands for which place,
  * and the design system keeps one icon map (design-system.md §3).
  */
-function sidebarAccountDestinationIcon(id: SidebarAccountDestination["id"]) {
+export function sidebarAccountDestinationIcon(id: SidebarAccountDestination["id"]) {
   switch (id) {
     case "projects":
-      return <CloudIcon />;
+      return <LayersIcon />;
     case "git":
       return <GitPullRequestIcon />;
     case "usage":

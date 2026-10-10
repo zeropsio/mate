@@ -65,7 +65,7 @@ function readInitialThreadSidebarWidth(): number {
   }
 }
 
-function SidebarControl() {
+function SidebarControl({ rail }: { readonly rail: boolean }) {
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { isMobile, state, toggleSidebar } = useSidebar();
@@ -100,6 +100,8 @@ function SidebarControl() {
 
   const placement = resolveSidebarOpenerPlacement({ isMobile, state });
   if (placement === "none") return null;
+  // Closed to the rail, the rail carries the mark and the open button itself.
+  if (rail && placement === "foot") return null;
 
   // On a phone the composer is the screen's last thing: the opener is the
   // sheet's own toggle, in the corner where the open sheet's header holds it
@@ -243,8 +245,11 @@ export function AppSidebarLayout({
       ? getWindowFullscreenState()
       : false;
   });
+  // Closed on a desktop, the menu is a 64 px rail (`SidebarRail`); settings and the gate close away.
+  const rail = !isOnSettings && !gated;
   const sidebarProviderStyle = {
     "--sidebar-width": `${sidebarWidth}px`,
+    "--sidebar-width-icon": "64px",
     ...(isMacosDesktop && !isWindowFullscreen
       ? { "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET }
       : {}),
@@ -288,11 +293,16 @@ export function AppSidebarLayout({
   }, [navigate, pathname]);
 
   return (
-    <SidebarProvider className="h-dvh! min-h-0!" defaultOpen style={sidebarProviderStyle}>
+    <SidebarProvider
+      className="h-dvh! min-h-0!"
+      data-sidebar-rail={rail ? "" : undefined}
+      defaultOpen
+      style={sidebarProviderStyle}
+    >
       <ProjectProjectionRetention />
       <Sidebar
         side="left"
-        collapsible="offcanvas"
+        collapsible={rail ? "icon" : "offcanvas"}
         data-app-sidebar=""
         role="navigation"
         aria-label={isOnSettings ? "Settings" : "Mates"}
@@ -327,7 +337,7 @@ export function AppSidebarLayout({
         <div className="relative flex min-h-0 flex-1">{children}</div>
         {status}
       </div>
-      <SidebarControl />
+      <SidebarControl rail={rail} />
       {/* A reveal asked from outside the menu — the jump box's — brings it out. */}
       <SidebarRevealBridge showable={!isOnSettings} />
       <NavigationHistoryShortcuts />

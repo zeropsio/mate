@@ -29,7 +29,7 @@ import { useDetailDemand, useProjectServices } from "~/zerops/ZeropsAccountData"
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Button } from "../ui/button";
-import { FlatCard, MicroLabel, StatusDot } from "./primitives";
+import { MicroLabel, StatusDot } from "./primitives";
 import { hqCardView, type HqCardUpdateRead, type HqCardView } from "./ZeropsHqCard.logic";
 import { ZeropsHqUpdate } from "./ZeropsHqUpdate";
 import { hqUpdateMount, type HqUpdateMount } from "./ZeropsHqUpdate.logic";
@@ -222,8 +222,9 @@ export function ZeropsHqCardView({
   readonly projectUrl: string;
 }) {
   return (
-    <FlatCard
-      className="px-3 py-2"
+    // One quiet line at the overview's end, no card around it (round 5).
+    <div
+      className="py-2"
       data-hq-state={view.state?.kind ?? "unknown"}
       data-zerops-surface="hq-card"
     >
@@ -302,6 +303,6 @@ export function ZeropsHqCardView({
           </Button>
         </div>
       ) : null}
-    </FlatCard>
+    </div>
   );
 }

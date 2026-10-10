@@ -90,7 +90,7 @@ describe("waitingMatesOf — the faces the header stacks", () => {
   });
 
   it("wears each Mate's own colour, and its face", () => {
-    expect(derive().find((waiting) => waiting.projectId === "kai")).toEqual({
+    expect(derive().find((waiting) => waiting.projectId === "kai")).toMatchObject({
       projectId: "kai",
       name: "Kai",
       tint: "amber",
@@ -142,5 +142,73 @@ describe("waitingMatesOf — the faces the header stacks", () => {
 
   it("puts a Mate the menu has not drawn yet after the ones it has", () => {
     expect(derive(() => true, ["kai"]).map((waiting) => waiting.name)).toEqual(["Kai", "Juno"]);
+  });
+
+  // A Mate of the viewer's stopped on an error waits on them for help, though its face stands
+  // still; another's waits on its owner.
+  it.each([
+    { case: "own Mate stopped on an error", waits: true, listed: true },
+    { case: "another's Mate stopped on an error", waits: false, listed: false },
+  ])("$case", ({ waits, listed }) => {
+    const fen = mate("fen", "Fen", "connected");
+    const waiting = waitingMatesOf({
+      candidates: [fen],
+      activityOf: () =>
+        ({
+          face: "idle",
+          kind: "failed",
+          errorLine: "EXPO_TOKEN is missing",
+        }) as ZeropsAgentActivity,
+      reviewWaits: () => false,
+      waitsOnViewer: () => waits,
+      tints: new Map(),
+      order: [],
+      shown: () => true,
+    });
+    expect(waiting.map((entry) => [entry.kind, entry.text])).toEqual(
+      listed ? [["failed", "EXPO_TOKEN is missing"]] : [],
+    );
+  });
+
+  it.each([
+    {
+      case: "a plan, in its last words",
+      activity: { face: "needs", kind: "planReady", snippet: "Plan: move search out" },
+      review: false,
+      kind: "plan",
+      text: "Plan: move search out",
+    },
+    {
+      case: "a question, in its words",
+      activity: { face: "needs", kind: "input", question: "Stripe or Adyen?", snippet: "Hm" },
+      review: false,
+      kind: "question",
+      text: "Stripe or Adyen?",
+    },
+    {
+      case: "a change, by its title",
+      activity: { face: "idle", kind: "idle" },
+      review: true,
+      kind: "change",
+      text: "Nightly invoice export",
+    },
+  ])("says what it waits for: $case", ({ activity, review, kind, text }) => {
+    const wren = mate("wren", "Wren", "connected");
+    const [waiting] = waitingMatesOf({
+      candidates: [wren],
+      activityOf: () => activity as ZeropsAgentActivity,
+      reviewWaits: () => review,
+      waitsOnViewer: () => true,
+      tints: new Map(),
+      order: [],
+      shown: () => true,
+      changeOf: () => ({
+        groupId: "aaa",
+        repository: "app",
+        number: 31,
+        title: "Nightly invoice export",
+      }),
+    });
+    expect(waiting).toMatchObject({ kind, text });
   });
 });

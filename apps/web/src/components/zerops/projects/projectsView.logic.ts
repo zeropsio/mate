@@ -1,8 +1,7 @@
 /**
- * The projects page's decisions over `groupFlow` — what a project's row says and whether it
- * rises, production's version beside its name, the containers' one line — the words and the
- * placement, not the pixels. The rows' order is the person's (`projectOrderPreference.ts`); the
- * rows that need the person rise first within it (`risenFirst`), and nothing else reorders them.
+ * The overview's decisions over `groupFlow` — why a project's changes are not known, a stop's
+ * line, the containers' one line — the words and the placement, not the pixels. The cards' order
+ * is the person's (`projectOrderPreference.ts`), and nothing reorders them.
  */
 
 import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
@@ -733,29 +732,6 @@ export function projectRowLine(input: {
     };
   if (step.kind === "first-task") return { kind: "first-task", text: step.text };
   return { kind: "none" };
-}
-
-/**
- * Production's version beside the project's name, where production exists and runs one: what it
- * runs and the tone of its last deploy. Nothing at all without production — adding one is the
- * row's menu's offer, never a word in the row.
- */
-export function productionMark(
-  flow: GroupFlow,
-): { readonly version: string; readonly tone: ServiceStatusToneId } | undefined {
-  const { production } = flow;
-  if (production.kind === "absent" || production.kind === "creating") return undefined;
-  const version = production.stop.version?.label;
-  if (version === undefined) return undefined;
-  return { version, tone: STOP_TONE[production.stop.state] };
-}
-
-/** The rows that rise first, then the rest, each keeping the order it was given. */
-export function risenFirst<E>(
-  rows: ReadonlyArray<E>,
-  rises: (row: E) => boolean,
-): ReadonlyArray<E> {
-  return [...rows.filter(rises), ...rows.filter((row) => !rises(row))];
 }
 
 /**

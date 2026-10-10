@@ -281,32 +281,17 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
   onRetryContainers: () => {},
   renderEnvironment: (value) => h("li", { "data-test-environment": value.project.id }),
   renderGroupMenu: (value) => h("span", { "data-test-menu": value.group.groupId }),
-  renderGroupRows: () => null,
   renderMate: (value, options) =>
     h("div", {
       "data-test-mate": value.project.id,
       "data-test-layout": options.layout,
       "data-test-preview": options.preview,
+      "data-test-review": options.review?.number,
     }),
   renderMateFace: (value, size) =>
     h("span", { "data-test-face": value.project.id, "data-test-size": size }),
   openMate: () => undefined,
-  renderNextStep: (value) =>
-    value.flow.nextStep.verb === undefined
-      ? null
-      : h(
-          "button",
-          { "data-test-verb": value.flow.nextStep.kind, type: "button" },
-          value.flow.nextStep.verb,
-        ),
   renderReleaseVerb: () => h("button", { "data-test-release-verb": "true", type: "button" }),
-  renderPullRequest: (_group, value, options) =>
-    h("li", {
-      "data-test-compact": String(options.compact),
-      "data-test-pull": value.number,
-      "data-test-with-merge": String(options.withMerge),
-      "data-test-review": String(options.review),
-    }),
   hqCard: h("div", { "data-test-hq-card": "true" }),
   ungrouped: [],
 };

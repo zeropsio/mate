@@ -19,7 +19,6 @@
 import {
   cannotTellWhatRuns,
   servicesDeploying,
-  buildZeropsGroupTree,
   changesCountWords,
   holdReleaseFacts,
   movedCommits,
@@ -49,8 +48,7 @@ import {
   type ReleaseVersionSuggestion,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
-import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { Fragment, useId, useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 
 import { Input } from "~/components/ui/input";
 
@@ -60,7 +58,6 @@ import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import type { ReviewTarget } from "~/zerops/review";
-import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { ZeropsReadFailure } from "../ZeropsReadFailure";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
@@ -68,10 +65,16 @@ import { useZeropsReviewMates, type ZeropsReviewMate } from "~/zerops/useZeropsR
 
 import { ZeropsChangeReview } from "./ZeropsChangeReview";
 import { useReleaseSteps, ZeropsReleaseSteps } from "./ZeropsReleaseSteps";
+import { mainStageOf, useGroupName, useProductionHost } from "./reviewReads";
 import {
+  productionNowLine,
   releaseChangeRows,
+  releaseFoot,
+  releaseLine,
   reviewKindLine,
   rollbackListNote,
+  sinceWords,
+  whySaid,
   type ReleaseChangeRow,
   type ReleaseStageMark,
   type RollbackSide,
@@ -86,17 +89,6 @@ import {
 import { answeredDeploys } from "../ZeropsDeployAnswer";
 
 type ReleaseTarget = Extract<ReviewTarget, { readonly kind: "release" | "rollback" }>;
-
-function useGroupName(groupId: string): string | undefined {
-  const { listing } = useZeropsCandidates();
-  return useMemo(
-    () =>
-      buildZeropsGroupTree(heldCandidates(listing).rows, { order: "name" }).groups.find(
-        (entry) => entry.group.groupId === groupId,
-      )?.group.name,
-    [groupId, listing],
-  );
-}
 
 /** The review shows what a release would put live: it compares it while drawn. */
 const COMPARED = { compare: true } as const;
@@ -125,7 +117,7 @@ export function ZeropsReleaseReview({
       <ZeropsReviewSurface
         consequence="Nothing is tagged from here until the project is read."
         kind={kind}
-        kindLabel={reviewKindLine(kind)}
+        kindLabel={name ?? reviewKindLine(kind)}
         onClose={onClose}
         title={name ?? "Production"}
         titleId={titleId}
@@ -223,6 +215,8 @@ function reviewRowsOf(
     readonly mates: ReadonlyMap<string, ZeropsReviewMate>;
     readonly mateNames: ReadonlyMap<string, string> | undefined;
     readonly now: number;
+    /** A release names each change's Mate alone; a roll back says when it merged too. */
+    readonly ages: boolean;
   },
 ): ReadonlyArray<ReviewReleaseRow> {
   return rows.map((row) => {
@@ -231,7 +225,9 @@ function reviewRowsOf(
       mate?.name ??
       (row.mateProjectId === undefined ? undefined : names.mateNames?.get(row.mateProjectId));
     const age =
-      row.mergedAt === undefined ? undefined : reviewAge(row.mergedAt, names.now)?.toLowerCase();
+      row.mergedAt === undefined || !names.ages
+        ? undefined
+        : reviewAge(row.mergedAt, names.now)?.toLowerCase();
     return {
       ...row,
       ...(mate === undefined ? {} : { face: { tint: mate.tint, shape: mate.shape } }),
@@ -286,12 +282,9 @@ function ReleaseData({
   });
   const clockMs = useSecondsNowMs(follows.ticking);
 
-  const mainStage = flow.environmentInputs.find(
-    (entry) =>
-      entry.tier === "stage" &&
-      flow.environments.find((row) => row.projectId === entry.projectId)?.source === "main",
-  );
+  const mainStage = mainStageOf(flow);
   const production = flow.environmentInputs.find((entry) => entry.tier === "production");
+  const productionHost = useProductionHost(production?.projectId);
   const {
     outcome,
     held: keep,
@@ -337,6 +330,7 @@ function ReleaseData({
     mates,
     mateNames,
     now,
+    ages: false,
   });
   // A failed release is anybody's to fix: the person's own Mate in the project, the one they
   // used last (S6, `fixMates.ts`).
@@ -366,6 +360,15 @@ function ReleaseData({
       comparisonFailure={flow.release.comparisonFailure}
       fixer={fixer?.name}
       gate={flow.release.gate}
+      production={{
+        at: flow.releases.find((entry) => entry.standing === "live")?.taggedAt,
+        host: productionHost,
+      }}
+      stage={
+        mainStage === undefined
+          ? undefined
+          : { name: mainStage.name, at: newestLive(mainStage.services) }
+      }
       permission={flow.release.permission}
       // A stage HQ never put anything live on counts nothing: no "0 of N".
       hasStage={stage !== undefined && stageRead(stage)}
@@ -402,6 +405,25 @@ function ReleaseData({
   );
 }
 
+/** When the newest of these services' deploys went live: since when the stage runs what it runs. */
+function newestLive(
+  services: ReadonlyArray<{
+    readonly deploy?:
+      | { readonly live: { readonly at: string; readonly endedAt: string | null } | null }
+      | undefined;
+  }>,
+): string | undefined {
+  let newest: string | undefined;
+  for (const service of services) {
+    const live = service.deploy?.live;
+    const at = live === null || live === undefined ? undefined : (live.endedAt ?? live.at);
+    if (at !== undefined && (newest === undefined || Date.parse(at) > Date.parse(newest))) {
+      newest = at;
+    }
+  }
+  return newest;
+}
+
 export interface ReleaseReviewViewProps {
   readonly comparisonFailure?:
     | { readonly reason: string; readonly again?: (() => void) | undefined }
@@ -427,6 +449,12 @@ export interface ReleaseReviewViewProps {
   readonly untold: ReadonlyArray<string>;
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   readonly hasStage: boolean;
+  /** The stage that follows `main`: its name, and when what it runs went live. */
+  readonly stage?: { readonly name: string; readonly at: string | undefined } | undefined;
+  /** Production: when the release it runs was tagged, and the address it answers at. */
+  readonly production?:
+    | { readonly at: string | undefined; readonly host: string | undefined }
+    | undefined;
   readonly services: ReadonlyArray<string>;
   /** What production ran as this one was offered. */
   readonly replaces: ReleaseReplaces;
@@ -479,9 +507,33 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     (service) => !deploying.includes(service) && !answered.has(service),
   );
   const untoldDeploying = deploying.filter((service) => !answered.has(service));
+  // What production runs as this one was offered: the version a roll back goes to.
+  const live =
+    props.replaces.kind === "release"
+      ? props.replaces.tag
+      : props.replaces.kind === "unnamed"
+        ? "what production runs"
+        : undefined;
+  const ready = model.verdict.state === "release-ready";
+  const line = releaseLine({
+    changes: rows.length,
+    stage: props.hasStage ? props.stage?.name : undefined,
+    since: sinceWords(props.stage?.at, props.now),
+    onStage: props.hasStage
+      ? { total: rows.length, running: rows.filter((row) => row.stage === "on-stage").length }
+      : undefined,
+    live,
+  });
   return (
     <ZeropsReviewSurface
-      consequence={refused ?? model.consequence}
+      consequence={
+        refused ??
+        releaseFoot({
+          state: model.verdict.state,
+          consequence: model.consequence,
+          live: props.replaces.kind === "release" ? props.replaces.tag : undefined,
+        })
+      }
       dismiss={model.primary === undefined ? "Close" : "Cancel"}
       fix={
         fix === undefined || props.fixer === undefined
@@ -494,13 +546,9 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
             }
       }
       kind="release"
-      kindLabel={reviewKindLine("release")}
-      meta={model.meta.map((part, index) => (
-        <Fragment key={part}>
-          {index === 0 ? null : <span aria-hidden="true">·</span>}
-          <span>{part}</span>
-        </Fragment>
-      ))}
+      kindLabel={props.name ?? reviewKindLine("release")}
+      // Ready, the line says all of it; else the verdict follows it.
+      meta={<span>{ready ? line : line.replace(/\.$/u, "")}</span>}
       onClose={props.onClose}
       primary={
         model.primary === undefined
@@ -508,19 +556,60 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           : {
               ...model.primary,
               enabled: model.primary.enabled && checkedVersion?.error === undefined,
-              icon: "tag",
               busy: press.kind === "running",
               label: press.kind === "running" ? `Releasing ${tag}` : model.primary.label,
+              text: `${model.primary.label} to production`,
               onPress: props.onRelease,
             }
       }
-      title={`${props.name ?? "Production"} ${tag}`}
+      title={`Release ${tag} to production`}
       titleId={props.titleId}
       verdict={model.verdict}
+      verdictInLine={!ready}
+      whySaid={whySaid(model.verdict, false)}
     >
+      {props.comparisonFailure === undefined ? null : (
+        <ZeropsReadFailure action="Compare again" {...props.comparisonFailure} />
+      )}
+      {rows.length === 0 &&
+      untold.length === 0 &&
+      untoldDeploying.length === 0 &&
+      (answer !== undefined || props.where.length === 0) ? null : (
+        <ReviewSection title="What goes out">
+          {rows.length === 0 ? null : <ReviewReleaseRows onOpen={props.onOpenChange} rows={rows} />}
+          {untoldDeploying.length === 0 ? null : (
+            <p className="rv-note">{servicesDeploying(untoldDeploying)}.</p>
+          )}
+          {untold.length === 0 ? null : <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>}
+          {/* Which commit each service redeploys from, until HQ answers where it went. */}
+          {answer === undefined
+            ? props.where.map((entry) => (
+                <p className="rv-note" key={entry.service}>
+                  {entry.service} {entry.line}.
+                </p>
+              ))
+            : null}
+        </ReviewSection>
+      )}
+      {props.replaces.kind === "first" ? null : (
+        <ReviewSection title="Production now">
+          <p className="rv-words">
+            {productionNowLine({
+              live,
+              since: sinceWords(props.production?.at, props.now),
+              host: props.production?.host,
+            })}
+          </p>
+        </ReviewSection>
+      )}
+      {answer === undefined ? null : (
+        <ReviewSection title="Where">
+          <ReviewWhere answer={answer} rows={props.where} />
+        </ReviewSection>
+      )}
       {version === undefined ? null : (
         <ReviewSection title="Version">
-          <div className="flex flex-col gap-2">
+          <div className="rv-version">
             <div className="w-44">
               <Input
                 aria-label="Version"
@@ -536,15 +625,12 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
                 value={version.value}
               />
             </div>
-            <p className="text-xs text-muted-foreground" id={`${versionId}-help`}>
+            <p className="rv-note" id={`${versionId}-help`}>
               {checkedVersion?.error ??
                 `Must be newer than every release. Next patch is ${version.nextPatch}.`}
             </p>
             {version.suggestions.map((suggestion) => (
-              <div
-                className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-                key={suggestion.source}
-              >
+              <div className="rv-note rv-version-use" key={suggestion.source}>
                 <button
                   className="rv-textbtn"
                   onClick={() => version.onChange(suggestion.tag.slice(1))}
@@ -556,33 +642,6 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
               </div>
             ))}
           </div>
-        </ReviewSection>
-      )}
-      {props.comparisonFailure === undefined ? null : (
-        <ZeropsReadFailure action="Compare again" {...props.comparisonFailure} />
-      )}
-      {rows.length === 0 && untold.length === 0 && untoldDeploying.length === 0 ? null : (
-        <ReviewSection
-          aside={`${String(rows.length)} ${rows.length === 1 ? "change" : "changes"}`}
-          title="What goes out"
-        >
-          {rows.length === 0 ? null : <ReviewReleaseRows onOpen={props.onOpenChange} rows={rows} />}
-          {untoldDeploying.length === 0 ? null : (
-            <p className="text-sm text-muted-foreground">{servicesDeploying(untoldDeploying)}.</p>
-          )}
-          {untold.length === 0 ? null : (
-            <p className="text-sm text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
-          )}
-        </ReviewSection>
-      )}
-      {props.where.length === 0 && answer === undefined ? null : (
-        <ReviewSection title="Where">
-          <ReviewWhere answer={answer} rows={props.where} />
-        </ReviewSection>
-      )}
-      {model.ifWrong === undefined ? null : (
-        <ReviewSection title="If it goes wrong">
-          <p className="rv-words">{model.ifWrong}</p>
         </ReviewSection>
       )}
     </ZeropsReviewSurface>
@@ -732,6 +791,7 @@ function RollbackData({
             mates,
             mateNames,
             now,
+            ages: true,
           }),
           ...movedCount(moved.moved),
         };
@@ -852,7 +912,7 @@ function RollbackListSection({
           again={list.again}
         />
       ) : (
-        <p className="text-sm text-muted-foreground">{rollbackListNote(side, list)}</p>
+        <p className="rv-note">{rollbackListNote(side, list)}</p>
       )}
       {children}
     </ReviewSection>
@@ -892,7 +952,7 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
             }
       }
       kind="rollback"
-      kindLabel={reviewKindLine("rollback")}
+      kindLabel={props.name ?? reviewKindLine("rollback")}
       meta={
         <>
           {model.meta === undefined ? null : <span>{model.meta}</span>}
@@ -916,7 +976,7 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
               onPress: props.onRollBack,
             }
       }
-      title={`${props.name ?? "Production"} ${tag}`}
+      title={`Roll back to ${tag}`}
       titleId={props.titleId}
       verdict={model.verdict}
     >
@@ -926,9 +986,7 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
         side="leaving"
         title="Leaves production"
       >
-        {untold.length === 0 ? null : (
-          <p className="text-sm text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
-        )}
+        {untold.length === 0 ? null : <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>}
       </RollbackListSection>
       <RollbackListSection
         list={props.comingBack}

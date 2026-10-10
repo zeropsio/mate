@@ -12,6 +12,7 @@ import {
   linksChange,
   type Moved,
   type ReviewPrimary,
+  type ReviewState,
   type ReviewVerdict,
 } from "@t3tools/client-runtime/zerops";
 import { parseAttachmentUrl, type ChangeLink } from "@t3tools/shared/hqChanges";
@@ -499,4 +500,124 @@ export function isField(target: EventTarget | null): boolean {
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLInputElement
   );
+}
+
+// ---------------------------------------------------------------------------
+// The sheet: the line under the title and the footnote under the buttons
+// ---------------------------------------------------------------------------
+
+/** States where a change still waits on its press: its checks are the line's last word. */
+const CHECKS_SAID: ReadonlySet<ReviewState> = new Set(["ready", "behind-clean"]);
+
+/**
+ * `✓ checks passed`, `checks running` or `checks failed` at the end of a change's line — only
+ * while it waits on its press, and only from checks read for its head.
+ */
+export function changeChecks(input: {
+  readonly state: ReviewState;
+  readonly checks: ReadonlyArray<{ readonly state: string }>;
+}): { readonly words: string; readonly mark: "passed" | "running" | "failed" } | undefined {
+  if (!CHECKS_SAID.has(input.state) || input.checks.length === 0) return undefined;
+  if (input.checks.some((check) => check.state === "failed")) {
+    return { words: "checks failed", mark: "failed" };
+  }
+  if (input.checks.some((check) => check.state === "running")) {
+    return { words: "checks running", mark: "running" };
+  }
+  if (input.checks.every((check) => check.state === "passed")) {
+    return { words: "checks passed", mark: "passed" };
+  }
+  return undefined;
+}
+
+/**
+ * Whether the verdict's why is said under the line: not for a change ready to merge nor a
+ * release ready to go, whose line already says all of it.
+ */
+export function whySaid(verdict: ReviewVerdict, draft: boolean): boolean {
+  if (verdict.state === "release-ready") return false;
+  return verdict.state !== "ready" || draft;
+}
+
+/** What merging does, said under the buttons: where it lands and what production keeps. */
+export function mergeFoot(input: {
+  readonly state: ReviewState;
+  readonly consequence: string;
+  /** The stage that follows `main`; `undefined` where there is none. */
+  readonly stage: string | undefined;
+  /** The release production runs. */
+  readonly live: string | undefined;
+}): string {
+  if (!CHECKS_SAID.has(input.state) || input.stage === undefined) return input.consequence;
+  const keeps =
+    input.live === undefined ? "" : ` Production keeps ${input.live} until you release.`;
+  return `Merging puts it on ${input.stage}.${keeps}`;
+}
+
+/** What releasing does, said under its button: how long, and the way back. */
+export function releaseFoot(input: {
+  readonly state: ReviewState;
+  readonly consequence: string;
+  readonly live: string | undefined;
+}): string {
+  if (input.state !== "release-ready") return input.consequence;
+  const back =
+    input.live === undefined ? "" : ` You can roll back to ${input.live} from production's panel.`;
+  return `It takes about a minute.${back}`;
+}
+
+function changesWords(n: number): string {
+  return `${String(n)} ${n === 1 ? "change" : "changes"}`;
+}
+
+/** Under a release's title: how many changes, and where they were tried. */
+export function releaseLine(input: {
+  readonly changes: number;
+  /** The stage that follows `main`, by name. */
+  readonly stage: string | undefined;
+  /** When the stage last took what it runs (`sinceWords`). */
+  readonly since: string | undefined;
+  readonly onStage: { readonly total: number; readonly running: number } | undefined;
+  readonly live: string | undefined;
+}): string {
+  const changes = changesWords(input.changes);
+  const onStage = input.onStage;
+  if (input.stage !== undefined && onStage !== undefined && onStage.total > 0) {
+    if (onStage.running >= onStage.total) {
+      return `${changes}, tested on ${input.stage}${input.since === undefined ? "" : ` since ${input.since}`}.`;
+    }
+    return `${changes}, ${String(onStage.running)} of them on ${input.stage} so far.`;
+  }
+  return input.live === undefined
+    ? `${changes}, the first release.`
+    : `${changes} since ${input.live}.`;
+}
+
+/** "Production now": what it runs, since when, and where. */
+export function productionNowLine(input: {
+  readonly live: string | undefined;
+  readonly since: string | undefined;
+  readonly host: string | undefined;
+}): string {
+  if (input.live === undefined) return "Nothing released yet.";
+  const since = input.since === undefined ? "" : ` since ${input.since}`;
+  const at = input.host === undefined ? "" : ` at ${input.host}`;
+  return `Runs ${input.live}${since}${at}.`;
+}
+
+const WEEK_MS = 6 * 24 * 60 * 60 * 1000;
+
+/** `14:10` today, `Tue` this week, `Sep 18` before: when, as short as a line wants it. */
+export function sinceWords(at: string | undefined, now: number): string | undefined {
+  if (at === undefined) return undefined;
+  const then = new Date(at);
+  if (Number.isNaN(then.getTime())) return undefined;
+  const today = new Date(now);
+  if (then.toDateString() === today.toDateString()) {
+    return `${String(then.getHours()).padStart(2, "0")}:${String(then.getMinutes()).padStart(2, "0")}`;
+  }
+  if (now - then.getTime() < WEEK_MS) {
+    return then.toLocaleDateString("en-US", { weekday: "short" });
+  }
+  return then.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }

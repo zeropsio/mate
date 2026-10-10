@@ -7,7 +7,8 @@
 import type { ComingStep, StopComing, ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import { useEffect, useState } from "react";
 
-import { SidebarProductionChip } from "~/components/zerops/SidebarProductionChip";
+import { SidebarProductionChip, SidebarRoad } from "~/components/zerops/SidebarProductionChip";
+import { projectRoad, type RoadTip } from "~/components/zerops/SidebarRoad.logic";
 import type { HeadingLineInput } from "~/components/zerops/SidebarHeadingLine.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
 import { ProjectHeader } from "~/components/zerops/SidebarZeropsTree";
@@ -39,7 +40,6 @@ const production = (
   projectId: "prod",
   chip,
   coming: undefined,
-  failure: undefined,
   building: false,
   ...over,
 });
@@ -50,9 +50,6 @@ const coming = (step: ComingStep): StopComing => ({
 const input = (over: Partial<HeadingLineInput>): HeadingLineInput => ({
   production: undefined,
   stages: [],
-  waiting: 0,
-  waitingAtLeast: false,
-  allOnStage: false,
   ...over,
 });
 
@@ -61,6 +58,9 @@ interface Rung {
   readonly name: string;
   readonly chips: ReadonlyArray<ProductionChip>;
   readonly line: HeadingLineInput;
+  /** Changes merged and not live, and whether the release is offered to the viewer. */
+  readonly waiting?: number;
+  readonly offered?: boolean;
   /** Where it lands from: replayed, so the landing shows. */
   readonly before?: HeadingLineInput;
 }
@@ -79,8 +79,10 @@ const RUNGS: ReadonlyArray<Rung> = [
   {
     label: "2 3 changes merged, not released",
     name: "Beviro",
-    chips: [HEALTHY],
-    line: input({ production: production(HEALTHY), waiting: 3 }),
+    chips: [stageChip("ok"), HEALTHY],
+    line: input({ production: production(HEALTHY) }),
+    waiting: 3,
+    offered: true,
   },
   {
     label: "2′ with a stage that runs them",
@@ -91,14 +93,14 @@ const RUNGS: ReadonlyArray<Rung> = [
       stages: [
         { projectId: "stage", name: "stage", coming: undefined, serves: true, building: false },
       ],
-      waiting: 3,
-      allOnStage: true,
     }),
+    waiting: 3,
+    offered: true,
   },
   {
     label: "3 Releasing v2.4.0",
     name: "Beviro",
-    chips: [RELEASING],
+    chips: [stageChip("ok"), RELEASING],
     line: input({ production: production(RELEASING) }),
   },
   {
@@ -111,18 +113,9 @@ const RUNGS: ReadonlyArray<Rung> = [
   {
     label: "5 v2.4.0 didn’t go out",
     name: "Beviro",
-    chips: [prodChip("failed", { version: "v2.3.0" })],
-    line: input({
-      production: production(prodChip("failed", { version: "v2.3.0" }), {
-        failure: {
-          tag: "v2.4.0",
-          kind: "deploy-failed",
-          at: undefined,
-          error: undefined,
-          service: "app",
-        },
-      }),
-    }),
+    chips: [stageChip("ok"), prodChip("failed", { version: "v2.3.0" })],
+    line: input({ production: production(prodChip("failed", { version: "v2.3.0" })) }),
+    waiting: 2,
   },
   {
     label: "6 Down",
@@ -152,8 +145,10 @@ const RUNGS: ReadonlyArray<Rung> = [
   {
     label: "9 Nothing released yet, 3 changes merged",
     name: "Beviro",
-    chips: [prodChip("empty")],
-    line: input({ production: production(prodChip("empty")), waiting: 3 }),
+    chips: [stageChip("ok"), prodChip("empty")],
+    line: input({ production: production(prodChip("empty")) }),
+    waiting: 3,
+    offered: true,
   },
   {
     label: "14 A stage coming up",
@@ -228,17 +223,8 @@ const RUNGS: ReadonlyArray<Rung> = [
     label: "Long name, a long reason",
     name: "Imperial Titan storefront and partner portal",
     chips: [stageChip("ok"), prodChip("failed", { version: "v12.9.0" })],
-    line: input({
-      production: production(prodChip("failed", { version: "v12.9.0" }), {
-        failure: {
-          tag: "v12.10.0",
-          kind: "refused",
-          at: undefined,
-          error: undefined,
-          service: undefined,
-        },
-      }),
-    }),
+    line: input({ production: production(prodChip("failed", { version: "v12.9.0" })) }),
+    waiting: 12,
   },
 ];
 
@@ -266,21 +252,43 @@ function useReplayed(rung: Rung): HeadingLineInput {
 function RungHeading({ rung, collapsed }: { readonly rung: Rung; readonly collapsed: boolean }) {
   const line = useReplayed(rung);
   const g = group(rung.name);
+  const stage = rung.chips.find((chip) => chip.label === "stage");
+  const prod = rung.chips.find((chip) => chip.label === "prod");
+  const road = projectRoad({
+    stage,
+    prod,
+    stageNames: ["stage"],
+    productionName: "prod",
+    waiting: rung.waiting ?? 0,
+    waitingAtLeast: false,
+    releaseOffered: rung.offered === true,
+  });
+  const place = (chip: ProductionChip | undefined, tip: RoadTip | undefined) =>
+    chip === undefined ? null : (
+      <SidebarProductionChip
+        chip={chip}
+        groupId={g.groupId}
+        mates={[]}
+        menu={() => ({ stops: [] })}
+        onAskToFix={undefined}
+        onOpenStop={() => undefined}
+        projectName={rung.name}
+        stops={[]}
+        tip={tip}
+      />
+    );
   return (
     <ProjectHeader
-      chips={rung.chips.map((chip) => (
-        <SidebarProductionChip
-          chip={chip}
-          groupId={g.groupId}
-          key={chip.label}
-          mates={[]}
-          menu={() => ({ stops: [] })}
-          onAskToFix={undefined}
-          onOpenStop={() => undefined}
-          projectName={rung.name}
-          stops={[]}
-        />
-      ))}
+      chips={
+        road === undefined ? null : (
+          <SidebarRoad
+            onReviewRelease={() => {}}
+            prod={place(prod, road.prod.tip)}
+            road={road}
+            stage={place(stage, road.stage?.tip)}
+          />
+        )
+      }
       collapsed={collapsed}
       group={g}
       line={line}

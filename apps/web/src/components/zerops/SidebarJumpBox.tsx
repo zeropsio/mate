@@ -22,33 +22,27 @@
  * the conversation's to send. A Mate another member signed in is theirs
  * (D6): it is not offered at all.
  */
-import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { derivePendingRequests } from "@t3tools/client-runtime/pending-requests";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
+  type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import { agentLastSpokeAt, agentNotesFor, agentTurnNotes } from "@t3tools/client-runtime/zerops";
-import { ApprovalRequestId, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
-import * as Option from "effect/Option";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useClientSettings } from "~/hooks/useSettings";
-import { newMessageId } from "~/lib/utils";
 import { useThreadShells } from "~/state/entities";
 import { useThreadSearch } from "~/state/queries";
-import { threadEnvironment, useEnvironmentThread } from "~/state/threads";
 import { formatShortTimestamp } from "~/timestampFormat";
-import { useMateCommand, useMateHeld } from "~/zerops/accountEnvironments";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useMateReadOnly } from "~/zerops/useMateReadOnly";
+import { useMateWrite } from "~/zerops/useMateWrite";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
-import { useZeropsChangeLandedEvents } from "~/zerops/useZeropsChangeLandedEvents";
-import { useVaultTurnNotes } from "~/zerops/vaultTurnNotes";
 
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import {
@@ -221,33 +215,10 @@ function useJumpWrite(
     target?.environmentId === undefined ? null : EnvironmentId.make(target.environmentId);
   const threadId =
     target?.conversation === undefined ? null : ThreadId.make(target.conversation.threadId);
-  const shells = useThreadShells();
-  const shell = shells.find(
-    (entry) => entry.environmentId === environmentId && entry.id === threadId,
-  );
-  useMateHeld(environmentId);
-  const thread = useEnvironmentThread(environmentId, threadId);
-  const detail = Option.getOrUndefined(thread.data);
-  const requests = useMemo(
-    () => derivePendingRequests(detail?.activities ?? []),
-    [detail?.activities],
-  );
+  const write = useMateWrite(environmentId, threadId);
+  const { shell, detail, requests } = write;
   const readOnly = useMateReadOnly(environmentId, shell?.modelSelection.instanceId);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
-  const landed = useZeropsChangeLandedEvents(environmentId);
-  // The vault changes the Mate has not heard, the same note its own composer would carry.
-  const vaultTurn = useVaultTurnNotes(
-    environmentId,
-    environmentId === null || threadId === null
-      ? null
-      : scopedThreadKey(scopeThreadRef(environmentId, threadId)),
-    useMemo(() => (detail === undefined ? undefined : agentLastSpokeAt(detail.messages)), [detail]),
-  );
-  // A parked Mate's cached conversation reads before its link is up: the send waits for it.
-  const startTurn = useMateCommand(threadEnvironment.startTurn, { reportFailure: false });
-  const respondToUserInput = useMateCommand(threadEnvironment.respondToUserInput, {
-    reportFailure: false,
-  });
   // Words sent while the conversation was still being read: they go once it is.
   const queued = useRef<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -330,48 +301,16 @@ function useJumpWrite(
     }
     setSending(true);
     setError(undefined);
+    const settle = (result: AtomCommandResult<unknown, unknown>) => {
+      setSending(false);
+      if (result._tag === "Success") sent(target);
+      else if (!isAtomCommandInterrupted(result)) failed(result);
+    };
     if (plan.action === "answer" && decision?.kind === "question") {
-      void respondToUserInput({
-        environmentId,
-        input: {
-          threadId,
-          requestId: ApprovalRequestId.make(decision.requestId),
-          answers: { [decision.questionId]: text },
-        },
-      }).then((result) => {
-        setSending(false);
-        if (result._tag === "Success") sent(target);
-        else if (!isAtomCommandInterrupted(result)) failed(result);
-      });
+      void write.answer(decision.requestId, decision.questionId, text)?.then(settle);
       return;
     }
-    // When the agent last spoke: the line between what it knows and what
-    // landed since — the conversation's own reading of it. A slash command
-    // carries none.
-    const notes = agentNotesFor(text, [
-      ...agentTurnNotes(landed, agentLastSpokeAt(detail.messages)),
-      ...(vaultTurn.note === null ? [] : [vaultTurn.note]),
-    ]);
-    const toldVault =
-      vaultTurn.note !== null && notes.includes(vaultTurn.note) ? vaultTurn.changes : [];
-    void startTurn({
-      environmentId,
-      input: {
-        threadId,
-        message: { messageId: newMessageId(), role: "user", text, attachments: [] },
-        modelSelection: shell.modelSelection,
-        ...(notes.length > 0 ? { agentNotes: notes } : {}),
-        runtimeMode: shell.runtimeMode,
-        interactionMode: shell.interactionMode,
-        createdAt: new Date().toISOString(),
-      },
-    }).then((result) => {
-      setSending(false);
-      if (result._tag === "Success") {
-        vaultTurn.told(toldVault);
-        sent(target);
-      } else if (!isAtomCommandInterrupted(result)) failed(result);
-    });
+    void write.send(text)?.then(settle);
   };
 
   /** What Enter does with the words, as the plan reads now. */

@@ -302,7 +302,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
               .locator("::-p-aria(Continue with your Zerops account)")
               .setTimeout(10_000)
               .click();
-          await visibleText(page, "sidebar-account", zerops.orgName);
+          await visibleText(page, "sidebar-account-organization", zerops.orgName);
           signedInDocument = await page.evaluate(() => performance.timeOrigin);
         } catch (error) {
           throw new Error(

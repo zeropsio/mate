@@ -276,7 +276,7 @@ function headline(input: HqCardInput, troubles: ReadonlyArray<string>): HqCardVi
     case "unchecked":
       return { kind: "degraded", tone: "attention", word: "Can't check Zerops right now" };
     case "healthy":
-      // Whoever sees none of HQ's parts is told only that it serves: "Healthy" claims more.
+      // Running, the glossary's word for healthy, to everybody (design system copy glossary).
       if (!input.admin) return { kind: "healthy", tone: "ok", word: "Running" };
       if (
         troubles.length === 0 &&
@@ -284,7 +284,7 @@ function headline(input: HqCardInput, troubles: ReadonlyArray<string>): HqCardVi
       )
         return { kind: "transitioning", tone: "busy", word: "Services upgrading" };
       return troubles.length === 0
-        ? { kind: "healthy", tone: "ok", word: "Healthy" }
+        ? { kind: "healthy", tone: "ok", word: "Running" }
         : { kind: "degraded", tone: "attention", word: "Needs attention" };
   }
 }

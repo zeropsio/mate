@@ -15,7 +15,7 @@ describe("opening a Mate from the projects page", () => {
         yield* s.given.signedIn;
         yield* Effect.promise(async () => {
           await s.page.goto(`${s.web.origin}/zerops`);
-          const chip = '[data-zerops-surface="project-rows"] [aria-label="Open Ada"]';
+          const chip = '[data-zerops-surface="project-cards"] [aria-label="Open Ada"]';
           await expect
             .poll(
               () =>
@@ -23,8 +23,8 @@ describe("opening a Mate from the projects page", () => {
                   (selector) => ({
                     found: document.querySelector(selector) !== null,
                     text:
-                      document.querySelector('[data-zerops-surface="project-rows"]')?.textContent ??
-                      document.body.innerText,
+                      document.querySelector('[data-zerops-surface="project-cards"]')
+                        ?.textContent ?? document.body.innerText,
                   }),
                   chip,
                 ),
@@ -65,7 +65,7 @@ describe("Projects source states", () => {
             "failed",
           );
           yield* s.given.signedIn;
-          const rows = '[data-zerops-surface="project-rows"]';
+          const rows = '[data-zerops-surface="project-cards"]';
           const capture = (name: string, words: string) =>
             Effect.promise(async () => {
               await expect
@@ -110,7 +110,8 @@ describe("Projects source states", () => {
               logins: { "claude-code": { present: false, signedInBy: null, token: false } },
             },
           });
-          yield* capture("sign-in", "Sign in");
+          // The card says it as its menu row does: whom the missing sign-in waits on.
+          yield* capture("sign-in", "Waiting for your sign-in");
           yield* s.then.noExternalNetwork;
         }),
     );
