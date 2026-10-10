@@ -377,6 +377,22 @@ describe("TurnReport's pictures", () => {
     });
   });
 
+  // Rhea's imported run (2026-10-10): "+9" printed over "Image unavailable" on the last tile.
+  it("a picture that cannot be read shows as missing once, never under the more-count", () => {
+    workspace.files.set("/var/www/app/.shots/b-mobile.png", { _tag: "Failure" });
+    workspace.files.set("/var/www/app/.shots/f-mobile.png", { _tag: "Failure" });
+    const pictures = ["a", "b", "c", "d", "e", "f", "g", "h"].map((name) =>
+      filePicture(`${name}-mobile.png`),
+    );
+    const said = (node: ReactTestInstance): string =>
+      node.children.map((child) => (typeof child === "string" ? child : said(child))).join("");
+    const words = tilesOf(renderPictures(pictures)).map(said);
+    expect(words.filter((each) => each.includes("Image unavailable"))).toEqual([
+      "Image unavailable",
+    ]);
+    expect(words.at(-1)).toBe("+2");
+  });
+
   // A missing final tile still reaches a loaded picture beyond the strip.
   it("counts unavailable pictures in the strip and keeps the more tile readable", () => {
     workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
@@ -391,10 +407,10 @@ describe("TurnReport's pictures", () => {
     expect(tiles.at(-1)!.props["aria-label"]).toBe(
       "world-mobile.png, and 1 more. Image unavailable. Open the pictures",
     );
-    // The overlay must not hide the unavailable label.
+    // The count stands alone on its tile; its name still says the picture is unavailable.
     const said = (node: ReactTestInstance): string =>
       node.children.map((child) => (typeof child === "string" ? child : said(child))).join("");
-    expect(tiles.map(said).filter((words) => /\+\d/.test(words))).toEqual(["Image unavailable+1"]);
+    expect(tiles.map(said).filter((words) => /\+\d/.test(words))).toEqual(["+1"]);
     act(() => tiles.at(-1)!.props.onClick());
     expect(onOpenImage.mock.calls[0]?.[0].index).toBe(5);
     expect(onOpenImage.mock.calls[0]?.[0].images[5].src).toBe(served("map-landscape.png"));

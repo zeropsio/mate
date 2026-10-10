@@ -240,9 +240,17 @@ const recordOf = (file: string) =>
         .filter((entry) => entry.isFile() && !entry.name.includes("."))
         .map((entry) => entry.name)
         .toSorted(),
-      /** The store's references to them: one per picture of each call, whatever restarted. */
+      /**
+       * The store's references to them: one per picture of each call, whatever restarted. A
+       * looked-at file the import found gone is a reference to no bytes, never one of them.
+       */
       occurrences: NodeFS.readdirSync(
         NodePath.join(NodePath.dirname(file), "assets", "occurrences"),
+      ).filter((name) =>
+        NodeFS.readFileSync(
+          NodePath.join(NodePath.dirname(file), "assets", "occurrences", name),
+          "utf8",
+        ).includes('"status":"ready"'),
       ).length,
     };
   });
@@ -273,7 +281,9 @@ const withoutOccurrenceIds = (data: unknown): unknown =>
     JSON.stringify(data, (key, value: unknown) =>
       key === "asset" && typeof value === "object" && value !== null
         ? { ...value, id: "occurrence" }
-        : value,
+        : typeof value === "string" && value.startsWith("mate-asset:")
+          ? value.replace(/^mate-asset:[a-f0-9-]{36}/u, "mate-asset:occurrence")
+          : value,
     ),
   );
 
@@ -437,7 +447,8 @@ describe("a flipped Mate's V1 thread, brought into its engine conversation", () 
         expect(callOf(held, "Edit")).toMatchObject({ step: "edit", state: "failed" });
         expect(callOf(held, "Read")).toMatchObject({ step: "look", state: "done" });
         expect(dataOf(held, callOf(held, "Read").id)?.payload).toMatchObject({
-          data: { imagePath: "/var/www/design.png" },
+          // Gone by the import, never kept by V1: a reference that says so (Rhea, 2026-10-10).
+          data: { imagePath: expect.stringMatching(/^mate-asset:[a-f0-9-]{36}:source-missing$/u) },
         });
       },
     ],
