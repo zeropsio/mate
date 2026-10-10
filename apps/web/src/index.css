@@ -9965,3 +9965,65 @@ button.rv-relrow:hover .rv-relrow-go {
   overflow-wrap: anywhere;
   text-align: left;
 }
+
+/* A page the Mate published, above its answer (`PublishedPage.tsx`): its title and the page in a
+   frame that holds its height from its first paint — the page's remembered height, else the cap
+   every item shares — and scrolls a taller page inside it. */
+.published-page {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+.published-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+.published-page-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.published-page-frame {
+  height: var(--run-words-cap);
+  max-height: var(--run-words-cap);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--background);
+  transition: height 220ms var(--ease-out-strong);
+}
+.published-page-frame[data-state="reading"] {
+  background: var(--muted);
+}
+.published-page-frame[data-full] {
+  height: min(80svh, 900px);
+  max-height: none;
+  transition: none;
+}
+.published-page-frame > iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.published-page-failed {
+  margin: 0;
+  padding: 12px;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+.published-page-full-head {
+  padding-inline-end: 32px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .published-page-frame {
+    transition: none;
+  }
+}

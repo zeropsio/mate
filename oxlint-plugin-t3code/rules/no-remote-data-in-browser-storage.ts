@@ -64,6 +64,8 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/components/ServiceBrowserPanel.tsx",
   "apps/web/src/components/Sidebar.tsx",
   "apps/web/src/components/ThreadTerminalDrawer.tsx",
+  // The heights this browser measured a Mate's pages at: layout it measured, not a source's answer.
+  "apps/web/src/components/chat/pageHeights.ts",
   "apps/web/src/components/files/FilePreviewPanel.tsx",
   "apps/web/src/components/settings/SettingsPanels.logic.ts",
   "apps/web/src/components/settings/SettingsPanels.tsx",
