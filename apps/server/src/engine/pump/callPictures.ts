@@ -8,13 +8,16 @@
  *
  * @module engine/pump/callPictures
  */
+import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
-import type {
-  CallResultPicture,
-  ImageOccurrence,
-  SpiToolCallImage,
-  ThreadId,
+import {
+  PAGE_MAX_BYTES,
+  type CallResult,
+  type CallResultPicture,
+  type ImageOccurrence,
+  type SpiToolCallImage,
+  type ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
@@ -44,6 +47,38 @@ export interface CallPictures {
     key: string,
     path: string,
   ) => Effect.Effect<LookedPicture | null>;
+  /** A page a call published, by the file zcp kept it in; one it cannot take is none. */
+  readonly page: (
+    thread: ThreadId,
+    key: string,
+    file: string,
+  ) => Effect.Effect<{ readonly asset: ImageOccurrence; readonly bytes: number } | null>;
+}
+
+/** The tool a Mate's agent publishes a page with (zcp's `zerops_publish_page`). */
+export const PUBLISH_PAGE_TOOL = "zerops_publish_page";
+
+/**
+ * Where zcp keeps a page it published, as its result names it: a file named by its content in
+ * the `pages` directory of a `.zcp/state` (`docs/spec-mate.md` §5.9 in zcp). Nothing else is read.
+ */
+const PAGE_FILE = /\/\.zcp\/state\/pages\/page-[0-9a-f]{16}\.html$/;
+
+/** The page a call's result says it published: its file and title, else none. */
+export function publishedPage(
+  result: Pick<CallResult, "toolName" | "resultText">,
+): { readonly file: string; readonly title: string } | null {
+  if (result.toolName !== PUBLISH_PAGE_TOOL || result.resultText === undefined) return null;
+  try {
+    const page = (JSON.parse(result.resultText) as { readonly page?: unknown }).page;
+    if (typeof page !== "object" || page === null) return null;
+    const { file, title } = page as { readonly file?: unknown; readonly title?: unknown };
+    return typeof file === "string" && typeof title === "string" && title.length > 0
+      ? { file, title }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -116,6 +151,20 @@ export const makeCallPictures = (
             ? { imageDimensions: { width: original.width, height: original.height } }
             : {}),
         };
+      }).pipe(Effect.orElseSucceed(() => null)),
+    page: (thread, key, file) =>
+      Effect.tryPromise(async () => {
+        // A regular file where zcp keeps pages, under the cap: never a link out of there.
+        if (!NodePath.isAbsolute(file) || !PAGE_FILE.test(file)) return null;
+        const stat = await NodeFSP.lstat(file);
+        if (!stat.isFile() || stat.size > PAGE_MAX_BYTES) return null;
+        const bytes = await NodeFSP.readFile(file);
+        if (bytes.byteLength > PAGE_MAX_BYTES) return null;
+        const store = assets();
+        const asset = (await store.legacy([thread, key, file], () =>
+          store.ingestPage(bytes, { ...owner(thread, key), name: NodePath.basename(file) }),
+        )) as ImageOccurrence;
+        return asset.original.status === "ready" ? { asset, bytes: bytes.byteLength } : null;
       }).pipe(Effect.orElseSucceed(() => null)),
   };
 };

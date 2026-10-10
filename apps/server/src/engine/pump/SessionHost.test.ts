@@ -12,6 +12,14 @@ import { hostEvent, makeHostHarness } from "../testing/pump/hostHarness.ts";
 import type { CallPictures } from "./callPictures.ts";
 
 const S1 = SessionId.make("mate/s/1.1");
+const PAGE_ASSET = {
+  id: "asset-3",
+  threadId: "mate/s/1",
+  ownerId: "call-1",
+  name: "page-0123456789abcdef.html",
+  provenance: "capture",
+  original: { status: "ready", digest: "b".repeat(64), mimeType: "text/html", sizeBytes: 13 },
+} as never;
 const H1 = "mate/r/1" as TurnHandle;
 
 describe("SessionHost", () => {
@@ -140,6 +148,11 @@ describe("SessionHost", () => {
               stored.push(`${key}: ${path}`);
               return { imagePath: "mate-asset:asset-2", imageName: "home.png" };
             }),
+          page: (_thread, key, file) =>
+            Effect.sync(() => {
+              stored.push(`${key}: page ${file}`);
+              return { asset: PAGE_ASSET, bytes: 13 };
+            }),
         };
         const { host, told } = yield* makeHostHarness({ pictures });
         yield* host.begin(S1);
@@ -215,6 +228,49 @@ describe("SessionHost", () => {
             });
             const shown = call?.body.kind === "call" ? call.body.result?.images?.[0] : undefined;
             assert.notProperty(shown, "data");
+          }),
+        ),
+    );
+
+    it.effect(
+      "a page the Mate publishes is recorded on its call by reference, with its title, size and time",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const file = "/var/www/.zcp/state/pages/page-0123456789abcdef.html";
+            const { call, stored } = yield* turnWith({
+              itemType: "mcp_tool_call",
+              title: "zerops_publish_page",
+              data: {
+                item: {
+                  type: "mcpToolCall",
+                  id: "call-1",
+                  server: "zerops",
+                  tool: "zerops_publish_page",
+                  status: "completed",
+                  arguments: { title: "Plan", path: "plan.html" },
+                  result: {
+                    content: [
+                      {
+                        type: "text",
+                        text: JSON.stringify({
+                          page: { id: "page-0123456789abcdef", title: "Plan", file, bytes: 13 },
+                          message: "Published",
+                        }),
+                      },
+                    ],
+                  },
+                },
+              },
+            });
+            assert.deepStrictEqual(stored, [`mate/r/1.i1: page ${file}`]);
+            const result = call?.body.kind === "call" ? call.body.result : undefined;
+            assert.deepStrictEqual(result?.page, {
+              asset: PAGE_ASSET,
+              title: "Plan",
+              bytes: 13,
+              publishedAt: call?.body.kind === "call" ? call.body.endedAt! : -1,
+            });
           }),
         ),
     );
