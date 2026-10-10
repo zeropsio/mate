@@ -19,6 +19,32 @@ import type { ChatMessage } from "../types";
 
 const unwatched = () => () => {};
 
+/**
+ * The words a message streamed, kept once its live text goes until its record says them: the
+ * engine drops the live text as the record is whole, and the record's change can come after
+ * (run 6, R +0:12.2 and +1:22.4: an empty bubble for 1.4 s, and a long answer's box blank and
+ * back at its first line before it landed). Read only while the record still streams: once it
+ * says the words whole, `liveMessage` draws them from it.
+ */
+const heldLive = new WeakMap<object, Map<string, string>>();
+
+/** The streams it keeps at most: the few being written now, never a conversation's history. */
+const HELD_AT_MOST = 32;
+
+/** What `live` gave for the stream `key`, or what it last gave once its text went. */
+function heldRead(live: object, key: string, read: string | null): string | null {
+  let held = heldLive.get(live);
+  if (read === null) return held?.get(key) ?? null;
+  if (held === undefined) {
+    held = new Map();
+    heldLive.set(live, held);
+  }
+  held.delete(key);
+  held.set(key, read);
+  if (held.size > HELD_AT_MOST) held.delete(held.keys().next().value!);
+  return read;
+}
+
 /** The message with the words streamed so far, while its record is still being written. */
 export function liveMessage(message: ChatMessage, live: string | null): ChatMessage {
   if (live === null || !message.streaming || live.length < message.text.length) return message;
@@ -42,7 +68,7 @@ function useLiveText(message: ChatMessage | null): string | null {
   const read = () =>
     live === null || environmentId === null || id === null
       ? null
-      : live.read(environmentId, id, stream);
+      : heldRead(live, `${environmentId}/${stream}/${id}`, live.read(environmentId, id, stream));
   return useSyncExternalStore(subscribe, read, read);
 }
 
@@ -117,13 +143,14 @@ export function useEngineLiveStructure(
   const read = () =>
     messages
       .map((message) => {
+        const stream = message.role === "reasoning" ? "reasoning" : "text";
         const text =
           live === null || environmentId === null
             ? null
-            : live.read(
-                environmentId,
-                message.id,
-                message.role === "reasoning" ? "reasoning" : "text",
+            : heldRead(
+                live,
+                `${environmentId}/${stream}/${message.id}`,
+                live.read(environmentId, message.id, stream),
               );
         return messageHasText(liveMessage(message, text)) ? "1" : "0";
       })

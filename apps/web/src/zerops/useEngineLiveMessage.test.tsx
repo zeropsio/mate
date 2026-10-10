@@ -126,6 +126,37 @@ describe("an engine Mate's words as it writes them", () => {
     ).toBe("Read | Check the logs");
   });
 
+  // Run 6 (R +0:12.2, +1:22.4): the engine drops a note's live text as its record is whole, and
+  // the record's change can come after it: an empty bubble for 1.4 s, a long answer blank.
+  it("keeps a note's streamed words once its live text goes, until its record says them", () => {
+    const live = makeEngineLiveText({
+      policy: ENGINE_LIVE_POLICY,
+      setTimer: () => null,
+      clearTimer: () => undefined,
+    });
+    const registry = AtomRegistry.make();
+    registry.set(mateEngineHostAtom, { live } as MateEngineHost);
+    const row = { threadRef: { environmentId: ENV, threadId: "thread-ada" } };
+    const draw = (said: ChatMessage) =>
+      renderToStaticMarkup(
+        <RegistryContext value={registry}>
+          <TimelineRowCtx value={row as unknown as TimelineRowSharedState}>
+            <Words message={said} />
+          </TimelineRowCtx>
+        </RegistryContext>,
+      ).replace(/<[^>]+>/gu, "");
+    live.open(conversation, "thread-ada/r/1/i/2", "text", "Deploying the api");
+    expect(draw(message())).toBe("Deploying the api");
+    live.settle(conversation, "thread-ada/r/1/i/2");
+    expect(draw(message()), "ASSERTION: its words stand while the record catches up").toBe(
+      "Deploying the api",
+    );
+    expect(draw(message({ text: "Deploying the api.", streaming: false }))).toBe(
+      "Deploying the api.",
+    );
+    registry.dispose();
+  });
+
   it("draws a message whose live text is not held as its record says", () => {
     expect(drawn(<Words message={message({ text: "Deploy" })} />, () => undefined)).toBe("Deploy");
   });
