@@ -420,6 +420,17 @@ const LONG_WORDS = [
   "Reacting with the first second-wave helper: it reads what B printed and checks the exit code against the plan, then reports back before the next one starts.",
   "",
   "Once A's job ends too, the second wave runs both checks again and I compare the two reports line by line.",
+  "",
+  "| Helper | Job | Exit | Took |",
+  "| --- | --- | --- | --- |",
+  ...Array.from({ length: 12 }, (_, index) =>
+    [
+      `| ${index % 2 === 0 ? "A" : "B"}${index + 1}`,
+      `sleep ${15 + index}`,
+      `${index % 3}`,
+      `${16 + index}s |`,
+    ].join(" | "),
+  ),
 ].join("\n");
 setRunFold(CONVERSATION, "status-shown", "shown");
 setRunFold(CONVERSATION, "tests-shown", "shown");
@@ -696,7 +707,7 @@ export function CardStates() {
       </CardState>
       <CardState
         label="Writing its words"
-        note="Its words stand in the slot as they come, four lines at most and scrolling inside with a fade; three dots at their foot say they are still being written. The clock and Hide work stand on the card's foot."
+        note="Its words stand in the slot as they come, as tall as the run's scroll and then scrolling inside with a fade, following their foot; three dots at their foot say they are still being written. The clock and Hide work stand on the card's foot."
       >
         <Turn
           row={record("status-words", {
