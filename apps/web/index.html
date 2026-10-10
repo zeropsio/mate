@@ -557,6 +557,48 @@
           );
         }
 
+        /* The menu's loading rows, where and as SidebarZeropsTree's MenuSkeleton draws them
+           under the menu's header, until the app draws the menu (or its preview, its rows). */
+        html[data-boot-frame="app"] #boot-shell-menu-loading {
+          position: absolute;
+          top: 65px;
+          right: 8px;
+          left: 9px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 8px 10px;
+        }
+
+        #boot-shell-menu:has(> :not(#boot-shell-menu-loading)) > #boot-shell-menu-loading {
+          display: none;
+        }
+
+        #boot-shell-menu-loading > div {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          height: 28px;
+        }
+
+        #boot-shell-menu-loading span {
+          flex-shrink: 0;
+          width: 20px;
+          height: 20px;
+          border-radius: 9999px;
+          background: color-mix(in srgb, var(--boot-sidebar, #fafafa) 50%, #fff);
+        }
+
+        #boot-shell-menu-loading span + span {
+          flex-shrink: 1;
+          width: 66.6667%;
+          height: 8px;
+        }
+
+        html.dark #boot-shell-menu-loading span {
+          background: color-mix(in srgb, var(--boot-foreground, #f5f5f5) 8%, transparent);
+        }
+
         html[data-boot-frame="app"] #boot-shell-page {
           left: var(--boot-menu-width, 304px);
         }
@@ -617,7 +659,17 @@
   </head>
   <body>
     <div id="boot-shell">
-      <div id="boot-shell-menu"></div>
+      <div id="boot-shell-menu">
+        <div
+          id="boot-shell-menu-loading"
+          data-zerops-surface="sidebar-environments-skeleton"
+          aria-hidden="true"
+        >
+          <div><span></span><span></span></div>
+          <div><span></span><span></span></div>
+          <div><span></span><span></span></div>
+        </div>
+      </div>
       <div id="boot-shell-page" role="status" aria-live="polite"></div>
       <div id="boot-shell-card" aria-label="Zerops Mate splash screen">
         <!-- generated:boot-mark start -->
