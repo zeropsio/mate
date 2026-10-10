@@ -218,22 +218,23 @@ it.each([
 
 it("each wire stage owns only the journeys its project runs", () => {
   const root = NodePath.resolve(import.meta.dirname, "..");
-  expect(
-    chatGateTestFiles(
-      root,
-      chatGateStages.filter((stage) => stage.id === "C-engine"),
-    ),
-  ).toEqual([
-    "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts",
-    "apps/web/test/scenarios/areas/c-mate/engine-card.scenario.ts",
-    "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
-  ]);
+  // The rule, not a list: a new engine journey joins the engine stage without editing this test.
+  const area = "apps/web/test/scenarios/areas/c-mate";
+  const engineJourneys = NodeFS.readdirSync(NodePath.join(root, area))
+    .filter((name) => /^engine-.+\.scenario\.ts$/u.test(name))
+    .map((name) => `${area}/${name}`);
+  expect(engineJourneys.length).toBeGreaterThan(0);
+  const engine = chatGateTestFiles(
+    root,
+    chatGateStages.filter((stage) => stage.id === "C-engine"),
+  );
+  expect(engine.toSorted()).toEqual([`${area}/chat.scenario.ts`, ...engineJourneys].toSorted());
   const plain = chatGateTestFiles(
     root,
     chatGateStages.filter((stage) => stage.id === "C"),
   );
-  expect(plain).toContain("apps/web/test/scenarios/areas/c-mate/opening.scenario.ts");
-  expect(plain).not.toContain("apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts");
+  expect(plain).toContain(`${area}/opening.scenario.ts`);
+  for (const journey of engineJourneys) expect(plain).not.toContain(journey);
   expect(chatGateTestFiles(root, [])).toEqual([]);
 });
 
