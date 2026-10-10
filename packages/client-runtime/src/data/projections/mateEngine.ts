@@ -116,7 +116,7 @@ const personMessageId = (item: Extract<Item, { kind: "person" }>) => {
 
 /**
  * The card an item draws on: its run's, or — for a run that continues another (`joins`) — the
- * card of the run it continues, which they share.
+ * card of the run it continues, which they share while nothing on it has answered (`cardsOf`).
  */
 type CardOf = (runId: string | null) => string | null;
 
@@ -661,22 +661,33 @@ const shellThreadOf = (read: ProjectionReads, key: EngineConversationKey) => {
   });
 };
 
+/** The wakes that carry on a run a restart or a usage limit cut, as it worked. */
+const CUT_RUN_CONTINUATIONS = new Set(["restart-continuation", "usage-resume", "usage-probe"]);
+
+const continuesCutRun = (run: RunRecord): boolean =>
+  run.trigger.kind === "wake" && CUT_RUN_CONTINUATIONS.has(run.trigger.cause);
+
 /** A held conversation's runs, oldest first, with the card each draws on. */
 function cardsOf(read: ProjectionReads, conversationKey: string, header?: ConversationHeader) {
   const runs = valuesOf(read, "mateEngineRun", "engineRunsIn", conversationKey).sort(
     (left, right) => left.ordinal - right.ordinal,
   );
   const byId = new Map(runs.map((run) => [run.id as string, run]));
-  /** The run whose card a run draws on: the first of the runs it continues. */
-  const rootOf = (run: RunRecord): RunRecord => {
-    let root = run;
-    for (let hops = 0; root.joins !== null && hops < runs.length; hops++) {
-      const joined = byId.get(root.joins);
-      if (joined === undefined) break;
-      root = joined;
-    }
-    return root;
-  };
+  // The run whose card each run draws on, oldest first: the first of the runs it continues. A run
+  // that only reports on that card's work — a turn the agent opened itself as a background job
+  // ended, a note of work lost — draws its own card once a run on that card answered, under the
+  // answer: words said before it never stand under work done after them (Milo's stress run 4A).
+  // A continuation of a cut run (a restart's, a usage resume) goes on as it worked, on its card.
+  const roots = new Map<string, RunRecord>();
+  const answered = new Set<string>();
+  for (const run of runs) {
+    const joined = run.joins === null ? undefined : roots.get(run.joins);
+    const root =
+      joined === undefined || (answered.has(joined.id) && !continuesCutRun(run)) ? run : joined;
+    roots.set(run.id, root);
+    if (run.summary.answerItemId !== null) answered.add(root.id);
+  }
+  const rootOf = (run: RunRecord): RunRecord => roots.get(run.id) ?? run;
   const cardOf: CardOf = (runId) => {
     if (runId === null) return null;
     const run = byId.get(runId);
