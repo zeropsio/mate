@@ -4439,14 +4439,25 @@ code {
    it has no hairline. */
 .run-slot {
   position: relative;
-  margin-top: 16px;
-  padding: 16px 0 4px;
+  padding: 41px 0 4px;
+}
+/* Its hairline 24 px under the history, inside its own box: the room over
+   the hairline is the slot's, where its controls stand (`.run-slot-head`). */
+.run-slot::before {
+  position: absolute;
+  inset-inline: 0;
+  top: 24px;
   border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  content: "";
 }
 .run-slot:first-child {
-  margin-top: 0;
   padding-top: 0;
-  border-top: 0;
+}
+.run-slot:first-child::before {
+  content: none;
+}
+.run-slot:first-child:has(> .run-slot-head) {
+  padding-top: 24px;
 }
 .run-slot-list {
   display: flex;
@@ -4481,19 +4492,18 @@ code {
 }
 /* The live card's controls (the owner, 2026-10-10: "this hide work placement
    is absolute shit"): the run's one clock, Stop and Hide work on a line of
-   their own at the head of the present, right under the hairline in the room
-   it keeps — never in a gutter beside the Mate's words. A folded run's line
-   ends on the same cluster. */
+   their own at the head of the present — never in a gutter beside the Mate's
+   words. A folded run's line ends on the same cluster. It stands over the hairline, in room the
+   history mostly left already: 8 px more than the hairline kept. */
 .run-slot-head {
+  position: absolute;
+  inset-inline: 0;
+  top: 6px;
   display: flex;
   height: 16px;
   align-items: center;
   justify-content: flex-end;
-  margin: -12px 0 8px;
   padding-right: 14px;
-}
-.run-slot:first-child > .run-slot-head {
-  margin-top: 0;
 }
 .run-slot-head .run-now-time,
 .run-slot-head .run-now-fold {
