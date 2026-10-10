@@ -3650,3 +3650,162 @@ describe("mobile activity normalization", () => {
     expect(entry?.toolLifecycleStatus).toBeUndefined();
   });
 });
+
+describe("a published page in the feed", () => {
+  const turnId = TurnId.make("turn-page");
+  const page = (id: string, title: string, publishedAt: string) => ({
+    asset: {
+      id,
+      threadId: "thread-page",
+      ownerId: "call",
+      name: "page-0123456789abcdef.html",
+      provenance: "capture",
+      original: { status: "ready", digest: "b".repeat(64), mimeType: "text/html", sizeBytes: 17 },
+    },
+    title,
+    bytes: 17,
+    publishedAt: Date.parse(publishedAt),
+  });
+  const publish = (id: string, at: string, published: ReturnType<typeof page> | null) => [
+    makeActivity({
+      id: EventId.make(`${id}-start`),
+      kind: "tool.started",
+      tone: "tool",
+      summary: "Publish page",
+      createdAt: at,
+      turnId,
+      payload: {
+        toolCallId: id,
+        itemType: "mcp_tool_call",
+        status: "inProgress",
+        data: { toolName: "mcp__zerops__zerops_publish_page" },
+      },
+    }),
+    makeActivity({
+      id: EventId.make(`${id}-end`),
+      kind: "tool.completed",
+      tone: "tool",
+      summary: "Publish page",
+      createdAt: at,
+      turnId,
+      payload: {
+        toolCallId: id,
+        itemType: "mcp_tool_call",
+        status: "completed",
+        data: {
+          toolName: "mcp__zerops__zerops_publish_page",
+          zerops: {
+            toolName: "zerops_publish_page",
+            resultText: "{}",
+            ...(published === null ? {} : { page: published }),
+          },
+        },
+      },
+    }),
+  ];
+  const say = (id: string, role: "user" | "assistant", text: string, at: string) => ({
+    id: MessageId.make(id),
+    role,
+    text,
+    turnId: role === "assistant" ? turnId : null,
+    streaming: false,
+    createdAt: at,
+    updatedAt: at,
+  });
+  const plan = page(
+    "6f1c2b9e-0000-4000-8000-000000000001",
+    "Launch plan",
+    "2026-04-01T00:00:03.000Z",
+  );
+  /** What a person reads, top to bottom: who said what, each page by its title, the rest by kind. */
+  const read = (rows: ReadonlyArray<ThreadFeedEntry>) =>
+    rows.map((row) =>
+      row.type === "message"
+        ? `${row.message.role}: ${row.message.text}`
+        : row.type === "page"
+          ? `page: ${row.page.title}`
+          : row.type,
+    );
+
+  it.each([
+    {
+      title: "a settled run: right above its answer, out of the folded work",
+      working: null,
+      messages: [
+        say("ask", "user", "Draw the launch plan", "2026-04-01T00:00:00.000Z"),
+        say("first", "assistant", "Drawing it.", "2026-04-01T00:00:01.000Z"),
+        say("answer", "assistant", "Here is the plan.", "2026-04-01T00:00:05.000Z"),
+      ],
+      activities: publish("p1", "2026-04-01T00:00:02.000Z", plan),
+      want: [
+        "user: Draw the launch plan",
+        "assistant: Drawing it.",
+        "turn-fold",
+        "page: Launch plan",
+        "assistant: Here is the plan.",
+      ],
+    },
+    {
+      title: "a live run with no answer yet: under its work",
+      working: "2026-04-01T00:00:00.500Z",
+      messages: [say("ask", "user", "Draw the launch plan", "2026-04-01T00:00:00.000Z")],
+      activities: publish("p1", "2026-04-01T00:00:02.000Z", plan),
+      want: ["user: Draw the launch plan", "work-toggle", "page: Launch plan"],
+    },
+    {
+      title: "the same page published twice: once",
+      working: null,
+      messages: [
+        say("ask", "user", "Draw the launch plan", "2026-04-01T00:00:00.000Z"),
+        say("answer", "assistant", "Here is the plan.", "2026-04-01T00:00:05.000Z"),
+      ],
+      activities: [
+        ...publish("p1", "2026-04-01T00:00:02.000Z", plan),
+        ...publish("p2", "2026-04-01T00:00:03.000Z", plan),
+      ],
+      want: [
+        "user: Draw the launch plan",
+        "turn-fold",
+        "page: Launch plan",
+        "assistant: Here is the plan.",
+      ],
+    },
+    {
+      title: "a call that published nothing: no page",
+      working: null,
+      messages: [
+        say("ask", "user", "Draw the launch plan", "2026-04-01T00:00:00.000Z"),
+        say("answer", "assistant", "It could not be drawn.", "2026-04-01T00:00:05.000Z"),
+      ],
+      activities: publish("p1", "2026-04-01T00:00:02.000Z", null),
+      want: ["user: Draw the launch plan", "turn-fold", "assistant: It could not be drawn."],
+    },
+  ])(
+    "a page the Mate publishes stands in its run above the answer on mobile: $title",
+    ({ working, messages, activities, want }) => {
+      const thread = makeThread({
+        id: ThreadId.make("thread-page"),
+        projectId: ProjectId.make("project-1"),
+        title: "Pages",
+        latestTurn: {
+          turnId,
+          state: working === null ? "completed" : "running",
+          requestedAt: "2026-04-01T00:00:00.000Z",
+          startedAt: "2026-04-01T00:00:00.500Z",
+          completedAt: working === null ? "2026-04-01T00:00:05.000Z" : null,
+          assistantMessageId: null,
+        },
+        messages,
+        activities,
+      });
+      const rows = deriveThreadFeedPresentation(
+        buildThreadFeed(thread),
+        thread.latestTurn,
+        new Set(),
+        new Set(),
+        working,
+      );
+      expect(read(rows)).toEqual(want);
+    },
+  );
+});
