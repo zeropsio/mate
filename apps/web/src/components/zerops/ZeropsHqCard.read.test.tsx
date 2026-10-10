@@ -209,7 +209,7 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     account();
     const tree = await mount();
     expect(held).toEqual([]);
-    expect(text(tree)).toContain("Healthy");
+    expect(text(tree)).toContain("Running");
 
     await press(tree);
     expect(held).toEqual(["hq1"]);
@@ -217,7 +217,7 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     expect(text(tree)).toContain("hq · Active");
     expect(text(tree)).toContain("db · Active");
     expect(text(tree)).not.toContain("core · Active");
-    expect(text(tree)).toContain("Healthy");
+    expect(text(tree)).toContain("Running");
     expect(text(tree)).toContain(
       "HQ is being updated to Core 2026-10-04 10:00 UTC · 0123456789ab.",
     );
@@ -231,12 +231,12 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     const tree = await mount();
     await press(tree);
     await act(async () => historyRead([BUILDING]));
-    expect(text(tree)).toContain("Healthy");
+    expect(text(tree)).toContain("Running");
 
     await act(async () => {
       serving(CARRIED);
     });
-    expect(text(tree)).toContain("Healthy");
+    expect(text(tree)).toContain("Running");
     expect(text(tree)).not.toContain("Updating");
     expect(held).toEqual(["hq1"]);
   });

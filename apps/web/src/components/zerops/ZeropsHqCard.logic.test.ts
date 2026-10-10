@@ -35,7 +35,7 @@ const input = (overrides: Partial<HqCardInput> = {}): HqCardInput => ({
 describe("hqCardView — the headline", () => {
   it.each<[string, Partial<HqCardInput>, ReturnType<typeof hqCardView>["state"]]>([
     ["before HQ's health is read", { standing: { kind: "unknown" } }, null],
-    ["HQ answering as the official HQ", {}, { kind: "healthy", tone: "ok", word: "Healthy" }],
+    ["HQ answering as the official HQ", {}, { kind: "healthy", tone: "ok", word: "Running" }],
     [
       "HQ not answering as the official HQ",
       { standing: { kind: "unavailable", since: 7 } },
@@ -69,7 +69,7 @@ describe("hqCardView — the headline", () => {
     [
       "an update another started, as the opened card read it",
       { update: { kind: "read", state: { kind: "updating", target: CARRIED } } },
-      { kind: "healthy", tone: "ok", word: "Healthy" },
+      { kind: "healthy", tone: "ok", word: "Running" },
     ],
     [
       "an update while HQ does not answer",

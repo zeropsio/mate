@@ -5347,6 +5347,23 @@ a.ov-card-site:hover {
   flex-wrap: nowrap;
 }
 
+.ov-reply {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+
+.ov-act-error {
+  flex-basis: 100%;
+  color: var(--zerops-status-failed-text);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ov-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .ov-btn {
   height: 32px;
   padding: 0 14px;

@@ -7,6 +7,7 @@ import { pull } from "./flowTestFixtures";
 import {
   broughtBy,
   cardMateReading,
+  cardSecondWords,
   cardPeople,
   cardReady,
   foldMates,
@@ -143,6 +144,24 @@ describe("since when production runs what it runs", () => {
 
 describe("a release ready to go", () => {
   const stage = stop({ projectId: "stage", name: "stage", source: "main" });
+
+  // D28: releasing the fix is how a broken production is mended, so the release stays offered.
+  it("is offered beside a production whose last release failed, and says so plainly", () => {
+    const ready = cardReady({
+      production: {
+        kind: "deploy-failed",
+        stop: stop({ version: { ...stop().version!, label: "v1.8.2" } }),
+        line: "",
+        candidate: { tag: "v1.9.1", waiting: 2 },
+      },
+      stages: [stage],
+      main: { head: undefined, hasCode: true, notLive: 2, notLiveAtLeast: false },
+    });
+    expect(ready === undefined ? undefined : [readyTitle(ready), readyLine(ready)]).toEqual([
+      "2 changes ready to release",
+      "On stage, tested. Production's last release failed; it still runs v1.8.2.",
+    ]);
+  });
   it("says how many changes, where they were tested and what production runs", () => {
     const ready = cardReady({
       production: {
@@ -161,15 +180,6 @@ describe("a release ready to go", () => {
   });
 
   it.each([
-    {
-      case: "production must be fixed first",
-      production: {
-        kind: "deploy-failed",
-        stop: stop(),
-        line: "",
-        candidate: { tag: "v2.4.0", waiting: 1 },
-      },
-    },
     {
       case: "a release is on its way",
       production: { kind: "releasing", stop: stop(), line: "", tag: "v2.4.0" },
@@ -275,6 +285,63 @@ describe("a Mate on a card", () => {
     expect(
       cardMateReading({ view: never, status: "idle", mine: true, review: undefined, read }).text,
     ).toBe(text);
+  });
+
+  it.each([
+    {
+      case: "a colleague's Mate waiting on its person: whom it waits on",
+      second: { kind: "waits-on", text: "Waits on Karel" },
+      expected: { text: "Waits on Karel", tone: "muted" },
+    },
+    {
+      case: "the viewer's change waiting: its title, in ink",
+      second: { kind: "change", title: "Spring banner", mine: true },
+      expected: { text: "Spring banner", tone: "ink" },
+    },
+    {
+      case: "a colleague's open change: its title, in review",
+      second: { kind: "change", title: "Spring banner", mine: false },
+      expected: { text: "Spring banner · in review", tone: "muted" },
+    },
+    {
+      case: "at its limit: when it picks up",
+      second: { kind: "paused", until: "2026-10-10T13:00:00Z" },
+      expected: { text: "Paused until 1:00 PM", tone: "muted" },
+    },
+    {
+      case: "its words in the tone the menu chose",
+      second: { kind: "reply", tone: "failed" },
+      expected: { text: "EXPO_TOKEN is missing", tone: "failed" },
+    },
+    {
+      case: "what was asked",
+      second: { kind: "ask", pending: false },
+      expected: { text: "Add a cart", tone: "muted" },
+    },
+    { case: "nothing", second: { kind: "none" }, expected: { text: undefined, tone: "muted" } },
+  ] as const)("says the menu row's line 2: $case", ({ second, expected }) => {
+    expect(
+      cardSecondWords({
+        second,
+        reply: { kind: "words", text: "EXPO_TOKEN is missing", tone: "muted" },
+        askLine: { kind: "ask", text: "Add a cart" },
+        pausedUntil: () => "1:00 PM",
+      }),
+    ).toEqual(expected);
+  });
+
+  it("says the menu row's line where nothing lifts it, and its own fuller words where it is lifted", () => {
+    const line = { text: "Waits on Karel", tone: "muted" as const };
+    const asking = view({
+      state: "needs",
+      reply: { kind: "words", text: "Stripe or Adyen?", tone: "ink" },
+    });
+    expect(
+      cardMateReading({ view: asking, status: "input", mine: false, review: undefined, line }).text,
+    ).toBe("Waits on Karel");
+    expect(
+      cardMateReading({ view: asking, status: "input", mine: true, review: undefined, line }).text,
+    ).toBe("Stripe or Adyen?");
   });
 
   it("says what a working Mate is on", () => {
