@@ -12,6 +12,7 @@
  *
  * Pure: no React, no clock except the `nowMs` a caller passes.
  */
+import { type VaultAsk, vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import {
   projectLimitEntry,
   projectLimitHistory,
@@ -2331,6 +2332,8 @@ export interface OutcomeModel {
   /** What its calls came to, by kind: the effort its worked line counts (`runEffortWords`). */
   readonly activity: ReadonlyArray<OutcomeActivity>;
   readonly later: OutcomeLater;
+  /** The values it asked the person for (`zerops_env action=request`): each answer is a row. */
+  readonly asks?: ReadonlyArray<VaultAsk>;
 }
 
 function shortVersion(operation: ZeropsOperation): string | null {
@@ -2874,6 +2877,7 @@ export function deriveOutcome(input: {
     crewTask: crewTaskOf(turn),
     activity: input.activity ?? [],
     later: laterClaims(input.later ?? []),
+    ...asksOf(settled),
   };
   return outcome.activity.length === 0 && !outcomeDraws(outcome) && input.unheld !== true
     ? null
@@ -2885,6 +2889,12 @@ export function deriveOutcome(input: {
  * to is said on the line itself (`runEffortWords`), so an outcome of that
  * alone draws nothing, and its card holds its line alone.
  */
+/** The values a run asked the person for, on its outcome only when it asked for any. */
+function asksOf(operations: ReadonlyArray<ZeropsOperation>): Pick<OutcomeModel, "asks"> {
+  const asks = operations.flatMap((operation) => vaultAskOf(operation) ?? []);
+  return asks.length === 0 ? {} : { asks };
+}
+
 export function outcomeDraws(outcome: OutcomeModel): boolean {
   return (
     outcome.live.length > 0 ||
@@ -2896,7 +2906,8 @@ export function outcomeDraws(outcome: OutcomeModel): boolean {
     outcome.notDone.length > 0 ||
     outcome.planLeft.length > 0 ||
     outcome.change !== null ||
-    outcome.crewTask !== null
+    outcome.crewTask !== null ||
+    (outcome.asks?.length ?? 0) > 0
   );
 }
 

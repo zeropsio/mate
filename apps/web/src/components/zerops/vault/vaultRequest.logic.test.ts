@@ -7,11 +7,15 @@ import { VAULT_FIXTURE, VAULT_FIXTURE_NOW } from "./vaultFixture";
 import {
   type VaultAsk,
   engineVaultAskFor,
-  vaultAskEngineFace,
+  openVaultAsk,
   vaultAskFace,
   vaultAskOf,
+  vaultAskLine,
   vaultAskLooksLikeZeropsSignIn,
-  vaultAskPickUp,
+  vaultAskNote,
+  vaultAskRestartWords,
+  vaultAskResult,
+  vaultAskWarning,
   vaultAskReach,
   vaultAskState,
   vaultAskWrite,
@@ -62,6 +66,7 @@ describe("vaultAskOf — which env calls ask the person for a value", () => {
       operation: sharedAsk("STRIPE_SECRET_KEY"),
       want: {
         key: "STRIPE_SECRET_KEY",
+        label: null,
         scope: { kind: "shared" },
         sensitive: true,
         reason: "Stripe charges cards.",
@@ -78,6 +83,7 @@ describe("vaultAskOf — which env calls ask the person for a value", () => {
       }),
       want: {
         key: "MAIL_FROM",
+        label: null,
         scope: { kind: "service", hostname: "appdev" },
         sensitive: false,
         reason: null,
@@ -113,6 +119,7 @@ describe("vaultAskOf — which env calls ask the person for a value", () => {
 describe("vaultAskState — where the asked value stands, read off the vault", () => {
   const ask = (key: string, askedMinutesAgo: number, hostname: string | null = null): VaultAsk => ({
     key,
+    label: null,
     scope: hostname === null ? { kind: "shared" } : { kind: "service", hostname },
     sensitive: true,
     reason: null,
@@ -173,6 +180,7 @@ describe("vaultAskState — where the asked value stands, read off the vault", (
 describe("vaultAskState — a name the vault keeps hidden", () => {
   const ask = (key: string): VaultAsk => ({
     key,
+    label: null,
     scope: { kind: "shared" },
     sensitive: true,
     reason: null,
@@ -198,6 +206,7 @@ describe("vaultAskState — a name the vault keeps hidden", () => {
 describe("vaultAskWrite — the one write a put makes", () => {
   const ask = {
     key: "LOG_LEVEL",
+    label: null,
     scope: { kind: "shared" } as const,
     sensitive: true,
     reason: null,
@@ -226,6 +235,7 @@ describe("vaultAskWrite — the one write a put makes", () => {
 describe("vaultAskWrite — whose word makes it secret", () => {
   const ask = {
     key: "NEW_KEY",
+    label: null,
     scope: { kind: "shared" } as const,
     sensitive: false,
     reason: null,
@@ -311,6 +321,7 @@ describe("vaultAskFace — what the card draws", () => {
 
 const stripeAsk: VaultAsk = {
   key: "STRIPE_SECRET_KEY",
+  label: null,
   scope: { kind: "shared" },
   sensitive: true,
   reason: "Stripe charges cards.",
@@ -324,6 +335,7 @@ function askActivity(
   const payload: VaultAskActivityPayload = {
     requestId: `mate/r/1/q/${at}`,
     key: "STRIPE_SECRET_KEY",
+    label: null,
     scope: { kind: "shared" },
     sensitive: true,
     reason: "Stripe charges cards.",
@@ -371,53 +383,160 @@ describe("engineVaultAskFor — the engine's record of the ask a call made", () 
   });
 });
 
-describe("vaultAskEngineFace — the card of an ask the engine keeps", () => {
+describe("the ask in the composer drawer, in words", () => {
+  const stripe: VaultAsk = {
+    key: "STRIPE_SECRET_KEY",
+    label: "Stripe secret key",
+    scope: { kind: "shared" },
+    sensitive: true,
+    reason: "for checkout",
+    askedAt: ago(5 * MINUTE),
+  };
   it.each([
-    { engine: "open", vault: "open", said: null, want: "open" },
-    { engine: "open", vault: "reading", said: null, want: "reading" },
-    { engine: "open", vault: "unplaced", said: null, want: "unplaced" },
-    // In the vault some other way (the panel): still the person's to answer.
-    { engine: "open", vault: "filled", said: null, want: "open" },
-    // Answered here, before the engine's record says so: no flash of the open card.
-    { engine: "open", vault: "filled", said: "put", want: "saved" },
-    { engine: "open", vault: "open", said: "not-now", want: "declined" },
-    { engine: "saved", vault: "filled", said: null, want: "saved" },
-    { engine: "declined", vault: "open", said: null, want: "declined" },
-    { engine: "closed", vault: "open", said: null, want: "closed" },
-  ] as const)("$engine, vault $vault, said $said → $want", ({ engine, vault, said, want }) => {
-    expect(vaultAskEngineFace(engine, vault, said)).toBe(want);
+    {
+      name: "labelled, with its why",
+      ask: stripe,
+      want: "Milo needs your Stripe secret key, for checkout",
+    },
+    {
+      name: "a why written as a sentence",
+      ask: { ...stripe, reason: "For the questionnaire API." },
+      want: "Milo needs your Stripe secret key, for the questionnaire API",
+    },
+    {
+      name: "from a zcp that names no label",
+      ask: { ...stripe, label: null, reason: null },
+      want: "Milo needs your STRIPE_SECRET_KEY",
+    },
+  ])("one line says what Milo needs and why: $name", ({ ask, want }) => {
+    expect(vaultAskLine(ask, "Milo")).toBe(want);
+  });
+
+  it.each([
+    {
+      state: "open",
+      ask: stripe,
+      want: "Goes to this project's vault for every app, never into this chat.",
+    },
+    {
+      state: "open",
+      ask: { ...stripe, scope: { kind: "service", hostname: "apidev" } as const },
+      want: "Goes to apidev's vault, never into this chat.",
+    },
+    {
+      state: "reading",
+      ask: stripe,
+      want: "Goes to this project's vault for every app, never into this chat.",
+    },
+    { state: "filled", ask: stripe, want: "You added it in the Vault." },
+    {
+      state: "reserved",
+      ask: { ...stripe, key: "MATE_PROBE_TOKEN" },
+      want: "MATE_PROBE_TOKEN is a name Milo keeps for itself, so the vault won't list it.",
+    },
+    {
+      state: "unplaced",
+      ask: { ...stripe, scope: { kind: "service", hostname: "gone" } as const },
+      want: "gone isn't in this project any more.",
+    },
+  ] as const)("one plain sentence says what happens: $state", ({ state, ask, want }) => {
+    expect(vaultAskNote(ask, state, "Milo")).toBe(want);
+  });
+
+  it.each([
+    ["ZEROPS_TOKEN", "Looks like a Zerops sign-in. Milo never needs yours."],
+    ["STRIPE_SECRET_KEY", null],
+    ["MATE_PROBE_TOKEN", null],
+  ] as const)("the one warning, only for a Zerops sign-in: %s", (key, want) => {
+    expect(vaultAskWarning({ ...stripe, key }, "Milo")).toBe(want);
   });
 });
 
-describe("vaultAskPickUp — what the person does for the value to take effect", () => {
+describe("the answered ask as a result row of the run that asked", () => {
+  const ask = (key: string, hostname: string | null = null): VaultAsk => ({
+    key,
+    label: "Stripe secret key",
+    scope: hostname === null ? { kind: "shared" } : { kind: "service", hostname },
+    sensitive: true,
+    reason: null,
+    askedAt: ago(5 * MINUTE),
+  });
   it.each([
     {
-      name: "nothing reads it yet: a deploy that references it",
-      ask: stripeAsk,
-      want: "It takes effect once a service's zerops.yaml references it and that service is deployed.",
+      name: "saved for every app, hidden, nothing reads it yet",
+      ask: ask("STRIPE_SECRET_KEY"),
+      engine: "saved",
+      want: { title: "Stripe secret key", words: "added for every app · hidden", restart: [] },
     },
     {
-      name: "nothing reads a service's own yet",
-      ask: { ...stripeAsk, key: "MAIL_FROM", scope: { kind: "service", hostname: "appdev" } },
-      want: "It takes effect once appdev's zerops.yaml references it and appdev is deployed.",
+      name: "saved, an app runs the value it started with",
+      ask: ask("LOG_LEVEL"),
+      engine: "saved",
+      want: {
+        title: "Stripe secret key",
+        words: "added for every app",
+        restart: [{ serviceId: "svc-appdev", hostname: "appdev" }],
+      },
     },
     {
-      name: "a reader runs the value it started with: restart it",
-      ask: { ...stripeAsk, key: "LOG_LEVEL" },
-      want: "Restart appdev to use it: a running app keeps the value it started with.",
+      name: "saved for one app's own",
+      ask: ask("FEATURE_FLAGS", "appdev"),
+      engine: "saved",
+      want: { title: "Stripe secret key", words: "added for appdev", restart: [] },
     },
     {
-      name: "every reader runs it already",
-      ask: { ...stripeAsk, key: "API_URL" },
-      want: "appdev and appstage use it.",
+      name: "not given",
+      ask: ask("STRIPE_SECRET_KEY"),
+      engine: "declined",
+      want: { title: "Stripe secret key", words: "Not now", restart: [] },
     },
-  ] as const)("$name", ({ ask, want }) => {
-    expect(vaultAskPickUp(VAULT_FIXTURE, ask)).toBe(want);
+    {
+      name: "still asked: the drawer holds it",
+      ask: ask("STRIPE_SECRET_KEY"),
+      engine: "open",
+      want: null,
+    },
+  ] as const)("$name", ({ ask, engine, want }) => {
+    expect(vaultAskResult(ask, engine, VAULT_FIXTURE)).toEqual(want);
   });
 
-  it("says nothing before the vault is read", () => {
-    expect(vaultAskPickUp({ ...VAULT_FIXTURE, status: "unread" } as VaultView, stripeAsk)).toBe(
-      null,
+  it("words the restart the row offers", () => {
+    expect(vaultAskRestartWords([{ serviceId: "svc-appdev", hostname: "appdev" }])).toBe(
+      "restart appdev to use it",
     );
+  });
+});
+
+describe("openVaultAsk — the ask the composer's drawer holds", () => {
+  const record = (requestId: string, state: VaultAskActivityPayload["state"], minutesAgo: number) =>
+    askActivity(minutesAgo, { requestId, state, label: "Stripe secret key" });
+  it.each([
+    { name: "none asked", activities: [], want: null },
+    { name: "one open", activities: [record("q1", "open", 3)], want: "q1" },
+    {
+      name: "the oldest open first",
+      activities: [record("q2", "open", 1), record("q1", "open", 3)],
+      want: "q1",
+    },
+    {
+      name: "an answered one leaves it",
+      activities: [record("q1", "saved", 3), record("q2", "open", 1)],
+      want: "q2",
+    },
+    { name: "every one answered", activities: [record("q1", "declined", 3)], want: null },
+  ])("$name", ({ activities, want }) => {
+    expect(openVaultAsk(activities)?.requestId ?? null).toBe(want);
+  });
+
+  it("reads the record as the ask the drawer words", () => {
+    const open = openVaultAsk([record("q1", "open", 3)]);
+    expect(open?.ask).toEqual({
+      key: "STRIPE_SECRET_KEY",
+      label: "Stripe secret key",
+      scope: { kind: "shared" },
+      sensitive: true,
+      reason: "Stripe charges cards.",
+      askedAt: ago(3 * MINUTE),
+    });
   });
 });

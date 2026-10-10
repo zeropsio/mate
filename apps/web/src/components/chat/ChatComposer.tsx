@@ -164,6 +164,10 @@ import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
+import {
+  ComposerVaultAskContainer,
+  useOpenVaultAskId,
+} from "../zerops/vault/ComposerVaultAskContainer";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import {
   ComposerAccessControl,
@@ -1604,9 +1608,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const isChoiceOnlyPendingQuestion =
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
+  // A value the Mate asked for waits in the same drawer, after any approval or question.
+  const openVaultAskId = useOpenVaultAskId(routeKind === "server" ? routeThreadRef : null);
+  const vaultAskInDrawer =
+    openVaultAskId !== null && !isComposerApprovalState && pendingUserInputs.length === 0;
   const showComposerTopDrawer =
     isComposerApprovalState ||
     pendingUserInputs.length > 0 ||
+    vaultAskInDrawer ||
     (!isComposerCollapsedMobile && showPlanFollowUpPrompt && activeProposedPlan !== null);
   const showCollapsedMobilePromptRow =
     isComposerCollapsedMobile && !isComposerApprovalState && pendingUserInputs.length === 0;
@@ -2998,7 +3007,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const visibleTasksProgress = tasksDismissedForActiveTurn ? null : activeTasksProgress;
   const visibleTaskSteps = tasksDismissedForActiveTurn ? null : activeTaskSteps;
   const hasBlockingComposerTopDrawer =
-    activePendingApproval !== null || pendingUserInputs.length > 0;
+    activePendingApproval !== null || pendingUserInputs.length > 0 || vaultAskInDrawer;
   const dismissTasks = useCallback(() => {
     if (activeTasksTurnId !== null) {
       setDismissedTasksTurnId(activeTasksTurnId);
@@ -3448,7 +3457,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             data-chat-composer-top-drawer="true"
             // What the agent asks the person stands over the conversation's end: it never moves it.
             data-chat-composer-asks={
-              activePendingApproval || pendingUserInputs.length > 0 ? "true" : undefined
+              activePendingApproval || pendingUserInputs.length > 0 || vaultAskInDrawer
+                ? "true"
+                : undefined
             }
             data-variant={activePendingApproval ? "warning" : "info"}
           >
@@ -3510,6 +3521,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   </div>
                 ))}
               </>
+            ) : vaultAskInDrawer ? (
+              <div
+                data-chat-composer-collapsed-controls={
+                  isComposerCollapsedMobile ? "true" : undefined
+                }
+              >
+                <ComposerVaultAskContainer
+                  environmentId={environmentId}
+                  threadRef={routeThreadRef}
+                />
+              </div>
             ) : !isComposerCollapsedMobile && showPlanFollowUpPrompt && activeProposedPlan ? (
               <ComposerPlanFollowUpBanner
                 key={activeProposedPlan.id}

@@ -236,6 +236,11 @@ export function accountOperations(
 /** The mounted account's operations, which its data mount builds over the store it owns. */
 export const AccountOperationsContext = createContext<AccountOperations | null>(null);
 
+/** The operations, where the account's data is held; `null` outside it (a harness, a test). */
+export function useAccountOperationsOptional(): AccountOperations | null {
+  return useContext(AccountOperationsContext);
+}
+
 export function useAccountOperations(): AccountOperations {
   const operations = useContext(AccountOperationsContext);
   if (operations === null)

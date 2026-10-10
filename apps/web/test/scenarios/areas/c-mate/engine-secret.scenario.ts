@@ -7,10 +7,11 @@ import { EngineChatWire } from "./engine.ts";
 import { installArea, vaultWrites } from "./fake.ts";
 
 const KEY = "STRIPE_SECRET_KEY";
-const REASON = "Stripe charges cards: Dashboard, Developers, API keys.";
+const LABEL = "Stripe secret key";
+const WHY = "for checkout";
 /** A value shaped like a live Stripe key, made from parts. */
 const SECRET = ["sk", "_live_", "Zq".repeat(12)].join("");
-const FIELD = "Paste it here — it goes to the vault, not the chat";
+const FIELD = `Your ${LABEL}`;
 
 /** Whether any string anywhere in a value holds the secret. */
 const holdsSecret = (value: unknown): boolean =>
@@ -37,12 +38,7 @@ describe("C: a secret the Mate asks the person for", () => {
         yield* chat.when.open("Ada", "Take card payments");
         // The agent asks through zcp, which answers at once; the engine records the ask on the
         // call and the turn goes on to its end.
-        const asked = {
-          action: "request",
-          key: KEY,
-          project: true,
-          reason: REASON,
-        };
+        const asked = { action: "request", key: KEY, project: true, label: LABEL, why: WHY };
         engine.item(run, {
           kind: "call",
           step: "mcp",
@@ -53,19 +49,30 @@ describe("C: a secret the Mate asks the person for", () => {
           shows: { toolName: "mcp__zerops__zerops_env", input: asked },
           result: {
             toolName: "zerops_env",
-            resultText: `{"requested":{"key":"${KEY}","reason":"${REASON}","scope":"shared","sensitive":true}}`,
+            resultText: `{"requested":{"key":"${KEY}","label":"${LABEL}","why":"${WHY}","scope":"shared","sensitive":true}}`,
           },
         });
         engine.ask(
-          { kind: "vault", key: KEY, scope: { kind: "shared" }, sensitive: true, reason: REASON },
+          {
+            kind: "vault",
+            key: KEY,
+            label: LABEL,
+            scope: { kind: "shared" },
+            sensitive: true,
+            reason: WHY,
+          },
           { runId: run },
         );
         engine.note(run, "I asked for your Stripe key on a private card.", { kind: "completed" });
-        yield* chat.then.text(REASON);
-        yield* chat.then.text("that service is deployed");
+        // The ask waits in the composer's drawer, never as a card in the conversation.
+        yield* chat.then.text(`needs your ${LABEL}, ${WHY}`);
+        yield* chat.then.text("Goes to this project's vault for every app, never into this chat.");
+        yield* chat.then.noText("Put in vault");
         yield* chat.when.fill(FIELD, SECRET);
-        yield* chat.when.press("Save");
-        yield* chat.then.text("has been told");
+        yield* chat.when.press("Save to vault");
+        // Answered, it is a result of the run that asked.
+        yield* chat.then.text("added for every app · hidden");
+        yield* chat.then.noText("has been told");
         expect(vault.writes, "ASSERTION: the value went to the vault, as the person").toEqual([
           { key: KEY, content: SECRET },
         ]);
