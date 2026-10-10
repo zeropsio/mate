@@ -98,7 +98,9 @@ describe("SidebarWaitingRow — Waiting on you, under Overview", () => {
   it("says how many wait, the first two in plain words, then how many more", async () => {
     const container = await mount(<SidebarWaitingRow items={ITEMS} verbs={verbs()} />);
     const row = container.querySelector('[data-zerops-surface="sidebar-waiting"]');
-    expect(row?.querySelector(".menu-chrome-count")?.textContent).toBe("4");
+    expect(row?.querySelector('[data-zerops-surface="sidebar-waiting-count"]')?.textContent).toBe(
+      "4",
+    );
     expect(row?.querySelector('[data-zerops-surface="sidebar-waiting-line"]')?.textContent).toBe(
       "Help Fen · Answer Rhea· 2 more",
     );
@@ -114,7 +116,7 @@ describe("WaitingList — what waits on you, each with its buttons", () => {
   it("names each thing and says it in its own words", async () => {
     const container = await mount(<WaitingList items={ITEMS} onClose={() => {}} verbs={verbs()} />);
     expect(
-      [...container.querySelectorAll(".menu-wait-title")].map((title) => title.textContent),
+      [...container.querySelectorAll("[data-waiting-title]")].map((title) => title.textContent),
     ).toEqual(["Fen", "Rhea", "Noibit", "Tea Shop is ready to release"]);
     expect(container.textContent).toContain("3 changes are on stage, not yet in production.");
   });

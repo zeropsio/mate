@@ -8,18 +8,17 @@
  * One row says both, in the two lines a messenger uses for a person, and the
  * places fold into its menu where a name is cheaper than a glyph.
  *
- * Collapsed, the row is the picture alone: one mark of identity reads better
- * on a rail than four anonymous glyphs did.
+ * The viewer's photo, name and role ("Owner of Acme"), then one ··· whose menu holds Show and
+ * Order, the organization, the places and Sign out. On the rail the photo alone opens it.
  */
 
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { ChevronsUpDownIcon, LogOutIcon } from "lucide-react";
+import { EllipsisIcon, LogOutIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
-import { cn } from "~/lib/utils";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -50,6 +49,7 @@ import {
   sidebarAccountLines,
   sidebarAccountOrganizationChoices,
   sidebarAccountRoleLine,
+  sidebarAccountRoleParts,
   type SidebarAccountDestination,
 } from "./SidebarZeropsAccount.logic";
 
@@ -84,57 +84,67 @@ export function SidebarZeropsAccount({
   collapsed = false,
 }: SidebarZeropsAccountProps) {
   const lines = sidebarAccountLines({ name: account.name, organization: activeOrganization });
+  const role = sidebarAccountRoleParts(activeOrganization);
+  const menu = (
+    <MenuPopup align={collapsed ? "start" : "end"} className="w-72" side="top">
+      <SidebarZeropsAccountMenu
+        account={account}
+        activeOrganization={activeOrganization}
+        destination={destination}
+        destinationIcon={destinationIcon}
+        onGo={onGo}
+        onSelectOrganization={onSelectOrganization}
+        onSignOut={onSignOut}
+        organizations={organizations}
+        signingOut={signingOut}
+        signOutError={signOutError}
+      />
+    </MenuPopup>
+  );
+
+  // The rail: the picture alone opens the menu.
+  if (collapsed) {
+    return (
+      <Menu>
+        <MenuTrigger
+          aria-label={`Account: ${account.name}`}
+          className="menu-foot-photo"
+          data-zerops-surface="sidebar-account"
+        >
+          <Avatar initials={account.initials} size="md" src={account.avatarUrl} />
+        </MenuTrigger>
+        {menu}
+      </Menu>
+    );
+  }
 
   return (
-    <Menu>
-      <MenuTrigger
-        aria-label={`Account: ${account.name}`}
-        className={cn(
-          "flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-md p-1.5 text-left outline-none transition-colors select-none hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active",
-          collapsed && "justify-center",
+    <div className="menu-foot-who">
+      <Avatar initials={account.initials} size="md" src={account.avatarUrl} />
+      <span className="menu-foot-lines">
+        <span className="menu-foot-name">{lines.name}</span>
+        {/* An organization still being resolved is absent, never a placeholder: the foot must
+            paint nothing it takes back. */}
+        {role === null ? null : (
+          <span className="menu-foot-role" data-zerops-surface="sidebar-account-role">
+            {role.before}
+            <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
+            {role.after}
+          </span>
         )}
-        data-zerops-surface="sidebar-account"
-      >
-        <Avatar initials={account.initials} src={account.avatarUrl} />
-        {collapsed ? null : (
-          <>
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="min-w-0 truncate text-[13px] leading-4 font-medium text-sidebar-foreground">
-                {lines.name}
-              </span>
-              {/* An organization still being resolved is absent, never a
-                  placeholder: the foot must paint nothing it takes back. */}
-              {lines.organization === null ? null : (
-                <span
-                  className="min-w-0 truncate text-xs leading-4 text-sidebar-muted-foreground"
-                  data-zerops-surface="sidebar-account-organization"
-                >
-                  {lines.organization}
-                </span>
-              )}
-            </span>
-            <ChevronsUpDownIcon
-              aria-hidden="true"
-              className="size-3.5 shrink-0 text-sidebar-muted-foreground"
-            />
-          </>
-        )}
-      </MenuTrigger>
-      <MenuPopup align="start" className="w-72" side="top">
-        <SidebarZeropsAccountMenu
-          account={account}
-          activeOrganization={activeOrganization}
-          destination={destination}
-          destinationIcon={destinationIcon}
-          onGo={onGo}
-          onSelectOrganization={onSelectOrganization}
-          onSignOut={onSignOut}
-          organizations={organizations}
-          signingOut={signingOut}
-          signOutError={signOutError}
-        />
-      </MenuPopup>
-    </Menu>
+      </span>
+      {/* One ···: how the list reads, the organization, the places, and the way out. */}
+      <Menu>
+        <MenuTrigger
+          aria-label={`Account: ${account.name}`}
+          className="menu-foot-button"
+          data-zerops-surface="sidebar-account"
+        >
+          <EllipsisIcon aria-hidden="true" className="size-4" />
+        </MenuTrigger>
+        {menu}
+      </Menu>
+    </div>
   );
 }
 

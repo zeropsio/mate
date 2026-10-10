@@ -4551,6 +4551,83 @@ code {
   }
 }
 
+@layer components {
+  /* The foot: the viewer's photo, name and role, one ···; the collapse button after it. */
+  .menu-foot-who {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    height: 64px;
+    padding-inline-start: 8px;
+  }
+
+  .menu-foot-lines {
+    display: grid;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .menu-foot-name {
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 18px;
+    font-weight: 500;
+    color: var(--sidebar-foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-foot-role {
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--sidebar-muted-foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-foot-button {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    color: var(--sidebar-muted-foreground);
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      color 150ms var(--ease-out-strong);
+  }
+
+  .menu-foot-button:hover,
+  .menu-foot-button[data-popup-open] {
+    background: var(--sidebar-row-hover);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-foot-button:focus-visible,
+  .menu-foot-photo:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .menu-foot-photo {
+    display: flex;
+    border-radius: 9999px;
+    cursor: pointer;
+    outline: none;
+    transition: box-shadow 150ms var(--ease-out-strong);
+  }
+
+  .menu-foot-photo:hover,
+  .menu-foot-photo[data-popup-open] {
+    box-shadow: 0 0 0 3px var(--sidebar-row-hover);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .menu-round-button:active,
   .menu-wait-button:active {

@@ -152,7 +152,11 @@ export function SidebarWaitingRow({
       }
       verbs={verbs}
     >
-      <span className="menu-chrome-count" aria-hidden="true">
+      <span
+        aria-hidden="true"
+        className="menu-chrome-count"
+        data-zerops-surface="sidebar-waiting-count"
+      >
         {items.length}
       </span>
       <span className="menu-chrome-text">
@@ -280,7 +284,9 @@ function WaitingEntry({
         )}
       </span>
       <div className="menu-wait-body">
-        <p className="menu-wait-title">{waitingTitle(item)}</p>
+        <p className="menu-wait-title" data-waiting-title="">
+          {waitingTitle(item)}
+        </p>
         <p className="menu-wait-text">
           {item.kind === "release" ? releaseWaitingLine(item.release) : item.mate.text}
         </p>

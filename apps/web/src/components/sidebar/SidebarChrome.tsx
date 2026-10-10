@@ -1,8 +1,8 @@
 import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
-  CloudIcon,
   GitPullRequestIcon,
+  LayersIcon,
   PanelLeftCloseIcon,
   PlusIcon,
   SettingsIcon,
@@ -250,7 +250,7 @@ function SidebarUtilityItem({
 function sidebarAccountDestinationIcon(id: SidebarAccountDestination["id"]) {
   switch (id) {
     case "projects":
-      return <CloudIcon />;
+      return <LayersIcon />;
     case "git":
       return <GitPullRequestIcon />;
     case "usage":

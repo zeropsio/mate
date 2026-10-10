@@ -67,7 +67,7 @@ import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { changeUrl } from "@t3tools/shared/hqChanges";
 import type { MateThreadKind } from "@t3tools/shared/mateLink";
-import { EllipsisIcon } from "lucide-react";
+import { EllipsisIcon, PanelLeftCloseIcon } from "lucide-react";
 
 import { onOpenCommandPalette } from "~/commandPaletteBus";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
@@ -933,7 +933,12 @@ const ACCOUNT = zeropsAccountDisplay({
   fullName: "Ada Lovelace",
   firstName: "Ada",
 });
-const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
+const ORGANIZATION = {
+  id: "org-acme",
+  name: "Acme",
+  membershipId: "m-acme",
+  roleCode: "OWNER",
+};
 
 /**
  * One sidebar, as the app lays it out: its header, the listing, its foot —
@@ -1211,19 +1216,21 @@ function SidebarFrame({
           }))}
         />
       )}
-      <footer className="flex shrink-0 items-center gap-1 p-2">
-        <div className="min-w-0 flex-1">
-          <SidebarZeropsAccount
-            account={ACCOUNT}
-            activeOrganization={ORGANIZATION}
-            destination={null}
-            destinationIcon={() => null}
-            onGo={() => {}}
-            onSelectOrganization={() => {}}
-            onSignOut={() => {}}
-            organizations={[ORGANIZATION]}
-          />
-        </div>
+      {/* The app's foot (`SidebarChromeFooter`): the account, then the collapse button. */}
+      <footer className="flex shrink-0 items-center gap-2 px-2 py-1">
+        <SidebarZeropsAccount
+          account={ACCOUNT}
+          activeOrganization={ORGANIZATION}
+          destination={null}
+          destinationIcon={() => null}
+          onGo={() => {}}
+          onSelectOrganization={() => {}}
+          onSignOut={() => {}}
+          organizations={[ORGANIZATION]}
+        />
+        <button aria-label="Collapse sidebar" className="menu-foot-button" type="button">
+          <PanelLeftCloseIcon aria-hidden="true" className="size-4" />
+        </button>
       </footer>
     </aside>
   );
