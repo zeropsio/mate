@@ -4,6 +4,7 @@ import { expect } from "@effect/vitest";
 import type { createScenario } from "../../harness/scenario.ts";
 import { creationNetwork } from "../../fakes/f-create/browserDrain.ts";
 import { creationOf } from "./fake.ts";
+import type { ElementHandle } from "puppeteer-core";
 import { visibleText } from "../../harness/browser.ts";
 import { rendered } from "../../harness/completedHttp.ts";
 
@@ -47,24 +48,6 @@ export function creation(s: Scenario) {
       await page.keyboard.type(value);
       await rendered(page);
     });
-  const openProjectDetails = async (group: string) => {
-    const toggle = page
-      .locator(`[data-zerops-surface="project-rows"] ::-p-aria(${group})`)
-      .setTimeout(15_000);
-    await toggle.wait();
-    const expanded = await page.evaluate(
-      (group) =>
-        [
-          ...document.querySelectorAll<HTMLButtonElement>(
-            '[data-zerops-surface="project-rows"] button',
-          ),
-        ]
-          .find((button) => button.innerText.trim() === group)
-          ?.getAttribute("aria-expanded"),
-      group,
-    );
-    if (expanded !== "true") await toggle.click();
-  };
   return {
     holdProjectCreation: () => {
       control.holdCreation = true;
@@ -151,16 +134,24 @@ export function creation(s: Scenario) {
       yield* fill("Its first Mate", "Nova");
     }),
     submitProject: click("Create Garden with Nova"),
+    /** Shop's card in the overview: its ··· holds Add Mate, Add stage and Add production. */
     openAdd: (role: "Mate" | "stage" | "production") =>
       Effect.gen(function* () {
         yield* Effect.promise(() => page.goto(`${s.web.origin}/zerops`));
-        yield* Effect.promise(() => openProjectDetails("Shop"));
-        yield* Effect.promise(() =>
-          page
-            .locator('[data-zerops-surface="project-rows"] ::-p-aria(More for Shop)')
-            .setTimeout(15_000)
-            .click(),
-        );
+        // The page's ··· for Shop — on its card, or its row among the projects without work —
+        // never the menu heading's of the same name.
+        yield* Effect.promise(async () => {
+          const more = await page.waitForFunction(
+            () =>
+              [...document.querySelectorAll<HTMLElement>('[aria-label="More for Shop"]')].find(
+                (button) =>
+                  button.closest('[data-sidebar="sidebar"]') === null &&
+                  button.getBoundingClientRect().width > 0,
+              ),
+            { timeout: 15_000, polling: "raf" },
+          );
+          await (more.asElement() as ElementHandle<Element>).click();
+        });
         yield* click(`Add ${role}`);
       }),
     withAgent: Effect.promise(() =>
@@ -176,52 +167,65 @@ export function creation(s: Scenario) {
         "false",
       );
     }),
+    /** The new place stands on its project's road in the menu, as its stage or its prod. */
     environmentAppears: (name: string, tag: "stage" | "prod") =>
       Effect.promise(async () => {
         await page.waitForSelector('[data-zerops-surface="environment-creation-form"]', {
           hidden: true,
           timeout: 15_000,
         });
+        // Its project, as Zerops accepted it.
+        let projectId = control.accepted.find((project) => project.name === name)?.id;
+        for (let wait = 0; projectId === undefined && wait < 150; wait++) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          projectId = control.accepted.find((project) => project.name === name)?.id;
+        }
+        if (projectId === undefined)
+          throw new Error(`No project ${name} was made: ${JSON.stringify(control.accepted)}`);
         try {
           await page.waitForFunction(
-            (name, tag) =>
+            (projectId, tag) =>
               [
                 ...document.querySelectorAll<HTMLElement>(
-                  '[data-zerops-surface="environment-rows"] [data-zerops-surface="environment-name"]',
+                  `[data-zerops-surface="sidebar-production-chip"][data-zerops-chip="${tag}"]`,
                 ),
-              ].some(
-                (label) =>
-                  label.innerText.trim() === name &&
-                  label
-                    .closest("li")
-                    ?.querySelector<HTMLElement>('[data-zerops-surface="role-tag"]')
-                    ?.innerText.trim()
-                    .toLowerCase() === tag,
-              ),
+              ].some((chip) => chip.dataset.zeropsStops?.split(" ").includes(projectId) === true),
             { timeout: 15_000, polling: "raf" },
-            name,
+            projectId,
             tag,
           );
         } catch (cause) {
           throw new Error(
-            `Missing environment ${name} with ${tag} badge\n${await page.evaluate(() => document.body.innerText)}`,
+            `Missing environment ${name} on the ${tag} of its road\n${await page.evaluate(() => document.body.innerText)}`,
             { cause },
           );
         }
       }),
+    /** The Mate stands on its project's card in the overview. */
     mateAppearsInProject: (name: string, group: string) =>
       Effect.promise(async () => {
         await page.goto(`${s.web.origin}/zerops`);
-        await openProjectDetails(group);
         await page.waitForFunction(
-          (name) =>
-            [...document.querySelectorAll<HTMLElement>('[data-zerops-surface="mate-cards"]')].some(
-              (cards) => cards.innerText.split("\n").some((line) => line.trim() === name),
-            ),
+          (name, group) =>
+            [...document.querySelectorAll<HTMLElement>("[data-zerops-group]")]
+              .filter((card) => card.getAttribute("aria-label") === group)
+              .some((card) =>
+                [...card.querySelectorAll<HTMLElement>('[data-zerops-surface="card-mate"]')].some(
+                  (mate) => mate.innerText.split("\n").some((line) => line.trim() === name),
+                ),
+              ),
           { timeout: 15_000, polling: "raf" },
           name,
+          group,
         );
       }),
+    /** The menu's "N other projects" fold opened, where a project without work lately waits. */
+    otherProjectsShown: Effect.promise(async () => {
+      const fold = '[data-zerops-surface="sidebar-other-projects-fold"]';
+      await page.waitForSelector(fold, { visible: true, timeout: 15_000 });
+      if ((await page.$eval(fold, (button) => button.getAttribute("aria-expanded"))) !== "true")
+        await page.click(fold);
+    }),
     acceptedOnce: (name: string) =>
       Effect.sync(() => {
         expect(control.accepted, "Creation made duplicate or wrong projects").toEqual([

@@ -340,6 +340,19 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
     },
   );
 
+  // Pass 41: the menu's row has one line under the name, and while HQ's word is stale that line
+  // is this one — it keeps what the Mate was on.
+  it.each([
+    { task: "Inspect checkout", words: "Ada was working on: Inspect checkout" },
+    { task: undefined, words: "Ada was working." },
+  ])("the last-known line of a working Mate says what it was on: $words", ({ task, words }) => {
+    const held = {
+      lastKnown: { kind: "working", at: ASKED },
+      ...(task === undefined ? {} : { task }),
+    } as unknown as Parameters<typeof lastKnownMateWords>[0];
+    expect(lastKnownMateWords(held, "Ada")).toContain(`: ${words}`);
+  });
+
   // Run 4 (B +1:02): the reconnect notice quoted the last message raw, a table's pipes included.
   it("the last-known line quotes the row's last words as plain words on one line", () => {
     const held = read({

@@ -106,6 +106,8 @@ describe("F: creation through the hosted client", () => {
         yield* c.finishSetup;
         yield* s.then.conversation.appears;
         yield* c.originalSetupOnly;
+        // Shop has had no work lately: it waits behind the menu's other projects.
+        yield* c.otherProjectsShown;
         yield* s.then.menu.row("Ada").appears();
         yield* s.then.noExternalNetwork;
       }),
@@ -133,6 +135,8 @@ describe("F: creation through the hosted client", () => {
         yield* c.finishSetup;
         yield* s.then.conversation.appears;
         yield* c.originalSetupOnly;
+        // Shop has had no work lately: it waits behind the menu's other projects.
+        yield* c.otherProjectsShown;
         yield* s.then.menu.row("Ada").appears();
         yield* s.then.noExternalNetwork;
       }),
