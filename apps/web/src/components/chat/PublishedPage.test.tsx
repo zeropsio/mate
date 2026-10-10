@@ -13,13 +13,7 @@ parent.document.title="x";</script><img src="https://example.com/pixel.png"><for
 const frameOf = (html: string | null, failed = false) =>
   markupDom(
     renderToStaticMarkup(
-      <PublishedPageFrame
-        id="asset-1"
-        title="Launch plan"
-        html={html}
-        theme={theme}
-        failed={failed}
-      />,
+      <PublishedPageFrame title="Launch plan" html={html} theme={theme} failed={failed} />,
     ),
   ).querySelector("iframe");
 

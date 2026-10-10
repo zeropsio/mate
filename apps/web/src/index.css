@@ -9991,6 +9991,8 @@ button.rv-relrow:hover .rv-relrow-go {
   white-space: nowrap;
 }
 .published-page-frame {
+  /* The page's height is its frame's inside: the border stands around it. */
+  box-sizing: content-box;
   height: var(--run-words-cap);
   max-height: var(--run-words-cap);
   overflow: hidden;
@@ -10012,6 +10014,21 @@ button.rv-relrow:hover .rv-relrow-go {
   width: 100%;
   height: 100%;
   border: 0;
+}
+.published-page-left {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.published-page-left > p {
+  margin: 0;
 }
 .published-page-failed {
   margin: 0;

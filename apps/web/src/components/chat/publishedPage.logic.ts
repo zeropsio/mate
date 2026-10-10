@@ -2,11 +2,14 @@
  * A page the Mate published for the person (`zerops_publish_page`), drawn in its conversation:
  * the document its frame shows, what the frame hears from it, and the frame's height.
  *
- * The frame is sandboxed with scripts alone — never the same origin — and the document opens with a
- * policy that allows no network at all, ahead of anything the page says: the page runs in an opaque
- * origin and can fetch, load or post nothing, so it reaches neither the network, the Mate's server
- * nor the person's session. No proxy or origin of its own is needed for that. It talks to the
- * conversation only by messages: its height, and a link the person clicked.
+ * The frame is sandboxed with scripts alone — never the same origin — so the page runs in an
+ * opaque origin: it cannot read the Mate's server, the person's session or the conversation
+ * around it. Its document opens, ahead of anything the page says, with a policy that lets it
+ * request nothing: no fetch, script, style, picture, font, media or form submission from anywhere.
+ * A policy governs no navigation, WebRTC or DNS prefetch. A page that navigates its own frame is
+ * taken down at once (`PublishedPage.tsx` counts the frame's loads, and the page says it is
+ * leaving); WebRTC and DNS prefetch stay open to it, carrying only what the page itself holds. It
+ * talks to the conversation only by messages: its height, a link the person clicked, its leaving.
  */
 
 /** Everything the page may load: what it carries inline, nothing from anywhere. */
@@ -63,7 +66,7 @@ export function themeRule(theme: PageTheme): string {
  * conversation's colours when they change.
  */
 const BOOTSTRAP = `(function(){
-var post=function(m){m.mate="page";parent.postMessage(m,"*");};
+var host=window.parent;var post=function(m){m.mate="page";host.postMessage(m,"*");};
 var last=-1;
 var measure=function(){var d=document.documentElement,b=document.body;
 var h=Math.ceil(Math.max(d.getBoundingClientRect().height,b?b.scrollHeight:0));
@@ -76,7 +79,8 @@ var a=e.target&&e.target.closest?e.target.closest("a[href]"):null;if(!a)return;
 var u;try{u=new URL(a.getAttribute("href"),document.baseURI)}catch(_){return}
 if(u.protocol!=="http:"&&u.protocol!=="https:")return;
 e.preventDefault();post({kind:"open",url:u.href});},true);
-addEventListener("message",function(e){if(e.source!==parent)return;var d=e.data;
+addEventListener("pagehide",function(){post({kind:"left"});});
+addEventListener("message",function(e){if(e.source!==host)return;var d=e.data;
 if(!d||d.mate!=="page-theme"||typeof d.rule!=="string")return;
 var s=document.getElementById("mate-page-theme");if(s)s.textContent=d.rule;});
 })();`;
@@ -98,16 +102,18 @@ export function pageDocument(html: string, theme: PageTheme): string {
   );
 }
 
-/** What a page said to the conversation: its height, or a link the person clicked. */
+/** What a page said to the conversation: its height, a link the person clicked, its leaving. */
 export type PageMessage =
   | { readonly kind: "height"; readonly height: number }
-  | { readonly kind: "open"; readonly url: string };
+  | { readonly kind: "open"; readonly url: string }
+  | { readonly kind: "left" };
 
 /** A page's message, or null for anything else: another window's, a malformed one. */
 export function readPageMessage(data: unknown): PageMessage | null {
   if (typeof data !== "object" || data === null) return null;
   const message = data as { mate?: unknown; kind?: unknown; height?: unknown; url?: unknown };
   if (message.mate !== "page") return null;
+  if (message.kind === "left") return { kind: "left" };
   if (message.kind === "height")
     return typeof message.height === "number" && Number.isFinite(message.height)
       ? { kind: "height", height: Math.max(0, Math.ceil(message.height)) }
@@ -141,10 +147,11 @@ export function linkToOpen(
 const PAGE_MIN_HEIGHT = 48;
 
 /**
- * The frame's height: the page's own — the frame's max height is the cap every item shares
- * (`--run-words-cap`), so a taller page scrolls inside it — or null while it is unknown, when the
- * frame stands at the cap.
+ * The frame's height: the page's own as it says it, else as zcp's browser laid it out when it was
+ * published; null while neither is known, when the frame stands at the cap every item shares
+ * (`--run-words-cap`). The cap is the frame's max height: a taller page scrolls inside it.
  */
-export function pageFrameHeight(content: number | null): number | null {
-  return content === null ? null : Math.max(PAGE_MIN_HEIGHT, content);
+export function pageFrameHeight(content: number | null, recorded?: number): number | null {
+  const height = content ?? recorded ?? null;
+  return height === null ? null : Math.max(PAGE_MIN_HEIGHT, height);
 }

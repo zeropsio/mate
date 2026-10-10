@@ -7,7 +7,6 @@ import {
   pageFrameHeight,
   readPageMessage,
 } from "./publishedPage.logic";
-import { rememberPageHeight, rememberedPageHeight } from "./pageHeights";
 
 const theme = { scheme: "dark" as const, vars: { "--background": "#111", "--foreground": "#eee" } };
 
@@ -94,6 +93,7 @@ describe("what a published page says to the conversation", () => {
       data: { mate: "page", kind: "height", height: "9999" },
       want: null,
     },
+    { title: "its leaving", data: { mate: "page", kind: "left" }, want: { kind: "left" } },
     { title: "someone else's message", data: { kind: "height", height: 10 }, want: null },
   ])("reads $title", ({ data, want }) => {
     expect(readPageMessage(data)).toEqual(want);
@@ -141,22 +141,27 @@ describe("what a published page says to the conversation", () => {
 
 describe("a published page's frame height", () => {
   it.each([
-    { title: "unknown, it stands at the shared cap", content: null, want: null },
-    { title: "a short page, its own height", content: 212, want: 212 },
+    {
+      title: "unknown, it stands at the shared cap",
+      content: null,
+      recorded: undefined,
+      want: null,
+    },
+    {
+      title: "before the page says it, the height zcp's browser recorded",
+      content: null,
+      recorded: 612,
+      want: 612,
+    },
+    { title: "once the page says it, its own", content: 212, recorded: 612, want: 212 },
     {
       title: "a tall page, its own height: the cap holds the frame and it scrolls inside",
       content: 2400,
+      recorded: undefined,
       want: 2400,
     },
-    { title: "an empty page, still a line tall", content: 0, want: 48 },
-  ])("is $title", ({ content, want }) => {
-    expect(pageFrameHeight(content)).toBe(want);
-  });
-
-  it("is remembered by its page, so a reload paints it at its height from the first frame", () => {
-    expect(rememberedPageHeight("asset-a")).toBeNull();
-    rememberPageHeight("asset-a", 212);
-    expect(rememberedPageHeight("asset-a")).toBe(212);
-    expect(rememberedPageHeight("asset-b")).toBeNull();
+    { title: "an empty page, still a line tall", content: 0, recorded: undefined, want: 48 },
+  ])("is $title", ({ content, recorded, want }) => {
+    expect(pageFrameHeight(content, recorded)).toBe(want);
   });
 });
