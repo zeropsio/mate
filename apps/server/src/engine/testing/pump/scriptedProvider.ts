@@ -55,6 +55,8 @@ interface Session {
   held: Deferred.Deferred<void, Error> | null;
   readonly requests: Map<string, "approval" | "question">;
   model: string | undefined;
+  /** Where the session runs, as it was started: where a call's files resolve. */
+  cwd: string | undefined;
 }
 
 /** Claude names its session with a UUID: one per provider thread here. */
@@ -189,6 +191,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
         threadId: session.thread as ThreadId,
         resumeCursor: cursorOf(session),
         ...(session.model === undefined ? {} : { model: session.model }),
+        ...(session.cwd === undefined ? {} : { cwd: session.cwd }),
         createdAt: NOW,
         updatedAt: NOW,
       }) as ProviderSession;
@@ -261,6 +264,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
             held: null,
             requests: new Map(),
             model: input.modelSelection?.model,
+            cwd: input.cwd,
           };
           sessions.set(threadId, session);
           yield* emit("session.started", threadId);

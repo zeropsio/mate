@@ -138,3 +138,34 @@ it.effect.each([
       expect(resolutions).toBe(1);
     }),
 );
+
+it.effect("serves a published page as a document that runs nothing at its own address", () =>
+  Effect.gen(function* () {
+    const root = yield* Effect.promise(() =>
+      NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "mate-http-page-")),
+    );
+    roots.push(root);
+    const store = new ContentAssets(root);
+    // A page that opens with an SVG still is a page, never a picture.
+    const html = '<svg xmlns="http://www.w3.org/2000/svg"></svg><script>fetch("/api")</script>';
+    const page = yield* Effect.promise(() =>
+      store.ingestPage(["call"], Buffer.from(html), {
+        threadId: ThreadId.make("thread"),
+        ownerId: "call",
+        name: "page-1.html",
+      }),
+    );
+    const object = yield* Effect.promise(() => store.object(page.original.digest));
+    const response = yield* protectedContentAsset(Effect.succeed(null), Effect.succeed(object), {
+      method: "GET",
+      headers: {},
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers["content-type"]).toBe("text/html");
+    expect(response.headers["content-security-policy"]).toBe("default-src 'none'; sandbox");
+    const bytes = yield* Effect.promise(async () =>
+      Buffer.from(await HttpServerResponse.toWeb(response).arrayBuffer()).toString(),
+    );
+    expect(bytes).toBe(html);
+  }),
+);

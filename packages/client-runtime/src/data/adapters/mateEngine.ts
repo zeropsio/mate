@@ -10,6 +10,7 @@
  * @module data/adapters/mateEngine
  */
 import {
+  ENGINE_WIRE_BUDGETS,
   EnvironmentAuthorizationError,
   MATE_ENGINE_PROTOCOLS,
   WS_METHODS,
@@ -496,7 +497,13 @@ export function makeMateEngineConversations(options: {
               reading: null,
             });
             if (run.end === null) {
-              const lines = [...held.values()].filter((item) => item.kind !== "person");
+              // Held from its live tail: the newest items a window carries. A window also pins a
+              // run's person messages, requests and published pages however old: counting those
+              // claimed everything between them and the tail was held, and it was never read.
+              const lines = [...held.values()]
+                .sort((a, b) => b.seq - a.seq)
+                .slice(0, ENGINE_WIRE_BUDGETS.liveTailItems)
+                .filter((item) => item.kind !== "person");
               const from =
                 lines.length === 0
                   ? (run.summary.lastItemSeq ?? 0) + 1

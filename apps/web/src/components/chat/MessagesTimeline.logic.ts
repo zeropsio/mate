@@ -18,6 +18,7 @@ import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
+  type CallResultPage,
   type CrewSeam,
   type MessageId,
   type OrchestrationLatestTurn,
@@ -715,6 +716,13 @@ type MessagesTimelineRowBody =
     }
   | { kind: "outcome"; id: string; createdAt: string; outcome: OutcomeModel }
   | {
+      /** A page the Mate published for the person: above its answer, live and after a reload. */
+      kind: "page";
+      id: string;
+      createdAt: string;
+      page: CallResultPage;
+    }
+  | {
       /**
        * A value the Mate asked the person for (`zerops_env action=request`): theirs to answer, so
        * it stands after the run and its answer, never folded away with the work.
@@ -1009,6 +1017,8 @@ export function rowGap(
     return isPersonRow(previous) || opensRun(previous) ? "part" : turnAfter(previous);
   }
   if (opensRun(row)) return isPersonRow(previous) ? "part" : turnAfter(previous);
+  // A page the Mate published is a part of its turn, as its answer under it is.
+  if (row.kind === "page") return previous.kind === "page" ? "block" : "part";
   if (closesTurn(previous)) return row.kind === "outcome" ? "line" : "block";
   // The result hangs from its heading or its record: they read as one.
   if (row.kind === "outcome" && (previous.kind === "work-line" || previous.kind === "record"))
@@ -1160,6 +1170,28 @@ function approvalPending(stretch: Stretch): Extract<TimelineEntry, { kind: "work
     else if (entry.entry.sourceActivityKind === "approval.resolved") open.shift();
   }
   return open.at(-1) ?? null;
+}
+
+/**
+ * The pages a turn's calls published, each once, in the order they were published: a call's
+ * record carries its page by reference (`zerops_publish_page`), on the engine only.
+ */
+function turnPages(turn: ConversationTurn): Array<Extract<MessagesTimelineRow, { kind: "page" }>> {
+  const pages: Array<Extract<MessagesTimelineRow, { kind: "page" }>> = [];
+  for (const stretch of turn.stretches)
+    for (const candidate of stretch.entries) {
+      if (candidate.kind !== "generic-call" && candidate.kind !== "work") continue;
+      const page = candidate.entry.publishedPage;
+      if (page === undefined || pages.some((shown) => shown.page.asset.id === page.asset.id))
+        continue;
+      pages.push({
+        kind: "page",
+        id: `page:${candidate.entry.toolCallId ?? candidate.id}`,
+        createdAt: new Date(page.publishedAt).toISOString(),
+        page,
+      });
+    }
+  return pages;
 }
 
 /**
@@ -3057,8 +3089,9 @@ export function deriveMessagesTimelineRows(input: {
 
     // With nothing to report, the Mate's last word under the run eases up
     // from where what ran alongside it stood.
+    const pages = turnPages(turn);
     const foldsFrom: FoldsFrom | undefined =
-      result !== null || (turn.live && !answeredAlone)
+      result !== null || pages.length > 0 || (turn.live && !answeredAlone)
         ? undefined
         : {
             turnKey: turn.key,
@@ -3067,6 +3100,8 @@ export function deriveMessagesTimelineRows(input: {
           };
     // A provider pause owns its stage, outside the work card it follows.
     if (pause !== null) rows.push(pause);
+    // What the Mate published for the person stands right above its answer, outside the card.
+    for (const page of pages) rows.push(page);
     // Each earlier run's answer stays under the card where it stood; the latest follows them.
     for (const earlier of turn.earlierAnswers)
       rows.push({

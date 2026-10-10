@@ -57,6 +57,27 @@ export const resolveImageAsset = Effect.fn("resolveImageAsset")(function* (
         : /^mate-asset:[a-f0-9-]{36}:(source-missing|source-changed|storage-full|unsupported|persistence-failed)$/.exec(
             resource.path,
           )?.[1];
+  // A page a call published, under the same reference as a picture: its document, no picture's
+  // occurrence, to its own conversation alone.
+  const page =
+    occurrenceId && resource._tag !== "attachment" && resource._tag !== "project-favicon"
+      ? yield* Effect.promise(() => store.pageOccurrence(occurrenceId).catch(() => null))
+      : null;
+  if (page !== null) {
+    if (!(input.ownsThread ? input.ownsThread(page.threadId) : page.threadId === threadId))
+      return yield* Effect.fail(new ContentAssetError("object-missing"));
+    const relativeUrl = `/api/assets/objects/${page.original.digest}/original`;
+    return {
+      relativeUrl,
+      expiresAt: 0,
+      representation: {
+        digest: page.original.digest,
+        mimeType: page.original.mimeType,
+        sizeBytes: page.original.sizeBytes,
+        relativeUrl,
+      },
+    } satisfies AssetCreateUrlResult;
+  }
   let occurrence;
   if (occurrenceId) {
     occurrence = yield* Effect.tryPromise({

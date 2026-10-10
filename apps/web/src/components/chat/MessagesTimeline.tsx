@@ -186,6 +186,7 @@ import {
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
+import { PublishedPage } from "./PublishedPage";
 import { TurnReport } from "./TurnReport";
 import { ConversationAfterWork, ConversationWorking, dockDraws } from "./ConversationWorking";
 import { useEndingsHeld } from "./useEndingsHeld";
@@ -2479,6 +2480,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       ) : null}
       {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}
       {row.kind === "outcome" ? <OutcomeTimelineRow row={row} /> : null}
+      {row.kind === "page" ? <PageTimelineRow row={row} /> : null}
       {row.kind === "vault-request" ? <VaultRequestTimelineRow row={row} /> : null}
       {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
       {row.kind === "crew-seam" ? <CrewSeamActivity seam={row.seam} words={row.words} /> : null}
@@ -2865,6 +2867,19 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
         timestampFormat={ctx.timestampFormat}
       />
     </div>
+  );
+}
+
+/** A page the Mate published, right above its answer. */
+function PageTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "page" }> }) {
+  const ctx = use(TimelineRowCtx);
+  if (ctx.threadRef === null) return null;
+  return (
+    <PublishedPage
+      page={row.page}
+      environmentId={ctx.threadRef.environmentId}
+      threadId={ctx.threadRef.threadId}
+    />
   );
 }
 

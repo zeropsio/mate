@@ -33,6 +33,26 @@ export const ImageOccurrence = Schema.Struct({
 });
 export type ImageOccurrence = typeof ImageOccurrence.Type;
 
+/**
+ * A page an agent published, as the asset store keeps it: apart from its pictures, in an index of
+ * its own, so a Mate that reads only pictures never meets one.
+ */
+export const PageOccurrence = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  threadId: ThreadId,
+  projectId: Schema.optionalKey(ProjectId),
+  ownerId: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  provenance: Schema.Literal("capture"),
+  original: Schema.Struct({
+    status: Schema.Literal("ready"),
+    digest: AssetDigest,
+    mimeType: Schema.Literal("text/html"),
+    sizeBytes: PositiveInt,
+  }),
+});
+export type PageOccurrence = typeof PageOccurrence.Type;
+
 export const AssetRepresentation = Schema.Struct({
   digest: AssetDigest,
   mimeType: Schema.String,

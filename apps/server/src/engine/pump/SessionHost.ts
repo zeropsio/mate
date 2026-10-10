@@ -49,7 +49,7 @@ import type { ConversationsShape } from "../Conversations.ts";
 import type { ProviderSignal } from "../domain/command.ts";
 import { signalsCommandId } from "../domain/ids.ts";
 import type { LiveBusShape } from "../LiveBus.ts";
-import type { CallPictures } from "./callPictures.ts";
+import { publishedPage, type CallPictures } from "./callPictures.ts";
 import { makeToCore, type SendEvidence } from "./toCore.ts";
 
 /** How an unasked session reads in the record. */
@@ -259,6 +259,28 @@ export const makeSessionHost = Effect.fnUntraced(function* (
             ...(stored.dropped ? { imagesDropped: true } : {}),
           },
         };
+      }
+      // A page it published goes to the asset store too: the record holds it by reference, the
+      // same live and after a reload, however long zcp keeps its own copy.
+      const published =
+        body.state === "done" && body.result !== undefined ? publishedPage(body.result) : null;
+      if (published !== null && deps.pictures !== undefined) {
+        const kept = yield* deps.pictures.page(input.thread, signal.key, published.file);
+        if (kept !== null && body.result !== undefined) {
+          const publishedAt = body.endedAt ?? (yield* Clock.currentTimeMillis);
+          body = {
+            ...body,
+            result: {
+              ...body.result,
+              page: {
+                asset: kept.asset,
+                title: published.title,
+                bytes: kept.bytes,
+                publishedAt,
+              },
+            },
+          };
+        }
       }
       const looked = body.shows?.imagePath;
       if (

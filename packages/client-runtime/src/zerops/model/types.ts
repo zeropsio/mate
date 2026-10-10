@@ -1,5 +1,5 @@
 import type { RestartReading } from "../../data/projections/restart.ts";
-import type { ImageOccurrence } from "@t3tools/contracts";
+import type { CallResultPage, ImageOccurrence } from "@t3tools/contracts";
 /**
  * The session and operation model — one object per thing Mate does to the
  * project, identity a domain fact (the provider's tool-call id) rather than a
@@ -50,6 +50,8 @@ export interface ZeropsCall {
   readonly truncated: boolean;
   /** Image content blocks the result carried (e.g. a `zerops_browser` screenshot), carried forward like `resultText` (§2.3 R3). */
   readonly images?: ReadonlyArray<ZeropsCallImage>;
+  /** The page it published (`zerops_publish_page`), by reference: an engine record carries it. */
+  readonly page?: CallResultPage;
   /** `min createdAt` over the call's rows. */
   readonly startedAt: string;
   /** The row whose `createdAt` is `startedAt` — tiebreak only, never identity. */

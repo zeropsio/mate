@@ -993,6 +993,28 @@ describe("an engine run its card does not hold whole when it paints", () => {
       }),
   );
 
+  // A reload's window pins a run's page calls (and requests) however old, beside its newest items:
+  // reading from the oldest of them claimed everything between it and the tail was held.
+  it.live("holds a live run from its newest items, never from a page its window pins", () =>
+    Effect.gen(function* () {
+      const long = longRun(1_700, "live");
+      const pinned = {
+        ...long.items[299]!,
+        kind: "call",
+        result: { toolName: "zerops_publish_page" },
+      } as Item;
+      const r = rig(long.pager);
+      r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(
+        snapshot({ runs: [long.record], items: [long.items[0]!, pinned, ...long.window.slice(1)] }),
+        synchronized(12),
+      );
+      expect(span(r)).toEqual({ from: 1_661, to: null, reading: null });
+      r.close();
+    }),
+  );
+
   // Catches a card that read one of its runs: a run a restart cut and the run that continues it
   // share a card, and both lie outside the window on a cold open.
   it.live("pages through every run its card draws, in order, until it holds them whole", () =>

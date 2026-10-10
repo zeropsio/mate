@@ -7,7 +7,7 @@
  */
 import * as Schema from "effect/Schema";
 
-import { ImageOccurrence } from "./assetReference.ts";
+import { ImageOccurrence, PageOccurrence } from "./assetReference.ts";
 
 /** The longest input line a call's record keeps, in UTF-16 code units (V1's activity detail). */
 export const CALL_INPUT_MAX = 180;
@@ -25,6 +25,22 @@ export const CallResultPicture = Schema.Struct({
 });
 export type CallResultPicture = typeof CallResultPicture.Type;
 
+/** The largest page a call records: zcp's own cap on a published page (`ops.PageMaxBytes`). */
+export const PAGE_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * A page the agent published (`zerops_publish_page`) for the person to see above its reply: a
+ * self-contained HTML document kept in the Mate's asset store, by reference as a picture is, with
+ * its title, its size in bytes and when the call that published it ended.
+ */
+export const CallResultPage = Schema.Struct({
+  asset: PageOccurrence,
+  title: Schema.String,
+  bytes: Schema.Number,
+  publishedAt: Schema.Number,
+});
+export type CallResultPage = typeof CallResultPage.Type;
+
 /**
  * A `zerops_*` call's result, as V1's activity carries it (`ZeropsActivityResult`): the tool's
  * name, its text verbatim — absent while it runs, or when it was over the server's limit
@@ -36,6 +52,8 @@ export const CallResult = Schema.Struct({
   truncated: Schema.optionalKey(Schema.Boolean),
   images: Schema.optionalKey(Schema.Array(CallResultPicture)),
   imagesDropped: Schema.optionalKey(Schema.Boolean),
+  /** The page it published, on the engine only. */
+  page: Schema.optionalKey(CallResultPage),
 });
 export type CallResult = typeof CallResult.Type;
 

@@ -410,22 +410,20 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         : /^mate-asset:([a-f0-9-]{36})$/.exec(input.resource.path)?.[1];
   if (occurrenceId) {
     const config = yield* ServerConfig.ServerConfig;
+    const store = contentAssetsAt(config.stateDir);
+    // A page a call published is kept apart from the pictures, under the same reference.
     const occurrence = yield* Effect.tryPromise({
-      try: () => contentAssetsAt(config.stateDir).occurrence(occurrenceId),
+      try: () => store.occurrence(occurrenceId).catch(() => store.pageOccurrence(occurrenceId)),
       catch: (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
     });
-    if (occurrence.original.status !== "ready")
+    const original = occurrence.original;
+    if (original.status !== "ready")
       return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
     return {
-      relativeUrl: `/api/assets/objects/${occurrence.original.digest}/original`,
+      relativeUrl: `/api/assets/objects/${original.digest}/original`,
       expiresAt: 0,
-      ...(occurrence.original.width && occurrence.original.height
-        ? {
-            imageDimensions: {
-              width: occurrence.original.width,
-              height: occurrence.original.height,
-            },
-          }
+      ...("width" in original && original.width && original.height
+        ? { imageDimensions: { width: original.width, height: original.height } }
         : {}),
     };
   }

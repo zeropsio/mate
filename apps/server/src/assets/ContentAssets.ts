@@ -4,9 +4,10 @@ import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
-import type { AssetRepresentation, ImageOccurrence } from "@t3tools/contracts";
+import type { AssetRepresentation, ImageOccurrence, PageOccurrence } from "@t3tools/contracts";
 import {
   ImageOccurrence as OccurrenceSchema,
+  PageOccurrence as PageOccurrenceSchema,
   AssetRepresentation as RepresentationSchema,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -14,8 +15,12 @@ import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import sharp, { type Metadata } from "sharp";
 
 const decodeOccurrence = Schema.decodeUnknownSync(OccurrenceSchema);
+const decodePageOccurrence = Schema.decodeUnknownSync(PageOccurrenceSchema);
 const decodeRepresentation = Schema.decodeUnknownSync(RepresentationSchema);
 const digestOf = (bytes: Uint8Array) => NodeCrypto.createHash("sha256").update(bytes).digest("hex");
+/** A page's object identity: its bytes as a page, never the same object as the same bytes as a picture. */
+const pageDigestOf = (bytes: Uint8Array) =>
+  NodeCrypto.createHash("sha256").update("mate-page\0").update(bytes).digest("hex");
 const hasCode = (error: unknown, code: string) =>
   typeof error === "object" && error !== null && "code" in error && error.code === code;
 export class ContentAssetError extends Error {
@@ -56,6 +61,8 @@ export function isStorageFull(error: unknown): boolean {
   return false;
 }
 type Owner = Omit<ImageOccurrence, "id" | "original"> & { readonly mimeType?: string };
+/** The one kind of original besides a picture: a page an agent published. */
+export const PAGE_MIME_TYPE = "text/html";
 type StoredObject = AssetRepresentation & { readonly path: string };
 const stores = new Map<string, ContentAssets>();
 export const contentAssetsAt = (stateDir: string) => {
@@ -72,6 +79,7 @@ export const contentAssetsAt = (stateDir: string) => {
 export class ContentAssets {
   private mutation: Promise<void> = Promise.resolve();
   private ownership: Promise<Map<string, ImageOccurrence[]>> | undefined;
+  private pageOwnership: Promise<Map<string, PageOccurrence[]>> | undefined;
   private previewOwnership: Promise<Map<string, Set<string>>> | undefined;
   private readonly backfilling = new Map<string, Promise<ImageOccurrence>>();
   private readonly encoding = new Map<string, Promise<AssetRepresentation>>();
@@ -374,6 +382,93 @@ export class ContentAssets {
     );
   }
 
+  /**
+   * A page an agent published, kept as its bytes came and never read as a picture, even one that
+   * opens with an SVG. It is kept apart from the pictures: its object's identity says it is a page
+   * (`pageDigestOf`), and its occurrence lives in `pages/`, an index a build that reads only
+   * pictures never opens. Kept once per `key`: the same call told again keeps nothing twice.
+   */
+  async ingestPage(
+    key: ReadonlyArray<unknown>,
+    bytes: Uint8Array,
+    owner: Omit<PageOccurrence, "id" | "original" | "provenance">,
+  ): Promise<PageOccurrence> {
+    const binding = NodePath.join(
+      this.directory,
+      "pages",
+      "bindings",
+      `${digestOf(Buffer.from(JSON.stringify(key)))}.json`,
+    );
+    const bound = await NodeFSP.readFile(binding, "utf8")
+      .then((text) => this.pageOccurrence((JSON.parse(text) as { id: string }).id))
+      .catch(() => null);
+    if (bound !== null) return bound;
+    const digest = pageDigestOf(bytes);
+    const file = NodePath.join(this.directory, "originals", digest);
+    const exists = await this.object(digest).then(
+      (object) => object.mimeType === PAGE_MIME_TYPE,
+      () => false,
+    );
+    if (!exists) {
+      await this.atomic(file, bytes);
+      await NodeFSP.chmod(file, 0o444);
+      const representation: AssetRepresentation = {
+        digest,
+        mimeType: PAGE_MIME_TYPE,
+        sizeBytes: bytes.byteLength,
+        relativeUrl: `/api/assets/objects/${digest}/original`,
+      };
+      await this.atomic(`${file}.json`, Buffer.from(JSON.stringify(representation)));
+    }
+    const occurrence: PageOccurrence = {
+      ...owner,
+      id: NodeCrypto.randomUUID(),
+      provenance: "capture",
+      original: { status: "ready", digest, mimeType: PAGE_MIME_TYPE, sizeBytes: bytes.byteLength },
+    };
+    await this.atomic(
+      NodePath.join(this.directory, "pages", `${occurrence.id}.json`),
+      Buffer.from(JSON.stringify(occurrence)),
+    );
+    await this.atomic(binding, Buffer.from(JSON.stringify({ id: occurrence.id })));
+    if (this.pageOwnership) {
+      const owners = await this.pageOwnership.catch(() => null);
+      owners?.set(digest, [...(owners.get(digest) ?? []), occurrence]);
+    }
+    return occurrence;
+  }
+
+  async pageOccurrence(id: string): Promise<PageOccurrence> {
+    if (!/^[a-f0-9-]{36}$/.test(id)) throw new ContentAssetError("object-missing");
+    try {
+      return decodePageOccurrence(
+        JSON.parse(
+          await NodeFSP.readFile(NodePath.join(this.directory, "pages", `${id}.json`), "utf8"),
+        ),
+      );
+    } catch {
+      throw new ContentAssetError("object-missing");
+    }
+  }
+
+  /** The pages whose object is `digest`: who may read it. */
+  async pageOwners(digest: string): Promise<ReadonlyArray<PageOccurrence>> {
+    this.pageOwnership ??= (async () => {
+      const owners = new Map<string, PageOccurrence[]>();
+      const files = await NodeFSP.readdir(NodePath.join(this.directory, "pages")).catch(() => []);
+      for (const file of files.filter((name) => name.endsWith(".json"))) {
+        const page = await this.pageOccurrence(file.slice(0, -5)).catch(() => null);
+        if (page === null) continue;
+        owners.set(page.original.digest, [...(owners.get(page.original.digest) ?? []), page]);
+      }
+      return owners;
+    })().catch((error) => {
+      this.pageOwnership = undefined;
+      throw error;
+    });
+    return (await this.pageOwnership).get(digest) ?? [];
+  }
+
   async occurrence(id: string): Promise<ImageOccurrence> {
     if (!/^[a-f0-9-]{36}$/.test(id)) throw new ContentAssetError("object-missing");
     try {
@@ -421,8 +516,9 @@ export class ContentAssets {
       const owners = new Map<string, ImageOccurrence[]>();
       const files = await NodeFSP.readdir(NodePath.join(this.directory, "occurrences"));
       for (const file of files.filter((name) => name.endsWith(".json"))) {
-        const occurrence = await this.occurrence(file.slice(0, -5));
-        if (occurrence.original.status !== "ready") continue;
+        // Each on its own: one occurrence this build cannot read never hides every other.
+        const occurrence = await this.occurrence(file.slice(0, -5)).catch(() => null);
+        if (occurrence === null || occurrence.original.status !== "ready") continue;
         const values = owners.get(occurrence.original.digest) ?? [];
         values.push(occurrence);
         owners.set(occurrence.original.digest, values);

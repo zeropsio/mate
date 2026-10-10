@@ -693,6 +693,70 @@ describe("a client reading an engine call", () => {
   );
 });
 
+describe("a page the Mate publishes", () => {
+  it.effect("reaches the client on its call by reference, the same live and after a reload", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* makeEngineWorld({ driver: "claudeAgent", assets: true });
+        yield* w.boot;
+        yield* w.tell({
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: "m1",
+            profile: { kind: "mate" },
+          },
+        });
+        // zcp keeps it in the session's own workspace, where the pump reads it.
+        const pages = NodePath.join(w.dir, ".zcp", "state", "pages");
+        NodeFS.mkdirSync(pages, { recursive: true });
+        const file = NodePath.join(pages, "page-0123456789abcdef.html");
+        NodeFS.writeFileSync(file, "<h1>The plan</h1>");
+        const wire = yield* wireOf(w);
+        const live = yield* watch(w, wire);
+        yield* send(wire, "Plan the launch");
+        yield* w.settle;
+        yield* w.agent((agent, thread) =>
+          agent.zerops(
+            thread,
+            "zerops_publish_page",
+            { title: "Launch plan", path: "plan.html" },
+            '{"title":"Launch plan"}',
+            JSON.stringify({
+              page: {
+                id: "page-0123456789abcdef",
+                title: "Launch plan",
+                file,
+                bytes: 17,
+              },
+              message: "Published",
+            }),
+          ),
+        );
+        yield* w.agent((agent, thread) => agent.say(thread, "The plan is above."));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const liveCall = live
+          .flatMap((frame) => (frame.type === "changes" ? frame.items : []))
+          .findLast((item) => item.kind === "call");
+        const [reload] = yield* Effect.scoped(watch(w, wire));
+        if (reload?.type !== "snapshot") throw new Error("no snapshot");
+        const reloadCall = reload.items.find((item) => item.kind === "call");
+        const page = liveCall?.kind === "call" ? liveCall.result?.page : undefined;
+        assert.include(page, { title: "Launch plan", bytes: 17 });
+        assert.include(page?.asset.original, { status: "ready", mimeType: "text/html" });
+        assert.deepStrictEqual(reloadCall?.kind === "call" ? reloadCall.result?.page : null, page);
+        // A reload's window holds the page with the answer, never the rest of the run's work.
+        assert.deepStrictEqual(
+          reload.items.map((item) => item.kind),
+          ["person", "call", "note"],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
+
 describe("a client subscribed to a Mate's conversation rows", () => {
   it.effect("gets each conversation's row with its agent, then the row again as it changes", () =>
     Effect.scoped(
