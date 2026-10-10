@@ -93,6 +93,7 @@ import {
 } from "../../native/SelectableMarkdownText";
 
 import { AppText as Text } from "../../components/AppText";
+import { PublishedPage } from "../zerops/PublishedPage";
 import { VideoPreviewModal, type VideoPreviewSource } from "../../components/VideoPreviewModal";
 import { VideoAttachmentTile } from "../../components/VideoAttachmentTile";
 import { CopyTextButton } from "../../components/CopyTextButton";
@@ -1393,6 +1394,7 @@ function renderFeedEntry(
   props: Pick<
     ThreadFeedProps,
     | "environmentId"
+    | "threadId"
     | "onUseArtifactTemplate"
     | "skills"
     | "dispatchingMessageId"
@@ -1455,6 +1457,16 @@ function renderFeedEntry(
           tintColor={iconSubtleColor}
         />
       </Pressable>
+    );
+  }
+
+  if (entry.type === "page") {
+    return (
+      <PublishedPage
+        page={entry.page}
+        environmentId={props.environmentId}
+        threadId={props.threadId}
+      />
     );
   }
 
@@ -2773,6 +2785,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       >
         {renderFeedEntry(info, {
           environmentId: props.environmentId,
+          threadId: props.threadId,
           dispatchingMessageId: props.dispatchingMessageId,
           onEditPendingMessage: props.onEditPendingMessage,
           copiedRowId,
@@ -2835,6 +2848,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       onToggleWorkGroup,
       onToggleWorkRow,
       props.environmentId,
+      props.threadId,
       props.onUseArtifactTemplate,
       props.skills,
       renderMarkdownImage,

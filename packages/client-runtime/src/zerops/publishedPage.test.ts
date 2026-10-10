@@ -6,6 +6,7 @@ import {
   innerDocumentOf,
   linkToOpen,
   pageDocument,
+  pageCapHeight,
   pageFrameHeight,
   readPageMessage,
   type PageTheme,
@@ -225,5 +226,14 @@ describe("a published page's frame height", () => {
     { title: "an empty page, still a line tall", content: 0, want: 48 },
   ])("is $title", ({ content, want }) => {
     expect(pageFrameHeight(content)).toBe(want);
+  });
+});
+
+describe("the cap a published page stands at before it says its height", () => {
+  it.each([
+    { title: "a tall view, the web's 440", view: 1000, want: 440 },
+    { title: "a short view, about half of it", view: 600, want: 312 },
+  ])("is $title", ({ view, want }) => {
+    expect(pageCapHeight(view)).toBe(want);
   });
 });

@@ -280,3 +280,11 @@ const PAGE_MIN_HEIGHT = 48;
 export function pageFrameHeight(content: number | null): number | null {
   return content === null ? null : Math.max(PAGE_MIN_HEIGHT, content);
 }
+
+/**
+ * The cap every item of a run shares, for a client that sizes in numbers: the web's
+ * `--run-words-cap`, `min(440px, 52svh)`, for a view this tall.
+ */
+export function pageCapHeight(viewHeight: number): number {
+  return Math.round(Math.min(440, viewHeight * 0.52));
+}
