@@ -441,10 +441,15 @@ export function workedWords(speaker: string, status: RunStatus): string {
   }
   // Its turn ended for the person's message, not by their Stop (run 11).
   if (status.face === "interrupted") {
-    return `${speaker} ${status.worked ? "worked" : "thought"} ${took} until your message`;
+    return `${speaker} ${effortVerb(status)} ${took} until your message`;
   }
   if (status.face === "paused") return `${speaker} paused at the limit · ${took}`;
-  return `${speaker} ${status.worked ? "worked" : "thought"} ${took}`;
+  return `${speaker} ${effortVerb(status)} ${took}`;
+}
+
+/** What the run's time went on: work, words to the person, or thought alone. */
+function effortVerb(status: RunStatus): string {
+  return status.worked ? "worked" : status.wrote === true ? "wrote" : "thought";
 }
 
 /** What the now line says, from what the run is doing now. */

@@ -956,6 +956,8 @@ export interface EngineCardCounts {
   readonly tools: Readonly<Record<string, number>>;
   /** Files edited, each once; `null` when a summary did not count them. */
   readonly edited: number | null;
+  /** A run of the card answered the person in words. */
+  readonly answered?: boolean;
 }
 
 /**
@@ -996,7 +998,8 @@ export function engineCardCounts(runs: ReadonlyArray<RunRecord>): EngineCardCoun
     edited =
       edited === null || run.summary.edited === undefined ? null : edited + run.summary.edited;
   }
-  return { calls, tools, edited };
+  const answered = runs.some((run) => run.summary.answerItemId != null);
+  return { calls, tools, edited, ...(answered ? { answered } : {}) };
 }
 
 /** The cards of a conversation not held whole, by the card's id (the turn the view draws). */
