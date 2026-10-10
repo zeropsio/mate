@@ -36,7 +36,7 @@ export const signInOrganization = Effect.fn("signin.chooseOrganization")(functio
     );
     if (await page.$('::-p-aria(KRLS Owner[role="button"])'))
       await page.locator('::-p-aria(KRLS Owner[role="button"])').click();
-    await visibleText(page, "sidebar-account", "KRLS");
+    await visibleText(page, "sidebar-account-organization", "KRLS");
   });
 });
 
@@ -46,7 +46,7 @@ export function account(page: Page) {
   };
   return {
     showsOrganization: (name: string) =>
-      Effect.promise(() => visibleText(page, "sidebar-account", name)),
+      Effect.promise(() => visibleText(page, "sidebar-account-organization", name)),
     showsPerson: (name: string, reason = "Signed-in account menu missing") =>
       Effect.promise(async () => {
         try {
@@ -63,7 +63,7 @@ export function account(page: Page) {
       Effect.promise(async () => {
         await openMenu();
         await page.locator(`::-p-aria(${name}[role="menuitemradio"])`).click();
-        await visibleText(page, "sidebar-account", name);
+        await visibleText(page, "sidebar-account-organization", name);
       }),
     signOut: Effect.promise(async () => {
       await openMenu();
