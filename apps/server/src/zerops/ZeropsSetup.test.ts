@@ -25,6 +25,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -1541,6 +1542,56 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
           ["thread-main", { kind: "v1", threadId: "thread-main" }, 0],
         ]);
       }),
+  );
+
+  // Rhea, 2026-10-10: its boot after the flip logged nothing about its main conversation, where
+  // Toby's and Sage's said their import ended; its record had been brought in at an earlier boot.
+  it.live.each([
+    {
+      found: "the engine already holds it",
+      held: true,
+      line: "the main conversation is on the engine",
+    },
+    { found: "a V1 main conversation", held: false, line: "the engine took the main conversation" },
+  ])("a flipped Mate's boot says what became of its main conversation: $found", ({ held, line }) =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      if (held)
+        yield* Ref.set(world.engineViews, [
+          {
+            ...engineView("thread-main"),
+            agent: {
+              instanceId: "claudeAgent",
+              driver: "claudeAgent",
+              model: "m",
+              profile: { kind: "mate" },
+            },
+          },
+        ]);
+      yield* Ref.set(world.providers, [instance("claudeAgent"), instance("codex")]);
+      const said: Array<string> = [];
+      const logger = Logger.make(({ message }) => {
+        const first = Array.isArray(message) ? message[0] : message;
+        if (typeof first === "string" && first.startsWith("zerops setup: ")) said.push(first);
+      });
+      const database = freshDatabase();
+      // Its stand-up settled on V1 long ago.
+      yield* recordIn(database, "server");
+      yield* onEngine(world, database, (setup) =>
+        Effect.andThen(
+          setup.awaitStandUp,
+          eventually(
+            Effect.sync(() => said),
+            (lines) => lines.some((each) => each.includes("main conversation")),
+          ).pipe(Effect.timeout("5 seconds")),
+        ),
+      ).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
+      assert.deepStrictEqual(
+        said.filter((each) => each.includes("main conversation")),
+        [`zerops setup: ${line}`],
+      );
+      assert.deepStrictEqual((yield* Ref.get(world.imported)).length, held ? 0 : 1);
+    }),
   );
 
   // Catches a send right after a flipped Mate's restart taking run 1 before the main
