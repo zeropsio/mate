@@ -107,9 +107,14 @@ export function SidebarZeropsAccount({
     return (
       <Menu>
         <MenuTrigger
-          aria-label={`Account: ${account.name}`}
-          className="menu-foot-photo"
-          data-zerops-surface="sidebar-account"
+          render={
+            <button
+              aria-label={`Account: ${account.name}`}
+              className="menu-foot-photo"
+              data-zerops-surface="sidebar-account"
+              type="button"
+            />
+          }
         >
           <Avatar initials={account.initials} size="md" src={account.avatarUrl} />
         </MenuTrigger>
@@ -136,9 +141,14 @@ export function SidebarZeropsAccount({
       {/* One ···: how the list reads, the organization, the places, and the way out. */}
       <Menu>
         <MenuTrigger
-          aria-label={`Account: ${account.name}`}
-          className="menu-foot-button"
-          data-zerops-surface="sidebar-account"
+          render={
+            <button
+              aria-label={`Account: ${account.name}`}
+              className="menu-foot-button"
+              data-zerops-surface="sidebar-account"
+              type="button"
+            />
+          }
         >
           <EllipsisIcon aria-hidden="true" className="size-4" />
         </MenuTrigger>
