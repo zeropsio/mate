@@ -55,6 +55,7 @@ import {
   takeOwnScroll,
   type EndFollow,
 } from "./timelineEndFollow";
+import { takeWordsStood } from "./wordsLanding";
 import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
@@ -846,9 +847,60 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       endFollowRef.current = null;
     };
   }, [listRef]);
+  // An answer held where its words were read (`onAnswerLands`): the follower waits on it.
+  const landingRef = useRef<{
+    readonly words: HTMLElement;
+    readonly bottom: number;
+    readonly since: number;
+    frame: number;
+  } | null>(null);
   const followEnd = useCallback(() => {
-    if (outerFoldsRef.current.size === 0) endFollowRef.current?.follow();
+    if (outerFoldsRef.current.size === 0 && landingRef.current === null) {
+      endFollowRef.current?.follow();
+    }
   }, []);
+  // Its last line back where it was read, in the frame that moved it.
+  const holdAnswer = useCallback(() => {
+    const landing = landingRef.current;
+    const scroller = listRef.current?.getScrollableNode();
+    if (landing === null || !scroller || !landing.words.isConnected) return;
+    const off = landing.words.getBoundingClientRect().bottom - landing.bottom;
+    if (Math.abs(off) > 0.5) scrollOwn(scroller, scroller.scrollTop + off);
+  }, [listRef]);
+  // Run 5 (C +0:15.29): the answer whose words the person read at the slot's foot landed from its
+  // first line, and the page glided 1033 px after it. Its last line stands where theirs was: held
+  // there while the card folds above it and the list places and measures it, then kept as the end.
+  const onAnswerLands = useCallback(
+    (words: HTMLElement, bottom: number) => {
+      if (!listRef.current?.getScrollableNode() || !followingEndRef.current) return;
+      const held = landingRef.current;
+      if (held !== null) cancelAnimationFrame(held.frame);
+      endFollowRef.current?.stop();
+      const landing = { words, bottom, since: performance.now(), frame: 0 };
+      landingRef.current = landing;
+      holdAnswer();
+      const step = (now: number) => {
+        if (landingRef.current !== landing) return;
+        holdAnswer();
+        const settling = outerFoldsRef.current.size > 0 || now - landing.since < ANSWER_HOLD_MS;
+        if (settling && followingEndRef.current) {
+          landing.frame = requestAnimationFrame(step);
+          return;
+        }
+        landingRef.current = null;
+        if (followingEndRef.current) endFollowRef.current?.keep();
+      };
+      landing.frame = requestAnimationFrame(step);
+    },
+    [holdAnswer, listRef],
+  );
+  useEffect(
+    () => () => {
+      const held = landingRef.current;
+      if (held !== null) cancelAnimationFrame(held.frame);
+    },
+    [],
+  );
   const onFoldWork = useCallback<NonNullable<TimelineRowSharedState["onFoldWork"]>>(
     (input) => {
       const release = () => {
@@ -920,8 +972,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     placeFolds();
     if (!followingEndRef.current) return;
     endFollowRef.current?.observe();
+    holdAnswer();
     queueMicrotask(() => {
       placeFolds();
+      holdAnswer();
       followEnd();
     });
     if (endRepinFrameRef.current !== null) return;
@@ -930,7 +984,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       placeFolds();
       followEnd();
     });
-  }, [followEnd, placeFolds]);
+  }, [followEnd, holdAnswer, placeFolds]);
 
   // Where the person is, kept as they move, by row: the row at the reading
   // line, how far into it, how tall it was, the run's line and the row above
@@ -1432,6 +1486,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       syncing,
       onHoldReading: onManualNavigation,
       onFoldWork,
+      onAnswerLands,
     }),
     [
       timestampFormat,
@@ -1472,6 +1527,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       syncing,
       onManualNavigation,
       onFoldWork,
+      onAnswerLands,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -3302,6 +3358,9 @@ function MateProseWords({
   );
 }
 
+/** How long an answer is held where its words were read: its card folds, its row is measured. */
+const ANSWER_HOLD_MS = 1200;
+
 function MateProse({
   message: recorded,
   showMeta,
@@ -3312,6 +3371,15 @@ function MateProse({
   const ctx = use(TimelineRowCtx);
   const message = useEngineLiveMessage(recorded);
   const messageText = message.text || (message.streaming ? "" : "(empty response)");
+  // Landing from the run's slot, where its words were being read: its last line stands there.
+  const wordsRef = useRef<HTMLDivElement>(null);
+  const { onAnswerLands } = ctx;
+  const { id } = message;
+  useLayoutEffect(() => {
+    const words = wordsRef.current;
+    const bottom = takeWordsStood(id);
+    if (words !== null && bottom !== null) onAnswerLands?.(words, bottom);
+  }, [id, onAnswerLands]);
   const copy = resolveAssistantMessageCopyState({
     text: message.text ?? null,
     showCopyButton: showMeta,
@@ -3319,11 +3387,13 @@ function MateProse({
   });
   return (
     <div className="min-w-0">
-      <MateProseWords
-        at={message.createdAt}
-        streaming={Boolean(message.streaming)}
-        text={messageText}
-      />
+      <div ref={wordsRef}>
+        <MateProseWords
+          at={message.createdAt}
+          streaming={Boolean(message.streaming)}
+          text={messageText}
+        />
+      </div>
       {showMeta ? (
         <div
           className="-ms-1.5 mt-1 flex h-6 items-center gap-1 text-muted-foreground text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100"
