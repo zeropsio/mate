@@ -58,35 +58,67 @@ export interface ZeropsCandidatePresentation extends CandidateRow {
   readonly services?: ZeropsEnvironmentServices;
 }
 
-/** Authenticated environments keyed by origin, so a derived container origin can be matched. */
+/**
+ * Connected environments, keyed the two ways a candidate row can meet one: by the Zerops project
+ * its own descriptor names (one Mate per project), and by origin for one whose descriptor is not
+ * read yet.
+ */
+export interface ZeropsConnections {
+  /** Projects exactly one connected environment names; two naming one leave it to the origin. */
+  readonly byProject: ReadonlyMap<string, EnvironmentId>;
+  /** Origins of connected environments whose descriptor names no project, or one claimed twice. */
+  readonly byOrigin: ReadonlyMap<string, EnvironmentId>;
+}
+
+/** Authenticated environments by project and by origin, so a candidate row can be matched. */
 export function authenticatedZeropsOrigins(
   environments: ReadonlyArray<{
     readonly environmentId: EnvironmentId;
     readonly displayUrl: string | null;
+    readonly zeropsProjectId?: string | null | undefined;
     readonly connection: { readonly phase: EnvironmentConnectionPhase };
   }>,
-): ReadonlyMap<string, EnvironmentId> {
+): ZeropsConnections {
+  const connected = environments.filter(
+    (environment) => environment.connection.phase === "connected",
+  );
+  const claims = new Map<string, number>();
+  for (const { zeropsProjectId } of connected)
+    if (typeof zeropsProjectId === "string")
+      claims.set(zeropsProjectId, (claims.get(zeropsProjectId) ?? 0) + 1);
+  const byProject = new Map<string, EnvironmentId>();
   const byOrigin = new Map<string, EnvironmentId>();
-  for (const environment of environments) {
-    if (environment.connection.phase !== "connected" || !environment.displayUrl) continue;
-    const origin = normalizeOrigin(environment.displayUrl);
+  for (const environment of connected) {
+    // The project its descriptor names is the match, unless two claim it: then its origin decides.
+    const projectId = environment.zeropsProjectId;
+    if (typeof projectId === "string" && claims.get(projectId) === 1) {
+      byProject.set(projectId, environment.environmentId);
+      continue;
+    }
+    const origin = environment.displayUrl ? normalizeOrigin(environment.displayUrl) : null;
     if (origin) byOrigin.set(origin, environment.environmentId);
   }
-  return byOrigin;
+  return { byProject, byOrigin };
 }
 
 /**
- * A ready candidate whose origin a connected environment serves is connected
- * to it. `selectCandidates` mixes no socket phase in; this is the join.
+ * A ready candidate a connected environment serves is connected to it: the one whose descriptor
+ * names its project, else the one at its container's origin while no descriptor says. Milo's
+ * conversation found it by its environment while /zerops, matching by origin alone, called it
+ * unconnected (2026-10-10). `selectCandidates` mixes no socket phase in; this is the join.
  */
 export function withZeropsConnection(
   row: CandidateRow,
-  connectedOrigins: ReadonlyMap<string, EnvironmentId>,
+  connections: ZeropsConnections,
 ): CandidateRow {
-  if (row.group !== "ready" || row.containerOrigin === undefined) return row;
-  const environmentId = connectedOrigins.get(
-    normalizeOrigin(row.containerOrigin) ?? row.containerOrigin,
-  );
+  if (row.group !== "ready") return row;
+  const origin =
+    row.containerOrigin === undefined
+      ? undefined
+      : (normalizeOrigin(row.containerOrigin) ?? row.containerOrigin);
+  const environmentId =
+    connections.byProject.get(row.project.id) ??
+    (origin === undefined ? undefined : connections.byOrigin.get(origin));
   return environmentId === undefined ? row : { ...row, group: "connected", environmentId };
 }
 
@@ -134,7 +166,12 @@ export const candidateListingAtom = Atom.make(
       const routeOffers = resolved === null ? undefined : derivePublicRouteOffers(resolved);
       const held = resolved === null ? undefined : summarizeEnvironmentServices(resolved);
       const origin = candidate.containerOrigin ? normalizeOrigin(candidate.containerOrigin) : null;
-      const connection = origin === null ? undefined : connectionsByOrigin.get(origin);
+      // The environment it is connected to speaks for its connection; else the one at its origin.
+      const connection =
+        (candidate.environmentId === undefined
+          ? undefined
+          : environments.find((entry) => entry.environmentId === candidate.environmentId)
+              ?.connection) ?? (origin === null ? undefined : connectionsByOrigin.get(origin));
       return {
         ...candidate,
         ...(candidate.project.status === "ACTIVE"
