@@ -816,3 +816,90 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
     return "working";
   return activity.unread ? "unread" : "idle";
 }
+
+/**
+ * The one line under a Mate's name (round 5): what needs the viewer in ink, a failure of the
+ * viewer's own Mate in the fail colour, everything else muted — never a status word, the face
+ * carries the state.
+ *
+ * | the row                                  | its line                                   |
+ * | ---------------------------------------- | ------------------------------------------ |
+ * | coming up, deleting, finishing, outside  | that, in its own words                     |
+ * | working                                  | its step, or what it is on and the dots    |
+ * | what HQ last said of it, unreachable     | that                                       |
+ * | nobody signed in                         | the sign-in                                |
+ * | a colleague's, waiting on its person     | "Waits on Karel"                           |
+ * | a question or a plan for the viewer      | the question, in ink                       |
+ * | stopped on an error                      | the error: red if the viewer's, else muted |
+ * | at its limit                             | "Paused until 1:00 PM"                     |
+ * | its change waits on the viewer           | the change mark and its title, in ink      |
+ * | an unsent draft                          | *Draft* and its words                      |
+ * | a colleague's open change                | "<title> · in review", muted               |
+ * | otherwise                                | its last words, muted; else what was asked |
+ */
+export type MateRowSecond =
+  | { readonly kind: "coming" }
+  | { readonly kind: "deleting" }
+  | { readonly kind: "finishing" }
+  | { readonly kind: "outside" }
+  | { readonly kind: "sign-in" }
+  /** The Mate's own line (`MateRowReply`), its words in `tone` where it says one. */
+  | { readonly kind: "reply"; readonly tone: "muted" | "ink" | "failed" | undefined }
+  | { readonly kind: "waits-on"; readonly text: string }
+  | { readonly kind: "paused"; readonly until: string }
+  | { readonly kind: "change"; readonly title: string; readonly mine: boolean }
+  /**
+   * The person's line (`MateRowAskLine`): a draft, what was asked, or that nothing was — with the
+   * dots after it while the Mate's words are on their way and it relays no step.
+   */
+  | { readonly kind: "ask"; readonly pending: boolean }
+  | { readonly kind: "none" };
+
+export function mateRowSecond(input: {
+  readonly view: Pick<MateRowView, "state" | "reply" | "slot" | "coming">;
+  readonly askLine: MateRowAskLine;
+  readonly deleting: boolean;
+  readonly finishing: boolean;
+  readonly outsideHq: boolean;
+  /** The viewer's own Mate; `false` for a colleague's; `undefined` where nobody can say yet. */
+  readonly mine: boolean | undefined;
+  /** A colleague's Mate waits on its person: their first name. */
+  readonly waitsOn: string | undefined;
+  /** Its open change: `mine` where it waits on the viewer's review (`mateReviewWaits`). */
+  readonly change: { readonly title: string; readonly mine: boolean } | undefined;
+}): MateRowSecond {
+  const { view, askLine, change } = input;
+  if (view.coming !== undefined) return { kind: "coming" };
+  if (input.deleting) return { kind: "deleting" };
+  if (input.finishing) return { kind: "finishing" };
+  if (input.outsideHq) return { kind: "outside" };
+  const reply = view.reply;
+  const asked = askLine !== undefined && askLine.kind !== "sign-in";
+  const said = (tone: "muted" | "ink" | "failed" | undefined): MateRowSecond =>
+    reply === undefined
+      ? asked
+        ? { kind: "ask", pending: false }
+        : { kind: "none" }
+      : reply.kind === "pending" && asked
+        ? { kind: "ask", pending: true }
+        : { kind: "reply", tone: reply.kind === "words" ? tone : undefined };
+  if (view.state === "working") return said(undefined);
+  if (reply?.kind === "words" && reply.lastKnown === true)
+    return said(reply.tone === "failed" ? "failed" : "muted");
+  if (askLine?.kind === "sign-in") return { kind: "sign-in" };
+  if (input.waitsOn !== undefined && view.state !== "failed") {
+    return { kind: "waits-on", text: `Waits on ${input.waitsOn}` };
+  }
+  if (view.state === "needs") return said("ink");
+  if (view.state === "failed") {
+    const own = reply?.kind === "words" && reply.tone === "failed" && input.mine !== false;
+    return said(own ? "failed" : "muted");
+  }
+  if (view.state === "paused" && view.slot.kind === "paused") {
+    return { kind: "paused", until: view.slot.until };
+  }
+  if (change?.mine === true) return { kind: "change", title: change.title, mine: true };
+  if (askLine?.kind === "draft") return { kind: "ask", pending: false };
+  if (change !== undefined) return { kind: "change", title: change.title, mine: false };
+  return said("muted");
+}

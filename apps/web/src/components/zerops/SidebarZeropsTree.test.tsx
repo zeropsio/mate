@@ -388,7 +388,7 @@ describe("SidebarZeropsTree", () => {
     expect(html).toContain('data-zerops-primitive="mate-face"');
     // The Mate is the heaviest thing in its project, so its face is the
     // card's size, not the 20px a name in a row of text gets.
-    expect(html).toContain('data-mate-face-size="md"');
+    expect(html).toContain('data-mate-face-size="lg"');
     // The state is the face's: a Mate whose container runs is awake though
     // its socket is not open here yet, and no word says "Ready" or "Idle".
     expect(html).toContain('data-mate-face-state="idle"');
@@ -472,30 +472,6 @@ describe("SidebarZeropsTree", () => {
     // When it last did something, at the right edge, the way a messenger dates its rows.
     expect(html).toContain('data-zerops-surface="sidebar-mate-time"');
     expect(html).toContain(">3h<");
-  });
-
-  it("quotes the Mate's last words under the task it was set on", () => {
-    const connected: ZeropsCandidate = { ...CRM_DEV, group: "connected" };
-    const spoken: ZeropsAgentActivity = {
-      threadId: "thread-1" as ZeropsAgentActivity["threadId"],
-      kind: "idle",
-      status: null,
-      face: "idle",
-      subject: "give it optimistic updates",
-      at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-      snippet: "Deploying and verifying now.",
-      unread: false,
-      pausedUntil: undefined,
-      threadKey: "env:thread",
-      task: undefined,
-    };
-    const html = render([connected], { getActivity: () => spoken });
-    const subjectAt = html.indexOf('data-zerops-surface="sidebar-mate-subject"');
-    const snippetAt = html.indexOf('data-zerops-surface="sidebar-mate-snippet"');
-    expect(subjectAt).toBeGreaterThan(-1);
-    expect(snippetAt).toBeGreaterThan(subjectAt);
-    expect(html).toContain("give it optimistic updates");
-    expect(html).toContain("Deploying and verifying now.");
   });
 
   const READING: CandidatesNotice = {
@@ -799,21 +775,25 @@ describe("a Mate with no owner, or nobody signed in", () => {
   // dot of what needs them; anybody else that it waits for a sign-in — never a failure while it
   // is being set up (2026-10-01) — and no dot: it is not waiting on them.
   it.each([
-    { case: "the viewer added it", viewer: "u-petra", says: "Waiting for your sign-in", dot: true },
+    {
+      case: "the viewer added it",
+      viewer: "u-petra",
+      says: "Waiting for your sign-in",
+      yours: true,
+    },
     {
       case: "somebody else added it",
       viewer: "u-karel",
       says: "Waiting for sign-in",
-      dot: false,
+      yours: false,
     },
-  ])("says whose sign-in it waits for: $case", ({ viewer, says, dot }) => {
+  ])("says whose sign-in it waits for: $case", ({ viewer, says, yours }) => {
     session.viewer = viewer;
     const html = render([mate({ standupRequestedBy: "u-petra" }, { group: "connected" })], {
       getOwner: () => undefined,
     });
     expect(line(html)?.[1]).toBe(says);
-    expect(html.includes('data-zerops-surface="sidebar-mate-dot"')).toBe(dot);
-    expect(html.includes('data-tone="attention"')).toBe(dot);
+    expect(html.includes('data-zerops-sign-in="yours"')).toBe(yours);
   });
 
   it("seats nobody's Mate on a dashed ring, and says so in words, never as a person", () => {
@@ -2779,31 +2759,6 @@ describe("a Mate's row says more without words", () => {
       html,
     )?.[0] ?? "";
 
-  it("shows a named limit and attention before the Mate is opened", () => {
-    const html = render([CRM_DEV], {
-      getActivity: () =>
-        live({
-          kind: "failed",
-          usageLimited: true,
-          errorLine: "Claude usage limit reached",
-          pausedUntil: "2099-10-07T14:00:00Z",
-          limit: {
-            kind: "limited",
-            turnId: "turn-1",
-            provider: "Claude",
-            resetsAt: "2099-10-07T14:00:00Z",
-          },
-        }),
-    });
-    expect(html).toContain(">Limit · until ");
-    expect(html).toContain("hit the Claude limit");
-    expect(html).toContain("can continue at");
-    expect(html).toContain("Provider limit");
-    expect(html).not.toContain("I've hit");
-  });
-
-  // The working face turns and glances, and its step is the row's third
-  // line: no ring around it repeats the step as a count in blue (S3).
   it("rings no working face", () => {
     expect(row(working())).not.toContain("plan-ring");
   });
@@ -2837,49 +2792,6 @@ describe("a Mate's row says more without words", () => {
     expect(html).not.toContain("sidebar-mate-snippet");
   });
 
-  // A row is as tall as what it has to say, on one leading: the name's 20 px
-  // line, 18 px for each line under it, 10 px of air above and below. The
-  // face stands on the name's line, so a shorter row still starts the same
-  // way (M6); while words are coming, their line is held by the dots.
-  it.each([
-    {
-      case: "asked and answered",
-      activity: live(),
-      lines: ["sidebar-mate-name", "sidebar-mate-subject", "sidebar-mate-snippet"],
-      height: 76,
-    },
-    {
-      case: "asked, with no answer",
-      activity: live({ snippet: undefined }),
-      lines: ["sidebar-mate-name", "sidebar-mate-subject"],
-      height: 58,
-    },
-    {
-      case: "asked, its answer on its way",
-      activity: live({ snippet: undefined, awaitingWords: true }),
-      lines: ["sidebar-mate-name", "sidebar-mate-subject", "sidebar-mate-pending"],
-      height: 76,
-    },
-    {
-      case: "never asked anything",
-      activity: live({ subject: undefined, snippet: undefined }),
-      lines: ["sidebar-mate-name"],
-      height: 48,
-    },
-  ])("draws as many lines as it has to say: $case", ({ activity, lines, height }) => {
-    const html = row(activity);
-    const drawn = [
-      "sidebar-mate-name",
-      "sidebar-mate-subject",
-      "sidebar-mate-snippet",
-      "sidebar-mate-pending",
-    ].filter((name) => html.includes(`data-zerops-surface="${name}"`));
-    expect(drawn).toEqual(lines);
-    // The face (28 px) is taller than one line, so a one-line row is the face's.
-    const tall = Math.max(28, 20 + 18 * (drawn.length - 1));
-    expect(tall + 20).toBe(height);
-  });
-
   it.each([
     {
       case: "a working Mate whose step is relayed",
@@ -2904,8 +2816,8 @@ describe("a Mate's row says more without words", () => {
     expect(time).not.toContain(">2h<");
   });
 
-  // The plan's table (M7), as the row draws it: a dot, the face and the
-  // third line say the state, and no word does.
+  // The plan's table (M7), as the row draws it: the face and the line under
+  // the name say the state, and no word does — nor any dot (round 5).
   it.each([
     {
       case: "idle, seen",
@@ -2933,7 +2845,7 @@ describe("a Mate's row says more without words", () => {
       activity: live({ kind: "done", face: "done", unread: true }),
       face: "done",
       dot: "unread",
-      third: 'data-zerops-reply-tone="ink-2"',
+      third: 'data-zerops-reply-tone="muted"',
     },
     {
       case: "stopped on an error",
@@ -2948,44 +2860,13 @@ describe("a Mate's row says more without words", () => {
     signerOf.set(SIGNED_IN.project.id, SIGNER);
     const html = render([SIGNED_IN], { getActivity: () => activity });
     expect(html).toContain(`data-mate-face-state="${face}"`);
-    if (dot === undefined) expect(html).not.toContain("sidebar-mate-dot");
-    else
-      expect(html).toMatch(
-        new RegExp(`data-tone="${dot}" data-zerops-surface="sidebar-mate-dot"`, "u"),
-      );
+    expect(html).not.toContain("sidebar-mate-dot");
+    // What its dot said, its row still says in words to a reader.
+    if (dot !== undefined) expect(html).toMatch(/<button[^>]*aria-label="[^"]+, [^"]+"/u);
     expect(html).toContain(third);
     for (const word of ["Idle", "Working", "Needs you", "Done", "Failed", "Unread"]) {
       expect(html).not.toContain(`>${word}<`);
     }
-  });
-
-  // T6: a run that finishes out of sight pops the face and scales the blue
-  // dot in — once, as it arrives; a menu opened onto an unread Mate shows it
-  // there, still.
-  it("scales a dot in as it arrives while watched, never on the first paint", () => {
-    const tree = (activity: ZeropsAgentActivity) => (
-      <SidebarZeropsTree
-        candidates={[CRM_DEV_CONNECTED]}
-        complete
-        getActivity={() => activity}
-        onBrowseProjects={() => {}}
-        onSelect={() => {}}
-      />
-    );
-    const dot = (mounted: ReactTestRenderer) =>
-      mounted.root.find(
-        (node) =>
-          typeof node.type === "string" && node.props["data-zerops-surface"] === "sidebar-mate-dot",
-      );
-    const opened = mount(tree(live({ kind: "done", face: "done", unread: true })));
-    expect(dot(opened).props["data-arrived"]).toBeUndefined();
-
-    const watched = mount(tree(working()));
-    act(() => {
-      watched.update(tree(live({ kind: "done", face: "done", unread: true })));
-    });
-    expect(dot(watched).props["data-tone"]).toBe("unread");
-    expect(dot(watched).props["data-arrived"]).toBe("");
   });
 
   describe("an unsent draft", () => {
@@ -3011,34 +2892,9 @@ describe("a Mate's row says more without words", () => {
         (node) => typeof node.type === "string" && node.props["data-zerops-surface"] === name,
       );
 
-    // Mounted, not drawn once: a store read on the server answers with its
-    // first state, never the draft written since.
-    it.each([
-      { case: "answered", activity: () => live(), last: "sidebar-mate-snippet" },
-      {
-        case: "working",
-        activity: () => working({ snippet: undefined }),
-        last: "sidebar-mate-pending",
-      },
-      {
-        case: "waiting on a question",
-        activity: () => live({ face: "needs", question: "Which port?" }),
-        last: "sidebar-mate-snippet",
-      },
-    ])(
-      "stands in the person's line, the Mate's line under it kept: $case",
-      ({ activity, last }) => {
-        useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
-        const tree = drawn(activity());
-        expect(text(surface(tree, "sidebar-mate-draft"))).toBe("Draft: also check the thumbnails");
-        expect(said(tree, "sidebar-mate-subject")).toHaveLength(0);
-        expect(said(tree, last)).toHaveLength(1);
-      },
-    );
-
     it("gives the line back to the ask once it is cleared", () => {
       useComposerDraftStore.getState().setPrompt(ref, "also check the thumbnails");
-      const tree = drawn(live());
+      const tree = drawn(live({ snippet: undefined }));
       act(() => {
         useComposerDraftStore.getState().setPrompt(ref, "  ");
       });
@@ -3760,7 +3616,6 @@ describe("before HQ and the forge answer", () => {
           task: "Add a /status page",
         }),
     });
-    expect(html).toContain("Add a /status page");
     expect(html).toContain("The page reads the build number.");
     expect(html).toContain('data-mate-face-state="idle"');
     expect(html).not.toContain('data-zerops-surface="sidebar-mate-stop"');
@@ -3826,8 +3681,7 @@ describe("a Mate on its way off Zerops", () => {
     expect(html).toMatch(
       /<span[^>]*data-zerops-surface="sidebar-mate-deleting"[^>]*>Deleting…<\/span>/u,
     );
-    // What was asked stays above the line; the Mate's last words gave it their place.
-    expect(html).toContain(">Speed up the photo gallery<");
+    // The Mate's last words gave it their place.
     expect(html).not.toContain("Thumbnails load lazily now.");
     expect(html).toContain('data-mate-face-state="sleep"');
     expect(html).not.toContain("sidebar-mate-actions");

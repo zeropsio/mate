@@ -17,6 +17,8 @@ import {
   mateOwnerView,
   mateNotYours,
   mateRowPropsEqual,
+  mateRowSecond,
+  type MateRowView,
   ownerBadge,
   mateRowAskLine,
   mateRowDraft,
@@ -1710,4 +1712,132 @@ it("a connected machine keeps the row menu available while its listing still pro
     },
   };
   expect(mateRowOffersMenu({ deleting: false, coming: mateComing(input) })).toBe(true);
+});
+
+describe("mateRowSecond — the one line under a Mate's name", () => {
+  const view = (
+    state: MateRowView["state"],
+    reply: MateRowView["reply"] | null = { kind: "words", text: "Its last words.", tone: "muted" },
+    slot: MateRowView["slot"] = { kind: "age" },
+  ) => ({ state, reply: reply ?? undefined, slot });
+  const second = (over: Partial<Parameters<typeof mateRowSecond>[0]> = {}) =>
+    mateRowSecond({
+      view: view("idle"),
+      askLine: { kind: "ask", text: "Add a search box" },
+      deleting: false,
+      finishing: false,
+      outsideHq: false,
+      mine: true,
+      waitsOn: undefined,
+      change: undefined,
+      ...over,
+    });
+
+  it.each([
+    { case: "at rest: its last words, muted", over: {}, line: { kind: "reply", tone: "muted" } },
+    {
+      case: "finished and unseen: its last words, still muted (the name carries it)",
+      over: { view: view("unread", { kind: "words", text: "Done.", tone: "ink-2" }) },
+      line: { kind: "reply", tone: "muted" },
+    },
+    {
+      case: "working: its step",
+      over: { view: view("working", { kind: "live", words: "Running the tests" }) },
+      line: { kind: "reply", tone: undefined },
+    },
+    {
+      case: "a question or plan for the viewer: in ink",
+      over: { view: view("needs", { kind: "words", text: "Go ahead?", tone: "ink" }) },
+      line: { kind: "reply", tone: "ink" },
+    },
+    {
+      case: "a colleague's Mate waiting on its person: who it waits on",
+      over: { mine: false, waitsOn: "Karel" },
+      line: { kind: "waits-on", text: "Waits on Karel" },
+    },
+    {
+      case: "the viewer's own failure: the fail colour",
+      over: { view: view("failed", { kind: "words", text: "Build failed.", tone: "failed" }) },
+      line: { kind: "reply", tone: "failed" },
+    },
+    {
+      case: "a colleague's failure: muted",
+      over: {
+        mine: false,
+        view: view("failed", { kind: "words", text: "Build failed.", tone: "failed" }),
+      },
+      line: { kind: "reply", tone: "muted" },
+    },
+    {
+      case: "at its limit: when it picks up",
+      over: {
+        view: view("paused", undefined, { kind: "paused", until: "2026-10-10T13:00:00Z" }),
+      },
+      line: { kind: "paused", until: "2026-10-10T13:00:00Z" },
+    },
+    {
+      case: "its change waits on the viewer: the change, in ink",
+      over: { change: { title: "Cart page with saved items", mine: true } },
+      line: { kind: "change", title: "Cart page with saved items", mine: true },
+    },
+    {
+      case: "a question outranks its change",
+      over: {
+        view: view("needs", { kind: "words", text: "Go ahead?", tone: "ink" }),
+        change: { title: "Cart page", mine: true },
+      },
+      line: { kind: "reply", tone: "ink" },
+    },
+    {
+      case: "a colleague's open change: in review, muted",
+      over: { mine: false, change: { title: "Rate limit the public API", mine: false } },
+      line: { kind: "change", title: "Rate limit the public API", mine: false },
+    },
+    {
+      case: "an unsent draft over its last words",
+      over: { askLine: { kind: "draft", text: "also count", ask: undefined } },
+      line: { kind: "ask", pending: false },
+    },
+    {
+      case: "no words yet: what was asked",
+      over: { view: view("idle", null) },
+      line: { kind: "ask", pending: false },
+    },
+    {
+      case: "working with no step relayed: what it is on, and the dots",
+      over: { view: view("working", { kind: "pending" }) },
+      line: { kind: "ask", pending: true },
+    },
+    {
+      case: "working outranks a sign-in its records still ask for",
+      over: {
+        view: view("working", { kind: "live", words: "Setting up development" }),
+        askLine: { kind: "sign-in", text: "Waiting for sign-in", waitsOnViewer: false },
+      },
+      line: { kind: "reply", tone: undefined },
+    },
+    {
+      case: "what HQ last said of it outranks the sign-in",
+      over: {
+        view: view("idle", { kind: "words", text: "Last known…", tone: "muted", lastKnown: true }),
+        askLine: { kind: "sign-in", text: "Waiting for sign-in", waitsOnViewer: false },
+      },
+      line: { kind: "reply", tone: "muted" },
+    },
+    {
+      case: "nobody signed in: the sign-in",
+      over: { askLine: { kind: "sign-in", text: "Waiting for your sign-in", waitsOnViewer: true } },
+      line: { kind: "sign-in" },
+    },
+    {
+      case: "nothing at all",
+      over: { view: view("idle", null), askLine: undefined },
+      line: { kind: "none" },
+    },
+    { case: "on its way off Zerops", over: { deleting: true }, line: { kind: "deleting" } },
+    { case: "its setup being finished", over: { finishing: true }, line: { kind: "finishing" } },
+    { case: "outside this HQ", over: { outsideHq: true }, line: { kind: "outside" } },
+  ] as const)("$case", ({ over, line }) => {
+    expect(second(over as Partial<Parameters<typeof mateRowSecond>[0]>)).toEqual(line);
+  });
 });

@@ -1,7 +1,6 @@
 import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
 import { mateStatus } from "../../zerops/mateStatus.logic";
-import { MateStatusMarker } from "./MateStatusMarker";
 /**
  * The left menu's projects: each a heading, then its Mates, each with its
  * crew and its open changes.
@@ -249,10 +248,13 @@ import {
   mateRowDraft,
   mateRowPropsEqual,
   mateRowReading,
+  mateRowSecond,
   pendingBornLine,
   type MateBornLine,
   type MateRowAskLine,
   type MateRowReply,
+  type MateRowSecond,
+  type MateRowView as MateRowReading,
   type MateRowSlot,
   ownerBadge,
   type BadgeSeat,
@@ -1479,10 +1481,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       ...(quietOpen ? quiet.map(({ item }) => ({ kind: "mate" as const, item })) : []),
     ];
     // Each block — a Mate with its crew and its changes, one being created,
-    // the quiet fold — stands apart from the next by air alone: 10 px, which
-    // with a row's own 10 px above and below its words puts 30 px between one
-    // Mate's words and the next's, whatever hangs under the first (M16). The
-    // heading stands on the first.
+    // the quiet fold — stands apart from the next by air alone: 6 px between
+    // 68 px rows (round 5, Grok's measure). The heading stands on the first.
     const blocks: ReadonlyArray<{ readonly key: string; readonly node: ReactNode }> = slots.map(
       (slot) => {
         if (slot.kind === "coming") {
@@ -1602,11 +1602,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           open={!collapsed.has(id)}
         >
           {blocks.map((block, index) => (
-            <div className={cn("flex flex-col", index > 0 && "mt-2.5")} key={block.key}>
+            <div className={cn("flex flex-col", index > 0 && "mt-1.5")} key={block.key}>
               {block.node}
             </div>
           ))}
-          {otherChanges === null ? null : <div className="mt-2.5">{otherChanges}</div>}
+          {otherChanges === null ? null : <div className="mt-1.5">{otherChanges}</div>}
         </SidebarProjectFold>
       </>
     );
@@ -2811,6 +2811,24 @@ function MateRowView<T extends RosterCandidate>({
     finishing: finishing !== undefined,
     read: conversationsRead,
   });
+  // A colleague's Mate waiting on its person says whom it waits on, never their question.
+  const waitsOn =
+    hqPeople?.waitsOnViewer === false &&
+    activity !== undefined &&
+    (activity.kind === "approval" || activity.kind === "input" || activity.kind === "planReady")
+      ? (owner?.name.split(" ")[0] ?? "its person")
+      : undefined;
+  // The one line under the name (round 5, `mateRowSecond`).
+  const second = mateRowSecond({
+    view,
+    askLine,
+    deleting,
+    finishing: finishing !== undefined,
+    outsideHq,
+    mine: hqPeople?.waitsOnViewer,
+    waitsOn,
+    change: undefined,
+  });
   const warmIntent = useWarmIntent(activity?.threadKey);
   // Its menu's door to its crew (`mateCrewItem`): crew mode off, on with no crew yet, or a crew
   // applied, as HQ holds it of any Mate — or a fixture's.
@@ -2947,7 +2965,7 @@ function MateRowView<T extends RosterCandidate>({
             : `${name}, ${status?.kind === "limit" ? "Provider limit" : mateDotLabel(dot)}`
         }
         aria-disabled={deleting || outsideHq || undefined}
-        className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
+        className="menu-row w-full min-w-0 cursor-pointer text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
         data-zerops-surface="sidebar-mate"
         // Resting on it, focusing or touching it warms its conversation, so
         // a press finds its rows already placed (`KeptTimelines`).
@@ -2999,7 +3017,7 @@ function MateRowView<T extends RosterCandidate>({
         ref={rowButton}
         type="button"
       >
-        <span className="relative flex size-7">
+        <span className="relative flex size-10">
           {/* The Mate wears the card's face, and a colleague's Mate its
               owner's picture on the face's corner, cut out of it, over a paler
               face (the owner, 2026-09-30: a face before the name read as the
@@ -3017,33 +3035,30 @@ function MateRowView<T extends RosterCandidate>({
                 row's words as this browser remembered them: a Mate found
                 waiting then is not arriving at it. */}
             <MateFace
+              className="size-10"
               cues={face.cues}
               greets
               known={known}
               restarting={face.restarting}
               shape={shape}
-              size="md"
+              size="lg"
               state={view.face}
               tint={tint}
             />
           </span>
           {badge === null ? null : <MateOwnerMark seat={badge} />}
         </span>
-        {/* One even leading, three lines of one thing: the name 14/20, what
-            was asked 13/18, the answer 13/18, and no gap between them — the
-            name used to float over a paragraph on a 22 px line and 2 px of
-            air. The ask is the words' second ink, the answer muted. Every
-            row keeps the three lines' height, whatever it says yet: a Mate
-            nobody has asked anything does not float its name in a short
-            row, and its first message grows nothing. */}
-        <span className="flex min-h-14 min-w-0 flex-col">
-          <span className="flex h-5 min-w-0 items-center gap-2">
+        {/* Two lines at Grok's measure: the name 16/22 — 600 while a result
+            is unseen — the time at its end, and one line under it at 15/21
+            (`mateRowSecond`). No dot: the face carries the state. */}
+        <span className="flex min-w-0 flex-col">
+          <span className="flex h-5.5 min-w-0 items-center gap-2">
             <span
               className={cn("flex min-w-0 flex-1 items-center gap-1.5", renaming && "invisible")}
             >
               <span
                 className={cn(
-                  "min-w-0 truncate text-sm leading-5",
+                  "menu-name min-w-0 truncate",
                   view.strongName ? "font-semibold" : "font-medium",
                 )}
                 data-zerops-surface="sidebar-mate-name"
@@ -3063,19 +3078,15 @@ function MateRowView<T extends RosterCandidate>({
                 row's menu on hover and focus without anything moving. */}
             <span
               className={cn(
-                "relative flex h-5 min-w-11 shrink-0 justify-end",
+                "relative flex h-5.5 min-w-11 shrink-0 items-center justify-end",
                 actions !== undefined &&
                   "transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
                 armed && "opacity-0",
               )}
             >
               <span
-                className={cn(
-                  "flex items-center gap-1.75",
-                  numbers && number !== undefined && "opacity-0",
-                )}
+                className={cn("flex items-center", numbers && number !== undefined && "opacity-0")}
               >
-                <MateDot known={known} tone={dot} />
                 <MateSlot
                   at={activity?.at}
                   slot={view.slot}
@@ -3084,43 +3095,24 @@ function MateRowView<T extends RosterCandidate>({
                 />
               </span>
               {numbers && number !== undefined ? (
-                <KeyChip className="absolute end-0 top-0" data-zerops-surface="sidebar-mate-number">
+                <KeyChip
+                  className="absolute end-0 top-0.5"
+                  data-zerops-surface="sidebar-mate-number"
+                >
                   {String(number)}
                 </KeyChip>
               ) : null}
             </span>
           </span>
-          {view.coming !== undefined ? <MateComingLine line={mateBornLine(view.coming)} /> : null}
-          {outsideHq ? (
-            <span className="truncate text-line leading-4.5 text-muted-foreground">
-              {NOT_IN_HQ_LINE}
-            </span>
-          ) : askLine === undefined ? null : askLine.kind === "sign-in" ? (
-            <MateSignInLine waitsOnViewer={askLine.waitsOnViewer} words={askLine.text} />
-          ) : (
-            <MateAskLine line={askLine} rises={askChanged} />
-          )}
-          {outsideHq ? null : status !== null && retainedReply === undefined ? (
-            // Held to the other lines' height: a waiting question grew the row 76 -> 82 px.
-            <span className="flex h-4.5 min-w-0 items-center gap-2">
-              <span className="flex min-w-0 max-w-full shrink-0">
-                <MateStatusMarker
-                  mateName={name}
-                  status={status}
-                  timestampFormat={timestampFormat}
-                />
-              </span>
-              {status.kind === "limit" ||
-              status.kind === "interrupted" ||
-              view.reply === undefined ? null : (
-                <MateReply known={known} reply={view.reply} />
-              )}
-            </span>
-          ) : view.reply === undefined ? null : (
-            <MateReply known={known} reply={view.reply} />
-          )}
-          {deleting ? <MateDeletingLine /> : null}
-          {finishing === undefined ? null : <MateFinishingLine words={finishing} />}
+          <MateSecondLine
+            askChanged={askChanged}
+            askLine={askLine}
+            known={known}
+            second={second}
+            timestampFormat={timestampFormat}
+            view={view}
+            finishing={finishing}
+          />
         </span>
       </button>
       {outsideHq || retainedReply === undefined ? null : (
@@ -3217,6 +3209,94 @@ function MateRowView<T extends RosterCandidate>({
       ) : null}
     </div>
   );
+}
+
+/** The one line under a Mate's name, as `mateRowSecond` chose it. */
+function MateSecondLine({
+  second,
+  view,
+  askLine,
+  askChanged,
+  known,
+  finishing,
+  timestampFormat,
+}: {
+  readonly second: MateRowSecond;
+  readonly view: MateRowReading;
+  readonly askLine: MateRowAskLine;
+  readonly askChanged: boolean;
+  readonly known: boolean;
+  readonly finishing: string | undefined;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  switch (second.kind) {
+    case "coming":
+      return view.coming === undefined ? null : <MateComingLine line={mateBornLine(view.coming)} />;
+    case "deleting":
+      return <MateDeletingLine />;
+    case "finishing":
+      return finishing === undefined ? null : <MateFinishingLine words={finishing} />;
+    case "outside":
+      return <span className="menu-line2 truncate text-muted-foreground">{NOT_IN_HQ_LINE}</span>;
+    case "sign-in":
+      return askLine?.kind === "sign-in" ? (
+        <MateSignInLine waitsOnViewer={askLine.waitsOnViewer} words={askLine.text} />
+      ) : null;
+    case "reply":
+      return view.reply === undefined ? null : (
+        <MateReply
+          known={known}
+          reply={
+            view.reply.kind === "words" && second.tone !== undefined
+              ? { ...view.reply, tone: second.tone }
+              : view.reply
+          }
+        />
+      );
+    case "waits-on":
+      return (
+        <span
+          className="menu-line2 truncate text-muted-foreground"
+          data-zerops-surface="sidebar-mate-waits-on"
+        >
+          {second.text}
+        </span>
+      );
+    case "paused":
+      return (
+        <span
+          className="menu-line2 truncate text-muted-foreground"
+          data-zerops-surface="sidebar-mate-paused-line"
+        >
+          {`Paused until ${formatShortTimestamp(second.until, timestampFormat)}`}
+        </span>
+      );
+    case "change":
+      return (
+        <span
+          className={cn(
+            "menu-line2 truncate",
+            second.mine ? "text-sidebar-foreground" : "text-muted-foreground",
+          )}
+          data-zerops-surface="sidebar-mate-change"
+        >
+          <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+          {second.mine ? second.title : `${second.title} · in review`}
+        </span>
+      );
+    case "ask":
+      if (askLine === undefined || askLine.kind === "sign-in") return null;
+      return second.pending ? (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <MateAskLine line={askLine} rises={askChanged} />
+          <MateReplyPending />
+        </span>
+      ) : (
+        <MateAskLine line={askLine} rises={askChanged} />
+      );
+    case "none":
+      return null;
+  }
 }
 
 /**
@@ -3361,7 +3441,7 @@ function MateSlot({
   }
 }
 
-const TIME_CLASS = "shrink-0 text-line leading-5 text-muted-foreground tabular-nums";
+const TIME_CLASS = "menu-time shrink-0 text-muted-foreground tabular-nums";
 
 /**
  * The working clock, ticking once a second — a step, never a continuous repaint (R6) — read as a
@@ -3381,7 +3461,7 @@ function MateWorkingTime({
   const nowMs = useSecondsNowMs(true);
   return (
     <span
-      className={cn("menu-clock shrink-0 text-line leading-5 tabular-nums", className)}
+      className={cn("menu-clock menu-time shrink-0 tabular-nums", className)}
       data-tint={tint}
       data-zerops-surface="sidebar-mate-time"
     >
@@ -3404,28 +3484,6 @@ const mateDotLabel = (tone: "attention" | "unread" | "failed"): string =>
     : tone === "failed"
       ? "Stopped on an error"
       : "Waiting for you";
-
-function MateDot({
-  tone,
-  known,
-}: {
-  readonly tone: "attention" | "unread" | "failed" | undefined;
-  /** The Mate's state is read, not what this browser remembered. */
-  readonly known: boolean;
-}) {
-  const arrived = useChangedSinceShown(tone, known);
-  if (tone === undefined) return null;
-  return (
-    <span
-      aria-hidden="true"
-      className="menu-dot"
-      data-arrived={arrived ? "" : undefined}
-      data-tone={tone}
-      data-zerops-surface="sidebar-mate-dot"
-      key={tone}
-    />
-  );
-}
 
 /** The third line's inks: the answer muted, unread in the second ink, a question in ink, an error red. */
 const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention", string> = {
@@ -3453,7 +3511,7 @@ function MateAskLine({
   if (line.kind === "nothing-asked") {
     return (
       <span
-        className="truncate text-line leading-4.5 text-muted-foreground"
+        className="truncate menu-line2 text-muted-foreground"
         data-zerops-surface="sidebar-mate-nothing-asked"
       >
         {NOTHING_ASKED_YET}
@@ -3463,7 +3521,7 @@ function MateAskLine({
   const ask = line.kind === "ask" ? line.text : line.ask;
   const drafting = line.kind === "draft";
   return (
-    <span className="grid min-w-0 text-line leading-4.5">
+    <span className="grid min-w-0 menu-line2">
       {ask === undefined ? null : (
         <span
           aria-hidden={drafting ? true : undefined}
@@ -3515,7 +3573,13 @@ function MateReply({
   // Remembered as holding words to come: its place kept, empty — words on their way are only
   // true now, and an asleep face over them said the opposite.
   if (reply.kind === "held") {
-    return <span aria-hidden="true" className="h-4.5" data-zerops-surface="sidebar-mate-held" />;
+    return (
+      <span
+        aria-hidden="true"
+        className="menu-line2 h-5.25"
+        data-zerops-surface="sidebar-mate-held"
+      />
+    );
   }
   if (reply.kind === "live") {
     return (
@@ -3524,7 +3588,7 @@ function MateReply({
       // took the rise's place and a new step never rose.
       <span
         className={cn(
-          "truncate text-line leading-4.5 text-muted-foreground",
+          "truncate menu-line2 text-muted-foreground",
           wordsChanged && "animate-words-in motion-reduce:animate-none",
         )}
         data-zerops-surface="sidebar-mate-live-step"
@@ -3539,7 +3603,7 @@ function MateReply({
   return (
     <span
       className={cn(
-        "truncate text-line leading-4.5",
+        "truncate menu-line2",
         reply.lastKnown === true && "pe-24",
         REPLY_TONE_CLASS[reply.tone],
         wordsChanged && "animate-words-in motion-reduce:animate-none",
@@ -3563,7 +3627,7 @@ function MateReply({
  */
 function MateReplyPending() {
   return (
-    <span className="flex h-4.5 items-center gap-1" data-zerops-surface="sidebar-mate-pending">
+    <span className="flex h-5.25 items-center gap-1" data-zerops-surface="sidebar-mate-pending">
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
@@ -3589,7 +3653,7 @@ function MateSignInLine({
   return (
     <span
       className={cn(
-        "truncate text-line leading-4.5",
+        "truncate menu-line2",
         waitsOnViewer ? "text-sidebar-foreground" : "text-muted-foreground",
       )}
       data-zerops-sign-in={waitsOnViewer ? "yours" : "nobody"}
@@ -3607,7 +3671,7 @@ function MateSignInLine({
 function MateDeletingLine() {
   return (
     <span
-      className="truncate text-line leading-4.5 text-muted-foreground"
+      className="truncate menu-line2 text-muted-foreground"
       data-zerops-surface="sidebar-mate-deleting"
     >
       {MATE_DELETING_WORD}
@@ -3622,7 +3686,7 @@ function MateDeletingLine() {
 function MateFinishingLine({ words }: { readonly words: string }) {
   return (
     <span
-      className="truncate text-line leading-4.5 text-muted-foreground"
+      className="truncate menu-line2 text-muted-foreground"
       data-zerops-surface="sidebar-mate-finishing"
     >
       {words}
@@ -3643,7 +3707,7 @@ function MateComingLine({ line }: { readonly line: MateBornLine }) {
   return (
     <span
       className={cn(
-        "truncate text-line leading-4.5 tabular-nums",
+        "truncate menu-line2 tabular-nums",
         line.tone === "attention" ? "text-status-attention-text" : "text-muted-foreground",
         risen && "animate-words-in motion-reduce:animate-none",
       )}
@@ -3829,7 +3893,7 @@ function PullRequestRow({
   const tone = changeMarkTone(pull);
   return (
     <li
-      className="menu-line grid h-7 min-w-0 grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 ps-1.75 pe-1 text-line leading-4.5 transition-colors hover:bg-sidebar-row-hover"
+      className="menu-line grid h-7 min-w-0 grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 ps-1.75 pe-1 menu-line2 transition-colors hover:bg-sidebar-row-hover"
       data-zerops-change={changeRowKey(pull)}
       data-zerops-change-tone={tone}
       data-zerops-surface="sidebar-pull-request"

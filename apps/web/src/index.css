@@ -3148,8 +3148,44 @@ code {
   /* A Mate's row: its corners, and the ones a row's own hover paints. The
      grid, the padding and the type are the row's utilities; only what no
      scale holds lives here. */
+  /* Round 5, Grok's measure: a 68 px row, a 40 px face in a 40 px column,
+     12 px to the words, 8 px inside the row's own band. */
   .menu-row {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: center;
+    height: 68px;
+    padding: 0 8px;
     border-radius: 12px;
+  }
+
+  /* The name 16/22; the time 12/16, muted and tabular; the one line under
+     them 15/21, ellipsed. */
+  .menu-name {
+    font-size: 16px;
+    line-height: 22px;
+  }
+
+  .menu-time {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .menu-line2 {
+    display: block;
+    font-size: 15px;
+    line-height: 21px;
+  }
+
+  /* A change on its Mate's line: the git-pull-request mark at 14 px before
+     its title, in the line's own ink. */
+  .menu-change-mark {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 6px;
+    vertical-align: -2px;
   }
 
   /* A Mate's unit — its row and its crew's line, one thing in the menu
@@ -3187,8 +3223,8 @@ code {
      picture off the ground. */
   .menu-owner {
     position: absolute;
-    top: 21px;
-    left: 17px;
+    top: 26px;
+    left: 26px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -3213,11 +3249,11 @@ code {
      16 px badge, whatever the face's shape reaches into that corner. */
   .menu-face-cut {
     -webkit-mask-image: radial-gradient(
-      circle 10px at 25px 29px,
+      circle 10px at 34px 34px,
       transparent 9.5px,
       currentColor 10px
     );
-    mask-image: radial-gradient(circle 10px at 25px 29px, transparent 9.5px, currentColor 10px);
+    mask-image: radial-gradient(circle 10px at 34px 34px, transparent 9.5px, currentColor 10px);
   }
 
   /* A Mate that is not the viewer's — a colleague's, or nobody's yet — wears
