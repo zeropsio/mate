@@ -314,6 +314,32 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
     },
   );
 
+  // Milo restarted mid-run, a helper and its job still running: the reconnect notice read "Last
+  // known 10:23 AM: Milo had no active work". HQ's attention counts runs, not background work.
+  it.each([
+    {
+      name: "waits on its helpers",
+      waitsOnHelpers: true,
+      words: "Milo was waiting for its helpers.",
+    },
+    { name: "rests", waitsOnHelpers: false, words: "Milo had no active work." },
+  ])(
+    "the last-known line says what background work the row knows of when HQ's word goes stale (its row $name)",
+    ({ waitsOnHelpers, words }) => {
+      const held = read({
+        attention: attention(said({ mainThreadId: ThreadId.make("t1"), working: 0 }), false),
+        overviews: onEngine(
+          engineRow("t1", {
+            state: waitsOnHelpers
+              ? { kind: "working", since: Date.parse(ASKED), waitsOnHelpers: true }
+              : { kind: "idle" },
+          }),
+        ),
+      });
+      expect(lastKnownMateWords(held, "Milo")).toContain(`: ${words}`);
+    },
+  );
+
   it("a working Mate's menu clock counts from this run's start and only moves forward", () => {
     // Recorded 2026-10-09: the clock opened at the previous run's end (14:23), then jumped six
     // times as the queue's, the provider's and the relay's dates arrived.

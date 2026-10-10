@@ -192,7 +192,13 @@ export interface ZeropsAgentActivity {
   /** Held source state is distinct from the current activity; it grants no actions. */
   readonly lastKnown?: Pick<
     ZeropsAgentActivity,
-    "kind" | "at" | "usageLimited" | "pausedUntil" | "limitProvider" | "errorLine"
+    | "kind"
+    | "at"
+    | "usageLimited"
+    | "pausedUntil"
+    | "limitProvider"
+    | "errorLine"
+    | "waitsOnHelpers"
   >;
   /** The conversation's scoped key — what its unsent draft is kept under. */
   readonly threadKey: string;
@@ -580,6 +586,7 @@ export function restingActivity(
       pausedUntil: activity.pausedUntil,
       limitProvider: activity.limitProvider,
       errorLine: activity.errorLine,
+      ...(activity.waitsOnHelpers === true ? { waitsOnHelpers: true as const } : {}),
     },
   };
 }

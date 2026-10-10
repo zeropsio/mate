@@ -32,11 +32,15 @@ export function lastKnownMateWords(
               : `${name} was waiting for an answer: ${activity.question}`
             : held.kind === "planReady"
               ? `${name} had a plan ready for review.`
-              : held.kind === "working" || held.kind === "connecting" || held.kind === "monitoring"
-                ? `${name} was working.`
-                : held.kind === "done"
-                  ? `${name} had finished the work.`
-                  : `${name} had no active work.`;
+              : held.waitsOnHelpers === true
+                ? `${name} was waiting for its helpers.`
+                : held.kind === "working" ||
+                    held.kind === "connecting" ||
+                    held.kind === "monitoring"
+                  ? `${name} was working.`
+                  : held.kind === "done"
+                    ? `${name} had finished the work.`
+                    : `${name} had no active work.`;
   const preview =
     activity.limitHistory !== undefined ||
     held.usageLimited ||
