@@ -3534,6 +3534,7 @@ function LiveSlot({
   ref,
   folded,
   end,
+  controls,
   slot,
   live,
   items,
@@ -3546,7 +3547,10 @@ function LiveSlot({
 }: {
   readonly ref: Ref<HTMLDivElement>;
   readonly folded: boolean;
+  /** Its clock and controls (`RunControls`). */
   readonly end: ReactNode;
+  /** It offers the person a control: the work's toggle, or Stop. */
+  readonly controls: boolean;
   readonly slot: LiveSlotState;
   /** What is live now, as the items they become. */
   readonly live: ReadonlyArray<RecordItem>;
@@ -3633,6 +3637,7 @@ function LiveSlot({
       line.theirs === true && all[index - 1]?.asks === true ? { ...line, pairs: true } : line,
     );
   const firstDrawn = lines.length === 0 ? undefined : drawn[0];
+  const headed = controls || lines.length > 0;
   // Which card each call stands in, kept from draw to draw (`slotEntries`).
   const [cards, setCards] = useState<ReadonlyMap<string, string>>(NO_CARDS);
   const slotted = slotEntries(lines, cards);
@@ -3716,6 +3721,10 @@ function LiveSlot({
           />
         )}
       </span>
+      {/* The present's head: the run's one clock and what the person can do with the run, on a
+          line of their own under the hairline, over what the Mate is doing — never beside its
+          words, and in the room the hairline already keeps, so a settle moves nothing. */}
+      {headed ? <div className="run-slot-head">{end}</div> : null}
       <InSlotContext value>
         <SlotStandsOpenContext value={standsOpen}>
           <ChatShownContext value={shownRef}>
@@ -3761,9 +3770,8 @@ function LiveSlot({
           </ChatShownContext>
         </SlotStandsOpenContext>
       </InSlotContext>
-      {/* The card's foot: the run's one clock and what the person can do with the run, on a line
-          of their own under what the Mate is doing — never beside its words. */}
-      <div className="run-slot-foot">{end}</div>
+      {/* A run that has done nothing yet says only what it does, its clock on that one line. */}
+      {headed ? null : <span className="run-slot-end">{end}</span>}
       {/* What a screen reader hears: what the slot shows, as it changes. */}
       <span className="sr-only" role="status">
         {slotWords(firstDrawn?.item ?? null, said)}
@@ -4192,6 +4200,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               key="slot"
               folded={liveFolded}
               end={liveFolded ? null : liveEnd}
+              controls={liveToggle !== null || row.now?.kind === "after"}
               ref={slotRef}
               items={model.record}
               live={model.live}
@@ -4424,14 +4433,14 @@ function RunControls({
         <RunTicker status={status} />
       </span>
       {now?.kind === "after" ? (
-        <Button
+        <button
+          className="run-now-fold"
           disabled={stoppingBackgroundWork}
           onClick={ctx.onStopBackgroundWork}
-          size="xs"
-          variant="ghost"
+          type="button"
         >
           {stoppingBackgroundWork ? "Stopping…" : "Stop"}
-        </Button>
+        </button>
       ) : null}
       {toggle}
     </span>

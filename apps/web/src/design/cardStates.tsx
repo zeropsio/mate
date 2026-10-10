@@ -707,7 +707,7 @@ export function CardStates() {
       </CardState>
       <CardState
         label="Writing its words"
-        note="Its words stand in the slot as they come, as tall as the run's scroll and then scrolling inside with a fade, following their foot; three dots at their foot say they are still being written. The clock and Hide work stand on the card's foot."
+        note="Its words stand in the slot as they come, as tall as the run's scroll and then scrolling inside with a fade, following their foot; three dots at their foot say they are still being written. The clock and Hide work stand on their own line under the hairline."
       >
         <Turn
           row={record("status-words", {
@@ -748,7 +748,7 @@ export function CardStates() {
       </CardState>
       <CardState
         label="Waiting for its helpers"
-        note="Its turns are over and its helpers work on: Stop stands on the card's foot beside the clock."
+        note="Its turns are over and its helpers work on: Stop stands beside the clock, on the line under the hairline."
       >
         <Turn
           row={record("status-after", {

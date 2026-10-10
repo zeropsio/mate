@@ -4446,7 +4446,8 @@ code {
 }
 /* Stood on the line by `translate`, not `top`: a move of the line moves them
    on the compositor, with no layout. */
-.run-slot-face {
+.run-slot-face,
+.run-slot-end {
   position: absolute;
   top: 0;
   translate: 0 calc(var(--run-slot-line, 26px) - 50%);
@@ -4454,8 +4455,13 @@ code {
 }
 /* They follow the first line once placed, never from where a first paint
    guessed it. */
-.run-slot[data-placed] > .run-slot-face {
+.run-slot[data-placed] > .run-slot-face,
+.run-slot[data-placed] > .run-slot-end {
   transition: translate 240ms var(--ease-out-strong);
+}
+/* A run that has done nothing yet: its clock on its one line's right edge. */
+.run-slot-end {
+  right: 14px;
 }
 .run-slot-face {
   left: 0;
@@ -4463,19 +4469,29 @@ code {
   width: 28px;
   justify-content: center;
 }
-/* The live card's foot (the owner, 2026-10-10: "this hide work placement is
-   absolute shit"): the run's one clock and its controls on a line of their
-   own under what the Mate is doing, on the card's right edge — never in a
-   gutter beside its words. The same cluster ends a folded run's line. */
-.run-slot-foot {
+/* The live card's controls (the owner, 2026-10-10: "this hide work placement
+   is absolute shit"): the run's one clock, Stop and Hide work on a line of
+   their own at the head of the present, right under the hairline in the room
+   it keeps — never in a gutter beside the Mate's words. A folded run's line
+   ends on the same cluster. */
+.run-slot-head {
   display: flex;
-  min-height: 24px;
+  height: 16px;
+  align-items: center;
   justify-content: flex-end;
-  margin-top: 8px;
+  margin: -12px 0 8px;
   padding-right: 14px;
 }
-.run-slot-foot:empty {
-  display: none;
+.run-slot:first-child > .run-slot-head {
+  margin-top: 0;
+}
+.run-slot-head .run-now-time,
+.run-slot-head .run-now-fold {
+  line-height: 16px;
+}
+.run-slot-head .run-now-fold {
+  margin-block: 0;
+  padding-block: 0;
 }
 .run-now-end {
   display: flex;
@@ -4533,7 +4549,8 @@ code {
   color: var(--color-muted-foreground);
 }
 @media (prefers-reduced-motion: reduce) {
-  .run-slot[data-placed] > .run-slot-face {
+  .run-slot[data-placed] > .run-slot-face,
+  .run-slot[data-placed] > .run-slot-end {
     transition: none;
   }
 }
