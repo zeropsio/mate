@@ -2608,6 +2608,9 @@ function fileName(path: string): string {
   return path.split(/[\\/]/u).findLast((part) => part.length > 0) ?? path;
 }
 
+/** A picture reference that names why its picture was never kept: `mate-asset:<id>:<code>`. */
+const NO_PIXELS = /^mate-asset:[a-f0-9-]{36}:[a-z-]+$/u;
+
 /**
  * The pictures a turn took and looked at, in the order they were taken — a
  * check's when it came back, a look's when the Mate saw it: each page's last
@@ -2628,7 +2631,7 @@ function turnPictures(
   // phone is two pictures.
   const lastByPage = new Map<string, ZeropsOperation>();
   for (const check of checks) {
-    if (check.screenshot === undefined) continue;
+    if (check.screenshot === undefined || NO_PIXELS.test(check.screenshot.src)) continue;
     lastByPage.set(pageView(browserCheckPage(check), check.deviceName ?? null), check);
   }
   for (const check of lastByPage.values()) {
@@ -2651,7 +2654,9 @@ function turnPictures(
   for (const entry of turn.stretches.flatMap((stretch) => stretch.entries)) {
     if (entry.kind !== "work" && entry.kind !== "generic-call") continue;
     const path = pictureSeen(entry.entry);
-    if (path === null) continue;
+    // A reference that says its picture was never kept (gone before it was, the store refused it)
+    // has no pixels to draw: the run left no picture there (Rhea's imported run, 2026-10-10).
+    if (path === null || NO_PIXELS.test(path)) continue;
     taken.push({
       same: `path:${path}`,
       at: parseMs(entry.entry.updatedAt ?? entry.entry.createdAt) ?? 0,
