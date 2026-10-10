@@ -13,13 +13,19 @@ import type { GroupFlowStop, ZeropsPublicRoute } from "@t3tools/client-runtime/z
 import { deployActivatedAt, type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { useNavigate } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { EnvironmentId, ThreadId, type ProviderApprovalDecision } from "@t3tools/contracts";
+import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
+import { useState, type ReactNode } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
 import { formatShortTimestamp } from "~/timestampFormat";
+import { buildPlanImplementationPrompt } from "~/proposedPlan";
+import { findLatestProposedPlan } from "~/session-logic";
 import { useAskMateToFix } from "~/zerops/fixRequest";
+import { useMateWrite } from "~/zerops/useMateWrite";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenReview } from "~/zerops/review";
+import { mateDecision } from "../mateDecision.logic";
 import { Avatar } from "../primitives";
 import { SidebarMateAge } from "../SidebarMateAge";
 import type { MateRowSlot } from "../SidebarMateRow.logic";
@@ -37,11 +43,13 @@ import {
   type StopServing,
 } from "../SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "./PlacePanel";
+import { CardMateLiftActions } from "./ProjectCards";
 import {
   broughtBy,
   cardPeople,
   rollBackTarget,
   sinceWords,
+  type CardMateReading,
   type PlaceLine,
 } from "./projectCard.logic";
 import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
@@ -357,4 +365,124 @@ export function CardMateSlot({
     case "age":
       return <SidebarMateAge at={at} />;
   }
+}
+
+/**
+ * A lifted Mate's buttons, answered in place as the menu's Waiting on you list answers them
+ * (`useMateWrite`): Approve plan sends its plan to be built, Change it… asks for another; a
+ * question's options and Answer… answer it; an approval's choices decide it. What cannot be
+ * answered here — several questions at once, a Mate with no conversation open — opens it.
+ */
+export function CardMateWrite({
+  name,
+  lift,
+  environmentId,
+  threadId,
+  onOpen,
+  onAsk,
+  onFix,
+  onReview,
+}: {
+  readonly name: string;
+  readonly lift: NonNullable<CardMateReading["lift"]>;
+  readonly environmentId: string | undefined;
+  readonly threadId: string | undefined;
+  /** Opens its conversation. */
+  readonly onOpen: () => void;
+  /** Asks it in words through its conversation, where nothing answers in place. */
+  readonly onAsk: (text: string) => void;
+  readonly onFix: () => void;
+  readonly onReview: (from: HTMLElement) => void;
+}) {
+  const write = useMateWrite(
+    environmentId === undefined ? null : EnvironmentId.make(environmentId),
+    threadId === undefined ? null : ThreadId.make(threadId),
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const { detail, requests } = write;
+  const settle = (pending: ReturnType<typeof write.send>) => {
+    if (pending === undefined) {
+      setError("Not sent: its conversation is still being read.");
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    void pending.then((result) => {
+      setBusy(false);
+      if (result._tag !== "Success" && !isAtomCommandInterrupted(result))
+        setError("Not sent. Try again.");
+    });
+  };
+  const shared = { name, lift, onFix, onReview, busy, error };
+  const inPlace = environmentId !== undefined && threadId !== undefined;
+  if (lift.kind === "plan") {
+    const plan =
+      detail === undefined
+        ? null
+        : findLatestProposedPlan(detail.proposedPlans, detail.latestTurn?.turnId ?? null);
+    return (
+      <CardMateLiftActions
+        {...shared}
+        onApprove={
+          !inPlace
+            ? onOpen
+            : plan === null
+              ? undefined
+              : () =>
+                  settle(write.send(buildPlanImplementationPrompt(plan.planMarkdown), "default"))
+        }
+        onReply={(text) => (inPlace ? settle(write.send(text, "plan")) : onAsk(text))}
+      />
+    );
+  }
+  if (lift.kind !== "question") {
+    return <CardMateLiftActions {...shared} onApprove={undefined} onReply={onAsk} />;
+  }
+  const decision = mateDecision({
+    name,
+    kind: requests.approvals.length > 0 ? "approval" : "input",
+    read: detail !== undefined,
+    approvals: requests.approvals,
+    userInputs: requests.userInputs,
+    failure: undefined,
+  });
+  if (decision?.kind === "approval")
+    return (
+      <CardMateLiftActions
+        {...shared}
+        allowText={false}
+        choices={decision.choices.map((choice) => ({
+          label: choice.label,
+          primary: choice.primary,
+          onPick: () =>
+            settle(write.decide(decision.requestId, choice.value as ProviderApprovalDecision)),
+        }))}
+        onApprove={undefined}
+        onReply={onAsk}
+      />
+    );
+  if (decision?.kind === "question")
+    return (
+      <CardMateLiftActions
+        {...shared}
+        allowText={decision.allowText}
+        choices={decision.choices.map((choice) => ({
+          label: choice.label,
+          primary: false,
+          onPick: () => settle(write.answer(decision.requestId, decision.questionId, choice.value)),
+        }))}
+        onApprove={undefined}
+        onReply={(text) => settle(write.answer(decision.requestId, decision.questionId, text))}
+      />
+    );
+  // Still being read, several questions at once, or nothing open to answer in: its conversation.
+  return (
+    <CardMateLiftActions
+      {...shared}
+      busy={busy || (inPlace && decision?.kind === "reading")}
+      onApprove={undefined}
+      onReply={(text) => (decision?.kind === "questions" ? onOpen() : onAsk(text))}
+    />
+  );
 }

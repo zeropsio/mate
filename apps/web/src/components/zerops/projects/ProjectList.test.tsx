@@ -116,6 +116,7 @@ import {
   WREN,
   type Item,
 } from "./flowTestFixtures";
+import { CardMateLiftActions } from "./ProjectCards";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 
 /** A quiet group of its own id: one Mate who was spoken to, nothing waiting. */
@@ -414,4 +415,50 @@ describe("Projects detail demand", () => {
       act(() => tree.unmount());
     },
   );
+});
+
+describe("a lifted Mate's buttons", () => {
+  const lifted = (lift: Parameters<typeof CardMateLiftActions>[0]["lift"], over = {}) => {
+    const acted: Array<string> = [];
+    const tree = mount(
+      <CardMateLiftActions
+        choices={[
+          { label: "Stripe", primary: false, onPick: () => acted.push("pick:Stripe") },
+          { label: "Adyen", primary: false, onPick: () => acted.push("pick:Adyen") },
+        ]}
+        lift={lift}
+        name="Rhea"
+        onApprove={() => acted.push("approve")}
+        onFix={() => acted.push("fix")}
+        onReply={(text) => acted.push(`reply:${text}`)}
+        onReview={() => acted.push("review")}
+        {...over}
+      />,
+    );
+    const press = (label: string) =>
+      act(() =>
+        tree.root
+          .findAll((node) => node.type === "button" && node.children.join("") === label)[0]!
+          .props.onClick({ currentTarget: null }),
+      );
+    return { tree, acted, press };
+  };
+
+  it("answers a question by its options in place, beside Answer…", () => {
+    const { acted, press, tree } = lifted({ kind: "question" });
+    press("Adyen");
+    expect(acted).toEqual(["pick:Adyen"]);
+    expect(tree.root.findAll((node) => node.children.join("") === "Answer…")).not.toHaveLength(0);
+  });
+
+  it("approves a plan in place, and holds Approve plan while its plan is still being read", () => {
+    const ready = lifted({ kind: "plan" });
+    ready.press("Approve plan");
+    expect(ready.acted).toEqual(["approve"]);
+    const reading = lifted({ kind: "plan" }, { onApprove: undefined });
+    const approve = reading.tree.root.findAll(
+      (node) => node.type === "button" && node.children.join("") === "Approve plan",
+    )[0]!;
+    expect(approve.props.disabled).toBe(true);
+  });
 });

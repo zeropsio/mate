@@ -495,10 +495,20 @@ export function CardMate({ name, face, time, reading, line, onOpen, actions }: C
   );
 }
 
+const NO_CHOICES: ReadonlyArray<CardMateChoice> = [];
+
+/** A choice a lifted Mate offers in place: a question's option, an approval's decision. */
+export interface CardMateChoice {
+  readonly label: string;
+  readonly primary: boolean;
+  readonly onPick: () => void;
+}
+
 /**
- * A lifted Mate's buttons: a plan's Approve plan and Change it…, a question's Answer…, a failure's
- * Ask <Mate> to fix it, a change's Review change. Change it… and Answer… open a reply in the card;
- * Escape gives the buttons back.
+ * A lifted Mate's buttons: a plan's Approve plan and Change it…, a question's options and
+ * Answer…, a failure's Ask <Mate> to fix it, a change's Review change. Change it… and Answer…
+ * open a reply in the card; Escape gives the buttons back. What its conversation answers in
+ * place (`useMateWrite`) is the page's: `busy` while a send is on its way, `error` when it failed.
  */
 export function CardMateLiftActions({
   name,
@@ -507,64 +517,118 @@ export function CardMateLiftActions({
   onReply,
   onFix,
   onReview,
+  choices = NO_CHOICES,
+  allowText = true,
+  busy = false,
+  error,
 }: {
   readonly name: string;
   readonly lift: NonNullable<CardMateReading["lift"]>;
-  readonly onApprove: () => void;
+  /** Approves the plan in place; `undefined` while its plan is still being read. */
+  readonly onApprove: (() => void) | undefined;
   readonly onReply: (text: string) => void;
   readonly onFix: () => void;
   readonly onReview: (from: HTMLElement) => void;
+  /** A question's options, an approval's choices. */
+  readonly choices?: ReadonlyArray<CardMateChoice>;
+  /** Whether it takes an answer in words. */
+  readonly allowText?: boolean;
+  readonly busy?: boolean;
+  readonly error?: string | undefined;
 }) {
   const [replying, setReplying] = useState(false);
   const [text, setText] = useState("");
   const label = lift.kind === "plan" ? `Tell ${name} what to change` : `Answer ${name}`;
+  const said =
+    error === undefined ? null : (
+      <span className="ov-act-error" role="status">
+        {error}
+      </span>
+    );
   if (replying)
     return (
-      <form
-        className="ov-reply"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (text.trim().length === 0) return;
-          onReply(text.trim());
-          setReplying(false);
-          setText("");
-        }}
-      >
-        <input
-          aria-label={label}
-          autoFocus
-          className="ov-reply-in"
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            event.stopPropagation();
+      <>
+        <form
+          className="ov-reply"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (text.trim().length === 0) return;
+            onReply(text.trim());
             setReplying(false);
+            setText("");
           }}
-          placeholder={label}
-          value={text}
-        />
-        <button className="ov-btn" data-main="true" type="submit">
-          Send
-        </button>
-      </form>
+        >
+          <input
+            aria-label={label}
+            autoFocus
+            className="ov-reply-in"
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.stopPropagation();
+              setReplying(false);
+            }}
+            placeholder={label}
+            value={text}
+          />
+          <button className="ov-btn" data-main="true" disabled={busy} type="submit">
+            Send
+          </button>
+        </form>
+        {said}
+      </>
     );
   switch (lift.kind) {
     case "plan":
       return (
         <>
-          <button className="ov-btn" data-main="true" onClick={onApprove} type="button">
+          <button
+            className="ov-btn"
+            data-main="true"
+            disabled={onApprove === undefined || busy}
+            onClick={onApprove}
+            type="button"
+          >
             Approve plan
           </button>
-          <button className="ov-btn" onClick={() => setReplying(true)} type="button">
+          <button
+            className="ov-btn"
+            disabled={busy}
+            onClick={() => setReplying(true)}
+            type="button"
+          >
             Change it…
           </button>
+          {said}
         </>
       );
     case "question":
       return (
-        <button className="ov-btn" onClick={() => setReplying(true)} type="button">
-          Answer…
-        </button>
+        <>
+          {choices.map((choice) => (
+            <button
+              className="ov-btn"
+              data-main={choice.primary ? "true" : undefined}
+              disabled={busy}
+              key={choice.label}
+              onClick={choice.onPick}
+              type="button"
+            >
+              {choice.label}
+            </button>
+          ))}
+          {allowText ? (
+            <button
+              className="ov-btn"
+              disabled={busy}
+              onClick={() => setReplying(true)}
+              type="button"
+            >
+              Answer…
+            </button>
+          ) : null}
+          {said}
+        </>
       );
     case "fix":
       return (

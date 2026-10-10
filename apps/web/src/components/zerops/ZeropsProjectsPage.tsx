@@ -133,9 +133,9 @@ import { invalidateZerops } from "~/zerops/accountInvalidations";
 
 import { Avatar, MateFace, StatusDot } from "./primitives";
 import { mateRowReading } from "./SidebarMateRow.logic";
-import { CardMate, CardMateLiftActions, CardMateTime } from "./projects/ProjectCards";
+import { CardMate, CardMateTime } from "./projects/ProjectCards";
 import { cardMateReading } from "./projects/projectCard.logic";
-import { CardMateSlot, useOverviewSlots } from "./projects/overviewSlots";
+import { CardMateSlot, CardMateWrite, useOverviewSlots } from "./projects/overviewSlots";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useAskMateToFix } from "~/zerops/fixRequest";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
@@ -2041,10 +2041,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             reading.lift === undefined ? (
               (startAction ?? removeAction)
             ) : (
-              <CardMateLiftActions
+              <CardMateWrite
+                environmentId={
+                  candidate.group === "connected" ? candidate.environmentId : undefined
+                }
                 lift={reading.lift}
                 name={name}
-                onApprove={() => select?.()}
+                onAsk={(text) => {
+                  askMate(candidate.project.id, text);
+                }}
                 onFix={() => {
                   askToFix(candidate.project.id, {
                     what: `${name}'s last run stopped on an error`,
@@ -2052,9 +2057,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                     ask: "Find out why, fix it, and carry on.",
                   });
                 }}
-                onReply={(text) => {
-                  askMate(candidate.project.id, text);
-                }}
+                onOpen={() => select?.()}
                 onReview={(from) => {
                   if (groupId === undefined || reading.lift?.kind !== "review") return;
                   const { pull } = reading.lift;
@@ -2068,6 +2071,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                     { from },
                   );
                 }}
+                threadId={activity?.threadId}
               />
             )
           }

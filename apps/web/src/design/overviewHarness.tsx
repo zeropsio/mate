@@ -69,6 +69,8 @@ interface Mate {
   readonly time: string;
   readonly owner: Person;
   readonly flow?: Partial<GroupFlowMate>;
+  /** A question's options, answered in place. */
+  readonly choices?: ReadonlyArray<string>;
 }
 
 const words = (text: string, tone: "muted" | "ink" | "failed" = "muted") =>
@@ -239,6 +241,18 @@ const PROJECTS: ReadonlyArray<Project> = [
           ask: "Save for later",
           reply: words("The cart page is live on stage."),
           dot: undefined,
+        },
+      }),
+      mate("rhea", "Rhea", "rose", {
+        face: "needs",
+        status: "input",
+        time: "1h",
+        choices: ["Stripe", "Adyen"],
+        view: {
+          state: "needs",
+          ask: "Payments",
+          reply: words("Stripe or Adyen? Adyen needs a merchant account first.", "ink"),
+          dot: "attention",
         },
       }),
     ],
@@ -565,6 +579,11 @@ function HarnessPage() {
                         onFix={() => acted.push(`fix:${entry.id}`)}
                         onReply={(text) => acted.push(`reply:${entry.id}:${text}`)}
                         onReview={() => acted.push(`review:${entry.id}`)}
+                        choices={(entry.choices ?? []).map((choice) => ({
+                          label: choice,
+                          primary: false,
+                          onPick: () => acted.push(`pick:${entry.id}:${choice}`),
+                        }))}
                       />
                     )
                   }
