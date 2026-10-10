@@ -6,6 +6,7 @@ import { useMateImage } from "~/assets/MateImages";
 import { useTheme } from "~/hooks/useTheme";
 import { Button } from "../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
+import { keepFrameOnMove } from "./keepFrameOnMove";
 import {
   PAGE_THEME_VARS,
   linkToOpen,
@@ -113,15 +114,17 @@ export interface PublishedPageFrameProps {
  * the page left, and it is taken down and never heard from again; the person may show it again.
  *
  * This frame loads again too, whenever the conversation moves it (React reordering its rows, the
- * list recycling one): a frame taken out of the document and put back loads its document anew. It
- * always holds the wrapper and nothing else — the sandbox lets no page navigate it — so its own
- * loads are never counted: counting them closed every page that landed as its run settled.
+ * list recycling one): a frame taken out of the document and put back loads its document anew —
+ * except where the browser moves it whole (`keepFrameOnMove`). It always holds the wrapper and
+ * nothing else — the sandbox lets no page navigate it — so its own loads are never counted:
+ * counting them closed every page that landed as its run settled.
  */
 export function PublishedPageFrame(props: PublishedPageFrameProps) {
   const { title, html, theme, failed = false, full = false } = props;
   const boxRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const near = useNearView(boxRef);
+  useEffect(() => (boxRef.current === null ? undefined : keepFrameOnMove(boxRef.current)), []);
   const [content, setContent] = useState<number | null>(null);
   const [left, setLeft] = useState(false);
   /** Each showing of the page is a frame of its own. */

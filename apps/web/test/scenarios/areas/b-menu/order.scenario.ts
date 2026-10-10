@@ -62,6 +62,18 @@ describe("B: automatic project sections", () => {
             (node) => node.textContent,
           );
           expect(active).toContain("Ben");
+          // The sidebar has slid open before its rail is dragged: read mid-slide, the rail is
+          // not where the pointer lands, and the drag resizes nothing.
+          await s.page.waitForFunction(() =>
+            document
+              .querySelector('[data-sidebar="sidebar"]')!
+              .closest("[data-state]")!
+              .getAnimations({ subtree: true })
+              .every(
+                (animation) =>
+                  !(animation instanceof CSSTransition) || animation.playState !== "running",
+              ),
+          );
           const rail = await s.page.$('[data-sidebar="rail"]');
           const box = (await rail!.boundingBox())!;
           const width = await s.page.$eval(
