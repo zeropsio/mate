@@ -2,7 +2,8 @@
  * The live engine (switch on `mate`): its runtime — the store and its migrations, the actors, the
  * outbox and its handlers, the live plane, the pump — and the `MateEngine` service over it.
  *
- * `start` boots it in the startup's reactor scope (`EngineBoot`). Sign-out closes the sessions of
+ * `start` boots it in the startup's reactor scope (`EngineBoot`), then watches what the providers
+ * report of their accounts' usage (`usageWatch`) when the server feeds it. Sign-out closes the sessions of
  * every conversation whose agent runs on a signed-out instance (`CloseSession{signed-out}`); a
  * wake is the conversation's `ArmWake`, for the principal it names; a woken run's outcome is
  * read from the run the wake started. A conversation's view is read from its record and its
@@ -37,7 +38,7 @@ import { bootEngine } from "./EngineBoot.ts";
 import * as EngineSignalsModule from "./EngineSignals.ts";
 import * as EffectsModule from "./effects/index.ts";
 import { importOrSayGap } from "./effects/historyImport.ts";
-import { AgentWorkspace, MessagePictures } from "./ports.ts";
+import { AgentWorkspace, MessagePictures, ProviderUsageFeed } from "./ports.ts";
 import * as LiveBusModule from "./LiveBus.ts";
 import {
   DeliveryUnrecorded,
@@ -53,6 +54,7 @@ import type { EffectWorkerOptions } from "./outbox/EffectWorker.ts";
 import * as TurnPumpModule from "./pump/TurnPump.ts";
 import * as EngineStoreModule from "./store/EngineStore.ts";
 import { runEngineMigrations } from "./store/migrations.ts";
+import { watchProviderUsage } from "./usageWatch.ts";
 import { makeEngineWire, type EngineWireOptions } from "./wire/EngineWire.ts";
 
 const ENGINE = { kind: "engine" } as const;
@@ -86,6 +88,7 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
     const conversations = yield* Conversations;
     const signals = yield* EngineSignalsModule.EngineSignals;
     const live = yield* LiveBusModule.LiveBus;
+    const usageFeed = yield* Effect.serviceOption(ProviderUsageFeed);
     const sql = yield* SqlClient.SqlClient;
     const context = yield* Effect.context<
       | TurnPumpModule.TurnPump
@@ -106,6 +109,9 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
           bootId,
           options.worker === undefined ? {} : { worker: options.worker },
         );
+        if (Option.isSome(usageFeed)) {
+          yield* Effect.forkScoped(watchProviderUsage(usageFeed.value));
+        }
         yield* Effect.logInfo("Mate engine: on", report);
       }).pipe(
         Effect.provide(context),

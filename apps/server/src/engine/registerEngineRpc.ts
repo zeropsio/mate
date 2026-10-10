@@ -33,6 +33,7 @@ type EngineRpcTag =
   | typeof WS_METHODS.engineReceipt
   | typeof WS_METHODS.engineSend
   | typeof WS_METHODS.engineStop
+  | typeof WS_METHODS.engineContinue
   | typeof WS_METHODS.engineAnswer
   | typeof WS_METHODS.engineDismiss
   | typeof WS_METHODS.engineSteer
@@ -92,6 +93,11 @@ export const registerEngineRpc = ({ engine, source, subject, admit }: RegisterEn
       admit(
         WS_METHODS.engineStop,
         asCaller((who) => wire.stop(input, who)),
+      ),
+    [WS_METHODS.engineContinue]: (input) =>
+      admit(
+        WS_METHODS.engineContinue,
+        asCaller((who) => wire.continue(input, who)),
       ),
     [WS_METHODS.engineAnswer]: (input) =>
       admit(

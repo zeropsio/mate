@@ -672,6 +672,53 @@ describe("the running engine", () => {
     ),
   );
 
+  // Milo, 2026-10-10: signed in to another Claude subscription with budget, and restarted, the
+  // conversation stayed paused on the old account's weekly reset with the message held.
+  it.effect("a held message goes once the provider no longer reports the limit, at boot too", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w);
+        const limitedAt = yield* Clock.currentTimeMillis;
+        const resetsAt = limitedAt + 24 * 60 * MINUTE;
+        yield* w.agent((agent, thread) =>
+          agent.limit(thread, DateTime.formatIso(DateTime.makeUnsafe(resetsAt))),
+        );
+        yield* send(w, "still there?");
+        // The old account, read again after the limit: its window still resets with the limit.
+        yield* w.reportUsage([
+          {
+            instanceId: "claudeAgent",
+            usage: {
+              checkedAt: limitedAt + 1,
+              windows: [{ usedPercent: 99, resetsAt }],
+            },
+          },
+        ]);
+        assert.strictEqual((yield* w.run(r(2)))?.state, "queued");
+        yield* w.shutdown;
+        // Signed in to another account while the server was down: the registry reads it at boot.
+        yield* w.reportUsage([
+          {
+            instanceId: "claudeAgent",
+            usage: {
+              checkedAt: limitedAt + 2,
+              windows: [
+                { usedPercent: 17, resetsAt: limitedAt + 3 * 60 * MINUTE },
+                { usedPercent: 24, resetsAt: limitedAt + 4 * 24 * 60 * MINUTE },
+              ],
+            },
+          },
+        ]);
+        yield* w.boot;
+        assert.strictEqual((yield* w.run(r(2)))?.state, "running");
+        assert.strictEqual(w.provider.calls.at(-1), sendLine(w, "still there?"));
+        assert.isUndefined(yield* w.run(r(3)));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect(
     "an unknown reset is probed at 15 and 30 minutes, then every hour, until it lifts",
     () =>

@@ -1449,6 +1449,7 @@ export default function ChatView(props: ChatViewProps) {
   const interruptThreadTurn = useAtomCommand(threadEnvironment.interruptTurn, {
     reportFailure: false,
   });
+  const continueAfterLimit = useAtomCommand(threadEnvironment.continueAfterLimit);
   const respondToThreadApproval = useAtomCommand(threadEnvironment.respondToApproval, {
     reportFailure: false,
   });
@@ -8647,7 +8648,16 @@ export default function ChatView(props: ChatViewProps) {
                     isWorking || isSendBusy || queueBlockedByPendingRequest
                       ? null
                       : () => {
-                          if (activeThreadKey === null) return;
+                          if (activeThreadKey === null || activeThread === undefined) return;
+                          // The engine tries the provider itself: the held message, else the
+                          // limited work's resume. V1 continues by a message.
+                          if (engineConversation) {
+                            void continueAfterLimit({
+                              environmentId: activeThread.environmentId,
+                              input: { threadId: activeThread.id },
+                            });
+                            return;
+                          }
                           const message = useQueuedMessageStore
                             .getState()
                             .enqueue(activeThreadKey, {
@@ -8662,6 +8672,7 @@ export default function ChatView(props: ChatViewProps) {
                             });
                           void onSend(undefined, "foreground", message);
                         },
+                  usageContinueTries: engineConversation,
                   onSteerQueuedMessage,
                   queueBlockedByAnswer: queueBlockedByPendingRequest,
                   steerQueuedMessageShortcutLabel: shortcutLabelForCommand(

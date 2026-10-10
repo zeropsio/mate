@@ -62,6 +62,8 @@ export interface TimelineRowSharedState {
     | ((interruption: import("@t3tools/contracts").MateInterruption) => void)
     | null;
   onUsageContinue?: (() => void) | null;
+  /** The Mate's engine tries the provider on Continue before a known reset too. */
+  usageContinueTries?: boolean;
   agentPanelModel: AgentPanelModel;
   onOpenAgents: () => void;
   /** Stops the work that outlived the turn. */
