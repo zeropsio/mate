@@ -167,6 +167,11 @@ describe("the menu row", () => {
       { kind: "working", since: 500, waitsOnHelpers: true },
     ],
     [
+      "its helpers finished and the agent's own turn on them is due: working, on that turn",
+      { lastEnded: ended(1, { kind: "completed" }), turnDue: true },
+      { kind: "working", since: 500, waitsOnHelpers: true, turnDue: true },
+    ],
+    [
       "the last run failed: failed, with its reason",
       { lastEnded: ended(1, { kind: "failed", reason: "Model not found.", next: null }) },
       { kind: "failed", errorLine: "Model not found." },

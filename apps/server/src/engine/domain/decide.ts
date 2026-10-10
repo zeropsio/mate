@@ -75,6 +75,7 @@ import {
   runOfTurn,
   type ClosedItem,
   type ConversationState,
+  type OpenItem,
   type OpenRequest,
   type RunRecord,
   type SessionRecord,
@@ -404,6 +405,47 @@ const armIdle = (b: StepBuilder): void => {
     joins: null,
     text: null,
   });
+};
+
+/**
+ * How long the engine expects the agent's own turn after its background work ended with no run on
+ * (Milo's stress run 4: it came 1.6–3.3 s later). Past it the conversation reads as at rest.
+ */
+export const AGENT_TURN_DUE_MS = 15_000;
+
+const turnDueWakeId = (b: StepBuilder) =>
+  deriveWakeId(b.state.conversationId, "agent-turn-due", "next");
+
+/**
+ * The Mate's background work ended after its run: an agent that opens its own turns takes the
+ * result in with one, so the conversation goes on until it opens, within `AGENT_TURN_DUE_MS` of
+ * the latest end. Work a session lost or a Stop ended tells no one, and a run still on takes it in.
+ */
+const expectAgentTurn = (b: StepBuilder, work: OpenItem, body: ItemBody): void => {
+  if (work.by.kind !== "mate" || body.kind !== "work") return;
+  if (body.status !== "completed" && body.status !== "failed") return;
+  const session = b.state.session;
+  if (session === null || session.capabilities.selfTurns !== true || b.state.closing !== null)
+    return;
+  if (b.state.activeRunId !== null || b.state.queue.length > 0) return;
+  const latest = b.state.latestRunId === null ? undefined : b.state.runs[b.state.latestRunId];
+  if (latest === undefined) return;
+  b.emit({
+    _tag: "WakeArmed",
+    wakeId: turnDueWakeId(b),
+    kind: "agent-turn-due",
+    dueAt: b.now + AGENT_TURN_DUE_MS,
+    cron: null,
+    principal: ENGINE,
+    joins: latest.id,
+    text: null,
+  });
+};
+
+/** A run started: the agent's own turn, if one was due, is no longer waited for. */
+const endTurnDue = (b: StepBuilder): void => {
+  if (b.state.wakes[turnDueWakeId(b)] === undefined) return;
+  b.emit({ _tag: "WakeCancelled", wakeId: turnDueWakeId(b), reason: "a run started" });
 };
 
 const cancelIdle = (b: StepBuilder): void => {
@@ -972,6 +1014,7 @@ const markStarted = (
   delivery: "delivered" | "steered" = "delivered",
 ): void => {
   b.emit({ _tag: "RunStarted", runId: run.id, providerTurnId, turn });
+  endTurnDue(b);
   spendLostWorkNote(b, run);
   updatePerson(b, run, delivery);
   armWatchdog(b, b.run(run.id), b.now);
@@ -1390,6 +1433,9 @@ const wakeFired = (
   switch (wake.kind) {
     case "watchdog":
       return watchdogFired(b, wake.joins);
+    // The agent's own turn never came: the conversation is at rest.
+    case "agent-turn-due":
+      return;
     case "session-idle": {
       // Closes the session only if it is still the one that sat idle and nothing needs it.
       const session = b.state.session;
@@ -1991,6 +2037,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       if (open !== undefined) {
         if (ends) {
           b.emit({ _tag: "ItemClosed", runId: open.runId, itemId: open.id, body });
+          expectAgentTurn(b, open, body);
           // The bridge's word that the work's session is closing: asked, for the reason asked;
           // else it died.
           if (byPerson || body.status === "lost") {
@@ -2016,19 +2063,23 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           : runOfTurn(b.state, signal.origin);
       if (owner === undefined || owner.state === "queued" || owner.state === "admitted") return;
       const id = deriveItemId(owner.id, owner.nextItemOrdinal);
+      const by: OpenItem["by"] =
+        signal.helper === undefined
+          ? { kind: "mate" }
+          : { kind: "helper", helperId: signal.helper };
       b.emit({
         _tag: "ItemOpened",
         runId: owner.id,
         itemId: id,
         key: signal.work,
         // A helper's own work is the helper's, as its calls are.
-        by:
-          signal.helper === undefined
-            ? { kind: "mate" }
-            : { kind: "helper", helperId: signal.helper },
+        by,
         body,
       });
-      if (ends) b.emit({ _tag: "ItemClosed", runId: owner.id, itemId: id, body });
+      if (ends) {
+        b.emit({ _tag: "ItemClosed", runId: owner.id, itemId: id, body });
+        expectAgentTurn(b, { id, runId: owner.id, key: signal.work, by, body }, body);
+      }
       return;
     }
     case "usage-reset-known": {

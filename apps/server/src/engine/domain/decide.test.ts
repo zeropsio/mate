@@ -27,6 +27,7 @@ import type { TurnOutcome } from "../bridge/spi3.ts";
 
 import type { Command, Decision, EffectDraft, ProviderSignal } from "./command.ts";
 import {
+  AGENT_TURN_DUE_MS,
   BACKGROUND_WORK_WORDS,
   CONTINUE_TEXT,
   SESSION_IDLE_MS,
@@ -133,7 +134,10 @@ const settled = (
   outcome: Extract<Command, { _tag: "EffectSettled" }>["outcome"],
   n = 1,
 ): Command => ({ _tag: "EffectSettled", effectId: effectId(cause, kind, n), outcome });
-const opened = (run: number, options: { session?: string; steer?: boolean; n?: number } = {}) =>
+const opened = (
+  run: number,
+  options: { session?: string; steer?: boolean; selfTurns?: boolean; n?: number } = {},
+) =>
   settled(
     r(run),
     "session.open",
@@ -144,7 +148,10 @@ const opened = (run: number, options: { session?: string; steer?: boolean; n?: n
         driver: "claude",
         model: null,
         nativeRef: "native-1",
-        capabilities: { steer: options.steer ?? false },
+        capabilities: {
+          steer: options.steer ?? false,
+          ...(options.selfTurns === undefined ? {} : { selfTurns: options.selfTurns }),
+        },
       },
     },
     options.n,
@@ -1990,6 +1997,75 @@ describe("decide: helpers and jobs are items under their run", () => {
   it("work whose turn the driver cannot name is filed under the latest run", () => {
     const { log } = playAll([...proofRunning, turnEnded, work("running", "unknown")]);
     expect(log.at(-1)).toMatchObject({ _tag: "ItemOpened", runId: r(1), key: "w1" });
+  });
+
+  // Milo's stress run 4, A and C: a helper finished, the row read idle for 1.6–1.9 s and the card
+  // folded to "worked", then the turn its end woke opened the card again.
+  const selfTurning: ReadonlyArray<Step> = [
+    send("go"),
+    prepared(1),
+    opened(1, { selfTurns: true }),
+    sentTurn(1),
+  ];
+  const turnDue = (state: ConversationState) =>
+    Object.values(state.wakes).filter((wake) => wake.kind === "agent-turn-due");
+  it.each([
+    {
+      when: "its run is over, with an agent that opens its own turns",
+      given: [...selfTurning, work("running"), turnEnded],
+      ends: "completed" as const,
+      due: true,
+    },
+    {
+      when: "the helper failed",
+      given: [...selfTurning, work("running"), turnEnded],
+      ends: "failed" as const,
+      due: true,
+    },
+    {
+      when: "its run still works, which takes the result in",
+      given: [...selfTurning, work("running")],
+      ends: "completed" as const,
+      due: false,
+    },
+    {
+      when: "its agent never opens a turn of its own",
+      given: [...proofRunning, work("running"), turnEnded],
+      ends: "completed" as const,
+      due: false,
+    },
+    {
+      when: "its session lost it, which tells no one",
+      given: [...selfTurning, work("running"), turnEnded],
+      ends: "lost" as const,
+      due: false,
+    },
+  ])(
+    "a helper finishing after its run keeps the conversation going until the turn it wakes: $when",
+    ({ given, ends, due }) => {
+      const { state } = playAll([...given, work(ends)]);
+      expect(turnDue(state).map((wake) => wake.dueAt)).toEqual(due ? [T0 + AGENT_TURN_DUE_MS] : []);
+    },
+  );
+  it("the turn a helper's end wakes, or the wait's bound, ends the wait for it", () => {
+    const finished = [...selfTurning, work("running"), turnEnded, work("completed")];
+    const woke = playAll([
+      ...finished,
+      signal({
+        kind: "turn-started",
+        turn: "bg" as TurnHandle,
+        origin: "self",
+        providerTurnId: "bg",
+      }),
+    ]);
+    expect(turnDue(woke.state)).toEqual([]);
+    const due = turnDue(playAll(finished).state)[0]!;
+    const bounded = playAll([
+      ...finished,
+      { command: { _tag: "WakeFired", wakeId: due.id }, at: due.dueAt },
+    ]);
+    expect(turnDue(bounded.state)).toEqual([]);
+    expect(Object.keys(bounded.state.runs)).toEqual([r(1)]);
   });
 
   const workClosed = (log: ReadonlyArray<KnownEngineEvent>) =>

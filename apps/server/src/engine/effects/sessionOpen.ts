@@ -181,6 +181,7 @@ export const makeSessionOpen = Effect.gen(function* () {
           nativeRef: host.thread,
           capabilities: {
             steer: DRIVER_CAPABILITIES[driver].steer === "native",
+            selfTurns: DRIVER_CAPABILITIES[driver].selfTurns,
             inSessionOptions: yield* inSessionOptions(driver, payload.instanceId),
           },
           requestedModel: payload.model,
