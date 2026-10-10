@@ -292,3 +292,143 @@ describe("an idle engine Mate", () => {
       ),
   );
 });
+
+/** What the update's idle proof finds now, read as the drain reads it. */
+const blockersNow = (w: EngineWorld) =>
+  Effect.gen(function* () {
+    const drain = (yield* w.engine).updateDrain;
+    if (drain === undefined) throw new Error("The engine has no update drain");
+    yield* bindLiveSessions(w, "claudeAgent");
+    return (yield* w.within(drain.facts)).blockers;
+  });
+
+type Agent = Parameters<Parameters<EngineWorld["agent"]>[0]>[0];
+const helper = (agent: Agent, thread: string, id: string, owner?: string) =>
+  agent.emit("task.started", thread, {
+    payload: {
+      taskId: id,
+      toolUseId: `call-${id}`,
+      taskType: owner === undefined ? "local_agent" : "local_bash",
+      description: owner === undefined ? `Helper ${id}` : `Shell ${id}`,
+      ...(owner === undefined ? {} : { agentId: owner }),
+    },
+  });
+const reportsBack = (agent: Agent, thread: string, id: string, owner?: string) =>
+  agent.emit("task.completed", thread, {
+    payload: {
+      taskId: id,
+      status: "completed",
+      toolUseId: `call-${id}`,
+      ...(owner === undefined ? {} : { agentId: owner }),
+    },
+  });
+
+// Milo, 2026-10-10: the update restarted the Mate between its turns while a helper it had sent
+// off in the background was still working, and the person saw "Milo is reconnecting" mid-run.
+describe("an update over a Mate's background work", () => {
+  it.effect.each([
+    {
+      title:
+        "an update waits while a helper the agent sent off in the background is still working, even between the agent's turns",
+      waitsOn: "live background work",
+      script: (w: EngineWorld) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => helper(agent, thread, "h1"));
+          yield* w.agent((agent, thread) => helper(agent, thread, "h2"));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.agent((agent, thread) => reportsBack(agent, thread, "h1"));
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          yield* w.agent((agent, thread) => agent.say(thread, "Helper one is back."));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+        }),
+      finish: (w: EngineWorld) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => reportsBack(agent, thread, "h2"));
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+        }),
+    },
+    {
+      title: "an update waits while a background job a helper started is still running",
+      waitsOn: "live background work",
+      script: (w: EngineWorld) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => helper(agent, thread, "h1"));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.agent((agent, thread) => helper(agent, thread, "s1", "h1"));
+          yield* w.agent((agent, thread) => reportsBack(agent, thread, "h1"));
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+        }),
+      finish: (w: EngineWorld) =>
+        w.agent((agent, thread) => reportsBack(agent, thread, "s1", "h1")),
+    },
+    {
+      title: "an update waits while a wake for finished background work is still due",
+      waitsOn: "finished background work its agent has not taken up",
+      script: (w: EngineWorld) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => helper(agent, thread, "h1"));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.agent((agent, thread) => reportsBack(agent, thread, "h1"));
+        }),
+      finish: (w: EngineWorld) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+        }),
+    },
+  ])("$title", ({ waitsOn, script, finish }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* makeEngineWorld({ driver: "claudeAgent" });
+        yield* w.boot;
+        yield* w.tell({
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: "m1",
+            profile: { kind: "mate" },
+          },
+        });
+        yield* w.tell({ _tag: "Send", text: "send helpers off" });
+        yield* script(w);
+        // The drain reads the pump before and after the engine's state: each reason comes twice.
+        expect(
+          new Set((yield* blockersNow(w)).map((reason) => reason.slice(reason.indexOf(": ") + 2))),
+        ).toEqual(new Set([waitsOn]));
+        yield* finish(w);
+        expect(yield* blockersNow(w)).toEqual([]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
+
+describe("an update over finished background work", () => {
+  it.effect("an update goes ahead when the agent never takes up its finished background work", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* makeEngineWorld({ driver: "claudeAgent" });
+        yield* w.boot;
+        yield* w.tell({
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: "m1",
+            profile: { kind: "mate" },
+          },
+        });
+        yield* w.tell({ _tag: "Send", text: "send a helper off" });
+        yield* w.agent((agent, thread) => helper(agent, thread, "h1"));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.agent((agent, thread) => reportsBack(agent, thread, "h1"));
+        yield* bindLiveSessions(w, "claudeAgent");
+        expect(yield* drains(w)).toBe(true);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});

@@ -43,6 +43,7 @@ import type {
   SendMode,
   SessionId,
 } from "../bridge/spi3.ts";
+import { DRIVER_CAPABILITIES } from "../bridge/capabilities.ts";
 import { type BridgeInput, makeTranslator, type NativeRequest } from "../bridge/translate.ts";
 import type { ConversationsShape } from "../Conversations.ts";
 import type { ProviderSignal } from "../domain/command.ts";
@@ -145,7 +146,12 @@ export const makeSessionHost = Effect.fnUntraced(function* (
   deps: SessionHostDeps,
 ) {
   const translator = makeTranslator({ driver: input.driver, threadId: input.thread });
-  const toCore = makeToCore({ nativeTurn: translator.nativeTurn });
+  const toCore = makeToCore({
+    nativeTurn: translator.nativeTurn,
+    selfTurns: DRIVER_CAPABILITIES[input.driver].selfTurns,
+  });
+  /** When finished work stops waiting for its turn: the update's drain looks again then. */
+  let reportDueCheck: number | null = null;
   const inbox = yield* Queue.unbounded<Inbox>();
   const lock = yield* Semaphore.make(1);
   const gates = new Map<SessionId, Gate>();
@@ -351,6 +357,11 @@ export const makeSessionHost = Effect.fnUntraced(function* (
       );
     }
     if (unasked) yield* replaceUnasked;
+    const due = toCore.reportDueUntil();
+    if (due !== null && Number.isFinite(due) && due !== reportDueCheck) {
+      reportDueCheck = due;
+      yield* Effect.sleep(due - now).pipe(Effect.andThen(changed), Effect.forkIn(deps.scope));
+    }
     yield* changed;
   });
 
@@ -471,6 +482,9 @@ export const makeSessionHost = Effect.fnUntraced(function* (
         if (deferredInterrupts.size > 0) blockers.push("pending interrupt");
         if (sessionCalls > 0) blockers.push("live provider call");
         if (toCore.liveWork() > 0) blockers.push("live background work");
+        const due = toCore.reportDueUntil();
+        if (due !== null && (yield* Clock.currentTimeMillis) < due)
+          blockers.push("finished background work its agent has not taken up");
         if ([...gates.values()].some((gate) => gate.state === "held"))
           blockers.push("session opening");
         if ((yield* Queue.size(inbox)) > 0) blockers.push("pending provider events");

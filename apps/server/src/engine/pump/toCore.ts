@@ -91,12 +91,19 @@ export interface CoreStep {
 export interface ToCoreOptions {
   /** The driver's own id for a turn, when it named one. */
   readonly nativeTurn?: (turn: TurnHandle) => string | undefined;
+  /** The agent opens a turn of its own to take its finished work's result (Claude). */
+  readonly selfTurns?: boolean;
 }
 
 export interface ToCore {
   readonly step: (signal: DriverSignal, now: number) => CoreStep;
   /** Background work still alive in this session: an idle close keeps the session for it. */
   readonly liveWork: () => number;
+  /**
+   * Until when the agent's own finished work waits for the turn the agent opens to take its
+   * result: null when none waits, infinite while a turn is open, since the agent takes it after.
+   */
+  readonly reportDueUntil: () => number | null;
   /**
    * The server stops under the session: each open text item (a note, a thought, a plan) ends cut
    * with the words it streamed, which only this fold holds. Its closes, for the record.
@@ -113,6 +120,11 @@ export interface ToCore {
 /** Turns remembered for whom a self turn reports on; closed item keys remembered for repeats. */
 const KEPT_TURNS = 64;
 const KEPT_CLOSED_KEYS = 512;
+/**
+ * How long finished work waits for the turn its agent opens to take the result, once no turn is
+ * open: Claude opens it within seconds; one that never comes holds nothing longer.
+ */
+export const REPORT_TURN_GRACE_MS = 30_000;
 const TEXT_KINDS: ReadonlySet<string> = new Set(["text", "reasoning", "plan"]);
 
 /** Sets a key, the oldest going once the map holds more than `cap`. */
@@ -158,6 +170,9 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
   const closedKeys = new Map<string, ItemStatus>();
   const selfReports = new Map<string, RunId | null>();
   let lastEndedWorkOrigin: string | null = null;
+  const openTurns = new Set<string>();
+  /** The agent's own work ended and its result has no turn yet; `since`: no turn open since. */
+  let reportDue: { since: number | null } | null = null;
   const lastActivity = new Map<string, number>();
   /** The session's last context reading: a turn's end keeps where it stood. */
   let lastContext: number | undefined;
@@ -205,6 +220,8 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         const words = signal.words ?? CLOSE_WORDS[signal.cause] ?? CLOSE_WORDS.unknown!;
         session = { _tag: "Closed", asked, words };
         liveWork.clear();
+        openTurns.clear();
+        reportDue = null;
         if (!asked) signals.push({ kind: "session-exited", reason: words });
         break;
       }
@@ -221,6 +238,9 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         });
         break;
       case "turn.opened": {
+        openTurns.add(signal.turn);
+        if (signal.origin === "self") reportDue = null;
+        else if (reportDue !== null) reportDue.since = null;
         if (signal.origin === "engine") keep(engineTurns, signal.turn, true, KEPT_TURNS);
         const reports = signal.origin === "self" ? reportsOn() : null;
         if (signal.origin === "self") keep(selfReports, signal.turn, reports, KEPT_TURNS);
@@ -235,6 +255,8 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
       }
       case "turn.ended":
         lastActivity.delete(signal.turn);
+        openTurns.delete(signal.turn);
+        if (reportDue !== null && openTurns.size === 0) reportDue.since = now;
         signals.push({
           kind: "turn-ended",
           turn: signal.turn,
@@ -343,8 +365,11 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
       case "work.upsert":
         if (LIVE_WORK.has(signal.status)) liveWork.add(signal.work);
         else {
-          liveWork.delete(signal.work);
+          const ended = liveWork.delete(signal.work);
           if (signal.origin !== "unknown") lastEndedWorkOrigin = signal.origin;
+          // A helper's own work reports to its helper; the agent's own wakes the agent.
+          if (ended && options.selfTurns === true && signal.helper === undefined)
+            reportDue = { since: openTurns.size > 0 ? null : now };
         }
         signals.push({
           kind: "work-upserted",
@@ -429,6 +454,12 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
     step,
     cutText,
     liveWork: () => liveWork.size,
+    reportDueUntil: () =>
+      reportDue === null
+        ? null
+        : reportDue.since === null
+          ? Number.POSITIVE_INFINITY
+          : reportDue.since + REPORT_TURN_GRACE_MS,
     retained: () => ({
       items: items.size,
       text: [...items.values()].reduce((sum, item) => sum + item.text.size, 0),
