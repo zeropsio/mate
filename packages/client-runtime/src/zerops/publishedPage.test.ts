@@ -9,7 +9,7 @@ import {
   pageFrameHeight,
   readPageMessage,
   type PageTheme,
-} from "./publishedPage.logic";
+} from "./publishedPage.ts";
 
 /** The page as it runs, inside the wrapper. */
 const pageOf = (html: string, of: PageTheme = theme) => innerDocumentOf(pageDocument(html, of))!;

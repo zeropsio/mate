@@ -16,6 +16,27 @@
  * The page talks to the conversation only through the wrapper, by JSON strings it builds with
  * functions captured before the page's own scripts run: its height and a link the person clicked.
  */
+import { CallResultPage } from "@t3tools/contracts";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+
+import { readRecord } from "./cards/decode.ts";
+
+const decodePage = Schema.decodeUnknownOption(CallResultPage);
+/** Each record's page, read once: a record read again gives the page it gave before. */
+const pagesRead = new WeakMap<object, CallResultPage | undefined>();
+
+/**
+ * The page a call's record says it published (`data.zerops.page`), read the same by every client;
+ * one that does not decode is none.
+ */
+export function readCallPage(payload: unknown): CallResultPage | undefined {
+  const data = readRecord(readRecord(payload)?.data);
+  const raw = data !== undefined ? readRecord(data.zerops)?.page : undefined;
+  if (typeof raw !== "object" || raw === null) return undefined;
+  if (!pagesRead.has(raw)) pagesRead.set(raw, Option.getOrUndefined(decodePage(raw)));
+  return pagesRead.get(raw);
+}
 
 /** Everything the page may load: what it carries inline, nothing from anywhere. */
 export const PAGE_POLICY = [
