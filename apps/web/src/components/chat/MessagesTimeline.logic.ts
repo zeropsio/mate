@@ -520,6 +520,8 @@ export interface RunStatus {
   readonly waitingOnHelpers?: true;
   /** It did something — a call, a helper, an operation: it "worked", never only "thought". */
   readonly worked: boolean;
+  /** It made no call, and wrote to the person: its line says it wrote, never that it thought. */
+  readonly wrote?: true;
   /** It broke off: what its card says under its line (`ConversationTurn.brokeOff`). */
   readonly brokeOff?: BrokeOff | undefined;
 }
@@ -2818,6 +2820,11 @@ export function deriveMessagesTimelineRows(input: {
       engineCard === undefined || turn.live || waiting
         ? undefined
         : engineWorkedMs(engineCard.runs, personMs);
+    // Words to the person, held or counted by its summary: a run with no call wrote.
+    const wrote =
+      (paging?.counts.answered ?? false) ||
+      answer !== null ||
+      items.some((item) => item.kind === "note" && item.message.text.trim().length > 0);
     const status: RunStatus = {
       // A run that waits on what it started is not over: its clock runs on.
       live: turn.live || waiting,
@@ -2853,6 +2860,7 @@ export function deriveMessagesTimelineRows(input: {
               (isQuestionToolCall(candidate.entry) || candidate.entry.inputQuestions !== undefined),
           ),
         ),
+      ...(wrote ? { wrote: true as const } : {}),
     };
     // Who worked and for how long is said once, on the chat's last line,
     // where the Mate's face stands — the live edge while it works, the run's

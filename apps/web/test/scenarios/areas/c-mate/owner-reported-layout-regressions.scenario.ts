@@ -1656,6 +1656,243 @@ describe("owner-reported layout regressions", () => {
       });
     });
 
+    describe("Decision: the live card's clock and controls stand on a line of their own at the head of the present; the Mate's words are read as they are written.", () => {
+      interface FootFrame {
+        readonly card: {
+          readonly top: number;
+          readonly bottom: number;
+          readonly left: number;
+          readonly right: number;
+        };
+        /** The boxes of the working line's words. */
+        readonly words: ReadonlyArray<{ readonly top: number; readonly bottom: number }>;
+        readonly controls: ReadonlyArray<{
+          readonly name: string;
+          readonly top: number;
+          readonly bottom: number;
+          readonly left: number;
+          readonly right: number;
+        }>;
+      }
+      const readFoot = (page: Page) =>
+        page.evaluate((): FootFrame | null => {
+          const card = [
+            ...document.querySelectorAll<HTMLElement>("[data-run-chat][data-run-live]"),
+          ].at(-1);
+          const line = card?.querySelector<HTMLElement>(":scope > [data-run-now]:not([hidden])");
+          if (!card || !line) return null;
+          const box = card.getBoundingClientRect();
+          const bubbles = [...line.querySelectorAll<HTMLElement>("[data-chat-bubble]")];
+          const words = bubbles.map((bubble) => {
+            const rect = bubble.getBoundingClientRect();
+            return { top: rect.top, bottom: rect.bottom };
+          });
+          const controls = [...card.querySelectorAll<HTMLButtonElement>("button")]
+            .filter((button) =>
+              ["Hide work", "Show work", "Stop"].includes(button.textContent ?? ""),
+            )
+            .map((button) => {
+              const rect = button.getBoundingClientRect();
+              return {
+                name: button.textContent ?? "",
+                top: rect.top,
+                bottom: rect.bottom,
+                left: rect.left,
+                right: rect.right,
+              };
+            });
+          return {
+            card: { top: box.top, bottom: box.bottom, left: box.left, right: box.right },
+            words,
+            controls,
+          };
+        });
+      const settledFoot = (page: Page, wanted: ReadonlyArray<string>) =>
+        page.waitForFunction(
+          (names: ReadonlyArray<string>) => {
+            const card = [...document.querySelectorAll("[data-run-chat][data-run-live]")].at(-1);
+            if (!card) return false;
+            const shown = new Set(
+              [...card.querySelectorAll("button")].map((button) => button.textContent),
+            );
+            return (
+              names.every((name) => shown.has(name)) &&
+              document
+                .getAnimations()
+                .every(
+                  (animation) =>
+                    animation.effect?.getTiming().iterations === Infinity ||
+                    animation.playState !== "running",
+                )
+            );
+          },
+          { polling: "raf", timeout: 8000 },
+          wanted,
+        );
+      const miloAtWork = Effect.gen(function* () {
+        const s = yield* createScenario([installEngineArea]);
+        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        yield* Effect.promise(() =>
+          s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
+        );
+        yield* s.given.project("Ada", { mate: true });
+        const chat = mateChat(s);
+        chat.fixture().exchange("How did the deploy go?", "It built and the storefront answers.");
+        chat.fixture().exchange("And now?", "The existing conversation is still here");
+        const wire = chat.fixture().wire;
+        if (!(wire instanceof EngineChatWire)) throw new Error("Milo's run is the engine's");
+        const engine = wire.engine;
+        yield* s.given.signedIn;
+        yield* Effect.promise(() => ownerMenu(s.page));
+        yield* chat.when.open();
+        yield* chat.when.send("Live stress test 4A: start two helpers");
+        const run = [...engine.runs.values()].at(-1)!.id;
+        engine.item(run, {
+          kind: "call",
+          step: "command",
+          tool: { name: "Bash" },
+          words: "Command run",
+          state: "done",
+          endedAt: yield* Clock.currentTimeMillis,
+          input: "Bash: sleep 25 && echo helper-job-done",
+        });
+        return { s, engine, run };
+      });
+
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        it.effect(
+          "the work toggle and Stop stand inside the run's card, on a line of their own clear of the working line's words",
+          () =>
+            Effect.gen(function* () {
+              const { s, engine, run } = yield* miloAtWork;
+              engine.item(run, {
+                kind: "note",
+                text: "Helper B's job ended first: exit code 4, as it was told to fail. Helper A's is still sleeping. Reacting with the first second-wave helper: it reads what B printed and checks the exit code against the plan.",
+                streaming: false,
+                answer: false,
+              });
+              const inside = (frame: FootFrame, what: string) => {
+                expect(
+                  frame.controls.map((control) => control.name),
+                  what,
+                ).not.toHaveLength(0);
+                for (const control of frame.controls) {
+                  expect(
+                    control.top >= frame.card.top - 0.5 &&
+                      control.bottom <= frame.card.bottom + 0.5 &&
+                      control.left >= frame.card.left - 0.5 &&
+                      control.right <= frame.card.right + 0.5,
+                    `ASSERTION: ${control.name} stands inside the run's card (${what})`,
+                  ).toBe(true);
+                  expect(
+                    frame.words.every(
+                      (words) =>
+                        control.bottom <= words.top + 0.5 || control.top >= words.bottom - 0.5,
+                    ),
+                    `ASSERTION: ${control.name} stands on a line of its own, clear of the working line's words (${what})`,
+                  ).toBe(true);
+                }
+              };
+              yield* Effect.promise(() => settledFoot(s.page, ["Hide work"]));
+              inside((yield* Effect.promise(() => readFoot(s.page)))!, "the Mate's words");
+              // Its turn over, the helper it launched works on: Stop joins the clock.
+              engine.item(run, {
+                kind: "work",
+                work: "work-helper-a",
+                workKind: "helper",
+                status: "running",
+                title: "Sleep 25 seconds, then report",
+              });
+              engine.end(run);
+              engine.waitOnHelpers();
+              yield* Effect.promise(() => settledFoot(s.page, ["Hide work", "Stop"]));
+              const waiting = (yield* Effect.promise(() => readFoot(s.page)))!;
+              inside(waiting, "waiting for its helpers");
+              const [toggle, stop] = ["Hide work", "Stop"].map((name) =>
+                waiting.controls.find((control) => control.name === name)!,
+              );
+              expect(
+                Math.abs(toggle!.top - stop!.top),
+                "ASSERTION: Stop shares the toggle's line",
+              ).toBeLessThan(4);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
+        it.effect(
+          "a long answer being written grows to the item height and is readable while it is written",
+          () =>
+            Effect.gen(function* () {
+              const { s, engine, run } = yield* miloAtWork;
+              const note = engine.item(run, {
+                kind: "note",
+                text: "",
+                streaming: true,
+                answer: false,
+              });
+              const lines = Array.from(
+                { length: 32 },
+                (_, index) => `Line ${index + 1} of the table of every helper and job.`,
+              );
+              engine.stream(note, lines.join("\n\n"));
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () => {
+                    const card = [
+                      ...document.querySelectorAll("[data-run-chat][data-run-live]"),
+                    ].at(-1);
+                    return card
+                      ?.querySelector('[data-chat-kind="note"]')
+                      ?.textContent?.includes("Line 32");
+                  },
+                  { polling: "raf", timeout: 8000 },
+                ),
+              );
+              yield* Effect.promise(() => settledFoot(s.page, ["Hide work"]));
+              const read = yield* Effect.promise(() =>
+                s.page.evaluate(() => {
+                  const card = [...document.querySelectorAll("[data-run-chat][data-run-live]")].at(
+                    -1,
+                  )!;
+                  const bubble = card.querySelector<HTMLElement>('[data-chat-kind="note"]')!;
+                  const box = bubble
+                    .querySelector<HTMLElement>("[data-capped]")!
+                    .getBoundingClientRect();
+                  const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+                  let last: { top: number; bottom: number } | null = null;
+                  while (walker.nextNode()) {
+                    if (!walker.currentNode.textContent?.includes("Line 32")) continue;
+                    const rect = walker.currentNode.parentElement!.getBoundingClientRect();
+                    last = { top: rect.top, bottom: rect.bottom };
+                  }
+                  return { top: box.top, bottom: box.bottom, height: box.height, last };
+                }),
+              );
+              expect(
+                read.height,
+                "ASSERTION: the words grow past four lines toward the run scroll's height",
+              ).toBeGreaterThan(300);
+              expect(
+                read.last !== null &&
+                  read.last.bottom <= read.bottom + 1 &&
+                  read.last.top >= read.top - 1,
+                "ASSERTION: the newest words stand in view at the box's foot while written",
+              ).toBe(true);
+              const foot = (yield* Effect.promise(() => readFoot(s.page)))!;
+              for (const control of foot.controls)
+                expect(
+                  foot.words.every(
+                    (words) =>
+                      control.bottom <= words.top + 0.5 || control.top >= words.bottom - 0.5,
+                  ),
+                  `ASSERTION: ${control.name} stands clear of the words being written`,
+                ).toBe(true);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+      });
+    });
+
     // Milo's stress run 4 (D): a sent message was born 62 px behind the composer for two frames,
     // and a multi-line send's glide took one 77 px step as the composer shrank back.
     describe("Decision: a sent message enters above the composer and glides; nothing jumps.", () => {

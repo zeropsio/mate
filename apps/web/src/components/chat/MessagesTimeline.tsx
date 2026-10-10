@@ -2593,7 +2593,6 @@ function FoldRoom({ fold }: { readonly fold: FoldsFrom | undefined }) {
 /** What runs alongside the Mate, under its record. */
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const ctx = use(TimelineRowCtx);
-  const { stoppingBackgroundWork } = use(TimelineRowActivityCtx);
   const dock = use(TimelineWorkingCtx);
   useEffect(() => {
     watchedTurnKeys.add(row.turnKey);
@@ -2615,9 +2614,6 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
         incidents={row.incidents}
         onOpenAgents={ctx.onOpenAgents}
         threadRef={ctx.threadRef}
-        {...(row.waiting === true
-          ? { stop: { stopping: stoppingBackgroundWork, onStop: ctx.onStopBackgroundWork } }
-          : {})}
       />
     </div>
   );

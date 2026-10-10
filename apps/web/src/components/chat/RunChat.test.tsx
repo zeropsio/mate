@@ -489,6 +489,79 @@ describe("RunChat", () => {
     expect(markupDom(markup).querySelector('[role="status"]')?.textContent).toBe("Thinking");
   });
 
+  // The owner, 2026-10-10: "states where the agents like talk tab has no content only the avatar"
+  // — the engine opens a note with no words and fills it a moment later.
+  it("the working line always says something: words not written yet leave it naming what the Mate does, never its face alone", () => {
+    const wordless = (text: string): RecordItem => ({
+      kind: "note",
+      key: "note:a9",
+      at: at(10),
+      message: { ...message("a9", "assistant", text), streaming: false },
+    });
+    for (const text of ["", " \n"]) {
+      const markup = draw(
+        record([step(command("w1", "pnpm build")), wordless(text)], {
+          live: true,
+          status: status(),
+        }),
+      );
+      expect(markup).not.toContain('data-chat-kind="note"');
+      expect(markupDom(markup).querySelector('[role="status"]')?.textContent).toBe("Thinking");
+    }
+  });
+
+  // Live on Milo, 2026-10-10: the clock read 0:00 well into the run, counting the line that had
+  // just begun.
+  it("counts the run's own time on its clock, never a line's that just began", () => {
+    const started = new Date(Date.now() - 5 * 60_000).toISOString();
+    const markup = draw(
+      record([], {
+        live: true,
+        status: status({ startedAt: started }),
+        now: {
+          kind: "step",
+          step: stepOf(
+            command("w9", "npm run lint", {
+              createdAt: new Date().toISOString(),
+              toolLifecycleStatus: "inProgress",
+              updatedAt: undefined as never,
+            }),
+          ),
+        },
+      }),
+    );
+    expect(markupDom(markup).querySelector("[data-work-line-clock]")?.textContent).toMatch(
+      /^5:0\d$/u,
+    );
+  });
+
+  // The owner, 2026-10-10: "with long answer there is a bit of disconnect with the still 'running'
+  // state" — the clock and Hide work stood beside the words while they grew.
+  it("says words still being written at their foot, with nothing beside them saying the run goes on", () => {
+    const writing = (streaming: boolean) =>
+      markupDom(
+        draw(
+          record([step(command("w1", "pnpm build"))], {
+            live: true,
+            status: status(),
+            now: {
+              kind: "writing",
+              note: {
+                key: "note:a9",
+                message: { ...message("a9", "assistant", LONG), streaming },
+              },
+            },
+          }),
+        ),
+      );
+    const live = writing(true);
+    const note = live.querySelector('[data-chat-kind="note"]')!;
+    expect(note.querySelector("[data-note-writing]")).not.toBeNull();
+    expect(note.closest("[data-chat-row]")!.querySelector("[data-work-line-clock]")).toBeNull();
+    expect(note.closest("[data-chat-row]")!.querySelector("button")).toBeNull();
+    expect(writing(false).querySelector('[data-chat-kind="note"] [data-note-writing]')).toBeNull();
+  });
+
   // Several at once (pass 35): a row each in the live slot, three at most,
   // then how many more run.
   it("draws several steps at once as a row each, three at most, then how many more", () => {
@@ -603,7 +676,7 @@ describe("RunChat", () => {
         step(command("w1", SCRIPT, { callInput: { description: "Write the status route" } })),
       ]),
     );
-    expect(markup.match(/data-capped="item"/g)).toHaveLength(4);
+    expect(markup.match(/data-capped="(?:item|words)"/g)).toHaveLength(4);
     expect(markup).not.toContain("Show full");
     expect(markup).not.toContain("Show all");
     expect(markup).not.toContain("Show less");

@@ -4212,6 +4212,9 @@ code {
   --run-item-cap: 5rem;
   /* What the person opens under a call (what a command printed): twelve. */
   --run-detail-cap: 15rem;
+  /* The Mate's words to the person (run 4: a 32-line answer streamed through
+     a three-line slit): as tall as the run's scroll. */
+  --run-words-cap: min(440px, 52svh);
   @variant dark {
     --run-tray: oklch(0.19 0.007 180);
   }
@@ -4436,18 +4439,25 @@ code {
    it has no hairline. */
 .run-slot {
   position: relative;
-  margin-top: 16px;
-  padding: 16px 0 4px;
+  padding: 41px 0 4px;
+}
+/* Its hairline 24 px under the history, inside its own box: the room over
+   the hairline is the slot's, where its controls stand (`.run-slot-head`). */
+.run-slot::before {
+  position: absolute;
+  inset-inline: 0;
+  top: 24px;
   border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  content: "";
 }
 .run-slot:first-child {
-  margin-top: 0;
   padding-top: 0;
-  border-top: 0;
 }
-/* The work control shares the clock's line; reserve its room beside the live content. */
-.run-slot:has(.run-now-fold) {
-  padding-right: 104px;
+.run-slot:first-child::before {
+  content: none;
+}
+.run-slot:first-child:has(> .run-slot-head) {
+  padding-top: 24px;
 }
 .run-slot-list {
   display: flex;
@@ -4458,7 +4468,7 @@ code {
 /* Stood on the line by `translate`, not `top`: a move of the line moves them
    on the compositor, with no layout. */
 .run-slot-face,
-.run-slot-clock {
+.run-slot-end {
   position: absolute;
   top: 0;
   translate: 0 calc(var(--run-slot-line, 26px) - 50%);
@@ -4467,8 +4477,12 @@ code {
 /* They follow the first line once placed, never from where a first paint
    guessed it. */
 .run-slot[data-placed] > .run-slot-face,
-.run-slot[data-placed] > .run-slot-clock {
+.run-slot[data-placed] > .run-slot-end {
   transition: translate 240ms var(--ease-out-strong);
+}
+/* A run that has done nothing yet: its clock on its one line's right edge. */
+.run-slot-end {
+  right: 14px;
 }
 .run-slot-face {
   left: 0;
@@ -4476,38 +4490,57 @@ code {
   width: 28px;
   justify-content: center;
 }
-.run-slot-clock {
+/* The live card's controls (the owner, 2026-10-10: "this hide work placement
+   is absolute shit"): the run's one clock, Stop and Hide work on a line of
+   their own at the head of the present — never in a gutter beside the Mate's
+   words. A folded run's line ends on the same cluster. It stands over the hairline, in room the
+   history mostly left already: 8 px more than the hairline kept. */
+.run-slot-head {
+  position: absolute;
+  inset-inline: 0;
+  top: 6px;
+  display: flex;
+  height: 16px;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 14px;
+}
+.run-slot-head .run-now-time,
+.run-slot-head .run-now-fold {
+  line-height: 16px;
+}
+.run-slot-head .run-now-fold {
+  margin-block: 0;
+  padding-block: 0;
+}
+.run-now-end {
   display: flex;
   align-items: center;
   gap: 12px;
-  right: 14px;
+}
+.run-now-time {
   font-size: 13px;
   line-height: 20px;
   font-variant-numeric: tabular-nums;
   color: var(--color-foreground);
 }
-/* A row's right edge in the slot, where the clock stands on the first. */
-/* p39/content: a wait on the person counts in the quiet ink — its own time,
-   not the Mate's work. */
-.run-slot-clock[data-run-clock-waiting] {
+/* p39/content: a wait on the person stands the clock still, in the quiet ink. */
+.run-now-time[data-run-clock-waiting] {
   color: var(--color-muted-foreground);
 }
-.run-slot-clock-room {
-  width: 36px;
-  flex: none;
-}
-/* A thought keeps the clock's room on its right, live and in the history
-   alike, so its plop never rewraps it — and "Show full thought" stands there.
-   Words to the person keep it on their first line only, while live — inside
-   what holds the words, so a fold that clips them never narrows them all. */
+/* A thought keeps room on its right, live and in the history alike, so its
+   plop never rewraps it — "Show full thought" stands there. */
 [data-run-chat] [data-chat-bubble="thought"] {
   padding-right: 52px;
 }
-.run-slot [data-chat-bubble="speech"] > :first-child::before {
-  content: "";
-  float: right;
-  width: 40px;
-  height: 1lh;
+/* Words still being written: three quiet dots in the bubble's foot padding,
+   under the last line, so the bubble keeps the height it lands with. */
+.run-note-writing {
+  position: absolute;
+  right: 14px;
+  bottom: 2px;
+  scale: 0.7;
+  transform-origin: right bottom;
 }
 /* Nothing standing in it: its words on the first line, as a call's. */
 .run-slot-filler {
@@ -4537,7 +4570,7 @@ code {
 }
 @media (prefers-reduced-motion: reduce) {
   .run-slot[data-placed] > .run-slot-face,
-  .run-slot[data-placed] > .run-slot-clock {
+  .run-slot[data-placed] > .run-slot-end {
     transition: none;
   }
 }
@@ -4558,6 +4591,9 @@ code {
 }
 .run-capped[data-capped="detail"] {
   max-height: var(--run-detail-cap);
+}
+.run-capped[data-capped="words"] {
+  max-height: var(--run-words-cap);
 }
 .run-capped[data-more-above] {
   mask-image: linear-gradient(to bottom, transparent, currentColor 14px);
@@ -4930,8 +4966,8 @@ button.run-bar:focus-visible {
   align-items: center;
   gap: 6px;
   margin-block: -2px;
-  margin-right: -4px;
-  padding: 2px 4px 2px 8px;
+  margin-right: -8px;
+  padding: 2px 8px;
   border-radius: 8px;
   font-size: 13px;
   line-height: 20px;
@@ -4948,19 +4984,6 @@ button.run-bar:focus-visible {
 .run-now-fold:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
   outline-offset: 1px;
-}
-.run-now-fold-icon {
-  width: 14px;
-  height: 14px;
-  transition: rotate 220ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-.run-now-fold[aria-expanded="true"] .run-now-fold-icon {
-  rotate: 180deg;
-}
-@media (prefers-reduced-motion: reduce) {
-  .run-now-fold-icon {
-    transition: none;
-  }
 }
 
 /* T4: a step ending lands in the chat above the now line, rising 6 px into

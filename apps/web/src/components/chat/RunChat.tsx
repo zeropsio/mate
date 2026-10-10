@@ -133,7 +133,6 @@ import { keepInPlace, scrollerOf } from "./keepInPlace";
 import { useCalmLine } from "./useCalmLine";
 import {
   SLOT_MAX_ROWS,
-  slotClock,
   slotHoldsIn,
   slotRunningPast,
   type LiveSlot as LiveSlotState,
@@ -631,6 +630,11 @@ interface CappedBoxProps {
   readonly follows?: boolean;
   /** What the person opened under a call: twelve lines (`--run-detail-cap`). */
   readonly detail?: boolean;
+  /**
+   * The Mate's words to the person: as tall as the run's scroll (`--run-words-cap`), so a long
+   * answer is read while it is written, never through a four-line slit.
+   */
+  readonly words?: boolean;
   /** Which of its line's boxes it is, where the line has several. */
   readonly part?: string;
   /**
@@ -665,7 +669,15 @@ function CappedBox(props: CappedBoxProps) {
  * its end in the working row rolls back to its head as it lands, so the swap
  * reads as the one box moving.
  */
-function LogBox({ detail = false, part, open, onCut, className, children }: CappedBoxProps) {
+function LogBox({
+  detail = false,
+  words = false,
+  part,
+  open,
+  onCut,
+  className,
+  children,
+}: CappedBoxProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const whole = open ?? detail;
@@ -728,7 +740,7 @@ function LogBox({ detail = false, part, open, onCut, className, children }: Capp
     <div
       ref={boxRef}
       className={cn("run-capped min-w-0", className)}
-      data-capped={detail ? "detail" : "item"}
+      data-capped={detail ? "detail" : words ? "words" : "item"}
       data-capped-at="log"
       data-more-below={cut && !whole ? "" : undefined}
       data-whole={whole ? "" : undefined}
@@ -749,7 +761,14 @@ function LogBox({ detail = false, part, open, onCut, className, children }: Capp
  * scrolls it; whether it stands at its end is carried by its line's key to
  * the log, which rolls it back to its head.
  */
-function SlotBox({ follows = false, detail = false, part, className, children }: CappedBoxProps) {
+function SlotBox({
+  follows = false,
+  detail = false,
+  words = false,
+  part,
+  className,
+  children,
+}: CappedBoxProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -808,7 +827,7 @@ function SlotBox({ follows = false, detail = false, part, className, children }:
     <div
       ref={boxRef}
       className={cn("run-capped min-w-0", className)}
-      data-capped={detail ? "detail" : "item"}
+      data-capped={detail ? "detail" : words ? "words" : "item"}
       onScroll={() => {
         const box = boxRef.current;
         if (box === null) return;
@@ -935,10 +954,13 @@ function collapseInPlace(pressed: HTMLElement, close: () => void) {
  */
 function OpensWhole({
   follows = false,
+  words = false,
   what,
   children,
 }: {
   readonly follows?: boolean;
+  /** The Mate's words to the person: the taller box (`CappedBox`'s `words`). */
+  readonly words?: boolean;
   /** What it holds, for the press's name: "thought", "message", "question". */
   readonly what: string;
   readonly children: ReactNode;
@@ -946,11 +968,16 @@ function OpensWhole({
   const inSlot = use(InSlotContext);
   const disclosure = useDisclosure(false, "open");
   const [cut, setCut] = useState(false);
-  if (inSlot) return <CappedBox follows={follows}>{children}</CappedBox>;
+  if (inSlot)
+    return (
+      <CappedBox follows={follows} words={words}>
+        {children}
+      </CappedBox>
+    );
   return (
     <>
       <div className="relative min-w-0">
-        <CappedBox onCut={setCut} open={disclosure.open}>
+        <CappedBox onCut={setCut} open={disclosure.open} words={words}>
           {children}
         </CappedBox>
         {cut && !disclosure.open ? (
@@ -1054,14 +1081,14 @@ function Headline({
    */
   readonly running?: boolean;
 }) {
-  // In the slot, the right edge is the run's one clock: a row gets its time when it lands.
+  // In the slot a row has no time of its own: it gets it when it lands, and the run's one clock
+  // stands on the card's foot.
   if (use(InSlotContext)) {
     return (
       <span className={cn("flex min-w-0 items-start gap-2", META)}>
         <RunShimmer className="min-w-0 flex-1 break-words" sweeps={running}>
           {children}
         </RunShimmer>
-        <span aria-hidden="true" className="run-slot-clock-room" />
       </span>
     );
   }
@@ -1249,11 +1276,19 @@ function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<strin
  */
 function NoteBubble({ message: recorded }: { readonly message: ChatMessage }) {
   const message = useEngineLiveMessage(recorded);
+  // Words still being written say so at their foot, in the bubble's own padding: nothing beside
+  // them says the run goes on, and the bubble lands at the height it stood.
+  const writing = use(InSlotContext) && Boolean(message.streaming);
   return (
-    <Bubble className={BUBBLE_PAD} kind="note" tone="speech">
-      <OpensWhole follows={Boolean(message.streaming)} what="message">
+    <Bubble className={cn(BUBBLE_PAD, writing && "relative")} kind="note" tone="speech">
+      <OpensWhole follows={Boolean(message.streaming)} what="message" words>
         <NoteWords message={message} />
       </OpensWhole>
+      {writing ? (
+        <span className="run-note-writing" data-note-writing>
+          <TypingDots />
+        </span>
+      ) : null}
     </Bubble>
   );
 }
@@ -3106,7 +3141,7 @@ function NowLine({
   readonly answering: boolean;
   /** What the run came to: its effort, on the worked line (`useRunEffortWords`). */
   readonly outcome: OutcomeModel | null;
-  /** A control in the right column, beside the clock while the run is live. */
+  /** Its right column: what the person can do with the run, and while it is live its clock. */
   readonly end?: ReactNode;
   /**
    * The person watched the run end here: its worked line takes the working
@@ -3206,10 +3241,11 @@ function NowLine({
         ) : null}
       </div>
       {status.live ? (
-        <span className="flex items-center gap-3">
-          <RunTicker status={status} />
-          {end}
-        </span>
+        (end ?? (
+          <span className="run-now-end">
+            <RunTicker status={status} />
+          </span>
+        ))
       ) : restartPending && ctx.queueBlockedByAnswer ? (
         <span className="flex items-center gap-2">
           <span>Answer the pending question to continue.</span>
@@ -3498,6 +3534,7 @@ function LiveSlot({
   ref,
   folded,
   end,
+  controls,
   slot,
   live,
   items,
@@ -3510,7 +3547,10 @@ function LiveSlot({
 }: {
   readonly ref: Ref<HTMLDivElement>;
   readonly folded: boolean;
+  /** Its clock and controls (`RunControls`). */
   readonly end: ReactNode;
+  /** It offers the person a control: the work's toggle, or Stop. */
+  readonly controls: boolean;
   readonly slot: LiveSlotState;
   /** What is live now, as the items they become. */
   readonly live: ReadonlyArray<RecordItem>;
@@ -3596,21 +3636,8 @@ function LiveSlot({
     .map((line, index, all) =>
       line.theirs === true && all[index - 1]?.asks === true ? { ...line, pairs: true } : line,
     );
-  // The clock counts what the first line shows, never the run beside a step
-  // (`slotClock`); a wait on the person stands it still.
   const firstDrawn = lines.length === 0 ? undefined : drawn[0];
-  const clock = slotClock(
-    slot,
-    firstDrawn === undefined ? null : { key: firstDrawn.entry.key, at: firstDrawn.item.at },
-    status.waitingSince,
-    status.waitingOnHelpers === true,
-  );
-  // The thing's own time: what the run waited elsewhere is the run's clock's
-  // to leave out, and a wait on the person is counted as itself.
-  const ticker: RunStatus | null =
-    clock === null
-      ? null
-      : { ...status, startedAt: clock.from, waitedMs: 0, waitingSince: clock.stopped };
+  const headed = controls || lines.length > 0;
   // Which card each call stands in, kept from draw to draw (`slotEntries`).
   const [cards, setCards] = useState<ReadonlyMap<string, string>>(NO_CARDS);
   const slotted = slotEntries(lines, cards);
@@ -3694,6 +3721,10 @@ function LiveSlot({
           />
         )}
       </span>
+      {/* The present's head: the run's one clock and what the person can do with the run, on a
+          line of their own under the hairline, over what the Mate is doing — never beside its
+          words, and in the room the hairline already keeps, so a settle moves nothing. */}
+      {headed ? <div className="run-slot-head">{end}</div> : null}
       <InSlotContext value>
         <SlotStandsOpenContext value={standsOpen}>
           <ChatShownContext value={shownRef}>
@@ -3739,11 +3770,8 @@ function LiveSlot({
           </ChatShownContext>
         </SlotStandsOpenContext>
       </InSlotContext>
-      <span className="run-slot-clock" data-run-clock-waiting={clock?.waiting ? "" : undefined}>
-        {clock?.waiting ? <span className="sr-only">Waiting for you </span> : null}
-        {ticker === null ? null : <RunTicker status={ticker} />}
-        {end}
-      </span>
+      {/* A run that has done nothing yet says only what it does, its clock on that one line. */}
+      {headed ? null : <span className="run-slot-end">{end}</span>}
       {/* What a screen reader hears: what the slot shows, as it changes. */}
       <span className="sr-only" role="status">
         {slotWords(firstDrawn?.item ?? null, said)}
@@ -4096,6 +4124,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         }}
       />
     );
+  // The same controls in the same place, open or folded: the toggle never leaves the pointer.
+  const liveEnd =
+    row.status === null ? null : (
+      <RunControls now={row.now} status={row.status} toggle={liveToggle} />
+    );
   return (
     // One container for the chat and its now line: the Mate's column keeps
     // one gap for both. Its words wear its tint (`.run-speech`). Keyed, so the
@@ -4166,7 +4199,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
             <LiveSlot
               key="slot"
               folded={liveFolded}
-              end={liveFolded ? null : liveToggle}
+              end={liveFolded ? null : liveEnd}
+              controls={liveToggle !== null || row.now?.kind === "after"}
               ref={slotRef}
               items={model.record}
               live={model.live}
@@ -4186,7 +4220,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               outcome={null}
               now={now}
               status={row.status}
-              end={liveToggle}
+              end={liveEnd}
             />
           ) : null}
           <div key="below" ref={feedRef} className="run-later-feed">
@@ -4375,7 +4409,48 @@ function foldAway(
   return onFoldWork({ above, from, done });
 }
 
-/** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */
+/**
+ * A live run's right column: its one clock — the run's own time, standing still in the quiet ink
+ * while it waits on the person — then Stop while what it started runs on after its turns, then
+ * the work's toggle, last so nothing that comes or goes moves it.
+ */
+function RunControls({
+  status,
+  now,
+  toggle,
+}: {
+  readonly status: RunStatus;
+  readonly now: TurnHeaderActivity | null;
+  readonly toggle: ReactNode;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const { stoppingBackgroundWork } = use(TimelineRowActivityCtx);
+  const onPerson = status.waitingSince !== null && status.waitingOnHelpers !== true;
+  return (
+    <span className="run-now-end" data-run-controls>
+      <span className="run-now-time" data-run-clock-waiting={onPerson ? "" : undefined}>
+        {onPerson ? <span className="sr-only">Waiting for you </span> : null}
+        <RunTicker status={status} />
+      </span>
+      {now?.kind === "after" ? (
+        <button
+          className="run-now-fold"
+          disabled={stoppingBackgroundWork}
+          onClick={ctx.onStopBackgroundWork}
+          type="button"
+        >
+          {stoppingBackgroundWork ? "Stopping…" : "Stop"}
+        </button>
+      ) : null}
+      {toggle}
+    </span>
+  );
+}
+
+/**
+ * "Show work" on a folded run's line, "Hide work" once it is open: its words say what it does,
+ * with no chevron — on the card a chevron opens the row it stands on.
+ */
 function WorkToggle({
   open,
   onToggle,
@@ -4396,7 +4471,6 @@ function WorkToggle({
       type="button"
     >
       {open ? "Hide work" : "Show work"}
-      <ChevronDownIcon aria-hidden="true" className="run-now-fold-icon" />
     </button>
   );
 }

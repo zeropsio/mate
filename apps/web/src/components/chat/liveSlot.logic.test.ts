@@ -5,7 +5,6 @@ import {
   SLOT_HOLD_MS,
   SLOT_MIN_SHOW_MS,
   SLOT_RUSH_SHOW_MS,
-  slotClock,
   slotDue,
   slotHolds,
   slotHoldsIn,
@@ -444,96 +443,6 @@ describe("the live slot's schedule", () => {
     }
     expect(Object.keys(played.shown)).toHaveLength(21);
     expect(played.shown.build! - 2000).toBeLessThanOrEqual(3200);
-  });
-});
-
-// Bodhi: "Screenshot the Atlas with the new dock · 1:57" settled as 1m 11s —
-// the clock beside a step was the run's. It counts what the slot's first
-// line shows, so the row lands with its own time in the same column.
-describe("slotClock", () => {
-  const slot = (entries: LiveSlot["entries"], quietSince: number | null = null): LiveSlot => ({
-    entries,
-    live: [],
-    seen: new Set(),
-    quietSince,
-    pending: [],
-    lastPlopAt: null,
-  });
-  it.each<{
-    readonly name: string;
-    readonly slot: LiveSlot;
-    readonly first: { readonly key: string; readonly at: string } | null;
-    readonly waitingSince?: string;
-    readonly onHelpers?: boolean;
-    readonly clock: {
-      readonly from: string;
-      readonly stopped: string | null;
-      readonly waiting?: true;
-    } | null;
-  }>([
-    {
-      name: "a step running: since it started",
-      slot: slot([{ key: "s1", shownAt: 1000, endedAt: null }]),
-      first: { key: "s1", at: "2026-10-04T10:00:00.000Z" },
-      clock: { from: "2026-10-04T10:00:00.000Z", stopped: null },
-    },
-    {
-      name: "a step that ended, holding its place: stopped where it ended",
-      slot: slot([{ key: "s1", shownAt: 1000, endedAt: Date.parse("2026-10-04T10:01:11.000Z") }]),
-      first: { key: "s1", at: "2026-10-04T10:00:00.000Z" },
-      clock: { from: "2026-10-04T10:00:00.000Z", stopped: "2026-10-04T10:01:11.000Z" },
-    },
-    {
-      name: "a note first seen whole: no time of its own",
-      slot: slot([{ key: "n1", shownAt: 5000, endedAt: 5000 }]),
-      first: { key: "n1", at: "2026-10-04T10:00:00.000Z" },
-      clock: null,
-    },
-    {
-      name: "Thinking: since the quiet began",
-      slot: slot([], Date.parse("2026-10-04T10:02:00.000Z")),
-      first: null,
-      clock: { from: "2026-10-04T10:02:00.000Z", stopped: null },
-    },
-    // Review of pass 39: it read 0:00 through a wait on the person, then
-    // jumped to the whole wait once answered.
-    {
-      name: "waiting on the person: the wait itself, counting",
-      slot: slot([{ key: "question:q", shownAt: 1000, endedAt: null }]),
-      first: { key: "question:q", at: "2026-10-04T10:00:00.000Z" },
-      waitingSince: "2026-10-04T10:00:00.000Z",
-      clock: { from: "2026-10-04T10:00:00.000Z", stopped: null, waiting: true },
-    },
-    {
-      name: "answered, the question holding its place: stopped at the wait it counted",
-      slot: slot([
-        {
-          key: "question:q",
-          shownAt: 1000,
-          endedAt: Date.parse("2026-10-04T10:04:37.000Z"),
-        },
-      ]),
-      first: { key: "question:q", at: "2026-10-04T10:00:00.000Z" },
-      clock: { from: "2026-10-04T10:00:00.000Z", stopped: "2026-10-04T10:04:37.000Z" },
-    },
-    {
-      name: "a call waiting on the person's approval: the wait, from when it began",
-      slot: slot([{ key: "s1", shownAt: 1000, endedAt: null }]),
-      first: { key: "s1", at: "2026-10-04T09:59:58.000Z" },
-      waitingSince: "2026-10-04T10:00:00.000Z",
-      clock: { from: "2026-10-04T10:00:00.000Z", stopped: null, waiting: true },
-    },
-    // Live, 0.15.6: "Waiting for its helpers" over a clock that said "Waiting for you".
-    {
-      name: "waiting on its helpers after its turn: the wait counting, never a wait on the person",
-      slot: slot([]),
-      first: null,
-      waitingSince: "2026-10-04T10:00:00.000Z",
-      onHelpers: true,
-      clock: { from: "2026-10-04T10:00:00.000Z", stopped: null },
-    },
-  ])("$name", ({ slot: given, first, waitingSince, onHelpers, clock }) => {
-    expect(slotClock(given, first, waitingSince ?? null, onHelpers === true)).toEqual(clock);
   });
 });
 

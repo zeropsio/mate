@@ -142,6 +142,8 @@ export class MateEngineFake {
   private readonly subscribers = new Map<WebSocket, Set<string>>();
   private readonly rowSubscribers = new Map<WebSocket, Set<string>>();
   private readonly receipts = new NodeEvents.EventEmitter();
+  /** Helpers the Mate launched still work after its runs ended: the row says it waits on them. */
+  private helpersWorking = false;
 
   constructor(mate: MateFake) {
     this.mate = mate;
@@ -359,6 +361,13 @@ export class MateEngineFake {
   /** The run ends, retaining its latest closed Mate note as the wire's summary does. */
   end(run: string, end: RunEnd = { kind: "completed" }): void {
     this.commit((change) => this.endRun(change, run, end));
+  }
+
+  /** Its runs over, the helpers they launched work on (true) or are done (false). */
+  waitOnHelpers(working = true): void {
+    this.commit(() => {
+      this.helpersWorking = working;
+    });
   }
 
   /** The run hits the provider's usage limit: it ends there and the conversation pauses until the reset. */
@@ -713,7 +722,9 @@ export class MateEngineFake {
               }
             : active !== null
               ? { kind: "working", since: active.queuedAt, waitsOnHelpers: false }
-              : { kind: "idle" },
+              : this.helpersWorking && latest !== null
+                ? { kind: "working", since: latest.queuedAt, waitsOnHelpers: true }
+                : { kind: "idle" },
       activeRunId: active?.id ?? null,
       runStatus: this.header.runStatus,
       latestRun:

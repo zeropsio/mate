@@ -830,13 +830,7 @@ export function ConversationWorking({
   onOpenAgents,
   carry,
   onRoom,
-  stop,
 }: {
-  /**
-   * Its run's turns are over and what it started runs on (run 11): the way
-   * to stop it, where that work is said — the composer's stop is a turn's.
-   */
-  readonly stop?: { readonly stopping: boolean; readonly onStop: () => void };
   readonly incidents: ReadonlyArray<IncidentModel>;
   readonly dock: DockModel | null;
   readonly environmentId: EnvironmentId | null;
@@ -865,13 +859,6 @@ export function ConversationWorking({
           onOpenAgents={onOpenAgents}
           threadRef={threadRef}
         />
-        {stop === undefined ? null : (
-          <div className="flex justify-end px-3 pb-1.5">
-            <Button disabled={stop.stopping} onClick={stop.onStop} size="xs" variant="ghost">
-              {stop.stopping ? "Stopping…" : "Stop"}
-            </Button>
-          </div>
-        )}
       </div>
     </PanelShownContext>
   );

@@ -40,11 +40,17 @@ export function messageHasText(
   return liveLines?.get(message.id) ?? message.text.trim().length > 0;
 }
 
-/** A wordless thought has no line, in either the slot or the history. */
+/**
+ * A wordless thought or note has no line, in either the slot or the history: the working line
+ * names what the Mate does until its words come, never its face beside an empty bubble.
+ */
 export function chatItemHasLine(
   item: RecordItem,
   liveLines?: ReadonlyMap<string, boolean>,
 ): boolean {
+  if (item.kind === "note") {
+    return messageHasText(item.message, liveLines) || (item.message.attachments?.length ?? 0) > 0;
+  }
   return (
     item.kind !== "thought" || item.messages.some((message) => messageHasText(message, liveLines))
   );
@@ -435,10 +441,15 @@ export function workedWords(speaker: string, status: RunStatus): string {
   }
   // Its turn ended for the person's message, not by their Stop (run 11).
   if (status.face === "interrupted") {
-    return `${speaker} ${status.worked ? "worked" : "thought"} ${took} until your message`;
+    return `${speaker} ${effortVerb(status)} ${took} until your message`;
   }
   if (status.face === "paused") return `${speaker} paused at the limit · ${took}`;
-  return `${speaker} ${status.worked ? "worked" : "thought"} ${took}`;
+  return `${speaker} ${effortVerb(status)} ${took}`;
+}
+
+/** What the run's time went on: work, words to the person, or thought alone. */
+function effortVerb(status: RunStatus): string {
+  return status.worked ? "worked" : status.wrote === true ? "wrote" : "thought";
 }
 
 /** What the now line says, from what the run is doing now. */
