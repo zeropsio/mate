@@ -3,6 +3,38 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { create } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { EnvironmentId } from "@t3tools/contracts";
+
+/** The environment record the menu's update entries read, as `useEnvironment` serves it. */
+const environmentRecord = vi.hoisted(() => ({
+  environment: undefined as
+    | undefined
+    | {
+        readonly serverVersion: string;
+        readonly capabilities: { readonly mateUpdate: boolean; readonly mateUpdateCheck: boolean };
+        readonly update: {
+          readonly installed: string;
+          readonly latest: string;
+          readonly available: boolean;
+          readonly checkedAt: string;
+        };
+      },
+}));
+vi.mock("../../state/environments", () => ({
+  useEnvironment: () =>
+    environmentRecord.environment === undefined
+      ? null
+      : { serverConfig: { environment: environmentRecord.environment } },
+}));
+vi.mock("../../zerops/useMateUpdate", () => ({
+  useMateUpdate: () => ({
+    state: { phase: "idle" },
+    checked: undefined,
+    update: () => {},
+    check: async () => undefined,
+  }),
+}));
+
 import { Menu } from "../ui/menu";
 import { MateMenuItems, MateRenameField, type MateRowActions } from "./SidebarMateMenu";
 
@@ -154,6 +186,57 @@ describe("MateMenuItems — a Mate's own menu", () => {
     // Space presses the row as any button's does: there is no peek to open.
     expect(html).not.toContain(">Space</kbd>");
     expect(items({ shortcuts: false })).not.toContain("<kbd");
+  });
+});
+
+describe("MateMenuItems — Check for updates, from the Mate itself", () => {
+  afterEach(() => {
+    environmentRecord.environment = undefined;
+  });
+  const connected = { ...ACTIONS, environmentId: EnvironmentId.make("environment-1") };
+  const record = (available: boolean) => ({
+    serverVersion: "0.15.30",
+    capabilities: { mateUpdate: true, mateUpdateCheck: true },
+    update: {
+      installed: "0.15.30",
+      latest: available ? "0.15.31" : "0.15.30",
+      available,
+      checkedAt: "2026-10-10T11:24:00Z",
+    },
+  });
+
+  it("offers Check for updates beside the Mate's other verbs, and Update to the version its server found", () => {
+    environmentRecord.environment = record(true);
+    const html = items({ actions: connected });
+    expect(order(html)).toEqual([
+      "open",
+      "open-app",
+      "copy-link",
+      "mute",
+      "unread",
+      "rename",
+      "face",
+      "restart",
+      "assign",
+      "move",
+      "check-for-updates",
+      "update",
+    ]);
+    expect(html).toContain(">Check for updates<");
+    expect(html).toContain(">Update to 0.15.31<");
+  });
+
+  it("offers only the check while its server knows no newer release", () => {
+    environmentRecord.environment = record(false);
+    const offered = order(items({ actions: connected }));
+    expect(offered).toContain("check-for-updates");
+    expect(offered).not.toContain("update");
+  });
+
+  it("offers no update entries for a Mate this page holds no environment record of", () => {
+    expect(order(items({ actions: connected }))).not.toContain("check-for-updates");
+    environmentRecord.environment = record(true);
+    expect(order(items())).not.toContain("check-for-updates");
   });
 });
 

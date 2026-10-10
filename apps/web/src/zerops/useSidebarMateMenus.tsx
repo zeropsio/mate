@@ -3,7 +3,9 @@
  *
  * The verbs the projects screen offers too — *Restart* or *Start*, *Finish
  * setup*, *Hand over…*, *Move to project…*, *Delete {name}…* — are
- * `useMateActions`', one definition with its dialogs; *Rename* is its write
+ * `useMateActions`', one definition with its dialogs; *Check for updates* and
+ * *Update to x.y.z* are its update control's, read off its environment once
+ * the menu opens (a hook cannot run in a menu-building function); *Rename* is its write
  * too, done where the name stands instead of in a dialog, and *Change face…*
  * its dialog, placed beside *Rename*. The rest is this viewer's own: a mute
  * this browser keeps (`mutedMates.ts`), read or unread (the visit marks the
@@ -326,6 +328,7 @@ export function useSidebarMateMenus(input: {
                     });
                   },
             entries: sidebarMateVerbs(actionsFor(candidate, tags)),
+            environmentId,
             drawn: drawnOf(candidate.project.id),
           };
         },
