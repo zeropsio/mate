@@ -1893,5 +1893,152 @@ describe("owner-reported layout regressions", () => {
         );
       });
     });
+
+    // Milo's stress run 4 (D): a sent message was born 62 px behind the composer for two frames,
+    // and a multi-line send's glide took one 77 px step as the composer shrank back.
+    describe("Decision: a sent message enters above the composer and glides; nothing jumps.", () => {
+      interface SendFrame {
+        /** When the frame was sampled (ms, the page's clock), after its paint. */
+        readonly at: number;
+        readonly composer: number;
+        /** The sent message's bubble while it is drawn; null before it is. */
+        readonly message: { readonly top: number; readonly bottom: number } | null;
+      }
+      const startSendTrace = (page: Page, text: string) =>
+        page.evaluate((text) => {
+          const frames: SendFrame[] = [];
+          const state = { active: true };
+          const drawn = (element: Element) => {
+            let opacity = 1;
+            for (let at: Element | null = element; at !== null; at = at.parentElement) {
+              const style = getComputedStyle(at);
+              if (style.visibility === "hidden" || style.display === "none") return false;
+              opacity *= Number(style.opacity);
+            }
+            return opacity > 0.01;
+          };
+          const read = (): SendFrame | null => {
+            const composer = document.querySelector('[data-slot="composer-shell"]');
+            if (!composer) return null;
+            const row = [
+              ...document.querySelectorAll('[data-timeline-row-id][data-message-role="user"]'),
+            ].find((each) => each.textContent?.includes(text));
+            // The bubble: the first box inside the row that paints a fill.
+            const bubble =
+              row === undefined
+                ? undefined
+                : [row, ...row.querySelectorAll("*")].find((each) => {
+                    const fill = getComputedStyle(each).backgroundColor;
+                    return fill !== "transparent" && !/\/ 0\)$|, 0\)$/u.test(fill);
+                  });
+            const box = bubble?.getBoundingClientRect();
+            return {
+              at: performance.now(),
+              composer: composer.getBoundingClientRect().top,
+              message:
+                bubble !== undefined && box !== undefined && box.height > 0 && drawn(bubble)
+                  ? { top: box.top, bottom: box.bottom }
+                  : null,
+            };
+          };
+          // After the frame's paint: a rAF alone reads before the list's own frame work.
+          const sample = () =>
+            setTimeout(() => {
+              const frame = read();
+              if (frame) frames.push(frame);
+              if (state.active) requestAnimationFrame(sample);
+            }, 0);
+          (window as unknown as { sendTrace: unknown }).sendTrace = { frames, state };
+          requestAnimationFrame(sample);
+        }, text);
+      const stopSendTrace = (page: Page, ms: number) =>
+        new Promise((resolve) => setTimeout(resolve, ms)).then(() =>
+          page.evaluate(() => {
+            const held = (
+              window as unknown as {
+                sendTrace: { frames: SendFrame[]; state: { active: boolean } };
+              }
+            ).sendTrace;
+            held.state.active = false;
+            return held.frames;
+          }),
+        );
+
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        const LONG =
+          "Live stress test 4D: what number is in this picture? Then open example.com in the browser, take a screenshot of the page and describe its layout in twenty lines: the background, the column, the icon at the top, each paragraph and the language it is written in, and the link at the end.";
+        it.effect.each([
+          {
+            from: "this composer, one line",
+            typed: true,
+            text: "Now describe it in twenty lines.",
+          },
+          { from: "this composer, several lines", typed: true, text: LONG },
+          // The composer stays as it was: the end only grows (D2's send, a line long).
+          { from: "another tab", typed: false, text: "Now describe the page in twenty lines." },
+        ])(
+          "a sent message is never drawn behind the composer, and its glide has no step of 60 px or more in a frame (from $from)",
+          ({ typed, text }) =>
+            Effect.gen(function* () {
+              const s = yield* createScenario([installEngineArea]);
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.project("Ada", { mate: true });
+              const chat = mateChat(s);
+              for (const round of [1, 2, 3])
+                chat
+                  .fixture()
+                  .exchange(
+                    `How did deploy ${round} go?`,
+                    "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                      12,
+                    ),
+                  );
+              chat.fixture().exchange("And now?", "The existing conversation is still here");
+              yield* s.given.signedIn;
+              yield* Effect.promise(() => ownerMenu(s.page));
+              yield* chat.when.open();
+              yield* chat.then.text("The existing conversation is still here");
+              const wire = chat.fixture().wire;
+              if (!(wire instanceof EngineChatWire))
+                throw new Error("This witness runs on the engine's wire");
+              // The words typed and the composer at rest: the trace starts as the person sends.
+              if (typed)
+                yield* Effect.promise(async () => {
+                  const input = await s.page.waitForSelector(
+                    '[role="textbox"]:not([inert] *, [aria-hidden="true"] *)',
+                  );
+                  await input!.focus();
+                  await s.page.keyboard.sendCharacter(text);
+                  await new Promise((resolve) => setTimeout(resolve, 800));
+                });
+              yield* Effect.promise(() => startSendTrace(s.page, text.slice(0, 40)));
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
+              if (typed) yield* Effect.promise(() => s.page.keyboard.press("Enter"));
+              else wire.engine.personRun(text);
+              const frames = yield* Effect.promise(() => stopSendTrace(s.page, 1500));
+              const shown = frames.filter((frame) => frame.message !== null);
+              expect(shown.length, "ASSERTION: the sent message was sampled").toBeGreaterThan(10);
+              const behind = shown.filter((frame) => frame.message!.bottom > frame.composer + 1);
+              expect(
+                behind,
+                "ASSERTION: no frame draws the sent message behind the composer",
+              ).toEqual([]);
+              // By elapsed time, never per frame: a loaded machine draws a glide in fewer frames.
+              const FRAME_MS = 1000 / 60;
+              const steps = frames.slice(1).flatMap((frame, index) => {
+                const before = frames[index]!;
+                if (frame.message === null || before.message === null) return [];
+                const moved = Math.abs(frame.message.top - before.message.top);
+                return [(moved * FRAME_MS) / Math.max(FRAME_MS, frame.at - before.at)];
+              });
+              expect(
+                Math.max(0, ...steps),
+                "ASSERTION: the sent message glides, no frame's step 60 px or more",
+              ).toBeLessThan(60);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+      });
+    });
   });
 });

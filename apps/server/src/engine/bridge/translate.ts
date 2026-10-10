@@ -808,7 +808,13 @@ export function makeTranslator(options: TranslatorOptions): Translator {
           const started = owner.items.get(payload.toolUseId);
           if (started !== undefined) work.call = started.key;
         }
-        if (event.type === "task.completed" && event.payload.summary !== undefined) {
+        // Its report is what it returned as it ended: words after it, from Claude re-waking it when
+        // its own job ended, are not (Milo's stress run 4 read the re-wake's for its report).
+        if (
+          event.type === "task.completed" &&
+          event.payload.summary !== undefined &&
+          work.report === undefined
+        ) {
           const line = reportLine(event.payload.summary);
           if (line !== undefined) work.report = line;
         }

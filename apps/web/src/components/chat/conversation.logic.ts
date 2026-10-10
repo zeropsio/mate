@@ -603,6 +603,11 @@ export interface ConversationTurn {
   readonly answerIsRefusal: boolean;
   /** Nothing but a usage-limit notice: a turn a limit refused before it did anything. */
   readonly limitOnly: boolean;
+  /**
+   * When its engine first ran it, null off the engine: a message the usage limit held is picked
+   * up then, not when the person sent it (Milo's run 4: sent at 8:47, picked up at 10:20).
+   */
+  readonly ranFrom: string | null;
   /** The turn's window on the clock, for placing landings. */
   readonly startMs: number | null;
   readonly endMs: number;
@@ -1168,6 +1173,13 @@ export function deriveConversationStructure(given: {
       limit,
       limitOnly,
       answerIsRefusal,
+      ranFrom: cardRuns.reduce<string | null>(
+        (first, each) =>
+          each.startedAt === null || (first !== null && Date.parse(first) <= each.startedAt)
+            ? first
+            : new Date(each.startedAt).toISOString(),
+        null,
+      ),
       startMs: parseMs(turnStart),
       endMs: live ? Infinity : (parseMs(turnEnd) ?? parseMs(turnStart) ?? -Infinity),
     });
