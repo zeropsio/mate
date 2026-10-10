@@ -16,7 +16,14 @@
  * The page talks to the conversation only through the wrapper, by JSON strings it builds with
  * functions captured before the page's own scripts run: its height and a link the person clicked.
  */
-import { CallResultPage } from "@t3tools/contracts";
+import {
+  CallResultPage,
+  PAGE_HEIGHTS_KEPT,
+  PAGE_MAX_HEIGHT,
+  PAGE_WIDTH_MAX,
+  PAGE_WIDTH_MIN,
+  type PageHeight,
+} from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -273,18 +280,79 @@ export function linkToOpen(
 const PAGE_MIN_HEIGHT = 48;
 
 /**
- * The frame's height: the page's own as it says it; null until it does, when the frame stands at
- * the cap every item shares (`--run-words-cap`) and eases to the page's height once it is known.
- * The cap is the frame's max height: a taller page scrolls inside it.
+ * Where a page's frame stands on its very first landing, before any client measured it: a modest
+ * box it glides from, once, to the page's own height.
+ */
+export const PAGE_FIRST_HEIGHT = 240;
+
+/**
+ * The frame's height for a height the page says: its own, at least a line, at most
+ * `PAGE_MAX_HEIGHT` — a taller page scrolls inside, as an exception. Null while it says none.
  */
 export function pageFrameHeight(content: number | null): number | null {
-  return content === null ? null : Math.max(PAGE_MIN_HEIGHT, content);
+  return content === null ? null : Math.min(PAGE_MAX_HEIGHT, Math.max(PAGE_MIN_HEIGHT, content));
+}
+
+/** The height recorded at the width nearest `width`; null when none is recorded. */
+export function recordedPageHeight(
+  heights: ReadonlyArray<PageHeight> | undefined,
+  width: number,
+): number | null {
+  let nearest: PageHeight | null = null;
+  for (const height of heights ?? [])
+    if (nearest === null || Math.abs(height[0] - width) < Math.abs(nearest[0] - width))
+      nearest = height;
+  return nearest === null ? null : pageFrameHeight(nearest[1]);
 }
 
 /**
- * The cap every item of a run shares, for a client that sizes in numbers: the web's
- * `--run-words-cap`, `min(440px, 52svh)`, for a view this tall.
+ * The heights this client laid pages out at while it runs, by the page's call: a frame mounted
+ * again before its record carries them paints at them too. Memory only, never stored.
  */
-export function pageCapHeight(viewHeight: number): number {
-  return Math.round(Math.min(440, viewHeight * 0.52));
+const measured = new Map<string, Array<PageHeight>>();
+
+/** What this client measured a page's call at, with what its record carries. */
+export function knownPageHeights(
+  itemId: string,
+  recorded: ReadonlyArray<PageHeight> | undefined,
+): ReadonlyArray<PageHeight> {
+  const own = measured.get(itemId) ?? [];
+  return [...(recorded ?? []).filter(([width]) => !own.some(([at]) => at === width)), ...own];
+}
+
+/**
+ * Where a page's frame stands: the height the page says once it says one; before that the height
+ * recorded at the nearest width, so a page measured once paints at it from its first frame; else,
+ * on its very first landing, `PAGE_FIRST_HEIGHT`.
+ */
+export function pageStandHeight(input: {
+  readonly content: number | null;
+  readonly heights: ReadonlyArray<PageHeight>;
+  readonly width: number;
+}): number {
+  return (
+    pageFrameHeight(input.content) ??
+    recordedPageHeight(input.heights, input.width) ??
+    PAGE_FIRST_HEIGHT
+  );
+}
+
+/**
+ * The `[width, height]` to record for a page laid out at `width` saying `content`: its frame's
+ * width and height, rounded and clamped; null when what is known at that width already says it.
+ * Remembered in memory as it is decided, so a frame mounted again paints at it.
+ */
+export function pageHeightToRecord(input: {
+  readonly itemId: string;
+  readonly heights: ReadonlyArray<PageHeight>;
+  readonly width: number;
+  readonly content: number;
+}): PageHeight | null {
+  const width = Math.round(input.width);
+  const height = pageFrameHeight(Math.round(input.content))!;
+  if (width < PAGE_WIDTH_MIN || width > PAGE_WIDTH_MAX) return null;
+  if (input.heights.some(([at, tall]) => at === width && tall === height)) return null;
+  const own = (measured.get(input.itemId) ?? []).filter(([at]) => at !== width);
+  measured.set(input.itemId, [...own, [width, height] as const].slice(-PAGE_HEIGHTS_KEPT));
+  return [width, height];
 }

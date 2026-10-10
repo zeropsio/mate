@@ -6,8 +6,11 @@ import {
   innerDocumentOf,
   linkToOpen,
   pageDocument,
-  pageCapHeight,
+  PAGE_FIRST_HEIGHT,
+  knownPageHeights,
   pageFrameHeight,
+  pageHeightToRecord,
+  pageStandHeight,
   readPageMessage,
   type PageTheme,
 } from "./publishedPage.ts";
@@ -216,24 +219,56 @@ describe("a published page in a phone's web view", () => {
 
 describe("a published page's frame height", () => {
   it.each([
-    { title: "unknown, it stands at the shared cap", content: null, want: null },
     { title: "once the page says it, its own", content: 212, want: 212 },
-    {
-      title: "a tall page, its own height: the cap holds the frame and it scrolls inside",
-      content: 2400,
-      want: 2400,
-    },
+    { title: "a page taller than 2000 px, 2000: it scrolls inside", content: 2400, want: 2000 },
     { title: "an empty page, still a line tall", content: 0, want: 48 },
   ])("is $title", ({ content, want }) => {
     expect(pageFrameHeight(content)).toBe(want);
   });
 });
 
-describe("the cap a published page stands at before it says its height", () => {
+describe("where a published page stands before it says its height", () => {
+  const heights = [
+    [375, 1400],
+    [728, 900],
+  ] as const;
   it.each([
-    { title: "a tall view, the web's 440", view: 1000, want: 440 },
-    { title: "a short view, about half of it", view: 600, want: 312 },
-  ])("is $title", ({ view, want }) => {
-    expect(pageCapHeight(view)).toBe(want);
+    { title: "measured at this width: that height", width: 728, want: 900 },
+    { title: "measured at a near width: the nearest one's", width: 700, want: 900 },
+    { title: "measured at a phone's width: the phone's", width: 390, want: 1400 },
+  ])("a page measured once paints at its height on every later view: $title", ({ width, want }) => {
+    expect(pageStandHeight({ content: null, heights, width })).toBe(want);
+  });
+
+  it("on its very first landing, a modest box it glides from", () => {
+    expect(pageStandHeight({ content: null, heights: [], width: 728 })).toBe(PAGE_FIRST_HEIGHT);
+  });
+
+  it("once the page says its height, that height", () => {
+    expect(pageStandHeight({ content: 640, heights, width: 728 })).toBe(640);
+  });
+});
+
+describe("the height a client records for a page", () => {
+  it("is its frame's width and the page's height, clamped, once per width", () => {
+    const first = pageHeightToRecord({
+      itemId: "c/r/1/i/2",
+      heights: [],
+      width: 727.6,
+      content: 9000,
+    });
+    expect(first).toEqual([728, 2000]);
+    // Known now, in memory: a frame mounted again paints at it, and records nothing again.
+    const known = knownPageHeights("c/r/1/i/2", undefined);
+    expect(known).toEqual([[728, 2000]]);
+    expect(
+      pageHeightToRecord({ itemId: "c/r/1/i/2", heights: known, width: 728, content: 2400 }),
+    ).toBeNull();
+  });
+
+  it("is nothing at a width no frame stands at", () => {
+    expect(
+      pageHeightToRecord({ itemId: "c/r/1/i/3", heights: [], width: 40, content: 300 }),
+    ).toBeNull();
   });
 });

@@ -11,6 +11,10 @@ import * as SqlClient from "effect/sql/SqlClient";
 import {
   ENGINE_WIRE_BUDGETS,
   Item,
+  PAGE_HEIGHTS_KEPT,
+  PAGE_MAX_HEIGHT,
+  PAGE_WIDTH_MAX,
+  PAGE_WIDTH_MIN,
   ItemId,
   Request,
   RunRecord,
@@ -261,7 +265,38 @@ export const makeRecords = Effect.gen(function* () {
           ORDER BY ordinal
         `.pipe(Effect.flatMap(withSummaries));
 
-  const items = (rows: ReadonlyArray<ItemRow>) => readable(rows, itemOfRow);
+  /**
+   * Each published page with the heights clients laid it out at (`engine_page_height`), by
+   * width: kept beside its call, never in its record, so a later view paints at them.
+   */
+  const withPageHeights = (decoded: ReadonlyArray<Item>) =>
+    Effect.gen(function* () {
+      const pages = decoded.flatMap((item) =>
+        item.kind === "call" && item.result?.page !== undefined ? [item.id as string] : [],
+      );
+      if (pages.length === 0) return decoded;
+      const rows = yield* sql<{
+        readonly item_id: string;
+        readonly width: number;
+        readonly height: number;
+      }>`
+        SELECT item_id, width, height FROM engine_page_height
+        WHERE ${sql.in("item_id", pages)} ORDER BY width
+      `;
+      if (rows.length === 0) return decoded;
+      return decoded.map((item): Item => {
+        if (item.kind !== "call" || item.result?.page === undefined) return item;
+        const heights = rows
+          .filter((row) => row.item_id === item.id)
+          .map((row) => [row.width, row.height] as const);
+        return heights.length === 0
+          ? item
+          : { ...item, result: { ...item.result, page: { ...item.result.page, heights } } };
+      });
+    });
+
+  const items = (rows: ReadonlyArray<ItemRow>) =>
+    readable(rows, itemOfRow).pipe(Effect.flatMap(withPageHeights));
   const requests = (rows: ReadonlyArray<RequestRow>) => readable(rows, requestOfRow);
 
   /** The sequence space the tables were made in. */
@@ -405,6 +440,47 @@ export const makeRecords = Effect.gen(function* () {
     origin,
     head,
     groups,
+    /**
+     * A height a client laid a page out at, kept for the page's call in this conversation: the
+     * page's own claim, clamped, the same width again replacing it, the newest widths kept. False
+     * when no page's call is there by that id.
+     */
+    recordPageHeight: (
+      conversation: ConversationId,
+      itemId: string,
+      width: number,
+      height: number,
+    ) =>
+      Effect.gen(function* () {
+        const found = yield* sql<ItemRow>`
+          SELECT * FROM engine_item WHERE conversation_id = ${conversation} AND item_id = ${itemId}
+        `;
+        if (found[0] === undefined) return false;
+        const item = yield* itemOfRow(found[0]);
+        if (item.kind !== "call" || item.result?.page === undefined) return false;
+        const clamp = (value: number, low: number, high: number) =>
+          Math.min(high, Math.max(low, Math.round(value)));
+        const at = clamp(width, PAGE_WIDTH_MIN, PAGE_WIDTH_MAX);
+        const tall = clamp(height, 1, PAGE_MAX_HEIGHT);
+        yield* sql`
+          INSERT INTO engine_page_height (conversation_id, item_id, width, height, at)
+          VALUES (${conversation}, ${itemId}, ${at}, ${tall}, (
+            SELECT COALESCE(MAX(at), 0) + 1 FROM engine_page_height
+            WHERE conversation_id = ${conversation} AND item_id = ${itemId}
+          ))
+          ON CONFLICT (conversation_id, item_id, width)
+          DO UPDATE SET height = excluded.height, at = excluded.at
+        `;
+        yield* sql`
+          DELETE FROM engine_page_height
+          WHERE conversation_id = ${conversation} AND item_id = ${itemId} AND width NOT IN (
+            SELECT width FROM engine_page_height
+            WHERE conversation_id = ${conversation} AND item_id = ${itemId}
+            ORDER BY at DESC LIMIT ${PAGE_HEIGHTS_KEPT}
+          )
+        `;
+        return true;
+      }),
     pickGroups,
     windowOf,
     runsById,

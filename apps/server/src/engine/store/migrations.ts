@@ -18,6 +18,7 @@ import Migration0008 from "./Migrations/0008_EngineOwners.ts";
 import Migration0009 from "./Migrations/0009_EngineCrewTask.ts";
 import Migration0010 from "./Migrations/0010_EngineCrewMemory.ts";
 import Migration0011 from "./Migrations/0011_EngineCrewLog.ts";
+import Migration0012 from "./Migrations/0012_EnginePageHeight.ts";
 
 export const ENGINE_MIGRATIONS_TABLE = "engine_migrations";
 
@@ -33,6 +34,7 @@ const migrations = {
   "9_EngineCrewTask": Migration0009,
   "10_EngineCrewMemory": Migration0010,
   "11_EngineCrewLog": Migration0011,
+  "12_EnginePageHeight": Migration0012,
 } as const;
 
 const run = Migrator.make({});

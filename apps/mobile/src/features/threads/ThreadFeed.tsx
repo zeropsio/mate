@@ -1464,6 +1464,7 @@ function renderFeedEntry(
     return (
       <PublishedPage
         page={entry.page}
+        itemId={entry.itemId}
         environmentId={props.environmentId}
         threadId={props.threadId}
       />

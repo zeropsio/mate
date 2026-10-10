@@ -107,6 +107,13 @@ export interface EngineConversationWire {
     itemId: string,
     part: string,
   ) => Effect.Effect<EngineDetail, StreamFault>;
+  /** A height this client laid a published page out at (`engine.recordPageHeight`). */
+  readonly recordPageHeight?: (
+    key: EngineConversationKey,
+    itemId: string,
+    width: number,
+    height: number,
+  ) => Effect.Effect<void, StreamFault>;
   /** The Mate's access as its connection learns it: a fault, or `null` once verified again. */
   readonly watch?: (
     environmentId: string,
@@ -223,6 +230,22 @@ export function makeEngineConversationWire(
           }),
         )
         .pipe(Effect.catchCause((cause) => Effect.fail(classifyEngineFailure(cause)))),
+    recordPageHeight: (key, itemId, width, height) =>
+      registry
+        .run(
+          key.environmentId as EnvironmentId,
+          request(WS_METHODS.engineRecordPageHeight, {
+            protocol: PROTOCOL,
+            conversationId: key.conversationId as never,
+            itemId: itemId as never,
+            width,
+            height,
+          }),
+        )
+        .pipe(
+          Effect.asVoid,
+          Effect.catchCause((cause) => Effect.fail(classifyEngineFailure(cause))),
+        ),
     watch: (environmentId, receive) =>
       registry.stateChanges(environmentId as EnvironmentId).pipe(
         Stream.runForEach((state) =>

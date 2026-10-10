@@ -693,7 +693,85 @@ describe("a client reading an engine call", () => {
   );
 });
 
+/** A world whose Mate published a page in its one run, and answered under it. */
+const publishedWorld = Effect.gen(function* () {
+  const w = yield* makeEngineWorld({ driver: "claudeAgent", assets: true });
+  yield* w.boot;
+  yield* w.tell({
+    _tag: "AssignAgent",
+    agent: {
+      instanceId: "claudeAgent",
+      driver: "claudeAgent",
+      model: "m1",
+      profile: { kind: "mate" },
+    },
+  });
+  const pages = NodePath.join(w.dir, ".zcp", "state", "pages");
+  NodeFS.mkdirSync(pages, { recursive: true });
+  const file = NodePath.join(pages, "page-0123456789abcdef.html");
+  NodeFS.writeFileSync(file, "<h1>The plan</h1>");
+  const wire = yield* wireOf(w);
+  yield* send(wire, "Plan the launch");
+  yield* w.settle;
+  yield* w.agent((agent, thread) =>
+    agent.zerops(
+      thread,
+      "zerops_publish_page",
+      { title: "Launch plan", path: "plan.html" },
+      '{"title":"Launch plan"}',
+      JSON.stringify({
+        page: { id: "page-0123456789abcdef", title: "Launch plan", file, bytes: 17 },
+      }),
+    ),
+  );
+  yield* w.agent((agent, thread) => agent.say(thread, "The plan is above."));
+  yield* w.agent((agent, thread) => agent.finish(thread));
+  const reload = Effect.gen(function* () {
+    const [snapshot] = yield* Effect.scoped(watch(w, wire));
+    if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+    return snapshot;
+  });
+  const first = yield* reload;
+  const call = first.items.find((item) => item.kind === "call")!;
+  const person = first.items.find((item) => item.kind === "person")!;
+  return { w, wire, reload, call, person };
+});
+
 describe("a page the Mate publishes", () => {
+  it.effect("a page measured once paints at its height on every later view", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { w, wire, reload, call, person } = yield* publishedWorld;
+        const record = (width: number, height: number, itemId = call.id) =>
+          wire.recordPageHeight({ protocol, conversationId: mate, itemId, width, height });
+        const heightsOf = Effect.map(reload, (snapshot) => {
+          const held = snapshot.items.find((item) => item.kind === "call");
+          return held?.kind === "call" ? held.result?.page?.heights : undefined;
+        });
+        assert.isUndefined(yield* heightsOf);
+        // The page's own claim, clamped; the same width again is the newer height.
+        assert.deepStrictEqual(yield* record(720, 9000), { _tag: "Recorded" });
+        assert.deepStrictEqual(yield* record(375, 1400), { _tag: "Recorded" });
+        assert.deepStrictEqual(yield* record(720, 1500), { _tag: "Recorded" });
+        assert.deepStrictEqual(yield* heightsOf, [
+          [375, 1400],
+          [720, 1500],
+        ]);
+        // At most twelve widths, the newest kept.
+        for (let width = 400; width < 400 + 12 * 10; width += 10) yield* record(width, 900);
+        const kept = (yield* heightsOf) ?? [];
+        assert.strictEqual(kept.length, 12);
+        assert.isFalse(kept.some(([width]) => width === 375 || width === 720));
+        // Only a page's call takes a height; another item, or none, is missing.
+        assert.deepStrictEqual(yield* record(720, 900, person.id), { _tag: "Missing" });
+        assert.deepStrictEqual(yield* record(720, 900, `${call.id}9` as never), {
+          _tag: "Missing",
+        });
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("reaches the client on its call by reference, the same live and after a reload", () =>
     Effect.scoped(
       Effect.gen(function* () {

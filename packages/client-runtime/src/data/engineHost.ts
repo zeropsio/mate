@@ -5,6 +5,7 @@
  *
  * @module data/engineHost
  */
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
@@ -30,6 +31,19 @@ export interface MateEngineHost {
   readonly conversations: ReturnType<typeof makeMateEngineConversations>;
   readonly operations: MateEngineOperations;
   readonly live: EngineLiveText;
+  /**
+   * Published pages: a height this client laid one out at, recorded for its later views. A view's
+   * own measurement, sent once and forgotten: a failure only means a later view measures again.
+   */
+  readonly pages: {
+    readonly recordHeight: (input: {
+      readonly environmentId: string;
+      readonly conversationId: string;
+      readonly itemId: string;
+      readonly width: number;
+      readonly height: number;
+    }) => void;
+  };
   readonly close: () => void;
 }
 
@@ -61,9 +75,10 @@ export function makeMateEngineHost(options: {
     setTimer: options.setTimer,
     clearTimer: options.clearTimer,
   });
+  const wire = makeEngineConversationWire(options.registry);
   const conversations = makeMateEngineConversations({
     store: options.store,
-    wire: makeEngineConversationWire(options.registry),
+    wire,
     live,
     setTimer: options.setTimer,
     clearTimer: options.clearTimer,
@@ -79,6 +94,16 @@ export function makeMateEngineHost(options: {
     conversations,
     operations,
     live,
+    pages: {
+      recordHeight: ({ environmentId, conversationId, itemId, width, height }) => {
+        Effect.runFork(
+          (
+            wire.recordPageHeight?.({ environmentId, conversationId }, itemId, width, height) ??
+            Effect.void
+          ).pipe(Effect.ignore),
+        );
+      },
+    },
     close: () => {
       operations.close();
       conversations.close();

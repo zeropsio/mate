@@ -52,7 +52,8 @@ const SAMPLER = (title: string, answer: string) => {
   };
   const tick = () => {
     const box = document.querySelector(`figure[aria-label="${title}"] > div`);
-    if (box !== null) {
+    // Only what the person sees: a conversation still placing its rows is not shown yet.
+    if (box !== null && document.querySelector("[data-timeline-placing]") === null) {
       const rect = box.getBoundingClientRect();
       const top = answerTop();
       samples.push({
@@ -201,7 +202,7 @@ const journey = (
         endedAt: null,
         tool: { name: "zerops_browser", server: "zerops" },
       });
-    return { s, chat, publish, publishLive, workOn, answer };
+    return { s, chat, engine, publish, publishLive, workOn, answer };
   });
 
 /** Starts the sampler, lets `act` happen, and reads every frame until the page has stood still. */
@@ -478,51 +479,87 @@ describe("C: a page the Mate publishes", () => {
 
   describe("Decision: geometry relations only; no style pins.", () => {
     it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-      it.effect(
-        "a page taller than the shared cap holds its frame from its first paint: the answer under it never moves as it loads",
-        () =>
+      for (const shape of [
+        {
+          title: "a published page stands at its full height in the run, like the answer it is",
+          page: 900,
+          stands: 900,
+        },
+        {
+          title: "a page taller than 2000 px stands at 2000 and scrolls inside",
+          page: 2400,
+          stands: 2000,
+        },
+      ])
+        it.effect(shape.title, () =>
           Effect.gen(function* () {
-            const { s, publish } = yield* journey(2400, { slowBytes: true });
+            const { s, publish } = yield* journey(shape.page);
             const samples = yield* sampled(
               s,
               Effect.sync(() => publish()),
             );
-            const heights = new Set(samples.map((sample) => sample.frame));
-            expect(heights.size, `ASSERTION: one frame height, saw ${[...heights]}`).toBe(1);
-            // The answer has risen in and settled long before the page's bytes come: from half a
-            // second before the page loads through its load, nothing under the frame moves.
-            const loadedAt = samples.find((sample) => sample.loaded)!.t;
-            const settled = samples.filter((sample) => sample.t >= loadedAt - 500);
+            const last = samples.at(-1)!;
+            expect(last.frame, "ASSERTION: the frame stands at the page's height").toBe(
+              shape.stands,
+            );
             expect(
-              settled.some((sample) => !sample.loaded) && settled.some((sample) => sample.loaded),
-              "ASSERTION: the page loads inside the watched window",
-            ).toBe(true);
+              last.answer!,
+              "ASSERTION: the answer stands under the whole page",
+            ).toBeGreaterThanOrEqual(shape.stands);
+            yield* s.then.noExternalNetwork;
+          }),
+        );
+
+      it.effect("the first landing glides to the page's height, never cuts", () =>
+        Effect.gen(function* () {
+          const { s, publish } = yield* journey(900);
+          const samples = yield* sampled(
+            s,
+            Effect.sync(() => publish()),
+          );
+          const heights = samples.map((sample) => sample.frame);
+          expect(heights[0], "ASSERTION: it lands in a modest box").toBe(240);
+          expect(heights.at(-1), "ASSERTION: it stands at the page's height").toBe(900);
+          expect(
+            heights.every((height, i) => i === 0 || height >= heights[i - 1]!),
+            `ASSERTION: it only ever grows toward the page, saw ${[...new Set(heights)]}`,
+          ).toBe(true);
+          const between = new Set(heights.filter((height) => height > 240 && height < 900));
+          expect(between.size, "ASSERTION: it glides through the heights between").toBeGreaterThan(
+            2,
+          );
+          yield* s.then.noExternalNetwork;
+        }),
+      );
+
+      it.effect(
+        "a page measured once paints at its height on every later view: nothing moves after its first paint on a reload",
+        () =>
+          Effect.gen(function* () {
+            const { s, chat, engine, publish } = yield* journey(600);
+            yield* sampled(
+              s,
+              Effect.sync(() => publish()),
+            );
+            yield* Effect.promise(async () => {
+              for (let wait = 0; wait < 50 && engine.pageHeights.length === 0; wait++)
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            });
+            expect(
+              engine.pageHeights.map(([, , height]) => height),
+              "ASSERTION: the view recorded it",
+            ).toEqual([600]);
+            const reloaded = yield* sampled(s, chat.when.reload("Ada", ANSWER), true);
+            expect(
+              [...new Set(reloaded.map((sample) => sample.frame))],
+              "ASSERTION: the frame stands at the page's height from its first paint",
+            ).toEqual([600]);
             const offsets = new Set(
-              settled.flatMap((sample) => (sample.answer === null ? [] : [sample.answer])),
+              reloaded.flatMap((sample) => (sample.answer === null ? [] : [sample.answer])),
             );
             expect(offsets.size, `ASSERTION: the answer keeps its place, saw ${[...offsets]}`).toBe(
               1,
             );
-            yield* s.then.noExternalNetwork;
-          }),
-      );
-
-      it.effect(
-        "a short page holds the shared cap from its first paint until it says its height, then eases down to it, never past it",
-        () =>
-          Effect.gen(function* () {
-            const { s, publish } = yield* journey(180);
-            const samples = yield* sampled(
-              s,
-              Effect.sync(() => publish()),
-            );
-            const heights = samples.map((sample) => sample.frame);
-            expect(heights[0], "ASSERTION: it opens at the cap").toBeGreaterThan(400);
-            expect(
-              heights.every((height, i) => i === 0 || height <= heights[i - 1]!),
-              `ASSERTION: it only ever eases down, saw ${[...new Set(heights)]}`,
-            ).toBe(true);
-            expect(heights.at(-1), "ASSERTION: it stands at the page's own height").toBe(182);
             yield* s.then.noExternalNetwork;
           }),
       );
