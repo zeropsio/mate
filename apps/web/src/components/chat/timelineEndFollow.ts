@@ -74,11 +74,17 @@ export interface EndFollow {
 export function createEndFollow({
   viewport,
   follows,
+  room = () => 0,
   placeEnd,
 }: {
   readonly viewport: () => HTMLElement | null;
   /** Whether the conversation follows its end: ChatView's one judgement of it. */
   readonly follows: () => boolean;
+  /**
+   * Room under the end the person may scroll into and the follower never goes into, nor out of:
+   * what an ask over the composer covers.
+   */
+  readonly room?: () => number;
   /** The list commits this measured alignment after pending virtualizer layout. */
   readonly placeEnd: () => void;
 }): EndFollow {
@@ -90,7 +96,8 @@ export function createEndFollow({
   let observedViewport: HTMLElement | null = null;
   // The list it glides, and said so on: a kept list swapped in since is not it.
   let gliding: HTMLElement | null = null;
-  const endOf = (element: HTMLElement) => Math.max(0, element.scrollHeight - element.clientHeight);
+  const endOf = (element: HTMLElement) =>
+    Math.max(0, element.scrollHeight - element.clientHeight - room());
   const stopGlide = () => {
     cancelAnimationFrame(frame);
     frame = 0;
@@ -108,6 +115,11 @@ export function createEndFollow({
     // Moved since by something else: it glides on from there.
     if (Math.abs(element.scrollTop - at) > 2) at = element.scrollTop;
     const end = endOf(element);
+    // The person went on into the room under the end: theirs to stand in.
+    if (at > end && room() > 0) {
+      stopGlide();
+      return;
+    }
     at = approach(at, end, last === 0 ? 1000 / 60 : now - last, FOLLOW_TAU_MS);
     last = now;
     scrollOwn(element, at);
@@ -143,7 +155,8 @@ export function createEndFollow({
       const end = endOf(element);
       const gap = end - element.scrollTop;
       observe(element);
-      if (frame !== 0 || Math.abs(gap) < 0.5) return;
+      // Standing in the room under the end is the person's: it is not taken back.
+      if (frame !== 0 || Math.abs(gap) < 0.5 || (gap < 0 && room() > 0)) return;
       // Out of sight, nobody watches it glide: it stands there at once.
       if (gap < GLIDE_FROM_PX || reducedMotion() || outOfSight()) {
         scrollOwn(element, end);

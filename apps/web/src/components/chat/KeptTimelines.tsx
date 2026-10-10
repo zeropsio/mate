@@ -148,7 +148,10 @@ export function KeptTimelines({
     const inset = rememberedTimelineInset(warming);
     setWarmBase({
       key: warming,
-      timeline: inset === undefined ? timeline : { ...timeline, contentInsetEndAdjustment: inset },
+      timeline:
+        inset === undefined
+          ? { ...timeline, askRoomEnd: 0 }
+          : { ...timeline, contentInsetEndAdjustment: inset, askRoomEnd: 0 },
     });
   }
   // What each list showed last, drawn as it is while it is hidden.
