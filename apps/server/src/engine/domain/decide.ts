@@ -66,6 +66,7 @@ import type {
   ImportedRecord,
   ItemDetailDraft,
   ProviderSignal,
+  ProviderUsageReport,
 } from "./command.ts";
 import { evolve, isUsageWake, stampEvents } from "./evolve.ts";
 import {
@@ -241,6 +242,13 @@ const handle = (b: StepBuilder, command: Command): void => {
       return send(b, command);
     case "Stop":
       return stop(b, command.runId);
+    case "Continue":
+      return tryPastLimit(b, "the person asked to continue");
+    case "ProviderUsage":
+      if (limitGone(b.state, command.usage)) {
+        tryPastLimit(b, "the provider no longer reports the limit");
+      }
+      return;
     case "Answer":
       return answer(b, command);
     case "Dismiss":
@@ -2161,6 +2169,45 @@ const limited = (b: StepBuilder, run: RunRecord, resetsAt: number | null): void 
     joins: run.id,
     text: CONTINUE_TEXT,
   });
+};
+
+/**
+ * How far a window's reset may sit from a limit's reset and still be that limit's window: a
+ * limit's words round its reset (Claude says "resets 1pm"), the window keeps its own instant.
+ */
+export const LIMIT_WINDOW_MATCH_MS = 60 * 60_000;
+
+/**
+ * Whether the provider's report shows the limit that pauses the conversation is gone: read after
+ * the limit, every window with room, none that resets when the limit does. A limit belongs to the
+ * account that hit it: an agent signed in to another account reports that account's windows.
+ */
+const limitGone = (state: ConversationState, usage: ProviderUsageReport): boolean => {
+  const pausedUntil = state.pausedUntil;
+  if (pausedUntil === null) return false;
+  const wake = Object.values(state.wakes).find((candidate) => isUsageWake(candidate.kind));
+  const limitedAt = wake?.joins == null ? undefined : state.runs[wake.joins]?.endedAt;
+  if (limitedAt == null || usage.checkedAt <= limitedAt) return false;
+  return usage.windows.every(
+    (window) =>
+      window.usedPercent < 100 &&
+      (pausedUntil === "unknown" ||
+        window.resetsAt === null ||
+        Math.abs(window.resetsAt - pausedUntil) > LIMIT_WINDOW_MATCH_MS),
+  );
+};
+
+/**
+ * The pause a usage limit holds lifts and the work tries the provider now: the held message first,
+ * else the limited run's resume. A provider that still refuses ends that run as a usage limit
+ * again, and the pause is back until the reset it names.
+ */
+const tryPastLimit = (b: StepBuilder, reason: string): void => {
+  if (b.state.pausedUntil === null) return;
+  const wake = Object.values(b.state.wakes).find((candidate) => isUsageWake(candidate.kind));
+  b.emit({ _tag: "UsagePauseLifted", reason });
+  if (wake === undefined) return admitNext(b);
+  wakeFired(b, wake.id, undefined);
 };
 
 const cancelUsageWakes = (b: StepBuilder, reason: string): void => {
