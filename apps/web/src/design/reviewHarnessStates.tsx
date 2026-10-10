@@ -1327,6 +1327,14 @@ export function ReviewDialogTry({ openAtStart = false }: { readonly openAtStart?
           press={IDLE}
           pull={pull({
             description: harnessDescription({ after: TRY_READ_MS }),
+            pipeline: {
+              head: HEAD,
+              requirements: "known",
+              checks: [
+                { id: "unit", name: "Unit tests", requirement: "required", state: "passed" },
+                { id: "lint", name: "Lint", requirement: "advisory", state: "passed" },
+              ],
+            },
           })}
           readout={read ? READ : READING}
           run={RUN}

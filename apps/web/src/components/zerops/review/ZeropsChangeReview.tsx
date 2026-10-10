@@ -598,7 +598,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     if (asking === 0) return;
     const box = talkAt.current?.querySelector("textarea");
     box?.focus({ preventScroll: true });
-    box?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    box?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [asking]);
   const canAsk = mine !== undefined && props.offers?.comment === true && !over && !fromRelease;
   const checksSaid = changeChecks({
