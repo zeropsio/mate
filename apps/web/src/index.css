@@ -4423,6 +4423,7 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
     display: flex;
     gap: 4px;
     min-width: 0;
+    min-height: 21px;
     overflow: hidden;
     font-size: 15px;
     line-height: 21px;

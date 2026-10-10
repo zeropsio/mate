@@ -2349,16 +2349,19 @@ export default function Sidebar() {
   );
   // The Overview row: lit while the overview is open, its line the organization in one sentence.
   const zeropsOverviewOpen = useLocation({ select: (location) => location.pathname === "/zerops" });
+  // While the menu is still reading, the line says nothing rather than "No projects yet".
   const zeropsHeadline = useMemo(
     () =>
-      overviewHeadline(
-        overviewProjectsOf({
-          projects: zeropsMenuProjects,
-          flows: zeropsProjectFlows,
-          candidates: zeropsCandidates,
-        }),
-      ),
-    [zeropsCandidates, zeropsMenuProjects, zeropsProjectFlows],
+      zeropsMenuComplete
+        ? overviewHeadline(
+            overviewProjectsOf({
+              projects: zeropsMenuProjects,
+              flows: zeropsProjectFlows,
+              candidates: zeropsCandidates,
+            }),
+          )
+        : "",
+    [zeropsCandidates, zeropsMenuComplete, zeropsMenuProjects, zeropsProjectFlows],
   );
   // Every project whose next release is offered waits on the viewer too.
   const zeropsWaitingReleases = useMemo(
