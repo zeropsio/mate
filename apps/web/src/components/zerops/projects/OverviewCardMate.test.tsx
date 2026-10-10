@@ -6,7 +6,8 @@ const linked = vi.hoisted(() => ({ value: false }));
 
 // The menu row's own reads, as a card reads them for the same Mate.
 vi.mock("~/zerops/useMenuMateReadings", () => ({ useMateLinkedInHq: () => linked.value }));
-vi.mock("~/zerops/useZeropsMateOwners", () => ({
+vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
+  ...(await original<typeof import("~/zerops/useZeropsMateOwners")>()),
   useHqProjectPerson: () => ({ waitsOnViewer: true, owner: null }),
 }));
 vi.mock("~/zerops/deletingMates", () => ({
@@ -27,6 +28,8 @@ vi.mock("~/hooks/useSettings", () => ({
 vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => () => {} }));
 vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => () => {} }));
 vi.mock("~/zerops/review", () => ({ useOpenReview: () => () => {} }));
+vi.mock("~/zerops/useZeropsAgentActivity", () => ({ useProjectMateActivity: () => undefined }));
+vi.mock("~/zerops/ZeropsSessionProvider", () => ({ useZeropsSessionOptional: () => null }));
 vi.mock("~/zerops/useMateWrite", () => ({ useMateWrite: () => ({ requests: {} }) }));
 
 import { OverviewCardMate } from "./OverviewCardMate";
@@ -51,7 +54,6 @@ describe("a Mate on its card", () => {
     linked.value = hq;
     const markup = renderToStaticMarkup(
       <OverviewCardMate
-        activity={undefined}
         candidate={ada(group)}
         change={undefined}
         containerActions={null}

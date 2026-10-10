@@ -2001,7 +2001,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     if (layout === "row") {
       return (
         <OverviewCardMate
-          activity={activityOf(candidate)}
           candidate={candidate}
           change={review}
           // A Mate whose container has something to say first says it: coming up, a failed
