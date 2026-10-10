@@ -12,7 +12,7 @@ export function selectsChatGate(paths: ReadonlyArray<string>): boolean {
       return false;
     if (/^apps\/web\/src\/.*\.test\.[cm]?[jt]sx?$/u.test(path)) return false;
     return (
-      /^(?:apps\/server\/src\/|apps\/web\/(?:src\/|test\/scenarios\/)|packages\/(?:contracts|client-runtime|shared|effect-codex-app-server|effect-acp)\/)/u.test(
+      /^(?:apps\/server\/src\/|apps\/web\/(?:src\/|test\/scenarios\/|test\/engine-oracle\/)|packages\/(?:contracts|client-runtime|shared|effect-codex-app-server|effect-acp)\/)/u.test(
         path,
       ) ||
       /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|vite\.config\.ts|apps\/(?:server|web)\/(?:package\.json|vite\.config\.ts|tsconfig\.json)|scripts\/(?:chat-gate(?:-reporter)?|gate-changed)(?:\.test)?\.ts|\.github\/workflows\/ci\.yml)$/u.test(
@@ -112,6 +112,21 @@ export const chatGateStages = [
           "--reporter=../../scripts/chat-gate-reporter.ts",
         ],
       },
+      {
+        // The run-card oracle: the running engine's record through the client's wire and store
+        // into the card, on its fixed seeds.
+        cwd: "apps/web",
+        args: [
+          "test",
+          "run",
+          "--project",
+          "engine-oracle",
+          "test/engine-oracle/runCard.oracle.test.ts",
+          "--allowOnly=false",
+          "--reporter=default",
+          "--reporter=../../scripts/chat-gate-reporter.ts",
+        ],
+      },
     ],
   },
   {
@@ -157,6 +172,17 @@ export const chatGateStages = [
           "--incremental",
           "-p",
           "apps/web/test/scenarios/areas/c-mate/tsconfig.json",
+        ],
+      },
+      {
+        cwd: ".",
+        args: [
+          "exec",
+          "tsc",
+          "--noEmit",
+          "--incremental",
+          "-p",
+          "apps/web/test/engine-oracle/tsconfig.json",
         ],
       },
     ],
@@ -403,7 +429,9 @@ if (import.meta.main) {
     // the host has it) keeps one gate command for CI and a fresh worktree alike.
     const logs = gateLogDirectory("chat-gate");
     if (
-      stages.some((stage) => stage.commands.some((command) => command.args.includes("--project")))
+      stages.some((stage) =>
+        stage.commands.some((command) => command.args.includes("test/scenarios/vitest.config.ts")),
+      )
     ) {
       const logPath = NodePath.join(logs, "browser.log");
       const status = await runLoggedAsync(

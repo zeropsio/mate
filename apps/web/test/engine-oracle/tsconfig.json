@@ -1,20 +1,19 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../../../tsconfig.base.json",
   "compilerOptions": {
-    "composite": true,
     "module": "Preserve",
+    "jsx": "react-jsx",
     "moduleResolution": "Bundler",
     "erasableSyntaxOnly": false,
     "verbatimModuleSyntax": false,
-    "jsx": "react-jsx",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable", "esnext.disposable"],
+    "types": ["node"],
     "paths": {
-      "~/*": ["./src/*"]
+      "~/*": ["../../src/*"]
     },
     "plugins": [
       {
         "name": "@effect/language-service",
-        // Diagnostic severities are deep-merged with tsconfig.base.json; list only web-specific overrides here.
         "diagnosticSeverity": {
           "globalDate": "off",
           "globalConsole": "off",
@@ -25,12 +24,5 @@
       }
     ]
   },
-  "exclude": ["test/scenarios", "test/engine-oracle"],
-  "include": [
-    "src",
-    "vite.config.ts",
-    "test",
-    "scripts/warm-dep-cache.ts",
-    "../../scripts/lib/public-config.ts"
-  ]
+  "include": ["**/*.ts", "../../src/vite-env.d.ts"]
 }

@@ -4486,8 +4486,15 @@ export default function ChatView(props: ChatViewProps) {
   );
   // Live-follow stays active after send/thread-open until an actual list scroll
   // gesture opts out.
-  const scrollToEnd = useCallback((animated = false) => {
+  /**
+   * `sent`: the person's own message — already at the end, the view follows what it brings by the
+   * list's glide (`createEndFollow`), never a cut: a queued steer moved the conversation 105 px in
+   * one frame (Milo's third stress run).
+   */
+  const scrollToEnd = useCallback((animated = false, sent = false) => {
     cancelPositionRestoreRef.current?.();
+    const following =
+      sent && isAtEndRef.current && timelineScrollModeRef.current === "following-end";
     isAtEndRef.current = true;
     timelineScrollModeRef.current = "following-end";
     liveFollowUserScrollGenerationRef.current = anchorUserScrollGenerationRef.current;
@@ -4499,6 +4506,7 @@ export default function ChatView(props: ChatViewProps) {
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
     setTimelineAnchor(releaseChatTimelineAnchor);
+    if (following) return;
     requestAnimationFrame(() => {
       // Under reduced motion the way there is a cut.
       void legendListRef.current?.scrollToEnd?.({ animated: animated && !prefersReducedMotion() });
@@ -6706,7 +6714,7 @@ export default function ChatView(props: ChatViewProps) {
           { type: "sent", byPerson: true },
         )
       ) {
-        scrollToEnd();
+        scrollToEnd(false, true);
       }
       return;
     }
@@ -7031,7 +7039,7 @@ export default function ChatView(props: ChatViewProps) {
         { type: "sent", byPerson: sentBy === "person" },
       )
     ) {
-      scrollToEnd();
+      scrollToEnd(false, sentBy === "person");
     }
     setOptimisticUserMessages((existing) => [
       ...existing,
@@ -7737,7 +7745,7 @@ export default function ChatView(props: ChatViewProps) {
       beginLocalDispatch({ preparingWorktree: false });
       setThreadError(threadIdForSend, null);
 
-      scrollToEnd();
+      scrollToEnd(false, true);
 
       setOptimisticUserMessages((existing) => [
         ...existing,

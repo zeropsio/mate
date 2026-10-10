@@ -493,7 +493,8 @@ function applyStatus(agent: MutableAgent, status: RuntimeSubagentStatus, at: str
 const TASK_COMPLETED_STATUS: ReadonlyMap<string, RuntimeSubagentStatus> = new Map([
   ["completed", "completed"],
   ["failed", "failed"],
-  ["stopped", "interrupted"],
+  // Stopped — by the person's Stop, by the Mate — is its own end, never one cut off.
+  ["stopped", "cancelled"],
   // The engine's: its session went before it reported.
   ["lost", "interrupted"],
 ]);

@@ -113,7 +113,37 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
     let items = 0;
     let tasks = 0;
 
+    /**
+     * The tasks each thread has running, by id, with the linkage every report of them repeats
+     * (`taskLinkageFor`): Claude's Stop reports each of them stopped as it closes the CLI.
+     */
+    const liveTasks = new Map<string, Map<string, Record<string, unknown>>>();
+    const trackTask = (type: string, thread: string, fields: Record<string, unknown>) => {
+      const payload = (fields.payload ?? {}) as Record<string, unknown>;
+      const taskId = payload.taskId;
+      if (typeof taskId !== "string") return;
+      const live = liveTasks.get(thread) ?? new Map<string, Record<string, unknown>>();
+      liveTasks.set(thread, live);
+      const status = payload.status;
+      if (type === "task.started") {
+        const { description: _description, prompt: _prompt, ...linkage } = payload;
+        live.set(taskId, linkage);
+      } else if (
+        type === "task.completed" ||
+        (type === "task.updated" &&
+          (status === "completed" || status === "failed" || status === "cancelled"))
+      ) {
+        live.delete(taskId);
+      }
+    };
+
     const emit = (type: string, thread: string, fields: Record<string, unknown> = {}) =>
+      Effect.suspend(() => {
+        trackTask(type, thread, fields);
+        return publish(type, thread, fields);
+      });
+
+    const publish = (type: string, thread: string, fields: Record<string, unknown> = {}) =>
       PubSub.publish(pubsub, {
         sequence: ++published,
         event: {
@@ -176,11 +206,29 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
         }
       });
 
+    /**
+     * Claude's Stop closes the CLI: each task still running is reported stopped first, with its
+     * linkage (`ClaudeAdapter` `stopSessionInternal`).
+     */
+    const stopTasks = (session: Session) =>
+      Effect.gen(function* () {
+        const live = liveTasks.get(session.thread);
+        if (live === undefined) return;
+        for (const [taskId, linkage] of live) {
+          live.delete(taskId);
+          yield* publish("task.completed", session.thread, {
+            payload: { ...linkage, taskId, status: "stopped" },
+          });
+        }
+      });
+
     /** The session dies: a held send fails with these words. */
     const die = (session: Session, words: string) =>
       Effect.gen(function* () {
         session.alive = false;
         session.open = null;
+        // Its process is gone, and every task with it: nothing reports them now.
+        liveTasks.delete(session.thread);
         if (session.held !== null) {
           yield* Deferred.fail(
             session.held,
@@ -261,8 +309,10 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
           if (driver === "codex" && input.turnId === undefined) return;
           switch (driver) {
             case "claudeAgent":
-              // A Stop kills the CLI: the turn ends interrupted and the session exits with it.
+              // A Stop kills the CLI: the turn ends interrupted, its tasks are reported stopped,
+              // and the session exits with it.
               yield* endTurn(session, { state: "interrupted", errorMessage: "Session stopped." });
+              yield* stopTasks(session);
               yield* die(session, "Session stopped.");
               yield* emit("session.exited", session.thread, { payload: { exitKind: "graceful" } });
               return;
@@ -321,6 +371,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
           if (session === undefined || !session.alive) return;
           if (driver === "claudeAgent") {
             yield* endTurn(session, { state: "interrupted", errorMessage: "Session stopped." });
+            yield* stopTasks(session);
             yield* die(session, "Session stopped.");
             yield* emit("session.exited", session.thread, { payload: { exitKind: "graceful" } });
             return;

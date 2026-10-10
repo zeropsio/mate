@@ -87,6 +87,10 @@ function heldEffort(calls: ReadonlyArray<Call>) {
   return activityCounts(
     entries.filter(isActivityWork),
     entries.filter((entry) => entry.agentSpawn !== undefined),
+    model.entries.reduce(
+      (sum, entry) => sum + (entry.kind === "operation" ? entry.operation.callIds.length : 0),
+      0,
+    ),
   );
 }
 
@@ -129,7 +133,7 @@ describe("an engine card too long to read whole", () => {
       run: [codexEdit("/app/a.ts", "/app/b.ts"), codexEdit("/app/a.ts"), BASH],
     },
     {
-      calls: "Zerops tools by what they did, a deploy left to its result",
+      calls: "Zerops tools by what they did, a deploy among the tools used",
       run: [
         zerops("zerops_knowledge", { query: "nodejs" }),
         zerops("zerops_knowledge", { query: "postgres" }),
@@ -154,7 +158,7 @@ describe("an engine card too long to read whole", () => {
       { kind: "command", count: 812 },
       { kind: "read", count: 140 },
       { kind: "guides", count: 9 },
-      { kind: "tool", count: 15 },
+      { kind: "tool", count: 21 },
       { kind: "helpers", count: 2 },
     ]);
   });

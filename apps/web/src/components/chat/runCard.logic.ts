@@ -13,6 +13,7 @@ import { quoteWords } from "@t3tools/shared/messagePreview";
 
 import {
   browserCheckCaption,
+  browserPageWords,
   checksStrip,
   devServerRunning,
   formatWorkDuration,
@@ -630,7 +631,7 @@ export function stepNowWords(step: WorkStep): string {
 /** A platform operation as the now line says it: a check names its page. */
 export function operationNowWords(operation: ZeropsOperation): string {
   return operation.kind === "browser"
-    ? `Checking ${browserCheckCaption(operation)} in the browser`
+    ? `Checking ${browserPageWords(browserCheckCaption(operation))} in the browser`
     : operationLineWords(operation);
 }
 

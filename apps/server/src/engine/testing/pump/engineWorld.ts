@@ -280,15 +280,19 @@ export const makeEngineWorld = (options: WorldOptions) =>
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           const rows = yield* sql<{
+            readonly item_id: string;
             readonly kind: string;
             readonly state: string;
             readonly body_json: string;
+            readonly by_json: string;
           }>`
-            SELECT kind, state, body_json FROM engine_item WHERE run_id = ${runId} ORDER BY opened_seq
+            SELECT item_id, kind, state, body_json, by_json FROM engine_item
+            WHERE run_id = ${runId} ORDER BY opened_seq
           `;
           return rows.map((row) => ({
             ...row,
             body: JSON.parse(row.body_json) as Record<string, unknown>,
+            by: JSON.parse(row.by_json) as Record<string, unknown>,
           }));
         }),
       );

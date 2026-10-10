@@ -476,6 +476,59 @@ describe("a client reading more of an engine conversation", () => {
     ),
   );
 
+  // Milo's stress runs: a reload's closed card lost the line of jobs it read live, its commands unread.
+  it.effect("reads a closed card's background work with the commands that started it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        yield* w.tell({ _tag: "Send", text: "Start the soak" });
+        yield* w.agent((agent, thread) =>
+          Effect.gen(function* () {
+            const payload = {
+              itemType: "command_execution",
+              title: "Command run",
+              data: { toolName: "Bash", input: { command: "./soak.sh", run_in_background: true } },
+            };
+            yield* agent.emit("item.started", thread, {
+              itemId: "toolu_soak",
+              payload: { ...payload, status: "inProgress" },
+            });
+            yield* agent.emit("item.completed", thread, {
+              itemId: "toolu_soak",
+              payload: { ...payload, status: "completed" },
+            });
+            yield* agent.emit("task.started", thread, {
+              payload: {
+                taskId: "bsoak",
+                description: "Run the soak",
+                taskType: "local_bash",
+                toolUseId: "toolu_soak",
+              },
+            });
+          }),
+        );
+        yield* w.agent((agent, thread) => agent.say(thread, "It runs."));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const page = yield* wire.readRun({
+          protocol,
+          conversationId: mate,
+          runId: runId(mate, 1),
+          afterSeq: 0,
+          only: "outcome",
+        });
+        if (page._tag !== "Page") throw new Error(page._tag);
+        const call = page.items.find((item) => item.kind === "call");
+        const work = page.items.find((item) => item.kind === "work");
+        assert.deepStrictEqual(
+          [call?.tool.name, work?.kind === "work" ? work.call : undefined],
+          ["Bash", call?.id],
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect(
     "counts a run's generic calls by their tool, and the files its edits changed once",
     () =>

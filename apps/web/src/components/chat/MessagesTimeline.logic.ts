@@ -1528,6 +1528,8 @@ export function thoughtPreview(messages: ReadonlyArray<Pick<ChatMessage, "text">
 function stretchRecord(input: {
   stretch: Stretch;
   answer: MessageEntry | null;
+  /** The card's earlier runs' answers: drawn under it, never lines of its chat. */
+  earlierAnswers: ReadonlyArray<MessageEntry>;
   writing: MessageEntry | null;
   brokeOffEntryId: string | null;
   pauseRow: MessagesTimelineRow | null;
@@ -1717,7 +1719,11 @@ function stretchRecord(input: {
     // them would have the note land between its halves once it is known. The
     // thinking before them ended where they began, though: it stays in the
     // chat while they are on their way.
-    if (entry === input.answer || entry === input.writing) {
+    if (
+      entry === input.answer ||
+      entry === input.writing ||
+      (entry.kind === "message" && input.earlierAnswers.includes(entry))
+    ) {
       flushReasoning(entry.createdAt);
       continue;
     }
@@ -1949,7 +1955,12 @@ function turnActivity(turn: ConversationTurn): OutcomeActivity[] {
   const launches = entries.flatMap((entry) =>
     entry.kind === "work" && entry.entry.agentSpawn !== undefined ? [entry.entry] : [],
   );
-  return activityCounts(calls, launches);
+  // Every call the Mate made counts: its operations' too, though their cards say them.
+  const operationCalls = entries.reduce(
+    (sum, entry) => sum + (entry.kind === "operation" ? entry.operation.callIds.length : 0),
+    0,
+  );
+  return activityCounts(calls, launches, operationCalls);
 }
 
 /**
@@ -2086,6 +2097,7 @@ function batchReads(
 function recordReads(input: {
   stretch: Stretch;
   answer: MessageEntry | null;
+  earlierAnswers: ReadonlyArray<MessageEntry>;
   writing: MessageEntry | null;
   brokeOffEntryId: string | null;
   tracked: TrackedCommands;
@@ -2099,6 +2111,7 @@ function recordReads(input: {
     stretch.startedAt,
     stretch.endedAt,
     input.answer,
+    ...input.earlierAnswers,
     input.writing,
     input.brokeOffEntryId,
     input.until,
@@ -2660,20 +2673,14 @@ export function deriveMessagesTimelineRows(input: {
           },
         });
       }
-      if (index > 0 && stretch.lead !== null && stretch.leadIndex !== null) {
-        const person = personRow(stretch.lead, stretch.leadIndex, stretch.aside);
-        exchanges.push(person);
-        items.push({
-          kind: "person",
-          key: `person:${stretch.lead.id}`,
-          at: stretch.lead.createdAt,
-          message: stretch.lead.message,
-          imageOnly: person.kind === "message" && person.imageOnly,
-        });
-      }
+      // A message sent into the run is drawn once: its own row above the card, never a mark in
+      // its chat as well (Milo's third stress run drew a steer twice; a reload drew it once).
+      if (index > 0 && stretch.lead !== null && stretch.leadIndex !== null)
+        exchanges.push(personRow(stretch.lead, stretch.leadIndex, stretch.aside));
       const recordInput = {
         stretch,
         answer: turn.answer,
+        earlierAnswers: turn.earlierAnswers,
         writing: turn.writing,
         brokeOffEntryId: turn.brokeOff?.entryId ?? null,
         tracked,
@@ -2798,9 +2805,11 @@ export function deriveMessagesTimelineRows(input: {
       ...(turn.interruption === undefined ? {} : { interruption: turn.interruption }),
       ...waited,
       ...(engineWorked === undefined ? {} : { workedMs: engineWorked }),
-      // A question it asked is work too: a run that only asked read "thought".
+      // A question it asked is work too: a run that only asked read "thought". A card not held
+      // whole worked when its summary counts a call: its notes alone are no work (it read
+      // "worked" after a reload where it had "thought" live).
       worked:
-        unheld ||
+        (paging !== null && Object.keys(paging.counts.calls).length > 0) ||
         items.some(
           (item) =>
             item.kind !== "thought" &&
@@ -2982,6 +2991,18 @@ export function deriveMessagesTimelineRows(input: {
           };
     // A provider pause owns its stage, outside the work card it follows.
     if (pause !== null) rows.push(pause);
+    // Each earlier run's answer stays under the card where it stood; the latest follows them.
+    for (const earlier of turn.earlierAnswers)
+      rows.push({
+        kind: "message",
+        id: earlier.id,
+        createdAt: earlier.createdAt,
+        message: earlier.message,
+        receipt: null,
+        aside: false,
+        imageOnly: false,
+        showAssistantMeta: true,
+      });
     // The answer follows the card, settled or still streaming.
     if (answer !== null) {
       rows.push({

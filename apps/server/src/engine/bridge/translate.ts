@@ -16,9 +16,10 @@
  * - every item, request and piece of work has an app key, never a native id;
  * - a late item never reopens a turn: it carries `afterEnd`;
  * - an open call is closed `unreturned` at its turn's end, an open request
- *   `superseded`, and at a session's close every live work is `lost` and every
- *   open request `expired` — except a question asked by message, which no
- *   callback waits on: a person's message answers it after its turn.
+ *   `superseded`, and at a session's close every live work is `lost` (`stopped`
+ *   when a Stop closed it) and every open request `expired` — except a question
+ *   asked by message, which no callback waits on: a person's message answers it
+ *   after its turn.
  *
  * Its state lives in memory: a host restart kills every driver process, so the
  * engine's own boot ends what was open and a new session starts a new fold.
@@ -156,6 +157,12 @@ interface WorkState {
   kind?: WorkKind;
   status?: WorkStatus;
   title?: string | undefined;
+  /** The helper whose own tool started it; none: the Mate's. */
+  helper?: WorkKey;
+  /** The call that started it: the command sent to the background, the helper's launch. */
+  call?: ItemKey;
+  /** What it said as it ended, in a line. */
+  report?: string;
 }
 
 interface RequestState {
@@ -423,9 +430,11 @@ export function makeTranslator(options: TranslatorOptions): Translator {
         undelivered: "unknown",
       });
     }
+    // A Stop that closed the session stopped what it ran: that work was stopped, not lost (Claude
+    // reports its tasks stopped only after the turn's end, from a session already closed).
     for (const work of owner.work.values()) {
       if (work.status !== undefined && isLiveWork(work.status)) {
-        work.status = "lost";
+        work.status = cause === "stopped-turn" ? "stopped" : "lost";
         emitWork(owner, work);
       }
     }
@@ -516,6 +525,9 @@ export function makeTranslator(options: TranslatorOptions): Translator {
       kind: work.kind ?? "other",
       status: work.status ?? "running",
       ...(work.title === undefined ? {} : { title: work.title }),
+      ...(work.helper === undefined ? {} : { helper: work.helper }),
+      ...(work.call === undefined ? {} : { call: work.call }),
+      ...(work.report === undefined ? {} : { report: work.report }),
     });
   };
 
@@ -532,7 +544,13 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     const nativeId = event.itemId === undefined ? undefined : String(event.itemId);
     let item = nativeId === undefined ? undefined : owner.items.get(nativeId);
     if (item === undefined) {
-      const turn = turnOf(owner, event);
+      // A helper's own call goes on under the turn that started its helper, whatever turn is open
+      // when it comes: it is that card's, never the next message's.
+      const launched = payload.agentId ?? payload.parentToolUseId;
+      const helper = launched === undefined ? undefined : owner.work.get(launched);
+      const helperTurn =
+        helper === undefined || helper.origin === "unknown" ? undefined : turns.get(helper.origin);
+      const turn = helperTurn ?? turnOf(owner, event);
       if (turn === undefined) return;
       item = newItem(turn, itemBody(event));
       if (nativeId !== undefined) owner.items.set(nativeId, item);
@@ -757,10 +775,42 @@ export function makeTranslator(options: TranslatorOptions): Translator {
           return;
         }
         const work = workFor(owner, nativeIds);
-        const before = JSON.stringify([work.kind, work.status, work.title, work.origin]);
+        const facts = () =>
+          JSON.stringify([
+            work.kind,
+            work.status,
+            work.title,
+            work.origin,
+            work.helper,
+            work.call,
+            work.report,
+          ]);
+        const before = facts();
+        // Whose it is: the helper whose own tool started it, as each report of it repeats
+        // (Claude's `agentId`, Codex's `parentAgentId` of a nested helper). It is that helper's,
+        // and goes on under the run its helper served (Milo's second stress run drew a helper's
+        // sleep as the Mate's, and a nested helper among the Mate's own).
+        const owning =
+          payload.agentId ?? ("parentAgentId" in payload ? payload.parentAgentId : undefined);
+        if (owning !== undefined && work.helper === undefined) {
+          const helper = workFor(owner, [owning]);
+          if (helper !== work) {
+            work.helper = helper.key;
+            if (helper.origin !== "unknown") work.origin = helper.origin;
+          }
+        }
         if (work.origin === "unknown" && event.turnId !== undefined) {
           const origin = owner.nativeTurns.get(String(event.turnId));
           if (origin !== undefined) work.origin = origin.handle;
+        }
+        // The call that started it, by the tool use the task names.
+        if (work.call === undefined && payload.toolUseId !== undefined) {
+          const started = owner.items.get(payload.toolUseId);
+          if (started !== undefined) work.call = started.key;
+        }
+        if (event.type === "task.completed" && event.payload.summary !== undefined) {
+          const line = reportLine(event.payload.summary);
+          if (line !== undefined) work.report = line;
         }
         if (
           work.kind === undefined ||
@@ -777,7 +827,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
             payload.title ??
             work.title;
         work.status = taskStatus(event, work.status);
-        if (JSON.stringify([work.kind, work.status, work.title, work.origin]) !== before) {
+        if (facts() !== before) {
           emitWork(owner, work);
         }
         return;
@@ -1260,6 +1310,14 @@ function itemStatus(
   if (payload.status === "stopped") return "stopped";
   if (event.type === "item.completed") return "completed";
   return payload.status === "completed" ? "completed" : "running";
+}
+
+/** What a report says first, in a line a row can hold: "… failed with exit code 3". */
+const REPORT_LINE = 280;
+function reportLine(summary: string): string | undefined {
+  const first = summary.trim().split("\n")[0]?.trim() ?? "";
+  if (first === "") return undefined;
+  return first.length <= REPORT_LINE ? first : `${first.slice(0, REPORT_LINE - 1)}…`;
 }
 
 function workKind(

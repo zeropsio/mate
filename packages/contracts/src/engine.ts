@@ -468,6 +468,10 @@ const itemBodyFields = {
     workKind: forwardCompatibleLiterals(WORK_KINDS),
     status: forwardCompatibleLiterals(WORK_STATUSES),
     title: Schema.NullOr(Schema.String),
+    /** The call that started it: the command sent to the background, the helper's launch. */
+    call: Schema.optionalKey(ItemId),
+    /** What it said as it ended, in a line: `Background command "…" failed with exit code 3`. */
+    report: Schema.optionalKey(Schema.String),
   },
   context: { notes: Schema.Array(Schema.String) },
   marker: {

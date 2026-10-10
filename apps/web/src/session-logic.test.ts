@@ -2396,6 +2396,33 @@ describe("deriveWorkLogEntries quiet-timeline guarantee", () => {
     expect(entries[0]!.agentSpawn?.agentTaskIds).toEqual(["child-1", "child-2"]);
   });
 
+  // Milo's second stress run: a helper's helper, started 40 s later, read "Started 4 helpers" on
+  // the Mate's first wave.
+  it("a helper's own helper is never among the helpers the Mate started", () => {
+    const entries = deriveWorkLogEntries([
+      makeActivity({
+        kind: "task.started",
+        summary: "Look into it",
+        tone: "info",
+        payload: { taskId: "helper-1", agentKind: "agent", taskType: "local_agent" },
+        turnId: "turn-1",
+      }),
+      makeActivity({
+        kind: "task.started",
+        summary: "Dig deeper",
+        tone: "info",
+        payload: {
+          taskId: "helper-2",
+          agentKind: "agent",
+          taskType: "local_agent",
+          agentId: "helper-1",
+        },
+        turnId: "turn-1",
+      }),
+    ]);
+    expect(entries.map((entry) => entry.agentSpawn?.agentTaskIds)).toEqual([["helper-1"]]);
+  });
+
   it("timelineBypass non-agent rows (background shells) stay suppressed", () => {
     const entries = deriveWorkLogEntries([
       makeActivity({

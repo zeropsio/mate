@@ -581,6 +581,7 @@ describe("C: conversation images", () => {
           "stream",
         );
         yield* chat.then.text("printf earlier-work");
+        // A message steered into the run is drawn once, above its card: its picture there.
         wire.message("steering", "user", "Use this steering picture", "stream", {
           attachments: [
             {
@@ -597,7 +598,7 @@ describe("C: conversation images", () => {
         yield* Effect.promise(() =>
           s.page.waitForFunction(() => {
             const image = document.querySelector<HTMLImageElement>(
-              ".run-slot [data-person-pictures] img[data-image-src]",
+              '[data-message-role="user"] img[data-image-src]',
             );
             if (image?.naturalWidth !== 160) return false;
             for (let node: Element | null = image; node; node = node.parentElement) {
@@ -609,7 +610,7 @@ describe("C: conversation images", () => {
         const held = yield* Effect.promise(() =>
           s.page.evaluateHandle(() => {
             const image = document.querySelector<HTMLImageElement>(
-              ".run-slot [data-person-pictures] img[data-image-src]",
+              '[data-message-role="user"] img[data-image-src]',
             )!;
             const src = image.src;
             const failures = new Set<string>();
@@ -660,9 +661,7 @@ describe("C: conversation images", () => {
         }
         yield* Effect.promise(() =>
           s.page.waitForFunction(() =>
-            Boolean(
-              document.querySelector(".run-scroll [data-person-pictures] img[data-image-src]"),
-            ),
+            Boolean(document.querySelector('[data-message-role="user"] img[data-image-src]')),
           ),
         );
         expect(
@@ -671,7 +670,7 @@ describe("C: conversation images", () => {
               (held) => ({
                 sameSrc:
                   document.querySelector<HTMLImageElement>(
-                    ".run-scroll [data-person-pictures] img[data-image-src]",
+                    '[data-message-role="user"] img[data-image-src]',
                   )?.src === held.src,
                 failures: held.finish(),
               }),

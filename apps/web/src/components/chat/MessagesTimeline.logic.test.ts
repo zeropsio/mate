@@ -94,7 +94,8 @@ function framed(scene: Scene): MessagesTimelineRow[] {
               turn(id),
               {
                 pageRuns: { earlier: null, later: id },
-                counts: { calls: {}, tools: {}, edited: 0 },
+                // Its summary counts what it did: a call, its work.
+                counts: { calls: { command: 1 }, tools: {}, edited: 0 },
                 hasWork: true,
                 holdsLines: false,
                 since: at(0),
@@ -293,11 +294,12 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list.at(-1)).toMatchObject({ showAssistantMeta: true, receipt: null });
   });
 
-  // What the person sent into the run stands on the page above its card, and
-  // the card's chat marks where each reached the Mate: one card, one status
-  // (the owner, 2026-09-28, of the card breaking around each: "these split
-  // working groups have no chance to stay like this when the work is done").
-  it("keeps every message the person sent above the whole card, marked in its chat", () => {
+  // What the person sent into the run stands on the page above its card, once:
+  // one card, one status (the owner, 2026-09-28, of the card breaking around
+  // each: "these split working groups have no chance to stay like this when
+  // the work is done"; Milo's third stress run drew a steer twice, above the
+  // card and marked in its chat).
+  it("keeps every message the person sent above the whole card, drawn once", () => {
     const list = rows({
       entries: [
         user("m0", 0),
@@ -324,7 +326,7 @@ describe("deriveMessagesTimelineRows", () => {
       expect.objectContaining({ aside: true, receipt: "seen" }),
       expect.objectContaining({ aside: true, receipt: "seen" }),
     ]);
-    expect(lines(list)).toEqual(["· pnpm test", "> message m1", "· pnpm test", "> message m2"]);
+    expect(lines(list)).toEqual(["· pnpm test", "· pnpm test"]);
   });
 
   it("keeps the running run's heading live, its record, and what its hands are on at the end", () => {
@@ -1087,7 +1089,7 @@ describe("deriveMessagesTimelineRows", () => {
         live: "t1",
       });
     const running = scene("inProgress");
-    expect(lines(running)).toEqual(["· pnpm test", "> and the footer", "· pnpm test"]);
+    expect(lines(running)).toEqual(["· pnpm test", "· pnpm test"]);
     expect(allItems(running)[0]).toMatchObject({ step: { state: "running" } });
     const returned = scene("completed");
     expect(allItems(returned).map((item) => item.key)).toEqual(
@@ -1201,7 +1203,6 @@ describe("deriveMessagesTimelineRows", () => {
       "One question first.",
       "? Which accent colour do you prefer?",
       "> Green",
-      "> and make it bold",
       "· pnpm test",
     ]);
   });
@@ -2022,11 +2023,7 @@ describe("deriveMessagesTimelineRows", () => {
       live: "t1",
     });
     expect(list.some((row) => row.id === "a1")).toBe(false);
-    expect(lines(list)).toEqual([
-      "· pnpm test",
-      "Found it: the build used the dev setup.",
-      "> revert it",
-    ]);
+    expect(lines(list)).toEqual(["· pnpm test", "Found it: the build used the dev setup."]);
   });
 
   // A check is its row of the chat from its start, where it happened, live
@@ -2042,7 +2039,7 @@ describe("deriveMessagesTimelineRows", () => {
       tool("w2", "t1", 4),
     ];
     const live = rows({ entries, live: "t1" });
-    const drawn = ["strip op:b1", "· pnpm test", "> and the footer", "· pnpm test"];
+    const drawn = ["strip op:b1", "· pnpm test", "· pnpm test"];
     expect(lines(live)).toEqual(drawn);
     expect(live.find((row) => row.kind === "working")).not.toHaveProperty("strip");
     const settled = rows({
@@ -3790,7 +3787,9 @@ describe("an engine run whose work the account does not hold yet", () => {
     expect(recordOf(rows(scene(["t1"])))).toMatchObject({ kind: "record", items: [] });
     expect(statusOf(rows(scene(["t1"])))).toMatchObject({ worked: true });
     // An outcome its worked line's effort is counted onto from the run's summary.
-    expect(recordOf(rows(scene(["t1"])))?.outcome).toMatchObject({ activity: [] });
+    expect(recordOf(rows(scene(["t1"])))?.outcome).toMatchObject({
+      activity: [{ kind: "command", count: 1 }],
+    });
   });
 
   it("draws an answer alone when its run did nothing else", () => {

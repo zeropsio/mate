@@ -7441,6 +7441,95 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // Milo's third stress run: a turn Claude opened to hand the model a background result streamed
+  // its first command before its first assistant message; the command fell to the run before, as
+  // "No result".
+  it.effect(
+    "a turn Claude opens on its own owns the command it streams before its first message",
+    () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const { runtimeEvents, runtimeEventsFiber, drainSdkMessages } =
+          yield* observeUsageLimitEvents(adapter, harness.query);
+
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        });
+        yield* adapter.sendTurn({ threadId: THREAD_ID, input: "hello", attachments: [] });
+        harness.query.emit({
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          errors: [],
+          session_id: "sdk-session-wake",
+          uuid: "result-first",
+        } as unknown as SDKMessage);
+        yield* drainSdkMessages;
+
+        const stream = (event: Record<string, unknown>, uuid: string) =>
+          harness.query.emit({
+            type: "stream_event",
+            session_id: "sdk-session-wake",
+            uuid,
+            parent_tool_use_id: null,
+            event,
+          } as unknown as SDKMessage);
+        stream({ type: "message_start", message: { id: "msg-wake" } }, "stream-start");
+        stream(
+          {
+            type: "content_block_start",
+            index: 0,
+            content_block: {
+              type: "tool_use",
+              id: "toolu_wake",
+              name: "Bash",
+              input: { command: "cat /tmp/out", description: "Read the short job's output" },
+            },
+          },
+          "stream-block",
+        );
+        harness.query.emit({
+          type: "assistant",
+          session_id: "sdk-session-wake",
+          uuid: "assistant-wake",
+          parent_tool_use_id: null,
+          message: {
+            id: "msg-wake",
+            content: [
+              {
+                type: "tool_use",
+                id: "toolu_wake",
+                name: "Bash",
+                input: { command: "cat /tmp/out", description: "Read the short job's output" },
+              },
+            ],
+          },
+        } as unknown as SDKMessage);
+        yield* drainSdkMessages;
+
+        const started = runtimeEvents.findLast((event) => event.type === "turn.started");
+        const call = runtimeEvents.find(
+          (event) => event.type === "item.started" && event.itemId === "toolu_wake",
+        );
+        assert.ok(started !== undefined && call !== undefined);
+        assert.isBelow(runtimeEvents.indexOf(started), runtimeEvents.indexOf(call));
+        assert.strictEqual(call.turnId, started.turnId);
+        assert.strictEqual(
+          runtimeEvents.filter((event) => event.type === "turn.started").length,
+          2,
+        );
+
+        runtimeEventsFiber.interruptUnsafe();
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
+
   it.effect("drops an unusable Claude reset time, not the row or the session", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

@@ -188,7 +188,7 @@ describe("an engine Mate's run card, from the engine's record", () => {
       }),
     );
     expect(runEffortWords(card.outcome)).toBe(
-      "1 file edited · 7 commands · 1 page fetched · 1 tool used · 1 helper",
+      "1 file edited · 7 commands · 1 page fetched · 2 tools used · 1 helper",
     );
   });
 
@@ -461,6 +461,8 @@ describe("an engine Mate's run card, from the engine's record", () => {
             status: "completed",
             title: description,
           }),
+          // The engine records whose it is: the helper whose own command started it.
+          by: { kind: "helper", helperId: "conversation/s/1.w2" },
           at: t0 + 42_400,
         } as Item,
         noteItem(run1, 5, "Both helpers are back.", { at: t0 + 77_700 }),
@@ -470,4 +472,144 @@ describe("an engine Mate's run card, from the engine's record", () => {
     const said = JSON.stringify([card.items, rows.filter((row) => row.kind === "background")]);
     expect(said).not.toContain(description);
   });
+
+  // Milo's third stress run: the steer stood above the card and again inside it, live; a reload
+  // drew it once. Engine #158 steers a waiting message into a turn Claude opened on its own: that
+  // turn is the message's run, on the card it goes on in.
+  const steer = "also tell me the page title";
+  it.each([
+    { into: "the running run", held: "every item", own: false, paged: false },
+    { into: "the running run", held: "what a reload reads", own: false, paged: true },
+    { into: "a turn Claude opened on its own", held: "every item", own: true, paged: false },
+    {
+      into: "a turn Claude opened on its own",
+      held: "what a reload reads",
+      own: true,
+      paged: true,
+    },
+  ])(
+    "a message steered into $into is drawn once, above its card, holding $held",
+    ({ own, paged }) => {
+      const into = own ? run2 : run1;
+      const runs = [
+        stressRun(),
+        ...(own
+          ? [
+              engineRun(key.conversationId, 2, {
+                trigger: { kind: "wake", cause: "self", wakeId: null },
+                joins: RunId.make(run1),
+                queuedAt: t0 + 80_000,
+                admittedAt: t0 + 80_000,
+                startedAt: t0 + 80_000,
+                endedAt: t0 + 90_000,
+              } as never),
+            ]
+          : []),
+      ];
+      const items = [
+        personItem(run1, 1, "Run the stress checks", { at: t0 }),
+        bash(2, 39_000, "node --version", "Check the node version"),
+        personItem(into, own ? 20 : 3, steer, {
+          at: t0 + (own ? 80_000 : 40_000),
+          delivery: { state: "steered", at: t0 + (own ? 80_000 : 40_000) },
+        }),
+        noteItem(into, own ? 21 : 4, "Both titles read Shop.", { at: t0 + 85_000 }),
+      ];
+      // A reload holds every message the person sent, and none of a closed card's lines.
+      const rows = render({
+        runs,
+        items: paged ? items.filter((item) => item.kind === "person") : items,
+        paged,
+      });
+      const drawn = rows.filter(
+        (row) =>
+          row.kind === "message" && row.message.role === "user" && row.message.text === steer,
+      );
+      const marked = rows.flatMap((row) =>
+        row.kind === "record" ? row.items.filter((item) => item.kind === "person") : [],
+      );
+      expect({ drawn: drawn.length, marked: marked.length }).toEqual({ drawn: 1, marked: 0 });
+    },
+  );
+});
+// Milo's third stress run: a job's end woke Milo, the reply under the folded card ("…hasn't
+// printed yet") vanished into it, and the final answer landed 798 px below the view.
+it.each([
+  { wake: "still at work", answered: false },
+  { wake: "answered", answered: true },
+])(
+  "a wake's answer appears under the reply the person was reading, which stays where it stood: the wake $wake",
+  ({ answered }) => {
+    const first = noteItem(run1, 12, "The background wait hasn't printed yet.", {
+      at: t0 + 77_700,
+      answer: true,
+    } as never);
+    const rows = render({
+      runs: [
+        stressRun({
+          summary: { ...stressSummary, answerItemId: `${run1}/i/12` },
+        } as never),
+        engineRun(key.conversationId, 2, {
+          trigger: { kind: "wake", cause: "self", wakeId: null },
+          joins: RunId.make(run1),
+          queuedAt: t0 + 101_400,
+          admittedAt: t0 + 101_400,
+          startedAt: t0 + 101_400,
+          ...(answered
+            ? {
+                endedAt: t0 + 103_300,
+                summary: {
+                  items: 2,
+                  calls: { command: 1 },
+                  answerItemId: `${run2}/i/21`,
+                  lastItemSeq: 21,
+                },
+              }
+            : { state: "running", turnState: "running", endedAt: null, end: null }),
+        } as never),
+      ],
+      items: [
+        ...stressItems("completed").slice(0, -1),
+        first,
+        {
+          ...bash(20, 101_500, "cat /tmp/s/out", "Read what the wait printed"),
+          runId: run2,
+          id: `${run2}/i/20`,
+        } as Item,
+        ...(answered
+          ? [noteItem(run2, 21, "It printed done.", { at: t0 + 103_000, answer: true } as never)]
+          : []),
+      ],
+      isWorking: !answered,
+    });
+    const said = rows.flatMap((row) =>
+      row.kind === "message" && row.message.role === "assistant" ? [row.message.text] : [],
+    );
+    expect(said).toEqual([
+      "The background wait hasn't printed yet.",
+      ...(answered ? ["It printed done."] : []),
+    ]);
+    // The reply stands under its card, the wake's answer under it.
+    const card = rows.findIndex((row) => row.kind === "record");
+    const reply = rows.findIndex((row) => row.kind === "message" && row.id === first.id);
+    expect(card).toBeLessThan(reply);
+  },
+);
+
+// The oracle's deep seeds: a run that only wrote to the person read "thought" live and "worked"
+// after a reload, its summary's notes counted as work.
+it.each([
+  { held: "every item, as it streamed in live", paged: false },
+  { held: "only what a reload reads", paged: true },
+])("a run that only wrote to the person thought, holding $held", ({ paged }) => {
+  const run = stressRun({
+    summary: { items: 3, calls: {}, answerItemId: `${run1}/i/3`, lastItemSeq: 3 },
+  } as never);
+  const items = [
+    personItem(run1, 1, "How does it look?", { at: t0 }),
+    noteItem(run1, 2, "Reading the plan.", { answer: false, at: t0 + 30_000 }),
+    noteItem(run1, 3, "It looks fine.", { at: t0 + 40_000, answer: true } as never),
+  ];
+  const card = cardOf(render({ runs: [run], items: paged ? items.slice(0, 1) : items, paged }));
+  expect(workedWords("Milo", card.status!)).toMatch(/^Milo thought /);
 });

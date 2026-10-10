@@ -295,6 +295,12 @@ export type SignalBody =
       readonly kind: WorkKind;
       readonly status: WorkStatus;
       readonly title?: string;
+      /** The helper whose own tool started it; absent: the Mate's. */
+      readonly helper?: WorkKey;
+      /** The call that started it. */
+      readonly call?: ItemKey;
+      /** What it said as it ended, in a line. */
+      readonly report?: string;
     }
   // requests
   | {

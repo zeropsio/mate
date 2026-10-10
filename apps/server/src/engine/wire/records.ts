@@ -450,7 +450,8 @@ export const makeRecords = Effect.gen(function* () {
     /**
      * A run's items, the newest page; `more` when older ones exist before it. After `afterSeq`,
      * the oldest page; `more` when later ones exist. `only: "outcome"`: the items a closed card
-     * draws its result from.
+     * draws its result from — its background work with the calls that started it, which its line
+     * of jobs is drawn from.
      */
     runPage: (
       conversation: ConversationId,
@@ -472,7 +473,11 @@ export const makeRecords = Effect.gen(function* () {
               options.only === "outcome"
                 ? sql`AND (kind = 'work' OR (kind = 'call' AND (
                     json_extract(body_json, '$.result') IS NOT NULL
-                    OR json_extract(body_json, '$.step') = 'look')))`
+                    OR json_extract(body_json, '$.step') = 'look'
+                    OR item_id IN (
+                      SELECT json_extract(body_json, '$.call') FROM engine_item
+                      WHERE conversation_id = ${conversation} AND run_id = ${runId}
+                        AND kind = 'work'))))`
                 : sql``
             }
           ORDER BY opened_seq ${forward ? sql`ASC` : sql`DESC`} LIMIT ${options.limit + 1}

@@ -568,6 +568,12 @@ export interface ConversationTurn {
   /** The Mate's answer: the turn's last message, once the turn has settled. */
   readonly answer: MessageEntry | null;
   /**
+   * An engine card's earlier runs' answers, oldest first: each stays where the person read it,
+   * under the card, as a run a job's end woke goes on in that card and answers below them
+   * (Milo's third stress run: the reply under the folded card vanished into it at the wake).
+   */
+  readonly earlierAnswers: ReadonlyArray<MessageEntry>;
+  /**
    * The words the Mate is writing while it runs that cannot be placed yet:
    * its last, nothing after them, not reading as its answer. A note if it
    * moves on, the answer if the run ends — drawn nowhere until then.
@@ -1007,6 +1013,19 @@ export function deriveConversationStructure(given: {
                 entry.kind === "message" && String(entry.message.id) === run?.summary.answerItemId,
             ) ?? null)
           : span.terminalEntry;
+    const earlierAnswers = typed
+      ? cardRuns.flatMap((each) => {
+          const id = each.summary.answerItemId;
+          const said =
+            id === null
+              ? undefined
+              : turnEntries.find(
+                  (entry): entry is MessageEntry =>
+                    entry.kind === "message" && String(entry.message.id) === id,
+                );
+          return said === undefined || said === answer ? [] : [said];
+        })
+      : [];
     // Words still streaming, nothing after them: the working row's, as they
     // come. Anything after them — a step, a thought — makes them a note in
     // the record, and so does their end: Codex says nothing of a command
@@ -1137,6 +1156,7 @@ export function deriveConversationStructure(given: {
       span,
       stretches,
       answer,
+      earlierAnswers,
       writing,
       live,
       waiting,
@@ -1261,6 +1281,8 @@ export interface OutcomeActivity {
 export function activityCounts(
   calls: ReadonlyArray<WorkLogEntry>,
   launches: ReadonlyArray<WorkLogEntry> = [],
+  /** The calls its operations' cards hold (a deploy, a check): tools it used all the same. */
+  operationCalls = 0,
 ): OutcomeActivity[] {
   const counts = new Map<ActivityKind, number>();
   const edited = new Set<string>();
@@ -1278,6 +1300,7 @@ export function activityCounts(
         : action;
     counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
+  if (operationCalls > 0) counts.set("tool", (counts.get("tool") ?? 0) + operationCalls);
   if (edited.size + unnamedEdits > 0) counts.set("edit", edited.size + unnamedEdits);
   const helpers = launches.reduce(
     (sum, entry) => sum + Math.max(1, entry.agentSpawn?.agentTaskIds.length ?? 1),
@@ -1795,6 +1818,14 @@ export function browserCheckCaption(operation: ZeropsOperation): string {
     path = url.pathname;
   }
   return path === "" ? "/" : path;
+}
+
+/**
+ * The page a check looked at, in words: its path, the front page by name — "Checked / in the
+ * browser" said the path, never the page (Milo's stress runs).
+ */
+export function browserPageWords(caption: string): string {
+  return caption === "/" ? "the home page" : caption;
 }
 
 export type BrowserDevice = "desktop" | "tablet" | "phone";

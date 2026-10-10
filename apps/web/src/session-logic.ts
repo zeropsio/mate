@@ -870,17 +870,18 @@ function isAgentInternalActivity(activity: OrchestrationThreadActivity): boolean
     activity.kind === "task.progress" ||
     activity.kind === "task.updated" ||
     activity.kind === "task.completed";
-  // Task rows classify by the server stamp: a subagent's own background
-  // shell (agentId + "background") is agent-internal, but a nested AGENT
-  // (agentId + "agent") stays visible so its rows can anchor a spawn row
-  // (review finding: hiding on agentId alone removed nested agents and
-  // their anchors). Bypassed agent lifecycle rows also pass — collapse
-  // folds every such row into its batch's single CTA row, which is how
-  // Codex children (whose rows are ALL bypassed) get an anchor at the
-  // spawn point.
+  // Task rows classify by the server stamp: anything a helper started — its
+  // background shell, a helper of its own (agentId) — is the helper's, never
+  // among what the Mate started (Milo's second stress run: a helper's helper,
+  // started 40 s later, read "Started 4 helpers" on the Mate's first wave);
+  // the helpers' surface keeps it under its helper (`spawnedBy`). Bypassed
+  // agent lifecycle rows pass — collapse folds every such row into its
+  // batch's single CTA row, which is how Codex children (whose rows are ALL
+  // bypassed) get an anchor at the spawn point.
   if (isTaskRow) {
     const ownedByAgent = typeof payload.agentId === "string" && payload.agentId.trim().length > 0;
-    if (ownedByAgent || payload.timelineBypass === true) {
+    if (ownedByAgent) return true;
+    if (payload.timelineBypass === true) {
       const isAgentTaskRow =
         activity.kind !== "task.updated" &&
         typeof payload.taskId === "string" &&

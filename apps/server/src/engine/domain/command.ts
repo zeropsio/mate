@@ -135,6 +135,12 @@ export type ProviderSignal =
       readonly workKind: Extract<ItemBody, { readonly kind: "work" }>["workKind"];
       readonly status: Extract<ItemBody, { readonly kind: "work" }>["status"];
       readonly title?: string;
+      /** The helper (its work's key) whose own tool started it; absent: the Mate's. */
+      readonly helper?: string;
+      /** The key of the call that started it. */
+      readonly call?: string;
+      /** What it said as it ended, in a line. */
+      readonly report?: string;
     }
   /** A limit whose reset was unknown learned its reset time (the driver's rate-limit report). */
   | { readonly kind: "usage-reset-known"; readonly resetsAt: number }

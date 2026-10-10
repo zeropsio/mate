@@ -2063,7 +2063,7 @@ describe("MessagesTimeline — the conversation", () => {
     // The task in its own words, where it ran, and what it reported in a
     // few words, on the line itself: nothing left to open.
     expect(markup).toContain("Run the smoke tests finished");
-    expect(markup).toContain("in the background · 4 passed");
+    expect(markup).toContain("ran in the background · 4 passed");
     expect(markup).not.toContain("Show what it reported");
     expect(markup).not.toContain("1 background task ");
   });
