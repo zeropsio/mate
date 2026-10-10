@@ -408,28 +408,24 @@ const armIdle = (b: StepBuilder): void => {
 };
 
 /**
- * How long the engine expects the agent's own turn after its background work ended with no run on
- * (Milo's stress run 4: it came 1.6–3.3 s later). Past it the conversation reads as at rest.
+ * How long the engine expects the agent's own turn on what it finished, once no run is on: Claude
+ * opens it within seconds (Milo's stress run 4: 1.6–3.3 s). One that never comes, or one turn that
+ * took several results, holds nothing longer. The update's drain waits the same (`toCore`).
  */
-export const AGENT_TURN_DUE_MS = 15_000;
+export const AGENT_TURN_DUE_MS = 30_000;
 
 const turnDueWakeId = (b: StepBuilder) =>
   deriveWakeId(b.state.conversationId, "agent-turn-due", "next");
 
 /**
- * The Mate's background work ended after its run: an agent that opens its own turns takes the
- * result in with one, so the conversation goes on until it opens, within `AGENT_TURN_DUE_MS` of
- * the latest end. Work a session lost or a Stop ended tells no one, and a run still on takes it in.
+ * The Mate's finished work waits for the turn its agent opens to take the result
+ * (`reportsDue`): with no run on, the conversation goes on until that turn opens, within
+ * `AGENT_TURN_DUE_MS` of now. A run on, or one waiting to go, is the conversation going on.
  */
-const expectAgentTurn = (b: StepBuilder, work: OpenItem, body: ItemBody): void => {
-  if (work.by.kind !== "mate" || body.kind !== "work") return;
-  if (body.status !== "completed" && body.status !== "failed") return;
-  const session = b.state.session;
-  if (session === null || session.capabilities.selfTurns !== true || b.state.closing !== null)
-    return;
+const expectAgentTurn = (b: StepBuilder): void => {
+  if (b.state.reportsDue === 0) return;
+  if (b.state.session === null || b.state.closing !== null) return;
   if (b.state.activeRunId !== null || b.state.queue.length > 0) return;
-  const latest = b.state.latestRunId === null ? undefined : b.state.runs[b.state.latestRunId];
-  if (latest === undefined) return;
   b.emit({
     _tag: "WakeArmed",
     wakeId: turnDueWakeId(b),
@@ -437,7 +433,7 @@ const expectAgentTurn = (b: StepBuilder, work: OpenItem, body: ItemBody): void =
     dueAt: b.now + AGENT_TURN_DUE_MS,
     cron: null,
     principal: ENGINE,
-    joins: latest.id,
+    joins: b.state.latestRunId,
     text: null,
   });
 };
@@ -2008,6 +2004,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       endRun(b, live, end, signal.source, undefined, endFacts(signal));
       if (end.kind === "usage-limit") limited(b, live, end.resetsAt);
       admitNext(b);
+      expectAgentTurn(b);
       return;
     }
     case "work-upserted": {
@@ -2037,7 +2034,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       if (open !== undefined) {
         if (ends) {
           b.emit({ _tag: "ItemClosed", runId: open.runId, itemId: open.id, body });
-          expectAgentTurn(b, open, body);
+          expectAgentTurn(b);
           // The bridge's word that the work's session is closing: asked, for the reason asked;
           // else it died.
           if (byPerson || body.status === "lost") {
@@ -2078,7 +2075,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       });
       if (ends) {
         b.emit({ _tag: "ItemClosed", runId: owner.id, itemId: id, body });
-        expectAgentTurn(b, { id, runId: owner.id, key: signal.work, by, body }, body);
+        expectAgentTurn(b);
       }
       return;
     }

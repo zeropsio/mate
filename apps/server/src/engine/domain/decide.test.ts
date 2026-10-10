@@ -2023,7 +2023,7 @@ describe("decide: helpers and jobs are items under their run", () => {
       due: true,
     },
     {
-      when: "its run still works, which takes the result in",
+      when: "its run still works, which is the conversation going on",
       given: [...selfTurning, work("running")],
       ends: "completed" as const,
       due: false,
@@ -2047,6 +2047,46 @@ describe("decide: helpers and jobs are items under their run", () => {
       expect(turnDue(state).map((wake) => wake.dueAt)).toEqual(due ? [T0 + AGENT_TURN_DUE_MS] : []);
     },
   );
+  it("a helper that finished while its run worked is still due a turn once the run ends", () => {
+    const { state } = playAll([...selfTurning, work("running"), work("completed"), turnEnded]);
+    expect(turnDue(state).map((wake) => wake.dueAt)).toEqual([T0 + AGENT_TURN_DUE_MS]);
+  });
+  it("each turn the agent opens itself takes one finished result; the rest stay due", () => {
+    const second = (status: "running" | "completed"): Command =>
+      signal({
+        kind: "work-upserted",
+        work: "w2",
+        origin: T(1),
+        workKind: "helper",
+        status,
+        title: "Explore more",
+      });
+    const both = [
+      ...selfTurning,
+      work("running"),
+      second("running"),
+      turnEnded,
+      work("completed"),
+      second("completed"),
+      signal({
+        kind: "turn-started",
+        turn: "bg" as TurnHandle,
+        origin: "self",
+        providerTurnId: "bg",
+      }),
+    ];
+    expect(turnDue(playAll(both).state)).toEqual([]);
+    const reported = playAll([
+      ...both,
+      signal({
+        kind: "turn-ended",
+        turn: "bg" as TurnHandle,
+        outcome: { kind: "completed" },
+        source: "agent",
+      }),
+    ]);
+    expect(turnDue(reported.state)).toHaveLength(1);
+  });
   it("the turn a helper's end wakes, or the wait's bound, ends the wait for it", () => {
     const finished = [...selfTurning, work("running"), turnEnded, work("completed")];
     const woke = playAll([
