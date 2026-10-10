@@ -26,6 +26,8 @@ import {
   EngineDetail,
   EnginePage,
   EngineReadDetailInput,
+  EngineRecordPageHeightInput,
+  EngineRecordPageHeightResult,
   EngineReadEarlierInput,
   EngineReadRunInput,
   EngineReceiptInput,
@@ -399,6 +401,7 @@ export const WS_METHODS = {
   engineReadRun: "engine.readRun",
   engineReadDetail: "engine.readDetail",
   engineReceipt: "engine.receipt",
+  engineRecordPageHeight: "engine.recordPageHeight",
   engineSend: "engine.send",
   engineStop: "engine.stop",
   engineContinue: "engine.continue",
@@ -1332,6 +1335,13 @@ const WsEngineReadDetailRpc = Rpc.make(WS_METHODS.engineReadDetail, {
   error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
 });
 
+/** The height a client laid a published page out at: kept so a later view paints at it. */
+const WsEngineRecordPageHeightRpc = Rpc.make(WS_METHODS.engineRecordPageHeight, {
+  payload: EngineRecordPageHeightInput,
+  success: EngineRecordPageHeightResult,
+  error: Schema.Union([EngineWireError, EnvironmentAuthorizationError]),
+});
+
 /** A call's stored receipt, by its command id: how a lost answer is resolved. */
 const WsEngineReceiptRpc = Rpc.make(WS_METHODS.engineReceipt, {
   payload: EngineReceiptInput,
@@ -1536,6 +1546,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsEngineReadEarlierRpc,
   WsEngineReadRunRpc,
   WsEngineReadDetailRpc,
+  WsEngineRecordPageHeightRpc,
   WsEngineReceiptRpc,
   WsEngineSendRpc,
   WsEngineStopRpc,

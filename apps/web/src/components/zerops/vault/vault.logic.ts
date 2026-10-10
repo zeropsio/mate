@@ -7,7 +7,6 @@
 import type {
   VaultImpact,
   VaultNotLive,
-  VaultRead,
   VaultReader,
   VaultScope,
   VaultScopeRef,
@@ -34,9 +33,9 @@ export function joinNames(names: ReadonlyArray<string>): string {
 
 const ref = (name: string) => `\${${name}}`;
 
-export const SHARED_NAME = "All apps";
+export const SHARED_NAME = "Every app";
 
-/** Shared, or the service's hostname. */
+/** Every app, or the service's hostname. */
 export function scopeName(scope: Pick<VaultScope, "hostname">): string {
   return scope.hostname ?? SHARED_NAME;
 }
@@ -232,140 +231,7 @@ export function referenceFor(scope: VaultScope, key: string): VaultReference {
   return { own: ref(key), other: ref(`${scope.hostname}_${key}`) };
 }
 
-/**
- * A service's mark: what tells its hostname from its siblings' — the letter after the prefix it
- * shares with another (appdev, appstage → D, S), else its first letter (also for a name that
- * begins another: app beside appdev → A); a name of two letters or fewer as it is (db).
- */
-export function serviceMonograms(hostnames: ReadonlyArray<string>): ReadonlyMap<string, string> {
-  const marks = new Map<string, string>();
-  for (const host of hostnames) {
-    if (host.length <= 2) {
-      marks.set(host, host);
-      continue;
-    }
-    let shared = 0;
-    const isPrefix = hostnames.some((other) => other !== host && other.startsWith(host));
-    for (const other of isPrefix ? [] : hostnames) {
-      if (other === host) continue;
-      let length = 0;
-      while (length < host.length && host[length] === other[length]) length += 1;
-      if (length < host.length && length > shared) shared = length;
-    }
-    marks.set(host, (host[shared] ?? host[0] ?? "?").toUpperCase());
-  }
-  // One letter two services share (medusastage, nextstorestage → S) leads with each first letter.
-  const uses = new Map<string, number>();
-  for (const mark of marks.values()) uses.set(mark, (uses.get(mark) ?? 0) + 1);
-  for (const [host, mark] of marks)
-    if ((uses.get(mark) ?? 0) > 1 && host.length > 2)
-      marks.set(host, `${host[0]?.toUpperCase() ?? ""}${mark}`);
-  return marks;
-}
-
-// ── what a service reads ────────────────────────────────────────────────────
-
-export type VaultReadSource =
-  | { readonly kind: "literal"; readonly text: string }
-  | {
-      readonly kind: "source";
-      readonly text: string;
-      readonly target: { readonly scopeId: string; readonly key: string } | null;
-    }
-  | { readonly kind: "bad"; readonly text: "missing" | "self"; readonly name: string };
-
-/** Where one run entry of a service gets its value, by its first reference. */
-export function readSource(view: VaultView, scope: VaultScope, read: VaultRead): VaultReadSource {
-  const first = read.refs[0];
-  if (first === undefined) return { kind: "literal", text: `= ${read.template}` };
-  switch (first.kind) {
-    case "value": {
-      const target = scopeOfRef(view, first.scope);
-      const text =
-        target === undefined
-          ? first.name
-          : target.id === scope.id
-            ? "its own"
-            : target.kind === "shared"
-              ? "vault"
-              : scopeName(target);
-      return {
-        kind: "source",
-        text,
-        target: target === undefined ? null : { scopeId: target.id, key: first.key },
-      };
-    }
-    case "entry":
-      return { kind: "source", text: first.key, target: null };
-    case "platform":
-      return { kind: "source", text: "Zerops", target: null };
-    case "self":
-      return { kind: "bad", text: "self", name: first.name };
-    case "missing":
-      return { kind: "bad", text: "missing", name: first.name };
-  }
-}
-
 // ── what is not live yet ────────────────────────────────────────────────────
-
-export interface VaultNotLiveWords {
-  readonly fact: ReadonlyArray<VaultWordPart>;
-  readonly fix: string;
-}
-
-const keyList = (keys: ReadonlyArray<string>): ReadonlyArray<VaultWordPart> =>
-  keys.flatMap((key, index) => {
-    const joiner = index === 0 ? [] : index === keys.length - 1 ? [t(" and ")] : [t(", ")];
-    return [...joiner, code(key)];
-  });
-
-const LITERAL_FIX = "the app gets that literal text";
-
-/** One not-live item as a fact and its fix. */
-export function notLiveWords(item: VaultNotLive): VaultNotLiveWords {
-  switch (item.kind) {
-    case "restart":
-      return {
-        fact: [strong(item.hostname), t(" started before "), ...keyList(item.keys), t(" changed")],
-        fix: item.keys.length > 1 ? "a restart applies them" : "a restart applies it",
-      };
-    case "unread":
-      return {
-        fact: [t("Nothing reads "), code(item.key), t(" yet")],
-        fix: "it needs a reference in zerops.yml and a deploy",
-      };
-    case "missing":
-      return {
-        fact: [strong(item.hostname), t(" reads "), code(ref(item.name)), t(", which nothing has")],
-        fix: LITERAL_FIX,
-      };
-    case "self":
-      return {
-        fact: [
-          strong(item.hostname),
-          t("'s zerops.yml sets "),
-          code(item.entry),
-          t(" to "),
-          code(ref(item.entry)),
-        ],
-        fix: LITERAL_FIX,
-      };
-  }
-}
-
-/** A stable id for one not-live item, so it can enter and leave on its own. */
-export function notLiveId(item: VaultNotLive): string {
-  switch (item.kind) {
-    case "restart":
-      return `restart:${item.serviceId}`;
-    case "unread":
-      return `unread:${item.scope.kind === "shared" ? "shared" : item.scope.serviceId}:${item.key}`;
-    case "missing":
-      return `missing:${item.serviceId}:${item.entry}`;
-    case "self":
-      return `self:${item.serviceId}:${item.entry}`;
-  }
-}
 
 export interface VaultTarget {
   readonly scopeId: string;
@@ -401,9 +267,31 @@ export function notLiveTarget(view: VaultView, item: VaultNotLive): VaultTarget 
   }
 }
 
-/** The block's closing line beside a Mate: who makes these live. */
-export function notLiveClosing(itemCount: number, mateName: string): string {
-  return `${mateName} does ${itemCount > 1 ? "these" : "it"} with your next message`;
+/**
+ * The Vault's one line about values its apps don't run yet: how many, and what makes them live:
+ * the Mate with the next message, else a restart the person does. `null` when nothing waits on a
+ * restart (a deploy-only fact is the open row's to say).
+ */
+export function notLiveLine(
+  items: ReadonlyArray<VaultNotLive>,
+  mateName: string | null,
+): {
+  readonly text: string;
+  readonly restarts: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
+} | null {
+  const restarts = items.filter(
+    (item): item is Extract<VaultNotLive, { kind: "restart" }> => item.kind === "restart",
+  );
+  if (restarts.length === 0) return null;
+  const count = new Set(restarts.flatMap((item) => item.keys)).size;
+  const hosts = joinNames(restarts.map((item) => item.hostname));
+  const fact = count === 1 ? "1 value isn't live yet" : `${count} values aren't live yet`;
+  const fix =
+    mateName === null ? `restart ${hosts}` : `${mateName} restarts ${hosts} with your next message`;
+  return {
+    text: `${fact} — ${fix}`,
+    restarts: restarts.map(({ serviceId, hostname }) => ({ serviceId, hostname })),
+  };
 }
 
 export const RESTART_CONFIRM = (host: string) =>

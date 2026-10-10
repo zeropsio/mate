@@ -9639,7 +9639,6 @@ button.rv-relrow:hover .rv-relrow-go {
   background: transparent;
 }
 
-/* One card: a group of values, an app list, what an app reads. */
 /* A card as the right panel draws its own (the launcher's): card surface, a light edge. */
 .vault-box {
   overflow: hidden;
@@ -9648,88 +9647,17 @@ button.rv-relrow:hover .rv-relrow-go {
   box-shadow: 0 0 0 1px var(--vault-edge);
 }
 
-.dark .vault-box,
-.dark .vault-callout {
+.dark .vault-box {
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent);
 }
 
-.vault-box-head + .vault-rows,
 .vault-rows > * + * {
   border-top: 1px solid var(--vault-hairline);
 }
 
-/* Values / Apps: the two ways into the vault. */
-.vault-switch {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 9px;
-  background: color-mix(in oklab, var(--foreground) 6%, var(--background));
-}
-
-.vault-switch-item {
-  height: 26px;
-  padding-inline: 12px;
-  border-radius: 7px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  font-weight: 500;
-  transition:
-    background-color 0.16s,
-    color 0.16s,
-    box-shadow 0.16s;
-}
-
-.vault-switch-item:hover:not(:disabled) {
-  color: var(--foreground);
-}
-
-.vault-switch-item:focus {
-  outline: none;
-}
-
-.vault-switch-item:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
-}
-
-.vault-switch-item[aria-selected="true"] {
-  background: var(--card);
-  color: var(--foreground);
-  box-shadow:
-    0 1px 2px color-mix(in oklab, var(--foreground) 10%, transparent),
-    0 0 0 1px color-mix(in oklab, var(--foreground) 5%, transparent);
-}
-
-.dark .vault-switch-item[aria-selected="true"] {
-  background: color-mix(in oklab, var(--foreground) 12%, var(--card));
-}
-
-/* What needs the person: a card with a toned icon, a title and its action. */
-.vault-callout {
-  padding: 14px;
-  border-radius: var(--radius-lg);
-  background: var(--card);
-  box-shadow: 0 0 0 1px var(--vault-edge);
-}
-
-.vault-callout-icon {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-}
-
-.vault-callout[data-tone="attention"] .vault-callout-icon {
-  background: var(--warning-surface);
-  color: var(--warning-foreground);
-}
-
-.vault-callout[data-tone="advice"] .vault-callout-icon {
-  background: color-mix(in oklab, var(--primary) 12%, var(--card));
-  color: var(--primary);
+/* A service Zerops runs, unfolded: its values under its line. */
+.vault-made-rows {
+  border-top: 1px solid var(--vault-hairline);
 }
 
 .vault-file-link {
@@ -9742,31 +9670,8 @@ button.rv-relrow:hover .rv-relrow-go {
   text-decoration: underline;
 }
 
-/* What needs the person sits apart from the values under it. */
-.vault-callout + .vault-box {
-  margin-top: 8px;
-}
-
-.vault-app-icon {
-  background: color-mix(in oklab, var(--foreground) 6%, var(--card));
-  color: var(--muted-foreground);
-}
-
-.vault-find {
-  display: block;
-  width: 0;
-  overflow: hidden;
-  padding-block: 3px;
-  transition: width 0.26s var(--vault-ease);
-}
-
-.vault-find[data-open] {
-  width: 188px;
-}
-
-/* A `${name}` inside a value, and the app a value belongs to: quiet chips in the line. */
-.vault-ref,
-.vault-only {
+/* A `${name}` inside a value: a quiet chip in the line. */
+.vault-ref {
   display: inline-block;
   padding: 0 5px;
   border-radius: 5px;
@@ -9774,9 +9679,6 @@ button.rv-relrow:hover .rv-relrow-go {
   font-size: 11px;
   line-height: 17px;
   vertical-align: 1px;
-}
-
-.vault-ref {
   margin-inline: 1px;
   font-family: var(--font-mono);
 }
@@ -9800,45 +9702,10 @@ button.rv-relrow:hover .rv-relrow-go {
   transform: rotate(180deg);
 }
 
-/* What is not live yet: the block and each item fold in and out. */
-.vault-fold {
-  display: grid;
-  grid-template-rows: 1fr;
-  opacity: 1;
-  transition:
-    grid-template-rows 0.24s var(--vault-ease),
-    opacity 0.18s;
-}
-
-.vault-fold > * {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.vault-fold[data-leaving] {
-  grid-template-rows: 0fr;
-  opacity: 0;
-}
-
-[data-vault-settled] .vault-fold {
-  @starting-style {
-    grid-template-rows: 0fr;
-    opacity: 0;
-  }
-}
-
 .vault-card {
   box-shadow:
     0 0 0 1px var(--border),
     0 10px 28px -16px color-mix(in oklab, var(--foreground) 32%, transparent);
-}
-
-.vault-read-link:hover {
-  background: var(--vault-row-hover);
-}
-
-.vault-notlive-item:hover {
-  background: color-mix(in oklab, var(--warning) 12%, transparent);
 }
 
 /* Rows */
@@ -9883,20 +9750,6 @@ button.rv-relrow:hover .rv-relrow-go {
   transition: opacity 0.22s 0.06s;
 }
 
-.vault-section {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.vault-section::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  margin-left: 4px;
-  background: color-mix(in oklab, var(--border) 60%, transparent);
-}
-
 .vault-settled {
   animation: vault-settled 1.4s var(--vault-ease) both;
 }
@@ -9912,9 +9765,7 @@ button.rv-relrow:hover .rv-relrow-go {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .vault-find,
   .vault-chevron,
-  .vault-fold,
   .vault-row,
   .vault-row-body,
   .vault-row-body > div,
@@ -9990,6 +9841,20 @@ button.rv-relrow:hover .rv-relrow-go {
   font-size: var(--text-xs);
   color: var(--muted-foreground);
 }
+/* Open full shows where the pointer is on the page, or a key reaches it; always on touch. */
+.published-page-head > button {
+  opacity: 0;
+  transition: opacity 150ms var(--ease-out-strong);
+}
+.published-page:hover .published-page-head > button,
+.published-page:focus-within .published-page-head > button {
+  opacity: 1;
+}
+@media (hover: none), (pointer: coarse) {
+  .published-page-head > button {
+    opacity: 1;
+  }
+}
 .published-page-title {
   min-width: 0;
   overflow: hidden;
@@ -9997,15 +9862,15 @@ button.rv-relrow:hover .rv-relrow-go {
   white-space: nowrap;
 }
 .published-page-frame {
-  /* The page's height is its frame's inside: the border stands around it. */
-  box-sizing: content-box;
-  height: var(--run-words-cap);
-  max-height: var(--run-words-cap);
+  /* The page is the answer: it stands at its full height on the conversation's own ground, with
+     no card around it. Before a client ever measured it, a modest first box it glides from. */
+  height: 240px;
+  max-height: 2000px;
   overflow: hidden;
-  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--background);
-  transition: height 220ms var(--ease-out-strong);
+}
+.published-page-frame[data-glide] {
+  transition: height 260ms var(--ease-out-strong);
 }
 .published-page-frame[data-state="reading"] {
   background: var(--muted);

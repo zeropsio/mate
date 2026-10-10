@@ -35,11 +35,11 @@ import { userAskPreviewText } from "@t3tools/shared/userAsk";
 import {
   brokeOffLine,
   conversationRowOf,
+  rowStateOf,
   type ConversationView,
   type MateEngineService,
   type ViewRun,
 } from "../engine/MateEngine.ts";
-import { rowStateOf } from "../engine/read/conversationRow.ts";
 
 /** The project an engine conversation's shell names: the engine keeps no V1 project. */
 export const ENGINE_PROJECT_ID = ProjectId.make("mate-engine");

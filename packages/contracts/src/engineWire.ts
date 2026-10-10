@@ -348,6 +348,27 @@ export const EngineReadDetailInput = Schema.Struct({
 });
 export type EngineReadDetailInput = typeof EngineReadDetailInput.Type;
 
+/**
+ * The height a client laid a published page out at, at its frame's width: kept on the page so a
+ * later view paints at it. The page's own claim, so the engine clamps it.
+ */
+export const EngineRecordPageHeightInput = Schema.Struct({
+  ...protocol,
+  conversationId: ConversationId,
+  itemId: ItemId,
+  width: Schema.Int,
+  height: Schema.Int,
+});
+export type EngineRecordPageHeightInput = typeof EngineRecordPageHeightInput.Type;
+
+/** Kept, or no page by that item in that conversation. */
+export const EngineRecordPageHeightResult = Schema.Union([
+  Schema.TaggedStruct("Recorded", {}),
+  Schema.TaggedStruct("Missing", {}),
+  Schema.TaggedStruct("Unserved", { unserved: Unserved }),
+]);
+export type EngineRecordPageHeightResult = typeof EngineRecordPageHeightResult.Type;
+
 export const EngineReceiptInput = Schema.Struct({
   ...protocol,
   conversationId: ConversationId,

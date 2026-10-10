@@ -193,6 +193,8 @@ export type ThreadFeedEntry =
       readonly createdAt: string;
       readonly turnId: TurnId;
       readonly page: CallResultPage;
+      /** Its call's engine item: where the heights it is laid out at are recorded. */
+      readonly itemId: string | null;
     }
   | {
       /**
@@ -1635,6 +1637,7 @@ function placePublishedPages(
           createdAt: new Date(page.publishedAt).toISOString(),
           turnId: entry.turnId,
           page,
+          itemId: activity.workEntry.toolCallId ?? null,
         };
         pageRowsCache.set(page, row);
       }
