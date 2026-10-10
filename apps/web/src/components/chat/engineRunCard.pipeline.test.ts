@@ -1016,3 +1016,39 @@ it.each([
   };
   expect(summaryOf(true)).toEqual(summaryOf(false));
 });
+
+// Rhea, 2026-10-10: its V1 run, imported, drew "Image unavailable" for pictures it had looked at.
+// The import keeps each as V1 kept it (`keepLookedPicture`): a reference, or one saying it is gone.
+describe("a run imported from V1 keeps its result pictures", () => {
+  const OCCURRENCE = "0b27bcc5-be20-49d3-b40d-c6d4615adb4c";
+  const looked = (ordinal: number, imagePath: string) =>
+    call(ordinal, 40_000 + ordinal * 100, {
+      step: "look",
+      tool: { name: "Read" },
+      words: "Read",
+      input: "/tmp/h0.png",
+      shows: {
+        toolName: "Read",
+        imagePath,
+        imageName: "h0.png",
+        input: { file_path: "/tmp/h0.png" },
+      },
+    } as never);
+  const picturesOf = (imagePath: string) =>
+    cardOf(
+      render({
+        runs: [stressRun({ summary: { ...stressSummary, calls: { look: 1 } } } as never)],
+        items: [personItem(run1, 1, "Look at the sheet", { at: t0 }), looked(2, imagePath)],
+      }),
+    ).outcome?.pictures ?? [];
+
+  it.each([
+    { name: "kept", imagePath: `mate-asset:${OCCURRENCE}` },
+    // Its tile says the picture is no longer available, once (`images.scenario.ts`).
+    { name: "found gone, to say so", imagePath: `mate-asset:${OCCURRENCE}:source-missing` },
+  ])("draws each picture by the reference the import gave it: $name", ({ imagePath }) => {
+    expect(picturesOf(imagePath)).toEqual([
+      expect.objectContaining({ kind: "file", path: imagePath, name: "h0.png" }),
+    ]);
+  });
+});
