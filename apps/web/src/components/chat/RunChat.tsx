@@ -874,6 +874,15 @@ function SlotBox({
   useLayoutEffect(() => {
     if (follows) stickRef.current = true;
   }, [follows]);
+  // Words drawn in this commit glide their box open in the same task, before anything reads it.
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const content = contentRef.current;
+    const end = endRef.current;
+    if (words && box !== null && content !== null && end !== null) {
+      easeWordsGrowth(box, content, end);
+    }
+  });
   return (
     <div
       ref={boxRef}
