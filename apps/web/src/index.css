@@ -5210,16 +5210,14 @@ button.run-bar:focus-visible {
   transition: box-shadow 150ms ease;
 }
 /* Failed bytes and failed signing hold the picture's reserved room. */
-/* A quiet frame survives fetching and decoding; the image keeps its reserved size. */
+/* Fetching and decoding hold the picture's room and paint nothing in it: a filled box with no
+   picture read as an empty one (Milo's stress run 4). The picture fades in once decoded. */
 .asset-image-frame {
   position: relative;
   display: inline-block;
   max-width: 100%;
   vertical-align: top;
   border-radius: 10px;
-}
-.asset-image-frame[data-image-pending] {
-  background: var(--color-muted);
 }
 .asset-image-underlay {
   position: absolute;
@@ -5250,6 +5248,15 @@ button.run-bar:focus-visible {
   font-size: 11px;
   line-height: 1.3;
   text-align: center;
+}
+/* A tile whose picture has no pixels yet holds its room unpainted: no fill, no edge. */
+.run-result-tile[data-result-picture="loading"],
+.run-result-tile:has([data-image-pending]) {
+  background: none;
+}
+.run-result-tile[data-result-picture="loading"]::after,
+.run-result-tile:has([data-image-pending])::after {
+  box-shadow: none;
 }
 .run-result-tile .asset-image-frame {
   display: block;
