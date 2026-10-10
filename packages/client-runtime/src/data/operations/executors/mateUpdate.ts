@@ -7,11 +7,18 @@ import {
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { EnvironmentNotRegisteredError } from "../../../connection/registry.ts";
+import { EnvironmentRpcUnavailableError } from "../../../rpc/client.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 import type { OperationReceipt } from "../../model.ts";
 
 const denied = Schema.is(EnvironmentAuthorizationError);
 const refused = Schema.is(ZeropsMateUpdateError);
+const unavailable = Schema.is(EnvironmentRpcUnavailableError);
+const unregistered = Schema.is(EnvironmentNotRegisteredError);
+/** Said where the verb stands; the press is free again, since the Mate never received it. */
+export const MATE_UPDATE_UNSENT =
+  "This Mate is not connected, so the update was not sent. Update again once it is.";
 export function makeMateUpdateExecutor<E>(options: {
   readonly call: (environmentId: EnvironmentId) => Effect.Effect<ZeropsMateUpdateResult, E>;
   readonly isCurrent: () => boolean;
@@ -28,6 +35,12 @@ export function makeMateUpdateExecutor<E>(options: {
         const value = yield* options.call(intent.environmentId).pipe(
           Effect.catchCause((cause) => {
             const error = Cause.squash(cause);
+            // Its link never came up: nothing left this browser, so the answer is not lost.
+            if (unavailable(error) || unregistered(error))
+              return Effect.fail({
+                outcome: "definitive-refusal" as const,
+                message: MATE_UPDATE_UNSENT,
+              });
             return Effect.fail(
               denied(error) || (refused(error) && error.reason === "zcp-not-found")
                 ? { outcome: "definitive-refusal" as const, message: error.message }

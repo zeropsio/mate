@@ -8,8 +8,12 @@ import {
 import * as Clock from "effect/Clock";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { EnvironmentRegistry } from "../../connection/registry.ts";
+import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
 import { request } from "../../rpc/client.ts";
 import { updateAvailabilityScope, updateRequestScope } from "../families/mateUpdate.ts";
 import { streamOf, type Row } from "../reducer.ts";
@@ -22,11 +26,39 @@ import { updateOutcome, updateServer, type UpdateServer } from "../operations/ma
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 const isUpdateError = Schema.is(ZeropsMateUpdateError);
 
-export const makeMateUpdateWire = (registry: EnvironmentRegistry["Service"]) => ({
+/**
+ * How long a press waits for its Mate's link before it is not sent: twice the p90 of an open as
+ * measured (15 s), the bound every Mate action's lease waits (`MATE_HOLD_WAIT_MS`).
+ */
+export const MATE_UPDATE_CONNECT_WAIT_MS = 30_000;
+
+/** Waits, bounded, until the held Mate's link is up; a press made outside its view finds it down. */
+const linkUp = (waitMs: number) =>
+  Effect.gen(function* () {
+    const supervisor = yield* EnvironmentSupervisor;
+    yield* SubscriptionRef.changes(supervisor.session).pipe(
+      Stream.filter(Option.isSome),
+      Stream.take(1),
+      Stream.runDrain,
+      Effect.timeoutOption(waitMs),
+    );
+  });
+
+export const makeMateUpdateWire = (
+  registry: EnvironmentRegistry["Service"],
+  options: { readonly connectWaitMs?: number } = {},
+) => ({
   update: (environmentId: EnvironmentId) =>
-    registry
-      .run(environmentId, request(WS_METHODS.zeropsMateUpdate, {}))
-      .pipe(Effect.timeout(STREAM_POLICY.baselineTimeoutMs)),
+    registry.run(
+      environmentId,
+      linkUp(options.connectWaitMs ?? MATE_UPDATE_CONNECT_WAIT_MS).pipe(
+        Effect.andThen(
+          request(WS_METHODS.zeropsMateUpdate, {}).pipe(
+            Effect.timeout(STREAM_POLICY.baselineTimeoutMs),
+          ),
+        ),
+      ),
+    ),
   check: (environmentId: EnvironmentId) =>
     registry
       .run(environmentId, request(WS_METHODS.zeropsMateCheckUpdate, {}))
