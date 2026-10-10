@@ -61,7 +61,7 @@ describe("Lifecycle: Move", () => {
           yield* review({ page: other.page, web: s.web }).direct(change.direct);
           yield* review({ page: other.page, web: s.web }).text(change.title);
           yield* review({ page: other.page, web: s.web }).text(change.description);
-          yield* review({ page: other.page, web: s.web }).text("summary.txt");
+          yield* review({ page: other.page, web: s.web }).file("summary.txt");
           originalMateRemains(s.drivers, "Ada", "Other - Ada");
           yield* s.then.noExternalNetwork;
         }),
