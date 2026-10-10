@@ -1,33 +1,45 @@
-import { markupDom } from "../../../test/markupDom";
+import type * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
+import { markupDom } from "../../../test/markupDom";
 import { SidebarJumpButton } from "./SidebarJumpButton";
 
+// The tooltip stands in a portal: here it renders in place, so the markup holds its words.
+vi.mock("../ui/tooltip", async () => {
+  const { createElement, Fragment } = await import("react");
+  return {
+    Tooltip: ({ children }: { children?: React.ReactNode }) =>
+      createElement(Fragment, null, children),
+    TooltipTrigger: ({
+      render,
+      children,
+    }: {
+      render: React.ReactElement;
+      children?: React.ReactNode;
+    }) => createElement(render.type, render.props as object, children),
+    TooltipPopup: ({ children }: { children?: React.ReactNode }) =>
+      createElement("span", { role: "tooltip" }, children),
+  };
+});
+
 describe("SidebarJumpButton", () => {
-  const button = (shortcut: string | undefined) =>
-    renderToStaticMarkup(<SidebarJumpButton onJump={() => {}} shortcut={shortcut} />);
+  const dom = (shortcut: string | undefined) =>
+    markupDom(renderToStaticMarkup(<SidebarJumpButton onJump={() => {}} shortcut={shortcut} />));
 
-  // One control with its key inside it, in the logo row: nothing beside it
-  // reads as the key's owner (M12).
   it.each([
-    { shortcut: "⌘K", keys: "Meta+K /" },
-    { shortcut: "Ctrl+K", keys: "Control+K /" },
-    { shortcut: undefined, keys: "/" },
-  ])("carries its key $shortcut inside it and names it as $keys", ({ shortcut, keys }) => {
-    const html = button(shortcut);
-    expect(html).toContain('data-zerops-surface="sidebar-jump"');
-    expect(html).toContain(`aria-keyshortcuts="${keys}"`);
-    expect(html).toContain('aria-label="Jump to a Mate, project, change or stop"');
-    if (shortcut === undefined)
-      expect(markupDom(html).querySelector("button")?.textContent).toBe("");
-    else expect(html).toContain(`>${shortcut}</span>`);
-  });
-
-  it("displays the shortcut inside the named jump control", () => {
-    const html = button("⌘K");
-    const control = markupDom(html).querySelector("button");
-    expect(control?.textContent).toContain("⌘K");
-    expect(control?.getAttribute("aria-label")).toBe("Jump to a Mate, project, change or stop");
-  });
+    { shortcut: "⌘K", keys: "Meta+K /", tip: "Search ⌘K" },
+    { shortcut: "Ctrl+K", keys: "Control+K /", tip: "Search Ctrl+K" },
+    { shortcut: undefined, keys: "/", tip: "Search" },
+  ])(
+    "is named Search, its key $shortcut in its tooltip and named as $keys",
+    ({ shortcut, keys, tip }) => {
+      const page = dom(shortcut);
+      const button = page.querySelector('[data-zerops-surface="sidebar-jump"]');
+      expect(button?.getAttribute("aria-label")).toBe("Search");
+      expect(button?.getAttribute("aria-keyshortcuts")).toBe(keys);
+      expect(button?.textContent).toBe("");
+      expect(page.querySelector('[role="tooltip"]')?.textContent).toBe(tip);
+    },
+  );
 });

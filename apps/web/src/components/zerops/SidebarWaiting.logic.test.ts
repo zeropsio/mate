@@ -1,0 +1,122 @@
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  releaseWaitingLine,
+  waitingItemsOf,
+  waitingKindOf,
+  waitingPhrase,
+  waitingSummary,
+  waitingTitle,
+  type WaitingItem,
+  type WaitingMate,
+} from "./SidebarWaiting.logic";
+
+const mate = (name: string, kind: WaitingMate["kind"], text?: string): WaitingMate => ({
+  projectId: name.toLowerCase(),
+  name,
+  tint: "slate",
+  shape: "squircle",
+  face: "needs",
+  kind,
+  ...(text === undefined ? {} : { text }),
+});
+
+const item = (waiting: WaitingMate): WaitingItem => ({
+  kind: waiting.kind,
+  key: `m:${waiting.projectId}`,
+  mate: waiting,
+});
+
+const release: WaitingItem = {
+  kind: "release",
+  key: "r:tea",
+  release: { groupId: "tea", name: "Tea Shop", ahead: 3 },
+};
+
+describe("waitingKindOf — what a Mate waits on the viewer for", () => {
+  it.each([
+    { title: "a plan it proposed is approved", activity: "planReady", review: false, kind: "plan" },
+    { title: "a question it asks is answered", activity: "input", review: false, kind: "question" },
+    {
+      title: "an approval it asks is a question",
+      activity: "approval",
+      review: false,
+      kind: "question",
+    },
+    { title: "its change waiting is reviewed", activity: "idle", review: true, kind: "change" },
+    {
+      title: "a question it asks comes before its change",
+      activity: "input",
+      review: true,
+      kind: "question",
+    },
+    {
+      title: "stopped on an error, it is helped",
+      activity: "failed",
+      review: false,
+      kind: "failed",
+    },
+  ] as const)("$title", ({ activity, review, kind }) => {
+    expect(waitingKindOf({ activityKind: activity, reviewWaits: review })).toBe(kind);
+  });
+});
+
+describe("waitingPhrase — each thing in a few plain words", () => {
+  it.each([
+    { waiting: item(mate("Wren", "plan")), phrase: "Approve Wren's plan" },
+    { waiting: item(mate("Rhea", "question")), phrase: "Answer Rhea" },
+    { waiting: item(mate("Fen", "failed")), phrase: "Help Fen" },
+    { waiting: item(mate("Noibit", "change")), phrase: "Review Noibit's change" },
+    { waiting: release, phrase: "Release Tea Shop" },
+  ])("$phrase", ({ waiting, phrase }) => {
+    expect(waitingPhrase(waiting)).toBe(phrase);
+  });
+});
+
+describe("waitingSummary — the Waiting on you row's second line", () => {
+  it.each([
+    {
+      title: "says the first two in ink, then how many more",
+      items: [item(mate("Fen", "failed")), item(mate("Wren", "plan")), release],
+      summary: { words: "Help Fen · Approve Wren's plan", more: 1 },
+    },
+    {
+      title: "says two alone with nothing more",
+      items: [item(mate("Wren", "plan")), release],
+      summary: { words: "Approve Wren's plan · Release Tea Shop", more: 0 },
+    },
+    {
+      title: "says one alone",
+      items: [release],
+      summary: { words: "Release Tea Shop", more: 0 },
+    },
+  ])("$title", ({ items, summary }) => {
+    expect(waitingSummary(items)).toEqual(summary);
+  });
+});
+
+describe("the list's words for each thing", () => {
+  it("names a Mate's thing by the Mate, and a release by its project", () => {
+    expect(waitingTitle(item(mate("Wren", "plan")))).toBe("Wren");
+    expect(waitingTitle(release)).toBe("Tea Shop is ready to release");
+  });
+
+  it.each([
+    { ahead: 3, line: "3 changes are on stage, not yet in production." },
+    { ahead: 1, line: "1 change is on stage, not yet in production." },
+    { ahead: undefined, line: "What is on stage is not in production yet." },
+  ])("says what a release would carry: $line", ({ ahead, line }) => {
+    expect(releaseWaitingLine({ groupId: "tea", name: "Tea Shop", ahead })).toBe(line);
+  });
+});
+
+describe("waitingItemsOf — everything waiting on the viewer, one list", () => {
+  it("lists the Mates' things in the menu's order, then every release offered", () => {
+    const items = waitingItemsOf({
+      mates: [mate("Fen", "failed"), mate("Wren", "plan")],
+      releases: [{ groupId: "tea", name: "Tea Shop", ahead: 3 }],
+    });
+    expect(items.map((waiting) => waiting.key)).toEqual(["m:fen", "m:wren", "r:tea"]);
+    expect(items.map((waiting) => waiting.kind)).toEqual(["failed", "plan", "release"]);
+  });
+});
