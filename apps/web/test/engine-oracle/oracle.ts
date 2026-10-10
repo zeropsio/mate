@@ -164,7 +164,12 @@ export function checkReading(model: Model, reading: Reading, settled: boolean): 
     }
     // (d) What a card whose runs are over waits on: the Mate's own commands still running, and
     // its helpers (with whatever they started) still at it.
-    if (card.line.startsWith("Waiting for its") || /^Waiting for \d+ background/u.test(card.line)) {
+    // A card the agent's own turn is due on waits for that turn, its work over: the engine's bound
+    // ends the wait if the turn never comes.
+    if (
+      reading.turnDue !== card.card &&
+      (card.line.startsWith("Waiting for its") || /^Waiting for \d+ background/u.test(card.line))
+    ) {
       const running = (kind: "job" | "helper") =>
         [...model.entities.values()].filter(
           (each) => each.kind === kind && each.status === "running" && each.card === card.card,

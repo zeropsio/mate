@@ -88,6 +88,8 @@ export interface CardReading {
 
 export interface Reading {
   readonly cards: ReadonlyArray<CardReading>;
+  /** The card the agent's own turn is due on, its work over (the engine's row says so). */
+  readonly turnDue: string | null;
   /** The helpers' surface: each helper, its state. */
   readonly helpers: ReadonlyArray<{
     readonly what: string;
@@ -266,6 +268,10 @@ export function readConversation(
   });
   return {
     cards,
+    turnDue:
+      Object.entries(runCards ?? {}).find(
+        ([, card]) => card.state?.kind === "working" && card.state.turnDue === true,
+      )?.[0] ?? null,
     helpers: agents.map((agent) => {
       const parent = agent.spawnedBy ?? agent.parentAgentId;
       const parentAgent = agents.find((each) => each.id === parent);

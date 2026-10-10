@@ -804,6 +804,9 @@ export function latestFinishedWordsAt(
  */
 function engineCardWaits(card: EngineRunCard | undefined): boolean {
   if (card === undefined) return false;
+  // Its work over, the agent's own turn on it is due: the card goes on until that turn opens
+  // (Milo's stress run 4: it folded to "worked", then the wake opened it again 1.9 s later).
+  if (card.state?.kind === "working" && card.state.turnDue === true) return true;
   if (card.holdsWork === true) return card.waitsOn !== undefined;
   return card.state?.kind === "working" && card.state.waitsOnHelpers;
 }

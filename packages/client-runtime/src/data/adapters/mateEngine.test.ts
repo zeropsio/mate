@@ -855,7 +855,7 @@ describe("an engine run its card does not hold whole when it paints", () => {
       ...(continues
         ? {
             joins: run1,
-            trigger: { kind: "wake", cause: "restart", wakeId: null },
+            trigger: { kind: "wake", cause: "restart-continuation", wakeId: null },
             queuedAt: 1_760_000_100_000,
           }
         : {}),

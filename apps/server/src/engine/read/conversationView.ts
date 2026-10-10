@@ -92,6 +92,8 @@ export interface ConversationView {
   readonly liveCall: ViewCall | null;
   /** Background work alive after its turn: a helper or a shell (`working`), only monitors. */
   readonly background: "working" | "monitoring" | null;
+  /** Its background work ended and the agent's own turn on it is due (`AGENT_TURN_DUE_MS`). */
+  readonly turnDue?: true;
 }
 
 const decode = <S extends Schema.Top>(schema: S) =>
@@ -256,6 +258,9 @@ export const readConversationView = (conversationId: ConversationId) =>
           : alive.every((body) => body.workKind === "monitor")
             ? "monitoring"
             : "working",
+      ...(Object.values(state.wakes).some((wake) => wake.kind === "agent-turn-due")
+        ? { turnDue: true as const }
+        : {}),
     };
     return view;
   });

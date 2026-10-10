@@ -148,7 +148,13 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         turn: run.turn ?? (event.runId as string as TurnHandle),
       }));
     case "RunStarted": {
-      const turned = event.turn === null ? state : withTurn(state, event.turn, event.runId);
+      const started = state.runs[event.runId];
+      // A turn the agent opened itself took one finished result.
+      const took =
+        started?.trigger.kind === "wake" && started.trigger.cause === "self"
+          ? { ...state, reportsDue: Math.max(0, state.reportsDue - 1) }
+          : state;
+      const turned = event.turn === null ? took : withTurn(took, event.turn, event.runId);
       return withRun(turned, event.runId, (run) => ({
         ...run,
         state: "running",
@@ -313,8 +319,18 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
     case "ItemClosed": {
       const touched = touch(state, event.runId, event.at);
       const item = touched.items[event.itemId];
+      // The Mate's own work that finished (a helper's reports to its helper): its agent takes the
+      // result in a turn it opens itself, when it opens its own.
+      const reports =
+        item?.by.kind === "mate" &&
+        event.body.kind === "work" &&
+        (event.body.status === "completed" || event.body.status === "failed") &&
+        state.session?.capabilities.selfTurns === true
+          ? 1
+          : 0;
       return {
         ...touched,
+        reportsDue: touched.reportsDue + reports,
         items: without(touched.items, event.itemId),
         closedItems:
           item === undefined || item.key === null
@@ -440,6 +456,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       return {
         ...state,
         session: state.session?.id === event.sessionId ? null : state.session,
+        // Its agent is gone, and nothing it finished reaches a turn now.
+        reportsDue: state.session?.id === event.sessionId ? 0 : state.reportsDue,
         closing: state.closing?.sessionId === event.sessionId ? null : state.closing,
         // A session replaced (a model switch, a setting, a rotation) hands its place to the next one.
         rotatingFrom:
@@ -561,6 +579,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         ...state,
         wakes: without(state.wakes, event.wakeId),
         pausedUntil: isUsageWake(wake?.kind) ? null : state.pausedUntil,
+        // The agent's own turn never came for what it finished: nothing waits for it now.
+        reportsDue: wake?.kind === "agent-turn-due" ? 0 : state.reportsDue,
       };
     }
     case "WakeCancelled":

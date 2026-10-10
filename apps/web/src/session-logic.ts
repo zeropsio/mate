@@ -309,6 +309,11 @@ interface DerivedWorkLogEntry extends WorkLogEntry {
   isWorkflowCoordinator?: boolean;
   /** Shell/monitor/plan tasks: ordinary work-log rows, never spawn CTAs. */
   isBackgroundTask?: boolean;
+  /**
+   * The run that started a helper, where a turn's card holds several runs (an engine card a wake
+   * goes on in): its helpers batch per run, as V1's batch per turn.
+   */
+  spawnRunId?: string;
 }
 
 const isCrewSeam = Schema.is(CrewSeam);
@@ -1359,6 +1364,8 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (isTaskActivity && payload && isBackgroundTaskActivity(payload)) {
     entry.isBackgroundTask = true;
   }
+  const spawnRunId = isTaskActivity ? asTrimmedString(payload?.spawnRunId) : null;
+  if (spawnRunId !== null) entry.spawnRunId = spawnRunId;
   const collapseKey = deriveToolLifecycleCollapseKey(entry);
   if (collapseKey) {
     entry[workLogCollapseKey] = collapseKey;
@@ -1390,6 +1397,8 @@ function agentSpawnGroupKey(entry: DerivedWorkLogEntry): string {
   // accumulating every agent the thread ever ran (review finding). Adapters
   // stamp spawn turns (Codex spawnTurnId; Claude rows ride real turns), so
   // this path is defensive.
+  // Helpers batch by the run that started them: a wake's second wave is a launch of its own.
+  if (entry.spawnRunId !== undefined) return `direct:run:${entry.spawnRunId}`;
   return entry.turnId ? `direct:${entry.turnId}` : `direct:task:${taskId}`;
 }
 

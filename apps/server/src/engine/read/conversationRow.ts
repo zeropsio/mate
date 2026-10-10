@@ -104,11 +104,12 @@ export const rowStateOf = (view: ConversationView): ConversationRowState => {
   }
   const waiting = active ?? view.queued[0];
   if (waiting !== undefined) return { kind: "queued", since: waiting.queuedAt };
-  if (view.background === "working") {
+  if (view.background === "working" || view.turnDue === true) {
     return {
       kind: "working",
       since: view.lastEnded?.endedAt ?? view.updatedAt,
       waitsOnHelpers: true,
+      ...(view.background !== "working" ? { turnDue: true as const } : {}),
     };
   }
   const brokeOff = brokeOffLine(view.lastEnded?.end ?? null);
