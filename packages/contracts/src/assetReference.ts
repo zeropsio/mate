@@ -14,7 +14,8 @@ export const ImageOccurrence = Schema.Struct({
     Schema.Struct({
       status: Schema.Literal("ready"),
       digest: AssetDigest,
-      mimeType: Schema.String.check(Schema.isPattern(/^image\//)),
+      // A picture, or the one other kind the store keeps: a page an agent published (`text/html`).
+      mimeType: Schema.String.check(Schema.isPattern(/^(?:image\/|text\/html$)/)),
       sizeBytes: PositiveInt,
       width: Schema.optionalKey(PositiveInt),
       height: Schema.optionalKey(PositiveInt),

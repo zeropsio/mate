@@ -2,6 +2,7 @@ import type { AssetRepresentation } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { HttpServerResponse } from "effect/http";
 
+import { PAGE_MIME_TYPE } from "./ContentAssets.ts";
 import { openMediaFile, streamMediaFile } from "./MediaFile.ts";
 
 export const contentAssetFailure = (code: string, status: number) =>
@@ -31,6 +32,10 @@ export const contentAssetResponse = Effect.fn("contentAssetResponse")(function* 
     "Accept-Ranges": "bytes",
     ...(object.mimeType === "image/svg+xml"
       ? { "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" }
+      : {}),
+    // A page is read by its conversation's frame, never opened here: at this address it runs nothing.
+    ...(object.mimeType === PAGE_MIME_TYPE
+      ? { "Content-Security-Policy": "default-src 'none'; sandbox" }
       : {}),
   };
   if (

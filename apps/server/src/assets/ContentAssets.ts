@@ -56,6 +56,8 @@ export function isStorageFull(error: unknown): boolean {
   return false;
 }
 type Owner = Omit<ImageOccurrence, "id" | "original"> & { readonly mimeType?: string };
+/** The one kind of original besides a picture: a page an agent published. */
+export const PAGE_MIME_TYPE = "text/html";
 type StoredObject = AssetRepresentation & { readonly path: string };
 const stores = new Map<string, ContentAssets>();
 export const contentAssetsAt = (stateDir: string) => {
@@ -142,15 +144,19 @@ export class ContentAssets {
     bytes: Uint8Array,
     preview = false,
     mimeHint?: string,
+    page = false,
   ): Promise<AssetRepresentation> {
     let info: Partial<Metadata> = {};
+    // A page an agent published is kept as it came: never read as a picture, even one that opens
+    // with an SVG, and served to no one as a document that runs (`ContentAssetHttp`).
     try {
-      info = await sharp(bytes).metadata();
+      if (!page) info = await sharp(bytes).metadata();
     } catch {
       if (preview || !mimeHint?.startsWith("image/")) throw new ContentAssetError("unsupported");
     }
-    const mimeType =
-      info.format === "jpeg"
+    const mimeType = page
+      ? PAGE_MIME_TYPE
+      : info.format === "jpeg"
         ? "image/jpeg"
         : info.format === "svg"
           ? "image/svg+xml"
@@ -179,7 +185,12 @@ export class ContentAssets {
     return representation;
   }
 
-  async ingestBytes(bytes: Uint8Array, owner: Owner): Promise<ImageOccurrence> {
+  /** A page an agent published, kept as its bytes came (`PAGE_MIME_TYPE`), never as a picture. */
+  async ingestPage(bytes: Uint8Array, owner: Owner): Promise<ImageOccurrence> {
+    return this.ingestBytes(bytes, owner, true);
+  }
+
+  async ingestBytes(bytes: Uint8Array, owner: Owner, page = false): Promise<ImageOccurrence> {
     const id = NodeCrypto.randomUUID();
     let occurrence: ImageOccurrence;
     try {
@@ -187,6 +198,7 @@ export class ContentAssets {
         bytes,
         false,
         owner.mimeType ?? mediaMimeTypeFromExtension(NodePath.extname(owner.name)) ?? undefined,
+        page,
       );
       occurrence = { ...owner, id, original: { status: "ready", ...original } };
     } catch (error) {
