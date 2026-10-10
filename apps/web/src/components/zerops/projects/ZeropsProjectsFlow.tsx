@@ -98,32 +98,8 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly openMate: (item: T) => (() => void) | undefined;
   /** An environment's row — a `ZeropsEnvironmentRow`. */
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
-  /**
-   * A pull request's `<li>`. `withMerge` is false where the step's own verb
-   * already merges it; `review` is whether it shows its *Review* at all
-   * (`changeShowsReview`); `compact` stacks it for a step's narrow column.
-   */
-  readonly renderPullRequest: (
-    group: ZeropsGroup,
-    pull: FlowPullRequest,
-    options: {
-      readonly withMerge: boolean;
-      readonly review: boolean;
-      readonly compact: boolean;
-    },
-  ) => ReactNode;
-  /** The verb of a group's next step (`flow.nextStep`), at its row's end; nothing for `none`. */
-  readonly renderNextStep: (entry: ProjectsFlowGroup<T>) => ReactNode;
-  /**
-   * *Release*, in an opened row whenever one is offered — even where the
-   * ranked next step is something else, such as the production's own failed
-   * deploy (D28): the release that might clear it stays in reach rather than
-   * only the build. Absent where the next step already is the release, so the
-   * row never shows the same verb twice.
-   */
+  /** The ready release's door on a card (*Review release*), while one is offered. */
   readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
-  /** The group's releases and the release gate's reason, as `<li>`s; `null` for none. */
-  readonly renderGroupRows: (group: ZeropsGroup) => ReactNode;
   /** The row's ··· menu: the project's quiet verbs, and its Mates' previews (`flow.mates`). */
   readonly renderGroupMenu: (entry: ProjectsFlowGroup<T>) => ReactNode;
   /** Re-probes the containers not answering. */

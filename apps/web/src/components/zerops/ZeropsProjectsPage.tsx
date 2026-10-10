@@ -2,9 +2,8 @@ import { useOpenMate } from "~/zerops/useOpenMate";
 import { useProjectsPageRows } from "~/zerops/projectsPageRows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
-import { appReleaseRows, creationHandoff, type AppReleaseRows } from "@t3tools/client-runtime/data";
-import { Atom } from "effect/reactivity";
-import { useAccountOrgId, useProjection, useAccountDataOptional } from "~/zerops/ZeropsAccountData";
+import { creationHandoff } from "@t3tools/client-runtime/data";
+
 import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
 import { ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
 import { ZeropsDeletionRecovery } from "./ZeropsDeletionRecovery";
@@ -110,8 +109,6 @@ import {
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
-  changeKindTag,
-  changeState,
   assignCandidateMateTints,
   mateShapeOf,
   newMateTint,
@@ -119,8 +116,6 @@ import {
   readZeropsToolKind,
   defaultAgentForRole,
   hasMate,
-  pullRequestLineWith,
-  releaseContentsCommits,
   type FlowPullRequest,
   projectNameInApp,
   readZeropsMembership,
@@ -136,7 +131,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
-import { Avatar, MateFace, MicroLabel, StatusDot } from "./primitives";
+import { Avatar, MateFace, StatusDot } from "./primitives";
 import { mateRowReading } from "./SidebarMateRow.logic";
 import { CardMate, CardMateLiftActions, CardMateTime } from "./projects/ProjectCards";
 import { cardMateReading } from "./projects/projectCard.logic";
@@ -175,13 +170,13 @@ import {
   useProjectFlows,
   useStopDeploymentsShown,
 } from "~/zerops/projectFlows";
-import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
+import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useReadGroupAgents } from "~/zerops/groupAgents";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
-import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
+
 import { ZeropsReleaseVerb } from "./ZeropsReleaseVerb";
-import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
+
 import {
   creatableRoles,
   environmentRoleLabel,
@@ -190,7 +185,6 @@ import {
 } from "./ZeropsGroupTree.logic";
 import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
 import {
-  changeRowVerb,
   parseProjectsSearch,
   withoutOfficialHq,
   shownUngrouped,
@@ -808,7 +802,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const restartMate = useRestartMate();
   const deleteProject = useDeleteProject();
   const [removingCandidateKey, setRemovingCandidateKey] = useState<string | null>(null);
-  const navigate = useNavigate();
+
   // The server that served this page gets one automatic identity exchange.
   // A failed exchange stays manual so rerenders cannot hammer the door.
   const autoConnectingRef = useRef(false);
@@ -1564,157 +1558,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [groupDeploys],
   );
 
-  /** Each Mate's name, for a pull request's line: its project's name under its application. */
-  const mateNames = useMemo(
-    () =>
-      new Map(
-        groupTree.groups.flatMap(({ environments }) =>
-          environments.map(
-            ({ item }) => [item.project.id, projectNameInApp(item.project)] as const,
-          ),
-        ),
-      ),
-    [groupTree.groups],
-  );
-
-  /**
-   * Why *Release* is not offered, when a production is declared and it is
-   * not: a verb that is missing says nothing (`release.ts`).
-   */
-  const releaseGateLine = (group: ZeropsGroup) => {
-    const flow = groupDeploys.get(group.groupId);
-    if (flow === undefined || flow.release.gate.allowed) return null;
-    if (!flow.environments.some((entry) => entry.tier === "production")) return null;
-    return (
-      <li
-        className="py-1.5 text-xs text-muted-foreground"
-        data-zerops-surface="release-gate"
-        key={`release-gate-${group.groupId}`}
-      >
-        {flow.release.gate.reason}
-      </li>
-    );
-  };
-
-  /**
-   * What pressing *Release* would carry, under the row that offers it: one
-   * line per commit `main` has that the production is not running, which with
-   * squash merges is one line per task delivered (the owner, 2026-09-18 — "it
-   * would be great if you could show like what is it going to release, the PRs
-   * that it contains"). Nothing is drawn where a release would move nothing.
-   */
-  const releaseContentLines = (group: ZeropsGroup) => {
-    const flow = groupDeploys.get(group.groupId);
-    if (flow === undefined || !flow.release.gate.allowed) return null;
-    // One commit several services take is one change (`releaseContentsCommits`).
-    const commits = releaseContentsCommits(flow.release.contents);
-    if (commits.length === 0) return null;
-    // Led in by what they are, one entry of the list: a sha and a subject
-    // alone read as a stray commit.
-    return (
-      <li className="flex min-w-0 flex-col gap-0.5 py-1.5" key={`release-content-${group.groupId}`}>
-        <MicroLabel className="text-muted-foreground">Release carries</MicroLabel>
-        {commits.map((commit) => (
-          <span
-            className="flex min-w-0 gap-2 text-xs text-muted-foreground"
-            data-zerops-surface="release-content"
-            key={commit.sha}
-          >
-            <span className="font-mono tabular-nums">{commit.sha.slice(0, 7)}</span>
-            <span className="truncate">{commit.subject}</span>
-          </span>
-        ))}
-      </li>
-    );
-  };
-
-  /**
-   * One pull request's row, wherever it is drawn. Its verb is *Review*, the one
-   * door to merging (pass 16, R1): the review reads the change, says whether it
-   * is safe and carries *Merge* — nothing merges from a row, which says
-   * "Merging…" while the review's merge is under way. `withMerge` is false where
-   * the project's next step already offers that door on it: one verb, once.
-   * `compact` stacks title, state and verb for a flow step's narrow column.
-   */
-  const pullRequestRowOf = (
-    group: ZeropsGroup,
-    pull: FlowPullRequest,
-    {
-      withMerge,
-      review,
-      compact,
-    }: { readonly withMerge: boolean; readonly review: boolean; readonly compact: boolean },
-  ) => {
-    // One vocabulary down the column, the same one the project's own page and
-    // the left menu use (`changeState`): a change that no longer merges is the
-    // one a person needs to see.
-    const state = changeState(pull);
-    // A draft, or a change the Mate's working run still writes, stays listed and opens from its
-    // title; it asks for no review (`changeShowsReview`).
-    const action =
-      withMerge && review ? (
-        <ZeropsMateVerb
-          label={changeRowVerb(verbs.pending, group.groupId, pull)}
-          onClick={(event) => {
-            openReview(
-              {
-                kind: "change",
-                groupId: group.groupId,
-                repository: pull.repository,
-                number: pull.number,
-              },
-              { from: event.currentTarget },
-            );
-          }}
-        />
-      ) : undefined;
-    const key = `pull-${group.groupId}-${pull.repository}-${pull.number}`;
-    const line = pullRequestLineWith(pull, mateNames.get(pull.mateProjectId));
-    const open = () => {
-      void navigate({
-        to: "/change/$groupId/$repository/$number",
-        params: {
-          groupId: group.groupId,
-          repository: pull.repository,
-          number: String(pull.number),
-        },
-      });
-    };
-    const status =
-      state === undefined ? undefined : <StatusDot label={state.word} sentence tone={state.tone} />;
-    if (compact) {
-      return (
-        <li className="flex min-w-0 flex-col items-start gap-0.5 py-1.5" key={key}>
-          <button
-            className="min-w-0 max-w-full break-words rounded-sm text-left text-sm text-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-            data-zerops-surface="pull-request-title"
-            onClick={open}
-            type="button"
-          >
-            <span className="text-muted-foreground">#{pull.number}</span> {pull.title}
-          </button>
-          {/* The check's word is never cut; only what the change is gives way. */}
-          <span className="flex min-w-0 max-w-full items-center gap-1.5 text-xs text-muted-foreground">
-            {status === undefined ? null : <span className="flex shrink-0">{status}</span>}
-            <span className="min-w-0 truncate">{line}</span>
-          </span>
-          {action}
-        </li>
-      );
-    }
-    return (
-      <ZeropsPullRequestRow
-        action={action}
-        key={key}
-        line={line}
-        onOpen={open}
-        status={status}
-        tag={changeKindTag(pull)}
-        title={pull.title}
-      />
-    );
-  };
-
   /**
    * Publish a service on its `*.zerops.app` subdomain.
    *
@@ -2404,100 +2247,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     );
   };
 
-  /**
-   * The rows of a project that are not one of its four steps: why *Release*
-   * is not offered, what it would carry and the releases (each with the way back
-   * to it). `null` where it has none.
-   */
-  const renderGroupRows = (group: ZeropsGroup): React.ReactNode => {
-    const gate = releaseGateLine(group);
-    const contents = releaseContentLines(group);
-
-    return (
-      <>
-        {gate}
-        {contents}
-        <ProjectReleaseRows
-          groupId={group.groupId}
-          rows={
-            groupDeploys.get(group.groupId)?.releasesKnown
-              ? groupDeploys.get(group.groupId)?.releases
-              : undefined
-          }
-          pending={verbs.pending}
-          onRollBack={(tag, from) => {
-            openReview({ kind: "rollback", groupId: group.groupId, tag }, { from });
-          }}
-        />
-      </>
-    );
-  };
-
-  /**
-   * The verb of a project's next step, where the step says one (`groupFlow`).
-   * Each acts on the thing it names: a Mate opens, a failed deploy's build opens
-   * its page, a change — one to merge or one that cannot land — and a release
-   * open their review (pass 16, R1).
-   */
-  const renderNextStep = (
-    entry: ProjectsFlowGroup<ZeropsCandidatePresentation>,
-  ): React.ReactNode => {
-    const { group, flow } = entry;
-    const step = flow.nextStep;
-    const target = step.target;
-    if (step.verb === undefined || target === undefined) return null;
-    const verb = (onClick: (from: HTMLElement) => void, disabled = false, label = step.verb) => (
-      <Button
-        data-zerops-next-step-verb={step.kind}
-        disabled={disabled}
-        onClick={(event) => {
-          onClick(event.currentTarget);
-        }}
-        size="compact"
-        variant="outline"
-      >
-        {label}
-      </Button>
-    );
-    switch (target.kind) {
-      case "release":
-        // The door to the release's review, which names the version and tags it.
-        return <ZeropsReleaseVerb groupId={group.groupId} label={step.verb} />;
-      case "mate": {
-        const mate = entry.mates.get(target.projectId);
-        if (mate === undefined) return null;
-        return verb(() => {
-          runRowAction(mate, "open");
-        }, busyKeys.has(mate.key));
-      }
-      case "stop":
-        return verb(() => {
-          void navigate({
-            to: "/group/$groupId/$projectId",
-            params: { groupId: group.groupId, projectId: target.projectId },
-          });
-        });
-      case "change":
-        // One to merge and one that cannot land open the same review: it says
-        // what blocks it and hands the fix to the Mate that wrote it.
-        return verb(
-          (from) => {
-            openReview(
-              {
-                kind: "change",
-                groupId: group.groupId,
-                repository: target.repository,
-                number: target.number,
-              },
-              { from },
-            );
-          },
-          false,
-          REVIEW_LABEL,
-        );
-    }
-  };
-
   // Where each stage's first deploy stands, as its cell in the flow says it (`groupFlow`): the
   // expanded environment row says the same.
   const firstDeployOf = (projectId: string) =>
@@ -2592,7 +2341,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         }}
         renderEnvironment={renderEnvironment}
         renderGroupMenu={renderGroupMenu}
-        renderGroupRows={renderGroupRows}
         renderMate={renderMate}
         renderMateFace={(candidate: ZeropsCandidatePresentation, size) => {
           const tint = tints.get(candidate.project.id) ?? "slate";
@@ -2605,8 +2353,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             />
           );
         }}
-        renderNextStep={renderNextStep}
-        renderPullRequest={pullRequestRowOf}
         cardPlaces={overview.cardPlaces}
         renderPlacePanel={overview.renderPlacePanel}
         renderCardPeople={overview.renderCardPeople}
@@ -2756,82 +2502,5 @@ export function ZeropsProjectsPage() {
       ) : null}
       <ZeropsProjectsContent search={search} />
     </ZeropsHostedFrame>
-  );
-}
-
-const UNREAD_RELEASES = Atom.make<AppReleaseRows>({ kind: "unread", reason: null });
-function ProjectReleaseRows({
-  groupId,
-  rows,
-  pending,
-  onRollBack,
-}: {
-  readonly groupId: string;
-  readonly rows: ReadonlyArray<import("@t3tools/client-runtime/zerops").FlowReleaseRow> | undefined;
-  readonly pending: ReadonlySet<string>;
-  readonly onRollBack: (tag: string, from: HTMLElement) => void;
-}) {
-  const orgId = useAccountOrgId();
-  const account = useAccountDataOptional();
-  const read = useProjection(
-    appReleaseRows,
-    orgId === null ? null : { orgId, appId: groupId },
-    UNREAD_RELEASES,
-  );
-  if (read.kind === "unread")
-    return (
-      <div role="status">
-        <span>{read.reason ?? "Reading releases."}</span>
-        <ZeropsMateVerb
-          label="Read again"
-          onClick={() => account?.retryDetail({ family: "hqAppDetail", ownerId: groupId })}
-        />
-      </div>
-    );
-  // The flow adds production evidence. Until it can, show HQ's verdict without a production verdict or rollback offer.
-  const releases =
-    rows ??
-    read.releases.map((release) => ({
-      ...release,
-      standing: undefined,
-      word: release.verdict === "approved" ? "Approved" : "Refused",
-      rollBack: false,
-      failedEntry: undefined,
-    }));
-  return (
-    <>
-      {read.live ? null : <div role="status">{read.reason ?? "Updating releases."}</div>}
-      <ProjectReleaseHistory
-        groupId={groupId}
-        releases={releases}
-        pending={pending}
-        onRollBack={onRollBack}
-      />
-    </>
-  );
-}
-
-/** The release rows shown inside one expanded project. */
-export function ProjectReleaseHistory(props: React.ComponentProps<typeof ZeropsReleaseRows>) {
-  const current =
-    props.releases.find((release) => release.standing === "live") ?? props.releases[0];
-  if (current === undefined) return null;
-  const history = props.releases.filter((release) => release !== current);
-  return (
-    <>
-      <ZeropsReleaseRows {...props} releases={[current]} />
-      {history.length === 0 ? null : (
-        <li>
-          <details data-zerops-release-history>
-            <summary className="cursor-pointer py-2 text-sm text-muted-foreground">
-              Release history ({history.length})
-            </summary>
-            <ul>
-              <ZeropsReleaseRows {...props} releases={history} />
-            </ul>
-          </details>
-        </li>
-      )}
-    </>
   );
 }

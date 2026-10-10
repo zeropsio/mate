@@ -1,8 +1,7 @@
 /**
- * The projects page's decisions over `groupFlow` — what a project's row says and whether it
- * rises, production's version beside its name, the containers' one line — the words and the
- * placement, not the pixels. The rows' order is the person's (`projectOrderPreference.ts`); the
- * rows that need the person rise first within it (`risenFirst`), and nothing else reorders them.
+ * The overview's decisions over `groupFlow` — why a project's changes are not known, a stop's
+ * line, the containers' one line — the words and the placement, not the pixels. The cards' order
+ * is the person's (`projectOrderPreference.ts`), and nothing reorders them.
  */
 
 import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";

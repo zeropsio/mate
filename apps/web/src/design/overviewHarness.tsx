@@ -547,7 +547,6 @@ function HarnessPage() {
             }}
             renderEnvironment={() => null}
             renderGroupMenu={() => null}
-            renderGroupRows={() => null}
             renderMate={(entry, options) => {
               const reading = cardMateReading({
                 view: entry.view,
@@ -583,7 +582,6 @@ function HarnessPage() {
             renderMateFace={(entry) => (
               <MateFace className="size-4" size="sm" state="idle" tint={entry.tint} />
             )}
-            renderNextStep={() => null}
             renderPlacePanel={(entry, line) => {
               const found = byId.get(entry.group.groupId);
               if (found === undefined) return null;
@@ -603,7 +601,6 @@ function HarnessPage() {
                 />
               );
             }}
-            renderPullRequest={() => null}
             renderReleaseVerb={() => (
               <button className="ov-btn" data-main="true" type="button">
                 Review release
