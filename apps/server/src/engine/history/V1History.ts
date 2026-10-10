@@ -169,3 +169,18 @@ export const readBodies = (entries: ReadonlyArray<Entry>) =>
     }
     return { messages, activities } satisfies V1Bodies;
   });
+
+/**
+ * Where a V1 thread's relative paths resolve, as V1's own capture resolves them: its worktree, else
+ * its project's root; none when V1 no longer holds either.
+ */
+export const readWorkspaceRoot = (threadId: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ readonly root: string | null }>`
+      SELECT COALESCE(t.worktree_path, p.workspace_root) AS root
+      FROM projection_threads t LEFT JOIN projection_projects p ON p.project_id = t.project_id
+      WHERE t.thread_id = ${threadId}
+    `;
+    return rows[0]?.root ?? null;
+  });

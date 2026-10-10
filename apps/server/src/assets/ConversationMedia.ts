@@ -273,6 +273,39 @@ function activityMediaNeedsCapture(
   );
 }
 
+/**
+ * A picture a call looked at, kept as V1 keeps it: once per thread, call and path (the store's
+ * legacy binding), so V1's capture, its backfill and the engine's import of the call share one
+ * occurrence. Its reference names the occurrence, with the store's code when it could not be kept.
+ */
+export const keepLookedPicture = async (
+  store: ContentAssets,
+  threadId: ThreadId,
+  activityId: string,
+  path: string,
+  workspaceRoot: string,
+): Promise<{
+  readonly imagePath: string;
+  readonly imageName: string;
+  readonly imageDimensions?: { width: number; height: number };
+}> => {
+  const asset = await store.legacy([threadId, activityId, path], () =>
+    store.ingestFile(NodePath.resolve(workspaceRoot, path), {
+      threadId,
+      ownerId: activityId,
+      provenance: "capture",
+      name: NodePath.basename(path),
+    }),
+  );
+  return {
+    imagePath: `mate-asset:${asset.id}${asset.original.status === "failed" ? `:${asset.original.code}` : ""}`,
+    imageName: asset.name,
+    ...(asset.original.status === "ready" && asset.original.width && asset.original.height
+      ? { imageDimensions: { width: asset.original.width, height: asset.original.height } }
+      : {}),
+  };
+};
+
 export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* (
   activity: OrchestrationThreadDetailSnapshot["thread"]["activities"][number],
   threadId: ThreadId,
@@ -282,7 +315,6 @@ export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* 
   if (!activityMediaNeedsCapture(activity)) return activity;
   const config = yield* ServerConfig;
   const store = contentAssetsAt(config.stateDir);
-  const owner = { threadId: threadId, ownerId: activity.id, provenance: "capture" as const };
   const capture = async (value: unknown): Promise<unknown> => {
     if (Array.isArray(value)) return Promise.all(value.map(capture));
     if (!value || typeof value !== "object") return value;
@@ -293,17 +325,10 @@ export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* 
     let imageName: string | undefined;
     for (const [key, item] of Object.entries(record)) {
       if (key === "imagePath" && typeof item === "string" && !item.startsWith("mate-asset:")) {
-        const asset = await store.legacy([threadId, activity.id, item], () =>
-          store.ingestFile(NodePath.resolve(workspaceRoot, item), {
-            ...owner,
-            name: NodePath.basename(item),
-          }),
-        );
-        imageName = asset.name;
-        if (asset.original.status === "ready" && asset.original.width && asset.original.height)
-          imageDimensions = { width: asset.original.width, height: asset.original.height };
-        result[key] =
-          `mate-asset:${asset.id}${asset.original.status === "failed" ? `:${asset.original.code}` : ""}`;
+        const looked = await keepLookedPicture(store, threadId, activity.id, item, workspaceRoot);
+        imageName = looked.imageName;
+        imageDimensions = looked.imageDimensions;
+        result[key] = looked.imagePath;
       } else result[key] = await capture(item);
     }
     return {
