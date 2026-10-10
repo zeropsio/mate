@@ -348,7 +348,10 @@ function workActivities(
   const taskType = WORK_TASK_TYPES[item.workKind];
   const payload = {
     taskId: item.work,
-    ...(item.workKind === "helper" ? { agentKind: "agent" } : {}),
+    // A helper batches with the others its run started, never with a later run's on its card.
+    ...(item.workKind === "helper"
+      ? { agentKind: "agent", ...(item.runId === null ? {} : { spawnRunId: item.runId }) }
+      : {}),
     ...(item.by.kind === "helper" ? { agentId: item.by.helperId } : {}),
     ...(taskType === undefined ? {} : { taskType }),
     ...(item.title === null ? {} : { title: item.title }),

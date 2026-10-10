@@ -696,6 +696,60 @@ it.each([
   },
 );
 
+// Milo's stress run 4A: the second wave a wake started joined the first wave's "Started 5 helpers".
+it.each([
+  { first: "left no answer", answered: false },
+  { first: "answered", answered: true },
+])(
+  "helpers a wake starts stand where it started them, never in the first wave's group: the first run $first",
+  ({ answered }) => {
+    const helper = (runId: string, ordinal: number, at: number, title: string) =>
+      ({
+        ...workItem(runId, ordinal, { work: `w-${runId}-${ordinal}`, status: "completed", title }),
+        at: t0 + at,
+      }) as Item;
+    const rows = render({
+      runs: [
+        stressRun({
+          endedAt: t0 + 20_000,
+          summary: {
+            items: 3,
+            calls: { helper: 2 },
+            answerItemId: answered ? `${run1}/i/4` : null,
+            lastItemSeq: 4,
+          },
+        } as never),
+        engineRun(key.conversationId, 2, {
+          trigger: { kind: "wake", cause: "self", wakeId: null },
+          joins: RunId.make(run1),
+          queuedAt: t0 + 30_000,
+          admittedAt: t0 + 30_000,
+          startedAt: t0 + 30_000,
+          endedAt: t0 + 40_000,
+          summary: { items: 2, calls: { helper: 1 }, answerItemId: null, lastItemSeq: 2 },
+        } as never),
+      ],
+      items: [
+        personItem(run1, 1, "Run the stress checks", { at: t0 }),
+        helper(run1, 2, 1_000, "Helper A"),
+        helper(run1, 3, 1_100, "Helper B"),
+        ...(answered
+          ? [noteItem(run1, 4, "Both helpers are off.", { at: t0 + 19_000, answer: true } as never)]
+          : []),
+        helper(run2, 1, 31_000, "Second wave 1"),
+      ],
+    });
+    const groups = rows.flatMap((row) =>
+      row.kind === "record"
+        ? row.items.flatMap((item) =>
+            item.kind === "helpers" ? [item.entry.agentSpawn?.agentTaskIds.length ?? 0] : [],
+          )
+        : [],
+    );
+    expect(groups).toEqual([2, 1]);
+  },
+);
+
 // The oracle's deep seeds: a run that only wrote to the person read "thought" live and "worked"
 // after a reload, its summary's notes counted as work.
 it.each([
