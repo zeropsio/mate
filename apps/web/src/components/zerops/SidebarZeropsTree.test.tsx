@@ -153,6 +153,7 @@ import {
   groupMemberFactsOf,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
+import { ReviewContext } from "~/zerops/review";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
 import { zeropsSessionAtom } from "~/state/zerops";
@@ -166,6 +167,7 @@ import {
   SidebarZeropsTree,
   type SidebarProjectFlow,
 } from "./SidebarZeropsTree";
+import { projectHeadingMenu } from "./SidebarZeropsTree.logic";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { useProjectFlows } from "~/zerops/projectFlows";
 import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
@@ -1840,8 +1842,8 @@ describe("production and the stages are two chips on the project's heading (M2, 
     ]);
   });
 
-  // D′: the release is said on the heading's second line, under the name and above the Mates,
-  // with the Review a merge has — never a row after the Mates.
+  // D′: what the environments are doing is said on the heading's second line, under the name
+  // and above the Mates; the release is the road's.
   const lineOf = (html: string) => {
     const at = html.indexOf('data-zerops-surface="sidebar-project-line"');
     if (at === -1) return undefined;
@@ -1854,9 +1856,21 @@ describe("production and the stages are two chips on the project's heading (M2, 
       door: /sidebar-project-line-door"[^>]*>([^<]*)</u.exec(row)?.[1],
     };
   };
+  /** The road on the heading: its places and what rides between them, as words. */
+  const roadOf = (html: string) => {
+    const at = heading(html).indexOf('data-zerops-surface="sidebar-road"');
+    if (at === -1) return undefined;
+    const road = heading(html).slice(at);
+    return road
+      .slice(road.indexOf(">") + 1)
+      .replace(/<[^>]*$/u, "")
+      .replace(/<[^>]+>/gu, " ")
+      .replace(/\s+/gu, " ")
+      .trim();
+  };
   it.each([
     {
-      case: "changes waiting",
+      case: "changes waiting, the release offered: ready, on the way to prod",
       flow: {
         releaseOffered: true,
         releaseContents: [
@@ -1866,28 +1880,50 @@ describe("production and the stages are two chips on the project's heading (M2, 
           ]),
         ],
       },
-      words: "2 changes not released · since v2.4.0",
-      door: "Review",
+      road: "stage 2 ready prod",
     },
     {
-      case: "a release that did not go out",
+      case: "changes waiting, the release not offered: waiting",
       flow: {
-        releaseFailure: {
-          tag: "v2.5.0",
-          kind: "deploy-failed" as const,
-          at: undefined,
-          error: undefined,
-          service: "app",
-        },
+        releaseContents: [
+          compared([
+            { sha: "a", subject: "Search box" },
+            { sha: "b", subject: "Cart badge" },
+          ]),
+        ],
       },
-      words: "v2.5.0 didn’t go out · app’s deploy failed",
-      door: "Review",
+      road: "stage 2 waiting prod",
     },
-  ])("says $case on the heading's second line, above the Mates", ({ flow: over, words, door }) => {
-    const html = render([CRM_DEV, up(CRM_PROD)], { getFlow: () => flow(over) });
-    expect(lineOf(html)).toMatchObject({ words, door });
-    // Under the name, before the Mates.
-    expect(html.indexOf("sidebar-project-line")).toBeLessThan(html.indexOf("sidebar-project-rows"));
+    {
+      case: "nothing waiting: the places alone",
+      flow: {},
+      road: "stage prod",
+    },
+  ])("says $case on the road after the name", ({ flow: over, road }) => {
+    const html = render([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], { getFlow: () => flow(over) });
+    expect(roadOf(html)).toBe(road);
+  });
+
+  it("opens the release's review from the ready chip on the road", () => {
+    const opened: Array<unknown> = [];
+    const tree = mount(
+      <ReviewContext value={(target) => opened.push(target)}>
+        <SidebarZeropsTree
+          candidates={[CRM_DEV, up(CRM_STAGE), up(CRM_PROD)]}
+          complete
+          getFlow={() =>
+            flow({
+              releaseOffered: true,
+              releaseContents: [compared([{ sha: "a", subject: "x" }])],
+            })
+          }
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />
+      </ReviewContext>,
+    );
+    press(tree, "sidebar-road-ready");
+    expect(opened).toEqual([{ kind: "release", groupId: "aaa" }]);
   });
 
   it("draws no second line on a healthy project, nor on a folded one", () => {
@@ -1904,9 +1940,9 @@ describe("production and the stages are two chips on the project's heading (M2, 
     stored.collapsed = new Set();
   });
 
-  it("marks a folded heading with what waits for a release, after its faces", () => {
+  it("keeps the road and what waits on it on a folded heading", () => {
     stored.collapsed = new Set(["aaa"]);
-    const html = render([CRM_DEV, up(CRM_PROD)], {
+    const html = render([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], {
       getFlow: () =>
         flow({
           releaseOffered: true,
@@ -1914,10 +1950,11 @@ describe("production and the stages are two chips on the project's heading (M2, 
         }),
     });
     stored.collapsed = new Set();
-    expect(markupDom(html).body.textContent).toContain("1 change not released · since v2.4.0");
+    expect(html).not.toContain("sidebar-project-rows");
+    expect(roadOf(html)).toBe("stage 1 ready prod");
   });
 
-  it("keeps production neutral when the newest release did not go through: the old one serves", () => {
+  it("turns prod amber when the newest release did not go through, while the old one serves", () => {
     const html = render([CRM_DEV, up(CRM_PROD)], {
       getFlow: () =>
         flow({
@@ -1931,7 +1968,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
         }),
     });
     expect(chipsOf(html)).toEqual([
-      { word: "prod", tone: "neutral", words: "Production v2.4.0, healthy" },
+      { word: "prod", tone: "amber", words: "Production v2.4.0, healthy" },
     ]);
   });
 
@@ -2331,9 +2368,9 @@ describe("a project collapsed to its heading", () => {
   });
 
   // The faces arrive once the rows have folded away, under a pointer still on
-  // the heading: + and ⋯ stand after the room that takes them up, never after
+  // the heading: ··· stands after the room that takes them up, never after
   // the faces, so nothing a person is about to press moves.
-  it("keeps + and ⋯ at the heading's end, past the room the faces take", () => {
+  it("puts the road right after the name and ··· at the heading's end, past the faces", () => {
     const html = renderToStaticMarkup(
       <ProjectHeader
         collapsed
@@ -2341,52 +2378,39 @@ describe("a project collapsed to its heading", () => {
         name="Links"
         onBrowseProjects={() => {}}
         onToggle={() => {}}
-        chips={<span data-zerops-surface="sidebar-production-chip" />}
+        chips={<span data-zerops-surface="sidebar-road" />}
       />,
     );
     const at = (needle: string) => html.indexOf(needle);
-    expect(at("sidebar-project-add-mate")).toBeGreaterThan(at("sidebar-project-faces"));
-    expect(at("sidebar-project-more")).toBeGreaterThan(at("sidebar-project-add-mate"));
-    expect(at("sidebar-production-chip")).toBeGreaterThan(at("sidebar-project-more"));
+    expect(at("sidebar-road")).toBeGreaterThan(at("sidebar-project-toggle"));
+    expect(at("sidebar-project-faces")).toBeGreaterThan(at("sidebar-road"));
+    expect(at("sidebar-project-more")).toBeGreaterThan(at("sidebar-project-faces"));
+    expect(html).not.toContain("sidebar-project-add-mate");
   });
 
-  // The owner, 2026-09-29: the + "leaves the conversation". It asks for the New Mate dialog over
-  // whatever is on screen, and goes nowhere.
-  it.each(["sidebar-project-add-mate"])(
-    "asks for a Mate in place from its %s, going nowhere",
-    (verb) => {
-      const asked: Array<string> = [];
-      let browsed = 0;
-      const tree = mount(
-        <ProjectHeader
-          group={buildZeropsGroupTree([CRM_DEV], { order: "name" }).groups[0]!.group}
-          onAddMate={(groupId: string) => {
-            asked.push(groupId);
-          }}
-          onBrowseProjects={() => {
-            browsed += 1;
-          }}
-          onToggle={() => {}}
-        />,
-      );
-      press(tree, verb);
-      expect(asked).toEqual(["aaa"]);
-      expect(browsed).toBe(0);
-    },
-  );
-
-  it("starts the title at the rail's own left edge and hangs the chevron after it", () => {
-    const toggle =
-      /<button[^>]*data-zerops-surface="sidebar-project-toggle"[^>]*>(.*?)<\/button>/u.exec(
-        renderToStaticMarkup(
-          <ProjectHeader name="Beviro" onBrowseProjects={() => {}} onToggle={() => {}} />,
-        ),
-      )?.[1] ?? "";
-    // The title first, so it sits where the rail cell starts (the owner,
-    // 2026-09-25: the chevron before it pushed it 18px right of the rail).
-    expect(toggle.indexOf(">Beviro<")).toBeGreaterThan(-1);
-    expect(toggle.indexOf(">Beviro<")).toBeLessThan(toggle.indexOf("sidebar-project-chevron"));
-    // The title hugs its text, so the chevron follows the words, not the row's end.
+  // The owner, 2026-09-29: the + "leaves the conversation". Its ··· asks for the New Mate dialog
+  // over whatever is on screen, and goes nowhere.
+  it.each(["Add a Mate"])("asks for a Mate in place from its %s, going nowhere", (verb) => {
+    const asked: Array<string> = [];
+    let browsed = 0;
+    const entry = projectHeadingMenu({
+      collapsed: false,
+      onToggle: () => {},
+      onAddMate: () => {
+        asked.push("aaa");
+      },
+      onOpen: () => {
+        browsed += 1;
+      },
+      reorder: undefined,
+      setUp: [],
+      onBrowseProjects: () => {
+        browsed += 1;
+      },
+    }).find((item) => item.kind === "item" && item.label === verb);
+    if (entry?.kind === "item") entry.act();
+    expect(asked).toEqual(["aaa"]);
+    expect(browsed).toBe(0);
   });
 
   it("collapses rather than opens the project from its name; the page is the menu's to open", () => {
@@ -2672,12 +2696,12 @@ describe("arranging the projects by hand", () => {
     const html = render([LINKS_MATE, SHOP_MATE]);
     const heading = html.slice(
       html.indexOf('data-zerops-surface="sidebar-project"'),
-      html.indexOf('data-zerops-surface="sidebar-project-add-mate"'),
+      html.indexOf('data-zerops-surface="sidebar-project-more"'),
     );
     const at = (needle: string) => html.indexOf(needle);
     // After the title and the room the title leaves, first of the verbs.
     expect(at("sidebar-project-grip")).toBeGreaterThan(at("sidebar-project-toggle"));
-    expect(at("sidebar-project-add-mate")).toBeGreaterThan(at("sidebar-project-grip"));
+    expect(at("sidebar-project-more")).toBeGreaterThan(at("sidebar-project-grip"));
     expect(heading).toContain("sidebar-project-grip");
   });
 
@@ -4000,9 +4024,7 @@ describe("the menu's release offer", () => {
           </AccountDataContext.Provider>
         </RegistryContext.Provider>,
       );
-      expect(html).toContain("1 change not released");
-      expect(html).toContain('data-zerops-surface="sidebar-project-line-door"');
-      expect(html).toContain(">Review</button>");
+      expect(html).toMatch(/data-zerops-surface="sidebar-road-ready"[^>]*>1 ready</u);
       expect(html).toContain('data-zerops-surface="sidebar-production-chip"');
       expect([...store.state().streams.keys()].some((key) => key.includes("hq-app-detail"))).toBe(
         false,

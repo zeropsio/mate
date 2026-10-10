@@ -112,7 +112,6 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   BellOffIcon,
   CircleAlertIcon,
-  ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
   GitPullRequestIcon,
@@ -164,7 +163,7 @@ import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { useMateOfflineSince, useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
-import { useOpenReview } from "~/zerops/review";
+import { useOpenReview, type OpenReviewOptions } from "~/zerops/review";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { hqDown, hqPlacementsAtom, hqNavigationAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
@@ -192,7 +191,12 @@ import { SidebarSelectedBand } from "./SidebarSelectedBand";
 import { KeyChip, MateFace } from "./primitives";
 import { groupNameUnread } from "./ZeropsGroupTree.logic";
 import { STOP_ARM_MS, stopArmStep, type StopArm, type StopArmEvent } from "./SidebarStopArm.logic";
-import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
+import {
+  formatWorkingTime,
+  isQuietMate,
+  projectHeadingMenu,
+  sidebarMateKey,
+} from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
 import {
   SidebarProjectFold,
@@ -210,7 +214,8 @@ import {
   type HeadingFaceDot,
   type PendingLanding,
 } from "./SidebarProjects.logic";
-import { SidebarProductionChip } from "./SidebarProductionChip";
+import { SidebarProductionChip, SidebarRoad } from "./SidebarProductionChip";
+import { projectRoad } from "./SidebarRoad.logic";
 import {
   buildingOf,
   asLastKnown,
@@ -278,13 +283,8 @@ import {
   tiersAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
-import {
-  HeadingReleaseMark,
-  HeadingSubLine,
-  headingPillMotion,
-  useHeadingLine,
-} from "./SidebarHeadingLine";
-import { headingMark, type HeadingLineInput } from "./SidebarHeadingLine.logic";
+import { HeadingSubLine, headingPillMotion, useHeadingLine } from "./SidebarHeadingLine";
+import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
 
 const NO_ADMISSION = Atom.make<AgentAdmissionAttention | null>(null);
 
@@ -1206,67 +1206,90 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       threadKey: getActivity?.(item)?.threadKey,
     }));
     const projectName = groupName ?? group?.name ?? "";
+    // The road (round 5): `stage ─▸ prod` after the name, each place its chip's menu, and what
+    // waits for a release on the way between them.
+    const road =
+      group === undefined
+        ? undefined
+        : projectRoad({
+            stage:
+              stageChipDrawn ??
+              (stages.length > 0 || projectFlow.creatingStages.length > 0 ? "unread" : undefined),
+            prod: projectFlow.production.kind === "absent" ? undefined : (prodChip ?? "unread"),
+            stageNames: stages.map(({ name }) => name),
+            productionName: productionStop === undefined ? undefined : stopName(productionStop),
+            waiting: projectFlow.main.notLive,
+            waitingAtLeast: projectFlow.main.notLiveAtLeast,
+            releaseOffered: flow?.releaseOffered === true,
+          });
+    const reviewRelease =
+      flow?.releaseOffered === true
+        ? (options?: OpenReviewOptions) =>
+            openReleaseReview({ kind: "release", groupId: id }, options)
+        : undefined;
     const chips =
-      group === undefined || (prodChip === undefined && stageChipDrawn === undefined) ? null : (
-        // The stage first, production on the heading's end edge: the order a
-        // change travels in, and production's chip never moves for a stage's.
-        <>
-          {stageChipDrawn === undefined ? null : (
-            <SidebarProductionChip
-              chip={stageChipDrawn}
-              groupId={id}
-              mates={chipMates}
-              menu={(openedAt) =>
-                stageMenu({
-                  stages: stages.map(({ name, stop, serving }, index) => ({
-                    projectId: stop.projectId,
-                    name,
-                    stop,
-                    chip: stageChips[index],
-                    deployedAt: stopDeployedAt(stop.projectId),
-                    down: downOf(serving),
-                    routes: stopItem(stop.projectId)?.routes ?? [],
-                  })),
-                  creating: projectFlow.creatingStages.map((creation) => ({
-                    projectId: creation.projectId,
-                    name: creation.name,
-                  })),
-                  nowMs: openedAt,
-                })
-              }
-              onAskToFix={onAskToFix}
-              onOpenStop={openStop}
-              projectName={projectName}
-              stops={stages.map(({ stop }) => stop.projectId)}
-            />
-          )}
-          {prodChip === undefined ? null : (
-            <SidebarProductionChip
-              chip={prodChip}
-              groupId={id}
-              mates={chipMates}
-              menu={(openedAt) =>
-                productionMenu({
-                  chip: prodChip,
-                  projectId: productionItem?.project.id,
-                  failure: releases.kind === "answered" ? releases.failure : undefined,
-                  down: downOf(productionServing),
-                  routes: productionItem?.routes ?? [],
-                  nowMs: openedAt,
-                })
-              }
-              onAskToFix={onAskToFix}
-              onOpenStop={openStop}
-              onReviewRelease={
-                flow?.releaseOffered === true
-                  ? () => openReleaseReview({ kind: "release", groupId: id })
-                  : undefined
-              }
-              projectName={projectName}
-              stops={productionStop === undefined ? [] : [productionStop.projectId]}
-            />
-          )}
-        </>
+      road === undefined ? null : (
+        <SidebarRoad
+          onReviewRelease={reviewRelease}
+          prod={
+            prodChip === undefined ? null : (
+              <SidebarProductionChip
+                chip={prodChip}
+                groupId={id}
+                mates={chipMates}
+                menu={(openedAt) =>
+                  productionMenu({
+                    chip: prodChip,
+                    projectId: productionItem?.project.id,
+                    failure: releases.kind === "answered" ? releases.failure : undefined,
+                    down: downOf(productionServing),
+                    routes: productionItem?.routes ?? [],
+                    nowMs: openedAt,
+                  })
+                }
+                onAskToFix={onAskToFix}
+                onOpenStop={openStop}
+                onReviewRelease={reviewRelease}
+                projectName={projectName}
+                stops={productionStop === undefined ? [] : [productionStop.projectId]}
+                tip={road.prod.tip}
+              />
+            )
+          }
+          road={road}
+          stage={
+            stageChipDrawn === undefined ? null : (
+              <SidebarProductionChip
+                chip={stageChipDrawn}
+                groupId={id}
+                mates={chipMates}
+                menu={(openedAt) =>
+                  stageMenu({
+                    stages: stages.map(({ name, stop, serving }, index) => ({
+                      projectId: stop.projectId,
+                      name,
+                      stop,
+                      chip: stageChips[index],
+                      deployedAt: stopDeployedAt(stop.projectId),
+                      down: downOf(serving),
+                      routes: stopItem(stop.projectId)?.routes ?? [],
+                    })),
+                    creating: projectFlow.creatingStages.map((creation) => ({
+                      projectId: creation.projectId,
+                      name: creation.name,
+                    })),
+                    nowMs: openedAt,
+                  })
+                }
+                onAskToFix={onAskToFix}
+                onOpenStop={openStop}
+                projectName={projectName}
+                stops={stages.map(({ stop }) => stop.projectId)}
+                tip={road.stage?.tip}
+              />
+            )
+          }
+        />
       );
     // The jump box finds each of them, by its name under its project and by the project's, with the dot and words
     // its chip's menu gives it — only where the heading draws its chip: a find lands on it.
@@ -1367,7 +1390,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                         : productionStop === undefined
                           ? undefined
                           : comingOf("production", productionStop),
-                    failure: releases.kind === "answered" ? releases.failure : undefined,
                     building:
                       productionStop !== undefined && building.has(productionStop.projectId),
                   },
@@ -1387,11 +1409,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                 building: false,
               })),
             ],
-            waiting: projectFlow.main.notLive,
-            waitingAtLeast: projectFlow.main.notLiveAtLeast,
-            allOnStage:
-              projectFlow.main.head !== undefined &&
-              stages.some(({ stop }) => stop.version?.commit === projectFlow.main.head),
           };
     // The heading holds its stops' demand itself: a chip draws only once they are read, so a
     // demand held by the chip alone would never come on a cold load with nothing remembered.
@@ -2126,56 +2143,64 @@ export function ProjectHeader({
   const placeholder = group !== undefined && groupNameUnread(group);
   const { line: secondLine, landing } = useHeadingLine(line);
   const pillMotion = headingPillMotion(line, landing);
-  const openReview = useOpenReview();
   const title = group?.name ?? name ?? "";
   // The New Mate dialog opens over whatever is on screen: the person stays where they were (the
   // owner, 2026-09-29, of a + that took them to the projects screen).
   const addMate = () => {
     if (group !== undefined) onAddMate?.(group.groupId);
   };
+  const menu = projectHeadingMenu({
+    collapsed,
+    onToggle,
+    onAddMate: addMate,
+    onOpen: onOpen ?? onBrowseProjects,
+    reorder:
+      reorder === undefined
+        ? undefined
+        : {
+            canMoveUp: reorder.canMoveUp,
+            canMoveDown: reorder.canMoveDown,
+            onMove: (direction) => {
+              reorder.onMove(direction, false);
+            },
+          },
+    setUp: missing.map((row) => ({
+      label: `Add ${row.name.toLocaleLowerCase()}`,
+      act:
+        group === undefined || onSetUp === undefined
+          ? onBrowseProjects
+          : () => {
+              onSetUp(group.groupId, row.tier);
+            },
+    })),
+    onBrowseProjects,
+  });
   return (
-    // The heading is its band: 32 px tall, 10 px from the window and 10 from
-    // the divider — the list's own 9 and 8, and 1 and 2 more — its title 6 px
-    // in, on the menu's mark edge (x = 16), and its chips' end 6 px short of
-    // its own, on the menu's end edge (16 px short of the divider), where a
-    // Mate row's time ends. The chips stand 6 px from its top and bottom too,
-    // so its corners run parallel to theirs (S4).
-    // A heading that folds lights under the pointer, a band fainter than a
-    // Mate row's (`.zerops-project-heading`); open, its second line (D′) sits
-    // under the name and the band grows over it.
+    // The heading (round 5): the name at 16/600, its road right after it, the folded heading's
+    // faces after that, and ··· on hover at its end edge — 28 px of air above it, its Mates 4 px
+    // under it.
     <div className="zerops-heading-stack">
       <div
         className={cn(
-          "group/project relative flex h-8 min-w-0 items-center gap-1 ms-px me-0.5 ps-1.5 pe-1.5",
+          "group/project relative flex h-8 min-w-0 items-center gap-2 ps-2 pe-1",
           onToggle !== undefined && "zerops-project-heading",
         )}
         data-collapsed={collapsed ? "true" : undefined}
         data-zerops-surface="sidebar-project"
       >
-        {/* A name, not a label: no uppercase and no `MicroLabel`. The weight
-          comes from size and room instead — at 13px it was *smaller* than the
-          Mate names beneath it, which is a heading losing to its own contents
-          (the owner, 2026-09-19: "shouldn't be uppercased, yet it should have
-          bigger visual impact"). 15px, and the only thing in the column set
-          that large. */}
         {onToggle === undefined ? (
           <span
-            className={cn(
-              HEADING_CLASS,
-              "flex-1",
-              muted && HEADING_MUTED,
-              placeholder && HEADING_UNNAMED,
-            )}
+            className={cn(HEADING_CLASS, muted && HEADING_MUTED, placeholder && HEADING_UNNAMED)}
           >
             {title}
           </span>
         ) : (
-          // The whole heading opens and folds the project — its hit area is the
-          // heading's (`after:inset-0`) — and only its verbs and its production
-          // stand above that, each its own control.
+          // The whole heading folds the project — its hit area is the heading's
+          // (`after:inset-0`) — and only its road and its verbs stand above that,
+          // each its own control.
           <button
             aria-expanded={!collapsed}
-            className="flex min-w-0 cursor-pointer items-center gap-1 rounded-sm text-left after:absolute after:inset-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+            className="flex min-w-0 cursor-pointer items-center rounded-sm text-left after:absolute after:inset-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
             data-zerops-surface="sidebar-project-toggle"
             onClick={onToggle}
             type="button"
@@ -2185,33 +2210,28 @@ export function ProjectHeader({
             >
               {title}
             </span>
-            {/* After the words, not before them: before, it pushed the title
-              18px right of the rail's own left edge, where every heading had
-              started (the owner, 2026-09-25: "everything jumps around
-              differently"). The title hugs its text, so the chevron follows
-              it. */}
-            <DisclosureGlyph />
-            {faces}
-            {collapsed ? (
-              <HeadingReleaseMark
-                line={secondLine}
-                mark={line === undefined ? undefined : headingMark(line, landing)}
-              />
-            ) : null}
           </button>
         )}
-        {/* The room between the title and the heading's end takes what the
-          title leaves — the faces too, which arrive once the rows have folded
-          away, under a pointer still on the heading: + and ⋯ stand past it,
-          so they never move. */}
+        {chips === undefined || chips === null ? null : (
+          <span
+            className="flex shrink-0 items-center"
+            data-coming={pillMotion.coming}
+            data-landed={pillMotion.landed}
+          >
+            {chips}
+          </span>
+        )}
+        {faces}
+        {/* The room between the road and the heading's end takes what they
+          leave — the faces too, which arrive once the rows have folded away:
+          ··· stands past it, so it never moves. */}
         <span aria-hidden="true" className="min-w-0 flex-1" />
         {/* Hidden until hover keeps a list of five projects calm, but a finger
           never hovers — so a coarse pointer gets them at rest. A slot that is
           always there: nothing moves when they show. */}
         {muted ? null : (
           <span className="relative z-1 flex shrink-0 items-center opacity-0 transition-opacity group-focus-within/project:opacity-100 group-any-hover/project:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100">
-            {/* In the Custom order the grip leads the verbs: inside the band,
-              clear of its rounded ends, and the name keeps the mark edge. */}
+            {/* In the Custom order the grip leads the verbs. */}
             {reorder?.custom === true && group !== undefined ? (
               <ProjectGrip
                 groupId={group.groupId}
@@ -2222,22 +2242,6 @@ export function ProjectHeader({
                 onPointerDown={reorder.onGripPointerDown}
               />
             ) : null}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    aria-label={`Add a Mate to ${title}`}
-                    className={HEADING_ACTION_CLASS}
-                    data-zerops-surface="sidebar-project-add-mate"
-                    onClick={addMate}
-                    type="button"
-                  />
-                }
-              >
-                <PlusIcon aria-hidden="true" className="size-3.75" />
-              </TooltipTrigger>
-              <TooltipPopup side="right">Add a Mate</TooltipPopup>
-            </Tooltip>
             <Menu>
               <MenuTrigger
                 render={
@@ -2249,71 +2253,20 @@ export function ProjectHeader({
                   />
                 }
               >
-                <MoreHorizontalIcon aria-hidden="true" className="size-3.75" />
+                <MoreHorizontalIcon aria-hidden="true" className="size-4" />
               </MenuTrigger>
-              <MenuPopup align="start" className="w-56" side="right">
-                {/* The project's own page. It went to the projects screen once,
-                  so the one item named after the project was the one that did
-                  not open it (the owner, 2026-09-19); now that the heading's
-                  name collapses the project, this is the way in. */}
-                <MenuItem onClick={onOpen ?? onBrowseProjects}>Open project</MenuItem>
-                {/* The + beside this menu, which a narrow menu drops to keep the
-                  project's name: here either way. */}
-                <MenuItem onClick={addMate}>Add a Mate</MenuItem>
-                {reorder === undefined ? null : (
-                  <>
-                    <MenuSeparator />
-                    {/* The keyboard's way to arrange the list, and the pointer's
-                      where the grip is not offered: from *Name* or *Creation
-                      date* a move makes the order *Custom*, starting from the
-                      one on screen. */}
-                    <MenuItem
-                      disabled={!reorder.canMoveUp}
-                      onClick={() => {
-                        reorder.onMove("up", false);
-                      }}
-                    >
-                      Move up
+              <MenuPopup align="end" className="w-56" side="bottom">
+                {menu.map((entry, index) =>
+                  entry.kind === "separator" ? (
+                    <MenuSeparator key={`after:${menuLabelAt(menu, index - 1)}`} />
+                  ) : (
+                    <MenuItem disabled={entry.disabled} key={entry.label} onClick={entry.act}>
+                      {entry.label}
                     </MenuItem>
-                    <MenuItem
-                      disabled={!reorder.canMoveDown}
-                      onClick={() => {
-                        reorder.onMove("down", false);
-                      }}
-                    >
-                      Move down
-                    </MenuItem>
-                    <MenuSeparator />
-                  </>
+                  ),
                 )}
-                {/* Each opens the form the projects page's own ⋯ opens for it. */}
-                {missing.map((row) => (
-                  <MenuItem
-                    key={row.tier}
-                    onClick={
-                      group === undefined || onSetUp === undefined
-                        ? onBrowseProjects
-                        : () => {
-                            onSetUp(group.groupId, row.tier);
-                          }
-                    }
-                  >
-                    {`Add ${row.name.toLocaleLowerCase()}`}
-                  </MenuItem>
-                ))}
-                {/* Where a project is added. */}
-                <MenuItem onClick={onBrowseProjects}>All projects</MenuItem>
               </MenuPopup>
             </Menu>
-          </span>
-        )}
-        {chips === undefined || chips === null ? null : (
-          <span
-            className="flex shrink-0 items-center gap-1"
-            data-coming={pillMotion.coming}
-            data-landed={pillMotion.landed}
-          >
-            {chips}
           </span>
         )}
       </div>
@@ -2325,9 +2278,6 @@ export function ProjectHeader({
             if (open !== undefined) open();
             else (onOpen ?? onBrowseProjects)();
           }}
-          onReview={(from) => {
-            openReview({ kind: "release", groupId: group.groupId }, { from });
-          }}
         />
       )}
     </div>
@@ -2335,6 +2285,12 @@ export function ProjectHeader({
 }
 
 const NO_MISSING_TIERS: ReadonlyArray<MissingEnvironmentRow> = [];
+
+/** The label of a heading menu's entry, where it is an item: a separator's key. */
+function menuLabelAt(menu: ReturnType<typeof projectHeadingMenu>, index: number): string {
+  const entry = menu[index];
+  return entry?.kind === "item" ? entry.label : String(index);
+}
 
 /** A folded heading's face, in words: who, and why it is shown. */
 const HEADING_FACE_WORDS: Record<HeadingFaceDot | "working", string> = {
@@ -3922,23 +3878,6 @@ function PullRequestRow({
 /** A change's row, as the menu keys it and the jump box finds it: `repository#number`. */
 function changeRowKey(pull: Pick<FlowPullRequest, "repository" | "number">): string {
   return `${pull.repository}#${String(pull.number)}`;
-}
-
-/**
- * A project heading's disclosure chevron: pointing right while collapsed,
- * turned a quarter down while open — a tree's own gesture, since a project
- * heading does have a level below it. Shown on hover and focus, and always
- * while collapsed, when it is the only thing saying there is more. One glyph
- * that turns (`.zerops-project-chevron`), so opening reads as one movement.
- */
-function DisclosureGlyph() {
-  return (
-    <ChevronRightIcon
-      aria-hidden="true"
-      className="zerops-project-chevron size-3.5 shrink-0 text-sidebar-muted-foreground"
-      data-zerops-surface="sidebar-project-chevron"
-    />
-  );
 }
 
 /**

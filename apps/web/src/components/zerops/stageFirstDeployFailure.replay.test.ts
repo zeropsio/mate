@@ -90,9 +90,6 @@ function said(deploy: HqJob, status = "ACTIVE", born = false) {
         stages: [
           { projectId: "stage", name: "Acme - stage", coming, serves: false, building: false },
         ],
-        waiting: 0,
-        waitingAtLeast: false,
-        allOnStage: false,
       },
       undefined,
     ),
