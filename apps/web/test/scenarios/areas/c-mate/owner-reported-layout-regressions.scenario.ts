@@ -2041,11 +2041,14 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
               yield* Effect.promise(() => startLastLineTrace(s.page));
               yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 200)));
-              // Its last words, then the run's end with it as the answer, as on Milo.
-              engine.update(note, { text, streaming: false });
+              // As on Milo (run 6, R +1:22.4): its streamed words settle a moment before its record
+              // says them whole, and the run ends 400 ms after its last words.
               engine.settle(note);
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
+              engine.update(note, { text, streaming: false });
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 400)));
               engine.end(run);
-              const frames = yield* Effect.promise(() => stopLastLineTrace(s.page, 1500));
+              const frames = yield* Effect.promise(() => stopLastLineTrace(s.page, 2000));
               const first = frames[0]!;
               expect(
                 first.top,
@@ -2058,8 +2061,10 @@ describe("owner-reported layout regressions", () => {
                 frames.at(-1)!.at - first.at,
                 "ASSERTION: the landing was sampled",
               ).toBeGreaterThan(1000);
-              // Before: gone for 420 ms, then a 1033 px glide back over 431 ms. The swap of the
-              // slot's box for the answer's row takes the list two or three frames to place.
+              // Before #182: gone for 420 ms, then a 1033 px glide back over 431 ms; before this,
+              // the box went blank and back to its first line as its live words settled ahead of
+              // their record (run 6). The swap of the slot's box for the answer's row takes the list
+              // a frame or two to place.
               expect(
                 away.length === 0 ? 0 : away.at(-1)!.at - away[0]!.at,
                 "ASSERTION: the answer's last line is away from where it was read for no more than the swap's frames",
