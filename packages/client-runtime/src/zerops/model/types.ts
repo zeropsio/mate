@@ -257,8 +257,10 @@ export interface ZeropsVaultRequest {
   readonly key: string;
   /** zcp's answer, else the input's flag, else by name — as zcp decides it. */
   readonly sensitive: boolean;
-  /** One sentence for the person: what it is for and where to find it. */
+  /** One line for the person: what it is for. */
   readonly reason?: string;
+  /** What it is, in people's words ("Stripe secret key"). */
+  readonly label?: string;
   /** zcp found the key in that vault already: nothing was asked. */
   readonly alreadySet: boolean;
 }

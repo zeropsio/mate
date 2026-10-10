@@ -225,7 +225,9 @@ function readVaultRequest(
   if (key === undefined) return undefined;
   const already = readObject(document?.alreadySet);
   const answered = already ?? readObject(document?.requested);
-  const reason = readInputString(input, "reason");
+  // `why` from a zcp that names the value for people, `reason` from one before it.
+  const reason = readInputString(input, "why") ?? readInputString(input, "reason");
+  const label = readInputString(input, "label");
   const sensitive =
     typeof answered?.sensitive === "boolean"
       ? answered.sensitive
@@ -236,6 +238,7 @@ function readVaultRequest(
     key,
     sensitive,
     ...(reason === undefined ? {} : { reason }),
+    ...(label === undefined ? {} : { label }),
     alreadySet: already !== undefined,
   };
 }
