@@ -2755,12 +2755,12 @@ export function deriveMessagesTimelineRows(input: {
     // Its turns over, what it started goes on: the card stays open on it.
     const waiting = turn.waiting;
     const working = (last.live && !answeredAlone) || waiting;
-    // A wake an engine Mate opened that only spoke is a run of its own all the same: its card
-    // stands for it, as it does live and after a reload (Milo's stress run 5: wake 92's answer
-    // stood bare under the answer before it).
-    const engineWake = engineCard !== undefined && lead === null && answer !== null;
+    // A run an engine Mate answered with words alone is a run all the same: its card says it
+    // wrote, live and after a reload (Milo's stress run 5: wake 92's answer stood bare under the
+    // answer before it; run 6: a person's "no tools" run lost its "Milo wrote" card).
+    const spokeOnly = engineCard !== undefined && answer !== null;
     const carded =
-      engineWake ||
+      spokeOnly ||
       (turn.live && !answeredAlone) ||
       waiting ||
       hasRecord ||

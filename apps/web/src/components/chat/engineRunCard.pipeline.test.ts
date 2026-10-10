@@ -873,6 +873,47 @@ it.each([
   },
 );
 
+// Milo's stress run 6 (R2, R5): a person's run that only wrote its answer drew no card at all, where
+// run 5 showed "Milo wrote 10s".
+it.each([
+  { held: "live, every item as it streamed in", paged: false },
+  { held: "after a reload", paged: true },
+])("a run that only writes its answer keeps its card, which says it wrote: $held", ({ paged }) => {
+  const rows = render({
+    runs: [
+      engineRun(key.conversationId, 1, {
+        queuedAt: t0,
+        admittedAt: t0,
+        startedAt: t0,
+        endedAt: t0 + 10_000,
+        summary: { items: 2, calls: {}, answerItemId: `${run1}/i/2`, lastItemSeq: 2 },
+      } as never),
+    ],
+    items: [
+      personItem(run1, 1, "Without tools, list ten checks.", { at: t0 }),
+      noteItem(run1, 2, "1. The app builds.", { at: t0 + 9_500, answer: true } as never),
+    ],
+    paged,
+  });
+  const card = rows.find(
+    (row) => (row.kind === "record" || row.kind === "work-line") && row.turnId === run1,
+  );
+  expect(card, "the run's card").toBeDefined();
+  const status = card!.kind === "record" ? card!.status! : (card as never as { live: boolean });
+  expect(
+    nowLineWords(
+      nowLineOf({
+        status: status as never,
+        now: card!.kind === "record" ? card!.now : null,
+        answering: false,
+        compacting: false,
+        speaker: "Milo",
+        effort: null,
+      }),
+    ),
+  ).toMatch(/^Milo wrote /);
+});
+
 // The oracle's deep seeds: a run that only wrote to the person read "thought" live and "worked"
 // after a reload, its summary's notes counted as work. Run 4 (2026-10-10): a 32-line answer with no
 // tools read "Milo thought 11s" — it wrote, and says so, live and after a reload alike.
