@@ -40,6 +40,8 @@ import {
   type LineMate,
   type LineStage,
 } from "./ConversationStrip.logic";
+import { threadAgentActivity } from "~/zerops/agentActivity";
+import type { MateFaceFacts } from "~/zerops/mateFace.logic";
 
 const FEN = EnvironmentId.make("env-fen");
 
@@ -106,21 +108,28 @@ describe("mateChats", () => {
 });
 
 describe("lineMate", () => {
-  const MATE = { name: "Fen", tint: "amber", connected: true } as const;
+  const MATE = { name: "Fen", tint: "amber" } as const;
   const main = shell("main", { pinnedAt: "2026-09-05T09:00:00.000Z" });
   const logs = shell("logs", {
-    title: "Logs",
-    createdAt: "2026-09-05T11:00:00.000Z",
+    pinnedAt: "2026-09-05T10:00:00.000Z",
     latestTurn: running,
+  });
+  /** What the data layer reads of the Mate: the chat its attention names (`mateActivityAtom`). */
+  const reads = (chat: EnvironmentThreadShell | undefined, facts: Partial<MateFaceFacts> = {}) => ({
+    connected: true,
+    activity: chat === undefined ? undefined : threadAgentActivity(chat, undefined),
+    reviewWaits: false,
+    mine: true,
+    restarting: false,
+    ...facts,
   });
   const mate = (input: Partial<Parameters<typeof lineMate>[0]> = {}) =>
     lineMate({
       mate: MATE,
+      face: reads(main),
       chats: [main, logs],
-      currentThreadId: main.id,
       crewChatOpen: false,
       subject: "Build the game server from the spec, tests first.",
-      lastVisitedAtById: {},
       ...input,
     });
 
@@ -140,14 +149,14 @@ describe("lineMate", () => {
     },
     {
       name: "arriving, on its own chat nobody has spoken into: waking, as its row",
-      input: { chats: [shell("main")], pose: { arriving: true } },
+      input: { chats: [shell("main")], face: reads(shell("main"), { pose: { arriving: true } }) },
       open: true,
       face: "waking",
       tooltip: "Build the game server from the spec, tests first.",
     },
     {
       name: "on another chat of its own: on the band, in that chat's face",
-      input: { currentThreadId: logs.id, subject: "Logs" },
+      input: { face: reads(logs), subject: "Logs" },
       open: true,
       face: "working",
       tooltip: "Logs",
@@ -161,7 +170,7 @@ describe("lineMate", () => {
     },
     {
       name: "on a chat being started: on the band at rest",
-      input: { currentThreadId: null, subject: null },
+      input: { face: reads(undefined), subject: null },
       open: true,
       face: "idle",
       tooltip: null,
@@ -170,7 +179,7 @@ describe("lineMate", () => {
       name: "on a crewmate's chat: off the band, in its main chat's face, its own chat on hover",
       input: {
         chats: [shell("main", { latestTurn: running }), logs],
-        currentThreadId: ThreadId.make("thread-crew-rules-1"),
+        face: reads(shell("main", { latestTurn: running })),
         crewChatOpen: true,
         subject: null,
       },
@@ -180,13 +189,13 @@ describe("lineMate", () => {
     },
     {
       name: "asleep while its container is not connected",
-      input: { mate: { ...MATE, connected: false } },
+      input: { face: reads(undefined, { connected: false }) },
       open: true,
       face: "sleep",
       tooltip: "Build the game server from the spec, tests first.",
     },
   ])("$name", ({ input, open, face, tooltip }) => {
-    expect(mate(input)).toEqual({
+    expect(mate(input)).toMatchObject({
       name: "Fen",
       tint: "amber",
       face,
@@ -205,7 +214,7 @@ describe("lineMate", () => {
 
   it("opens its main chat, and nothing while it has none", () => {
     expect(mate({ crewChatOpen: true }).threadId).toBe(main.id);
-    expect(mate({ chats: [], currentThreadId: null }).threadId).toBeNull();
+    expect(mate({ chats: [] }).threadId).toBeNull();
   });
 });
 

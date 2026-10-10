@@ -241,7 +241,8 @@ export function attentionActivity(input: {
       ? read.kind
       : question !== undefined
         ? question.kind
-        : attention.working > 0
+        : // Its run's helpers and background commands are not runs the attention counts.
+          attention.working > 0 || read.waitsOnHelpers === true
           ? UNDER_WAY.has(read.kind)
             ? read.kind
             : "working"

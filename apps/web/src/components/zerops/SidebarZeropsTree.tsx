@@ -66,6 +66,7 @@ import {
   changeAsksForReview,
   changeShowsReview,
   listedStopComing,
+  mateArrivingUntil,
   matePoseOf,
   projectNameInApp,
   stopServes,
@@ -154,7 +155,8 @@ import {
 import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
 import { type HqOutage } from "~/zerops/hqNavigation";
 import type { MateComing } from "@t3tools/client-runtime/data";
-import { mateRowCues } from "~/zerops/mateMoments.logic";
+import { mateFace } from "~/zerops/mateFace.logic";
+import { useMateFaceWatch } from "~/zerops/useMateMoments";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
@@ -1618,9 +1620,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
 
   // The projects drawn, in order: a move by keyboard or by drag names its
   // place by these neighbours, and the order it writes still holds the rest.
-  const drawn = groups.map(({ group }) => group.groupId);
+  const drawn = new Set(groups.map(({ group }) => group.groupId));
   const sectionOf = (id: string) => (frozen.active.includes(id) ? frozen.active : frozen.other);
-  const neighbours = (id: string) => sectionOf(id).filter((entry) => drawn.includes(entry));
+  const neighbours = (id: string) => sectionOf(id).filter((entry) => drawn.has(entry));
   const moveProject = (groupId: string, before: string | null, name: string) => {
     const section = sectionOf(groupId);
     if (before !== null && !section.includes(before)) return;
@@ -2727,6 +2729,8 @@ function MateRowView<T extends RosterCandidate>({
   const hqPeople = useHqProjectPerson(candidate.project.id);
   const nowMs = useNowMs();
   const offlineSince = useMateOfflineSince(candidate.project.id, candidate.key);
+  // Waking while it comes up and arrives (`mateFaceFor`).
+  const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming));
   const read = mateRowReading({
     name: projectNameInApp(candidate.project),
     connected: up,
@@ -2735,8 +2739,7 @@ function MateRowView<T extends RosterCandidate>({
     activity,
     reviewWaits,
     mine: hqPeople?.waitsOnViewer === true,
-    // Waking while it comes up and arrives (`mateFaceFor`).
-    pose: matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming)),
+    pose,
   });
   const view = deleting
     ? mateDeletingView(read)
@@ -2809,7 +2812,24 @@ function MateRowView<T extends RosterCandidate>({
     signer: records.person,
     viewer,
   });
-  const known = activity !== undefined && activity.remembered !== true;
+  // Its face — the one its chat's top bar wears (`mateFace`): the state its reading wears, the
+  // events it greets, its restart.
+  const watch = useMateFaceWatch({
+    environmentId: candidate.environmentId ?? null,
+    projectId: candidate.project.id,
+    arriving: mateArrivingUntil(candidate) !== undefined,
+    connected: candidate.group === "connected",
+  });
+  const face = mateFace({
+    connected: up,
+    activity,
+    reviewWaits,
+    mine: hqPeople?.waitsOnViewer === true,
+    pose,
+    restarting: watch.restarting,
+    watched: watch.watched,
+  });
+  const { known } = face;
   // What the person is about to send it, waiting in its composer: the row's second line says it,
   // read from this browser whether or not its socket is open (`mateRowDraft`).
   const draft = useComposerDraftStore((state) =>
@@ -3041,9 +3061,10 @@ function MateRowView<T extends RosterCandidate>({
                 row's words as this browser remembered them: a Mate found
                 waiting then is not arriving at it. */}
             <MateFace
-              cues={mateRowCues(activity)}
+              cues={face.cues}
               greets
               known={known}
+              restarting={face.restarting}
               shape={shape}
               size="md"
               state={view.face}
