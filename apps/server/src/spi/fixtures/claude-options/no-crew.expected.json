@@ -26,7 +26,8 @@
       "supportedDialogKinds": ["resume_return"],
       "env": {
         "PATH": "/usr/bin:/bin",
-        "HOME": "/home/harness"
+        "HOME": "/home/harness",
+        "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1"
       },
       "additionalDirectories": ["/tmp/userdata/attachments"],
       "extraArgs": {
@@ -70,7 +71,8 @@
       "supportedDialogKinds": ["resume_return"],
       "env": {
         "PATH": "/usr/bin:/bin",
-        "HOME": "/home/harness"
+        "HOME": "/home/harness",
+        "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1"
       },
       "additionalDirectories": ["/srv/app", "/tmp/userdata/attachments"],
       "extraArgs": {
@@ -118,7 +120,8 @@
       "supportedDialogKinds": ["resume_return"],
       "env": {
         "PATH": "/usr/bin:/bin",
-        "HOME": "/home/harness"
+        "HOME": "/home/harness",
+        "CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS": "1"
       },
       "additionalDirectories": ["/srv/app", "/tmp/userdata/attachments"],
       "extraArgs": {
