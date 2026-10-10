@@ -15,7 +15,7 @@
  * (R5). A face carries its state, as the menu's faces do: no status word
  * stands on the line, only in a face's accessible name.
  */
-import { resolvePrimaryConversation, type MatePoseFacts } from "@t3tools/client-runtime/zerops";
+import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import {
   crewJobSentence,
   crewmateRoleWords,
@@ -35,6 +35,7 @@ import {
 
 import type { MateFaceCue } from "~/components/zerops/primitives";
 import { threadAgentActivity, type ZeropsAgentActivity, mateFaceFor } from "~/zerops/agentActivity";
+import { mateFace, type MateFaceFacts } from "~/zerops/mateFace.logic";
 
 function resolveChat(
   thread: EnvironmentThreadShell,
@@ -96,7 +97,7 @@ export interface LineMate {
   readonly tint: MateTintId;
   /** The shape its person picked; its tint's own when absent. */
   readonly shape?: MateShapeId | undefined;
-  /** Its face in the chat of its own on screen, else in its main chat. */
+  /** Its face: the Mate's, as its row in the menu wears it (`mateFace`). */
   readonly face: MateMarkState;
   /** One of its own chats is on screen — or one being started: it stands on the band. */
   readonly open: boolean;
@@ -108,54 +109,47 @@ export interface LineMate {
    * spoken into yet.
    */
   readonly tooltip: string | null;
-  /** The events its face greets (`useMateHeaderCues`). */
+  /** The events its face greets (`mateFace`), the header's own first (`useMateHeaderCues`). */
   readonly cues?: ReadonlyArray<MateFaceCue> | undefined;
   /** Its container is restarting: its face plays the restart while it lasts. */
   readonly restarting?: boolean | undefined;
+  /** Its face is read, not a stand-in: only then does it greet a change. */
+  readonly known?: boolean | undefined;
 }
 
+/**
+ * The Mate leading its line. Its face is the Mate's, read from the facts its row in the menu reads
+ * (`mateFace`) — never the chat on screen's alone: one Mate wears one face, in the menu and here.
+ */
 export function lineMate(input: {
   readonly mate: {
     readonly name: string;
     readonly tint: MateTintId;
     readonly shape?: MateShapeId | undefined;
-    readonly connected: boolean;
   };
-  /** Where the Mate is in its life (`mateFaceFor`): waking while it arrives. */
-  readonly pose?: MatePoseFacts | undefined;
+  /** What its face reads (`mateFace`). */
+  readonly face: MateFaceFacts;
   /** The Mate's chats, main first (`mateChats`). */
   readonly chats: ReadonlyArray<EnvironmentThreadShell>;
-  /** The chat on screen; `null` for one being started. */
-  readonly currentThreadId: ThreadId | null;
   /** The chat on screen is a crewmate's. */
   readonly crewChatOpen: boolean;
   /** What the chat on screen is about, when it is one of the Mate's own. */
   readonly subject: string | null;
-  readonly lastVisitedAtById: Readonly<Record<string, string>>;
-  readonly activityByThread?: ReadonlyMap<ThreadId, ZeropsAgentActivity>;
 }): LineMate {
-  const { mate, chats, currentThreadId } = input;
+  const { mate, chats } = input;
   const open = !input.crewChatOpen;
-  const shown = open ? chats.find((chat) => chat.id === currentThreadId) : chats[0];
-  const status =
-    shown === undefined
-      ? null
-      : (input.activityByThread?.get(shown.id) ??
-        resolveChat(shown, lastVisitOf(shown, input.lastVisitedAtById)));
+  const face = mateFace(input.face);
   return {
     name: mate.name,
     tint: mate.tint,
     shape: mate.shape,
-    face: mateFaceFor(
-      mate.connected,
-      status === null
-        ? undefined
-        : { face: "face" in status ? status.face : mateMarkStateForThreadStatus(status.kind) },
-      input.pose,
-    ),
+    face: face.state,
     open,
     threadId: chats[0]?.id ?? null,
     tooltip: open ? input.subject : mateOwnChatWord(mate.name),
+    cues: face.cues,
+    restarting: face.restarting,
+    known: face.known,
   };
 }
 

@@ -1258,6 +1258,54 @@ describe("an engine conversation's row in the menu", () => {
     ).toEqual(own);
   });
 
+  // Milo, stress run 4B (2026-10-10): a restart rewrote the row, and its last change read as a
+  // message just sent — "Working on a reply" over a clock at 0:00, no run on.
+  it("a row a restart rewrote names no new message, and its helpers' work is the row's", () => {
+    const end = Date.parse("2026-10-10T08:28:15.700Z");
+    const restarted = Date.parse("2026-10-10T08:28:49.800Z");
+    const overlaid = overlayEngineRow(
+      shellThread,
+      engineRow(ENV, "thread-ada", {
+        state: { kind: "working", since: end as never, waitsOnHelpers: true },
+        runStatus: "ready",
+        latestRun: {
+          id: run1 as never,
+          end: { kind: "completed" },
+          endedAt: end as never,
+          turnState: "completed",
+        },
+        subject: "Start one helper",
+        snippet: null,
+        at: restarted as never,
+      }),
+    );
+    expect({
+      askedAt: overlaid.latestUserMessageAt,
+      ended: overlaid.latestTurn?.completedAt,
+      session: overlaid.session?.status,
+      background: overlaid.backgroundLiveness,
+    }).toEqual({
+      askedAt: "2026-10-10T08:28:15.700Z",
+      ended: "2026-10-10T08:28:15.700Z",
+      session: "ready",
+      background: "working",
+    });
+  });
+
+  it("starts a working row's turn at its run's start, never at the row's last change", () => {
+    const start = Date.parse("2026-10-10T08:27:44.600Z");
+    const overlaid = overlayEngineRow(
+      shellThread,
+      engineRow(ENV, "thread-ada", {
+        state: { kind: "working", since: start as never, waitsOnHelpers: false },
+        activeRunId: run1 as never,
+        latestRun: { id: run1 as never, end: null, endedAt: null, turnState: "running" },
+        at: Date.parse("2026-10-10T08:28:49.800Z") as never,
+      }),
+    );
+    expect(overlaid.latestTurn?.startedAt).toBe("2026-10-10T08:27:44.600Z");
+  });
+
   it("leaves a Mate's shell as it is until its rows arrive, then lays them over it", () => {
     const shellState = {
       snapshot: Option.some({

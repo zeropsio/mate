@@ -72,17 +72,15 @@ describe("which events a Mate's faces greet", () => {
         conversation: { moment: "peek", key: "open:t1", arrives: true },
         restarting: true,
         backs: 2,
-        limitedThreadId: "t1",
         moved: { moment: "dizzy", key: "moved:p2" },
         arrived: { moment: "stretch", key: "arrived" },
       }).map((cue) => cue.moment),
-    ).toEqual(["peek", "sneeze", "back", "puff", "dizzy", "stretch"]);
+    ).toEqual(["peek", "sneeze", "back", "dizzy", "stretch"]);
     expect(
       mateHeaderCues({
         conversation: undefined,
         restarting: false,
         backs: 0,
-        limitedThreadId: null,
         moved: undefined,
         arrived: undefined,
       }),

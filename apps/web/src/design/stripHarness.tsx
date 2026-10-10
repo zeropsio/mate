@@ -45,6 +45,7 @@ import {
   type LineCrewmate,
 } from "~/components/chat/ConversationStrip.logic";
 import { Button } from "~/components/ui/button";
+import { threadAgentActivity } from "~/zerops/agentActivity";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { ZeropsMark } from "~/components/ZeropsMark";
 import { CrewmateMenuPopup } from "~/components/zerops/crew/CrewmateMenu";
@@ -494,6 +495,9 @@ function Frame({
           working: resolveThreadStatus(thread).kind === "working",
         }));
   const chats = mateChats(chatShells);
+  // What the data layer reads of the Mate: here, the chat of its own on screen, else its main one.
+  const its = seat === undefined ? chatShells[state.on as number]! : chats[0]!;
+  const activity = threadAgentActivity(its, lastVisitedAtById[`${ENVIRONMENT}:${its.id}`]);
   const crew = lineCrew({
     view,
     remembered:
@@ -551,8 +555,14 @@ function Frame({
               renderCrewmateMenu={menu}
               mate={lineMate({
                 mate: FEN,
+                face: {
+                  connected: FEN.connected,
+                  activity,
+                  reviewWaits: false,
+                  mine: true,
+                  restarting: false,
+                },
                 chats,
-                currentThreadId: current,
                 crewChatOpen: seat !== undefined,
                 subject:
                   seat !== undefined || !spoken
@@ -560,7 +570,6 @@ function Frame({
                     : state.subject === undefined
                       ? chatShells[state.on as number]!.title
                       : state.subject,
-                lastVisitedAtById,
               })}
               onCloseChat={() => {}}
               onOpen={(threadId) => {
