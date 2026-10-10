@@ -1211,6 +1211,84 @@ describe("owner-reported layout regressions", () => {
           );
       });
     });
+    describe("Decision: what the composer's drawer says stands fully clear of the composer card.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // Milo restarted mid-run, 2026-10-10: the reconnect notice ("Milo is reconnecting since
+        // 10:23 AM. Last known …") stood with its bottom edge under the composer card.
+        it.effect("a Mate's reconnect notice stands fully clear of the composer card", () =>
+          Effect.gen(function* () {
+            let unavailable = false;
+            const s = yield* createScenario([
+              installArea,
+              (drivers) => {
+                drivers.onMate.push((mate) => {
+                  const handle = mate.handle;
+                  const socket = mate.socket;
+                  mate.handle = (request) =>
+                    unavailable
+                      ? { status: 503, body: { error: "Mate unavailable" } }
+                      : handle(request);
+                  mate.socket = (connection) => {
+                    if (unavailable) connection.close(1012, "Mate unavailable");
+                    else socket(connection);
+                  };
+                });
+              },
+            ]);
+            yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+            yield* s.given.project("Ada", { mate: true });
+            const chat = mateChat(s);
+            const wire = chat.fixture();
+            for (const round of [1, 2, 3])
+              wire.exchange(
+                `How did deploy ${round} go?`,
+                "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                  12,
+                ),
+              );
+            wire.exchange("And now?", "The existing conversation is still here");
+            yield* reportConversation(s.drivers, "Ada", {
+              latestMessagePreview: {
+                role: "assistant",
+                text: "The existing conversation is still here",
+              },
+            });
+            yield* s.given.signedIn;
+            yield* chat.when.open();
+            yield* chat.then.text("The existing conversation is still here");
+            yield* Effect.promise(() => ownerMenu(s.page));
+            unavailable = true;
+            yield* s.drivers.links.get("Ada")!.close;
+            wire.disconnect();
+            yield* chat.then.text("Last known");
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+            const geometry = yield* Effect.promise(() =>
+              s.page.evaluate(() => {
+                const notice = document
+                  .querySelector('[data-composer-banner-drawer] [data-slot="alert"]')!
+                  .getBoundingClientRect();
+                const card = document
+                  .querySelector('[data-slot="composer-shell"]')!
+                  .getBoundingClientRect();
+                return { noticeTop: notice.top, noticeBottom: notice.bottom, cardTop: card.top };
+              }),
+            );
+            yield* Effect.promise(async () => {
+              if (process.env.MATE_LAYOUT_EVIDENCE)
+                await s.page.screenshot({
+                  path: `${process.env.MATE_LAYOUT_EVIDENCE}/reconnect.png`,
+                  clip: { x: 435, y: 600, width: 1786 - 435, height: 400 },
+                });
+            });
+            expect(
+              geometry.noticeBottom,
+              `ASSERTION: no part of the notice stands under the composer card: ${JSON.stringify(geometry)}`,
+            ).toBeLessThanOrEqual(geometry.cardTop);
+            yield* s.then.noExternalNetwork;
+          }),
+        );
+      });
+    });
     describe("Decision: restore pre-regression behaviour; no test weakened; titles kept.", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         for (const state of composerStates)
