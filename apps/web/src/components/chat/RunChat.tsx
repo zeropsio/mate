@@ -131,6 +131,7 @@ import { restartWords } from "../../zerops/restartWords";
 import { calmClockMs } from "./nowLineCalm.logic";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
 import { useCalmLine } from "./useCalmLine";
+import { wordsStood } from "./wordsLanding";
 import {
   SLOT_MAX_ROWS,
   slotHoldsIn,
@@ -635,6 +636,8 @@ interface CappedBoxProps {
    * answer is read while it is written, never through a four-line slit.
    */
   readonly words?: boolean;
+  /** In the slot, the message its words are: where they stood is told as the box leaves. */
+  readonly stood?: string;
   /** Which of its line's boxes it is, where the line has several. */
   readonly part?: string;
   /**
@@ -752,6 +755,39 @@ function LogBox({
   );
 }
 
+/** A burst of words grows their box by more than this: it glides there. */
+const WORDS_LEAP_PX = 48;
+/** The glide: a gentler start than the fold's, so its first frame is never a leap of its own. */
+const WORDS_GROW_MS = 300;
+const WORDS_GROW_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
+
+/**
+ * The Mate's words growing their box by a burst (run 5, C +0:09.6: 125 -> 497 px in one frame):
+ * the box glides from the height it shows to its new one on a gentle curve, its newest words at
+ * its foot all the way — the scroll it holds stays at its end as it opens. Read as the words
+ * arrive, before the frame paints.
+ */
+function easeWordsGrowth(box: HTMLElement, content: HTMLElement, end: HTMLElement): void {
+  const cap = Number.parseFloat(getComputedStyle(box).maxHeight);
+  const natural = Math.min(
+    content.offsetHeight + end.offsetHeight,
+    Number.isFinite(cap) ? cap : Number.POSITIVE_INFINITY,
+  );
+  const before = wordsHeights.get(box);
+  wordsHeights.set(box, natural);
+  if (before === undefined || typeof box.animate !== "function" || prefersReducedMotion()) return;
+  // Mid-glide it goes on from where it shows.
+  const shown = box.getAnimations().length > 0 ? box.getBoundingClientRect().height : before;
+  if (natural - shown <= WORDS_LEAP_PX) return;
+  box.animate([{ height: `${shown}px` }, { height: `${natural}px` }], {
+    duration: WORDS_GROW_MS,
+    easing: WORDS_GROW_EASING,
+  });
+}
+
+/** Each words box's height as last laid out: where a burst's glide starts. */
+const wordsHeights = new WeakMap<HTMLElement, number>();
+
 /**
  * An item's box in the working row (run 11, the owner: thinking "grows to a
  * max height, then scrolls inside with a fade"; "running commands and
@@ -765,6 +801,7 @@ function SlotBox({
   follows = false,
   detail = false,
   words = false,
+  stood,
   part,
   className,
   children,
@@ -787,6 +824,7 @@ function SlotBox({
     const end = endRef.current;
     if (box === null || content === null || end === null) return;
     const settle = () => {
+      if (words) easeWordsGrowth(box, content, end);
       if (stickRef.current) {
         const bottom = box.scrollHeight - box.clientHeight;
         if (Math.abs(box.scrollTop - bottom) > 1) {
@@ -818,11 +856,33 @@ function SlotBox({
     return () => {
       for (const observer of observers) observer.disconnect();
     };
-  }, []);
+  }, [words]);
+  // Standing at its foot, it tells each frame where its last line is: the answer it becomes lands
+  // there. Read as painted, never in the commit that takes it away — that commit may already have
+  // swapped its words and clamped its scroll to their head.
+  useEffect(() => {
+    const box = boxRef.current;
+    if (stood === undefined || box === null || typeof requestAnimationFrame !== "function") return;
+    let frame = requestAnimationFrame(function tell() {
+      if (box.isConnected && cappedAtEnd(box))
+        wordsStood(stood, box.getBoundingClientRect().bottom);
+      frame = requestAnimationFrame(tell);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [stood]);
   // An item that starts streaming follows from then, until the person scrolls it.
   useLayoutEffect(() => {
     if (follows) stickRef.current = true;
   }, [follows]);
+  // Words drawn in this commit glide their box open in the same task, before anything reads it.
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const content = contentRef.current;
+    const end = endRef.current;
+    if (words && box !== null && content !== null && end !== null) {
+      easeWordsGrowth(box, content, end);
+    }
+  });
   return (
     <div
       ref={boxRef}
@@ -955,12 +1015,15 @@ function collapseInPlace(pressed: HTMLElement, close: () => void) {
 function OpensWhole({
   follows = false,
   words = false,
+  stood,
   what,
   children,
 }: {
   readonly follows?: boolean;
   /** The Mate's words to the person: the taller box (`CappedBox`'s `words`). */
   readonly words?: boolean;
+  /** The message they are (`CappedBox`'s `stood`). */
+  readonly stood?: string;
   /** What it holds, for the press's name: "thought", "message", "question". */
   readonly what: string;
   readonly children: ReactNode;
@@ -970,7 +1033,7 @@ function OpensWhole({
   const [cut, setCut] = useState(false);
   if (inSlot)
     return (
-      <CappedBox follows={follows} words={words}>
+      <CappedBox follows={follows} words={words} {...(stood === undefined ? {} : { stood })}>
         {children}
       </CappedBox>
     );
@@ -1281,7 +1344,7 @@ function NoteBubble({ message: recorded }: { readonly message: ChatMessage }) {
   const writing = use(InSlotContext) && Boolean(message.streaming);
   return (
     <Bubble className={cn(BUBBLE_PAD, writing && "relative")} kind="note" tone="speech">
-      <OpensWhole follows={Boolean(message.streaming)} what="message" words>
+      <OpensWhole follows={Boolean(message.streaming)} stood={message.id} what="message" words>
         <NoteWords message={message} />
       </OpensWhole>
       {writing ? (
@@ -1625,7 +1688,10 @@ function StepBubble({
       timeTone={failure === "broken" ? "failed" : "muted"}
     >
       {step.kind === "command" ? (
-        step.words === null ? (
+        step.words === null && step.code === null ? (
+          // Its input not streamed in yet: what it does, never an empty bubble (run 5).
+          <span className="text-foreground/75">{running ? stepNowWords(step) : title}</span>
+        ) : step.words === null ? (
           <span className="font-mono text-foreground">{step.code}</span>
         ) : (
           <span className="text-foreground/75">{step.words}</span>
@@ -3404,9 +3470,6 @@ function rowByKey(root: HTMLElement | null, key: string): HTMLElement | null {
   return null;
 }
 
-/** How long a "Thinking" between steps waits before its word shows: a quick gap never flashes. */
-const THINKING_WORD_DELAY_MS = 300;
-
 /**
  * A line the slot drew live that ended with no line of its own in the record:
  * said over, never still running — a step in its settled words.
@@ -3465,25 +3528,16 @@ function placeSlot(list: HTMLOListElement | null): void {
 }
 
 /**
- * What the slot says when no item stands in it: "Thinking" — muted, its word
- * a moment late, so a quick gap between two steps never flashes it — its
- * words on their way, a wait on the person, the context condensing.
+ * What the slot says when no item stands in it: "Thinking", muted, from its
+ * first frame — a word fading in late left the Mate's face alone on the line
+ * for half a second (run 5, E +0:23.6); a quick gap between two steps is
+ * bridged by the step standing its minimum — its words on their way, a wait
+ * on the person, the context condensing.
  */
 function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
-  // On the slot's first draw it is simply there: a page opening never waits for it.
-  const late = useArrivedLive();
   switch (filler.kind) {
     case "thinking":
-      return late ? (
-        <span
-          className="run-slot-word run-slot-later"
-          style={{ animationDelay: `${THINKING_WORD_DELAY_MS}ms` }}
-        >
-          Thinking
-        </span>
-      ) : (
-        <span className="run-slot-word">Thinking</span>
-      );
+      return <span className="run-slot-word">Thinking</span>;
     case "writing":
       return (
         <>

@@ -68,6 +68,11 @@ export interface EndFollow {
   readonly observe: () => void;
   /** A changed composer inset realigns measured geometry without a content-growth glide. */
   readonly place: () => void;
+  /**
+   * Where the list stands now is its end, until the end grows: an answer held where its words
+   * were read never glides on to the few pixels of its foot under it.
+   */
+  readonly keep: () => void;
   readonly stop: () => void;
 }
 
@@ -96,8 +101,19 @@ export function createEndFollow({
   let observedViewport: HTMLElement | null = null;
   // The list it glides, and said so on: a kept list swapped in since is not it.
   let gliding: HTMLElement | null = null;
-  const endOf = (element: HTMLElement) =>
-    Math.max(0, element.scrollHeight - element.clientHeight - room());
+  // What `keep` holds back from the end, and the height it holds while the end has not grown.
+  let kept: {
+    readonly element: HTMLElement;
+    readonly short: number;
+    readonly height: number;
+  } | null = null;
+  const endOf = (element: HTMLElement) => {
+    const end = Math.max(0, element.scrollHeight - element.clientHeight - room());
+    if (kept !== null && (kept.element !== element || element.scrollHeight > kept.height + 0.5)) {
+      kept = null;
+    }
+    return kept === null ? end : Math.max(0, end - kept.short);
+  };
   const stopGlide = () => {
     cancelAnimationFrame(frame);
     frame = 0;
@@ -151,6 +167,13 @@ export function createEndFollow({
     observe: () => {
       const element = viewport();
       if (element !== null && follows()) observe(element);
+    },
+    keep: () => {
+      const element = viewport();
+      kept = null;
+      if (element === null) return;
+      const short = endOf(element) - element.scrollTop;
+      if (short > 0.5) kept = { element, short, height: element.scrollHeight };
     },
     follow: () => {
       const element = viewport();

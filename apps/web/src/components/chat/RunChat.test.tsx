@@ -562,6 +562,33 @@ describe("RunChat", () => {
     expect(writing(false).querySelector('[data-chat-kind="note"] [data-note-writing]')).toBeNull();
   });
 
+  // Run 5 (A +0:45.8): a wake's first call stood 1.7 s as an empty bubble beside a half-clipped
+  // face, its input not streamed in yet, while the screen reader already heard "Running a command".
+  it("says a command it runs before its input streams in as running a command, never an empty bubble", () => {
+    const markup = markupDom(
+      draw(
+        record([], {
+          live: true,
+          status: status(),
+          now: {
+            kind: "step",
+            step: stepOf(
+              withoutCommand(
+                command("w1", "", {
+                  toolLifecycleStatus: "inProgress",
+                  updatedAt: undefined as never,
+                }),
+              ),
+            ),
+          },
+        }),
+      ),
+    );
+    expect(markup.querySelector('[data-chat-kind="step:command"]')?.textContent).toContain(
+      "Running a command",
+    );
+  });
+
   // Several at once (pass 35): a row each in the live slot, three at most,
   // then how many more run.
   it("draws several steps at once as a row each, three at most, then how many more", () => {

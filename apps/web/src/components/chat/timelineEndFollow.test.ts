@@ -341,6 +341,22 @@ describe("createEndFollow", () => {
     expect(placeEnd).toHaveBeenCalledTimes(1);
   });
 
+  // Run 5 (C +0:15.29): an answer held where its words were read stands a few pixels short of the
+  // end its foot leaves under it; a glide there moved the line the person was reading.
+  it("keeps a place short of the end as the end until the end grows, then follows on", () => {
+    const { scroll, follow } = atItsEnd();
+    scroll.element.scrollHeight += 58;
+    follow.keep();
+    follow.follow();
+    expect(play(scroll), "ASSERTION: nothing glides to the kept place's foot").toEqual([]);
+    expect(scroll.element.scrollTop).toBe(600);
+    grow(scroll, follow, 300);
+    play(scroll);
+    expect(scroll.element.scrollTop, "ASSERTION: a new row past it is followed").toBe(
+      endOf(scroll),
+    );
+  });
+
   it("stops where the person scrolled up mid-glide, and stays", () => {
     const { scroll, follow } = atItsEnd();
     grow(scroll, follow, 600);

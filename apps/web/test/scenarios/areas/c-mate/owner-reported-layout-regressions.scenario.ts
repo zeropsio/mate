@@ -1788,6 +1788,61 @@ describe("owner-reported layout regressions", () => {
           { polling: "raf", timeout: 8000 },
           wanted,
         );
+      interface LastLineFrame {
+        readonly at: number;
+        /** The top of the very last line line wherever it is drawn, null when it is out of view. */
+        readonly top: number | null;
+        /** The live words' box height, null once it is gone. */
+        readonly box: number | null;
+      }
+      const startLastLineTrace = (page: Page) =>
+        page.evaluate(() => {
+          const frames: LastLineFrame[] = [];
+          const state = { active: true };
+          const read = (): LastLineFrame => {
+            const list = document.querySelector<HTMLElement>(".timeline-legend-list");
+            const view = list?.getBoundingClientRect();
+            let top: number | null = null;
+            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+            while (walker.nextNode()) {
+              if (!walker.currentNode.textContent?.includes("the very last line")) continue;
+              const rect = walker.currentNode.parentElement!.getBoundingClientRect();
+              if (rect.height === 0 || !view) continue;
+              if (rect.bottom <= view.top || rect.top >= view.bottom) continue;
+              top = rect.top;
+            }
+            const box = [
+              ...document.querySelectorAll<HTMLElement>(
+                '[data-run-chat][data-run-live] [data-chat-kind="note"] [data-capped]',
+              ),
+            ].at(-1);
+            return {
+              at: performance.now(),
+              top,
+              box: box ? box.getBoundingClientRect().height : null,
+            };
+          };
+          // After the frame's paint: a rAF alone reads before the list's own frame work.
+          const sample = () =>
+            setTimeout(() => {
+              frames.push(read());
+              if (state.active) requestAnimationFrame(sample);
+            }, 0);
+          (window as unknown as { lastLineTrace: unknown }).lastLineTrace = { frames, state };
+          requestAnimationFrame(sample);
+        });
+      const stopLastLineTrace = (page: Page, ms: number) =>
+        new Promise((resolve) => setTimeout(resolve, ms)).then(() =>
+          page.evaluate(() => {
+            const held = (
+              window as unknown as {
+                lastLineTrace: { frames: LastLineFrame[]; state: { active: boolean } };
+              }
+            ).lastLineTrace;
+            held.state.active = false;
+            return held.frames;
+          }),
+        );
       const miloAtWork = Effect.gen(function* () {
         const s = yield* createScenario([installEngineArea]);
         yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
@@ -1948,6 +2003,119 @@ describe("owner-reported layout regressions", () => {
                 ).toBe(true);
               yield* s.then.noExternalNetwork;
             }),
+        );
+
+        // Run 5 (C +0:15.29): at its last words the live box showed lines 11-25 at its foot; the
+        // answer then landed from its first line and the page glided 1033 px in 431 ms.
+        it.effect(
+          "a long answer landing keeps the lines the person was reading where they were",
+          () =>
+            Effect.gen(function* () {
+              const { s, engine, run } = yield* miloAtWork;
+              const note = engine.item(run, {
+                kind: "note",
+                text: "",
+                streaming: true,
+                answer: false,
+              });
+              const lines = Array.from({ length: 40 }, (_, index) =>
+                index === 39
+                  ? "Line 40, the very last line."
+                  : `Line ${index + 1} of the table of every helper and job.`,
+              );
+              const text = lines.join("\n\n");
+              engine.stream(note, text);
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () =>
+                    [
+                      ...document.querySelectorAll(
+                        '[data-run-chat][data-run-live] [data-chat-kind="note"]',
+                      ),
+                    ]
+                      .at(-1)
+                      ?.textContent?.includes("the very last line"),
+                  { polling: "raf", timeout: 8000 },
+                ),
+              );
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+              yield* Effect.promise(() => startLastLineTrace(s.page));
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 200)));
+              // Its last words, then the run's end with it as the answer, as on Milo.
+              engine.update(note, { text, streaming: false });
+              engine.settle(note);
+              engine.end(run);
+              const frames = yield* Effect.promise(() => stopLastLineTrace(s.page, 1500));
+              const first = frames[0]!;
+              expect(
+                first.top,
+                "ASSERTION: the last words stood in view before the answer landed",
+              ).not.toBeNull();
+              const away = frames.filter(
+                (frame) => frame.top === null || Math.abs(frame.top - first.top!) > 4,
+              );
+              expect(
+                frames.at(-1)!.at - first.at,
+                "ASSERTION: the landing was sampled",
+              ).toBeGreaterThan(1000);
+              // Before: gone for 420 ms, then a 1033 px glide back over 431 ms. The swap of the
+              // slot's box for the answer's row takes the list two or three frames to place.
+              expect(
+                away.length === 0 ? 0 : away.at(-1)!.at - away[0]!.at,
+                "ASSERTION: the answer's last line is away from where it was read for no more than the swap's frames",
+              ).toBeLessThan(80);
+              expect(
+                frames
+                  .filter((frame) => away.length === 0 || frame.at > away.at(-1)!.at)
+                  .every((frame) => frame.top !== null && Math.abs(frame.top - first.top!) <= 4),
+                "ASSERTION: once landed the answer's last line stands where it was read, and nothing glides",
+              ).toBe(true);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
+        // Run 5 (C +0:09.6): a big chunk of words grew the live box 125 -> 497 px in one frame.
+        it.effect("words arriving in a burst grow their box by a glide, never a leap", () =>
+          Effect.gen(function* () {
+            const { s, engine, run } = yield* miloAtWork;
+            const note = engine.item(run, {
+              kind: "note",
+              text: "",
+              streaming: true,
+              answer: false,
+            });
+            engine.stream(note, "Line 1 of the table.\n\nLine 2 of the table.");
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(
+                () =>
+                  [
+                    ...document.querySelectorAll(
+                      '[data-run-chat][data-run-live] [data-chat-kind="note"]',
+                    ),
+                  ]
+                    .at(-1)
+                    ?.textContent?.includes("Line 2 of"),
+                { polling: "raf", timeout: 8000 },
+              ),
+            );
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+            yield* Effect.promise(() => startLastLineTrace(s.page));
+            engine.stream(
+              note,
+              Array.from({ length: 30 }, (_, index) => `\n\nLine ${index + 3} of the table.`).join(
+                "",
+              ),
+            );
+            const frames = yield* Effect.promise(() => stopLastLineTrace(s.page, 1200));
+            const heights = frames.flatMap((frame) => (frame.box === null ? [] : [frame.box]));
+            const steps = heights.slice(1).map((height, index) => height - heights[index]!);
+            expect(heights.at(-1)! - heights[0]!, "ASSERTION: the box grew").toBeGreaterThan(200);
+            expect(
+              Math.max(...steps),
+              "ASSERTION: no frame grows the box by more than a glide's step",
+            ).toBeLessThan(80);
+            yield* s.then.noExternalNetwork;
+          }),
         );
       });
     });

@@ -28,6 +28,11 @@ export interface TimelineRowSharedState {
   onFoldWork?: (
     input: Omit<Parameters<typeof import("./foldWork").foldWork>[0], "outer">,
   ) => () => void;
+  /**
+   * The answer whose words were written in a run's live slot lands: the list holds its words'
+   * foot at `bottom` (a screen y), where their last line was read. Absent in standalone cards.
+   */
+  onAnswerLands?: (words: HTMLElement, bottom: number) => void;
   timestampFormat: TimestampFormat;
   routeThreadKey: string;
   threadRef: ScopedThreadRef | null;
