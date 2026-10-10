@@ -630,6 +630,11 @@ interface CappedBoxProps {
   readonly follows?: boolean;
   /** What the person opened under a call: twelve lines (`--run-detail-cap`). */
   readonly detail?: boolean;
+  /**
+   * The Mate's words to the person: as tall as the run's scroll (`--run-words-cap`), so a long
+   * answer is read while it is written, never through a four-line slit.
+   */
+  readonly words?: boolean;
   /** Which of its line's boxes it is, where the line has several. */
   readonly part?: string;
   /**
@@ -664,7 +669,15 @@ function CappedBox(props: CappedBoxProps) {
  * its end in the working row rolls back to its head as it lands, so the swap
  * reads as the one box moving.
  */
-function LogBox({ detail = false, part, open, onCut, className, children }: CappedBoxProps) {
+function LogBox({
+  detail = false,
+  words = false,
+  part,
+  open,
+  onCut,
+  className,
+  children,
+}: CappedBoxProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const whole = open ?? detail;
@@ -727,7 +740,7 @@ function LogBox({ detail = false, part, open, onCut, className, children }: Capp
     <div
       ref={boxRef}
       className={cn("run-capped min-w-0", className)}
-      data-capped={detail ? "detail" : "item"}
+      data-capped={detail ? "detail" : words ? "words" : "item"}
       data-capped-at="log"
       data-more-below={cut && !whole ? "" : undefined}
       data-whole={whole ? "" : undefined}
@@ -748,7 +761,14 @@ function LogBox({ detail = false, part, open, onCut, className, children }: Capp
  * scrolls it; whether it stands at its end is carried by its line's key to
  * the log, which rolls it back to its head.
  */
-function SlotBox({ follows = false, detail = false, part, className, children }: CappedBoxProps) {
+function SlotBox({
+  follows = false,
+  detail = false,
+  words = false,
+  part,
+  className,
+  children,
+}: CappedBoxProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -807,7 +827,7 @@ function SlotBox({ follows = false, detail = false, part, className, children }:
     <div
       ref={boxRef}
       className={cn("run-capped min-w-0", className)}
-      data-capped={detail ? "detail" : "item"}
+      data-capped={detail ? "detail" : words ? "words" : "item"}
       onScroll={() => {
         const box = boxRef.current;
         if (box === null) return;
@@ -934,10 +954,13 @@ function collapseInPlace(pressed: HTMLElement, close: () => void) {
  */
 function OpensWhole({
   follows = false,
+  words = false,
   what,
   children,
 }: {
   readonly follows?: boolean;
+  /** The Mate's words to the person: the taller box (`CappedBox`'s `words`). */
+  readonly words?: boolean;
   /** What it holds, for the press's name: "thought", "message", "question". */
   readonly what: string;
   readonly children: ReactNode;
@@ -945,11 +968,16 @@ function OpensWhole({
   const inSlot = use(InSlotContext);
   const disclosure = useDisclosure(false, "open");
   const [cut, setCut] = useState(false);
-  if (inSlot) return <CappedBox follows={follows}>{children}</CappedBox>;
+  if (inSlot)
+    return (
+      <CappedBox follows={follows} words={words}>
+        {children}
+      </CappedBox>
+    );
   return (
     <>
       <div className="relative min-w-0">
-        <CappedBox onCut={setCut} open={disclosure.open}>
+        <CappedBox onCut={setCut} open={disclosure.open} words={words}>
           {children}
         </CappedBox>
         {cut && !disclosure.open ? (
@@ -1253,7 +1281,7 @@ function NoteBubble({ message: recorded }: { readonly message: ChatMessage }) {
   const writing = use(InSlotContext) && Boolean(message.streaming);
   return (
     <Bubble className={cn(BUBBLE_PAD, writing && "relative")} kind="note" tone="speech">
-      <OpensWhole follows={Boolean(message.streaming)} what="message">
+      <OpensWhole follows={Boolean(message.streaming)} what="message" words>
         <NoteWords message={message} />
       </OpensWhole>
       {writing ? (

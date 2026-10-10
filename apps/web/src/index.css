@@ -4202,6 +4202,9 @@ code {
   --run-item-cap: 5rem;
   /* What the person opens under a call (what a command printed): twelve. */
   --run-detail-cap: 15rem;
+  /* The Mate's words to the person (run 4: a 32-line answer streamed through
+     a three-line slit): as tall as the run's scroll. */
+  --run-words-cap: min(440px, 52svh);
   @variant dark {
     --run-tray: oklch(0.19 0.007 180);
   }
@@ -4551,6 +4554,9 @@ code {
 }
 .run-capped[data-capped="detail"] {
   max-height: var(--run-detail-cap);
+}
+.run-capped[data-capped="words"] {
+  max-height: var(--run-words-cap);
 }
 .run-capped[data-more-above] {
   mask-image: linear-gradient(to bottom, transparent, currentColor 14px);

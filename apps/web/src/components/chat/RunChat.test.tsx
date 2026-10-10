@@ -676,7 +676,7 @@ describe("RunChat", () => {
         step(command("w1", SCRIPT, { callInput: { description: "Write the status route" } })),
       ]),
     );
-    expect(markup.match(/data-capped="item"/g)).toHaveLength(4);
+    expect(markup.match(/data-capped="(?:item|words)"/g)).toHaveLength(4);
     expect(markup).not.toContain("Show full");
     expect(markup).not.toContain("Show all");
     expect(markup).not.toContain("Show less");
