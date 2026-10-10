@@ -391,6 +391,8 @@
       "components": [
         "apps/web/src/components/zerops/vault/VaultRequestCard.tsx",
         "apps/web/src/components/zerops/vault/VaultRequestCardContainer.tsx",
+        "apps/web/src/components/zerops/vault/ComposerVaultAsk.tsx",
+        "apps/web/src/components/zerops/vault/ComposerVaultAskContainer.tsx",
         "apps/web/src/components/zerops/vault/vaultRequest.logic.ts"
       ],
       "entryPoints": [
