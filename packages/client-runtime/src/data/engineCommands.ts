@@ -243,6 +243,27 @@ export const engineRespondToUserInput =
       summary: "Answered",
     });
 
+/** How a value the Mate asked the person for ended, on its card: never the value. */
+export interface VaultAskAnswerInput {
+  readonly threadId: string;
+  readonly requestId: string;
+  readonly outcome: "saved" | "declined";
+}
+
+/**
+ * A value asked of the person, answered: the outcome alone. The engine words the record itself,
+ * so the summary sent is only the outcome's name.
+ */
+export const engineAnswerVaultAsk =
+  (environmentId: string, input: VaultAskAnswerInput) => (host: MateEngineHost) =>
+    host.operations.answer({
+      environmentId,
+      conversationId: input.threadId,
+      requestId: input.requestId,
+      answer: { kind: "secret", outcome: input.outcome },
+      summary: input.outcome,
+    });
+
 /** A question closed unanswered: the engine takes it only when its agent does not wait on it. */
 export const engineDismissUserInput =
   (environmentId: string, input: Command<"thread.user-input.dismiss">) => (host: MateEngineHost) =>
