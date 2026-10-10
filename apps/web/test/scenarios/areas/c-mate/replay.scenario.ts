@@ -190,7 +190,7 @@ describe("C: reading, replay and attention", () => {
         });
         wire.shell();
         yield* reportConversation(s.drivers, "Ada", { usagePause: wire.usagePause });
-        yield* chat.then.text("Ada hit the Codex limit.");
+        yield* chat.then.text("Ada hit Codex's 5-hour limit.");
         yield* Effect.promise(async () => {
           const marker = await s.page.waitForSelector(
             '[data-zerops-mate-row="Ada"] [role="status"]',

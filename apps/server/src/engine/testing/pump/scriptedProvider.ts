@@ -670,7 +670,7 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
                 limits: { windows: [] },
                 ...(resetsAt === null
                   ? { refused: true }
-                  : { blocked: { window: "five_hour", resetsAt } }),
+                  : { blocked: { window: "5-hour", resetsAt } }),
               },
             });
             return;

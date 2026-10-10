@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { visitElements } from "../../test/reactElementTree";
 import { closeAccountLifetime, openAccountLifetime } from "../../zerops/accountLifetime";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
-import type { ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
+import { nextStepBeforeChanges, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
 import {
   ZeropsNextStepStrip,
   useZeropsNextStepStrip,
@@ -159,6 +159,34 @@ describe("zeropsComposerTop", () => {
   ])("$case", ({ nextStep, pending, shown }) => {
     expect(zeropsComposerTop({ nextStep, dismissed: undefined, pending }).strip).toEqual(shown);
   });
+
+  // Milo's run 4 (D1) and the paused witness: an idle conversation's composer stood 61 px taller
+  // than a working one's, an empty band at its top, for a Mate whose review could never come.
+  it.each([
+    { placed: "a project not read yet", project: undefined, changesRead: false, reserved: true },
+    { placed: "a project HQ has not placed yet", project: {}, changesRead: false, reserved: true },
+    {
+      placed: "a Mate HQ holds in no application",
+      project: { hq: { appId: null, appName: null, kind: "mate", mate: { face: null } } },
+      changesRead: false,
+      reserved: false,
+    },
+    {
+      placed: "a Mate in an application whose changes are unread",
+      project: { hq: { appId: "app-1", appName: "Shop", kind: "mate", mate: null } },
+      changesRead: false,
+      reserved: true,
+    },
+  ] as const)(
+    "the composer's top holds room for a review only while one may be on its way: $placed",
+    ({ project, changesRead, reserved }) => {
+      const nextStep = nextStepBeforeChanges(project as never, changesRead);
+      expect(
+        zeropsComposerTop({ nextStep: nextStep ?? { kind: "none" }, pending: NOTHING_PENDING })
+          .reserved,
+      ).toBe(reserved);
+    },
+  );
 
   it("reserves an unread review without painting source text", () => {
     expect(zeropsComposerTop({ nextStep: UNANSWERED, pending: NOTHING_PENDING })).toEqual({

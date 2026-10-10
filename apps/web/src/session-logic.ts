@@ -187,6 +187,10 @@ export interface WorkLogEntry {
    * (`usage-limit`, a pause). Typed by the server: never read off the words.
    */
   turnEnd?: "crash" | "failed" | "usage-limit";
+  /** `usage-limit`: whose limit refused the turn, as the turn's own end names it. */
+  limitProvider?: string;
+  /** `usage-limit`: the window that refused ("7-day"), as the turn's own end names it. */
+  limitWindow?: string;
   /** A real provider refusal, retaining its supplied deadline independently of the warning copy. */
   usageLimit?: { readonly resetsAt: string | null; readonly provider?: string | null };
   questionAnswer?: UserInputAttachmentAnswerPayload;
@@ -1253,6 +1257,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (turnEnd === "crash" || turnEnd === "failed" || turnEnd === "usage-limit") {
     entry.turnEnd = turnEnd;
   }
+  const limitProvider = turnEnd === "usage-limit" ? asTrimmedString(payload?.provider) : null;
+  if (limitProvider) entry.limitProvider = limitProvider;
+  const limitWindow = turnEnd === "usage-limit" ? asTrimmedString(payload?.window) : null;
+  if (limitWindow) entry.limitWindow = limitWindow;
   if (detail) {
     entry.detail = detail;
   } else if (activity.kind === "runtime.error" || activity.kind === "runtime.warning") {

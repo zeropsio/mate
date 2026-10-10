@@ -153,7 +153,12 @@ export type WebMateVoice =
 /** Web copy and pose follow source evidence. Native clients keep their current presentation. */
 export function mateNoticeVoice(
   input: Omit<MateVoiceInput, "heldMs"> & {
-    readonly limit?: { readonly provider: string; readonly detail: string };
+    readonly limit?: {
+      readonly provider: string;
+      readonly detail: string;
+      /** The window that refused ("7-day"), when the limit's record names one. */
+      readonly window?: string | undefined;
+    };
     readonly recovery?: MateRecovery;
     readonly restartLine?: number | undefined;
     readonly lastKnown?: string | undefined;
@@ -183,7 +188,10 @@ export function mateNoticeVoice(
   });
   if (decision.phase === "limit" && input.limit !== undefined)
     return {
-      ...say(usageLimitWords(input.limit.provider, undefined, name), input.limit.detail),
+      ...say(
+        usageLimitWords(input.limit.provider, undefined, name, input.limit.window),
+        input.limit.detail,
+      ),
       severity: "attention",
     };
   const { recovery, recoveringRestart } = decision;

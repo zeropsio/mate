@@ -120,6 +120,8 @@ export type ProviderSignal =
       /** The turn the limit parked or ended; absent between turns. */
       readonly turn?: TurnHandle;
       readonly resetsAt: number | null;
+      /** The window that refused, as a person reads it ("7-day"), when the driver named one. */
+      readonly window?: string;
       /** The driver parked the turn (Claude): its session is closed, the resume reopens it. */
       readonly parks?: boolean;
     }

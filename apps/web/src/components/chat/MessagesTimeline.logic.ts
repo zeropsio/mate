@@ -709,6 +709,8 @@ type MessagesTimelineRowBody =
       resetsAt: string | null;
       /** The provider named by this refusal, never the current composer choice. */
       provider?: string;
+      /** The window that refused ("7-day"), when this refusal's record names one. */
+      window?: string;
       /** When the Mate picked up again, once it has. */
       resumedAt: string | null;
       /** Attempts the same limit refused after this one. */
@@ -2384,6 +2386,7 @@ export function deriveMessagesTimelineRows(input: {
       kind: "pause",
       id: `pause:${turn.key}`,
       ...(provider === null ? {} : { provider }),
+      ...(turn.limit.window === undefined ? {} : { window: turn.limit.window }),
       createdAt: answerAt,
       resetsAt: turn.limit.resetsAt,
       resumedAt: null,

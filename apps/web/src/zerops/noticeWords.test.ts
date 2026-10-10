@@ -28,6 +28,24 @@ describe("usage notices", () => {
       "Git could not authenticate with the remote.",
     );
   });
+  // Milo's run 4 (L7): Claude said "You've hit your weekly limit"; the notice never said "weekly".
+  it.each([
+    { provider: "Claude", window: "7-day", says: "Rosa hit Claude's weekly limit." },
+    { provider: "Claude", window: "7-day Opus", says: "Rosa hit Claude's weekly Opus limit." },
+    { provider: "Codex", window: "5-hour", says: "Rosa hit Codex's 5-hour limit." },
+    {
+      provider: "coding agent",
+      window: "7-day",
+      says: "Rosa hit the coding agent's weekly limit.",
+    },
+    { provider: "Claude", window: "usage", says: "Rosa hit the Claude limit." },
+    { provider: "Claude", window: undefined, says: "Rosa hit the Claude limit." },
+  ])(
+    "names the window the limit's record names ($provider, $window)",
+    ({ provider, window, says }) => {
+      expect(usageLimitWords(provider, undefined, "Rosa", window)).toBe(says);
+    },
+  );
   it("only gives a reset time when the source supplies one", () => {
     expect(usageLimitWords("Claude", "16:00")).toBe(
       "The Mate hit the Claude limit — can continue at 16:00.",

@@ -428,6 +428,7 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         signals.push({
           kind: "usage-limit",
           ...(signal.turn === undefined ? {} : { turn: signal.turn }),
+          ...(signal.window === undefined ? {} : { window: signal.window }),
           resetsAt: resetTime(signal.resetsAt),
           parks: signal.effect === "parks-turn",
         });
