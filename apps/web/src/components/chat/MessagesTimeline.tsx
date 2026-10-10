@@ -520,7 +520,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const previousContentInsetEndAdjustmentRef = useRef(contentInsetEndAdjustment);
   // The ask's room as the list has it: it opens at once and stays, once answered, until the
   // conversation has come back out of it (`useAskRoom`).
-  const askRoom = useAskRoom(askRoomEnd, listRef);
+  // Room under the end while a landed answer is held where its words were read (`onAnswerLands`):
+  // the card folding above it and its row settling are taken up by the scroll, never by the list
+  // clamping at its end — with nothing under the answer, the end was a few pixels short of where
+  // it was read, and everything that moved it then showed.
+  const [landingRoom, setLandingRoom] = useState(0);
+  const askRoom = useAskRoom(askRoomEnd + landingRoom, listRef);
   const askRoomRef = useRef(askRoom);
   useLayoutEffect(() => {
     askRoomRef.current = askRoom;
@@ -885,6 +890,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       endFollowRef.current?.stop();
       const landing = { words, bottom, since: performance.now(), frame: 0 };
       landingRef.current = landing;
+      setLandingRoom(ANSWER_ROOM_PX);
       holdAnswer();
       const step = (now: number) => {
         if (landingRef.current !== landing) return;
@@ -895,7 +901,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return;
         }
         landingRef.current = null;
-        if (followingEndRef.current) endFollowRef.current?.keep();
+        // The room goes once nothing moves the answer: where it stands is the end from then on.
+        setLandingRoom(0);
+        landing.frame = requestAnimationFrame(() => {
+          if (followingEndRef.current) endFollowRef.current?.keep();
+        });
       };
       landing.frame = requestAnimationFrame(step);
     },
@@ -3389,6 +3399,8 @@ function MateProseWords({
 
 /** How long an answer is held where its words were read: its card folds, its row is measured. */
 const ANSWER_HOLD_MS = 1200;
+/** The room under the end while it is held: more than its card's foot and its own meta line. */
+const ANSWER_ROOM_PX = 120;
 
 function MateProse({
   message: recorded,
