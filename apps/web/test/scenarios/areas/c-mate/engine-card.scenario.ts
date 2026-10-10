@@ -102,6 +102,62 @@ const largestStep = (frames: ReadonlyArray<Frame>, of: (frame: Frame) => number 
   return largest;
 };
 
+/**
+ * The person's run that leaves a command waiting in the background, ended with `answer` (or with
+ * no words), its job ended since.
+ */
+const jobRun = (
+  chat: ReturnType<typeof mateChat>,
+  engine: EngineChatWire["engine"],
+  answer: string | null,
+) =>
+  Effect.gen(function* () {
+    const run = engine.personRun("Start the wait in the background");
+    engine.item(run, {
+      kind: "call",
+      step: "command",
+      tool: { name: "Bash" },
+      words: "Command run",
+      state: "done",
+      endedAt: 1791552412202,
+      input: "Bash: sleep 45 && echo done",
+      shows: {
+        toolName: "Bash",
+        command: "sleep 45 && echo done",
+        input: { description: "Wait 45 seconds in the background, then print done" },
+        rawOutput: {
+          content:
+            "Command running in background with ID: b1job. Output is being written to: /tmp/x",
+        },
+      },
+    });
+    const job = engine.item(run, {
+      kind: "work",
+      work: "session.w2",
+      workKind: "shell",
+      status: "running",
+      title: "Wait 45 seconds in the background, then print done",
+    });
+    if (answer === null) engine.end(run);
+    else engine.note(run, answer, { kind: "completed" });
+    yield* chat.then.text("Waiting for its background command");
+    engine.update(job, { status: "completed" });
+    yield* chat.then.noText("Waiting for its background command");
+    yield* chat.then.noText("running in the background");
+    return run;
+  });
+
+/** The last card folds as its wait ends; the page is still once it has. */
+const foldedCard = (page: import("puppeteer-core").Page) =>
+  Effect.promise(() =>
+    page.waitForFunction(
+      () =>
+        [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1)?.dataset.runFold ===
+        "folded",
+      { polling: "raf", timeout: 8000 },
+    ),
+  );
+
 describe("C: an engine Mate's run card in a live conversation", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     // Milo's stress run: the card waited on a background job, folded when the job ended, and the
@@ -109,49 +165,10 @@ describe("C: an engine Mate's run card in a live conversation", () => {
     it.effect("a run its job's end wakes goes on in the folded card without moving the page", () =>
       Effect.gen(function* () {
         const { s, chat, engine } = yield* longConversation;
-        const run = engine.personRun("Start the wait in the background");
-        engine.item(run, {
-          kind: "call",
-          step: "command",
-          tool: { name: "Bash" },
-          words: "Command run",
-          state: "done",
-          endedAt: 1791552412202,
-          input: "Bash: sleep 45 && echo done",
-          shows: {
-            toolName: "Bash",
-            command: "sleep 45 && echo done",
-            input: { description: "Wait 45 seconds in the background, then print done" },
-            rawOutput: {
-              content:
-                "Command running in background with ID: b1job. Output is being written to: /tmp/x",
-            },
-          },
-        });
-        const job = engine.item(run, {
-          kind: "work",
-          work: "session.w2",
-          workKind: "shell",
-          status: "running",
-          title: "Wait 45 seconds in the background, then print done",
-        });
-        engine.note(run, "The background wait hasn't printed yet.", { kind: "completed" });
-        yield* chat.then.text("Waiting for its background command");
-        engine.update(job, { status: "completed" });
-        yield* chat.then.noText("Waiting for its background command");
-        yield* chat.then.noText("running in the background");
-        // The fold eases shut; the page is still once it has.
-        yield* Effect.promise(() =>
-          s.page.waitForFunction(
-            () =>
-              [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1)?.dataset
-                .runFold === "folded",
-            { polling: "raf", timeout: 8000 },
-          ),
-        );
-        // Milo's third stress run: the reply under the folded card vanished into it at the wake,
-        // and the wake's answer landed 798 px below the view.
-        yield* trace(s.page, "The background wait hasn't printed yet.");
+        // The run ends with no answer: the run the job's end wakes is the same card's to go on in.
+        const run = yield* jobRun(chat, engine, null);
+        yield* foldedCard(s.page);
+        yield* trace(s.page, "Start the wait in the background");
         const wake = engine.startRun(run);
         engine.note(wake, "The background wait finished and printed done.", {
           kind: "completed",
@@ -173,16 +190,80 @@ describe("C: an engine Mate's run card in a live conversation", () => {
           "ASSERTION: the list never jumps",
         ).toBeLessThan(120);
         expect(frames.at(-1)!.end, "ASSERTION: the view ends at the conversation's end").toBe(0);
-        expect(
-          frames.every((frame) => frame.anchor !== null),
-          "ASSERTION: the reply the person was reading stays on screen through the wake",
-        ).toBe(true);
-        expect(
-          largestStep(frames, (frame) => frame.anchor),
-          "ASSERTION: the reply the person was reading never jumps as the wake answers",
-        ).toBeLessThan(120);
         yield* s.then.noExternalNetwork;
       }),
+    );
+
+    // Milo's stress run 4A: the job's end woke Milo, and the card holding the wake's work stood
+    // above the answer Milo gave before it. Milo's third: the reply under the folded card vanished
+    // into it at the wake, and the wake's answer landed 798 px below the view.
+    it.effect(
+      "a turn the agent opens itself after a background job ends stands below the answer it gave before",
+      () =>
+        Effect.gen(function* () {
+          const { s, chat, engine } = yield* longConversation;
+          const before = "Now waiting for the jobs to end.";
+          const after = "The background wait finished and printed done.";
+          const run = yield* jobRun(chat, engine, before);
+          yield* foldedCard(s.page);
+          yield* trace(s.page, before);
+          const wake = engine.startRun(run);
+          engine.item(wake, {
+            kind: "call",
+            step: "command",
+            tool: { name: "Bash" },
+            words: "Command run",
+            state: "done",
+            endedAt: 1791552412202,
+            input: "Bash: cat /tmp/x",
+            shows: { toolName: "Bash", command: "cat /tmp/x" },
+          });
+          engine.note(wake, after, { kind: "completed" });
+          yield* chat.then.text(after);
+          const frames = yield* readTrace(s.page, 1500);
+          expect(frames.length, "ASSERTION: the wake was sampled").toBeGreaterThan(20);
+          const order = yield* Effect.promise(() =>
+            s.page.evaluate(
+              (texts) => {
+                const topOf = (text: string) => {
+                  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                  while (walker.nextNode()) {
+                    const node = walker.currentNode;
+                    if (!node.textContent?.includes(text)) continue;
+                    const box = node.parentElement?.getBoundingClientRect();
+                    if (box && box.height > 0) return box.top;
+                  }
+                  return null;
+                };
+                const card = [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1);
+                return {
+                  before: topOf(texts.before),
+                  card: card?.getBoundingClientRect().top ?? null,
+                  after: topOf(texts.after),
+                };
+              },
+              { before, after },
+            ),
+          );
+          expect(
+            order.before !== null && order.card !== null && order.before < order.card,
+            "ASSERTION: the wake's card stands below the answer given before it",
+          ).toBe(true);
+          expect(
+            order.after !== null && order.card !== null && order.card < order.after,
+            "ASSERTION: the wake's answer stands below its card",
+          ).toBe(true);
+          expect(
+            frames.every((frame) => frame.anchor !== null),
+            "ASSERTION: the reply the person was reading stays on screen through the wake",
+          ).toBe(true);
+          expect(
+            largestStep(frames, (frame) => frame.anchor),
+            "ASSERTION: the reply the person was reading never jumps as the wake answers",
+          ).toBeLessThan(120);
+          expect(frames.at(-1)!.end, "ASSERTION: the view ends at the conversation's end").toBe(0);
+          yield* s.then.noExternalNetwork;
+        }),
     );
 
     // Milo's third stress run: each message sent moved the conversation 130 px in one frame.
