@@ -73,8 +73,6 @@ const journey = (
   height: number,
   options: {
     readonly slowBytes?: boolean;
-    /** The height zcp's browser recorded with the page. */
-    readonly recorded?: number;
     readonly script?: string;
   } = {},
 ) =>
@@ -141,7 +139,6 @@ const journey = (
       },
       title: TITLE,
       bytes: html.length,
-      ...(options.recorded === undefined ? {} : { height: options.recorded }),
       publishedAt: 1791201600000,
     };
     const run = engine.personRun("Plan the launch");
@@ -228,44 +225,79 @@ describe("C: a page the Mate publishes", () => {
 
   describe("Decision: a page that navigates its own frame is not the page the Mate published.", () => {
     it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-      it.effect("a published page that navigates itself is taken down, never shown", () =>
-        Effect.gen(function* () {
-          const { s, publish } = yield* journey(180, {
-            script:
-              'setTimeout(function(){location.href="data:text/html,<h1>Sign in to Zerops</h1>"},400);',
-          });
-          const went: string[] = [];
-          s.page.on("framenavigated", (frame) => went.push(frame.url()));
-          publish();
-          yield* Effect.promise(() =>
-            s.page.waitForFunction(
-              (title) =>
-                document.querySelector(`iframe[title="${title}"]`) === null &&
-                document.body.textContent?.includes("The page tried to open something else"),
-              { timeout: 10_000 },
-              TITLE,
-            ),
-          );
-          expect(
-            went.some((url) => url.startsWith("data:text/html")),
-            "ASSERTION: the page did navigate its frame",
-          ).toBe(true);
-          const readable = yield* Effect.promise(() =>
-            Promise.all(
-              s.page
-                .frames()
-                .map((frame) =>
-                  frame.evaluate(() => document.body?.textContent ?? "").catch(() => ""),
+      const LOGIN = "https://example.com/login";
+      for (const trick of [
+        { how: "by script", script: `location.href=${JSON.stringify(LOGIN)};`, takenDown: true },
+        {
+          how: "to a data: document",
+          script: 'location.href="data:text/html,<h1>Sign in to Zerops</h1>";',
+          takenDown: true,
+        },
+        {
+          how: "by a refresh",
+          script: `document.head.insertAdjacentHTML("beforeend",'<meta http-equiv="refresh" content="0;url=${LOGIN}">');`,
+          takenDown: true,
+        },
+        {
+          how: "by a link it clicks itself",
+          script: `var a=document.createElement("a");a.href=${JSON.stringify(LOGIN)};document.body.append(a);a.click();`,
+          takenDown: true,
+        },
+        {
+          how: "by a named target",
+          script: `window.name="self";window.open(${JSON.stringify(LOGIN)},"self");`,
+          takenDown: true,
+        },
+        {
+          how: "by a form",
+          script: `var f=document.createElement("form");f.action=${JSON.stringify(LOGIN)};document.body.append(f);f.submit();`,
+          takenDown: false,
+        },
+      ])
+        it.effect(
+          `a published page that navigates itself ${trick.how} sends nothing and is never shown`,
+          () =>
+            Effect.gen(function* () {
+              const { s, publish } = yield* journey(180, {
+                script: `setTimeout(function(){${trick.script}},400);`,
+              });
+              publish();
+              yield* Effect.promise(() =>
+                s.page.waitForSelector(`iframe[title="${TITLE}"]`, { timeout: 10_000 }),
+              );
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1500)));
+              const state = yield* Effect.promise(() =>
+                s.page.evaluate(
+                  (title) => ({
+                    framed: document.querySelector(`iframe[title="${title}"]`) !== null,
+                    notice:
+                      document.body.textContent?.includes(
+                        "The page tried to open something else",
+                      ) ?? false,
+                  }),
+                  TITLE,
                 ),
-            ),
-          );
-          expect(
-            readable.some((text) => text.includes("Sign in to Zerops")),
-            "ASSERTION: what it navigated to stands nowhere in the conversation",
-          ).toBe(false);
-          yield* s.then.noExternalNetwork;
-        }),
-      );
+              );
+              expect(state, "ASSERTION: a page whose frame loads again is taken down").toEqual(
+                trick.takenDown ? { framed: false, notice: true } : { framed: true, notice: false },
+              );
+              const readable = yield* Effect.promise(() =>
+                Promise.all(
+                  s.page
+                    .frames()
+                    .map((frame) =>
+                      frame.evaluate(() => document.body?.textContent ?? "").catch(() => ""),
+                    ),
+                ),
+              );
+              expect(
+                readable.some((text) => /Sign in to Zerops|Example Domain/.test(text)),
+                "ASSERTION: what it navigated to stands nowhere in the conversation",
+              ).toBe(false);
+              // Nothing left: the harness records any request it would have made.
+              yield* s.then.noExternalNetwork;
+            }),
+        );
     });
   });
 
@@ -301,25 +333,21 @@ describe("C: a page the Mate publishes", () => {
       );
 
       it.effect(
-        "a page paints at the height zcp recorded with it from its first frame: nothing under it moves as it loads",
+        "a short page holds the shared cap from its first paint until it says its height, then eases down to it, never past it",
         () =>
           Effect.gen(function* () {
-            const { s, publish } = yield* journey(180, { slowBytes: true, recorded: 180 });
+            const { s, publish } = yield* journey(180);
             const samples = yield* sampled(
               s,
               Effect.sync(() => publish()),
             );
-            const heights = new Set(samples.map((sample) => sample.frame));
-            expect(heights.size, `ASSERTION: one frame height, saw ${[...heights]}`).toBe(1);
-            const loadedAt = samples.find((sample) => sample.loaded)!.t;
-            const offsets = new Set(
-              samples
-                .filter((sample) => sample.t >= loadedAt - 500)
-                .flatMap((sample) => (sample.answer === null ? [] : [sample.answer])),
-            );
-            expect(offsets.size, `ASSERTION: the answer keeps its place, saw ${[...offsets]}`).toBe(
-              1,
-            );
+            const heights = samples.map((sample) => sample.frame);
+            expect(heights[0], "ASSERTION: it opens at the cap").toBeGreaterThan(400);
+            expect(
+              heights.every((height, i) => i === 0 || height <= heights[i - 1]!),
+              `ASSERTION: it only ever eases down, saw ${[...new Set(heights)]}`,
+            ).toBe(true);
+            expect(heights.at(-1), "ASSERTION: it stands at the page's own height").toBe(182);
             yield* s.then.noExternalNetwork;
           }),
       );
