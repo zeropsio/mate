@@ -315,12 +315,14 @@ export function mateAwake(
  * The face a Mate wears wherever it is drawn (`mateFaceFor`), from what is known of it: awake while
  * its container is connected or a word of now says what it does — HQ's live word, a standing
  * socket's reading; a word at rest says nothing of now — and needing the person while its own
- * change waits for their review (`mateFaceAwaitingReview`).
+ * change waits for their review (`mateFaceAwaitingReview`). Stopped on an error it stands still:
+ * its failure is no question — its row's red line and its face's double take say it.
  */
 export function mateFaceOf(input: {
   readonly connected: boolean;
   readonly activity:
     | (Pick<ZeropsAgentActivity, "face" | "remembered"> & {
+        readonly kind?: ThreadStatusKind;
         readonly pausedUntil?: string | undefined;
         readonly usageLimited?: boolean;
       })
@@ -332,12 +334,13 @@ export function mateFaceOf(input: {
   readonly pose?: MatePoseFacts | undefined;
 }): MateMarkState {
   const live = input.activity?.remembered === true ? undefined : input.activity;
-  return mateFaceAwaitingReview(
+  const face = mateFaceAwaitingReview(
     mateFaceFor(input.connected || live !== undefined, live, input.pose),
     input.reviewWaits,
     live?.usageLimited === true || live?.pausedUntil !== undefined,
     input.mine,
   );
+  return input.activity?.kind === "failed" && face === "needs" ? "idle" : face;
 }
 
 export function agentActivitySnippet(

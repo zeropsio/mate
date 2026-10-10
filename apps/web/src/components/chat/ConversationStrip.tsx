@@ -25,9 +25,8 @@ import { buildThreadRouteParams } from "~/threadRoutes";
 import { useUiStateStore } from "~/uiStateStore";
 import { useCrew, useMateCrew } from "~/zerops/crew/useCrew";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
-import { mateIdentityPose } from "~/zerops/mateIdentities";
+import { useMateFaceFacts } from "~/zerops/useMateFace";
 import { useMateHeaderCues } from "~/zerops/useMateMoments";
-import { useNowMs } from "~/zerops/useNowMs";
 import { useKnownMate, useZeropsMate } from "~/zerops/useZeropsMates";
 import {
   Menu,
@@ -227,13 +226,15 @@ function MatePill({
   const [subjectRef, cut] = useCut();
   const { subject, hover } = mateWords(mate, { crew, cut });
   const arrived = useArrival(subject !== null);
-  // The header's face is reused from one Mate to the next: it greets no change of pose, only the
-  // events its line names (`useMateHeaderCues`).
+  // Its row's face, playing what the row's plays: each Mate's line is drawn anew (its `key`), so
+  // the face greets only what changes while it is on screen, and only once it is read.
   const face = useMemo(
     () => (
       <MateFace
         className="size-6"
         cues={mate.cues}
+        greets
+        known={mate.known ?? false}
         restarting={mate.restarting}
         shape={mate.shape}
         size="sm"
@@ -241,7 +242,7 @@ function MatePill({
         tint={mate.tint}
       />
     ),
-    [mate.cues, mate.restarting, mate.shape, mate.face, mate.tint],
+    [mate.cues, mate.known, mate.restarting, mate.shape, mate.face, mate.tint],
   );
   const name = (
     <span className="max-w-48 shrink-0 truncate text-base leading-6 font-semibold text-foreground">
@@ -722,7 +723,6 @@ export function ConversationStrip({
 }: ConversationStripProps) {
   // Read, or remembered until read: a reload's header wears the Mate's face from its first frame.
   const mate = useKnownMate(environmentId) ?? null;
-  const nowMs = useNowMs();
   const shells = useThreadShells();
   const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
   const { view } = useCrew(environmentId);
@@ -735,12 +735,9 @@ export function ConversationStrip({
     () => mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
     [environmentId, shells],
   );
-  const moments = useMateHeaderCues({
-    environmentId,
-    currentThreadId,
-    mate: mate ?? { connected: false },
-    chats,
-  });
+  // The header's own events, then its Mate's face — the one its row in the menu wears (`mateFace`).
+  const opened = useMateHeaderCues({ environmentId, currentThreadId });
+  const face = useMateFaceFacts(environmentId, mate);
   const activityByThread = useAtomValue(environmentActivitiesAtom(environmentId));
   if (mate === null) return null;
 
@@ -791,13 +788,10 @@ export function ConversationStrip({
 
   const shownMate = lineMate({
     mate,
-    pose: mateIdentityPose(mate, nowMs),
+    face,
     chats,
-    currentThreadId,
     crewChatOpen: crewChat !== null,
     subject,
-    lastVisitedAtById,
-    activityByThread,
   });
   return (
     // Another Mate's line is a line of its own: it is drawn anew, never travelled into.
@@ -816,12 +810,7 @@ export function ConversationStrip({
           />
         )
       }
-      mate={{
-        ...shownMate,
-        // The avatar keeps its factual conversation state and navigation cues.
-        cues: moments.cues,
-        restarting: moments.restarting,
-      }}
+      mate={{ ...shownMate, cues: [...opened, ...(shownMate.cues ?? [])] }}
       onCloseChat={(chat) => void close(chat)}
       onOpen={open}
       onRename={onRename}
