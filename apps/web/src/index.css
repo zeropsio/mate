@@ -4346,8 +4346,219 @@ code {
   }
 }
 
+@layer components {
+  /* The Waiting on you list, beside the menu: a card 380 wide, each thing a 32 px face, its title,
+     its words in ink and its buttons — 12 px between things. */
+  .menu-wait-list {
+    width: 380px;
+    max-width: calc(100vw - 16px);
+    max-height: var(--available-height);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--card);
+    color: var(--card-foreground);
+    box-shadow: 0 12px 32px color-mix(in oklab, var(--foreground) 14%, transparent);
+    font-size: 14px;
+    line-height: 20px;
+    outline: none;
+    scrollbar-width: none;
+    transform-origin: var(--transform-origin);
+    transition:
+      opacity 150ms var(--ease-out-strong),
+      scale 150ms var(--ease-out-strong);
+  }
+
+  .menu-wait-list[data-starting-style],
+  .menu-wait-list[data-ending-style] {
+    opacity: 0;
+    scale: 0.98;
+  }
+
+  .menu-wait-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 8px;
+  }
+
+  .menu-wait-heading {
+    flex: 1 1 auto;
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 600;
+  }
+
+  .menu-wait-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--muted-foreground);
+  }
+
+  .menu-wait-items {
+    margin-bottom: -12px;
+  }
+
+  .menu-wait-item {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    column-gap: 12px;
+    margin-bottom: 12px;
+    padding: 8px;
+    border-radius: 12px;
+  }
+
+  .menu-wait-face {
+    display: flex;
+    height: 32px;
+  }
+
+  .menu-wait-letter {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--foreground) 7%, transparent);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .menu-wait-body {
+    min-width: 0;
+    padding-top: 6px;
+  }
+
+  .menu-wait-title {
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-wait-text {
+    display: -webkit-box;
+    margin-top: 2px;
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 20px;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .menu-wait-text:empty {
+    display: none;
+  }
+
+  .menu-wait-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .menu-wait-button {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 10px;
+    background: color-mix(in oklab, var(--foreground) 8%, transparent);
+    color: var(--foreground);
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      scale 160ms var(--ease-out-strong);
+  }
+
+  .menu-wait-button:hover {
+    background: color-mix(in oklab, var(--foreground) 13%, transparent);
+  }
+
+  .menu-wait-button[data-main] {
+    background: var(--foreground);
+    color: var(--background);
+  }
+
+  .menu-wait-button[data-main]:hover {
+    background: color-mix(in oklab, var(--foreground) 86%, var(--background));
+  }
+
+  .menu-wait-button:active {
+    scale: 0.97;
+  }
+
+  .menu-wait-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .menu-wait-button:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .menu-wait-reply {
+    display: flex;
+    flex: 1 1 100%;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 6px 0 12px;
+    border-radius: 10px;
+    background: var(--background);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+
+  .menu-wait-reply:focus-within {
+    box-shadow: inset 0 0 0 1px var(--ring);
+  }
+
+  .menu-wait-reply input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--foreground);
+    font: inherit;
+  }
+
+  .menu-wait-reply input::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  .menu-wait-reading,
+  .menu-wait-error {
+    flex: 1 1 100%;
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--muted-foreground);
+  }
+
+  .menu-wait-error {
+    margin-top: 8px;
+    color: var(--zerops-status-failed-text);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .menu-round-button:active {
+  .menu-round-button:active,
+  .menu-wait-button:active {
+    scale: none;
+  }
+
+  .menu-wait-list[data-starting-style],
+  .menu-wait-list[data-ending-style] {
     scale: none;
   }
 }

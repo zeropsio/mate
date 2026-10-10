@@ -79,6 +79,8 @@ import {
   SidebarCreateButton,
 } from "~/components/sidebar/SidebarChrome";
 import { SidebarOverviewRow } from "~/components/zerops/SidebarOverview";
+import { SidebarWaitingRow } from "~/components/zerops/SidebarWaiting";
+import { waitingItemsOf, type WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
 import { Button } from "~/components/ui/button";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { ZeropsMark } from "~/components/ZeropsMark";
@@ -1097,6 +1099,7 @@ function SidebarFrame({
     shown,
     activeProjectId: open,
     enabled: true,
+    releases: HARNESS_RELEASES,
   });
   return (
     <aside
@@ -1134,6 +1137,18 @@ function SidebarFrame({
               onOpen={() => {
                 menuActions.push("overview");
                 setOpen("");
+              }}
+            />
+            <SidebarWaitingRow
+              items={WAIT_ALL ?? waiting.items}
+              verbs={{
+                onOpenMate: (projectId) => {
+                  menuActions.push(`open ${projectId}`);
+                  setOpen(projectId);
+                },
+                onAskToFix: (projectId, problem) => {
+                  menuActions.push(`ask ${projectId}: ${problem.what}`);
+                },
               }}
             />
           </div>
@@ -1220,6 +1235,64 @@ const HARNESS_PROJECTS = [
   { id: "notes", name: "Notes" },
 ];
 const HARNESS_HEADLINE = "Links needs attention · 1 more";
+/** Links' stage is ahead of its production: its release waits on the viewer. */
+const HARNESS_RELEASES = [{ groupId: "links", name: "Links", ahead: 3 }];
+
+/**
+ * `?wait=all`: one of each thing that waits on the viewer, as the board drew them — a Mate of
+ * theirs stopped on an error, a plan, a question, a change, a release. None has a conversation
+ * here, so a question offers its conversation and a plan waits for its read.
+ */
+const WAIT_ALL: ReadonlyArray<WaitingItem> | null =
+  new URLSearchParams(location.search).get("wait") === "all"
+    ? waitingItemsOf({
+        mates: [
+          {
+            projectId: "fen",
+            name: "Fen",
+            tint: "coral",
+            shape: "gem",
+            face: "idle",
+            kind: "failed",
+            text: "The stage build failed: EXPO_TOKEN is missing.",
+          },
+          {
+            projectId: "wren",
+            name: "Wren",
+            tint: "violet",
+            shape: "squircle",
+            face: "needs",
+            kind: "plan",
+            text: "Plan: move search into its own service, in 4 steps. Go ahead?",
+          },
+          {
+            projectId: "rhea",
+            name: "Rhea",
+            tint: "rose",
+            shape: "seal",
+            face: "needs",
+            kind: "question",
+            text: "Stripe or Adyen? Adyen needs a merchant account first.",
+          },
+          {
+            projectId: "noibit",
+            name: "Noibit",
+            tint: "olive",
+            shape: "hexagon",
+            face: "needs",
+            kind: "change",
+            text: "Nightly invoice export to S3",
+            change: {
+              groupId: "links",
+              repository: "app",
+              number: 31,
+              title: "Nightly invoice export to S3",
+            },
+          },
+        ],
+        releases: [{ groupId: "tea", name: "Tea Shop", ahead: 3 }],
+      })
+    : null;
 
 const JUMP_KEY = isMacPlatform(navigator.platform) ? "⌘K" : "Ctrl+K";
 

@@ -262,6 +262,7 @@ import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, SidebarOverviewRow, useMenuProjects } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
+import { SidebarWaitingRow } from "./zerops/SidebarWaiting";
 
 import { useProjectFlows } from "../zerops/projectFlows";
 import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
@@ -2356,6 +2357,17 @@ export default function Sidebar() {
       ),
     [zeropsCandidates, zeropsMenuProjects, zeropsProjectFlows],
   );
+  // Every project whose next release is offered waits on the viewer too.
+  const zeropsWaitingReleases = useMemo(
+    () =>
+      zeropsMenuProjects.flatMap((project) => {
+        const release = zeropsProjectFlows.get(project.id)?.release;
+        return release?.gate.allowed === true
+          ? [{ groupId: project.id, name: project.name, ahead: release.summary?.total }]
+          : [];
+      }),
+    [zeropsMenuProjects, zeropsProjectFlows],
+  );
 
   // What each Mate is doing, off its attention — the one derivation the
   // projects screen reads too (`mateActivity.ts`), so a Mate says the same
@@ -2460,7 +2472,7 @@ export default function Sidebar() {
     },
     [isMobile, openMate, setOpenMobile],
   );
-  // The Mates waiting on the viewer, for the header's faces and ⌥↓: each read as its row reads it.
+  // What waits on the viewer, for the Waiting on you row and ⌥↓: each Mate read as its row reads it.
   const zeropsWaiting = useSidebarWaiting({
     candidates: zeropsCandidates,
     activityOf: zeropsRowActivity,
@@ -2472,7 +2484,19 @@ export default function Sidebar() {
         }
       : undefined,
     enabled: zeropsSignedIn,
+    releases: zeropsWaitingReleases,
   });
+  // What the Waiting on you list asks of the menu: a Mate's conversation, and its fix request.
+  const zeropsWaitingVerbs = useMemo(
+    () => ({
+      onOpenMate: (projectId: string) => {
+        const candidate = zeropsCandidates.find((item) => item.project.id === projectId);
+        if (candidate !== undefined) onZeropsSelect(candidate);
+      },
+      onAskToFix: onZeropsAskToFix,
+    }),
+    [onZeropsAskToFix, onZeropsSelect, zeropsCandidates],
+  );
 
   // Settled threads stay in the live shell stream (settled ≠ archived), so
   // the partition works directly off live shells: no archived-snapshot
@@ -4224,6 +4248,7 @@ export default function Sidebar() {
                 headline={zeropsHeadline}
                 onOpen={navigateToZeropsProjects}
               />
+              <SidebarWaitingRow items={zeropsWaiting.items} verbs={zeropsWaitingVerbs} />
             </div>
           ) : null}
           {zeropsSignedIn && !isSearchingThreads ? (
