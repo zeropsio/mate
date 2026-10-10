@@ -340,6 +340,22 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
     },
   );
 
+  // Run 4 (B +1:02): the reconnect notice quoted the last message raw, a table's pipes included.
+  it("the last-known line quotes the row's last words as plain words on one line", () => {
+    const held = read({
+      attention: attention(said({ mainThreadId: ThreadId.make("t1"), working: 0 }), false),
+      overviews: onEngine(
+        engineRow("t1", {
+          snippet: `## Deploys\n\n| Service | State |\n|---|---|\n| api | **up** |\n${"| web | down |\n".repeat(30)}`,
+        }),
+      ),
+    });
+    const words = lastKnownMateWords(held, "Milo")!;
+    expect(words).toContain("Milo had no active work. Deploys Service State api up web down");
+    expect(words).not.toMatch(/[|#*\n]/u);
+    expect(words).toMatch(/…$/u);
+  });
+
   it("a working Mate's menu clock counts from this run's start and only moves forward", () => {
     // Recorded 2026-10-09: the clock opened at the previous run's end (14:23), then jumped six
     // times as the queue's, the provider's and the relay's dates arrived.
