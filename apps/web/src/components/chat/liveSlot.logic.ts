@@ -424,35 +424,3 @@ export function slotHoldsIn(slot: LiveSlot, record: ReadonlyArray<string>): Read
   for (const key of record) if (!slot.seen.has(key)) holds.add(key);
   return holds;
 }
-
-/**
- * What the slot's clock counts: what its first line shows — a call since it
- * started, stopped where it ended while it holds its place, "Thinking" since
- * the quiet began — so a row lands with its own time in the clock's column
- * (Bodhi: a step beside "1:57", the run's clock, settled as 1m 11s). A thing
- * first seen whole has no time of its own: null. While the Mate waits on the
- * person (`waitingSince`) it counts the wait itself, marked as one: a question
- * answered then stands stopped at the wait it counted, never a jump from 0:00.
- */
-export function slotClock(
-  slot: LiveSlot,
-  first: { readonly key: string; readonly at: string } | null,
-  waitingSince: string | null = null,
-  /** The wait is on its helpers after its turn, not on the person: counted, never marked one. */
-  onHelpers = false,
-): { readonly from: string; readonly stopped: string | null; readonly waiting?: true } | null {
-  if (waitingSince !== null)
-    return onHelpers
-      ? { from: waitingSince, stopped: null }
-      : { from: waitingSince, stopped: null, waiting: true };
-  if (first === null) {
-    return slot.quietSince === null
-      ? null
-      : { from: new Date(slot.quietSince).toISOString(), stopped: null };
-  }
-  const entry = slot.entries.find((candidate) => candidate.key === first.key);
-  if (entry === undefined) return null;
-  if (entry.endedAt === null) return { from: first.at, stopped: null };
-  if (entry.endedAt <= entry.shownAt) return null;
-  return { from: first.at, stopped: new Date(entry.endedAt).toISOString() };
-}
