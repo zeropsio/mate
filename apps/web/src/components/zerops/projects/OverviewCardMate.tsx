@@ -7,8 +7,10 @@
 import {
   mateArrivingUntil,
   matePoseOf,
+  readZeropsMembership,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
+import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
   candidateContainerRuns,
   type ZeropsCandidate,
@@ -28,9 +30,16 @@ import { useAskMate } from "~/zerops/useAskMate";
 import { useMateFaceWatch } from "~/zerops/useMateMoments";
 import { useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
 import { useNowMs } from "~/zerops/useNowMs";
-import { useHqProjectPerson } from "~/zerops/useZeropsMateOwners";
+import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
+import { useHqProjectPerson, zeropsMateOwnerOf } from "~/zerops/useZeropsMateOwners";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { Avatar, MateFace } from "../primitives";
-import { mateRowAskLine, mateRowReading, mateRowSecond } from "../SidebarMateRow.logic";
+import {
+  mateOwnerView,
+  mateRowAskLine,
+  mateRowReading,
+  mateRowSecond,
+} from "../SidebarMateRow.logic";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
 import { CardMate, CardMateTime } from "./ProjectCards";
 import { cardMateReading, cardSecondWords } from "./projectCard.logic";
@@ -40,7 +49,6 @@ export function OverviewCardMate({
   name,
   tint,
   shape,
-  activity,
   groupId,
   flow,
   change,
@@ -54,8 +62,6 @@ export function OverviewCardMate({
   readonly name: string;
   readonly tint: MateTintId;
   readonly shape: MateShapeId | undefined;
-  /** What its row reads (`useMateRowActivity`): HQ's word, or its socket's. */
-  readonly activity: ZeropsAgentActivity | undefined;
   readonly groupId: string | undefined;
   /** Its project's flow, whose changes say whether its own waits on the viewer's review. */
   readonly flow: ZeropsProjectFlow | undefined;
@@ -70,6 +76,8 @@ export function OverviewCardMate({
   readonly onOpen: (() => void) | undefined;
 }) {
   const projectId = candidate.project.id;
+  // What its row in the menu reads (`useProjectMateActivity`): HQ's word, or its socket's.
+  const activity: ZeropsAgentActivity | undefined = useProjectMateActivity(projectId);
   const people = useHqProjectPerson(projectId);
   const mine = people?.waitsOnViewer === true;
   const linkedInHq = useMateLinkedInHq(projectId);
@@ -104,10 +112,30 @@ export function OverviewCardMate({
     mine,
     pose,
   });
+  // Whether anybody has signed its agent in, read off its own records as its row reads them
+  // (`mateOwnerView`): to the person who added it, that it waits on them.
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const tags = readZeropsMembership(candidate.project);
+  const signers = people?.everSignedIn;
+  const seated = mateOwnerView({
+    owner: zeropsMateOwnerOf(people?.owner, viewer),
+    records: mateOwnerRecords(candidate.project, people?.owned),
+    asked: view.ask !== undefined,
+    hqSigners:
+      signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
+    standUpBy: tags.standUp?.by,
+    madeBy: tags.madeBy,
+    viewer,
+    linked: candidate.group === "connected",
+  });
+  // A Mate with no container read has nothing to sign in, and says nothing of it.
+  const signIn =
+    outsideHq || deleting || candidate.service === undefined ? undefined : seated.signInLine;
   // Its line 2 as the menu's row says it (`mateRowSecond`): the same words in both places.
   const askLine = mateRowAskLine({
     view,
-    signIn: undefined,
+    signIn:
+      signIn === undefined ? undefined : { text: signIn, waitsOnViewer: seated.waitsOnViewer },
     draft: undefined,
     sent: undefined,
     deleting,
