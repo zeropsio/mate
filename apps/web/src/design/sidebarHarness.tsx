@@ -1241,7 +1241,7 @@ const HARNESS_PROJECTS = [
   { id: "todo", name: "Todo" },
   { id: "design-tokens", name: "Design system tokens and primitives" },
 ];
-const HARNESS_HEADLINE = "Links needs attention · 1 more";
+const HARNESS_HEADLINE = "Todo needs attention";
 /** Links' stage is ahead of its production: its release waits on the viewer. */
 const HARNESS_RELEASES = [{ groupId: "links", name: "Links", ahead: 3 }];
 

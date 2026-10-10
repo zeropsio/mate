@@ -3371,7 +3371,8 @@ function MateSecondLine({
           className="menu-line2 truncate text-muted-foreground"
           data-zerops-surface="sidebar-mate-paused-line"
         >
-          {`Paused until ${formatShortTimestamp(second.until, timestampFormat)}`}
+          {/* the time slot says when it picks up; this line says why, once */}
+          At its usage limit
         </span>
       );
     case "change":
