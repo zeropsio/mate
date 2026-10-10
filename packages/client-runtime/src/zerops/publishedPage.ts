@@ -16,6 +16,27 @@
  * The page talks to the conversation only through the wrapper, by JSON strings it builds with
  * functions captured before the page's own scripts run: its height and a link the person clicked.
  */
+import { CallResultPage } from "@t3tools/contracts";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+
+import { readRecord } from "./cards/decode.ts";
+
+const decodePage = Schema.decodeUnknownOption(CallResultPage);
+/** Each record's page, read once: a record read again gives the page it gave before. */
+const pagesRead = new WeakMap<object, CallResultPage | undefined>();
+
+/**
+ * The page a call's record says it published (`data.zerops.page`), read the same by every client;
+ * one that does not decode is none.
+ */
+export function readCallPage(payload: unknown): CallResultPage | undefined {
+  const data = readRecord(readRecord(payload)?.data);
+  const raw = data !== undefined ? readRecord(data.zerops)?.page : undefined;
+  if (typeof raw !== "object" || raw === null) return undefined;
+  if (!pagesRead.has(raw)) pagesRead.set(raw, Option.getOrUndefined(decodePage(raw)));
+  return pagesRead.get(raw);
+}
 
 /** Everything the page may load: what it carries inline, nothing from anywhere. */
 export const PAGE_POLICY = [
@@ -110,40 +131,72 @@ export const WRAPPER_POLICY =
   "default-src 'none'; frame-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'";
 
 /**
+ * Who the wrapper talks to. On the web, the conversation's frame: the wrapper's parent window. In
+ * a phone's web view, the app, through its bridge — which the web view also lets any frame of the
+ * document call, the page's own among them. The app then reads only messages carrying the token
+ * this wrapper was written with: the page runs in another origin and cannot read the wrapper's
+ * script, so it cannot say it. The app's own messages reach the wrapper from no window at all.
+ */
+export type PageHost =
+  | { readonly kind: "frame" }
+  | { readonly kind: "native"; readonly token: string };
+
+const FRAME_HOST: PageHost = { kind: "frame" };
+
+/** A token that cannot leave the string it is written into. */
+const SAFE_TOKEN = /^[\w-]{16,}$/;
+
+/** The wrapper's link to its host: how it sends, and how it knows its host's own messages. */
+function hostLink(host: PageHost): string {
+  if (host.kind === "frame")
+    return `var host=window.parent,post=host.postMessage.bind(host),stringify=JSON.stringify,parse=JSON.parse;
+var send=function(m){post(stringify(m),"*");},fromHost=function(e){return e.source===host;};`;
+  if (!SAFE_TOKEN.test(host.token))
+    throw new Error("A page's token is letters, digits and dashes.");
+  return `var bridge=window.ReactNativeWebView,post=bridge.postMessage.bind(bridge),stringify=JSON.stringify,parse=JSON.parse,token="${host.token}";
+var send=function(m){m.token=token;post(stringify(m));},fromHost=function(e){return e.source===null;};`;
+}
+
+/**
  * The wrapper: the page in its frame, and a relay the page cannot reach. It passes the page's
  * height and links up as JSON strings it rebuilds, the conversation's colours down, and says the
- * page left on any load of its frame after the first, taking the frame away.
+ * page left on any load of its frame after the first, taking the frame away. It listens as a
+ * message passes it on the way down, where a web view's bridge delivers to the document too.
  */
-const WRAPPER_SCRIPT = `(function(){
-var host=window.parent,send=host.postMessage.bind(host),stringify=JSON.stringify,parse=JSON.parse;
+function wrapperScript(host: PageHost): string {
+  return `(function(){
+${hostLink(host)}
 var frame=document.getElementById("page"),loads=0,gone=false;
-var leave=function(){if(gone)return;gone=true;frame.remove();send(stringify({mate:"page",kind:"left"}),"*");};
+var leave=function(){if(gone)return;gone=true;frame.remove();send({mate:"page",kind:"left"});};
 frame.addEventListener("load",function(){loads++;if(loads>1)leave();});
 addEventListener("message",function(e){if(typeof e.data!=="string")return;var d;
 try{d=parse(e.data)}catch(_){return}if(!d||typeof d!=="object")return;
-if(e.source===host){if(d.mate==="page-theme"&&typeof d.rule==="string"&&!gone&&frame.contentWindow){
+if(fromHost(e)){if(d.mate==="page-theme"&&typeof d.rule==="string"&&!gone&&frame.contentWindow){
 if(d.scheme==="light"||d.scheme==="dark")document.documentElement.style.colorScheme=d.scheme;
 frame.contentWindow.postMessage(stringify({mate:"page-theme",rule:d.rule}),"*");}return;}
 if(gone||e.source!==frame.contentWindow||d.mate!=="page")return;
-if(d.kind==="height"&&typeof d.height==="number")send(stringify({mate:"page",kind:"height",height:d.height}),"*");
-else if(d.kind==="open"&&typeof d.url==="string")send(stringify({mate:"page",kind:"open",url:d.url}),"*");});
+if(d.kind==="height"&&typeof d.height==="number")send({mate:"page",kind:"height",height:d.height});
+else if(d.kind==="open"&&typeof d.url==="string")send({mate:"page",kind:"open",url:d.url});},true);
 })();`;
+}
 
 const asAttribute = (value: string) => value.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
 
 /**
- * The document the conversation's frame shows: the wrapper, the page whole in its own frame. What
- * the page writes after its head opens — its doctype, its own `<html>` and `<head>` — the parser
- * folds into that head, so nothing of the page runs or loads before its policy holds.
+ * The document the conversation's frame shows — or a phone's web view: the wrapper, the page whole
+ * in its own frame. What the page writes after its head opens — its doctype, its own `<html>` and
+ * `<head>` — the parser folds into that head, so nothing of the page runs or loads before its
+ * policy holds.
  */
-export function pageDocument(html: string, theme: PageTheme): string {
+export function pageDocument(html: string, theme: PageTheme, host: PageHost = FRAME_HOST): string {
+  const script = wrapperScript(host);
   return (
     "<!doctype html><html><head>" +
     `<meta http-equiv="Content-Security-Policy" content="${WRAPPER_POLICY}">` +
     '<meta charset="utf-8">' +
     `<style>:root{color-scheme:${theme.scheme};}html,body{margin:0;height:100%;overflow:hidden;background:transparent;}iframe{display:block;width:100%;height:100%;border:0;}</style>` +
     `</head><body><iframe id="page" sandbox="allow-scripts" title="page" srcdoc="${asAttribute(pageInner(html, theme))}"></iframe>` +
-    `<script>${WRAPPER_SCRIPT}</script></body></html>`
+    `<script>${script}</script></body></html>`
   );
 }
 
@@ -163,11 +216,16 @@ export type PageMessage =
 
 /**
  * A message from the wrapper, or null for anything else: another window's, one not from an opaque
- * origin, one not a JSON string the wrapper built, a malformed one.
+ * origin, one not a JSON string the wrapper built, a malformed one. In a phone's web view, whose
+ * messages carry no origin, it is the wrapper's only when it carries the wrapper's `token`.
  */
-export function readPageMessage(data: unknown, origin = "null"): PageMessage | null {
+export function readPageMessage(
+  data: unknown,
+  origin = "null",
+  token: string | null = null,
+): PageMessage | null {
   if (origin !== "null" || typeof data !== "string") return null;
-  let message: { mate?: unknown; kind?: unknown; height?: unknown; url?: unknown };
+  let message: { mate?: unknown; kind?: unknown; height?: unknown; url?: unknown; token?: unknown };
   try {
     const parsed: unknown = JSON.parse(data);
     if (typeof parsed !== "object" || parsed === null) return null;
@@ -175,7 +233,7 @@ export function readPageMessage(data: unknown, origin = "null"): PageMessage | n
   } catch {
     return null;
   }
-  if (message.mate !== "page") return null;
+  if (message.mate !== "page" || (token !== null && message.token !== token)) return null;
   if (message.kind === "left") return { kind: "left" };
   if (message.kind === "height")
     return typeof message.height === "number" && Number.isFinite(message.height)
@@ -221,4 +279,12 @@ const PAGE_MIN_HEIGHT = 48;
  */
 export function pageFrameHeight(content: number | null): number | null {
   return content === null ? null : Math.max(PAGE_MIN_HEIGHT, content);
+}
+
+/**
+ * The cap every item of a run shares, for a client that sizes in numbers: the web's
+ * `--run-words-cap`, `min(440px, 52svh)`, for a view this tall.
+ */
+export function pageCapHeight(viewHeight: number): number {
+  return Math.round(Math.min(440, viewHeight * 0.52));
 }

@@ -11,6 +11,7 @@ import {
 } from "@t3tools/client-runtime/pending-requests";
 import { isToolLifecycleItemType } from "@t3tools/contracts";
 import type {
+  CallResultPage,
   OrchestrationLatestTurn,
   OrchestrationThread,
   OrchestrationThreadActivity,
@@ -33,6 +34,7 @@ import {
   type ToolGroupSummaryKind,
 } from "@t3tools/client-runtime/work-log/presentation";
 import { commandProgramName } from "@t3tools/client-runtime/work-log/command-label";
+import { readCallPage } from "@t3tools/client-runtime/zerops/publishedPage";
 
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
@@ -92,6 +94,8 @@ export interface WorkLogEntry {
   toolLifecycleStatus?: WorkLogToolLifecycleStatus;
   sourceActivityKind?: OrchestrationThreadActivity["kind"];
   toolCallId?: string;
+  /** A page the call published for the person (`zerops_publish_page`), by reference. */
+  publishedPage?: CallResultPage;
   /**
    * One row per workflow run or per-turn batch of direct spawns, like web's
    * "Kicked off N subagents" CTA. Mobile has no Agents sheet, so the row
@@ -181,6 +185,14 @@ export type ThreadFeedEntry =
       readonly id: string;
       readonly createdAt: string;
       readonly turnId: TurnId | null;
+    }
+  | {
+      /** A page the Mate published for the person: in its run, right above its answer. */
+      readonly type: "page";
+      readonly id: string;
+      readonly createdAt: string;
+      readonly turnId: TurnId;
+      readonly page: CallResultPage;
     }
   | {
       /**
@@ -526,6 +538,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (viewedImagePath) {
     entry.viewedImagePath = viewedImagePath;
   }
+  const publishedPage = readCallPage(payload);
+  if (publishedPage) {
+    entry.publishedPage = publishedPage;
+  }
   if (commandPreview.command) {
     entry.command = commandPreview.command;
   }
@@ -819,6 +835,7 @@ function mergeDerivedWorkLogEntries(
   const toolLifecycleStatus = next.toolLifecycleStatus ?? previous.toolLifecycleStatus;
   const toolCallId = next.toolCallId ?? previous.toolCallId;
   const toolData = next.toolData ?? previous.toolData;
+  const publishedPage = next.publishedPage ?? previous.publishedPage;
   return {
     ...previous,
     ...next,
@@ -836,6 +853,7 @@ function mergeDerivedWorkLogEntries(
     ...(toolLifecycleStatus ? { toolLifecycleStatus } : {}),
     ...(toolCallId ? { toolCallId } : {}),
     ...(toolData !== undefined ? { toolData } : {}),
+    ...(publishedPage ? { publishedPage } : {}),
   };
 }
 
@@ -1501,7 +1519,8 @@ export function deriveThreadFeedPresentation(
       entry.type !== "turn-fold" &&
       entry.type !== "work-toggle" &&
       entry.type !== "thinking" &&
-      entry.type !== "agent-spawn",
+      entry.type !== "agent-spawn" &&
+      entry.type !== "page",
   );
   const activeTailGroup = sourceFeed.findLast(
     (entry) => entry.type !== "message" || !isEmptyMessage(entry),
@@ -1561,6 +1580,7 @@ export function deriveThreadFeedPresentation(
       );
     }
   }
+  placePublishedPages(result, sourceFeed);
   // A working turn always shows one live activity. When no tool row is
   // shimmering (no tools yet, or the latest failed), that row is "Thinking".
   // The trailing group's live row and this row share LIVE_ACTIVITY_ROW_ID, so
@@ -1581,6 +1601,61 @@ export function deriveThreadFeedPresentation(
     result.push(thinkingRow(activeWorkStartedAt, unsettledTurnId));
   }
   return result;
+}
+
+type PublishedPageRow = Extract<ThreadFeedEntry, { readonly type: "page" }>;
+const pageRowsCache = new WeakMap<CallResultPage, PublishedPageRow>();
+
+function rowTurnId(row: ThreadFeedEntry): TurnId | null {
+  return row.type === "message" ? (row.message.turnId ?? null) : row.turnId;
+}
+
+/**
+ * The pages each run's calls published, each once, in the order they were published, stand in
+ * their run right above its answer — the run's last word, when it came after them — or else under
+ * the run's work. A folded run keeps them in sight: they are what the Mate made for the person.
+ */
+function placePublishedPages(
+  result: ThreadFeedEntry[],
+  sourceFeed: ReadonlyArray<ThreadFeedEntry>,
+): void {
+  const pagesByTurn = new Map<TurnId, PublishedPageRow[]>();
+  const shown = new Set<string>();
+  for (const entry of sourceFeed) {
+    if (entry.type !== "activity-group" || entry.turnId === null) continue;
+    for (const activity of entry.activities) {
+      const page = activity.workEntry.publishedPage;
+      if (page === undefined || shown.has(page.asset.id)) continue;
+      shown.add(page.asset.id);
+      let row = pageRowsCache.get(page);
+      if (row?.turnId !== entry.turnId) {
+        row = {
+          type: "page",
+          id: `page:${page.asset.id}`,
+          createdAt: new Date(page.publishedAt).toISOString(),
+          turnId: entry.turnId,
+          page,
+        };
+        pageRowsCache.set(page, row);
+      }
+      const pages = pagesByTurn.get(entry.turnId) ?? [];
+      pages.push(row);
+      pagesByTurn.set(entry.turnId, pages);
+    }
+  }
+  for (const [turnId, pages] of pagesByTurn) {
+    const publishedAt = pages[0]!.createdAt;
+    const answer = result.findLastIndex(
+      (row) =>
+        row.type === "message" &&
+        row.message.role === "assistant" &&
+        row.message.turnId === turnId &&
+        row.message.createdAt >= publishedAt,
+    );
+    const at =
+      answer !== -1 ? answer : result.findLastIndex((row) => rowTurnId(row) === turnId) + 1;
+    if (at > 0) result.splice(at, 0, ...pages);
+  }
 }
 
 /**

@@ -15,7 +15,7 @@ import {
   readPageMessage,
   themeMessage,
   type PageTheme,
-} from "./publishedPage.logic";
+} from "@t3tools/client-runtime/zerops/publishedPage";
 
 /** The conversation's colours as the app's own tokens hold them now. */
 function readTheme(scheme: PageTheme["scheme"]): PageTheme {
@@ -108,7 +108,7 @@ export interface PublishedPageFrameProps {
 
 /**
  * The page in its frames: two deep, sandboxed with scripts alone, its navigation refused before
- * it leaves (`publishedPage.logic.ts`). The frame stands at the shared cap from its first paint
+ * it leaves (`@t3tools/client-runtime/zerops/publishedPage`). The frame stands at the shared cap from its first paint
  * until the page says its height, then eases to it, at most the cap: a taller page scrolls inside
  * it. When the page's own frame loads again — a navigation the wrapper refused — the wrapper says
  * the page left, and it is taken down and never heard from again; the person may show it again.

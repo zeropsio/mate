@@ -239,6 +239,10 @@
       "types": "./src/zerops/activityResult.ts",
       "default": "./src/zerops/activityResult.ts"
     },
+    "./zerops/publishedPage": {
+      "types": "./src/zerops/publishedPage.ts",
+      "default": "./src/zerops/publishedPage.ts"
+    },
     "./zerops/agentLogin": {
       "types": "./src/zerops/agentLogin.ts",
       "default": "./src/zerops/agentLogin.ts"
