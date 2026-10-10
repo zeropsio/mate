@@ -94,6 +94,7 @@ import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useZeropsFirstBuilds } from "~/zerops/useZeropsFirstBuilds";
 import { drawnMateProjects, useVisibleProjectAccess } from "~/zerops/useVisibleProjectAccess";
 import { useNowMs } from "~/zerops/useNowMs";
+import { useClientSettings } from "~/hooks/useSettings";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useMateUpdateStates } from "~/zerops/useMateUpdate";
 import { useAccountOperations } from "~/zerops/accountOperations";
@@ -132,9 +133,9 @@ import {
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
 import { Avatar, MateFace, StatusDot } from "./primitives";
-import { mateRowReading } from "./SidebarMateRow.logic";
+import { mateRowAskLine, mateRowReading, mateRowSecond } from "./SidebarMateRow.logic";
 import { CardMate, CardMateTime } from "./projects/ProjectCards";
-import { cardMateReading } from "./projects/projectCard.logic";
+import { cardMateReading, cardSecondWords } from "./projects/projectCard.logic";
 import { CardMateSlot, CardMateWrite, useOverviewSlots } from "./projects/overviewSlots";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useAskMateToFix } from "~/zerops/fixRequest";
@@ -145,7 +146,7 @@ import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { MateUpdateStatusText } from "./MateUpdateLine";
 import { cn } from "~/lib/utils";
-import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { formatRelativeTimeLabel, formatShortTimestamp } from "~/timestampFormat";
 import { useMateConversationsRead, useMateRowActivity } from "~/zerops/useMenuMateReadings";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
@@ -845,6 +846,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const activityOf = useMateRowActivity(useMatesActivity());
   // Whether a Mate's conversations are read: one with none says nothing was asked yet.
   const conversationsRead = useMateConversationsRead();
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const updates = useMateUpdateStates();
   // What this person may do with each Mate, from the one role function the
   // door runs too (D5). A `listed` row is shown and never opened.
@@ -2019,12 +2021,57 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         mine,
         pose: matePoseOf(candidate, nowMs),
       });
+      // Its line 2 as the menu's row says it (`mateRowSecond`): the same words in both places.
+      const people = projectPeople[candidate.project.id];
+      const askLine = mateRowAskLine({
+        view,
+        signIn: undefined,
+        draft: undefined,
+        sent: undefined,
+        deleting: false,
+        finishing: false,
+        read: conversationsRead(candidate),
+      });
+      const asks =
+        activity !== undefined &&
+        (activity.question !== undefined ||
+          activity.kind === "approval" ||
+          activity.kind === "input" ||
+          activity.kind === "planReady");
+      const second = mateRowSecond({
+        view,
+        askLine,
+        deleting: false,
+        finishing: false,
+        outsideHq: input.outsideHq === true,
+        mine: people?.waitsOnViewer,
+        // A colleague's Mate waiting on its person says whom it waits on, never their question.
+        waitsOn:
+          people?.waitsOnViewer === false &&
+          activity !== undefined &&
+          (activity.kind === "approval" ||
+            activity.kind === "input" ||
+            activity.kind === "planReady")
+            ? (people.owner?.name.split(" ")[0] ?? "its person")
+            : undefined,
+        asks,
+        change:
+          review === undefined
+            ? undefined
+            : { title: review.title, mine: people?.waitsOnViewer !== false },
+      });
       const reading = cardMateReading({
         view,
         status: activity?.kind,
         mine,
-        review,
+        review: mine ? review : undefined,
         read: conversationsRead(candidate),
+        line: cardSecondWords({
+          second,
+          reply: view.reply,
+          askLine,
+          pausedUntil: (at) => formatShortTimestamp(at, timestampFormat),
+        }),
       });
       const owner = mine ? undefined : projectPeople[candidate.project.id]?.owner;
       // A Mate whose container has something to say first says it: coming up, a failed

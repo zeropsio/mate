@@ -20,7 +20,14 @@ import type {
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import type { ProductionChip } from "../SidebarProductionChip.logic";
-import type { MateRowView } from "../SidebarMateRow.logic";
+import { MATE_DELETING_WORD } from "../ZeropsDeleteMateDialog.logic";
+import type {
+  MateRowAskLine,
+  MateRowReply,
+  MateRowSecond,
+  MateRowView,
+} from "../SidebarMateRow.logic";
+import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
 
 /** At most this many Mates stand on a card; past it the quiet ones fold. */
 export const CARD_MATES_SHOWN = 4;
@@ -313,6 +320,8 @@ export function cardMateReading(input: {
   readonly review: FlowPullRequest | undefined;
   /** Its conversations are read: none asked is then a fact the line says, as the menu's does. */
   readonly read?: boolean | undefined;
+  /** The menu row's line 2 for it (`cardSecondWords`): said wherever nothing lifts it. */
+  readonly line?: { readonly text: string | undefined; readonly tone: CardMateReading["tone"] };
 }): CardMateReading {
   const { view, mine } = input;
   const reply = view.reply;
@@ -340,11 +349,60 @@ export function cardMateReading(input: {
         : view.state === "failed"
           ? { kind: "fix" }
           : undefined;
+  if (lift === undefined && input.line !== undefined)
+    return { text: input.line.text, tone: input.line.tone, lift };
   return {
     text,
     tone: lift !== undefined && tone === "muted" ? "ink" : tone,
     lift,
   };
+}
+
+/**
+ * The menu row's line 2 (`mateRowSecond`) in words, as a card draws it: the same words in the
+ * same ink, so a Mate says the same in both places.
+ */
+export function cardSecondWords(input: {
+  readonly second: MateRowSecond;
+  readonly reply: MateRowReply;
+  readonly askLine: MateRowAskLine;
+  /** When a paused Mate picks up again, as the person reads a time. */
+  readonly pausedUntil: (at: string) => string;
+}): { readonly text: string | undefined; readonly tone: CardMateReading["tone"] } {
+  const { second, reply, askLine } = input;
+  const muted = (text: string | undefined) => ({ text, tone: "muted" as const });
+  switch (second.kind) {
+    case "coming":
+    case "finishing":
+    case "none":
+      return muted(undefined);
+    case "deleting":
+      return muted(MATE_DELETING_WORD);
+    case "outside":
+      return muted(NOT_IN_HQ_LINE);
+    case "sign-in":
+      return askLine?.kind === "sign-in"
+        ? { text: askLine.text, tone: askLine.waitsOnViewer ? "ink" : "muted" }
+        : muted(undefined);
+    case "reply": {
+      const text =
+        reply?.kind === "words" ? reply.text : reply?.kind === "live" ? reply.words : undefined;
+      const tone = second.tone === "failed" ? "failed" : second.tone === "ink" ? "ink" : "muted";
+      return { text, tone };
+    }
+    case "waits-on":
+      return muted(second.text);
+    case "paused":
+      return muted(`Paused until ${input.pausedUntil(second.until)}`);
+    case "change":
+      return second.mine
+        ? { text: second.title, tone: "ink" }
+        : muted(`${second.title} · in review`);
+    case "ask":
+      if (askLine === undefined || askLine.kind === "sign-in") return muted(undefined);
+      if (askLine.kind === "nothing-asked") return muted(NOTHING_ASKED_YET);
+      return muted(askLine.kind === "draft" ? `Draft: ${askLine.text}` : askLine.text);
+  }
 }
 
 /**

@@ -7,6 +7,7 @@ import { pull } from "./flowTestFixtures";
 import {
   broughtBy,
   cardMateReading,
+  cardSecondWords,
   cardPeople,
   cardReady,
   foldMates,
@@ -284,6 +285,63 @@ describe("a Mate on a card", () => {
     expect(
       cardMateReading({ view: never, status: "idle", mine: true, review: undefined, read }).text,
     ).toBe(text);
+  });
+
+  it.each([
+    {
+      case: "a colleague's Mate waiting on its person: whom it waits on",
+      second: { kind: "waits-on", text: "Waits on Karel" },
+      expected: { text: "Waits on Karel", tone: "muted" },
+    },
+    {
+      case: "the viewer's change waiting: its title, in ink",
+      second: { kind: "change", title: "Spring banner", mine: true },
+      expected: { text: "Spring banner", tone: "ink" },
+    },
+    {
+      case: "a colleague's open change: its title, in review",
+      second: { kind: "change", title: "Spring banner", mine: false },
+      expected: { text: "Spring banner · in review", tone: "muted" },
+    },
+    {
+      case: "at its limit: when it picks up",
+      second: { kind: "paused", until: "2026-10-10T13:00:00Z" },
+      expected: { text: "Paused until 1:00 PM", tone: "muted" },
+    },
+    {
+      case: "its words in the tone the menu chose",
+      second: { kind: "reply", tone: "failed" },
+      expected: { text: "EXPO_TOKEN is missing", tone: "failed" },
+    },
+    {
+      case: "what was asked",
+      second: { kind: "ask", pending: false },
+      expected: { text: "Add a cart", tone: "muted" },
+    },
+    { case: "nothing", second: { kind: "none" }, expected: { text: undefined, tone: "muted" } },
+  ] as const)("says the menu row's line 2: $case", ({ second, expected }) => {
+    expect(
+      cardSecondWords({
+        second,
+        reply: { kind: "words", text: "EXPO_TOKEN is missing", tone: "muted" },
+        askLine: { kind: "ask", text: "Add a cart" },
+        pausedUntil: () => "1:00 PM",
+      }),
+    ).toEqual(expected);
+  });
+
+  it("says the menu row's line where nothing lifts it, and its own fuller words where it is lifted", () => {
+    const line = { text: "Waits on Karel", tone: "muted" as const };
+    const asking = view({
+      state: "needs",
+      reply: { kind: "words", text: "Stripe or Adyen?", tone: "ink" },
+    });
+    expect(
+      cardMateReading({ view: asking, status: "input", mine: false, review: undefined, line }).text,
+    ).toBe("Waits on Karel");
+    expect(
+      cardMateReading({ view: asking, status: "input", mine: true, review: undefined, line }).text,
+    ).toBe("Stripe or Adyen?");
   });
 
   it("says what a working Mate is on", () => {
