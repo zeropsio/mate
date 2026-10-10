@@ -55,6 +55,19 @@ const lineOf = (text: string | undefined): string | null => {
 };
 
 /**
+ * What a conversation is called: the person's first line that has words once its markdown is read,
+ * as plain words (`messagePreviewText`), as the engine's row says its subject. A raw line put
+ * backticks in the menu's subject (Milo's stress run 5).
+ */
+const titleOf = (text: string | undefined): string | null => {
+  for (const line of text?.split("\n") ?? []) {
+    const words = messagePreviewText(line);
+    if (words !== null) return words;
+  }
+  return null;
+};
+
+/**
  * The run a shell's latest turn is: the one on; while a usage limit holds the queue, the run it
  * ended (a held message is not working); else the next queued, else the last that ended.
  */
@@ -125,7 +138,7 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
       : undefined;
   const person = view.lastPerson;
   const agent = view.lastAgent;
-  const personLine = lineOf(person?.text);
+  const personLine = titleOf(person?.text);
   // Each message as V1's shell previews it (`threadMessagePreviewFromSource`).
   const agentText = agent === null ? null : messagePreviewText(agent.text);
   const personText = person === null ? null : userAskPreviewText(person);

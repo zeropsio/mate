@@ -392,6 +392,17 @@ describe("agentActivitySubject", () => {
     },
   );
 
+  // Milo's stress run 5: after a restart no preview stood, and the row read the title's raw
+  // backticks: "(`sleep 25 && echo helper-job-done` and `sh -c …`)".
+  it("is the title in plain words when no preview stands, its markdown read", () => {
+    expect(
+      agentActivitySubject(
+        shell({ title: "Start two helpers (`sleep 25 && echo done` and **`exit 4`**)" }),
+        "working",
+      ),
+    ).toBe("Start two helpers (sleep 25 && echo done and exit 4)");
+  });
+
   it("is the running step over the task while the server reports one", () => {
     expect(
       agentActivitySubject(
