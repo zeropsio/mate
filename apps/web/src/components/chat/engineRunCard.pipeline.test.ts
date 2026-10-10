@@ -315,6 +315,40 @@ describe("an engine Mate's run card, from the engine's record", () => {
     expect(lineOf(card)).toMatch(/^Milo worked /);
   });
 
+  // Milo's stress run 4, A and C: the helper finished, the card folded to "Milo worked 22s", and
+  // 1.9 s later the turn its end woke opened it again.
+  it.each([
+    { work: "helper" as const, due: true, live: true },
+    { work: "shell" as const, due: true, live: true },
+    { work: "helper" as const, due: false, live: false },
+  ])(
+    "a helper finishing never folds the card before the wake it causes: a $work, the turn due $due",
+    ({ work, due, live }) => {
+      const items = stressItems("completed").map((item) =>
+        item.kind === "work" ? ({ ...item, workKind: work } as Item) : item,
+      );
+      const card = cardOf(
+        render({
+          runs: [stressRun()],
+          items,
+          row: engineRow(key.environmentId, key.conversationId, {
+            state: due
+              ? { kind: "working", since: t0 + 77_800, waitsOnHelpers: true, turnDue: true }
+              : { kind: "idle" },
+            latestRun: {
+              id: RunId.make(run1),
+              end: { kind: "completed" },
+              endedAt: t0 + 77_800,
+              turnState: "completed",
+            },
+          }),
+        }),
+      );
+      expect(card.status?.live).toBe(live);
+      if (!live) expect(lineOf(card)).toMatch(/^Milo worked /);
+    },
+  );
+
   it.each([
     { tool: "Bash", words: "Command run", line: "Running a command" },
     { tool: "WebFetch", words: "Tool call", line: "Reading a page" },
