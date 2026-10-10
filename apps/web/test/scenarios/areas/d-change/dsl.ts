@@ -9,6 +9,7 @@ import * as Schema from "effect/Schema";
 import { ChangeDetailResponse } from "@t3tools/shared/hqChanges";
 import { MateState } from "@t3tools/shared/mateLink";
 import { expect } from "@effect/vitest";
+import type { ElementHandle } from "puppeteer-core";
 import type { createScenario } from "../../harness/scenario.ts";
 import { changeFixture as originalChangeFixture } from "../../fakes/d-change/changes.ts";
 export { anotherOrganization } from "../../fakes/d-change/changes.ts";
@@ -109,8 +110,35 @@ export function review(s: Pick<Scenario, "page" | "web">) {
     }
   };
   const mergeEnabled = Effect.promise(waitUntilMergeEnabled);
+  /**
+   * Opens a section the sheet folds to its row — Files, Conversation — as a person does; one the
+   * frame shows unfolded (a change's page) is already open.
+   */
+  const unfold = async (title: string) => {
+    const heading = await s.page.waitForFunction(
+      (title) =>
+        [...document.querySelectorAll<HTMLElement>(".rv-sec-h")].find(
+          (node) =>
+            node.getBoundingClientRect().height > 0 &&
+            node.closest("[inert]") === null &&
+            node.innerText.trim().startsWith(title),
+        ) ?? null,
+      { timeout: 15_000, polling: "raf" },
+      title,
+    );
+    const fold = await (heading.asElement() as ElementHandle<HTMLElement>).$(
+      '.rv-fold-row[aria-expanded="false"]',
+    );
+    await fold?.click();
+  };
   return {
     text,
+    /** A file it changes, read where the sheet lists them: under Files, opened. */
+    file: (name: string) =>
+      Effect.gen(function* () {
+        yield* Effect.promise(() => unfold("Files"));
+        yield* text(name);
+      }),
     mergeEnabled,
     waitUntilMergeEnabled,
     chooseInitialOrganization: (name: string) =>
@@ -169,9 +197,10 @@ export function review(s: Pick<Scenario, "page" | "web">) {
         () => (window as unknown as { dChangeUnknownOffers: string[] }).dChangeUnknownOffers,
       ),
     ),
+    // A Mate's change waiting on the viewer: the Review chip on its row.
     open: Effect.promise(async () => {
       await s.page
-        .locator('[data-zerops-surface="sidebar-pull-request-review"]')
+        .locator('[data-zerops-surface="sidebar-mate-review"]')
         .setTimeout(15_000)
         .click();
     }),
@@ -181,11 +210,13 @@ export function review(s: Pick<Scenario, "page" | "web">) {
       }),
     comment: (body: string) =>
       Effect.promise(async () => {
+        await unfold("Conversation");
         await s.page.locator("::-p-aria(Say something on this change)").fill(body);
         await s.page.locator('::-p-aria(Comment[role="button"])').click();
       }),
     writeDraft: (body: string) =>
       Effect.promise(async () => {
+        await unfold("Conversation");
         await s.page.locator("::-p-aria(Say something on this change)").fill(body);
       }),
     draftIs: (body: string) =>
@@ -208,8 +239,9 @@ export function review(s: Pick<Scenario, "page" | "web">) {
         timeout: 15_000,
       });
     }),
+    // "Merge to <stage>" where the change has a stage: the button by what it does.
     merge: Effect.promise(async () => {
-      await s.page.locator('::-p-aria(Merge[role="button"])').click();
+      await s.page.locator('[data-zerops-primary-action="Merge"]').click();
     }),
     askClose: Effect.promise(async () => {
       await s.page.locator('::-p-aria(Close without merging…[role="button"])').click();

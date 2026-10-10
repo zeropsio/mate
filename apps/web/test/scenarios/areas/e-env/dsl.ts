@@ -190,10 +190,15 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
         expect(words, `Release ${tag} must continuously show ${word}`).toEqual([word]);
       });
     });
+  // The review's one button, by what it does: it reads "Release v0.1.0 to production".
+  const release = (tag: string) =>
+    Effect.promise(() =>
+      page.locator(`[data-zerops-primary-action="Release ${tag}"]`).setTimeout(15_000).click(),
+    );
   const releaseFromReview = Effect.gen(function* () {
     yield* click("Review release");
     yield* text("Version");
-    yield* click("Release v0.1.0");
+    yield* release("v0.1.0");
   });
   const reload = Effect.promise(async () => {
     await page.reload();
@@ -295,6 +300,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       finishImport,
       rollBackOnZerops,
       click,
+      release,
       releaseFromReview,
       reload,
       rollBack,
