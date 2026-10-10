@@ -563,7 +563,6 @@ describe("owner-reported layout regressions", () => {
                     toggle,
                   );
                 }
-                await s.page.waitForSelector('[data-zerops-surface="sidebar-new-project"]');
                 await s.page.$eval('[data-sidebar="content"]', (content) => {
                   content.closest('[data-slot="scroll-area-viewport"]')!.scrollTop = 0;
                 });
@@ -590,12 +589,12 @@ describe("owner-reported layout regressions", () => {
                   ].map((row) => row.getBoundingClientRect());
                   const last = rows.at(-1)!;
                   const previous = rows.at(-2)!;
-                  const divider = document
-                    .querySelector('[data-zerops-surface="sidebar-new-project"]')!
-                    .parentElement!.getBoundingClientRect().top;
+                  // New project left the foot for the top row's + (round 5): the list
+                  // now ends where its scroll does, on the account's foot.
                   const viewport = document
                     .querySelector('[data-sidebar="content"]')!
                     .closest('[data-slot="scroll-area-viewport"]')!;
+                  const divider = viewport.getBoundingClientRect().bottom;
                   return {
                     regularGap: last.top - previous.bottom,
                     endGap: divider - last.bottom,
@@ -673,41 +672,38 @@ describe("owner-reported layout regressions", () => {
               yield* s.menu.text("Ada", "Thinking", "sidebar-mate-live-step");
               // Observe transient DOM states between deliveries as well as timer ticks.
               yield* Effect.promise(() =>
-                s.page.evaluate(
-                  (selector, ask) => {
-                    const row = document.querySelector<HTMLElement>(selector)!;
-                    const initialHeight = row.getBoundingClientRect().height;
-                    const initialClock = row.querySelector(".menu-clock")?.textContent;
-                    const failures: string[] = [];
-                    const sample = () => {
-                      if (!row.isConnected) failures.push("row remounted");
-                      if (row.querySelector('[data-zerops-surface="sidebar-mate-pending"]'))
-                        failures.push("placeholder");
-                      if (
-                        !row
-                          .querySelector('[data-zerops-surface="sidebar-mate-subject"]')
-                          ?.textContent?.includes(ask)
-                      )
-                        failures.push("subject lost");
-                      if (!row.querySelector(".menu-clock")) failures.push("clock lost");
-                      if (row.getBoundingClientRect().height !== initialHeight)
-                        failures.push("height changed");
-                    };
-                    const observer = new MutationObserver(sample);
-                    observer.observe(row.parentElement!, {
-                      subtree: true,
-                      childList: true,
-                      attributes: true,
-                      characterData: true,
-                    });
-                    Object.assign(window, {
-                      runningRowWitness: { failures, initialClock, observer },
-                    });
-                    sample();
-                  },
-                  ROW,
-                  ASK,
-                ),
+                s.page.evaluate((selector) => {
+                  const row = document.querySelector<HTMLElement>(selector)!;
+                  const initialHeight = row.getBoundingClientRect().height;
+                  const initialClock = row.querySelector(".menu-clock")?.textContent;
+                  const failures: string[] = [];
+                  const sample = () => {
+                    if (!row.isConnected) failures.push("row remounted");
+                    if (row.querySelector('[data-zerops-surface="sidebar-mate-pending"]'))
+                      failures.push("placeholder");
+                    // Round 5: the one line under the name is the step it is on.
+                    if (
+                      !row
+                        .querySelector('[data-zerops-surface="sidebar-mate-live-step"]')
+                        ?.textContent?.trim()
+                    )
+                      failures.push("step lost");
+                    if (!row.querySelector(".menu-clock")) failures.push("clock lost");
+                    if (row.getBoundingClientRect().height !== initialHeight)
+                      failures.push("height changed");
+                  };
+                  const observer = new MutationObserver(sample);
+                  observer.observe(row.parentElement!, {
+                    subtree: true,
+                    childList: true,
+                    attributes: true,
+                    characterData: true,
+                  });
+                  Object.assign(window, {
+                    runningRowWitness: { failures, initialClock, observer },
+                  });
+                  sample();
+                }, ROW),
               );
               for (const seq of [1, 1, 2, 3]) {
                 yield* reportConversation(s.drivers, "Ada", patch, "working", [

@@ -43,16 +43,17 @@ export function newProjectOffered(input: {
 
 /** The air above each project (round 5): 28 px from the last row, or the folded heading, above it. */
 const PROJECT_AIR = 28;
+/** The list's last project: the list's own 4 px end makes it the same 28 px to the foot. */
+const LIST_END_ROOM = 24;
 
 /**
  * The room below a project's rows, in px — one rule for both: 28 px to the
- * next project's heading, open or folded; at the list's end, 16 open and none
- * folded. Folded or open, the room is the project's own, below its heading,
+ * next project's heading, open or folded, and the same 28 px from the list's
+ * last project to the menu's foot. Folded or open, the room is the project's own, below its heading,
  * so a heading's own fold never moves it.
  */
 export function projectRoom(at: { readonly open: boolean; readonly last: boolean }): number {
-  if (at.last) return at.open ? 16 : 0;
-  return PROJECT_AIR;
+  return at.last ? LIST_END_ROOM : PROJECT_AIR;
 }
 
 /** The dot on a folded heading's face: needs you, unread, or stopped on an error. */
