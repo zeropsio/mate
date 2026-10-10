@@ -1,15 +1,13 @@
 /**
- * The projects page, one dense list: a row per project, at most two lines — its name, its Mates by
- * face and full name and production's version where production runs one; then the one thing that
- * needs the person as a full sentence, its single verb at the row's end, else the latest
- * meaningful fact (`projectRowLine`). Rows that need the person rise first, the person's own
- * order kept within (`risenFirst`). A row opens into the project's detail: its Mates' last words,
- * its pull requests, its environments and its releases. The containers no project holds are one
- * folded group at the end, and the organization's HQ is the quiet line under it.
+ * The overview (round 5, "Mate Clean Overview"): a card per project with Mates, side by side —
+ * its name and address, its Mates, a release ready to go and production's one line
+ * (`ProjectCards`); then the projects without a Mate as lines, each its name and production's
+ * line; the containers no project holds as one folded group; and the organization's HQ as the
+ * quiet line at the end.
  *
- * Structural only: every card, row, verb and menu is an injected slot the page fills (R5), and
- * what a row says is `groupFlow`'s and `projectsView.logic`'s. An account with no project yet
- * gets the invitation instead of the list.
+ * Structural only: every Mate row, verb, menu and panel is an injected slot the page fills (R5),
+ * and what a card says is `groupFlow`'s and `projectCard.logic`'s. An account with no project yet
+ * gets the invitation instead.
  */
 
 import type {
@@ -22,8 +20,11 @@ import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import type { ReactNode } from "react";
 
 import { MateFace, Pill } from "../primitives";
+import type { ProductionChip } from "../SidebarProductionChip.logic";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
-import { OtherContainers, ProjectList, QuietEnd } from "./ProjectList";
+import { OtherContainers, OtherProjects, QuietEnd } from "./ProjectList";
+import { ProjectCards } from "./ProjectCards";
+import type { PlaceLine } from "./projectCard.logic";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
@@ -76,12 +77,16 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly getKey: (item: T) => string;
   readonly isMate: (item: T) => boolean;
   /**
-   * A Mate — a `ZeropsMateCard` with every verb it has: a `card` of its own,
-   * or a `row` in a project card's Mates step, its Preview on its first line.
+   * A Mate — a `card` of its own among the containers no project holds, or a `row` on its
+   * project's card (`CardMate`), with its change waiting for review (`review`) where it has one.
    */
   readonly renderMate: (
     item: T,
-    options: { readonly layout: "card" | "row"; readonly preview: string | undefined },
+    options: {
+      readonly layout: "card" | "row";
+      readonly preview: string | undefined;
+      readonly review?: FlowPullRequest | undefined;
+    },
   ) => ReactNode;
   /** A Mate's face, beside its name in a row. */
   readonly renderMateFace: (item: T, size: "sm" | "md") => ReactNode;
@@ -93,32 +98,8 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly openMate: (item: T) => (() => void) | undefined;
   /** An environment's row — a `ZeropsEnvironmentRow`. */
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
-  /**
-   * A pull request's `<li>`. `withMerge` is false where the step's own verb
-   * already merges it; `review` is whether it shows its *Review* at all
-   * (`changeShowsReview`); `compact` stacks it for a step's narrow column.
-   */
-  readonly renderPullRequest: (
-    group: ZeropsGroup,
-    pull: FlowPullRequest,
-    options: {
-      readonly withMerge: boolean;
-      readonly review: boolean;
-      readonly compact: boolean;
-    },
-  ) => ReactNode;
-  /** The verb of a group's next step (`flow.nextStep`), at its row's end; nothing for `none`. */
-  readonly renderNextStep: (entry: ProjectsFlowGroup<T>) => ReactNode;
-  /**
-   * *Release*, in an opened row whenever one is offered — even where the
-   * ranked next step is something else, such as the production's own failed
-   * deploy (D28): the release that might clear it stays in reach rather than
-   * only the build. Absent where the next step already is the release, so the
-   * row never shows the same verb twice.
-   */
+  /** The ready release's door on a card (*Review release*), while one is offered. */
   readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
-  /** The group's releases and the release gate's reason, as `<li>`s; `null` for none. */
-  readonly renderGroupRows: (group: ZeropsGroup) => ReactNode;
   /** The row's ··· menu: the project's quiet verbs, and its Mates' previews (`flow.mates`). */
   readonly renderGroupMenu: (entry: ProjectsFlowGroup<T>) => ReactNode;
   /** Re-probes the containers not answering. */
@@ -129,8 +110,26 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly hqCard: ReactNode;
   /** Starts the account's first project; absent leaves an empty account empty. */
   readonly onCreateProject?: (() => void) | undefined;
-  /** The group whose row opens and scrolls into view (`?group=`). */
+  /** The group whose card scrolls into view and pulses (`?group=`). */
   readonly focusGroup?: string | undefined;
+  /**
+   * What the menu's chips say of a project's places (`productionChip`), where the page has read
+   * them; without it a card's foot says what the flow says.
+   */
+  readonly cardPlaces?:
+    | ((entry: ProjectsFlowGroup<T>) => {
+        readonly chip?: ProductionChip | undefined;
+        readonly stageChips?: ReadonlyMap<string, ProductionChip | undefined> | undefined;
+        readonly since?: string | undefined;
+        readonly down?: ReadonlyMap<string, ReadonlyArray<string>> | undefined;
+      })
+    | undefined;
+  /** A place's panel: its facts and its actions; without it, its line. */
+  readonly renderPlacePanel?:
+    | ((entry: ProjectsFlowGroup<T>, line: PlaceLine) => ReactNode)
+    | undefined;
+  /** The people on a project, beside its name, where more than one. */
+  readonly renderCardPeople?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
 }
 
 /**
@@ -188,7 +187,15 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         </>
       ) : null}
       {firstRun ? <FirstRun creating={creating} onCreateProject={onCreateProject} /> : null}
-      <ProjectList focusGroup={focusGroup} groups={groups} props={props} />
+      <ProjectCards
+        focusGroup={focusGroup}
+        groups={groups.filter((entry) => entry.flow.mates.length > 0)}
+        props={props}
+      />
+      <OtherProjects
+        groups={groups.filter((entry) => entry.flow.mates.length === 0)}
+        props={props}
+      />
       <OtherContainers props={props} rows={ungrouped} />
       {started ? <QuietEnd props={props} /> : null}
     </div>
