@@ -67,23 +67,18 @@ export const PUBLISH_PAGE_TOOL = "zerops_publish_page";
  */
 const PAGE_NAME = /^page-[0-9a-f]{16}\.html$/;
 
-/** The page a call's result says it published: its file, title and measured height, else none. */
+/** The page a call's result says it published: its file and title, else none. */
 export function publishedPage(
   result: Pick<CallResult, "toolName" | "resultText">,
-): { readonly file: string; readonly title: string; readonly height?: number } | null {
+): { readonly file: string; readonly title: string } | null {
   if (result.toolName !== PUBLISH_PAGE_TOOL || result.resultText === undefined) return null;
   try {
     const page = (JSON.parse(result.resultText) as { readonly page?: unknown }).page;
     if (typeof page !== "object" || page === null) return null;
-    const { file, title, height } = page as {
-      readonly file?: unknown;
-      readonly title?: unknown;
-      readonly height?: unknown;
-    };
-    if (typeof file !== "string" || typeof title !== "string" || title.length === 0) return null;
-    return typeof height === "number" && Number.isFinite(height) && height > 0
-      ? { file, title, height: Math.ceil(height) }
-      : { file, title };
+    const { file, title } = page as { readonly file?: unknown; readonly title?: unknown };
+    return typeof file === "string" && typeof title === "string" && title.length > 0
+      ? { file, title }
+      : null;
   } catch {
     return null;
   }

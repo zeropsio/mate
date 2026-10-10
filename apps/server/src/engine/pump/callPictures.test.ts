@@ -124,16 +124,6 @@ describe("the page a call published", () => {
       },
       { title: "Plan", file: "/w/.zcp/state/pages/page-1.html" },
     ],
-    [
-      "zcp's result with the page's measured height",
-      {
-        toolName: "zerops_publish_page",
-        resultText: JSON.stringify({
-          page: { title: "Plan", file: "/w/.zcp/state/pages/page-1.html", height: 611.5 },
-        }),
-      },
-      { title: "Plan", file: "/w/.zcp/state/pages/page-1.html", height: 612 },
-    ],
     ["another tool's", { toolName: "zerops_browser", resultText: '{"page":{}}' }, null],
     ["a refusal", { toolName: "zerops_publish_page", resultText: '{"code":"X"}' }, null],
     ["a result over the wire's limit", { toolName: "zerops_publish_page", truncated: true }, null],

@@ -276,7 +276,6 @@ export const makeSessionHost = Effect.fnUntraced(function* (
                 asset: kept.asset,
                 title: published.title,
                 bytes: kept.bytes,
-                ...(published.height === undefined ? {} : { height: published.height }),
                 publishedAt,
               },
             },

@@ -729,7 +729,6 @@ describe("a page the Mate publishes", () => {
                 title: "Launch plan",
                 file,
                 bytes: 17,
-                height: 640,
               },
               message: "Published",
             }),
@@ -744,7 +743,7 @@ describe("a page the Mate publishes", () => {
         if (reload?.type !== "snapshot") throw new Error("no snapshot");
         const reloadCall = reload.items.find((item) => item.kind === "call");
         const page = liveCall?.kind === "call" ? liveCall.result?.page : undefined;
-        assert.include(page, { title: "Launch plan", bytes: 17, height: 640 });
+        assert.include(page, { title: "Launch plan", bytes: 17 });
         assert.include(page?.asset.original, { status: "ready", mimeType: "text/html" });
         assert.deepStrictEqual(reloadCall?.kind === "call" ? reloadCall.result?.page : null, page);
         // A reload's window holds the page with the answer, never the rest of the run's work.
