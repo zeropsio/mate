@@ -175,6 +175,26 @@ describe("VaultRequestCard — asking for a value", () => {
     expect(container.querySelector("[data-vault-request-own]")).toBeNull();
   });
 
+  // Milo, 2026-10-10: MATE_PROBE_TOKEN saved from the card never showed in the Vault, which hides
+  // every name the Mate keeps for itself, and the card warned it looked like a Zerops sign-in.
+  it("a name the Mate keeps for itself takes no value: the card says why and offers Decline", async () => {
+    const { container, puts } = await mount(
+      ask({ key: "MATE_PROBE_TOKEN" }),
+      undefined,
+      null,
+      "open",
+    );
+    expect(field(container)).toBeNull();
+    expect(button(container, "Save")).toBeUndefined();
+    expect(container.querySelector("[data-vault-request-reserved]")?.textContent).toContain(
+      "MATE_PROBE_TOKEN is a name Fen keeps for itself, so the vault never lists it",
+    );
+    expect(container.querySelector("[data-vault-request-own]")).toBeNull();
+    await click(button(container, "Decline"));
+    expect(container.textContent).toBe("Fen asked for MATE_PROBE_TOKEN · Declined");
+    expect(puts).toEqual([]);
+  });
+
   it("a key named like a Zerops sign-in is warned of before it is given", async () => {
     const { container } = await mount(
       ask({ key: "ZEROPS_TOKEN", reason: "From Settings, Access tokens." }),
