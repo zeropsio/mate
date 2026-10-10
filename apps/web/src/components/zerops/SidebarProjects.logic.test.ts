@@ -17,13 +17,13 @@ describe("projectRoom", () => {
   // opening one unfolds its rows — and the room after them — below it, so the
   // heading that was clicked stays where it is (M9).
   it.each([
-    { name: "an open project, another under it", open: true, last: false, room: 36 },
+    { name: "an open project, another under it", open: true, last: false, room: 28 },
     { name: "the list's last project, open", open: true, last: true, room: 16 },
     {
-      name: "a folded project: its name, then 12 px — folded names stand 44 px apart",
+      name: "a folded project: its heading, then 28 px of air to the next",
       open: false,
       last: false,
-      room: 12,
+      room: 28,
     },
     { name: "the list's last project, folded", open: false, last: true, room: 0 },
   ])("$name keeps $room px below its rows", ({ open, last, room }) => {

@@ -65,3 +65,63 @@ export function sidebarMateKey(input: {
       return undefined;
   }
 }
+
+/** One entry of a project heading's ···: an item, or the line between two groups. */
+export type HeadingMenuEntry =
+  | {
+      readonly kind: "item";
+      readonly label: string;
+      readonly disabled: boolean;
+      readonly act: () => void;
+    }
+  | { readonly kind: "separator" };
+
+/**
+ * A project heading's ··· (round 5): Fold, Add a Mate and Open project first — the heading's own
+ * verbs, none of them on it at rest — then moving it among the others, then adding a stage or a
+ * production it lacks, and where projects are added. The New Mate dialog opens over the view on
+ * screen: Add a Mate goes nowhere.
+ */
+export function projectHeadingMenu(input: {
+  readonly collapsed: boolean;
+  /** Absent where the heading does not fold. */
+  readonly onToggle: (() => void) | undefined;
+  readonly onAddMate: () => void;
+  readonly onOpen: () => void;
+  readonly reorder:
+    | {
+        readonly canMoveUp: boolean;
+        readonly canMoveDown: boolean;
+        readonly onMove: (direction: "up" | "down") => void;
+      }
+    | undefined;
+  /** "Add stage", "Add production": what the project lacks, each opening its form. */
+  readonly setUp: ReadonlyArray<{ readonly label: string; readonly act: () => void }>;
+  readonly onBrowseProjects: () => void;
+}): ReadonlyArray<HeadingMenuEntry> {
+  const item = (label: string, act: () => void, disabled = false): HeadingMenuEntry => ({
+    kind: "item",
+    label,
+    disabled,
+    act,
+  });
+  const separator: HeadingMenuEntry = { kind: "separator" };
+  const { reorder } = input;
+  return [
+    ...(input.onToggle === undefined
+      ? []
+      : [item(input.collapsed ? "Unfold" : "Fold", input.onToggle)]),
+    item("Add a Mate", input.onAddMate),
+    item("Open project", input.onOpen),
+    separator,
+    ...(reorder === undefined
+      ? []
+      : [
+          item("Move up", () => reorder.onMove("up"), !reorder.canMoveUp),
+          item("Move down", () => reorder.onMove("down"), !reorder.canMoveDown),
+          separator,
+        ]),
+    ...input.setUp.map(({ label, act }) => item(label, act)),
+    item("All projects", input.onBrowseProjects),
+  ];
+}

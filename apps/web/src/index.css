@@ -3148,8 +3148,100 @@ code {
   /* A Mate's row: its corners, and the ones a row's own hover paints. The
      grid, the padding and the type are the row's utilities; only what no
      scale holds lives here. */
+  /* Round 5, Grok's measure: a 68 px row, a 40 px face in a 40 px column,
+     12 px to the words, 8 px inside the row's own band. */
   .menu-row {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: center;
+    height: 68px;
+    padding: 0 8px;
     border-radius: 12px;
+  }
+
+  /* The name 16/22; the time 12/16, muted and tabular; the one line under
+     them 15/21, ellipsed. */
+  .menu-name {
+    font-size: 16px;
+    line-height: 22px;
+  }
+
+  .menu-time {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .menu-line2 {
+    display: block;
+    font-size: 15px;
+    line-height: 21px;
+  }
+
+  /* A change's *Review* in its Mate's time slot: a white 24 px chip — the
+     selected band's surface, a hairline ring, a small shadow — where it waits
+     on the viewer; a quiet word where it is a colleague's to review. */
+  .menu-review {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 24px;
+    border-radius: 999px;
+    color: var(--sidebar-muted-foreground);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      box-shadow 150ms var(--ease-out-strong),
+      transform 160ms var(--ease-out-strong),
+      opacity 120ms var(--ease-out-strong);
+  }
+
+  .menu-review:hover {
+    background-color: color-mix(in oklab, var(--sidebar-foreground) 6%, transparent);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-review[data-mine] {
+    background-color: var(--sidebar-row-active);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 8%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 8%, transparent);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-review[data-mine]:hover {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 16%, transparent),
+      0 2px 6px color-mix(in oklab, var(--color-black) 10%, transparent);
+  }
+
+  .menu-review:active {
+    transform: scale(0.97);
+  }
+
+  .menu-review:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .menu-review:active {
+      transform: none;
+    }
+  }
+
+  /* A change on its Mate's line: the git-pull-request mark at 14 px before
+     its title, in the line's own ink. */
+  .menu-change-mark {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 6px;
+    vertical-align: -2px;
   }
 
   /* A Mate's unit — its row and its crew's line, one thing in the menu
@@ -3163,6 +3255,34 @@ code {
      and a smaller corner than the Mate's row above it. */
   .menu-line {
     border-radius: 10px;
+  }
+
+  /* A fold — "3 quiet Mates", "2 other projects", "4 Mates hidden" — a 36 px
+     row, its chevrons in the faces' 40 px column, 14/20 muted. */
+  .menu-fold {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: center;
+    height: 36px;
+    padding: 0 8px;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  /* *Show everyone*: the one word on the hidden line that does something. */
+  .menu-show-everyone {
+    color: var(--sidebar-foreground);
+    font-weight: 500;
+    text-decoration: underline 1px color-mix(in oklab, currentColor 30%, transparent);
+    text-underline-offset: 3px;
+    cursor: pointer;
+    transition: text-decoration-color 150ms var(--ease-out-strong);
+  }
+
+  .menu-show-everyone:hover {
+    text-decoration-color: currentColor;
   }
 
   /* The words' second ink: what the person asked, and the crew's one fact.
@@ -3187,8 +3307,8 @@ code {
      picture off the ground. */
   .menu-owner {
     position: absolute;
-    top: 21px;
-    left: 17px;
+    top: 26px;
+    left: 26px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -3213,11 +3333,11 @@ code {
      16 px badge, whatever the face's shape reaches into that corner. */
   .menu-face-cut {
     -webkit-mask-image: radial-gradient(
-      circle 10px at 25px 29px,
+      circle 10px at 34px 34px,
       transparent 9.5px,
       currentColor 10px
     );
-    mask-image: radial-gradient(circle 10px at 25px 29px, transparent 9.5px, currentColor 10px);
+    mask-image: radial-gradient(circle 10px at 34px 34px, transparent 9.5px, currentColor 10px);
   }
 
   /* A Mate that is not the viewer's — a colleague's, or nobody's yet — wears
@@ -3617,66 +3737,11 @@ code {
   font-weight: 500;
 }
 
-/* p25/menu — D: a folded heading's release mark after its faces, 12 · 500, tabular — its open
-   line's colours (p26/row): the tag muted, the count in the fact's ink. */
-.zerops-heading-mark {
-  /* Over the heading button's hit area, so a pointer on it reaches the mark's tooltip. */
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 3px;
-  margin-left: 6px;
-  color: var(--sidebar-foreground);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.zerops-heading-mark:not([data-tone]) > svg {
-  color: var(--muted-foreground);
-}
-
-.zerops-heading-mark[data-tone="ok"] {
-  color: var(--zerops-status-ok-text);
-}
-
-.zerops-heading-mark[data-tone="amber"] {
-  color: var(--zerops-status-attention-text);
-}
-
-.zerops-heading-mark > .zerops-envdot {
-  display: inline-block;
-  margin-right: 2px;
-}
-
 /* The door: a 20 px tint inside the heading's rounded band, its word in the column of the
    Review below it. */
 .zerops-heading-line-door {
   margin: -2px -2px -2px 0;
   padding: 1px 6px;
-}
-
-/* New project at the menu's foot, right after the list's scroll: a hairline
-   on the list's inset parts them only while something is scrolled under it —
-   the scroll area just above says so (`data-overflow-y-end`). It takes no
-   room, so nothing moves when it shows. */
-.zerops-new-project-slot::before {
-  position: absolute;
-  top: 0;
-  inset-inline: 9px 8px;
-  height: 1px;
-  background-color: var(--color-sidebar-border);
-  opacity: 0;
-  transition: opacity 150ms ease;
-  content: "";
-  pointer-events: none;
-}
-
-[data-overflow-y-end] ~ .zerops-new-project-slot::before {
-  opacity: 1;
 }
 
 /* The jump box's way in, in the logo row (M12): a quiet chip with its key
@@ -3698,142 +3763,176 @@ code {
   line-height: 1;
 }
 
-/* A chip on a project's heading (M2): the stop's word alone — prod, stage —
-   12 · 500 in a quiet 20 px pill, 6 px inside the heading's band. Its whole ground and ink say what is wrong: amber
-   while the last release or deploy did not go through and the old one still
-   serves, red while it is down (S3), hollow while it is stopped on purpose.
-   Every tone keeps the one box, so the heading never moves when a tone
-   changes, and a change cross-fades. */
-.zerops-envchip {
+/* Round 5 — a project's road after its name (`SidebarRoad`): a soft 26 px capsule, 12 · 500
+   muted, holding its places' words on 20 px segments and the hairline way between them. Grey
+   while all is well; a place's word takes amber, red or blue only when someone is needed or
+   there is news, and goes dim while stopped or with nothing released. What waits for a release
+   rides the way: white (`--sidebar-row-active`, the selected band's surface) where it waits on
+   you, grey where production must be fixed first, blue while a release is on its way. */
+.zerops-road {
+  /* Over the heading button's hit area, so its places and its chip take their own presses. */
+  position: relative;
+  z-index: 1;
   display: inline-flex;
-  flex-shrink: 0;
+  flex: none;
   align-items: center;
-  justify-content: center;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 10px;
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
-  color: var(--sidebar-foreground);
+  height: 26px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 7%, transparent);
+  color: var(--sidebar-muted-foreground);
   font-size: 12px;
   font-weight: 500;
-  line-height: 1;
+  line-height: 16px;
   white-space: nowrap;
+}
+
+.zerops-road-place {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  color: inherit;
   cursor: pointer;
   outline: none;
   transition:
-    background-color 150ms ease,
-    color 150ms ease,
-    box-shadow 150ms ease;
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
 }
 
-.zerops-envchip:hover,
-.zerops-envchip[data-popup-open] {
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 9%, transparent);
+button.zerops-road-place:is(:hover, [data-popup-open]) {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 8%, transparent);
   color: var(--sidebar-foreground);
 }
 
-.zerops-envchip:focus-visible {
+.zerops-road-place:focus-visible,
+.zerops-road-ready:focus-visible,
+.zerops-road-wait:focus-visible,
+.zerops-road-going:focus-visible {
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.zerops-envchip[data-tone="off"] {
-  background-color: transparent;
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 18%, transparent);
+.zerops-road-place[data-tone="amber"] {
+  color: var(--zerops-status-attention-text);
 }
 
-.zerops-envchip[data-tone="off"]:is(:hover, [data-popup-open]) {
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
+.zerops-road-place[data-tone="red"] {
+  color: var(--zerops-status-failed-text);
 }
 
-.zerops-envchip[data-tone="off"]:focus-visible {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 18%, transparent),
-    0 0 0 2px var(--ring);
+.zerops-road-place[data-tone="blue"] {
+  color: var(--zerops-status-busy-text);
 }
 
-/* Amber and red take a strong ground, and their ink leans toward the
-   foreground so the word reads at 4.5:1 or better on it in either theme. */
-.zerops-envchip[data-tone="amber"] {
-  background-color: color-mix(in oklab, var(--zerops-status-attention) 34%, transparent);
-  color: color-mix(in oklab, var(--zerops-status-attention-text) 76%, var(--foreground));
+.zerops-road-place[data-tone="off"],
+.zerops-road-place[data-none] {
+  color: color-mix(in oklab, var(--sidebar-muted-foreground) 50%, transparent);
 }
 
-.zerops-envchip[data-tone="amber"]:is(:hover, [data-popup-open]) {
-  background-color: color-mix(in oklab, var(--zerops-status-attention) 42%, transparent);
+.zerops-road-place:not(button) {
+  cursor: default;
 }
 
-.zerops-envchip[data-tone="red"] {
-  background-color: color-mix(in oklab, var(--zerops-status-failed) 26%, transparent);
-  color: color-mix(in oklab, var(--zerops-status-failed-text) 80%, var(--foreground));
+/* The way: a line, what rides on it, a line ending in an arrowhead — muted at half. */
+.zerops-road-way {
+  --road-line: color-mix(in oklab, var(--sidebar-muted-foreground) 50%, transparent);
+  display: inline-flex;
+  align-items: center;
 }
 
-.zerops-envchip[data-tone="red"]:is(:hover, [data-popup-open]) {
-  background-color: color-mix(in oklab, var(--zerops-status-failed) 34%, transparent);
+.zerops-road-line {
+  display: block;
+  flex: none;
+  width: 7px;
+  height: 1px;
+  background-color: var(--road-line);
 }
 
-/* p25/menu — D′: before a place serves anything its pill is dashed; while it comes up it turns
-   the stepped spinner inside, and for the 4 s its landing stands it wears ok, then plain. */
-.zerops-envchip[data-tone="dash"] {
-  padding: 0 7px;
-  border: 1px dashed color-mix(in oklab, var(--sidebar-foreground) 32%, transparent);
-  background-color: transparent;
+.zerops-road-arrow {
+  position: relative;
+  width: 11px;
+  margin-right: 1px;
 }
 
-.zerops-envchip[data-tone="dash"]:is(:hover, [data-popup-open]) {
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
-}
-
-:is(
-  [data-coming~="prod"] .zerops-envchip[data-zerops-chip="prod"],
-  [data-coming~="stage"] .zerops-envchip[data-zerops-chip="stage"]
-) {
-  gap: 5px;
-  padding: 0 8px 0 6px;
-  border: 0;
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
-}
-
-:is(
-  [data-coming~="prod"] .zerops-envchip[data-zerops-chip="prod"],
-  [data-coming~="stage"] .zerops-envchip[data-zerops-chip="stage"]
-)::before {
-  box-sizing: border-box;
-  width: 9px;
-  height: 9px;
-  border: 1.5px solid color-mix(in oklab, var(--muted-foreground) 35%, transparent);
-  border-top-color: var(--muted-foreground);
-  border-radius: 9999px;
+.zerops-road-arrow::after {
+  position: absolute;
+  top: -3px;
+  right: -1px;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  border-left: 5px solid var(--road-line);
   content: "";
 }
 
+.zerops-road-way[data-bare] > .zerops-road-line:first-child {
+  width: 4px;
+}
+
+.zerops-road-way[data-way="dashed"] > .zerops-road-line {
+  background: repeating-linear-gradient(90deg, var(--road-line) 0 2px, transparent 2px 4px);
+}
+
+.zerops-road-ready {
+  height: 20px;
+  margin: 0 1px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background-color: var(--sidebar-row-active);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 7%, transparent),
+    0 1px 2px color-mix(in oklab, var(--color-black) 8%, transparent);
+  color: var(--sidebar-foreground);
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition:
+    box-shadow 150ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
+
+.zerops-road-ready:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 16%, transparent),
+    0 2px 6px color-mix(in oklab, var(--color-black) 10%, transparent);
+}
+
+.zerops-road-ready:active {
+  transform: scale(0.97);
+}
+
+.zerops-road-wait {
+  padding: 0 6px;
+  border-radius: 999px;
+  outline: none;
+}
+
+.zerops-road-going {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--zerops-status-busy-text);
+  outline: none;
+}
+
+.zerops-road-going > i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: var(--zerops-status-busy);
+}
+
 @media (prefers-reduced-motion: no-preference) {
-  :is(
-    [data-coming~="prod"] .zerops-envchip[data-zerops-chip="prod"],
-    [data-coming~="stage"] .zerops-envchip[data-zerops-chip="stage"]
-  )::before {
-    animation: zerops-env-spin 1s steps(8) infinite;
+  .zerops-road-going > i {
+    animation: menu-clock-breathe 1.2s steps(8, jump-none) infinite alternate;
   }
 }
 
-:is(
-  [data-landed="prod"] .zerops-envchip[data-zerops-chip="prod"],
-  [data-landed="stage"] .zerops-envchip[data-zerops-chip="stage"]
-) {
-  border: 0;
-  background-color: color-mix(in oklab, var(--zerops-status-ok) 26%, transparent);
-  color: color-mix(in oklab, var(--zerops-status-ok-text) 80%, var(--foreground));
-}
-
-/* The heading's end edge measures its room: a narrow menu drops the + first. */
-[data-zerops-surface="sidebar-project"] {
-  container-type: inline-size;
-}
-
-/* The heading's + gives its room to the name under 300 px; Add a Mate is the
-   first item of its ⋯ menu either way. */
-@container (width < 300px) {
-  [data-zerops-surface="sidebar-project-add-mate"] {
-    display: none;
+@media (prefers-reduced-motion: reduce) {
+  .zerops-road-ready:active {
+    transform: none;
   }
 }
 
