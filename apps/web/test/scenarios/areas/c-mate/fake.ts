@@ -1508,14 +1508,19 @@ declare module "vite-plus/test" {
 }
 
 const chats = new WeakMap<MateFake, ChatDriver>();
-export const installArea: ScenarioExtension = (drivers) => {
-  drivers.onMate.push((mate) => {
-    if (inject("mateWire") !== "engine") return void chats.set(mate, new ChatDriver(mate));
-    const wire = new EngineChatWire(mate);
-    chats.set(mate, new ChatDriver(mate, wire));
-    wire.install();
-  });
-};
+const installChat =
+  (wire: () => "v1" | "engine" | undefined): ScenarioExtension =>
+  (drivers) => {
+    drivers.onMate.push((mate) => {
+      if (wire() !== "engine") return void chats.set(mate, new ChatDriver(mate));
+      const engine = new EngineChatWire(mate);
+      chats.set(mate, new ChatDriver(mate, engine));
+      engine.install();
+    });
+  };
+export const installArea: ScenarioExtension = installChat(() => inject("mateWire"));
+/** The area with its Mates on the engine's wire, whichever project the journey runs in. */
+export const installEngineArea: ScenarioExtension = installChat(() => "engine");
 export function chatFor(mate: MateFake) {
   const chat = chats.get(mate);
   if (!chat) throw new Error("Install c-mate before creating projects");

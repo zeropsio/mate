@@ -936,9 +936,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
   /* The docked footer is opaque from the card's top edge down, so no row paints below the card,
      and clear in the gap above it, so the conversation runs right up to the card. The gap is
-     the footer's own top padding (pt-1.5, sm:pt-2). */
+     the footer's own top padding (pt-6, sm:pt-7). */
   .chat-composer-dock {
-    --chat-composer-dock-gap: calc(var(--spacing) * 1.5);
+    --chat-composer-dock-gap: calc(var(--spacing) * 6);
   }
 
   /* A solid layer, not a gradient: Chrome dithers a gradient by its tile's
@@ -955,7 +955,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
   @media (min-width: 40rem) {
     .chat-composer-dock {
-      --chat-composer-dock-gap: calc(var(--spacing) * 2);
+      --chat-composer-dock-gap: calc(var(--spacing) * 7);
     }
   }
 
