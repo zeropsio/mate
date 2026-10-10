@@ -53,7 +53,7 @@ import {
 } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
-import { maskSecrets } from "@t3tools/shared/messagePreview";
+import { maskSecrets, messagePreviewText } from "@t3tools/shared/messagePreview";
 import {
   hasUnseenCompletion,
   mateMarkStateForThread,
@@ -408,8 +408,11 @@ export function agentActivitySubject(
   // A conversation nobody has spoken into has a placeholder for a title, not
   // a subject: a Mate that was never asked anything has nothing it is about.
   if (thread.latestUserMessageAt === null) return undefined;
+  // A title is the person's words as they wrote them: said as plain words, as a preview is.
   const title = thread.title.trim();
-  return title.length > 0 && isPersonsWords(title) ? maskSecrets(title) : undefined;
+  return title.length > 0 && isPersonsWords(title)
+    ? (messagePreviewText(title) ?? undefined)
+    : undefined;
 }
 
 function isPersonsWords(text: string): boolean {

@@ -5232,7 +5232,9 @@ button.run-bar:focus-visible {
   max-width: 100%;
   overflow: hidden;
   border-radius: 12px;
-  background: color-mix(in oklab, var(--color-foreground) 5%, transparent);
+  background-color: color-mix(in oklab, var(--color-foreground) 5%, transparent);
+  /* Its fill comes with its picture, on the picture's own fade (`.asset-image-frame > img`). */
+  transition: background-color 140ms ease-out;
 }
 /* Its edge is the card's hairline, drawn over the picture: a white page on
    the tray keeps its edge. */
@@ -5288,7 +5290,7 @@ button.run-bar:focus-visible {
 /* A tile whose picture has no pixels yet holds its room unpainted: no fill, no edge. */
 .run-result-tile[data-result-picture="loading"],
 .run-result-tile:has([data-image-pending]) {
-  background: none;
+  background-color: transparent;
 }
 .run-result-tile[data-result-picture="loading"]::after,
 .run-result-tile:has([data-image-pending])::after {
@@ -5353,14 +5355,14 @@ button.run-result-tile:hover::after {
     opacity: 0;
   }
 }
-.run-result-row[data-rising],
-.run-result-pictures[data-rising] {
+/* The pictures' strip does not fade in as a row: a strip rising before its pictures had pixels
+   drew a pale box for 0.4 s (Milo's stress run 5). Each picture fades in as its pixels come. */
+.run-result-row[data-rising] {
   animation: run-result-rise 320ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
   animation-delay: calc(var(--row-index, 0) * 40ms);
 }
 @media (prefers-reduced-motion: reduce) {
-  .run-result-row[data-rising],
-  .run-result-pictures[data-rising] {
+  .run-result-row[data-rising] {
     animation-name: run-result-fade;
   }
 }
