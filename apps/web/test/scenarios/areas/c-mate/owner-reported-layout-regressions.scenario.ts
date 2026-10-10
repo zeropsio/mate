@@ -1224,9 +1224,12 @@ describe("owner-reported layout regressions", () => {
     });
     describe("Decision: what the composer's drawer says stands fully clear of the composer card.", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-        // Milo restarted mid-run, 2026-10-10: the reconnect notice ("Milo is reconnecting since
-        // 10:23 AM. Last known …") stood with its bottom edge under the composer card.
-        it.effect("a Mate's reconnect notice stands fully clear of the composer card", () =>
+        /**
+         * Ada's conversation, then her link gone: the reconnect notice in the composer's drawer, its
+         * last-known line quoting `lastWords`. Where its box and its painted card end, against the
+         * composer card's top.
+         */
+        const reconnecting = (lastWords: string, evidence: string) =>
           Effect.gen(function* () {
             let unavailable = false;
             const s = yield* createScenario([
@@ -1259,10 +1262,7 @@ describe("owner-reported layout regressions", () => {
               );
             wire.exchange("And now?", "The existing conversation is still here");
             yield* reportConversation(s.drivers, "Ada", {
-              latestMessagePreview: {
-                role: "assistant",
-                text: "The existing conversation is still here",
-              },
+              latestMessagePreview: { role: "assistant", text: lastWords },
             });
             yield* s.given.signedIn;
             yield* chat.when.open();
@@ -1275,26 +1275,85 @@ describe("owner-reported layout regressions", () => {
             yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
             const geometry = yield* Effect.promise(() =>
               s.page.evaluate(() => {
-                const notice = document
-                  .querySelector('[data-composer-banner-drawer] [data-slot="alert"]')!
-                  .getBoundingClientRect();
-                const card = document
-                  .querySelector('[data-slot="composer-shell"]')!
-                  .getBoundingClientRect();
-                return { noticeTop: notice.top, noticeBottom: notice.bottom, cardTop: card.top };
+                const alert = document.querySelector<HTMLElement>(
+                  '[data-composer-banner-drawer] [data-slot="alert"]',
+                )!;
+                const notice = alert.getBoundingClientRect();
+                // The card the person sees is the notice's backdrop, drawn by its ::before: its own
+                // box, short of its bottom inset and of the band its mask leaves transparent.
+                const card = getComputedStyle(alert, "::before");
+                const band = document.createElement("div");
+                band.style.height = "var(--chat-composer-attachment-overlap, 0px)";
+                alert.append(band);
+                const masked =
+                  card.maskImage !== "none" && card.maskImage !== ""
+                    ? band.getBoundingClientRect().height
+                    : 0;
+                band.remove();
+                const words = alert.querySelector('[data-slot="alert-description"]');
+                const lines =
+                  words === null
+                    ? 0
+                    : Math.round(
+                        words.getBoundingClientRect().height /
+                          parseFloat(getComputedStyle(words).lineHeight),
+                      );
+                return {
+                  noticeTop: notice.top,
+                  noticeBottom: notice.bottom,
+                  paintedBottom: notice.bottom - (parseFloat(card.bottom) || 0) - masked,
+                  lines,
+                  cardTop: document
+                    .querySelector('[data-slot="composer-shell"]')!
+                    .getBoundingClientRect().top,
+                };
               }),
             );
             yield* Effect.promise(async () => {
               if (process.env.MATE_LAYOUT_EVIDENCE)
                 await s.page.screenshot({
-                  path: `${process.env.MATE_LAYOUT_EVIDENCE}/reconnect.png`,
+                  path: `${process.env.MATE_LAYOUT_EVIDENCE}/${evidence}.png`,
                   clip: { x: 435, y: 600, width: 1786 - 435, height: 400 },
                 });
             });
+            return { s, geometry };
+          });
+
+        // Milo restarted mid-run, 2026-10-10: the reconnect notice ("Milo is reconnecting since
+        // 10:23 AM. Last known …") stood with its bottom edge under the composer card.
+        it.effect("a Mate's reconnect notice stands fully clear of the composer card", () =>
+          Effect.gen(function* () {
+            const { s, geometry } = yield* reconnecting(
+              "The existing conversation is still here",
+              "reconnect",
+            );
             expect(
               geometry.noticeBottom,
               `ASSERTION: no part of the notice stands under the composer card: ${quoted(geometry)}`,
             ).toBeLessThanOrEqual(geometry.cardTop);
+            yield* s.then.noExternalNetwork;
+          }),
+        );
+
+        // Milo's stress run 5 (A +1:34): the restart notice's words wrapped to three lines and its
+        // card ran on under the composer, its bottom edge hidden, though its box ended at the top.
+        it.effect("the reconnect notice's card ends above the composer, whatever its words", () =>
+          Effect.gen(function* () {
+            const { s, geometry } = yield* reconnecting(
+              "The second second-wave helper is back: note written, and its job printed " +
+                '"second-wave" with exit code 0 (09:56:24 to 09:56:44). One left, and the first ' +
+                "helper's note is in the shared folder beside the job's log, both read back.",
+              "reconnect-long",
+            );
+            const seen = quoted(geometry);
+            expect(
+              geometry.lines,
+              `ASSERTION: the notice's words wrap, as Milo's did: ${seen}`,
+            ).toBeGreaterThanOrEqual(2);
+            expect(
+              geometry.paintedBottom,
+              `ASSERTION: the notice's card ends above the composer card, its bottom edge in view: ${seen}`,
+            ).toBeLessThan(geometry.cardTop);
             yield* s.then.noExternalNetwork;
           }),
         );

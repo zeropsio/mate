@@ -845,14 +845,22 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     z-index: 0;
   }
 
-  /* A notice stands on the card, fully clear of it: none of it reaches under the card. */
-  .chat-composer-drawer-slot,
-  .chat-composer-drawer-slot .chat-composer-drawer-surface {
+  /* A notice stands on the card, fully clear of it: none of it reaches under the card, and its
+     own card ends a hair above the composer's, its bottom edge and corners in view. The notice's
+     bottom padding grows by that hair. */
+  .chat-composer-drawer-slot {
     --chat-composer-attachment-overlap: 0px;
   }
 
+  .chat-composer-drawer-slot .chat-composer-drawer-surface {
+    --chat-composer-attachment-overlap: 0.25rem;
+  }
+
   .chat-composer-drawer-slot .chat-composer-drawer-surface::before {
-    border-bottom: 0;
+    bottom: var(--chat-composer-attachment-overlap);
+    border-radius: 16px;
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 
   :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="error"] {
