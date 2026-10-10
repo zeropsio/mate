@@ -37,9 +37,10 @@ export const KEPT_ENDED_RUNS = 16;
 
 /**
  * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. One
- * above main's 10, which lacked `reportsDue`, so no snapshot of another shape loads as this one.
+ * above main's 11, whose closed items lacked `endedAt`, so no snapshot of another shape loads as
+ * this one.
  */
-export const STATE_VERSION = 11;
+export const STATE_VERSION = 12;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -102,6 +103,8 @@ export interface ClosedItem {
   readonly runId: RunId | null;
   /** `contentDigest` of its body as recorded. */
   readonly digest: string;
+  /** Background work's end, as first recorded: a later word on it keeps that time. */
+  readonly endedAt?: number;
 }
 
 export interface OpenRequest {

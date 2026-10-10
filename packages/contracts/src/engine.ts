@@ -472,6 +472,8 @@ const itemBodyFields = {
     call: Schema.optionalKey(ItemId),
     /** What it said as it ended, in a line: `Background command "…" failed with exit code 3`. */
     report: Schema.optionalKey(Schema.String),
+    /** When the engine heard it end (finished, failed, stopped, lost). Absent: before it ended. */
+    endedAt: Schema.optionalKey(Millis),
   },
   context: { notes: Schema.Array(Schema.String) },
   marker: {
