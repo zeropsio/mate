@@ -242,6 +242,8 @@ export class MateEngineFake {
         }),
       );
       change.requests.add(id);
+      // A value asked of the person holds no run and takes no message's place: its card answers it.
+      if (ask.kind === "vault") return id;
       this.addItem(change, run, { kind: "request", by: { kind: "engine" }, requestId: id });
       this.setRun(change, run, {
         state: "waiting",
@@ -722,8 +724,18 @@ export class MateEngineFake {
           : open !== undefined
             ? {
                 kind: "waiting",
-                on: open.ask.kind === "approval" ? "approval" : "question",
-                words: open.ask.kind === "approval" ? open.ask.detail : null,
+                on:
+                  open.ask.kind === "approval"
+                    ? "approval"
+                    : open.ask.kind === "vault"
+                      ? "vault"
+                      : "question",
+                words:
+                  open.ask.kind === "approval"
+                    ? open.ask.detail
+                    : open.ask.kind === "vault"
+                      ? open.ask.reason
+                      : null,
               }
             : active !== null
               ? { kind: "working", since: active.queuedAt, waitsOnHelpers: false }
@@ -1085,9 +1097,14 @@ export class MateEngineFake {
           } as never;
         this.applied.push({ commandId, op: "answer", payload });
         const given = payload.answer as {
+          readonly kind?: string;
+          readonly outcome?: string;
           readonly answers?: unknown;
           readonly attachmentsByQuestionId?: unknown;
         };
+        // A value asked of the person: the engine words the record and the agent's line itself.
+        const vault = request.ask.kind === "vault" ? request.ask : null;
+        const declined = vault !== null && given.outcome === "declined";
         this.commit((change) => {
           const seq = this.next();
           this.requests.set(
@@ -1095,11 +1112,17 @@ export class MateEngineFake {
             decodeRequest({
               ...request,
               rev: seq,
-              state: "answered",
+              state: declined ? "declined" : "answered",
+              ...(declined ? { answerable: false } : {}),
               answer: {
                 by: { kind: "person", subject: "owner" },
                 at: this.stamp(seq),
-                summary: String(payload.summary),
+                summary:
+                  vault === null
+                    ? String(payload.summary)
+                    : declined
+                      ? "Declined"
+                      : `Saved to ${vault.scope.kind === "shared" ? "Shared" : vault.scope.hostname}/${vault.key}`,
                 // A question's record keeps its words and pictures, as the engine's does.
                 ...(request.ask.kind === "question"
                   ? {
@@ -1113,7 +1136,8 @@ export class MateEngineFake {
             }),
           );
           change.requests.add(requestId);
-          this.setRun(change, request.runId, { state: "running", waitingOn: null });
+          if (vault === null)
+            this.setRun(change, request.runId, { state: "running", waitingOn: null });
         });
         const answered = this.requests.get(requestId)!;
         for (const listener of this.onAnswer) listener(answered);

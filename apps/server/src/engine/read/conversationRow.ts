@@ -87,7 +87,17 @@ type WaitsOn = (typeof WAITS_ON)[number];
 const waitsOn = (kind: string): kind is WaitsOn =>
   (WAITS_ON as ReadonlyArray<string>).includes(kind);
 
-/** The row's state: a question first, then the run on, the queue, a pause, a failure, rest. */
+/**
+ * A value the agent asked the person for: it outlives the turn that asked, so the conversation
+ * waits on the person once nothing runs.
+ */
+const vaultAsk = (view: ConversationView): ViewRequest | undefined =>
+  view.openRequests.find((request) => request.ask.kind === "vault");
+
+/**
+ * The row's state: a question first, then the run on, a value asked of the person, the queue, a
+ * pause, a failure, rest.
+ */
 export const rowStateOf = (view: ConversationView): ConversationRowState => {
   const active = view.activeRun;
   const asked = view.openRequests.find(
@@ -99,6 +109,8 @@ export const rowStateOf = (view: ConversationView): ConversationRowState => {
   if (active !== null && (active.state === "running" || active.state === "waiting")) {
     return { kind: "working", since: active.startedAt ?? active.queuedAt, waitsOnHelpers: false };
   }
+  const value = vaultAsk(view);
+  if (value !== undefined) return { kind: "waiting", on: "vault", words: askWords(value) };
   if (view.pausedUntil !== null) {
     return { kind: "paused", resetsAt: view.pausedUntil === "unknown" ? null : view.pausedUntil };
   }
@@ -131,12 +143,15 @@ export const conversationRowOf = (
   revision: { readonly environmentId: string; readonly epoch: number },
 ): ConversationRow => {
   const latest = latestOf(view);
-  const asked = view.openRequests.find((request) => request.runId === view.activeRun?.id);
+  const state = rowStateOf(view);
+  const asked =
+    view.openRequests.find((request) => request.runId === view.activeRun?.id) ??
+    (state.kind === "waiting" && state.on === "vault" ? vaultAsk(view) : undefined);
   return {
     conversationId: view.conversationId,
     agent: view.agent,
     revision: { ...revision, seq: view.seq },
-    state: rowStateOf(view),
+    state,
     runStatus: runStatusOf(view),
     activeRunId: view.activeRun?.id ?? null,
     latestRun:

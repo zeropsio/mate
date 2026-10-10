@@ -40,6 +40,7 @@ import type {
 import type { ZeropsActivityResult } from "../../zerops/zeropsActivityResult.ts";
 import type { ProviderSignal } from "../domain/command.ts";
 import { AGENT_TURN_DUE_MS } from "../domain/decide.ts";
+import { vaultAskOfCall } from "./vaultAsk.ts";
 
 /** How long a body's text is in the record; the rest is the item's detail. */
 export const ITEM_TEXT_LIMIT = 16 * 1024;
@@ -323,6 +324,17 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
             ...(detail === undefined ? {} : { detail }),
             ...afterEnd,
           });
+          // A call that asked the person for a value opens the ask on its turn: the agent does
+          // not wait on it, and the person answers it on its card.
+          const asked = vaultAskOfCall(body);
+          if (asked !== null) {
+            signals.push({
+              kind: "request-opened",
+              turn: item.turn,
+              key: `vault:${signal.item}`,
+              ask: asked,
+            });
+          }
           if (images !== undefined) pictures.push({ key: signal.item, images });
           live.push({ _tag: "Settle", key: signal.item });
           // The record holds it now: its text and state are let go.

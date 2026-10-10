@@ -6,15 +6,19 @@ import {
   innerDocumentOf,
   linkToOpen,
   pageDocument,
+  pageCapHeight,
   pageFrameHeight,
   readPageMessage,
   type PageTheme,
-} from "./publishedPage.logic";
+} from "./publishedPage.ts";
 
 /** The page as it runs, inside the wrapper. */
 const pageOf = (html: string, of: PageTheme = theme) => innerDocumentOf(pageDocument(html, of))!;
 
 const theme = { scheme: "dark" as const, vars: { "--background": "#111", "--foreground": "#eee" } };
+
+/** A token-shaped fixture built from parts: a literal one reads as a leaked secret to scanners. */
+const fakeToken = (fill: string) => [8, 4, 4, 4, 12].map((n) => fill.repeat(n)).join("-");
 
 describe("a published page's document", () => {
   it.each([
@@ -171,6 +175,45 @@ describe("what a published page says to the conversation", () => {
   );
 });
 
+describe("a published page in a phone's web view", () => {
+  const native = { kind: "native" as const, token: fakeToken("a") };
+  /** What the wrapper runs, after the page's frame: the part the page can never reach. */
+  const wrapperOf = (document: string) => document.slice(document.indexOf("</iframe>"));
+
+  it("runs the same page, under the same policies, as the web's frame", () => {
+    const html = "<script>fetch('/api')</script><p>x</p>";
+    expect(innerDocumentOf(pageDocument(html, theme, native))).toBe(
+      innerDocumentOf(pageDocument(html, theme)),
+    );
+    expect(pageDocument(html, theme, native)).toContain(`content="${WRAPPER_POLICY}"`);
+  });
+
+  it("talks to the app through its bridge, never to a parent window", () => {
+    const wrapper = wrapperOf(pageDocument("<p>x</p>", theme, native));
+    expect(wrapper).toContain("window.ReactNativeWebView");
+    expect(wrapper).not.toContain("window.parent");
+  });
+
+  it.each([
+    { title: "the token its wrapper was written with", token: native.token, reads: true },
+    { title: "another token", token: fakeToken("b"), reads: false },
+    {
+      title: "no token, as a page posting to the bridge itself would",
+      token: undefined,
+      reads: false,
+    },
+  ])("reads a message only when it carries $title", ({ token, reads }) => {
+    const data = JSON.stringify({ mate: "page", kind: "height", height: 120, token });
+    expect(readPageMessage(data, "null", native.token)).toEqual(
+      reads ? { kind: "height", height: 120 } : null,
+    );
+  });
+
+  it("writes no token a page could close its script with", () => {
+    expect(() => pageDocument("<p>x</p>", theme, { kind: "native", token: "</script>" })).toThrow();
+  });
+});
+
 describe("a published page's frame height", () => {
   it.each([
     { title: "unknown, it stands at the shared cap", content: null, want: null },
@@ -183,5 +226,14 @@ describe("a published page's frame height", () => {
     { title: "an empty page, still a line tall", content: 0, want: 48 },
   ])("is $title", ({ content, want }) => {
     expect(pageFrameHeight(content)).toBe(want);
+  });
+});
+
+describe("the cap a published page stands at before it says its height", () => {
+  it.each([
+    { title: "a tall view, the web's 440", view: 1000, want: 440 },
+    { title: "a short view, about half of it", view: 600, want: 312 },
+  ])("is $title", ({ view, want }) => {
+    expect(pageCapHeight(view)).toBe(want);
   });
 });

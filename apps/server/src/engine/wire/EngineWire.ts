@@ -1017,8 +1017,11 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                           ? {}
                           : { attachmentsByQuestionId }),
                       }
-                    : null,
-              summary: input.summary,
+                    : answer.kind === "secret"
+                      ? { outcome: answer.outcome }
+                      : null,
+              // A secret's record is worded by the engine: the client's words never reach it.
+              summary: answer.kind === "secret" ? "" : input.summary,
             };
           },
         );

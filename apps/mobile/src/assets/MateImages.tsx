@@ -15,8 +15,8 @@ export const MateImagesContext = createContext<{
 } | null>(null);
 const UNKNOWN: MateImageRead = { kind: "unknown" };
 
-/** Native presentations keep authorized original bytes in memory, including their save/share URI. */
-export function useMateImageUri(key: MateImageKey | null) {
+/** A Mate asset's bytes as the account's store holds them, demanded while the caller shows it. */
+export function useMateImageRead(key: MateImageKey | null): MateImageRead {
   const context = useContext(MateImagesContext);
   const identity = key === null ? null : JSON.stringify(key);
   const atom = key === null || context === null ? null : context.data.project(mateImage, key);
@@ -30,6 +30,12 @@ export function useMateImageUri(key: MateImageKey | null) {
     if (context === null || identity === null) return;
     return context.images.demand(JSON.parse(identity) as MateImageKey);
   }, [context, identity]);
+  return read;
+}
+
+/** Native presentations keep authorized original bytes in memory, including their save/share URI. */
+export function useMateImageUri(key: MateImageKey | null) {
+  const read = useMateImageRead(key);
   const blob = read.kind === "ready" ? read.blob : null;
   const [presentation, setPresentation] = useState<{
     readonly blob: Blob;
