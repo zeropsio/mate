@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { ServerProvider } from "@t3tools/contracts";
 
-import { usageReportOf } from "./engineProviderUsage.ts";
+import { usageReportOf } from "./engineAdapters.ts";
 
 const CHECKED = "2026-10-10T09:00:00.000Z";
 const WEEKLY_RESET = "2026-10-14T15:00:00.000Z";

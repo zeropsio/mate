@@ -14,24 +14,27 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import type { Principal, RunTrigger } from "@t3tools/contracts";
+import * as Stream from "effect/Stream";
+import type { Principal, RunTrigger, ServerProvider } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
 import {
   claimMessageAttachments,
   releaseClaimedAttachments,
 } from "../orchestration/Services/MessageAttachments.ts";
-import { serverProviderUsage } from "../engineProviderUsage.ts";
 import { serverHandedOverResume } from "../engineSessionDirectory.ts";
 import {
   AgentWorkspace,
   MessagePictures,
   PicturesRefused,
+  ProviderUsageFeed,
   RestartEvidence,
   RunAdmission,
   RunRefused,
+  type InstanceUsage,
   type RestartFacts,
 } from "../engine/ports.ts";
+import { ProviderInstances, layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import { CrewWorkspaceDirectory } from "./crew/engine/CrewWorkspaceDirectory.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
@@ -149,6 +152,53 @@ export const serverMessagePictures = Layer.effect(
     });
   }),
 );
+
+/**
+ * The engine's `ProviderUsageFeed` from the provider registry: what each instance's last probe
+ * read of the account it is signed in to. An instance reports only while signed in and with its
+ * windows read; a probe that failed, or an account that keeps no windows, says nothing of a limit.
+ */
+const millis = (iso: string | undefined): number | null => {
+  if (iso === undefined) return null;
+  const at = Date.parse(iso);
+  return Number.isNaN(at) ? null : at;
+};
+
+/** One instance's usage as the engine reads it, or none when its snapshot cannot say. */
+export const usageReportOf = (provider: ServerProvider): InstanceUsage | undefined => {
+  const limits = provider.usageLimits;
+  if (provider.auth.status !== "authenticated" || limits === undefined) return undefined;
+  if (limits.unavailable !== undefined || limits.windows.length === 0) return undefined;
+  const checkedAt = millis(limits.checkedAt);
+  if (checkedAt === null) return undefined;
+  return {
+    instanceId: provider.instanceId,
+    usage: {
+      checkedAt,
+      windows: limits.windows.map((window) => ({
+        usedPercent: window.usedPercent,
+        resetsAt: millis(window.resetsAt),
+      })),
+    },
+  };
+};
+
+const reportsOf = (providers: ReadonlyArray<ServerProvider>): ReadonlyArray<InstanceUsage> =>
+  providers.flatMap((provider) => {
+    const report = usageReportOf(provider);
+    return report === undefined ? [] : [report];
+  });
+
+const serverProviderUsage = Layer.effect(
+  ProviderUsageFeed,
+  Effect.map(ProviderInstances, (instances) =>
+    ProviderUsageFeed.of({
+      reports: Stream.concat(Stream.fromEffect(instances.providers), instances.changes).pipe(
+        Stream.map(reportsOf),
+      ),
+    }),
+  ),
+).pipe(Layer.provide(providerInstancesLayer));
 
 /** Outside Zerops: every run is admitted, and there is no restart to read. */
 export const engineAdaptersOpen = Layer.mergeAll(
