@@ -33,7 +33,7 @@ import { formatWorkingTime } from "./SidebarZeropsTree.logic";
  * is still coming up — and compared by what they say. Every other prop is the same value or a
  * change: the activity, the menu and the verbs stand while they say the same (`matesActivityOf`).
  */
-const READ_ANEW: ReadonlySet<string> = new Set(["owner", "coming", "crew"]);
+const READ_ANEW: ReadonlySet<string> = new Set(["owner", "coming", "crew", "change"]);
 
 /**
  * Whether a memoised Mate's row may skip its redraw: every prop the same, the ones read anew
@@ -827,12 +827,12 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
  * | coming up, deleting, finishing, outside  | that, in its own words                     |
  * | working                                  | its step, or what it is on and the dots    |
  * | what HQ last said of it, unreachable     | that                                       |
- * | nobody signed in                         | the sign-in                                |
  * | a colleague's, waiting on its person     | "Waits on Karel"                           |
  * | a question or a plan for the viewer      | the question, in ink                       |
  * | stopped on an error                      | the error: red if the viewer's, else muted |
  * | at its limit                             | "Paused until 1:00 PM"                     |
  * | its change waits on the viewer           | the change mark and its title, in ink      |
+ * | nobody signed in                         | the sign-in                                |
  * | an unsent draft                          | *Draft* and its words                      |
  * | a colleague's open change                | "<title> · in review", muted               |
  * | otherwise                                | its last words, muted; else what was asked |
@@ -865,6 +865,8 @@ export function mateRowSecond(input: {
   readonly mine: boolean | undefined;
   /** A colleague's Mate waits on its person: their first name. */
   readonly waitsOn: string | undefined;
+  /** It asks something — a question, an approval, a plan — not only that its change waits. */
+  readonly asks?: boolean;
   /** Its open change: `mine` where it waits on the viewer's review (`mateReviewWaits`). */
   readonly change: { readonly title: string; readonly mine: boolean } | undefined;
 }): MateRowSecond {
@@ -886,11 +888,12 @@ export function mateRowSecond(input: {
   if (view.state === "working") return said(undefined);
   if (reply?.kind === "words" && reply.lastKnown === true)
     return said(reply.tone === "failed" ? "failed" : "muted");
-  if (askLine?.kind === "sign-in") return { kind: "sign-in" };
   if (input.waitsOn !== undefined && view.state !== "failed") {
     return { kind: "waits-on", text: `Waits on ${input.waitsOn}` };
   }
-  if (view.state === "needs") return said("ink");
+  if (view.state === "needs" && (input.asks === true || input.change?.mine !== true)) {
+    return said("ink");
+  }
   if (view.state === "failed") {
     const own = reply?.kind === "words" && reply.tone === "failed" && input.mine !== false;
     return said(own ? "failed" : "muted");
@@ -899,6 +902,7 @@ export function mateRowSecond(input: {
     return { kind: "paused", until: view.slot.until };
   }
   if (change?.mine === true) return { kind: "change", title: change.title, mine: true };
+  if (askLine?.kind === "sign-in") return { kind: "sign-in" };
   if (askLine?.kind === "draft") return { kind: "ask", pending: false };
   if (change !== undefined) return { kind: "change", title: change.title, mine: false };
   return said("muted");

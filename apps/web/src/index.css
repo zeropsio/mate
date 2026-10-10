@@ -3178,6 +3178,62 @@ code {
     line-height: 21px;
   }
 
+  /* A change's *Review* in its Mate's time slot: a white 24 px chip — the
+     selected band's surface, a hairline ring, a small shadow — where it waits
+     on the viewer; a quiet word where it is a colleague's to review. */
+  .menu-review {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 24px;
+    border-radius: 999px;
+    color: var(--sidebar-muted-foreground);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      box-shadow 150ms var(--ease-out-strong),
+      transform 160ms var(--ease-out-strong),
+      opacity 120ms var(--ease-out-strong);
+  }
+
+  .menu-review:hover {
+    background-color: color-mix(in oklab, var(--sidebar-foreground) 6%, transparent);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-review[data-mine] {
+    background-color: var(--sidebar-row-active);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 8%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 8%, transparent);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-review[data-mine]:hover {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 16%, transparent),
+      0 2px 6px color-mix(in oklab, var(--color-black) 10%, transparent);
+  }
+
+  .menu-review:active {
+    transform: scale(0.97);
+  }
+
+  .menu-review:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .menu-review:active {
+      transform: none;
+    }
+  }
+
   /* A change on its Mate's line: the git-pull-request mark at 14 px before
      its title, in the line's own ink. */
   .menu-change-mark {

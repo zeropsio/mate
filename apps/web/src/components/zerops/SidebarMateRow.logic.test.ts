@@ -1781,12 +1781,26 @@ describe("mateRowSecond — the one line under a Mate's name", () => {
       line: { kind: "change", title: "Cart page with saved items", mine: true },
     },
     {
+      case: "its change outranks a sign-in its records still ask for",
+      over: {
+        askLine: { kind: "sign-in", text: "Waiting for sign-in", waitsOnViewer: false },
+        change: { title: "Cart page", mine: true },
+      },
+      line: { kind: "change", title: "Cart page", mine: true },
+    },
+    {
       case: "a question outranks its change",
       over: {
         view: view("needs", { kind: "words", text: "Go ahead?", tone: "ink" }),
+        asks: true,
         change: { title: "Cart page", mine: true },
       },
       line: { kind: "reply", tone: "ink" },
+    },
+    {
+      case: "needing the viewer only for its change: the change",
+      over: { view: view("needs"), change: { title: "Cart page", mine: true } },
+      line: { kind: "change", title: "Cart page", mine: true },
     },
     {
       case: "a colleague's open change: in review, muted",

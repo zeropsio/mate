@@ -22,9 +22,9 @@ import { mateStatus } from "../../zerops/mateStatus.logic";
  * (`SidebarSelectedBand`).
  *
  * A Mate's crew stands one line under it (`SidebarCrewLine`), lit with it as
- * one (`MateUnit`), then its open pull requests, a line each — the mark,
- * `#N title` and *Review*, the one door to merging — folded behind a count
- * past three (`pullRequestsFolded`).
+ * one (`MateUnit`). Its open change rides its own row: the change's mark and
+ * title on its line, and *Review* — the one door to merging — in its time's
+ * place where the change waits on the viewer.
  * After the Mates come those being created, and the ones untouched for a week
  * folded behind their count. *New project* stands at the menu's foot, under the
  * list's scroll (`SidebarNewProject`).
@@ -57,7 +57,6 @@ import {
   mateEnvironmentsEmptyReason,
   mateShapeOf,
   pullRequestsByMate,
-  pullRequestsFolded,
   rankZeropsCandidateForListing,
   readZeropsMembership,
   selectMateEnvironments,
@@ -71,7 +70,6 @@ import {
   stopServes,
   type EnvironmentRow,
   type FlowPullRequest,
-  type MateRunFacts,
   type Moved,
   type GroupFlow,
   type GroupEnvironmentTier,
@@ -652,7 +650,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const building = useBuildsUnderWay(
     useMemo(() => candidates.map((candidate) => candidate.project.id), [candidates]),
   );
-  const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
   // Collapsed projects survive a reload: a person who collapsed one had a
   // reason, and a menu that expands everything on every boot makes them do it
   // again (the owner, 2026-09-19). Per account, so it never leaves the device.
@@ -785,10 +782,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       setCollapsed((current) => withCollapsed(current, groupId, false));
       // A Mate may be folded among its project's quiet ones.
       if (mateId !== undefined) setOpenQuiet((current) => withCollapsed(current, groupId, true));
-      if (target.kind === "change" && mateId !== undefined) {
-        const listKey = `${groupId}:${mateId}`;
-        setOpenLists((current) => (current.has(listKey) ? current : new Set(current).add(listKey)));
-      }
     }
     focusAfterDraw.current = { target, drawn: false };
     setRevealDraw((draws) => draws + 1);
@@ -978,15 +971,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     if (identity !== undefined) return { tint: identity.tint, shape: identity.shape };
     const tint = tints.get(project.id) ?? "slate";
     return { tint, shape: mateShapeOf(project, tint) };
-  };
-
-  const toggle = (key: string) => {
-    setOpenLists((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
   };
 
   // Each drawn Mate's number, top to bottom, for the ⌥ chips.
@@ -1516,8 +1500,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           };
         }
         const { item } = slot;
-        const pulls = grouped.byMate.get(item.project.id) ?? [];
-        const listKey = `${id}:${item.project.id}`;
+        const pulls = changeRows === undefined ? [] : (grouped.byMate.get(item.project.id) ?? []);
+        // Its open change rides its row (round 5): the first that asks for review, its Mate at rest.
+        const run = mateRunOf(activityOfNow(getActivity?.(item)));
+        const shownChange = pulls.find((pull) => changeShowsReview(pull, run));
         const appUrl = projectFlow.mates.find(
           (mate) => mate.projectId === item.project.id,
         )?.preview;
@@ -1533,6 +1519,17 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                   actions={getMateActions?.(item, getActivity?.(item))}
                   active={active}
                   activity={keyedReadings ? undefined : getActivity?.(item)}
+                  change={
+                    shownChange === undefined
+                      ? undefined
+                      : {
+                          groupId: id,
+                          title: shownChange.title,
+                          repository: shownChange.repository,
+                          number: shownChange.number,
+                          keys: pulls.map(changeRowKey).join(" "),
+                        }
+                  }
                   up={mateAwake(item, hqMates)}
                   appUrl={appUrl}
                   candidate={item}
@@ -1557,18 +1554,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                   read={getCrew?.(item)}
                 />
               </MateUnit>
-              {pulls.length === 0 || changeRows === undefined ? null : (
-                <PullRequestList
-                  groupId={id}
-                  onToggle={() => {
-                    toggle(listKey);
-                  }}
-                  open={openLists.has(listKey)}
-                  onOpenChange={changeRows.onOpenChange}
-                  pulls={pulls}
-                  run={mateRunOf(activityOfNow(getActivity?.(item)))}
-                />
-              )}
             </div>
           ),
         };
@@ -2429,15 +2414,18 @@ function revealLanding(
       return chip === null ? null : { focus: chip, flash: chip, press: chip };
     }
     case "change": {
+      // Its own row among the other Mates' changes, or the row of the Mate it rides.
+      const key = CSS.escape(target.key);
       const row = find(
-        `[data-zerops-group="${target.groupId}"] [data-zerops-change="${target.key}"]`,
+        `[data-zerops-group="${target.groupId}"] :is([data-zerops-change="${key}"], [data-zerops-changes~="${key}"])`,
       );
       if (row === null) return null;
       // Its *Review*, the one door to it: Enter opens the review.
       const review = row.querySelector<HTMLElement>(
-        '[data-zerops-surface="sidebar-pull-request-review"]',
+        '[data-zerops-surface="sidebar-pull-request-review"], [data-zerops-surface="sidebar-mate-review"]',
       );
-      return { focus: review ?? row, flash: row };
+      const mate = row.querySelector<HTMLElement>('[data-zerops-surface="sidebar-mate"]');
+      return { focus: review ?? mate ?? row, flash: row };
     }
   }
 }
@@ -2621,6 +2609,7 @@ function MateRowView<T extends RosterCandidate>({
   number,
   numbers = false,
   reviewWaits = false,
+  change,
 }: {
   readonly candidate: T;
   readonly tint: MateTintId;
@@ -2653,8 +2642,22 @@ function MateRowView<T extends RosterCandidate>({
   readonly numbers?: boolean;
   /** Its own change waits on the person's review (`mateNextStep`): it wears needs-you. */
   readonly reviewWaits?: boolean;
+  /**
+   * Its open change that asks for review (`changeShowsReview`), on its row; `keys` every open
+   * change of its, as the jump box lands on them (`changeRowKey`).
+   */
+  readonly change?:
+    | {
+        readonly groupId: string;
+        readonly title: string;
+        readonly repository: string;
+        readonly number: number;
+        readonly keys: string;
+      }
+    | undefined;
 }) {
   const tags = readZeropsMembership(candidate.project);
+  const openReview = useOpenReview();
   const name = projectNameInApp(candidate.project);
   // On its way off Zerops (`deletingMates.ts`): it says so in its last line,
   // offers no menu and does not open, until the listing lets it go.
@@ -2827,8 +2830,36 @@ function MateRowView<T extends RosterCandidate>({
     outsideHq,
     mine: hqPeople?.waitsOnViewer,
     waitsOn,
-    change: undefined,
+    asks:
+      activity !== undefined &&
+      (activity.question !== undefined ||
+        activity.kind === "approval" ||
+        activity.kind === "input" ||
+        activity.kind === "planReady"),
+    change:
+      change === undefined
+        ? undefined
+        : { title: change.title, mine: hqPeople?.waitsOnViewer !== false },
   });
+  // Its change's *Review*, in the time's place: white where it waits on the viewer, quiet where
+  // it is a colleague's to review.
+  const review =
+    change === undefined || deleting || outsideHq
+      ? undefined
+      : {
+          mine: hqPeople?.waitsOnViewer !== false,
+          open: (from: HTMLElement) => {
+            openReview(
+              {
+                kind: "change",
+                groupId: change.groupId,
+                repository: change.repository,
+                number: change.number,
+              },
+              { from },
+            );
+          },
+        };
   const warmIntent = useWarmIntent(activity?.threadKey);
   // Its menu's door to its crew (`mateCrewItem`): crew mode off, on with no crew yet, or a crew
   // applied, as HQ holds it of any Mate — or a fixture's.
@@ -2905,6 +2936,7 @@ function MateRowView<T extends RosterCandidate>({
     // unit (`MateUnit`), wherever on it the pointer is.
     <div
       className="relative"
+      data-zerops-changes={change?.keys}
       data-zerops-mate-row={candidate.project.id}
       data-zerops-surface="sidebar-mate-row"
       onContextMenu={
@@ -3075,34 +3107,51 @@ function MateRowView<T extends RosterCandidate>({
               ) : null}
             </span>
             {/* A slot that is always there: the time, which gives way to the
-                row's menu on hover and focus without anything moving. */}
-            <span
-              className={cn(
-                "relative flex h-5.5 min-w-11 shrink-0 items-center justify-end",
-                actions !== undefined &&
-                  "transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
-                armed && "opacity-0",
-              )}
-            >
+                row's menu on hover and focus without anything moving — or, where
+                its change asks for review, the room its *Review* stands in. */}
+            {review === undefined ? (
               <span
-                className={cn("flex items-center", numbers && number !== undefined && "opacity-0")}
+                className={cn(
+                  "relative flex h-5.5 min-w-11 shrink-0 items-center justify-end",
+                  actions !== undefined &&
+                    "transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
+                  armed && "opacity-0",
+                )}
               >
-                <MateSlot
-                  at={activity?.at}
-                  slot={view.slot}
-                  timestampFormat={timestampFormat}
-                  tint={tint}
-                />
-              </span>
-              {numbers && number !== undefined ? (
-                <KeyChip
-                  className="absolute end-0 top-0.5"
-                  data-zerops-surface="sidebar-mate-number"
+                <span
+                  className={cn(
+                    "flex items-center",
+                    numbers && number !== undefined && "opacity-0",
+                  )}
                 >
-                  {String(number)}
-                </KeyChip>
-              ) : null}
-            </span>
+                  <MateSlot
+                    at={activity?.at}
+                    slot={view.slot}
+                    timestampFormat={timestampFormat}
+                    tint={tint}
+                  />
+                </span>
+                {numbers && number !== undefined ? (
+                  <KeyChip
+                    className="absolute end-0 top-0.5"
+                    data-zerops-surface="sidebar-mate-number"
+                  >
+                    {String(number)}
+                  </KeyChip>
+                ) : null}
+              </span>
+            ) : (
+              <span aria-hidden="true" className="relative flex h-5.5 w-16 shrink-0 justify-end">
+                {numbers && number !== undefined ? (
+                  <KeyChip
+                    className="absolute end-0 top-0.5"
+                    data-zerops-surface="sidebar-mate-number"
+                  >
+                    {String(number)}
+                  </KeyChip>
+                ) : null}
+              </span>
+            )}
           </span>
           <MateSecondLine
             askChanged={askChanged}
@@ -3115,6 +3164,22 @@ function MateRowView<T extends RosterCandidate>({
           />
         </span>
       </button>
+      {review === undefined ? null : (
+        <button
+          className={cn(
+            "menu-review absolute end-2 top-2.75",
+            numbers && number !== undefined && "opacity-0",
+          )}
+          data-mine={review.mine ? "true" : undefined}
+          data-zerops-surface="sidebar-mate-review"
+          onClick={(event) => {
+            review.open(event.currentTarget);
+          }}
+          type="button"
+        >
+          Review
+        </button>
+      )}
       {outsideHq || retainedReply === undefined ? null : (
         <span className="absolute end-2 bottom-2.5">
           <a
@@ -3130,7 +3195,8 @@ function MateRowView<T extends RosterCandidate>({
       {actions === undefined ? null : (
         <span
           className={cn(
-            "absolute end-2 top-2.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
+            "absolute top-3.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
+            review === undefined ? "end-2" : "end-20",
             armed && "opacity-100",
           )}
           data-zerops-surface="sidebar-mate-actions"
@@ -3797,64 +3863,6 @@ const COMING_SEAT: BadgeSeat | null = ownerBadge(
   }).seat,
   false,
 );
-
-/**
- * A Mate's open pull requests: the rows themselves while there are a few, a
- * count that opens to them once there are more (`pullRequestsFolded`).
- */
-function PullRequestList({
-  groupId,
-  pulls,
-  open,
-  onToggle,
-  onOpenChange,
-  run,
-}: {
-  /** The project whose repository they are open against, for *Review*. */
-  readonly groupId: string;
-  readonly pulls: ReadonlyArray<FlowPullRequest>;
-  /** Their Mate's run: the changes it still writes ask for no review until it rests. */
-  readonly run?: MateRunFacts | undefined;
-  readonly open: boolean;
-  readonly onToggle: () => void;
-  readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
-}) {
-  const folded = pullRequestsFolded(pulls.length);
-  return (
-    // 2 px under its Mate's row: the changes are that Mate's, so they hang
-    // on it rather than standing apart as the next Mate does.
-    <div className="mt-0.5 flex flex-col" data-zerops-surface="sidebar-pull-requests">
-      {folded ? (
-        <button
-          aria-expanded={open}
-          className={FOLD_ROW_CLASS}
-          data-zerops-surface="sidebar-pull-request-fold"
-          onClick={onToggle}
-          type="button"
-        >
-          <span className="flex justify-center">
-            <FoldGlyph open={open} />
-          </span>
-          <span className="truncate">{`${String(pulls.length)} changes`}</span>
-        </button>
-      ) : null}
-      {!folded || open ? (
-        <ul className="flex flex-col">
-          {pulls.map((pull) => (
-            <PullRequestRow
-              among={pulls}
-              asks={changeShowsReview(pull, run)}
-              groupId={groupId}
-              key={`${pull.repository}#${pull.number}`}
-              onOpenChange={onOpenChange}
-              pull={pull}
-            />
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
 
 /**
  * One pull request: the pull-request mark in the faces' column, the number
