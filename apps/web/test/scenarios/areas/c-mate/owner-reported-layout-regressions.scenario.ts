@@ -17,6 +17,7 @@ import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import { installArea, installEngineArea, reportContainer } from "./fake.ts";
 import { EngineChatWire } from "./engine.ts";
+import { TARGET_QUESTION } from "./wire.ts";
 import { menuScenario } from "../b-menu/dsl.ts";
 import { reportConversation } from "../b-menu/fake.ts";
 
@@ -150,6 +151,9 @@ function readEnd() {
     rowGap,
   };
 }
+
+/** A reading as an assertion message quotes it. */
+const quoted = (reading: object) => JSON.stringify(reading);
 
 /** The end of the conversation once nothing moves: the same reading for half a second. */
 async function settledEnd(page: Page) {
@@ -915,14 +919,24 @@ describe("owner-reported layout regressions", () => {
         // Owner, 2026-10-10: "last message way too close to composer" (a person's message 18 px
         // above the card), and "in some cases, at least previously, some stuff went even into the
         // composer (like working card when it had helpers etc)". A question the run waits on is
-        // left out: its ask stands over the conversation's end by the decision behind "a question
-        // opening in the composer and its answer never move the conversation".
+        // left out: its ask stands over the conversation's end without moving it ("a question
+        // opening in the composer and its answer never move the conversation"), and the person
+        // scrolls clear of it ("a question the run waits on never hides the agent's last words").
         const ends: ReadonlyArray<{
           readonly state: string;
           readonly arrange: (
             chat: ReturnType<typeof mateChat>,
             engine: EngineChatWire["engine"],
-          ) => Effect.Effect<void, unknown, never>;
+          ) => Effect.Effect<
+            void,
+            Effect.Error<
+              ReturnType<
+                | ReturnType<typeof mateChat>["then"]["text"]
+                | ReturnType<typeof mateChat>["when"]["send"]
+              >
+            >,
+            never
+          >;
         }> = [
           { state: "the conversation at rest", arrange: () => Effect.void },
           {
@@ -1048,7 +1062,7 @@ describe("owner-reported layout regressions", () => {
                       clip: { x: 435, y: 500, width: 1786 - 435, height: 500 },
                     });
                 });
-                const seen = JSON.stringify(end);
+                const seen = quoted(end);
                 expect(
                   end.last.bottom,
                   `ASSERTION: no part of the last row reaches into the composer: ${seen}`,
@@ -1060,6 +1074,231 @@ describe("owner-reported layout regressions", () => {
                 yield* s.then.noExternalNetwork;
               }),
           );
+      });
+    });
+    describe("Decision: an ask never moves the conversation, and never hides its end: the person scrolls clear of it.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // Owner, 2026-10-10: the question in the composer covered the last 120–180 px of the run's
+        // card, the agent's last words with it, and no scroll brought them out from under it.
+        const asks: ReadonlyArray<{
+          readonly title: string;
+          readonly shows: string;
+          readonly answer: string;
+          readonly raise: (engine: EngineChatWire["engine"], run: string) => void;
+        }> = [
+          {
+            title:
+              "a question the run waits on never hides the agent's last words: the conversation scrolls clear of the question",
+            shows: "Which environment should I inspect?",
+            answer: "Staging",
+            raise: (engine, run) =>
+              engine.ask(
+                { kind: "question", questions: [TARGET_QUESTION], dismissible: false },
+                { runId: run },
+              ),
+          },
+          {
+            title:
+              "an approval the run waits on never hides the agent's last words: the conversation scrolls clear of the approval",
+            shows: "vp run build",
+            answer: "Approve",
+            raise: (engine, run) =>
+              engine.ask(
+                { kind: "approval", requestKind: "command", detail: "vp run build" },
+                { runId: run },
+              ),
+          },
+        ];
+        const LAST_WORDS = "Step 8: your choice of format.";
+        /** Where the agent's last words stand on screen, each frame, until `stop`. */
+        const traceLastWords = (page: Page) =>
+          page.evaluate((lastWords) => {
+            const frames: Array<number | null> = [];
+            const state = { active: true };
+            const sample = () => {
+              const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+              let top: number | null = null;
+              while (walker.nextNode()) {
+                const box = walker.currentNode.textContent?.includes(lastWords)
+                  ? walker.currentNode.parentElement?.getBoundingClientRect()
+                  : undefined;
+                if (box && box.height > 0) top = box.top;
+              }
+              frames.push(top);
+              if (state.active) requestAnimationFrame(sample);
+            };
+            (window as unknown as { lastWordsTrace: unknown }).lastWordsTrace = { frames, state };
+            sample();
+          }, LAST_WORDS);
+        const stopLastWords = (page: Page, ms: number) =>
+          new Promise((resolve) => setTimeout(resolve, ms)).then(() =>
+            page.evaluate(() => {
+              const held = (
+                window as unknown as {
+                  lastWordsTrace: { frames: Array<number | null>; state: { active: boolean } };
+                }
+              ).lastWordsTrace;
+              held.state.active = false;
+              return held.frames;
+            }),
+          );
+        for (const { title, shows, answer, raise } of asks)
+          it.effect(title, () =>
+            Effect.gen(function* () {
+              const s = yield* createScenario([installEngineArea]);
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.project("Ada", { mate: true });
+              const chat = mateChat(s);
+              for (const round of [1, 2, 3])
+                chat
+                  .fixture()
+                  .exchange(
+                    `How did deploy ${round} go?`,
+                    "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                      12,
+                    ),
+                  );
+              chat.fixture().exchange("And now?", "The existing conversation is still here");
+              yield* s.given.signedIn;
+              yield* chat.when.open();
+              yield* chat.then.text("The existing conversation is still here");
+              yield* Effect.promise(() => ownerMenu(s.page));
+              const wire = chat.fixture().wire;
+              if (!(wire instanceof EngineChatWire))
+                throw new Error("This witness runs on the engine's wire");
+              const engine = wire.engine;
+              // The agent works on after the answer, as Milo did: the run neither ends nor settles.
+              engine.onAnswer.splice(0, engine.onAnswer.length, (request) => {
+                engine.note(request.runId, "Going on with what you chose.");
+              });
+              const run = engine.personRun("Lay out the summary for me");
+              engine.note(run, LAST_WORDS);
+              yield* chat.then.text(LAST_WORDS);
+              raise(engine, run);
+              yield* chat.then.text(shows);
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+              // The person scrolls down as far as the conversation goes.
+              yield* Effect.promise(async () => {
+                const list = (await s.page.$(".timeline-legend-list"))!;
+                const bounds = (await list.boundingBox())!;
+                await s.page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 100);
+                for (let wheel = 0; wheel < 4; wheel++) {
+                  await s.page.mouse.wheel({ deltaY: 400 });
+                  await new Promise((resolve) => setTimeout(resolve, 120));
+                }
+                await new Promise((resolve) => setTimeout(resolve, 600));
+              });
+              const end = yield* Effect.promise(() => s.page.evaluate(readEnd));
+              yield* Effect.promise(async () => {
+                if (process.env.MATE_LAYOUT_EVIDENCE)
+                  await s.page.screenshot({
+                    path: `${process.env.MATE_LAYOUT_EVIDENCE}/ask-${answer}.png`,
+                    clip: { x: 435, y: 400, width: 1786 - 435, height: 600 },
+                  });
+              });
+              const seen = quoted(end);
+              expect(
+                end.last.text,
+                `ASSERTION: the conversation's last row is the run's card: ${seen}`,
+              ).toContain(LAST_WORDS);
+              expect(
+                end.last.bottom,
+                `ASSERTION: scrolled down, the run's card ends fully above what the agent asks: ${seen}`,
+              ).toBeLessThanOrEqual(end.composerTop);
+
+              // The answer closes it: the conversation comes back down by a glide, never a cut.
+              yield* Effect.promise(() => traceLastWords(s.page));
+              yield* chat.when.click(answer);
+              yield* chat.then.text("Going on with what you chose.");
+              const frames = (yield* Effect.promise(() => stopLastWords(s.page, 800))).filter(
+                (top): top is number => top !== null,
+              );
+              expect(frames.length, "ASSERTION: the answer was sampled").toBeGreaterThan(10);
+              expect(
+                Math.max(...frames.slice(1).map((top, index) => Math.abs(top - frames[index]!))),
+                "ASSERTION: the conversation never jumps as the answer closes what was asked",
+              ).toBeLessThan(60);
+              yield* s.then.noExternalNetwork;
+            }),
+          );
+      });
+    });
+    describe("Decision: what the composer's drawer says stands fully clear of the composer card.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // Milo restarted mid-run, 2026-10-10: the reconnect notice ("Milo is reconnecting since
+        // 10:23 AM. Last known …") stood with its bottom edge under the composer card.
+        it.effect("a Mate's reconnect notice stands fully clear of the composer card", () =>
+          Effect.gen(function* () {
+            let unavailable = false;
+            const s = yield* createScenario([
+              installArea,
+              (drivers) => {
+                drivers.onMate.push((mate) => {
+                  const handle = mate.handle;
+                  const socket = mate.socket;
+                  mate.handle = (request) =>
+                    unavailable
+                      ? { status: 503, body: { error: "Mate unavailable" } }
+                      : handle(request);
+                  mate.socket = (connection) => {
+                    if (unavailable) connection.close(1012, "Mate unavailable");
+                    else socket(connection);
+                  };
+                });
+              },
+            ]);
+            yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+            yield* s.given.project("Ada", { mate: true });
+            const chat = mateChat(s);
+            const wire = chat.fixture();
+            for (const round of [1, 2, 3])
+              wire.exchange(
+                `How did deploy ${round} go?`,
+                "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                  12,
+                ),
+              );
+            wire.exchange("And now?", "The existing conversation is still here");
+            yield* reportConversation(s.drivers, "Ada", {
+              latestMessagePreview: {
+                role: "assistant",
+                text: "The existing conversation is still here",
+              },
+            });
+            yield* s.given.signedIn;
+            yield* chat.when.open();
+            yield* chat.then.text("The existing conversation is still here");
+            yield* Effect.promise(() => ownerMenu(s.page));
+            unavailable = true;
+            yield* s.drivers.links.get("Ada")!.close;
+            wire.disconnect();
+            yield* chat.then.text("Last known");
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+            const geometry = yield* Effect.promise(() =>
+              s.page.evaluate(() => {
+                const notice = document
+                  .querySelector('[data-composer-banner-drawer] [data-slot="alert"]')!
+                  .getBoundingClientRect();
+                const card = document
+                  .querySelector('[data-slot="composer-shell"]')!
+                  .getBoundingClientRect();
+                return { noticeTop: notice.top, noticeBottom: notice.bottom, cardTop: card.top };
+              }),
+            );
+            yield* Effect.promise(async () => {
+              if (process.env.MATE_LAYOUT_EVIDENCE)
+                await s.page.screenshot({
+                  path: `${process.env.MATE_LAYOUT_EVIDENCE}/reconnect.png`,
+                  clip: { x: 435, y: 600, width: 1786 - 435, height: 400 },
+                });
+            });
+            expect(
+              geometry.noticeBottom,
+              `ASSERTION: no part of the notice stands under the composer card: ${quoted(geometry)}`,
+            ).toBeLessThanOrEqual(geometry.cardTop);
+            yield* s.then.noExternalNetwork;
+          }),
+        );
       });
     });
     describe("Decision: restore pre-regression behaviour; no test weakened; titles kept.", () => {

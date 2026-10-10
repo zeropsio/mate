@@ -18,6 +18,9 @@ const STRIKE = /~~(?=\S)([^\n]*?\S)~~/gu;
 const CODE = /`([^`\n]+)`/gu;
 const BLOCK_MARKS = /^\s{0,3}(?:#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,3}[.)]\s+)/gmu;
 const TRAILING_PUNCTUATION = /[\s,;:.!?…-]+$/u;
+// A table's rule row (`|---|:--:|`), and the pipes that frame and part its cells.
+const TABLE_RULE = /^\s{0,3}\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?\s*$/gmu;
+const TABLE_PIPE = /(?<!\\)\|/gu;
 const QUOTE_LINE = /^[ \t]{0,3}(?:>[ \t]?)+(.*)$/gmu;
 const ALERT_MARKER = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/iu;
 
@@ -55,6 +58,8 @@ export function messageWords(markdown: string): string {
   return quoteWords(markdown)
     .replace(FENCE_LINE, "")
     .replace(HORIZONTAL_RULE, "")
+    .replace(TABLE_RULE, "")
+    .replace(TABLE_PIPE, " ")
     .replace(IMAGE, "$1")
     .replace(LINK, "$1")
     .replace(STRONG, "$2")

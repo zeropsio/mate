@@ -270,6 +270,46 @@ function reducedMotion(): boolean {
 }
 /** How long after a person's click what they opened is brought into view, while it eases open. */
 const REVEAL_FOR_MS = 700;
+/**
+ * The room under the conversation's end for what the agent asks (`askRoomEnd`), as the list has
+ * it. It opens at once and the view keeps its place. Once answered it stays while the view stands
+ * in it, the view easing back up to the end on the follow curve, then goes: dropped at once, the
+ * browser would cut the view back by all of it in one frame.
+ */
+function useAskRoom(wanted: number, listRef: React.RefObject<LegendListRef | null>): number {
+  const [held, setHeld] = useState(0);
+  const [previous, setPrevious] = useState(wanted);
+  if (wanted !== previous) {
+    setPrevious(wanted);
+    if (wanted < previous) setHeld(Math.max(held, previous));
+  }
+  useLayoutEffect(() => {
+    if (held <= wanted) return;
+    let frame = 0;
+    let last = 0;
+    let at: number | null = null;
+    const step = (now: number) => {
+      const element = listRef.current?.getScrollableNode();
+      // Where the end stands once the room is gone.
+      const end = element
+        ? Math.max(0, element.scrollHeight - element.clientHeight - (held - wanted))
+        : 0;
+      if (!element || element.scrollTop <= end + 0.5 || reducedMotion()) {
+        setHeld(0);
+        return;
+      }
+      // Moved since by something else: it eases on from there.
+      if (at === null || Math.abs(element.scrollTop - at) > 2) at = element.scrollTop;
+      at = approach(at, end, last === 0 ? 1000 / 60 : now - last, FOLLOW_TAU_MS);
+      last = now;
+      scrollOwn(element, at);
+      frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [held, listRef, wanted]);
+  return Math.max(wanted, held);
+}
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
 /**
  * How far from the end growth at the end is still followed, in viewports.
@@ -331,6 +371,11 @@ interface MessagesTimelineProps {
   anchorMessageId: MessageId | null;
   onAnchorReady: (messageId: MessageId, anchorIndex: number) => void;
   contentInsetEndAdjustment: number;
+  /**
+   * What the agent asks over the composer covers of the conversation beyond the inset: room under
+   * its end the person scrolls into, never followed into, so the ask opening moves nothing.
+   */
+  askRoomEnd?: number;
   /**
    * Whether the timeline should keep pinning to the live edge as content
    * grows. Off while the user is reading history; LegendList's own
@@ -429,6 +474,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   anchorMessageId,
   onAnchorReady,
   contentInsetEndAdjustment,
+  askRoomEnd = 0,
   liveFollowEnabled,
   onIsAtEndChange,
   onPersonInput,
@@ -466,6 +512,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const endRepinFrameRef = useRef<number | null>(null);
 
   const previousContentInsetEndAdjustmentRef = useRef(contentInsetEndAdjustment);
+  // The ask's room as the list has it: it opens at once and stays, once answered, until the
+  // conversation has come back out of it (`useAskRoom`).
+  const askRoom = useAskRoom(askRoomEnd, listRef);
+  const askRoomRef = useRef(askRoom);
+  useLayoutEffect(() => {
+    askRoomRef.current = askRoom;
+  }, [askRoom]);
   const noticeResizeRef = useRef<{
     position: RememberedTimelinePosition | undefined;
     scrollOffset: number;
@@ -782,8 +835,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       // Whether it stands at its end is the follower's own judgement, from
       // the scrolls it hears: the list's own reading goes stale mid-glide.
       follows: () => followingEndRef.current,
+      room: () => askRoomRef.current,
       placeEnd: () => {
-        void listRef.current?.scrollToEnd({ animated: false });
+        void listRef.current?.scrollToEnd({ animated: false, viewOffset: askRoomRef.current });
       },
     });
     endFollowRef.current = endFollow;
@@ -847,7 +901,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     if (!listPlaced) return;
     const frame = requestAnimationFrame(followEnd);
     return () => cancelAnimationFrame(frame);
-  }, [contentInsetEndAdjustment, followEnd, followingEnd, listPlaced, rows]);
+  }, [askRoom, contentInsetEndAdjustment, followEnd, followingEnd, listPlaced, rows]);
   useEffect(() => {
     const viewport = timelineViewportElement;
     if (viewport === null || typeof ResizeObserver === "undefined") return;
@@ -894,7 +948,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ) {
       return undefined;
     }
-    const isAtEnd = resolveTimelineIsAtEnd(state, contentInsetEndAdjustment);
+    const isAtEnd = resolveTimelineIsAtEnd(state, contentInsetEndAdjustment + askRoom);
     const anchor = state.data.length ? resolveTimelineScrollAnchor(state) : undefined;
     const row = anchor === undefined ? undefined : state.elementAtIndex(anchor.index);
     const element = listRef.current?.getScrollableNode();
@@ -911,6 +965,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     return isAtEnd;
   }, [
+    askRoom,
     contentInsetEndAdjustment,
     listPlaced,
     listReady,
@@ -1775,7 +1830,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   TIMELINE_LIST_HEADER
                 )
               }
-              ListFooterComponent={pauseStageId === null ? TIMELINE_LIST_FOOTER : null}
+              ListFooterComponent={
+                askRoom > 0 ? (
+                  <>
+                    {pauseStageId === null ? TIMELINE_LIST_FOOTER : null}
+                    <div aria-hidden style={{ height: askRoom }} />
+                  </>
+                ) : pauseStageId === null ? (
+                  TIMELINE_LIST_FOOTER
+                ) : null
+              }
             />
             <TimelineMinimap
               items={minimapItems}

@@ -845,6 +845,16 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     z-index: 0;
   }
 
+  /* A notice stands on the card, fully clear of it: none of it reaches under the card. */
+  .chat-composer-drawer-slot,
+  .chat-composer-drawer-slot .chat-composer-drawer-surface {
+    --chat-composer-attachment-overlap: 0px;
+  }
+
+  .chat-composer-drawer-slot .chat-composer-drawer-surface::before {
+    border-bottom: 0;
+  }
+
   :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="error"] {
     --chat-composer-attached-outline: var(--border);
     --chat-composer-attached-tint: transparent;
