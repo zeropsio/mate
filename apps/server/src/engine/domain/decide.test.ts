@@ -1254,6 +1254,15 @@ describe("decide: a usage pause belongs to the limit the provider still reports"
     expect(state.wakes[wakeId(conversation, "usage-resume", r(2))]?.dueAt).toBe(later);
   });
 
+  it("a held message withdrawn ends stopped, unsent, and the next held message moves up", () => {
+    const { state, log } = playAll([...held, send("and this"), stop(2)]);
+    expect(ends(log)).toEqual(["1:usage-limit/agent", "2:stopped/stop-asked"]);
+    expect(state.runs[r(2)]?.startedAt ?? null).toBeNull();
+    expect(state.queue).toEqual([r(3)]);
+    const resumed = playAll([...held, send("and this"), stop(2), { _tag: "Continue" }]);
+    expect(resumed.state.runs[r(3)]?.state).toBe("admitted");
+  });
+
   it("nothing paused, a usage report or a Continue changes nothing", () => {
     for (const when of [otherAccount, { _tag: "Continue" } as Command]) {
       const scene = play([...proofRunning, when]);
