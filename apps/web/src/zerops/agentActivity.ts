@@ -103,6 +103,8 @@ export type AgentActivityThread = Pick<
   readonly latestMessagePreview?: Pick<ThreadMessagePreview, "role" | "text"> | null | undefined;
   readonly planProgress?: { readonly step: string } | null | undefined;
   readonly pendingQuestion?: string | null | undefined;
+  /** It waits on a value its agent asked for (`key`), not a question. */
+  readonly pendingAsk?: "key" | null | undefined;
   readonly usagePause?:
     | { readonly resetsAt: string; readonly pausedAt?: string | undefined }
     | null
@@ -172,6 +174,8 @@ export interface ZeropsAgentActivity {
    * nothing waits, or where it relays none (the row keeps its last words).
    */
   readonly question?: string | undefined;
+  /** It waits on a value its agent asked the person for, not on a question: "Needs a key". */
+  readonly asksFor?: "key";
   /** The first line of the error the Mate stopped on: a failed row's third line. */
   readonly errorLine?: string | undefined;
   /**
@@ -467,6 +471,9 @@ export function threadAgentActivity(
       ? { waitsOnHelpers: true as const }
       : {}),
     ...agentActivityQuestion(thread, resolved.kind),
+    ...(resolved.kind === "input" && thread.pendingAsk === "key"
+      ? { asksFor: "key" as const }
+      : {}),
     ...(limit.kind === "expired" ? {} : agentActivityErrorLine(thread, resolved.kind)),
   };
 }
@@ -696,6 +703,7 @@ export function rowAgentActivity(
     ...(state.kind === "working" && state.waitsOnHelpers ? { waitsOnHelpers: true as const } : {}),
     ...(question === undefined || question.length === 0 ? {} : { question }),
     ...(errorLine === undefined ? {} : { errorLine: maskSecrets(errorLine) }),
+    ...(state.kind === "waiting" && state.on === "vault" ? { asksFor: "key" as const } : {}),
   };
 }
 
