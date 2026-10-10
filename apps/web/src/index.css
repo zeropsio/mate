@@ -3257,6 +3257,34 @@ code {
     border-radius: 10px;
   }
 
+  /* A fold — "3 quiet Mates", "2 other projects", "4 Mates hidden" — a 36 px
+     row, its chevrons in the faces' 40 px column, 14/20 muted. */
+  .menu-fold {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: center;
+    height: 36px;
+    padding: 0 8px;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  /* *Show everyone*: the one word on the hidden line that does something. */
+  .menu-show-everyone {
+    color: var(--sidebar-foreground);
+    font-weight: 500;
+    text-decoration: underline 1px color-mix(in oklab, currentColor 30%, transparent);
+    text-underline-offset: 3px;
+    cursor: pointer;
+    transition: text-decoration-color 150ms var(--ease-out-strong);
+  }
+
+  .menu-show-everyone:hover {
+    text-decoration-color: currentColor;
+  }
+
   /* The words' second ink: what the person asked, and the crew's one fact.
      The name is the ink itself and the answer muted, so the three lines of a
      row stay apart with no gap between them. */

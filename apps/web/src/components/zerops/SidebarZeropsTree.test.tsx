@@ -4078,8 +4078,8 @@ describe("automatic project sections", () => {
       sections(),
       "ASSERTION: recent work arriving in the opening baseline belongs in Active",
     ).toEqual({ links: "active", aaa: "other" });
-    expect(text(tree.root)).toContain("Active");
-    expect(text(tree.root)).toContain("Other projects");
+    // The quiet one folds behind its count at the list's end (round 5).
+    expect(text(tree.root)).toContain("1 other project");
     act(() =>
       hq.seed({
         structure,
@@ -4108,8 +4108,7 @@ describe("automatic project sections", () => {
       "links",
       "aaa",
     ]);
-    expect(html).toContain(">Active</h2>");
-    expect(html).toContain(">Other projects</h2>");
+    expect(html).toContain('data-zerops-surface="sidebar-other-projects-fold"');
   });
 
   it("Current work and needs-you keep a project Active beyond seven days.", () => {
@@ -4141,7 +4140,7 @@ describe("automatic project sections", () => {
         getActivity: (candidate: ZeropsCandidate) => (candidate === LINKS_MATE ? held : undefined),
       });
       expect(ids(html)).toEqual(["aaa", "links"]);
-      expect(html).not.toContain(">Active</h2>");
+      expect(html).not.toContain("sidebar-other-projects-fold");
     }
   });
 
@@ -4153,7 +4152,7 @@ describe("automatic project sections", () => {
     clock.mockReturnValue(now + week + 1);
     act(() => tree.update(menu((candidate) => read(candidate === CRM_DEV ? now + week + 1 : now))));
     expect(mountedIds(tree)).toEqual(["links", "aaa"]);
-    expect(text(tree.root)).toContain("Active");
+    expect(text(tree.root)).toContain("1 other project");
   });
 
   it("Reopening applies current membership and the chosen order deterministically.", () => {
@@ -4209,7 +4208,36 @@ describe("automatic project sections", () => {
     const second = { ...CRM_DEV, key: "second", project: { ...CRM_DEV.project, id: "second" } };
     const html = render([CRM_DEV, second], { getActivity: () => read(now) });
     expect(ids(html)).toEqual(["aaa"]);
-    expect(html).not.toContain(">Active</h2>");
-    expect(render([])).not.toContain(">Other projects</h2>");
+    expect(html).not.toContain("sidebar-other-projects-fold");
+    expect(render([])).not.toContain("sidebar-other-projects-fold");
+  });
+
+  it("folds the projects with no work lately behind their count at the list's end, and opens them", () => {
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const tree = mount(menu((candidate) => read(candidate === LINKS_MATE ? now : now - week - 1)));
+    const others = () => surface(tree, "sidebar-other-projects");
+    expect(others().props.hidden).toBe(true);
+    expect(text(surface(tree, "sidebar-other-projects-fold"))).toBe("1 other project");
+    press(tree, "sidebar-other-projects-fold");
+    expect(others().props.hidden).toBe(false);
+  });
+
+  it("says how many Mates Mine leaves out, and lists everyone again from there", () => {
+    let everyone = 0;
+    const tree = mount(
+      <SidebarZeropsTree
+        candidates={rows}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+        onShowEveryone={() => {
+          everyone += 1;
+        }}
+        shown={(candidate) => candidate === LINKS_MATE}
+      />,
+    );
+    expect(text(surface(tree, "sidebar-hidden-mates"))).toContain("1 Mate hidden");
+    press(tree, "sidebar-show-everyone");
+    expect(everyone).toBe(1);
   });
 });

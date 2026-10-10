@@ -111,6 +111,7 @@ import {
   CircleAlertIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
+  EyeIcon,
   GitPullRequestIcon,
   MoreHorizontalIcon,
   PauseIcon,
@@ -574,6 +575,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly shown?: ((candidate: T) => boolean) | undefined;
   /**
+   * Lists every Mate again — the account menu's *Everyone* — from the line that says how many
+   * *Mine* hides. Absent, the line is not drawn.
+   */
+  readonly onShowEveryone?: (() => void) | undefined;
+  /**
    * A Mate's crew as a fixture draws it (a harness): its crew line, and
    * whether its menu offers *Set up a crew* or *Crew*. Absent, each Mate's
    * crew line and menu read its crew from HQ (`useMateCrew`).
@@ -620,6 +626,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   getMateActions,
   onOpenCrew,
   shown,
+  onShowEveryone,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
   const registry = useContext(RegistryContext);
@@ -654,6 +661,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // reason, and a menu that expands everything on every boot makes them do it
   // again (the owner, 2026-09-19). Per account, so it never leaves the device.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(readCollapsedProjects);
+  // The projects with no work lately fold behind "N other projects" at the list's end (round 5).
+  const [othersOpen, setOthersOpen] = useState(false);
   useEffect(() => {
     writeCollapsedProjects(collapsed);
   }, [collapsed]);
@@ -778,6 +787,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         : target.kind === "change"
           ? target.mateProjectId
           : undefined;
+    if (groupId !== undefined) setOthersOpen(true);
     if (groupId !== undefined && target.kind !== "stop") {
       setCollapsed((current) => withCollapsed(current, groupId, false));
       // A Mate may be folded among its project's quiet ones.
@@ -1658,13 +1668,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       data-zerops-group={group.groupId}
       key={group.groupId}
     >
-      {groups.some(({ group }) => frozen.active.includes(group.groupId)) &&
-      groups.some(({ group }) => frozen.other.includes(group.groupId)) &&
-      (index === 0 || sectionOf(groups[index - 1]!.group.groupId) !== sectionOf(group.groupId)) ? (
-        <h2 className="px-2.5 pb-2 pt-3 text-xs font-medium text-sidebar-muted-foreground">
-          {frozen.active.includes(group.groupId) ? "Active" : "Other projects"}
-        </h2>
-      ) : null}
       {section(
         group.groupId,
         environments,
@@ -1754,6 +1757,18 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       )}
     </section>
   ));
+  const activeSections = groupSections.filter((_, index) =>
+    frozen.active.includes(groups[index]!.group.groupId),
+  );
+  const otherSections = groupSections.filter(
+    (_, index) => !frozen.active.includes(groups[index]!.group.groupId),
+  );
+  // Open while the open conversation's Mate is among them: its band and its row are on screen.
+  const othersShown =
+    othersOpen || (activeGroupId !== undefined && !frozen.active.includes(activeGroupId));
+  // Under *Mine*, how many Mates the list leaves out.
+  const hiddenMates =
+    shown === undefined ? 0 : candidates.filter((item) => hasMate(item) && !shown(item)).length;
   const ungroupedSection = ungroupedMates ? (
     <section className="flex flex-col" data-zerops-ungrouped="true">
       {section(
@@ -1810,8 +1825,60 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         </div>
       ) : null}
       <SidebarSelectedBand current={activeProjectId} />
-      {groupSections}
+      {activeSections}
       {ungroupedSection}
+      {otherSections.length === 0 ? null : activeSections.length === 0 &&
+        ungroupedSection === null ? (
+        otherSections
+      ) : (
+        <div className="flex flex-col">
+          <button
+            aria-expanded={othersShown}
+            className={FOLD_ROW_CLASS}
+            data-zerops-surface="sidebar-other-projects-fold"
+            onClick={() => {
+              setOthersOpen(!othersShown);
+            }}
+            type="button"
+          >
+            <span className="flex justify-center">
+              <FoldGlyph open={othersShown} />
+            </span>
+            <span className="truncate">
+              {`${String(otherSections.length)} other ${otherSections.length === 1 ? "project" : "projects"}`}
+            </span>
+          </button>
+          <div
+            className="flex flex-col pt-3"
+            data-zerops-surface="sidebar-other-projects"
+            hidden={!othersShown}
+          >
+            {otherSections}
+          </div>
+        </div>
+      )}
+      {hiddenMates === 0 || onShowEveryone === undefined ? null : (
+        <div
+          className="menu-fold mt-5 text-muted-foreground"
+          data-zerops-surface="sidebar-hidden-mates"
+        >
+          <span className="flex justify-center">
+            <EyeIcon aria-hidden="true" className="size-3.75" />
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate">{`${String(hiddenMates)} ${hiddenMates === 1 ? "Mate" : "Mates"} hidden`}</span>
+            <span aria-hidden="true">·</span>
+            <button
+              className="menu-show-everyone"
+              data-zerops-surface="sidebar-show-everyone"
+              onClick={onShowEveryone}
+              type="button"
+            >
+              Show everyone
+            </button>
+          </span>
+        </div>
+      )}
 
       {/* Rows already held, and the listing not all read: they may not be all
           the Mates there are, so the notice stays under them (§3.4). */}
@@ -2473,7 +2540,7 @@ function focusOnceFree(element: HTMLElement, then: () => void, frames = 0): void
  * column, the count on the words' edge, 13/18 and 28 px tall like a change.
  */
 const FOLD_ROW_CLASS =
-  "menu-line grid h-7 w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-center gap-x-3 ps-1.75 pe-1 text-left text-line leading-4.5 text-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring";
+  "menu-fold w-full min-w-0 cursor-pointer text-left text-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
  * A project's Mates untouched for a week, folded behind their count at the
@@ -3964,5 +4031,5 @@ function changeRowKey(pull: Pick<FlowPullRequest, "repository" | "number">): str
  */
 function FoldGlyph({ open }: { readonly open: boolean }) {
   const Glyph = open ? ChevronsDownUpIcon : ChevronsUpDownIcon;
-  return <Glyph aria-hidden="true" className="size-3 shrink-0 text-sidebar-muted-foreground" />;
+  return <Glyph aria-hidden="true" className="size-3.5 shrink-0 text-sidebar-muted-foreground" />;
 }
