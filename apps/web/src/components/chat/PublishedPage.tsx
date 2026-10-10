@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMateImage } from "~/assets/MateImages";
 import { useTheme } from "~/hooks/useTheme";
 import { Button } from "../ui/button";
-import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
+import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import {
   PAGE_THEME_VARS,
   linkToOpen,
@@ -252,10 +252,12 @@ export function PublishedPage(props: {
       <PublishedPageFrame title={page.title} html={html} theme={theme} failed={failed} />
       <Dialog open={full} onOpenChange={setFull}>
         <DialogPopup className="max-w-6xl">
-          <div className="published-page-full-head">
+          <DialogHeader>
             <DialogTitle>{page.title}</DialogTitle>
-          </div>
-          {full ? <PublishedPageFrame title={page.title} html={html} theme={theme} full /> : null}
+          </DialogHeader>
+          <DialogPanel>
+            {full ? <PublishedPageFrame title={page.title} html={html} theme={theme} full /> : null}
+          </DialogPanel>
         </DialogPopup>
       </Dialog>
     </figure>
