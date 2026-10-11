@@ -342,7 +342,7 @@ export function CrewResumeBody(props: {
       : limit === "time" && timeLimitHours !== "unlimited"
         ? crewResumeTimeHint(timeLimitHours)
         : limit === "usage"
-          ? crewResumeUsageHint(run.options.stopAtUsagePercent ?? Math.round(run.usagePercent ?? 0))
+          ? crewResumeUsageHint(Math.round(run.usagePercent ?? run.options.stopAtUsagePercent ?? 0))
           : crewKeepGoingLine(run.options);
   return (
     <>

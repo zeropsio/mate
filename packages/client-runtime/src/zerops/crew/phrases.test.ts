@@ -212,7 +212,12 @@ describe("the mode line's words", () => {
     ],
     [
       "the usage stop",
-      { reason: "usage" },
+      { reason: "usage", usagePercent: 83.4 },
+      "Stopped working on its own: your Claude plan is at 83 %",
+    ],
+    [
+      "the usage stop, before the plan's first reading",
+      { reason: "usage", usagePercent: null },
       "Stopped working on its own: your Claude plan is at 80 %",
     ],
     [
