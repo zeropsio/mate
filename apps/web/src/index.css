@@ -3150,12 +3150,13 @@ code {
      scale holds lives here. */
   /* A Mate's row: a 40 px face in a 40 px column, 12 px to the words — its name and time, what
      was asked, its last answer (the owner, 2026-10-11: "menu no longer says last question and
-     last answer") — at least 68 px, 8 px inside the row's own band. */
+     last answer") — at least 68 px, 8 px inside the row's own band. The face stands at the
+     name's line, not floating between the lines (2026-10-11: "great alignment?"). */
   .menu-row {
     display: grid;
     grid-template-columns: 40px minmax(0, 1fr);
     column-gap: 12px;
-    align-items: center;
+    align-items: start;
     min-height: 68px;
     padding: 9px 8px;
     border-radius: 12px;
@@ -3225,25 +3226,40 @@ code {
     transform: scale(0.97);
   }
 
-  /* A change waiting for review, its own strip under its Mate's row, on the words' column: its
-     mark, its title and Review. Where it waits on the viewer, a white strip with a hairline and a
-     solid Review — what waits on you is white (round 5) and impossible to miss; a colleague's is
-     a quiet line with a quiet Review. */
+  /* A change waiting for review, under its Mate's row on the words' column (60 px in, 8 px from
+     the end, where the time ends): its mark, its title and Review. A colleague's is the row's
+     fourth line — its mark under the words, its Review ending where the time ends (the owner,
+     2026-10-11: "great alignment?"). Where it waits on the viewer it is a white strip with a
+     hairline and a solid Review, its edges on the same column: what waits on you is white
+     (round 5) and impossible to miss. */
   .menu-change {
     display: flex;
     min-width: 0;
     align-items: center;
     gap: 6px;
-    min-height: 34px;
-    margin: -4px 8px 6px 60px;
-    padding: 4px 4px 4px 10px;
+    height: 24px;
+    margin: -9px 8px 9px 60px;
     border-radius: 10px;
     color: var(--muted-foreground);
     font-size: 14px;
     line-height: 20px;
   }
 
+  .menu-change:not([data-mine]) .menu-review {
+    width: auto;
+    padding: 0;
+  }
+
+  .menu-change:not([data-mine]) .menu-review:hover {
+    background-color: transparent;
+    text-decoration: underline 1px color-mix(in oklab, currentColor 40%, transparent);
+    text-underline-offset: 3px;
+  }
+
   .menu-change[data-mine] {
+    height: 34px;
+    margin: -4px 8px 6px 60px;
+    padding: 4px 5px 4px 10px;
     background-color: var(--sidebar-row-selected);
     box-shadow:
       0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 9%, transparent),
