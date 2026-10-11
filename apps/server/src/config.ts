@@ -32,16 +32,18 @@ export type StartupPresentation = typeof StartupPresentation.Type;
 export type MateEngineMode = "v1" | "mate";
 
 /**
- * Reads `T3CODE_MATE_ENGINE` leniently: trimmed and case-blind, absent or
- * empty is `v1`, and a name it does not know is `v1` flagged `unknown` so the
- * caller warns instead of crash-looping the unit.
+ * Reads `T3CODE_MATE_ENGINE` leniently: trimmed and case-blind. The engine is
+ * the default (the owner, 2026-10-11: "switch everything to v2"): absent or
+ * empty is `mate`, only `v1` keeps V1 (an escape hatch until V1 goes), and a
+ * name it does not know is `mate` flagged `unknown` so the caller warns
+ * instead of crash-looping the unit.
  */
 export const readMateEngine = (
   raw: string | undefined,
 ): { readonly engine: MateEngineMode; readonly unknown: boolean } => {
   const name = raw?.trim().toLowerCase() ?? "";
-  if (name === "mate") return { engine: "mate", unknown: false };
-  return { engine: "v1", unknown: name !== "" && name !== "v1" };
+  if (name === "v1") return { engine: "v1", unknown: false };
+  return { engine: "mate", unknown: name !== "" && name !== "mate" };
 };
 
 /**
@@ -131,9 +133,10 @@ export class ServerConfig extends Context.Service<
      */
     readonly zeropsCrew: boolean;
     /**
-     * Which engine owns this Mate's conversation (`T3CODE_MATE_ENGINE`): `v1`
-     * unless `mate`. An env variable, never a `serve` flag, valid everywhere
-     * and not only in Zerops; an unknown value runs V1 (see `readMateEngine`).
+     * Which engine owns this Mate's conversation (`T3CODE_MATE_ENGINE`): the
+     * Mate engine unless `v1`. An env variable, never a `serve` flag, valid
+     * everywhere and not only in Zerops; an unknown value runs the engine (see
+     * `readMateEngine`).
      */
     readonly mateEngine: MateEngineMode;
     readonly noBrowser: boolean;

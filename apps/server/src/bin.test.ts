@@ -57,8 +57,15 @@ class ProjectCliHttpApi extends HttpApi.make("environment").add(EnvironmentOrche
 
 const runCli = (args: ReadonlyArray<string>, command = cli) =>
   Command.runWith(command, { version: "0.0.0" })(args);
+/**
+ * The project CLI's offline writes are V1's: they run on a Mate kept on V1, the one way left to
+ * have V1 since the engine became the default.
+ */
+const OnV1 = ConfigProvider.layer(
+  ConfigProvider.fromEnv({ env: { ...process.env, T3CODE_MATE_ENGINE: "v1" } }),
+);
 const runCliWithRuntime = (args: ReadonlyArray<string>) =>
-  runCli(args).pipe(Effect.provide(CliRuntimeLayer));
+  runCli(args).pipe(Effect.provide(Layer.mergeAll(CliRuntimeLayer, OnV1)));
 
 const captureStdout = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
@@ -67,7 +74,7 @@ const captureStdout = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       (yield* TestConsole.logLines).findLast((line): line is string => typeof line === "string") ??
       "";
     return { result, output };
-  }).pipe(Effect.provide(Layer.mergeAll(CliRuntimeLayer, TestConsole.layer)));
+  }).pipe(Effect.provide(Layer.mergeAll(CliRuntimeLayer, OnV1, TestConsole.layer)));
 
 const makeCliTestServerConfig = (baseDir: string) =>
   Effect.gen(function* () {

@@ -149,9 +149,10 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
+  // The owner, 2026-10-11: "switch everything to v2": the engine is the default, V1 only asked for.
   it.effect.each([
-    ["runs V1 when the environment says nothing", {}, "v1", []],
-    ["runs V1 when the environment names V1", { T3CODE_MATE_ENGINE: "v1" }, "v1", []],
+    ["serves the engine on a Mate with no engine switch set", {}, "mate", []],
+    ["keeps V1 on a Mate set to v1", { T3CODE_MATE_ENGINE: "v1" }, "v1", []],
     [
       "runs the Mate engine when the environment names it",
       { T3CODE_MATE_ENGINE: "mate" },
@@ -159,12 +160,13 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
       [],
     ],
     ["reads the name loosely", { T3CODE_MATE_ENGINE: " Mate " }, "mate", []],
-    ["runs V1 when the variable is empty", { T3CODE_MATE_ENGINE: "" }, "v1", []],
+    ["reads V1's name loosely", { T3CODE_MATE_ENGINE: " V1 " }, "v1", []],
+    ["serves the engine when the variable is empty", { T3CODE_MATE_ENGINE: "" }, "mate", []],
     [
-      "runs V1 and warns, never crashes, on a name it does not know",
+      "serves the engine and warns, never crashes, on a name it does not know",
       { T3CODE_MATE_ENGINE: "v2" },
-      "v1",
-      ["Unknown T3CODE_MATE_ENGINE; running the V1 engine."],
+      "mate",
+      ["Unknown T3CODE_MATE_ENGINE; running the Mate engine."],
     ],
   ] as const)("the engine switch %s", ([, env, expected, warnings]) =>
     Effect.gen(function* () {
@@ -480,7 +482,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: true,
         zeropsCrew: true,
-        mateEngine: "v1",
+        mateEngine: "mate",
       });
       assert.equal(resolved.stateDir, join(baseDir, "userdata"));
     }),
@@ -551,7 +553,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
         zeropsCrew: true,
-        mateEngine: "v1",
+        mateEngine: "mate",
       });
       assert.equal(resolved.dbPath, join(baseDir, "userdata", "state.sqlite"));
     }),
@@ -623,7 +625,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
         zeropsCrew: true,
-        mateEngine: "v1",
+        mateEngine: "mate",
       });
     }),
   );
@@ -705,7 +707,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
         zeropsCrew: true,
-        mateEngine: "v1",
+        mateEngine: "mate",
       });
       assert.equal(join(baseDir, "userdata"), resolved.stateDir);
       assert.equal(resolved.desktopTelemetryFd, 4);
@@ -833,7 +835,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
         zeropsCrew: true,
-        mateEngine: "v1",
+        mateEngine: "mate",
       });
     }),
   );
@@ -905,7 +907,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
         zeropsCrew: true,
-        mateEngine: "v1",
+        mateEngine: "mate",
       });
     }),
   );
@@ -1139,7 +1141,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: false,
         zeropsCrew: true,
-        mateEngine: "v1",
+        mateEngine: "mate",
       });
     }),
   );

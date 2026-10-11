@@ -2,10 +2,10 @@
  * MateEngine — the conversation engine that replaces V1 behind the
  * `T3CODE_MATE_ENGINE` switch. Every process builds it; one form runs:
  *
- * - inert (`v1`, the default): `live` is false, nothing starts, nothing is
- *   served, and V1 owns the conversation exactly as before;
- * - live (`mate`): V1's roots stay parked and its doors refuse with
- *   {@link ENGINE_MOVED}; `start` runs in the startup's reactor scope.
+ * - live (`mate`, the default): V1's roots stay parked and its doors refuse
+ *   with {@link ENGINE_MOVED}; `start` runs in the startup's reactor scope;
+ * - inert (`v1`, asked for only): `live` is false, nothing starts, nothing
+ *   is served, and V1 owns the conversation exactly as before.
  *
  * The domain, the store and the runtime behind the live form are built
  * beside this file; until they land the live form starts nothing and serves

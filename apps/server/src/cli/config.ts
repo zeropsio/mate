@@ -189,7 +189,7 @@ const EnvServerConfig = Config.all({
   ),
   // Crew mode (ARCHITECTURE seam 25): an env variable only, never a flag.
   zeropsCrew: Config.Boolean("T3CODE_ZEROPS_CREW").pipe(Config.withDefault(true)),
-  // The engine switch: read as a string so a typo runs V1 instead of failing the config.
+  // The engine switch: read as a string so a typo runs the engine instead of failing the config.
   mateEngine: Config.String("T3CODE_MATE_ENGINE").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -458,7 +458,7 @@ export const resolveServerConfig = (
     }
     const mateEngine = ServerConfig.readMateEngine(env.mateEngine);
     if (mateEngine.unknown) {
-      yield* Effect.logWarning("Unknown T3CODE_MATE_ENGINE; running the V1 engine.", {
+      yield* Effect.logWarning("Unknown T3CODE_MATE_ENGINE; running the Mate engine.", {
         value: env.mateEngine,
       });
     }
