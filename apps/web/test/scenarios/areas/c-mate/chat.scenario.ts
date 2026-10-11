@@ -60,6 +60,35 @@ describe("C: opening a Mate and chat", () => {
         }),
     );
 
+    // Engine final run, G10: reopened from the chats menu, the archived conversation had a live
+    // composer that sent nothing, no word that it was archived, and no Restore.
+    it.effect("an archived conversation reads as archived and offers Restore", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        yield* s.given.signedIn;
+        yield* chat.when.open();
+        yield* Effect.promise(async () => {
+          await s.page.locator("::-p-aria(More header actions)").click();
+          await s.page.locator("[data-zerops-start-fresh]").click();
+          await s.page.waitForFunction(() => location.pathname.startsWith("/draft/"));
+        });
+        yield* chat.when.visit("/env-Ada/thread-Ada");
+        yield* chat.then.text("The existing conversation is still here");
+        yield* chat.then.text("This conversation is archived");
+        yield* chat.when.press("Restore");
+        yield* chat.then.noText("This conversation is archived");
+        const fixture = chat.fixture();
+        expect(
+          fixture.wire instanceof EngineChatWire
+            ? fixture.wire.engine.header.archived
+            : fixture.mate.thread.archivedAt !== null,
+          "ASSERTION: Restore restores the conversation in its owning engine",
+        ).toBe(false);
+        yield* chat.then.path("/env-Ada/thread-Ada");
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // A reported version difference alone must never offer a chat-level restart.
     it.effect("older and newer Mate versions show no version-skew warning or restart action", () =>
       Effect.gen(function* () {
