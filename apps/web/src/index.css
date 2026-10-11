@@ -3453,6 +3453,9 @@ code {
     z-index: -1;
     border-radius: 12px;
     background: var(--sidebar-row-active);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 6%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 6%, transparent);
     opacity: 0;
     pointer-events: none;
   }
@@ -4462,6 +4465,9 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 
   .menu-chrome-row[data-current] {
     background: var(--sidebar-row-active);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 6%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 6%, transparent);
   }
 
   .menu-chrome-row:focus-visible {

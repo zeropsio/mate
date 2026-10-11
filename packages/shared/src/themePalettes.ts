@@ -142,7 +142,8 @@ export const ZEROPS_THEME: ThemeDefinition = {
     sidebarMutedForeground: "oklch(0.362632 0.014881 240.327)",
     sidebarControlSurface: "oklch(0.932789 0.00387 255)", // 4% black over the sidebar.
     sidebarRowHover: "oklch(0.932789 0.00387 255)", // 4% black over the sidebar.
-    sidebarRowActive: "oklch(0.923981 0.00383 255)", // 5.4% black over the sidebar.
+    // The open row is the page's own white, set into the grey: never the hover's grey a shade on.
+    sidebarRowActive: "oklch(1 0 0)",
     sidebarRowSelected: "oklch(1 0 0)",
     sidebarBorder: "oklch(0.906701 0 0)",
     terminalBackground: "oklch(0.968441 0.004181 236.497)",
