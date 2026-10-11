@@ -757,6 +757,7 @@ function Tab() {
         <div className="crew-view flex flex-1 flex-col">
           <CrewmateJob
             applied={new Set(SEATS.map((seat) => seat.handle))}
+            crewApplied
             commands={FILES}
             crewPort={null}
             devHosts={[{ host: "appdev", database: false }]}

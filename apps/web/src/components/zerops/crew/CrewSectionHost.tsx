@@ -45,7 +45,9 @@ import { useCrewView, type CrewTabView } from "../../../zerops/crew/crewTab";
 import { useCrewCommand } from "../../../zerops/crew/useCrewCommand";
 import { useOpenReview } from "../../../zerops/review";
 import { ZeropsAskDialog } from "../ZeropsAskDialog";
-import { crewDevHosts } from "./CrewEditors.logic";
+import { crewDevHosts, crewWaitingMembers } from "./CrewEditors.logic";
+import { useCrewHome } from "../../../zerops/crew/useCrewHome";
+import { CREW_HOME_FILE } from "@t3tools/shared/crewHome";
 import { CrewGoal } from "./CrewGoal";
 import { CrewLeadPlanBlock, crewPlanPresses } from "./CrewLeadPlan";
 import { crewPlanCard } from "./CrewLeadPlan.logic";
@@ -121,6 +123,21 @@ export function CrewSectionHost({
   const applied = crew !== null;
   // A press waits while whose the crew's logins are is still being read.
   const busy = !current || commands.pending || access.reading;
+  // The crew home as written: a crewmate it lists that the crew lacks waits to be added or removed.
+  const home = useCrewHome(editorCommands);
+  const waiting = applied ? crewWaitingMembers(home.definition, snapshot.crewmates) : [];
+  const changeLocked = busy || editorCommands.pending || access.crew !== null;
+  const takeOut = (handle: string) => {
+    const definition = home.definition;
+    if (definition === null) return;
+    void home.save(
+      {
+        ...definition,
+        members: definition.members.filter((member) => member.handle !== handle),
+      },
+      [CREW_HOME_FILE],
+    );
+  };
   const errorAt = (origin: string) => {
     const words = commands.errorAt(origin);
     return words === null ? null : crewNamingTheMate(words, mateName);
@@ -235,6 +252,7 @@ export function CrewSectionHost({
         <CrewmateJob
           applied={new Set(snapshot.crewmates.map((row) => row.handle))}
           commands={editorCommands}
+          crewApplied={applied}
           crewPort={snapshot.crewmates.find((row) => row.handle === view.handle)?.app?.port ?? null}
           devHosts={crewDevHosts(snapshot)}
           key={view.handle ?? "new"}
@@ -264,6 +282,11 @@ export function CrewSectionHost({
     }
     return (
       <CrewSection
+        waiting={{
+          members: waiting,
+          onAdd: changeLocked ? null : () => void editorCommands.send({ _tag: "apply" }),
+          onRemove: changeLocked ? null : takeOut,
+        }}
         access={access}
         askLock={askLock}
         busy={busy}

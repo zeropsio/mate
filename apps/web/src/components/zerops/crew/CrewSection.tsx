@@ -36,7 +36,7 @@ import type {
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { mateMarkStateForThreadStatus } from "@t3tools/shared/threadStatus";
 import { LockIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { MateFace } from "../primitives";
 import { CrewHead, type CrewHeadMenuItem } from "./CrewHead";
@@ -48,6 +48,7 @@ import { CrewRows } from "./CrewRows";
 import { CREW_ORIGIN } from "./CrewRows.logic";
 import { crewPlanOf } from "./CrewRunDialog.logic";
 import { CrewTellComposer, CrewTellLocked } from "./CrewTellComposer";
+import { CrewWaiting } from "./CrewWaiting";
 
 export function CrewSectionEmpty({
   mate,
@@ -140,6 +141,8 @@ export interface CrewSectionProps {
   readonly askLock: CrewLock | null;
   /** A closed crew's one way out: the viewer's own sign-in. */
   readonly onSignIn: (lock: CrewLock) => void;
+  /** Crewmates the crew home lists that the crew doesn't have (`crewWaitingMembers`). */
+  readonly waiting?: ComponentProps<typeof CrewWaiting>;
 }
 
 export function CrewSection(props: CrewSectionProps) {
@@ -222,6 +225,7 @@ export function CrewSection(props: CrewSectionProps) {
         snapshot={snapshot}
         view={view}
       />
+      {props.waiting === undefined ? null : <CrewWaiting {...props.waiting} />}
       <CrewInFensCode
         crewmates={snapshot.crewmates}
         error={props.errorAt(CREW_ORIGIN.deliver)}

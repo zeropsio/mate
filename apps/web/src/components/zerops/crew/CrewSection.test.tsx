@@ -281,3 +281,16 @@ describe("CrewSection — for a viewer who may not run the crew (D6)", () => {
     expect(html).toContain(">Stop</button>");
   });
 });
+
+describe("CrewSection — a crewmate the crew home lists that the crew lacks", () => {
+  it("shows it, to add to the crew or remove", () => {
+    const emptied = { ...FIXTURE, crewmates: [] };
+    const text = textOf(
+      render(emptied, {
+        view: deriveCrewView(emptied, [], readCrewThread),
+        waiting: { members: [{ handle: "pip", displayName: "Pip" }], onAdd: noop, onRemove: noop },
+      }),
+    );
+    expect(text).toContain("Pip isn't in the crew yet Add to the crew Remove");
+  });
+});
