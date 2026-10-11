@@ -1,11 +1,10 @@
 /**
- * The overview's cards: a card per project with Mates, every project at once in a grid that wraps.
+ * The overview's cards: a card per project with Mates, side by side in a strip that scrolls.
  *
- * A card reads top to bottom: the project's name, its address and its menu; its Mates, what each
- * was asked over its answer, what waits on the viewer lifted onto a white card with its buttons; a
- * release ready to go, lifted; and at its foot its places — the Mates' previews, each stage,
- * production — each how it is, a click opening its panel, its address a door in sight
- * (`projectCard.logic.ts`).
+ * A card reads top to bottom, what stands now first and what happened last: the project's name,
+ * its people and its menu; production and each stage in full (`PlacePanel`); a release ready to
+ * go; its Mates, each with its previews; and the latest changes, open and merged, with where each
+ * went (`projectCard.logic.ts`).
  *
  * Structural like the list it replaced: a Mate's row, the project's menu, the release's door and
  * a place's panel are the page's slots (`ZeropsProjectsFlowProps`).
@@ -406,13 +405,16 @@ function ProjectCard<T>({
           {drawn(releaseDoor) ? <div className="ov-acts">{releaseDoor}</div> : null}
         </section>
       )}
-      {props.renderChanges?.(entry)}
       <CardMates entry={entry} props={props} />
       {unknown.kind === "unread" ? (
         <p className="ov-card-note" data-zerops-row-line="unread">
           {unknown.text}
         </p>
       ) : null}
+      {/* The latest changes last: their merged rows are read with the app's detail once the card
+          is in view, and at the foot they extend the card without moving what stands above —
+          over the Mates, they pushed them down 100–300 px at 1.3 s. */}
+      {props.renderChanges?.(entry)}
       <StopReads entry={entry} />
     </article>
   );
