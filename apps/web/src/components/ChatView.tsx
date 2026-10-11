@@ -8578,6 +8578,7 @@ export default function ChatView(props: ChatViewProps) {
             activeThreadId={activeThread.id}
             {...(routeKind === "draft" && draftId ? { draftId } : {})}
             activeThreadTitle={activeThread.title}
+            conversationLoading={threadDetailLoading}
             isServerThread={isServerThread}
             changeRequest={activeThreadChangeRequest}
             activeProjectName={activeProjectDisplayName}

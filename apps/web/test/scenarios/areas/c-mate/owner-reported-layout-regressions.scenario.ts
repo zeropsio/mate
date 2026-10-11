@@ -1671,6 +1671,86 @@ describe("owner-reported layout regressions", () => {
         );
       });
     });
+    describe("Decision: a conversation opens in place; nothing it does overflows its column.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // The owner (2026-10-12): "after mate is fully loaded (nad scrollbar is introduced I
+        // think) there is layout / width shift that looks shit". The arrival's rise overflowed
+        // the column for its frames: a scrollbar came and went, narrowing the column by its width.
+        it.effect(
+          "a conversation's opening never overflows its column, so no scrollbar narrows it",
+          () =>
+            Effect.gen(function* () {
+              const s = yield* createScenario([installArea]);
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.project("Sage", { mate: true });
+              const chat = mateChat(s);
+              const wire = chat.fixture("Sage");
+              for (let index = 0; index < 12; index++)
+                wire.exchange(
+                  `Question ${index}`,
+                  "An answer long enough to fill the column.\n\n".repeat(6),
+                );
+              wire.holdReplay = true;
+              const read = wire.holdPage("", s.drivers.mates.get("Sage")!.snapshot());
+              yield* Effect.addFinalizer(() => Effect.sync(() => read.release()));
+              yield* s.given.signedIn;
+              yield* chat.when.openReadOnly("Sage");
+              yield* Effect.promise(() => read.requested());
+              yield* Effect.promise(() =>
+                s.page.waitForSelector('[data-conversation-opening="waiting"]'),
+              );
+              yield* Effect.promise(() =>
+                s.page.evaluate(() => {
+                  const samples: Array<{ phase: string | undefined; overflow: number }> = [];
+                  Reflect.set(window, "openingOverflow", samples);
+                  const tick = () => {
+                    const column = document.querySelector<HTMLElement>(
+                      "[data-chat-column-maximized-away]",
+                    );
+                    const phase =
+                      document
+                        .querySelector("[data-conversation-opening]")
+                        ?.getAttribute("data-conversation-opening") ?? undefined;
+                    if (column !== null)
+                      samples.push({ phase, overflow: column.scrollHeight - column.clientHeight });
+                    if (phase !== "complete") requestAnimationFrame(tick);
+                  };
+                  requestAnimationFrame(tick);
+                }),
+              );
+              read.release();
+              yield* Effect.promise(() => wire.replaySubscribed());
+              wire.ready();
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () =>
+                    (Reflect.get(window, "openingOverflow") as Array<{ phase?: string }>).at(-1)
+                      ?.phase === "complete",
+                ),
+              );
+              const samples = yield* Effect.promise(() =>
+                s.page.evaluate(
+                  () =>
+                    Reflect.get(window, "openingOverflow") as Array<{
+                      phase: string | undefined;
+                      overflow: number;
+                    }>,
+                ),
+              );
+              const overflowing = samples.filter((sample) => sample.overflow > 0);
+              expect(
+                samples.some((sample) => sample.phase === "hand-off"),
+                `ASSERTION: the opening handed over in sight: ${quoted(samples.slice(0, 8))}`,
+              ).toBe(true);
+              expect(
+                overflowing,
+                `ASSERTION: nothing in the opening overflows the column: ${quoted(overflowing.slice(0, 6))}`,
+              ).toEqual([]);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+      });
+    });
     describe("Decision: the end is where the list stops; a step short of it is the person's.", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         // The owner (2026-10-12): "at this scroll (like 100px from bottom), a single tiny scroll to

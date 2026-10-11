@@ -10142,15 +10142,17 @@ button.rv-relrow:hover .rv-relrow-go {
   }
 }
 
-/* Opening is one story; named beats keep the complete sequence within 600 ms. */
+/* Opening is one story; named beats keep the complete sequence within 600 ms. The stage hands
+   over in place: its words and its face fade where they stand while the conversation fades in —
+   no face flying to the header (the owner, 2026-10-12: "the way this transitions to the mate avatar
+   at the chat top bar is absolute shit effect, need to be removed"), and nothing that moves, so
+   nothing overflows the column for a frame and narrows it by a scrollbar. */
 :root {
   --duration-conversation-wake: 180ms; /* A short blink-open, fully on the stage. */
-  --duration-conversation-text-exit: 60ms; /* Clear the words before the face travels. */
-  --duration-conversation-travel: 200ms; /* Land the same face in the measured header slot. */
-  --duration-conversation-rise: 80ms; /* Placed content arrives quickly after the face lands. */
+  --duration-conversation-exit: 140ms; /* The stage's words and face fade where they stand. */
+  --duration-conversation-rise: 160ms; /* The conversation fades in under them. */
   --duration-conversation-handoff: calc(
-    var(--duration-conversation-text-exit) + var(--duration-conversation-travel) +
-      var(--duration-conversation-rise)
+    var(--duration-conversation-exit) + var(--duration-conversation-rise) / 2
   );
 }
 
@@ -10160,8 +10162,6 @@ button.rv-relrow:hover .rv-relrow-go {
   display: block;
   width: 100%;
   height: 100%;
-  z-index: 50;
-  transform-origin: top left;
 }
 
 /* Stage-owned eyes are solid drawings throughout; only their height opens. */
@@ -10178,18 +10178,10 @@ button.rv-relrow:hover .rv-relrow-go {
 
 [data-conversation-opening="hand-off"] {
   animation: conversation-handoff var(--duration-conversation-handoff) linear;
-}
 
-[data-conversation-opening="hand-off"]
-  :is([data-arrival-headline], [data-arrival-sentence], [data-arrival-slot]) {
-  animation: conversation-text-exit var(--duration-conversation-text-exit) var(--ease-out-strong)
-    both;
-}
-
-[data-opening-actor="hand-off"] {
-  transform-origin: top left;
-  animation: conversation-face-travel var(--duration-conversation-travel) var(--ease-out-strong)
-    var(--duration-conversation-text-exit) both;
+  & > * {
+    animation: conversation-stage-exit var(--duration-conversation-exit) var(--ease-out-strong) both;
+  }
 }
 
 /* The real footer stays laid out and measured throughout. Hidden content accepts the input
@@ -10208,7 +10200,21 @@ button.rv-relrow:hover .rv-relrow-go {
   )
   :is([data-conversation-footer], [data-conversation-content]) {
   animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
-    calc(var(--duration-conversation-text-exit) + var(--duration-conversation-travel)) backwards;
+    calc(var(--duration-conversation-exit) / 2) backwards;
+}
+
+/* The header's way out to Zerops waits for the conversation it is the way out of, and arrives
+   with it — wherever the opening stands while the route changes. */
+:root:has([data-conversation-opening="waiting"], [data-conversation-opening="wake"])
+  [data-opening-waits]
+  > * {
+  opacity: 0;
+  pointer-events: none;
+}
+
+:root:has([data-conversation-opening="hand-off"]) [data-opening-waits] > * {
+  animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
+    calc(var(--duration-conversation-exit) / 2) backwards;
 }
 
 [data-conversation-opening="complete"] {
@@ -10226,23 +10232,15 @@ button.rv-relrow:hover .rv-relrow-go {
   }
 }
 
-@keyframes conversation-text-exit {
+@keyframes conversation-stage-exit {
   to {
     opacity: 0;
-    transform: translateY(-4px);
-  }
-}
-
-@keyframes conversation-face-travel {
-  to {
-    transform: translate(var(--opening-x), var(--opening-y)) scale(var(--opening-scale));
   }
 }
 
 @keyframes conversation-arrive {
   from {
     opacity: 0;
-    transform: translateY(6px);
   }
 }
 
