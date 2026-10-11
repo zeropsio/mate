@@ -260,6 +260,10 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         liveWork.clear();
         openTurns.clear();
         reportDue = null;
+        // Nothing of a closed session's work reaches a later turn: a turn the agent opens of its
+        // own schedule after it reports on no run (Milo's cron reply was filed under a helpers run
+        // the person had stopped four turns before, whose helpers' end was the last remembered).
+        lastEndedWorkOrigin = null;
         if (!asked) signals.push({ kind: "session-exited", reason: words });
         break;
       }

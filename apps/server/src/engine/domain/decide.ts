@@ -2467,15 +2467,20 @@ const cancelUsageWakes = (b: StepBuilder, reason: string): void => {
 };
 
 /** A turn the agent started on its own: a run that joins the run whose work it reports. */
-/** The run a self turn joins (the bridge's word, else the latest that ran) and its principal. */
+/**
+ * The run a self turn joins (the bridge's word, else the latest that ran; none when that run was
+ * stopped) and its principal.
+ */
 const selfJoins = (
   b: StepBuilder,
   reportsOn: RunId | null,
-): { readonly joins: RunId; readonly principal: Principal } | undefined => {
+): { readonly joins: RunId | null; readonly principal: Principal } | undefined => {
   const joins = reportsOn ?? b.state.endedRuns.at(-1) ?? b.state.latestRunId;
   const joined = joins === null ? undefined : b.state.runs[joins];
   if (joined === undefined || joined.principal.kind === "engine") return undefined;
-  return { joins: joined.id, principal: joined.principal };
+  // A run the person stopped stays stopped: a turn after it answers on a card of its own.
+  const stopped = joined.end?.kind === "stopped";
+  return { joins: stopped ? null : joined.id, principal: joined.principal };
 };
 
 /** The run a steer still in flight was asked into, when `turn` is that steer's message. */
@@ -2533,7 +2538,7 @@ const selfStarted = (
   b: StepBuilder,
   turn: TurnHandle,
   providerTurnId: string | null,
-  joined: { readonly joins: RunId; readonly principal: Principal },
+  joined: { readonly joins: RunId | null; readonly principal: Principal },
 ) => {
   const run = queueRun(b, {
     trigger: () => ({ kind: "wake", cause: "self", wakeId: null }),

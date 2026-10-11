@@ -2577,7 +2577,8 @@ describe("decide: a person's waiting message goes into a turn the agent starts i
   it("a message stopped before the agent's turn opens never goes into it", () => {
     const scene = play([...idle, send("carry on"), stop(2), selfTurn()]);
     expect(scene.state.runs[r(2)]?.end).toMatchObject({ kind: "stopped" });
-    expect(scene.state.runs[r(3)]).toMatchObject({ state: "running", joins: r(2) });
+    // The stopped run stays stopped: the agent's turn is a run of its own.
+    expect(scene.state.runs[r(3)]).toMatchObject({ state: "running", joins: null });
     expect(scene.effects.map((effect) => effect.kind)).not.toContain("provider.steer");
   });
 
