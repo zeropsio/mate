@@ -90,6 +90,25 @@ export const USAGE_PROBE_FIRST_MS = 15 * 60_000;
 export const USAGE_PROBE_MAX_MS = 60 * 60_000;
 /** What a continuation or a usage resume tells the agent. */
 export const CONTINUE_TEXT = "Continue where you left off.";
+/**
+ * What a continuation after a restart tells the agent: where the person's view of its words stops.
+ * Its own session may hold more than reached the person (Milo's story ran on to its end there,
+ * the person had it to "…calling out orders for coal"), so it carries on from what they have.
+ */
+export const continueText = (run: Pick<RunRecord, "lastSaid">): string => {
+  switch (run.lastSaid?.kind) {
+    case "answer":
+      return [
+        "The server restarted while you were writing your answer. The person has it only up to these last words:",
+        `"${run.lastSaid.tail}"`,
+        "Carry on from exactly there; don't repeat what they already have.",
+      ].join("\n\n");
+    case "thinking":
+      return "The server restarted while you were thinking, before you wrote anything more: nothing after that thinking reached the person. Continue where you left off and give your answer in full.";
+    default:
+      return CONTINUE_TEXT;
+  }
+};
 /** A message a restart cut mid-send goes again in its own words, marked so the agent knows. */
 export const resentText = (text: string): string =>
   `(Sent again after a server restart; it may have reached you already.)\n\n${text}`;
@@ -2613,7 +2632,7 @@ const recovered = (
         principal: run.principal,
         joins: run.id,
         // A send cut mid-flight may or may not have arrived: its own words go again, marked.
-        text: run.state === "sending" ? resentText(run.text) : CONTINUE_TEXT,
+        text: run.state === "sending" ? resentText(run.text) : continueText(run),
       });
     }
   }
