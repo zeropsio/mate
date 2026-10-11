@@ -327,6 +327,7 @@ const handle = (b: StepBuilder, command: Command): void => {
         command.unstartedEffects ?? [],
         command.words,
         command.restart,
+        command.lastWords,
       );
     case "ImportHistory":
       return importHistory(b, command);
@@ -2571,6 +2572,7 @@ const recovered = (
   unstartedEffects: ReadonlyArray<EffectId>,
   words: string | undefined,
   restart: MateRestart | undefined,
+  lastWords: { readonly runId: RunId; readonly tail: string } | undefined,
 ): void => {
   const record = (id: EffectId, reason: string) => {
     const effect = b.state.effects[id];
@@ -2632,7 +2634,14 @@ const recovered = (
         principal: run.principal,
         joins: run.id,
         // A send cut mid-flight may or may not have arrived: its own words go again, marked.
-        text: run.state === "sending" ? resentText(run.text) : continueText(run),
+        text:
+          run.state === "sending"
+            ? resentText(run.text)
+            : continueText(
+                run.lastSaid?.kind === "answer" && lastWords?.runId === run.id
+                  ? { lastSaid: { kind: "answer", tail: lastWords.tail } }
+                  : run,
+              ),
       });
     }
   }

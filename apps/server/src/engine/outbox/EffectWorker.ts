@@ -24,7 +24,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
-import type { MateRestart, BootId, ConversationId, EffectOutcome } from "@t3tools/contracts";
+import type { MateRestart, BootId, ConversationId, EffectOutcome, RunId } from "@t3tools/contracts";
 
 import type { StepFailure } from "../ConversationActor.ts";
 import { Conversations } from "../Conversations.ts";
@@ -256,6 +256,10 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
   const reconcileAtBoot = (
     restartFor: (conversation: ConversationId) => Effect.Effect<MateRestart | undefined> = () =>
       Effect.succeed(undefined),
+    lastWordsFor: (
+      conversation: ConversationId,
+    ) => Effect.Effect<{ readonly runId: RunId; readonly tail: string } | undefined> = () =>
+      Effect.succeed(undefined),
   ) =>
     Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
@@ -272,6 +276,7 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
           yield* outbox.close(effect, "cut", "the server restarted");
         }
         const restart = yield* restartFor(owner.conversationId);
+        const lastWords = yield* lastWordsFor(owner.conversationId);
         const recover = Effect.asVoid(
           conversations.tell({
             commandId: recoveredCommandId(boot, owner.conversationId),
@@ -283,6 +288,7 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
               cutEffects: owner.cut,
               unstartedEffects: owner.unstarted,
               ...(restart === undefined ? {} : { restart }),
+              ...(lastWords === undefined ? {} : { lastWords }),
             },
           }),
         );
