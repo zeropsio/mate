@@ -29,7 +29,7 @@ export function ZeropsReadOnlyConversationFooter({
   readonly readOnly: ZeropsConversationReadOnly;
   readonly pendingApprovals: ReadonlyArray<PendingApproval>;
   readonly pendingUserInputs: PendingUserInput[];
-  /** Its one action; absent where the answer is only remembered, until it is read. */
+  /** Its one action; absent where the viewer has none — a colleague's Mate is only read along. */
   readonly onSignIn?: (() => void) | undefined;
 }) {
   const approval = pendingApprovals[0];
@@ -68,10 +68,7 @@ export function ZeropsReadOnlyConversationFooter({
         className="relative z-10 flex min-w-0 flex-col items-center gap-3 px-4 py-3 text-center"
       >
         <p className="min-w-0 flex-1 text-foreground/85 text-sm">{readOnly.notice}</p>
-        {onSignIn === undefined ? (
-          // The action's row height kept, so the strip is the height it will be once it comes.
-          <span aria-hidden="true" className="h-7 w-0 shrink-0 sm:h-6" />
-        ) : (
+        {onSignIn === undefined ? null : (
           <Button size="compact" variant="link" onClick={onSignIn}>
             {AGENT_OWNERSHIP_RECOVERY_LABEL}
           </Button>

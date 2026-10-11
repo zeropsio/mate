@@ -418,6 +418,20 @@ export interface ZeropsConversationReadOnly {
 }
 
 /**
+ * A colleague's Mate's conversation, read along (`agentAdmission`'s `owner`): whose it is, by the
+ * name HQ gives its owner, and whom what it asks waits on.
+ */
+export function colleagueMateReadOnly(input: {
+  readonly mateName: string;
+  readonly ownerName: string;
+}): ZeropsConversationReadOnly {
+  return {
+    notice: `${input.mateName} is ${input.ownerName}'s Mate — you can read along.`,
+    waitingLabel: `Waiting for ${input.ownerName}`,
+  };
+}
+
+/**
  * Whether the composer takes the focus its conversation's open gives it. Shown as the
  * conversation opens, it does, as ever. Its room held at the open (`conversationFooter`), the
  * focus waits for it — and is given as it shows only where the person has not put the focus

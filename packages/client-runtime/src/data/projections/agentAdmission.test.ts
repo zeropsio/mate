@@ -387,3 +387,59 @@ describe("mateArrivalHoldsComposer", () => {
     },
   );
 });
+
+describe("a colleague's Mate, as HQ records whose it is", () => {
+  // The owner (2026-10-12): "this mate is not mine and I can still see the composer".
+  const signedOut = {
+    state: "known",
+    value: {
+      available: true,
+      agents: [
+        {
+          agentId: "claude-code",
+          credPresent: false,
+          flagOAuth: false,
+          flagToken: false,
+          state: "not-authorized",
+          providerAuth: "unknown",
+        },
+      ],
+    },
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  } as const;
+  it.each([
+    { case: "HQ names nobody, or has not said", owner: undefined, footer: "composer", asks: true },
+    {
+      case: "HQ records it as the viewer's",
+      owner: { mine: true },
+      footer: "composer",
+      asks: true,
+    },
+    {
+      case: "HQ records it as a colleague's",
+      owner: { mine: false },
+      footer: "read-only",
+      asks: false,
+    },
+  ] as const)(
+    "is read along, never written to, when it is a colleague's: $case",
+    ({ owner, footer, asks }) => {
+      const admission = agentAdmission({
+        environmentId: "rig",
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        viewerSubject: "viewer",
+        read: signedOut,
+        providers: [],
+        mateName: "Wren",
+        owner,
+      });
+      expect(admission.footer).toBe(footer);
+      expect(admission.readOnly).toBe(footer === "read-only");
+      expect(admission.canSend).toBe(false);
+      // Its sign-in is its owner's to give: nobody else is asked for it.
+      expect(admission.attention !== null).toBe(asks);
+    },
+  );
+});

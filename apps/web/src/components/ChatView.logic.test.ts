@@ -56,6 +56,7 @@ import {
   resolveBackgroundDraftWorkspaceOptions,
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
+  colleagueMateReadOnly,
   composerOpenFocus,
   resolveDraftPromotionNavigationTarget,
   resolveThreadMetadataUpdateForNextTurn,
@@ -2475,5 +2476,15 @@ describe("projectScriptKeybindingWrites", () => {
         retainedElsewhere: false,
       }),
     ).toEqual({ remove: [], upsert: { key: "mod+k", command } });
+  });
+});
+
+describe("colleagueMateReadOnly", () => {
+  // The owner (2026-10-12): "this mate is not mine and I can still see the composer".
+  it("says whose Mate it is and that the viewer reads along, and whom what it asks waits on", () => {
+    expect(colleagueMateReadOnly({ mateName: "Wren", ownerName: "Jan Novák" })).toEqual({
+      notice: "Wren is Jan Novák's Mate — you can read along.",
+      waitingLabel: "Waiting for Jan Novák",
+    });
   });
 });
