@@ -230,15 +230,32 @@ export function OverviewCardMate({
       { from },
     );
   };
-  // Its change's *Review* in the time's place, as its row has it: white where it waits on the
-  // viewer, quiet where it is a colleague's to review. Lifted for the viewer's review, its button
-  // carries it and the place stays empty — one Review on a card, never two.
+  // Its change's *Review* at the change's end, as its row has it (the owner, 2026-10-11: one word
+  // in the time's place was "incredibly poor indication of a new merge request"): white where it
+  // waits on the viewer, quiet where it is a colleague's to review. Lifted for the viewer's
+  // review, its button carries it — one Review on a card, never two — and its time's place stays
+  // empty. While its line says something else, a step on its way, the Review keeps the time's
+  // place: a change never goes without its button.
   const review =
     change === undefined || groupId === undefined || deleting || outsideHq
       ? undefined
       : { mine: people?.waitsOnViewer !== false };
   const marked =
     view.coming === undefined && (second.kind === "change" || reading.lift?.kind === "review");
+  const reviewButton =
+    review === undefined || reading.lift?.kind === "review" ? null : (
+      <button
+        className="ov-review"
+        data-mine={review.mine ? "true" : undefined}
+        data-zerops-surface="card-mate-review"
+        onClick={(event) => {
+          openChange(event.currentTarget);
+        }}
+        type="button"
+      >
+        Review
+      </button>
+    );
   return (
     <CardMate
       actions={
@@ -286,10 +303,11 @@ export function OverviewCardMate({
         (view.coming !== undefined ? (
           <CardComingLine coming={view.coming} />
         ) : marked ? (
-          <>
+          <span className="ov-mate-change" data-zerops-surface="card-mate-change">
             <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
-            {reading.text}
-          </>
+            <span className="ov-mate-change-title">{reading.text}</span>
+            {reviewButton}
+          </span>
         ) : undefined)
       }
       previews={previews}
@@ -297,18 +315,8 @@ export function OverviewCardMate({
       onOpen={onOpen}
       reading={reading}
       time={
-        reading.lift?.kind === "review" ? null : review !== undefined ? (
-          <button
-            className="ov-review"
-            data-mine={review.mine ? "true" : undefined}
-            data-zerops-surface="card-mate-review"
-            onClick={(event) => {
-              openChange(event.currentTarget);
-            }}
-            type="button"
-          >
-            Review
-          </button>
+        reading.lift?.kind === "review" ? null : reviewButton !== null && !marked ? (
+          reviewButton
         ) : (
           <CardMateTime dot={view.dot}>
             <CardMateSlot at={activity?.at} slot={view.slot} />
