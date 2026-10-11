@@ -22,8 +22,9 @@
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
-import type { BootId, ConversationId } from "@t3tools/contracts";
+import { RunId, type BootId, type ConversationId } from "@t3tools/contracts";
 
+import { tailOf } from "./domain/state.ts";
 import { makeEffectWorker, type EffectWorkerOptions } from "./outbox/EffectWorker.ts";
 import { RestartEvidence } from "./ports.ts";
 import { TurnPump } from "./pump/TurnPump.ts";
@@ -61,7 +62,24 @@ export const bootEngine = (
         ),
         Effect.orElseSucceed(() => undefined),
       );
-    const { deferred, ...reconciled } = yield* worker.reconcileAtBoot(restartFor);
+    // The end of a long answer the restart cut, from its whole text: its body holds 16 KiB.
+    const lastWordsFor = (conversation: ConversationId) =>
+      sql<{ readonly run_id: string | null; readonly detail: string | null }>`
+        SELECT i.run_id, d.body AS detail FROM engine_item i
+        LEFT JOIN engine_item_detail d ON d.item_id = i.item_id
+        WHERE i.conversation_id = ${conversation} AND i.kind = 'note'
+          AND json_extract(i.by_json, '$.kind') = 'mate'
+        ORDER BY i.opened_seq DESC LIMIT 1
+      `.pipe(
+        Effect.map((rows) => {
+          const row = rows[0];
+          return row?.run_id == null || row.detail === null
+            ? undefined
+            : { runId: RunId.make(row.run_id), tail: tailOf(row.detail) };
+        }),
+        Effect.orElseSucceed(() => undefined),
+      );
+    const { deferred, ...reconciled } = yield* worker.reconcileAtBoot(restartFor, lastWordsFor);
     yield* pump.start;
     yield* scheduler.start;
     yield* worker.start;

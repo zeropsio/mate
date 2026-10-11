@@ -663,6 +663,23 @@ describe("the running engine", () => {
       ].join("\n\n"),
     ],
     [
+      // The record's body holds an answer's first 16 KiB; the person reads it whole.
+      "past 16 KiB carries on from its true last words",
+      step((w) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.stream(thread, "m-long", "lamp ".repeat(4000)));
+          yield* w.agent((agent, thread) =>
+            agent.stream(thread, "m-long", "and so the keeper slept at last"),
+          );
+        }),
+      ),
+      [
+        "The server restarted while you were writing your answer. The person has it only up to these last words:",
+        `"…${"lamp ".repeat(33)}and so the keeper slept at last"`,
+        "Carry on from exactly there; don't repeat what they already have.",
+      ].join("\n\n"),
+    ],
+    [
       "mid-thought says its answer had not started",
       step((w) => w.agent((agent, thread) => agent.summarize(thread, "Planning the story"))),
       "The server restarted while you were thinking, before you wrote anything more: nothing after that thinking reached the person. Continue where you left off and give your answer in full.",

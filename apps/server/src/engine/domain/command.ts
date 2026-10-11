@@ -297,6 +297,11 @@ export type Command =
       /** The platform's evidence of the restart, worded for the person. */
       readonly words?: string;
       readonly restart?: MateRestart;
+      /**
+       * The end of the latest answer the agent was writing, read whole from the record at boot: a
+       * long answer's body holds only its first 16 KiB, so `lastSaid` cannot say how it ended.
+       */
+      readonly lastWords?: { readonly runId: RunId; readonly tail: string };
     };
 
 export type CommandTag = Command["_tag"];
