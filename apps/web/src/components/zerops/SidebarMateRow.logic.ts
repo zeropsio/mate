@@ -865,16 +865,19 @@ const ASKED_OVER: ReadonlySet<MateRowSecond["kind"]> = new Set([
 
 /**
  * What was asked, said over a row's answer (the owner, 2026-10-11: the menu "no longer says last
- * question and last answer"), as the conversation's own top says the question. A row whose line is
- * the ask itself — nothing answered yet, a draft alone — says it once, below; a sign-in is never a
- * question. The menu's row and a Mate's card say the same.
+ * question and last answer"), as the conversation's own top says the question. From its first
+ * question on a row keeps its three lines: while the answer is on its way the question stands in
+ * its place and the answer's place holds the dots, so the row never "jumps in height" as a step
+ * comes and goes (the owner, 2026-10-11). Where nothing was asked it says so once; a sign-in is
+ * never a question.
  */
 export function mateRowAskOver(
   askLine: MateRowAskLine,
   second: MateRowSecond,
 ): Exclude<MateRowAskLine, { readonly kind: "sign-in" } | undefined> | undefined {
   if (askLine === undefined || askLine.kind === "sign-in") return undefined;
-  return ASKED_OVER.has(second.kind) ? askLine : undefined;
+  if (ASKED_OVER.has(second.kind)) return askLine;
+  return second.kind === "ask" && askLine.kind !== "nothing-asked" ? askLine : undefined;
 }
 
 export function mateRowSecond(input: {

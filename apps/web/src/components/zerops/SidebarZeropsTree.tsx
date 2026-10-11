@@ -3267,14 +3267,15 @@ function MateSecondLine({
       );
     case "ask":
       if (askLine === undefined || askLine.kind === "sign-in") return null;
-      return second.pending ? (
-        <span className="flex min-w-0 items-center gap-1.5">
-          <MateAskLine line={askLine} rises={askChanged} />
+      // Asked: the question stands over this place (`mateRowAskOver`), which holds the dots while
+      // the answer is on its way, and its line's height while nothing is — the row never jumps.
+      if (askLine.kind !== "nothing-asked")
+        return second.pending ? (
           <MateReplyPending />
-        </span>
-      ) : (
-        <MateAskLine line={askLine} rises={askChanged} />
-      );
+        ) : (
+          <span aria-hidden="true" className="menu-line2 h-5" />
+        );
+      return <MateAskLine line={askLine} rises={askChanged} />;
     case "none":
       return null;
   }
@@ -3528,7 +3529,7 @@ function MateReply({
  */
 function MateReplyPending() {
   return (
-    <span className="flex h-5.25 items-center gap-1" data-zerops-surface="sidebar-mate-pending">
+    <span className="flex h-5 items-center gap-1" data-zerops-surface="sidebar-mate-pending">
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />

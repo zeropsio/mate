@@ -632,6 +632,87 @@ describe("owner-reported layout regressions", () => {
 
     describe("B: running row refresh", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // The owner (2026-10-11): the left side "jumps in height" with a Mate's step row, "then it
+        // disappears and it jumps again".
+        it.effect(
+          "a Mate's row keeps its height from its step through the wait for its answer to the answer",
+          () =>
+            Effect.gen(function* () {
+              const s = yield* menuScenario();
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.project("Ada", { mate: true });
+              yield* s.given.signedIn;
+              yield* Effect.promise(() => ownerMenu(s.page));
+              yield* s.then.menu.row("Ada").appears();
+              const now = yield* Clock.currentTimeMillis;
+              const since = DateTime.formatIso(DateTime.makeUnsafe(now - 12_000));
+              const done = DateTime.formatIso(DateTime.makeUnsafe(now - 1_000));
+              const running = {
+                session: { status: "running" as const, lastError: null },
+                latestUserMessagePreview: { role: "user" as const, text: ASK, createdAt: since },
+                latestTurn: {
+                  turnId: TurnId.make("run-steady"),
+                  state: "running" as const,
+                  requestedAt: since,
+                  startedAt: since,
+                  completedAt: null,
+                },
+              };
+              const height = () =>
+                Effect.promise(() =>
+                  s.page.$eval(ROW, (row) => Math.round(row.getBoundingClientRect().height)),
+                );
+              // Its step, under what was asked.
+              yield* reportConversation(
+                s.drivers,
+                "Ada",
+                { ...running, liveStep: { kind: "thinking" as const, since } },
+                "working",
+              );
+              yield* s.menu.text("Ada", "Thinking", "sidebar-mate-live-step");
+              const working = yield* height();
+              // The step gone, its answer on the way: the dots hold the answer's place.
+              yield* reportConversation(
+                s.drivers,
+                "Ada",
+                { ...running, liveStep: null },
+                "working",
+              );
+              yield* Effect.promise(() =>
+                s.page.waitForSelector(`${ROW} [data-zerops-surface="sidebar-mate-pending"]`),
+              );
+              const waiting = yield* height();
+              // The answer, under what was asked.
+              yield* reportConversation(
+                s.drivers,
+                "Ada",
+                {
+                  session: { status: "ready" as const, lastError: null },
+                  latestUserMessagePreview: running.latestUserMessagePreview,
+                  latestMessagePreview: {
+                    role: "assistant" as const,
+                    text: "Steady now.",
+                    createdAt: done,
+                  },
+                  latestTurn: {
+                    ...running.latestTurn,
+                    state: "completed" as const,
+                    completedAt: done,
+                  },
+                },
+                "idle",
+              );
+              yield* s.menu.text("Ada", "Steady now.");
+              const answered = yield* height();
+              expect({ working, waiting, answered }).toEqual({
+                working,
+                waiting: working,
+                answered: working,
+              });
+              yield* s.then.noReload;
+            }),
+        );
+
         it.effect(
           "a running row keeps known content and height through identical and advancing refreshes",
           () =>
