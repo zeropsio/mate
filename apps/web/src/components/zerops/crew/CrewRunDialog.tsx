@@ -1,7 +1,7 @@
 /**
  * *Let the crew work on its own* (PRD §4.8): the limits a run works under —
  * how much it may spend and for how long, each an amount or *No limit*, and a
- * stop before the Claude plan's limit — what happens to a finished piece of
+ * stop before the plan's limit — what happens to a finished piece of
  * work, and what the lead and the crewmates may do without asking. It opens
  * from the tab's *Let it work on its own…* and from a plan's Start when no run
  * is on; then (`CrewRunDialogAsk.after`) runs once the run is on — a plan's
@@ -21,6 +21,7 @@ import {
   crewResumeBudgetHint,
   crewResumeTimeHint,
   crewResumeUsageHint,
+  crewUsageOfWord,
   crewUsageStopWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewCommand, CrewRun, CrewSnapshot, EnvironmentId } from "@t3tools/contracts";
@@ -47,6 +48,7 @@ import {
   crewResumeDraft,
   crewResumeLimit,
   crewRunDraft,
+  crewPlanOf,
   crewSpendBlocker,
   crewStartCommand,
   type CrewLimitKind,
@@ -89,6 +91,10 @@ export function CrewRunDialog({
     (snapshot?.crewmates ?? []).map((crewmate) => crewmate.login.id),
     providers,
   );
+  const plan = crewPlanOf(
+    (snapshot?.crewmates ?? []).map((crewmate) => crewmate.login),
+    providers,
+  );
   const run = snapshot?.run ?? null;
   const resuming = ask?.mode === "resume" && run?.state === "paused" ? run : null;
   const submit = (command: CrewCommand) => {
@@ -114,6 +120,7 @@ export function CrewRunDialog({
             hasLead={hasLead}
             initial={crewRunDraft(run, hasLead)}
             mateName={mateName}
+            plan={plan}
             spendBlocker={spendBlocker}
             onCancel={onClose}
             onStart={submit}
@@ -125,6 +132,7 @@ export function CrewRunDialog({
             onCancel={onClose}
             onResume={submit}
             run={resuming}
+            plan={plan}
             spendBlocker={spendBlocker}
           />
         )}
@@ -214,6 +222,8 @@ export function CrewStartBody(props: {
   readonly initial: CrewRunDraft;
   /** A crewmate's agent doesn't report its spend: only *No limit* starts. */
   readonly spendBlocker: string | null;
+  /** The plan the usage stop watches (`crewPlanOf`). */
+  readonly plan: string;
   readonly hasLead: boolean;
   readonly mateName: string;
   readonly canAct: boolean;
@@ -253,7 +263,7 @@ export function CrewStartBody(props: {
                 className="mt-0.5"
                 onCheckedChange={(checked) => setDraft({ ...draft, usageStop: checked })}
               />
-              <span className="text-sm">{crewUsageStopWord(draft.usagePercent)}</span>
+              <span className="text-sm">{crewUsageStopWord(draft.usagePercent, props.plan)}</span>
             </Choice>
           </div>
           <Hairline />
@@ -324,6 +334,8 @@ export function CrewStartBody(props: {
 
 export function CrewResumeBody(props: {
   readonly run: CrewRun;
+  /** The plan the usage stop watches (`crewPlanOf`). */
+  readonly plan: string;
   /** A crewmate's agent doesn't report its spend: a dollar budget can't go on. */
   readonly spendBlocker: string | null;
   readonly canAct: boolean;
@@ -342,7 +354,10 @@ export function CrewResumeBody(props: {
       : limit === "time" && timeLimitHours !== "unlimited"
         ? crewResumeTimeHint(timeLimitHours)
         : limit === "usage"
-          ? crewResumeUsageHint(Math.round(run.usagePercent ?? run.options.stopAtUsagePercent ?? 0))
+          ? crewResumeUsageHint(
+              Math.round(run.usagePercent ?? run.options.stopAtUsagePercent ?? 0),
+              props.plan,
+            )
           : crewKeepGoingLine(run.options);
   return (
     <>
@@ -392,7 +407,7 @@ export function CrewResumeBody(props: {
                     value={String(draft.usagePercent)}
                   />
                 </label>
-                {CREW_RUN_WORDS.usageOf}
+                {crewUsageOfWord(props.plan)}
               </span>
             </Choice>
           ) : null}

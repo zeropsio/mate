@@ -1,7 +1,7 @@
 /**
  * The run dialog's choices (PRD §4.8, Δ16) — *Let the crew work on its own*:
  * how much it may spend and for how long (each an amount or *No limit*), the
- * stop before the Claude plan's limit, what happens to a finished piece of
+ * stop before the plan's limit, what happens to a finished piece of
  * work, whether the lead may start its own tasks and whether crewmates may
  * show their work at the Mate's dev address.
  *
@@ -14,9 +14,16 @@
  * run, so it never asks the run to go on under a limit it has reached
  * (`resumeRefusal` on the server); the usage stop is raised or turned off.
  */
-import { crewLandingWords } from "@t3tools/client-runtime/zerops/crew/phrases";
+import { crewLandingWords, crewPlanWords } from "@t3tools/client-runtime/zerops/crew/phrases";
 
-import type { CrewCommand, CrewLandingMode, CrewRun, ServerProvider } from "@t3tools/contracts";
+import type {
+  CrewCommand,
+  CrewLandingMode,
+  CrewLogin,
+  CrewRun,
+  ServerProvider,
+  ZeropsAgentId,
+} from "@t3tools/contracts";
 
 /** A limit is an amount or *No limit*; the amount keeps its text while *No limit* is picked. */
 export type CrewLimitKind = "amount" | "unlimited";
@@ -112,6 +119,29 @@ export function crewSpendBlocker(
     }
   }
   return null;
+}
+
+/** The agent each built-in sign-in runs, for a login the catalog has not listed yet. */
+const DRIVER_OF_AGENT: Readonly<Record<ZeropsAgentId, string>> = {
+  "claude-code": "claudeAgent",
+  codex: "codex",
+};
+
+/**
+ * The plan the usage stop watches (`crewPlanWords`), by each crewmate's login: its agent as the
+ * catalog lists it, else as the login names it.
+ */
+export function crewPlanOf(
+  logins: ReadonlyArray<Pick<CrewLogin, "id" | "agent">>,
+  providers: ReadonlyArray<ServerProvider> | undefined,
+): string {
+  return crewPlanWords(
+    logins.map(
+      (login) =>
+        providers?.find((provider) => provider.instanceId === login.id)?.driver ??
+        (login.agent === undefined ? undefined : DRIVER_OF_AGENT[login.agent]),
+    ),
+  );
 }
 
 /**

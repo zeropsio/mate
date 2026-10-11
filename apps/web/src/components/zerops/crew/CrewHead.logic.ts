@@ -50,6 +50,8 @@ export interface CrewModeInput {
   /** How many crewmates' threads work right now. */
   readonly workingCount: number;
   readonly tasks: ReadonlyArray<Pick<CrewTask, "state">>;
+  /** The plan the usage stop watches (`crewPlanOf`); "your plan" while unnamed. */
+  readonly plan?: string;
 }
 
 const press = (kind: CrewModePressKind): CrewModePress => ({
@@ -86,7 +88,7 @@ export function crewModeLine(input: CrewModeInput): CrewModeLine {
     case "finishing":
       return { words: CREW_WRAPPING_UP, press: null };
     case "paused": {
-      const words = crewStoppedWords(run);
+      const words = crewStoppedWords(run, input.plan);
       switch (run.reason) {
         case "refused":
           return { words, press: press("tryAgain") };
