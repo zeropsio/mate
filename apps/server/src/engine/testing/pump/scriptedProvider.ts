@@ -523,6 +523,64 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
           });
           return itemId;
         }),
+      /**
+       * Claude schedules a prompt of its own (CronCreate): a session-only job of the CLI's, which
+       * fires only while that CLI runs. Its result names the job's id, as the CLI words it.
+       */
+      cronCreate: (thread: string, cron: string, prompt: string, recurring: boolean) =>
+        Effect.gen(function* () {
+          const session = live(thread);
+          const itemId = `c${++items}`;
+          const job = `job${items}`;
+          const input = { cron, prompt, recurring };
+          const payload = { itemType: "dynamic_tool_call", title: "Tool call" };
+          yield* emit("item.started", thread, {
+            turnId: session.open,
+            itemId,
+            payload: { ...payload, status: "inProgress", data: { toolName: "CronCreate", input } },
+          });
+          yield* emit("item.completed", thread, {
+            turnId: session.open,
+            itemId,
+            payload: {
+              ...payload,
+              status: "completed",
+              data: {
+                toolName: "CronCreate",
+                input,
+                result: {
+                  type: "tool_result",
+                  content: recurring
+                    ? `Scheduled recurring job ${job} (${cron}). Session-only (not written to disk, dies when Claude exits). Auto-expires after 7 days. Use CronDelete to cancel sooner.`
+                    : `Scheduled one-shot task ${job} (${cron}). Session-only (not written to disk, dies when Claude exits). It will fire once then auto-delete.`,
+                },
+              },
+            },
+          });
+          return job;
+        }),
+      /** Claude cancels a job it scheduled (CronDelete). */
+      cronDelete: (thread: string, job: string) =>
+        Effect.gen(function* () {
+          const session = live(thread);
+          const itemId = `c${++items}`;
+          const payload = { itemType: "dynamic_tool_call", title: "Tool call" };
+          const data = { toolName: "CronDelete", input: { id: job } };
+          yield* emit("item.started", thread, {
+            turnId: session.open,
+            itemId,
+            payload: { ...payload, status: "inProgress", data },
+          });
+          yield* emit("item.completed", thread, {
+            turnId: session.open,
+            itemId,
+            payload: {
+              ...payload,
+              status: "completed",
+              data: { ...data, result: { type: "tool_result", content: `Cancelled job ${job}.` } },
+            },
+          });
+        }),
       /** The agent changes files in one patch (Codex's shape of an edit): each by its path. */
       change: (thread: string, paths: ReadonlyArray<string>) =>
         Effect.gen(function* () {

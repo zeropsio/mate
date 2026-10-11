@@ -200,7 +200,13 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
     hasPendingUserInput:
       asked.some((request) => request.ask.kind !== "approval") || waitsOnValue(view),
     hasActionableProposedPlan: false,
-    backgroundLiveness: view.activeRun === null ? view.background : null,
+    // Nothing on, but the work goes on: its helpers or jobs, or a turn due at once (a finished
+    // job's, an answered value's): the row's word, so the attention never counts it at rest
+    // between the two (Milo's recheck: the face read idle for 27 ms after a Vault answer).
+    backgroundLiveness:
+      view.activeRun !== null
+        ? null
+        : (view.background ?? (rowStateOf(view).kind === "working" ? "working" : null)),
     pendingQuestion: typeof firstQuestion === "string" ? lineOf(firstQuestion) : null,
     usagePause:
       typeof view.pausedUntil === "number"
