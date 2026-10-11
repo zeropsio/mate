@@ -2394,8 +2394,6 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         } else {
           endRun(b, run, { kind: "crashed", reason: signal.reason }, "inferred-from-crash");
         }
-      } else if (signal.crashed === true) {
-        brokeOffByKill(b, sessionId, signal.reason);
       }
       sessionClosed(b, sessionId, "exited");
       // A run held for a setting the lost work stood against goes on a new session now.
@@ -2405,34 +2403,6 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       return;
     }
   }
-};
-
-/**
- * How soon after a turn closed completed its agent's death says the turn broke off. Claude's CLI
- * killed mid-turn closes it completed, its answer so far whole, milliseconds before the stream
- * dies with no turn open (Milo's two kills: "Milo worked 13s", the answer cut mid-sentence).
- */
-export const KILLED_AFTER_END_MS = 2_000;
-
-/** The run its agent's death cut, though its turn closed completed a moment before. */
-const brokeOffByKill = (b: StepBuilder, sessionId: SessionId, reason: string): void => {
-  const latest = b.state.endedRuns.at(-1);
-  const run = latest === undefined ? undefined : b.state.runs[latest];
-  if (
-    run === undefined ||
-    run.sessionId !== sessionId ||
-    run.end?.kind !== "completed" ||
-    run.endSource !== "agent" ||
-    run.endedAt === null ||
-    b.now - run.endedAt > KILLED_AFTER_END_MS
-  )
-    return;
-  b.emit({
-    _tag: "RunEnded",
-    runId: run.id,
-    end: { kind: "crashed", reason },
-    source: "inferred-from-crash",
-  });
 };
 
 /** A closed item's key again: the same content changes nothing, new content updates it in place. */

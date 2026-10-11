@@ -264,12 +264,7 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         // own schedule after it reports on no run (Milo's cron reply was filed under a helpers run
         // the person had stopped four turns before, whose helpers' end was the last remembered).
         lastEndedWorkOrigin = null;
-        if (!asked)
-          signals.push({
-            kind: "session-exited",
-            reason: words,
-            ...(signal.cause === "process-exit" ? { crashed: true as const } : {}),
-          });
+        if (!asked) signals.push({ kind: "session-exited", reason: words });
         break;
       }
       case "send.accepted":
