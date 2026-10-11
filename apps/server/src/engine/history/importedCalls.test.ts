@@ -11,7 +11,7 @@ import {
 } from "@t3tools/contracts";
 import { assert, describe, it } from "vite-plus/test";
 
-import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
+import { runtimeEventToActivities } from "../testing/history/v1Activities.ts";
 import type { BridgeDriver } from "../bridge/spi3.ts";
 import { makeTranslator } from "../bridge/translate.ts";
 import { makeToCore } from "../pump/toCore.ts";
