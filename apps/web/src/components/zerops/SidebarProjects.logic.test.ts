@@ -17,17 +17,17 @@ describe("projectRoom", () => {
   // opening one unfolds its rows — and the room after them — below it, so the
   // heading that was clicked stays where it is (M9).
   it.each([
-    { name: "an open project, another under it", open: true, last: false, room: 12 },
-    { name: "the list's last project, open", open: true, last: true, room: 8 },
+    { name: "an open project, another under it", open: true, last: false, room: 16 },
+    { name: "the list's last project, open", open: true, last: true, room: 12 },
     {
       // Folded or open, the same air (the owner, 2026-10-11: squeezed folds made every open
       // "layout shift to create the space"); opening one adds only its rows.
       name: "a folded project: its heading, then the same air as an open one",
       open: false,
       last: false,
-      room: 12,
+      room: 16,
     },
-    { name: "the list's last project, folded", open: false, last: true, room: 8 },
+    { name: "the list's last project, folded", open: false, last: true, room: 12 },
   ])("$name keeps $room px below its rows", ({ open, last, room }) => {
     expect(projectRoom({ open, last })).toBe(room);
   });

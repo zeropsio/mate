@@ -42,12 +42,14 @@ export function newProjectOffered(input: {
 }
 
 /**
- * The air below each project, open or folded alike: 12 px. Folded names read as one list, and
+ * The air below each project, open or folded alike: 16 px. Folded names read as one list, and
  * opening one adds only its rows — never air to make room for them (the owner, 2026-10-11: folded
  * projects 60 px apart were "absolutely huge", and squeezed to 36 px every open was "layout
- * shifting on expand to create the space … it needs to be a balance").
+ * shifting on expand to create the space … it needs to be a balance"). At 12 a project's last
+ * line stood 1.7 times as far from the next heading as a heading from its first Mate ("still
+ * items squeezed together"); at 16 a project reads as one group, twice apart.
  */
-const PROJECT_AIR = 12;
+const PROJECT_AIR = 16;
 /** The list's own end, below its last project: 4 px. */
 const LIST_END = 4;
 
