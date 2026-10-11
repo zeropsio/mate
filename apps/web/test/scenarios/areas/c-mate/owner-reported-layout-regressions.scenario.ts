@@ -649,7 +649,7 @@ describe("owner-reported layout regressions", () => {
               const done = DateTime.formatIso(DateTime.makeUnsafe(now - 1_000));
               const running = {
                 session: { status: "running" as const, lastError: null },
-                latestUserMessagePreview: { role: "user" as const, text: ASK, createdAt: since },
+                latestUserMessagePreview: { role: "user" as const, text: ASK },
                 latestTurn: {
                   turnId: TurnId.make("run-steady"),
                   state: "running" as const,
@@ -689,11 +689,7 @@ describe("owner-reported layout regressions", () => {
                 {
                   session: { status: "ready" as const, lastError: null },
                   latestUserMessagePreview: running.latestUserMessagePreview,
-                  latestMessagePreview: {
-                    role: "assistant" as const,
-                    text: "Steady now.",
-                    createdAt: done,
-                  },
+                  latestMessagePreview: { role: "assistant" as const, text: "Steady now." },
                   latestTurn: {
                     ...running.latestTurn,
                     state: "completed" as const,
