@@ -254,6 +254,12 @@ export function placeLines(input: {
   return [...staged, { ...prod, projectId: stop?.projectId, route: stop?.route, ...said }];
 }
 
+/** What a place is called on its card: production in full, a stage by its own name, capitalised. */
+export function placeLabel(line: Pick<PlaceLine, "kind" | "name">): string {
+  if (line.kind === "production") return "Production";
+  return line.name.charAt(0).toLocaleUpperCase() + line.name.slice(1);
+}
+
 /** A Mate's preview on its card: its address where it is the one, else its Mate's name. */
 export interface PreviewLink {
   readonly label: string;

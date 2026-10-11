@@ -34,13 +34,13 @@ import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { StopReadAgain } from "../StopReadAgain";
 import { heldLine } from "./emptyApps.logic";
 import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from "./flowSteps";
-import { placeLabel } from "./PlacePanel";
 import {
   cardReady,
   foldMates,
   foldWords,
   mateChangeForReview,
   mateIsLoud,
+  placeLabel,
   placeLines,
   readyLine,
   readyTitle,

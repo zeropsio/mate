@@ -57,13 +57,14 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   actions?: ReactNode;
 }) {
   return (
-    // The logo row (`--menu-top-height`): on the web its 40 px mark, on the Mates' faces' column,
+    // The logo row: the top bar's height, which the menu's header takes as `--menu-top-height`
+    // (index.css). On the web its 40 px mark, on the Mates' faces' column,
     // stands 17 px from the top as it stands 17 px from the left (the owner, 2026-09-29: "visually
     // logo has smaller padding on top than on the left"). Beside a desktop's traffic lights it is
     // the title bar's height, centred on them.
     <SidebarHeader
       className={cn(
-        "@container/sidebar-header relative h-[var(--menu-top-height)] shrink-0 flex-row items-center px-3 py-0 md:px-0",
+        "@container/sidebar-header relative h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center px-3 py-0 md:px-0",
         isElectron && "drag-region",
       )}
     >

@@ -9,7 +9,7 @@ import { ArrowUpRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { PlaceDot, PlaceWords } from "./ProjectCards";
-import type { PlaceLine } from "./projectCard.logic";
+import { placeLabel, type PlaceLine } from "./projectCard.logic";
 
 /** One service of a place, as the platform reads it. */
 export interface PlacePanelService {
@@ -33,12 +33,6 @@ export interface PlacePanelModel {
   readonly route: string | undefined;
   /** Its services, each up, stopped or down. */
   readonly services: ReadonlyArray<PlacePanelService>;
-}
-
-/** What a place is called on its card: production in full, a stage by its own name, capitalised. */
-export function placeLabel(line: PlaceLine): string {
-  if (line.kind === "production") return "Production";
-  return line.name.charAt(0).toLocaleUpperCase() + line.name.slice(1);
 }
 
 export function PlacePanel({

@@ -172,6 +172,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --menu-top-height: 52px;
 }
 
+/* The menu's logo row stands at its own height: the top bar's, read there as the menu's. */
+[data-app-sidebar] [data-sidebar="header"] {
+  --workspace-topbar-height: var(--menu-top-height);
+}
+
 .wco {
   --workspace-topbar-height: max(40px, env(titlebar-area-height, 52px));
   --menu-top-height: var(--workspace-topbar-height);
