@@ -2307,12 +2307,22 @@ describe("owner-reported layout regressions", () => {
           readonly strip: number;
           /** How far the view stands from its end. */
           readonly fromEnd: number;
+          /** How many times the answer's row has risen in. */
+          readonly rises: number;
+          /** The foot of the answer's last line where the person sees it, null out of view. */
+          readonly lastLine: number | null;
           /** How many answer rows were drawn under the card so far: one is drawn again, it enters again. */
           readonly drawn: number;
         }
         /** Milo's turn ends with its answer, with or without a helper still at work. */
         /** Its answer streamed into the slot first, or arriving whole with the run's end. */
-        const settlesInPlace = (helperRunsOn: boolean, answer: "streamed" | "with its end") =>
+        const settlesInPlace = (
+          helperRunsOn: boolean,
+          answer: "streamed" | "with its end",
+          length: "short" | "long" = "short",
+          /** The run ended whole, or its agent was killed mid-words, its job lost with it. */
+          end: "whole" | "cut" = "whole",
+        ) =>
           Effect.gen(function* () {
             const { s, engine, run } = yield* miloAtWork();
             for (let index = 0; index < 6; index += 1)
@@ -2325,14 +2335,15 @@ describe("owner-reported layout regressions", () => {
                 endedAt: yield* Clock.currentTimeMillis,
                 input: `Bash: echo step-${index}`,
               });
-            if (helperRunsOn)
-              engine.item(run, {
-                kind: "work",
-                work: "work-job",
-                workKind: "helper",
-                status: "running",
-                title: "Wait 45 seconds in the background, then print job-finished-ok",
-              });
+            const job = !helperRunsOn
+              ? null
+              : engine.item(run, {
+                  kind: "work",
+                  work: "work-job",
+                  workKind: "helper",
+                  status: "running",
+                  title: "Wait 45 seconds in the background, then print job-finished-ok",
+                });
             // Its calls land in the history one after another before it writes.
             yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 3000)));
             // What Milo said: a short line as its job ran on (recheck on 0.15.41, +32:54.1), three
@@ -2340,7 +2351,15 @@ describe("owner-reported layout regressions", () => {
             const text =
               answer === "with its end" && helperRunsOn
                 ? "The 45-second command is running in the background, as you noted."
-                : "The 45-second job is running in the background, and I'll tell you its last line when it finishes. The earlier 3-minute command and the helper's sleep both stopped before they reported, as you noted.";
+                : length === "long"
+                  ? [
+                      "The workspace holds AGENTS.md, apidev, appdev, CLAUDE.md and pages.",
+                      "The time is 13:09 UTC on Sunday 11 October 2026.",
+                      "The 45-second command runs in the background and prints its marker when it ends.",
+                      "The helper's sleep and the earlier 3-minute command both stopped before they reported.",
+                      "Nothing else runs; I'll tell you the marker's line when it comes, as you noted.",
+                    ].join("\n\n")
+                  : "The 45-second job is running in the background, and I'll tell you its last line when it finishes. The earlier 3-minute command and the helper's sleep both stopped before they reported, as you noted.";
             const note =
               answer === "streamed"
                 ? engine.item(run, { kind: "note", text: "", streaming: true, answer: false })
@@ -2380,18 +2399,38 @@ describe("owner-reported layout regressions", () => {
                   return true;
                 };
                 const rows = new Set<Element>();
+                // A row the list moves among its siblings is put back in the page, and a running
+                // entrance would play again (recheck on 0.15.44: every answer rose in twice).
+                let rises = 0;
+                document.addEventListener(
+                  "animationstart",
+                  (event) => {
+                    const target = event.target as Element;
+                    if (
+                      event.animationName.includes("rise-in") &&
+                      target.closest("[data-run-chat]") === null &&
+                      (target.textContent ?? "").includes("as you noted")
+                    )
+                      rises += 1;
+                  },
+                  true,
+                );
                 const read = (): SettleFrame => {
                   const head = [
                     ...document.querySelectorAll<HTMLElement>("[data-run-chat] [data-run-head]"),
                   ].at(-1);
                   let asked: number | null = null;
                   let answers = 0;
+                  let lastLine: number | null = null;
                   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
                   while (walker.nextNode()) {
                     const words = walker.currentNode.textContent ?? "";
                     const element = walker.currentNode.parentElement!;
                     if (element.closest(".sr-only") !== null) continue;
-                    if (words.includes("as you noted") && seen(element)) answers += 1;
+                    if (words.includes("as you noted") && seen(element)) {
+                      answers += 1;
+                      lastLine = element.getBoundingClientRect().bottom;
+                    }
                     if (
                       words.includes("as you noted") &&
                       element.closest("[data-run-chat]") === null
@@ -2422,6 +2461,8 @@ describe("owner-reported layout regressions", () => {
                         .at(-1)
                         ?.getBoundingClientRect().height ?? 0,
                     drawn: rows.size,
+                    rises,
+                    lastLine,
                     fromEnd: (() => {
                       const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
                       return list.scrollHeight - list.clientHeight - list.scrollTop;
@@ -2438,7 +2479,7 @@ describe("owner-reported layout regressions", () => {
               }),
             );
             yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 200)));
-            if (note !== null) {
+            if (note !== null && end === "whole") {
               engine.settle(note);
               yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
               engine.update(note, { text, streaming: false });
@@ -2448,8 +2489,15 @@ describe("owner-reported layout regressions", () => {
             // As the cron turn on Milo (recheck on 0.15.41, +40:10.7): the slot says Thinking and
             // its short answer comes in the change that ends the run.
             if (note === null) engine.note(run, text, { kind: "completed" });
-            else engine.end(run);
-            if (helperRunsOn) engine.waitOnHelpers();
+            else if (end === "cut") {
+              // As J9 on Milo (recheck on 0.15.44, +17:25.6): the agent killed mid-paragraph, its
+              // run ends as the engine reads it and the job it started is lost.
+              // The engine keeps what it had streamed as the words' record, in the same moment.
+              engine.update(note, { text, streaming: false });
+              if (job !== null) engine.update(job, { status: "lost" });
+              engine.end(run);
+            } else engine.end(run);
+            if (helperRunsOn && end === "whole") engine.waitOnHelpers();
             const frames = yield* Effect.promise(() =>
               new Promise((resolve) => setTimeout(resolve, 2500)).then(() =>
                 s.page.evaluate(() => {
@@ -2469,7 +2517,7 @@ describe("owner-reported layout regressions", () => {
               /^Working/u,
             );
             expect(last.head?.words, "ASSERTION: the head's words say how the run ended").toMatch(
-              helperRunsOn ? /^Waiting for its helpers/u : /^Ada worked/u,
+              helperRunsOn && end === "whole" ? /^Waiting for its helpers/u : /^Ada worked/u,
             );
             expect(
               frames.every((frame) => frame.answers <= 1),
@@ -2488,40 +2536,76 @@ describe("owner-reported layout regressions", () => {
                   `${Math.round(frame.at - endedAt)}:${frame.head === null ? "-" : Math.round(frame.head.top)}`,
               )
               .join(" ")}`;
-            const moved = frames.findIndex(
-              (frame) => frame.head === null || Math.abs(frame.head.top - first.head!.top) > 1,
-            );
-            expect(
-              moved === -1 || frames[moved]!.at - endedAt >= 300,
-              `ASSERTION: the card's head stands still through the settle ${trace}`,
-            ).toBe(true);
-            const glide = moved === -1 ? [] : frames.slice(moved - 1);
-            expect(
-              glide.every(
-                (frame, index) =>
-                  index === 0 || Math.abs(frame.head!.top - glide[index - 1]!.head!.top) < 40,
-              ),
-              `ASSERTION: then the view glides to the end, never a jump ${trace}`,
-            ).toBe(true);
-            const rests = frames.findLastIndex(
-              (frame, index) => index > 0 && frame.head?.top !== frames[index - 1]!.head?.top,
-            );
-            expect(
-              moved === -1 || frames[rests]!.at - frames[moved]!.at <= 450,
-              `ASSERTION: the glide is short ${trace}`,
-            ).toBe(true);
+            // An answer that ends in view under the head keeps the head still; a longer one keeps
+            // its last line where it was read instead (below).
+            if (length === "short" || end === "cut") {
+              const moved = frames.findIndex(
+                (frame) => frame.head === null || Math.abs(frame.head.top - first.head!.top) > 1,
+              );
+              expect(
+                moved === -1 || frames[moved]!.at - endedAt >= 300,
+                `ASSERTION: the card's head stands still through the settle ${trace}`,
+              ).toBe(true);
+              const glide = moved === -1 ? [] : frames.slice(moved - 1);
+              expect(
+                glide.every(
+                  (frame, index) =>
+                    index === 0 || Math.abs(frame.head!.top - glide[index - 1]!.head!.top) < 40,
+                ),
+                `ASSERTION: then the view glides to the end, never a jump ${trace}`,
+              ).toBe(true);
+              const rests = frames.findLastIndex(
+                (frame, index) => index > 0 && frame.head?.top !== frames[index - 1]!.head?.top,
+              );
+              expect(
+                moved === -1 || frames[rests]!.at - frames[moved]!.at <= 450,
+                `ASSERTION: the glide is short ${trace}`,
+              ).toBe(true);
+            }
             expect(
               last.fromEnd,
               "ASSERTION: the conversation rests at its end",
             ).toBeLessThanOrEqual(1);
             // Recheck on 0.15.41 (+32:54.1): the job's strip left, shrank, then snapped back 32 px.
-            expect(
-              frames
-                .map((frame) => Math.round(frame.strip))
-                .filter((height, index, all) => height !== all[index - 1]),
-              "ASSERTION: what runs on after the turn stands under the card through its end",
-            ).toHaveLength(1);
+            // A job lost with its agent leaves with it.
+            if (end === "whole")
+              expect(
+                frames
+                  .map((frame) => Math.round(frame.strip))
+                  .filter((height, index, all) => height !== all[index - 1]),
+                "ASSERTION: what runs on after the turn stands under the card through its end",
+              ).toHaveLength(1);
             // Recheck on 0.15.41 (+32:55.20): the answer's rise-in played again a second later.
+            expect(
+              last.rises,
+              "ASSERTION: the answer's row rises in once at most",
+            ).toBeLessThanOrEqual(1);
+            // Recheck on 0.15.44 (+15:38): a long answer at a job-turn end showed its first line for
+            // 1.2 s, then the page glided 305 px down to it.
+            if (length === "long" && end === "whole") {
+              const reading = frames[0]!.lastLine;
+              expect(reading, "ASSERTION: the answer's last line was read in view").not.toBeNull();
+              // It lands under the strip of what runs on, a strip's height down at most, and travels
+              // there: never hidden under the view, never a cut.
+              expect(
+                Math.max(
+                  ...frames.map((frame) =>
+                    frame.lastLine === null ? Infinity : Math.abs(frame.lastLine - reading!),
+                  ),
+                ),
+                "ASSERTION: the answer's last line lands near where it was read",
+              ).toBeLessThanOrEqual(64);
+              expect(
+                Math.max(
+                  ...frames.map((frame, index) =>
+                    index === 0 || frame.lastLine === null || frames[index - 1]!.lastLine === null
+                      ? 0
+                      : Math.abs(frame.lastLine - frames[index - 1]!.lastLine!),
+                  ),
+                ),
+                "ASSERTION: the answer's last line travels, never a cut",
+              ).toBeLessThan(24);
+            }
             expect(last.drawn, "ASSERTION: the answer's row is drawn once, and enters once").toBe(
               1,
             );
@@ -2626,7 +2710,7 @@ describe("owner-reported layout regressions", () => {
               engine.end(run, { kind: "stopped", by: { kind: "person", subject: "owner" } });
             } else {
               if (ending === "completed")
-                for (const helper of helpers) engine.update(helper, { status: "done" });
+                for (const helper of helpers) engine.update(helper, { status: "completed" });
               engine.item(run, { kind: "note", text: words, streaming: false, answer: false });
               engine.end(run);
               if (ending === "on its job") engine.waitOnHelpers();
@@ -2682,6 +2766,16 @@ describe("owner-reported layout regressions", () => {
         it.effect(
           "after a turn ends on a job still running, its card hugs its content and the conversation rests at its end above the composer",
           () => restsAtItsEnd("on its job"),
+        );
+
+        it.effect(
+          "a run its agent's crash cut off settles with its words where they were read, never a jump",
+          () => settlesInPlace(true, "streamed", "long", "cut"),
+        );
+
+        it.effect(
+          "a long answer at a turn ending on a job still running stays where it was read",
+          () => settlesInPlace(true, "streamed", "long"),
         );
 
         // Recheck on 0.15.41 (+40:10.7): the slot said Thinking, the short answer came with the

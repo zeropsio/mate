@@ -297,7 +297,10 @@ function useAskRoom(wanted: number, listRef: React.RefObject<LegendListRef | nul
       const end = element
         ? Math.max(0, element.scrollHeight - element.clientHeight - (held - wanted))
         : 0;
-      if (!element || element.scrollTop <= end + 0.5 || reducedMotion()) {
+      // Within a pixel: the browser rounds the scroll it is given, and a view held at 118 for
+      // an end at 117.5 never let the room go — the view rested 319 px short of its end over an
+      // empty foot for good (the owner, 0.15.44).
+      if (!element || element.scrollTop <= end + 1 || reducedMotion()) {
         setHeld(0);
         return;
       }
@@ -904,11 +907,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       endFollowRef.current?.stop();
       const landing = { ...target, since: performance.now(), frame: 0 };
       landingRef.current = landing;
-      const card =
-        target.edge === "top"
-          ? (target.element.closest("[data-run-chat]")?.getBoundingClientRect().height ?? 0)
-          : 0;
-      setLandingRoom(Math.max(ANSWER_ROOM_PX, card));
+      // Under a held head, a view's height: whatever folds under it — the card, its panel, the
+      // slot — the room takes up. Below the view, it costs nothing; once it goes, the view glides
+      // only as far as it stood in it.
+      setLandingRoom(
+        target.edge === "top" ? Math.max(ANSWER_ROOM_PX, scroller.clientHeight) : ANSWER_ROOM_PX,
+      );
       const list = scroller.closest<HTMLElement>(".timeline-legend-list") ?? scroller;
       list.toggleAttribute("data-timeline-holds-head", target.edge === "top");
       holdAnswer();
@@ -967,7 +971,25 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     (words: HTMLElement, stood: WordsStood) => {
       const head = stood.head?.element.isConnected === true ? stood.head : null;
       const holding = landingRef.current;
-      if (holding !== null && holding.edge === "top" && holding.element === head?.element) return;
+      if (holding !== null && holding.edge === "top" && holding.element === head?.element) {
+        // Its card's head is held: the words land under it, a strip's height under where they were
+        // read at most — they travel there from where they stood, never cut (recheck on 0.15.44).
+        // Read before the frame paints, once the slot they leave has gone in its own commit.
+        const row = words.closest<HTMLElement>("[data-timeline-row-id]");
+        if (row === null || reducedMotion() || typeof row.animate !== "function") return;
+        requestAnimationFrame(() => {
+          const off =
+            words.getBoundingClientRect().bottom -
+            (holding.element.getBoundingClientRect().top - holding.at) -
+            stood.bottom;
+          if (Math.abs(off) > 2)
+            row.animate([{ translate: `0 ${-off}px` }, { translate: "0 0" }], {
+              duration: WORDS_LAND_MS,
+              easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+            });
+        });
+        return;
+      }
       land(
         landingHolds({ head: head !== null, whole: stood.whole }) === "head" && head !== null
           ? { element: head.element, edge: "top", at: head.top }
@@ -2439,6 +2461,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
     row.kind === "message" && row.message.role === "user" && !isStandUpAskRow(row, standUpAsk);
   const ref = useRef<HTMLDivElement>(null);
   const held = useHeldBehindComposer(ref, entering && person);
+  // Its entrance plays once: the list moves a row among its siblings by putting it back in the
+  // page, which plays a running entrance again (recheck on 0.15.44: every answer rose in twice).
+  const [entered, setEntered] = useState(false);
   return (
     <div
       ref={ref}
@@ -2449,10 +2474,14 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         held
           ? "opacity-0"
           : entering &&
+              !entered &&
               (person
                 ? "origin-bottom-right animate-bubble-in motion-reduce:animate-none"
                 : "animate-rise-in motion-reduce:animate-none"),
       )}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget) setEntered(true);
+      }}
       data-card-slice={card}
       data-card-whole={row.cardWhole ? "" : undefined}
       data-timeline-row-id={row.id}
@@ -3485,6 +3514,8 @@ function MateProseWords({
   );
 }
 
+/** How long the words of an answer travel from where they were read to where they land. */
+const WORDS_LAND_MS = 220;
 /** How long a card's head is held at least: its fold starts once the list has laid it out. */
 const HEAD_HOLD_MS = 300;
 /** How long an answer is held where its words were read: its card folds, its row is measured. */
