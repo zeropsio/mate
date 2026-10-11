@@ -307,12 +307,13 @@ describe("stepOf", () => {
         id: "1",
         itemType: "dynamic_tool_call",
         label: "Tool call",
-        detail: 'CronCreate: {"cron":"0 9 * * *","prompt":"Check the deploy","recurring":false}',
+        // Its time is the person's clock's (`toolCallWords`); this one names none.
+        detail: 'CronCreate: {"cron":"*/5 * * * *","prompt":"Check the deploy","recurring":true}',
       }),
-      words: "Scheduled a wake for 09:00",
+      words: "Scheduled a wake",
       code: null,
       kind: "tool",
-      phrase: { verb: "Scheduled a wake for 09:00", targets: [], more: 0, code: false },
+      phrase: { verb: "Scheduled a wake", targets: [], more: 0, code: false },
     },
     {
       // Engine final run, C3: the row read "Looked at mate-asset:97860ff6-…".
