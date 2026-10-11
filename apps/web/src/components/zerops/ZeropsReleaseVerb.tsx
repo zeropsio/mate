@@ -47,8 +47,21 @@ export function ZeropsReleaseVerb({
     { compare: true },
   );
   const release = useReleaseOffer(groupId, flows.get(groupId));
-  // The projects page's verbs are all one height; this one is theirs.
-  return <ReleaseAction label={label} release={release} size="compact" />;
+  if (!release.offered && !release.releasing) return null;
+  // A card's own solid button, as *Review change* is beside it: one look for what waits on you.
+  return (
+    <button
+      className="ov-btn"
+      data-main="true"
+      data-zerops-primary-action={REVIEW_RELEASE_LABEL}
+      onClick={(event) => {
+        release.onReview(event.currentTarget);
+      }}
+      type="button"
+    >
+      {release.releasing ? flowVerbLabel("release", true) : label}
+    </button>
+  );
 }
 
 /** What *Release* is offered on a page, or that it is not offered at all. */

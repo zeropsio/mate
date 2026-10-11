@@ -473,7 +473,11 @@ function SignedOutNotice({ message }: { readonly message: string }) {
 /** The overview's title row: "Overview", and New project on its end. The list keeps itself current. */
 export function ZeropsProjectsHeader() {
   return (
-    <div className="flex items-center justify-between gap-3" data-zerops-project-scope="true">
+    // Its row stands on the menu's top row (the search), not a bar's height below it.
+    <div
+      className="-mt-1.5 flex items-center justify-between gap-3"
+      data-zerops-project-scope="true"
+    >
       <h1 className="text-xl font-medium text-foreground">Overview</h1>
       <Button onClick={askNewProject} size="sm" variant="outline">
         <PlusIcon />
@@ -2399,8 +2403,9 @@ export function ZeropsProjectsPage() {
 
   return (
     // The account and its organization are the menu's foot, and the list keeps itself current: the
-    // overview's top carries neither a switcher nor a reload (the owner, 2026-10-11).
-    <ZeropsHostedFrame width="full">
+    // overview's top carries neither a switcher nor a reload, nor an empty bar above its title (the
+    // owner, 2026-10-11).
+    <ZeropsHostedFrame bar={false} width="full">
       {scoped && !firstRun ? <ZeropsProjectsHeader /> : null}
       <ZeropsProjectsContent search={search} />
     </ZeropsHostedFrame>

@@ -5208,22 +5208,16 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
   box-shadow: 0 0 0 2px var(--ov-ground);
 }
 
+/* The project's menu stays in sight: its verbs are the overview's, not a hover's secret. */
 .ov-card-menu {
   display: flex;
   flex: none;
   margin: 0 -4px 0 auto;
-  opacity: 0;
-  transition: opacity 150ms var(--ease-out-strong);
+  color: var(--muted-foreground);
 }
 
 .ov-card-people + .ov-card-menu {
   margin-left: 0;
-}
-
-.ov-card:hover .ov-card-menu,
-.ov-card-menu:focus-within,
-.ov-card-menu:has([data-popup-open]) {
-  opacity: 1;
 }
 
 .ov-card-site {
@@ -5432,6 +5426,23 @@ a.ov-card-site:hover {
   background: var(--zerops-status-failed);
 }
 
+/* What was asked, over the answer: the menu row's second ink. */
+.ov-mate-ask {
+  display: block;
+  min-width: 0;
+  margin-top: 1px;
+  overflow: hidden;
+  color: color-mix(in oklab, var(--foreground) 76%, transparent);
+  font-size: 14px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-mate-ask + .ov-mate-l2 {
+  margin-top: 0;
+}
+
 .ov-mate-l2 {
   display: block;
   min-width: 0;
@@ -5615,13 +5626,21 @@ a.ov-card-site:hover {
   gap: 2px;
 }
 
-.ov-place {
+/* A place: its name, its dot, its words — a click opens its panel — and its door at the end. */
+.ov-place-row {
+  position: relative;
   display: flex;
-  width: 100%;
-  height: 40px;
   min-width: 0;
   align-items: center;
-  gap: 10px;
+}
+
+.ov-place {
+  display: flex;
+  min-width: 0;
+  height: 40px;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
   padding: 0 8px;
   border-radius: 12px;
   color: var(--foreground);
@@ -5630,14 +5649,20 @@ a.ov-card-site:hover {
   transition: background-color 150ms var(--ease-out-strong);
 }
 
-.ov-place:hover,
+.ov-place-row:has(.ov-place-open) .ov-place {
+  padding-right: 44px;
+}
+
+button.ov-place:hover,
+a.ov-place:hover,
 .ov-place[data-open] {
   background: var(--ov-hover);
 }
 
 .ov-place-name {
   flex: none;
-  font-weight: 600;
+  min-width: 64px;
+  font-weight: 500;
 }
 
 .ov-place-words {
@@ -5646,6 +5671,11 @@ a.ov-card-site:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+.ov-place-words[data-dot="running"] {
+  color: var(--foreground);
 }
 
 .ov-place-words[data-dot="failed"] {
@@ -5660,9 +5690,14 @@ a.ov-card-site:hover {
   color: var(--zerops-status-busy-text);
 }
 
-.ov-place-words[data-dot="none"],
-.ov-place-words[data-dot="unknown"] {
-  color: var(--muted-foreground);
+.ov-place-link {
+  color: var(--foreground);
+  text-decoration: underline 1px color-mix(in oklab, currentColor 30%, transparent);
+  text-underline-offset: 3px;
+}
+
+.ov-place-link:hover {
+  text-decoration-color: currentColor;
 }
 
 .ov-sep {
@@ -5670,18 +5705,38 @@ a.ov-card-site:hover {
   color: var(--muted-foreground);
 }
 
-.ov-place-go {
-  flex: none;
-  margin-left: auto;
+/* A place's door: its address, opened beside the page; in sight, never only on hover. */
+.ov-place-open {
+  position: absolute;
+  right: 4px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 10px;
   color: var(--muted-foreground);
-  opacity: 0;
-  transition: opacity 150ms var(--ease-out-strong);
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
 }
 
-.ov-place:hover .ov-place-go,
-.ov-place[data-open] .ov-place-go,
-.ov-place:focus-visible .ov-place-go {
-  opacity: 1;
+a.ov-place-open:hover {
+  background: var(--ov-hover);
+  color: var(--foreground);
+}
+
+span.ov-place-open {
+  pointer-events: none;
+}
+
+a.ov-place:hover + span.ov-place-open {
+  color: var(--foreground);
+}
+
+a.ov-place-open:focus-visible,
+a.ov-place-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .ov-dot {
@@ -5689,7 +5744,6 @@ a.ov-card-site:hover {
   flex: none;
   width: 8px;
   height: 8px;
-  margin: 0 2px 0 4px;
   border-radius: 999px;
   background: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
 }

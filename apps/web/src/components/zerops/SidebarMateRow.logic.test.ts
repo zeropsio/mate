@@ -16,6 +16,7 @@ import {
   mateFinishingView,
   mateOwnerView,
   mateNotYours,
+  mateRowAskOver,
   mateRowPropsEqual,
   mateRowSecond,
   type MateRowView,
@@ -1853,5 +1854,62 @@ describe("mateRowSecond — the one line under a Mate's name", () => {
     { case: "outside this HQ", over: { outsideHq: true }, line: { kind: "outside" } },
   ] as const)("$case", ({ over, line }) => {
     expect(second(over as Partial<Parameters<typeof mateRowSecond>[0]>)).toEqual(line);
+  });
+});
+
+describe("mateRowAskOver — what was asked, over a row's answer", () => {
+  const ask = { kind: "ask", text: "Add a search box" } as const;
+  it.each([
+    { case: "over its answer", askLine: ask, second: { kind: "reply", tone: "muted" }, over: ask },
+    {
+      case: "over whom a colleague's Mate waits on",
+      askLine: ask,
+      second: { kind: "waits-on", text: "Waits on Karel" },
+      over: ask,
+    },
+    {
+      case: "over its pause",
+      askLine: ask,
+      second: { kind: "paused", until: "2026-10-11T14:00:00Z" },
+      over: ask,
+    },
+    {
+      case: "over its change",
+      askLine: ask,
+      second: { kind: "change", title: "Search box", mine: true },
+      over: ask,
+    },
+    {
+      case: "a draft over its answer, as typed",
+      askLine: { kind: "draft", text: "and a filter", ask: "Add a search box" },
+      second: { kind: "reply", tone: "muted" },
+      over: { kind: "draft", text: "and a filter", ask: "Add a search box" },
+    },
+    {
+      case: "never twice where its line is the ask itself",
+      askLine: ask,
+      second: { kind: "ask", pending: true },
+      over: undefined,
+    },
+    {
+      case: "never a sign-in",
+      askLine: { kind: "sign-in", text: "Sign in to Claude", waitsOnViewer: true },
+      second: { kind: "reply", tone: "muted" },
+      over: undefined,
+    },
+    {
+      case: "nothing while it comes up",
+      askLine: ask,
+      second: { kind: "coming" },
+      over: undefined,
+    },
+    {
+      case: "nothing where nothing was asked",
+      askLine: undefined,
+      second: { kind: "reply", tone: "muted" },
+      over: undefined,
+    },
+  ] as const)("says it $case", ({ askLine, second, over }) => {
+    expect(mateRowAskOver(askLine, second)).toEqual(over);
   });
 });

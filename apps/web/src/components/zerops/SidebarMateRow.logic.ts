@@ -855,6 +855,28 @@ export type MateRowSecond =
   | { readonly kind: "ask"; readonly pending: boolean }
   | { readonly kind: "none" };
 
+/** The second lines a row says what was asked over: its answers — never its own ask or a coming. */
+const ASKED_OVER: ReadonlySet<MateRowSecond["kind"]> = new Set([
+  "reply",
+  "waits-on",
+  "paused",
+  "change",
+]);
+
+/**
+ * What was asked, said over a row's answer (the owner, 2026-10-11: the menu "no longer says last
+ * question and last answer"), as the conversation's own top says the question. A row whose line is
+ * the ask itself — nothing answered yet, a draft alone — says it once, below; a sign-in is never a
+ * question. The menu's row and a Mate's card say the same.
+ */
+export function mateRowAskOver(
+  askLine: MateRowAskLine,
+  second: MateRowSecond,
+): Exclude<MateRowAskLine, { readonly kind: "sign-in" } | undefined> | undefined {
+  if (askLine === undefined || askLine.kind === "sign-in") return undefined;
+  return ASKED_OVER.has(second.kind) ? askLine : undefined;
+}
+
 export function mateRowSecond(input: {
   readonly view: Pick<MateRowView, "state" | "reply" | "slot" | "coming">;
   readonly askLine: MateRowAskLine;

@@ -248,6 +248,7 @@ import {
   mateRowDraft,
   mateRowPropsEqual,
   mateRowReading,
+  mateRowAskOver,
   mateRowSecond,
   pendingBornLine,
   type MateBornLine,
@@ -2786,6 +2787,7 @@ function MateRowView<T extends RosterCandidate>({
     // Its open change stands in its own strip under the row, so the row's lines stay the Mate's.
     change: undefined,
   });
+  const askOver = mateRowAskOver(askLine, second);
   // Its change's *Review*, in the time's place: white where it waits on the viewer, quiet where
   // it is a colleague's to review.
   const review =
@@ -3084,11 +3086,7 @@ function MateRowView<T extends RosterCandidate>({
           {/* What was asked, over the last answer (the owner, 2026-10-11): the row says both,
               as the conversation's own top says the question. A row whose line is the ask
               itself — nothing answered yet, a draft — says it once, below. */}
-          {askLine !== undefined &&
-          askLine.kind !== "sign-in" &&
-          ASK_OVER_SECOND.has(second.kind) ? (
-            <MateAskLine line={askLine} rises={askChanged} />
-          ) : null}
+          {askOver === undefined ? null : <MateAskLine line={askOver} rises={askChanged} />}
           <MateSecondLine
             askChanged={askChanged}
             askLine={askLine}
@@ -3225,14 +3223,6 @@ function MateRowView<T extends RosterCandidate>({
 }
 
 /** The one line under a Mate's name, as `mateRowSecond` chose it. */
-/** The second lines a row draws what was asked over: its answers, never its own ask or a coming. */
-const ASK_OVER_SECOND: ReadonlySet<MateRowSecond["kind"]> = new Set([
-  "reply",
-  "waits-on",
-  "paused",
-  "change",
-]);
-
 function MateSecondLine({
   second,
   view,
