@@ -425,6 +425,51 @@ type MarkdownAstNode = {
   children?: MarkdownAstNode[];
 };
 
+type PositionedAstNode = MarkdownAstNode & {
+  value?: string;
+  position?: { start?: { offset?: number }; end?: { offset?: number } };
+  children?: PositionedAstNode[];
+};
+
+/** Where emphasis may open in what a person typed: a line's start, a space, a bracket or quote. */
+const PERSON_EMPHASIS_OPENS = /[\s([{"'“‘]/u;
+
+/**
+ * A person's message shows what they typed: an asterisk inside a word or against punctuation
+ * ("rc-*.txt or probe-*.txt", "5*3") is the asterisk, never emphasis; `*really*` between spaces
+ * stays emphasis (engine recheck on 0.15.44).
+ */
+function remarkPersonAsterisks() {
+  return (tree: PositionedAstNode, file: { value?: unknown }) => {
+    const source = typeof file.value === "string" ? file.value : String(file.value ?? "");
+    const literal = (node: PositionedAstNode): boolean => {
+      const start = node.position?.start?.offset;
+      const end = node.position?.end?.offset;
+      if (start === undefined || end === undefined || source[start] !== "*") return false;
+      const before = start === 0 ? undefined : source[start - 1];
+      const after = source[end];
+      const opens = before === undefined || PERSON_EMPHASIS_OPENS.test(before);
+      const closes = after === undefined || !/[\p{L}\p{N}_*]/u.test(after);
+      return !(opens && closes);
+    };
+    const visit = (node: PositionedAstNode) => {
+      if (node.children === undefined) return;
+      node.children.forEach(visit);
+      node.children = node.children.flatMap((child) => {
+        if ((child.type !== "emphasis" && child.type !== "strong") || !literal(child))
+          return [child];
+        const mark = child.type === "strong" ? "**" : "*";
+        return [
+          { type: "text", value: mark },
+          ...(child.children ?? []),
+          { type: "text", value: mark },
+        ];
+      });
+    };
+    visit(tree);
+  };
+}
+
 function remarkPreserveCodeMeta() {
   return (tree: MarkdownAstNode) => {
     const visit = (node: MarkdownAstNode) => {
@@ -2588,9 +2633,10 @@ function ChatMarkdown({
   const remarkPlugins = useMemo(
     () => [
       ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
+      ...(variant === "person" ? [remarkPersonAsterisks] : []),
       ...(incrementalParsing ? [createIncrementalMarkdownPlugin()] : []),
     ],
-    [incrementalParsing, lineBreaks],
+    [incrementalParsing, lineBreaks, variant],
   );
 
   // react-markdown converts unparsed HTML nodes to text when skipHtml is false.

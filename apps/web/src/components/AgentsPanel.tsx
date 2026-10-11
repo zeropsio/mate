@@ -42,7 +42,12 @@ import { cn } from "~/lib/utils";
 import { MateMark } from "~/components/MateMark";
 import { HelperCard, HelperClock, helperCostWords } from "~/components/chat/HelperCard";
 import { answeredHelperAsk, answerHelperAsk, useHelperFocus } from "~/components/chat/helperFocus";
-import { helperMap, helperNowWords, helperReportLine } from "~/components/chat/helpers.logic";
+import {
+  beyondTitle,
+  helperMap,
+  helperNowWords,
+  helperRowLine,
+} from "~/components/chat/helpers.logic";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { ScrollArea } from "~/components/ui/scroll-area";
@@ -141,10 +146,11 @@ const STATE_WORDS: Record<RuntimeSubagent["status"], string> = {
  */
 function helperLine(agent: RuntimeSubagent): string | null {
   if (agent.status === "waiting") return "Waits for you";
-  if (isActiveSubagentStatus(agent.status)) {
-    return helperNowWords(agent) ?? agent.prompt?.split("\n")[0] ?? null;
+  // Never its name again under its name, as its row on the card (`helperRowLine`).
+  if (isActiveSubagentStatus(agent.status) && helperNowWords(agent) === null) {
+    return beyondTitle(agent.title, agent.prompt?.split("\n")[0] ?? null);
   }
-  return helperReportLine(agent);
+  return helperRowLine(agent);
 }
 
 /**

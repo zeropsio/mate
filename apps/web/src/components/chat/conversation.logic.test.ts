@@ -3334,20 +3334,50 @@ describe("tool calls in words", () => {
     expect(toolCallWords(name)).toBe(words);
   });
 
-  // Engine recheck on 0.15.41: a wake Milo set read "Used cron create".
+  // Engine recheck on 0.15.41: a wake Milo set read "Used cron create"; on 0.15.44 Milo's one-off
+  // ("10 16 11 10 *", as Claude sends it) read "Scheduled a wake" with no time. The container's
+  // clock is UTC; the person reads it on their own.
+  const NOW = Date.UTC(2026, 9, 11, 16, 8); // 11 Oct 2026, 16:08 UTC
   it.each([
     [
-      'CronCreate: {"cron":"0 9 * * *","prompt":"Check the deploy","recurring":false}',
+      'CronCreate: {"cron":"10 16 11 10 *","prompt":"reply with the single word cron44-ok","recurring":false}',
+      "Scheduling a wake for 16:10",
+    ],
+    [
+      'CronCreate: {"cron":"35 16 12 10 *","prompt":"Check the deploy","recurring":false}',
+      "Scheduling a wake for 16:35 on 12 Oct",
+    ],
+    [
+      'CronCreate: {"cron":"0 9 * * *","prompt":"Check the deploy","recurring":true}',
       "Scheduling a wake for 09:00",
     ],
     ['CronCreate: {"cron":"30 14 * * 1-5","prompt":"Stand-up"}', "Scheduling a wake"],
     ['CronCreate: {"cron":"*/5 * * * *","prompt":"Poll"}', "Scheduling a wake"],
+    ["CronCreate: {}", "Scheduling a wake"],
     ['CronDelete: {"id":"c1"}', "Cancelling a wake"],
     ["CronList: {}", "Checking its wakes"],
   ])("says a wake the Mate sets for itself in words: %s → %j", (detail, words) => {
     const name = namedToolCall({ itemType: "dynamic_tool_call", label: "Tool call", detail })!;
-    expect(toolCallWords(name, detail)).toBe(words);
+    expect(toolCallWords(name, detail, { now: NOW, timeZone: "UTC" })).toBe(words);
   });
+
+  it.each([
+    [
+      '{"cron":"10 16 11 10 *","prompt":"reply with cron-ok","recurring":false}',
+      "Scheduling a wake for 18:10",
+    ],
+    [
+      '{"cron":"30 23 11 10 *","prompt":"Late check","recurring":false}',
+      "Scheduling a wake for 01:30 on 12 Oct",
+    ],
+  ])(
+    "reads a wake's time on the person's own clock, the container's being UTC: %s → %j",
+    (args, words) => {
+      expect(
+        toolCallWords("CronCreate", `CronCreate: ${args}`, { now: NOW, timeZone: "Europe/Prague" }),
+      ).toBe(words);
+    },
+  );
 });
 
 describe("deriveOutcome: a service's standing is the latest word on it", () => {

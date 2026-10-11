@@ -9,6 +9,7 @@ import {
   helperNowWords,
   helperRecord,
   helperReportLine,
+  helperRowLine,
   helperSpan,
   helperStepActivities,
 } from "./helpers.logic";
@@ -334,5 +335,49 @@ describe("helperModelWords", () => {
     [null, "max", null],
   ] as const)("%s · %s → %s", (model, effort, words) =>
     expect(helperModelWords(model, effort)).toBe(words),
+  );
+});
+
+// The owner, live on Milo (0.15.44): a stopped helper's row said its name, then the same name again
+// as its second line, under a group head that listed both names: three times each.
+describe("helperRowLine", () => {
+  const LOOP = "Helper 1: 90-second tick loop";
+  it.each([
+    {
+      name: "a stopped helper whose report is its title: one line",
+      subject: helper({ status: "cancelled", title: LOOP, result: LOOP }),
+      line: null,
+    },
+    {
+      name: "its title again without its number, in another case, with a full stop: one line",
+      subject: helper({ status: "completed", title: LOOP, result: "  90-Second tick loop. " }),
+      line: null,
+    },
+    {
+      name: "a report that says more: its first line",
+      subject: helper({
+        status: "completed",
+        title: LOOP,
+        result: "Ticked 90 times; the last was 90.",
+      }),
+      line: "Ticked 90 times; the last was 90.",
+    },
+    {
+      name: "a failure: why",
+      subject: helper({ status: "failed", title: LOOP, error: "Permission denied", result: null }),
+      line: "Permission denied",
+    },
+    {
+      name: "at work: what it does now",
+      subject: helper({ title: LOOP, progress: "Running tick 12" }),
+      line: "Running tick 12",
+    },
+    {
+      name: "at work, saying only its title: one line",
+      subject: helper({ title: LOOP, progress: "helper 1: 90-second tick loop" }),
+      line: null,
+    },
+  ])("a helper's row never repeats its title as its second line: $name", ({ subject, line }) =>
+    expect(helperRowLine(subject)).toBe(line),
   );
 });

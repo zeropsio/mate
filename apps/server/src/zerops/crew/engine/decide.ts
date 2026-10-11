@@ -2794,7 +2794,8 @@ type Ending =
   | { readonly kind: "overflow" }
   | { readonly kind: "infrastructure"; readonly detail: string }
   | { readonly kind: "stopped" }
-  | { readonly kind: "cut" };
+  | { readonly kind: "cut" }
+  | { readonly kind: "budget" };
 
 const endingOf = (event: Extract<KnownEngineEvent, { _tag: "RunEnded" }>): Ending => {
   if (event.detail === "overflow") return { kind: "overflow" };
@@ -2945,7 +2946,15 @@ const runEnded = (
     return;
   }
 
-  const ending = endingOf(event);
+  // A turn its agent failed once the run had spent its budget ended at the budget the crew gave
+  // it ("Reached maximum budget ($0.05)"), never broke off: sent again, it spent as much again.
+  const run = runOn(b.state);
+  const ending: Ending =
+    event.end.kind === "failed" &&
+    run !== undefined &&
+    reachedLimit(b.state, run, b.now) === "budget"
+      ? { kind: "budget" }
+      : endingOf(event);
   if (member.kind === "lead") {
     settleLead(b, b.state.members[member.handle]!, event.runId, ending.kind === "completed");
   }
@@ -3029,7 +3038,7 @@ const midwayEnding = (
         : ending.kind === "completed"
           ? "completed"
           : "failed",
-    terminalReason: undefined,
+    terminalReason: ending.kind === "budget" ? "budget_exhausted" : undefined,
     errorMessage:
       ending.kind === "infrastructure"
         ? ending.detail
@@ -3085,7 +3094,8 @@ const turnEnded = (b: Builder, task: TaskRecord, ending: Ending): void => {
       return;
     case "completed":
     case "stopped":
-    case "cut": {
+    case "cut":
+    case "budget": {
       const ended = ending.kind === "completed" ? NO_REPORT : midwayEnding(b.state, ending);
       b.emit({
         _tag: "TaskUpdated",
