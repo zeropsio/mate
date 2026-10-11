@@ -40,6 +40,13 @@ const longConversation = Effect.gen(function* () {
   return { s, chat, engine: wire.engine };
 });
 
+/** Calls `step` with 1, 2, 3… every tenth of a second, on the page's own time, until stopped. */
+function everyTenth(step: (count: number) => void): { readonly stop: () => void } {
+  let count = 0;
+  const timer = setInterval(() => step((count += 1)), 100);
+  return { stop: () => clearInterval(timer) };
+}
+
 /** Starts sampling every frame; `read` stops and returns what it saw. */
 const trace = (page: import("puppeteer-core").Page, anchorText: string) =>
   Effect.promise(() =>
@@ -384,6 +391,56 @@ describe("C: an engine Mate's run card in a live conversation", () => {
           Math.max(...frames.map((frame) => frame.end)),
           "ASSERTION: every painted frame stands at the conversation's end",
         ).toBeLessThanOrEqual(2);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Engine final run, A5: reloaded while the answer streamed, the page painted the live card at
+    // its end, then the older history came and the view glided 1,338 px through it for 0.85 s.
+    it.effect("a reload during a streaming run paints at the end first", () =>
+      Effect.gen(function* () {
+        const { s, chat, engine } = yield* longConversation;
+        const run = engine.personRun("Write me the long report");
+        const note = engine.item(run, { kind: "note", text: "", streaming: true, answer: false });
+        engine.stream(note, "The report, section by section.\n\n");
+        yield* chat.then.text("The report, section by section.");
+        // The answer goes on streaming through the reload, a line every tenth of a second.
+        const streaming = everyTenth((line) =>
+          engine.stream(note, `Section ${line} reads well and its numbers add up.\n\n`),
+        );
+        yield* Effect.promise(() =>
+          s.page.evaluateOnNewDocument(() => {
+            const frames: Array<{ end: number; shown: boolean }> = [];
+            const sample = () => {
+              const outer = document.querySelector<HTMLElement>(".timeline-legend-list");
+              if (outer && outer.scrollHeight > outer.clientHeight + 4)
+                frames.push({
+                  end: outer.scrollHeight - outer.clientHeight - outer.scrollTop,
+                  shown: document.querySelector("[data-timeline-placing]") === null,
+                });
+              if (frames.length < 240) requestAnimationFrame(sample);
+            };
+            (window as unknown as { reloadFrames: unknown }).reloadFrames = frames;
+            requestAnimationFrame(sample);
+          }),
+        );
+        yield* chat.when.reload();
+        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 2000)));
+        streaming.stop();
+        const frames = yield* Effect.promise(() =>
+          s.page.evaluate(
+            () =>
+              (window as unknown as { reloadFrames: Array<{ end: number; shown: boolean }> })
+                .reloadFrames,
+          ),
+        );
+        const shown = frames.filter((frame) => frame.shown);
+        expect(shown.length, "ASSERTION: the reload's paint was sampled").toBeGreaterThan(10);
+        // A streamed line moves the end a line at a time, and the view stands at it at once.
+        expect(
+          Math.max(...shown.map((frame) => frame.end)),
+          `ASSERTION: every painted frame stands at the streaming end: ${shown.map((frame) => Math.round(frame.end)).join(", ")}`,
+        ).toBeLessThan(40);
         yield* s.then.noExternalNetwork;
       }),
     );

@@ -673,8 +673,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // What a settle brings is paced once the conversation worked in sight: one drawn at rest
   // catches up with its history at once (a reload paced its runs' answers in one by one and
   // glided ~1,000 px to the end over 1.5 s, Milo's stress run).
-  const [workedInSight, setWorkedInSight] = useState(isWorking);
-  if (isWorking && !workedInSight) setWorkedInSight(true);
+  // Seen working once it stands caught up, from the draw after: a reload's history comes in with
+  // its catching up, and paced in under a live run's card the page glided through it to the end
+  // (engine final run, A5).
+  const [workedInSight, setWorkedInSight] = useState(false);
+  useLayoutEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- seen in the draw after it was drawn
+    if (isWorking && !syncing) setWorkedInSight(true);
+  }, [isWorking, syncing]);
   // Out of sight (a kept list), nobody watches: they are simply there.
   const rowsHeld = usePace({
     keys: pacedRowIds,
