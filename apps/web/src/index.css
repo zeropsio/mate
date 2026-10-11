@@ -8613,19 +8613,27 @@ a.message-file:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+/* A change's title is the Mate's own, often a paragraph: three lines at most in the sheet, the
+   rest on hover — what it does is said below, in its own words. */
 .rv-title {
+  display: -webkit-box;
   margin: 0;
-  font-size: 22px;
+  overflow: hidden;
+  font-size: 18px;
   font-weight: 600;
-  line-height: 28px;
-  letter-spacing: -0.015em;
+  line-height: 24px;
+  letter-spacing: -0.01em;
   text-wrap: balance;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 .rv-page .rv-title {
+  display: block;
   font-size: 16px;
   line-height: 24px;
   letter-spacing: normal;
+  -webkit-line-clamp: unset;
 }
 /* Where it stands, in plain words: grey while all is well, amber or red for trouble, blue while
    it moves. */
