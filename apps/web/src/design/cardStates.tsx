@@ -616,6 +616,12 @@ export function CardStates() {
         <Turn row={record("status-first", { items: [] })} />
       </CardState>
       <CardState
+        label="Thinking before anything else"
+        note="Nothing in its chat yet: the head says it works and its clock, the thought under it."
+      >
+        <Turn row={record("status-thinking-first", { items: [], now: THINKING })} />
+      </CardState>
+      <CardState
         label="Thinking"
         note="Thinking, and the latest of its thought on the same line; the face looks up."
       >
@@ -741,14 +747,14 @@ export function CardStates() {
       >
         <Turn
           row={record("status-folded-live", {
-            items: upTo("step:w3"),
+            items: upTo("step:w1"),
             now: { kind: "step", step: stepOf(running(read("w1", "index.ts", 4))) },
           })}
         />
       </CardState>
       <CardState
         label="Waiting for its helpers"
-        note="Its turns are over and its helpers work on: Stop stands beside the clock, on the hairline over what the Mate does."
+        note="Its turns are over and its helpers work on: the head says so; Stop is the composer's."
       >
         <Turn
           row={record("status-after", {

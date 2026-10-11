@@ -77,7 +77,6 @@ const SHARED: TimelineRowSharedState = {
   onUsageAutoResumeChange: null,
   agentPanelModel: emptyAgentPanelModel(),
   onOpenAgents: () => undefined,
-  onStopBackgroundWork: () => undefined,
   onSteerQueuedMessage: () => undefined,
   steerQueuedMessageShortcutLabel: null,
   onRemoveQueuedMessage: () => undefined,
@@ -92,7 +91,6 @@ const ACTIVITY: TimelineRowActivityState = {
   isRevertingCheckpoint: false,
   latestTurnId: null,
   workingStepLabel: null,
-  stoppingBackgroundWork: false,
 };
 
 function Rows({ children }: { readonly children: ReactNode }) {
@@ -353,13 +351,6 @@ describe("RunChat", () => {
       face: "working",
       gaze: "down",
     },
-    {
-      name: "waiting on the person",
-      now: { kind: "waiting", on: "answer" },
-      says: ">Waiting for your answer<",
-      face: "needs",
-      gaze: null,
-    },
   ] as const)("says under its chat what the Mate is doing: $name", ({ now, says, face, gaze }) => {
     const markup = draw(record([thought("r1", "One.")], { live: true, now, status: status() }));
     expect(markup.match(/data-mate-face-state="[a-z]+"/g)).toEqual([
@@ -377,6 +368,32 @@ describe("RunChat", () => {
     // No bubble stands in for what the status line says.
     expect(markup).not.toContain('data-chat-kind="typing');
     expect(markup).not.toContain('data-chat-kind="waiting"');
+  });
+
+  // The card's head (the owner, 2026-10-11): what the run is waits on the person over its chat,
+  // never a second line saying it under the chat.
+  it("says on the card's head that it waits on the person, over its chat, and nowhere else", () => {
+    const markup = draw(
+      record([thought("r1", "One.")], {
+        live: true,
+        now: { kind: "waiting", on: "answer" },
+        status: status(),
+      }),
+    );
+    expect(markup.match(/data-mate-face-state="[a-z]+"/g)).toEqual([
+      'data-mate-face-state="needs"',
+    ]);
+    const shown = [...markupDom(markup).querySelectorAll("span")].filter(
+      (span) =>
+        span.textContent === "Waiting for your answer" &&
+        span.children.length === 0 &&
+        span.closest("[hidden]") === null &&
+        span.closest(".sr-only") === null,
+    );
+    expect(shown, "ASSERTION: said once, on the head").toHaveLength(1);
+    expect(markup.indexOf(">Waiting for your answer<")).toBeLessThan(
+      markup.indexOf("data-chat-row"),
+    );
   });
 
   // Finished, the now line becomes the worked line: who, how long, and what
@@ -1777,6 +1794,38 @@ describe("RunChat, as the person uses it", () => {
     );
   });
 
+  // The folded live card keeps the present under its head: Hide work hides the history (CI,
+  // images.scenario: the call streaming its updates vanished once the person folded the card).
+  it("keeps the call it runs under a folded live card's head, its history folded away", () => {
+    try {
+      const running = stepOf(
+        command("w2", "pnpm build", {
+          toolLifecycleStatus: "inProgress",
+          sourceActivityKind: "tool.started",
+        }),
+      );
+      const renderer = mount(
+        record([step(command("w1", "echo ready"))], {
+          live: true,
+          status: status(),
+          now: { kind: "step", step: running },
+        }),
+      );
+      act(() => button(renderer, "Hide work").props.onClick());
+      const slot = renderer.root.find(
+        (node) => node.type === "div" && node.props.className === "run-slot",
+      );
+      expect(slot.props.hidden).toBe(false);
+      expect(JSON.stringify(renderer.toJSON())).toContain("pnpm build");
+      const history = renderer.root.findAll(
+        (node) => node.type === "div" && String(node.props.className).includes("run-above"),
+      );
+      expect(history.every((node) => node.props.hidden === true)).toBe(true);
+    } finally {
+      forgetRunFolds(SHARED.routeThreadKey);
+    }
+  });
+
   describe("the log and its work opener", () => {
     const personItem: RecordItem = {
       kind: "person",
@@ -2141,7 +2190,7 @@ describe("RunChat, as the person uses it", () => {
       expect(visibleQuestions).toHaveLength(1);
     });
 
-    it("keeps a run open as it settles while the person reads its work, its line at the foot", () => {
+    it("keeps a run open as it settles while the person reads its work, under the card's head", () => {
       const renderer = mount(workOnly({ live: true, status: status() }));
       // They scrolled up in it to read.
       act(() =>
@@ -2152,7 +2201,7 @@ describe("RunChat, as the person uses it", () => {
       settle(renderer);
       expect(scrollsOf(renderer)).toHaveLength(1);
       const markup = text(renderer);
-      expect(markup.indexOf("Run the tests")).toBeLessThan(markup.indexOf("Nova worked 1m 20s"));
+      expect(markup.indexOf("Nova worked 1m 20s")).toBeLessThan(markup.indexOf("Run the tests"));
       expect(markup).not.toContain("Show work");
     });
 

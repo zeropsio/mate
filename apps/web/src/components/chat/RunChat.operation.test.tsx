@@ -179,7 +179,6 @@ const SHARED: TimelineRowSharedState = {
   onUsageAutoResumeChange: null,
   agentPanelModel: emptyAgentPanelModel(),
   onOpenAgents: () => undefined,
-  onStopBackgroundWork: () => undefined,
   onSteerQueuedMessage: () => undefined,
   steerQueuedMessageShortcutLabel: null,
   onRemoveQueuedMessage: () => undefined,
@@ -194,7 +193,6 @@ const ACTIVITY: TimelineRowActivityState = {
   isRevertingCheckpoint: false,
   latestTurnId: TurnId.make("turn-1"),
   workingStepLabel: null,
-  stoppingBackgroundWork: false,
 };
 
 function Rows({ children }: { readonly children: ReactNode }) {

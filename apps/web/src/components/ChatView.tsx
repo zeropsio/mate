@@ -19,7 +19,7 @@ import { useEngineRunCards } from "../zerops/useEngineCardPaging";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { vaultNote } from "@t3tools/client-runtime/data";
 import { SurfaceLoading } from "./SurfaceLoading";
-import { crewCardOf, timelineEntryTurnId } from "./chat/conversation.logic";
+import { crewCardOf, engineWorkRunsOn, timelineEntryTurnId } from "./chat/conversation.logic";
 import { type BackgroundStopPress, backgroundStopShows } from "./chat/backgroundStop.logic";
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
 import { mateLimitAtom } from "@t3tools/client-runtime/data";
@@ -5243,9 +5243,8 @@ export default function ChatView(props: ChatViewProps) {
     updateThreadMetadata,
   ]);
   // Background work (subagent fleets, workflow runs, watch loops) can outlive
-  // the turn; once it settles, the composer stop button is gone, so the Mate
-  // at work stays at the conversation's bottom with the only stop. Stop
-  // routes through the stop-everything interrupt: it kills every live
+  // the turn; once it settles, the composer's Stop stops it, the only Stop.
+  // It routes through the stop-everything interrupt: it kills every live
   // background task before interrupting, and works by session, so no active
   // turn is needed.
   const activeBackgroundLiveness =
@@ -5255,7 +5254,8 @@ export default function ChatView(props: ChatViewProps) {
   const shellTaskIds = activeThreadShell?.backgroundTaskIds;
   const shellLiveness = activeThreadShell?.backgroundLiveness ?? null;
   const shellTaskKey = shellTaskIds === undefined ? null : shellTaskIds.join("\n");
-  const engineConversation = useEngineRunCards(activeThreadRef) !== null;
+  const engineCards = useEngineRunCards(activeThreadRef);
+  const engineConversation = engineCards !== null;
   const liveJobsNow = useMemo(
     () =>
       liveJobsOf({
@@ -5311,6 +5311,16 @@ export default function ChatView(props: ChatViewProps) {
   const stopBackgroundWork = useCallback(() => {
     void handleStopBackgroundWork();
   }, [handleStopBackgroundWork]);
+  // An engine conversation's cards say it from the change that ended the run; the row's word
+  // comes a moment later.
+  const backgroundRunsOn =
+    activeBackgroundLiveness !== null ||
+    (!isWorking && engineCards !== null && engineWorkRunsOn(engineCards));
+  const composerBackgroundWork = useMemo(
+    () =>
+      backgroundRunsOn ? { stopping: isStoppingBackgroundWork, onStop: stopBackgroundWork } : null,
+    [backgroundRunsOn, isStoppingBackgroundWork, stopBackgroundWork],
+  );
   // A woken thread announces itself in the open view, not just the sidebar
   // pill. Dismissing marks the wake as seen (same acknowledgment as the
   // pill); sending a message clears it as a side effect of the send path.
@@ -8650,8 +8660,6 @@ export default function ChatView(props: ChatViewProps) {
                   working: dockModel,
                   afterTurnWork: activeBackgroundLiveness,
                   liveJobs,
-                  onStopBackgroundWork: stopBackgroundWork,
-                  stoppingBackgroundWork: isStoppingBackgroundWork,
                   isWorking,
                   workingStepLabel,
                   isCompacting,
@@ -8996,6 +9004,7 @@ export default function ChatView(props: ChatViewProps) {
                               onCompactContext={onCompactContext}
                               onSend={onSend}
                               onInterrupt={onInterrupt}
+                              backgroundWork={composerBackgroundWork}
                               onImplementPlanInNewThread={onImplementPlanInNewThread}
                               onRespondToApproval={onRespondToApproval}
                               onSelectActivePendingUserInputOption={

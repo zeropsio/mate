@@ -131,7 +131,7 @@ import { restartWords } from "../../zerops/restartWords";
 import { calmClockMs } from "./nowLineCalm.logic";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
 import { useCalmLine } from "./useCalmLine";
-import { wordsStood } from "./wordsLanding";
+import { headStood, wordsStood } from "./wordsLanding";
 import {
   SLOT_MAX_ROWS,
   slotHoldsIn,
@@ -222,6 +222,7 @@ import {
   stepNowWords,
   subscribeRunFolds,
   type NowLine as NowLineModel,
+  cardHeadLine,
   type RunFold,
   type RunScrollPosition,
   standsAtFoot,
@@ -864,8 +865,16 @@ function SlotBox({
     const box = boxRef.current;
     if (stood === undefined || box === null || typeof requestAnimationFrame !== "function") return;
     let frame = requestAnimationFrame(function tell() {
-      if (box.isConnected && cappedAtEnd(box))
-        wordsStood(stood, box.getBoundingClientRect().bottom);
+      if (box.isConnected && cappedAtEnd(box)) {
+        const head =
+          box.closest("[data-run-chat]")?.querySelector<HTMLElement>(":scope > [data-run-head]") ??
+          null;
+        wordsStood(stood, {
+          bottom: box.getBoundingClientRect().bottom,
+          whole: box.scrollHeight <= box.clientHeight + 1,
+          head: head === null ? null : { element: head, top: head.getBoundingClientRect().top },
+        });
+      }
       frame = requestAnimationFrame(tell);
     });
     return () => cancelAnimationFrame(frame);
@@ -1239,7 +1248,7 @@ function Mark({
       data-run-mark=""
       data-slot-mark={inSlot ? "" : undefined}
     >
-      <span className="flex h-[1lh] items-center">{inSlot ? null : children}</span>
+      <span className="flex h-[1lh] items-center">{children}</span>
     </span>
   );
 }
@@ -3145,6 +3154,8 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
           <TypingDots className="run-now-dots" />
         </>
       );
+    case "working":
+      return <span className="run-now-verb">Working</span>;
     case "worked":
       return (
         <>
@@ -3204,12 +3215,27 @@ function NowLine({
   outcome,
   end = null,
   settledHere = false,
+  head,
 }: {
   readonly status: RunStatus;
   readonly now: TurnHeaderActivity | null;
   readonly answering: boolean;
   /** What the run came to: its effort, on the worked line (`useRunEffortWords`). */
   readonly outcome: OutcomeModel | null;
+  /**
+   * The card's head (the owner, 2026-10-11): one line at the card's top in every state, the same
+   * line live and settled with its words changed in place, and the whole of it the work's toggle.
+   */
+  readonly head?: {
+    /** How many things the run's chat holds: said on the line while it works. */
+    readonly steps: number;
+    readonly toggle: {
+      readonly open: boolean;
+      readonly onToggle: () => void;
+      /** The person is about to press it: what it opens is read. */
+      readonly onIntent?: () => void;
+    } | null;
+  };
   /** Its right column: what the person can do with the run, and while it is live its clock. */
   readonly end?: ReactNode;
   /**
@@ -3247,9 +3273,12 @@ function NowLine({
         }
       : baseLine;
   // A line once shown stands a moment, and a burst shows its latest only
-  // (`nowLineCalm.logic`); the run's end shows at once.
-  const line = useCalmLine(latest, nowLineWords(latest), !status.live);
-  const settledFace = nowLineFace(line, status);
+  // (`nowLineCalm.logic`); the run's end shows at once. As the card's head it says the run, never
+  // its step: the card shows that under it.
+  const said = head === undefined ? latest : cardHeadLine(latest);
+  const line = useCalmLine(said, nowLineWords(said), !status.live);
+  // Its face says what the Mate does this moment, whatever the head's words say.
+  const settledFace = nowLineFace(head === undefined ? line : latest, status);
   const restartPending =
     !status.live &&
     status.interruption?.continuation === "manual" &&
@@ -3264,23 +3293,42 @@ function NowLine({
   const wordsChanged = useChangedSinceShown(words);
   const [risesIn] = useState(settledHere);
   const leaving = useLeavingLine(line, words);
-  const head = (
+  // Out of sight or under reduced motion its words are simply there.
+  const moves =
+    !prefersReducedMotion() &&
+    (typeof document === "undefined" || document.visibilityState !== "hidden");
+  const headWords = (
     <span
       key={words}
       className="run-now-head"
-      data-run-now-change={wordsChanged || risesIn ? "" : undefined}
+      data-run-now-change={(wordsChanged || risesIn) && moves ? "" : undefined}
     >
       <NowWords line={line} />
     </span>
   );
+  const toggle = head?.toggle ?? null;
   return (
     <div
       className="run-now"
       data-run-now={line.kind}
+      data-run-head={head === undefined ? undefined : ""}
       data-run-status={
         line.kind === "worked" ? status.face : line.kind === "waiting" ? "waiting" : "working"
       }
     >
+      {/* The whole line is the work's toggle: its words say what it opens. */}
+      {toggle === null ? null : (
+        <button
+          aria-expanded={toggle.open}
+          className="run-now-fold"
+          onClick={toggle.onToggle}
+          onFocus={toggle.onIntent}
+          onPointerEnter={toggle.onIntent}
+          type="button"
+        >
+          {toggle.open ? "Hide work" : "Show work"}
+        </button>
+      )}
       {ctx.speaker.helper ? (
         <HelperFace />
       ) : (
@@ -3300,16 +3348,50 @@ function NowLine({
             <NowWords line={leaving.line} />
           </span>
         )}
-        {head}
+        {headWords}
+        {head !== undefined && status.live ? (
+          <span className="run-now-meta">
+            {" · "}
+            <RunTicker status={status} />
+            {head.steps > 0 ? ` · ${head.steps} ${head.steps === 1 ? "step" : "steps"}` : null}
+          </span>
+        ) : null}
         {/* What a screen reader hears: the line's words as they change —
             never the thought's latest words or a step's ticking time. */}
-        {status.live ? (
+        {status.live && (head === undefined || head.toggle?.open === false) ? (
           <span className="sr-only" role="status">
             {words}
           </span>
         ) : null}
       </div>
-      {status.live ? (
+      {head !== undefined ? (
+        // The head's right edge: what it does when pressed, its chevron turning over; a run that
+        // waits on a Continue offers that too.
+        <span className="run-now-end">
+          {restartPending ? (
+            ctx.queueBlockedByAnswer ? (
+              <span>Answer the pending question to continue.</span>
+            ) : (
+              <Button
+                className="relative z-1"
+                variant="ghost"
+                size="sm"
+                disabled={ctx.onRestartContinue == null}
+                onClick={() => ctx.onRestartContinue?.(status.interruption!)}
+              >
+                Continue
+              </Button>
+            )
+          ) : null}
+          {toggle === null ? null : (
+            <ChevronDownIcon
+              aria-hidden="true"
+              className="run-head-chevron"
+              data-open={toggle.open ? "" : undefined}
+            />
+          )}
+        </span>
+      ) : status.live ? (
         (end ?? (
           <span className="run-now-end">
             <RunTicker status={status} />
@@ -3584,6 +3666,11 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
  */
 const NO_ITEMS: ReadonlyMap<string, RecordItem> = new Map();
 
+/** A wait the card's head says, never the slot. */
+function headSays(filler: SlotFiller): boolean {
+  return filler.kind === "waiting" || filler.kind === "after" || filler.kind === "starting";
+}
+
 /** What the empty slot says, as a key: the same words are no change. */
 function fillerKey(filler: SlotFiller): string {
   return filler.kind === "waiting" ? `${filler.kind}:${filler.on}` : filler.kind;
@@ -3592,8 +3679,6 @@ function fillerKey(filler: SlotFiller): string {
 function LiveSlot({
   ref,
   folded,
-  end,
-  controls,
   slot,
   live,
   items,
@@ -3606,10 +3691,6 @@ function LiveSlot({
 }: {
   readonly ref: Ref<HTMLDivElement>;
   readonly folded: boolean;
-  /** Its clock and controls (`RunControls`). */
-  readonly end: ReactNode;
-  /** It offers the person a control: the work's toggle, or Stop. */
-  readonly controls: boolean;
   readonly slot: LiveSlotState;
   /** What is live now, as the items they become. */
   readonly live: ReadonlyArray<RecordItem>;
@@ -3637,9 +3718,9 @@ function LiveSlot({
     effort: null,
   });
   const latest = useCalmLine(doing, nowLineWords(doing), !status.live);
-  const face = nowLineFace(latest, status);
-  // "Thinking", "Writing", a wait: what the empty slot says stands its dwell too.
-  const said = useCalmLine(filler, fillerKey(filler), !status.live);
+  // "Thinking", "Writing": what the empty slot says stands its dwell too. A wait is the head's to
+  // say, at once: the slot leaves with the turn's last words, never saying "Writing" a second more.
+  const said = useCalmLine(filler, fillerKey(filler), !status.live || headSays(filler));
   // What each entry last showed live: one that ended with no line of its own
   // in the record yet stands its minimum as it last showed, never a gap.
   const [lastLive, setLastLive] = useState<ReadonlyMap<string, RecordItem>>(NO_ITEMS);
@@ -3696,7 +3777,8 @@ function LiveSlot({
       line.theirs === true && all[index - 1]?.asks === true ? { ...line, pairs: true } : line,
     );
   const firstDrawn = lines.length === 0 ? undefined : drawn[0];
-  const headed = controls || lines.length > 0;
+  // A wait with nothing standing in the slot is the card's head's to say: never twice.
+  const saysHead = lines.length === 0 && headSays(said);
   // Which card each call stands in, kept from draw to draw (`slotEntries`).
   const [cards, setCards] = useState<ReadonlyMap<string, string>>(NO_CARDS);
   const slotted = slotEntries(lines, cards);
@@ -3755,35 +3837,21 @@ function LiveSlot({
     observer.observe(slotBox);
     return () => observer.disconnect();
   }, []);
+  // Folded, the card keeps what the Mate is doing this moment — a call, an operation, a question —
+  // under its head; its words and its thoughts are the folded work's, the head saying it works.
+  const foldedAway =
+    folded && drawn.every(({ item }) => item.kind === "note" || item.kind === "thought");
+  const shut = foldedAway || saysHead;
   return (
     <div
       ref={ref}
       className="run-slot"
-      hidden={folded}
-      style={folded ? { display: "none" } : undefined}
+      hidden={shut}
+      style={shut ? { display: "none" } : undefined}
       data-run-now={lines.length === 0 ? said.kind : "items"}
       data-run-status={latest.kind === "waiting" ? "waiting" : "working"}
       data-work-line={status.face}
     >
-      <span className="run-slot-face">
-        {ctx.speaker.helper ? (
-          <HelperFace />
-        ) : (
-          <MateFace
-            gaze={face.gaze}
-            greets
-            known={ctx.arrivedAfter !== null && !ctx.syncing}
-            shape={ctx.speaker.shape}
-            size="sm"
-            state={face.state}
-            tint={ctx.speaker.tint}
-          />
-        )}
-      </span>
-      {/* The present's head: the run's one clock and what the person can do with the run, on a
-          line of their own under the hairline, over what the Mate is doing — never beside its
-          words, and in the room the hairline already keeps, so a settle moves nothing. */}
-      {headed ? <div className="run-slot-head">{end}</div> : null}
       <InSlotContext value>
         <SlotStandsOpenContext value={standsOpen}>
           <ChatShownContext value={shownRef}>
@@ -3829,8 +3897,6 @@ function LiveSlot({
           </ChatShownContext>
         </SlotStandsOpenContext>
       </InSlotContext>
-      {/* A run that has done nothing yet says only what it does, its clock on that one line. */}
-      {headed ? null : <span className="run-slot-end">{end}</span>}
       {/* What a screen reader hears: what the slot shows, as it changes. */}
       <span className="sr-only" role="status">
         {slotWords(firstDrawn?.item ?? null, said)}
@@ -3858,6 +3924,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const hold = useHoldReading();
   const rootRef = useRef<HTMLDivElement>(null);
   const aboveRef = useRef<HTMLDivElement>(null);
+  // How tall the card stood in its last draw while live: its settle's fold starts there.
+  const liveHeightRef = useRef<number | null>(null);
   // Whether the person reads the work this moment — scrolled up in it, or
   // something in it opened: a run settling then stays open.
   const readingRef = useRef(false);
@@ -3884,18 +3952,34 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     readingRef,
     rootRef,
     aboveRef,
+    liveHeightRef,
     onFoldWork: ctx.onFoldWork ?? foldWork,
   });
   // The card's own height eases (`easeRooms`) as its parts come and go — the
-  // history's scroll arriving with its first line, the slot giving way to the
-  // line, the live height let go — for a run watched live here; what changes
-  // inside the history and the slot is theirs to ease.
+  // history's scroll arriving with its first line — for a run watched live
+  // here; what changes inside the history and the slot is theirs to ease. Its
+  // turn over, the slot leaves at once: the answer lands under the card in the
+  // frame its words leave it (engine-final, seg E: they stood in both for 1.1 s,
+  // then the card eased shut and the page moved).
   const watchedRef = useRef(false);
   const cardEasesRef = useRef(false);
+  const turnOver = !row.live || row.status?.waitingOnHelpers === true;
   useLayoutEffect(() => {
     if (row.live && !ctx.syncing) watchedRef.current = true;
-    cardEasesRef.current = watchedRef.current && !ctx.syncing;
+    cardEasesRef.current = watchedRef.current && !ctx.syncing && !turnOver;
   });
+  // Its turn ends with the words the person read whole in its slot: the list holds its head where
+  // it stood, from this commit — before anything under it moves (`onTurnLands`).
+  const turnOverRef = useRef(turnOver);
+  const { onTurnLands } = ctx;
+  useLayoutEffect(() => {
+    const was = turnOverRef.current;
+    turnOverRef.current = turnOver;
+    if (was || !turnOver || onTurnLands === undefined) return;
+    const head = rootRef.current?.querySelector<HTMLElement>(":scope > [data-run-head]") ?? null;
+    const top = head === null ? null : headStood(head);
+    if (head !== null && top !== null) onTurnLands(head, top);
+  }, [turnOver, onTurnLands]);
   const cardRoomsRef = useRef<Rooms | null>(null);
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -3966,6 +4050,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     // question waiting never rides into the history as ended.
     record: liveHeld.size === 0 ? recordKeys : recordKeys.filter((key) => !liveHeld.has(key)),
     final: !slotted,
+    turnOver: row.status?.waitingOnHelpers === true,
     syncing: ctx.syncing,
     quietFrom,
     onChange: (from, to, redrawn) => {
@@ -4087,6 +4172,20 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   });
   // Every commit, before the list's row measures the card in its own.
   useLayoutEffect(() => cardRoomsRef.current?.flush());
+  // While live, how tall the card stands without its slot, which leaves with the turn's last words
+  // as the answer lands under the card: read after the room's flush, in each draw. Its history
+  // folds from the height it showed, never first growing into the room the slot gave back.
+  useLayoutEffect(() => {
+    if (!row.live) return;
+    const height = heightOf(rootRef.current);
+    const slotBox = slotRef.current;
+    liveHeightRef.current =
+      height === null || slotBox === null || typeof getComputedStyle !== "function"
+        ? height
+        : height -
+          slotBox.getBoundingClientRect().height -
+          parseFloat(getComputedStyle(slotBox).marginTop || "0");
+  });
   const holds = slotted ? slotHoldsIn(slot, recordKeys) : NO_HOLDS;
   // A folded line whose call the slot still holds stands unfolded, that call
   // left out: it folds in once the call lands.
@@ -4173,25 +4272,39 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     [settledOutcome],
   );
   const resultPictures = useStripFiles(settledOutcome?.turnKey ?? null, stripGuess);
-  const liveToggle =
-    shows.toggle === null ? null : (
-      <WorkToggle
-        open={!liveFolded}
-        onToggle={() => {
-          hold(!liveFolded);
-          chooseLiveRunFold(ctx.routeThreadKey, row.turnKey, liveFolded ? "watched" : "folded");
-        }}
-      />
-    );
-  // The same controls in the same place, open or folded: the toggle never leaves the pointer.
-  const liveEnd =
-    row.status === null ? null : (
-      <RunControls now={row.now} status={row.status} toggle={liveToggle} />
-    );
+  // The card's head toggles its work: live, the history over what it does now; settled, the run
+  // under its line. Its lines not read yet, it opens once their first page is held.
+  const headToggle =
+    shows.toggle === null
+      ? null
+      : row.live
+        ? {
+            open: !liveFolded,
+            onToggle: () => {
+              hold(!liveFolded);
+              chooseLiveRunFold(ctx.routeThreadKey, row.turnKey, liveFolded ? "watched" : "folded");
+            },
+          }
+        : {
+            open: !folded,
+            onToggle: () => {
+              if (folded && pages !== null && paging !== null && !paging.holdsLines) {
+                if (openingRef.current !== null) return;
+                hold(folded);
+                openingRef.current = { reading: false };
+                pages.read("later");
+                return;
+              }
+              toggleWork();
+            },
+            ...(pages !== null && paging !== null && !paging.holdsLines
+              ? { onIntent: () => pages.read("later") }
+              : {}),
+          };
   return (
-    // One container for the chat and its now line: the Mate's column keeps
-    // one gap for both. Its words wear its tint (`.run-speech`). Keyed, so the
-    // scroll the person watched is the one that folds away.
+    // One container for the card's head, its chat and what the Mate does now: the Mate's column
+    // keeps one gap for them all. Its words wear its tint (`.run-speech`). Keyed, so the scroll
+    // the person watched is the one that folds away.
     <CarriedOpenContext value={carriedOpen}>
       <ResultPicturesContext value={resultPictures}>
         <div
@@ -4208,6 +4321,19 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
             } as CSSProperties
           }
         >
+          {/* The card's head: the same line in every state, its words changed in place as the
+              run settles — it never moves, and the work folds under it. */}
+          {row.status === null ? null : (
+            <NowLine
+              key="head"
+              answering={row.answering}
+              head={{ steps: row.chatItems.length, toggle: headToggle }}
+              now={row.live ? now : null}
+              outcome={settled ? outcome : null}
+              settledHere={watchedLive && motionAllowed}
+              status={row.status}
+            />
+          )}
           {above && scroll !== null ? (
             <div
               key="above"
@@ -4218,48 +4344,12 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               data-folding={fold === "folding" ? "" : undefined}
             >
               {scroll}
-              {/* The hairline over the line, folding away with the work. */}
-              {fold === "folding" ? <div aria-hidden="true" className="run-above-rule" /> : null}
             </div>
           ) : null}
-          {row.status === null ? null : settled ? (
-            <NowLine
-              key="line"
-              answering={false}
-              outcome={outcome}
-              settledHere={watchedLive && motionAllowed}
-              end={
-                // A chat opens from its first thing the Mate did (`chatLines`),
-                // and only onto a line that shows something.
-                shows.toggle !== null ? (
-                  <WorkToggle
-                    onToggle={() => {
-                      // Its lines not read yet: it opens once their first page is held.
-                      if (folded && pages !== null && paging !== null && !paging.holdsLines) {
-                        if (openingRef.current !== null) return;
-                        hold(folded);
-                        openingRef.current = { reading: false };
-                        pages.read("later");
-                        return;
-                      }
-                      toggleWork();
-                    }}
-                    open={!folded}
-                    {...(pages !== null && paging !== null && !paging.holdsLines
-                      ? { onIntent: () => pages.read("later") }
-                      : {})}
-                  />
-                ) : null
-              }
-              now={null}
-              status={row.status}
-            />
-          ) : (
+          {row.status === null || settled ? null : (
             <LiveSlot
               key="slot"
               folded={liveFolded}
-              end={liveFolded ? null : liveEnd}
-              controls={liveToggle !== null || row.now?.kind === "after"}
               ref={slotRef}
               items={model.record}
               live={model.live}
@@ -4272,16 +4362,6 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               motionRef={motionRef}
             />
           )}
-          {row.live && row.status !== null && liveFolded ? (
-            <NowLine
-              key="live-summary"
-              answering={row.answering}
-              outcome={null}
-              now={now}
-              status={row.status}
-              end={liveEnd}
-            />
-          ) : null}
           <div key="below" ref={feedRef} className="run-later-feed">
             {above ? null : scroll}
           </div>
@@ -4313,6 +4393,7 @@ function useRunFold({
   readingRef,
   rootRef,
   aboveRef,
+  liveHeightRef,
   onFoldWork,
 }: {
   readonly conversation: string;
@@ -4325,6 +4406,8 @@ function useRunFold({
   readonly readingRef: { readonly current: boolean };
   readonly rootRef: { readonly current: HTMLElement | null };
   readonly aboveRef: { readonly current: HTMLElement | null };
+  /** How tall the card stood in its last draw while its run was live. */
+  readonly liveHeightRef: { readonly current: number | null };
   readonly onFoldWork: NonNullable<TimelineRowSharedState["onFoldWork"]>;
 }): {
   readonly fold: RunFold;
@@ -4345,23 +4428,23 @@ function useRunFold({
   // holds its live height through it, or it jumps first.
   const [drawnLive, setDrawnLive] = useState(live);
   const settling = !live && drawnLive && stored === "watched";
-  // Where the line's words stood as the run settled: the fold starts there.
+  // How tall the card stood as the run settled: the fold starts there, the work under the head
+  // taking up the room the present left, so the card's edge holds until it eases shut.
   const settledAtRef = useRef<number | null>(null);
   const motionAllowed = () =>
     !prefersReducedMotion() &&
     (typeof document === "undefined" || document.visibilityState !== "hidden");
-  const measure = () => {
-    if (!motionAllowed()) return null;
-    return nowWordsOf(rootRef.current)?.getBoundingClientRect().top ?? null;
-  };
-  // It folds from where its line's words stand now, easing the work shut
-  // into the line — at once under reduced motion.
+  const measure = (height: number | null) => (motionAllowed() ? height : null);
+  // It folds from the height it stands at now, easing the work shut under the head — at once under
+  // reduced motion.
   const foldNow = () => {
-    settledAtRef.current = measure();
+    settledAtRef.current = measure(heightOf(rootRef.current));
     transitionRunFold(conversation, run, { kind: "hide", measured: settledAtRef.current !== null });
   };
   const observe = useEffectEvent((wasLive: boolean) => {
-    settledAtRef.current = live ? null : (settledAtRef.current ?? (wasLive ? measure() : null));
+    settledAtRef.current = live
+      ? null
+      : (settledAtRef.current ?? (wasLive ? measure(liveHeightRef.current) : null));
     transitionRunFold(
       conversation,
       run,
@@ -4393,7 +4476,7 @@ function useRunFold({
     if (fold !== "folding") return;
     const from = settledAtRef.current;
     const above = aboveRef.current;
-    const words = nowWordsOf(rootRef.current);
+    const root = rootRef.current;
     let active = true;
     const done = () => {
       if (!active) return;
@@ -4401,11 +4484,11 @@ function useRunFold({
       settledAtRef.current = null;
       transitionRunFold(conversation, run, { kind: "finished" });
     };
-    if (from === null || above === null || words === null) {
+    if (from === null || above === null || root === null) {
       done();
       return;
     }
-    const cancel = foldAway(above, from - words.getBoundingClientRect().top, done, onFoldWork);
+    const cancel = foldAway(above, from - (heightOf(root) ?? from), done, onFoldWork);
     return () => {
       active = false;
       cancel();
@@ -4414,9 +4497,11 @@ function useRunFold({
   return { fold, foldNow, settling, motionAllowed: motionAllowed() };
 }
 
-/** The now line's words in a run's chat: where the line stands. */
-function nowWordsOf(chat: HTMLElement | null): HTMLElement | null {
-  return chat?.querySelector<HTMLElement>(":scope > .run-now .run-now-words") ?? null;
+/** How tall a box stands as laid out; null drawn outside a page (a test's renderer). */
+function heightOf(element: HTMLElement | null): number | null {
+  return element === null || typeof element.getBoundingClientRect !== "function"
+    ? null
+    : element.getBoundingClientRect().height;
 }
 
 function prefersReducedMotion(): boolean {
@@ -4466,72 +4551,6 @@ function foldAway(
     return () => undefined;
   }
   return onFoldWork({ above, from, done });
-}
-
-/**
- * A live run's right column: its one clock — the run's own time, standing still in the quiet ink
- * while it waits on the person — then Stop while what it started runs on after its turns, then
- * the work's toggle, last so nothing that comes or goes moves it.
- */
-function RunControls({
-  status,
-  now,
-  toggle,
-}: {
-  readonly status: RunStatus;
-  readonly now: TurnHeaderActivity | null;
-  readonly toggle: ReactNode;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const { stoppingBackgroundWork } = use(TimelineRowActivityCtx);
-  const onPerson = status.waitingSince !== null && status.waitingOnHelpers !== true;
-  return (
-    <span className="run-now-end" data-run-controls>
-      <span className="run-now-time" data-run-clock-waiting={onPerson ? "" : undefined}>
-        {onPerson ? <span className="sr-only">Waiting for you </span> : null}
-        <RunTicker status={status} />
-      </span>
-      {now?.kind === "after" ? (
-        <button
-          className="run-now-fold"
-          disabled={stoppingBackgroundWork}
-          onClick={ctx.onStopBackgroundWork}
-          type="button"
-        >
-          {stoppingBackgroundWork ? "Stopping…" : "Stop"}
-        </button>
-      ) : null}
-      {toggle}
-    </span>
-  );
-}
-
-/**
- * "Show work" on a folded run's line, "Hide work" once it is open: its words say what it does,
- * with no chevron — on the card a chevron opens the row it stands on.
- */
-function WorkToggle({
-  open,
-  onToggle,
-  onIntent,
-}: {
-  readonly open: boolean;
-  readonly onToggle: () => void;
-  /** The person is about to press it (a pointer over it, focus on it): what it opens is read. */
-  readonly onIntent?: () => void;
-}) {
-  return (
-    <button
-      aria-expanded={open}
-      className="run-now-fold"
-      onClick={onToggle}
-      onFocus={onIntent}
-      onPointerEnter={onIntent}
-      type="button"
-    >
-      {open ? "Hide work" : "Show work"}
-    </button>
-  );
 }
 
 /** How long a scroll stands still before its move counts as ended, where the browser never says so. */

@@ -416,6 +416,8 @@ export type NowLine =
   | { readonly kind: "starting"; readonly on: EngineStart }
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
+  /** On the card's head while it works: what it does now stands in the card under it. */
+  | { readonly kind: "working" }
   /** Its Mate is out of reach: what the Mate's notice says. */
   | { readonly kind: "away"; readonly words: string }
   /** Over: who, what it did and for how long, and what the effort came to. */
@@ -695,10 +697,30 @@ export function nowLineWords(line: NowLine): string {
       return "Writing";
     case "condensing":
       return "Condensing the context";
+    case "working":
+      return "Working";
     case "away":
       return line.words;
     case "worked":
       return line.words;
+  }
+}
+
+/**
+ * What the card's head says (the owner, 2026-10-11): the run at work, what it waits on, and what
+ * it came to once over — never the step, which the card shows under it.
+ */
+export function cardHeadLine(line: NowLine): NowLine {
+  switch (line.kind) {
+    case "thinking":
+    case "step":
+    case "operation":
+    case "several":
+    case "writing":
+    case "condensing":
+      return { kind: "working" };
+    default:
+      return line;
   }
 }
 

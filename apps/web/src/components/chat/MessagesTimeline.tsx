@@ -18,7 +18,6 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 
 const EMPTY_AGENT_PANEL_MODEL = emptyAgentPanelModel();
 const NOOP_OPEN_AGENTS = () => {};
-const NOOP_STOP_BACKGROUND_WORK = () => {};
 const EMPTY_QUEUED_MESSAGES: ReadonlyArray<QueuedComposerMessage> = [];
 const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
@@ -55,7 +54,8 @@ import {
   takeOwnScroll,
   type EndFollow,
 } from "./timelineEndFollow";
-import { takeWordsStood } from "./wordsLanding";
+import { landingHolds } from "./answerLanding.logic";
+import { takeWordsStood, wordsJustStood, type WordsStood } from "./wordsLanding";
 import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
@@ -345,8 +345,6 @@ interface MessagesTimelineProps {
   afterTurnWork?: "working" | "monitoring" | null;
   /** The background jobs the server holds live, as watched (`useLiveJobs`). */
   liveJobs?: LiveJobs | null;
-  onStopBackgroundWork?: () => void;
-  stoppingBackgroundWork?: boolean;
   isWorking: boolean;
   workingStepLabel?: string | null;
   isCompacting?: boolean;
@@ -455,8 +453,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   working: workingNow = null,
   afterTurnWork = null,
   liveJobs = null,
-  onStopBackgroundWork = NOOP_STOP_BACKGROUND_WORK,
-  stoppingBackgroundWork = false,
   listRef,
   timelineEntries,
   latestTurn,
@@ -529,8 +525,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // The room the end follower stays out of: an answered ask's, which the view eases out of, and an
   // answer's landing room. An open ask's room is the end: the conversation glides up clear of it.
   const followRoomRef = useRef(0);
+  // The room under the end as drawn, all of it: what a landing under a held head reads the end by.
+  const askRoomRef = useRef(askRoom);
   useLayoutEffect(() => {
     followRoomRef.current = Math.max(0, askRoom - askRoomEnd);
+    askRoomRef.current = askRoom;
   }, [askRoom, askRoomEnd]);
   const noticeResizeRef = useRef<{
     position: RememberedTimelinePosition | undefined;
@@ -867,38 +866,59 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       endFollowRef.current = null;
     };
   }, [listRef]);
-  // An answer held where its words were read (`onAnswerLands`): the follower waits on it.
+  // An answer landing (`onAnswerLands`): what it holds still, where it stood. The follower waits.
   const landingRef = useRef<{
-    readonly words: HTMLElement;
-    readonly bottom: number;
+    readonly element: HTMLElement;
+    readonly edge: "top" | "bottom";
+    readonly at: number;
     readonly since: number;
     frame: number;
   } | null>(null);
+  // The room a landing under a held head leaves under the answer, kept while nothing new comes
+  // after it and the person stays at the end: dropped, the view would glide down to the end.
+  const roomAfterRef = useRef<string | null>(null);
+  const lastRowId = rows.at(-1)?.id ?? null;
+  const lastRowIdRef = useRef(lastRowId);
+  useLayoutEffect(() => {
+    lastRowIdRef.current = lastRowId;
+  }, [lastRowId]);
   const followEnd = useCallback(() => {
     if (outerFoldsRef.current.size === 0 && landingRef.current === null) {
       endFollowRef.current?.follow();
     }
   }, []);
-  // Its last line back where it was read, in the frame that moved it.
+  // What it holds back where it stood, in the frame that moved it.
   const holdAnswer = useCallback(() => {
     const landing = landingRef.current;
     const scroller = listRef.current?.getScrollableNode();
-    if (landing === null || !scroller || !landing.words.isConnected) return;
-    const off = landing.words.getBoundingClientRect().bottom - landing.bottom;
+    if (landing === null || !scroller || !landing.element.isConnected) return;
+    const off = landing.element.getBoundingClientRect()[landing.edge] - landing.at;
     if (Math.abs(off) > 0.5) scrollOwn(scroller, scroller.scrollTop + off);
   }, [listRef]);
-  // Run 5 (C +0:15.29): the answer whose words the person read at the slot's foot landed from its
-  // first line, and the page glided 1033 px after it. Its last line stands where theirs was: held
-  // there while the card folds above it and the list places and measures it, then kept as the end.
-  const onAnswerLands = useCallback(
-    (words: HTMLElement, bottom: number) => {
-      if (!listRef.current?.getScrollableNode() || !followingEndRef.current) return;
+  // A landing holds what it holds where it stood until the card has settled around it, then keeps
+  // that as the end. Under a held head, what folds under it is taken up by room under the end —
+  // never the list clamping its scroll, which moves everything above — and the rows the closing
+  // panel would carry down to the end stay where they are (`cardRowsCarried`).
+  const land = useCallback(
+    (target: {
+      readonly element: HTMLElement;
+      readonly edge: "top" | "bottom";
+      readonly at: number;
+    }) => {
+      const scroller = listRef.current?.getScrollableNode();
+      if (!scroller || !followingEndRef.current) return;
       const held = landingRef.current;
       if (held !== null) cancelAnimationFrame(held.frame);
       endFollowRef.current?.stop();
-      const landing = { words, bottom, since: performance.now(), frame: 0 };
+      const landing = { ...target, since: performance.now(), frame: 0 };
       landingRef.current = landing;
-      setLandingRoom(ANSWER_ROOM_PX);
+      const card =
+        target.edge === "top"
+          ? (target.element.closest("[data-run-chat]")?.getBoundingClientRect().height ?? 0)
+          : 0;
+      setLandingRoom(Math.max(ANSWER_ROOM_PX, card));
+      const list = scroller.closest<HTMLElement>(".timeline-legend-list") ?? scroller;
+      list.toggleAttribute("data-timeline-holds-head", target.edge === "top");
       holdAnswer();
       const step = (now: number) => {
         if (landingRef.current !== landing) return;
@@ -909,8 +929,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           return;
         }
         landingRef.current = null;
+        list.removeAttribute("data-timeline-holds-head");
         // The room goes once nothing moves the answer: where it stands is the end from then on.
-        setLandingRoom(0);
+        // Under a held head it keeps what the view still stands in, so the end is where it is.
+        const view = listRef.current?.getScrollableNode();
+        const past =
+          landing.edge === "top" && view
+            ? view.scrollTop + view.clientHeight - (view.scrollHeight - askRoomRef.current)
+            : 0;
+        roomAfterRef.current = past > 0.5 ? lastRowIdRef.current : null;
+        setLandingRoom(past > 0.5 ? Math.ceil(past) : 0);
         landing.frame = requestAnimationFrame(() => {
           if (followingEndRef.current) endFollowRef.current?.keep();
         });
@@ -919,6 +947,29 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     },
     [holdAnswer, listRef],
   );
+  // A run's turn ends under the person's eyes, the words they read whole in its slot: its head
+  // stands still, from the commit that ends it.
+  const onTurnLands = useCallback(
+    (head: HTMLElement, top: number) => land({ element: head, edge: "top", at: top }),
+    [land],
+  );
+  // Run 5 (C +0:15.29): the answer whose words the person read at the slot's foot landed from its
+  // first line, and the page glided 1033 px after it. Cut by the slot's cap, its last line stands
+  // where theirs was: held there while the card folds above it and the list places and measures
+  // it, then kept as the end.
+  const onAnswerLands = useCallback(
+    (words: HTMLElement, stood: WordsStood) => {
+      const head = stood.head?.element.isConnected === true ? stood.head : null;
+      const holding = landingRef.current;
+      if (holding !== null && holding.edge === "top" && holding.element === head?.element) return;
+      land(
+        landingHolds({ head: head !== null, whole: stood.whole }) === "head" && head !== null
+          ? { element: head.element, edge: "top", at: head.top }
+          : { element: words, edge: "bottom", at: stood.bottom },
+      );
+    },
+    [land],
+  );
   useEffect(
     () => () => {
       const held = landingRef.current;
@@ -926,6 +977,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     },
     [],
   );
+  // The room under a held head goes once something comes after the answer, or the person leaves
+  // the end (`useAskRoom` eases the view out of it while it stands there).
+  useEffect(() => {
+    if (roomAfterRef.current === null || landingRef.current !== null) return;
+    if (followingEnd && lastRowId === roomAfterRef.current) return;
+    roomAfterRef.current = null;
+    setLandingRoom(0);
+  }, [followingEnd, lastRowId]);
   const onFoldWork = useCallback<NonNullable<TimelineRowSharedState["onFoldWork"]>>(
     (input) => {
       const release = () => {
@@ -953,7 +1012,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           );
         },
         arriving: () => arrivingRef.current,
-        follows: () => followingEndRef.current,
+        // Under a held head the fold takes room under the end, never the view's place.
+        follows: () => followingEndRef.current && landingRef.current?.edge !== "top",
         start: () => {
           outerFoldsRef.current.add(release);
           endFollowRef.current?.stop();
@@ -1505,7 +1565,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onWithdrawHeldMessage,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
       onOpenAgents,
-      onStopBackgroundWork,
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       queueBlockedByAnswer,
@@ -1515,6 +1574,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onHoldReading: onManualNavigation,
       onFoldWork,
       onAnswerLands,
+      onTurnLands,
     }),
     [
       timestampFormat,
@@ -1546,7 +1606,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onWithdrawHeldMessage,
       agentPanelModel,
       onOpenAgents,
-      onStopBackgroundWork,
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       queueBlockedByAnswer,
@@ -1556,6 +1615,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onManualNavigation,
       onFoldWork,
       onAnswerLands,
+      onTurnLands,
     ],
   );
   const activityState = useMemo<TimelineRowActivityState>(
@@ -1565,16 +1625,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       isRevertingCheckpoint,
       latestTurnId: latestTurn?.turnId ?? null,
       workingStepLabel,
-      stoppingBackgroundWork,
     }),
-    [
-      isCompacting,
-      isRevertingCheckpoint,
-      isWorking,
-      latestTurn?.turnId,
-      workingStepLabel,
-      stoppingBackgroundWork,
-    ],
+    [isCompacting, isRevertingCheckpoint, isWorking, latestTurn?.turnId, workingStepLabel],
   );
 
   // Stable renderItem — no closure deps. Row components read shared state
@@ -2360,6 +2412,8 @@ const enteredMessages = new Set<string>();
 export function messageEnters(row: TimelineRow, arrivedAfter: number | null): boolean {
   if (arrivedAfter === null || row.kind !== "message") return false;
   if (enteredMessages.has(row.id)) return false;
+  // Words the person read in the run's slot land from there: they are not new.
+  if (wordsJustStood(row.message.id)) return false;
   return Date.parse(row.createdAt) > arrivedAfter;
 }
 
@@ -2741,7 +2795,11 @@ function cardRowsCarried(
     list.querySelector<HTMLElement>(`[data-timeline-row-id="${CSS.escape(id)}"]`);
   const line = find(`record:${cardKey}`);
   const edge = find(`card-end:${cardKey}`);
-  if (own.closest("[data-timeline-follows-end]") !== null) {
+  // A turn landing under its held head keeps its place: the card's edge comes up.
+  if (
+    own.closest("[data-timeline-follows-end]") !== null &&
+    !list.hasAttribute("data-timeline-holds-head")
+  ) {
     return [
       ...(line === null ? [] : [{ row: line, direction: 1 as const }]),
       { row: own, direction: 1 },
@@ -2754,17 +2812,14 @@ function cardRowsCarried(
 /** Work that outlived the turn: the Mate at work, smaller, until it ends. */
 function AfterWorkTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "after-work" }> }) {
   const ctx = use(TimelineRowCtx);
-  const { stoppingBackgroundWork } = use(TimelineRowActivityCtx);
   const dock = use(TimelineWorkingCtx);
   return (
     <ConversationAfterWork
       dock={dock}
       environmentId={ctx.activeThreadEnvironmentId}
       onOpenAgents={ctx.onOpenAgents}
-      onStop={ctx.onStopBackgroundWork}
       speaker={ctx.speaker}
       state={row.state}
-      stopping={stoppingBackgroundWork}
       threadRef={ctx.threadRef}
     />
   );
@@ -3427,8 +3482,8 @@ function MateProse({
   const { id } = message;
   useLayoutEffect(() => {
     const words = wordsRef.current;
-    const bottom = takeWordsStood(id);
-    if (words !== null && bottom !== null) onAnswerLands?.(words, bottom);
+    const stood = takeWordsStood(id);
+    if (words !== null && stood !== null) onAnswerLands?.(words, stood);
   }, [id, onAnswerLands]);
   const copy = resolveAssistantMessageCopyState({
     text: message.text ?? null,

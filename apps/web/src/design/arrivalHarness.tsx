@@ -577,7 +577,6 @@ const SHARED: TimelineRowSharedState = {
   onUsageAutoResumeChange: null,
   agentPanelModel: emptyAgentPanelModel(),
   onOpenAgents: () => undefined,
-  onStopBackgroundWork: () => undefined,
   onSteerQueuedMessage: () => undefined,
   steerQueuedMessageShortcutLabel: null,
   onRemoveQueuedMessage: () => undefined,
@@ -593,7 +592,6 @@ const WORKING: TimelineRowActivityState = {
   isRevertingCheckpoint: false,
   latestTurnId: null,
   workingStepLabel: null,
-  stoppingBackgroundWork: false,
 };
 
 const TERMINAL: Record<ZeropsAgentId, string> = {

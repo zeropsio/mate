@@ -6481,40 +6481,19 @@ a.ov-card-site:hover {
   color: var(--color-foreground);
 }
 /* p35/livecard */
-/* The live slot, the card's foot while the run goes on (pass 35): what the
-   Mate is doing this moment, each thing as the row it becomes — the same
-   bubble, inks and caps — under a hairline 16 px under the history, its rows
-   16 px under it. The Mate's face stands in the 28 px column and the run's
-   one clock on the right edge, both on the first row's first line, moving
-   with it as the first row changes. Heading the card, nothing above it yet,
-   it has no hairline. */
+/* The live slot (pass 35): what the Mate is doing this moment, each thing as the row it becomes —
+   the same bubble, inks and caps. Under the card's head (the owner, 2026-10-11) it holds what the
+   Mate does now and nothing else: no controls, no clock, no face of its own — the head has them.
+   Under the history it stands 16 px under a hairline 16 px under the history. */
 .run-slot {
   position: relative;
-  padding: 41px 0 4px;
+  margin-top: 12px;
+  padding-bottom: 4px;
 }
-/* Its hairline 24 px under the history, inside its own box: the room over
-   the hairline is the slot's, where its controls stand (`.run-slot-head`). */
-.run-slot::before {
-  position: absolute;
-  inset-inline: 0;
-  top: 24px;
+.run-above:not([hidden]) + .run-slot {
+  margin-top: 16px;
+  padding-top: 16px;
   border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
-  content: "";
-}
-.run-slot:first-child {
-  padding-top: 0;
-}
-.run-slot:first-child::before {
-  content: none;
-}
-.run-slot:first-child:has(> .run-slot-head) {
-  padding-top: 24px;
-}
-/* The head's room heads the live card once the history stands over the present too: the first
-   line the present gives up to the history keeps its place, where it moved up 22 px as a
-   question came (Milo's stress run). The history's own room, so its fold takes it along. */
-[data-run-live] > .run-above:first-child {
-  padding-top: 24px;
 }
 .run-slot-list {
   display: flex;
@@ -6522,68 +6501,59 @@ a.ov-card-site:hover {
   flex-direction: column;
   gap: 12px;
 }
-/* Stood on the line by `translate`, not `top`: a move of the line moves them
-   on the compositor, with no layout. */
-.run-slot-face,
-.run-slot-end {
+/* The card's head: one line at the card's top in every state, the whole of it the work's toggle
+   (an overlay button its words stand over), its chevron turning over as the work opens. While the
+   run is live it says the clock and how many things its chat holds after what the run is. */
+.run-now[data-run-head] {
+  position: relative;
+}
+.run-now[data-run-head] > .run-now-fold {
   position: absolute;
-  top: 0;
-  translate: 0 calc(var(--run-slot-line, 26px) - 50%);
-  z-index: 1;
+  inset: 0 -6px;
+  margin: 0;
+  padding: 0;
+  border-radius: 10px;
+  /* Its words name it; the line's own words stand over it. */
+  font-size: 0;
+  color: transparent;
+  background: transparent;
 }
-/* They follow the first line once placed, never from where a first paint
-   guessed it. */
-.run-slot[data-placed] > .run-slot-face,
-.run-slot[data-placed] > .run-slot-end {
-  transition: translate 240ms var(--ease-out-strong);
+.run-now[data-run-head] > .run-now-fold:hover {
+  background: color-mix(in oklab, var(--color-foreground) 4%, transparent);
 }
-/* A run that has done nothing yet: its clock on its one line's right edge. */
-.run-slot-end {
-  right: 14px;
+.run-now[data-run-head] > :not(.run-now-fold) {
+  pointer-events: none;
 }
-.run-slot-face {
-  left: 0;
-  display: flex;
-  width: 28px;
-  justify-content: center;
+.run-now[data-run-head] .run-now-end > :not(.run-head-chevron) {
+  pointer-events: auto;
 }
-/* The live card's controls (the owner, 2026-10-10: "this hide work placement
-   is absolute shit"): the run's one clock, Stop and Hide work on a line of
-   their own at the head of the present — never in a gutter beside the Mate's
-   words. A folded run's line ends on the same cluster. It stands over the hairline, in room the
-   history mostly left already: 8 px more than the hairline kept. */
-.run-slot-head {
-  position: absolute;
-  inset-inline: 0;
-  top: 6px;
-  display: flex;
+.run-now-meta {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted-foreground);
+}
+.run-now-meta .run-now-clock {
+  color: inherit;
+}
+.run-now[data-run-head] .run-now-head {
+  display: inline;
+}
+.run-head-chevron {
+  width: 16px;
   height: 16px;
-  align-items: center;
-  justify-content: flex-end;
-  padding-right: 14px;
+  color: var(--color-muted-foreground);
+  transition: rotate 220ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.run-slot-head .run-now-time,
-.run-slot-head .run-now-fold {
-  line-height: 16px;
-}
-.run-slot-head .run-now-fold {
-  margin-block: 0;
-  padding-block: 0;
+.run-head-chevron[data-open] {
+  rotate: 180deg;
 }
 .run-now-end {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.run-now-time {
-  font-size: 13px;
-  line-height: 20px;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-foreground);
-}
-/* p39/content: a wait on the person stands the clock still, in the quiet ink. */
-.run-now-time[data-run-clock-waiting] {
-  color: var(--color-muted-foreground);
+.run-above {
+  margin-top: 12px;
 }
 /* A thought keeps room on its right, live and in the history alike, so its
    plop never rewraps it — "Show full thought" stands there. */
@@ -6621,8 +6591,7 @@ a.ov-card-site:hover {
   color: var(--color-muted-foreground);
 }
 @media (prefers-reduced-motion: reduce) {
-  .run-slot[data-placed] > .run-slot-face,
-  .run-slot[data-placed] > .run-slot-end {
+  .run-head-chevron {
     transition: none;
   }
 }
@@ -6993,13 +6962,6 @@ button.run-bar:focus-visible {
 }
 .run-above[data-folding] > * {
   flex: none;
-}
-/* The line's hairline and the room under it, while the line already stands
-   as it will once folded. */
-.run-above-rule {
-  height: 17px;
-  margin-top: 16px;
-  border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
 }
 
 /* A run the person comes back to (D3): its worked line alone, "Show work" on

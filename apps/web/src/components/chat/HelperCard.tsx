@@ -131,7 +131,6 @@ export function HelperCard({
       onUsageAutoResumeChange: null,
       agentPanelModel: emptyAgentPanelModel(),
       onOpenAgents: NOOP,
-      onStopBackgroundWork: NOOP,
       onSteerQueuedMessage: NOOP,
       steerQueuedMessageShortcutLabel: null,
       onRemoveQueuedMessage: NOOP,
@@ -148,7 +147,6 @@ export function HelperCard({
       isRevertingCheckpoint: false,
       latestTurnId: null,
       workingStepLabel: null,
-      stoppingBackgroundWork: false,
     }),
     [live],
   );

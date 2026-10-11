@@ -2113,8 +2113,8 @@ describe("MessagesTimeline — the conversation", () => {
     { watch: false, words: "Still working in the background", title: "Typecheck appdev" },
   ])(
     // A watch or a background command may run for hours: the run settles with
-    // its answer, and the work goes on at the bottom with the way to stop it.
-    "keeps the Mate at work at the bottom after its answer while work runs on, with a stop ($words)",
+    // its answer, and the work goes on at the bottom; the composer stops it.
+    "keeps the Mate at work at the bottom after its answer while work runs on, its stop in the composer ($words)",
     ({ watch, words, title }) => {
       const markup = renderToStaticMarkup(
         <MessagesTimeline
@@ -2154,15 +2154,15 @@ describe("MessagesTimeline — the conversation", () => {
       expect(markup).toContain('data-conversation-after-work="monitoring"');
       expect(markup).toContain(words);
       expect(markup).toContain(title);
-      expect(markup).toContain(">Stop<");
+      expect(markup).not.toContain(">Stop<");
       // The answer stays where it was: the panel comes after it.
       expect(markup.indexOf("On it.")).toBeLessThan(markup.indexOf(words));
     },
   );
 
   // Run 11, "finished, but background running": the run's own card waits on
-  // the helpers it launched, with the way to stop them — nothing at the bottom.
-  it("keeps the run's card waiting on its helpers, with a stop", () => {
+  // the helpers it launched — nothing at the bottom; the composer stops them.
+  it("keeps the run's card waiting on its helpers, its stop in the composer", () => {
     const review = tool("h1", 8);
     const markup = renderToStaticMarkup(
       <MessagesTimeline
@@ -2192,7 +2192,7 @@ describe("MessagesTimeline — the conversation", () => {
     );
     expect(markup).not.toContain("data-conversation-after-work");
     expect(markup).toContain("Waiting for its helpers");
-    expect(markup).toContain(">Stop<");
+    expect(markup).not.toContain(">Stop<");
   });
 
   it("draws a usage limit as one pause, however many attempts hit it", () => {

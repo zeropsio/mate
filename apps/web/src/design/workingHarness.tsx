@@ -776,7 +776,6 @@ const SHARED: TimelineRowSharedState = {
   onUsageAutoResumeChange: null,
   agentPanelModel: emptyAgentPanelModel(),
   onOpenAgents: () => undefined,
-  onStopBackgroundWork: () => undefined,
   onSteerQueuedMessage: () => undefined,
   steerQueuedMessageShortcutLabel: null,
   onRemoveQueuedMessage: () => undefined,
@@ -791,7 +790,6 @@ const WORKING: TimelineRowActivityState = {
   isRevertingCheckpoint: false,
   latestTurnId: null,
   workingStepLabel: null,
-  stoppingBackgroundWork: false,
 };
 
 /**
@@ -1406,16 +1404,14 @@ function Harness() {
         </State>
         <State
           label="After the turn"
-          note="Work that outlived the turn: the face, what still runs, and Stop."
+          note="Work that outlived the turn: the face and what still runs."
         >
           <ConversationAfterWork
             dock={AFTER_DOCK}
             environmentId={null}
             onOpenAgents={() => undefined}
-            onStop={() => undefined}
             speaker={SPEAKER}
             state="monitoring"
-            stopping={false}
             threadRef={null}
           />
         </State>

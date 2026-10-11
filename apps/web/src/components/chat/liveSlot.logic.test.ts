@@ -418,6 +418,28 @@ describe("the live slot's schedule", () => {
     expect(played.plopped.b).toBeGreaterThan(played.plopped.n3!);
   });
 
+  // Run engine-final, seg E: a turn that ended with a background job running drew its answer
+  // in the card's slot and under the card for the slot's hold, then the card shrank.
+  it.each([
+    { name: "while it was being written", whole: [] },
+    { name: "once it was whole", whole: ["answer"] },
+  ])("lets the turn's answer leave the slot the moment it leaves the card, $name", ({ whole }) => {
+    let slot = slotStart({ at: 0, live: ["read"], record: [] });
+    slot = slotOffer(slot, { at: 1000, live: ["answer"], record: ["read"], final: false });
+    slot = slotSettle(slot, 3000);
+    slot = slotOffer(slot, {
+      at: 4000,
+      live: whole.length > 0 ? [] : ["answer"],
+      record: ["read", ...whole],
+      final: false,
+    });
+    expect(slot.entries.map((entry) => entry.key)).toEqual(["answer"]);
+    // The run waits on its helpers; its answer stands under the card.
+    slot = slotOffer(slot, { at: 5100, live: [], record: ["read"], final: false, turnOver: true });
+    expect(slot.entries).toEqual([]);
+    expect(slotDue(slot)).toBeNull();
+  });
+
   it("leaves out of the history what arrived since the slot last heard, before it places it", () => {
     const slot = slotStart({ at: 0, live: [], record: ["c1"] });
     expect([...slotHoldsIn(slot, ["c1", "c2"])]).toEqual(["c2"]);

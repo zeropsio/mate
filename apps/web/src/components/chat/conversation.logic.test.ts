@@ -13,6 +13,7 @@ import {
   browserTakeState,
   deriveConversationStructure,
   deriveOutcome,
+  engineWorkRunsOn,
   formatWorkDuration,
   LAST_WORDS_GRACE_MS,
   latestFinishedWordsAt,
@@ -127,6 +128,38 @@ function look(
     },
   };
 }
+
+describe("engineWorkRunsOn", () => {
+  const working = { kind: "working", since: 1, waitsOnHelpers: true } as const;
+  it.each([
+    {
+      name: "a card waiting on the helpers its runs started",
+      cards: { a: { runs: [], holdsWork: true, waitsOn: { helpers: 1, commands: 0 } } },
+      runs: true,
+    },
+    {
+      name: "a card waiting on a command it backgrounded",
+      cards: { a: { runs: [], holdsWork: true, waitsOn: { helpers: 0, commands: 1 } } },
+      runs: true,
+    },
+    {
+      name: "a card the row says waits on its helpers",
+      cards: { a: { runs: [], state: working } },
+      runs: true,
+    },
+    { name: "a card whose work is over", cards: { a: { runs: [], holdsWork: true } }, runs: false },
+    {
+      name: "a card whose agent's turn on its finished work is due",
+      cards: {
+        a: { runs: [], state: { kind: "working", since: 1, waitsOnHelpers: false, turnDue: true } },
+      },
+      runs: false,
+    },
+    { name: "no cards", cards: {}, runs: false },
+  ] as const)("says work runs on after the turn for $name: $runs", ({ cards, runs }) => {
+    expect(engineWorkRunsOn(cards as never)).toBe(runs);
+  });
+});
 
 describe("formatWorkDuration", () => {
   it.each([

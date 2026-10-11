@@ -26,6 +26,8 @@ interface ComposerPrimaryActionsProps {
   isPreparingWorktree: boolean;
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
+  /** Work the turn started that runs on after it: its Stop stands here, the only one. */
+  backgroundWork?: { readonly stopping: boolean; readonly onStop: () => void } | null;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
@@ -71,6 +73,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   isPreparingWorktree,
   hasSendableContent,
   preserveComposerFocusOnPointerDown = false,
+  backgroundWork = null,
   onPreviousPendingQuestion,
   onInterrupt,
   onImplementPlanInNewThread,
@@ -80,14 +83,21 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     : undefined;
   const isSendDisabled = sendDisabledReason !== null;
 
-  const renderStopGenerationButton = (insidePendingAction: boolean) => (
+  const renderStopGenerationButton = (
+    insidePendingAction: boolean,
+    stop: { label: string; onClick: () => void; disabled?: boolean } = {
+      label: "Stop generation",
+      onClick: onInterrupt,
+    },
+  ) => (
     <button
       type="button"
+      disabled={stop.disabled}
       className={cn(
         // The run's own ink, not the alarm's: red is what a failure wears, and
         // a run the person may stop has not failed. Beside the blue send it
         // can never be mistaken for it.
-        "flex cursor-pointer items-center justify-center rounded-full bg-foreground text-background shadow-xs shadow-foreground/16 inset-shadow-2xs inset-shadow-white/16 transition-[scale,background-color,box-shadow] duration-150 ease-out hover:scale-105 hover:bg-foreground/88 active:scale-95 active:inset-shadow-black/8 active:shadow-none",
+        "flex cursor-pointer items-center justify-center rounded-full bg-foreground text-background shadow-xs shadow-foreground/16 inset-shadow-2xs inset-shadow-white/16 transition-[scale,background-color,box-shadow] duration-150 ease-out hover:scale-105 hover:bg-foreground/88 active:scale-95 active:inset-shadow-black/8 active:shadow-none disabled:pointer-events-none disabled:opacity-64",
         insidePendingAction
           ? "size-8 sm:size-7"
           : hasSendableContent
@@ -95,8 +105,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             : "size-8 sm:h-8 sm:w-8",
       )}
       {...pointerFocusProps}
-      onClick={onInterrupt}
-      aria-label="Stop generation"
+      onClick={stop.onClick}
+      aria-label={stop.label}
     >
       <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
         <rect x="2" y="2" width="8" height="8" rx="1.5" />
@@ -254,7 +264,19 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   );
 
   if (!isRunning) {
-    return sendButton;
+    if (backgroundWork === null) {
+      return sendButton;
+    }
+    return (
+      <>
+        {renderStopGenerationButton(false, {
+          label: backgroundWork.stopping ? "Stopping background work" : "Stop background work",
+          onClick: backgroundWork.onStop,
+          disabled: backgroundWork.stopping,
+        })}
+        {sendButton}
+      </>
+    );
   }
 
   // While a turn runs, a sendable draft queues for the next tool boundary, so
