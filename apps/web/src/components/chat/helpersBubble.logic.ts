@@ -61,7 +61,10 @@ export function helpersBubbleOf(
     summary,
     ended,
     words: count === 1 ? "Started a helper" : `Started ${count} helpers`,
-    what,
+    /** Folded, what they are for: the only place their names stand. */
+    what: what.length > 0 ? what : null,
+    /** Open, its rows name each helper: the head names only a workflow, which no row says. */
+    whatOpen: workflowName,
     // A helper that failed marks the bubble at once, never hidden behind the others still at it
     // (Milo's stress runs: one failed in a batch of three, and the bubble said only "Working").
     failed: summary.tone === "failed" || agents.some((agent) => agent.status === "failed"),

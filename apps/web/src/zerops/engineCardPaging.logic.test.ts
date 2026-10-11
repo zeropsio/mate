@@ -33,6 +33,18 @@ const READ: Call = {
   tool: { name: "Read" },
   shows: { toolName: "Read", input: { file_path: "/app/package.json" } },
 };
+// Recheck on 0.15.44 (+4:39): Claude's Read of a picture, which the engine records as a look.
+const LOOK: Call = {
+  step: "look",
+  tool: { name: "Read" },
+  input: "/var/www/appdev/dist/og.png",
+  shows: {
+    toolName: "Read",
+    input: { file_path: "/var/www/appdev/dist/og.png" },
+    imagePath: "mate-asset:og",
+    imageName: "og.png",
+  },
+};
 const CLAUDE_EDIT: Call = {
   step: "edit",
   tool: { name: "Edit" },
@@ -142,6 +154,7 @@ describe("an engine card too long to read whole", () => {
       ],
     },
     { calls: "another server's tool as a tool used", run: [OTHER_MCP, OTHER_MCP, READ] },
+    { calls: "a picture looked at as a picture, never a file read", run: [BASH, LOOK, READ] },
   ])("says the worked line it would say held whole: $calls", ({ run: calls }) => {
     expect(effortOfCounts(summaryOf(calls))).toEqual(heldEffort(calls));
   });

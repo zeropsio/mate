@@ -179,7 +179,7 @@ import {
 import { opensOnto, stepOutput } from "./opens.logic";
 import { showHelper } from "./helperFocus";
 import { ElapsedSince } from "./ConversationRows";
-import { helperNowWords, helperReportLine, helperSpan } from "./helpers.logic";
+import { helperRowLine, helperSpan } from "./helpers.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -2335,7 +2335,7 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
   const active = isActiveSubagentStatus(agent.status);
   const word = AGENT_STATUS_WORD[agent.status];
   const { since, ranMs } = helperSpan(agent);
-  const line = active ? helperNowWords(agent) : helperReportLine(agent);
+  const line = helperRowLine(agent);
   return (
     <li className="grid min-w-0">
       <button
@@ -2391,7 +2391,7 @@ function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
   const disclosure = useDisclosure();
   const spawn = entry.agentSpawn;
   if (!spawn) return null;
-  const { agents, summary, words, what, failed, ended } = helpersBubbleOf(
+  const { agents, summary, words, what, whatOpen, failed, ended } = helpersBubbleOf(
     ctx.agentPanelModel,
     spawn,
   );
@@ -2401,7 +2401,10 @@ function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
     <Headline column opens={opens} timeTone="muted" time={summary.live ? "Working" : ended}>
       <span>
         <span className="text-foreground/75">{words}</span>
-        {what ? <span className="text-muted-foreground">{` · ${what}`}</span> : null}
+        {/* Open, the rows name the helpers: the head never says their names again. */}
+        {(disclosure.open ? whatOpen : what) ? (
+          <span className="text-muted-foreground">{` · ${disclosure.open ? whatOpen : what}`}</span>
+        ) : null}
       </span>
     </Headline>
   );
@@ -3990,6 +3993,17 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     });
     return () => cancelAnimationFrame(frame);
   }, [turnOver]);
+  // Its turn over while what it started runs on, the card stands at the height it showed without
+  // its slot: its history never grows into the room the slot gave back, which pushed the answer
+  // landing under it a slot's height down (recheck on 0.15.44, +15:38: 305 px).
+  const [waitCap, setWaitCap] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!turnOver || !row.live) {
+      if (waitCap !== null) setWaitCap(null);
+      return;
+    }
+    if (waitCap === null && liveHeightRef.current !== null) setWaitCap(liveHeightRef.current);
+  }, [turnOver, row.live, waitCap]);
   const { onTurnLands } = ctx;
   useLayoutEffect(() => {
     const was = turnOverRef.current;
@@ -4339,6 +4353,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           style={
             {
               "--run-speaker-tint": `var(--zerops-mate-tint-${ctx.speaker.tint})`,
+              ...(waitCap === null ? {} : { maxHeight: `${waitCap}px` }),
             } as CSSProperties
           }
         >

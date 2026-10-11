@@ -1205,6 +1205,113 @@ describe("the running engine", () => {
       ),
   );
 
+  // Milo's recheck on 0.15.44: each Stop moves the conversation onto a new Claude session, and a
+  // CronCreate wake scheduled before it, which lives only in the CLI that died, never fired.
+  /** A cron for the minute `ahead` from now, as the CLI and the engine read one: local time. */
+  const cronIn = (now: number, ahead: number) => {
+    // @effect-diagnostics-next-line globalDate:off
+    const at = new Date(now + ahead);
+    at.setSeconds(0, 0);
+    const cron = `${at.getMinutes()} ${at.getHours()} ${at.getDate()} ${at.getMonth() + 1} *`;
+    return { cron, at: at.getTime() };
+  };
+  const PROMPT = "reply with the single word cron-ok";
+  const finished = (cut: Step): Step =>
+    step((w) =>
+      Effect.andThen(
+        w.agent((agent, thread) => agent.finish(thread)),
+        cut(w),
+      ),
+    );
+  const SCHEDULE_ENDS: ReadonlyArray<readonly [string, Step]> = [
+    ["a Stop", step(stop)],
+    ["a restart", finished(step((w) => Effect.andThen(w.crash, w.boot)))],
+    ["a kill of the server", finished(step((w) => Effect.andThen(w.kill, w.boot)))],
+    ["its agent's crash", step((w) => w.agent((agent, thread) => agent.crash(thread)))],
+  ];
+  it.effect.each(
+    SCHEDULE_ENDS.map(([cut, cutting]) => ({
+      title: `a wake the agent scheduled before ${cut} still fires at its time`,
+      cutting,
+    })),
+  )("$title", ({ cutting }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w, "remind yourself in ten minutes");
+        const { cron, at } = cronIn(yield* Clock.currentTimeMillis, 10 * MINUTE);
+        yield* w.agent((agent, thread) => agent.cronCreate(thread, cron, PROMPT, false));
+        yield* cutting(w);
+        const fired = () => w.provider.calls.filter((call) => call.endsWith(PROMPT)).length;
+        yield* w.advance(at - (yield* Clock.currentTimeMillis) - 1);
+        assert.strictEqual(fired(), 0);
+        yield* w.advance(1);
+        assert.strictEqual(fired(), 1);
+        const woken = yield* w.run(r(2));
+        assert.deepStrictEqual([woken?.trigger.cause, woken?.joins], ["agent-schedule", null]);
+        // A second firing would come within minutes: an hour proves it fires once, where a day of the
+        // test clock wakes every periodic timer 86,400 times.
+        yield* w.advance(60 * MINUTE);
+        assert.strictEqual(fired(), 1);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "a wake the agent scheduled fires from its own session while that session lives, never twice",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w, "remind yourself in ten minutes");
+          const { cron, at } = cronIn(yield* Clock.currentTimeMillis, 10 * MINUTE);
+          yield* w.agent((agent, thread) => agent.cronCreate(thread, cron, PROMPT, false));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.advance(at - (yield* Clock.currentTimeMillis) + MINUTE);
+          // The CLI fires it: the engine sends nothing of its own.
+          assert.isFalse(w.provider.calls.some((call) => call.endsWith(PROMPT)));
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("a wake the agent cancelled never fires after its session ends", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w, "remind yourself, then never mind");
+        const { cron, at } = cronIn(yield* Clock.currentTimeMillis, 10 * MINUTE);
+        const job = yield* w.agent((agent, thread) =>
+          agent.cronCreate(thread, cron, PROMPT, false),
+        );
+        yield* w.agent((agent, thread) => agent.cronDelete(thread, job));
+        yield* stop(w);
+        yield* w.advance(at - (yield* Clock.currentTimeMillis) + MINUTE);
+        assert.isFalse(w.provider.calls.some((call) => call.endsWith(PROMPT)));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "a recurring wake the agent scheduled runs once after its session ends, saying it ended",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w, "check every hour");
+          yield* w.agent((agent, thread) => agent.cronCreate(thread, "0 * * * *", PROMPT, true));
+          yield* stop(w);
+          yield* w.advance(2 * 60 * MINUTE);
+          const sent = w.provider.calls.filter((call) => call.includes(PROMPT));
+          assert.strictEqual(sent.length, 1);
+          assert.include(sent[0]!, "ended with its session");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   // Milo's final engine run, 2026-10-11 (J9): a killed agent's background job read "stopped", as
   // if the person had stopped it, and nothing woke the Mate. Claude's turn had finished a moment
   // before the kill there; a kill mid-turn ends the run crashed as well.

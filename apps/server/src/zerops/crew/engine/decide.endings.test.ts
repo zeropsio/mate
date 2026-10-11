@@ -205,6 +205,32 @@ const journeys: ReadonlyArray<Journey> = [
     expected: ["budget", "when the $20 ran out"],
   },
   {
+    // Engine recheck on 0.15.44: Tam's turn hit its agent's own cap ("Reached maximum budget
+    // ($0.05)"), the crew read it as a broken turn, sent it again, and parked the task "its turn
+    // broke off twice" with $0.11 spent of $0.05.
+    sentence:
+      "a turn its agent ends at the run's budget stops its task at the budget, and is never sent again",
+    journey: (w) => {
+      w.apply(home(reader("reviewer")));
+      w.press({ _tag: "start", ...OPTIONS, budgetUsd: 0.05 }, OTHER);
+      newTask(w, "reviewer", "Read it");
+      w.run("reviewer");
+      w.end(
+        "reviewer",
+        { kind: "failed", reason: "Reached maximum budget ($0.05)", next: null },
+        { costUsd: 0.054 },
+      );
+      return [
+        w.turns("reviewer"),
+        w.task(1).state,
+        w.task(1).midway?.ending,
+        w.task(1).midway?.why,
+        w.state.run?.spentUsd,
+      ];
+    },
+    expected: [["task"], "working", "budget", "when the $0.05 ran out", 0.054],
+  },
+  {
     sentence:
       "the rig: a working task with no turn stops its queue; the next run carries it on as its starter",
     journey: (w) => {

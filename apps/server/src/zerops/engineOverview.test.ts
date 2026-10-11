@@ -452,6 +452,21 @@ describe("the Mate's attention on the engine", () => {
       }),
   );
 
+  // Milo's recheck on 0.15.44: the face read idle for 27 ms between the person's answer to a value
+  // and the agent's word on it: the attention counted nothing working while the wake was due.
+  it.effect.each([
+    { due: "the agent's word on a value the person answered", patch: { runDue: true as const } },
+    { due: "the agent's own turn on its finished job", patch: { turnDue: true as const } },
+  ])("counts a turn due at a run's end as working, never a result: $due", ({ patch }) =>
+    Effect.gen(function* () {
+      const reads = engineAttentionReads(
+        liveEngine([view({ lastEnded: ended(1, { kind: "completed" }), ...patch })]),
+      );
+      const attention = mateAttentionOf(yield* reads.threadsOf(), undefined, source);
+      assert.deepStrictEqual([attention.working, attention.results], [1, []]);
+    }),
+  );
+
   it.effect("lists a completed run as a result, and drops an archived conversation", () =>
     Effect.gen(function* () {
       const done = view({ lastEnded: ended(1, { kind: "completed" }) });

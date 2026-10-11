@@ -297,7 +297,10 @@ function useAskRoom(wanted: number, listRef: React.RefObject<LegendListRef | nul
       const end = element
         ? Math.max(0, element.scrollHeight - element.clientHeight - (held - wanted))
         : 0;
-      if (!element || element.scrollTop <= end + 0.5 || reducedMotion()) {
+      // Within a pixel: the browser rounds the scroll it is given, and a view held at 118 for
+      // an end at 117.5 never let the room go — the view rested 319 px short of its end over an
+      // empty foot for good (the owner, 0.15.44).
+      if (!element || element.scrollTop <= end + 1 || reducedMotion()) {
         setHeld(0);
         return;
       }
@@ -874,14 +877,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     readonly since: number;
     frame: number;
   } | null>(null);
-  // The room a landing under a held head leaves under the answer, kept while nothing new comes
-  // after it and the person stays at the end: dropped, the view would glide down to the end.
-  const roomAfterRef = useRef<string | null>(null);
-  const lastRowId = rows.at(-1)?.id ?? null;
-  const lastRowIdRef = useRef(lastRowId);
-  useLayoutEffect(() => {
-    lastRowIdRef.current = lastRowId;
-  }, [lastRowId]);
   const followEnd = useCallback(() => {
     if (outerFoldsRef.current.size === 0 && landingRef.current === null) {
       endFollowRef.current?.follow();
@@ -912,35 +907,33 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       endFollowRef.current?.stop();
       const landing = { ...target, since: performance.now(), frame: 0 };
       landingRef.current = landing;
-      const card =
-        target.edge === "top"
-          ? (target.element.closest("[data-run-chat]")?.getBoundingClientRect().height ?? 0)
-          : 0;
-      setLandingRoom(Math.max(ANSWER_ROOM_PX, card));
+      // Under a held head, a view's height: whatever folds under it — the card, its panel, the
+      // slot — the room takes up. Below the view, it costs nothing; once it goes, the view glides
+      // only as far as it stood in it.
+      setLandingRoom(
+        target.edge === "top" ? Math.max(ANSWER_ROOM_PX, scroller.clientHeight) : ANSWER_ROOM_PX,
+      );
       const list = scroller.closest<HTMLElement>(".timeline-legend-list") ?? scroller;
       list.toggleAttribute("data-timeline-holds-head", target.edge === "top");
       holdAnswer();
       const step = (now: number) => {
         if (landingRef.current !== landing) return;
         holdAnswer();
-        const settling = outerFoldsRef.current.size > 0 || now - landing.since < ANSWER_HOLD_MS;
+        // A held head lets go once its card has folded; an answer's line once its row is measured.
+        const settling =
+          outerFoldsRef.current.size > 0 ||
+          now - landing.since < (landing.edge === "top" ? HEAD_HOLD_MS : ANSWER_HOLD_MS);
         if (settling && followingEndRef.current) {
           landing.frame = requestAnimationFrame(step);
           return;
         }
         landingRef.current = null;
         list.removeAttribute("data-timeline-holds-head");
-        // The room goes once nothing moves the answer: where it stands is the end from then on.
-        // Under a held head it keeps what the view still stands in, so the end is where it is.
+        // The room goes once nothing moves what it held, and the view glides out of it on the
+        // follow curve (`useAskRoom`) to the conversation's true end. Kept until something came
+        // after, the view rested short of its end over an empty foot (the owner, 0.15.44).
         const view = listRef.current?.getScrollableNode();
-        const past =
-          landing.edge === "top" && view
-            ? view.scrollTop + view.clientHeight - (view.scrollHeight - askRoomRef.current)
-            : 0;
-        // A pixel or two is no room: the end is the conversation's.
-        const kept = past > 2 ? Math.round(past) : 0;
-        roomAfterRef.current = kept > 0 ? lastRowIdRef.current : null;
-        setLandingRoom(kept);
+        setLandingRoom(0);
         // Settled with the conversation's end under the view — a notice, a wake's card landing
         // under the held head — the view glides down to it: never left below (the usage limit's
         // notice stood 12 px under the view).
@@ -958,11 +951,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     },
     [holdAnswer, listRef],
   );
-  // The room a landing asked for is drawn in this commit: what it holds goes back where it stood
-  // before the frame paints — the list may have clamped its scroll as the card shrank.
+  // The room a landing asked for is drawn in this commit, or a row it brings arrives (the answer
+  // a moment after its card settled): what it holds goes back where it stood before the frame
+  // paints — the list may have clamped or followed its end in it.
   useLayoutEffect(() => {
     if (landingRef.current !== null) holdAnswer();
-  }, [askRoom, holdAnswer]);
+  }, [askRoom, rows, holdAnswer]);
   // A run's turn ends under the person's eyes, the words they read whole in its slot: its head
   // stands still, from the commit that ends it.
   const onTurnLands = useCallback(
@@ -977,7 +971,25 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     (words: HTMLElement, stood: WordsStood) => {
       const head = stood.head?.element.isConnected === true ? stood.head : null;
       const holding = landingRef.current;
-      if (holding !== null && holding.edge === "top" && holding.element === head?.element) return;
+      if (holding !== null && holding.edge === "top" && holding.element === head?.element) {
+        // Its card's head is held: the words land under it, a strip's height under where they were
+        // read at most — they travel there from where they stood, never cut (recheck on 0.15.44).
+        // Read before the frame paints, once the slot they leave has gone in its own commit.
+        const row = words.closest<HTMLElement>("[data-timeline-row-id]");
+        if (row === null || reducedMotion() || typeof row.animate !== "function") return;
+        requestAnimationFrame(() => {
+          const off =
+            words.getBoundingClientRect().bottom -
+            (holding.element.getBoundingClientRect().top - holding.at) -
+            stood.bottom;
+          if (Math.abs(off) > 2)
+            row.animate([{ translate: `0 ${-off}px` }, { translate: "0 0" }], {
+              duration: WORDS_LAND_MS,
+              easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+            });
+        });
+        return;
+      }
       land(
         landingHolds({ head: head !== null, whole: stood.whole }) === "head" && head !== null
           ? { element: head.element, edge: "top", at: head.top }
@@ -993,14 +1005,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     },
     [],
   );
-  // The room under a held head goes once something comes after the answer, or the person leaves
-  // the end (`useAskRoom` eases the view out of it while it stands there).
-  useEffect(() => {
-    if (roomAfterRef.current === null || landingRef.current !== null) return;
-    if (followingEnd && lastRowId === roomAfterRef.current) return;
-    roomAfterRef.current = null;
-    setLandingRoom(0);
-  }, [followingEnd, lastRowId]);
   const onFoldWork = useCallback<NonNullable<TimelineRowSharedState["onFoldWork"]>>(
     (input) => {
       const release = () => {
@@ -2457,6 +2461,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
     row.kind === "message" && row.message.role === "user" && !isStandUpAskRow(row, standUpAsk);
   const ref = useRef<HTMLDivElement>(null);
   const held = useHeldBehindComposer(ref, entering && person);
+  // Its entrance plays once: the list moves a row among its siblings by putting it back in the
+  // page, which plays a running entrance again (recheck on 0.15.44: every answer rose in twice).
+  const [entered, setEntered] = useState(false);
   return (
     <div
       ref={ref}
@@ -2467,10 +2474,14 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         held
           ? "opacity-0"
           : entering &&
+              !entered &&
               (person
                 ? "origin-bottom-right animate-bubble-in motion-reduce:animate-none"
                 : "animate-rise-in motion-reduce:animate-none"),
       )}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget) setEntered(true);
+      }}
       data-card-slice={card}
       data-card-whole={row.cardWhole ? "" : undefined}
       data-timeline-row-id={row.id}
@@ -2759,9 +2770,26 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
   const standRef = usePanelStand(row.turnKey, row.cardKey);
   const { cardKey } = row;
   const carry = useCallback(() => cardRowsCarried(standRef.current, cardKey), [standRef, cardKey]);
+  // The card's line it lent room to: taken back when the room closes, and when this row leaves
+  // mid-close — a run that settled as its panel closed kept the room as an empty band of card
+  // at its foot, under the composer (the owner, 0.15.44, a stopped run's two helpers).
+  const lentRef = useRef<HTMLElement | null>(null);
   const onRoom = useCallback(
-    (room: number | null) => holdCardRoom(standRef.current, cardKey, room),
+    (room: number | null) => {
+      lentRef.current = holdCardRoom(standRef.current, cardKey, room) ?? lentRef.current;
+      if (room === null || room < 0.5) {
+        lentRef.current?.style.removeProperty("--card-room");
+        lentRef.current = null;
+      }
+    },
     [standRef, cardKey],
+  );
+  useEffect(
+    () => () => {
+      lentRef.current?.style.removeProperty("--card-room");
+      lentRef.current = null;
+    },
+    [],
   );
   return (
     <div ref={standRef} className="contents">
@@ -2783,17 +2811,22 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
  * on the card's line: drawn whole by that row (`[data-card-whole]`), the card
  * reaches over it (`--card-room`).
  */
-function holdCardRoom(from: HTMLElement | null, cardKey: string, room: number | null) {
+function holdCardRoom(
+  from: HTMLElement | null,
+  cardKey: string,
+  room: number | null,
+): HTMLElement | null {
   const list = from?.closest<HTMLElement>(".timeline-legend-list") ?? null;
   const line = list?.querySelector<HTMLElement>(
     `[data-timeline-row-id="${CSS.escape(`record:${cardKey}`)}"] > .run-tray`,
   );
-  if (line === null || line === undefined) return;
+  if (line === null || line === undefined) return null;
   if (room === null || room < 0.5) {
     line.style.removeProperty("--card-room");
-    return;
+    return null;
   }
   line.style.setProperty("--card-room", `${room}px`);
+  return line;
 }
 
 /**
@@ -3481,6 +3514,10 @@ function MateProseWords({
   );
 }
 
+/** How long the words of an answer travel from where they were read to where they land. */
+const WORDS_LAND_MS = 220;
+/** How long a card's head is held at least: its fold starts once the list has laid it out. */
+const HEAD_HOLD_MS = 300;
 /** How long an answer is held where its words were read: its card folds, its row is measured. */
 const ANSWER_HOLD_MS = 1200;
 /** The room under the end while it is held: more than its card's foot and its own meta line. */

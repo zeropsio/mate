@@ -1450,17 +1450,53 @@ const TOOL_CALL_WORDS: Readonly<Record<string, string>> = {
   CronList: "Checking its wakes",
 };
 
-/** The time of day a wake's cron names, when it names one plain time ("0 9 * * *" is 09:00). */
-function wakeTime(detail: string | undefined): string | null {
+/** The clock a wake's time is read on: now, and the person's time zone (theirs when not given). */
+export interface WakeClock {
+  readonly now?: number;
+  readonly timeZone?: string;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * When a wake's cron fires, on the person's clock: "16:35" today, "16:35 on 12 Oct" another day.
+ * Claude's container keeps UTC; its one-off names minute, hour, day and month ("35 16 11 10 *"),
+ * a daily one minute and hour ("0 9 * * *"). Anything else names no one time.
+ */
+function wakeTime(detail: string | undefined, clock: WakeClock = {}): string | null {
   const cron = /"cron"\s*:\s*"([^"]+)"/
     .exec(detail ?? "")?.[1]
     ?.trim()
     .split(/\s+/);
-  if (cron?.length !== 5 || cron.slice(2).some((field) => field !== "*")) return null;
-  const [minute, hour] = cron.map(Number);
-  if (!Number.isInteger(minute) || !Number.isInteger(hour) || hour! > 23 || minute! > 59)
+  if (cron?.length !== 5 || cron[4] !== "*") return null;
+  const [minute, hour, day, month] = cron.map(Number);
+  const daily = cron[2] === "*" && cron[3] === "*";
+  const numbers = daily ? [minute, hour] : [minute, hour, day, month];
+  if (!numbers.every((value) => Number.isInteger(value))) return null;
+  if (
+    hour! > 23 ||
+    minute! > 59 ||
+    (!daily && (day! < 1 || day! > 31 || month! < 1 || month! > 12))
+  )
     return null;
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  const now = clock.now ?? Date.now();
+  const today = new Date(now);
+  let at = daily
+    ? Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), hour, minute)
+    : Date.UTC(today.getUTCFullYear(), month! - 1, day, hour, minute);
+  // A date long gone this year is next year's.
+  if (!daily && at < now - DAY_MS)
+    at = Date.UTC(today.getUTCFullYear() + 1, month! - 1, day, hour, minute);
+  const zone = clock.timeZone === undefined ? {} : { timeZone: clock.timeZone };
+  const time = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    ...zone,
+  }).format(at);
+  if (daily) return time;
+  const date = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", ...zone });
+  return date.format(at) === date.format(now) ? time : `${time} on ${date.format(at)}`;
 }
 
 /**
@@ -1468,13 +1504,13 @@ function wakeTime(detail: string | undefined): string | null {
  * "Reading a web page", "Using some new tool" — a file by its name, never
  * the rest of the arguments.
  */
-export function toolCallWords(name: string, detail?: string): string {
+export function toolCallWords(name: string, detail?: string, clock?: WakeClock): string {
   const verb = FILE_TOOL_VERB[name];
   const file = verb === undefined ? null : calledFileName(detail);
   if (verb !== undefined && file !== null) return `${verb} ${file}`;
   const known = TOOL_CALL_WORDS[name];
   if (name === "CronCreate") {
-    const time = wakeTime(detail);
+    const time = wakeTime(detail, clock);
     if (time !== null) return `${known} for ${time}`;
   }
   if (known !== undefined) return known;

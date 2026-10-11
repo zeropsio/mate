@@ -23,7 +23,7 @@ import { classifyZeropsCall } from "@t3tools/client-runtime/zerops/model";
 const STEP_KIND: Readonly<Record<string, ActivityKind>> = {
   command: "command",
   read: "read",
-  look: "read",
+  look: "look",
   search: "code-search",
   web: "search",
   helper: "helpers",

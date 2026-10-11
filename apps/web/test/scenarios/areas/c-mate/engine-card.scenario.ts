@@ -94,6 +94,23 @@ const readTrace = (page: import("puppeteer-core").Page, ms: number) =>
     });
   });
 
+/** The list's distance from its end once it has come to rest: the glide out of the room a settle
+ * held can still be landing when a trace ends, on a slow runner by a few pixels. */
+const restingEnd = (page: import("puppeteer-core").Page) =>
+  Effect.promise(async () => {
+    const gap = () =>
+      page.evaluate(() => {
+        const outer = document.querySelector<HTMLElement>(".timeline-legend-list");
+        return outer ? outer.scrollHeight - outer.clientHeight - outer.scrollTop : Number.NaN;
+      });
+    let last = await gap();
+    for (let waited = 0; waited < 3000 && !(last <= 1); waited += 100) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      last = await gap();
+    }
+    return last;
+  });
+
 /**
  * The largest move between two frames running, of what `of` reads. A glide to the end steps a few
  * tens of pixels a frame; a jump moves the whole of what changed at once (250 px in Milo's run).
@@ -173,7 +190,7 @@ describe("C: an engine Mate's run card in a live conversation", () => {
     // its row read red "Failed"; the helpers it stopped read "2 stopped" and again, each, "Failed".
     it.effect("what the person stopped reads stopped in its card, once, and never failed", () =>
       Effect.gen(function* () {
-        const { chat, engine } = yield* longConversation;
+        const { s, chat, engine } = yield* longConversation;
         const stopped = { kind: "stopped", by: { kind: "person", subject: "owner" } } as const;
         const command = engine.personRun("Run the tick loop in the foreground");
         const call = engine.item(command, {
@@ -234,11 +251,31 @@ describe("C: an engine Mate's run card in a live conversation", () => {
             call: launch,
           });
           engine.update(launch, { state: "failed", endedAt: 1791201720000 + n });
-          engine.update(helper, { status: "stopped", endedAt: 1791201720100 + n });
+          engine.update(helper, {
+            status: "stopped",
+            endedAt: 1791201720100 + n,
+            // As the engine reports a stopped helper: its title again.
+            report: `Helper ${n}: 90-second tick loop`,
+          });
         }
         engine.end(helpers, stopped);
         yield* chat.when.activateLast("Show work");
         yield* chat.then.text("2 stopped");
+        // Open, each helper is named once: on its own row, never again under it nor in the head.
+        yield* chat.when.activateLast("Started 2 helpers. Show them");
+        yield* chat.then.text("Stopped · ");
+        const named = yield* Effect.promise(() =>
+          s.page.evaluate(
+            () =>
+              [...document.querySelectorAll("[data-run-chat] *")].filter(
+                (element) =>
+                  element.childElementCount === 0 &&
+                  element.textContent?.includes("Helper 1: 90-second tick loop") &&
+                  element.getBoundingClientRect().height > 0,
+              ).length,
+          ),
+        );
+        expect(named, "ASSERTION: the open group names Helper 1 once").toBe(1);
         yield* chat.when.activateLast("Show work");
         yield* chat.then.text("Print a tick every second for 40 seconds");
         yield* chat.then.text("Stopped");
@@ -273,7 +310,10 @@ describe("C: an engine Mate's run card in a live conversation", () => {
           largestStep(frames, (frame) => frame.top),
           "ASSERTION: the list never jumps",
         ).toBeLessThan(120);
-        expect(frames.at(-1)!.end, "ASSERTION: the view ends at the conversation's end").toBe(0);
+        expect(
+          yield* restingEnd(s.page),
+          "ASSERTION: the view ends at the conversation's end",
+        ).toBeLessThanOrEqual(1);
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -345,7 +385,10 @@ describe("C: an engine Mate's run card in a live conversation", () => {
             largestStep(frames, (frame) => frame.anchor),
             "ASSERTION: the reply the person was reading never jumps as the wake answers",
           ).toBeLessThan(120);
-          expect(frames.at(-1)!.end, "ASSERTION: the view ends at the conversation's end").toBe(0);
+          expect(
+            yield* restingEnd(s.page),
+            "ASSERTION: the view ends at the conversation's end",
+          ).toBeLessThanOrEqual(1);
           yield* s.then.noExternalNetwork;
         }),
     );
