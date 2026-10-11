@@ -4391,14 +4391,14 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 }
 
 @layer components {
-  /* Overview and Waiting on you: Grok's measure, as the Mates' rows under them — a 40 px disc in
-     the faces' column, a 16 px name over a 15 px line, 68 px a row. */
+  /* Overview: the Mates' rows' measure — a 40 px disc in the faces' column, a 15 px name over a
+     14 px line, 59 px a row. */
   .menu-chrome-row {
     display: flex;
     align-items: center;
     gap: 12px;
     width: 100%;
-    height: 68px;
+    height: 59px;
     padding: 0 8px;
     border-radius: 12px;
     text-align: left;
@@ -4414,17 +4414,59 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 
   .menu-chrome-row[data-current] {
     background: var(--sidebar-row-active);
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 6%, transparent),
-      0 1px 2px color-mix(in oklab, var(--color-black) 6%, transparent);
   }
 
   .menu-chrome-row:focus-visible {
     box-shadow: 0 0 0 2px var(--ring);
   }
 
-  .menu-chrome-row + .menu-chrome-row {
-    margin-top: 6px;
+  /* The Overview row and what waits beside it (`SidebarOverviewRow`): the count at the row's
+     end, 12 px in, its own door to the list of what waits; the row's words stop short of it. */
+  .menu-overview {
+    position: relative;
+  }
+
+  .menu-chrome-row[data-waits] {
+    padding-right: 52px;
+  }
+
+  .menu-overview .menu-chrome-count {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    width: auto;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 9px;
+    translate: 0 -50%;
+    font-size: 13px;
+    line-height: 16px;
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      scale 150ms var(--ease-out-strong);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .menu-overview .menu-chrome-count:hover,
+    .menu-overview .menu-chrome-count[data-popup-open] {
+      background: color-mix(
+        in oklab,
+        var(--zerops-status-attention-text) 16%,
+        var(--zerops-status-attention-surface)
+      );
+    }
+  }
+
+  .menu-overview .menu-chrome-count:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-overview .menu-chrome-count:active {
+      scale: 0.96;
+    }
   }
 
   .menu-chrome-disc,
@@ -4705,12 +4747,15 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 }
 
 @layer components {
-  /* The foot: the viewer's photo, name and role, one ···; the collapse button after it. */
+  /* The foot: the viewer's photo, name and role, one ···, across the whole row up to the
+     collapse button after it (the owner, 2026-10-12: "not done well at all, the way its only like
+     30% width" — a button sizes to its content where nothing stretches it). */
   .menu-foot-who {
     display: flex;
     flex: 1 1 auto;
     align-items: center;
     gap: 12px;
+    width: 100%;
     min-width: 0;
     height: 52px;
     margin-block: 6px;

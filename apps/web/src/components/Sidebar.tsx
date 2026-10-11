@@ -262,12 +262,12 @@ import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
+import { SidebarFoldAllButton } from "./zerops/SidebarFoldAllButton";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
 import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, SidebarOverviewRow, useMenuProjects } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
-import { SidebarWaitingRow } from "./zerops/SidebarWaiting";
 import { SidebarRail, useRailMates } from "./zerops/SidebarRail";
 import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
 
@@ -4121,6 +4121,7 @@ export default function Sidebar() {
           // or project is the +'s.
           rosterOnly ? (
             <>
+              <SidebarFoldAllButton />
               <SidebarJumpButton
                 onJump={() => {
                   // A phone's menu steps aside for the box, and comes back
@@ -4367,15 +4368,17 @@ export default function Sidebar() {
       >
         <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
           {zeropsSignedIn && !isSearchingThreads ? (
-            <div className="mb-2" data-zerops-surface="sidebar-chrome-rows">
+            <div className="mt-2.5 mb-2" data-zerops-surface="sidebar-chrome-rows">
               <SidebarOverviewRow
                 current={zeropsOverviewOpen}
                 headline={zeropsHeadline}
                 onOpen={navigateToZeropsProjects}
+                waiting={
+                  zeropsListHeld
+                    ? undefined
+                    : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
+                }
               />
-              {zeropsListHeld ? null : (
-                <SidebarWaitingRow items={zeropsWaiting.items} verbs={zeropsWaitingVerbs} />
-              )}
             </div>
           ) : null}
           {zeropsSignedIn && !isSearchingThreads ? (

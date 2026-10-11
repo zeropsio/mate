@@ -559,17 +559,17 @@
           );
         }
 
-        /* The Overview row, first in the menu's list under its 65 px logo row (SidebarOverviewRow):
-           its 40 px disc and its name, standing where the app draws them. */
+        /* The Overview row, first in the menu's list 10 px under its 65 px logo row
+           (SidebarOverviewRow): its 40 px disc and its name, standing where the app draws them. */
         html[data-boot-frame="app"] #boot-shell-menu-overview {
           position: absolute;
-          top: 65px;
+          top: 75px;
           right: 8px;
           left: 9px;
           display: flex;
           align-items: center;
           gap: 12px;
-          height: 68px;
+          height: 59px;
           padding: 0 8px;
         }
 
@@ -596,11 +596,11 @@
         }
 
         /* The menu's loading rows, where and as SidebarZeropsTree's MenuSkeleton draws them
-           under the Overview row (68 px and its 8 px gap), until the app draws the menu (or its
+           under the Overview row (59 px and its 8 px gap), until the app draws the menu (or its
            preview, its rows). */
         html[data-boot-frame="app"] #boot-shell-menu-loading {
           position: absolute;
-          top: 141px;
+          top: 142px;
           right: 8px;
           left: 9px;
           display: flex;
@@ -640,17 +640,17 @@
 
         html[data-boot-frame="app"] #boot-shell-card {
           position: absolute;
-          top: 8.5px;
-          left: 17px;
+          top: 14.5px;
+          left: 22px;
           display: block;
-          width: 40px;
-          height: 48px;
+          width: 30px;
+          height: 36px;
         }
 
         html[data-boot-frame="app"] #boot-shell-logo {
           display: block;
-          width: 40px;
-          height: 48px;
+          width: 30px;
+          height: 36px;
         }
 
         /* The rail (SidebarRail), where its person left the menu closed: its 64 px column and

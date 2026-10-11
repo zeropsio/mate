@@ -169,6 +169,7 @@ import {
   readCollapsedProjects,
   readOpenedProjects,
   withProjectFold,
+  withProjectsFolded,
   writeCollapsedProjects,
   writeOpenedProjects,
   type ProjectFolds,
@@ -263,6 +264,7 @@ import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
 import { finishSetupRowLine, useMatePress } from "~/zerops/matePress";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useSidebarJump } from "~/zerops/sidebarJump";
+import { useMenuFolds } from "~/zerops/menuFolds";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
 import {
   EMPTY_JUMP_INDEX,
@@ -657,6 +659,28 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     closed: readCollapsedProjects(),
     opened: readOpenedProjects(),
   }));
+  // Every project folded or opened at once, asked from the menu's top row (`useMenuFolds`): the
+  // projects with Mates as this draw lists them, and whether any of them stands open.
+  const foldable = useRef<ReadonlyArray<string>>([]);
+  const anyOpen = useRef<boolean | null>(null);
+  anyOpen.current = null;
+  const setAnyOpen = useMenuFolds((state) => state.setAnyOpen);
+  useEffect(() => {
+    setAnyOpen(anyOpen.current);
+  });
+  useEffect(
+    () => () => {
+      setAnyOpen(null);
+    },
+    [setAnyOpen],
+  );
+  const foldAsked = useMenuFolds((state) => state.asked);
+  const foldAnswered = useRef(foldAsked?.seq ?? 0);
+  useEffect(() => {
+    if (foldAsked === null || foldAsked.seq === foldAnswered.current) return;
+    foldAnswered.current = foldAsked.seq;
+    setProjectFolds((current) => withProjectsFolded(current, foldable.current, foldAsked.fold));
+  }, [foldAsked]);
   useEffect(() => {
     writeCollapsedProjects(projectFolds.closed);
     writeOpenedProjects(projectFolds.opened);
@@ -1555,16 +1579,21 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   );
   // Folded as its person left it, else folded among six or more projects with Mates
   // (`projectFolded`): a project of stages alone has no rows to fold, and does not count.
-  const projectsWithMates = groups.filter(
-    ({ group, environments }) =>
-      environments.some(({ item }) => hasMate(item)) ||
-      group.pending.some((member) => member.kind === "mate"),
-  ).length;
+  const withMates = groups
+    .filter(
+      ({ group, environments }) =>
+        environments.some(({ item }) => hasMate(item)) ||
+        group.pending.some((member) => member.kind === "mate"),
+    )
+    .map(({ group }) => group.groupId);
+  const projectsWithMates = withMates.length;
   const collapsed: ReadonlySet<string> = new Set(
     groups
       .map(({ group }) => group.groupId)
       .filter((groupId) => projectFolded(projectFolds, groupId, projectsWithMates)),
   );
+  foldable.current = withMates;
+  anyOpen.current = withMates.length === 0 ? null : withMates.some((id) => !collapsed.has(id));
   const ungrouped = view.ungrouped.map((item) => ({ item, role: undefined }));
   const ungroupedMates = ungrouped.some(({ item }) => hasMate(item) && (shown?.(item) ?? true));
   mateOrder.current = [

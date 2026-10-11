@@ -90,3 +90,12 @@ export function withProjectFold(folds: ProjectFolds, groupId: string, fold: bool
   nextFrom.delete(groupId);
   return fold ? { closed: nextInto, opened: nextFrom } : { closed: nextFrom, opened: nextInto };
 }
+
+/** Every one of `groupIds` folded, or every one opened, each as its person's choice. */
+export function withProjectsFolded(
+  folds: ProjectFolds,
+  groupIds: ReadonlyArray<string>,
+  fold: boolean,
+): ProjectFolds {
+  return groupIds.reduce((next, groupId) => withProjectFold(next, groupId, fold), folds);
+}
