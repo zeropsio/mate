@@ -783,6 +783,9 @@ const DONE_VERBS: Readonly<Record<string, string>> = {
   Updating: "Updated",
   Finishing: "Finished",
   Waiting: "Waited",
+  Scheduling: "Scheduled",
+  Cancelling: "Cancelled",
+  Checking: "Checked",
 };
 
 /** A call's words once it is done: "Updating its list" is "Updated its list". */

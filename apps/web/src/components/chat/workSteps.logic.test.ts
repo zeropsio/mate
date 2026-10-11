@@ -301,6 +301,20 @@ describe("stepOf", () => {
       phrase: { verb: "Looked at", targets: ["v1.png"], more: 0, code: true },
     },
     {
+      // Engine recheck on 0.15.41: the row read "Used cron create".
+      name: "a wake the Mate set for itself",
+      entry: entry({
+        id: "1",
+        itemType: "dynamic_tool_call",
+        label: "Tool call",
+        detail: 'CronCreate: {"cron":"0 9 * * *","prompt":"Check the deploy","recurring":false}',
+      }),
+      words: "Scheduled a wake for 09:00",
+      code: null,
+      kind: "tool",
+      phrase: { verb: "Scheduled a wake for 09:00", targets: [], more: 0, code: false },
+    },
+    {
       // Engine final run, C3: the row read "Looked at mate-asset:97860ff6-…".
       name: "a look at a picture the person gave, which has no file name",
       entry: entry({
