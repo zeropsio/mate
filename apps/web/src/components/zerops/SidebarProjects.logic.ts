@@ -41,19 +41,24 @@ export function newProjectOffered(input: {
   return mateEnvironmentsEmptyReason(input.candidates) !== "no-mate";
 }
 
-/** The air above each project (round 5): 28 px from the last row, or the folded heading, above it. */
+/** The air above each project (round 5): 28 px from the last row of an open one above it. */
 const PROJECT_AIR = 28;
+/**
+ * Under a folded project's heading, 4 px: folded projects read as one list of names, 36 px name
+ * to name, not islands 60 px apart (the owner, 2026-10-11: "spaces between collapsed projects …
+ * is absolutely huge").
+ */
+const FOLDED_AIR = 4;
 /** The list's last project: the list's own 4 px end makes it the same 28 px to the foot. */
 const LIST_END_ROOM = 24;
 
 /**
- * The room below a project's rows, in px — one rule for both: 28 px to the
- * next project's heading, open or folded, and the same 28 px from the list's
- * last project to the menu's foot. Folded or open, the room is the project's own, below its heading,
- * so a heading's own fold never moves it.
+ * The room below a project, in px: 28 px under an open project's rows to the next heading, 4 px
+ * under a folded heading, and the same 28 px from the list's last project to the menu's foot. The
+ * room is the project's own, below it, so a heading's own fold never moves it.
  */
 export function projectRoom(at: { readonly open: boolean; readonly last: boolean }): number {
-  return at.last ? LIST_END_ROOM : PROJECT_AIR;
+  return at.last ? LIST_END_ROOM : at.open ? PROJECT_AIR : FOLDED_AIR;
 }
 
 /** The dot on a folded heading's face: needs you, unread, or stopped on an error. */

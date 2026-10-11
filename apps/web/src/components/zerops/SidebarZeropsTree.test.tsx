@@ -54,11 +54,14 @@ vi.mock("~/zerops/projectFlows", async (original) => ({
   ...(await original<typeof import("~/zerops/projectFlows")>()),
   useStopDeploymentsShown: () => stops.deployments,
 }));
-vi.mock("~/zerops/collapsedProjects", () => ({
+vi.mock("~/zerops/collapsedProjects", async (original) => ({
+  ...(await original<typeof import("~/zerops/collapsedProjects")>()),
   readCollapsedProjects: () => stored.collapsed,
   writeCollapsedProjects: (collapsed: ReadonlySet<string>) => {
     stored.written = collapsed;
   },
+  readOpenedProjects: () => new Set<string>(),
+  writeOpenedProjects: () => {},
 }));
 // A crew's faces open their chats through the router, which a menu drawn
 // here has none of.
@@ -1451,9 +1454,9 @@ describe("the project's flow under it", () => {
 
   it("hangs the Mate's open pull requests under it", () => {
     const html = withFlow([own(), CRM_STAGE, CRM_PROD]);
-    // On its own row (round 5): the change's mark and title on its line, Review in its time's place.
+    // Under its own row: the change's mark and title on its strip, with its Review (2026-10-11).
     expect(html).toMatch(
-      /data-zerops-surface="sidebar-mate-change"[^>]*>(?:<svg[\s\S]*?<\/svg>)?Change 4</u,
+      /data-zerops-surface="sidebar-mate-change"[^>]*>(?:<svg[\s\S]*?<\/svg>)?(?:<span[^>]*>)?Change 4</u,
     );
     expect(html.indexOf('data-zerops-surface="sidebar-mate-name"')).toBeLessThan(
       html.indexOf('data-zerops-surface="sidebar-mate-change"'),
@@ -1514,7 +1517,7 @@ describe("the project's flow under it", () => {
     session.viewer = "u-ada";
     const html = withFlow([mine(CRM_DEV_CONNECTED, "u-karlos"), CRM_STAGE]);
     expect(html).toMatch(
-      /sidebar-mate-change"[^>]*>(?:<svg[\s\S]*?<\/svg>)?Change 4 · in review</u,
+      /sidebar-mate-change"[^>]*>(?:<svg[\s\S]*?<\/svg>)?(?:<span[^>]*>)?Change 4 · in review</u,
     );
     expect(html).toMatch(/<button[^>]*data-zerops-surface="sidebar-mate-review"/u);
     expect(html).not.toMatch(/data-mine="true"[^>]*data-zerops-surface="sidebar-mate-review"/u);
@@ -1589,7 +1592,9 @@ describe("the project's flow under it", () => {
       flow({ pullRequests: [pull(4, { repository: "group", kind: "recipe" })] }),
     );
     expect(html).toContain('data-zerops-changes="group#4"');
-    expect(html).toMatch(/sidebar-mate-change"[^>]*>(?:<svg[\s\S]*?<\/svg>)?Change 4</u);
+    expect(html).toMatch(
+      /sidebar-mate-change"[^>]*>(?:<svg[\s\S]*?<\/svg>)?(?:<span[^>]*>)?Change 4</u,
+    );
     expect(html).toContain('data-zerops-surface="sidebar-mate-review"');
   });
 
@@ -3238,36 +3243,6 @@ describe("a long list, kept scannable", () => {
       (match) => match[1],
     );
 
-  it("folds a Mate untouched for a week behind its count at the end of the Mates", () => {
-    const html = render([CRM_DEV_CONNECTED, QUIET_MATE, CRM_STAGE], {
-      getActivity: (item: ZeropsCandidate) => activities(item.project.id),
-    });
-    expect(names(html)).toEqual(["crm-dev"]);
-    expect(html).toContain(">1 quiet Mate<");
-  });
-
-  it("unfolds the quiet Mates under the fold, which stays where it is", () => {
-    const tree = mount(
-      <SidebarZeropsTree
-        candidates={[CRM_DEV_CONNECTED, QUIET_MATE]}
-        complete
-        getActivity={(item) => activities(item.project.id)}
-        onBrowseProjects={() => {}}
-        onSelect={() => {}}
-      />,
-    );
-    press(tree, "sidebar-quiet-mates");
-    const rendered = tree.root
-      .findAll(
-        (node) =>
-          typeof node.type === "string" && typeof node.props["data-zerops-surface"] === "string",
-      )
-      .map((node) => node.props["data-zerops-surface"] as string)
-      .filter((name) => name === "sidebar-mate" || name === "sidebar-quiet-mates");
-    expect(rendered).toEqual(["sidebar-mate", "sidebar-quiet-mates", "sidebar-mate"]);
-    expect(surface(tree, "sidebar-quiet-mates").props["aria-expanded"]).toBe(true);
-  });
-
   it("never folds the Mate whose conversation is open", () => {
     const html = render([CRM_DEV_CONNECTED, QUIET_MATE], {
       getActivity: (item: ZeropsCandidate) => activities(item.project.id),
@@ -3557,7 +3532,9 @@ describe("before HQ and the forge answer", () => {
     const html = render([mine(CRM_DEV), CRM_PROD], {
       getFlow: () => flowOf({ changesKnown: true, pullRequests: [pull(15, { title: "Live" })] }),
     });
-    expect(html).toMatch(/sidebar-mate-change"[^>]*>(?:<svg[\s\S]*?<\/svg>)?Live</u);
+    expect(html).toMatch(
+      /sidebar-mate-change"[^>]*>(?:<svg[\s\S]*?<\/svg>)?(?:<span[^>]*>)?Live</u,
+    );
     expect(html).toContain('data-zerops-surface="sidebar-mate-review"');
   });
 });
@@ -4064,8 +4041,6 @@ describe("automatic project sections", () => {
       sections(),
       "ASSERTION: recent work arriving in the opening baseline belongs in Active",
     ).toEqual({ links: "active", aaa: "other" });
-    // The quiet one folds behind its count at the list's end (round 5).
-    expect(text(tree.root)).toContain("1 other project");
     act(() =>
       hq.seed({
         structure,
@@ -4094,7 +4069,8 @@ describe("automatic project sections", () => {
       "links",
       "aaa",
     ]);
-    expect(html).toContain('data-zerops-surface="sidebar-other-projects-fold"');
+    // Every project stands in the one list; the resting one is drawn after the active.
+    expect(html).toContain('data-zerops-project-section="other"');
   });
 
   it("Current work and needs-you keep a project Active beyond seven days.", () => {
@@ -4138,7 +4114,6 @@ describe("automatic project sections", () => {
     clock.mockReturnValue(now + week + 1);
     act(() => tree.update(menu((candidate) => read(candidate === CRM_DEV ? now + week + 1 : now))));
     expect(mountedIds(tree)).toEqual(["links", "aaa"]);
-    expect(text(tree.root)).toContain("1 other project");
   });
 
   it("Reopening applies current membership and the chosen order deterministically.", () => {
@@ -4168,27 +4143,6 @@ describe("automatic project sections", () => {
     expect(ids(render(rows, { activeProjectId: LINKS_MATE.project.id }))).toEqual(["links", "aaa"]);
   });
 
-  it("Custom moves stop at the section boundary and keep the other section in place", () => {
-    vi.spyOn(Date, "now").mockReturnValue(now);
-    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "custom", ProjectOrderSchema);
-    setLocalStorageItem(
-      PROJECT_CUSTOM_ORDER_STORAGE_KEY,
-      ["aaa", "links"],
-      ProjectCustomOrderSchema,
-    );
-    const tree = mount(menu((candidate) => (candidate === LINKS_MATE ? read(now) : undefined)));
-    const grips = tree.root.findAll(
-      (node) =>
-        node.type === "button" && node.props["data-zerops-surface"] === "sidebar-project-grip",
-    );
-    act(() => grips[0]!.props.onKeyDown({ key: "ArrowDown", preventDefault: () => {} }));
-    act(() => grips[1]!.props.onKeyDown({ key: "ArrowUp", preventDefault: () => {} }));
-    expect(mountedIds(tree)).toEqual(["links", "aaa"]);
-    expect(getLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, ProjectCustomOrderSchema)).toEqual(
-      ["aaa", "links"],
-    );
-  });
-
   it("Multiple active Mates produce one project section; empty groups add no heading.", () => {
     vi.spyOn(Date, "now").mockReturnValue(now);
     const second = { ...CRM_DEV, key: "second", project: { ...CRM_DEV.project, id: "second" } };
@@ -4196,16 +4150,6 @@ describe("automatic project sections", () => {
     expect(ids(html)).toEqual(["aaa"]);
     expect(html).not.toContain("sidebar-other-projects-fold");
     expect(render([])).not.toContain("sidebar-other-projects-fold");
-  });
-
-  it("folds the projects with no work lately behind their count at the list's end, and opens them", () => {
-    vi.spyOn(Date, "now").mockReturnValue(now);
-    const tree = mount(menu((candidate) => read(candidate === LINKS_MATE ? now : now - week - 1)));
-    const others = () => surface(tree, "sidebar-other-projects");
-    expect(others().props.hidden).toBe(true);
-    expect(text(surface(tree, "sidebar-other-projects-fold"))).toBe("1 other project");
-    press(tree, "sidebar-other-projects-fold");
-    expect(others().props.hidden).toBe(false);
   });
 
   it("says how many Mates Mine leaves out, and lists everyone again from there", () => {

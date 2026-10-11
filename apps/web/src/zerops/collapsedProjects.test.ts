@@ -68,3 +68,53 @@ describe("collapsed projects, per account", () => {
     expect(projects.readCollapsedProjects()).toEqual(new Set());
   });
 });
+
+// Twenty projects open at once made the menu two screens long (the owner, 2026-10-11: "I'd have
+// them collapsed all by default, when you have like 6+"): past five projects each starts as its
+// one line, and what the person opened or folded stays as they left it.
+describe("a project's fold", () => {
+  const none = { closed: new Set<string>(), opened: new Set<string>() };
+  it.each([
+    {
+      case: "folded by its person",
+      folds: { ...none, closed: new Set(["a"]) },
+      projects: 2,
+      folded: true,
+    },
+    {
+      case: "opened by its person among many",
+      folds: { ...none, opened: new Set(["a"]) },
+      projects: 20,
+      folded: false,
+    },
+    { case: "untouched among five", folds: none, projects: 5, folded: false },
+    { case: "untouched among six", folds: none, projects: 6, folded: true },
+  ])(
+    "stands as its person left it, else folded among six or more: $case",
+    ({ folds, projects: count, folded }) => {
+      expect(projects.projectFolded(folds, "a", count)).toBe(folded);
+    },
+  );
+
+  it("keeps one choice per project: folding takes back an opening, and opening a fold", () => {
+    const opened = projects.withProjectFold(
+      { closed: new Set(["a"]), opened: new Set() },
+      "a",
+      false,
+    );
+    expect(opened).toEqual({ closed: new Set(), opened: new Set(["a"]) });
+    expect(projects.withProjectFold(opened, "a", true)).toEqual({
+      closed: new Set(["a"]),
+      opened: new Set(),
+    });
+  });
+
+  it("remembers what the person opened, per account", () => {
+    lifetime.openAccountLifetime("user-a");
+    projects.writeOpenedProjects(new Set(["group-a"]));
+    lifetime.openAccountLifetime("user-b");
+    expect(projects.readOpenedProjects()).toEqual(new Set());
+    lifetime.openAccountLifetime("user-a");
+    expect(projects.readOpenedProjects()).toEqual(new Set(["group-a"]));
+  });
+});

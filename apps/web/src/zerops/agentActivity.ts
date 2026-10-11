@@ -53,7 +53,7 @@ import {
 } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
-import { maskSecrets, messagePreviewText } from "@t3tools/shared/messagePreview";
+import { maskSecrets, messagePreviewText, messageWords } from "@t3tools/shared/messagePreview";
 import {
   hasUnseenCompletion,
   mateMarkStateForThread,
@@ -358,8 +358,9 @@ export function agentActivitySnippet(
 ): string | undefined {
   const preview = thread.latestMessagePreview;
   if (preview === undefined || preview === null || preview.role !== "assistant") return undefined;
-  // A server from before previews were masked still hands over what was pasted.
-  return maskSecrets(preview.text);
+  // A server from before previews were masked still hands over what was pasted, and one from
+  // before they were plain words hands over markdown: a row is one line of words.
+  return maskSecrets(messageWords(preview.text));
 }
 
 /**
@@ -686,7 +687,10 @@ export function rowAgentActivity(
     ),
     ...(row.latestRun !== null || row.subject !== null ? { hasWork: true as const } : {}),
     // Queued: the person's words are the last thing said, and the reply stands where they will.
-    snippet: state.kind === "queued" || row.snippet === null ? undefined : maskSecrets(row.snippet),
+    snippet:
+      state.kind === "queued" || row.snippet === null
+        ? undefined
+        : maskSecrets(messageWords(row.snippet)),
     ...(state.kind === "queued" ? { awaitingWords: true as const } : {}),
     unread,
     limit,

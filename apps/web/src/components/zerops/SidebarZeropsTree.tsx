@@ -108,9 +108,8 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   BellOffIcon,
+  ChevronRightIcon,
   CircleAlertIcon,
-  ChevronsDownUpIcon,
-  ChevronsUpDownIcon,
   EyeIcon,
   GitPullRequestIcon,
   MoreHorizontalIcon,
@@ -169,7 +168,15 @@ import { mayBearHq } from "@t3tools/shared/zeropsRoles";
 import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
 import { ZeropsHqUpdate } from "./ZeropsHqUpdate";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
-import { readCollapsedProjects, writeCollapsedProjects } from "~/zerops/collapsedProjects";
+import {
+  projectFolded,
+  readCollapsedProjects,
+  readOpenedProjects,
+  withProjectFold,
+  writeCollapsedProjects,
+  writeOpenedProjects,
+  type ProjectFolds,
+} from "~/zerops/collapsedProjects";
 import {
   movedBefore,
   rememberProjectsOnScreen,
@@ -188,12 +195,7 @@ import { SidebarSelectedBand } from "./SidebarSelectedBand";
 import { KeyChip, MateFace } from "./primitives";
 import { groupNameUnread } from "./ZeropsGroupTree.logic";
 import { STOP_ARM_MS, stopArmStep, type StopArm, type StopArmEvent } from "./SidebarStopArm.logic";
-import {
-  formatWorkingTime,
-  isQuietMate,
-  projectHeadingMenu,
-  sidebarMateKey,
-} from "./SidebarZeropsTree.logic";
+import { formatWorkingTime, projectHeadingMenu, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
 import {
   SidebarProjectFold,
@@ -322,19 +324,6 @@ type RosterCandidate = ZeropsCandidate & {
 };
 
 type Entry<T> = { readonly item: T; readonly role: ZeropsEnvironmentRole | undefined };
-
-/** The set with the group collapsed or not; the same set where nothing changed. */
-function withCollapsed(
-  current: ReadonlySet<string>,
-  groupId: string,
-  collapse: boolean,
-): ReadonlySet<string> {
-  if (current.has(groupId) === collapse) return current;
-  const next = new Set(current);
-  if (collapse) next.add(groupId);
-  else next.delete(groupId);
-  return next;
-}
 
 /** Whether this menu holds what a reveal asks to show: another menu's ask is not its to answer. */
 function holdsRevealTarget(
@@ -659,12 +648,16 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // Collapsed projects survive a reload: a person who collapsed one had a
   // reason, and a menu that expands everything on every boot makes them do it
   // again (the owner, 2026-09-19). Per account, so it never leaves the device.
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(readCollapsedProjects);
-  // The projects with no work lately fold behind "N other projects" at the list's end (round 5).
-  const [othersOpen, setOthersOpen] = useState(false);
+  // Past five projects each starts folded, its one line, until its person opens it
+  // (`projectFolded`, the owner, 2026-10-11): what they opened or folded is kept.
+  const [projectFolds, setProjectFolds] = useState<ProjectFolds>(() => ({
+    closed: readCollapsedProjects(),
+    opened: readOpenedProjects(),
+  }));
   useEffect(() => {
-    writeCollapsedProjects(collapsed);
-  }, [collapsed]);
+    writeCollapsedProjects(projectFolds.closed);
+    writeOpenedProjects(projectFolds.opened);
+  }, [projectFolds]);
   // Opening a Mate's conversation opens its project: the row lit as the one
   // open may not be hidden under a heading. Only when the open conversation
   // changes — a person may collapse the project again afterwards, and a menu
@@ -674,7 +667,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const [seenGroupId, setSeenGroupId] = useState<string | undefined>(undefined);
   if (seenGroupId !== activeGroupId) {
     setSeenGroupId(activeGroupId);
-    if (activeGroupId !== undefined) setCollapsed(withCollapsed(collapsed, activeGroupId, false));
+    if (activeGroupId !== undefined) {
+      setProjectFolds(withProjectFold(projectFolds, activeGroupId, false));
+    }
   }
   // Same preference the projects screen's sort control and the account menu
   // write (`projectOrderPreference.ts`) — read here too so the surfaces stay
@@ -711,13 +706,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     row.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
   });
-  // What "a week untouched" is measured from: the moment the menu was drawn.
-  const [nowMs] = useState(Date.now);
   // What closes a stage's coming-up and first-deploy windows: the shared minute clock, so the
   // menu and the projects page close them together (no request of its own).
   const minuteMs = useNowMs();
-  // The projects whose quiet Mates somebody unfolded; not remembered.
-  const [openQuiet, setOpenQuiet] = useState<ReadonlySet<string>>(() => new Set());
   // The projects a heading's press set unfolding or folding, until they settle:
   // a folding project keeps its rows drawn until they have folded away.
   const [folds, setFolds] = useState<ReadonlyMap<string, ProjectFoldMotion>>(() => new Map());
@@ -780,17 +771,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     useSidebarReveal.getState().answerReveal(seq);
     const groupId =
       target.kind === "mate" ? groupIdOf(candidates, target.projectId) : target.groupId;
-    const mateId =
-      target.kind === "mate"
-        ? target.projectId
-        : target.kind === "change"
-          ? target.mateProjectId
-          : undefined;
-    if (groupId !== undefined) setOthersOpen(true);
     if (groupId !== undefined && target.kind !== "stop") {
-      setCollapsed((current) => withCollapsed(current, groupId, false));
-      // A Mate may be folded among its project's quiet ones.
-      if (mateId !== undefined) setOpenQuiet((current) => withCollapsed(current, groupId, true));
+      setProjectFolds((current) => withProjectFold(current, groupId, false));
     }
     focusAfterDraw.current = { target, drawn: false };
     setRevealDraw((draws) => draws + 1);
@@ -1432,21 +1414,15 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       flowPulls,
       everyMate.map(({ item }) => item.project.id),
     );
-    // Its Mates in the order drawn: the ones at work or lately at it, those
-    // being created, then — folded behind their count at the end — the ones
-    // untouched for a week (`isQuietMate`), open only when asked.
-    const quietOf = (item: T) =>
-      getComing?.(item) === undefined &&
-      isQuietMate(getActivity?.(item), nowMs, item.project.id === activeProjectId);
-    const loud = mateEntries.filter(({ item }) => !quietOf(item));
-    const quiet = mateEntries.filter(({ item }) => quietOf(item));
+    // Its Mates in the order drawn, every one of them, then those being created: none hides
+    // behind a "quiet" fold (the owner, 2026-10-11).
     // What the jump box finds here, drawn or folded: a jump opens the project.
     indexSection({
       id,
       group,
       groupName,
       flow,
-      mateEntries: [...loud, ...quiet],
+      mateEntries,
       grouped,
       changesDrawn: changeRows !== undefined,
       stops: jumpStopsHere,
@@ -1466,12 +1442,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         </>
       );
     }
-    const quietOpen = openQuiet.has(id);
     const slots: ReadonlyArray<MateSlot<T>> = [
-      ...loud.map(({ item }) => ({ kind: "mate" as const, item })),
+      ...mateEntries.map(({ item }) => ({ kind: "mate" as const, item })),
       ...coming.map((member) => ({ kind: "coming" as const, member })),
-      ...(quiet.length === 0 ? [] : [{ kind: "fold" as const, count: quiet.length }]),
-      ...(quietOpen ? quiet.map(({ item }) => ({ kind: "mate" as const, item })) : []),
     ];
     // Each block — a Mate with its crew and its changes, one being created,
     // the quiet fold — stands apart from the next by air alone: 6 px between
@@ -1491,20 +1464,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                   onOpen={onOpenComing}
                 />
               </MateUnit>
-            ),
-          };
-        }
-        if (slot.kind === "fold") {
-          return {
-            key: "quiet",
-            node: (
-              <QuietMatesRow
-                count={slot.count}
-                onToggle={() => {
-                  setOpenQuiet((current) => withCollapsed(current, id, !current.has(id)));
-                }}
-                open={quietOpen}
-              />
             ),
           };
         }
@@ -1614,6 +1573,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       environments.some(({ item }) => hasMate(item) && (shown?.(item) ?? true)) ||
       group.pending.some((member) => member.kind === "mate"),
   );
+  // Folded as its person left it, else folded among six or more projects (`projectFolded`).
+  const collapsed: ReadonlySet<string> = new Set(
+    groups
+      .map(({ group }) => group.groupId)
+      .filter((groupId) => projectFolded(projectFolds, groupId, groups.length)),
+  );
   const ungrouped = view.ungrouped.map((item) => ({ item, role: undefined }));
   const ungroupedMates = ungrouped.some(({ item }) => hasMate(item) && (shown?.(item) ?? true));
   mateOrder.current = [
@@ -1632,7 +1597,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // The projects drawn, in order: a move by keyboard or by drag names its
   // place by these neighbours, and the order it writes still holds the rest.
   const drawn = new Set(groups.map(({ group }) => group.groupId));
-  const sectionOf = (id: string) => (frozen.active.includes(id) ? frozen.active : frozen.other);
+  // One list, every project in it: a move places a project among all of them.
+  const sectionOf = (_id: string) => [...frozen.active, ...frozen.other];
   const neighbours = (id: string) => sectionOf(id).filter((entry) => drawn.has(entry));
   const moveProject = (groupId: string, before: string | null, name: string) => {
     const section = sectionOf(groupId);
@@ -1675,6 +1641,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             chips={chips}
             collapsed={collapsed.has(group.groupId)}
             faces={faces}
+            mates={environments.filter(({ item }) => hasMate(item)).length}
             line={line}
             openStop={openStop}
             group={group}
@@ -1727,7 +1694,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                   );
                 }
               }
-              setCollapsed((current) => withCollapsed(current, groupId, folding));
+              setProjectFolds((current) => withProjectFold(current, groupId, folding));
               setFolds((current) => new Map(current).set(groupId, folding ? "closing" : "opening"));
             }}
             reorder={{
@@ -1756,15 +1723,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       )}
     </section>
   ));
-  const activeSections = groupSections.filter((_, index) =>
-    frozen.active.includes(groups[index]!.group.groupId),
-  );
-  const otherSections = groupSections.filter(
-    (_, index) => !frozen.active.includes(groups[index]!.group.groupId),
-  );
-  // Open while the open conversation's Mate is among them: its band and its row are on screen.
-  const othersShown =
-    othersOpen || (activeGroupId !== undefined && !frozen.active.includes(activeGroupId));
   // Under *Mine*, how many Mates the list leaves out.
   const hiddenMates =
     shown === undefined ? 0 : candidates.filter((item) => hasMate(item) && !shown(item)).length;
@@ -1824,37 +1782,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         </div>
       ) : null}
       <SidebarSelectedBand current={activeProjectId} />
-      {activeSections}
+      {/* Every project, one list: none folds behind "N other projects" (the owner, 2026-10-11). */}
+      {groupSections}
       {ungroupedSection}
-      {otherSections.length === 0 ? null : activeSections.length === 0 ? (
-        otherSections
-      ) : (
-        <div className="flex flex-col">
-          <button
-            aria-expanded={othersShown}
-            className={FOLD_ROW_CLASS}
-            data-zerops-surface="sidebar-other-projects-fold"
-            onClick={() => {
-              setOthersOpen(!othersShown);
-            }}
-            type="button"
-          >
-            <span className="flex justify-center">
-              <FoldGlyph open={othersShown} />
-            </span>
-            <span className="truncate">
-              {`${String(otherSections.length)} other ${otherSections.length === 1 ? "project" : "projects"}`}
-            </span>
-          </button>
-          <div
-            className="flex flex-col pt-3"
-            data-zerops-surface="sidebar-other-projects"
-            hidden={!othersShown}
-          >
-            {otherSections}
-          </div>
-        </div>
-      )}
       {hiddenMates === 0 || onShowEveryone === undefined ? null : (
         <div
           className="menu-fold mt-5 text-muted-foreground"
@@ -2126,6 +2056,7 @@ export function ProjectHeader({
   faces,
   line,
   openStop,
+  mates,
 }: {
   readonly group?: ZeropsGroup;
   readonly name?: string;
@@ -2160,6 +2091,8 @@ export function ProjectHeader({
   readonly line?: HeadingLineInput | undefined;
   /** A stop's own page, where one opens: the line's Details. */
   readonly openStop?: ((projectId: string) => (() => void) | undefined) | undefined;
+  /** How many Mates it holds: a folded heading says so, so a fold never reads as empty. */
+  readonly mates?: number | undefined;
 }) {
   const placeholder = group !== undefined && groupNameUnread(group);
   const { line: secondLine, landing } = useHeadingLine(line);
@@ -2231,6 +2164,20 @@ export function ProjectHeader({
             >
               {title}
             </span>
+            {/* It folds: a chevron that always says so, a quarter turn down while open (the owner,
+                2026-10-11: "why is there no chevron … indicating the project can be toggled"). */}
+            <ChevronRightIcon
+              aria-hidden="true"
+              className="zerops-project-chevron ms-1 size-4 shrink-0 text-sidebar-muted-foreground"
+            />
+            {collapsed && mates !== undefined && mates > 0 ? (
+              <span
+                className="ms-1 shrink-0 text-sm text-sidebar-muted-foreground"
+                data-zerops-surface="sidebar-project-count"
+              >
+                {`${String(mates)} ${mates === 1 ? "Mate" : "Mates"}`}
+              </span>
+            ) : null}
           </button>
         )}
         {chips === undefined || chips === null ? null : (
@@ -2390,8 +2337,7 @@ function HeadingFaceMark({ face }: { readonly face: HeadingFace }) {
 /** One place in a project's run of Mates: a Mate, one being created, or the quiet ones' fold. */
 type MateSlot<T> =
   | { readonly kind: "mate"; readonly item: T }
-  | { readonly kind: "coming"; readonly member: ZeropsGroupPendingMember }
-  | { readonly kind: "fold"; readonly count: number };
+  | { readonly kind: "coming"; readonly member: ZeropsGroupPendingMember };
 
 /** The list's keys a row hands back to the tree: j and k move between the Mates. */
 export interface MateRowKeys {
@@ -2501,44 +2447,6 @@ function focusOnceFree(element: HTMLElement, then: () => void, frames = 0): void
   element.focus({ preventScroll: true });
   element.scrollIntoView({ block: "nearest" });
   then();
-}
-
-/**
- * A row that stands in for rows folded away — a project's quiet Mates, a
- * Mate's pull requests past three: the fold's own glyph in the faces'
- * column, the count on the words' edge, 13/18 and 28 px tall like a change.
- */
-const FOLD_ROW_CLASS =
-  "menu-fold w-full min-w-0 cursor-pointer text-left text-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring";
-
-/**
- * A project's Mates untouched for a week, folded behind their count at the
- * end of its Mates — the words on the Mates' text column — and opened with a
- * press, under the fold, which stays where it is.
- */
-function QuietMatesRow({
-  count,
-  open,
-  onToggle,
-}: {
-  readonly count: number;
-  readonly open: boolean;
-  readonly onToggle: () => void;
-}) {
-  return (
-    <button
-      aria-expanded={open}
-      className={FOLD_ROW_CLASS}
-      data-zerops-surface="sidebar-quiet-mates"
-      onClick={onToggle}
-      type="button"
-    >
-      <span className="flex justify-center">
-        <FoldGlyph open={open} />
-      </span>
-      <span className="truncate">{`${String(count)} quiet ${count === 1 ? "Mate" : "Mates"}`}</span>
-    </button>
-  );
 }
 
 /** What a heading needs to move its project; see {@link ProjectHeader}'s `reorder`. */
@@ -2875,10 +2783,8 @@ function MateRowView<T extends RosterCandidate>({
         activity.kind === "approval" ||
         activity.kind === "input" ||
         activity.kind === "planReady"),
-    change:
-      change === undefined
-        ? undefined
-        : { title: change.title, mine: hqPeople?.waitsOnViewer !== false },
+    // Its open change stands in its own strip under the row, so the row's lines stay the Mate's.
+    change: undefined,
   });
   // Its change's *Review*, in the time's place: white where it waits on the viewer, quiet where
   // it is a colleague's to review.
@@ -3119,9 +3025,8 @@ function MateRowView<T extends RosterCandidate>({
           </span>
           {badge === null ? null : <MateOwnerMark seat={badge} />}
         </span>
-        {/* Two lines at Grok's measure: the name 16/22 — 600 while a result
-            is unseen — the time at its end, and one line under it at 15/21
-            (`mateRowSecond`). No dot: the face carries the state. */}
+        {/* The name 15/21 — 600 while a result is unseen — the time at its end; what was asked;
+            the last answer (`mateRowSecond`), each 14/20. No dot: the face carries the state. */}
         <span className="flex min-w-0 flex-col">
           <span className="flex h-5.5 min-w-0 items-center gap-2">
             <span
@@ -3146,52 +3051,44 @@ function MateRowView<T extends RosterCandidate>({
               ) : null}
             </span>
             {/* A slot that is always there: the time, which gives way to the
-                row's menu on hover and focus without anything moving — or, where
-                its change asks for review, the room its *Review* stands in. */}
-            {review === undefined ? (
+                row's menu on hover and focus without anything moving. A change
+                waiting for review stands in its own strip under the row. */}
+            <span
+              className={cn(
+                "relative flex h-5.5 min-w-11 shrink-0 items-center justify-end",
+                actions !== undefined &&
+                  "transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
+                armed && "opacity-0",
+              )}
+            >
               <span
-                className={cn(
-                  "relative flex h-5.5 min-w-11 shrink-0 items-center justify-end",
-                  actions !== undefined &&
-                    "transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
-                  armed && "opacity-0",
-                )}
+                className={cn("flex items-center", numbers && number !== undefined && "opacity-0")}
               >
-                <span
-                  className={cn(
-                    "flex items-center",
-                    numbers && number !== undefined && "opacity-0",
-                  )}
+                <MateSlot
+                  at={activity?.at}
+                  slot={view.slot}
+                  timestampFormat={timestampFormat}
+                  tint={tint}
+                />
+              </span>
+              {numbers && number !== undefined ? (
+                <KeyChip
+                  className="absolute end-0 top-0.5"
+                  data-zerops-surface="sidebar-mate-number"
                 >
-                  <MateSlot
-                    at={activity?.at}
-                    slot={view.slot}
-                    timestampFormat={timestampFormat}
-                    tint={tint}
-                  />
-                </span>
-                {numbers && number !== undefined ? (
-                  <KeyChip
-                    className="absolute end-0 top-0.5"
-                    data-zerops-surface="sidebar-mate-number"
-                  >
-                    {String(number)}
-                  </KeyChip>
-                ) : null}
-              </span>
-            ) : (
-              <span aria-hidden="true" className="relative flex h-5.5 w-16 shrink-0 justify-end">
-                {numbers && number !== undefined ? (
-                  <KeyChip
-                    className="absolute end-0 top-0.5"
-                    data-zerops-surface="sidebar-mate-number"
-                  >
-                    {String(number)}
-                  </KeyChip>
-                ) : null}
-              </span>
-            )}
+                  {String(number)}
+                </KeyChip>
+              ) : null}
+            </span>
           </span>
+          {/* What was asked, over the last answer (the owner, 2026-10-11): the row says both,
+              as the conversation's own top says the question. A row whose line is the ask
+              itself — nothing answered yet, a draft — says it once, below. */}
+          {askLine !== undefined &&
+          askLine.kind !== "sign-in" &&
+          ASK_OVER_SECOND.has(second.kind) ? (
+            <MateAskLine line={askLine} rises={askChanged} />
+          ) : null}
           <MateSecondLine
             askChanged={askChanged}
             askLine={askLine}
@@ -3203,21 +3100,32 @@ function MateRowView<T extends RosterCandidate>({
           />
         </span>
       </button>
-      {review === undefined ? null : (
-        <button
-          className={cn(
-            "menu-review absolute end-2 top-2.75",
-            numbers && number !== undefined && "opacity-0",
-          )}
+      {/* A change waiting for review stands under its Mate as a strip of its own, aligned with the
+          words: its title and Review — solid where it waits on the viewer, quiet where it is a
+          colleague's (the owner, 2026-10-11: one word in the time's place was "incredibly poor
+          indication of a new merge request"). */}
+      {review === undefined || change === undefined ? null : (
+        <div
+          className="menu-change"
           data-mine={review.mine ? "true" : undefined}
-          data-zerops-surface="sidebar-mate-review"
-          onClick={(event) => {
-            review.open(event.currentTarget);
-          }}
-          type="button"
+          data-zerops-surface="sidebar-mate-change"
         >
-          Review
-        </button>
+          <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+          <span className="menu-change-title">
+            {review.mine ? change.title : `${change.title} · in review`}
+          </span>
+          <button
+            className="menu-review"
+            data-mine={review.mine ? "true" : undefined}
+            data-zerops-surface="sidebar-mate-review"
+            onClick={(event) => {
+              review.open(event.currentTarget);
+            }}
+            type="button"
+          >
+            Review
+          </button>
+        </div>
       )}
       {outsideHq || retainedReply === undefined ? null : (
         <span className="absolute end-2 bottom-2.5">
@@ -3235,7 +3143,7 @@ function MateRowView<T extends RosterCandidate>({
         <span
           className={cn(
             "absolute top-3.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
-            review === undefined ? "end-2" : "end-20",
+            "end-2",
             armed && "opacity-100",
           )}
           data-zerops-surface="sidebar-mate-actions"
@@ -3317,6 +3225,14 @@ function MateRowView<T extends RosterCandidate>({
 }
 
 /** The one line under a Mate's name, as `mateRowSecond` chose it. */
+/** The second lines a row draws what was asked over: its answers, never its own ask or a coming. */
+const ASK_OVER_SECOND: ReadonlySet<MateRowSecond["kind"]> = new Set([
+  "reply",
+  "waits-on",
+  "paused",
+  "change",
+]);
+
 function MateSecondLine({
   second,
   view,
@@ -3910,19 +3826,4 @@ function PullRequestRow({
 /** A change's row, as the menu keys it and the jump box finds it: `repository#number`. */
 function changeRowKey(pull: Pick<FlowPullRequest, "repository" | "number">): string {
   return `${pull.repository}#${String(pull.number)}`;
-}
-
-/**
- * The glyph on a row that folds a list away.
- *
- * A rotating right-chevron is a tree's disclosure triangle — it says "there is
- * a level below this". These rows have no level below them: they stand in
- * place of the rows themselves, which is a different gesture, so they wear the
- * gesture's own pair. Arrows meeting fold the list shut; arrows parting open
- * it. Nothing animates: this is pressed dozens of times a day, and a
- * transition on it only ever reads as lag.
- */
-function FoldGlyph({ open }: { readonly open: boolean }) {
-  const Glyph = open ? ChevronsDownUpIcon : ChevronsUpDownIcon;
-  return <Glyph aria-hidden="true" className="size-3.5 shrink-0 text-sidebar-muted-foreground" />;
 }
