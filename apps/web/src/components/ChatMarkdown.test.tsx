@@ -1000,3 +1000,37 @@ describe("ChatMarkdown links to a change of the person's group", () => {
     official.hqAddress = undefined;
   });
 });
+
+// Engine recheck on 0.15.44: the person's "rc-*.txt or probe-*.txt" read "rc-.txt or probe-.txt"
+// with italics between: a person's message shows what they typed.
+describe("ChatMarkdown, the person's own words", () => {
+  it.each([
+    {
+      name: "a glob's asterisks stay literal",
+      text: "Remove rc-*.txt or probe-*.txt now",
+      words: "Remove rc-*.txt or probe-*.txt now",
+      emphasis: [],
+    },
+    {
+      name: "a stray asterisk stays literal",
+      text: "5*3 is 15 and 2*4 is 8",
+      words: "5*3 is 15 and 2*4 is 8",
+      emphasis: [],
+    },
+    {
+      name: "emphasis between spaces stays emphasis",
+      text: "Do it *really* soon",
+      words: "Do it really soon",
+      emphasis: ["really"],
+    },
+  ])("a person's message shows what they typed: $name", ({ text, words, emphasis }) => {
+    const document = new DOMParser().parseFromString(
+      renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={text} variant="person" />),
+      "text/html",
+    );
+    expect(document.querySelector("p")?.textContent).toBe(words);
+    expect([...document.querySelectorAll("em, strong")].map((node) => node.textContent)).toEqual(
+      emphasis,
+    );
+  });
+});
