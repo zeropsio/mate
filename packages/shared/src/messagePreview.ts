@@ -16,6 +16,8 @@ const STRONG = /(\*\*|__)(?=\S)([^\n]*?\S)\1/gu;
 const EMPHASIS = /(^|[^\w*])\*(?=\S)([^*\n]*?\S)\*(?![\w*])/gu;
 const STRIKE = /~~(?=\S)([^\n]*?\S)~~/gu;
 const CODE = /`([^`\n]+)`/gu;
+/** Where a composer's draft holds a picture, a file or a terminal's lines: marks, never words. */
+const COMPOSER_PLACES = /[\uFFFA-\uFFFC]/gu;
 const BLOCK_MARKS = /^\s{0,3}(?:#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,3}[.)]\s+)/gmu;
 const TRAILING_PUNCTUATION = /[\s,;:.!?…-]+$/u;
 // A table's rule row (`|---|:--:|`), and the pipes that frame and part its cells.
@@ -67,6 +69,7 @@ export function messageWords(markdown: string): string {
     .replace(STRIKE, "$1")
     .replace(CODE, "$1")
     .replace(BLOCK_MARKS, "")
+    .replace(COMPOSER_PLACES, "")
     .replace(/\s+/gu, " ")
     .trim();
 }
