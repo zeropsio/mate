@@ -630,6 +630,101 @@ describe("the running engine", () => {
     ),
   );
 
+  // Milo's live recheck, 2026-10-11: a restart cut a story mid-answer; the record kept it up to
+  // "…calling out orders for coal", but Claude's resumed session held the whole story, so its
+  // continuation said the story was complete and the person never saw its end.
+  const STORY =
+    "Wren kept the lamp lit through the storm, " + "and the harbour master was ".repeat(8);
+  const POINTS: ReadonlyArray<readonly [string, Step, string]> = [
+    [
+      "mid-answer carries on from the last words the person saw",
+      step((w) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.stream(thread, "m-story", "Wren kept the lamp "));
+          yield* w.agent((agent, thread) =>
+            agent.stream(thread, "m-story", "lit, calling out orders for coal"),
+          );
+        }),
+      ),
+      [
+        "The server restarted while you were writing your answer. The person has it only up to these last words:",
+        '"Wren kept the lamp lit, calling out orders for coal"',
+        "Carry on from exactly there; don't repeat what they already have.",
+      ].join("\n\n"),
+    ],
+    [
+      "mid-answer quotes only the answer's last words, whole",
+      step((w) => w.agent((agent, thread) => agent.stream(thread, "m-story", STORY))),
+      [
+        "The server restarted while you were writing your answer. The person has it only up to these last words:",
+        // Its last 200 characters, from the first whole word in them.
+        `"…master was${" and the harbour master was".repeat(7)}"`,
+        "Carry on from exactly there; don't repeat what they already have.",
+      ].join("\n\n"),
+    ],
+    [
+      "mid-thought says its answer had not started",
+      step((w) => w.agent((agent, thread) => agent.summarize(thread, "Planning the story"))),
+      "The server restarted while you were thinking, before you wrote anything more: nothing after that thinking reached the person. Continue where you left off and give your answer in full.",
+    ],
+    [
+      "between items continues where it left off",
+      step((w) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.say(thread, "Checking the deploy first."));
+          yield* w.agent((agent, thread) => agent.call(thread));
+        }),
+      ),
+      CONTINUE_TEXT,
+    ],
+  ];
+  it.effect.each(
+    POINTS.flatMap(([point, streaming, told]) =>
+      [
+        ["a restart", step((w: EngineWorld) => Effect.andThen(w.crash, w.boot))],
+        ["a kill of the server", step((w: EngineWorld) => Effect.andThen(w.kill, w.boot))],
+      ].map(([cut, cutting]) => ({
+        title: `a run ${cut as string} cut ${point}`,
+        streaming,
+        cutting: cutting as Step,
+        told,
+      })),
+    ),
+  )("$title", ({ streaming, cutting, told }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w);
+        yield* streaming(w);
+        yield* w.advance(TEXT_KEPT_EVERY_MS);
+        yield* cutting(w);
+        assert.strictEqual((yield* w.run(r(2)))?.trigger.cause, "restart-continuation");
+        assert.strictEqual(w.provider.calls.at(-1), sendLine(w, told));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect.each(
+    Array.from(DRIVERS, (driver) => ({
+      title: `a run a restart cut mid-answer carries on from the last words the person saw (${driver})`,
+      driver,
+    })),
+  )("$title", ({ driver }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world(driver);
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.stream(thread, "m-story", "orders for coal"));
+        yield* w.advance(TEXT_KEPT_EVERY_MS);
+        yield* w.kill;
+        yield* w.boot;
+        assert.include(w.provider.calls.at(-1) ?? "", '"orders for coal"');
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect.each<readonly [string, ReadonlyArray<Command>, string]>([
     ["a newer person message", [{ _tag: "Send", text: "newer" }], "a newer person message"],
     ["a Stop", [{ _tag: "Stop" }], "a Stop was asked"],

@@ -7,6 +7,8 @@
 import {
   ENGINE_EVENT_VERSION,
   type EngineEvent,
+  type ItemActor,
+  type ItemBody,
   type KnownEngineEvent,
   type RunEnd,
   type RunId,
@@ -14,7 +16,13 @@ import {
 } from "@t3tools/contracts";
 
 import type { Envelope, EventDraft } from "./command.ts";
-import { KEPT_ENDED_RUNS, contentDigest, type ConversationState, type RunRecord } from "./state.ts";
+import {
+  KEPT_ENDED_RUNS,
+  contentDigest,
+  lastSaidOf,
+  type ConversationState,
+  type RunRecord,
+} from "./state.ts";
 
 /** Stamps drafts with the header the store writes: gapless seq after the head, one time. */
 export const stampEvents = (
@@ -55,6 +63,18 @@ const withTurn = (state: ConversationState, turn: string, run: RunId): Conversat
 
 const touch = (state: ConversationState, id: RunId | null, at: number) =>
   withRun(state, id, (run) => ({ ...run, lastActivityAt: at }));
+
+/** Where the agent's own words in a run stand after one of its items said this (`lastSaid`). */
+const said = (
+  state: ConversationState,
+  id: RunId | null,
+  by: ItemActor | undefined,
+  body: ItemBody,
+): ConversationState => {
+  if (by?.kind !== "mate") return state;
+  const next = lastSaidOf(body);
+  return next === undefined ? state : withRun(state, id, (run) => ({ ...run, lastSaid: next }));
+};
 
 /** What a question asked by message asks, by question id: its answer's message names each. */
 const askedQuestions = (
@@ -109,6 +129,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         personBody: null,
         interactionMode: event.interactionMode ?? "default",
         awaitsMessage: false,
+        lastSaid: null,
       };
       const next: ConversationState = {
         ...state,
@@ -251,7 +272,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       }));
     case "ItemOpened": {
       const body = event.body;
-      const counted = withRun(state, event.runId, (run) => {
+      const counted = withRun(said(state, event.runId, event.by, body), event.runId, (run) => {
         const own =
           body.kind === "person" &&
           run.trigger.kind === "person" &&
@@ -297,7 +318,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
                 ? { ...run, personBody: body }
                 : run,
             )
-          : touch(state, event.runId, event.at);
+          : touch(said(state, event.runId, item?.by, body), event.runId, event.at);
       if (item !== undefined) {
         return {
           ...touched,
@@ -317,7 +338,11 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           };
     }
     case "ItemClosed": {
-      const touched = touch(state, event.runId, event.at);
+      const touched = touch(
+        said(state, event.runId, state.items[event.itemId]?.by, event.body),
+        event.runId,
+        event.at,
+      );
       const item = touched.items[event.itemId];
       // The Mate's own work that finished (a helper's reports to its helper): its agent takes the
       // result in a turn it opens itself, when it opens its own.

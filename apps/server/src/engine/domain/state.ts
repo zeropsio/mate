@@ -37,10 +37,10 @@ export const KEPT_ENDED_RUNS = 16;
 
 /**
  * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. One
- * above main's 12, whose open requests lacked a vault ask's key and vault, so no snapshot of
+ * above main's 14, whose runs lacked the agent's last words (`lastSaid`), so no snapshot of
  * another shape loads as this one.
  */
-export const STATE_VERSION = 14;
+export const STATE_VERSION = 15;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -85,7 +85,47 @@ export interface RunRecord {
    * input inside the turn): the person's next message goes into this turn, not after it.
    */
   readonly awaitsMessage: boolean;
+  /**
+   * The agent's latest words in this run as the person has them: what a continuation after a cut
+   * tells the agent, whose own session may hold more than reached the person. None once the agent
+   * went on to something else (a call), which the person saw whole.
+   */
+  readonly lastSaid: LastSaid | null;
 }
+
+/** Where the agent's words stood: an answer up to its last words, or a thought before any answer. */
+export type LastSaid =
+  | { readonly kind: "answer"; readonly tail: string }
+  | { readonly kind: "thinking" };
+
+/** How much of an answer's end a continuation quotes back to the agent. */
+export const LAST_SAID_TAIL = 200;
+
+/** The end of an answer as a continuation quotes it: its last words, whole words only. */
+export const tailOf = (text: string): string => {
+  const words = text.replace(/\s+/gu, " ").trim();
+  if (words.length <= LAST_SAID_TAIL) return words;
+  const end = words.slice(-LAST_SAID_TAIL);
+  const space = end.indexOf(" ");
+  return `…${space < 0 ? end : end.slice(space + 1)}`;
+};
+
+/** What an item of the agent's own says of where its words stand; undefined: it says nothing. */
+export const lastSaidOf = (body: ItemBody): LastSaid | null | undefined => {
+  switch (body.kind) {
+    case "note":
+      return body.text.trim() === ""
+        ? { kind: "thinking" }
+        : { kind: "answer", tail: tailOf(body.text) };
+    case "thought":
+      return { kind: "thinking" };
+    case "call":
+    case "work":
+      return null;
+    default:
+      return undefined;
+  }
+};
 
 export type PersonBody = Extract<ItemBody, { readonly kind: "person" }>;
 
