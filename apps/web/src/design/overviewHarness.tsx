@@ -13,6 +13,7 @@
 import type {
   FlowPullRequest,
   GroupFlow,
+  GroupFlowAddress,
   GroupFlowMate,
   GroupFlowProduction,
   GroupFlowStop,
@@ -110,7 +111,7 @@ function stop(projectId: string, name: string, over: Partial<GroupFlowStop> = {}
     state: "deployed",
     version: undefined,
     source: name === "production" ? "release" : "main",
-    route: undefined,
+    addresses: [],
     ...over,
   };
 }
@@ -196,7 +197,6 @@ function project(input: {
       version: undefined,
       note: undefined,
       brought: [],
-      route: undefined,
       services: [],
       ...input.panel,
     },
@@ -221,9 +221,13 @@ const change = (number: number, title: string, mateProjectId: string): FlowPullR
   updatedAt: undefined,
 });
 
-const live = (projectId: string, label: string, route?: string): GroupFlowProduction => ({
+const live = (
+  projectId: string,
+  label: string,
+  addresses: ReadonlyArray<GroupFlowAddress> = [],
+): GroupFlowProduction => ({
   kind: "live",
-  stop: stop(projectId, "production", { version: version(label), route }),
+  stop: stop(projectId, "production", { version: version(label), addresses }),
   line: label,
 });
 
@@ -258,7 +262,7 @@ const PROJECTS: ReadonlyArray<Project> = [
       kind: "ready-to-release",
       stop: stop("tea-prod", "production", {
         version: version("v2.4.0"),
-        route: "https://shop.acme.com",
+        addresses: [{ service: "app", url: "https://shop.acme.com" }],
       }),
       line: "",
       candidate: { tag: "v2.5.0", waiting: 1 },
@@ -269,7 +273,6 @@ const PROJECTS: ReadonlyArray<Project> = [
     panel: {
       version: "v2.4.0",
       brought: [{ key: "1", title: "#12 Gift cards at checkout", by: "Sage" }],
-      route: "https://shop.acme.com",
       services: [
         { hostname: "app", state: "up" },
         { hostname: "db", state: "up" },
@@ -294,11 +297,10 @@ const PROJECTS: ReadonlyArray<Project> = [
         },
       }),
     ],
-    production: live("docs-prod", "v0.12.0", "https://docs.acme.com"),
+    production: live("docs-prod", "v0.12.0", [{ service: "web", url: "https://docs.acme.com" }]),
     since: ago(60 * 24 * 3),
     panel: {
       version: "v0.12.0",
-      route: "https://docs.acme.com",
       services: [{ hostname: "web", state: "up" }],
     },
     actions: ["Roll back to v0.11.4", "History"],
@@ -338,7 +340,10 @@ const PROJECTS: ReadonlyArray<Project> = [
         review: true,
       },
     ],
-    production: live("ledger-prod", "v1.8.2", "https://api.acme.com"),
+    production: live("ledger-prod", "v1.8.2", [
+      { service: "api", url: "https://api.acme.com" },
+      { service: "web", url: "https://ledger.acme.com" },
+    ]),
     chip: { label: "prod", state: "failed", version: "v1.8.2" },
     panel: {
       version: "v1.8.2",
@@ -346,9 +351,9 @@ const PROJECTS: ReadonlyArray<Project> = [
         text: "Release v1.9.0 failed 14 min ago: health check timed out. v1.8.2 is still serving.",
         tone: "attention",
       },
-      route: "https://api.acme.com",
       services: [
         { hostname: "api", state: "up" },
+        { hostname: "web", state: "up" },
         { hostname: "db", state: "up" },
         { hostname: "cache", state: "up" },
       ],
@@ -395,12 +400,12 @@ const PROJECTS: ReadonlyArray<Project> = [
       kind: "releasing",
       stop: stop("guides-prod", "production", {
         version: version("v0.13.2"),
-        route: "https://guides.acme.com",
+        addresses: [{ service: "app", url: "https://guides.acme.com" }],
       }),
       line: "",
       tag: "v0.14.0",
     },
-    panel: { version: "v0.13.2", note: undefined, route: "https://guides.acme.com" },
+    panel: { version: "v0.13.2", note: undefined },
   }),
   // Busy: six Mates, the quiet ones fold past four; three people on it.
   project({
@@ -454,9 +459,9 @@ const PROJECTS: ReadonlyArray<Project> = [
     pullRequests: [
       { pull: change(41, "Spring banner", "rex"), blocked: null, state: undefined, review: true },
     ],
-    production: live("agency-prod", "v4.2.0", "https://acme-agency.com"),
+    production: live("agency-prod", "v4.2.0", [{ service: "app", url: "https://acme-agency.com" }]),
     since: "2026-09-28T09:00:00Z",
-    panel: { version: "v4.2.0", route: "https://acme-agency.com" },
+    panel: { version: "v4.2.0" },
     actions: ["Roll back to v4.1.3", "History"],
   }),
   // New: its first Mate on its way, nothing released yet.

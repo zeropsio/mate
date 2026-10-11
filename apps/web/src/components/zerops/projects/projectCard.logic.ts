@@ -14,6 +14,7 @@ import {
   type FlowPullRequest,
   type FlowReleaseRow,
   type GroupFlow,
+  type GroupFlowAddress,
   type GroupFlowMate,
   type GroupFlowProduction,
   type GroupFlowStop,
@@ -48,8 +49,8 @@ export interface PlaceLine {
   readonly words: ReadonlyArray<string>;
   /** Something is wrong there or on its way: its panel says what, and what to do. */
   readonly trouble: boolean;
-  /** Its public address, opened beside the page; `undefined` where it has none. */
-  readonly route: string | undefined;
+  /** Its public addresses, one per service it serves, opened beside the page; none where none. */
+  readonly addresses: ReadonlyArray<GroupFlowAddress>;
 }
 
 const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -181,7 +182,7 @@ function stageLine(
     projectId: stop.projectId,
     kind: "stage" as const,
     name: stop.name,
-    route: stop.route,
+    addresses: stop.addresses,
   };
   if (chip !== undefined) return { ...base, ...chipLine(chip, { since: undefined, down }) };
   switch (stop.state) {
@@ -239,7 +240,7 @@ export function placeLines(input: {
       {
         ...prod,
         projectId: undefined,
-        route: undefined,
+        addresses: [],
         dot: "none",
         words: ["Not released yet"],
         trouble: false,
@@ -251,7 +252,10 @@ export function placeLines(input: {
     input.chip === undefined
       ? flowLine(production, since)
       : chipLine(input.chip, { since, down: downOf(stop?.projectId) });
-  return [...staged, { ...prod, projectId: stop?.projectId, route: stop?.route, ...said }];
+  return [
+    ...staged,
+    { ...prod, projectId: stop?.projectId, addresses: stop?.addresses ?? [], ...said },
+  ];
 }
 
 /** What a place is called on its card: production in full, a stage by its own name, capitalised. */
@@ -489,6 +493,11 @@ export function siteOf(route: string | undefined): string | undefined {
   if (route === undefined) return undefined;
   const host = route.replace(/^[a-z]+:\/\//iu, "").replace(/\/+$/u, "");
   return host.length === 0 ? undefined : host;
+}
+
+/** The one address a place answers at, as a person reads it; none where several services serve. */
+export function soleSite(addresses: ReadonlyArray<GroupFlowAddress>): string | undefined {
+  return addresses.length === 1 ? siteOf(addresses[0]?.url) : undefined;
 }
 
 /** The people on a project, once each, in order; drawn only when more than one. */

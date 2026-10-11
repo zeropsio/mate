@@ -82,7 +82,7 @@ export const PRODUCTION_STOP = {
   tier: "production" as const,
   row: undefined,
   deployment: undefined,
-  route: undefined,
+  addresses: [],
 };
 export const STAGE_STOP = {
   ...PRODUCTION_STOP,

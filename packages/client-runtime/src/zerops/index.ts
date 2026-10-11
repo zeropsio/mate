@@ -367,6 +367,7 @@ export {
 export {
   groupFlow,
   pairPreviewRoutes,
+  placeAddresses,
   PRODUCTION_DEPLOYING,
   PRODUCTION_SETTING_UP,
   STAGE_SETTING_UP,
@@ -377,6 +378,7 @@ export {
   type GroupFlowInput,
   type GroupFlowMain,
   type GroupFlowMate,
+  type GroupFlowAddress,
   type GroupFlowPreview,
   type GroupFlowPending,
   type GroupFlowProduction,

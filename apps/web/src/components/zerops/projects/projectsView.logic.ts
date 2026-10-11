@@ -15,6 +15,7 @@ import {
   hasMate,
   projectNameInApp,
   pairPreviewRoutes,
+  placeAddresses,
   releaseContentsSummary,
   releaseInFlightReason,
   REVIEW_LABEL,
@@ -571,7 +572,7 @@ export function groupFlowInputOf(input: {
           tier,
           row,
           deployment: input.deployments?.get(member.projectId),
-          route: member.routes[0]?.url,
+          addresses: placeAddresses(member.routes),
         },
       ];
     }),

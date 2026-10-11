@@ -130,8 +130,8 @@ export interface GroupFlowStopInput {
   readonly row: EnvironmentRow | undefined;
   /** The platform's pushed answer (`ZeropsProjectFlowValue.deployments`); `undefined` unread. */
   readonly deployment: Shown<Deployment> | undefined;
-  /** Its first public route's URL. */
-  readonly route: string | undefined;
+  /** Its public addresses, one per service it serves ({@link placeAddresses}). */
+  readonly addresses: ReadonlyArray<GroupFlowAddress>;
 }
 
 export interface GroupFlowInput {
@@ -200,7 +200,8 @@ export interface GroupFlowStop {
   readonly version: DeployedVersion | undefined;
   /** What feeds it — `main` for a stage, `release` for a production; `undefined` undeclared. */
   readonly source: string | undefined;
-  readonly route: string | undefined;
+  /** Its public addresses, one per service it serves ({@link placeAddresses}). */
+  readonly addresses: ReadonlyArray<GroupFlowAddress>;
   /** The runtime answer while the flow names nothing, or while its read failed. */
   readonly readLine?: string;
   /** A runtime attempt ended without an answer, even if serving metadata is still unread. */
@@ -317,7 +318,7 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
     projectId: input.projectId,
     name: input.name,
     source: row?.source,
-    route: input.route,
+    addresses: input.addresses,
     ...(row?.birth === undefined ? {} : { birth: row.birth }),
   };
   if (deployment?.state === "known" && !deploymentReadFailed(deployment)) {
@@ -621,4 +622,31 @@ export function pairPreviewRoutes(
 function pairOf(route: ZeropsPublicRoute, held: ReadonlySet<string>): string | undefined {
   const base = /^(.+)stage$/u.exec(route.service)?.[1];
   return base !== undefined && (held.has(`${base}dev`) || held.has(base)) ? base : undefined;
+}
+
+/** A place's public address, by the service it reaches. */
+export interface GroupFlowAddress {
+  readonly service: string;
+  readonly url: string;
+}
+
+/**
+ * A stage's or production's doors, one per service it serves: each service's first route, as the
+ * conversation's list of addresses takes it — a second port is the same page, not another door.
+ * One address stood for the place, whichever service sorted first, and a production serving a
+ * backend and a storefront opened the backend (the owner's question of a preview, 2026-10-11,
+ * holds of every place: "preview of what? there are multiple services, backend, frontend, how do
+ * you know?").
+ */
+export function placeAddresses(
+  routes: ReadonlyArray<Pick<ZeropsPublicRoute, "service" | "url">>,
+): ReadonlyArray<GroupFlowAddress> {
+  const seen = new Set<string>();
+  const addresses: GroupFlowAddress[] = [];
+  for (const route of routes) {
+    if (seen.has(route.service)) continue;
+    seen.add(route.service);
+    addresses.push({ service: route.service, url: route.url });
+  }
+  return addresses;
 }

@@ -433,7 +433,7 @@ describe("listedStopComing — a production, read the way the menu reads it", ()
             ],
           }),
           deployment,
-          route: undefined,
+          addresses: [],
         },
       ],
       release: {

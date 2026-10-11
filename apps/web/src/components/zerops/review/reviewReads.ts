@@ -6,6 +6,7 @@
 import {
   buildZeropsGroupTree,
   pairPreviewRoutes,
+  placeAddresses,
   type GroupFlowPreview,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -13,6 +14,8 @@ import { useMemo } from "react";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
+
+import { soleSite } from "../projects/projectCard.logic";
 
 /** The project's name, as the menu names it. */
 export function useGroupName(groupId: string): string | undefined {
@@ -53,13 +56,16 @@ export function useMatePreviews(mateProjectId: string): ReadonlyArray<ReviewPrev
   }, [listing, mateProjectId]);
 }
 
-/** The address production answers at, its first route: "Production now … at shop.acme.com". */
+/**
+ * The address production answers at, where it serves one service: "Production now … at
+ * shop.acme.com". A production of several services is said without one (`soleSite`).
+ */
 export function useProductionHost(projectId: string | undefined): string | undefined {
   const { listing } = useZeropsCandidates();
   return useMemo(() => {
     if (projectId === undefined) return undefined;
     const row = heldCandidates(listing).rows.find((entry) => entry.project.id === projectId);
-    return row?.routes?.[0]?.host;
+    return soleSite(placeAddresses(row?.routes ?? []));
   }, [listing, projectId]);
 }
 

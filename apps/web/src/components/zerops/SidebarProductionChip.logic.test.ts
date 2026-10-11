@@ -43,7 +43,7 @@ const stop = (over: Partial<GroupFlowStop> = {}): GroupFlowStop => ({
   state: "deployed",
   version: version("v0.1.44"),
   source: "release",
-  route: undefined,
+  addresses: [],
   ...over,
 });
 

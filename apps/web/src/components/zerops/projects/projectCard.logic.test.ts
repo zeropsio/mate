@@ -1,4 +1,8 @@
-import type { GroupFlowProduction, GroupFlowStop } from "@t3tools/client-runtime/zerops";
+import {
+  placeAddresses,
+  type GroupFlowProduction,
+  type GroupFlowStop,
+} from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ProductionChip } from "../SidebarProductionChip.logic";
@@ -20,6 +24,7 @@ import {
   rollBackTarget,
   siteOf,
   sinceWords,
+  soleSite,
 } from "./projectCard.logic";
 
 const NOW = Date.parse("2026-10-10T12:00:00Z");
@@ -37,7 +42,7 @@ function stop(over: Partial<GroupFlowStop> = {}): GroupFlowStop {
       label: "v2.3.1",
     },
     source: "release",
-    route: "https://shop.acme.com/",
+    addresses: [{ service: "app", url: "https://shop.acme.com/" }],
     ...over,
   };
 }
@@ -140,17 +145,28 @@ describe("a card's places", () => {
       flow: {
         production: LIVE,
         stages: [
-          stop({ projectId: "stage", name: "stage", route: "https://stage.acme.com/" }),
-          stop({ projectId: "qa", name: "qa", state: "deploying", route: undefined }),
+          stop({
+            projectId: "stage",
+            name: "stage",
+            addresses: [{ service: "app", url: "https://stage.acme.com/" }],
+          }),
+          stop({ projectId: "qa", name: "qa", state: "deploying", addresses: [] }),
         ],
       },
       stageChips: new Map([["stage", chip({ label: "stage", version: "v2.4.0" })]]),
       nowMs: NOW,
     });
-    expect(lines.map((line) => [line.name, line.dot, line.words.join(" · "), line.route])).toEqual([
-      ["stage", "running", "Running · v2.4.0", "https://stage.acme.com/"],
-      ["qa", "releasing", "Deploying…", undefined],
-      ["prod", "running", "Running · v2.3.1", "https://shop.acme.com/"],
+    expect(
+      lines.map((line) => [
+        line.name,
+        line.dot,
+        line.words.join(" · "),
+        line.addresses.map((address) => address.url),
+      ]),
+    ).toEqual([
+      ["stage", "running", "Running · v2.4.0", ["https://stage.acme.com/"]],
+      ["qa", "releasing", "Deploying…", []],
+      ["prod", "running", "Running · v2.3.1", ["https://shop.acme.com/"]],
     ]);
   });
 });
@@ -449,6 +465,49 @@ describe("a card's header", () => {
   it("names production's address as a person reads it", () => {
     expect(siteOf("https://shop.acme.com/")).toBe("shop.acme.com");
     expect(siteOf(undefined)).toBeUndefined();
+  });
+
+  // The owner, 2026-10-11, of one preview standing for several services: "preview of what? there
+  // are multiple services, backend, frontend, how do you know?" A production serving a backend and
+  // a storefront opened whichever sorted first, the backend.
+  const served = (service: string, port: number, url: string) => ({
+    service,
+    port,
+    url,
+    host: url.replace(/^https?:\/\//u, ""),
+  });
+  it.each([
+    { case: "none", routes: [], addresses: [], site: undefined },
+    {
+      case: "one service: its address, said whole",
+      routes: [served("app", 3000, "https://shop.acme.com")],
+      addresses: [{ service: "app", url: "https://shop.acme.com" }],
+      site: "shop.acme.com",
+    },
+    {
+      case: "a backend and a storefront: a door each, by its service, and no one address",
+      routes: [
+        served("api", 9000, "https://api.acme.com"),
+        served("shop", 3000, "https://shop.acme.com"),
+      ],
+      addresses: [
+        { service: "api", url: "https://api.acme.com" },
+        { service: "shop", url: "https://shop.acme.com" },
+      ],
+      site: undefined,
+    },
+    {
+      case: "a service's second port: the same page, not another door",
+      routes: [
+        served("app", 3000, "https://app-3000.acme.dev"),
+        served("app", 8080, "https://app-8080.acme.dev"),
+      ],
+      addresses: [{ service: "app", url: "https://app-3000.acme.dev" }],
+      site: "app-3000.acme.dev",
+    },
+  ])("opens a place by each service it serves: $case", ({ routes, addresses, site }) => {
+    expect(placeAddresses(routes)).toEqual(addresses);
+    expect(soleSite(placeAddresses(routes))).toBe(site);
   });
 
   it("draws the people on it only when more than one, each once", () => {
