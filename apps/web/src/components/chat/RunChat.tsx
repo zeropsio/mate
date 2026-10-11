@@ -131,7 +131,7 @@ import { restartWords } from "../../zerops/restartWords";
 import { calmClockMs } from "./nowLineCalm.logic";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
 import { useCalmLine } from "./useCalmLine";
-import { wordsCutUnder, wordsStood } from "./wordsLanding";
+import { wordsCutUnder, wordsStood, wordsStoodUnder } from "./wordsLanding";
 import {
   SLOT_MAX_ROWS,
   slotHoldsIn,
@@ -3967,9 +3967,24 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const watchedRef = useRef(false);
   const cardEasesRef = useRef(false);
   const turnOver = !row.live || row.status?.waitingOnHelpers === true;
+  // Unless nothing in the slot becomes the answer — it came with the run's end, the slot said
+  // Thinking — then the card eases shut as anything else in it: the strip under it travels,
+  // never a 124 px cut (recheck on 0.15.45, +4:14.0).
+  const swapsRef = useRef(false);
+  const endedRef = useRef(turnOver);
   useLayoutEffect(() => {
     if (row.live && !ctx.syncing) watchedRef.current = true;
-    cardEasesRef.current = watchedRef.current && !ctx.syncing && !turnOver;
+    if (turnOver && !endedRef.current) {
+      const root = rootRef.current;
+      // Drawn outside a page (a test's renderer), it has no head to find.
+      const head =
+        typeof root?.querySelector === "function"
+          ? root.querySelector<HTMLElement>(":scope > [data-run-head]")
+          : null;
+      swapsRef.current = head !== null && wordsStoodUnder(head);
+    }
+    endedRef.current = turnOver;
+    cardEasesRef.current = watchedRef.current && !ctx.syncing && (!turnOver || !swapsRef.current);
   });
   // Its turn ends under the person's eyes: the list holds its head where it stood as last painted,
   // from this commit — before anything under it moves (`onTurnLands`) — whatever its slot said
@@ -3978,6 +3993,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // instead (`onAnswerLands`).
   const turnOverRef = useRef(turnOver);
   const headStoodRef = useRef<{ readonly top: number; readonly at: number } | null>(null);
+  // How tall the card stood as last painted while its turn went on.
+  const paintedHeightRef = useRef<number | null>(null);
   useEffect(() => {
     if (
       turnOver ||
@@ -3989,6 +4006,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       const head = rootRef.current?.querySelector<HTMLElement>(":scope > [data-run-head]");
       if (head != null)
         headStoodRef.current = { top: head.getBoundingClientRect().top, at: performance.now() };
+      paintedHeightRef.current = heightOf(rootRef.current);
       frame = requestAnimationFrame(tell);
     });
     return () => cancelAnimationFrame(frame);
@@ -4004,6 +4022,23 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     }
     if (waitCap === null && liveHeightRef.current !== null) setWaitCap(liveHeightRef.current);
   }, [turnOver, row.live, waitCap]);
+  // Capped with nothing of its slot becoming the answer, the card travels to its new height from
+  // the one it was last painted at (recheck on 0.15.45: the strip under it moved 124 px in a frame).
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const from = paintedHeightRef.current;
+    if (waitCap === null || swapsRef.current || root === null || from === null) return;
+    if (!motionAllowedNow() || typeof root.animate !== "function") return;
+    const to = heightOf(root);
+    if (to === null || from - to < 2) return;
+    root.animate(
+      [
+        { height: `${from}px`, maxHeight: `${from}px`, overflow: "hidden" },
+        { height: `${to}px`, maxHeight: `${to}px`, overflow: "hidden" },
+      ],
+      { duration: CARD_SHUT_MS, easing: "cubic-bezier(0.23, 1, 0.32, 1)" },
+    );
+  }, [waitCap]);
   const { onTurnLands } = ctx;
   useLayoutEffect(() => {
     const was = turnOverRef.current;
@@ -4531,6 +4566,17 @@ function useRunFold({
     };
   }, [conversation, run, fold, aboveRef, rootRef, onFoldWork]);
   return { fold, foldNow, settling, motionAllowed: motionAllowed() };
+}
+
+/** How long a card whose turn ended takes to stand at its new height. */
+const CARD_SHUT_MS = 220;
+
+/** Whether motion plays: never under reduced motion, nor in a hidden tab. */
+function motionAllowedNow(): boolean {
+  return (
+    !prefersReducedMotion() &&
+    (typeof document === "undefined" || document.visibilityState !== "hidden")
+  );
 }
 
 /** How long after its last painted frame a head's place still holds: the same commit, give or take. */

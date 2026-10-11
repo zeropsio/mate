@@ -31,6 +31,12 @@ export function wordsStood(id: string, where: WordsStood): void {
     byHead.set(where.head.element, { whole: where.whole, top: where.head.top, at });
 }
 
+/** Words stood under `head` just now: the slot's words become the answer landing under it. */
+export function wordsStoodUnder(head: HTMLElement): boolean {
+  const held = byHead.get(head);
+  return held !== undefined && performance.now() - held.at <= LANDS_WITHIN_MS;
+}
+
 /** The words told under `head` just now ran past the slot's cap: the person read their tail. */
 export function wordsCutUnder(head: HTMLElement): boolean {
   const held = byHead.get(head);
