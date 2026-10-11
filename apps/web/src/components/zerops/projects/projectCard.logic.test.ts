@@ -375,6 +375,21 @@ describe("a Mate on a card", () => {
     ).toEqual(expected);
   });
 
+  it.each([
+    { case: "the viewer's", by: "You", text: "You: Add a cart" },
+    { case: "a colleague's", by: "Jan", text: "Jan: Add a cart" },
+    { case: "nobody named yet", by: undefined, text: "Add a cart" },
+  ])("says whose words the ask is, as the menu row does: $case", ({ by, text }) => {
+    expect(
+      cardSecondWords({
+        second: { kind: "ask", pending: false },
+        reply: undefined,
+        askLine: { kind: "ask", text: "Add a cart", by },
+        pausedUntil: () => "1:00 PM",
+      }).text,
+    ).toBe(text);
+  });
+
   it("says the menu row's line where nothing lifts it, and its own fuller words where it is lifted", () => {
     const line = { text: "Waits on Karel", tone: "muted" as const };
     const asking = view({
