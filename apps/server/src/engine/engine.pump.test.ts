@@ -1312,6 +1312,29 @@ describe("the running engine", () => {
       ),
   );
 
+  // Milo's rechecks on 0.15.44 and 0.15.45: five kills meant to land mid-answer. On the wire, each
+  // answer came whole and its turn closed completed 2–6 s before the kill (the foreground
+  // `sleep N; pkill` had not yet fired), and the CLI logged the kill with `turnActive: false`: the
+  // model had ended its own answer mid-sentence, as asked to write "until you are cut off".
+  it.effect(
+    "a turn its agent finished before it was killed reads as worked, and nothing wakes it when nothing was lost",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w, "write about rivers until you are cut off");
+          yield* w.agent((agent, thread) => agent.say(thread, "…and eventually to try to"));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.advance(3_000);
+          yield* w.agent((agent, thread) => agent.killIdle(thread));
+          yield* w.advance(0);
+          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "completed", "agent"]);
+          assert.isUndefined(yield* w.run(r(2)));
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   // Milo's final engine run, 2026-10-11 (J9): a killed agent's background job read "stopped", as
   // if the person had stopped it, and nothing woke the Mate. Claude's turn had finished a moment
   // before the kill there; a kill mid-turn ends the run crashed as well.

@@ -673,6 +673,21 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
           yield* die(session, killed);
           yield* emit("session.exited", thread, { payload: { exitKind: "graceful" } });
         }),
+      /**
+       * Claude's CLI killed between turns (SIGKILL): its stream dies with no turn open, the error
+       * says so, what still ran is reported stopped, and the session is gone.
+       */
+      killIdle: (thread: string) =>
+        Effect.gen(function* () {
+          const session = live(thread);
+          const killed = "Claude Code was stopped by the system, most often for lack of memory.";
+          yield* emit("runtime.error", thread, {
+            payload: { message: killed, class: "process_exit" },
+          });
+          yield* stopTasks(session);
+          yield* die(session, killed);
+          yield* emit("session.exited", thread, { payload: { exitKind: "graceful" } });
+        }),
       /** The agent's process dies mid-turn, each driver as its adapter reports it. */
       crash: (thread: string) =>
         Effect.gen(function* () {
