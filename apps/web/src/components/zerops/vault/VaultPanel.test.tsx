@@ -543,6 +543,24 @@ describe("VaultPanelBody — states", () => {
     expect(button(container, "Add").disabled).toBe(true);
   });
 
+  it("says the vault holds no values only once it has been read whole, and holds the list's place until then", async () => {
+    const empty = (complete: boolean): VaultView => ({
+      status: "ready",
+      complete,
+      notLive: [],
+      scopes: VAULT_FIXTURE.scopes
+        .filter((scope) => scope.kind === "shared")
+        .map((scope) => ({ ...scope, values: [] })),
+    });
+    const reading = await mount({ view: empty(false) });
+    expect(q(reading.container, "[data-vault-skeleton]")).not.toBeNull();
+    expect(reading.container.textContent).not.toContain("No values yet.");
+    await act(async () => root?.unmount());
+    const read = await mount({ view: empty(true) });
+    expect(q(read.container, "[data-vault-skeleton]")).toBeNull();
+    expect(read.container.textContent).toContain("No values yet.");
+  });
+
   it("says it couldn't read the vault above what it kept", async () => {
     const { container } = await mount({ view: { ...VAULT_FIXTURE, status: "failed" } });
     expect(q(container, "[data-vault-failed]")?.textContent).toBe("Couldn't read the vault");

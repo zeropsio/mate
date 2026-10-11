@@ -12,7 +12,7 @@ import { isManagedDataService, isRuntimeService } from "../../zerops/topology.ts
 import { historyScope } from "../families/process.ts";
 import { projectVariablesScope, type VariableRow } from "../families/projectVariables.ts";
 import { serviceVariablesScope, type ServiceVariableValue } from "../families/serviceVariables.ts";
-import type { ServiceValue } from "../families/service.ts";
+import { servicesScope, type ServiceValue } from "../families/service.ts";
 import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
@@ -157,12 +157,18 @@ export const vault: Projection<VaultKey, VaultView> = {
   keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
   derive: (read, { orgId, projectId }) => {
     const sharedScope = projectVariablesScope(orgId, projectId);
-    const servicesScope = serviceVariablesScope(orgId, projectId);
-    const coverage = [read.coverage(sharedScope), read.coverage(servicesScope)];
+    const variablesScope = serviceVariablesScope(orgId, projectId);
+    // The organization's services place each service's values; until they are read, an app's own
+    // values have nowhere to stand and the vault would read empty.
+    const coverage = [
+      read.coverage(sharedScope),
+      read.coverage(variablesScope),
+      read.coverage(servicesScope(orgId)),
+    ];
     const status: VaultView["status"] =
       failing(read, linkKeys.zerops(orgId)) ||
       failing(read, sharedScope) ||
-      failing(read, servicesScope)
+      failing(read, variablesScope)
         ? "failed"
         : coverage.includes("unknown")
           ? "unread"
@@ -178,7 +184,7 @@ export const vault: Projection<VaultKey, VaultView> = {
     const sharedValues = sharedRows.filter((row) => isUser(row) && !isMateOwned(row.key));
 
     const rowsByService = new Map<string, Held[]>();
-    for (const id of read.members(servicesScope).ids) {
+    for (const id of read.members(variablesScope).ids) {
       const fact = read.fact("serviceVariable", id);
       if (fact.kind !== "known") continue;
       const list = rowsByService.get(fact.value.serviceId) ?? [];

@@ -310,7 +310,15 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
     </div>
   );
 
-  if (view.status === "unread" || shared === undefined) {
+  // Until the vault has been read whole, an empty list proves nothing: hold the list's place
+  // rather than say there are no values.
+  const holding =
+    view.status === "unread" ||
+    shared === undefined ||
+    (view.status === "ready" &&
+      !view.complete &&
+      view.scopes.every((scope) => scope.values.length === 0));
+  if (holding) {
     return (
       <div
         className="vault-panel flex h-full min-h-0 flex-col bg-background"

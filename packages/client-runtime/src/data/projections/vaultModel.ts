@@ -22,13 +22,14 @@ export type VaultScopeRef =
 /** One project's vaults, what reads them, and what is not live yet. */
 export interface VaultView {
   /**
-   * `unread` until both the project's and its services' variables have answered once; `failed`
+   * `unread` until the project's variables, its services' variables and the organization's
+   * services (which place each service's values) have answered once; `failed`
    * where either read was refused or could not be read (what an earlier answer said is kept and
    * still shown); `ready` otherwise. Never inferred from missing rows.
    */
   readonly status: "unread" | "ready" | "failed";
   /**
-   * Both reads answered whole: every row was read. Until then an absence proves nothing — no
+   * Every read answered whole: every row was read. Until then an absence proves nothing — no
    * `unread` or `missing` is claimed, and an impact never says nothing reads a value.
    */
   readonly complete: boolean;
