@@ -6,7 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { Dialog } from "~/components/ui/dialog";
 
 import { CrewResumeBody, CrewStartBody } from "./CrewRunDialog";
-import { crewRunDraft } from "./CrewRunDialog.logic";
+import { crewPlanOf, crewRunDraft } from "./CrewRunDialog.logic";
 
 /** The visible text, tags and style sheets stripped, whitespace folded. */
 const textOf = (html: string) =>
@@ -18,6 +18,8 @@ const textOf = (html: string) =>
     .trim();
 
 const RUN = crewSnapshotFixture().run!;
+/** A crew on Claude. */
+const PLAN = crewPlanOf([{ id: "claudeAgent", agent: "claude-code" }], undefined);
 
 function renderStart(
   hasLead: boolean,
@@ -30,6 +32,7 @@ function renderStart(
         canAct
         error={null}
         hasLead={hasLead}
+        plan={PLAN}
         spendBlocker={spendBlocker}
         initial={crewRunDraft(lastRun, hasLead)}
         mateName="Fen"
@@ -46,6 +49,7 @@ function renderResume(run: CrewRun) {
       <CrewResumeBody
         canAct
         error={null}
+        plan={PLAN}
         spendBlocker={null}
         onCancel={() => undefined}
         onResume={() => undefined}

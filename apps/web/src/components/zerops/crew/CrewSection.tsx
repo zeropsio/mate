@@ -13,6 +13,7 @@
  * every member's: in the composer's place, why and the one way out, in the
  * composer's own height.
  */
+import { useServerConfigs } from "~/state/entities";
 import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CREW_LOCK_ACTION,
@@ -45,6 +46,7 @@ import type { CrewmateMenuItemId } from "./CrewmateMenu.logic";
 import { CrewPress } from "./CrewParts";
 import { CrewRows } from "./CrewRows";
 import { CREW_ORIGIN } from "./CrewRows.logic";
+import { crewPlanOf } from "./CrewRunDialog.logic";
 import { CrewTellComposer, CrewTellLocked } from "./CrewTellComposer";
 
 export function CrewSectionEmpty({
@@ -143,7 +145,17 @@ export interface CrewSectionProps {
 export function CrewSection(props: CrewSectionProps) {
   const { snapshot, view, access } = props;
   const run = snapshot.run;
-  const mode = crewModeLine({ run, workingCount: view.workingCount, tasks: snapshot.board.tasks });
+  const providers = useServerConfigs().get(props.environmentId)?.providers;
+  const plan = crewPlanOf(
+    snapshot.crewmates.map((crewmate) => crewmate.login),
+    providers,
+  );
+  const mode = crewModeLine({
+    run,
+    workingCount: view.workingCount,
+    tasks: snapshot.board.tasks,
+    plan,
+  });
   const engineError =
     snapshot.lastError === null ? null : crewNamingTheMate(snapshot.lastError, props.mateName);
   const lead = view.lead;

@@ -62,6 +62,8 @@ import {
   crewResumeBudgetHint,
   crewResumeTimeHint,
   crewResumeUsageHint,
+  crewPlanWords,
+  crewUsageStopWord,
   crewRowVerbLine,
   crewRunsOnWord,
   crewServedWord,
@@ -213,12 +215,13 @@ describe("the mode line's words", () => {
     [
       "the usage stop",
       { reason: "usage", usagePercent: 83.4 },
-      "Stopped working on its own: your Claude plan is at 83 %",
+      // No crewmate's agent named: no plan's name (per driver below).
+      "Stopped working on its own: your plan is at 83 %",
     ],
     [
       "the usage stop, before the plan's first reading",
       { reason: "usage", usagePercent: null },
-      "Stopped working on its own: your Claude plan is at 80 %",
+      "Stopped working on its own: your plan is at 80 %",
     ],
     [
       "a refused turn",
@@ -266,7 +269,7 @@ describe("the run dialog's words", () => {
     expect(crewResumeBudgetHint(20, 20)).toBe("It spent $20.00 of $20. Give it more, or no limit.");
     expect(crewResumeTimeHint(8)).toBe("Its 8 hours are up. Give it more time, or no limit.");
     expect(crewResumeTimeHint(1)).toBe("Its hour is up. Give it more time, or no limit.");
-    expect(crewResumeUsageHint(81)).toBe(
+    expect(crewResumeUsageHint(81, "your Claude plan")).toBe(
       "Your Claude plan is at 81 %. Let it go further, or turn the stop off.",
     );
   });
@@ -1011,5 +1014,32 @@ describe("a crew closed to the viewer (D6)", () => {
 
   it("offers the conversation's one way out", () => {
     expect(CREW_LOCK_ACTION).toBe(AGENT_OWNERSHIP_RECOVERY_LABEL);
+  });
+});
+
+describe("the plan the usage stop names", () => {
+  it.each([
+    ["Claude", ["claudeAgent"], "your Claude plan"],
+    ["Codex", ["codex"], "your ChatGPT plan"],
+    ["Cursor", ["cursor"], "your Cursor plan"],
+    ["OpenCode", ["opencode"], "your plan"],
+    ["Grok", ["grok"], "your plan"],
+    ["Antigravity", ["antigravity"], "your plan"],
+    ["two Claude crewmates", ["claudeAgent", "claudeAgent"], "your Claude plan"],
+    ["Claude beside Codex", ["claudeAgent", "codex"], "your plan"],
+    ["a crewmate whose agent is not read yet", ["claudeAgent", undefined], "your plan"],
+    ["no crewmate", [], "your plan"],
+  ] as const)("names the agent's own plan: %s", (_, drivers, plan) => {
+    const words = crewPlanWords(drivers);
+    expect(words).toBe(plan);
+    expect(crewUsageStopWord(80, words)).toBe(
+      `Stop before it uses more than 80 % of ${plan}'s limit`,
+    );
+    expect(crewResumeUsageHint(81, words)).toBe(
+      `${plan[0]!.toUpperCase()}${plan.slice(1)} is at 81 %. Let it go further, or turn the stop off.`,
+    );
+    expect(
+      crewStoppedWords({ ...crewSnapshotFixture().run!, reason: "usage", usagePercent: 80 }, words),
+    ).toBe(`Stopped working on its own: ${plan} is at 80 %`);
   });
 });

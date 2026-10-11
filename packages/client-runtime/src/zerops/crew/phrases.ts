@@ -118,6 +118,7 @@ const STOPPED = "Stopped working on its own";
  */
 export function crewStoppedWords(
   run: Pick<CrewRun, "reason" | "reasonDetail" | "spentUsd" | "usagePercent" | "options">,
+  plan: string = NEUTRAL_PLAN,
 ): string {
   const { budgetUsd, timeLimitHours, stopAtUsagePercent } = run.options;
   switch (run.reason) {
@@ -138,7 +139,7 @@ export function crewStoppedWords(
     }
     case "usage": {
       const percent = Math.round(run.usagePercent ?? stopAtUsagePercent ?? 0);
-      return `${STOPPED}: your Claude plan is at ${percent} %`;
+      return `${STOPPED}: ${plan} is at ${percent} %`;
     }
     case "refused":
       return run.reasonDetail === null || run.reasonDetail.trim() === ""
@@ -185,7 +186,6 @@ export const CREW_RUN_WORDS = {
   more: "more",
   hoursMore: "hours more",
   usageFurther: "Stop before it uses more than",
-  usageOf: "% of your Claude plan's limit",
   whenDone: "When a piece of work is done",
   waitForMe: "Wait for my review",
   leadMayStart: "The lead may start its own tasks without asking",
@@ -194,9 +194,33 @@ export const CREW_RUN_WORDS = {
   cancel: "Cancel",
 } as const;
 
+const NEUTRAL_PLAN = "your plan";
+
+/**
+ * The plan whose limit the usage stop watches, by the crewmates' drivers: the one plan they all
+ * run on — Claude's, ChatGPT's for Codex, Cursor's — else, across agents or for an agent that names
+ * no plan, "your plan". `undefined`: a crewmate whose agent is not read yet.
+ */
+export function crewPlanWords(drivers: ReadonlyArray<string | undefined>): string {
+  const [first, ...rest] = drivers;
+  if (first === undefined || rest.some((driver) => driver !== first)) return NEUTRAL_PLAN;
+  return PLAN_OF_DRIVER[first] ?? NEUTRAL_PLAN;
+}
+
+const PLAN_OF_DRIVER: Readonly<Record<string, string>> = {
+  claudeAgent: "your Claude plan",
+  codex: "your ChatGPT plan",
+  cursor: "your Cursor plan",
+};
+
+const capitalized = (words: string): string => `${words[0]!.toUpperCase()}${words.slice(1)}`;
+
 /** The usage stop, at its percent. */
-export const crewUsageStopWord = (percent: number): string =>
-  `Stop before it uses more than ${percent} % of your Claude plan's limit`;
+export const crewUsageStopWord = (percent: number, plan: string = NEUTRAL_PLAN): string =>
+  `Stop before it uses more than ${percent} % of ${plan}'s limit`;
+
+/** After the usage stop's percent in Keep going: whose limit it is. */
+export const crewUsageOfWord = (plan: string = NEUTRAL_PLAN): string => `% of ${plan}'s limit`;
 
 /** "When a piece of work is done": each choice, and the line under it. */
 export function crewLandingWords(
@@ -237,8 +261,8 @@ export const crewResumeTimeHint = (hours: number): string =>
     : `Its ${hours} hours are up. Give it more time, or no limit.`;
 
 /** Keeping going after the usage stop: raise it, or turn it off. */
-export const crewResumeUsageHint = (percent: number): string =>
-  `Your Claude plan is at ${percent} %. Let it go further, or turn the stop off.`;
+export const crewResumeUsageHint = (percent: number, plan: string = NEUTRAL_PLAN): string =>
+  `${capitalized(plan)} is at ${percent} %. Let it go further, or turn the stop off.`;
 
 /** Keeping going after any other stop: within the limits it had. */
 export function crewKeepGoingLine(

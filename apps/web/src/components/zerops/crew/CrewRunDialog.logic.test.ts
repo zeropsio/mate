@@ -7,6 +7,7 @@ import {
   crewResumeCommand,
   crewResumeDraft,
   crewResumeLimit,
+  crewPlanOf,
   crewRunDraft,
   crewSpendBlocker,
   crewStartCommand,
@@ -350,5 +351,49 @@ describe("Keep going: more of what stopped it", () => {
     const run = { ...stopped("time"), elapsedMs: 8 * 3_600_000 + 1 };
     const command = crewResumeCommand({ ...crewResumeDraft(run), moreText: "0.01" }, run);
     expect(command).toMatchObject({ timeLimitHours: 8.02 });
+  });
+});
+
+describe("crewPlanOf", () => {
+  const provider = (instanceId: string, driver: string) =>
+    ({ instanceId, driver }) as unknown as ServerProvider;
+  const providers = [
+    provider("claudeAgent", "claudeAgent"),
+    provider("work", "claudeAgent"),
+    provider("codex", "codex"),
+    provider("cursor", "cursor"),
+    provider("opencode", "opencode"),
+    provider("grok", "grok"),
+    provider("antigravity", "antigravity"),
+  ];
+  it.each([
+    {
+      name: "Claude, by its default login",
+      logins: [{ id: "claudeAgent" }],
+      plan: "your Claude plan",
+    },
+    {
+      name: "Claude, by a Mate login of its own",
+      logins: [{ id: "work" }],
+      plan: "your Claude plan",
+    },
+    { name: "Codex", logins: [{ id: "codex" }], plan: "your ChatGPT plan" },
+    { name: "Cursor", logins: [{ id: "cursor" }], plan: "your Cursor plan" },
+    { name: "OpenCode", logins: [{ id: "opencode" }], plan: "your plan" },
+    { name: "Grok", logins: [{ id: "grok" }], plan: "your plan" },
+    { name: "Antigravity", logins: [{ id: "antigravity" }], plan: "your plan" },
+    {
+      name: "Claude beside Codex",
+      logins: [{ id: "claudeAgent" }, { id: "codex" }],
+      plan: "your plan",
+    },
+    {
+      name: "before the agents are read: the login's own agent",
+      logins: [{ id: "elsewhere", agent: "codex" as const }],
+      providers: undefined,
+      plan: "your ChatGPT plan",
+    },
+  ])("the usage stop names the crew's plan: $name", ({ logins, plan, ...rest }) => {
+    expect(crewPlanOf(logins, "providers" in rest ? rest.providers : providers)).toBe(plan);
   });
 });

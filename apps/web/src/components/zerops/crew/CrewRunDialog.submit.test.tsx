@@ -36,6 +36,7 @@ function openStart(): Array<CrewCommand> {
           mateName="Fen"
           onCancel={() => undefined}
           onStart={(command) => sent.push(command)}
+          plan="your Claude plan"
           spendBlocker={null}
         />
       </Dialog>,

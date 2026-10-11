@@ -16,6 +16,7 @@ import { environmentThreadShells } from "../state/threads";
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import { useUiStateStore } from "../uiStateStore";
 import { matesActivityOf } from "./mateActivity";
+import { threadOnScreenAtom } from "./threadOnScreen";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { threadAgentActivity } from "./agentActivity";
 
@@ -119,6 +120,8 @@ export const mateActivityAtom = Atom.family((projectId: string) =>
         return at === undefined ? [] : [[key, at]];
       }),
     );
+    // The conversation open and visible, when it is one of this Mate's: seen as it lands.
+    const onScreen = get(threadOnScreenAtom);
     // Its last reading: what its run's clock holds on to (`runClockSince`).
     const before = Option.getOrUndefined(get.self<ZeropsAgentActivity | undefined>());
     const activity = matesActivityOf(
@@ -131,6 +134,7 @@ export const mateActivityAtom = Atom.family((projectId: string) =>
         sockets: socket === null ? new Map() : new Map([[projectId, socket.id]]),
         standing: socket?.standing ? new Set([socket.id]) : new Set<EnvironmentId>(),
         lastVisitedAtById: visits,
+        onScreen: onScreen !== null && keys.has(onScreen) ? onScreen : null,
         limits: new Map([...keys].map((key) => [key, get(mateLimitAtom(key))])),
       },
       before === undefined ? undefined : new Map([[projectId, before]]),

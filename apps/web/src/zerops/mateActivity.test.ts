@@ -811,3 +811,85 @@ it("direct and HQ attention keep the same restart item even when conversation wo
     expect(mateStatus(continued)).toBeNull();
   }
 });
+
+describe("matesActivityOf — the conversation the person is looking at", () => {
+  const ON_SCREEN = "env-vera:t1";
+  const FINISHED: EnvironmentThreadShell = {
+    ...WORKING,
+    latestTurn: { ...WORKING.latestTurn!, state: "completed", completedAt: DONE },
+    updatedAt: DONE,
+  };
+  // Its socket, the chat last visited before this turn ended.
+  const socket = {
+    sockets: new Map([["p-vera", VERA_ENV]]),
+    standing: new Set([VERA_ENV]),
+    lastVisitedAtById: { [ON_SCREEN]: ASKED },
+  };
+
+  it.each([
+    {
+      name: "HQ counts it unseen, before HQ hears it was seen",
+      input: { attention: attention(said({ results: [] }), true, 1), onScreen: ON_SCREEN },
+      kind: "idle",
+    },
+    {
+      name: "HQ counts it unseen, another conversation on screen",
+      input: { attention: attention(said(), true, 1), onScreen: "env-vera:t2" },
+      kind: "done",
+    },
+    {
+      name: "HQ counts it unseen, nothing on screen",
+      input: { attention: attention(said(), true, 1), onScreen: null },
+      kind: "done",
+    },
+    {
+      name: "its socket's result, before the visit is marked",
+      input: { overviews: null, threads: [FINISHED], ...socket, onScreen: ON_SCREEN },
+      kind: "idle",
+    },
+    {
+      name: "its socket's result, off screen",
+      input: { overviews: null, threads: [FINISHED], ...socket, onScreen: null },
+      kind: "done",
+    },
+  ] satisfies ReadonlyArray<{
+    name: string;
+    input: Partial<MatesActivityInput>;
+    kind: string;
+  }>)(
+    "a result the person is looking at never shows as unseen, even before HQ hears it was seen: $name",
+    ({ input, kind }) => {
+      const activity = read(input);
+      expect([activity?.kind, activity?.unread]).toEqual([kind, kind === "done"]);
+    },
+  );
+
+  it("a turn's end and the next turn, on screen, never show done between them", () => {
+    const steps = [
+      attention(said({ working: 1 }), true, 0),
+      // The turn ended: HQ counts its result unseen before the client's seen reaches it.
+      attention(said({ working: 0 }), true, 1),
+      attention(said({ working: 0 }), true, 0),
+      attention(said({ working: 1 }), true, 0),
+    ];
+    let previous: ReadonlyMap<string, ZeropsAgentActivity> | undefined;
+    const kinds = steps.map((step) => {
+      previous = matesActivityOf(
+        {
+          projectIds: ["p-vera"],
+          attention: step,
+          overviews: new Map([["p-vera", VERA]]),
+          hqCurrent: true,
+          threads: [],
+          sockets: new Map(),
+          standing: new Set(),
+          lastVisitedAtById: {},
+          onScreen: ON_SCREEN,
+        },
+        previous,
+      );
+      return previous.get("p-vera")?.kind;
+    });
+    expect(kinds).toEqual(["working", "idle", "idle", "working"]);
+  });
+});
