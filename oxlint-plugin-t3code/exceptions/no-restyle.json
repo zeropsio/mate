@@ -2048,14 +2048,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "Literal",
-    "fingerprint": "<Button> text-muted-foreground in \"text-muted-foreground\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
     "kind": "Literal",
     "fingerprint": "<MenuTrigger> data-popup-open:bg-sidebar-row-active in \"relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground\"",
