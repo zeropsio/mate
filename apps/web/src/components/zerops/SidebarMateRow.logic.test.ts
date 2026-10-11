@@ -1886,9 +1886,23 @@ describe("mateRowAskOver — what was asked, over a row's answer", () => {
       over: { kind: "draft", text: "and a filter", ask: "Add a search box" },
     },
     {
-      case: "never twice where its line is the ask itself",
+      // A row keeps its three lines from its first question on: the answer's place holds the dots
+      // while the answer is on its way (the owner, 2026-10-11: the menu "jumps in height").
+      case: "over its answer on its way",
       askLine: ask,
       second: { kind: "ask", pending: true },
+      over: ask,
+    },
+    {
+      case: "over the answer's place, nothing on its way yet",
+      askLine: ask,
+      second: { kind: "ask", pending: false },
+      over: ask,
+    },
+    {
+      case: "never over its own words where nothing was asked",
+      askLine: { kind: "nothing-asked" },
+      second: { kind: "ask", pending: false },
       over: undefined,
     },
     {

@@ -9,7 +9,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsProjectFlow } from "@t3tools/client-runtime/data";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
-import type { GroupFlowStop, ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { deployActivatedAt, type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { useNavigate } from "@tanstack/react-router";
@@ -43,12 +43,13 @@ import {
   type StopServing,
 } from "../SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "./PlacePanel";
-import { CardMateLiftActions } from "./ProjectCards";
+import { CardChanges, CardMateLiftActions } from "./ProjectCards";
 import {
   broughtBy,
+  CARD_CHANGES,
+  cardChanges,
   cardPeople,
   rollBackTarget,
-  sinceWords,
   type CardMateReading,
   type PlaceLine,
 } from "./projectCard.logic";
@@ -155,36 +156,6 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     return { chip, stageChips, down, since };
   };
 
-  /** A stage in production's panel: its dot, what it runs, how far ahead, or what is wrong. */
-  const stageLine = (
-    entry: ProjectsFlowGroup<T>,
-    stop: GroupFlowStop,
-    places: ReturnType<typeof placesOf>,
-  ) => {
-    const chip = places.stageChips.get(stop.projectId);
-    const state = chip?.state ?? (stop.state === "failed" ? "failed" : "ok");
-    const [dot, note]: readonly [PlaceLine["dot"], string | undefined] =
-      state === "down"
-        ? ["down", "Down"]
-        : state === "failed"
-          ? ["failed", "Deploy failed"]
-          : state === "releasing"
-            ? ["releasing", "Deploying…"]
-            : state === "stopped"
-              ? ["none", "Stopped"]
-              : state === "empty"
-                ? ["none", "Not deployed yet"]
-                : ["running", undefined];
-    return {
-      projectId: stop.projectId,
-      name: stop.name,
-      dot,
-      version: stop.version?.label,
-      ahead: dot === "running" ? entry.flow.main.notLive : undefined,
-      note,
-    };
-  };
-
   const renderPlacePanel = (entry: ProjectsFlowGroup<T>, line: PlaceLine): ReactNode => {
     const places = placesOf(entry);
     const { read, chip } = places;
@@ -220,10 +191,10 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
           : undefined;
     const releases = read?.releasesKnown === true ? read.releases : [];
     const back = line.kind === "production" && !line.trouble ? rollBackTarget(releases) : undefined;
+    const down = places.down.get(line.projectId ?? "") ?? [];
     const model: PlacePanelModel = {
       line,
       version: stop?.version?.label,
-      sub: line.kind === "production" ? sinceWords(places.since, nowMs) : undefined,
       note,
       brought:
         line.kind === "production" && !line.trouble
@@ -232,15 +203,15 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
               title: `#${String(pull.number)} ${pull.title}`,
             }))
           : [],
-      stages:
-        line.kind === "production"
-          ? entry.flow.stages.map((stage) => stageLine(entry, stage, places))
-          : [],
       route: stop?.route,
-      runs:
-        item?.services === undefined || item.services.hostnames.length === 0
-          ? undefined
-          : item.services.hostnames.join(" · "),
+      services: (item?.services?.statuses ?? []).map((service) => ({
+        hostname: service.hostname,
+        state: down.includes(service.hostname)
+          ? ("down" as const)
+          : service.status === "STOPPED"
+            ? ("stopped" as const)
+            : ("up" as const),
+      })),
     };
     const problem = menu?.fix;
     const openStop =
@@ -291,18 +262,57 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
             Roll back to {back}
           </button>
         )}
-        <button
-          className="ov-btn"
-          onClick={() => {
-            void navigate({ to: "/group/$groupId/flow", params: { groupId } });
-          }}
-          type="button"
-        >
-          History
-        </button>
+        {/* Its releases, where it has any: nothing released has no history to open. */}
+        {releases.length === 0 ? null : (
+          <button
+            className="ov-btn"
+            onClick={() => {
+              void navigate({ to: "/group/$groupId/flow", params: { groupId } });
+            }}
+            type="button"
+          >
+            History
+          </button>
+        )}
       </>
     ) : null;
     return <PlacePanel actions={actions} model={model} />;
+  };
+
+  /**
+   * A project's latest changes (`cardChanges`): its open ones, read for every project, and — while
+   * the card holds its detail — the merged ones, each with where it went. A click opens its review.
+   */
+  const renderChanges = (entry: ProjectsFlowGroup<T>): ReactNode => {
+    const read = flows.get(entry.group.groupId);
+    const changes = cardChanges({
+      open: entry.flow.pullRequests.map((change) => change.pull),
+      merged: read?.merged ?? [],
+      releases: read?.releasesKnown === true ? read.releases : [],
+      stage: entry.flow.stages.length > 0,
+      production: entry.flow.production.kind !== "absent",
+      limit: CARD_CHANGES,
+    });
+    if (changes.length === 0) return null;
+    const mateName = (projectId: string) =>
+      entry.flow.mates.find((mate) => mate.projectId === projectId)?.name;
+    return (
+      <CardChanges
+        changes={changes}
+        mateName={mateName}
+        onOpen={(change, from) => {
+          openReview(
+            {
+              kind: "change",
+              groupId: entry.group.groupId,
+              repository: change.pull.repository,
+              number: change.pull.number,
+            },
+            { from },
+          );
+        }}
+      />
+    );
   };
 
   /** The people on a project — its Mates' owners — beside its name, where more than one. */
@@ -325,7 +335,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     );
   };
 
-  return { cardPlaces, renderPlacePanel, renderCardPeople };
+  return { cardPlaces, renderPlacePanel, renderChanges, renderCardPeople };
 }
 
 /** "Ada Lovelace" → "AL"; one name → its first letter. */

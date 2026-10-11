@@ -15,9 +15,10 @@ const REGISTRATIONS = 10;
 
 describe("H: hosted client budgets", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    // App detail scales with opened panels; adding cards nobody opened must add no history reads.
+    // App detail scales with the cards in view (the owner, 2026-10-11, asked each card for its
+    // "quick history of latest PRs"): applications nobody can see add no history reads.
     it.effect(
-      "Projects holds no collapsed app detail as the organization grows; one open row holds one scope",
+      "Projects holds app detail only for the cards in view as the organization grows",
       () =>
         Effect.gen(function* () {
           for (const count of [1, 16])
@@ -36,19 +37,16 @@ describe("H: hosted client budgets", () => {
                 yield* b.when.projectsReady;
                 yield* b.when.projectsAre(count);
                 yield* b.when.browserSettled;
-                expect(b.measure.appDetails()).toEqual([]);
-                yield* b.when.togglesProject("Shop");
+                // Shop's is the one card; the stage-only applications are lines, and hold none.
                 yield* b.when.appDetailsAre(["Shop"]);
                 expect(b.measure.appDetails()).toHaveLength(1);
-                yield* b.when.togglesProject("Shop");
-                yield* b.when.appDetailsAre([]);
                 yield* s.then.noExternalNetwork;
               }),
             );
         }),
     );
 
-    // Leaving Projects releases the opened panel; Usage's source migration owns its RPC budget.
+    // Leaving Projects releases the cards' detail; Usage's source migration owns its RPC budget.
     it.effect("opening Usage releases Projects detail demand", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installBudget]);
@@ -56,7 +54,6 @@ describe("H: hosted client budgets", () => {
         yield* b.given.mates(["Ada"]);
         yield* s.given.signedIn;
         yield* b.when.projectsReady;
-        yield* b.when.togglesProject("Shop");
         yield* b.when.appDetailsAre(["Shop"]);
         yield* b.when.opensUsage;
         yield* b.when.appDetailsAre([]);
@@ -64,7 +61,7 @@ describe("H: hosted client budgets", () => {
       }),
     );
 
-    // A neighbor's task does not mutate an unchanged row or cause an app-detail read.
+    // A neighbor's task does not mutate an unchanged row or cause another app-detail read.
     it.effect("an unrelated Mate attention update leaves the other Projects row unchanged", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installBudget]);
@@ -75,6 +72,7 @@ describe("H: hosted client budgets", () => {
         yield* s.given.signedIn;
         yield* b.when.projectsReady;
         yield* b.when.browserSettled;
+        const held = b.measure.appDetails();
         const other = s.appIds.get("Other")!;
         const before = yield* Effect.promise(() =>
           s.page.$eval(
@@ -97,7 +95,7 @@ describe("H: hosted client budgets", () => {
           ),
         );
         expect(after).toBe(before);
-        expect(b.measure.appDetails()).toEqual([]);
+        expect(b.measure.appDetails()).toEqual(held);
         yield* s.then.noExternalNetwork;
       }),
     );

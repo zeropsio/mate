@@ -5,6 +5,7 @@ import type { Deployment } from "./flow/deployment.ts";
 import {
   groupFlow,
   pairPreviewRoute,
+  pairPreviewRoutes,
   type GroupFlowInput,
   type GroupFlowPending,
   type GroupFlowStopInput,
@@ -122,7 +123,7 @@ function creating(over: Partial<GroupFlowPending> = {}): GroupFlowPending {
 /** `fsadfdasfsa`: a production that runs nothing, and #4 merged to main and not live. */
 const FSADFDASFSA = group({
   groupId: "fsadfdasfsa",
-  mates: [{ projectId: "p-juno", name: "Juno", preview: undefined, waiting: false, talked: true }],
+  mates: [{ projectId: "p-juno", name: "Juno", previews: [], waiting: false, talked: true }],
   merged: [pull({ number: 4, title: "Mate: weatherdev", merged: true, mateProjectId: "p-juno" })],
   stops: [
     {
@@ -154,7 +155,7 @@ const FSADFDASFSA = group({
 /** `sm-fixture`: #1 mergeable, a stage on e014b0e, no production, code on main. */
 const SM_FIXTURE = group({
   groupId: "sm-fixture",
-  mates: [{ projectId: "p-wren", name: "Wren", preview: undefined, waiting: false, talked: false }],
+  mates: [{ projectId: "p-wren", name: "Wren", previews: [], waiting: false, talked: false }],
   pullRequests: [pull()],
   stops: [
     {
@@ -182,7 +183,7 @@ const TESTZCP = group({
     {
       projectId: "p-rune",
       name: "Rune",
-      preview: "https://appstage-1a2b-3000.prg1.zerops.app",
+      previews: [{ service: "app", url: "https://appstage-1a2b-3000.prg1.zerops.app" }],
       waiting: false,
       talked: true,
     },
@@ -193,15 +194,15 @@ const TESTZCP = group({
 /** `sm-birth-1`: one Mate nobody has spoken to yet. */
 const SM_BIRTH_1 = group({
   groupId: "sm-birth-1",
-  mates: [{ projectId: "p-uma", name: "Uma", preview: undefined, waiting: false, talked: false }],
+  mates: [{ projectId: "p-uma", name: "Uma", previews: [], waiting: false, talked: false }],
 });
 
 /** `zerops-mate`: two Mates, a stage project with no services in it, no production. */
 const ZEROPS_MATE = group({
   groupId: "zerops-mate",
   mates: [
-    { projectId: "p-pia", name: "Pia", preview: undefined, waiting: false, talked: true },
-    { projectId: "p-cleo", name: "Cleo", preview: undefined, waiting: false, talked: false },
+    { projectId: "p-pia", name: "Pia", previews: [], waiting: false, talked: true },
+    { projectId: "p-cleo", name: "Cleo", previews: [], waiting: false, talked: false },
   ],
   stops: [
     {
@@ -301,7 +302,9 @@ describe("groupFlow", () => {
       notLive: 0,
       notLiveAtLeast: false,
     });
-    expect(flow.mates[0]?.preview).toBe("https://appstage-1a2b-3000.prg1.zerops.app");
+    expect(flow.mates[0]?.previews).toEqual([
+      { service: "app", url: "https://appstage-1a2b-3000.prg1.zerops.app" },
+    ]);
     expect(flow.nextStep).toEqual({
       kind: "none",
       text: "Nothing needs you here.",
@@ -337,7 +340,7 @@ describe("groupFlow", () => {
 
   const WREN_WAITING = {
     ...SM_FIXTURE,
-    mates: [{ projectId: "p-wren", name: "Wren", preview: undefined, waiting: true, talked: true }],
+    mates: [{ projectId: "p-wren", name: "Wren", previews: [], waiting: true, talked: true }],
   };
   const STAGE_FAILED = {
     ...SM_FIXTURE,
@@ -380,7 +383,7 @@ describe("groupFlow", () => {
       {
         projectId: "p-wren",
         name: "Wren",
-        preview: undefined,
+        previews: [],
         waiting: true,
         failed: true,
         talked: true,
@@ -505,7 +508,7 @@ describe("groupFlow", () => {
           {
             projectId: "p-juno",
             name: "Juno",
-            preview: undefined,
+            previews: [],
             waiting: false,
             talked: false,
             working: true,
@@ -822,9 +825,7 @@ describe("groupFlow", () => {
   // Wren has been spoken to, so an empty flow asks for no first task.
   const LANDED = {
     ...SM_FIXTURE,
-    mates: [
-      { projectId: "p-wren", name: "Wren", preview: undefined, waiting: false, talked: true },
-    ],
+    mates: [{ projectId: "p-wren", name: "Wren", previews: [], waiting: false, talked: true }],
     pullRequests: [],
   };
 
@@ -848,9 +849,7 @@ describe("groupFlow", () => {
 describe("groupFlow — creations under way", () => {
   const LANDED = {
     ...SM_FIXTURE,
-    mates: [
-      { projectId: "p-wren", name: "Wren", preview: undefined, waiting: false, talked: true },
-    ],
+    mates: [{ projectId: "p-wren", name: "Wren", previews: [], waiting: false, talked: true }],
     pullRequests: [],
   };
 
@@ -860,11 +859,11 @@ describe("groupFlow — creations under way", () => {
       pending: [creating()],
     });
     expect(flow.mates).toEqual([
-      { projectId: "p-uma", name: "Uma", preview: undefined, waiting: false, talked: false },
+      { projectId: "p-uma", name: "Uma", previews: [], waiting: false, talked: false },
       {
         projectId: "p-new",
         name: "Todo - Vera",
-        preview: undefined,
+        previews: [],
         waiting: false,
         talked: false,
         coming: {},
@@ -1210,5 +1209,45 @@ describe("pairPreviewRoute", () => {
     },
   ])("is $case", ({ routes, hostnames, preview }) => {
     expect(pairPreviewRoute(routes, hostnames)?.service).toBe(preview);
+  });
+});
+
+describe("pairPreviewRoutes", () => {
+  const route = (service: string) => ({
+    service,
+    port: 3000,
+    url: `https://${service}-1a2b-3000.prg1.zerops.app`,
+    host: `${service}-1a2b-3000.prg1.zerops.app`,
+  });
+
+  it.each([
+    {
+      case: "one, by its pair's name",
+      routes: [route("appdev"), route("appstage")],
+      hostnames: ["appdev", "appstage", "db"],
+      previews: ["app"],
+    },
+    {
+      case: "a frontend and a backend as two, each by its own name",
+      routes: [route("webstage"), route("apistage"), route("webdev")],
+      hostnames: ["webdev", "webstage", "apidev", "apistage"],
+      previews: ["web", "api"],
+    },
+    {
+      case: "a service with two public routes once",
+      routes: [route("appstage"), { ...route("appstage"), port: 8080 }],
+      hostnames: ["appdev", "appstage"],
+      previews: ["app"],
+    },
+    {
+      case: "none, for a service merely named like a stage half",
+      routes: [route("backstage")],
+      hostnames: ["backstage"],
+      previews: [],
+    },
+  ])("offers a Mate's previews: $case", ({ routes, hostnames, previews }) => {
+    expect(pairPreviewRoutes(routes, hostnames).map((preview) => preview.service)).toEqual(
+      previews,
+    );
   });
 });

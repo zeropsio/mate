@@ -41,32 +41,32 @@ export function newProjectOffered(input: {
   return mateEnvironmentsEmptyReason(input.candidates) !== "no-mate";
 }
 
-/** The air above each project (round 5): 28 px from the last row of an open one above it. */
-const PROJECT_AIR = 28;
 /**
- * Under a folded project's heading, 4 px: folded projects read as one list of names, 36 px name
- * to name, not islands 60 px apart (the owner, 2026-10-11: "spaces between collapsed projects …
- * is absolutely huge").
+ * The air below each project, open or folded alike: 16 px. Folded names read as one list, and
+ * opening one adds only its rows — never air to make room for them (the owner, 2026-10-11: folded
+ * projects 60 px apart were "absolutely huge", and squeezed to 36 px every open was "layout
+ * shifting on expand to create the space … it needs to be a balance"). At 12 a project's last
+ * line stood 1.7 times as far from the next heading as a heading from its first Mate ("still
+ * items squeezed together"); at 16 a project reads as one group, twice apart.
  */
-const FOLDED_AIR = 4;
+const PROJECT_AIR = 16;
 /** The list's own end, below its last project: 4 px. */
 const LIST_END = 4;
 
 /**
- * The room below a project, in px: 28 px under an open project's rows to the next heading, 4 px
- * under a folded heading — and the list's last project ends the same distance from the menu's
- * foot as from the project above it, the list's own 4 px end counted in. The room is the
- * project's own, below it, so a heading's own fold never moves it.
+ * The room below a project, in px: the same air under an open project's rows as under a folded
+ * heading — and the list's last project ends the same distance from the menu's foot, the list's
+ * own 4 px end counted in. The room is the project's own, below it, so a heading's own fold
+ * never moves it.
  */
 export function projectRoom(at: { readonly open: boolean; readonly last: boolean }): number {
-  const air = at.open ? PROJECT_AIR : FOLDED_AIR;
-  return at.last ? air - LIST_END : air;
+  return at.last ? PROJECT_AIR - LIST_END : PROJECT_AIR;
 }
 
 /** The dot on a folded heading's face: needs you, unread, or stopped on an error. */
 export type HeadingFaceDot = "attention" | "unread" | "failed";
 
-/** One of a folded project's busy Mates, as its heading shows it. */
+/** One of a folded project's Mates, as its heading shows it. */
 export interface HeadingFace {
   readonly projectId: string;
   readonly name: string;
@@ -81,24 +81,27 @@ export interface HeadingFace {
   readonly known: boolean;
 }
 
-/** The most urgent first: needing you, then stopped on an error, finished unseen, at work. */
-const RANK: Record<HeadingFaceDot | "working", number> = {
+/**
+ * The most urgent first: needing you, then stopped on an error, finished unseen, at work, and
+ * the quiet ones last.
+ */
+const RANK: Record<HeadingFaceDot | "working" | "quiet", number> = {
   attention: 0,
   failed: 1,
   unread: 2,
   working: 3,
+  quiet: 4,
 };
 
-/** At most this many faces on one heading. */
-export const HEADING_FACES = 3;
+/** At most this many faces on one heading; past them, how many more. */
+export const HEADING_FACES = 4;
 
 /**
- * Who a folded project's heading shows (M15): its Mates that need you, are
- * working, stopped on an error or finished while nobody looked — the most
- * urgent first, the list's order kept within each, three at most — each as
- * its row draws it (`mateRowView`): the same face, the same dot. A heading's
- * lone amber dot said "something here needs you" without saying who, and
- * beside a globe it read as production in trouble.
+ * Who a folded project's heading shows (M15): every one of its Mates, each as its row draws it
+ * (`mateRowView`) — the same face, the same dot — the most urgent first, the list's order kept
+ * within each. Never its count in words: "1 Mate" said nobody's state (the owner, 2026-10-11:
+ * "why say '1 mate' instead of showing their avatars and their states?"). The heading draws the
+ * first `HEADING_FACES` and says how many more.
  */
 export function headingFaces(
   mates: ReadonlyArray<{
@@ -113,18 +116,12 @@ export function headingFaces(
     readonly known: boolean;
   }>,
 ): ReadonlyArray<HeadingFace> {
-  const busy = mates.flatMap(({ state, ...mate }) =>
-    mate.dot === undefined && state !== "working" ? [] : [mate],
-  );
-  return busy
-    .map((face, index) => ({ face, index }))
-    .toSorted(
-      (left, right) =>
-        RANK[left.face.dot ?? "working"] - RANK[right.face.dot ?? "working"] ||
-        left.index - right.index,
-    )
-    .slice(0, HEADING_FACES)
-    .map(({ face }) => face);
+  const rank = (mate: (typeof mates)[number]) =>
+    RANK[mate.dot ?? (mate.state === "working" ? "working" : "quiet")];
+  return mates
+    .map((mate, index) => ({ mate, index }))
+    .toSorted((left, right) => rank(left.mate) - rank(right.mate) || left.index - right.index)
+    .map(({ mate: { state: _state, ...face } }) => face);
 }
 
 /** A reveal waiting for its row: asked for, and whether a draw has passed since. */

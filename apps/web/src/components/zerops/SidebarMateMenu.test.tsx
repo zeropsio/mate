@@ -58,7 +58,7 @@ const items = (props: Partial<Parameters<typeof MateMenuItems>[0]> = {}) =>
     <Menu>
       <MateMenuItems
         actions={ACTIONS}
-        appUrl="https://app.example"
+        apps={[{ service: "app", url: "https://app.example" }]}
         onOpenMate={() => {}}
         onRename={() => {}}
         shortcuts
@@ -129,11 +129,22 @@ describe("MateMenuItems — a Mate's own menu", () => {
 
   it("opens the app as a link where there is one, and says there is none where there is not", () => {
     expect(items()).toMatch(/<a[^>]*href="https:\/\/app\.example"[^>]*target="_blank"/u);
-    const none = items({ appUrl: undefined });
+    const none = items({ apps: [] });
     expect(none).not.toContain("<a ");
     expect(none).toMatch(
       /data-disabled=""[^>]*data-zerops-mate-menu="open-app"|data-zerops-mate-menu="open-app"[^>]*data-disabled=""/u,
     );
+  });
+
+  it("opens each of a frontend and a backend by its own name", () => {
+    const html = items({
+      apps: [
+        { service: "web", url: "https://web.example" },
+        { service: "api", url: "https://api.example" },
+      ],
+    });
+    expect(html).toMatch(/href="https:\/\/web\.example"[^>]*>Open web/u);
+    expect(html).toMatch(/href="https:\/\/api\.example"[^>]*>Open api/u);
   });
 
   it("puts Delete last, in red, a line apart from everything else — the stop included", () => {

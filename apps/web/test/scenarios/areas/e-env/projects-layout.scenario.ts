@@ -73,20 +73,19 @@ describe("Projects layout", () => {
               });
             }
           }
-          // Production's panel keeps its release history in reach: the way back, and History.
+          // Production keeps its release history in reach on the card itself: the way back, and
+          // History — no click to find them (the owner, 2026-10-11).
           await page.setViewport({ width: 1786, height: 1000 });
-          await page.locator(placeSelector).click();
-          const panel = await page.waitForSelector('[data-zerops-surface="place-panel"]', {
-            visible: true,
-          });
+          const panelSelector = `${placeSelector} [data-zerops-surface="place-panel"]`;
+          const panel = await page.waitForSelector(panelSelector, { visible: true });
           await page.waitForFunction(
-            () =>
-              document
-                .querySelector('[data-zerops-surface="place-panel"]')
-                ?.textContent?.includes("Roll back to v0.1.0") === true,
+            (selector) =>
+              document.querySelector(selector)?.textContent?.includes("Roll back to v0.1.0") ===
+              true,
+            {},
+            panelSelector,
           );
           expect(await panel!.evaluate((element) => element.textContent)).toContain("History");
-          await page.keyboard.press("Escape");
           await page.locator("[data-zerops-project-scope] ::-p-aria(New project)").click();
           await page.waitForSelector('[role="dialog"]', { visible: true });
           expect(await page.$eval('[role="dialog"]', (element) => element.textContent)).toContain(

@@ -116,6 +116,7 @@ import {
   defaultAgentForRole,
   hasMate,
   type FlowPullRequest,
+  type GroupFlowPreview,
   projectNameInApp,
   readZeropsMembership,
   type EnvironmentCreationStepProgress,
@@ -473,7 +474,7 @@ function SignedOutNotice({ message }: { readonly message: string }) {
 /** The overview's title row: "Overview", and New project on its end. The list keeps itself current. */
 export function ZeropsProjectsHeader() {
   return (
-    // Its row stands on the menu's top row (the search), not a bar's height below it.
+    // Its row stands on the menu's logo row, centre to centre, not a bar's height below it.
     <div
       className="-mt-1.5 flex items-center justify-between gap-3"
       data-zerops-project-scope="true"
@@ -1912,11 +1913,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     candidate: ZeropsCandidatePresentation,
     {
       layout,
-      preview,
+      previews,
       review,
     }: {
       readonly layout: "card" | "row";
-      readonly preview: string | undefined;
+      readonly previews: ReadonlyArray<GroupFlowPreview>;
       readonly review?: FlowPullRequest | undefined;
     },
   ): React.ReactNode => {
@@ -1995,6 +1996,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           conversationsRead={conversationsRead(candidate)}
           flow={tags.groupId === undefined ? undefined : projectFlow.flows.get(tags.groupId)}
           groupId={tags.groupId}
+          previews={previews}
           key={candidate.key}
           name={name}
           onOpen={select}
@@ -2022,7 +2024,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               menu={renderEnvironmentMenu(candidate, tags, true, menuActions)}
               name={name}
               onSelect={select}
-              preview={preview}
               shape={shape}
               snippet={live?.subject === undefined ? undefined : live.snippet}
               time={live?.subject === undefined ? undefined : formatRelativeTimeLabel(live.at)}
@@ -2042,7 +2043,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         menu={renderEnvironmentMenu(candidate, tags, true, [])}
         name={name}
         onSelect={select}
-        preview={preview}
         shape={shape}
         tint={tint}
       />
@@ -2057,16 +2057,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    * person (`useEnvironmentOffers`).
    */
   const renderGroupMenu = ({ group, flow }: ProjectsFlowGroup<ZeropsCandidatePresentation>) => {
-    // Each Mate's preview, where its pair has one: a link out, so the menu's, not the row's.
+    // Each Mate's previews, one per service and named by it: links out, so the menu's, not the
+    // row's. Its Mate is named where the project has more than one with a preview.
     const previews = flow.mates.flatMap((mate) =>
-      mate.preview === undefined ? [] : [{ name: mate.name, url: mate.preview }],
+      mate.previews.map((preview) => ({ mate: mate.name, ...preview })),
     );
+    const oneMate = new Set(previews.map((preview) => preview.mate)).size <= 1;
     return (
       <ZeropsProjectRenameMenu
         actions={[
           ...previews.map((preview) => ({
-            id: `preview:${preview.name}`,
-            label: previews.length === 1 ? "Open preview" : `Open ${preview.name}’s preview`,
+            id: `preview:${preview.mate}:${preview.service}`,
+            label: oneMate
+              ? `Open ${preview.service} preview`
+              : `Open ${preview.mate}’s ${preview.service} preview`,
             onSelect: () => {
               window.open(preview.url, "_blank", "noopener,noreferrer");
             },
@@ -2272,6 +2276,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         }}
         cardPlaces={overview.cardPlaces}
         renderPlacePanel={overview.renderPlacePanel}
+        renderChanges={overview.renderChanges}
         renderCardPeople={overview.renderCardPeople}
         renderReleaseVerb={({ group, flow }) => {
           const { production } = flow;

@@ -6,6 +6,7 @@ import type { MateRowView } from "../SidebarMateRow.logic";
 import { pull } from "./flowTestFixtures";
 import {
   broughtBy,
+  cardChanges,
   cardMateReading,
   cardSecondWords,
   cardPeople,
@@ -14,7 +15,6 @@ import {
   foldWords,
   mateChangeForReview,
   placeLines,
-  previewLinks,
   readyLine,
   readyTitle,
   rollBackTarget,
@@ -152,29 +152,6 @@ describe("a card's places", () => {
       ["qa", "releasing", "Deploying…", undefined],
       ["prod", "running", "Running · v2.3.1", "https://shop.acme.com/"],
     ]);
-  });
-
-  it.each([
-    { case: "nothing where no Mate has one", mates: [{ name: "Eddy" }], links: [] },
-    {
-      case: "one Mate's by its address",
-      mates: [{ name: "Eddy", preview: "https://shop-3000.prg1.zerops.app/" }],
-      links: [["shop-3000.prg1.zerops.app", "https://shop-3000.prg1.zerops.app/"]],
-    },
-    {
-      case: "several by their Mates' names",
-      mates: [
-        { name: "Eddy", preview: "https://a.prg1.zerops.app" },
-        { name: "Rosa" },
-        { name: "Fern", preview: "https://b.prg1.zerops.app" },
-      ],
-      links: [
-        ["Eddy", "https://a.prg1.zerops.app"],
-        ["Fern", "https://b.prg1.zerops.app"],
-      ],
-    },
-  ])("opens its Mates' previews: $case", ({ mates, links }) => {
-    expect(previewLinks(mates).map((link) => [link.label, link.url])).toEqual(links);
   });
 });
 
@@ -494,5 +471,93 @@ describe("production's panel", () => {
   it("offers going back to the newest release before it that may be rolled back to", () => {
     expect(rollBackTarget(releases)).toBe("v2.2.0");
     expect(rollBackTarget([release("v1.0.0", "2026-09-01T00:00:00Z", "live")])).toBeUndefined();
+  });
+});
+
+describe("a card's latest changes", () => {
+  const release = (tag: string, taggedAt: string, standing?: "live" | "deploy-failed") => ({
+    tag,
+    taggedAt,
+    standing,
+  });
+  // Newest first, as the flow lists them.
+  const releases = [
+    release("v1.0.4", "2026-10-08T10:00:00Z", "live"),
+    release("v1.0.3", "2026-10-01T10:00:00Z"),
+  ];
+  const merged = (number: number, mergedAt: string) =>
+    pull({ number, title: `Change ${String(number)}`, merged: true, mergedAt });
+
+  // The owner (2026-10-11): "quick history of latest PRs" — open ones with what stops them, and
+  // merged ones with where they went.
+  it.each([
+    {
+      case: "an open change: what stops it, or that it is ready",
+      open: [pull({ number: 7, title: "Open one", updatedAt: "2026-10-10T09:00:00Z" })],
+      merged: [],
+      stage: true,
+      rows: [["Open one", true, "Ready to merge"]],
+    },
+    {
+      case: "merged since the release production runs: on stage",
+      open: [],
+      merged: [merged(6, "2026-10-09T09:00:00Z")],
+      stage: true,
+      rows: [["Change 6", false, "On stage"]],
+    },
+    {
+      case: "merged since the release production runs, and no stage: not released yet",
+      open: [],
+      merged: [merged(6, "2026-10-09T09:00:00Z")],
+      stage: false,
+      rows: [["Change 6", false, "Not released yet"]],
+    },
+    {
+      case: "merged where nothing is released anywhere: merged",
+      open: [],
+      merged: [merged(6, "2026-10-09T09:00:00Z")],
+      stage: false,
+      production: false,
+      rows: [["Change 6", false, "Merged"]],
+    },
+    {
+      case: "merged before a release: in the release that took it",
+      open: [],
+      merged: [merged(5, "2026-10-07T09:00:00Z"), merged(4, "2026-09-30T09:00:00Z")],
+      stage: true,
+      rows: [
+        ["Change 5", false, "In v1.0.4"],
+        ["Change 4", false, "In v1.0.3"],
+      ],
+    },
+    {
+      case: "open ones first, then the merged, newest first, five at most",
+      open: [
+        pull({ number: 9, title: "Older open", updatedAt: "2026-10-09T09:00:00Z" }),
+        pull({ number: 10, title: "Newer open", updatedAt: "2026-10-10T09:00:00Z" }),
+      ],
+      merged: [
+        merged(3, "2026-09-20T09:00:00Z"),
+        merged(6, "2026-10-09T09:00:00Z"),
+        merged(5, "2026-10-07T09:00:00Z"),
+        merged(4, "2026-09-30T09:00:00Z"),
+      ],
+      stage: true,
+      rows: [
+        ["Newer open", true, "Ready to merge"],
+        ["Older open", true, "Ready to merge"],
+        ["Change 6", false, "On stage"],
+        ["Change 5", false, "In v1.0.4"],
+        ["Change 4", false, "In v1.0.3"],
+      ],
+    },
+  ])("says $case", ({ open, merged: landed, stage, production = true, rows }) => {
+    expect(
+      cardChanges({ open, merged: landed, releases, stage, production, limit: 5 }).map((change) => [
+        change.pull.title,
+        change.open,
+        change.words,
+      ]),
+    ).toEqual(rows);
   });
 });

@@ -14,7 +14,7 @@ import {
   flowVerbLabel,
   hasMate,
   projectNameInApp,
-  pairPreviewRoute,
+  pairPreviewRoutes,
   releaseContentsSummary,
   releaseInFlightReason,
   REVIEW_LABEL,
@@ -367,7 +367,7 @@ export interface GroupMemberFacts {
       }
     | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  /** The developer's services by hostname — the pair `pairPreviewRoute` looks for. */
+  /** The developer's services by hostname — the pairs `pairPreviewRoutes` looks for. */
   readonly hostnames: ReadonlyArray<string>;
 }
 
@@ -546,7 +546,7 @@ export function groupFlowInputOf(input: {
             {
               projectId: member.projectId,
               name: member.mate.name,
-              preview: pairPreviewRoute(member.routes, member.hostnames)?.url,
+              previews: pairPreviewRoutes(member.routes, member.hostnames),
               waiting: member.mate.waiting,
               ...(member.mate.failed === true ? { failed: true } : {}),
               ...(member.mate.working === true ? { working: true } : {}),
