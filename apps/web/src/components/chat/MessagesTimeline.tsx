@@ -1270,7 +1270,21 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     let until = 0;
     let last = 0;
     let opener: HTMLElement | null = null;
+    // Opened at the conversation's end, the end stays in sight: what opens grows upward, the last
+    // row held where it stands (recheck on 0.15.45: an opened card pushed its answer under the
+    // composer). Opened farther up, the opener stands where it was clicked.
+    let keepsEnd = false;
+    // Held as it lays out, before it paints: a step a frame late let the end dip 81 px.
+    let holdsEnd: ResizeObserver | null = null;
+    const keepEnd = () => {
+      const viewport = listRef.current?.getScrollableNode();
+      if (!viewport || !keepsEnd || performance.now() > until) return;
+      const end = viewport.scrollHeight - viewport.clientHeight - followRoomRef.current;
+      if (Math.abs(end - viewport.scrollTop) > 0.5) scrollOwn(viewport, end);
+    };
     const stop = () => {
+      holdsEnd?.disconnect();
+      holdsEnd = null;
       cancelAnimationFrame(frame);
       frame = 0;
       opener = null;
@@ -1292,6 +1306,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       }
       frame = requestAnimationFrame(step);
       if (opener.getAttribute("aria-expanded") !== "true") return;
+      if (keepsEnd) {
+        keepEnd();
+        return;
+      }
       const region = regionOf(opener);
       if (region === null) return;
       const box = viewport.getBoundingClientRect();
@@ -1324,7 +1342,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           : null;
       if (button === null || button.getAttribute("aria-expanded") === "true") return;
       opener = button;
+      keepsEnd = followingEndRef.current;
       until = performance.now() + REVEAL_FOR_MS;
+      holdsEnd?.disconnect();
+      holdsEnd = null;
+      const row = button.closest<HTMLElement>("[data-timeline-row-id]");
+      if (keepsEnd && row !== null && typeof ResizeObserver !== "undefined") {
+        holdsEnd = new ResizeObserver(keepEnd);
+        holdsEnd.observe(row);
+      }
       last = 0;
       if (frame === 0) frame = requestAnimationFrame(step);
     };
