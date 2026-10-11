@@ -102,60 +102,40 @@ describe("C: panel to report rooms", () => {
               wire.history("Inspect the report room", "room-run");
               wire.run("room-run", "running");
               for (let index = 0; index < 12; index++)
-                wire.activity(
-                  "task.started",
-                  `Helper ${index}`,
-                  {
-                    taskId: `helper-${index}`,
-                    agentKind: "agent",
-                    title: `Helper ${index}`,
-                    role: "explorer",
-                  },
-                  "room-run",
-                );
+                wire.work(`helper-${index}`, "running", { title: `Helper ${index}` }, "room-run");
               const picture = (id: string) =>
-                wire.tool(
+                wire.call(
                   id,
-                  "tool.completed",
+                  "done",
                   {
                     toolName: "Read",
                     input: { file_path: `/tmp/${id}.png` },
                     imagePath: `/tmp/${id}.png`,
                   },
                   "room-run",
-                  { itemType: "image_view" },
+                  { step: "look" },
                 );
               const checkedPage = () =>
-                wire.tool(
+                wire.call(
                   "checked-page",
-                  "tool.completed",
+                  "done",
                   {
                     toolName: "mcp__zerops__zerops_browser",
                     input: { commands: [["open", "https://store.example/orders"]] },
-                    zerops: {
+                  },
+                  "room-run",
+                  {
+                    step: "mcp",
+                    result: {
                       toolName: "zerops_browser",
                       resultText: '{"url":"https://store.example/orders","steps":[]}',
                     },
                   },
-                  "room-run",
-                  { itemType: "mcp_tool_call" },
                 );
               const settle = () => {
-                for (let index = 0; index < 12; index++)
-                  wire.activity(
-                    "task.completed",
-                    `Helper ${index} finished`,
-                    {
-                      taskId: `helper-${index}`,
-                      agentKind: "agent",
-                      title: `Helper ${index}`,
-                      role: "explorer",
-                      status: "completed",
-                    },
-                    "room-run",
-                  );
-                wire.message("room-answer", "assistant", "The report is ready", "room-run");
-                wire.run("room-run", "completed", null, "room-answer");
+                for (let index = 0; index < 12; index++) wire.work(`helper-${index}`, "completed");
+                wire.say("The report is ready", "room-run");
+                wire.run("room-run", "completed");
               };
               if (mode === "first layout") {
                 checkedPage();

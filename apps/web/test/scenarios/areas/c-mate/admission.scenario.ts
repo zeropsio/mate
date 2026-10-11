@@ -21,15 +21,9 @@ const setup = Effect.gen(function* () {
   Object.assign(wire.mate.config.environment.capabilities, { agentLoginCode: true });
   wire.history();
   wire.claudeLoginFacts("signed-out");
+  wire.engine.assign({ instanceId: "claudeAgent", model: "sonnet", driver: "claudeAgent" });
+  wire.run("previous-turn", "running");
   wire.run("previous-turn", "completed");
-  wire.snapshot({
-    modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "sonnet" },
-    session: {
-      ...wire.mate.thread.session!,
-      providerName: "claudeAgent",
-      providerInstanceId: ProviderInstanceId.make("claudeAgent"),
-    },
-  });
   return { s, chat, wire };
 });
 
@@ -47,13 +41,6 @@ describe("C: agent admission", () => {
       () =>
         Effect.gen(function* () {
           const { s, chat, wire } = yield* setup;
-          wire.snapshot({
-            session: {
-              ...wire.mate.thread.session!,
-              providerName: "claudeAgent",
-              providerInstanceId: ProviderInstanceId.make("claudeAgent"),
-            },
-          });
           wire.providers(
             wire.mate.config.providers.map((provider) =>
               provider.driver !== "claudeAgent"
@@ -100,15 +87,17 @@ describe("C: agent admission", () => {
           yield* chat.then.noText("Ada needs a Claude sign-in to continue.");
           yield* chat.then.text("Update Claude to a supported version.");
           yield* chat.then.noText("Claude Code is not signed in on this project.");
-          wire.run(
-            "refused",
-            "error",
-            "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
-          );
+          const expired =
+            "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.";
+          wire.run("refused", "running");
+          wire.run("refused", "error", expired);
           yield* reportConversation(
             s.drivers,
             "Ada",
-            { session: wire.mate.thread.session, latestTurn: wire.mate.thread.latestTurn },
+            {
+              session: { status: "error", lastError: expired },
+              latestTurn: wire.latestTurn(),
+            },
             "failed",
           );
           yield* Effect.promise(() =>
@@ -212,10 +201,7 @@ describe("C: agent admission", () => {
             ...wire.mate.config.providers.filter((provider) => provider.driver !== "claudeAgent"),
             { ...claude, instanceId, displayName: "Claude API key · work" },
           ]);
-          wire.snapshot({
-            modelSelection: { instanceId, model: "sonnet" },
-            session: { ...wire.mate.thread.session!, providerInstanceId: instanceId },
-          });
+          wire.engine.assign({ instanceId, model: "sonnet", driver: "claudeAgent" });
           Object.assign(wire.mate.config.settings, {
             providerInstances: {
               [instanceId]: {
@@ -289,12 +275,8 @@ describe("C: agent admission", () => {
           yield* chat.when.visit("/env-Ada/thread-Ada");
           yield* chat.then.noText("Manage API key");
           yield* chat.when.send("Continue the same conversation");
-          expect(
-            yield* Effect.promise(() => wire.waitForCommand("thread.turn.start")),
-          ).toMatchObject({
-            modelSelection: { instanceId: "claudeAgent-work" },
-            message: { text: "Continue the same conversation" },
-          });
+          yield* Effect.promise(() => wire.waitForTurn("Continue the same conversation"));
+          expect(wire.engine.header.agent?.instanceId).toBe("claudeAgent-work");
           expect(wire.startedLogins).toHaveLength(0);
           yield* s.then.noExternalNetwork;
         }),
@@ -311,17 +293,12 @@ describe("C: agent admission", () => {
         wire.providers(
           wire.mate.config.providers.filter((provider) => provider.driver === "claudeAgent"),
         );
-        wire.snapshot({
-          modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "sonnet" },
-          session: null,
-          latestTurn: null,
-        });
-        wire.turnRefusal = "Claude's sign-in has expired. Sign Claude in again.";
-        wire.turnAdmissionRefusal = { loginId: "claude-code", reason: "expired-login" };
+        wire.engine.assign({ instanceId: "claudeAgent", model: "sonnet", driver: "claudeAgent" });
+        wire.engine.admissionRefusal = "Claude's sign-in has expired. Sign Claude in again.";
         yield* s.given.signedIn;
         yield* chat.when.open();
         yield* chat.when.attemptSend("Start work");
-        yield* Effect.promise(() => wire.waitForCommand("thread.turn.start"));
+        yield* Effect.promise(() => wire.waitForOp("send"));
         yield* chat.then.text("Claude was signed out.");
         wire.authSnapshot = {
           ...wire.auth(),
@@ -421,16 +398,12 @@ describe("C: agent admission", () => {
             providerInstances: { [instanceId]: { driver: "claudeAgent", config: {} } },
           });
           wire.providers([{ ...native, instanceId, displayName: "Claude Code · before" }]);
-          wire.snapshot({
-            modelSelection: { instanceId, model: "sonnet" },
-            session: { ...wire.mate.thread.session!, providerInstanceId: instanceId },
-          });
-          wire.turnRefusal = "The refused login had its old label: before.";
-          wire.turnAdmissionRefusal = { loginId: instanceId, reason: "missing-sign-in" };
+          wire.engine.assign({ instanceId, model: "sonnet", driver: "claudeAgent" });
+          wire.engine.admissionRefusal = "The refused login had its old label: before.";
           yield* s.given.signedIn;
           yield* chat.when.open();
           yield* chat.when.send("Work on this login");
-          yield* Effect.promise(() => wire.waitForCommand("thread.turn.start"));
+          yield* Effect.promise(() => wire.waitForOp("send"));
           yield* chat.then.text("The refused login had its old label: before.");
           wire.authSnapshot = {
             ...wire.auth(),
@@ -456,7 +429,7 @@ describe("C: agent admission", () => {
               )
               .toEqual(["Ada needs a Claude Code · after sign-in to continue.Sign in"]),
           );
-          expect(wire.mate.thread.session?.providerInstanceId).toBe("claudeAgent-work");
+          expect(wire.engine.header.agent?.instanceId).toBe("claudeAgent-work");
           yield* s.then.noExternalNetwork;
         }),
     );

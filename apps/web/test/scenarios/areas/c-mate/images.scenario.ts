@@ -85,22 +85,18 @@ describe("C: conversation images", () => {
         yield* s.given.project("Ada", { mate: true });
         const chat = mateChat(s);
         const wire = chat.fixture();
-        wire.message(
-          "pictures",
-          "user",
+        wire.history(
           "[Picture 1]\n[Picture 2]\n[Picture 3]\nWatch these pictures while you work",
           "stream",
-          {
-            attachments: ["one", "two", "three"].map((id) => ({
-              type: "image" as const,
-              id,
-              name: `${id}.png`,
-              mimeType: "image/png",
-              sizeBytes: bytes.length,
-              width: 160,
-              height: 80,
-            })),
-          },
+          ["one", "two", "three"].map((id) => ({
+            type: "image" as const,
+            id,
+            name: `${id}.png`,
+            mimeType: "image/png",
+            sizeBytes: bytes.length,
+            width: 160,
+            height: 80,
+          })),
         );
         const work = {
           toolName: "Read",
@@ -108,22 +104,20 @@ describe("C: conversation images", () => {
           imagePath: "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         };
         wire.run("stream", "running");
-        wire.tool(
+        wire.call(
           "progress",
-          "tool.started",
+          "running",
           { command: "printf work-update-0", kind: "execute" },
           "stream",
         );
         yield* s.given.signedIn;
         yield* chat.when.open("Ada", "Watch these pictures while you work");
-        wire.tool("work-image", "tool.completed", work, "stream", { itemType: "image_view" });
+        wire.call("work-image", "done", work, "stream", { step: "look" });
         const secondWork = {
           ...work,
           imagePath: "mate-asset:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
         };
-        wire.tool("second-work-image", "tool.completed", secondWork, "stream", {
-          itemType: "image_view",
-        });
+        wire.call("second-work-image", "done", secondWork, "stream", { step: "look" });
         yield* Effect.promise(() =>
           s.page
             .waitForFunction(
@@ -267,9 +261,9 @@ describe("C: conversation images", () => {
           }),
         );
         for (let update = 0; update < 24; update++) {
-          wire.tool(
+          wire.call(
             "progress",
-            "tool.updated",
+            "running",
             {
               kind: "execute",
               command: `printf work-update-${update}${"\necho growing".repeat(update % 4)}`,
@@ -392,7 +386,23 @@ describe("C: conversation images", () => {
             yield* s.given.signedIn;
             yield* chat.when.open("Ada", "Watch the assistant picture");
             let text = "![assistant picture](/tmp/assistant.png)\n\n[Docs](#docs)";
-            wire.message("illustration", role, text, "stream", { streaming: true });
+            // The agent writes its words, or thinks them, as one item it keeps rewriting.
+            let illustration: string | undefined;
+            const write = (streaming: boolean) => {
+              if (illustration === undefined)
+                illustration =
+                  role === "assistant"
+                    ? wire.say(text, "stream", streaming)
+                    : wire.thought(text, "stream", streaming);
+              else
+                wire.engine.update(
+                  illustration,
+                  role === "assistant"
+                    ? { text, streaming }
+                    : { preview: text, length: text.length, streaming },
+                );
+            };
+            write(true);
             yield* Effect.promise(() =>
               s.page.waitForFunction(() => {
                 const image = document.querySelector<HTMLImageElement>(
@@ -458,7 +468,7 @@ describe("C: conversation images", () => {
               );
               for (let delta = 0; delta < 4; delta++) {
                 text += `\n\nMore assistant words ${index}-${delta}`;
-                wire.message("illustration", role, text, "stream", { streaming: true });
+                write(true);
                 yield* chat.then.text(`More assistant words ${index}-${delta}`);
                 expect(
                   yield* Effect.promise(() =>
@@ -471,7 +481,7 @@ describe("C: conversation images", () => {
               "![assistant picture](/tmp/assistant.png)",
               "![assistant picture](/tmp/assistant.png)\n---",
             );
-            wire.message("illustration", role, text, "stream", { streaming: true });
+            write(true);
             yield* Effect.promise(() =>
               s.page.waitForFunction(() =>
                 Boolean(
@@ -481,17 +491,12 @@ describe("C: conversation images", () => {
                 ),
               ),
             );
-            wire.message("illustration", role, text, "stream", { streaming: false });
-            wire.tool(
-              "later",
-              "tool.started",
-              { kind: "execute", command: "printf later-0" },
-              "stream",
-            );
+            write(false);
+            wire.call("later", "running", { kind: "execute", command: "printf later-0" }, "stream");
             for (let update = 0; update < 24; update++) {
-              wire.tool(
+              wire.call(
                 "later",
-                "tool.updated",
+                "running",
                 { kind: "execute", command: `printf later-${update}` },
                 "stream",
               );
@@ -574,27 +579,20 @@ describe("C: conversation images", () => {
         wire.run("stream", "running");
         yield* s.given.signedIn;
         yield* chat.when.open("Ada", "Watch the steering picture");
-        wire.tool(
-          "earlier",
-          "tool.completed",
-          { kind: "execute", command: "printf earlier-work" },
-          "stream",
-        );
+        wire.call("earlier", "done", { kind: "execute", command: "printf earlier-work" }, "stream");
         yield* chat.then.text("printf earlier-work");
         // A message steered into the run is drawn once, above its card: its picture there.
-        wire.message("steering", "user", "Use this steering picture", "stream", {
-          attachments: [
-            {
-              type: "image",
-              id: "steering-picture",
-              name: "steering.png",
-              mimeType: "image/png",
-              sizeBytes: bytes.length,
-              width: 160,
-              height: 80,
-            },
-          ],
-        });
+        wire.history("Use this steering picture", "stream", [
+          {
+            type: "image",
+            id: "steering-picture",
+            name: "steering.png",
+            mimeType: "image/png",
+            sizeBytes: bytes.length,
+            width: 160,
+            height: 80,
+          },
+        ]);
         yield* Effect.promise(() =>
           s.page.waitForFunction(() => {
             const image = document.querySelector<HTMLImageElement>(
@@ -644,16 +642,11 @@ describe("C: conversation images", () => {
           }),
         );
         const initialReads = reads;
-        wire.tool(
-          "later",
-          "tool.started",
-          { kind: "execute", command: "printf later-0" },
-          "stream",
-        );
+        wire.call("later", "running", { kind: "execute", command: "printf later-0" }, "stream");
         for (let update = 0; update < 24; update++) {
-          wire.tool(
+          wire.call(
             "later",
-            "tool.updated",
+            "running",
             { kind: "execute", command: `printf later-${update}` },
             "stream",
           );
@@ -768,30 +761,18 @@ describe("C: conversation images", () => {
           yield* s.given.project("Bea", { mate: true });
           const chat = mateChat(s);
           chat.fixture("Bea").history("Bea history");
-          chat
-            .fixture()
-            .message(
-              "pictures",
-              "user",
-              "[Picture 1]\n\nWords below the picture are readable",
-              null,
-              {
-                attachments: [
-                  {
-                    type: "image",
-                    id: "shot",
-                    name: "shot.png",
-                    mimeType: "image/png",
-                    sizeBytes: bytes.length,
-                    width: 640,
-                    height: 320,
-                  },
-                ],
-              },
-            );
-          chat
-            .fixture()
-            .message("code-path", "assistant", "[summary.ts](/workspace/src/summary.ts)", null);
+          chat.fixture().history("[Picture 1]\n\nWords below the picture are readable", null, [
+            {
+              type: "image",
+              id: "shot",
+              name: "shot.png",
+              mimeType: "image/png",
+              sizeBytes: bytes.length,
+              width: 640,
+              height: 320,
+            },
+          ]);
+          chat.fixture().say("[summary.ts](/workspace/src/summary.ts)");
           yield* s.given.signedIn;
           yield* chat.when.open("Ada", "Words below the picture are readable");
           const pending = yield* Effect.promise(async () => {
@@ -1036,30 +1017,30 @@ describe("C: conversation images", () => {
           const chat = mateChat(s);
           const wire = chat.fixture();
           wire.history("Screenshot report", "run-one");
-          wire.tool(
+          wire.call(
             "read-kept",
-            "tool.completed",
+            "done",
             {
               toolName: "Read",
               input: { file_path: "/tmp/shot.png" },
               imagePath: "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
             },
             "run-one",
-            { itemType: "image_view" },
+            { step: "look" },
           );
-          wire.tool(
+          wire.call(
             "read-gone",
-            "tool.completed",
+            "done",
             {
               toolName: "Read",
               input: { file_path: "/tmp/gone.png" },
               imagePath: "mate-asset:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:source-missing",
             },
             "run-one",
-            { itemType: "image_view" },
+            { step: "look" },
           );
-          wire.message("answer", "assistant", "The screenshots are in the result", "run-one");
-          wire.run("run-one", "completed", null, "answer");
+          wire.say("The screenshots are in the result", "run-one");
+          wire.run("run-one", "completed");
           yield* s.given.signedIn;
           yield* chat.when.open("Ada", "The screenshots are in the result");
           yield* Effect.promise(() => s.page.waitForSelector("[data-result-picture] img"));

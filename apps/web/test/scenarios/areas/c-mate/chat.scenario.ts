@@ -6,7 +6,6 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import { EngineChatWire } from "./engine.ts";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
@@ -40,9 +39,7 @@ describe("C: opening a Mate and chat", () => {
             ).toMatch(/^\/draft\/[^/]+$/);
             const fixture = chat.fixture();
             expect(
-              fixture.wire instanceof EngineChatWire
-                ? fixture.wire.engine.header.archived
-                : fixture.mate.thread.archivedAt !== null,
+              fixture.engine.header.archived,
               "ASSERTION: the owning engine records the archive before starting fresh",
             ).toBe(true);
             await s.page.locator("::-p-aria(Undo)").click();
@@ -51,9 +48,7 @@ describe("C: opening a Mate and chat", () => {
           yield* chat.then.text("The existing conversation is still here");
           const fixture = chat.fixture();
           expect(
-            fixture.wire instanceof EngineChatWire
-              ? fixture.wire.engine.header.archived
-              : fixture.mate.thread.archivedAt !== null,
+            fixture.engine.header.archived,
             "ASSERTION: Undo restores the conversation in its owning engine",
           ).toBe(false);
           yield* s.then.noExternalNetwork;
@@ -79,9 +74,7 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.then.noText("This conversation is archived");
         const fixture = chat.fixture();
         expect(
-          fixture.wire instanceof EngineChatWire
-            ? fixture.wire.engine.header.archived
-            : fixture.mate.thread.archivedAt !== null,
+          fixture.engine.header.archived,
           "ASSERTION: Restore restores the conversation in its owning engine",
         ).toBe(false);
         yield* chat.then.path("/env-Ada/thread-Ada");
@@ -270,9 +263,7 @@ describe("C: opening a Mate and chat", () => {
             const mate = fixture.mate;
             const asset = {
               id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-              threadId: ThreadId.make(
-                fixture.wire instanceof EngineChatWire ? `${mate.thread.id}/s/1` : mate.thread.id,
-              ),
+              threadId: ThreadId.make(`${mate.thread.id}/s/1`),
               ownerId: "browser-call",
               name: "tool-image",
               provenance: "capture" as const,
@@ -337,42 +328,22 @@ describe("C: opening a Mate and chat", () => {
               resultText: '{"url":"https://tvstav.cz","steps":[]}',
               images: [{ mimeType: "image/png", asset, width: 160, height: 1 }],
             };
-            if (fixture.wire instanceof EngineChatWire) {
-              const engine = fixture.wire.engine;
-              const run = engine.personRun("Check these pictures");
-              const person = [...engine.items.values()].find(
-                (item) => item.runId === run && item.kind === "person",
-              )!;
-              engine.update(person.id, { attachments: [attachment] });
-              engine.item(run, {
-                kind: "call",
-                step: "mcp",
-                words: "Browser",
-                state: "done",
-                endedAt: 1791201600000,
-                tool: { name: "zerops_browser", server: "zerops" },
-                result,
-              });
-              engine.note(run, "Pictures checked", { kind: "completed" });
-            } else {
-              fixture.message("image-person", "user", "Check these pictures", "image-run", {
-                attachments: [attachment],
-              });
-              fixture.run("image-run", "running");
-              fixture.tool(
-                "image-browser",
-                "tool.completed",
-                {
-                  toolName: "mcp__zerops__zerops_browser",
-                  input: { commands: [["open", "https://tvstav.cz"]] },
-                  zerops: result,
-                },
-                "image-run",
-                { itemType: "mcp_tool_call" },
-              );
-              fixture.message("image-done", "assistant", "Pictures checked", "image-run");
-              fixture.run("image-run", "completed", null, "image-done");
-            }
+            const engine = fixture.wire.engine;
+            const run = engine.personRun("Check these pictures");
+            const person = [...engine.items.values()].find(
+              (item) => item.runId === run && item.kind === "person",
+            )!;
+            engine.update(person.id, { attachments: [attachment] });
+            engine.item(run, {
+              kind: "call",
+              step: "mcp",
+              words: "Browser",
+              state: "done",
+              endedAt: 1791201600000,
+              tool: { name: "zerops_browser", server: "zerops" },
+              result,
+            });
+            engine.note(run, "Pictures checked", { kind: "completed" });
             yield* s.given.signedIn;
             yield* chat.when.open("Ada", "Check these pictures");
             yield* Effect.promise(async () => {

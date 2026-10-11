@@ -15,8 +15,8 @@ import * as Schema from "effect/Schema";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
-import { installArea, installEngineArea, reportContainer } from "./fake.ts";
-import { EngineChatWire } from "./engine.ts";
+import { installArea, reportContainer } from "./fake.ts";
+import type { EngineChatWire } from "./engine.ts";
 import { TARGET_QUESTION } from "./wire.ts";
 import { menuScenario } from "../b-menu/dsl.ts";
 import { ANSWER, journey, sampled } from "./pageJourney.ts";
@@ -278,21 +278,17 @@ describe("owner-reported layout regressions", () => {
                   });
                   yield* s.given.project("Ada", { mate: true });
                   const chat = mateChat(s);
-                  chat
-                    .fixture()
-                    .message("picture", "user", "[Picture 1]\nCheck proportions", "turn", {
-                      attachments: [
-                        {
-                          type: "image",
-                          id: "picture",
-                          name: `${shape.name}.png`,
-                          mimeType: "image/png",
-                          sizeBytes: bytes.length,
-                          width: shape.width,
-                          height: shape.height,
-                        },
-                      ],
-                    });
+                  chat.fixture().history("[Picture 1]\nCheck proportions", null, [
+                    {
+                      type: "image",
+                      id: "picture",
+                      name: `${shape.name}.png`,
+                      mimeType: "image/png",
+                      sizeBytes: bytes.length,
+                      width: shape.width,
+                      height: shape.height,
+                    },
+                  ]);
                   yield* s.given.signedIn;
                   yield* Effect.promise(() => ownerMenu(s.page));
                   yield* chat.when.open("Ada", "Check proportions");
@@ -426,7 +422,7 @@ describe("owner-reported layout regressions", () => {
               const chat = mateChat(s);
               const wire = chat.fixture();
               wire.history("Watch the work control");
-              wire.message("work-ask", "user", "Inspect the build", "work-run");
+              wire.history("Inspect the build", "work-run");
               wire.run("work-run", "running");
               yield* s.given.signedIn;
               yield* Effect.promise(() => ownerMenu(s.page));
@@ -492,9 +488,9 @@ describe("owner-reported layout regressions", () => {
                 emptyRegion: false,
               });
               yield* capture("empty");
-              wire.tool(
+              wire.call(
                 "work-first",
-                "tool.completed",
+                "done",
                 {
                   toolName: "Bash",
                   command: "echo ready",
@@ -1062,7 +1058,7 @@ describe("owner-reported layout regressions", () => {
                 return { body: { id: processId } };
               });
               yield* s.given.signedIn;
-              yield* chat.when.open("Ada", "Read this conversation");
+              yield* chat.when.open("Ada", "Question 5");
               yield* chat.then.text("Answer 5");
               yield* Effect.promise(() => ownerMenu(s.page));
               const quiet = yield* Effect.promise(() => frame(s.page));
@@ -1080,7 +1076,7 @@ describe("owner-reported layout regressions", () => {
               wren.disconnect();
               yield* chat.when.press("Start");
               yield* chat.then.text("Zerops accepted the start. Its outcome is not confirmed yet.");
-              yield* chat.when.open("Ada", "Read this conversation");
+              yield* chat.when.open("Ada", "Question 5");
               yield* chat.then.text("Answer 5");
               const toast = (text: string) =>
                 Effect.promise(() =>
@@ -1291,7 +1287,7 @@ describe("owner-reported layout regressions", () => {
             `the conversation's last row ends clear of the composer card, farther from it than the rows of its turn stand apart (${state})`,
             () =>
               Effect.gen(function* () {
-                const s = yield* createScenario([installEngineArea]);
+                const s = yield* createScenario([installArea]);
                 yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
                 yield* s.given.project("Ada", { mate: true });
                 const chat = mateChat(s);
@@ -1310,8 +1306,6 @@ describe("owner-reported layout regressions", () => {
                 yield* chat.then.text("The existing conversation is still here");
                 yield* Effect.promise(() => ownerMenu(s.page));
                 const wire = chat.fixture().wire;
-                if (!(wire instanceof EngineChatWire))
-                  throw new Error("This witness runs on the engine's wire");
                 yield* arrange(chat, wire.engine);
                 const end = yield* Effect.promise(() => settledEnd(s.page));
                 yield* Effect.promise(async () => {
@@ -1404,7 +1398,7 @@ describe("owner-reported layout regressions", () => {
         for (const { title, shows, answer, raise } of asks)
           it.effect(title, () =>
             Effect.gen(function* () {
-              const s = yield* createScenario([installEngineArea]);
+              const s = yield* createScenario([installArea]);
               yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
               yield* s.given.project("Ada", { mate: true });
               const chat = mateChat(s);
@@ -1423,8 +1417,6 @@ describe("owner-reported layout regressions", () => {
               yield* chat.then.text("The existing conversation is still here");
               yield* Effect.promise(() => ownerMenu(s.page));
               const wire = chat.fixture().wire;
-              if (!(wire instanceof EngineChatWire))
-                throw new Error("This witness runs on the engine's wire");
               const engine = wire.engine;
               // The agent works on after the answer, as Milo did: the run neither ends nor settles.
               engine.onAnswer.splice(0, engine.onAnswer.length, (request) => {
@@ -1524,7 +1516,7 @@ describe("owner-reported layout regressions", () => {
           () =>
             Effect.gen(function* () {
               for (const { ask, shows, raise } of asks) {
-                const s = yield* createScenario([installEngineArea]);
+                const s = yield* createScenario([installArea]);
                 yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
                 yield* s.given.project("Ada", { mate: true });
                 const chat = mateChat(s);
@@ -1542,8 +1534,6 @@ describe("owner-reported layout regressions", () => {
                 yield* chat.when.open();
                 yield* Effect.promise(() => ownerMenu(s.page));
                 const wire = chat.fixture().wire;
-                if (!(wire instanceof EngineChatWire))
-                  throw new Error("This witness runs on the engine's wire");
                 const engine = wire.engine;
                 const run = engine.personRun(MESSAGE);
                 engine.note(run, LAST_WORDS);
@@ -2096,7 +2086,7 @@ describe("owner-reported layout regressions", () => {
           }),
         );
       const pausedMilo = Effect.gen(function* () {
-        const s = yield* createScenario([installEngineArea]);
+        const s = yield* createScenario([installArea]);
         yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
         yield* Effect.promise(() =>
           s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
@@ -2114,7 +2104,6 @@ describe("owner-reported layout regressions", () => {
             );
         chat.fixture().exchange("And now?", "The existing conversation is still here");
         const wire = chat.fixture().wire;
-        if (!(wire instanceof EngineChatWire)) throw new Error("Milo's run is the engine's");
         const engine = wire.engine;
         yield* s.given.signedIn;
         yield* Effect.promise(() => ownerMenu(s.page));
@@ -2538,7 +2527,7 @@ describe("owner-reported layout regressions", () => {
       /** Milo at work in a run: held in no application, or placed in `app`. */
       const miloAtWork = (app?: string) =>
         Effect.gen(function* () {
-          const s = yield* createScenario([installEngineArea]);
+          const s = yield* createScenario([installArea]);
           yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
           yield* Effect.promise(() =>
             s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
@@ -2548,7 +2537,6 @@ describe("owner-reported layout regressions", () => {
           chat.fixture().exchange("How did the deploy go?", "It built and the storefront answers.");
           chat.fixture().exchange("And now?", "The existing conversation is still here");
           const wire = chat.fixture().wire;
-          if (!(wire instanceof EngineChatWire)) throw new Error("Milo's run is the engine's");
           const engine = wire.engine;
           yield* s.given.signedIn;
           yield* Effect.promise(() => ownerMenu(s.page));
@@ -3583,7 +3571,7 @@ describe("owner-reported layout regressions", () => {
           "a sent message is never drawn behind the composer, and its glide has no step of 60 px or more in a frame (from $from)",
           ({ typed, text }) =>
             Effect.gen(function* () {
-              const s = yield* createScenario([installEngineArea]);
+              const s = yield* createScenario([installArea]);
               yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
               yield* s.given.project("Ada", { mate: true });
               const chat = mateChat(s);
@@ -3602,8 +3590,6 @@ describe("owner-reported layout regressions", () => {
               yield* chat.when.open();
               yield* chat.then.text("The existing conversation is still here");
               const wire = chat.fixture().wire;
-              if (!(wire instanceof EngineChatWire))
-                throw new Error("This witness runs on the engine's wire");
               // The words typed and the composer at rest: the trace starts as the person sends.
               if (typed)
                 yield* Effect.promise(async () => {
@@ -3667,7 +3653,7 @@ describe("owner-reported layout regressions", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         it.effect("the Helpers surface's rows stay where they stand as helpers start and end", () =>
           Effect.gen(function* () {
-            const s = yield* createScenario([installEngineArea]);
+            const s = yield* createScenario([installArea]);
             yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
             yield* s.given.project("Ada", { mate: true });
             const chat = mateChat(s);
@@ -3676,8 +3662,6 @@ describe("owner-reported layout regressions", () => {
             yield* chat.when.open();
             yield* chat.then.text("The existing conversation is still here");
             const wire = chat.fixture().wire;
-            if (!(wire instanceof EngineChatWire))
-              throw new Error("This witness runs on the engine's wire");
             const engine = wire.engine;
             const helper = (run: string, title: string) =>
               engine.item(run, {
@@ -3757,7 +3741,7 @@ describe("owner-reported layout regressions", () => {
             Effect.gen(function* () {
               const { s, chat, engine, publish } = yield* journey(369, {
                 earlierPage: true,
-                install: installEngineArea,
+                install: installArea,
               });
               yield* sampled(
                 s,

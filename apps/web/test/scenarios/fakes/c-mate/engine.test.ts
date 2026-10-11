@@ -13,7 +13,6 @@ import { WebSocket } from "ws";
 
 import { MateFake } from "../mate.ts";
 import { ChatDriver } from "../../areas/c-mate/fake.ts";
-import { EngineChatWire } from "../../areas/c-mate/engine.ts";
 import { deadline, serve } from "../../harness/http.ts";
 
 const decodeFrame = Schema.decodeUnknownSync(EngineConversationFrame);
@@ -30,9 +29,8 @@ interface Frame {
 
 async function connect() {
   const mate = new MateFake("Ada", "Ada");
-  const wire = new EngineChatWire(mate);
-  const chat = new ChatDriver(mate, wire);
-  wire.install();
+  const chat = new ChatDriver(mate);
+  const wire = chat.wire.install();
   const server = await serve(mate.handle, mate.socket);
   const socket = new WebSocket(server.origin.replace("http:", "ws:") + "/ws");
   const frames: Frame[] = [];

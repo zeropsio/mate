@@ -37,11 +37,9 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
           const historyLength = mode === "following" ? 200 : 10;
           for (let i = 0; i < historyLength; i++)
             wire.exchange(`Earlier ask ${i}`, "Earlier conversation stays readable.\n\n".repeat(8));
-          wire.message("fold-ask", "user", "Fold this run", "fold-run");
+          wire.history("Fold this run", "fold-run");
           wire.run("fold-run", "running");
-          wire.message(
-            "fold-thought",
-            "assistant",
+          wire.say(
             Array.from({ length: 24 }, (_, i) => `Inspecting line ${i}.`).join("\n\n"),
             "fold-run",
           );
@@ -53,21 +51,15 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
               content: Array.from({ length: 40 }, (_, i) => `Build log line ${i}`).join("\n"),
             },
           };
-          wire.tool("read-command", "tool.completed", command, "fold-run");
+          wire.call("read-command", "done", command, "fold-run");
           const landing = {
             toolName: "Bash",
             command: "echo landing",
             input: { command: "echo landing", description: "Check the build" },
           };
-          wire.tool("landing-command", "tool.started", landing, "fold-run");
-          const helper = (i: number) => ({
-            taskId: `fold-helper-${i}`,
-            agentKind: "agent",
-            title: `Helper ${i}`,
-            role: "explorer",
-          });
+          wire.call("landing-command", "running", landing, "fold-run");
           for (let i = 0; i < 6; i++)
-            wire.activity("task.started", `Helper ${i}`, helper(i), "fold-run");
+            wire.work(`fold-helper-${i}`, "running", { title: `Helper ${i}` }, "fold-run");
           yield* s.given.signedIn;
           yield* chat.when.open("Ada", "Fold this run");
           yield* Effect.promise(() =>
@@ -169,35 +161,26 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
             }),
           );
           // Slot landing and panel/report shrink share this settlement; native clamps are sampled.
-          wire.tool(
-            "landing-command",
-            "tool.completed",
-            { ...landing, output: "landing" },
-            "fold-run",
-          );
-          wire.tool(
+          wire.call("landing-command", "done", { ...landing, output: "landing" }, "fold-run");
+          wire.call(
             "checked-page",
-            "tool.completed",
+            "done",
             {
               toolName: "mcp__zerops__zerops_browser",
               input: { commands: [["open", "https://store.example/orders"]] },
-              zerops: {
+            },
+            "fold-run",
+            {
+              step: "mcp",
+              result: {
                 toolName: "zerops_browser",
                 resultText: '{"url":"https://store.example/orders","steps":[]}',
               },
             },
-            "fold-run",
-            { itemType: "mcp_tool_call" },
           );
-          for (let i = 0; i < 6; i++)
-            wire.activity(
-              "task.completed",
-              `Helper ${i} finished`,
-              { ...helper(i), status: "completed" },
-              "fold-run",
-            );
-          wire.message("fold-answer", "assistant", "The fold is complete", "fold-run");
-          wire.run("fold-run", "completed", null, "fold-answer");
+          for (let i = 0; i < 6; i++) wire.work(`fold-helper-${i}`, "completed");
+          wire.say("The fold is complete", "fold-run");
+          wire.run("fold-run", "completed");
           yield* chat.then.text("The fold is complete");
           yield* Effect.promise(() =>
             s.page.waitForFunction(

@@ -3,7 +3,6 @@ import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
-import { EngineChatWire } from "./engine.ts";
 import { installArea, vaultWrites } from "./fake.ts";
 
 const KEY = "STRIPE_SECRET_KEY";
@@ -30,7 +29,6 @@ describe("C: a secret the Mate asks the person for", () => {
         yield* s.given.project("Ada", { mate: true });
         const chat = mateChat(s);
         const fixture = chat.fixture();
-        if (!(fixture.wire instanceof EngineChatWire)) throw new Error("The ask is the engine's");
         const engine = fixture.wire.engine;
         const vault = vaultWrites(s.drivers);
         const run = engine.personRun("Take card payments");
