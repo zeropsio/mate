@@ -17,11 +17,11 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import type { BridgeDriver } from "./bridge/spi3.ts";
 import type { Command } from "./domain/command.ts";
-import { CONTINUE_TEXT, resentText } from "./domain/decide.ts";
+import { CONTINUE_TEXT, KILLED_AFTER_END_MS, resentText } from "./domain/decide.ts";
 import { PROVIDER_CALL_BOUND_MS } from "./effects/shared.ts";
 import { Conversations } from "./Conversations.ts";
 import { TEXT_KEPT_EVERY_MS } from "./pump/toCore.ts";
-import { rowStateOf } from "./read/conversationRow.ts";
+import { brokeOffLine, rowStateOf } from "./read/conversationRow.ts";
 import { readConversationView } from "./read/conversationView.ts";
 import { DRIVERS, makeEngineWorld, mate, type EngineWorld } from "./testing/pump/engineWorld.ts";
 
@@ -1135,6 +1135,76 @@ describe("the running engine", () => {
     ),
   );
 
+  // Milo's recheck on 0.15.41: a one-off CronCreate fired as Claude's own turn and was filed under
+  // a helpers run the person had stopped four turns before; its reply drew under that old card,
+  // which then read "worked".
+  it.effect(
+    "a turn the agent starts on its own, after its runs ended, answers at the conversation's end",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w, "start two helpers");
+          yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* stop(w);
+          yield* send(w, "what is the time?");
+          yield* w.agent((agent, thread) => agent.say(thread, "It is 15:16."));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          // Its own schedule fires: a turn of its own, with no finished work to report.
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          yield* w.agent((agent, thread) => agent.say(thread, "cron-ok"));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const own = yield* w.run(r(3));
+          assert.deepStrictEqual(
+            [own?.trigger, own?.joins, own?.end?.kind],
+            [{ kind: "wake", cause: "self", wakeId: null }, r(2), "completed"],
+          );
+          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "stopped", "stop-asked"]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "a turn the agent starts on its own after a run the person stopped leaves that run stopped",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          // Codex's Stop leaves its session open: the agent's own turn can come next.
+          const w = yield* world("codex");
+          yield* send(w, "watch the build");
+          yield* stop(w);
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          const own = yield* w.run(r(2));
+          assert.deepStrictEqual([own?.trigger.cause, own?.joins], ["self", null]);
+          assert.strictEqual((yield* w.run(r(1)))?.end?.kind, "stopped");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  // Milo's recheck on 0.15.41 (J9 again): the agent killed mid-paragraph; the run still ended
+  // completed and its card read "Milo worked 13s", though the job read lost and the Mate woke.
+  it.effect(
+    "an agent killed mid-turn reads broken off, though its CLI closed the turn completed",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* send(w);
+          yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* w.agent((agent, thread) =>
+            agent.killMidTurn(thread, "The tides rise twice a day, so that"),
+          );
+          yield* w.advance(0);
+          const killed = yield* w.run(r(1));
+          assert.strictEqual(killed?.end?.kind, "crashed");
+          assert.isNotNull(brokeOffLine(killed?.end ?? null));
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   // Milo's final engine run, 2026-10-11 (J9): a killed agent's background job read "stopped", as
   // if the person had stopped it, and nothing woke the Mate. Claude's turn had finished a moment
   // before the kill there; a kill mid-turn ends the run crashed as well.
@@ -1145,8 +1215,10 @@ describe("the running engine", () => {
         when: "after its turn ended",
         before: (w: EngineWorld) =>
           Effect.gen(function* () {
-            yield* w.agent((agent, thread) => agent.say(thread, "The tides rise twice a day, so"));
+            yield* w.agent((agent, thread) => agent.say(thread, "The tides rise twice a day."));
             yield* w.agent((agent, thread) => agent.finish(thread));
+            // Well after its end: a kill a moment after reads as breaking the turn off.
+            yield* w.advance(KILLED_AFTER_END_MS + 1_000);
           }),
         ended: "completed",
       },

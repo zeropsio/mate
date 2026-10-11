@@ -2301,6 +2301,8 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         } else {
           endRun(b, run, { kind: "crashed", reason: signal.reason }, "inferred-from-crash");
         }
+      } else if (signal.crashed === true) {
+        brokeOffByKill(b, sessionId, signal.reason);
       }
       sessionClosed(b, sessionId, "exited");
       // A run held for a setting the lost work stood against goes on a new session now.
@@ -2310,6 +2312,34 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       return;
     }
   }
+};
+
+/**
+ * How soon after a turn closed completed its agent's death says the turn broke off. Claude's CLI
+ * killed mid-turn closes it completed, its answer so far whole, milliseconds before the stream
+ * dies with no turn open (Milo's two kills: "Milo worked 13s", the answer cut mid-sentence).
+ */
+export const KILLED_AFTER_END_MS = 2_000;
+
+/** The run its agent's death cut, though its turn closed completed a moment before. */
+const brokeOffByKill = (b: StepBuilder, sessionId: SessionId, reason: string): void => {
+  const latest = b.state.endedRuns.at(-1);
+  const run = latest === undefined ? undefined : b.state.runs[latest];
+  if (
+    run === undefined ||
+    run.sessionId !== sessionId ||
+    run.end?.kind !== "completed" ||
+    run.endSource !== "agent" ||
+    run.endedAt === null ||
+    b.now - run.endedAt > KILLED_AFTER_END_MS
+  )
+    return;
+  b.emit({
+    _tag: "RunEnded",
+    runId: run.id,
+    end: { kind: "crashed", reason },
+    source: "inferred-from-crash",
+  });
 };
 
 /** A closed item's key again: the same content changes nothing, new content updates it in place. */
@@ -2467,15 +2497,20 @@ const cancelUsageWakes = (b: StepBuilder, reason: string): void => {
 };
 
 /** A turn the agent started on its own: a run that joins the run whose work it reports. */
-/** The run a self turn joins (the bridge's word, else the latest that ran) and its principal. */
+/**
+ * The run a self turn joins (the bridge's word, else the latest that ran; none when that run was
+ * stopped) and its principal.
+ */
 const selfJoins = (
   b: StepBuilder,
   reportsOn: RunId | null,
-): { readonly joins: RunId; readonly principal: Principal } | undefined => {
+): { readonly joins: RunId | null; readonly principal: Principal } | undefined => {
   const joins = reportsOn ?? b.state.endedRuns.at(-1) ?? b.state.latestRunId;
   const joined = joins === null ? undefined : b.state.runs[joins];
   if (joined === undefined || joined.principal.kind === "engine") return undefined;
-  return { joins: joined.id, principal: joined.principal };
+  // A run the person stopped stays stopped: a turn after it answers on a card of its own.
+  const stopped = joined.end?.kind === "stopped";
+  return { joins: stopped ? null : joined.id, principal: joined.principal };
 };
 
 /** The run a steer still in flight was asked into, when `turn` is that steer's message. */
@@ -2533,7 +2568,7 @@ const selfStarted = (
   b: StepBuilder,
   turn: TurnHandle,
   providerTurnId: string | null,
-  joined: { readonly joins: RunId; readonly principal: Principal },
+  joined: { readonly joins: RunId | null; readonly principal: Principal },
 ) => {
   const run = queueRun(b, {
     trigger: () => ({ kind: "wake", cause: "self", wakeId: null }),

@@ -524,6 +524,39 @@ describe("a conversation's row from a turn's end to the next turn the engine kno
       ),
     ],
     [
+      "the agent's word on a value the person answered",
+      before((w) =>
+        Effect.as(
+          w.agent((agent, thread) =>
+            agent.zerops(
+              thread,
+              "zerops_env",
+              { action: "request" },
+              "request STRIPE_SECRET_KEY",
+              JSON.stringify({
+                requested: { key: "STRIPE_SECRET_KEY", scope: "shared", sensitive: true },
+                nextActions: "Now waiting on the person.",
+              }),
+            ),
+          ),
+          undefined,
+        ),
+      ),
+      end((w) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const asked = (yield* w.requests).find((request) => request.state === "open");
+          yield* w.tell({
+            _tag: "Answer",
+            requestId: asked!.request_id as never,
+            answer: { outcome: "saved" },
+            summary: "saved",
+          });
+          yield* w.settle;
+        }),
+      ),
+    ],
+    [
       "a wake its crash armed",
       before((w) => w.agent((agent, thread) => agent.startWork(thread))),
       end((w) =>
@@ -548,7 +581,17 @@ describe("a conversation's row from a turn's end to the next turn the engine kno
           const reading = yield* Effect.forkScoped(
             Stream.runForEach(engine.changes, () =>
               Effect.map(viewOf(w), (view) => {
-                if (view != null) kinds.push(conversationRowOf(view, revision).state.kind);
+                if (view == null) return;
+                const row = conversationRowOf(view, revision);
+                // The client reads a working row with no run on and nothing it waits on as at rest
+                // (Milo's recheck: the crash wake and the answered value's wake flashed idle).
+                kinds.push(
+                  row.state.kind === "working" &&
+                    !row.state.waitsOnHelpers &&
+                    row.activeRunId === null
+                    ? "working, at rest"
+                    : row.state.kind,
+                );
               }),
             ),
           );
@@ -556,7 +599,7 @@ describe("a conversation's row from a turn's end to the next turn the engine kno
           yield* Fiber.interrupt(reading);
           assert.isAbove(kinds.length, 0);
           assert.deepStrictEqual(
-            kinds.filter((kind) => kind === "idle" || kind === "failed"),
+            kinds.filter((kind) => ["idle", "failed", "working, at rest"].includes(kind)),
             [],
           );
           assert.strictEqual((yield* w.run(runId(mate, 2)))?.state, "running");
