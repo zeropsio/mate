@@ -61,12 +61,12 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
   const hasStack = items.length > 1;
   if (!frontItem) return null;
 
-  // A reserved frame belongs to the composer. Text zoom can enlarge the collapsed
-  // frame; explicit expansion scrolls inside the space available above the input.
+  // The notices sit on the composer, as tall as they are: no frame is held above them. Explicit
+  // expansion scrolls inside the space available above the input.
   return (
     <div
       ref={stackRef}
-      className={cn(className, "relative flex min-h-24 flex-col justify-end sm:min-h-20")}
+      className={cn(className, "relative flex flex-col justify-end")}
       data-composer-banner-anchor="true"
     >
       {frontItem ? (
@@ -144,6 +144,11 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
   );
 }
 
+/** A calm notice — neither a warning nor an error — sits on the composer as one quiet line. */
+function quietNotice(item: ComposerBannerStackItem): boolean {
+  return item.variant !== "error" && item.variant !== "warning" && item.layout !== "centered";
+}
+
 function ComposerBannerStackAlert({
   item,
   attached,
@@ -156,6 +161,39 @@ function ComposerBannerStackAlert({
   readonly stackToggle?: ReactNode;
 }) {
   const dismissOnly = item.onDismiss && !item.actions;
+  const dismiss = item.onDismiss ? (
+    <Button
+      size="icon-xs"
+      variant="ghost"
+      aria-label={item.dismissLabel ?? "Dismiss notice"}
+      onClick={onDismissRequest}
+    >
+      <XIcon className="size-3.5" />
+    </Button>
+  ) : null;
+
+  if (attached && quietNotice(item)) {
+    return (
+      <div className="chat-composer-quiet-notice" data-variant={item.variant} role="status">
+        <span aria-hidden="true" className="chat-composer-quiet-notice-mark">
+          {item.icon}
+        </span>
+        <span className="chat-composer-quiet-notice-words">
+          <span className="chat-composer-quiet-notice-title">{item.title}</span>
+          {item.description ? (
+            <span className="chat-composer-quiet-notice-more">{item.description}</span>
+          ) : null}
+        </span>
+        {item.actions || dismiss || stackToggle ? (
+          <span className="chat-composer-quiet-notice-actions">
+            {stackToggle}
+            {item.actions}
+            {dismiss}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <Alert
@@ -183,16 +221,7 @@ function ComposerBannerStackAlert({
         >
           {stackToggle}
           {item.actions}
-          {item.onDismiss ? (
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              aria-label={item.dismissLabel ?? "Dismiss notice"}
-              onClick={onDismissRequest}
-            >
-              <XIcon className="size-3.5" />
-            </Button>
-          ) : null}
+          {dismiss}
         </AlertAction>
       ) : null}
     </Alert>

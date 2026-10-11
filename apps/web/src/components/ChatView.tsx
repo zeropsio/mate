@@ -5380,7 +5380,7 @@ export default function ChatView(props: ChatViewProps) {
       actions: (
         <Button
           size="xs"
-          variant="outline"
+          variant="ghost"
           disabled={isSnoozed ? isUnsnoozing : isUnsettling}
           onClick={() =>
             void (isSnoozed ? handleUnsnoozeActiveThread() : handleUnsettleActiveThread())

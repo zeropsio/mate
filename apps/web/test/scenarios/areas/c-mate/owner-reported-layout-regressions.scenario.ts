@@ -1671,6 +1671,55 @@ describe("owner-reported layout regressions", () => {
         );
       });
     });
+    describe("Decision: a calm notice is one quiet line on the composer; no room is held above it.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // The owner (2026-10-12): "this stacking looks absolute shit + there is extra space on top".
+        it.effect(
+          "a calm notice over the composer says itself on one line, no room held above it",
+          () =>
+            Effect.gen(function* () {
+              const { s } = yield* composerLayout("notice");
+              yield* Effect.promise(() => ownerMenu(s.page));
+              const geometry = yield* Effect.promise(() =>
+                s.page.evaluate(() => {
+                  const frame = document
+                    .querySelector("[data-composer-banner-anchor]")!
+                    .getBoundingClientRect();
+                  const notice = document.querySelector<HTMLElement>(
+                    '[data-composer-banner-drawer] [role="status"]',
+                  )!;
+                  const text = [...notice.querySelectorAll<HTMLElement>("span")].filter(
+                    (part) => part.childElementCount === 0 && part.textContent!.trim().length > 0,
+                  );
+                  const tops = text.map((part) => part.getBoundingClientRect().top);
+                  const line = parseFloat(getComputedStyle(notice).lineHeight);
+                  return {
+                    words: text.map((part) => part.textContent),
+                    spread: Math.max(...tops) - Math.min(...tops),
+                    line,
+                    frameTop: frame.top,
+                    noticeTop: notice.getBoundingClientRect().top,
+                  };
+                }),
+              );
+              const seen = quoted(geometry);
+              expect(
+                geometry.words.length,
+                `ASSERTION: the notice says its title and what it means: ${seen}`,
+              ).toBeGreaterThanOrEqual(2);
+              expect(
+                geometry.spread,
+                `ASSERTION: its title and what it means stand on one line: ${seen}`,
+              ).toBeLessThan(geometry.line / 2);
+              expect(
+                geometry.noticeTop - geometry.frameTop,
+                `ASSERTION: no room is held above the notice: ${seen}`,
+              ).toBeLessThanOrEqual(1);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+      });
+    });
     describe("Decision: restore pre-regression behaviour; no test weakened; titles kept.", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         for (const state of composerStates)
@@ -1684,8 +1733,11 @@ describe("owner-reported layout regressions", () => {
                 const attached = () =>
                   Effect.promise(async () => {
                     const geometry = await s.page.evaluate(() => {
+                      // The front notice, a card or a calm one's quiet line.
                       const front = document
-                        .querySelector('[data-composer-banner-drawer] [data-slot="alert"]')!
+                        .querySelector(
+                          '[data-composer-banner-drawer] :is([role="status"], [role="alert"])',
+                        )!
                         .getBoundingClientRect();
                       const input = document
                         .querySelector('[data-slot="composer-shell"]')!
@@ -1730,7 +1782,9 @@ describe("owner-reported layout regressions", () => {
                         .querySelector("[data-composer-banner-stack-expanded-items]")!
                         .getBoundingClientRect();
                       const front = document
-                        .querySelector('[data-composer-banner-drawer] [data-slot="alert"]')!
+                        .querySelector(
+                          '[data-composer-banner-drawer] :is([role="status"], [role="alert"])',
+                        )!
                         .getBoundingClientRect();
                       return {
                         height: expanded.height,
