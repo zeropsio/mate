@@ -9,7 +9,6 @@ import {
   type OrchestrationThread,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { describe, test } from "vite-plus/test";
 
@@ -17,7 +16,6 @@ import { issueRemoteWebSocketTicket } from "./authorization/remote.ts";
 import { PrimaryConnectionTarget } from "./connection/model.ts";
 import { fetchRemoteEnvironmentDescriptor } from "./environment/descriptor.ts";
 import type { RemoteEnvironmentRequestError } from "./rpc/http.ts";
-import { fetchEnvironmentThreadSnapshot } from "./state/threadSnapshotHttp.ts";
 import { applyThreadDetailEvent } from "./state/threadReducer.ts";
 
 const timestamp = "2026-09-01T00:00:00.000Z";
@@ -85,18 +83,6 @@ const requests: Record<
   "issue remote WebSocket ticket": issueRemoteWebSocketTicket({
     httpBaseUrl: target.httpBaseUrl,
     bearerToken: "test-token",
-  }),
-  "load remote snapshot with 100 messages": fetchEnvironmentThreadSnapshot({
-    prepared: {
-      environmentId: target.environmentId,
-      label: target.label,
-      httpBaseUrl: target.httpBaseUrl,
-      socketUrl: target.wsBaseUrl,
-      httpAuthorization: null,
-      target,
-    },
-    threadId: thread.id,
-    signer: Option.none(),
   }),
 };
 

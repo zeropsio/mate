@@ -285,12 +285,21 @@ function archiveRegistry(
   return { registry, calls };
 }
 
-effectIt.effect("a V1 Mate keeps its archive reader", () =>
-  Effect.gen(function* () {
-    const { registry, calls } = archiveRegistry(undefined);
-    expect(yield* makeArchiveWire(registry).read(env)).toEqual(empty);
-    expect(calls).toEqual(["v1"]);
-  }),
+effectIt.effect(
+  "a Mate from before the engine asks for its update without reading an archive",
+  () =>
+    Effect.gen(function* () {
+      const { registry, calls } = archiveRegistry(undefined);
+      const result = yield* Effect.result(makeArchiveWire(registry).read(env));
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          outcome: "definitive-refusal",
+          message: expect.stringMatching(/Update the Mate/),
+        },
+      });
+      expect(calls).toEqual([]);
+    }),
 );
 
 effectIt.effect("an unsupported engine asks for an update without consulting V1 archives", () =>

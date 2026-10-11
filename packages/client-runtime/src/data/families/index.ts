@@ -1,6 +1,6 @@
 import { agentUsageFamily } from "./agentUsage.ts";
 import { hqAutoUpdatePolicyFamily } from "./hqAutoUpdatePolicy.ts";
-import { mateShellFamily, mateThreadFamily } from "./mateConversation.ts";
+import { mateShellFamily } from "./mateConversation.ts";
 import { mateGitRemoteFamily } from "./mateGitRemote.ts";
 import { mateRepositoryDiscoveryFamily } from "./mateRepositoryDiscovery.ts";
 import { mateRepositoryFamily } from "./mateRepository.ts";
@@ -101,7 +101,6 @@ export function defineFamilies(
 export const FAMILIES = defineFamilies([
   agentUsageFamily,
   mateShellFamily,
-  mateThreadFamily,
   ...MATE_ENGINE_FAMILIES,
   mateGitRemoteFamily,
   mateRepositoryDiscoveryFamily,

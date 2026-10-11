@@ -11,7 +11,7 @@ import { ShellSnapshotLoader } from "./shellSnapshotHttp.ts";
 import type { EnvironmentCatalogState } from "./connections.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
-import { engineRouteOf, mateEngineHostAtom, mateEngineReaderAtom } from "../data/engineHost.ts";
+import { engineRouteOf, mateEngineHostAtom } from "../data/engineHost.ts";
 import { engineShellChanges, type EngineShellOverlay } from "../data/engineThreadChanges.ts";
 
 import { openShellReplay, EMPTY_SHELL_STATE } from "../data/adapters/mateShellReplay.ts";
@@ -24,8 +24,8 @@ export type {
 import type { EnvironmentShellState } from "../data/adapters/mateShellReplay.ts";
 
 /**
- * What an engine Mate's rows lay over its V1 shell, once its door names a protocol this build
- * speaks and the account's engine host is mounted; `null` for every other Mate.
+ * What a Mate's engine rows lay over its thread shell, once its door names a protocol this build
+ * speaks and the account's engine host is mounted; `null` until then.
  */
 function engineShellOverlays(
   registry: AtomRegistry.AtomRegistry,
@@ -35,11 +35,7 @@ function engineShellOverlays(
     Effect.map(EnvironmentSupervisor, (supervisor) =>
       SubscriptionRef.changes(supervisor.prepared).pipe(
         Stream.filter(Option.isSome),
-        Stream.map(
-          (prepared) =>
-            engineRouteOf(prepared.value).kind === "engine" &&
-            registry.get(mateEngineReaderAtom) === "engine",
-        ),
+        Stream.map((prepared) => engineRouteOf(prepared.value).kind === "engine"),
         Stream.changes,
         Stream.switchMap((engine) =>
           engine
@@ -56,7 +52,7 @@ function engineShellOverlays(
 }
 
 function shellStateChanges(registry: AtomRegistry.AtomRegistry, environmentId: EnvironmentId) {
-  // A V1 Mate's shell passes through as its replay says; an engine Mate's carries its rows.
+  // The shell as its replay says, carrying the Mate's engine rows.
   return followStreamInEnvironment(
     environmentId,
     Stream.zipLatest(

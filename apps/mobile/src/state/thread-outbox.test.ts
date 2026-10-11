@@ -1364,27 +1364,7 @@ describe("thread outbox", () => {
         stage: "settings-sync",
         error,
         interrupted: false,
-        engine: true,
       }),
     ).toBe(action);
-  });
-
-  it("retains queued messages when settings synchronization fails before startTurn", () => {
-    const deterministicFailure = new Error("Thread no longer exists");
-
-    expect(
-      resolveThreadOutboxFailureAction({
-        stage: "settings-sync",
-        error: deterministicFailure,
-        interrupted: false,
-      }),
-    ).toBe("retry");
-    expect(
-      resolveThreadOutboxFailureAction({
-        stage: "start-turn",
-        error: deterministicFailure,
-        interrupted: false,
-      }),
-    ).toBe("restore");
   });
 });

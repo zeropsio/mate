@@ -1,8 +1,6 @@
 import * as Crypto from "effect/Crypto";
-import * as Effect from "effect/Effect";
 import { Atom } from "effect/reactivity";
 import {
-  OrchestrationDispatchCommandError,
   WS_METHODS,
   type EnvironmentId,
   type OrchestrationShellSnapshot,
@@ -42,16 +40,8 @@ import {
   type UnsettleThreadInput,
   type UnsnoozeThreadInput,
   type UpdateThreadMetadataInput,
-  archiveThread,
-  createThread,
   deleteThread,
-  interruptThreadTurn,
-  respondToThreadApproval,
-  respondToThreadUserInput,
-  dismissThreadUserInput,
   revertThreadCheckpoint,
-  setThreadInteractionMode,
-  setThreadRuntimeMode,
   pinThread,
   reorderPinnedThread,
   reorderActiveThread,
@@ -59,13 +49,10 @@ import {
   setThreadUsageAutoResume,
   settleThread,
   snoozeThread,
-  startThreadTurn,
   stopThreadSession,
-  unarchiveThread,
   unpinThread,
   unsettleThread,
   unsnoozeThread,
-  updateThreadMetadata,
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
@@ -133,12 +120,7 @@ export function createThreadEnvironmentAtoms<R, E>(
     create: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:create",
       execute: (input: CreateThreadInput, registry, environmentId) =>
-        viaEngine(
-          registry,
-          environmentId,
-          engineCreateThread(environmentId, input),
-          createThread(input),
-        ),
+        viaEngine(registry, environmentId, engineCreateThread(environmentId, input)),
       scheduler,
       concurrency,
     }),
@@ -151,24 +133,14 @@ export function createThreadEnvironmentAtoms<R, E>(
     archive: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:archive",
       execute: (input: ArchiveThreadInput, registry, environmentId) =>
-        viaEngine(
-          registry,
-          environmentId,
-          engineSetArchived(environmentId, input, true),
-          archiveThread(input),
-        ),
+        viaEngine(registry, environmentId, engineSetArchived(environmentId, input, true)),
       scheduler,
       concurrency,
     }),
     unarchive: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:unarchive",
       execute: (input: UnarchiveThreadInput, registry, environmentId) =>
-        viaEngine(
-          registry,
-          environmentId,
-          engineSetArchived(environmentId, input, false),
-          unarchiveThread(input),
-        ),
+        viaEngine(registry, environmentId, engineSetArchived(environmentId, input, false)),
       scheduler,
       concurrency,
     }),
@@ -246,7 +218,6 @@ export function createThreadEnvironmentAtoms<R, E>(
               selection,
             ),
           ),
-          updateThreadMetadata(input),
         ),
       scheduler,
       concurrency,
@@ -254,124 +225,70 @@ export function createThreadEnvironmentAtoms<R, E>(
     setRuntimeMode: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:set-runtime-mode",
       execute: (input: SetThreadRuntimeModeInput, registry, environmentId) =>
-        viaEngine(
-          registry,
-          environmentId,
-          engineSetRuntimeMode(environmentId, input),
-          setThreadRuntimeMode(input),
-        ),
+        viaEngine(registry, environmentId, engineSetRuntimeMode(environmentId, input)),
       scheduler,
       concurrency,
     }),
     setInteractionMode: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:set-interaction-mode",
       execute: (input: SetThreadInteractionModeInput, registry, environmentId) =>
-        viaEngine(
-          registry,
-          environmentId,
-          engineSetInteractionMode,
-          setThreadInteractionMode(input),
-        ),
+        viaEngine(registry, environmentId, engineSetInteractionMode),
       scheduler,
       concurrency,
     }),
     startTurn: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:start-turn",
       execute: (input: StartThreadTurnInput, registry, environmentId) =>
-        viaEngine(
-          registry,
-          environmentId,
-          engineStartTurn(environmentId, input),
-          startThreadTurn(input),
-        ),
+        viaEngine(registry, environmentId, engineStartTurn(environmentId, input)),
       scheduler,
       concurrency,
     }),
     interruptTurn: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:interrupt-turn",
       execute: (input: InterruptThreadTurnInput, registry, environmentId) =>
-        viaEngine(
-          registry,
-          environmentId,
-          engineInterruptTurn(environmentId, input),
-          interruptThreadTurn(input),
-        ),
+        viaEngine(registry, environmentId, engineInterruptTurn(environmentId, input)),
       scheduler,
       concurrency,
     }),
     /**
-     * The usage-limit notice's Continue on an engine conversation: the engine tries the provider
-     * now. A V1 thread continues by a message the view sends instead.
+     * The usage-limit notice's Continue: the engine tries the provider now.
      */
     continueAfterLimit: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:continue-after-limit",
       execute: (input: { readonly threadId: string }, registry, environmentId) =>
-        viaEngine(
-          registry,
-          environmentId,
-          engineContinueAfterLimit(environmentId, input),
-          Effect.fail(
-            new OrchestrationDispatchCommandError({
-              message: "This Mate continues by a message: send it from the composer.",
-            }),
-          ),
-        ),
+        viaEngine(registry, environmentId, engineContinueAfterLimit(environmentId, input)),
       scheduler,
       concurrency,
     }),
     /**
      * A value the Mate asked the person for, answered on its card: saved (the card wrote it to
-     * the vault itself) or declined. Only the outcome travels; an engine conversation only.
+     * the vault itself) or declined. Only the outcome travels.
      */
     answerVaultAsk: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:answer-vault-ask",
       execute: (input: VaultAskAnswerInput, registry, environmentId) =>
-        viaEngine(
-          registry,
-          environmentId,
-          engineAnswerVaultAsk(environmentId, input),
-          Effect.fail(
-            new OrchestrationDispatchCommandError({
-              message: "This Mate hears of a vault value with your next message.",
-            }),
-          ),
-        ),
+        viaEngine(registry, environmentId, engineAnswerVaultAsk(environmentId, input)),
       scheduler,
       concurrency,
     }),
     respondToApproval: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:respond-to-approval",
       execute: (input: RespondToThreadApprovalInput, registry, environmentId) =>
-        viaEngine(
-          registry,
-          environmentId,
-          engineRespondToApproval(environmentId, input),
-          respondToThreadApproval(input),
-        ),
+        viaEngine(registry, environmentId, engineRespondToApproval(environmentId, input)),
       scheduler,
       concurrency,
     }),
     respondToUserInput: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:respond-to-user-input",
       execute: (input: RespondToThreadUserInputInput, registry, environmentId) =>
-        viaEngine(
-          registry,
-          environmentId,
-          engineRespondToUserInput(environmentId, input),
-          respondToThreadUserInput(input),
-        ),
+        viaEngine(registry, environmentId, engineRespondToUserInput(environmentId, input)),
       scheduler,
       concurrency,
     }),
     dismissUserInput: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:dismiss-user-input",
       execute: (input: DismissThreadUserInputInput, registry, environmentId) =>
-        viaEngine(
-          registry,
-          environmentId,
-          engineDismissUserInput(environmentId, input),
-          dismissThreadUserInput(input),
-        ),
+        viaEngine(registry, environmentId, engineDismissUserInput(environmentId, input)),
       scheduler,
       concurrency,
     }),
