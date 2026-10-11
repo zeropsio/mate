@@ -432,7 +432,8 @@ export function cardSecondWords(input: {
     case "ask":
       if (askLine === undefined || askLine.kind === "sign-in") return muted(undefined);
       if (askLine.kind === "nothing-asked") return muted(NOTHING_ASKED_YET);
-      return muted(askLine.kind === "draft" ? `Draft: ${askLine.text}` : askLine.text);
+      if (askLine.kind === "draft") return muted(`Draft: ${askLine.text}`);
+      return muted(askLine.by === undefined ? askLine.text : `${askLine.by}: ${askLine.text}`);
   }
 }
 

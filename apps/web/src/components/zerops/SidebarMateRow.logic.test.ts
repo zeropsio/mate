@@ -23,6 +23,7 @@ import {
   type MateRowView,
   ownerBadge,
   mateRowAskLine,
+  mateAsker,
   mateRowDraft,
   mateRowReading,
   mateRowView,
@@ -1459,6 +1460,7 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
     deleting: false,
     finishing: false,
     read: true,
+    asker: undefined,
   };
 
   it.each([
@@ -1471,7 +1473,7 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
       // Live, 2026-10-02: the row read Draft → "Nothing asked yet" → the task, for 0.4 s.
       case: "no messages, a message just sent: the sent message, never nothing asked",
       input: { ...base, sent: "Build a minimal todo app" },
-      line: { kind: "ask", text: "Build a minimal todo app" },
+      line: { kind: "ask", text: "Build a minimal todo app", by: "You" },
     },
     {
       case: "asked before, a message just sent: the sent message over the old ask",
@@ -1480,7 +1482,7 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
         view: { ask: ASK, reply: WORDS, coming: undefined },
         sent: "and the logo",
       },
-      line: { kind: "ask", text: "and the logo" },
+      line: { kind: "ask", text: "and the logo", by: "You" },
     },
     {
       case: "a message just sent, then a draft typed: the draft",
@@ -1598,12 +1600,49 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
     expect(mateRowAskLine(input)).toEqual(line);
   });
 
+  // The owner, 2026-10-11, of a row reading "continue" over its answer: a line of the person's
+  // words with nobody's name on it read like a label.
+  it.each([
+    {
+      case: "on the viewer's own Mate: theirs, as You",
+      input: { ...base, view: { ask: ASK, reply: WORDS, coming: undefined }, asker: "You" },
+      line: { kind: "ask", text: ASK, by: "You" },
+    },
+    {
+      case: "on a colleague's: their person's, by first name",
+      input: { ...base, view: { ask: ASK, reply: WORDS, coming: undefined }, asker: "Jan" },
+      line: { kind: "ask", text: ASK, by: "Jan" },
+    },
+    {
+      case: "whose Mate HQ has not named yet: nobody's",
+      input: { ...base, view: { ask: ASK, reply: WORDS, coming: undefined } },
+      line: { kind: "ask", text: ASK },
+    },
+    {
+      case: "just sent from this browser, its owner not named yet: the viewer's",
+      input: { ...base, sent: "and the logo" },
+      line: { kind: "ask", text: "and the logo", by: "You" },
+    },
+    {
+      case: "deleting: its person's still",
+      input: {
+        ...base,
+        view: { ask: ASK, reply: undefined, coming: undefined },
+        deleting: true,
+        asker: "Jan",
+      },
+      line: { kind: "ask", text: ASK, by: "Jan" },
+    },
+  ])("says whose words the ask is: $case", ({ input, line }) => {
+    expect(mateRowAskLine(input)).toEqual(line);
+  });
+
   // Milo's stress run 6: the row's text held the raw "`sleep 20 && …`" of a message just sent.
   it.each([
     {
       case: "a message just sent",
       input: { ...base, sent: "Start a job (`sleep 20 && echo done`) **now**" },
-      line: { kind: "ask", text: "Start a job (sleep 20 && echo done) now" },
+      line: { kind: "ask", text: "Start a job (sleep 20 && echo done) now", by: "You" },
     },
     {
       case: "a draft",
@@ -1612,6 +1651,27 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
     },
   ])("the person's line says their words as plain words: $case", ({ input, line }) => {
     expect(mateRowAskLine(input)).toEqual(line);
+  });
+});
+
+// Only its owner talks to a Mate (D5), so the person who asked is its owner.
+describe("mateAsker — who a row says asked its Mate", () => {
+  it.each([
+    { case: "the viewer's own Mate", owner: { name: "Petra Malá", isViewer: true }, by: "You" },
+    { case: "a colleague's", owner: { name: "Jan Novák", isViewer: false }, by: "Jan" },
+    {
+      case: "a colleague named by one word",
+      owner: { name: "Karel", isViewer: false },
+      by: "Karel",
+    },
+    {
+      case: "a colleague HQ names without a name",
+      owner: { name: "  ", isViewer: false },
+      by: undefined,
+    },
+    { case: "an owner HQ has not named", owner: undefined, by: undefined },
+  ])("$case: $by", ({ owner, by }) => {
+    expect(mateAsker(owner)).toBe(by);
   });
 });
 

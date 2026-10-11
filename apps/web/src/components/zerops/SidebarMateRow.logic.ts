@@ -576,7 +576,8 @@ export function mateRowReading(input: {
  * its composer — or why none stand there. It is the person's line, as the third is the Mate's.
  */
 export type MateRowAskLine =
-  | { readonly kind: "ask"; readonly text: string }
+  /** Led by whose words they are (`mateAsker`): nobody's while HQ has not named its owner. */
+  | { readonly kind: "ask"; readonly text: string; readonly by?: string | undefined }
   /** Unsent, led by *Draft*: the ask it stands over is kept under it, so clearing it is still. */
   | { readonly kind: "draft"; readonly text: string; readonly ask: string | undefined }
   | { readonly kind: "sign-in"; readonly text: string; readonly waitsOnViewer: boolean }
@@ -594,8 +595,8 @@ export type MateRowAskLine =
  * | deleting                               | the ask, where there was one; no draft       |
  * | nobody signed in                       | the sign-in, whatever is typed               |
  * | a draft typed                          | *Draft* and its words, over the ask if any   |
- * | just sent, its conversation behind     | what was sent                                |
- * | asked                                  | the ask                                      |
+ * | just sent, its conversation behind     | what was sent, as You                        |
+ * | asked                                  | the ask, as its person's (`mateAsker`)       |
  * | never asked, its conversations read    | "Nothing asked yet"                          |
  * | never asked, not read, or a step below | nothing                                      |
  *
@@ -621,11 +622,13 @@ export function mateRowAskLine(input: {
   readonly finishing: boolean;
   /** Its conversations are read: none there is a fact, not a socket still opening. */
   readonly read: boolean;
+  /** Who asks it, as the row names them (`mateAsker`). */
+  readonly asker: string | undefined;
 }): MateRowAskLine {
   const { view } = input;
   if (view.coming !== undefined) return undefined;
   if (input.deleting || input.finishing) {
-    return view.ask === undefined ? undefined : { kind: "ask", text: view.ask };
+    return view.ask === undefined ? undefined : { kind: "ask", text: view.ask, by: input.asker };
   }
   if (input.signIn !== undefined) return { kind: "sign-in", ...input.signIn };
   // The person's words as the row quotes every message: plain words (Milo's stress run 6 kept a
@@ -633,9 +636,27 @@ export function mateRowAskLine(input: {
   const draft = input.draft === undefined ? null : messagePreviewText(input.draft);
   if (draft !== null) return { kind: "draft", text: draft, ask: view.ask };
   const sent = input.sent === undefined ? null : messagePreviewText(input.sent);
-  if (sent !== null) return { kind: "ask", text: sent };
-  if (view.ask !== undefined) return { kind: "ask", text: view.ask };
+  // This browser sent it: the viewer's words, whoever HQ says owns the Mate.
+  if (sent !== null) return { kind: "ask", text: sent, by: YOU };
+  if (view.ask !== undefined) return { kind: "ask", text: view.ask, by: input.asker };
   return view.reply === undefined && input.read ? { kind: "nothing-asked" } : undefined;
+}
+
+const YOU = "You";
+
+/**
+ * Who a row says asked its Mate (the owner, 2026-10-11, of a row reading "continue" over its
+ * answer: the person's words with nobody's name on them read like a label). Only its owner talks
+ * to a Mate (D5), so it is them: *You* on the viewer's own, a colleague's first name on theirs —
+ * the messenger's "You:" before a message of yours — and nobody while HQ has not named its owner.
+ */
+export function mateAsker(
+  owner: { readonly name: string; readonly isViewer: boolean } | undefined,
+): string | undefined {
+  if (owner === undefined) return undefined;
+  if (owner.isViewer) return YOU;
+  const first = owner.name.trim().split(/\s+/u)[0];
+  return first === undefined || first.length === 0 ? undefined : first;
 }
 
 /** What `mateRowDraft` reads of the composer's store (`composerDraftStore.ts`). */

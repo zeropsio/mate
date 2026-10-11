@@ -451,6 +451,35 @@ describe("SidebarZeropsTree", () => {
     expect(unnamed).not.toContain("sidebar-mate-sign-in");
   });
 
+  // The owner, 2026-10-11: "continue" over its answer read like a label, not the person's words.
+  it.each([
+    { whose: "the viewer's own", owner: { isViewer: true }, by: "You" },
+    { whose: "a colleague's", owner: { isViewer: false }, by: "Jan" },
+  ])("says who asked what it was last asked: $by, on $whose Mate", ({ owner, by }) => {
+    const connected: ZeropsCandidate = { ...CRM_DEV, group: "connected" };
+    const idle: ZeropsAgentActivity = {
+      threadId: "thread-1" as ZeropsAgentActivity["threadId"],
+      kind: "idle",
+      status: null,
+      face: "idle",
+      subject: "Fix the login redirect",
+      at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      snippet: "The redirect keeps the page you came from.",
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env:thread",
+      task: undefined,
+    };
+    const html = render([connected], {
+      getActivity: () => idle,
+      getOwner: () => ({ name: "Jan Novák", initials: "JN", avatarUrl: null, ...owner }),
+    });
+    expect(html).toMatch(
+      new RegExp(`data-zerops-surface="sidebar-mate-asker"[^>]*>${by}:</span>`, "u"),
+    );
+    expect(html).toContain("Fix the login redirect");
+  });
+
   it("keeps saying what a connected Mate is on, or was last on, under its name", () => {
     const connected: ZeropsCandidate = { ...CRM_DEV, group: "connected" };
     const idle: ZeropsAgentActivity = {

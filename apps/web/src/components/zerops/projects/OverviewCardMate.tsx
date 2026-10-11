@@ -46,6 +46,7 @@ import {
   mateDeletingView,
   mateOwnerView,
   mateRowAskLine,
+  mateAsker,
   mateRowReading,
   mateRowSecond,
   ownerBadge,
@@ -175,6 +176,7 @@ export function OverviewCardMate({
     deleting,
     finishing: false,
     read: conversationsRead,
+    asker: mateAsker(owner),
   });
   const second = mateRowSecond({
     view,

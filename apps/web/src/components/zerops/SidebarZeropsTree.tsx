@@ -248,6 +248,7 @@ import {
   mateRowReading,
   mateRowHeldLines,
   mateRowAskOver,
+  mateAsker,
   mateRowSecond,
   pendingBornLine,
   type MateBornLine,
@@ -2743,6 +2744,7 @@ function MateRowView<T extends RosterCandidate>({
     deleting,
     finishing: finishing !== undefined,
     read: conversationsRead,
+    asker: mateAsker(owner),
   });
   // A colleague's Mate waiting on its person says whom it waits on, never their question. A Mate
   // nobody owns yet waits on nobody in particular: its question stands.
@@ -3417,10 +3419,11 @@ const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention
 };
 
 /**
- * The row's second line, the person's (`mateRowAskLine`): what they last asked, rising in as they
- * set it; or what they are about to send, led by *Draft:* the way a messenger leads an unsent
- * message — the ask kept under it in the same cell, so clearing the draft replays no rise; or,
- * its conversation read and nobody having asked it anything, that fact in the muted ink.
+ * The row's second line, the person's (`mateRowAskLine`): what they last asked, led by whose words
+ * they are (`mateAsker`), rising in as they set it; or what they are about to send, led by
+ * *Draft:* the way a messenger leads an unsent message — the ask kept under it in the same cell,
+ * so clearing the draft replays no rise; or, its conversation read and nobody having asked it
+ * anything, that fact in the muted ink.
  */
 function MateAskLine({
   line,
@@ -3441,6 +3444,7 @@ function MateAskLine({
     );
   }
   const ask = line.kind === "ask" ? line.text : line.ask;
+  const by = line.kind === "ask" ? line.by : undefined;
   const drafting = line.kind === "draft";
   return (
     <span className="grid min-w-0 menu-line2">
@@ -3452,10 +3456,14 @@ function MateAskLine({
             drafting && "invisible",
             rises && "animate-words-in motion-reduce:animate-none",
           )}
-          data-zerops-surface={drafting ? undefined : "sidebar-mate-subject"}
           key={ask}
         >
-          {ask}
+          {/* Whose words they are, as a messenger leads a message of yours with "You:". */}
+          {by === undefined ? null : (
+            <span data-zerops-surface="sidebar-mate-asker">{`${by}:`}</span>
+          )}
+          {by === undefined ? null : " "}
+          <span data-zerops-surface={drafting ? undefined : "sidebar-mate-subject"}>{ask}</span>
         </span>
       )}
       {drafting ? (
