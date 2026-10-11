@@ -201,6 +201,7 @@ import { useMateAddresses } from "../zerops/useMateAddresses";
 import { useCrew } from "../zerops/crew/useCrew";
 import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
+import { useThreadOnScreen } from "../zerops/threadOnScreen";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
 import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
@@ -1980,6 +1981,12 @@ export default function ChatView(props: ChatViewProps) {
     ? null
     : ((activeThread?.session?.status === "running" ? activeThread.session.activeTurnId : null) ??
       (activeLatestTurn?.state === "running" ? activeLatestTurn.turnId : null));
+  // A result landing in the conversation on screen is seen at once, before its visit below.
+  useThreadOnScreen(
+    serverThread?.id
+      ? scopedThreadKey(scopeThreadRef(serverThread.environmentId, serverThread.id))
+      : null,
+  );
   // Reading a finished thread clears the sidebar's Done badge. The visit is
   // stamped at the turn's completion time — not now/updatedAt — so it clears
   // exactly the completion the user is looking at: a wake or completion that

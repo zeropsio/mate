@@ -55,7 +55,26 @@ export interface MatesActivityInput {
   /** The environments whose socket stands: up, or only blinking. */
   readonly standing: ReadonlySet<EnvironmentId>;
   readonly lastVisitedAtById: Readonly<Record<string, string>>;
+  /**
+   * The conversation open and visible on this page, by its scoped key: every result it shows is
+   * seen, whatever HQ still counts unseen or the visit marked so far (`useThreadOnScreen`).
+   */
+  readonly onScreen?: string | null | undefined;
 }
+
+/**
+ * A visit no completion is later than: the conversation on screen's, so a result that lands while
+ * the person looks at it never reads unseen before its visit is marked.
+ */
+const SEEN_ON_SCREEN = "9999-12-31T23:59:59.999Z";
+
+/** The visits as this read takes them: the conversation on screen seen through its last result. */
+const visitsOf = (
+  input: Pick<MatesActivityInput, "lastVisitedAtById" | "onScreen">,
+): Readonly<Record<string, string>> =>
+  input.onScreen == null
+    ? input.lastVisitedAtById
+    : { ...input.lastVisitedAtById, [input.onScreen]: SEEN_ON_SCREEN };
 
 /** The environment a Mate runs in: as its attention, HQ's overview, or this page's socket names it. */
 export function mateEnvironmentOf(
@@ -147,7 +166,8 @@ function readMatesActivity(input: MatesActivityInput): Map<string, ZeropsAgentAc
     if (shells === undefined) shellsByEnvironment.set(thread.environmentId, [thread]);
     else shells.push(thread);
   }
-  const sockets = deriveZeropsAgentActivity(input.threads, input.lastVisitedAtById, input.limits);
+  const lastVisitedAtById = visitsOf(input);
+  const sockets = deriveZeropsAgentActivity(input.threads, lastVisitedAtById, input.limits);
   const activity = new Map<string, ZeropsAgentActivity>();
   for (const projectId of input.projectIds) {
     const read = input.attention[projectId];
@@ -158,7 +178,13 @@ function readMatesActivity(input: MatesActivityInput): Map<string, ZeropsAgentAc
     const shells = shellsByEnvironment.get(environmentId) ?? [];
     const entry =
       said === null || read === undefined
-        ? legacyActivity({ ...input, environmentId, overview, socket: sockets.get(environmentId) })
+        ? legacyActivity({
+            ...input,
+            lastVisitedAtById,
+            environmentId,
+            overview,
+            socket: sockets.get(environmentId),
+          })
         : attentionActivity({
             attention: said,
             live: read.live,
@@ -166,7 +192,7 @@ function readMatesActivity(input: MatesActivityInput): Map<string, ZeropsAgentAc
             environmentId,
             overview,
             shells,
-            lastVisitedAtById: input.lastVisitedAtById,
+            lastVisitedAtById,
             limits: input.limits,
           });
     if (entry !== undefined) activity.set(projectId, entry);
@@ -227,7 +253,9 @@ export function attentionActivity(input: {
         ? undefined
         : threadAgentActivity(heldWords, visited, undefined, limit);
   if (read === undefined) return undefined;
-  const unread = input.unseen === null ? read.unread : input.unseen > 0;
+  // HQ's count drives a chat off screen; the one on screen is seen before HQ hears so.
+  const unread =
+    input.unseen === null || visited === SEEN_ON_SCREEN ? read.unread : input.unseen > 0;
   const question = attention.questions.find(
     (question) =>
       !(
