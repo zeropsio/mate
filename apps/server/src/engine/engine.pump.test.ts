@@ -21,6 +21,8 @@ import { CONTINUE_TEXT, resentText } from "./domain/decide.ts";
 import { PROVIDER_CALL_BOUND_MS } from "./effects/shared.ts";
 import { Conversations } from "./Conversations.ts";
 import { TEXT_KEPT_EVERY_MS } from "./pump/toCore.ts";
+import { rowStateOf } from "./read/conversationRow.ts";
+import { readConversationView } from "./read/conversationView.ts";
 import { DRIVERS, makeEngineWorld, mate, type EngineWorld } from "./testing/pump/engineWorld.ts";
 
 const r = (n: number): RunId => runId(mate, n);
@@ -247,6 +249,45 @@ describe("the running engine", () => {
           yield* w.shutdown;
         }),
       ),
+  );
+
+  it.effect.each(
+    DRIVERS.flatMap((driver) => [
+      {
+        title: `background work's approval after its turn ended asks the person, and the answer reaches the agent (${driver})`,
+        driver,
+        turnId: undefined,
+      },
+      {
+        title: `a helper's approval under a turn of its own asks the person, and the answer reaches the agent (${driver})`,
+        driver,
+        turnId: "child-T1",
+      },
+    ]),
+  )("$title", ({ driver, turnId }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world(driver);
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.startWork(thread));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        assert.deepStrictEqual(yield* ending(w, 1), ["ended", "completed", "agent"]);
+        const asked = yield* w.agent((agent, thread) =>
+          agent.ask(thread, "approval", turnId === undefined ? {} : { turnId }),
+        );
+        const [request] = yield* w.requests;
+        assert.deepStrictEqual([request?.run_id, request?.state], [r(1), "open"]);
+        yield* w.tell({
+          _tag: "Answer",
+          requestId: RequestId.make(request!.request_id),
+          answer: "accept",
+          summary: "Approve",
+        });
+        assert.include(w.provider.calls, `approve ${asked} accept`);
+        assert.strictEqual((yield* w.requests)[0]?.state, "answered");
+        yield* w.shutdown;
+      }),
+    ),
   );
 
   it.effect(
@@ -1607,6 +1648,75 @@ describe("Claude's helpers and background work, as the engine records them", () 
               ),
             );
           assert.deepStrictEqual([yield* calls(1), yield* calls(2)], [["Agent", "Bash"], []]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  // Milo's final engine run (seg E +1:32): in Supervised, two helpers' commands needed approval
+  // after the turn ended; nothing reached the person and the run waited on its helpers for good.
+  it.effect(
+    "a helper's command that needs approval asks the person, and the run continues once they allow it",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          const c = claude(w);
+          yield* send(w);
+          yield* c.call("toolu_h", { description: "Review the API" }, null, "Agent");
+          const helper = {
+            taskId: "ah",
+            description: "Review the API",
+            taskType: "local_agent",
+            toolUseId: "toolu_h",
+          };
+          yield* c.task("task.started", helper);
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "completed", "agent"]);
+          yield* w.agent((agent, thread) =>
+            agent.emit("item.started", thread, {
+              itemId: "toolu_x",
+              payload: {
+                itemType: "command_execution",
+                title: "Command run",
+                agentId: "ah",
+                parentToolUseId: "toolu_h",
+                status: "inProgress",
+                data: { toolName: "Bash", input: { command: "for f in *; do wc -l $f; done" } },
+              },
+            }),
+          );
+          const asked = yield* w.agent((agent, thread) =>
+            agent.ask(thread, "approval", {
+              agentId: "ah",
+              parentToolUseId: "toolu_h",
+              call: "toolu_x",
+            }),
+          );
+          const [request] = yield* w.requests;
+          assert.deepStrictEqual([request?.run_id, request?.state], [r(1), "open"]);
+          const view = yield* w.within(readConversationView(mate));
+          assert.deepStrictEqual(view === undefined ? undefined : rowStateOf(view), {
+            kind: "waiting",
+            on: "approval",
+            words: "rm -rf dist",
+          });
+          yield* w.tell({
+            _tag: "Answer",
+            requestId: RequestId.make(request!.request_id),
+            answer: "accept",
+            summary: "Approve",
+          });
+          assert.include(w.provider.calls, `approve ${asked} accept`);
+          assert.strictEqual((yield* w.requests)[0]?.state, "answered");
+          yield* c.task("task.completed", { ...helper, status: "completed", summary: "Done." });
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+          const [work] = yield* works(w, 1);
+          const woken = yield* w.run(r(2));
+          assert.deepStrictEqual(
+            [work?.body.status, woken?.trigger.kind, woken?.joins],
+            ["completed", "wake", r(1)],
+          );
           yield* w.shutdown;
         }),
       ),

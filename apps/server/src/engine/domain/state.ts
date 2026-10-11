@@ -40,7 +40,7 @@ export const KEPT_ENDED_RUNS = 16;
  * above main's 12, whose open requests lacked a vault ask's key and vault, so no snapshot of
  * another shape loads as this one.
  */
-export const STATE_VERSION = 13;
+export const STATE_VERSION = 14;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -119,6 +119,8 @@ export interface OpenRequest {
   readonly kind?: RequestAsk["kind"];
   /** A question its agent does not wait on (asked by message): it may close unanswered. */
   readonly dismissible?: boolean;
+  /** Asked by a helper: it outlives its run while the session that asked lives. */
+  readonly byHelper?: true;
   /** A question asked by message: what it asks, by question id, to word the answer's message. */
   readonly questions?: ReadonlyArray<{ readonly id: string; readonly question: string }>;
   /** A value asked of the person: its key and vault, to word the agent's line on the answer. */

@@ -251,6 +251,45 @@ describe("the menu row", () => {
   });
 });
 
+// Milo's final engine run (seg E +1:32): helpers waited on an approval while the face said
+// "Waiting for its helpers", with nothing to press.
+describe("the menu row while a helper asks", () => {
+  const helperAsk = { kind: "approval", requestKind: "command", detail: "wc -l *" } as never;
+  it.each([
+    {
+      name: "a helper's approval after its run ended waits on the person",
+      openRequests: [request(helperAsk)],
+      state: { kind: "waiting", on: "approval", words: "wc -l *" },
+    },
+    {
+      name: "a question asked by message after its run ended leaves the helpers working",
+      openRequests: [
+        request({
+          kind: "question",
+          questions: [{ question: "Which region?" }],
+          dismissible: true,
+        }),
+      ],
+      state: { kind: "working", since: 500, waitsOnHelpers: true },
+    },
+    {
+      name: "an ask nobody can answer any more leaves the helpers working",
+      openRequests: [{ ...request(helperAsk), answerable: false }],
+      state: { kind: "working", since: 500, waitsOnHelpers: true },
+    },
+  ])("$name", ({ openRequests, state }) => {
+    const row = conversationRowOf(
+      view({
+        lastEnded: ended(1, { kind: "completed" }),
+        background: "working",
+        openRequests: openRequests as ReadonlyArray<ViewRequest>,
+      }),
+      revision,
+    );
+    expect(row.state).toEqual(state);
+  });
+});
+
 // Milo's run 9 (0.15.38): saving a value took both faces needs → done → idle → working, a step per
 // commit. The answer's own commit arms the wake that tells the agent, due at once, so it is work.
 describe("the menu row as a request is answered", () => {

@@ -448,6 +448,7 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         signals.push({
           kind: "request-opened",
           ...(signal.turn === undefined ? {} : { turn: signal.turn }),
+          ...(signal.byHelper === undefined ? {} : { byHelper: true }),
           key: signal.request,
           ask: engineAsk(signal.ask),
           ...(signal.item === undefined ? {} : { item: signal.item }),

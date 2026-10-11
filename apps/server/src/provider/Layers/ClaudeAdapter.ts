@@ -5336,6 +5336,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...(callbackOptions.suggestions ? { suggestions: callbackOptions.suggestions } : {}),
         };
 
+        // A helper's call asks too, often after the turn that started it ended: it names its
+        // helper as its calls do, so the person is asked on that helper's card.
+        const parentToolUseId = context.subagentToolParents.get(callbackOptions.toolUseID);
+        const agentId =
+          helperOfCall(context.taskAgents, parentToolUseId) ?? callbackOptions.agentID;
         const requestedStamp = yield* makeEventStamp();
         yield* offerRuntimeEvent({
           type: "request.opened",
@@ -5348,6 +5353,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           payload: {
             requestType,
             detail,
+            ...(agentId ? { agentId } : {}),
+            ...(parentToolUseId ? { parentToolUseId } : {}),
             args: {
               toolName,
               input: toolInput,
