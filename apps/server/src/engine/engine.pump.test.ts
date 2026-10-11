@@ -27,7 +27,6 @@ import { DRIVERS, makeEngineWorld, mate, type EngineWorld } from "./testing/pump
 
 const r = (n: number): RunId => runId(mate, n);
 const MINUTE = 60_000;
-const DAY = 24 * 60 * MINUTE;
 
 /** A world booted with its conversation given an agent on this driver. */
 const world = (
@@ -1250,7 +1249,9 @@ describe("the running engine", () => {
         assert.strictEqual(fired(), 1);
         const woken = yield* w.run(r(2));
         assert.deepStrictEqual([woken?.trigger.cause, woken?.joins], ["agent-schedule", null]);
-        yield* w.advance(DAY);
+        // A second firing would come within minutes: an hour proves it fires once, where a day of the
+        // test clock wakes every periodic timer 86,400 times.
+        yield* w.advance(60 * MINUTE);
         assert.strictEqual(fired(), 1);
         yield* w.shutdown;
       }),
