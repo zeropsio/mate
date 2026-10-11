@@ -192,7 +192,6 @@ describe("automatic sections keep account preferences", () => {
     const lifetime = await import("./accountLifetime");
     const prefs = await import("./projectOrderPreference");
     const saved = await import("../hooks/useLocalStorage");
-    const { menuProjectOpening } = await import("@t3tools/client-runtime/data");
     lifetime.openAccountLifetime("first");
     saved.setLocalStorageItem(prefs.PROJECT_ORDER_STORAGE_KEY, "custom", prefs.ProjectOrderSchema);
     saved.setLocalStorageItem(
@@ -200,23 +199,8 @@ describe("automatic sections keep account preferences", () => {
       ["b", "a", "c"],
       prefs.ProjectCustomOrderSchema,
     );
-    const projects = ["b", "a", "c"].map((id) => ({
-      id,
-      mates: [{ projectId: id, face: "idle" }],
-    }));
-    const input = {
-      ready: true,
-      scope: "first/org",
-      open: true,
-      order: "custom",
-      projects,
-      now: 0,
-      openProjectId: "a",
-    };
-    const first = menuProjectOpening(null, input);
-    expect([...first.active, ...first.other]).toEqual(["a", "b", "c"]);
-    const second = menuProjectOpening({ ...first, open: false }, { ...input, openProjectId: "c" });
-    expect([...second.active, ...second.other]).toEqual(["c", "b", "a"]);
+    // The projects regroup on screen (a project arrives in another app); the chosen order stands.
+    prefs.rememberProjectsOnScreen(["a", "c", "b"]);
     expect(
       saved.getLocalStorageItem(
         prefs.PROJECT_CUSTOM_ORDER_STORAGE_KEY,

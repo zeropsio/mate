@@ -19,7 +19,7 @@ import { create, type ReactTestInstance, type ReactTestRenderer } from "react-te
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, ProjectId, ThreadId, TurnId, type CrewSnapshot } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
 import type { CrewDigest } from "@t3tools/shared/mateLink";
 
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
@@ -3912,7 +3912,7 @@ it("a retained Mate line keeps its row clickable and offers Zerops separately", 
   expect(html).not.toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<a/);
 });
 
-describe("automatic project sections", () => {
+describe("one project order, the person's", () => {
   const now = Date.parse("2026-10-09T12:00:00Z");
   const week = 7 * 24 * 60 * 60 * 1000;
   const rows = [LINKS_MATE, CRM_DEV];
@@ -3945,14 +3945,10 @@ describe("automatic project sections", () => {
     tree.root
       .findAll((node) => node.type === "section" && node.props["data-zerops-group"] !== undefined)
       .map((node) => node.props["data-zerops-group"]);
-  const menu = (
-    getActivity: (candidate: ZeropsCandidate) => ZeropsAgentActivity | undefined,
-    menuOpen = true,
-  ) => (
+  const menu = (getActivity: (candidate: ZeropsCandidate) => ZeropsAgentActivity | undefined) => (
     <SidebarZeropsTree
       candidates={rows}
       complete
-      menuOpen={menuOpen}
       getActivity={getActivity}
       onBrowseProjects={() => {}}
       onSelect={() => {}}
@@ -3962,132 +3958,6 @@ describe("automatic project sections", () => {
     vi.restoreAllMocks();
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "newest", ProjectOrderSchema);
     setLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, [], ProjectCustomOrderSchema);
-  });
-
-  // Decision: the shipped rules stay; fix only where real data defeats them.
-  it("The opening classifies HQ's first work baseline before freezing sections; later work cannot move them", () => {
-    vi.spyOn(Date, "now").mockReturnValue(now);
-    const registry = AtomRegistry.make();
-    const structure = {
-      apps: rows.map((row) => ({
-        id: row.project.hq!.appId!,
-        name: row.project.hq!.appName!,
-        projects: [
-          {
-            projectId: row.project.id,
-            name: row.project.name,
-            kind: "mate" as const,
-            mate: { face: "" },
-          },
-        ],
-      })),
-      ungrouped: [],
-    };
-    const hq = mountHqNavigation(registry, "org", { structure });
-    function Menu() {
-      const getActivity = useMateRowActivity(useMatesActivity(true));
-      return menu(getActivity);
-    }
-    const tree = mount(
-      <RegistryContext.Provider value={registry}>
-        <Menu />
-      </RegistryContext.Provider>,
-    );
-    const sections = () =>
-      Object.fromEntries(
-        tree.root
-          .findAll(
-            (node) => node.type === "section" && node.props["data-zerops-group"] !== undefined,
-          )
-          .map((node) => [
-            node.props["data-zerops-group"],
-            node.props["data-zerops-project-section"],
-          ]),
-      );
-    expect(sections()).toEqual({ links: "other", aaa: "other" });
-    // Live reload: placements arrive first; attention follows with this recorded completion.
-    const completedAt = "2026-10-07T12:04:12.943Z";
-    const told = (at: string, revision: number) => ({
-      source: { environmentId: EnvironmentId.make("env"), epoch: 1, incarnation: "run", revision },
-      mainThreadId: ThreadId.make("conversation"),
-      lastThreadId: ThreadId.make("conversation"),
-      working: 0,
-      waiting: 0,
-      results: [
-        { threadId: ThreadId.make("conversation"), turnId: TurnId.make("turn"), completedAt: at },
-      ],
-      questions: [],
-      truncated: false,
-    });
-    const mates = Object.fromEntries(
-      rows.map((row) => [
-        row.project.id,
-        {
-          presence: { online: true, since: completedAt, overview: "live" as const },
-        },
-      ]),
-    );
-    act(() =>
-      hq.seed({
-        structure,
-        mates,
-        attention: {
-          [LINKS_MATE.project.id]: told(completedAt, 3),
-          [CRM_DEV.project.id]: told("2026-09-30T02:00:49.214Z", 3),
-        },
-      }),
-    );
-    expect(
-      sections(),
-      "ASSERTION: recent work arriving in the opening baseline belongs in Active",
-    ).toEqual({ links: "active", aaa: "other" });
-    act(() =>
-      hq.seed({
-        structure,
-        mates,
-        attention: {
-          [LINKS_MATE.project.id]: told(completedAt, 4),
-          [CRM_DEV.project.id]: told(completedAt, 4),
-        },
-      }),
-    );
-    expect(sections(), "ASSERTION: background work preserves the completed opening").toEqual({
-      links: "active",
-      aaa: "other",
-    });
-  });
-
-  // Decision: the owner asked for the most straightforward first iteration; proposal followed as written.
-  it("Work within seven days places its project in Active; older resting work does not.", () => {
-    vi.spyOn(Date, "now").mockReturnValue(now);
-    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
-    const html = render(rows, {
-      getActivity: (candidate: ZeropsCandidate) =>
-        read(candidate === LINKS_MATE ? now - week : now - week - 1),
-    });
-    expect(ids(html), "ASSERTION: seven-day work precedes older resting projects").toEqual([
-      "links",
-      "aaa",
-    ]);
-    // Every project stands in the one list; the resting one is drawn after the active.
-    expect(html).toContain('data-zerops-project-section="other"');
-  });
-
-  it("Current work and needs-you keep a project Active beyond seven days.", () => {
-    vi.spyOn(Date, "now").mockReturnValue(now);
-    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
-    for (const kind of ["working", "connecting", "monitoring", "input"] as const) {
-      signerOf.set(LINKS_MATE.project.id, "viewer");
-      session.viewer = "viewer";
-      const html = render(rows, {
-        getActivity: (candidate: ZeropsCandidate) =>
-          read(
-            now - week - 1,
-            candidate === LINKS_MATE ? { kind, face: kind === "input" ? "needs" : "working" } : {},
-          ),
-      });
-      expect(ids(html), `ASSERTION: ${kind} promotes its project`).toEqual(["links", "aaa"]);
-    }
   });
 
   it("Unread, untouched chats and remembered running state do not falsely promote projects.", () => {
@@ -4110,23 +3980,14 @@ describe("automatic project sections", () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(now);
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
     const tree = mount(menu((candidate) => read(candidate === LINKS_MATE ? now : now - week - 1)));
-    expect(mountedIds(tree)).toEqual(["links", "aaa"]);
+    expect(mountedIds(tree)).toEqual(["aaa", "links"]);
     clock.mockReturnValue(now + week + 1);
     act(() => tree.update(menu((candidate) => read(candidate === CRM_DEV ? now + week + 1 : now))));
-    expect(mountedIds(tree)).toEqual(["links", "aaa"]);
+    expect(mountedIds(tree)).toEqual(["aaa", "links"]);
   });
 
-  it("Reopening applies current membership and the chosen order deterministically.", () => {
-    vi.spyOn(Date, "now").mockReturnValue(now);
-    setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
-    const tree = mount(menu(() => undefined));
-    const work = (candidate: ZeropsCandidate) => (candidate === LINKS_MATE ? read(now) : undefined);
-    act(() => tree.update(menu(work, false)));
-    act(() => tree.update(menu(work)));
-    expect(mountedIds(tree)).toEqual(["links", "aaa"]);
-  });
-
-  it("Waiting review and the open conversation use the menu's existing verdicts", () => {
+  // The owner (2026-10-11), of the "N other projects" fold: "I'd get rid of" it.
+  it("lists every project in the person's order, whatever its Mates did and whoever waits", () => {
     vi.spyOn(Date, "now").mockReturnValue(now);
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "name", ProjectOrderSchema);
     session.viewer = "viewer";
@@ -4136,11 +3997,17 @@ describe("automatic project sections", () => {
       environments: new Map(),
       releaseOffered: false,
     });
-    expect(ids(render(rows, { getFlow, getActivity: () => read(now - week - 1) }))).toEqual([
-      "links",
-      "aaa",
-    ]);
-    expect(ids(render(rows, { activeProjectId: LINKS_MATE.project.id }))).toEqual(["links", "aaa"]);
+    for (const html of [
+      render(rows, {
+        getActivity: (candidate: ZeropsCandidate) =>
+          read(candidate === LINKS_MATE ? now : now - week - 1, { kind: "working" }),
+      }),
+      render(rows, { getFlow, getActivity: () => read(now - week - 1) }),
+      render(rows, { activeProjectId: LINKS_MATE.project.id }),
+    ]) {
+      expect(ids(html)).toEqual(["aaa", "links"]);
+      expect(html).not.toContain("data-zerops-project-section");
+    }
   });
 
   it("Multiple active Mates produce one project section; empty groups add no heading.", () => {
