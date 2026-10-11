@@ -94,6 +94,23 @@ const readTrace = (page: import("puppeteer-core").Page, ms: number) =>
     });
   });
 
+/** The list's distance from its end once it has come to rest: the glide out of the room a settle
+ * held can still be landing when a trace ends, on a slow runner by a few pixels. */
+const restingEnd = (page: import("puppeteer-core").Page) =>
+  Effect.promise(async () => {
+    const gap = () =>
+      page.evaluate(() => {
+        const outer = document.querySelector<HTMLElement>(".timeline-legend-list");
+        return outer ? outer.scrollHeight - outer.clientHeight - outer.scrollTop : Number.NaN;
+      });
+    let last = await gap();
+    for (let waited = 0; waited < 3000 && !(last <= 1); waited += 100) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      last = await gap();
+    }
+    return last;
+  });
+
 /**
  * The largest move between two frames running, of what `of` reads. A glide to the end steps a few
  * tens of pixels a frame; a jump moves the whole of what changed at once (250 px in Milo's run).
@@ -293,7 +310,10 @@ describe("C: an engine Mate's run card in a live conversation", () => {
           largestStep(frames, (frame) => frame.top),
           "ASSERTION: the list never jumps",
         ).toBeLessThan(120);
-        expect(frames.at(-1)!.end, "ASSERTION: the view ends at the conversation's end").toBe(0);
+        expect(
+          yield* restingEnd(s.page),
+          "ASSERTION: the view ends at the conversation's end",
+        ).toBeLessThanOrEqual(1);
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -365,7 +385,10 @@ describe("C: an engine Mate's run card in a live conversation", () => {
             largestStep(frames, (frame) => frame.anchor),
             "ASSERTION: the reply the person was reading never jumps as the wake answers",
           ).toBeLessThan(120);
-          expect(frames.at(-1)!.end, "ASSERTION: the view ends at the conversation's end").toBe(0);
+          expect(
+            yield* restingEnd(s.page),
+            "ASSERTION: the view ends at the conversation's end",
+          ).toBeLessThanOrEqual(1);
           yield* s.then.noExternalNetwork;
         }),
     );
