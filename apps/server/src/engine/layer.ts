@@ -1,6 +1,6 @@
 /**
  * The `MateEngine` layer, chosen by the switch when it is built: the live
- * engine when `T3CODE_MATE_ENGINE` is `mate`, else the inert one. Both
+ * engine unless `T3CODE_MATE_ENGINE` is `v1` (`readMateEngine`), else the inert one. Both
  * provide the same service, so the composition is the same in both modes.
  *
  * @module engine/layer
