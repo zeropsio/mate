@@ -2595,12 +2595,15 @@ describe("owner-reported layout regressions", () => {
                 ),
                 "ASSERTION: the answer's last line lands near where it was read",
               ).toBeLessThanOrEqual(64);
+              // Its pace per 60 Hz frame: a slow runner paints half as often, so the same glide
+              // covers twice the ground between two of its frames.
               expect(
                 Math.max(
                   ...frames.map((frame, index) =>
                     index === 0 || frame.lastLine === null || frames[index - 1]!.lastLine === null
                       ? 0
-                      : Math.abs(frame.lastLine - frames[index - 1]!.lastLine!),
+                      : Math.abs(frame.lastLine - frames[index - 1]!.lastLine!) /
+                        Math.max(1, (frame.at - frames[index - 1]!.at) / (1000 / 60)),
                   ),
                 ),
                 "ASSERTION: the answer's last line travels, never a cut",
