@@ -14,7 +14,13 @@ vi.mock("../../../zerops/crew/useCrewTry", () => ({ useCrewTry: () => null }));
 
 const command = vi.hoisted(() => vi.fn(async () => null));
 vi.mock("../../../zerops/crew/useCrewCommand", () => ({
-  useCrewCommand: () => ({ send: command, pending: false, error: null, errorAt: () => null }),
+  useCrewCommand: () => ({
+    send: command,
+    pending: false,
+    error: null,
+    errorAt: () => null,
+    files: { state: "unread", waitingFor: "mate-session" },
+  }),
 }));
 vi.mock("../../../zerops/crew/crewTab", () => ({ useCrewView: () => [null, vi.fn()] }));
 vi.mock("../../../state/entities", () => ({ useServerConfigs: () => new Map() }));

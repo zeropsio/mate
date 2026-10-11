@@ -13,6 +13,8 @@ import {
   crewLoginOptions,
   crewModelOptions,
   crewRunsOn,
+  crewWaitingMembers,
+  crewmateSaveCommand,
   freeTints,
 } from "./CrewEditors.logic";
 
@@ -365,5 +367,58 @@ describe("crewLoginLabel", () => {
     ["the id, for a login the catalog doesn't offer", [], "someone-else", "someone-else"],
   ] as const)("%s", (_, logins, id, label) => {
     expect(crewLoginLabel(logins, id)).toBe(label);
+  });
+});
+
+describe("crewmateSaveCommand", () => {
+  it.each([
+    {
+      name: "the first crewmate added to an empty crew joins it",
+      input: { handle: "pip", onRoster: false, crewApplied: true, loginChanged: false },
+      command: { _tag: "apply" },
+    },
+    {
+      name: "a standing crewmate's job reaches it at its next message",
+      input: { handle: "pip", onRoster: true, crewApplied: true, loginChanged: false },
+      command: { _tag: "jobSave", handle: "pip", apply: "nextTurn" },
+    },
+    {
+      name: "a standing crewmate moved to another login starts fresh",
+      input: { handle: "pip", onRoster: true, crewApplied: true, loginChanged: true },
+      command: { _tag: "jobSave", handle: "pip", apply: "fresh" },
+    },
+    {
+      name: "a crew still being set up waits for Start the crew",
+      input: { handle: "pip", onRoster: false, crewApplied: false, loginChanged: false },
+      command: null,
+    },
+  ])("$name", ({ input, command }) => {
+    expect(crewmateSaveCommand(input)).toEqual(command);
+  });
+});
+
+describe("crewWaitingMembers", () => {
+  const definition = (...members: ReadonlyArray<CrewMemberSpec>): CrewDefinition => ({
+    crew: "crew",
+    name: "Crew",
+    brief: parseBrief("Goal", "Build it."),
+    members,
+  });
+  it.each([
+    {
+      name: "a crew file listing a crewmate the crew doesn't have shows it, to add or remove",
+      file: definition(member({ handle: "pip" })),
+      roster: [],
+      waiting: ["pip"],
+    },
+    {
+      name: "every crewmate the file lists is in the crew",
+      file: definition(member({ handle: "pip" })),
+      roster: [{ handle: "pip" }],
+      waiting: [],
+    },
+    { name: "the file not read yet", file: null, roster: [], waiting: [] },
+  ])("$name", ({ file, roster, waiting }) => {
+    expect(crewWaitingMembers(file, roster).map((each) => each.handle)).toEqual(waiting);
   });
 });
