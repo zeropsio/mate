@@ -489,7 +489,7 @@ function Change({
       onAsk={async () => {}}
       onClose={noop}
       onOpenPage={frame === "page" ? undefined : noop}
-      preview={PREVIEW}
+      previews={PREVIEWS}
       project="Beviro"
       stage="stage"
       onRetry={noop}
@@ -511,10 +511,13 @@ function Change({
 }
 
 /** The Mate's preview, its pair's stage half: what "Try it" opens. */
-const PREVIEW = {
-  url: "https://appstage-beviro.prg1.zerops.app",
-  host: "appstage-beviro.prg1.zerops.app",
-};
+const PREVIEWS = [
+  {
+    service: "app",
+    url: "https://appstage-beviro.prg1.zerops.app",
+    host: "appstage-beviro.prg1.zerops.app",
+  },
+];
 
 const RELEASE_ROWS = [
   {
@@ -1311,7 +1314,7 @@ export function ReviewDialogTry({ openAtStart = false }: { readonly openAtStart?
           onOpenPage={() => {
             setOpen(false);
           }}
-          preview={PREVIEW}
+          previews={PREVIEWS}
           project="Beviro"
           stage="stage"
           remarks={read ? remarksOf(TALKING) : []}

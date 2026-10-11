@@ -6176,8 +6176,19 @@ a.ov-card-site:hover {
 .rv-try-host {
   min-width: 0;
   overflow: hidden;
+  color: var(--muted-foreground);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* One pill per service, named by it before its address. */
+.rv-tries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rv-try-service {
+  flex: none;
+  font-weight: 500;
 }
 /* A folded section: its label, what it counts, and a chevron on the right edge. */
 .rv-fold-row {
