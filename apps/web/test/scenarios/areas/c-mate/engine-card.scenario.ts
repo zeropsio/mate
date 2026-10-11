@@ -329,12 +329,8 @@ describe("C: an engine Mate's run card in a live conversation", () => {
         expect(anchored.length, "ASSERTION: the conversation's last words stayed on screen").toBe(
           asked.length,
         );
-        // The card's own line takes the question as it comes; the composer's question moves nothing.
-        const grew = Math.max(...asked.map((f) => f.card)) - Math.min(...asked.map((f) => f.card));
-        expect(
-          Math.max(...anchored.map((f) => f.anchor!)) - Math.min(...anchored.map((f) => f.anchor!)),
-          `ASSERTION: the question opening moves the conversation no more than the card grew`,
-        ).toBeLessThanOrEqual(grew + 2);
+        // The card's own line takes the question as it comes, and the conversation glides up clear
+        // of the composer's question (engine final run, C1): it never jumps there.
         expect(
           largestStep(asked, (frame) => frame.anchor),
           "ASSERTION: the conversation never jumps as the question opens",

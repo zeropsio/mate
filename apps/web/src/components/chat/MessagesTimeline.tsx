@@ -275,7 +275,7 @@ function reducedMotion(): boolean {
 const REVEAL_FOR_MS = 700;
 /**
  * The room under the conversation's end for what the agent asks (`askRoomEnd`), as the list has
- * it. It opens at once and the view keeps its place. Once answered it stays while the view stands
+ * it. It opens at once and a view at the end glides down into it. Once answered it stays while the view stands
  * in it, the view easing back up to the end on the follow curve, then goes: dropped at once, the
  * browser would cut the view back by all of it in one frame.
  */
@@ -526,10 +526,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // it was read, and everything that moved it then showed.
   const [landingRoom, setLandingRoom] = useState(0);
   const askRoom = useAskRoom(askRoomEnd + landingRoom, listRef);
-  const askRoomRef = useRef(askRoom);
+  // The room the end follower stays out of: an answered ask's, which the view eases out of, and an
+  // answer's landing room. An open ask's room is the end: the conversation glides up clear of it.
+  const followRoomRef = useRef(0);
   useLayoutEffect(() => {
-    askRoomRef.current = askRoom;
-  }, [askRoom]);
+    followRoomRef.current = Math.max(0, askRoom - askRoomEnd);
+  }, [askRoom, askRoomEnd]);
   const noticeResizeRef = useRef<{
     position: RememberedTimelinePosition | undefined;
     scrollOffset: number;
@@ -848,9 +850,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       // Whether it stands at its end is the follower's own judgement, from
       // the scrolls it hears: the list's own reading goes stale mid-glide.
       follows: () => followingEndRef.current,
-      room: () => askRoomRef.current,
+      room: () => followRoomRef.current,
       placeEnd: () => {
-        void listRef.current?.scrollToEnd({ animated: false, viewOffset: askRoomRef.current });
+        void listRef.current?.scrollToEnd({ animated: false, viewOffset: followRoomRef.current });
       },
     });
     endFollowRef.current = endFollow;
