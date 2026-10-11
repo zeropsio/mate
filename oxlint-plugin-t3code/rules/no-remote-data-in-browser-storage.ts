@@ -48,6 +48,9 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/zerops/keptSessions.ts",
   // The first frame follows whether this browser holds a session, never what a source said.
   "apps/web/src/zerops/bootFrame.ts",
+  // The first frame names the account's Mates as its last visit had HQ name them, until HQ's
+  // answer replaces them: a reload paints nothing it takes back (the owner's rule).
+  "apps/web/src/zerops/mateIdentityMemory.ts",
   "apps/web/src/cloud/dpop.ts",
   "apps/mobile/src/features/zerops/storage.ts",
   "apps/mobile/src/features/cloud/dpop.ts",
