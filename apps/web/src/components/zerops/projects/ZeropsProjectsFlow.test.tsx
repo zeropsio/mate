@@ -110,3 +110,14 @@ it("says nothing while HQ placement is only on its way", () => {
   expect(html).not.toContain("Start a project");
   expect(html).not.toContain('data-zerops-surface="hq-card"');
 });
+
+// Containers no project holds stand behind the overview unless they need the person: an overview
+// with nothing else to draw still says why it is empty.
+it("says why it is empty though containers no project holds stand behind it", () => {
+  const html = render({
+    ungrouped: [{ item: item("loose"), action: "open" }],
+    placementNotice: "Placement not read — HQ is unavailable",
+  });
+  expect(html).toContain("Placement not read — HQ is unavailable");
+  expect(html).not.toContain('data-zerops-surface="other-containers"');
+});

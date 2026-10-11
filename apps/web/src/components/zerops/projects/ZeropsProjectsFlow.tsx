@@ -19,8 +19,10 @@ import type {
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import type { ReactNode } from "react";
 
+import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 import { MateFace, Pill } from "../primitives";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
+import { PageWaitLine } from "../WaitLine";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { OtherContainers, OtherProjects } from "./ProjectList";
 import { ProjectCards } from "./ProjectCards";
@@ -180,6 +182,12 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
   // but its HQ has still not started.
   const started = groups.length > 0 || ungrouped.length > 0;
   const firstRun = onCreateProject !== undefined && !started && props.placementNotice === undefined;
+  // Containers no project holds are the organization's inner workings, and HQ is Settings': the
+  // overview names a container only while it needs the person — not answering, stopped.
+  const containers = ungrouped.filter((row) => CONTAINER_NEEDS_PERSON.has(row.action));
+  // With nothing drawn, why: placement still on its way says so once it takes a beat — never on a
+  // quick reload — and HQ's trouble says so at once, with HQ's card.
+  const empty = groups.length === 0 && containers.length === 0;
 
   return (
     <div
@@ -190,14 +198,16 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
       data-zerops-surface="projects-flow"
       role="region"
     >
-      {!started && props.placementNotice !== undefined && props.placementReading !== true ? (
+      {!empty || props.placementNotice === undefined ? null : props.placementReading === true ? (
+        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={props.placementNotice} />
+      ) : (
         <>
           <p role="status" className="text-sm text-muted-foreground">
             {props.placementNotice}
           </p>
           {props.hqCard}
         </>
-      ) : null}
+      )}
       {firstRun ? <FirstRun creating={creating} onCreateProject={onCreateProject} /> : null}
       <ProjectCards
         focusGroup={focusGroup}
@@ -208,12 +218,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         groups={groups.filter((entry) => entry.flow.mates.length === 0)}
         props={props}
       />
-      {/* Containers no project holds are the organization's inner workings, and HQ is Settings':
-          the overview names a container only while it needs the person — not answering, stopped. */}
-      <OtherContainers
-        props={props}
-        rows={ungrouped.filter((row) => CONTAINER_NEEDS_PERSON.has(row.action))}
-      />
+      <OtherContainers props={props} rows={containers} />
     </div>
   );
 }
