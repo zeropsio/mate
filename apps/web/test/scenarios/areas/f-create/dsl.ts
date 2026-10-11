@@ -219,13 +219,6 @@ export function creation(s: Scenario) {
           group,
         );
       }),
-    /** The menu's "N other projects" fold opened, where a project without work lately waits. */
-    otherProjectsShown: Effect.promise(async () => {
-      const fold = '[data-zerops-surface="sidebar-other-projects-fold"]';
-      await page.waitForSelector(fold, { visible: true, timeout: 15_000 });
-      if ((await page.$eval(fold, (button) => button.getAttribute("aria-expanded"))) !== "true")
-        await page.click(fold);
-    }),
     acceptedOnce: (name: string) =>
       Effect.sync(() => {
         expect(control.accepted, "Creation made duplicate or wrong projects").toEqual([

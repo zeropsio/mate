@@ -105,9 +105,19 @@ describe("B: text-only drafts", () => {
             expect(row.text).not.toContain("Image unavailable");
             expect(row.text).not.toContain("Try again");
             expect(row.media).toBe(0);
-            await s.page.waitForFunction(() => document.body.innerText.includes("2 quiet Mates"), {
-              timeout: 8000,
-            });
+            // Both Mates stand in the menu as rows: none rests apart as "quiet" (the owner,
+            // 2026-10-11).
+            await s.page.waitForFunction(
+              () => {
+                const lines =
+                  document
+                    .querySelector<HTMLElement>('[data-zerops-surface="sidebar-environments"]')
+                    ?.innerText.split("\n")
+                    .map((line) => line.trim()) ?? [];
+                return lines.includes("Ada") && lines.includes("Bea");
+              },
+              { timeout: 8000 },
+            );
             const rail = await s.page.$('[data-sidebar="rail"]');
             const box = (await rail!.boundingBox())!;
             const width = await s.page.$eval(
