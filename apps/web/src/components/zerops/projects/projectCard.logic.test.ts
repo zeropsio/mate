@@ -15,7 +15,6 @@ import {
   foldWords,
   mateChangeForReview,
   placeLines,
-  previewLinks,
   readyLine,
   readyTitle,
   rollBackTarget,
@@ -153,29 +152,6 @@ describe("a card's places", () => {
       ["qa", "releasing", "Deploying…", undefined],
       ["prod", "running", "Running · v2.3.1", "https://shop.acme.com/"],
     ]);
-  });
-
-  it.each([
-    { case: "nothing where no Mate has one", mates: [{ name: "Eddy" }], links: [] },
-    {
-      case: "one Mate's by its address",
-      mates: [{ name: "Eddy", preview: "https://shop-3000.prg1.zerops.app/" }],
-      links: [["shop-3000.prg1.zerops.app", "https://shop-3000.prg1.zerops.app/"]],
-    },
-    {
-      case: "several by their Mates' names",
-      mates: [
-        { name: "Eddy", preview: "https://a.prg1.zerops.app" },
-        { name: "Rosa" },
-        { name: "Fern", preview: "https://b.prg1.zerops.app" },
-      ],
-      links: [
-        ["Eddy", "https://a.prg1.zerops.app"],
-        ["Fern", "https://b.prg1.zerops.app"],
-      ],
-    },
-  ])("opens its Mates' previews: $case", ({ mates, links }) => {
-    expect(previewLinks(mates).map((link) => [link.label, link.url])).toEqual(links);
   });
 });
 

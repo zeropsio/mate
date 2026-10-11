@@ -10,6 +10,7 @@ import {
   matePoseOf,
   readZeropsMembership,
   type FlowPullRequest,
+  type GroupFlowPreview,
 } from "@t3tools/client-runtime/zerops";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
@@ -62,7 +63,7 @@ export function OverviewCardMate({
   flow,
   change,
   coming,
-  preview,
+  previews,
   conversationsRead,
   outsideHq,
   containerLine,
@@ -80,8 +81,8 @@ export function OverviewCardMate({
   readonly change: FlowPullRequest | undefined;
   /** Still coming up, or never came, as its menu row reads it (`useMateComingOf`). */
   readonly coming?: MateComing | undefined;
-  /** Its preview's address, where its pair has one: a door on its row. */
-  readonly preview?: string | undefined;
+  /** Its previews, one per service, where its pairs have them: doors on its row. */
+  readonly previews?: ReadonlyArray<GroupFlowPreview> | undefined;
   readonly conversationsRead: boolean;
   readonly outsideHq: boolean;
   /** What its container says first, where it says something: coming up, a failed connect. */
@@ -291,7 +292,7 @@ export function OverviewCardMate({
           </>
         ) : undefined)
       }
-      preview={preview}
+      previews={previews}
       name={name}
       onOpen={onOpen}
       reading={reading}

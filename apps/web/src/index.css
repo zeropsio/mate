@@ -6030,17 +6030,21 @@ a.ov-card-site:hover {
   color: var(--zerops-status-failed-text);
 }
 
-/* A Mate's preview, a door at its row's end. */
+/* A Mate's preview on its name's line, one per service and named by it — `web ↗`, `api ↗` — 12/16
+   muted like the time (the owner, 2026-10-11: "preview of what? there are multiple services"). */
 .ov-mate-preview {
   position: relative;
   z-index: 1;
-  display: grid;
-  width: 22px;
+  display: inline-flex;
   height: 22px;
   flex: none;
-  place-items: center;
+  align-items: center;
+  gap: 1px;
+  padding: 0 4px;
   border-radius: 6px;
   color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
   transition:
     background-color 150ms var(--ease-out-strong),
     color 150ms var(--ease-out-strong);

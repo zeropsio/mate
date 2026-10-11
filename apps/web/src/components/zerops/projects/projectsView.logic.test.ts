@@ -70,7 +70,7 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
 const MATE = {
   projectId: "p-wren",
   name: "Wren",
-  preview: undefined,
+  previews: [],
   waiting: false,
   talked: true,
 };
@@ -596,7 +596,7 @@ describe("groupFlowInputOf", () => {
       {
         projectId: "p-wren",
         name: "Wren",
-        preview: "https://appstage-1.prg1.zerops.app",
+        previews: [{ service: "app", url: "https://appstage-1.prg1.zerops.app" }],
         waiting: false,
         talked: true,
       },

@@ -70,6 +70,7 @@ import {
   stopServes,
   type EnvironmentRow,
   type FlowPullRequest,
+  type GroupFlowPreview,
   type Moved,
   type GroupFlow,
   type GroupEnvironmentTier,
@@ -579,6 +580,9 @@ const ignoreUpdateState = (_state: boolean) => {};
  * Memoised: the menu above it redraws on every event of a streaming Mate's chat, and its props —
  * the Mates, their activity, the verbs — stand while what they say does.
  */
+/** A Mate without an app: one list, so its row keeps its identity across renders. */
+const NO_APPS: ReadonlyArray<GroupFlowPreview> = [];
+
 export const SidebarZeropsTree = memo(SidebarZeropsTreeView) as typeof SidebarZeropsTreeView;
 
 function SidebarZeropsTreeView<T extends RosterCandidate>({
@@ -1436,9 +1440,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         // Its open change rides its row (round 5): the first that asks for review, its Mate at rest.
         const run = mateRunOf(activityOfNow(getActivity?.(item)));
         const shownChange = pulls.find((pull) => changeShowsReview(pull, run));
-        const appUrl = projectFlow.mates.find(
-          (mate) => mate.projectId === item.project.id,
-        )?.preview;
+        const apps =
+          projectFlow.mates.find((mate) => mate.projectId === item.project.id)?.previews ?? NO_APPS;
         numbered += 1;
         const active = item.project.id === activeProjectId;
         return {
@@ -1463,7 +1466,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                         }
                   }
                   up={mateAwake(item, hqMates)}
-                  appUrl={appUrl}
+                  apps={apps}
                   candidate={item}
                   coming={getComing?.(item)}
                   conversationsRead={getConversationsRead?.(item) === true}
@@ -2518,7 +2521,7 @@ function MateRowView<T extends RosterCandidate>({
   actions: offered,
   crew,
   onOpenCrew,
-  appUrl,
+  apps = NO_APPS,
   keys,
   number,
   numbers = false,
@@ -2546,8 +2549,8 @@ function MateRowView<T extends RosterCandidate>({
   readonly crew?: SidebarCrewRead | undefined;
   /** Opens it on its Crew tab; absent, its menu offers no crew. */
   readonly onOpenCrew?: ((candidate: T, setUp: boolean) => void) | undefined;
-  /** Its app — its pair's stage route — where it has one. */
-  readonly appUrl?: string | undefined;
+  /** Its apps — each pair's stage route, by its service's name — where it has them. */
+  readonly apps?: ReadonlyArray<GroupFlowPreview> | undefined;
   /** j and k, handed back to the tree. */
   readonly keys?: MateRowKeys | undefined;
   /** Its place among the drawn Mates, 1–9, for ⌥ and its number. */
@@ -3146,7 +3149,7 @@ function MateRowView<T extends RosterCandidate>({
           )}
           <MateMenu
             actions={actions}
-            appUrl={appUrl}
+            apps={apps}
             at={menuAt}
             crew={
               crewItem === null || onOpenCrew === undefined

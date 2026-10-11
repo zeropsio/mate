@@ -146,7 +146,7 @@ function entryOf(
       mates: mates.map((mate) => ({
         projectId: mate.project.id,
         name: mate.project.id === "uma-dev" ? "Uma" : "Wren",
-        preview: undefined,
+        previews: [],
         waiting: false,
         talked: mate.project.id !== "uma-dev",
       })),
@@ -285,7 +285,7 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
     h("div", {
       "data-test-mate": value.project.id,
       "data-test-layout": options.layout,
-      "data-test-preview": options.preview,
+      "data-test-previews": options.previews.map((preview) => preview.service).join(" "),
       "data-test-review": options.review?.number,
     }),
   renderMateFace: (value, size) =>

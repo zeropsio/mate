@@ -9,7 +9,7 @@ import { ArrowUpRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { PlaceDot, PlaceWords } from "./ProjectCards";
-import { placeLabel, type PlaceLine } from "./projectCard.logic";
+import { placeLabel, siteOf, type PlaceLine } from "./projectCard.logic";
 
 /** One service of a place, as the platform reads it. */
 export interface PlacePanelService {
@@ -45,12 +45,12 @@ export function PlacePanel({
 }) {
   const { line } = model;
   const label = placeLabel(line);
-  const host = model.route?.replace(/^[a-z]+:\/\//iu, "").replace(/\/+$/u, "");
+  const host = siteOf(model.route);
   return (
     <div aria-label={label} className="ov-panel" data-zerops-surface="place-panel">
       <div className="ov-panel-head">
         <b className="ov-panel-name">{label}</b>
-        {host === undefined || host.length === 0 || model.route === undefined ? null : (
+        {host === undefined || model.route === undefined ? null : (
           <a
             aria-label={`Open ${label}`}
             className="ov-panel-host"

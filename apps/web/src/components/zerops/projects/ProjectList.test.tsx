@@ -180,7 +180,7 @@ describe("a project's row", () => {
           {
             projectId: "wren-dev",
             name: "Wren",
-            preview: undefined,
+            previews: [],
             waiting: false,
             failed: true,
             talked: true,
@@ -264,7 +264,7 @@ describe("a row's Mates", () => {
                 {
                   projectId: "wren-dev",
                   name: "Wren",
-                  preview: undefined,
+                  previews: [],
                   waiting: false,
                   talked: true,
                   working,

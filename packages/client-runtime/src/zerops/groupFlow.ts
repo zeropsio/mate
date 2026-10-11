@@ -79,12 +79,18 @@ import { shortCommit, type ReleaseGate } from "./release.ts";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
 import { firstDeploy, stopImport, type FirstDeploy, type PlatformService } from "./stopComing.ts";
 
+/** A Mate's preview: one pair's stage half, by the pair's name (`app` for `appstage`). */
+export interface GroupFlowPreview {
+  readonly service: string;
+  readonly url: string;
+}
+
 /** One Mate of the project, as the flow's first column shows it. */
 export interface GroupFlowMate {
   readonly projectId: string;
   readonly name: string;
-  /** The URL of the pair's stage half ({@link pairPreviewRoute}); `undefined` where it has none. */
-  readonly preview: string | undefined;
+  /** Its previews, one per pair with a public stage half ({@link pairPreviewRoutes}). */
+  readonly previews: ReadonlyArray<GroupFlowPreview>;
   /** It has stopped and asks something — its face reads `needs`. */
   readonly waiting: boolean;
   /** Its last run stopped on an error: its face reads `needs` too, but it asks nothing. */
@@ -570,7 +576,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     .map((entry): GroupFlowMate => ({
       projectId: entry.projectId,
       name: entry.name,
-      preview: undefined,
+      previews: [],
       waiting: false,
       talked: false,
       coming: {
@@ -602,8 +608,29 @@ export function pairPreviewRoute(
   hostnames: ReadonlyArray<string>,
 ): ZeropsPublicRoute | undefined {
   const held = new Set(hostnames);
-  return routes.find((route) => {
-    const base = /^(.+)stage$/u.exec(route.service)?.[1];
-    return base !== undefined && (held.has(`${base}dev`) || held.has(base));
-  });
+  return routes.find((route) => pairOf(route, held) !== undefined);
+}
+
+/**
+ * Every preview of a Mate: one per pair, by the pair's name. A frontend and a backend are two
+ * pairs, and nothing says which one a person means (the owner, 2026-10-11: "preview of what?
+ * there are multiple services, backend, frontend, how do you know?").
+ */
+export function pairPreviewRoutes(
+  routes: ReadonlyArray<ZeropsPublicRoute>,
+  hostnames: ReadonlyArray<string>,
+): ReadonlyArray<GroupFlowPreview> {
+  const held = new Set(hostnames);
+  const named = new Map<string, string>();
+  for (const route of routes) {
+    const pair = pairOf(route, held);
+    if (pair !== undefined && !named.has(pair)) named.set(pair, route.url);
+  }
+  return [...named].map(([service, url]) => ({ service, url }));
+}
+
+/** The pair a route's service is the stage half of, where its dev half stands beside it. */
+function pairOf(route: ZeropsPublicRoute, held: ReadonlySet<string>): string | undefined {
+  const base = /^(.+)stage$/u.exec(route.service)?.[1];
+  return base !== undefined && (held.has(`${base}dev`) || held.has(base)) ? base : undefined;
 }

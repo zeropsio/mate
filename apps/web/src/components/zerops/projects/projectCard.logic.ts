@@ -260,24 +260,6 @@ export function placeLabel(line: Pick<PlaceLine, "kind" | "name">): string {
   return line.name.charAt(0).toLocaleUpperCase() + line.name.slice(1);
 }
 
-/** A Mate's preview on its card: its address where it is the one, else its Mate's name. */
-export interface PreviewLink {
-  readonly label: string;
-  readonly url: string;
-}
-
-/** The previews a card opens: one Mate's by its address, several by their Mates' names. */
-export function previewLinks(
-  mates: ReadonlyArray<{ readonly name: string; readonly preview?: string | undefined }>,
-): ReadonlyArray<PreviewLink> {
-  const shown = mates.flatMap((mate) =>
-    mate.preview === undefined ? [] : [{ name: mate.name, url: mate.preview }],
-  );
-  if (shown.length === 1 && shown[0] !== undefined)
-    return [{ label: siteOf(shown[0].url) ?? shown[0].name, url: shown[0].url }];
-  return shown.map((mate) => ({ label: mate.name, url: mate.url }));
-}
-
 /** The release a card offers: how many changes, where they were tested, what production runs. */
 export interface CardReady {
   readonly count: number;

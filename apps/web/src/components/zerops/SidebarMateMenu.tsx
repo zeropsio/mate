@@ -21,6 +21,7 @@
 import { MoreHorizontalIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import type { GroupFlowPreview } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "../ui/menu";
@@ -85,8 +86,8 @@ export interface MateMenuItemsProps {
   /** Absent where it is not the viewer's own Mate, or crew mode is not on. */
   readonly crew?: MateCrewEntry | undefined;
   readonly unread: boolean;
-  /** The Mate's app — its pair's stage route — where it has one. */
-  readonly appUrl: string | undefined;
+  /** The Mate's apps — each pair's stage route, by its service's name — where it has them. */
+  readonly apps: ReadonlyArray<GroupFlowPreview>;
   readonly onOpenMate: () => void;
   readonly onRename: () => void;
   /** The keys the list answers, shown beside their items. */
@@ -99,7 +100,7 @@ export function MateMenuItems({
   actions,
   crew,
   unread,
-  appUrl,
+  apps,
   onOpenMate,
   onRename,
   shortcuts,
@@ -124,18 +125,23 @@ export function MateMenuItems({
           {crew.label}
         </MenuItem>
       )}
-      {appUrl === undefined ? (
+      {/* One per service, by its name: a frontend and a backend are two apps (the owner,
+          2026-10-11: "there are multiple services, backend, frontend, how do you know?"). */}
+      {apps.length === 0 ? (
         <MenuItem data-zerops-mate-menu="open-app" disabled>
           Open app
         </MenuItem>
       ) : (
-        <MenuItem
-          data-zerops-mate-menu="open-app"
-          render={<a href={appUrl} rel="noreferrer" target="_blank" />}
-        >
-          Open app
-          {hint("↗")}
-        </MenuItem>
+        apps.map((app) => (
+          <MenuItem
+            data-zerops-mate-menu="open-app"
+            key={app.service}
+            render={<a href={app.url} rel="noreferrer" target="_blank" />}
+          >
+            Open {app.service}
+            {hint("↗")}
+          </MenuItem>
+        ))
       )}
       <MenuItem
         data-zerops-mate-menu="copy-link"

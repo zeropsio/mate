@@ -27,6 +27,7 @@ import {
   type ReactNode,
 } from "react";
 
+import type { GroupFlowPreview } from "@t3tools/client-runtime/zerops";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -281,7 +282,7 @@ function CardMates<T>({
       <Fragment key={props.getKey(mate.item)}>
         {props.renderMate(mate.item, {
           layout: "row",
-          preview: mate.mate.preview,
+          previews: mate.mate.previews,
           // A change is offered for review only once the project's changes are read and known.
           review:
             entry.changesAwaiting || entry.changesUnknown !== undefined
@@ -481,8 +482,8 @@ export interface CardMateProps {
   /** The right of its name: its time, its dot. */
   readonly time: ReactNode;
   readonly reading: CardMateReading;
-  /** Its preview's address: a door at its row's end. */
-  readonly preview?: string | undefined;
+  /** Its previews, one per service, each a door on its name's line by the service's name. */
+  readonly previews?: ReadonlyArray<GroupFlowPreview> | undefined;
   /** Drawn in place of the words where its container has something else to say. */
   readonly line?: ReactNode;
   /** Opens its conversation; `undefined` where it cannot open yet. */
@@ -500,7 +501,7 @@ export function CardMate({
   face,
   time,
   reading,
-  preview,
+  previews = [],
   line,
   onOpen,
   actions,
@@ -528,18 +529,20 @@ export function CardMate({
               {name}
             </button>
           )}
-          <span className="ov-mate-time">{time}</span>
-          {preview === undefined ? null : (
+          {previews.map((preview) => (
             <a
-              aria-label={`Open ${name}'s preview`}
+              aria-label={`Open ${name}'s ${preview.service} preview`}
               className="ov-mate-preview"
-              href={preview}
+              href={preview.url}
+              key={preview.service}
               rel="noreferrer"
               target="_blank"
             >
-              <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
+              {preview.service}
+              <ArrowUpRightIcon aria-hidden="true" className="size-3" />
             </a>
-          )}
+          ))}
+          <span className="ov-mate-time">{time}</span>
         </span>
         <span
           className="ov-mate-l2"

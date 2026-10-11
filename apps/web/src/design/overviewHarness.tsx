@@ -154,7 +154,7 @@ function project(input: {
       ...input.mates.map((entry) => ({
         projectId: entry.id,
         name: entry.name,
-        preview: undefined,
+        previews: [],
         waiting: entry.view.state === "needs",
         failed: entry.view.state === "failed",
         talked: true,
@@ -468,7 +468,7 @@ const PROJECTS: ReadonlyArray<Project> = [
       {
         projectId: "vera",
         name: "Vera",
-        preview: undefined,
+        previews: [],
         waiting: false,
         talked: false,
         coming: { face: { tint: "sand", shape: undefined } as never },

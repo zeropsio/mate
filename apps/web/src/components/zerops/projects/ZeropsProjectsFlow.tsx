@@ -13,6 +13,7 @@
 import type {
   FlowPullRequest,
   GroupFlow,
+  GroupFlowPreview,
   ZeropsEnvironmentRole,
   ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
@@ -91,7 +92,7 @@ export interface ZeropsProjectsFlowProps<T> {
     item: T,
     options: {
       readonly layout: "card" | "row";
-      readonly preview: string | undefined;
+      readonly previews: ReadonlyArray<GroupFlowPreview>;
       readonly review?: FlowPullRequest | undefined;
     },
   ) => ReactNode;
