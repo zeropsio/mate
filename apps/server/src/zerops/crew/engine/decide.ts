@@ -354,7 +354,7 @@ const handle = (b: Builder, input: CrewInput): void => {
     case "Deploy":
       return deploy(b, input.host, input.phase);
     case "Gauge":
-      if (b.state.usage[input.login] !== input.usagePercent) {
+      if ((b.state.usage[input.login] ?? null) !== input.usagePercent) {
         b.emit({ _tag: "UsageRead", login: input.login, percent: input.usagePercent });
       }
       return;

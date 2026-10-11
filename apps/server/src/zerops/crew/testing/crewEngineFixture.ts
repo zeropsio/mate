@@ -27,6 +27,7 @@ import {
   type OrchestrationCommand,
   type OrchestrationProject,
   type OrchestrationThreadShell,
+  type ServerProvider,
   type SpiEvent,
   type ZeropsAgentAuthSnapshot,
   type ZeropsLogin,
@@ -119,6 +120,10 @@ export interface CrewWorld {
   readonly logins: Ref.Ref<ReadonlyMap<string, MateLogin>>;
   /** Logins whose instance is not live yet (the registry has no adapter for it). */
   readonly missingAgents: Ref.Ref<ReadonlySet<string>>;
+  /** The instances' snapshots as the registry holds them: their plans' usage. */
+  readonly providers: Ref.Ref<ReadonlyArray<ServerProvider>>;
+  /** Each snapshot the registry publishes, as `ProviderInstances.changes` streams it. */
+  readonly providerChanges: PubSub.PubSub<ReadonlyArray<ServerProvider>>;
   /** The project's processes as the platform lists them (`ZeropsRestartRead`); `unreadable` fails the read. */
   readonly processes: Ref.Ref<ReadonlyArray<unknown> | "unreadable">;
   /** How many times the engine read the project's processes. */
@@ -319,6 +324,8 @@ export const platformFakes = (
         Effect.map(Ref.get(world.missingAgents), (missing) =>
           missing.has(instanceId) ? undefined : testAgentOf(instanceId),
         ),
+      providers: Ref.get(world.providers),
+      changes: Stream.fromPubSub(world.providerChanges),
     }),
     ThreadToolPolicyRegistry.layer,
     ClaudeThreadExtensionRegistry.layer,
@@ -528,6 +535,8 @@ export const makeFixtureWorld = Effect.gen(function* () {
     sshCalls: yield* Ref.make(0),
     logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
     missingAgents: yield* Ref.make<ReadonlySet<string>>(new Set()),
+    providers: yield* Ref.make<ReadonlyArray<ServerProvider>>([]),
+    providerChanges: yield* PubSub.unbounded<ReadonlyArray<ServerProvider>>(),
     processes: yield* Ref.make<ReadonlyArray<unknown> | "unreadable">([]),
     processReads: yield* Ref.make(0),
     publish: events.publish,
