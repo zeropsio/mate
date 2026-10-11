@@ -1885,7 +1885,7 @@ export default function Sidebar() {
     [zeropsProjectFlows],
   );
   const router = useRouter();
-  const { isMobile, open, openMobile, setOpen, setOpenMobile } = useSidebar();
+  const { isMobile, open, setOpen, setOpenMobile } = useSidebar();
   /** A stop's page, in place of the thread — the sidebar stays where it is. */
   const openStop = useCallback(
     (groupId: string, row: EnvironmentRow) => {
@@ -4293,7 +4293,6 @@ export default function Sidebar() {
           ) : null}
           {zeropsSignedIn && !isSearchingThreads ? (
             <SidebarZeropsTree
-              menuOpen={isMobile ? openMobile : open}
               onShowEveryone={zeropsMateScope === "mine" ? showEveryoneMates : undefined}
               activeProjectId={activeZeropsProjectId}
               activeProjectResolving={activeZeropsProjectResolving}

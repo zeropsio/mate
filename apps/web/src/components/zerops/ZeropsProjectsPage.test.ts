@@ -107,11 +107,11 @@ describe("same-origin Zerops identity bootstrap", () => {
     autoConnectServedZeropsEnvironment(input);
 
     // The bar above carries the brand; the title row does not repeat it, and
-    // no sentence sits under the title — the projects below say what it is.
-
-    expect(
-      renderToStaticMarkup(createElement(ZeropsProjectsHeader, { onRefresh: () => {} })),
-    ).toContain('aria-label="Refresh"');
+    // no sentence sits under the title — the projects below say what it is. The
+    // list keeps itself current: no reload on it (the owner, 2026-10-11).
+    const header = renderToStaticMarkup(createElement(ZeropsProjectsHeader));
+    expect(header).toContain("New project");
+    expect(header).not.toContain('aria-label="Refresh"');
     expect(connect).toHaveBeenCalledTimes(1);
   });
 

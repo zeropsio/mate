@@ -212,7 +212,6 @@ export {
   shownHqMatesAtom,
   shownHqNavigationAtom,
   shownHqMenuNavigationAtom,
-  shownMenuWorkReadAtom,
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
@@ -627,8 +626,3 @@ export {
   presentOutcomes,
   type OutcomeInvocation,
 } from "./notices/outcomes.ts";
-export {
-  menuProjectOpening,
-  activeMenuProject,
-  type MenuProjectOpening,
-} from "./projections/menuProjectOrder.ts";

@@ -194,7 +194,7 @@ describe("ZEROPS_THEME", () => {
       "light",
       "toolbarControl",
       "#000000",
-      "#eceff3",
+      "#f9fafb",
       0.04,
     ],
     [
@@ -202,7 +202,7 @@ describe("ZEROPS_THEME", () => {
       "light",
       "toolbarControlHover",
       "#000000",
-      "#eceff3",
+      "#f9fafb",
       0.08,
     ],
     [
@@ -242,7 +242,7 @@ describe("ZEROPS_THEME", () => {
       "light",
       "sidebarControlSurface",
       "#000000",
-      "#eceff3",
+      "#f1f3f5",
       0.04,
     ],
     [
@@ -250,7 +250,7 @@ describe("ZEROPS_THEME", () => {
       "light",
       "sidebarRowHover",
       "#000000",
-      "#eceff3",
+      "#f1f3f5",
       0.04,
     ],
   ] as const satisfies ReadonlyArray<

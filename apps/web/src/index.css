@@ -3148,23 +3148,24 @@ code {
   /* A Mate's row: its corners, and the ones a row's own hover paints. The
      grid, the padding and the type are the row's utilities; only what no
      scale holds lives here. */
-  /* Round 5, Grok's measure: a 68 px row, a 40 px face in a 40 px column,
-     12 px to the words, 8 px inside the row's own band. */
+  /* A Mate's row: a 40 px face in a 40 px column, 12 px to the words — its name and time, what
+     was asked, its last answer (the owner, 2026-10-11: "menu no longer says last question and
+     last answer") — at least 68 px, 8 px inside the row's own band. */
   .menu-row {
     display: grid;
     grid-template-columns: 40px minmax(0, 1fr);
     column-gap: 12px;
     align-items: center;
-    height: 68px;
-    padding: 0 8px;
+    min-height: 68px;
+    padding: 9px 8px;
     border-radius: 12px;
   }
 
-  /* The name 16/22; the time 12/16, muted and tabular; the one line under
-     them 15/21, ellipsed. */
+  /* One scale for the menu: a project 16/600, a name 15/21, every line under a name 14/20, the
+     time and counts 12/16, muted and tabular. */
   .menu-name {
-    font-size: 16px;
-    line-height: 22px;
+    font-size: 15px;
+    line-height: 21px;
   }
 
   .menu-time {
@@ -3174,8 +3175,8 @@ code {
 
   .menu-line2 {
     display: block;
-    font-size: 15px;
-    line-height: 21px;
+    font-size: 14px;
+    line-height: 20px;
   }
 
   /* A change's *Review* in its Mate's time slot: a white 24 px chip — the
@@ -3222,6 +3223,55 @@ code {
 
   .menu-review:active {
     transform: scale(0.97);
+  }
+
+  /* A change waiting for review, its own strip under its Mate's row, on the words' column: its
+     mark, its title and Review. Where it waits on the viewer, a white strip with a hairline and a
+     solid Review — what waits on you is white (round 5) and impossible to miss; a colleague's is
+     a quiet line with a quiet Review. */
+  .menu-change {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    margin: -4px 8px 6px 60px;
+    padding: 4px 4px 4px 10px;
+    border-radius: 10px;
+    color: var(--muted-foreground);
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .menu-change[data-mine] {
+    background-color: var(--sidebar-row-selected);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 9%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 6%, transparent);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-change .menu-change-mark {
+    margin-right: 0;
+    flex: none;
+  }
+
+  .menu-change-title {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-change[data-mine] .menu-review {
+    background-color: var(--sidebar-foreground);
+    box-shadow: none;
+    color: var(--sidebar);
+  }
+
+  .menu-change[data-mine] .menu-review:hover {
+    background-color: color-mix(in oklab, var(--sidebar-foreground) 86%, var(--sidebar));
   }
 
   .menu-review:focus-visible {
@@ -3403,6 +3453,9 @@ code {
     z-index: -1;
     border-radius: 12px;
     background: var(--sidebar-row-active);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 6%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 6%, transparent);
     opacity: 0;
     pointer-events: none;
   }
@@ -3567,10 +3620,11 @@ code {
   letter-spacing: -0.2px;
 }
 
-/* The heading's chevron: shown on hover and focus and always while folded,
-   a quarter turn down while open — one glyph that turns as the rows unfold. */
+/* The heading's chevron: always there, so a project reads as one that folds (the owner,
+   2026-10-11), full ink under the pointer and while folded, a quarter turn down while open —
+   one glyph that turns as the rows unfold. */
 .zerops-project-chevron {
-  opacity: 0;
+  opacity: 0.6;
   transition:
     opacity 150ms ease,
     rotate 220ms var(--ease-out-strong);
@@ -4310,15 +4364,61 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 @layer components {
   /* The top row's round buttons (search, +): 34 px, a hairline ring, the glyph muted until the
      pointer or the open menu wakes it. */
+  /* The top row's controls are the menu's own (the owner, 2026-10-11: "straight up stolen from
+     grok bot"): Search a field that fills the row and says its key, New beside it a square of the
+     same surface — 34 px, 10 px corners, no outlined circles. */
+  .menu-search {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    padding: 0 6px 0 10px;
+    border-radius: 10px;
+    background-color: var(--sidebar-control-surface);
+    color: var(--muted-foreground);
+    font-size: 14px;
+    line-height: 20px;
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      color 150ms var(--ease-out-strong);
+  }
+
+  .menu-search:hover {
+    background-color: color-mix(in oklab, var(--sidebar-foreground) 9%, var(--sidebar));
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-search:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  .menu-search-key {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 1px;
+    padding: 1px 6px;
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 1px var(--sidebar-border);
+    color: var(--muted-foreground);
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 16px;
+  }
+
   .menu-round-button {
     display: grid;
     flex: none;
     place-items: center;
     width: 34px;
     height: 34px;
-    border-radius: 9999px;
-    color: var(--sidebar-muted-foreground);
-    box-shadow: inset 0 0 0 1px var(--sidebar-border);
+    border-radius: 10px;
+    background-color: var(--sidebar-control-surface);
+    color: var(--sidebar-foreground);
     cursor: pointer;
     outline: none;
     transition:
@@ -4329,7 +4429,7 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 
   .menu-round-button:hover,
   .menu-round-button[data-popup-open] {
-    background: var(--sidebar-row-hover);
+    background: color-mix(in oklab, var(--sidebar-foreground) 9%, var(--sidebar));
     color: var(--sidebar-foreground);
   }
 
@@ -4368,6 +4468,9 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 
   .menu-chrome-row[data-current] {
     background: var(--sidebar-row-active);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 6%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 6%, transparent);
   }
 
   .menu-chrome-row:focus-visible {
@@ -4411,8 +4514,8 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 
   .menu-chrome-name {
     overflow: hidden;
-    font-size: 16px;
-    line-height: 22px;
+    font-size: 15px;
+    line-height: 21px;
     font-weight: 500;
     color: var(--sidebar-foreground);
     text-overflow: ellipsis;
@@ -4423,11 +4526,11 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
     display: flex;
     gap: 4px;
     min-width: 0;
-    min-height: 21px;
+    min-height: 20px;
     overflow: hidden;
-    font-size: 15px;
-    line-height: 21px;
-    color: var(--sidebar-muted-foreground);
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--muted-foreground);
     white-space: nowrap;
   }
 
@@ -4690,8 +4793,8 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 
   .menu-foot-name {
     overflow: hidden;
-    font-size: 14px;
-    line-height: 18px;
+    font-size: 15px;
+    line-height: 20px;
     font-weight: 500;
     color: var(--sidebar-foreground);
     text-overflow: ellipsis;
@@ -4919,6 +5022,83 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
     padding: 12px 0 16px;
   }
 
+  /* A Mate on the closed menu: its face, its name under it, so the rail says what is what. */
+  .menu-rail-mate {
+    grid-template-rows: 36px 14px;
+    gap: 2px;
+    width: 56px;
+    height: auto;
+    padding: 4px 0 3px;
+  }
+
+  .menu-rail-name {
+    max-width: 52px;
+    overflow: hidden;
+    color: var(--sidebar-muted-foreground);
+    font-size: 11px;
+    line-height: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-rail-mate:hover .menu-rail-name,
+  .menu-rail-mate[data-current] .menu-rail-name {
+    color: var(--sidebar-foreground);
+  }
+
+  /* On a face with its name under it, the owner's photo and the dot stay on the face's corners. */
+  .menu-rail-mate .menu-rail-owner {
+    top: 28px;
+    right: 6px;
+    bottom: auto;
+  }
+
+  .menu-rail-mate .menu-rail-dot {
+    top: 4px;
+    right: 8px;
+  }
+
+  /* A face's card beside the rail: its name and project, what was asked, its last answer. */
+  .menu-rail-card {
+    display: grid;
+    gap: 3px;
+    max-width: 320px;
+    padding: 4px 2px;
+  }
+
+  .menu-rail-card-name {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+
+  .menu-rail-card-project {
+    overflow: hidden;
+    color: var(--muted-foreground);
+    font-size: 13px;
+    font-weight: 400;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-rail-card-asked,
+  .menu-rail-card-answer {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 18px;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .menu-rail-card-answer {
+    color: var(--muted-foreground);
+  }
+
   .menu-rail-tip {
     display: grid;
     gap: 1px;
@@ -4958,109 +5138,13 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 /* ==== Pass 41 · the overview's cards ==== */
 /* The row: cards side by side, one width; past the window's edge it scrolls sideways under a fade,
    a round back and forward button on the side where there is more. */
-@property --ov-fade-left {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --ov-fade-right {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-
-.ov-rail {
-  position: relative;
-  margin-inline: -20px;
-  transition:
-    --ov-fade-left 200ms var(--ease-out-strong),
-    --ov-fade-right 200ms var(--ease-out-strong);
-}
-
-.ov-rail[data-can-left] {
-  --ov-fade-left: 56px;
-}
-
-.ov-rail[data-can-right] {
-  --ov-fade-right: 96px;
-}
-
+/* The overview's cards: every project at once, in a grid that wraps, each card as tall as what it
+   holds (the owner, 2026-10-11: "the 'overview' is not overview at all"). */
 .ov-row {
   display: grid;
-  grid-auto-columns: min(360px, 100%);
-  grid-auto-flow: column;
-  column-gap: 16px;
-  align-items: stretch;
-  justify-content: start;
-  padding: 0 20px 6px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  scroll-padding-inline: 20px;
-  scroll-snap-type: x proximity;
-  scrollbar-width: none;
-  mask-image: linear-gradient(
-    to right,
-    transparent,
-    var(--color-black) var(--ov-fade-left),
-    var(--color-black) calc(100% - var(--ov-fade-right)),
-    transparent
-  );
-}
-
-@media (min-width: 40rem) {
-  .ov-rail {
-    margin-inline: -24px;
-  }
-
-  .ov-row {
-    padding-inline: 24px;
-    scroll-padding-inline: 24px;
-  }
-}
-
-.ov-row::-webkit-scrollbar {
-  display: none;
-}
-
-.ov-nav {
-  position: absolute;
-  top: 10px;
-  z-index: 2;
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--card);
-  color: var(--foreground);
-  box-shadow:
-    0 0 0 1px var(--border),
-    0 2px 8px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity 150ms var(--ease-out-strong),
-    scale 160ms var(--ease-out-strong);
-}
-
-.ov-nav-left {
-  left: 12px;
-}
-
-.ov-nav-right {
-  right: 12px;
-}
-
-.ov-rail[data-can-left] .ov-nav-left,
-.ov-rail[data-can-right] .ov-nav-right {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.ov-nav:active {
-  scale: 0.94;
+  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+  gap: 16px;
+  align-items: start;
 }
 
 /* A card: the project, its Mates, a release ready to go, production's line at its foot. */
@@ -5085,7 +5169,6 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
   padding: 18px 12px 12px;
   border-radius: 20px;
   background: var(--ov-ground);
-  scroll-snap-align: start;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -5134,22 +5217,16 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
   box-shadow: 0 0 0 2px var(--ov-ground);
 }
 
+/* The project's menu stays in sight: its verbs are the overview's, not a hover's secret. */
 .ov-card-menu {
   display: flex;
   flex: none;
   margin: 0 -4px 0 auto;
-  opacity: 0;
-  transition: opacity 150ms var(--ease-out-strong);
+  color: var(--muted-foreground);
 }
 
 .ov-card-people + .ov-card-menu {
   margin-left: 0;
-}
-
-.ov-card:hover .ov-card-menu,
-.ov-card-menu:focus-within,
-.ov-card-menu:has([data-popup-open]) {
-  opacity: 1;
 }
 
 .ov-card-site {
@@ -5215,10 +5292,16 @@ a.ov-card-site:hover {
   height: 32px;
 }
 
+/* The menu row's owner mark (`MateOwnerMark`), on the card's smaller face: its corner, 14 px. */
 .ov-mate-owner {
   position: absolute;
+  top: auto;
   right: -4px;
   bottom: -3px;
+  left: auto;
+  width: 14px;
+  height: 14px;
+  font-size: 8px;
   box-shadow: 0 0 0 1.5px var(--ov-ground);
 }
 
@@ -5273,6 +5356,53 @@ a.ov-card-site:hover {
   outline-offset: 2px;
 }
 
+/* A change's *Review* in its Mate's time place, as its menu row has it: quiet where a colleague's
+   change waits on its reviewers, white where it waits on the viewer. */
+.ov-review {
+  display: inline-flex;
+  height: 22px;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    box-shadow 150ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
+
+.ov-review:hover {
+  background-color: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+}
+
+.ov-review[data-mine] {
+  background-color: var(--background);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
+    0 1px 2px color-mix(in oklab, var(--color-black) 8%, transparent);
+  color: var(--foreground);
+}
+
+.ov-review:active {
+  transform: scale(0.97);
+}
+
+.ov-review:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-review:active {
+    transform: none;
+  }
+}
+
 .ov-mate-time {
   display: inline-flex;
   flex: none;
@@ -5303,6 +5433,23 @@ a.ov-card-site:hover {
 
 .ov-mate-dot[data-dot="failed"] {
   background: var(--zerops-status-failed);
+}
+
+/* What was asked, over the answer: the menu row's second ink. */
+.ov-mate-ask {
+  display: block;
+  min-width: 0;
+  margin-top: 1px;
+  overflow: hidden;
+  color: color-mix(in oklab, var(--foreground) 76%, transparent);
+  font-size: 14px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-mate-ask + .ov-mate-l2 {
+  margin-top: 0;
 }
 
 .ov-mate-l2 {
@@ -5488,13 +5635,21 @@ a.ov-card-site:hover {
   gap: 2px;
 }
 
-.ov-place {
+/* A place: its name, its dot, its words — a click opens its panel — and its door at the end. */
+.ov-place-row {
+  position: relative;
   display: flex;
-  width: 100%;
-  height: 40px;
   min-width: 0;
   align-items: center;
-  gap: 10px;
+}
+
+.ov-place {
+  display: flex;
+  min-width: 0;
+  height: 40px;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
   padding: 0 8px;
   border-radius: 12px;
   color: var(--foreground);
@@ -5503,14 +5658,20 @@ a.ov-card-site:hover {
   transition: background-color 150ms var(--ease-out-strong);
 }
 
-.ov-place:hover,
+.ov-place-row:has(.ov-place-open) .ov-place {
+  padding-right: 44px;
+}
+
+button.ov-place:hover,
+a.ov-place:hover,
 .ov-place[data-open] {
   background: var(--ov-hover);
 }
 
 .ov-place-name {
   flex: none;
-  font-weight: 600;
+  min-width: 64px;
+  font-weight: 500;
 }
 
 .ov-place-words {
@@ -5519,6 +5680,11 @@ a.ov-card-site:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+
+.ov-place-words[data-dot="running"] {
+  color: var(--foreground);
 }
 
 .ov-place-words[data-dot="failed"] {
@@ -5533,9 +5699,14 @@ a.ov-card-site:hover {
   color: var(--zerops-status-busy-text);
 }
 
-.ov-place-words[data-dot="none"],
-.ov-place-words[data-dot="unknown"] {
-  color: var(--muted-foreground);
+.ov-place-link {
+  color: var(--foreground);
+  text-decoration: underline 1px color-mix(in oklab, currentColor 30%, transparent);
+  text-underline-offset: 3px;
+}
+
+.ov-place-link:hover {
+  text-decoration-color: currentColor;
 }
 
 .ov-sep {
@@ -5543,18 +5714,38 @@ a.ov-card-site:hover {
   color: var(--muted-foreground);
 }
 
-.ov-place-go {
-  flex: none;
-  margin-left: auto;
+/* A place's door: its address, opened beside the page; in sight, never only on hover. */
+.ov-place-open {
+  position: absolute;
+  right: 4px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 10px;
   color: var(--muted-foreground);
-  opacity: 0;
-  transition: opacity 150ms var(--ease-out-strong);
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
 }
 
-.ov-place:hover .ov-place-go,
-.ov-place[data-open] .ov-place-go,
-.ov-place:focus-visible .ov-place-go {
-  opacity: 1;
+a.ov-place-open:hover {
+  background: var(--ov-hover);
+  color: var(--foreground);
+}
+
+span.ov-place-open {
+  pointer-events: none;
+}
+
+a.ov-place:hover + span.ov-place-open {
+  color: var(--foreground);
+}
+
+a.ov-place-open:focus-visible,
+a.ov-place-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .ov-dot {
@@ -5562,7 +5753,6 @@ a.ov-card-site:hover {
   flex: none;
   width: 8px;
   height: 8px;
-  margin: 0 2px 0 4px;
   border-radius: 999px;
   background: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
 }
@@ -5782,15 +5972,12 @@ a.ov-card-site:hover {
 @media (prefers-reduced-motion: reduce) {
   .ov-mate,
   .ov-btn,
-  .ov-nav,
-  .ov-rail,
   .ov-fold,
   .ov-place {
     transition: opacity 150ms linear;
   }
 
-  .ov-btn:active,
-  .ov-nav:active {
+  .ov-btn:active {
     scale: none;
   }
 }
@@ -8429,19 +8616,27 @@ a.message-file:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+/* A change's title is the Mate's own, often a paragraph: three lines at most in the sheet, the
+   rest on hover — what it does is said below, in its own words. */
 .rv-title {
+  display: -webkit-box;
   margin: 0;
-  font-size: 22px;
+  overflow: hidden;
+  font-size: 18px;
   font-weight: 600;
-  line-height: 28px;
-  letter-spacing: -0.015em;
+  line-height: 24px;
+  letter-spacing: -0.01em;
   text-wrap: balance;
   overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 .rv-page .rv-title {
+  display: block;
   font-size: 16px;
   line-height: 24px;
   letter-spacing: normal;
+  -webkit-line-clamp: unset;
 }
 /* Where it stands, in plain words: grey while all is well, amber or red for trouble, blue while
    it moves. */

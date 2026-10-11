@@ -1,7 +1,8 @@
 /**
  * A Mate on its project's card, read as its row in the menu reads it: the one face (`mateFace`,
  * from the same facts — up as `mateAwake` says it, its activity, whose it is, its change's review,
- * its life), the same line 2 (`mateRowSecond`) and the same time. What waits on the viewer is
+ * its life), the same owner's mark (`ownerBadge`), the same line 2 (`mateRowSecond`) and the same
+ * right edge — its time, or its change's *Review* in the time's place. What waits on the viewer is
  * lifted with its buttons, answered in place (`CardMateWrite`).
  */
 import {
@@ -15,11 +16,13 @@ import {
   candidateContainerRuns,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import type { ZeropsProjectFlow } from "@t3tools/client-runtime/data";
+import type { MateComing, ZeropsProjectFlow } from "@t3tools/client-runtime/data";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import { CircleAlertIcon, GitPullRequestIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
+import { cn } from "~/lib/utils";
 import { formatShortTimestamp } from "~/timestampFormat";
 import { mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
@@ -28,21 +31,34 @@ import { mateFace } from "~/zerops/mateFace.logic";
 import { useOpenReview } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useMateFaceWatch } from "~/zerops/useMateMoments";
-import { useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
-import { useNowMs } from "~/zerops/useNowMs";
+import { useMateLinkedInHq, useMateOfflineSince } from "~/zerops/useMenuMateReadings";
+import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
-import { Avatar, MateFace } from "../primitives";
+import { MateOwnerMark } from "../MateOwnerMark";
+import { MateFace } from "../primitives";
 import {
+  mateBornLine,
+  mateBornLineText,
+  mateComingRowView,
+  mateDeletingView,
   mateOwnerView,
   mateRowAskLine,
+  mateRowAskOver,
   mateRowReading,
   mateRowSecond,
+  ownerBadge,
+  type MateRowAskLine,
 } from "../SidebarMateRow.logic";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
 import { CardMate, CardMateTime } from "./ProjectCards";
-import { cardMateReading, cardSecondWords } from "./projectCard.logic";
+import {
+  cardMateReading,
+  cardSecondWords,
+  NOTHING_ASKED_YET,
+  type CardMateReading,
+} from "./projectCard.logic";
 
 export function OverviewCardMate({
   candidate,
@@ -52,6 +68,7 @@ export function OverviewCardMate({
   groupId,
   flow,
   change,
+  coming,
   conversationsRead,
   outsideHq,
   containerLine,
@@ -67,6 +84,8 @@ export function OverviewCardMate({
   readonly flow: ZeropsProjectFlow | undefined;
   /** Its open change that asks for review (`changeShowsReview`). */
   readonly change: FlowPullRequest | undefined;
+  /** Still coming up, or never came, as its menu row reads it (`useMateComingOf`). */
+  readonly coming?: MateComing | undefined;
   readonly conversationsRead: boolean;
   readonly outsideHq: boolean;
   /** What its container says first, where it says something: coming up, a failed connect. */
@@ -83,6 +102,7 @@ export function OverviewCardMate({
   const linkedInHq = useMateLinkedInHq(projectId);
   // Up as its menu row reads it (`mateAwake`): its container runs, or HQ holds its link open.
   const up = candidateContainerRuns(candidate) || linkedInHq;
+  const offlineSince = useMateOfflineSince(projectId, candidate.key);
   const nowMs = useNowMs();
   const deleting = mateDeleting(candidate.project, useDeletingMates());
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : "up");
@@ -103,23 +123,32 @@ export function OverviewCardMate({
     watched: watch.watched,
   });
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
-  const view = mateRowReading({
+  const read = mateRowReading({
     name,
     connected: up,
+    offlineSince,
     timestampFormat,
     activity,
     reviewWaits,
     mine,
     pose,
   });
-  // Whether anybody has signed its agent in, read off its own records as its row reads them
-  // (`mateOwnerView`): to the person who added it, that it waits on them.
+  // Going, or still coming up, as its row says it: no time, and its own line.
+  const view = deleting
+    ? mateDeletingView(read)
+    : coming !== undefined
+      ? mateComingRowView(read, coming)
+      : read;
+  // Whose seat it is, and whether anybody has signed its agent in, read off its own records as its
+  // row reads them (`mateOwnerView`): to the person who added it, that it waits on them.
   const viewer = useZeropsSessionOptional()?.user?.id;
+  const owner = zeropsMateOwnerOf(people?.owner, viewer);
   const tags = readZeropsMembership(candidate.project);
   const signers = people?.everSignedIn;
+  const records = mateOwnerRecords(candidate.project, people?.owned);
   const seated = mateOwnerView({
-    owner: zeropsMateOwnerOf(people?.owner, viewer),
-    records: mateOwnerRecords(candidate.project, people?.owned),
+    owner,
+    records,
     asked: view.ask !== undefined,
     hqSigners:
       signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
@@ -129,8 +158,16 @@ export function OverviewCardMate({
     linked: candidate.group === "connected",
   });
   // A Mate with no container read has nothing to sign in, and says nothing of it.
+  const containerless = candidate.service === undefined;
   const signIn =
-    outsideHq || deleting || candidate.service === undefined ? undefined : seated.signInLine;
+    outsideHq || deleting || view.coming !== undefined || containerless
+      ? undefined
+      : seated.signInLine;
+  // What its face's corner wears, as its row's does: nobody's on the viewer's own Mate.
+  const badge =
+    outsideHq || (containerless && seated.seat.kind === "nobody")
+      ? null
+      : ownerBadge(seated.seat, owner?.isViewer === true);
   // Its line 2 as the menu's row says it (`mateRowSecond`): the same words in both places.
   const askLine = mateRowAskLine({
     view,
@@ -152,9 +189,11 @@ export function OverviewCardMate({
     // A colleague's Mate waiting on its person says whom it waits on, never their question.
     waitsOn:
       people?.waitsOnViewer === false &&
+      owner !== undefined &&
+      !owner.isViewer &&
       activity !== undefined &&
       (activity.kind === "approval" || activity.kind === "input" || activity.kind === "planReady")
-        ? (people.owner?.name.split(" ")[0] ?? "its person")
+        ? owner.name.split(" ")[0]
         : undefined,
     asks:
       activity !== undefined &&
@@ -167,23 +206,44 @@ export function OverviewCardMate({
         ? undefined
         : { title: change.title, mine: people?.waitsOnViewer !== false },
   });
-  const reading = cardMateReading({
-    view,
-    status: activity?.kind,
-    mine,
-    review: mine ? change : undefined,
-    read: conversationsRead,
-    line: cardSecondWords({
-      second,
-      reply: view.reply,
-      askLine,
-      pausedUntil: (at) => formatShortTimestamp(at, timestampFormat),
-    }),
-  });
+  // What was asked, over the answer, as its row says it (`mateRowAskOver`).
+  const askOver = view.coming === undefined ? mateRowAskOver(askLine, second) : undefined;
+  // A Mate still coming up, or that never came, says only that: nothing of it is lifted.
+  const reading: CardMateReading =
+    view.coming !== undefined
+      ? { text: undefined, tone: "muted", lift: undefined }
+      : cardMateReading({
+          view,
+          status: activity?.kind,
+          mine,
+          review: mine ? change : undefined,
+          read: conversationsRead,
+          line: cardSecondWords({
+            second,
+            reply: view.reply,
+            askLine,
+            pausedUntil: (at) => formatShortTimestamp(at, timestampFormat),
+          }),
+        });
   const askMate = useAskMate();
   const askToFix = useAskMateToFix();
   const openReview = useOpenReview();
-  const owner = mine ? undefined : people?.owner;
+  const openChange = (from: HTMLElement) => {
+    if (groupId === undefined || change === undefined) return;
+    openReview(
+      { kind: "change", groupId, repository: change.repository, number: change.number },
+      { from },
+    );
+  };
+  // Its change's *Review* in the time's place, as its row has it: white where it waits on the
+  // viewer, quiet where it is a colleague's to review. Lifted for the viewer's review, its button
+  // carries it and the place stays empty — one Review on a card, never two.
+  const review =
+    change === undefined || groupId === undefined || deleting || outsideHq
+      ? undefined
+      : { mine: people?.waitsOnViewer !== false };
+  const marked =
+    view.coming === undefined && (second.kind === "change" || reading.lift?.kind === "review");
   return (
     <CardMate
       actions={
@@ -205,14 +265,7 @@ export function OverviewCardMate({
               });
             }}
             onOpen={() => onOpen?.()}
-            onReview={(from) => {
-              if (groupId === undefined || reading.lift?.kind !== "review") return;
-              const { pull } = reading.lift;
-              openReview(
-                { kind: "change", groupId, repository: pull.repository, number: pull.number },
-                { from },
-              );
-            }}
+            onReview={openChange}
             threadId={activity?.threadId}
           />
         )
@@ -230,25 +283,76 @@ export function OverviewCardMate({
             state={view.face}
             tint={tint}
           />
-          {owner == null ? null : (
-            <Avatar
-              className="ov-mate-owner"
-              initials={owner.name.charAt(0).toLocaleUpperCase()}
-              size="xs"
-              src={owner.avatarUrl ?? null}
-            />
-          )}
+          {badge === null ? null : <MateOwnerMark className="ov-mate-owner" seat={badge} />}
         </>
       }
-      line={containerLine}
+      line={
+        containerLine ??
+        (view.coming !== undefined ? (
+          <CardComingLine coming={view.coming} />
+        ) : marked ? (
+          <>
+            <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+            {reading.text}
+          </>
+        ) : undefined)
+      }
+      ask={askOver === undefined ? undefined : <CardAskLine line={askOver} />}
       name={name}
       onOpen={onOpen}
       reading={reading}
       time={
-        <CardMateTime dot={view.dot}>
-          <CardMateSlot at={activity?.at} slot={view.slot} />
-        </CardMateTime>
+        reading.lift?.kind === "review" ? null : review !== undefined ? (
+          <button
+            className="ov-review"
+            data-mine={review.mine ? "true" : undefined}
+            data-zerops-surface="card-mate-review"
+            onClick={(event) => {
+              openChange(event.currentTarget);
+            }}
+            type="button"
+          >
+            Review
+          </button>
+        ) : (
+          <CardMateTime dot={view.dot}>
+            <CardMateSlot at={activity?.at} slot={view.slot} />
+          </CardMateTime>
+        )
       }
     />
+  );
+}
+
+/** What was asked, over its answer: the ask, or *Draft* and its words over it, as its row has it. */
+function CardAskLine({
+  line,
+}: {
+  readonly line: Exclude<MateRowAskLine, { readonly kind: "sign-in" } | undefined>;
+}) {
+  if (line.kind === "nothing-asked") return <>{NOTHING_ASKED_YET}</>;
+  if (line.kind === "draft")
+    return (
+      <>
+        <span className="font-medium text-foreground">Draft:</span> {line.text}
+      </>
+    );
+  return <>{line.text}</>;
+}
+
+/** Its coming up in its menu row's words (`mateBornLine`), the attention's amber where it stopped. */
+function CardComingLine({ coming }: { readonly coming: MateComing }) {
+  const line = mateBornLine(coming);
+  const nowMs = useSecondsNowMs(line.since !== undefined);
+  return (
+    <span
+      className={cn(line.tone === "attention" && "text-status-attention-text")}
+      data-zerops-surface="card-mate-coming-line"
+    >
+      {line.tone === "attention" ? (
+        <CircleAlertIcon aria-hidden="true" className="mr-1 inline size-3" />
+      ) : null}
+      {mateBornLineText(line, nowMs)}
+    </span>
   );
 }

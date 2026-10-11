@@ -73,7 +73,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
       <SidebarBrand />
       {status === undefined && actions === undefined ? null : (
         <div
-          className="flex min-w-0 flex-1 items-center justify-end gap-2 md:pe-4"
+          className="flex min-w-0 flex-1 items-center justify-end gap-2 md:ps-3 md:pe-4"
           data-zerops-surface="sidebar-top-actions"
         >
           {status}
@@ -170,12 +170,14 @@ function SidebarBrand() {
     // macOS, where the traffic lights push the whole titlebar's content right.
     <Link
       aria-label={APP_BASE_NAME}
-      className="ml-[max(var(--workspace-controls-left),1rem)] hidden h-8.25 w-fit min-w-0 shrink-0 items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2 md:flex"
+      className="ml-[max(var(--workspace-controls-left),17px)] hidden h-12 w-10 min-w-0 shrink-0 items-center rounded-md text-foreground outline-hidden ring-ring focus-visible:ring-2 md:flex"
       to="/zerops"
     >
-      {/* The live mark alone, 28 px wide: its 44 × 52 box stands 33 px tall. Awake as it mounts:
-          the boot frame painted the open mark here, and this one takes over from it. */}
-      <MateMark awake playful className="h-8.25 w-7" />
+      {/* The live mark alone, 40 px wide on the faces' own column, so its centre is theirs (the
+          owner, 2026-10-11: "alignment of Mate logo against mates below is shit"); its 44 × 52
+          box stands 47 px tall. Awake as it mounts: the boot frame painted the open mark here,
+          and this one takes over from it. */}
+      <MateMark awake playful className="h-12 w-10" />
     </Link>
   );
 }

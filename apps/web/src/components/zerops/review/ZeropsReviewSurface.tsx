@@ -194,7 +194,7 @@ export function ZeropsReviewSurface({
         </div>
       )}
       <header className="rv-head" data-review-kind={kind}>
-        <Title className="rv-title" id={titleId}>
+        <Title className="rv-title" id={titleId} title={title}>
           {title}
         </Title>
         <p

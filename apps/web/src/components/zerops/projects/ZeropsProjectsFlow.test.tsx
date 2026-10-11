@@ -16,11 +16,8 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
-import { act } from "react";
-
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
-import { FLOW_PROPS, item, MERGING, mount, renderFlow, type Item } from "./flowTestFixtures";
-import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
+import { item, MERGING, renderFlow } from "./flowTestFixtures";
 
 const render = renderFlow;
 
@@ -35,7 +32,8 @@ describe("the containers no project holds", () => {
     });
     const line = html.slice(html.indexOf('data-zerops-surface="other-containers"'));
     expect(line).toContain("Other containers");
-    expect(line).toContain("Not in a project · 1 ready · 2 not answering · 1 stopped");
+    // Only the ones that need the person are named: the ready one is not the overview's.
+    expect(line).toContain("Not in a project · 2 not answering · 1 stopped");
     expect(line).toContain("Try again (2)");
     // Folded: the rows themselves wait behind the line.
     expect(line).not.toContain("data-test-mate=");
@@ -55,38 +53,16 @@ describe("the containers no project holds", () => {
     expect(render({ ungrouped: rows(["open"]) })).not.toContain("Try again");
   });
 
-  it("count a project with no Mate in the one folded group, its row inside it", () => {
-    const rows = [
-      { item: item("loose"), action: "open" as const },
-      { item: item("zerops-ads", undefined, false), action: "set-up-mate" as const },
-    ];
-    const html = render({ ungrouped: rows });
-    expect(html).toContain("Not in a project · 1 ready · 1 without a Mate");
-    const tree = mount(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} ungrouped={rows} />);
-    const fold = tree.root.findByProps({ "data-zerops-surface": "other-containers" });
-    expect(fold.findAll((node) => node.children.join("") === "2")).not.toHaveLength(0);
-    expect(tree.root.findAllByProps({ "data-test-environment": "zerops-ads" })).toHaveLength(0);
-    act(() => fold.findByProps({ "aria-expanded": false }).props.onClick());
-    expect(tree.root.findAllByProps({ "data-test-environment": "zerops-ads" })).toHaveLength(1);
-    expect(tree.root.findAllByProps({ "data-test-mate": "loose" })).toHaveLength(1);
+  // The organization's inner workings are not the overview's (the owner, 2026-10-11): a container
+  // that answers, or a project waiting for a Mate, says nothing there.
+  it("names a container outside every project only while it needs the person", () => {
+    expect(render({ ungrouped: rows(["open", "set-up-mate"]) })).not.toContain(
+      'data-zerops-surface="other-containers"',
+    );
   });
 });
 
 describe("HQ's card", () => {
-  it("is the page's quiet end, after the containers, under no Tools label", () => {
-    const html = render({
-      groups: [MERGING],
-      ungrouped: [{ item: item("loose"), action: "open" }],
-    });
-    expect(html.indexOf('data-zerops-surface="other-containers"')).toBeLessThan(
-      html.indexOf('data-test-hq-card="true"'),
-    );
-    expect(html.indexOf('data-zerops-surface="quiet-end"')).toBeLessThan(
-      html.indexOf('data-test-hq-card="true"'),
-    );
-    expect(html).not.toContain(">Tools<");
-  });
-
   it("waits for an account that has started", () => {
     expect(render({ onCreateProject: () => {} })).not.toContain('data-test-hq-card="true"');
   });
@@ -119,4 +95,29 @@ it("does not declare a first run before HQ placement is read", () => {
   });
   expect(html).not.toContain("Start a project");
   expect(html).toContain("Placement not read — HQ is unavailable");
+});
+
+// A reload paints nothing it takes back: placement on its way says nothing for the beat it takes,
+// and neither the first run nor HQ's line stands in for it.
+it("says nothing while HQ placement is only on its way", () => {
+  const html = render({
+    onCreateProject: () => {},
+    placementNotice: "Reading HQ placement…",
+    placementReading: true,
+    hqCard: <p data-zerops-surface="hq-card">HQ</p>,
+  });
+  expect(html).not.toContain("Reading HQ placement…");
+  expect(html).not.toContain("Start a project");
+  expect(html).not.toContain('data-zerops-surface="hq-card"');
+});
+
+// Containers no project holds stand behind the overview unless they need the person: an overview
+// with nothing else to draw still says why it is empty.
+it("says why it is empty though containers no project holds stand behind it", () => {
+  const html = render({
+    ungrouped: [{ item: item("loose"), action: "open" }],
+    placementNotice: "Placement not read — HQ is unavailable",
+  });
+  expect(html).toContain("Placement not read — HQ is unavailable");
+  expect(html).not.toContain('data-zerops-surface="other-containers"');
 });

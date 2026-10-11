@@ -20,12 +20,13 @@ describe("projectRoom", () => {
     { name: "an open project, another under it", open: true, last: false, room: 28 },
     { name: "the list's last project, open", open: true, last: true, room: 24 },
     {
-      name: "a folded project: its heading, then 28 px of air to the next",
+      // Folded projects stand as a list of names, not islands (the owner, 2026-10-11).
+      name: "a folded project: its heading, then 4 px of air to the next",
       open: false,
       last: false,
-      room: 28,
+      room: 4,
     },
-    { name: "the list's last project, folded", open: false, last: true, room: 24 },
+    { name: "the list's last project, folded", open: false, last: true, room: 0 },
   ])("$name keeps $room px below its rows", ({ open, last, room }) => {
     expect(projectRoom({ open, last })).toBe(room);
   });

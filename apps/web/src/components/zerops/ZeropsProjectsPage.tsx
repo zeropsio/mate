@@ -5,7 +5,7 @@ import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { creationHandoff } from "@t3tools/client-runtime/data";
 
 import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
-import { ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
+import { throwawayCleanupSpeaks, ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
 import { ZeropsDeletionRecovery } from "./ZeropsDeletionRecovery";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUpgradeRecovery";
@@ -26,11 +26,10 @@ import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { MateMarkState } from "@t3tools/shared/brand";
-import { PlayIcon, PlusIcon, RotateCcwIcon } from "lucide-react";
+import { PlayIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { hqPlacementsAtom, hqNavigationAtom, hqPlacementStatusAtom } from "~/state/zerops";
@@ -142,7 +141,11 @@ import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { MateUpdateStatusText } from "./MateUpdateLine";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { useMateConversationsRead, useMateRowActivity } from "~/zerops/useMenuMateReadings";
+import {
+  useMateComingOf,
+  useMateConversationsRead,
+  useMateRowActivity,
+} from "~/zerops/useMenuMateReadings";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import {
@@ -201,8 +204,7 @@ import {
   mateRowCan,
   plainEvidenceOf,
 } from "./ZeropsProjectRow.logic";
-import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
-import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
+import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { PageWaitLine } from "./WaitLine";
 import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
@@ -468,45 +470,19 @@ function SignedOutNotice({ message }: { readonly message: string }) {
   return <p className="text-sm text-muted-foreground">{message}</p>;
 }
 
-/**
- * The overview's title row: "Overview", and New project on its end — with the reload, a glyph,
- * beside it.
- */
-export function ZeropsProjectsHeader({
-  onRefresh,
-  refreshing = false,
-}: {
-  readonly onRefresh?: (() => void) | undefined;
-  readonly refreshing?: boolean;
-}) {
+/** The overview's title row: "Overview", and New project on its end. The list keeps itself current. */
+export function ZeropsProjectsHeader() {
   return (
-    <div className="flex items-center justify-between gap-3" data-zerops-project-scope="true">
+    // Its row stands on the menu's top row (the search), not a bar's height below it.
+    <div
+      className="-mt-1.5 flex items-center justify-between gap-3"
+      data-zerops-project-scope="true"
+    >
       <h1 className="text-xl font-medium text-foreground">Overview</h1>
-      <div className="flex items-center gap-2">
-        {onRefresh === undefined ? null : (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  aria-label="Refresh"
-                  className="text-muted-foreground"
-                  disabled={refreshing}
-                  onClick={onRefresh}
-                  size="icon"
-                  variant="ghost"
-                />
-              }
-            >
-              <RotateCcwIcon className="size-4" />
-            </TooltipTrigger>
-            <TooltipPopup>Refresh</TooltipPopup>
-          </Tooltip>
-        )}
-        <Button onClick={askNewProject} size="sm" variant="outline">
-          <PlusIcon />
-          New project
-        </Button>
-      </div>
+      <Button onClick={askNewProject} size="sm" variant="outline">
+        <PlusIcon />
+        New project
+      </Button>
     </div>
   );
 }
@@ -841,6 +817,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const activityOf = useMateRowActivity(useMatesActivity());
   // Whether a Mate's conversations are read: one with none says nothing was asked yet.
   const conversationsRead = useMateConversationsRead();
+  // Whether a Mate is still coming up, or never came, as its menu row says it: its card says the same.
+  const comingOf = useMateComingOf(observedCandidates);
   const updates = useMateUpdateStates();
   // What this person may do with each Mate, from the one role function the
   // door runs too (D5). A `listed` row is shown and never opened.
@@ -2003,6 +1981,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         <OverviewCardMate
           candidate={candidate}
           change={review}
+          coming={comingOf(candidate)}
           // A Mate whose container has something to say first says it: coming up, a failed
           // connect and its retry, an update under way.
           containerActions={startAction ?? removeAction}
@@ -2204,7 +2183,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     <div className="space-y-6 pb-12">
       {status === "signed-in" && activeOrganization !== null && !inventory.isLoading ? (
         <>
-          <ZeropsThrowawayCleanup view={throwawayCleanup} />
+          {throwawayCleanupSpeaks(throwawayCleanup.state) ? (
+            <ZeropsThrowawayCleanup view={throwawayCleanup} />
+          ) : null}
           <ZeropsDeletionRecovery />
         </>
       ) : null}
@@ -2314,6 +2295,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                     ? "Placement not read — HQ is unavailable"
                     : "Reading HQ placement…"
         }
+        placementReading={
+          !placementStatus.complete &&
+          placementStatus.unavailableReason === undefined &&
+          !hqStructure.capped &&
+          !placementStatus.reconnecting
+        }
         ungrouped={ungroupedRows}
       />
       {mateActions.dialogs}
@@ -2395,12 +2382,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 }
 
 export function ZeropsProjectsPage() {
-  const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
-    useZeropsSession();
+  const { activeOrganization, organizationStatus, status } = useZeropsSession();
   // The same page is the signed-in door at `/`, so the search is read loosely
   // and through the route's own parser.
   const search = parseProjectsSearch(useSearch({ strict: false }));
-  const { listing, isLoading, refresh } = useZeropsCandidates();
+  const { listing } = useZeropsCandidates();
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
   // First run owns the page: an account with nothing in it gets the
@@ -2416,26 +2402,11 @@ export function ZeropsProjectsPage() {
   });
 
   return (
-    <ZeropsHostedFrame
-      width="full"
-      actions={
-        <>
-          {scoped ? (
-            <ZeropsOrganizationSwitcher
-              activeOrganization={activeOrganization}
-              organizations={organizations}
-              onSelect={(membershipId) => {
-                void selectOrganization(membershipId);
-              }}
-            />
-          ) : null}
-          <ZeropsSessionAccountControl />
-        </>
-      }
-    >
-      {scoped && !firstRun ? (
-        <ZeropsProjectsHeader onRefresh={refresh} refreshing={isLoading} />
-      ) : null}
+    // The account and its organization are the menu's foot, and the list keeps itself current: the
+    // overview's top carries neither a switcher nor a reload, nor an empty bar above its title (the
+    // owner, 2026-10-11).
+    <ZeropsHostedFrame bar={false} width="full">
+      {scoped && !firstRun ? <ZeropsProjectsHeader /> : null}
       <ZeropsProjectsContent search={search} />
     </ZeropsHostedFrame>
   );

@@ -1,11 +1,11 @@
 /**
- * What a project's card on the overview says (round 5, "Mate Clean Overview"): its Mates, two
- * lines each, what waits on the viewer lifted with its buttons; a release ready to go, lifted; and
- * at its foot production's one line — what runs there, since when, or what went wrong.
+ * What a project's card on the overview says: its Mates, what each was asked over its answer, what
+ * waits on the viewer lifted with its buttons; a release ready to go, lifted; and at its foot its
+ * places — previews, stages, production — each what runs there, since when, or what went wrong.
  *
  * The card says what the menu says: a Mate's words and time are its menu row's
- * (`mateRowView`), and production's state is its menu chip's (`productionChip`) where the page
- * has read one; without a chip the flow's own production reading (`groupFlow`) stands.
+ * (`mateRowView`), and a place's state is its menu chip's (`productionChip`) where the page has
+ * read one; without a chip the flow's own reading (`groupFlow`) stands.
  *
  * Pure: no React, no clock of its own.
  */
@@ -35,19 +35,20 @@ export const CARD_MATES_SHOWN = 4;
 /** A place's dot: grey running, amber failed, red down, blue releasing, hollow when none. */
 export type PlaceDot = "running" | "failed" | "down" | "releasing" | "none" | "unknown";
 
-/** One line at a card's foot: a place the code runs, in plain words. */
+/** One line at a card's foot: a place the code runs, by its name, in plain words, and its door. */
 export interface PlaceLine {
   /** Its Zerops project, where it has one. */
   readonly projectId: string | undefined;
   readonly kind: "production" | "stage";
+  /** What its row calls it: a stage by its own name, production "prod", as the menu's road does. */
   readonly name: string;
-  /** Its name is said: a stage standing in for a production the project lacks. */
-  readonly named: boolean;
   readonly dot: PlaceDot;
   /** Said one after the other, `·` between. */
   readonly words: ReadonlyArray<string>;
   /** Something is wrong there or on its way: its panel says what, and what to do. */
   readonly trouble: boolean;
+  /** Its public address, opened beside the page; `undefined` where it has none. */
+  readonly route: string | undefined;
 }
 
 const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -169,23 +170,48 @@ function flowLine(
   }
 }
 
-/** A stage's line where it stands in for the production a project lacks: only while in trouble. */
-function troubledStageLine(
+/** A stage's line: its chip's words where the menu read one, else what the flow says it runs. */
+function stageLine(
   stop: GroupFlowStop,
   chip: ProductionChip | undefined,
   down: ReadonlyArray<string>,
-): PlaceLine | undefined {
-  const base = { projectId: stop.projectId, kind: "stage" as const, name: stop.name, named: true };
-  if (chip !== undefined && (chip.state === "failed" || chip.state === "down"))
-    return { ...base, ...chipLine(chip, { since: undefined, down }) };
-  if (chip === undefined && stop.state === "failed")
-    return { ...base, dot: "failed", words: ["Deploy failed"], trouble: true };
-  return undefined;
+): PlaceLine {
+  const base = {
+    projectId: stop.projectId,
+    kind: "stage" as const,
+    name: stop.name,
+    route: stop.route,
+  };
+  if (chip !== undefined) return { ...base, ...chipLine(chip, { since: undefined, down }) };
+  switch (stop.state) {
+    case "failed":
+      return { ...base, dot: "failed", words: ["Deploy failed"], trouble: true };
+    case "deploying":
+      return { ...base, dot: "releasing", words: ["Deploying…"], trouble: false };
+    case "empty":
+      return { ...base, dot: "none", words: ["Not deployed yet"], trouble: false };
+    case "checking":
+      return {
+        ...base,
+        dot: "unknown",
+        words: [stop.readLine ?? "Checking what runs…"],
+        trouble: false,
+      };
+    case "deployed":
+      return {
+        ...base,
+        dot: "running",
+        words: ["Running", stop.version?.label].filter((word) => word !== undefined),
+        trouble: false,
+      };
+  }
 }
 
 /**
- * The card's foot: production's one line, or — where the project has no production — a stage in
- * trouble by its name, else "Not released yet". Every card ends the same way.
+ * A card's places in the order the code travels: every stage by its name, then production — each
+ * how it is and where it is (the owner, 2026-10-11: the overview showed production alone, and
+ * everything else was a click or more away). Production is always said, "Not released yet" where
+ * nothing runs there, so every card ends on it.
  */
 export function placeLines(input: {
   readonly flow: Pick<GroupFlow, "production" | "stages">;
@@ -202,34 +228,47 @@ export function placeLines(input: {
   const { production, stages } = input.flow;
   const downOf = (projectId: string | undefined) =>
     (projectId === undefined ? undefined : input.down?.get(projectId)) ?? [];
-  if (production.kind === "absent") {
-    for (const stop of stages) {
-      const line = troubledStageLine(
-        stop,
-        input.stageChips?.get(stop.projectId),
-        downOf(stop.projectId),
-      );
-      if (line !== undefined) return [line];
-    }
+  const staged = stages.map((stop) =>
+    stageLine(stop, input.stageChips?.get(stop.projectId), downOf(stop.projectId)),
+  );
+  const prod = { kind: "production" as const, name: "prod" };
+  if (production.kind === "absent")
     return [
+      ...staged,
       {
+        ...prod,
         projectId: undefined,
-        kind: "production",
-        name: "production",
-        named: false,
+        route: undefined,
         dot: "none",
         words: ["Not released yet"],
         trouble: false,
       },
     ];
-  }
-  const projectId = production.kind === "creating" ? undefined : production.stop.projectId;
+  const stop = production.kind === "creating" ? undefined : production.stop;
   const since = sinceWords(input.since, input.nowMs);
   const said =
     input.chip === undefined
       ? flowLine(production, since)
-      : chipLine(input.chip, { since, down: downOf(projectId) });
-  return [{ projectId, kind: "production", name: "production", named: false, ...said }];
+      : chipLine(input.chip, { since, down: downOf(stop?.projectId) });
+  return [...staged, { ...prod, projectId: stop?.projectId, route: stop?.route, ...said }];
+}
+
+/** A Mate's preview on its card: its address where it is the one, else its Mate's name. */
+export interface PreviewLink {
+  readonly label: string;
+  readonly url: string;
+}
+
+/** The previews a card opens: one Mate's by its address, several by their Mates' names. */
+export function previewLinks(
+  mates: ReadonlyArray<{ readonly name: string; readonly preview?: string | undefined }>,
+): ReadonlyArray<PreviewLink> {
+  const shown = mates.flatMap((mate) =>
+    mate.preview === undefined ? [] : [{ name: mate.name, url: mate.preview }],
+  );
+  if (shown.length === 1 && shown[0] !== undefined)
+    return [{ label: siteOf(shown[0].url) ?? shown[0].name, url: shown[0].url }];
+  return shown.map((mate) => ({ label: mate.name, url: mate.url }));
 }
 
 /** The release a card offers: how many changes, where they were tested, what production runs. */
@@ -351,6 +390,9 @@ export function cardMateReading(input: {
           : undefined;
   if (lift === undefined && input.line !== undefined)
     return { text: input.line.text, tone: input.line.tone, lift };
+  // A change lifted for review is named by its title, as its menu row names it: the Mate's last
+  // words may be of another moment (a limit it hit).
+  if (lift?.kind === "review") return { text: lift.pull.title, tone: "ink", lift };
   return {
     text,
     tone: lift !== undefined && tone === "muted" ? "ink" : tone,

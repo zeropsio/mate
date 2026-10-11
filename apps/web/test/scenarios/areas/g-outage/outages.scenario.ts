@@ -40,14 +40,18 @@ describe("G: outages, sleep and several tabs", () => {
         const s = yield* givenOutage();
         outageControls(s.drivers).silenceFacts();
         yield* s.given.signedIn;
+        // A container no project holds is not the overview's while it needs nothing (the owner,
+        // 2026-10-11): with its placement unknown, Projects places it nowhere, and says, once the
+        // read takes a beat, that it reads placement.
+        yield* Effect.promise(() => s.clock.advanceStepped(1_000));
         yield* Effect.promise(() =>
-          s.page.locator('[data-zerops-surface="other-containers"]').setTimeout(15_000).wait(),
+          s.page.locator("::-p-text(Reading HQ placement…)").setTimeout(15_000).wait(),
         );
         const words = yield* Effect.promise(() =>
-          s.page.$eval('[data-zerops-surface="other-containers"]', (node) => node.textContent),
+          s.page.$eval("main", (node) => (node as HTMLElement).innerText),
         );
-        expect(words).toContain("placement unknown");
         expect(words).not.toContain("Not in a project");
+        expect(words).not.toContain("Other containers");
         yield* s.then.noExternalNetwork;
       }),
     );

@@ -1,25 +1,17 @@
 /**
- * The overview's cards (round 5, "Mate Clean Overview"): a card per project with Mates, side by
- * side in one row that scrolls sideways under its edge fades, each card as tall as the tallest so
- * production's lines stand in one line across them.
+ * The overview's cards: a card per project with Mates, every project at once in a grid that wraps.
  *
- * A card reads top to bottom: the project's name and its address; its Mates, two lines each, what
- * waits on the viewer lifted onto a white card with its buttons; a release ready to go, lifted;
- * and at its foot production's one line, which opens its panel (`projectCard.logic.ts`).
+ * A card reads top to bottom: the project's name, its address and its menu; its Mates, what each
+ * was asked over its answer, what waits on the viewer lifted onto a white card with its buttons; a
+ * release ready to go, lifted; and at its foot its places — the Mates' previews, each stage,
+ * production — each how it is, a click opening its panel, its address a door in sight
+ * (`projectCard.logic.ts`).
  *
  * Structural like the list it replaced: a Mate's row, the project's menu, the release's door and
  * a place's panel are the page's slots (`ZeropsProjectsFlowProps`).
  */
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { ArrowUpRightIcon } from "lucide-react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -34,85 +26,28 @@ import {
   mateChangeForReview,
   mateIsLoud,
   placeLines,
+  previewLinks,
   readyLine,
   readyTitle,
   siteOf,
   type CardMateReading,
   type PlaceLine,
+  type PreviewLink,
 } from "./projectCard.logic";
 import { comingMateLine, projectRowLine, stopLine } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
 
-/** One card's width and the gap between cards: a step of the back and forward buttons. */
-const CARD_STEP = 360 + 16;
-
 /**
- * The row of cards: one width each, side by side; past the window's edge the row scrolls sideways
- * under a fade, with a round back and forward button on the side there is more.
+ * Every project's card at once, in a grid that wraps, each card as tall as what it holds: the
+ * overview shows the whole account, never four projects and an arrow to the other sixteen (the
+ * owner, 2026-10-11: "the 'overview' is not overview at all").
  */
 function CardRow({ children }: { readonly children: ReactNode }) {
-  const row = useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = useState({ left: false, right: false });
-  const measure = useCallback(() => {
-    const element = row.current;
-    if (element === null) return;
-    const max = element.scrollWidth - element.clientWidth;
-    const next = { left: element.scrollLeft > 2, right: element.scrollLeft < max - 2 };
-    setEdges((current) =>
-      current.left === next.left && current.right === next.right ? current : next,
-    );
-  }, []);
-  useLayoutEffect(() => {
-    const element = row.current;
-    if (element === null) return;
-    measure();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observer?.observe(element);
-    element.addEventListener("scroll", measure, { passive: true });
-    return () => {
-      observer?.disconnect();
-      element.removeEventListener("scroll", measure);
-    };
-  }, [measure]);
-  const step = (direction: -1 | 1) => {
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    row.current?.scrollBy({ left: direction * CARD_STEP, behavior: reduced ? "auto" : "smooth" });
-  };
   return (
-    <div
-      className="ov-rail"
-      data-can-left={edges.left ? "true" : undefined}
-      data-can-right={edges.right ? "true" : undefined}
-    >
-      <div
-        aria-label="Projects"
-        className="ov-row"
-        data-zerops-surface="project-cards"
-        ref={row}
-        role="list"
-      >
-        {children}
-      </div>
-      <button
-        aria-label="Back"
-        className="ov-nav ov-nav-left"
-        onClick={() => step(-1)}
-        tabIndex={-1}
-        type="button"
-      >
-        <ChevronLeftIcon aria-hidden="true" className="size-4" />
-      </button>
-      <button
-        aria-label="More projects"
-        className="ov-nav ov-nav-right"
-        onClick={() => step(1)}
-        tabIndex={-1}
-        type="button"
-      >
-        <ChevronRightIcon aria-hidden="true" className="size-4" />
-      </button>
+    <div aria-label="Projects" className="ov-row" data-zerops-surface="project-cards" role="list">
+      {children}
     </div>
   );
 }
@@ -165,7 +100,22 @@ function PlainPanel({ line }: { readonly line: PlaceLine }) {
   );
 }
 
-/** Production's one line: its dot, its words, a chevron on hover; a click opens its panel. */
+/** Its address, opened beside the page: the door every place with one keeps in sight. */
+function PlaceOpen({ name, route }: { readonly name: string; readonly route: string }) {
+  return (
+    <a
+      aria-label={`Open ${name}`}
+      className="ov-place-open"
+      href={route}
+      rel="noreferrer"
+      target="_blank"
+    >
+      <ArrowUpRightIcon aria-hidden="true" className="size-4" />
+    </a>
+  );
+}
+
+/** A place's line: its name, its dot, its words, its door; a click opens its panel. */
 function PlaceLineRow({
   line,
   panel,
@@ -177,29 +127,78 @@ function PlaceLineRow({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <Popover onOpenChange={setOpen} open={open}>
-      <PopoverTrigger
-        render={
-          <button
-            aria-haspopup="dialog"
-            className="ov-place"
-            data-open={open ? "true" : undefined}
-            data-zerops-place={line.kind}
-            type="button"
-          />
-        }
-      >
-        <PlaceDot dot={line.dot} />
-        {line.named ? <span className="ov-place-name">{line.name}</span> : null}
-        <PlaceWords line={line} />
-        <ChevronRightIcon aria-hidden="true" className="ov-place-go size-3.5" />
-      </PopoverTrigger>
-      {open ? (
-        <PopoverPopup align="start" padding="none" side="bottom" sideOffset={6}>
-          <PanelHold groupId={groupId}>{panel}</PanelHold>
-        </PopoverPopup>
-      ) : null}
-    </Popover>
+    <div className="ov-place-row">
+      <Popover onOpenChange={setOpen} open={open}>
+        <PopoverTrigger
+          render={
+            <button
+              aria-haspopup="dialog"
+              className="ov-place"
+              data-open={open ? "true" : undefined}
+              data-zerops-place={line.kind}
+              type="button"
+            />
+          }
+        >
+          <span className="ov-place-name">{line.name}</span>
+          <PlaceDot dot={line.dot} />
+          <PlaceWords line={line} />
+        </PopoverTrigger>
+        {open ? (
+          <PopoverPopup align="start" padding="none" side="bottom" sideOffset={6}>
+            <PanelHold groupId={groupId}>{panel}</PanelHold>
+          </PopoverPopup>
+        ) : null}
+      </Popover>
+      {line.route === undefined ? null : <PlaceOpen name={line.name} route={line.route} />}
+    </div>
+  );
+}
+
+/**
+ * The Mates' previews, where a person looks at what a Mate made: one Mate's by its address, the
+ * whole line its door; several by their Mates' names, each its own.
+ */
+function PreviewRow({ links }: { readonly links: ReadonlyArray<PreviewLink> }) {
+  const [only] = links;
+  if (links.length === 1 && only !== undefined)
+    return (
+      <div className="ov-place-row">
+        <a
+          className="ov-place"
+          data-zerops-place="preview"
+          href={only.url}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <span className="ov-place-name">Preview</span>
+          <span className="ov-place-words">{only.label}</span>
+        </a>
+        <span aria-hidden="true" className="ov-place-open">
+          <ArrowUpRightIcon className="size-4" />
+        </span>
+      </div>
+    );
+  return (
+    <div className="ov-place-row">
+      <div className="ov-place" data-zerops-place="preview">
+        <span className="ov-place-name">Preview</span>
+        <span className="ov-place-words">
+          {links.map((link, index) => (
+            <Fragment key={link.url}>
+              {index === 0 ? null : (
+                <span aria-hidden="true" className="ov-sep">
+                  ·
+                </span>
+              )}
+              <a className="ov-place-link" href={link.url} rel="noreferrer" target="_blank">
+                {link.label}
+              </a>
+            </Fragment>
+          ))}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -317,6 +316,7 @@ function ProjectCard<T>({
   const ready = cardReady(flow);
   const releaseDoor = ready === undefined ? null : props.renderReleaseVerb?.(entry);
   const lines = placeLines({ flow, ...props.cardPlaces?.(entry), nowMs });
+  const previews = previewLinks(flow.mates);
   // Why its changes are not known, said plainly where they are not.
   const unknown = projectRowLine({
     flow,
@@ -365,6 +365,7 @@ function ProjectCard<T>({
           </div>
         )}
         <div className="ov-foot">
+          {previews.length === 0 ? null : <PreviewRow links={previews} />}
           {lines.map((line) => (
             <PlaceLineRow
               groupId={group.groupId}
@@ -417,9 +418,7 @@ export function ProjectCards<T>({
       scrolledTo.current = focusGroup;
       setPulsed(focusGroup);
     } else if (!following.current) return;
-    document
-      .getElementById(cardId(focusGroup))
-      ?.scrollIntoView({ block: "nearest", inline: "start" });
+    document.getElementById(cardId(focusGroup))?.scrollIntoView({ block: "nearest" });
   }, [focusGroup, shown, orderKey]);
   if (groups.length === 0) return null;
   return (
@@ -444,6 +443,8 @@ export interface CardMateProps {
   /** The right of its name: its time, its dot. */
   readonly time: ReactNode;
   readonly reading: CardMateReading;
+  /** What was asked, over its answer (`mateRowAskOver`); `undefined` where its line is the ask. */
+  readonly ask?: ReactNode;
   /** Drawn in place of the words where its container has something else to say. */
   readonly line?: ReactNode;
   /** Opens its conversation; `undefined` where it cannot open yet. */
@@ -456,7 +457,7 @@ export interface CardMateProps {
  * A Mate on a card: a 32 px face, its name and time, its second line. What waits on the viewer is
  * lifted onto a white card, its line in ink over two lines, its buttons under it.
  */
-export function CardMate({ name, face, time, reading, line, onOpen, actions }: CardMateProps) {
+export function CardMate({ name, face, time, reading, ask, line, onOpen, actions }: CardMateProps) {
   const lifted = reading.lift !== undefined;
   return (
     <div
@@ -482,6 +483,11 @@ export function CardMate({ name, face, time, reading, line, onOpen, actions }: C
           )}
           <span className="ov-mate-time">{time}</span>
         </span>
+        {ask === undefined ? null : (
+          <span className="ov-mate-ask" data-zerops-surface="card-mate-ask">
+            {ask}
+          </span>
+        )}
         <span
           className="ov-mate-l2"
           data-tone={reading.tone}

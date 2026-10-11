@@ -14,6 +14,7 @@ import {
   foldWords,
   mateChangeForReview,
   placeLines,
+  previewLinks,
   readyLine,
   readyTitle,
   rollBackTarget,
@@ -51,7 +52,7 @@ const words = (flow: Parameters<typeof placeLines>[0]) =>
   placeLines(flow).map((line) => ({
     dot: line.dot,
     words: line.words.join(" · "),
-    named: line.named,
+    name: line.name,
   }));
 
 describe("production's line at a card's foot", () => {
@@ -61,37 +62,40 @@ describe("production's line at a card's foot", () => {
       case: "running, since when",
       flow: { production: LIVE, stages: [] },
       chip: undefined,
-      line: { dot: "running", words: `Running · v2.3.1 · ${since}`, named: false },
+      lines: [{ dot: "running", words: `Running · v2.3.1 · ${since}`, name: "prod" }],
     },
     {
       case: "a failed release, and what still runs",
       flow: { production: LIVE, stages: [] },
       chip: chip({ state: "failed", version: "v1.8.2" }),
-      line: { dot: "failed", words: "Release failed · still runs v1.8.2", named: false },
+      lines: [{ dot: "failed", words: "Release failed · still runs v1.8.2", name: "prod" }],
     },
     {
       case: "a release on its way",
       flow: { production: LIVE, stages: [] },
       chip: chip({ state: "releasing", next: "v0.5.0" }),
-      line: { dot: "releasing", words: "Releasing v0.5.0", named: false },
+      lines: [{ dot: "releasing", words: "Releasing v0.5.0", name: "prod" }],
     },
     {
       case: "down, and its cause",
       flow: { production: LIVE, stages: [] },
       chip: chip({ state: "down" }),
-      line: { dot: "down", words: "Down · app failed", named: false },
+      lines: [{ dot: "down", words: "Down · app failed", name: "prod" }],
     },
     {
       case: "nothing released yet",
       flow: { production: { kind: "empty", stop: stop(), line: "" } as const, stages: [] },
       chip: undefined,
-      line: { dot: "none", words: "Not released yet", named: false },
+      lines: [{ dot: "none", words: "Not released yet", name: "prod" }],
     },
     {
       case: "no production at all",
       flow: { production: { kind: "absent" } as const, stages: [stop({ name: "stage" })] },
       chip: undefined,
-      line: { dot: "none", words: "Not released yet", named: false },
+      lines: [
+        { dot: "running", words: "Running · v2.3.1", name: "stage" },
+        { dot: "none", words: "Not released yet", name: "prod" },
+      ],
     },
     {
       case: "no production, and a stage in trouble: the stage's line, by name",
@@ -100,9 +104,12 @@ describe("production's line at a card's foot", () => {
         stages: [stop({ name: "stage", projectId: "stage", state: "failed" })],
       },
       chip: undefined,
-      line: { dot: "failed", words: "Deploy failed", named: true },
+      lines: [
+        { dot: "failed", words: "Deploy failed", name: "stage" },
+        { dot: "none", words: "Not released yet", name: "prod" },
+      ],
     },
-  ] as const)("says $case", ({ flow, chip: read, line }) => {
+  ] as const)("says $case", ({ flow, chip: read, lines }) => {
     expect(
       words({
         flow,
@@ -111,7 +118,7 @@ describe("production's line at a card's foot", () => {
         down: new Map([["prod", ["app"]]]),
         nowMs: NOW,
       }),
-    ).toEqual([line]);
+    ).toEqual(lines);
   });
 
   it("says what the flow says where no chip was read: a failed deploy, and what still runs", () => {
@@ -122,8 +129,52 @@ describe("production's line at a card's foot", () => {
       candidate: undefined,
     };
     expect(words({ flow: { production: failed, stages: [] }, nowMs: NOW })).toEqual([
-      { dot: "failed", words: "Release failed · still runs v1.8.2", named: false },
+      { dot: "failed", words: "Release failed · still runs v1.8.2", name: "prod" },
     ]);
+  });
+});
+
+describe("a card's places", () => {
+  it("says every stage by its name before production, each with its address", () => {
+    const lines = placeLines({
+      flow: {
+        production: LIVE,
+        stages: [
+          stop({ projectId: "stage", name: "stage", route: "https://stage.acme.com/" }),
+          stop({ projectId: "qa", name: "qa", state: "deploying", route: undefined }),
+        ],
+      },
+      stageChips: new Map([["stage", chip({ label: "stage", version: "v2.4.0" })]]),
+      nowMs: NOW,
+    });
+    expect(lines.map((line) => [line.name, line.dot, line.words.join(" · "), line.route])).toEqual([
+      ["stage", "running", "Running · v2.4.0", "https://stage.acme.com/"],
+      ["qa", "releasing", "Deploying…", undefined],
+      ["prod", "running", "Running · v2.3.1", "https://shop.acme.com/"],
+    ]);
+  });
+
+  it.each([
+    { case: "nothing where no Mate has one", mates: [{ name: "Eddy" }], links: [] },
+    {
+      case: "one Mate's by its address",
+      mates: [{ name: "Eddy", preview: "https://shop-3000.prg1.zerops.app/" }],
+      links: [["shop-3000.prg1.zerops.app", "https://shop-3000.prg1.zerops.app/"]],
+    },
+    {
+      case: "several by their Mates' names",
+      mates: [
+        { name: "Eddy", preview: "https://a.prg1.zerops.app" },
+        { name: "Rosa" },
+        { name: "Fern", preview: "https://b.prg1.zerops.app" },
+      ],
+      links: [
+        ["Eddy", "https://a.prg1.zerops.app"],
+        ["Fern", "https://b.prg1.zerops.app"],
+      ],
+    },
+  ])("opens its Mates' previews: $case", ({ mates, links }) => {
+    expect(previewLinks(mates).map((link) => [link.label, link.url])).toEqual(links);
   });
 });
 
@@ -263,9 +314,26 @@ describe("a Mate on a card", () => {
         review: pull({ number: 41 }),
       },
       expected: {
-        text: "#41 is ready",
+        text: "Greet with a fuller line",
         tone: "ink",
         lift: { kind: "review", pull: pull({ number: 41 }) },
+      },
+    },
+    {
+      // Its last words are of another moment, a limit it hit: the menu's row names the change.
+      case: "names the change it lifts for review, not what the Mate said last",
+      input: {
+        view: view({
+          reply: { kind: "words", text: "Usage limit reached until Friday", tone: "muted" },
+        }),
+        status: "idle",
+        mine: true,
+        review: pull({ number: 7, title: "Build a reading list" }),
+      },
+      expected: {
+        text: "Build a reading list",
+        tone: "ink",
+        lift: { kind: "review", pull: pull({ number: 7, title: "Build a reading list" }) },
       },
     },
     {

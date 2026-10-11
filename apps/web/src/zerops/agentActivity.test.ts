@@ -561,6 +561,22 @@ describe("agentActivitySnippet", () => {
     ).toBe("Done. The app is live.");
   });
 
+  // A row is one line of words: a link reads as its text, never as its markdown (the owner's live
+  // menu, 2026-10-11: "I restored the [stage preview](https://appstage-2fe…").
+  it("quotes them as plain words: a link its text, no marks", () => {
+    expect(
+      agentActivitySnippet(
+        shell({
+          latestMessagePreview: {
+            role: "assistant",
+            text: "I restored the [stage preview](https://app.example.test/) — **build** passes.",
+            createdAt: "2026-09-05T10:05:00.000Z",
+          },
+        }),
+      ),
+    ).toBe("I restored the stage preview — build passes.");
+  });
+
   it.each([
     ["a shell that carries none", {}],
     ["a conversation nobody has spoken into", { latestMessagePreview: null }],

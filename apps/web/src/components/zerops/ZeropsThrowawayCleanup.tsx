@@ -1,6 +1,15 @@
 import { Button } from "../ui/button";
 import type { ThrowawaySweepView } from "../../zerops/useZeropsThrowawaySweep";
 
+/**
+ * Whether the cleanup speaks over the overview's cards: only once it failed, or cannot say how it
+ * ended — what waits on the person. Queued, running and done are housekeeping, and the person's own
+ * cleanup is their account menu's.
+ */
+export function throwawayCleanupSpeaks(state: ThrowawaySweepView["state"]): boolean {
+  return state === "failed" || state === "unknown";
+}
+
 /** Inventory cleanup has its own visible result and an explicit way to ask again. */
 export function ZeropsThrowawayCleanup({ view }: { readonly view: ThrowawaySweepView }) {
   const busy = view.state === "waiting" || view.state === "running";

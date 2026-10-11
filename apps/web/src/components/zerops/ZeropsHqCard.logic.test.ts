@@ -2,7 +2,7 @@ import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
-import { hqCardView, type HqCardInput } from "./ZeropsHqCard.logic";
+import { hqCardView, hqNavigationTrouble, type HqCardInput } from "./ZeropsHqCard.logic";
 
 const RUNS = "20261003T080500Z.ba9876543210";
 const CARRIED = "20261004T100000Z.0123456789ab";
@@ -397,4 +397,33 @@ describe("hqCardView — the Core on the header line, the day it was committed",
   ])("%s", (_name, overrides, coreDay) => {
     expect(hqCardView(input(overrides)).coreDay).toBe(coreDay);
   });
+});
+
+// A reload paints nothing it takes back: HQ's navigation on its way is no trouble to show in amber
+// for the beat it takes, only a refusal or an outage is.
+describe("the HQ line before HQ's navigation is read", () => {
+  const UNAVAILABLE = "HQ is unavailable. Restore its connection or retry.";
+  it.each([
+    { case: "on its way", refusal: null, capped: false, reconnecting: false, trouble: null },
+    {
+      case: "refused",
+      refusal: "forbidden",
+      capped: false,
+      reconnecting: false,
+      trouble: "HQ read refused: forbidden",
+    },
+    { case: "capped", refusal: null, capped: true, reconnecting: false, trouble: UNAVAILABLE },
+    {
+      case: "reconnecting",
+      refusal: null,
+      capped: false,
+      reconnecting: true,
+      trouble: UNAVAILABLE,
+    },
+  ])(
+    "names a refusal or an outage, never a read still on its way: $case",
+    ({ refusal, capped, reconnecting, trouble }) => {
+      expect(hqNavigationTrouble({ refusal, capped, reconnecting })).toBe(trouble);
+    },
+  );
 });

@@ -19,10 +19,12 @@ import type {
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import type { ReactNode } from "react";
 
+import { BOOT_WAIT_LINE_MS } from "~/zerops/waitLine.logic";
 import { MateFace, Pill } from "../primitives";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
+import { PageWaitLine } from "../WaitLine";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
-import { OtherContainers, OtherProjects, QuietEnd } from "./ProjectList";
+import { OtherContainers, OtherProjects } from "./ProjectList";
 import { ProjectCards } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
@@ -73,6 +75,11 @@ export interface ZeropsProjectsFlowProps<T> {
   /** The projects no group holds, with the one verb each row offers. */
   /** Source coverage for rows whose HQ placement has not been read. */
   readonly placementNotice?: string | undefined;
+  /**
+   * Placement is only on its way — no refusal, no outage: an account not started yet says nothing
+   * for the beat it takes, so a reload paints no words it takes back.
+   */
+  readonly placementReading?: boolean | undefined;
   readonly ungrouped: ReadonlyArray<{ readonly item: T; readonly action: ZeropsRowAction["kind"] }>;
   readonly getKey: (item: T) => string;
   readonly isMate: (item: T) => boolean;
@@ -162,12 +169,25 @@ function FirstRun({
   );
 }
 
+/** What a container outside every project shows on the overview for: it needs the person. */
+const CONTAINER_NEEDS_PERSON: ReadonlySet<ZeropsRowAction["kind"]> = new Set([
+  "retry-probe",
+  "start",
+  "restart",
+]);
+
 export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
   const { groups, ungrouped, creating = false, onCreateProject, focusGroup } = props;
   // The organization's HQ is not a project, so an account holding nothing
   // but its HQ has still not started.
   const started = groups.length > 0 || ungrouped.length > 0;
   const firstRun = onCreateProject !== undefined && !started && props.placementNotice === undefined;
+  // Containers no project holds are the organization's inner workings, and HQ is Settings': the
+  // overview names a container only while it needs the person — not answering, stopped.
+  const containers = ungrouped.filter((row) => CONTAINER_NEEDS_PERSON.has(row.action));
+  // With nothing drawn, why: placement still on its way says so once it takes a beat — never on a
+  // quick reload — and HQ's trouble says so at once, with HQ's card.
+  const empty = groups.length === 0 && containers.length === 0;
 
   return (
     <div
@@ -178,14 +198,16 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
       data-zerops-surface="projects-flow"
       role="region"
     >
-      {!started && props.placementNotice !== undefined ? (
+      {!empty || props.placementNotice === undefined ? null : props.placementReading === true ? (
+        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={props.placementNotice} />
+      ) : (
         <>
           <p role="status" className="text-sm text-muted-foreground">
             {props.placementNotice}
           </p>
           {props.hqCard}
         </>
-      ) : null}
+      )}
       {firstRun ? <FirstRun creating={creating} onCreateProject={onCreateProject} /> : null}
       <ProjectCards
         focusGroup={focusGroup}
@@ -196,8 +218,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         groups={groups.filter((entry) => entry.flow.mates.length === 0)}
         props={props}
       />
-      <OtherContainers props={props} rows={ungrouped} />
-      {started ? <QuietEnd props={props} /> : null}
+      <OtherContainers props={props} rows={containers} />
     </div>
   );
 }

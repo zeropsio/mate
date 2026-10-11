@@ -3,8 +3,12 @@
  * overview; the waiting count opens the same Waiting on you list beside the rail; Overview wears
  * the selected band while it is open; each Mate's face opens its conversation, a colleague's with
  * its owner's photo on its corner and a dot when it waits, failed or has a result not yet seen;
- * the viewer's photo opens the account menu, and the last button opens the menu again. Tooltips
- * say a face's name · project and its line.
+ * the viewer's photo opens the account menu, and the last button opens the menu again.
+ *
+ * A closed menu still says what is what (the owner, 2026-10-11: "absolutely shit for navigation,
+ * you have absolutely no idea what is what, the tooltip is slow and small"): each face carries its
+ * name under it, and its tooltip — at once, and instant from one face to the next — is a card of
+ * its name, its project, what was asked and its last answer.
  */
 import {
   assignCandidateMateTints,
@@ -21,12 +25,13 @@ import { Fragment, useMemo, type ReactNode } from "react";
 
 import { APP_BASE_NAME } from "~/branding";
 import { mateFaceOf, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { useWaitsOnViewer } from "~/zerops/useZeropsMateOwners";
 
 import { MateMark } from "../MateMark";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { Avatar, MateFace } from "./primitives";
 import { railDot, railGroups, type RailDot } from "./SidebarRail.logic";
 import { SidebarWaitingPopover, type WaitingVerbs } from "./SidebarWaiting";
@@ -43,8 +48,10 @@ export interface RailMate {
   readonly dot: RailDot | undefined;
   /** A colleague's Mate: its owner's photo on the face's corner. */
   readonly owner: ZeropsMateOwner | undefined;
-  /** What its row's second line says, for the tooltip. */
+  /** What its row's second line says. */
   readonly line: string;
+  /** What it waits on the viewer for, in the Waiting list's words. */
+  readonly waits?: string | undefined;
 }
 
 /** The rail's faces: the Mates the menu shows, each as its row reads it. */
@@ -94,6 +101,7 @@ export function useRailMates<T extends ZeropsCandidate>(input: {
             unread: activity?.unread === true,
           }),
           owner: owner === undefined || owner.isViewer ? undefined : owner,
+          waits: waited?.mate.text,
           line:
             waited?.mate.text ??
             (failed ? activity?.errorLine : undefined) ??
@@ -105,6 +113,47 @@ export function useRailMates<T extends ZeropsCandidate>(input: {
     });
     return railGroups(mates, order);
   }, [activityOf, candidates, order, ownerOf, projectName, shown, tints, waiting, waitsOnViewer]);
+}
+
+/**
+ * A face's card beside the rail: its name and project, what was asked, its last answer — read from
+ * the Mate's own activity while the card is open (the menu's list holds no words of it).
+ */
+function RailMateTip({
+  projectId,
+  name,
+  projectName,
+  waits,
+  line,
+}: {
+  readonly projectId: string;
+  readonly name: string;
+  readonly projectName: string;
+  /** What it waits on the viewer for, in the Waiting list's words. */
+  readonly waits: string | undefined;
+  /** What its row says, where its own activity holds no words yet. */
+  readonly line: string;
+}) {
+  const activity = useProjectMateActivity(projectId);
+  const asked = activity?.task ?? activity?.subject;
+  const answer =
+    waits ??
+    (activity?.kind === "failed" ? activity.errorLine : undefined) ??
+    activity?.question ??
+    activity?.snippet ??
+    (line.length > 0 ? line : undefined);
+  return (
+    <span className="menu-rail-card" data-zerops-surface="sidebar-rail-card">
+      <span className="menu-rail-card-name">
+        {name}
+        {projectName.length === 0 ? null : (
+          <span className="menu-rail-card-project">{` · ${projectName}`}</span>
+        )}
+      </span>
+      {asked === undefined ? null : <span className="menu-rail-card-asked">{asked}</span>}
+      {answer === undefined ? null : <span className="menu-rail-card-answer">{answer}</span>}
+    </span>
+  );
 }
 
 /** A tooltip beside the rail: what the control is, its key, and its line. */
@@ -137,6 +186,7 @@ function RailButton({
   onClick,
   children,
   surface,
+  mate = false,
 }: {
   readonly label: string;
   readonly tip: ReactNode;
@@ -144,6 +194,8 @@ function RailButton({
   readonly onClick: () => void;
   readonly children: ReactNode;
   readonly surface: string;
+  /** A Mate's face, its name under it. */
+  readonly mate?: boolean;
 }) {
   return (
     <Tooltip>
@@ -152,7 +204,7 @@ function RailButton({
           <button
             aria-current={current ? "page" : undefined}
             aria-label={label}
-            className="menu-rail-button"
+            className={mate ? "menu-rail-button menu-rail-mate" : "menu-rail-button"}
             data-current={current ? "" : undefined}
             data-zerops-surface={surface}
             onClick={onClick}
@@ -199,108 +251,116 @@ export function SidebarRail({
 }) {
   const summary = waitingSummary(waiting);
   return (
-    <div className="menu-rail" data-zerops-surface="sidebar-rail">
-      <div className="menu-rail-top">
-        {showMark ? (
-          <Link aria-label={APP_BASE_NAME} className="menu-rail-mark" to="/zerops">
-            <MateMark awake playful className="h-8.25 w-7" />
-          </Link>
-        ) : null}
-      </div>
-      <div className="menu-rail-slot">
-        {waiting.length === 0 ? null : (
-          <SidebarWaitingPopover
-            items={waiting}
-            tooltip={
-              <RailTip
-                line={`${summary.words}${summary.more > 0 ? ` · ${String(summary.more)} more` : ""}`}
-                name="Waiting on you"
-                shortcut="⌥↓"
-              />
-            }
-            trigger={
-              <button
-                aria-label={`${String(waiting.length)} waiting on you`}
-                className="menu-rail-count"
-                data-waiting-trigger=""
-                data-zerops-surface="sidebar-rail-waiting"
-                type="button"
-              />
-            }
-            verbs={verbs}
-          >
-            {waiting.length}
-          </SidebarWaitingPopover>
-        )}
-      </div>
-      <RailButton
-        current={overviewCurrent}
-        label="Overview"
-        onClick={onOverview}
-        surface="sidebar-rail-overview"
-        tip={<RailTip line={headline} name="Overview" shortcut="⌥0" />}
-      >
-        <span className="menu-rail-disc" aria-hidden="true">
-          <LayersIcon className="size-4.5" />
-        </span>
-      </RailButton>
-      <i aria-hidden="true" className="menu-rail-sep" />
-      <div className="menu-rail-faces">
-        {groups.map((group, index) => (
-          <Fragment key={group[0]?.groupId ?? index}>
-            {index === 0 ? null : <i aria-hidden="true" className="menu-rail-sep" />}
-            {group.map((mate) => (
-              <RailButton
-                current={mate.projectId === activeProjectId}
-                key={mate.projectId}
-                label={
-                  mate.projectName.length > 0 ? `${mate.name}, ${mate.projectName}` : mate.name
-                }
-                onClick={() => {
-                  onSelect(mate.projectId);
-                }}
-                surface="sidebar-rail-mate"
-                tip={
-                  <RailTip
-                    line={mate.line}
-                    name={
-                      mate.projectName.length > 0 ? `${mate.name} · ${mate.projectName}` : mate.name
-                    }
-                  />
-                }
-              >
-                <MateFace
-                  className="size-9"
-                  shape={mate.shape}
-                  size="md"
-                  state={mate.face}
-                  tint={mate.tint}
+    // Tooltips open at once, and instantly from one control to the next while moving along the rail.
+    <TooltipProvider closeDelay={0} delay={80} timeout={700}>
+      <div className="menu-rail" data-zerops-surface="sidebar-rail">
+        <div className="menu-rail-top">
+          {showMark ? (
+            <Link aria-label={APP_BASE_NAME} className="menu-rail-mark" to="/zerops">
+              <MateMark awake playful className="h-8.25 w-7" />
+            </Link>
+          ) : null}
+        </div>
+        <div className="menu-rail-slot">
+          {waiting.length === 0 ? null : (
+            <SidebarWaitingPopover
+              items={waiting}
+              tooltip={
+                <RailTip
+                  line={`${summary.words}${summary.more > 0 ? ` · ${String(summary.more)} more` : ""}`}
+                  name="Waiting on you"
+                  shortcut="⌥↓"
                 />
-                {mate.owner === undefined ? null : (
-                  <span className="menu-rail-owner" aria-hidden="true">
-                    <Avatar initials={mate.owner.initials} size="xs" src={mate.owner.avatarUrl} />
-                  </span>
-                )}
-                {mate.dot === undefined ? null : (
-                  <i aria-hidden="true" className="menu-rail-dot" data-dot={mate.dot} />
-                )}
-              </RailButton>
-            ))}
-          </Fragment>
-        ))}
-      </div>
-      <span className="menu-rail-spring" />
-      <div className="menu-rail-foot">
-        {account}
+              }
+              trigger={
+                <button
+                  aria-label={`${String(waiting.length)} waiting on you`}
+                  className="menu-rail-count"
+                  data-waiting-trigger=""
+                  data-zerops-surface="sidebar-rail-waiting"
+                  type="button"
+                />
+              }
+              verbs={verbs}
+            >
+              {waiting.length}
+            </SidebarWaitingPopover>
+          )}
+        </div>
         <RailButton
-          label="Open the menu"
-          onClick={onOpenMenu}
-          surface="sidebar-rail-open"
-          tip={<RailTip name="Open the menu" shortcut={openShortcut} />}
+          current={overviewCurrent}
+          label="Overview"
+          onClick={onOverview}
+          surface="sidebar-rail-overview"
+          tip={<RailTip line={headline} name="Overview" shortcut="⌥0" />}
         >
-          <PanelLeftOpenIcon aria-hidden="true" className="size-4" />
+          <span className="menu-rail-disc" aria-hidden="true">
+            <LayersIcon className="size-4.5" />
+          </span>
         </RailButton>
+        <i aria-hidden="true" className="menu-rail-sep" />
+        <div className="menu-rail-faces">
+          {groups.map((group, index) => (
+            <Fragment key={group[0]?.groupId ?? index}>
+              {index === 0 ? null : <i aria-hidden="true" className="menu-rail-sep" />}
+              {group.map((mate) => (
+                <RailButton
+                  current={mate.projectId === activeProjectId}
+                  key={mate.projectId}
+                  mate
+                  label={
+                    mate.projectName.length > 0 ? `${mate.name}, ${mate.projectName}` : mate.name
+                  }
+                  onClick={() => {
+                    onSelect(mate.projectId);
+                  }}
+                  surface="sidebar-rail-mate"
+                  tip={
+                    <RailMateTip
+                      line={mate.line}
+                      name={mate.name}
+                      projectId={mate.projectId}
+                      projectName={mate.projectName}
+                      waits={mate.waits}
+                    />
+                  }
+                >
+                  <MateFace
+                    className="size-9"
+                    shape={mate.shape}
+                    size="md"
+                    state={mate.face}
+                    tint={mate.tint}
+                  />
+                  {mate.owner === undefined ? null : (
+                    <span className="menu-rail-owner" aria-hidden="true">
+                      <Avatar initials={mate.owner.initials} size="xs" src={mate.owner.avatarUrl} />
+                    </span>
+                  )}
+                  {mate.dot === undefined ? null : (
+                    <i aria-hidden="true" className="menu-rail-dot" data-dot={mate.dot} />
+                  )}
+                  <span aria-hidden="true" className="menu-rail-name">
+                    {mate.name}
+                  </span>
+                </RailButton>
+              ))}
+            </Fragment>
+          ))}
+        </div>
+        <span className="menu-rail-spring" />
+        <div className="menu-rail-foot">
+          {account}
+          <RailButton
+            label="Open the menu"
+            onClick={onOpenMenu}
+            surface="sidebar-rail-open"
+            tip={<RailTip name="Open the menu" shortcut={openShortcut} />}
+          >
+            <PanelLeftOpenIcon aria-hidden="true" className="size-4" />
+          </RailButton>
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
