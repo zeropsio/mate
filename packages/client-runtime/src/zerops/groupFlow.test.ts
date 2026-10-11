@@ -4,7 +4,6 @@ import { describe, expect, it } from "vite-plus/test";
 import type { Deployment } from "./flow/deployment.ts";
 import {
   groupFlow,
-  pairPreviewRoute,
   pairPreviewRoutes,
   type GroupFlowInput,
   type GroupFlowPending,
@@ -1174,44 +1173,6 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
   });
 });
 
-describe("pairPreviewRoute", () => {
-  const route = (service: string) => ({
-    service,
-    port: 3000,
-    url: `https://${service}-1a2b-3000.prg1.zerops.app`,
-    host: `${service}-1a2b-3000.prg1.zerops.app`,
-  });
-
-  it.each([
-    {
-      case: "the stage half beside its dev half",
-      routes: [route("appdev"), route("appstage")],
-      hostnames: ["appdev", "appstage", "zcp"],
-      preview: "appstage",
-    },
-    {
-      case: "the stage half of a pair grown from one service",
-      routes: [route("todoapp"), route("todoappstage")],
-      hostnames: ["todoapp", "todoappstage"],
-      preview: "todoappstage",
-    },
-    {
-      case: "nothing, where only the dev half is public",
-      routes: [route("appdev")],
-      hostnames: ["appdev", "appstage"],
-      preview: undefined,
-    },
-    {
-      case: "nothing, for a service merely named like a stage half",
-      routes: [route("backstage")],
-      hostnames: ["backstage"],
-      preview: undefined,
-    },
-  ])("is $case", ({ routes, hostnames, preview }) => {
-    expect(pairPreviewRoute(routes, hostnames)?.service).toBe(preview);
-  });
-});
-
 describe("pairPreviewRoutes", () => {
   const route = (service: string) => ({
     service,
@@ -1238,6 +1199,18 @@ describe("pairPreviewRoutes", () => {
       routes: [route("appstage"), { ...route("appstage"), port: 8080 }],
       hostnames: ["appdev", "appstage"],
       previews: ["app"],
+    },
+    {
+      case: "the stage half of a pair grown from one service",
+      routes: [route("todoapp"), route("todoappstage")],
+      hostnames: ["todoapp", "todoappstage"],
+      previews: ["todoapp"],
+    },
+    {
+      case: "none, where only the dev half is public",
+      routes: [route("appdev")],
+      hostnames: ["appdev", "appstage"],
+      previews: [],
     },
     {
       case: "none, for a service merely named like a stage half",

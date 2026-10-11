@@ -378,15 +378,34 @@ export function useReviewFold(initiallyOpen = false): ReviewFoldState & {
   };
 }
 
-/** "Try it": the Mate's preview, opened in a tab. */
-export function ReviewTry({ url, host }: { readonly url: string; readonly host: string }) {
+/** "Try it": the Mate's previews, each by its service and its address, opened in a tab. */
+export function ReviewTry({
+  previews,
+}: {
+  readonly previews: ReadonlyArray<{
+    readonly service: string;
+    readonly url: string;
+    readonly host: string;
+  }>;
+}) {
   return (
     <ReviewSection title="Try it">
-      <a className="rv-try" href={url} rel="noreferrer" target="_blank">
-        <GlobeIcon aria-hidden="true" />
-        <span className="rv-try-host">{host}</span>
-        <ArrowUpRightIcon aria-hidden="true" />
-      </a>
+      <div className="rv-tries">
+        {previews.map((preview) => (
+          <a
+            className="rv-try"
+            href={preview.url}
+            key={preview.service}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <GlobeIcon aria-hidden="true" />
+            <span className="rv-try-service">{preview.service}</span>
+            <span className="rv-try-host">{preview.host}</span>
+            <ArrowUpRightIcon aria-hidden="true" />
+          </a>
+        ))}
+      </div>
     </ReviewSection>
   );
 }

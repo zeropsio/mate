@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   headingFaces,
   landingAfterDraw,
+  menuDrawsLoadingRows,
   newProjectOffered,
   openMateReveal,
   projectRoom,
@@ -299,5 +300,42 @@ describe("openMateReveal", () => {
       undefined,
     );
     expect(openMateReveal({ seen: found.seen, open: "fen", resolving: false }).reveal).toBe("fen");
+  });
+});
+
+// The list's loading rows stand from the boot frame's until rows of its own replace them; the
+// menu holds what waits on the viewer until then too, so its row never pushes them down.
+describe("menuDrawsLoadingRows — the list's loading rows, while it has nothing of its own", () => {
+  const project = (id: string, kind: "mate" | "stage"): ZeropsCandidate => ({
+    key: `${id}:zcp`,
+    project: {
+      id,
+      name: id,
+      status: "ACTIVE",
+      tagList: kind === "mate" ? ["mate"] : [],
+      hq: { appId: "crm", appName: "CRM", kind, mate: null },
+    },
+    group: "ready",
+  });
+  const BIRTH = { placement: { kind: "mate" } } as unknown as ZeropsPlacedBirth;
+  const NOTICE = { message: { text: "Couldn't read your projects" } } as never;
+  const reading = { candidates: [], births: [], complete: false, reading: true, notice: null };
+  it.each([
+    { case: "nothing read yet, the listing on its way", input: reading, drawn: true },
+    {
+      case: "a Mate HQ lists",
+      input: { ...reading, candidates: [project("crm-dev", "mate")] },
+      drawn: false,
+    },
+    { case: "a Mate being made", input: { ...reading, births: [BIRTH] }, drawn: false },
+    { case: "the listing complete", input: { ...reading, complete: true }, drawn: false },
+    {
+      case: "the listing saying something of its own",
+      input: { ...reading, notice: NOTICE },
+      drawn: false,
+    },
+    { case: "no listing on its way", input: { ...reading, reading: false }, drawn: false },
+  ])("draws them for $case: $drawn", ({ input, drawn }) => {
+    expect(menuDrawsLoadingRows(input)).toBe(drawn);
   });
 });

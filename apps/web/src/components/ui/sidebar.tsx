@@ -99,6 +99,19 @@ function useSidebarVisibility() {
   return isMobile ? openMobile : open;
 }
 
+/**
+ * Whether the menu was left open, as the cookie its toggle writes says (`setOpen`): open where it
+ * says nothing. The first frame reads it too (index.html), so a menu left closed comes back as the
+ * rail, not open.
+ */
+export function readSidebarOpen(): boolean {
+  if (typeof document === "undefined") return true;
+  const entry = document.cookie
+    .split("; ")
+    .find((cookie) => cookie.startsWith(`${SIDEBAR_COOKIE_NAME}=`));
+  return entry?.slice(SIDEBAR_COOKIE_NAME.length + 1) !== "false";
+}
+
 function SidebarProvider({
   defaultOpen = true,
   open: openProp,

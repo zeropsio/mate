@@ -203,6 +203,7 @@ import {
   headingFaces,
   landingAfterDraw,
   openMateReveal,
+  menuDrawsLoadingRows,
   projectRoom,
   slackAfterScroll,
   slackForFold,
@@ -529,6 +530,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * with a skeleton rather than drawing nothing.
    */
   readonly reading?: boolean;
+  /**
+   * The menu holds the rows in the loading rows' place until what waits on the viewer is read
+   * with them, so the Waiting on you row and the rows come in one frame (`Sidebar`).
+   */
+  readonly hold?: boolean;
   /** The notice's one affordance, pressed. */
   readonly onNoticeAct?: ((affordance: KnownAffordance) => void) | undefined;
   /** Opens the group's own page, in place of the thread. */
@@ -606,6 +612,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   complete,
   notice = null,
   reading = false,
+  hold = false,
   onNoticeAct,
   className,
   births = NO_BIRTHS,
@@ -870,11 +877,16 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
 
   // Nothing to draw, and the listing may not say "none" yet: its notice, at
   // the menu's own left edge, never an empty state it has not earned.
+  if (menuDrawsLoadingRows({ candidates, births, complete, reading, notice })) {
+    return <MenuSkeleton className={className} />;
+  }
   if (nothing !== undefined && !complete) {
     if (notice !== null)
       return <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />;
-    return reading ? <MenuSkeleton className={className} /> : null;
+    return null;
   }
+  // Its rows wait in the loading rows' place while the menu holds them (`hold`).
+  if (hold) return <MenuSkeleton className={className} />;
 
   // No project at all: nothing to list, and nothing to say — the one thing to
   // do is *New project*, the top row's +.

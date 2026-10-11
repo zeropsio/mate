@@ -5441,6 +5441,43 @@ a.ov-card-site:hover {
 
 /* A change's *Review* in its Mate's time place, as its menu row has it: quiet where a colleague's
    change waits on its reviewers, white where it waits on the viewer. */
+/* A change on a card's Mate: its mark, its title, and its Review at its end — on the line's own
+   20 px, so the card does not grow by it. */
+.ov-mate-change {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.ov-mate-change-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-mate-change .menu-change-mark {
+  margin-right: 0;
+  flex: none;
+}
+
+.ov-mate-change .ov-review {
+  height: 20px;
+  flex: none;
+}
+
+.ov-mate-change .ov-review:not([data-mine]) {
+  padding: 0;
+}
+
+.ov-mate-change .ov-review:not([data-mine]):hover {
+  background-color: transparent;
+  text-decoration: underline 1px color-mix(in oklab, currentColor 40%, transparent);
+  text-underline-offset: 3px;
+}
+
 .ov-review {
   display: inline-flex;
   height: 22px;
@@ -6176,8 +6213,19 @@ a.ov-card-site:hover {
 .rv-try-host {
   min-width: 0;
   overflow: hidden;
+  color: var(--muted-foreground);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* One pill per service, named by it before its address. */
+.rv-tries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rv-try-service {
+  flex: none;
+  font-weight: 500;
 }
 /* A folded section: its label, what it counts, and a chevron on the right edge. */
 .rv-fold-row {

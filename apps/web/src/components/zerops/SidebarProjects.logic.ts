@@ -196,3 +196,22 @@ export function openMateReveal(input: {
   if (open === null || open === seen) return { reveal: undefined, seen };
   return { reveal: open, seen };
 }
+
+/**
+ * Whether the menu's list draws its loading rows: nothing of its own to draw yet — no Mate being
+ * made, none HQ lists, none among the projects read so far — while its listing is read and says
+ * nothing of its own. They stand from the boot frame's until rows replace them: a reload never
+ * empties the menu.
+ */
+export function menuDrawsLoadingRows(input: {
+  readonly candidates: ReadonlyArray<ZeropsCandidate>;
+  readonly births: ReadonlyArray<Pick<ZeropsPlacedBirth, "placement">>;
+  readonly complete: boolean;
+  readonly reading: boolean;
+  readonly notice: unknown;
+}): boolean {
+  if (input.complete || !input.reading || (input.notice ?? null) !== null) return false;
+  if (input.births.some((birth) => birth.placement.kind === "mate")) return false;
+  if (input.candidates.some((candidate) => candidate.project.hq !== undefined)) return false;
+  return mateEnvironmentsEmptyReason(input.candidates) !== undefined;
+}

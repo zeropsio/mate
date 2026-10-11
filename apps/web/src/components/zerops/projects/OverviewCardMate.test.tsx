@@ -117,13 +117,16 @@ describe("a Mate on its card", () => {
     expect(card(undefined).includes('data-zerops-surface="sidebar-mate-owner"')).toBe(mark);
   });
 
-  it("names a colleague's change and offers its Review in the time's place, as its row does", () => {
+  it("names a colleague's change with its Review at the change's end, its time in its place, as its row does", () => {
     linked.value = false;
     session.value = { user: { id: "me" } };
     people.value = { waitsOnViewer: false, owner: KAREL };
     const markup = card(pull({ title: "Formbox: drag and drop" }));
-    expect(markup).toContain("Formbox: drag and drop · in review");
-    expect(markup).toContain('data-zerops-surface="card-mate-review"');
+    const change = markup.indexOf('data-zerops-surface="card-mate-change"');
+    expect(change).toBeGreaterThan(-1);
+    expect(markup.indexOf("Formbox: drag and drop · in review")).toBeGreaterThan(change);
+    expect(markup.indexOf('data-zerops-surface="card-mate-review"')).toBeGreaterThan(change);
+    expect(markup).toContain('data-zerops-surface="card-mate-time"');
   });
 
   it("names the viewer's change it lifts, with one Review: no time beside it", () => {

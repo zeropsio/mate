@@ -75,7 +75,7 @@ import {
   type ReviewKind,
 } from "./ZeropsReview.logic";
 import { ReviewCommits } from "./ReviewCommits";
-import { mainStageOf, useGroupName, useMatePreview } from "./reviewReads";
+import { mainStageOf, useGroupName, useMatePreviews, type ReviewPreview } from "./reviewReads";
 import { ReviewConversation } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
 import {
@@ -334,7 +334,7 @@ function ChangeReviewData({
   }, [run.reading]);
   const runRef = run.threadRef;
   const project = useGroupName(target.groupId);
-  const preview = useMatePreview(pull.mateProjectId);
+  const previews = useMatePreviews(pull.mateProjectId);
 
   return (
     <ChangeReviewView
@@ -350,7 +350,7 @@ function ChangeReviewData({
       back={back}
       onOpenPage={onOpenPage}
       live={flow?.releases.find((entry) => entry.standing === "live")?.tag}
-      preview={preview}
+      previews={previews}
       project={project}
       stage={flow === undefined ? undefined : mainStageOf(flow)?.name}
       release={flow?.release.gate}
@@ -484,8 +484,8 @@ export interface ChangeReviewViewProps {
   readonly project?: string | undefined;
   /** The stage that follows `main`, by name: "Merge to stage". */
   readonly stage?: string | undefined;
-  /** The Mate's preview, its pair's stage half: "Try it". */
-  readonly preview?: { readonly url: string; readonly host: string } | undefined;
+  /** The Mate's previews, each pair's stage half by its service: "Try it". */
+  readonly previews?: ReadonlyArray<ReviewPreview> | undefined;
   readonly now: number;
   readonly titleId?: string | undefined;
   /** Files whose diff stands open from the start — the harness's. */
@@ -717,8 +717,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         pictures={props.pictures}
         run={props.run}
       />
-      {props.preview === undefined ? null : (
-        <ReviewTry host={props.preview.host} url={props.preview.url} />
+      {props.previews === undefined || props.previews.length === 0 ? null : (
+        <ReviewTry previews={props.previews} />
       )}
       <ReviewSection
         aside={

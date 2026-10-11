@@ -597,24 +597,12 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
 }
 
 /**
- * A Mate's preview: the public route of its pair's stage half (spec-mate
- * §10.10) — `appstage` beside `appdev`, `todoappstage` beside `todoapp`.
- *
- * A route whose service merely ends in `stage` is not one: without its dev
- * half in the same project it is a service somebody named that way.
- */
-export function pairPreviewRoute(
-  routes: ReadonlyArray<ZeropsPublicRoute>,
-  hostnames: ReadonlyArray<string>,
-): ZeropsPublicRoute | undefined {
-  const held = new Set(hostnames);
-  return routes.find((route) => pairOf(route, held) !== undefined);
-}
-
-/**
- * Every preview of a Mate: one per pair, by the pair's name. A frontend and a backend are two
- * pairs, and nothing says which one a person means (the owner, 2026-10-11: "preview of what?
- * there are multiple services, backend, frontend, how do you know?").
+ * Every preview of a Mate: the public route of each pair's stage half (spec-mate §10.10) —
+ * `appstage` beside `appdev`, `todoappstage` beside `todoapp` — one per pair, by the pair's name.
+ * A frontend and a backend are two pairs, and nothing says which one a person means (the owner,
+ * 2026-10-11: "preview of what? there are multiple services, backend, frontend, how do you
+ * know?"). A route whose service merely ends in `stage` is not one: without its dev half in the
+ * same project it is a service somebody named that way.
  */
 export function pairPreviewRoutes(
   routes: ReadonlyArray<ZeropsPublicRoute>,

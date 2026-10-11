@@ -725,7 +725,7 @@ export function CardMateTime({
   return (
     <>
       {dot === undefined ? null : <i aria-hidden="true" className="ov-mate-dot" data-dot={dot} />}
-      {children}
+      <span data-zerops-surface="card-mate-time">{children}</span>
     </>
   );
 }

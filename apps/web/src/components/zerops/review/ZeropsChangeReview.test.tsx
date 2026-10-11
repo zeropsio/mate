@@ -146,7 +146,7 @@ vi.mock("~/zerops/useZeropsReviewMates", () => ({ useZeropsReviewMates: () => ne
 vi.mock("./reviewReads", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./reviewReads")>()),
   useGroupName: () => undefined,
-  useMatePreview: () => undefined,
+  useMatePreviews: () => [],
 }));
 /** What HQ offers the person of the application's changes; the one function every render. */
 const offers = vi.hoisted(() => {
