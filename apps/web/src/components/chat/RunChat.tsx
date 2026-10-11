@@ -3837,12 +3837,17 @@ function LiveSlot({
     observer.observe(slotBox);
     return () => observer.disconnect();
   }, []);
+  // Folded, the card keeps what the Mate is doing this moment — a call, an operation, a question —
+  // under its head; its words and its thoughts are the folded work's, the head saying it works.
+  const foldedAway =
+    folded && drawn.every(({ item }) => item.kind === "note" || item.kind === "thought");
+  const shut = foldedAway || saysHead;
   return (
     <div
       ref={ref}
       className="run-slot"
-      hidden={folded || saysHead}
-      style={folded || saysHead ? { display: "none" } : undefined}
+      hidden={shut}
+      style={shut ? { display: "none" } : undefined}
       data-run-now={lines.length === 0 ? said.kind : "items"}
       data-run-status={latest.kind === "waiting" ? "waiting" : "working"}
       data-work-line={status.face}

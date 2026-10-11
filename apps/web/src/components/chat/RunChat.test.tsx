@@ -1794,6 +1794,38 @@ describe("RunChat, as the person uses it", () => {
     );
   });
 
+  // The folded live card keeps the present under its head: Hide work hides the history (CI,
+  // images.scenario: the call streaming its updates vanished once the person folded the card).
+  it("keeps the call it runs under a folded live card's head, its history folded away", () => {
+    try {
+      const running = stepOf(
+        command("w2", "pnpm build", {
+          toolLifecycleStatus: "inProgress",
+          sourceActivityKind: "tool.started",
+        }),
+      );
+      const renderer = mount(
+        record([step(command("w1", "echo ready"))], {
+          live: true,
+          status: status(),
+          now: { kind: "step", step: running },
+        }),
+      );
+      act(() => button(renderer, "Hide work").props.onClick());
+      const slot = renderer.root.find(
+        (node) => node.type === "div" && node.props.className === "run-slot",
+      );
+      expect(slot.props.hidden).toBe(false);
+      expect(JSON.stringify(renderer.toJSON())).toContain("pnpm build");
+      const history = renderer.root.findAll(
+        (node) => node.type === "div" && String(node.props.className).includes("run-above"),
+      );
+      expect(history.every((node) => node.props.hidden === true)).toBe(true);
+    } finally {
+      forgetRunFolds(SHARED.routeThreadKey);
+    }
+  });
+
   describe("the log and its work opener", () => {
     const personItem: RecordItem = {
       kind: "person",
