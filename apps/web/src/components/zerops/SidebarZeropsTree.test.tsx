@@ -1807,7 +1807,8 @@ describe("production and the stages are two chips on the project's heading (M2, 
   const roadOf = (html: string) => {
     const at = heading(html).indexOf('data-zerops-surface="sidebar-road"');
     if (at === -1) return undefined;
-    const road = heading(html).slice(at);
+    // The road's words alone: the folded heading's faces follow it.
+    const road = heading(html).slice(at).split('data-zerops-surface="sidebar-project-faces"')[0]!;
     return road
       .slice(road.indexOf(">") + 1)
       .replace(/<[^>]*$/u, "")
@@ -2216,7 +2217,11 @@ describe("a project collapsed to its heading", () => {
       }),
     };
     stored.collapsed = new Set(["aaa"]);
-    expect(render([theirs], props)).not.toContain("sidebar-project-faces");
+    // Folded, its face stands on the heading at rest: no needs face, no amber dot.
+    const folded = render([theirs], props);
+    expect(folded).toContain('data-zerops-surface="sidebar-project-faces"');
+    expect(folded).not.toContain('data-mate-face-state="needs"');
+    expect(folded).not.toContain("zerops-heading-dot");
     stored.collapsed = new Set();
     const open = render([theirs], props);
     expect(open).not.toContain('data-mate-face-state="needs"');

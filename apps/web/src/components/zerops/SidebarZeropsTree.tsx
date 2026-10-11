@@ -8,7 +8,7 @@ import { mateStatus } from "../../zerops/mateStatus.logic";
  * A project's heading is its name and its chips — one for its stage or
  * stages, one for production, each its word alone, turning amber or red when
  * something is wrong — and, while the project is folded, the faces of its
- * Mates that are busy.
+ * Mates, each in its state.
  * Folding or unfolding it never moves the heading.
  *
  * Under it, its Mates: the menu's own kind of row, the way a messenger lists
@@ -198,6 +198,7 @@ import {
   type ProjectFoldMotion,
 } from "./SidebarProjectFold";
 import {
+  HEADING_FACES,
   headingFaces,
   landingAfterDraw,
   openMateReveal,
@@ -1022,7 +1023,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     renderHeader: (heading: {
       /** Its chips: the stages' and production's, each where the project has it. */
       readonly chips: ReactNode;
-      /** Its busy Mates' faces, while it is folded. */
+      /** Its Mates' faces, while it is folded. */
       readonly faces: ReactNode;
       /** What its second line reads (D′, `headingLine`); none for the ungrouped section. */
       readonly line: HeadingLineInput | undefined;
@@ -1269,11 +1270,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     // composer's top's own rule (`mateNextStep`), on the flow HQ told:
     // its row and its face on the folded heading wear needs-you for it.
     const reviewWaits = (item: T) => mateReviewWaits(flow, item.project.id);
-    // Folded, the heading shows who is busy in it (M15): its Mates that need
-    // you, work, stopped on an error or finished unseen, each as its row draws
-    // it (`mateRowView`) — once its rows have folded away.
+    // Folded, the heading shows who is in it (M15): every Mate, the ones that
+    // need you, work, stopped on an error or finished unseen first, each as its
+    // row draws it (`mateRowView`) — once its rows have folded away.
     const folded = collapsed.has(id) && folds.get(id) !== "closing";
-    const busy = folded
+    const headingMates = folded
       ? headingFaces(
           mateEntries.map(({ item }) => {
             const live = getActivity?.(item);
@@ -1356,7 +1357,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       <>
         {renderHeader({
           chips,
-          faces: busy.length === 0 ? null : <HeadingFaces faces={busy} />,
+          faces: headingMates.length === 0 ? null : <HeadingFaces faces={headingMates} />,
           line,
           openStop,
         })}
@@ -1391,7 +1392,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       stops: jumpStopsHere,
     });
     // Collapsed, a project is its heading and nothing else — its production
-    // chip and its busy Mates' faces on it, never a second, smaller design of
+    // chip and its Mates' faces on it, never a second, smaller design of
     // the same rows, which the owner turned down (2026-09-25).
     const fold = folds.get(id);
     // A fragment either way, so the heading keeps its node — and the focus of
@@ -1609,7 +1610,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             chips={chips}
             collapsed={collapsed.has(group.groupId)}
             faces={faces}
-            mates={environments.filter(({ item }) => hasMate(item)).length}
             line={line}
             openStop={openStop}
             group={group}
@@ -2024,7 +2024,6 @@ export function ProjectHeader({
   faces,
   line,
   openStop,
-  mates,
 }: {
   readonly group?: ZeropsGroup;
   readonly name?: string;
@@ -2053,14 +2052,12 @@ export function ProjectHeader({
    * production's — on the heading's end edge whether it is open or folded.
    */
   readonly chips?: ReactNode;
-  /** Its busy Mates' faces (`HeadingFaces`), after the title while it is folded. */
+  /** Its Mates' faces (`HeadingFaces`), after the title while it is folded. */
   readonly faces?: ReactNode;
   /** What its second line reads (D′), drawn while it is open. */
   readonly line?: HeadingLineInput | undefined;
   /** A stop's own page, where one opens: the line's Details. */
   readonly openStop?: ((projectId: string) => (() => void) | undefined) | undefined;
-  /** How many Mates it holds: a folded heading says so, so a fold never reads as empty. */
-  readonly mates?: number | undefined;
 }) {
   const placeholder = group !== undefined && groupNameUnread(group);
   const { line: secondLine, landing } = useHeadingLine(line);
@@ -2138,14 +2135,6 @@ export function ProjectHeader({
               aria-hidden="true"
               className="zerops-project-chevron ms-1 size-4 shrink-0 text-sidebar-muted-foreground"
             />
-            {collapsed && mates !== undefined && mates > 0 ? (
-              <span
-                className="ms-1 shrink-0 text-sm text-sidebar-muted-foreground"
-                data-zerops-surface="sidebar-project-count"
-              >
-                {`${String(mates)} ${mates === 1 ? "Mate" : "Mates"}`}
-              </span>
-            ) : null}
           </button>
         )}
         {chips === undefined || chips === null ? null : (
@@ -2228,13 +2217,24 @@ function menuLabelAt(menu: ReturnType<typeof projectHeadingMenu>, index: number)
   return entry?.kind === "item" ? entry.label : String(index);
 }
 
-/** A folded heading's face, in words: who, and why it is shown. */
+/** A folded heading's face, in words: who, and what it is doing where that is anything. */
 const HEADING_FACE_WORDS: Record<HeadingFaceDot | "working", string> = {
   attention: "needs you",
   failed: "stopped on an error",
   unread: "finished",
   working: "is working",
 };
+
+/** A face's words: its name, and its state's where it has one. */
+function headingFaceWords(face: HeadingFace): string {
+  const state =
+    face.dot !== undefined
+      ? HEADING_FACE_WORDS[face.dot]
+      : face.face === "working"
+        ? HEADING_FACE_WORDS.working
+        : undefined;
+  return state === undefined ? face.name : `${face.name} ${state}`;
+}
 
 /** A stop's deployment demand, held for as long as its project's heading is drawn. */
 function StopDemand({ projectId }: { readonly projectId: string }) {
@@ -2246,26 +2246,28 @@ function StopDemand({ projectId }: { readonly projectId: string }) {
 }
 
 /**
- * The faces of a folded project's busy Mates (M15), after its title: 18 px,
- * each its row's face in its row's pose — turning while it works, hopping when
- * it needs you, still where it stopped on an error — with a 7 px dot at its
- * corner for what is not work, cut out of the menu's ground: amber needs you,
- * blue finished unseen, red stopped on an error.
+ * The faces of a folded project's Mates (M15), after its title: 20 px, each its row's face in its
+ * row's pose — turning while it works, hopping when it needs you, still where it stopped on an
+ * error — with a 7 px dot at its corner for what is not work, cut out of the menu's ground: amber
+ * needs you, blue finished unseen, red stopped on an error. Past four, how many more.
  */
 function HeadingFaces({ faces }: { readonly faces: ReadonlyArray<HeadingFace> }) {
+  const shown = faces.slice(0, HEADING_FACES);
+  const more = faces.length - shown.length;
   return (
     <span
-      className="ms-1 flex shrink-0 items-center gap-0.75"
+      className="ms-1.5 flex shrink-0 items-center gap-1"
       data-zerops-surface="sidebar-project-faces"
     >
-      {faces.map((face) => (
+      {shown.map((face) => (
         <HeadingFaceMark face={face} key={face.projectId} />
       ))}
-      <span className="sr-only">
-        {faces
-          .map((face) => `${face.name} ${HEADING_FACE_WORDS[face.dot ?? "working"]}`)
-          .join(", ")}
-      </span>
+      {more > 0 ? (
+        <span aria-hidden="true" className="text-xs text-sidebar-muted-foreground tabular-nums">
+          +{more}
+        </span>
+      ) : null}
+      <span className="sr-only">{faces.map(headingFaceWords).join(", ")}</span>
     </span>
   );
 }
@@ -2281,7 +2283,7 @@ function HeadingFaceMark({ face }: { readonly face: HeadingFace }) {
   return (
     <span className="relative flex">
       <MateFace
-        className="size-4.5"
+        className="size-5"
         greets
         known={face.known}
         shape={face.shape}

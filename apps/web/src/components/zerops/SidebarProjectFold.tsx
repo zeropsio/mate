@@ -34,10 +34,10 @@ const FOLD: KeyframeAnimationOptions = {
 };
 
 /** The room below the rows, as the class that keeps it. */
-const ROOM_CLASS: Record<number, string> = { 24: "pb-6", 28: "pb-7" };
+const ROOM_CLASS: Record<number, string> = { 8: "pb-2", 12: "pb-3" };
 
 /** The room under a folded heading, as the class that keeps it; none at the list's end. */
-const FOLDED_ROOM_CLASS: Record<number, string | undefined> = { 4: "h-1" };
+const FOLDED_ROOM_CLASS: Record<number, string | undefined> = { 8: "h-2", 12: "h-3" };
 
 export function SidebarProjectFold({
   open,
