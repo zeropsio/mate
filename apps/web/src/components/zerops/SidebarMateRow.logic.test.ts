@@ -17,7 +17,6 @@ import {
   mateOwnerView,
   mateNotYours,
   mateRowHeldLines,
-  mateRowAskOver,
   mateRowPropsEqual,
   mateRowSecond,
   type MateRowView,
@@ -1918,108 +1917,25 @@ describe("mateRowSecond — the one line under a Mate's name", () => {
   });
 });
 
-describe("mateRowAskOver — what was asked, over a row's answer", () => {
-  const ask = { kind: "ask", text: "Add a search box" } as const;
-  it.each([
-    { case: "over its answer", askLine: ask, second: { kind: "reply", tone: "muted" }, over: ask },
-    {
-      case: "over whom a colleague's Mate waits on",
-      askLine: ask,
-      second: { kind: "waits-on", text: "Waits on Karel" },
-      over: ask,
-    },
-    {
-      case: "over its pause",
-      askLine: ask,
-      second: { kind: "paused", until: "2026-10-11T14:00:00Z" },
-      over: ask,
-    },
-    {
-      case: "over its change",
-      askLine: ask,
-      second: { kind: "change", title: "Search box", mine: true },
-      over: ask,
-    },
-    {
-      case: "a draft over its answer, as typed",
-      askLine: { kind: "draft", text: "and a filter", ask: "Add a search box" },
-      second: { kind: "reply", tone: "muted" },
-      over: { kind: "draft", text: "and a filter", ask: "Add a search box" },
-    },
-    {
-      // A row keeps its three lines from its first question on: the answer's place holds the dots
-      // while the answer is on its way (the owner, 2026-10-11: the menu "jumps in height").
-      case: "over its answer on its way",
-      askLine: ask,
-      second: { kind: "ask", pending: true },
-      over: ask,
-    },
-    {
-      case: "over the answer's place, nothing on its way yet",
-      askLine: ask,
-      second: { kind: "ask", pending: false },
-      over: ask,
-    },
-    {
-      case: "never over its own words where nothing was asked",
-      askLine: { kind: "nothing-asked" },
-      second: { kind: "ask", pending: false },
-      over: undefined,
-    },
-    {
-      case: "never a sign-in",
-      askLine: { kind: "sign-in", text: "Sign in to Claude", waitsOnViewer: true },
-      second: { kind: "reply", tone: "muted" },
-      over: undefined,
-    },
-    {
-      case: "nothing while it comes up",
-      askLine: ask,
-      second: { kind: "coming" },
-      over: undefined,
-    },
-    {
-      case: "nothing where nothing was asked",
-      askLine: undefined,
-      second: { kind: "reply", tone: "muted" },
-      over: undefined,
-    },
-  ] as const)("says it $case", ({ askLine, second, over }) => {
-    expect(mateRowAskOver(askLine, second)).toEqual(over);
-  });
-});
-
-// A reload paints a row before its Mate's conversations are read: its question's and answer's
-// lines are held empty until what is read lands in them, so the rows under it never move (they
-// moved 12 px at 0.5–0.75 s).
+// A reload paints a row before its Mate's conversations are read: its line is held empty until
+// what is read lands in it, so the rows under it never move (they moved 12 px at 0.5–0.75 s).
 describe("mateRowHeldLines — the lines a row holds while a reload reads it", () => {
-  const answer = { kind: "reply", tone: "muted" } as const;
-  const nothing = { kind: "none" } as const;
   it.each([
     {
-      case: "an answer remembered, its question not read yet",
-      askLine: undefined,
-      second: answer,
-      read: false,
-      held: 1,
-    },
-    { case: "nothing known yet", askLine: undefined, second: nothing, read: false, held: 2 },
-    { case: "its conversations read", askLine: undefined, second: answer, read: true, held: 0 },
-    {
-      case: "its question known",
-      askLine: { kind: "ask", text: "Add a search box" } as const,
-      second: answer,
+      case: "an answer remembered, not read yet",
+      second: { kind: "reply", tone: "muted" } as const,
       read: false,
       held: 0,
     },
+    { case: "nothing known yet", second: { kind: "none" } as const, read: false, held: 1 },
     {
-      case: "a Mate still coming up",
-      askLine: undefined,
-      second: { kind: "coming" } as const,
-      read: false,
+      case: "its conversations read",
+      second: { kind: "reply", tone: "muted" } as const,
+      read: true,
       held: 0,
     },
-  ])("holds $held for $case", ({ askLine, second, read, held }) => {
-    expect(mateRowHeldLines({ askLine, second, read })).toBe(held);
+    { case: "a Mate still coming up", second: { kind: "coming" } as const, read: false, held: 0 },
+  ])("holds $held for $case", ({ second, read, held }) => {
+    expect(mateRowHeldLines({ second, read })).toBe(held);
   });
 });

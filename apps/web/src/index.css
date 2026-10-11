@@ -3148,16 +3148,15 @@ code {
   /* A Mate's row: its corners, and the ones a row's own hover paints. The
      grid, the padding and the type are the row's utilities; only what no
      scale holds lives here. */
-  /* A Mate's row: a 40 px face in a 40 px column, 12 px to the words — its name and time, what
-     was asked, its last answer (the owner, 2026-10-11: "menu no longer says last question and
-     last answer") — at least 68 px, 8 px inside the row's own band. The face stands at the
-     name's line, not floating between the lines (2026-10-11: "great alignment?"). */
+  /* A Mate's row: a 40 px face in a 40 px column, 12 px to the words — its name and time, and one
+     line under them, its answer (the owner, 2026-10-12: "just go with answer") — 59 px, 8 px
+     inside the row's own band. The face spans both lines, edge to edge with the words. */
   .menu-row {
     display: grid;
     grid-template-columns: 40px minmax(0, 1fr);
     column-gap: 12px;
     align-items: start;
-    min-height: 68px;
+    min-height: 59px;
     padding: 9px 8px;
     border-radius: 12px;
   }
@@ -3180,96 +3179,31 @@ code {
     line-height: 20px;
   }
 
-  /* A change's *Review* in its Mate's time slot: a white 24 px chip — the
-     selected band's surface, a hairline ring, a small shadow — where it waits
-     on the viewer; a quiet word where it is a colleague's to review. */
-  .menu-review {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 64px;
-    height: 24px;
-    border-radius: 999px;
-    color: var(--sidebar-muted-foreground);
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 16px;
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      box-shadow 150ms var(--ease-out-strong),
-      transform 160ms var(--ease-out-strong),
-      opacity 120ms var(--ease-out-strong);
-  }
-
-  .menu-review:hover {
-    background-color: color-mix(in oklab, var(--sidebar-foreground) 6%, transparent);
-    color: var(--sidebar-foreground);
-  }
-
-  .menu-review[data-mine] {
-    background-color: var(--sidebar-row-active);
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 8%, transparent),
-      0 1px 2px color-mix(in oklab, var(--color-black) 8%, transparent);
-    color: var(--sidebar-foreground);
-  }
-
-  .menu-review[data-mine]:hover {
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 16%, transparent),
-      0 2px 6px color-mix(in oklab, var(--color-black) 10%, transparent);
-  }
-
-  .menu-review:active {
-    transform: scale(0.97);
-  }
-
   /* A change waiting for review, under its Mate's row on the words' column (60 px in, 8 px from
-     the end, where the time ends): its mark, its title and Review. A colleague's is the row's
-     fourth line — its mark under the words, its Review ending where the time ends (the owner,
-     2026-10-11: "great alignment?"). Where it waits on the viewer it is a white strip with a
-     hairline and a solid Review, its edges on the same column: what waits on you is white
-     (round 5) and impossible to miss. */
+     the end, where the time ends): one chip for every change, a surface of its own so it never
+     reads as the row's words (the owner, 2026-10-12: the merge "absolutely blends with the
+     content", and one Mate's "looks completely different"). Its mark, its title and *Review*,
+     solid where the review waits on the viewer, quiet where it is a colleague's. Its button sits
+     4 px in, its corner the chip's less that: 10 = 6 + 4. */
   .menu-change {
     display: flex;
     min-width: 0;
     align-items: center;
-    gap: 6px;
-    height: 24px;
-    margin: -9px 8px 9px 60px;
+    gap: 7px;
+    height: 32px;
+    margin: -3px 8px 6px 60px;
+    padding: 0 4px 0 10px;
     border-radius: 10px;
-    color: var(--muted-foreground);
-    font-size: 14px;
-    line-height: 20px;
-  }
-
-  .menu-change:not([data-mine]) .menu-review {
-    width: auto;
-    padding: 0;
-  }
-
-  .menu-change:not([data-mine]) .menu-review:hover {
-    background-color: transparent;
-    text-decoration: underline 1px color-mix(in oklab, currentColor 40%, transparent);
-    text-underline-offset: 3px;
-  }
-
-  .menu-change[data-mine] {
-    height: 34px;
-    margin: -4px 8px 6px 60px;
-    padding: 4px 5px 4px 10px;
-    background-color: var(--sidebar-row-selected);
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 9%, transparent),
-      0 1px 2px color-mix(in oklab, var(--color-black) 6%, transparent);
+    background-color: color-mix(in oklab, var(--sidebar-foreground) 5%, transparent);
     color: var(--sidebar-foreground);
+    font-size: 13px;
+    line-height: 18px;
   }
 
   .menu-change .menu-change-mark {
-    margin-right: 0;
     flex: none;
+    margin-right: 0;
+    color: var(--sidebar-muted-foreground);
   }
 
   .menu-change-title {
@@ -3280,23 +3214,51 @@ code {
     white-space: nowrap;
   }
 
-  .menu-change[data-mine] .menu-review {
+  .menu-change:not([data-mine]) .menu-change-title {
+    color: var(--sidebar-muted-foreground);
+  }
+
+  .menu-review {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 6px;
+    color: var(--sidebar-foreground);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 16px;
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      transform 150ms var(--ease-out-strong);
+  }
+
+  .menu-review[data-mine] {
     background-color: var(--sidebar-foreground);
-    box-shadow: none;
     color: var(--sidebar);
   }
 
-  .menu-change[data-mine] .menu-review:hover {
-    background-color: color-mix(in oklab, var(--sidebar-foreground) 86%, var(--sidebar));
+  @media (hover: hover) and (pointer: fine) {
+    .menu-review:hover {
+      background-color: color-mix(in oklab, var(--sidebar-foreground) 8%, transparent);
+    }
+
+    .menu-review[data-mine]:hover {
+      background-color: color-mix(in oklab, var(--sidebar-foreground) 86%, var(--sidebar));
+    }
   }
 
   .menu-review:focus-visible {
     box-shadow: 0 0 0 2px var(--ring);
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  @media (prefers-reduced-motion: no-preference) {
     .menu-review:active {
-      transform: none;
+      transform: scale(0.96);
     }
   }
 
@@ -3468,10 +3430,8 @@ code {
     left: 0;
     z-index: -1;
     border-radius: 12px;
+    /* The fill alone (the owner, 2026-10-12: "just do the white, not the border"). */
     background: var(--sidebar-row-active);
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 6%, transparent),
-      0 1px 2px color-mix(in oklab, var(--color-black) 6%, transparent);
     opacity: 0;
     pointer-events: none;
   }
@@ -3611,9 +3571,9 @@ code {
 @media (prefers-reduced-motion: no-preference) {
   .menu-band[data-sliding] {
     transition:
-      transform 300ms var(--ease-spring),
-      height 300ms var(--ease-spring),
-      width 300ms var(--ease-spring);
+      transform 240ms var(--ease-out-strong),
+      height 240ms var(--ease-out-strong),
+      width 240ms var(--ease-out-strong);
   }
 }
 

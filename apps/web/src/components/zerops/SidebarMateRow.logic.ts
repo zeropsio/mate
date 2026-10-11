@@ -572,8 +572,9 @@ export function mateRowReading(input: {
 }
 
 /**
- * The row's second line: the person's words — the last they sent, or the next waiting unsent in
- * its composer — or why none stand there. It is the person's line, as the third is the Mate's.
+ * The person's words — the last they sent, or the next waiting unsent in its composer — or why
+ * none stand there. A row says them on its one line only where its Mate has no words of its own
+ * yet (`mateRowSecond`): otherwise the line is the Mate's answer.
  */
 export type MateRowAskLine =
   /** Led by whose words they are (`mateAsker`): nobody's while HQ has not named its owner. */
@@ -600,11 +601,11 @@ export type MateRowAskLine =
  * | never asked, its conversations read    | "Nothing asked yet"                          |
  * | never asked, not read, or a step below | nothing                                      |
  *
- * A draft stands in the person's line, never the Mate's: the question it waits on, its error,
- * its live step and its dots all keep their place under it. Nothing asked is said only once its
- * conversations are read — before that it is a socket still opening, and a reload paints nothing
- * it takes back. The row keeps three lines' height whatever this says, so nothing moves when
- * the first message lands.
+ * A draft never takes the line from the Mate: the question it waits on, its error and its live
+ * step keep it, and the draft says itself where the Mate is at rest. Nothing asked is said only
+ * once its conversations are read — before that it is a socket still opening, and a reload paints
+ * nothing it takes back. The row keeps its two lines' height whatever this says, so nothing moves
+ * when the first message lands.
  */
 export function mateRowAskLine(input: {
   readonly view: {
@@ -870,53 +871,26 @@ export type MateRowSecond =
   | { readonly kind: "paused"; readonly until: string }
   | { readonly kind: "change"; readonly title: string; readonly mine: boolean }
   /**
-   * The person's line (`MateRowAskLine`): a draft, what was asked, or that nothing was — with the
-   * dots after it while the Mate's words are on their way and it relays no step.
+   * The person's line (`MateRowAskLine`) where the Mate has no words of its own yet: a draft, what
+   * was asked — while its words are on their way, `pending` — or that nothing was.
    */
   | { readonly kind: "ask"; readonly pending: boolean }
   | { readonly kind: "none" };
 
-/** The second lines a row says what was asked over: its answers — never its own ask or a coming. */
-const ASKED_OVER: ReadonlySet<MateRowSecond["kind"]> = new Set([
-  "reply",
-  "waits-on",
-  "paused",
-  "change",
-]);
-
 /**
- * What was asked, said over a row's answer (the owner, 2026-10-11: the menu "no longer says last
- * question and last answer"), as the conversation's own top says the question. From its first
- * question on a row keeps its three lines: while the answer is on its way the question stands in
- * its place and the answer's place holds the dots, so the row never "jumps in height" as a step
- * comes and goes (the owner, 2026-10-11). Where nothing was asked it says so once; a sign-in is
- * never a question.
- */
-export function mateRowAskOver(
-  askLine: MateRowAskLine,
-  second: MateRowSecond,
-): Exclude<MateRowAskLine, { readonly kind: "sign-in" } | undefined> | undefined {
-  if (askLine === undefined || askLine.kind === "sign-in") return undefined;
-  if (ASKED_OVER.has(second.kind)) return askLine;
-  return second.kind === "ask" && askLine.kind !== "nothing-asked" ? askLine : undefined;
-}
-
-/**
- * How many empty lines a row holds under its name while a reload reads its Mate's conversations:
- * the question's, where the answer it remembers is painted already; both, where nothing is known
- * yet. What is read lands in the lines held for it — the row has its three lines from the first
- * frame, so the rows under it never move (they moved 12 px at 0.5–0.75 s). Once read, nothing is
- * held: a Mate never asked says so on its own line.
+ * Whether a row holds its one line under its name empty while a reload reads its Mate's
+ * conversations: where nothing is known yet, so what is read lands in the line held for it and the
+ * rows under it never move (they moved 12 px at 0.5–0.75 s). Once read, nothing is held: a Mate
+ * never asked says so on its line. A row says its Mate's answer alone, never what was asked over
+ * it (the owner, 2026-10-12: "rethinking showing both question and answer and just go with
+ * answer").
  */
 export function mateRowHeldLines(input: {
-  readonly askLine: MateRowAskLine;
   readonly second: MateRowSecond;
   /** Its conversations are read. */
   readonly read: boolean;
-}): 0 | 1 | 2 {
-  if (input.askLine !== undefined || input.read) return 0;
-  if (input.second.kind === "none") return 2;
-  return ASKED_OVER.has(input.second.kind) ? 1 : 0;
+}): 0 | 1 {
+  return !input.read && input.second.kind === "none" ? 1 : 0;
 }
 
 export function mateRowSecond(input: {

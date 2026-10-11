@@ -25,7 +25,19 @@ import {
 } from "./SidebarSelectedBand.logic";
 
 /** The slide's own length, which `.menu-band[data-sliding]` runs for. */
-const SLIDE_MS = 300;
+const SLIDE_MS = 240;
+
+/** The mounted band's own move to a unit, for a press that lights a Mate before the menu draws. */
+let pressTo: ((projectId: string) => void) | null = null;
+
+/**
+ * Slides the band to a pressed Mate's unit in the press's own frame (the owner, 2026-10-12: the
+ * band "should extremely smoothly immediately move to the new item"): the menu's draw of the press
+ * came 70–90 ms after the click. That draw finds the band on its way there and leaves it going.
+ */
+export function slideSelectedBandTo(projectId: string): void {
+  pressTo?.(projectId);
+}
 
 const boxOf = (element: Element): BandBox => {
   const rect = element.getBoundingClientRect();
@@ -108,6 +120,17 @@ export function SidebarSelectedBand({
     observer.current.unobserve(root);
     observer.current.observe(root);
   });
+
+  useLayoutEffect(() => {
+    const move = (projectId: string) => {
+      key.current = projectId;
+      place.current();
+    };
+    pressTo = move;
+    return () => {
+      if (pressTo === move) pressTo = null;
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const root = band.current?.parentElement ?? null;
