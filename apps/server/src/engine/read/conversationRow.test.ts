@@ -81,6 +81,18 @@ describe("the menu row", () => {
     expect(row.at).toBe(900);
   });
 
+  it.each([
+    {
+      name: "Supervised once a person picked it",
+      set: "approval-required",
+      reads: "approval-required",
+    },
+    { name: "Full access once a person picked it", set: "full-access", reads: "full-access" },
+    { name: "nothing while no person set it", set: null, reads: undefined },
+  ] as const)("says the access its agent works with: $name", ({ set, reads }) => {
+    expect(conversationRowOf(view({ runtimeMode: set }), revision).runtimeMode).toBe(reads);
+  });
+
   // Milo, 2026-10-08: the row read "[Picture 1]" for a pasted picture and its question.
   it.each([
     {

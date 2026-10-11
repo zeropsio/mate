@@ -32,6 +32,7 @@ import {
   type Principal,
   type Request,
   type RequestAsk,
+  type RuntimeMode,
   type ThreadCrewOrigin,
   type RunRecord,
 } from "@t3tools/contracts";
@@ -772,6 +773,7 @@ function cardsOf(read: ProjectionReads, conversationKey: string, header?: Conver
     latestTurn: latest === null ? null : latestTurnOf(latest, rootOf(latest)),
     status: header?.runStatus === "unknown" ? "stopped" : (header?.runStatus ?? "stopped"),
     activeTurnId: active === null ? null : rootOf(active).id,
+    runtimeMode: known(header?.runtimeMode) ?? null,
   };
   return { runs, rootOf, cardOf, latest, turn };
 }
@@ -815,6 +817,8 @@ export interface HeldTurn {
   readonly latestTurn: OrchestrationLatestTurn | null;
   readonly status: "running" | "error" | "ready" | "stopped";
   readonly activeTurnId: string | null;
+  /** The access the engine's record holds once a person set it: what the next run works with. */
+  readonly runtimeMode?: RuntimeMode | null;
 }
 
 /** The engine conversation, held or not, as the thread the view draws. */
@@ -1310,8 +1314,12 @@ export function overlayEngineRow(
           completedAt: latest.endedAt === null ? null : iso(latest.endedAt),
           assistantMessageId: null,
         };
+  // The engine's record says the access (held, its header; else its row): V1's thread never hears
+  // of a pick made on an engine conversation.
+  const runtimeMode = held?.runtimeMode ?? known(row.runtimeMode) ?? thread.runtimeMode;
   return {
     ...thread,
+    runtimeMode,
     ...(row.agent === null
       ? {}
       : {
@@ -1337,9 +1345,9 @@ export function overlayEngineRow(
               providerInstanceId: row.agent
                 .instanceId as OrchestrationSession["providerInstanceId"],
             }),
-        runtimeMode: thread.runtimeMode,
         lastError: null,
       }),
+      runtimeMode,
       // A conversation the account holds says its turn by its own records: the live run, never a
       // queued one, on the card it draws on. The row names only a run.
       status:

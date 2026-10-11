@@ -9,6 +9,13 @@ import {
   type ModelSelection,
 } from "@t3tools/contracts";
 import { makeAccountStore, makeSendTurnReceipts } from "@t3tools/client-runtime/data";
+import {
+  engineRow,
+  engineRun,
+  engineShellThreadOfRecords,
+  engineThreadOfRecords,
+} from "@t3tools/client-runtime/data/fixtures";
+import { mergeEnvironmentThread } from "@t3tools/client-runtime/state/threads";
 import * as Cause from "effect/Cause";
 import { AsyncResult, AtomRegistry } from "effect/reactivity";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -90,6 +97,15 @@ const endedThread = makeThread({
     assistantMessageId: null,
   },
 });
+
+/** The thread V1's shell keeps for a conversation the engine runs. */
+const v1Shell = {
+  ...makeThread({ session: session("ready") }),
+  latestUserMessageAt: null,
+  hasPendingApprovals: false,
+  hasPendingUserInput: false,
+  hasActionableProposedPlan: false,
+} as unknown as Parameters<typeof engineShellThreadOfRecords>[2];
 
 const settings: QueuedMessageSendSettings = {
   modelSelection: sonnet,
@@ -474,6 +490,58 @@ describe("sendQueuedMessageInBackground", () => {
 
     expect(deps.startTurn).not.toHaveBeenCalled();
     expect(queued()).toEqual([]);
+  });
+
+  it.each([
+    {
+      name: "picking Full access after Supervised runs the conversation's next turn with full access",
+      engineHolds: "approval-required",
+      picked: "full-access",
+      sent: "full-access",
+    },
+    {
+      name: "picking Supervised again after Supervised sends no change",
+      engineHolds: "approval-required",
+      picked: "approval-required",
+      sent: null,
+    },
+    {
+      name: "picking Supervised on a conversation the engine runs in Full access asks for it",
+      engineHolds: "full-access",
+      picked: "approval-required",
+      sent: "approval-required",
+    },
+  ] as const)("$name", async ({ engineHolds, picked, sent }) => {
+    // V1's thread never hears of a pick on an engine conversation: it keeps its Full access.
+    const key = { environmentId, conversationId: threadId };
+    const run = engineRun(threadId, 1);
+    const records = {
+      runs: [run],
+      items: [],
+      header: { runtimeMode: engineHolds },
+      row: engineRow(environmentId, threadId, {
+        latestRun: { id: run.id, end: run.end, endedAt: run.endedAt, turnState: "completed" },
+      }),
+    };
+    const shell = engineShellThreadOfRecords(key, records, v1Shell);
+    const detail = engineThreadOfRecords(key, records);
+    const thread = mergeEnvironmentThread(
+      detail === null ? null : { ...detail, environmentId },
+      shell === null ? null : { ...shell, environmentId },
+    ) as Thread;
+    const message = queue("touch a file", { sendSettings: { ...settings, runtimeMode: picked } });
+    const deps = makeDeps(thread);
+
+    await sendQueuedMessageInBackground(threadKey, message.id, deps);
+
+    if (sent === null) expect(deps.setRuntimeMode).not.toHaveBeenCalled();
+    else
+      expect(deps.setRuntimeMode).toHaveBeenCalledWith(
+        expect.objectContaining({ threadId, runtimeMode: sent }),
+      );
+    expect(deps.startTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId, runtimeMode: picked }),
+    );
   });
 });
 

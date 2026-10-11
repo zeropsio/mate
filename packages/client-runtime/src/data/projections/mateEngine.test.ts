@@ -1490,6 +1490,94 @@ describe("an engine conversation's row in the menu", () => {
       expect(overlaid?.session?.activeTurnId).toBe(active);
     },
   );
+
+  it.each([
+    {
+      name: "Supervised on the engine over V1's Full access reads Supervised",
+      v1: "full-access",
+      engine: "approval-required",
+      reads: "approval-required",
+    },
+    {
+      name: "Full access on the engine over V1's Supervised reads Full access",
+      v1: "approval-required",
+      engine: "full-access",
+      reads: "full-access",
+    },
+    {
+      name: "an engine record no person set reads V1's",
+      v1: "approval-required",
+      engine: undefined,
+      reads: "approval-required",
+    },
+  ] as const)(
+    "gives a held conversation's thread shell the access its engine record holds: $name",
+    ({ v1, engine, reads }) => {
+      const state = apply(held({ header: engine === undefined ? {} : { runtimeMode: engine } }), [
+        {
+          kind: "delivery",
+          via: "mate-direct",
+          scopes: [{ scope: engineRowsScope(ENV), generation: 0 }],
+          reset: true,
+          rows: [
+            {
+              family: "mateEngineRow",
+              id: engineFactId(ENV, "thread-ada"),
+              value: { ...engineRow(ENV, "thread-ada"), environmentId: ENV },
+              revision: revision(100),
+            },
+          ],
+          removals: [],
+        },
+      ]);
+      const shellState = {
+        snapshot: Option.some({
+          snapshotSequence: 1,
+          projects: [],
+          threads: [
+            {
+              ...shellThread,
+              runtimeMode: v1,
+              session: { ...shellThread.session, runtimeMode: v1 },
+            },
+          ],
+          updatedAt: "2026-10-01T00:00:00.000Z",
+        }),
+        status: "live",
+        error: Option.none(),
+      } as unknown as Parameters<typeof overlayEngineShell>[0];
+      const read = readsOfState(state);
+      const overlaid = Option.getOrNull(
+        overlayEngineShell(
+          shellState,
+          engineRows.derive(read, ENV),
+          engineHeldTurns.derive(read, ENV),
+        ).snapshot,
+      )?.threads[0];
+      expect(overlaid?.runtimeMode).toBe(reads);
+      expect(overlaid?.session?.runtimeMode).toBe(reads);
+    },
+  );
+
+  it("gives a thread shell the access its row says while its conversation is not held", () => {
+    const shellState = {
+      snapshot: Option.some({
+        snapshotSequence: 1,
+        projects: [],
+        threads: [shellThread],
+        updatedAt: "2026-10-01T00:00:00.000Z",
+      }),
+      status: "live",
+      error: Option.none(),
+    } as unknown as Parameters<typeof overlayEngineShell>[0];
+    const overlaid = Option.getOrNull(
+      overlayEngineShell(shellState, [
+        engineRow(ENV, "thread-ada", { runtimeMode: "approval-required" }),
+      ]).snapshot,
+    )?.threads[0];
+    expect(overlaid?.runtimeMode).toBe("approval-required");
+    expect(overlaid?.session?.runtimeMode).toBe("approval-required");
+  });
 });
 
 describe("a crewmate's engine conversation", () => {

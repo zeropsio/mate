@@ -734,6 +734,8 @@ export const ConversationRow = Schema.Struct({
   snippet: Schema.NullOr(Schema.String),
   at: Millis,
   askedAt: Schema.NullOr(Millis),
+  /** How freely its agent works, once a person set it; absent: the workspace's mode. */
+  runtimeMode: Schema.optionalKey(forwardCompatibleLiterals(RuntimeMode.literals)),
 });
 export type ConversationRow = typeof ConversationRow.Type;
 

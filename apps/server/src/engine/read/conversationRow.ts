@@ -172,5 +172,6 @@ export const conversationRowOf = (
     snippet: rowText(view.lastAgent?.text),
     at: view.updatedAt,
     askedAt: asked?.at ?? null,
+    ...(view.runtimeMode == null ? {} : { runtimeMode: view.runtimeMode }),
   };
 };
