@@ -937,16 +937,32 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           landing.edge === "top" && view
             ? view.scrollTop + view.clientHeight - (view.scrollHeight - askRoomRef.current)
             : 0;
-        roomAfterRef.current = past > 0.5 ? lastRowIdRef.current : null;
-        setLandingRoom(past > 0.5 ? Math.ceil(past) : 0);
+        // A pixel or two is no room: the end is the conversation's.
+        const kept = past > 2 ? Math.round(past) : 0;
+        roomAfterRef.current = kept > 0 ? lastRowIdRef.current : null;
+        setLandingRoom(kept);
+        // Settled with the conversation's end under the view — a notice, a wake's card landing
+        // under the held head — the view glides down to it: never left below (the usage limit's
+        // notice stood 12 px under the view).
+        const under =
+          landing.edge === "top" && view
+            ? view.scrollHeight - askRoomRef.current - view.clientHeight - view.scrollTop
+            : 0;
         landing.frame = requestAnimationFrame(() => {
-          if (followingEndRef.current) endFollowRef.current?.keep();
+          if (!followingEndRef.current) return;
+          if (under > 2) endFollowRef.current?.follow();
+          else endFollowRef.current?.keep();
         });
       };
       landing.frame = requestAnimationFrame(step);
     },
     [holdAnswer, listRef],
   );
+  // The room a landing asked for is drawn in this commit: what it holds goes back where it stood
+  // before the frame paints — the list may have clamped its scroll as the card shrank.
+  useLayoutEffect(() => {
+    if (landingRef.current !== null) holdAnswer();
+  }, [askRoom, holdAnswer]);
   // A run's turn ends under the person's eyes, the words they read whole in its slot: its head
   // stands still, from the commit that ends it.
   const onTurnLands = useCallback(
@@ -2423,8 +2439,12 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   const content = <TimelineRowBody row={row} />;
   const { arrivedAfter, standUpAsk } = use(TimelineRowCtx);
   const [entering] = useState(() => messageEnters(row, arrivedAfter));
+  // Landed from the run's slot, it never rose in: drawn again, it still has arrived.
+  const [landed] = useState(
+    () => row.kind === "message" && !entering && wordsJustStood(row.message.id),
+  );
   useEffect(() => {
-    if (!entering) return;
+    if (!entering && !landed) return;
     // The oldest goes first: clearing them all would let every message of
     // the open conversation newer than its opening rise in again.
     if (enteredMessages.size >= 500) {
@@ -2432,7 +2452,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       if (!oldest.done) enteredMessages.delete(oldest.value);
     }
     enteredMessages.add(row.id);
-  }, [entering, row.id]);
+  }, [entering, landed, row.id]);
   const person =
     row.kind === "message" && row.message.role === "user" && !isStandUpAskRow(row, standUpAsk);
   const ref = useRef<HTMLDivElement>(null);

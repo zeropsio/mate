@@ -2303,9 +2303,14 @@ describe("owner-reported layout regressions", () => {
           readonly asked: number | null;
           /** How many copies of the answer the person sees. */
           readonly answers: number;
+          /** The strip of what runs alongside under the card, its height. */
+          readonly strip: number;
+          /** How many answer rows were drawn under the card so far: one is drawn again, it enters again. */
+          readonly drawn: number;
         }
         /** Milo's turn ends with its answer, with or without a helper still at work. */
-        const settlesInPlace = (helperRunsOn: boolean) =>
+        /** Its answer streamed into the slot first, or arriving whole with the run's end. */
+        const settlesInPlace = (helperRunsOn: boolean, answer: "streamed" | "with its end") =>
           Effect.gen(function* () {
             const { s, engine, run } = yield* miloAtWork();
             for (let index = 0; index < 6; index += 1)
@@ -2328,26 +2333,29 @@ describe("owner-reported layout regressions", () => {
               });
             // Its calls land in the history one after another before it writes.
             yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 3000)));
-            const note = engine.item(run, {
-              kind: "note",
-              text: "",
-              streaming: true,
-              answer: false,
-            });
+            // What Milo said: a short line as its job ran on (recheck on 0.15.41, +32:54.1), three
+            // lines otherwise.
             const text =
-              "The 45-second job is running in the background, and I'll tell you its last line when it finishes. The earlier 3-minute command and the helper's sleep both stopped before they reported, as you noted.";
-            engine.stream(note, text);
+              answer === "with its end" && helperRunsOn
+                ? "The 45-second command is running in the background, as you noted."
+                : "The 45-second job is running in the background, and I'll tell you its last line when it finishes. The earlier 3-minute command and the helper's sleep both stopped before they reported, as you noted.";
+            const note =
+              answer === "streamed"
+                ? engine.item(run, { kind: "note", text: "", streaming: true, answer: false })
+                : null;
+            if (note !== null) engine.stream(note, text);
             yield* Effect.promise(() =>
               s.page.waitForFunction(
-                () =>
-                  [
+                (streamed: boolean) =>
+                  ([
                     ...document.querySelectorAll(
                       '[data-run-chat][data-run-live] [data-chat-kind="note"]',
                     ),
                   ]
                     .at(-1)
-                    ?.textContent?.includes("as you noted"),
+                    ?.textContent?.includes("as you noted") ?? false) === streamed,
                 { polling: "raf", timeout: 8000 },
+                note !== null,
               ),
             );
             yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
@@ -2369,6 +2377,7 @@ describe("owner-reported layout regressions", () => {
                   }
                   return true;
                 };
+                const rows = new Set<Element>();
                 const read = (): SettleFrame => {
                   const head = [
                     ...document.querySelectorAll<HTMLElement>("[data-run-chat] [data-run-head]"),
@@ -2381,6 +2390,13 @@ describe("owner-reported layout regressions", () => {
                     const element = walker.currentNode.parentElement!;
                     if (element.closest(".sr-only") !== null) continue;
                     if (words.includes("as you noted") && seen(element)) answers += 1;
+                    if (
+                      words.includes("as you noted") &&
+                      element.closest("[data-run-chat]") === null
+                    ) {
+                      const row = element.closest("[data-timeline-row-id]");
+                      if (row !== null) rows.add(row);
+                    }
                     if (words.includes("Live stress test 4A") && seen(element))
                       asked = element.getBoundingClientRect().top;
                   }
@@ -2395,6 +2411,15 @@ describe("owner-reported layout regressions", () => {
                           },
                     asked,
                     answers,
+                    strip:
+                      [
+                        ...document.querySelectorAll<HTMLElement>(
+                          '[data-timeline-row-kind="working"]',
+                        ),
+                      ]
+                        .at(-1)
+                        ?.getBoundingClientRect().height ?? 0,
+                    drawn: rows.size,
                   };
                 };
                 const sample = () =>
@@ -2407,10 +2432,16 @@ describe("owner-reported layout regressions", () => {
               }),
             );
             yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 200)));
-            engine.settle(note);
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
-            engine.update(note, { text, streaming: false });
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 400)));
+            if (note !== null) {
+              engine.settle(note);
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
+              engine.update(note, { text, streaming: false });
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 400)));
+            } else {
+              // As the cron turn on Milo (recheck on 0.15.41, +40:10.7): the slot says Thinking and
+              // its short answer comes with the run's end.
+              engine.item(run, { kind: "note", text, streaming: false, answer: false });
+            }
             engine.end(run);
             if (helperRunsOn) engine.waitOnHelpers();
             const frames = yield* Effect.promise(() =>
@@ -2443,7 +2474,15 @@ describe("owner-reported layout regressions", () => {
               frames.every(
                 (frame) => frame.head !== null && Math.abs(frame.head.top - first.head!.top) <= 1,
               ),
-              "ASSERTION: the card's head stands still",
+              `ASSERTION: the card's head stands still (ms:top): ${frames
+                .filter(
+                  (frame, index) => index === 0 || frame.head?.top !== frames[index - 1]!.head?.top,
+                )
+                .map(
+                  (frame) =>
+                    `${Math.round(frame.at - first.at)}:${frame.head === null ? "-" : Math.round(frame.head.top)}`,
+                )
+                .join(" ")}`,
             ).toBe(true);
             expect(
               frames.every(
@@ -2453,18 +2492,43 @@ describe("owner-reported layout regressions", () => {
               ),
               "ASSERTION: the person's message above the card stands still",
             ).toBe(true);
+            // Recheck on 0.15.41 (+32:54.1): the job's strip left, shrank, then snapped back 32 px.
+            expect(
+              frames
+                .map((frame) => Math.round(frame.strip))
+                .filter((height, index, all) => height !== all[index - 1]),
+              "ASSERTION: what runs on after the turn stands under the card through its end",
+            ).toHaveLength(1);
+            // Recheck on 0.15.41 (+32:55.20): the answer's rise-in played again a second later.
+            expect(last.drawn, "ASSERTION: the answer's row is drawn once, and enters once").toBe(
+              1,
+            );
             yield* s.then.noExternalNetwork;
           });
 
         it.effect(
           "the card's head stands still through the run's settle; only its words change",
-          () => settlesInPlace(false),
+          () => settlesInPlace(false, "streamed"),
         );
 
         // Run engine-final (seg E +0:17.6): a turn that ended with a background job running drew
         // its answer in the card and under it for 1.1 s; then the card shrank and the page moved.
         it.effect("the answer shows once at a turn's end, and nothing above it moves", () =>
-          settlesInPlace(true),
+          settlesInPlace(true, "streamed"),
+        );
+
+        // Recheck on 0.15.41 (+32:54.1): its short answer came with the end, the job ran on; the job's
+        // strip left and snapped back 32 px, and the answer rose in twice.
+        it.effect(
+          "a turn ending on a job still running lands its answer once, its job's strip standing under the card",
+          () => settlesInPlace(true, "with its end"),
+        );
+
+        // Recheck on 0.15.41 (+40:10.7): the slot said Thinking, the short answer came with the
+        // run's end, and the head travelled 120 px down as the card closed under it.
+        it.effect(
+          "the card's head stands still through the run's settle when its answer comes with its end",
+          () => settlesInPlace(false, "with its end"),
         );
 
         it.effect(

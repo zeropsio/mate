@@ -291,6 +291,24 @@ describe("resultRows — one result over time (the plan's four moments)", () => 
   });
 });
 
+describe("runEffortWords", () => {
+  it.each([
+    { count: 1, words: "1 command · 1 picture looked at" },
+    { count: 3, words: "1 command · 3 pictures looked at" },
+  ])("says the pictures a run looked at as pictures: $words", ({ count, words }) => {
+    const outcome = {
+      ...NOVA,
+      change: null,
+      landed: [],
+      activity: [
+        { kind: "command" as const, count: 1 },
+        { kind: "look" as const, count },
+      ],
+    };
+    expect(runEffortWords(outcome, facts({}))).toBe(words);
+  });
+});
+
 describe("resultRows", () => {
   // What the run left that is still open or running, most important first:
   // anything still broken, then what waits for the person, then what runs —
