@@ -11,7 +11,8 @@
  *    until its open has committed, since the actor refuses a session it has not seen open;
  * 2. the evidence resolves the sends waiting on it — after the boundaries, so a turn's start or
  *    a session's exit is in the record before the send settles;
- * 3. streamed text goes to the live plane, never to the record.
+ * 3. streamed text goes to the live plane; an open item's words so far go into the record every
+ *    `TEXT_KEPT_EVERY_MS` while it streams, so a kill loses no more than that.
  *
  * A session ProviderService re-created on its own (a call that met a dead session recovers it) is
  * a replacement nobody asked for: the engine's session is recorded as exited and the unasked one
@@ -50,7 +51,7 @@ import type { ProviderSignal } from "../domain/command.ts";
 import { signalsCommandId } from "../domain/ids.ts";
 import type { LiveBusShape } from "../LiveBus.ts";
 import { publishedPage, type CallPictures } from "./callPictures.ts";
-import { makeToCore, type SendEvidence } from "./toCore.ts";
+import { makeToCore, type SendEvidence, TEXT_KEPT_EVERY_MS } from "./toCore.ts";
 
 /** How an unasked session reads in the record. */
 export const UNASKED_SESSION =
@@ -123,7 +124,9 @@ export interface SessionHostDeps {
 
 type Inbox =
   | { readonly _tag: "input"; readonly input: BridgeInput }
-  | { readonly _tag: "mark"; readonly done: Deferred.Deferred<void> };
+  | { readonly _tag: "mark"; readonly done: Deferred.Deferred<void> }
+  /** Streamed words wait to go into the record (`TEXT_KEPT_EVERY_MS`). */
+  | { readonly _tag: "keep" };
 
 interface Gate {
   state: "held" | "open" | "dropped";
@@ -164,6 +167,8 @@ export const makeSessionHost = Effect.fnUntraced(function* (
   const deferredInterrupts = new Set<TurnHandle>();
   let current: SessionId | null = null;
   let recording: SessionId | null = null;
+  /** A keep of the streamed words is on its way. */
+  let keeping = false;
   let sessionCalls = 0;
   const changed = deps.changed ?? Effect.void;
   const forkInSession = <A, E>(call: Effect.Effect<A, E>) =>
@@ -379,12 +384,29 @@ export const makeSessionHost = Effect.fnUntraced(function* (
       );
     }
     if (unasked) yield* replaceUnasked;
+    if (!keeping && toCore.unkept()) {
+      keeping = true;
+      yield* Effect.sleep(TEXT_KEPT_EVERY_MS).pipe(
+        Effect.andThen(enqueue({ _tag: "keep" })),
+        Effect.forkIn(deps.scope),
+      );
+    }
     const due = toCore.reportDueUntil();
     if (due !== null && Number.isFinite(due) && due !== reportDueCheck) {
       reportDueCheck = due;
       yield* Effect.sleep(due - now).pipe(Effect.andThen(changed), Effect.forkIn(deps.scope));
     }
     yield* changed;
+  });
+
+  /** The words open items streamed since the record last took them go into it. */
+  const keep = Effect.gen(function* () {
+    keeping = false;
+    const session = current;
+    const gate = session === null ? undefined : gates.get(session);
+    if (session === null || gate?.state !== "open") return;
+    const kept = toCore.keepText(yield* Clock.currentTimeMillis);
+    if (kept.length > 0) yield* tell(session, gate, kept);
   });
 
   /** ProviderService re-created the session on its own: the engine's is gone, the new one closed. */
@@ -415,6 +437,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
         Effect.gen(function* () {
           const inputs = mail.flatMap((item) => (item._tag === "input" ? [item.input] : []));
           if (inputs.length > 0) yield* process(inputs);
+          if (mail.some((item) => item._tag === "keep")) yield* keep;
           for (const item of mail)
             if (item._tag === "mark") yield* Deferred.succeed(item.done, void 0);
         }),

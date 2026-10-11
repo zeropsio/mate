@@ -477,6 +477,18 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
             payload: { streamKind: "reasoning_text", delta },
           });
         }),
+      /**
+       * Claude's thinking: its summary streams with no item of its own (`ClaudeAdapter`
+       * `emitReasoningSummaryDelta`), and no item ever closes it.
+       */
+      summarize: (thread: string, delta: string) =>
+        Effect.gen(function* () {
+          const session = live(thread);
+          yield* emit("content.delta", thread, {
+            ...(session.open === null ? {} : { turnId: session.open }),
+            payload: { streamKind: "reasoning_summary_text", delta },
+          });
+        }),
       /** A command starts running (ACP calls first show as an update). */
       call: (thread: string) =>
         Effect.gen(function* () {

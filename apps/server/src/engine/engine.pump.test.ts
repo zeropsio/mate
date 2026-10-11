@@ -19,6 +19,7 @@ import type { Command } from "./domain/command.ts";
 import { CONTINUE_TEXT, resentText } from "./domain/decide.ts";
 import { PROVIDER_CALL_BOUND_MS } from "./effects/shared.ts";
 import { Conversations } from "./Conversations.ts";
+import { TEXT_KEPT_EVERY_MS } from "./pump/toCore.ts";
 import { DRIVERS, makeEngineWorld, mate, type EngineWorld } from "./testing/pump/engineWorld.ts";
 
 const r = (n: number): RunId => runId(mate, n);
@@ -412,6 +413,99 @@ describe("the running engine", () => {
           yield* w.shutdown;
         }),
       ),
+  );
+
+  // Milo's final engine run, 2026-10-11: a restart (J2) and a double Stop (D7) each cut a thought
+  // Claude streamed with no item of its own; the record held it empty, live and after a reload.
+  /** A step of a scene: whatever it fails with fails the test. */
+  type Step = (w: EngineWorld) => Effect.Effect<void>;
+  const step =
+    <E>(act: (w: EngineWorld) => Effect.Effect<unknown, E>): Step =>
+    (w) =>
+      Effect.asVoid(Effect.orDie(act(w)));
+  const CUTS: ReadonlyArray<readonly [string, Step]> = [
+    ["a Stop", step(stop)],
+    ["a double Stop", step((w) => Effect.andThen(stop(w), stop(w)))],
+    ["a restart", step((w) => Effect.andThen(w.crash, w.boot))],
+    ["a kill of the server", step((w) => Effect.andThen(w.kill, w.boot))],
+    ["its agent's crash", step((w) => w.agent((agent, thread) => agent.crash(thread)))],
+  ];
+  /** A thought longer than its preview: the record holds the rest as the item's detail. */
+  const LONG = "Reading the build output line by line for the failing step. ".repeat(6);
+  const STREAMS: ReadonlyArray<readonly [string, Step, Record<string, unknown>, string | null]> = [
+    [
+      "a thought",
+      step((w) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.summarize(thread, "Checking the "));
+          yield* w.agent((agent, thread) => agent.summarize(thread, "deploy logs"));
+        }),
+      ),
+      { kind: "thought", preview: "Checking the deploy logs", length: 24, streaming: false },
+      null,
+    ],
+    [
+      "a thought longer than its preview",
+      step((w) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.summarize(thread, LONG.slice(0, 200)));
+          yield* w.agent((agent, thread) => agent.summarize(thread, LONG.slice(200)));
+        }),
+      ),
+      { kind: "thought", length: LONG.length, streaming: false },
+      LONG,
+    ],
+    [
+      "an answer",
+      step((w) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.stream(thread, "m-cut", "The deploy failed "));
+          yield* w.agent((agent, thread) => agent.stream(thread, "m-cut", "because the port"));
+        }),
+      ),
+      { kind: "note", text: "The deploy failed because the port", streaming: false },
+      null,
+    ],
+  ];
+  const detailOf = (w: EngineWorld, itemId: string) =>
+    w.within(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const rows = yield* sql<{ readonly body: string }>`
+          SELECT body FROM engine_item_detail WHERE item_id = ${itemId}
+        `;
+        return rows[0]?.body ?? null;
+      }),
+    );
+  it.effect.each(
+    CUTS.flatMap(([cut, cutting]) =>
+      STREAMS.map(([what, streaming, kept, detail]) => ({
+        title: `a run cut by ${cut} keeps everything it had streamed: ${what}`,
+        cutting,
+        streaming,
+        kept,
+        detail,
+      })),
+    ),
+  )("$title", ({ cutting, streaming, kept, detail }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w);
+        yield* streaming(w);
+        // What streams goes into the record while it streams, not only once its item closes.
+        yield* w.advance(TEXT_KEPT_EVERY_MS);
+        yield* cutting(w);
+        const items = (yield* w.items(r(1))).filter((item) => item.kind === kept.kind);
+        assert.deepStrictEqual(
+          items.map((item) => item.state),
+          ["closed"],
+        );
+        assert.deepInclude(items[0]!.body, kept);
+        assert.strictEqual(yield* detailOf(w, items[0]!.item_id), detail);
+        yield* w.shutdown;
+      }),
+    ),
   );
 
   it.effect("a second Stop closes the session", () =>

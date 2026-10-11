@@ -74,6 +74,8 @@ export type ProviderSignal =
       readonly turn: TurnHandle;
       readonly key: string;
       readonly body: ItemBody;
+      /** A streaming item's words so far, when longer than its body holds. */
+      readonly detail?: string;
       readonly afterEnd?: true;
     }
   | {
