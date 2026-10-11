@@ -1,7 +1,6 @@
 /**
- * Waiting on you: the menu's row under Overview, only while something waits — an amber disc with
- * the count, and the first two things in a few plain words (`waitingSummary`) — and the list it
- * opens beside the menu, the list's title on the row's title line. Each thing in the list has the
+ * Waiting on you: the list the Overview row's amber count opens beside the menu while something
+ * waits (`SidebarOverviewRow`), the list's title on the row's title line. Each thing in the list has the
  * buttons that act on it: a plan is approved or changed, a question answered, a Mate of yours that
  * stopped asked to fix it, a change or a release reviewed. A thing whose action went through
  * leaves the list, its height closing in 200 ms. ⌥↓ steps through them in the menu.
@@ -33,7 +32,6 @@ import { mateDecision } from "./mateDecision.logic";
 import { MateFace } from "./primitives";
 import {
   releaseWaitingLine,
-  waitingSummary,
   waitingTitle,
   type WaitingItem,
   type WaitingMate,
@@ -142,49 +140,6 @@ export function SidebarWaitingPopover({
 }
 
 /** The row under Overview: drawn only while something waits. */
-export function SidebarWaitingRow({
-  items,
-  verbs,
-}: {
-  readonly items: ReadonlyArray<WaitingItem>;
-  readonly verbs: WaitingVerbs;
-}) {
-  if (items.length === 0) return null;
-  const { words, more } = waitingSummary(items);
-  return (
-    <SidebarWaitingPopover
-      items={items}
-      trigger={
-        <button
-          aria-label={`${String(items.length)} waiting on you: ${words}${more > 0 ? `, ${String(more)} more` : ""}`}
-          className="menu-chrome-row"
-          data-waiting-trigger=""
-          data-zerops-surface="sidebar-waiting"
-          type="button"
-        />
-      }
-      verbs={verbs}
-    >
-      <span
-        aria-hidden="true"
-        className="menu-chrome-count"
-        data-zerops-surface="sidebar-waiting-count"
-      >
-        {items.length}
-      </span>
-      <span className="menu-chrome-text">
-        <span className="menu-chrome-name" data-waiting-line="">
-          Waiting on you
-        </span>
-        <span className="menu-chrome-line" data-ink="" data-zerops-surface="sidebar-waiting-line">
-          <span>{words}</span>
-          {more > 0 ? <span>· {more} more</span> : null}
-        </span>
-      </span>
-    </SidebarWaitingPopover>
-  );
-}
-
 /** The list itself: its title, ⌥↓, and each thing with its buttons. */
 export function WaitingList({
   items,

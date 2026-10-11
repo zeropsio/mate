@@ -1,7 +1,10 @@
 /**
  * The Overview row, first in the menu's list: a soft disc with the layers glyph, "Overview", and
- * the organization in one line (`overviewHeadline`). It wears the selected band while the overview
- * is open; a click and ⌥0 open it.
+ * the organization in one line (`overviewHeadline`) — or, while something waits on the person,
+ * what waits in a few plain words (`waitingSummary`), its count in an amber disc at the row's end
+ * that opens the list of it beside the menu (the owner, 2026-10-12, of a Waiting on you row of its
+ * own: "waiting on you is use less, it should be included in the overview somehow"). It wears the
+ * selected band while the overview is open; a click and ⌥0 open it.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsEnvironmentServices, ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
@@ -20,6 +23,8 @@ import {
   type OverviewProject,
 } from "./SidebarOverview.logic";
 import { releaseFailureOf, stopServing } from "./SidebarProductionChip.logic";
+import { SidebarWaitingPopover, type WaitingVerbs } from "./SidebarWaiting";
+import { waitingSummary, type WaitingItem } from "./SidebarWaiting.logic";
 
 /** The organization's projects as HQ's navigation names them, by name. */
 export function useMenuProjects(): ReadonlyArray<SidebarCreateProject> {
@@ -88,12 +93,17 @@ export function SidebarOverviewRow({
   headline,
   current,
   onOpen,
+  waiting,
 }: {
   /** The organization in one line (`overviewHeadline`). */
   readonly headline: string;
   /** The overview is the page open now. */
   readonly current: boolean;
   readonly onOpen: () => void;
+  /** What waits on the person, and what its list asks of the menu. */
+  readonly waiting?:
+    | { readonly items: ReadonlyArray<WaitingItem>; readonly verbs: WaitingVerbs }
+    | undefined;
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -109,25 +119,60 @@ export function SidebarOverviewRow({
       window.removeEventListener("keydown", onKey);
     };
   }, [onOpen]);
+  const items = waiting?.items ?? [];
+  const summary = items.length === 0 ? undefined : waitingSummary(items);
   return (
-    <button
-      aria-current={current ? "page" : undefined}
-      aria-keyshortcuts="Alt+0"
-      className="menu-chrome-row"
-      data-current={current ? "" : undefined}
-      data-zerops-surface="sidebar-overview"
-      onClick={onOpen}
-      type="button"
-    >
-      <span className="menu-chrome-disc" aria-hidden="true">
-        <LayersIcon className="size-4.5" />
-      </span>
-      <span className="menu-chrome-text">
-        <span className="menu-chrome-name">Overview</span>
-        <span className="menu-chrome-line" data-zerops-surface="sidebar-overview-headline">
-          <span>{headline}</span>
+    <div className="menu-overview">
+      <button
+        aria-current={current ? "page" : undefined}
+        aria-keyshortcuts="Alt+0"
+        className="menu-chrome-row"
+        data-current={current ? "" : undefined}
+        data-waits={summary === undefined ? undefined : ""}
+        data-zerops-surface="sidebar-overview"
+        onClick={onOpen}
+        type="button"
+      >
+        <span className="menu-chrome-disc" aria-hidden="true">
+          <LayersIcon className="size-4.5" />
         </span>
-      </span>
-    </button>
+        <span className="menu-chrome-text">
+          <span className="menu-chrome-name" data-waiting-line="">
+            Overview
+          </span>
+          {summary === undefined ? (
+            <span className="menu-chrome-line" data-zerops-surface="sidebar-overview-headline">
+              <span>{headline}</span>
+            </span>
+          ) : (
+            <span
+              className="menu-chrome-line"
+              data-ink=""
+              data-zerops-surface="sidebar-waiting-line"
+            >
+              <span>{summary.words}</span>
+              {summary.more > 0 ? <span>· {summary.more} more</span> : null}
+            </span>
+          )}
+        </span>
+      </button>
+      {waiting === undefined || summary === undefined ? null : (
+        <SidebarWaitingPopover
+          items={items}
+          trigger={
+            <button
+              aria-label={`${String(items.length)} waiting on you: ${summary.words}${summary.more > 0 ? `, ${String(summary.more)} more` : ""}`}
+              className="menu-chrome-count"
+              data-waiting-trigger=""
+              data-zerops-surface="sidebar-waiting"
+              type="button"
+            />
+          }
+          verbs={waiting.verbs}
+        >
+          <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
+        </SidebarWaitingPopover>
+      )}
+    </div>
   );
 }

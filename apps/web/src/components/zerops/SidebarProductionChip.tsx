@@ -137,6 +137,8 @@ export function SidebarProductionChip({
             }`}
             className="zerops-envpop"
             data-zerops-surface="sidebar-production-menu"
+            // A press opens it calm, its first row not lit as if picked; keys still land in it.
+            initialFocus={(openType) => openType === "keyboard"}
           >
             <ChipMenu
               groupId={groupId}
@@ -232,7 +234,7 @@ function RoadWord({ place }: { readonly place: RoadPlace }) {
 /**
  * The road on a project's heading, after its name: a soft capsule holding its places — the
  * stages' and production's own chips (`SidebarProductionChip`) — and the way between them, with
- * what rides on it: *N ready* (white: it waits on you, and opens the release's review), *N
+ * what rides on it: *Release N* (solid blue: it waits on you, and opens the release's review), *N
  * waiting* (grey: production must be fixed first), or the release on its way (blue).
  */
 export function SidebarRoad({

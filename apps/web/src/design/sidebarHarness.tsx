@@ -76,7 +76,6 @@ import { PanelLayoutControls } from "~/components/chat/PanelLayoutControls";
 import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
 import { SidebarOverviewRow } from "~/components/zerops/SidebarOverview";
 import { SidebarRail, useRailMates } from "~/components/zerops/SidebarRail";
-import { SidebarWaitingRow } from "~/components/zerops/SidebarWaiting";
 import { waitingItemsOf, type WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
 import { Button } from "~/components/ui/button";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
@@ -1132,7 +1131,7 @@ function SidebarFrame({
           the canvas at an edge only while something is scrolled under it. */}
       <SidebarContent>
         <div className="ps-2.25 pe-2 pb-1">
-          <div className="mb-2">
+          <div className="mt-2.5 mb-2">
             <SidebarOverviewRow
               current={overviewOpen}
               headline={HARNESS_HEADLINE}
@@ -1140,16 +1139,16 @@ function SidebarFrame({
                 menuActions.push("overview");
                 setOpen("");
               }}
-            />
-            <SidebarWaitingRow
-              items={WAIT_ALL ?? waiting.items}
-              verbs={{
-                onOpenMate: (projectId) => {
-                  menuActions.push(`open ${projectId}`);
-                  setOpen(projectId);
-                },
-                onAskToFix: (projectId, problem) => {
-                  menuActions.push(`ask ${projectId}: ${problem.what}`);
+              waiting={{
+                items: WAIT_ALL ?? waiting.items,
+                verbs: {
+                  onOpenMate: (projectId) => {
+                    menuActions.push(`open ${projectId}`);
+                    setOpen(projectId);
+                  },
+                  onAskToFix: (projectId, problem) => {
+                    menuActions.push(`ask ${projectId}: ${problem.what}`);
+                  },
                 },
               }}
             />

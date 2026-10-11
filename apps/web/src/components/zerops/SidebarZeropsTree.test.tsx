@@ -1858,7 +1858,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
           ]),
         ],
       },
-      road: "stage 2 ready prod",
+      road: "stage Release 2 prod",
     },
     {
       case: "changes waiting, the release not offered: waiting",
@@ -1929,7 +1929,7 @@ describe("production and the stages are two chips on the project's heading (M2, 
     });
     stored.collapsed = new Set();
     expect(html).not.toContain("sidebar-project-rows");
-    expect(roadOf(html)).toBe("stage 1 ready prod");
+    expect(roadOf(html)).toBe("stage Release 1 prod");
   });
 
   it("turns prod amber when the newest release did not go through, while the old one serves", () => {
@@ -3817,7 +3817,7 @@ describe("the menu's release offer", () => {
           </AccountDataContext.Provider>
         </RegistryContext.Provider>,
       );
-      expect(html).toMatch(/data-zerops-surface="sidebar-road-ready"[^>]*>1 ready</u);
+      expect(html).toMatch(/data-zerops-surface="sidebar-road-ready"[^>]*>Release 1</u);
       expect(html).toContain('data-zerops-surface="sidebar-production-chip"');
       expect([...store.state().streams.keys()].some((key) => key.includes("hq-app-detail"))).toBe(
         false,

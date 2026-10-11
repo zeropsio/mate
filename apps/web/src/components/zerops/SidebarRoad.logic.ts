@@ -1,9 +1,10 @@
 /**
  * A project's road, after its name on the menu's heading: `stage ─▸ prod`. Its places are words;
  * each opens its chip's menu (`SidebarProductionChip`). What is ready to go out rides on the way
- * between them — a white chip, "3 ready", where it waits on the viewer and opens the release's
- * review — beside a broken production too, since releasing the fix is how it mends (D28); grey,
- * "2 waiting", only where the release is not offered;
+ * between them — "Release 3", solid in the blue of what clicks, where it waits on the viewer and
+ * opens the release's review (the owner, 2026-10-12: a white "3 ready" "as the only indicator of
+ * a possible release sucks ass") — beside a broken production too, since releasing the fix is how
+ * it mends (D28); grey, "2 waiting", only where the release is not offered;
  * a blue dot and the version while a release is on its way.
  *
  * Grey while all is well. A place's word takes a tone only where someone is needed or there is
@@ -209,7 +210,7 @@ function midOf(input: RoadInput, prod: ProductionChip): RoadMid | undefined {
     const runs = prod.version === undefined ? "" : ` Production runs ${prod.version}.`;
     return {
       kind: "ready",
-      label: `${count} ready`,
+      label: `Release ${count}`,
       tip: {
         title: "Review release",
         lines: [

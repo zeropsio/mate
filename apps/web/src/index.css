@@ -3631,8 +3631,8 @@ code {
    10 px from either side of the menu, fainter than a row's hover — pressing
    it folds the project, it opens nothing. Its corners run parallel to its
    chips' (10 + the 6 px around them, S4), and a reveal's ring follows them.
-   Lit while its ⋯ or a chip's menu is open; the chips and the verbs keep
-   their own, stronger hover over it. The band is drawn under the heading's
+   A chip's or ⋯'s open menu lights that control alone, never the heading (the
+   owner, 2026-10-12: "the 'active' bg is within the whole tag - why?"). The band is drawn under the heading's
    contents rather than as its fill: behind every row of the list, which is
    its own stacking context, as the selected band is. */
 .zerops-project-heading {
@@ -3649,14 +3649,124 @@ code {
   pointer-events: none;
 }
 
-.zerops-project-heading:has([data-popup-open])::before {
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 3.5%, transparent);
-}
-
 @media (hover: hover) {
   .zerops-project-heading:hover::before {
     background-color: color-mix(in oklab, var(--sidebar-foreground) 3.5%, transparent);
   }
+}
+
+/* A heading narrower than its name, road and faces (the owner, 2026-10-12: "this has no handling
+   when the left column is too small"): `headingFit.ts` steps what rides after the name aside, never
+   the name — the stage and the way's lead, then the faces, then, where something rides the way,
+   production — what rides the way staying to the last. */
+[data-zerops-surface="sidebar-project"][data-fit]
+  .zerops-road
+  > :first-child:not(.zerops-road-way):not(:last-child),
+[data-zerops-surface="sidebar-project"][data-fit] .zerops-road-way > .zerops-road-line:first-child,
+[data-zerops-surface="sidebar-project"][data-fit] .zerops-road-way[data-bare],
+[data-zerops-surface="sidebar-project"]:is([data-fit="2"], [data-fit="3"])
+  [data-zerops-surface="sidebar-project-faces"],
+[data-zerops-surface="sidebar-project"][data-fit="3"]
+  .zerops-road:has(.zerops-road-way:not([data-bare]))
+  > :last-child:not(.zerops-road-way),
+[data-zerops-surface="sidebar-project"][data-fit="3"]
+  .zerops-road-way:not([data-bare])
+  > .zerops-road-arrow {
+  display: none;
+}
+
+/* A heading's verbs — its grip and its ⋯ — quiet 28 px squares whose hover, press and open
+   menu read over the heading's own band (the owner, 2026-10-12: "clicking on these 'more'
+   buttons have no feedback"). */
+.menu-heading-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--sidebar-muted-foreground);
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong),
+    scale 150ms var(--ease-out-strong);
+}
+
+.menu-heading-action[data-popup-open] {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 10%, transparent);
+  color: var(--sidebar-foreground);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .menu-heading-action:hover {
+    background-color: color-mix(in oklab, var(--sidebar-foreground) 10%, transparent);
+    color: var(--sidebar-foreground);
+  }
+}
+
+.menu-heading-action:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+/* A folded heading's face: its Mate's door, a soft disc under the pointer. */
+.menu-heading-face {
+  display: flex;
+  padding: 2px;
+  border-radius: 9999px;
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    scale 150ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .menu-heading-face:hover {
+    background-color: color-mix(in oklab, var(--sidebar-foreground) 10%, transparent);
+  }
+}
+
+.menu-heading-face:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .menu-heading-action:active,
+  .menu-heading-face:active {
+    scale: 0.96;
+  }
+}
+
+/* A face's tooltip: who, what it is doing, and its last line, two lines at most. */
+.menu-face-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 260px;
+}
+
+.menu-face-tip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.menu-face-tip-name {
+  font-weight: 600;
+}
+
+.menu-face-tip-state,
+.menu-face-tip-line {
+  opacity: 0.72;
+}
+
+.menu-face-tip-line {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 /* p25/menu — D′: a project heading's second line, under the name and above the Mates. The
@@ -3797,8 +3907,8 @@ code {
    muted, holding its places' words on 20 px segments and the hairline way between them. Grey
    while all is well; a place's word takes amber, red or blue only when someone is needed or
    there is news, and goes dim while stopped or with nothing released. What waits for a release
-   rides the way: white (`--sidebar-row-active`, the selected band's surface) where it waits on
-   you, grey where production must be fixed first, blue while a release is on its way. */
+   rides the way: solid blue (`--primary`, what clicks) where a release waits on you, grey where
+   production must be fixed first, blue words while a release is on its way. */
 .zerops-road {
   /* Over the heading button's hit area, so its places and its chip take their own presses. */
   position: relative;
@@ -3908,27 +4018,26 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
   margin: 0 1px;
   padding: 0 8px;
   border-radius: 999px;
-  background-color: var(--sidebar-row-active);
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 7%, transparent),
-    0 1px 2px color-mix(in oklab, var(--color-black) 8%, transparent);
-  color: var(--sidebar-foreground);
+  background-color: var(--primary);
+  color: var(--primary-foreground);
   font-weight: 600;
   cursor: pointer;
   outline: none;
   transition:
-    box-shadow 150ms var(--ease-out-strong),
-    transform 160ms var(--ease-out-strong);
+    background-color 150ms var(--ease-out-strong),
+    scale 150ms var(--ease-out-strong);
 }
 
-.zerops-road-ready:hover {
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 16%, transparent),
-    0 2px 6px color-mix(in oklab, var(--color-black) 10%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .zerops-road-ready:hover {
+    background-color: color-mix(in oklab, var(--primary) 86%, var(--color-black));
+  }
 }
 
-.zerops-road-ready:active {
-  transform: scale(0.97);
+@media (prefers-reduced-motion: no-preference) {
+  .zerops-road-ready:active {
+    scale: 0.96;
+  }
 }
 
 .zerops-road-wait {
@@ -4087,8 +4196,7 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 .zerops-envpop-version {
   margin-inline-start: 6px;
   color: var(--muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .zerops-envpop-word {
@@ -4124,16 +4232,19 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 .zerops-envpop-link {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px 4px 36px;
-  border-radius: 8px;
-  color: var(--info-foreground);
+  gap: 8px;
+  padding: 6px 10px 6px 36px;
+  border-radius: 9px;
+  color: var(--muted-foreground);
   outline: none;
-  transition: background-color 150ms ease;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
 }
 
 .zerops-envpop-link:is(:hover, :focus-visible) {
-  background-color: color-mix(in oklab, var(--info-foreground) 10%, transparent);
+  background-color: var(--accent);
+  color: var(--foreground);
 }
 
 .zerops-envpop-service {
@@ -4391,14 +4502,14 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 }
 
 @layer components {
-  /* Overview and Waiting on you: Grok's measure, as the Mates' rows under them — a 40 px disc in
-     the faces' column, a 16 px name over a 15 px line, 68 px a row. */
+  /* Overview: the Mates' rows' measure — a 40 px disc in the faces' column, a 15 px name over a
+     14 px line, 59 px a row. */
   .menu-chrome-row {
     display: flex;
     align-items: center;
     gap: 12px;
     width: 100%;
-    height: 68px;
+    height: 59px;
     padding: 0 8px;
     border-radius: 12px;
     text-align: left;
@@ -4414,17 +4525,59 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 
   .menu-chrome-row[data-current] {
     background: var(--sidebar-row-active);
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 6%, transparent),
-      0 1px 2px color-mix(in oklab, var(--color-black) 6%, transparent);
   }
 
   .menu-chrome-row:focus-visible {
     box-shadow: 0 0 0 2px var(--ring);
   }
 
-  .menu-chrome-row + .menu-chrome-row {
-    margin-top: 6px;
+  /* The Overview row and what waits beside it (`SidebarOverviewRow`): the count at the row's
+     end, 12 px in, its own door to the list of what waits; the row's words stop short of it. */
+  .menu-overview {
+    position: relative;
+  }
+
+  .menu-chrome-row[data-waits] {
+    padding-right: 52px;
+  }
+
+  .menu-overview .menu-chrome-count {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    width: auto;
+    min-width: 28px;
+    height: 28px;
+    padding: 0 9px;
+    translate: 0 -50%;
+    font-size: 13px;
+    line-height: 16px;
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      scale 150ms var(--ease-out-strong);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .menu-overview .menu-chrome-count:hover,
+    .menu-overview .menu-chrome-count[data-popup-open] {
+      background: color-mix(
+        in oklab,
+        var(--zerops-status-attention-text) 16%,
+        var(--zerops-status-attention-surface)
+      );
+    }
+  }
+
+  .menu-overview .menu-chrome-count:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-overview .menu-chrome-count:active {
+      scale: 0.96;
+    }
   }
 
   .menu-chrome-disc,
@@ -4705,12 +4858,15 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 }
 
 @layer components {
-  /* The foot: the viewer's photo, name and role, one ···; the collapse button after it. */
+  /* The foot: the viewer's photo, name and role, one ···, across the whole row up to the
+     collapse button after it (the owner, 2026-10-12: "not done well at all, the way its only like
+     30% width" — a button sizes to its content where nothing stretches it). */
   .menu-foot-who {
     display: flex;
     flex: 1 1 auto;
     align-items: center;
     gap: 12px;
+    width: 100%;
     min-width: 0;
     height: 52px;
     margin-block: 6px;

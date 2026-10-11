@@ -169,6 +169,7 @@ import {
   readCollapsedProjects,
   readOpenedProjects,
   withProjectFold,
+  withProjectsFolded,
   writeCollapsedProjects,
   writeOpenedProjects,
   type ProjectFolds,
@@ -213,6 +214,7 @@ import {
 } from "./SidebarProjects.logic";
 import { SidebarProductionChip, SidebarRoad } from "./SidebarProductionChip";
 import { projectRoad } from "./SidebarRoad.logic";
+import { useHeadingFit } from "./headingFit";
 import {
   buildingOf,
   asLastKnown,
@@ -263,6 +265,7 @@ import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
 import { finishSetupRowLine, useMatePress } from "~/zerops/matePress";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useSidebarJump } from "~/zerops/sidebarJump";
+import { useMenuFolds } from "~/zerops/menuFolds";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
 import {
   EMPTY_JUMP_INDEX,
@@ -657,6 +660,28 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     closed: readCollapsedProjects(),
     opened: readOpenedProjects(),
   }));
+  // Every project folded or opened at once, asked from the menu's top row (`useMenuFolds`): the
+  // projects with Mates as this draw lists them, and whether any of them stands open.
+  const foldable = useRef<ReadonlyArray<string>>([]);
+  const anyOpen = useRef<boolean | null>(null);
+  anyOpen.current = null;
+  const setAnyOpen = useMenuFolds((state) => state.setAnyOpen);
+  useEffect(() => {
+    setAnyOpen(anyOpen.current);
+  });
+  useEffect(
+    () => () => {
+      setAnyOpen(null);
+    },
+    [setAnyOpen],
+  );
+  const foldAsked = useMenuFolds((state) => state.asked);
+  const foldAnswered = useRef(foldAsked?.seq ?? 0);
+  useEffect(() => {
+    if (foldAsked === null || foldAsked.seq === foldAnswered.current) return;
+    foldAnswered.current = foldAsked.seq;
+    setProjectFolds((current) => withProjectsFolded(current, foldable.current, foldAsked.fold));
+  }, [foldAsked]);
   useEffect(() => {
     writeCollapsedProjects(projectFolds.closed);
     writeOpenedProjects(projectFolds.opened);
@@ -1313,6 +1338,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               face: view.face,
               dot: view.dot,
               known: live !== undefined && live.remembered !== true,
+              line:
+                view.reply?.kind === "words"
+                  ? view.reply.text
+                  : view.reply?.kind === "live"
+                    ? view.reply.words
+                    : undefined,
             };
           }),
         )
@@ -1374,7 +1405,16 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       <>
         {renderHeader({
           chips,
-          faces: headingMates.length === 0 ? null : <HeadingFaces faces={headingMates} />,
+          faces:
+            headingMates.length === 0 ? null : (
+              <HeadingFaces
+                faces={headingMates}
+                onOpen={(projectId) => {
+                  const entry = mateEntries.find(({ item }) => item.project.id === projectId);
+                  if (entry !== undefined) onSelect(entry.item);
+                }}
+              />
+            ),
           line,
           openStop,
         })}
@@ -1555,16 +1595,21 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   );
   // Folded as its person left it, else folded among six or more projects with Mates
   // (`projectFolded`): a project of stages alone has no rows to fold, and does not count.
-  const projectsWithMates = groups.filter(
-    ({ group, environments }) =>
-      environments.some(({ item }) => hasMate(item)) ||
-      group.pending.some((member) => member.kind === "mate"),
-  ).length;
+  const withMates = groups
+    .filter(
+      ({ group, environments }) =>
+        environments.some(({ item }) => hasMate(item)) ||
+        group.pending.some((member) => member.kind === "mate"),
+    )
+    .map(({ group }) => group.groupId);
+  const projectsWithMates = withMates.length;
   const collapsed: ReadonlySet<string> = new Set(
     groups
       .map(({ group }) => group.groupId)
       .filter((groupId) => projectFolded(projectFolds, groupId, projectsWithMates)),
   );
+  foldable.current = withMates;
+  anyOpen.current = withMates.length === 0 ? null : withMates.some((id) => !collapsed.has(id));
   const ungrouped = view.ungrouped.map((item) => ({ item, role: undefined }));
   const ungroupedMates = ungrouped.some(({ item }) => hasMate(item) && (shown?.(item) ?? true));
   mateOrder.current = [
@@ -2076,6 +2121,8 @@ export function ProjectHeader({
   readonly openStop?: ((projectId: string) => (() => void) | undefined) | undefined;
 }) {
   const placeholder = group !== undefined && groupNameUnread(group);
+  const headingRow = useRef<HTMLDivElement>(null);
+  useHeadingFit(headingRow);
   const { line: secondLine, landing } = useHeadingLine(line);
   const pillMotion = headingPillMotion(line, landing);
   const title = group?.name ?? name ?? "";
@@ -2122,6 +2169,7 @@ export function ProjectHeader({
         )}
         data-collapsed={collapsed ? "true" : undefined}
         data-zerops-surface="sidebar-project"
+        ref={headingRow}
       >
         {onToggle === undefined ? (
           <span
@@ -2146,10 +2194,12 @@ export function ProjectHeader({
               {title}
             </span>
             {/* It folds: a chevron that always says so, a quarter turn down while open (the owner,
-                2026-10-11: "why is there no chevron … indicating the project can be toggled"). */}
+                2026-10-11: "why is there no chevron … indicating the project can be toggled"). Its
+                glyph stands as far from the name as from what follows (the owner, 2026-10-12: "equal
+                space between chevron and mates"): its box's trailing 6 px of air taken back. */}
             <ChevronRightIcon
               aria-hidden="true"
-              className="zerops-project-chevron ms-1 size-4 shrink-0 text-sidebar-muted-foreground"
+              className="zerops-project-chevron ms-1 -me-1.5 size-4 shrink-0 text-sidebar-muted-foreground"
             />
           </button>
         )}
@@ -2241,14 +2291,18 @@ const HEADING_FACE_WORDS: Record<HeadingFaceDot | "working", string> = {
   working: "is working",
 };
 
+/** A face's state in words, where it has one. */
+function headingFaceState(face: HeadingFace): string | undefined {
+  return face.dot !== undefined
+    ? HEADING_FACE_WORDS[face.dot]
+    : face.face === "working"
+      ? HEADING_FACE_WORDS.working
+      : undefined;
+}
+
 /** A face's words: its name, and its state's where it has one. */
 function headingFaceWords(face: HeadingFace): string {
-  const state =
-    face.dot !== undefined
-      ? HEADING_FACE_WORDS[face.dot]
-      : face.face === "working"
-        ? HEADING_FACE_WORDS.working
-        : undefined;
+  const state = headingFaceState(face);
   return state === undefined ? face.name : `${face.name} ${state}`;
 }
 
@@ -2265,18 +2319,55 @@ function StopDemand({ projectId }: { readonly projectId: string }) {
  * The faces of a folded project's Mates (M15), after its title: 20 px, each its row's face in its
  * row's pose — turning while it works, hopping when it needs you, still where it stopped on an
  * error — with a 7 px dot at its corner for what is not work, cut out of the menu's ground: amber
- * needs you, blue finished unseen, red stopped on an error. Past four, how many more.
+ * needs you, blue finished unseen, red stopped on an error. Past four, how many more. Each opens
+ * its Mate, and says on hover who it is, what it is doing and its last line (the owner,
+ * 2026-10-12: "the mates have no advanced tooltip, they are not clickable").
  */
-function HeadingFaces({ faces }: { readonly faces: ReadonlyArray<HeadingFace> }) {
+function HeadingFaces({
+  faces,
+  onOpen,
+}: {
+  readonly faces: ReadonlyArray<HeadingFace>;
+  readonly onOpen: (projectId: string) => void;
+}) {
   const shown = faces.slice(0, HEADING_FACES);
   const more = faces.length - shown.length;
   return (
     <span
-      className="ms-1.5 flex shrink-0 items-center gap-1"
+      className="relative z-1 flex shrink-0 items-center gap-0.5"
       data-zerops-surface="sidebar-project-faces"
     >
       {shown.map((face) => (
-        <HeadingFaceMark face={face} key={face.projectId} />
+        <Tooltip key={face.projectId}>
+          <TooltipTrigger
+            render={
+              <button
+                aria-label={`Open ${headingFaceWords(face)}`}
+                className="menu-heading-face"
+                data-zerops-surface="sidebar-project-face"
+                onClick={() => {
+                  onOpen(face.projectId);
+                }}
+                type="button"
+              />
+            }
+          >
+            <HeadingFaceMark face={face} />
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">
+            <span className="menu-face-tip">
+              <span className="menu-face-tip-head">
+                <span className="menu-face-tip-name">{face.name}</span>
+                {headingFaceState(face) === undefined ? null : (
+                  <span className="menu-face-tip-state">{headingFaceState(face)}</span>
+                )}
+              </span>
+              {face.line === undefined ? null : (
+                <span className="menu-face-tip-line">{face.line}</span>
+              )}
+            </span>
+          </TooltipPopup>
+        </Tooltip>
       ))}
       {more > 0 ? (
         <span aria-hidden="true" className="text-xs text-sidebar-muted-foreground tabular-nums">
@@ -2460,8 +2551,8 @@ const ROW_ACTION_CLASS =
   "inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
 
 /** A heading's verbs, + and ⋯: 28 px, a row's hover behind them, muted until pointed at. */
-const HEADING_ACTION_CLASS =
-  "inline-flex size-7 cursor-pointer items-center justify-center rounded-md text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-hover data-popup-open:text-sidebar-foreground";
+/** A heading's verb: a quiet 28 px square, its press felt and its menu's open state held. */
+const HEADING_ACTION_CLASS = "menu-heading-action";
 
 /**
  * A Mate and its crew's line, one thing in the menu (the owner, 2026-09-29:
