@@ -16,6 +16,7 @@ import {
   mateFinishingView,
   mateOwnerView,
   mateNotYours,
+  mateRowHeldLines,
   mateRowAskOver,
   mateRowPropsEqual,
   mateRowSecond,
@@ -1925,5 +1926,40 @@ describe("mateRowAskOver — what was asked, over a row's answer", () => {
     },
   ] as const)("says it $case", ({ askLine, second, over }) => {
     expect(mateRowAskOver(askLine, second)).toEqual(over);
+  });
+});
+
+// A reload paints a row before its Mate's conversations are read: its question's and answer's
+// lines are held empty until what is read lands in them, so the rows under it never move (they
+// moved 12 px at 0.5–0.75 s).
+describe("mateRowHeldLines — the lines a row holds while a reload reads it", () => {
+  const answer = { kind: "reply", tone: "muted" } as const;
+  const nothing = { kind: "none" } as const;
+  it.each([
+    {
+      case: "an answer remembered, its question not read yet",
+      askLine: undefined,
+      second: answer,
+      read: false,
+      held: 1,
+    },
+    { case: "nothing known yet", askLine: undefined, second: nothing, read: false, held: 2 },
+    { case: "its conversations read", askLine: undefined, second: answer, read: true, held: 0 },
+    {
+      case: "its question known",
+      askLine: { kind: "ask", text: "Add a search box" } as const,
+      second: answer,
+      read: false,
+      held: 0,
+    },
+    {
+      case: "a Mate still coming up",
+      askLine: undefined,
+      second: { kind: "coming" } as const,
+      read: false,
+      held: 0,
+    },
+  ])("holds $held for $case", ({ askLine, second, read, held }) => {
+    expect(mateRowHeldLines({ askLine, second, read })).toBe(held);
   });
 });

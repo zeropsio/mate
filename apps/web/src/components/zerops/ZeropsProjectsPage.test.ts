@@ -21,6 +21,7 @@ import {
   declaredEnvironmentSummary,
   hasNoZeropsProject,
   projectsGroupLine,
+  projectsFreshnessNotice,
   projectsListingNotice,
   projectsTroubleView,
   readContainerAfter,
@@ -712,4 +713,44 @@ it("Decision: the owner asked for the review and its fixes; existing flows are r
   // Find is the menu's search (⌘K) since the round-5 overview: the title row keeps New project.
   expect(html).toContain(">Overview<");
   expect(html).toContain(">New project<");
+});
+
+describe("the overview's freshness", () => {
+  const known = (
+    freshness: Extract<Known<ReadonlyArray<ZeropsCandidate>>, { state: "known" }>["freshness"],
+  ): Known<ReadonlyArray<ZeropsCandidate>> => ({
+    state: "known",
+    value: [],
+    asOf: { ordinal: 1, atMs: 10 },
+    coverage: "complete",
+    freshness,
+  });
+
+  // Syncing is a small spinner on the title's row, never a line over the cards that pushes them
+  // down while it stands and up when it goes (the cards jumped 40 px on every load).
+  it.each([
+    {
+      name: "a list being read again says Updating… on the title's row",
+      listing: known({ kind: "revalidating", sinceMs: 5 }),
+      says: "Updating…",
+    },
+    {
+      name: "a list read and current says nothing there",
+      listing: known({ kind: "live" }),
+      says: null,
+    },
+    {
+      name: "a list not read yet says nothing there: the page's own wait line says it",
+      listing: { state: "reading" as const, sinceMs: 0, attempt: 1 },
+      says: null,
+    },
+  ])("$name", ({ listing, says }) => {
+    expect(projectsFreshnessNotice(listing, 1000)?.message.text ?? null).toBe(says);
+  });
+
+  it("draws the list's freshness on the title's row, between the title and New project", () => {
+    const notice = projectsFreshnessNotice(known({ kind: "revalidating", sinceMs: 5 }), 1000);
+    const html = renderToStaticMarkup(createElement(ZeropsProjectsHeader, { notice }));
+    expect(html).toMatch(/>Overview<.*Updating….*>New project</su);
+  });
 });

@@ -245,6 +245,7 @@ import {
   mateRowDraft,
   mateRowPropsEqual,
   mateRowReading,
+  mateRowHeldLines,
   mateRowAskOver,
   mateRowSecond,
   pendingBornLine,
@@ -2760,6 +2761,7 @@ function MateRowView<T extends RosterCandidate>({
     change: undefined,
   });
   const askOver = mateRowAskOver(askLine, second);
+  const heldLines = mateRowHeldLines({ askLine, second, read: conversationsRead });
   // Its change's *Review*, in the time's place: white where it waits on the viewer, quiet where
   // it is a colleague's to review.
   const review =
@@ -3059,6 +3061,9 @@ function MateRowView<T extends RosterCandidate>({
               as the conversation's own top says the question. A row whose line is the ask
               itself — nothing answered yet, a draft — says it once, below. */}
           {askOver === undefined ? null : <MateAskLine line={askOver} rises={askChanged} />}
+          {Array.from({ length: heldLines }, (_, line) => (
+            <span aria-hidden="true" className="menu-line2 h-5" key={line} />
+          ))}
           <MateSecondLine
             askChanged={askChanged}
             askLine={askLine}
