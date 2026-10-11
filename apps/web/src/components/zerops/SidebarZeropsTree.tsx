@@ -214,6 +214,7 @@ import {
 } from "./SidebarProjects.logic";
 import { SidebarProductionChip, SidebarRoad } from "./SidebarProductionChip";
 import { projectRoad } from "./SidebarRoad.logic";
+import { useHeadingFit } from "./headingFit";
 import {
   buildingOf,
   asLastKnown,
@@ -2120,6 +2121,8 @@ export function ProjectHeader({
   readonly openStop?: ((projectId: string) => (() => void) | undefined) | undefined;
 }) {
   const placeholder = group !== undefined && groupNameUnread(group);
+  const headingRow = useRef<HTMLDivElement>(null);
+  useHeadingFit(headingRow);
   const { line: secondLine, landing } = useHeadingLine(line);
   const pillMotion = headingPillMotion(line, landing);
   const title = group?.name ?? name ?? "";
@@ -2166,6 +2169,7 @@ export function ProjectHeader({
         )}
         data-collapsed={collapsed ? "true" : undefined}
         data-zerops-surface="sidebar-project"
+        ref={headingRow}
       >
         {onToggle === undefined ? (
           <span

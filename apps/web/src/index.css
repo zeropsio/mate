@@ -3656,27 +3656,23 @@ code {
 }
 
 /* A heading narrower than its name, road and faces (the owner, 2026-10-12: "this has no handling
-   when the left column is too small"): the road gives way first, never the name — the stage's
-   word under 300 px, then the faces and, where something rides the way, production's word under
-   240 px, what rides it staying to the last. */
-[data-zerops-surface="sidebar-project"] {
-  container: project-heading / inline-size;
-}
-
-@container project-heading (max-width: 300px) {
-  .zerops-road > :first-child:not(.zerops-road-way):not(:last-child),
-  .zerops-road-way > .zerops-road-line:first-child,
-  .zerops-road-way[data-bare] {
-    display: none;
-  }
-}
-
-@container project-heading (max-width: 240px) {
+   when the left column is too small"): `headingFit.ts` steps what rides after the name aside, never
+   the name — the stage and the way's lead, then the faces, then, where something rides the way,
+   production — what rides the way staying to the last. */
+[data-zerops-surface="sidebar-project"][data-fit]
+  .zerops-road
+  > :first-child:not(.zerops-road-way):not(:last-child),
+[data-zerops-surface="sidebar-project"][data-fit] .zerops-road-way > .zerops-road-line:first-child,
+[data-zerops-surface="sidebar-project"][data-fit] .zerops-road-way[data-bare],
+[data-zerops-surface="sidebar-project"]:is([data-fit="2"], [data-fit="3"])
   [data-zerops-surface="sidebar-project-faces"],
-  .zerops-road:has(.zerops-road-way:not([data-bare])) > :last-child:not(.zerops-road-way),
-  .zerops-road-way:not([data-bare]) > .zerops-road-arrow {
-    display: none;
-  }
+[data-zerops-surface="sidebar-project"][data-fit="3"]
+  .zerops-road:has(.zerops-road-way:not([data-bare]))
+  > :last-child:not(.zerops-road-way),
+[data-zerops-surface="sidebar-project"][data-fit="3"]
+  .zerops-road-way:not([data-bare])
+  > .zerops-road-arrow {
+  display: none;
 }
 
 /* A heading's verbs — its grip and its ⋯ — quiet 28 px squares whose hover, press and open
