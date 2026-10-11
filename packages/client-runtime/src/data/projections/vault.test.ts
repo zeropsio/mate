@@ -245,6 +245,18 @@ describe("vault", () => {
     { name: "nothing answered", view: () => viewOf(base), status: "unread" },
     { name: "Shared alone answered", view: () => viewOf(base, sharedAnswer), status: "unread" },
     { name: "both answered", view: () => ready, status: "ready" },
+    // Milo, 2026-10-11: the Vault said "No values yet." for 620 ms on a reload, every value an
+    // app's own, before the organization's services had been read to place them.
+    {
+      name: "both answered before the organization's services were read",
+      view: () =>
+        viewOf(
+          [...liveZerops({ running: [] }), ...historyAnswer(PROCESSES)],
+          sharedAnswer,
+          servicesAnswer,
+        ),
+      status: "unread",
+    },
     {
       name: "a read refused, though both answered once",
       view: () => viewOf(base, sharedAnswer, servicesAnswer, [refused(SERVICES_SCOPE)]),
