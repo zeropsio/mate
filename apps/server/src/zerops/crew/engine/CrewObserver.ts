@@ -11,8 +11,9 @@
  * - **A deploy** the Mate's conversation shows (`zerops_deploy` onto a service) is told as
  *   `Deploy` before the batch that holds it, so a crash between the two tells it again; the crew
  *   freezes a host once.
- * - **Gauges**, the two reads allowed off the bus: a login's fullest usage window (`Gauge`) and a
- *   sign-in or signer that moved (`LoginsChanged`). A missed gauge is replaced by the next one.
+ * - **Gauges**, the two reads off the record: a login's fullest usage window, from its instance's
+ *   snapshot (`Gauge`, `planUsage.ts`), and a sign-in or signer that moved (`LoginsChanged`). A
+ *   missed gauge is replaced by the next one.
  *
  * @module crew/engine/CrewObserver
  */
@@ -42,7 +43,7 @@ export const OBSERVE_PAGE = 200;
 
 export interface CrewGaugeReading {
   readonly login: string;
-  readonly usagePercent: number;
+  readonly usagePercent: number | null;
 }
 
 export interface CrewObserverInputs {

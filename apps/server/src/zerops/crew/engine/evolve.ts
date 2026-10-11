@@ -148,8 +148,13 @@ const fold = (state: CrewState, event: CrewEvent): CrewState => {
       };
       return { ...state, hosts: { ...state.hosts, [event.host]: { ...host, ...event.set } } };
     }
-    case "UsageRead":
-      return { ...state, usage: { ...state.usage, [event.login]: event.percent } };
+    case "UsageRead": {
+      const usage = { ...state.usage };
+      // `null`: the login reports no usage now, so no reading stands for it.
+      if (event.percent === null) delete usage[event.login];
+      else usage[event.login] = event.percent;
+      return { ...state, usage };
+    }
     case "DeliveryRecorded": {
       const recorded = {
         ...state,

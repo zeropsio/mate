@@ -88,7 +88,7 @@ describe("crewModeLine", () => {
     ],
     [
       "stopped by the usage stop",
-      { run: at({ state: "paused", reason: "usage" }), ...QUIET },
+      { run: at({ state: "paused", reason: "usage", usagePercent: 80 }), ...QUIET },
       "Stopped working on its own: your Claude plan is at 80 %",
       "keepGoing",
     ],

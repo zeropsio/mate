@@ -11,7 +11,7 @@
  *
  * Every step maps to what the engine sees: a crewmate's turn is a run of its conversation, ended
  * by its driver's `turn.completed`; a tool is a crew command under the run's principal; a deploy is
- * a `zerops_deploy` call in the Mate's own conversation; the platform's gauges come off the bus.
+ * a `zerops_deploy` call in the Mate's own conversation; the plan's usage is a registry snapshot.
  * What the crew sent is read back from its deliveries.
  *
  * @module crewEngineWorld
@@ -27,6 +27,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -39,6 +40,7 @@ import {
   ThreadId,
   type ChatAttachment,
   type CrewSnapshot,
+  type ServerProvider,
 } from "@t3tools/contracts";
 
 import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
@@ -762,13 +764,23 @@ const enginePort = (input: {
             Effect.andThen(deployCall("inProgress", options.opens ?? "item.started")),
           ),
     deployState: (processes) => Ref.set(fx.processes, processes),
-    usage: (usedPercent) =>
-      provider.agent.emit("account.rate-limits.updated", "a-person-thread", {
-        providerInstanceId: ProviderInstanceId.make("claudeAgent"),
-        payload: {
-          limits: { windows: [{ id: "session", kind: "session", label: "Session", usedPercent }] },
+    // The plan's usage as the registry's snapshot of the login holds it, the bars the person sees.
+    usage: (usedPercent) => {
+      const providers = [
+        {
+          instanceId: ProviderInstanceId.make("claudeAgent"),
+          usageLimits: {
+            checkedAt: "2026-10-11T08:19:48.000Z",
+            windows: [{ id: "five_hour", kind: "session", label: "Session", usedPercent }],
+          },
         },
-      }),
+        // Only the fields the crew reads; the rest of a snapshot is the registry's.
+      ] as unknown as ReadonlyArray<ServerProvider>;
+      return Ref.set(fx.providers, providers).pipe(
+        Effect.andThen(PubSub.publish(fx.providerChanges, providers)),
+        Effect.asVoid,
+      );
+    },
     signedIn: (login) =>
       typeof login === "string"
         ? login === "claude-code"

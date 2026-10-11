@@ -102,7 +102,7 @@ export type CrewInput =
     }
   | { readonly _tag: "Deploy"; readonly host: string; readonly phase: DeployPhase }
   /** A login's fullest usage window, from its rate-limit report: a gauge, never an outcome. */
-  | { readonly _tag: "Gauge"; readonly login: string; readonly usagePercent: number }
+  | { readonly _tag: "Gauge"; readonly login: string; readonly usagePercent: number | null }
   /** These logins' sign-in or signer changed: a start admission refused may go now. */
   | { readonly _tag: "LoginsChanged"; readonly logins: ReadonlyArray<string> }
   | { readonly _tag: "WakeFired"; readonly wakeId: WakeId }

@@ -70,7 +70,6 @@ import { OwnerDomains } from "../../../engine/owners.ts";
 import { WorkspaceUnavailable, type WorkspaceSetup } from "../../../engine/ports.ts";
 import { ClaudeThreadExtensionRegistry } from "../../../spi/claudeThreadProfile.ts";
 import { ProviderInstances } from "../../../spi/providerInstances.ts";
-import { ProviderRuntimeEventBus } from "../../../spi/ProviderRuntimeEventBus.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
 import { ZeropsAgentAuth } from "../../ZeropsAgentAuth.ts";
 import { withLogins, ZeropsLogins } from "../../ZeropsLogins.ts";
@@ -100,6 +99,7 @@ import { doorLogins, filesDoorLogins, noDevServerWords } from "./decide.ts";
 import { CrewDelivery } from "./effects/deliver.ts";
 import { makeCrewEngineEffectHandlers } from "./CrewEffectBridge.ts";
 import { importV1Crew } from "./importV1Crew.ts";
+import { movedPlanUsage } from "./planUsage.ts";
 import {
   crewFrameContent,
   crewSnapshotOf,
@@ -324,7 +324,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     const agentAuth = yield* ZeropsAgentAuth;
     const policies = yield* ThreadToolPolicyRegistry;
     const extensions = yield* ClaudeThreadExtensionRegistry;
-    const bus = yield* Effect.serviceOption(ProviderRuntimeEventBus);
+    const toldUsage = new Map<string, number | null>();
     const scope = yield* Effect.scope;
 
     const state = door.state(CREW_OWNER_ID).pipe(Effect.orDie);
@@ -1175,26 +1175,14 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       conversations: Effect.map(engine.conversations, (list) =>
         list.views.map((view) => view.conversationId),
       ),
-      gauges: Option.match(bus, {
-        onNone: () => Stream.empty,
-        onSome: (live) =>
-          live.events.pipe(
-            Stream.map((event) => {
-              if (event.type !== "account.rate-limits.updated") return undefined;
-              const login = event.providerInstanceId;
-              const windows = event.payload.limits.windows.map((window) => window.usedPercent);
-              if (
-                login === undefined ||
-                (windows.length === 0 && event.payload.blocked === undefined)
-              ) {
-                return undefined;
-              }
-              const percent = event.payload.blocked !== undefined ? 100 : Math.max(0, ...windows);
-              return { login: login as string, usagePercent: percent };
-            }),
-            Stream.filter((reading) => reading !== undefined),
-          ),
-      }),
+      // The plan's usage as the person sees it, from each instance's snapshot: read at start and
+      // again whenever a snapshot moves, each login told only when its reading moved (planUsage).
+      gauges: Stream.concat(Stream.fromEffect(instances.providers), instances.changes).pipe(
+        Stream.mapEffect((providers) =>
+          Effect.map(Clock.currentTimeMillis, (now) => movedPlanUsage(providers, now, toldUsage)),
+        ),
+        Stream.flatMap((readings) => Stream.fromIterable(readings)),
+      ),
       signIns: Stream.merge(
         logins.changes,
         Stream.map(agentAuth.changes, (snapshot) => withLogins(snapshot, []).logins ?? []),

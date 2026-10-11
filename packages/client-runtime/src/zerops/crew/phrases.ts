@@ -137,7 +137,7 @@ export function crewStoppedWords(
         : `${why}. It spent ${dollars(run.spentUsd, true)}.`;
     }
     case "usage": {
-      const percent = stopAtUsagePercent ?? Math.round(run.usagePercent ?? 0);
+      const percent = Math.round(run.usagePercent ?? stopAtUsagePercent ?? 0);
       return `${STOPPED}: your Claude plan is at ${percent} %`;
     }
     case "refused":

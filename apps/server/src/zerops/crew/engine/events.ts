@@ -86,7 +86,7 @@ export type CrewDomainEventDraft =
   | { readonly _tag: "LeadUpdated"; readonly set: Partial<LeadRecord> }
   | { readonly _tag: "ClaimUpdated"; readonly host: string; readonly claim: ClaimRecord | null }
   | { readonly _tag: "HostUpdated"; readonly host: string; readonly set: Partial<HostRecord> }
-  | { readonly _tag: "UsageRead"; readonly login: string; readonly percent: number }
+  | { readonly _tag: "UsageRead"; readonly login: string; readonly percent: number | null }
   | {
       readonly _tag: "EffectAsked";
       readonly effectId: EffectId;
