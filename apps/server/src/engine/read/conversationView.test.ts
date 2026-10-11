@@ -434,3 +434,52 @@ describe("the crew's door into a conversation", () => {
     ),
   );
 });
+
+// Milo's run 9 (0.15.38): the value it asked for, end to end on the engine; the row of each commit
+// between the answer and the wake is the menu row's to pin (`conversationRow.test.ts`).
+describe("a conversation's row as a request is answered", () => {
+  const revision = { environmentId: "env", epoch: 1 };
+  const rowState = (w: Effect.Success<typeof world>) =>
+    Effect.map(viewOf(w), (view) => conversationRowOf(view!, revision).state.kind);
+  const askValue = (w: Effect.Success<typeof world>) =>
+    w.agent((agent, thread) =>
+      agent.zerops(
+        thread,
+        "zerops_env",
+        { action: "request" },
+        "request STRIPE_SECRET_KEY",
+        JSON.stringify({
+          requested: { key: "STRIPE_SECRET_KEY", scope: "shared", sensitive: true },
+          nextActions: "Now waiting on the person.",
+        }),
+      ),
+    );
+  it.effect.each([
+    { request: "a value saved", outcome: "saved" },
+    { request: "a value declined", outcome: "declined" },
+  ] as const)(
+    "a value the person answers wakes the agent, its row waiting until then and working after: $request",
+    ({ outcome }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          yield* w.tell({ _tag: "Send", text: "Wire up Stripe" });
+          yield* askValue(w);
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const asked = (yield* w.requests).find((request) => request.state === "open");
+          const before = yield* rowState(w);
+          yield* w.tell({
+            _tag: "Answer",
+            requestId: asked!.request_id as never,
+            answer: { outcome },
+            summary: outcome,
+          });
+          const answered = yield* rowState(w);
+          yield* w.settle;
+          const woken = yield* rowState(w);
+          assert.deepStrictEqual([before, answered, woken], ["waiting", "working", "working"]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+});

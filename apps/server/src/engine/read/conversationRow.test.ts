@@ -239,6 +239,56 @@ describe("the menu row", () => {
   });
 });
 
+// Milo's run 9 (0.15.38): saving a value took both faces needs → done → idle → working, a step per
+// commit. The answer's own commit arms the wake that tells the agent, due at once, so it is work.
+describe("the menu row as a request is answered", () => {
+  const answered = ended(1, { kind: "completed" });
+  it.each([
+    {
+      request: "a value saved",
+      commits: [
+        view({ lastEnded: answered, openRequests: [request(stripeAsk)] }),
+        view({ lastEnded: answered, runDue: true }),
+        view({ lastEnded: answered, activeRun: run(2) }),
+      ],
+    },
+    {
+      request: "a value declined",
+      commits: [
+        view({ lastEnded: answered, openRequests: [request(stripeAsk)] }),
+        view({ lastEnded: answered, runDue: true }),
+        view({ lastEnded: answered, activeRun: run(2) }),
+      ],
+    },
+    {
+      request: "a question answered",
+      commits: [
+        view({
+          activeRun: run(1, { state: "waiting" }),
+          openRequests: [
+            request({
+              kind: "question",
+              questions: [{ question: "Which region?" }],
+              dismissible: false,
+            }),
+          ],
+        }),
+        view({ activeRun: run(1, { state: "waiting" }) }),
+        view({ activeRun: run(1) }),
+      ],
+    },
+  ])(
+    "answering a request takes the row from waiting straight to working, never through idle: $request",
+    ({ commits }) => {
+      expect(commits.map((each) => conversationRowOf(each, revision).state.kind)).toEqual([
+        "waiting",
+        "working",
+        "working",
+      ]);
+    },
+  );
+});
+
 describe("a run a restart cut", () => {
   const cut = (patch: Partial<Extract<RunEnd, { kind: "cut-by-restart" }>> = {}) => ({
     kind: "cut-by-restart" as const,
