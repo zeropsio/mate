@@ -267,7 +267,7 @@ export function ProjectGrip({
   return (
     <button
       aria-label={`Move ${name}: drag, or use the arrow keys`}
-      className="inline-flex size-7 cursor-grab touch-none items-center justify-center rounded-md text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+      className="menu-heading-action cursor-grab touch-none active:cursor-grabbing"
       data-zerops-grip={groupId}
       data-zerops-surface="sidebar-project-grip"
       onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {

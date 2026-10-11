@@ -79,6 +79,8 @@ export interface HeadingFace {
   readonly dot: HeadingFaceDot | undefined;
   /** Its state is read, not what this browser remembered: only then is a change an arrival. */
   readonly known: boolean;
+  /** Its row's line — its last words, or the step it is on — said in its tooltip. */
+  readonly line?: string | undefined;
 }
 
 /**
@@ -114,6 +116,7 @@ export function headingFaces(
     readonly face: MateMarkState;
     readonly dot: HeadingFaceDot | undefined;
     readonly known: boolean;
+    readonly line?: string | undefined;
   }>,
 ): ReadonlyArray<HeadingFace> {
   const rank = (mate: (typeof mates)[number]) =>

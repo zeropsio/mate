@@ -53,18 +53,18 @@ describe("projectRoad — a project's stage ─▸ prod after its name", () => {
       road: ["stage", "solid", "", "prod"],
     },
     {
-      case: "changes wait and the release is offered: N ready, white, on the way",
+      case: "changes wait and the release is offered: Release N, solid blue, on the way",
       over: {
         waiting: 3,
         releaseOffered: true,
         prod: prod("waiting", { version: "v2.3.1", waiting: 3 }),
       },
-      road: ["stage", "solid", "3 ready", "prod"],
+      road: ["stage", "solid", "Release 3", "prod"],
     },
     {
       case: "more than HQ counts",
       over: { waiting: 10000, waitingAtLeast: true, releaseOffered: true },
-      road: ["stage", "solid", "10000+ ready", "prod"],
+      road: ["stage", "solid", "Release 10000+", "prod"],
     },
     {
       case: "changes wait and the release is not offered: N waiting, grey",
@@ -74,7 +74,7 @@ describe("projectRoad — a project's stage ─▸ prod after its name", () => {
     {
       case: "a failed release beside a release offered: ready, prod amber (D28: the fix mends it)",
       over: { waiting: 2, releaseOffered: true, prod: prod("failed", { version: "v1.8.2" }) },
-      road: ["stage", "solid", "2 ready", "prod:amber"],
+      road: ["stage", "solid", "Release 2", "prod:amber"],
     },
     {
       case: "a release on its way: blue, its version on the way",
@@ -113,7 +113,7 @@ describe("projectRoad — a project's stage ─▸ prod after its name", () => {
     {
       case: "nothing released yet: dim, and the release still offered",
       over: { prod: prod("empty"), waiting: 4, releaseOffered: true },
-      road: ["stage", "solid", "4 ready", "prod:off"],
+      road: ["stage", "solid", "Release 4", "prod:off"],
     },
     {
       case: "no production: a dashed way and prod dimmed",
