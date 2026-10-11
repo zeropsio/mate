@@ -1671,6 +1671,52 @@ describe("owner-reported layout regressions", () => {
         );
       });
     });
+    describe("Decision: the end is where the list stops; a step short of it is the person's.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // The owner (2026-10-12): "at this scroll (like 100px from bottom), a single tiny scroll to
+        // bottom causes it to jump to bottom".
+        it.effect(
+          "a small step down short of the end moves the list by that step, never to its end",
+          () =>
+            Effect.gen(function* () {
+              const { s } = yield* composerLayout("plain");
+              yield* Effect.promise(() => ownerMenu(s.page));
+              const short = () =>
+                s.page.evaluate(() => {
+                  const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                  return list.scrollHeight - list.clientHeight - list.scrollTop;
+                });
+              const settle = () =>
+                s.page.evaluate(
+                  () =>
+                    new Promise((done) => {
+                      setTimeout(done, 600);
+                    }),
+                );
+              const list = (yield* Effect.promise(() => s.page.$(".timeline-legend-list")))!;
+              const box = (yield* Effect.promise(() => list.boundingBox()))!;
+              yield* Effect.promise(async () => {
+                await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
+                await s.page.mouse.wheel({ deltaY: -120 });
+                await settle();
+              });
+              const before = yield* Effect.promise(short);
+              yield* Effect.promise(async () => {
+                await s.page.mouse.wheel({ deltaY: 10 });
+                await settle();
+              });
+              const after = yield* Effect.promise(short);
+              const seen = quoted({ before, after });
+              expect(before, `ASSERTION: the step up left the end: ${seen}`).toBeGreaterThan(60);
+              expect(
+                after,
+                `ASSERTION: the step down moved the list by itself, short of the end: ${seen}`,
+              ).toBeGreaterThan(before - 30);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+      });
+    });
     describe("Decision: a calm notice is one quiet line on the composer; no room is held above it.", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         // The owner (2026-10-12): "this stacking looks absolute shit + there is extra space on top".

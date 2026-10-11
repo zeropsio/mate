@@ -4644,7 +4644,7 @@ export default function ChatView(props: ChatViewProps) {
       // The re-arm band, not the strict flag: streaming growth makes isAtEnd
       // flicker false for a frame before the follow scroll catches up.
       const viewportIsAwayFromEnd = () =>
-        resolveTimelineIsAtEnd(legendListRef.current?.getState(), composerOverlayHeight) === false;
+        resolveTimelineIsAtEnd(legendListRef.current?.getState()) === false;
       switch (input.kind) {
         // Up is a leave; down far above the end comes back only through the
         // scroll it makes.
@@ -4662,9 +4662,7 @@ export default function ChatView(props: ChatViewProps) {
             !following &&
             nextTimelineFollow(following, {
               type: "toward-end-input",
-              inEndBand:
-                resolveTimelineIsAtEnd(legendListRef.current?.getState(), composerOverlayHeight) ===
-                true,
+              inEndBand: resolveTimelineIsAtEnd(legendListRef.current?.getState()) === true,
             })
           )
             resumeTimelineFollow();
@@ -4683,12 +4681,7 @@ export default function ChatView(props: ChatViewProps) {
           return;
       }
     },
-    [
-      composerOverlayHeight,
-      leaveTimelineFollow,
-      resumeTimelineFollow,
-      timelineRealContentOverflowsViewport,
-    ],
+    [leaveTimelineFollow, resumeTimelineFollow, timelineRealContentOverflowsViewport],
   );
 
   const onTimelineAnchorReady = useCallback((messageId: MessageId, anchorIndex: number) => {
