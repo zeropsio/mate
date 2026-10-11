@@ -256,6 +256,8 @@ import {
 import { releaseFailureOf } from "./zerops/SidebarProductionChip.logic";
 import { useMatesActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
+import { useHqMatesRead } from "../zerops/useHqMatesRead";
+import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
@@ -1769,6 +1771,9 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
   );
 });
 
+/** How long the menu's rows wait for HQ to say what waits on the viewer before they stand without it. */
+const MENU_WAITS_PATIENCE_MS = 800;
+
 /** How the menu's Mate tree names the listing it is drawn from. */
 const ZEROPS_SIDEBAR_SURFACE = {
   subject: "your projects",
@@ -2493,6 +2498,36 @@ export default function Sidebar() {
     enabled: zeropsSignedIn,
     releases: zeropsWaitingReleases,
   });
+  // The menu's list and what waits on the viewer come in one frame as the menu first paints: the
+  // list holds its loading rows until rows of its own are there and HQ's navigation, which says
+  // what waits, has settled (HQ down, or no HQ, settles it too). A list painted first was pushed
+  // down 74 px when the Waiting on you row came, half a second in. Where HQ is slower than the
+  // list, the list stands after `MENU_WAITS_PATIENCE_MS` without it; once it stands, it never
+  // waits again.
+  const zeropsHq = useHqMatesRead();
+  const zeropsHqReading = zeropsSignedIn && zeropsHq.organizationId !== null && !zeropsHq.settled;
+  const zeropsListLoading = menuDrawsLoadingRows({
+    candidates: zeropsCandidates,
+    births: zeropsPlacedBirths,
+    complete: zeropsMenuComplete,
+    reading: zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete,
+    notice: zeropsNotice,
+  });
+  const zeropsListReady = !zeropsHqReading && !zeropsListLoading;
+  const [zeropsListStood, setZeropsListStood] = useState(zeropsListReady);
+  useEffect(() => {
+    if (zeropsListReady) setZeropsListStood(true);
+  }, [zeropsListReady]);
+  useEffect(() => {
+    if (zeropsListStood || zeropsListLoading || !zeropsHqReading) return;
+    const timer = window.setTimeout(() => {
+      setZeropsListStood(true);
+    }, MENU_WAITS_PATIENCE_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [zeropsHqReading, zeropsListLoading, zeropsListStood]);
+  const zeropsListHeld = !zeropsListStood && !zeropsListReady;
   // What the Waiting on you list asks of the menu: a Mate's conversation, and its fix request.
   const zeropsWaitingVerbs = useMemo(
     () => ({
@@ -4288,11 +4323,14 @@ export default function Sidebar() {
                 headline={zeropsHeadline}
                 onOpen={navigateToZeropsProjects}
               />
-              <SidebarWaitingRow items={zeropsWaiting.items} verbs={zeropsWaitingVerbs} />
+              {zeropsListHeld ? null : (
+                <SidebarWaitingRow items={zeropsWaiting.items} verbs={zeropsWaitingVerbs} />
+              )}
             </div>
           ) : null}
           {zeropsSignedIn && !isSearchingThreads ? (
             <SidebarZeropsTree
+              hold={zeropsListHeld}
               onShowEveryone={zeropsMateScope === "mine" ? showEveryoneMates : undefined}
               activeProjectId={activeZeropsProjectId}
               activeProjectResolving={activeZeropsProjectResolving}
