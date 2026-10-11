@@ -1221,7 +1221,15 @@ export function readsAsAnswer(text: string): boolean {
   );
 }
 
-type ActivityAction = "edit" | "command" | "read" | "code-search" | "search" | "fetch" | "other";
+type ActivityAction =
+  | "edit"
+  | "command"
+  | "read"
+  | "look"
+  | "code-search"
+  | "search"
+  | "fetch"
+  | "other";
 
 /** What a run's calls did, by kind: the effort its worked line counts. */
 export type ActivityKind =
@@ -1236,6 +1244,7 @@ export const ACTIVITY_ORDER: ReadonlyArray<ActivityKind> = [
   "edit",
   "command",
   "read",
+  "look",
   "code-search",
   "search",
   "fetch",
@@ -1261,6 +1270,8 @@ const NAMED_CALL_ACTION: Readonly<Record<string, ActivityAction>> = {
 };
 
 function activityAction(entry: WorkLogEntry): ActivityAction {
+  // A picture it looked at, however it read it: its row reads "Looked at a picture".
+  if (entry.itemType === "image_view" || entry.viewedImagePath !== undefined) return "look";
   // A name the effort has a word for says what the call did; any other
   // falls to what the call is, as its step reads it (`stepKind`).
   const named = namedToolCall(entry);
@@ -1268,7 +1279,6 @@ function activityAction(entry: WorkLogEntry): ActivityAction {
   if (action !== undefined) return action;
   if (
     entry.requestKind === "file-read" ||
-    entry.itemType === "image_view" ||
     (entry.itemType === "dynamic_tool_call" && entry.toolTitle === "Read File")
   ) {
     return "read";

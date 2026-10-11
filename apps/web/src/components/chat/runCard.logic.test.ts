@@ -1517,6 +1517,12 @@ describe("cardHeadWords", () => {
       line: { kind: "starting", on: "session" },
       words: "Starting its session",
     },
+    // Recheck on 0.15.41: the head read "Saving a snapshot of the workspace" for a turn's first 4 s.
+    {
+      name: "while its workspace's snapshot is saved, which is not the person's business",
+      line: { kind: "starting", on: "workspace" },
+      words: "Working",
+    },
     { name: "once it is over", line: worked, words: "Milo worked 3m 36s" },
   ])("the card's head says what the run is $name", ({ line, words }) => {
     expect(nowLineWords(cardHeadLine(line))).toBe(words);

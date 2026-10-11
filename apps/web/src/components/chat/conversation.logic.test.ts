@@ -1079,6 +1079,19 @@ describe("activityCounts", () => {
       ],
     },
     {
+      // Recheck on 0.15.41: a picture read counted "1 file read" beside its row "Looked at a picture".
+      name: "a picture looked at counts as a picture, never a file read",
+      calls: [
+        entry({ requestKind: "file-read", viewedImagePath: "/var/www/og.png" }, true),
+        entry({ itemType: "image_view" }, true),
+        entry({ requestKind: "file-read" }, true),
+      ],
+      counts: [
+        { kind: "read", count: 1 },
+        { kind: "look", count: 2 },
+      ],
+    },
+    {
       name: "the code and the web searched",
       calls: [
         entry(
