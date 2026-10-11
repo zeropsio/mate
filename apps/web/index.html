@@ -477,9 +477,11 @@
 
       /* The first frame, kept until the app draws into #root: the sign-in's
          centred mark, or — for a browser signed in last time — the app's own
-         frame, the menu column with its mark where the menu draws it
-         (SidebarChrome's 28 x 33 at 16, 16) and a quiet page. The app's waits
-         draw their one line into #boot-shell-page (bootFrame.ts). */
+         frame, the menu column as wide as the menu will stand, with its mark
+         where the menu draws it (SidebarChrome's 40 x 48 box at 17, 16.5, in
+         its 81 px logo row) and a quiet page: nothing moves when the app takes
+         over. The app's waits draw their one line into #boot-shell-page
+         (bootFrame.ts). */
       #boot-shell {
         position: fixed;
         inset: 0;
@@ -557,11 +559,11 @@
           );
         }
 
-        /* The Overview row, first in the menu's list under its 65 px top row (SidebarOverviewRow):
+        /* The Overview row, first in the menu's list under its 81 px logo row (SidebarOverviewRow):
            its 40 px disc and its name, standing where the app draws them. */
         html[data-boot-frame="app"] #boot-shell-menu-overview {
           position: absolute;
-          top: 65px;
+          top: 81px;
           right: 8px;
           left: 9px;
           display: flex;
@@ -598,7 +600,7 @@
            preview, its rows). */
         html[data-boot-frame="app"] #boot-shell-menu-loading {
           position: absolute;
-          top: 141px;
+          top: 157px;
           right: 8px;
           left: 9px;
           display: flex;
@@ -638,17 +640,17 @@
 
         html[data-boot-frame="app"] #boot-shell-card {
           position: absolute;
-          top: 16px;
-          left: 16px;
+          top: 16.5px;
+          left: 17px;
           display: block;
-          width: 28px;
-          height: 33px;
+          width: 40px;
+          height: 48px;
         }
 
         html[data-boot-frame="app"] #boot-shell-logo {
           display: block;
-          width: 28px;
-          height: 33px;
+          width: 40px;
+          height: 48px;
         }
       }
     </style>
@@ -673,11 +675,18 @@
         const returning = /\/zerops\/authorized\/?$/i.test(window.location.pathname);
         if (!signedIn && !returning) return;
         root.dataset.bootFrame = "app";
+        // The width the person left the menu at, under their account's own key
+        // (`accountStorageKeyOf`), as the app reads it: the column never jumps.
         let stored = null;
         try {
-          const raw = JSON.parse(
-            window.localStorage.getItem("chat_thread_sidebar_width") ?? "null",
+          const owner = JSON.parse(
+            window.localStorage.getItem("zerops-mate.zerops-session-owner.v1") ?? "null",
           );
+          const key =
+            owner !== null && typeof owner.userId === "string"
+              ? `mate:account:${encodeURIComponent(owner.userId)}:chat_thread_sidebar_width`
+              : "chat_thread_sidebar_width";
+          const raw = JSON.parse(window.localStorage.getItem(key) ?? "null");
           stored = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
         } catch {
           stored = null;

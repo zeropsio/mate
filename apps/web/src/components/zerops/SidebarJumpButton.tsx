@@ -1,7 +1,7 @@
 /**
- * Search, in the menu's top row: a field of the menu's own that says "Search" and its key
- * (⌘K), filling the row between the mark and New — not a round icon copied from another app
- * (the owner, 2026-10-11).
+ * Search, in the menu's logo row: a quiet 32 px square with the magnifier, its words and its key
+ * (⌘K) in its tooltip — the row is the logo's, and a field across it was "a waste of space"
+ * (the owner, 2026-10-11), as round outlined buttons were copied from another app.
  *
  * It opens the jump box, which finds a Mate, a project, a change, a stop or
  * words in a conversation, writes to a Mate after `@`, and starts a new
@@ -16,6 +16,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 export function SidebarJumpButton({
   shortcut,
   onJump,
@@ -25,22 +27,34 @@ export function SidebarJumpButton({
   readonly onJump: () => void;
 }) {
   return (
-    <button
-      aria-keyshortcuts={shortcut === undefined ? "/" : `${ariaShortcut(shortcut)} /`}
-      aria-label="Search"
-      className="menu-search"
-      data-zerops-surface="sidebar-jump"
-      onClick={onJump}
-      type="button"
-    >
-      <SearchIcon aria-hidden="true" className="size-4 shrink-0" />
-      <span className="min-w-0 flex-1 truncate text-left">Search</span>
-      {shortcut === undefined ? null : (
-        <kbd aria-hidden="true" className="menu-search-key" data-zerops-surface="sidebar-jump-key">
-          <KeyLabel label={shortcut} />
-        </kbd>
-      )}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            aria-keyshortcuts={shortcut === undefined ? "/" : `${ariaShortcut(shortcut)} /`}
+            aria-label="Search"
+            className="menu-round-button"
+            data-zerops-surface="sidebar-jump"
+            onClick={onJump}
+            type="button"
+          />
+        }
+      >
+        <SearchIcon aria-hidden="true" className="size-4" />
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">
+        Search
+        {shortcut === undefined ? null : (
+          <kbd
+            aria-hidden="true"
+            className="menu-search-key"
+            data-zerops-surface="sidebar-jump-key"
+          >
+            <KeyLabel label={shortcut} />
+          </kbd>
+        )}
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 

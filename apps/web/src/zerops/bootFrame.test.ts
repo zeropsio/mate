@@ -2,6 +2,7 @@ import { ZEROPS_SESSION_STORAGE_KEY } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import indexHtml from "../../index.html?raw";
+import { accountStorageKeyOf } from "./accountLifetime";
 import {
   resolveInitialThreadSidebarWidth,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
@@ -144,6 +145,18 @@ describe("the boot frame", () => {
     expect(painted.menuWidth).toBe(
       `${resolveInitialThreadSidebarWidth(row.stored, row.innerWidth)}px`,
     );
+  });
+
+  // The app keeps the menu's width under the signed-in account's own key: read anywhere else, the
+  // first frame drew 304 px and the menu jumped to the person's width as the app took over.
+  it("draws the menu column at the width its person left it, under their account's own key", () => {
+    const storage: Record<string, string> = {
+      [BOOT_FRAME_STORAGE_KEY]: "app",
+      [ZEROPS_SESSION_STORAGE_KEY]: SESSION,
+      "zerops-mate.zerops-session-owner.v1": JSON.stringify({ userId: "user/1" }),
+      [accountStorageKeyOf("user/1", THREAD_SIDEBAR_WIDTH_STORAGE_KEY)]: "437",
+    };
+    expect(bootFrameOf({ storage, pathname: "/", innerWidth: 1786 }).menuWidth).toBe("437px");
   });
 
   it("paints the sign-in's mark when storage is refused, except on the way back", () => {

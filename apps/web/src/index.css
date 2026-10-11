@@ -127,6 +127,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      is a sheet over the page, and the bar keeps 52. A desktop window's bar
      is its title bar's (`.electron`, `.wco`). */
   --workspace-topbar-height: 52px;
+  /* The menu's logo row: the top bar's, except beside the page on the web (md up), where its
+     40 px mark — as wide as the Mates' faces under it, on their column — stands 17 px from the top
+     as it stands 17 px from the left: 17 + 47 + 17 (the owner, 2026-09-29: "visually logo has
+     smaller padding on top than on the left"; 2026-10-11: "cant you really see the logo is off?"). */
+  --menu-top-height: var(--workspace-topbar-height);
   --workspace-controls-top: 0px;
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
   --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
@@ -145,6 +150,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
   @variant md {
     --workspace-topbar-height: 4.0625rem;
+    --menu-top-height: 5.0625rem;
   }
 
   @variant dark {
@@ -163,10 +169,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
    the overlay's own where Windows draws one (`.wco`). */
 .electron {
   --workspace-topbar-height: 52px;
+  --menu-top-height: 52px;
 }
 
 .wco {
   --workspace-topbar-height: max(40px, env(titlebar-area-height, 52px));
+  --menu-top-height: var(--workspace-topbar-height);
   --workspace-controls-top: env(titlebar-area-y, 0px);
   --workspace-controls-left: calc(env(titlebar-area-x, 0px) + 0.75rem);
   --workspace-controls-right: calc(
@@ -4367,58 +4375,18 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
   /* The top row's controls are the menu's own (the owner, 2026-10-11: "straight up stolen from
      grok bot"): Search a field that fills the row and says its key, New beside it a square of the
      same surface — 34 px, 10 px corners, no outlined circles. */
-  .menu-search {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    align-items: center;
-    gap: 8px;
-    height: 34px;
-    padding: 0 6px 0 10px;
-    border-radius: 10px;
-    background-color: var(--sidebar-control-surface);
-    color: var(--muted-foreground);
-    font-size: 14px;
-    line-height: 20px;
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      color 150ms var(--ease-out-strong);
-  }
-
-  .menu-search:hover {
-    background-color: color-mix(in oklab, var(--sidebar-foreground) 9%, var(--sidebar));
-    color: var(--sidebar-foreground);
-  }
-
-  .menu-search:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  .menu-search-key {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 1px;
-    padding: 1px 6px;
-    border-radius: 6px;
-    box-shadow: inset 0 0 0 1px var(--sidebar-border);
-    color: var(--muted-foreground);
-    font-family: inherit;
-    font-size: 12px;
-    line-height: 16px;
-  }
-
+  /* The logo row's two verbs, search and New: quiet 32 px squares on the row's end — not a
+     field across the row, not round outlined buttons (the owner, 2026-10-11: "the huge add search
+     is a waste of space"). */
   .menu-round-button {
     display: grid;
     flex: none;
     place-items: center;
-    width: 34px;
-    height: 34px;
+    width: 32px;
+    height: 32px;
     border-radius: 10px;
-    background-color: var(--sidebar-control-surface);
-    color: var(--sidebar-foreground);
+    background-color: transparent;
+    color: var(--muted-foreground);
     cursor: pointer;
     outline: none;
     transition:
@@ -4429,8 +4397,18 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 
   .menu-round-button:hover,
   .menu-round-button[data-popup-open] {
-    background: color-mix(in oklab, var(--sidebar-foreground) 9%, var(--sidebar));
+    background: var(--sidebar-row-hover);
     color: var(--sidebar-foreground);
+  }
+
+  /* The search key, said in its tooltip: drawn modifiers and the key in the tip's own ink. */
+  .menu-search-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    margin-left: 8px;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
   }
 
   .menu-round-button:active {
