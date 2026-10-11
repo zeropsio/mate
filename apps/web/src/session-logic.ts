@@ -560,6 +560,10 @@ export function workEntryIndicatesToolNeutralStatus(entry: WorkLogEntry): boolea
   if (!workLogEntryIsToolLike(entry)) {
     return false;
   }
+  // Stopped says how it ended: its row reads so, never hidden as saying nothing.
+  if (entry.toolLifecycleStatus === "stopped") {
+    return false;
+  }
   if (workEntryIndicatesToolFailure(entry)) {
     return false;
   }

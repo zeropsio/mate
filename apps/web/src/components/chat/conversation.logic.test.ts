@@ -3320,6 +3320,21 @@ describe("tool calls in words", () => {
   ])("says %s as %j, never its arguments", (name, words) => {
     expect(toolCallWords(name)).toBe(words);
   });
+
+  // Engine recheck on 0.15.41: a wake Milo set read "Used cron create".
+  it.each([
+    [
+      'CronCreate: {"cron":"0 9 * * *","prompt":"Check the deploy","recurring":false}',
+      "Scheduling a wake for 09:00",
+    ],
+    ['CronCreate: {"cron":"30 14 * * 1-5","prompt":"Stand-up"}', "Scheduling a wake"],
+    ['CronCreate: {"cron":"*/5 * * * *","prompt":"Poll"}', "Scheduling a wake"],
+    ['CronDelete: {"id":"c1"}', "Cancelling a wake"],
+    ["CronList: {}", "Checking its wakes"],
+  ])("says a wake the Mate sets for itself in words: %s → %j", (detail, words) => {
+    const name = namedToolCall({ itemType: "dynamic_tool_call", label: "Tool call", detail })!;
+    expect(toolCallWords(name, detail)).toBe(words);
+  });
 });
 
 describe("deriveOutcome: a service's standing is the latest word on it", () => {

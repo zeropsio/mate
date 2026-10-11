@@ -609,3 +609,18 @@ it("preserves a named, dated Claude refusal while history is opening", async () 
     vi.unstubAllGlobals();
   }
 });
+
+// Engine recheck on 0.15.41: a reload read "The Mate is opening the conversation." for 0.4 s,
+// then "Milo is opening…": a name it took back.
+it("with nothing remembered, the opening stage holds its place without a name", async () => {
+  const { host, show, close } = await opening();
+  try {
+    await show(false, "link", true, "main", true, undefined, "");
+    expect(host.textContent).toContain("Opening the conversation.");
+    expect(host.textContent).not.toContain("The Mate");
+    await show(false, "link", true, "main", true, undefined, "Milo");
+    expect(host.textContent).toContain("Milo is opening the conversation.");
+  } finally {
+    await close();
+  }
+});

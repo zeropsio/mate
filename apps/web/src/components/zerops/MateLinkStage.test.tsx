@@ -80,8 +80,8 @@ describe("MateOpeningView: a conversation's page lands when its Mate is known, n
     [
       "who lives here unknown: the header's place held empty, the line unnamed, the composer in",
       { kind: "unknown" },
-      ["<header></header>", "The Mate is opening the conversation.", "data-stand-in"],
-      ["Quill"],
+      ["<header></header>", "Opening the conversation.", "data-stand-in"],
+      ["Quill", "The Mate"],
     ],
     [
       "the directory names the Mate: its face and name, its own line",
