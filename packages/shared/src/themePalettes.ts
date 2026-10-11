@@ -94,14 +94,14 @@ export const ZEROPS_THEME: ThemeDefinition = {
   label: "Zerops",
   appearance: "light",
   colors: {
-    canvas: "oklch(0.950987 0.006266 255.476)",
-    chrome: "oklch(0.950987 0.006266 255.476)",
-    toolbar: "oklch(0.950987 0.006266 255.476)",
+    canvas: "oklch(0.985 0.002 255)", // The page: near-white beside the menu's grey (the round-5 board).
+    chrome: "oklch(0.985 0.002 255)",
+    toolbar: "oklch(0.985 0.002 255)",
     toolbarForeground: "oklch(0.217787 0 0)",
     toolbarBorder: "oklch(0.898587 0.0192 248.042)",
-    toolbarControl: "oklch(0.921517 0.005823 264.531)", // 4% black over #eceff3 canvas.
+    toolbarControl: "oklch(0.95504 0.001935 255)", // 4% black over the canvas.
     toolbarControlForeground: "oklch(0.217787 0 0)",
-    toolbarControlHover: "oklch(0.893331 0.006365 255.478)", // 8% black over #eceff3 canvas.
+    toolbarControlHover: "oklch(0.924843 0.001869 255)", // 8% black over the canvas.
     surface: "oklch(1 0 0)",
     surfaceRaised: "oklch(1 0 0)",
     surfaceOverlay: "oklch(1 0 0)",
@@ -130,19 +130,19 @@ export const ZEROPS_THEME: ThemeDefinition = {
     updateSurface: "oklch(0.959725 0.027239 191.09)", // 12.9% #00ccbb over #ffffff surface.
     accentSurface: "oklch(0.962441 0.004188 236.498)",
     accentSurfaceForeground: "oklch(0.217787 0 0)",
-    messageSurface: "oklch(0.918 0.006 255.5)", // Neutral, one step darker than the canvas.
+    messageSurface: "oklch(0.950987 0.006266 255.476)", // Neutral, one step darker than the canvas.
     messageForeground: "oklch(0.217787 0 0)",
     messageAction: "oklch(0.560114 0.15773 249.804)",
     messageActionForeground: "oklch(1 0 0)",
     messageActionHover: "oklch(0.476566 0.132387 249.275)",
     codeBackground: "oklch(0.968441 0.004181 236.497)",
     codeForeground: "oklch(0.217787 0 0)",
-    sidebar: "oklch(0.950987 0.006266 255.476)",
+    sidebar: "oklch(0.962 0.004 255)", // The menu: its own grey, set off from the page.
     sidebarForeground: "oklch(0.217787 0 0)",
     sidebarMutedForeground: "oklch(0.362632 0.014881 240.327)",
-    sidebarControlSurface: "oklch(0.921517 0.005823 264.531)", // 4% black over #eceff3 sidebar.
-    sidebarRowHover: "oklch(0.921517 0.005823 264.531)", // 4% black over #eceff3 sidebar.
-    sidebarRowActive: "oklch(0.911636 0.006333 255.477)",
+    sidebarControlSurface: "oklch(0.932789 0.00387 255)", // 4% black over the sidebar.
+    sidebarRowHover: "oklch(0.932789 0.00387 255)", // 4% black over the sidebar.
+    sidebarRowActive: "oklch(0.923981 0.00383 255)", // 5.4% black over the sidebar.
     sidebarRowSelected: "oklch(1 0 0)",
     sidebarBorder: "oklch(0.906701 0 0)",
     terminalBackground: "oklch(0.968441 0.004181 236.497)",
@@ -197,13 +197,13 @@ export const ZEROPS_THEME: ThemeDefinition = {
       messageActionHover: "oklch(0.64065 0.1821 250.158)", // R5 hand value, not an alpha composite.
       codeBackground: "oklch(0.198946 0.007897 182.062)",
       codeForeground: "oklch(0.911927 0.009473 171.779)",
-      sidebar: "oklch(0.164609 0.005276 173.621)",
+      sidebar: "oklch(0.207783 0.007827 182.122)", // The menu: one step lighter than the page.
       sidebarForeground: "oklch(0.944756 0.005952 170.443)",
       sidebarMutedForeground: "oklch(0.737586 0.018219 173.85)",
-      sidebarControlSurface: "oklch(0.21557 0.009169 184.301)",
-      sidebarRowHover: "oklch(0.21557 0.009169 184.301)",
-      sidebarRowActive: "oklch(0.244218 0.010816 176.214)",
-      sidebarRowSelected: "oklch(0.207783 0.007827 182.122)",
+      sidebarControlSurface: "oklch(0.244218 0.010816 176.214)",
+      sidebarRowHover: "oklch(0.244218 0.010816 176.214)",
+      sidebarRowActive: "oklch(0.26005 0.011968 178.488)",
+      sidebarRowSelected: "oklch(0.280612 0.011784 178.616)",
       sidebarBorder: "oklch(0.29592 0.012924 180.424)",
       terminalBackground: "oklch(0.164609 0.005276 173.621)",
       terminalForeground: "oklch(0.944756 0.005952 170.443)",
