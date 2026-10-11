@@ -811,6 +811,8 @@ export interface AgentPanelModel {
   readonly waitingCount: number;
   readonly idleCount: number;
   readonly settledCount: number;
+  /** Of the settled, those stopped before they finished (cancelled or interrupted). */
+  readonly stoppedCount: number;
   readonly totalTokens: number;
   readonly hasAgents: boolean;
   readonly liveCount: number;
@@ -823,6 +825,7 @@ const EMPTY_PANEL_MODEL: AgentPanelModel = {
   waitingCount: 0,
   idleCount: 0,
   settledCount: 0,
+  stoppedCount: 0,
   totalTokens: 0,
   hasAgents: false,
   liveCount: 0,
@@ -939,6 +942,7 @@ export function deriveAgentPanelModel({
   let waitingCount = 0;
   let idleCount = 0;
   let settledCount = 0;
+  let stoppedCount = 0;
   let totalTokens = 0;
   for (const agent of source) {
     // A workflow coordinator with members is a container for those members, not
@@ -950,6 +954,7 @@ export function deriveAgentPanelModel({
     else if (agent.status === "waiting") waitingCount += 1;
     else if (agent.status === "idle") idleCount += 1;
     else settledCount += 1;
+    if (agent.status === "cancelled" || agent.status === "interrupted") stoppedCount += 1;
     totalTokens += agent.usage?.totalTokens ?? 0;
   }
 
@@ -964,6 +969,7 @@ export function deriveAgentPanelModel({
     waitingCount,
     idleCount,
     settledCount,
+    stoppedCount,
     totalTokens,
     hasAgents: true,
     liveCount: runningCount + waitingCount,

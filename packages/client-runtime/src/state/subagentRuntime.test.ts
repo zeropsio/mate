@@ -461,6 +461,23 @@ describe("deriveAgentPanelModel", () => {
     expect(model.liveCount).toBe(0);
   });
 
+  // Engine final run: after Stop, the Helpers panel counted the stopped helpers as "3 done".
+  it("counts the helpers the person stopped as stopped, never done", () => {
+    const roster = fold([
+      activity("task.started", { taskId: "h-a", title: "Review the api" }),
+      activity("task.started", { taskId: "h-b", title: "Review the web" }),
+      activity("task.started", { taskId: "h-c", title: "Review the docs" }),
+      activity("task.completed", { taskId: "h-a", status: "completed" }),
+      activity("task.completed", { taskId: "h-b", status: "stopped" }),
+      activity("task.completed", { taskId: "h-c", status: "stopped" }),
+    ]);
+
+    const model = deriveAgentPanelModel({ agents: roster });
+
+    expect(model.settledCount).toBe(3);
+    expect(model.stoppedCount).toBe(2);
+  });
+
   it("keeps direct spawns in first-seen order as their activity changes", () => {
     const directRoster = fold([
       activity("task.started", { taskId: "direct-a", title: "First" }, "2026-08-01T11:00:00.000Z"),
