@@ -880,6 +880,24 @@ export function mateRowAskOver(
   return second.kind === "ask" && askLine.kind !== "nothing-asked" ? askLine : undefined;
 }
 
+/**
+ * How many empty lines a row holds under its name while a reload reads its Mate's conversations:
+ * the question's, where the answer it remembers is painted already; both, where nothing is known
+ * yet. What is read lands in the lines held for it — the row has its three lines from the first
+ * frame, so the rows under it never move (they moved 12 px at 0.5–0.75 s). Once read, nothing is
+ * held: a Mate never asked says so on its own line.
+ */
+export function mateRowHeldLines(input: {
+  readonly askLine: MateRowAskLine;
+  readonly second: MateRowSecond;
+  /** Its conversations are read. */
+  readonly read: boolean;
+}): 0 | 1 | 2 {
+  if (input.askLine !== undefined || input.read) return 0;
+  if (input.second.kind === "none") return 2;
+  return ASKED_OVER.has(input.second.kind) ? 1 : 0;
+}
+
 export function mateRowSecond(input: {
   readonly view: Pick<MateRowView, "state" | "reply" | "slot" | "coming">;
   readonly askLine: MateRowAskLine;
