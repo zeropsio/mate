@@ -580,6 +580,20 @@ describe("backgroundJobOf", () => {
       job: { state: "failed", report: "Exit code 3" },
       step: { state: "failed" },
     },
+    {
+      // Engine final run, D6: the job Stop killed read "Failed" while the engine said stopped.
+      name: "stopped: it reads stopped, though the kill ended it with an error",
+      tasks: [
+        started,
+        finished({
+          tone: "error",
+          toolLifecycleStatus: "stopped",
+          detail: 'Background command "Run the soak test" failed with exit code 143',
+        }),
+      ],
+      job: { state: "stopped" },
+      step: { state: "done" },
+    },
   ])("$name", ({ tasks, job, step }) => {
     const tracked = trackCommands([launch, ...tasks]);
     const found = backgroundJobOf(launch, tracked);

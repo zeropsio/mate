@@ -473,10 +473,11 @@ export function backgroundJobOf(
           : "running"
         : task.taskLost === true
           ? "lost"
-          : failed
-            ? "failed"
-            : task.toolLifecycleStatus === "stopped"
-              ? "stopped"
+          : // Stopped is the engine's word for it, though the kill ended it with an error.
+            task.toolLifecycleStatus === "stopped"
+            ? "stopped"
+            : failed
+              ? "failed"
               : "done",
     startedAt: command.startedAt ?? command.createdAt,
     endedAt: task !== undefined && ended ? new Date(endOf(task)).toISOString() : null,
