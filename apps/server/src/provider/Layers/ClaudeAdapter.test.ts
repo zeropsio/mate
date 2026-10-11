@@ -2836,6 +2836,78 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // Engine final run, E10: two wakes set with CronCreate read "2 files edited".
+  it.effect("never counts a scheduled wake (CronCreate, CronDelete) as a file edit", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const runtimeEventsFiber = yield* Stream.take(adapter.streamEvents, 9).pipe(
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "wake me at nine",
+        attachments: [],
+      });
+
+      for (const [index, name] of ["CronCreate", "CronDelete"].entries())
+        harness.query.emit({
+          type: "stream_event",
+          session_id: "sdk-session-task",
+          uuid: "stream-task-1",
+          parent_tool_use_id: null,
+          event: {
+            type: "content_block_start",
+            index,
+            content_block: {
+              type: "tool_use",
+              id: `tool-cron-${index}`,
+              name,
+              input: { cron: "0 9 * * *", prompt: "Check the deploy" },
+            },
+          },
+        } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "assistant",
+        session_id: "sdk-session-task",
+        uuid: "assistant-task-1",
+        parent_tool_use_id: null,
+        message: {
+          id: "assistant-message-task-1",
+          content: [{ type: "text", text: "Delegated" }],
+        },
+      } as unknown as SDKMessage);
+
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: "sdk-session-task",
+        uuid: "result-task-1",
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const started = runtimeEvents.flatMap((event) =>
+        event.type === "item.started" ? [event.payload.itemType] : [],
+      );
+      assert.deepEqual(started, ["dynamic_tool_call", "dynamic_tool_call"]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   // Block indexes count per response, and a helper's response streams
   // beside its parent's: a helper's call at the same index as the parent's
   // Task call must not take its place, or one result never closes its call.
