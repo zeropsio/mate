@@ -4397,7 +4397,10 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
   }
 
   .menu-search-key {
+    display: inline-flex;
     flex: none;
+    align-items: center;
+    gap: 1px;
     padding: 1px 6px;
     border-radius: 6px;
     box-shadow: inset 0 0 0 1px var(--sidebar-border);

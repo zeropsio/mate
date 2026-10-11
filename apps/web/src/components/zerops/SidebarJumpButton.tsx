@@ -7,7 +7,14 @@
  * words in a conversation, writes to a Mate after `@`, and starts a new
  * project (`JumpBox.tsx`); `/` opens it too.
  */
-import { SearchIcon } from "lucide-react";
+import {
+  ArrowBigUpIcon,
+  ChevronUpIcon,
+  CommandIcon,
+  OptionIcon,
+  SearchIcon,
+  type LucideIcon,
+} from "lucide-react";
 
 export function SidebarJumpButton({
   shortcut,
@@ -29,11 +36,46 @@ export function SidebarJumpButton({
       <SearchIcon aria-hidden="true" className="size-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate text-left">Search</span>
       {shortcut === undefined ? null : (
-        <kbd className="menu-search-key" data-zerops-surface="sidebar-jump-key">
-          {shortcut}
+        <kbd aria-hidden="true" className="menu-search-key" data-zerops-surface="sidebar-jump-key">
+          <KeyLabel label={shortcut} />
         </kbd>
       )}
     </button>
+  );
+}
+
+/** The Mac's modifier keys, drawn: their glyphs sit in a font file of their own (Roboto's
+ * "symbols"), fetched for one character and swapped in after the menu paints. */
+const MODIFIER_ICON: Readonly<Record<string, LucideIcon | undefined>> = {
+  "⌘": CommandIcon,
+  "⌥": OptionIcon,
+  "⇧": ArrowBigUpIcon,
+  "⌃": ChevronUpIcon,
+};
+
+/**
+ * A key as this platform writes it: its modifiers — first, as a Mac writes them — drawn, the key
+ * itself in the menu's type.
+ */
+function KeyLabel({ label }: { readonly label: string }) {
+  const chars = [...label];
+  const drawn = chars.filter((char) => MODIFIER_ICON[char] !== undefined);
+  return (
+    <>
+      {drawn.map((char) => {
+        const Icon = MODIFIER_ICON[char]!;
+        return (
+          <Icon
+            aria-hidden="true"
+            className="size-3"
+            data-key={char}
+            key={char}
+            strokeWidth={2.25}
+          />
+        );
+      })}
+      {chars.filter((char) => MODIFIER_ICON[char] === undefined).join("")}
+    </>
   );
 }
 
