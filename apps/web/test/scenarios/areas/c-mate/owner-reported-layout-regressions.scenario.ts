@@ -2305,6 +2305,8 @@ describe("owner-reported layout regressions", () => {
           readonly answers: number;
           /** The strip of what runs alongside under the card, its height. */
           readonly strip: number;
+          /** How far the view stands from its end. */
+          readonly fromEnd: number;
           /** How many answer rows were drawn under the card so far: one is drawn again, it enters again. */
           readonly drawn: number;
         }
@@ -2420,6 +2422,10 @@ describe("owner-reported layout regressions", () => {
                         .at(-1)
                         ?.getBoundingClientRect().height ?? 0,
                     drawn: rows.size,
+                    fromEnd: (() => {
+                      const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                      return list.scrollHeight - list.clientHeight - list.scrollTop;
+                    })(),
                   };
                 };
                 const sample = () =>
@@ -2437,12 +2443,12 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
               engine.update(note, { text, streaming: false });
               yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 400)));
-            } else {
-              // As the cron turn on Milo (recheck on 0.15.41, +40:10.7): the slot says Thinking and
-              // its short answer comes with the run's end.
-              engine.item(run, { kind: "note", text, streaming: false, answer: false });
             }
-            engine.end(run);
+            const endedAt = yield* Effect.promise(() => s.page.evaluate(() => performance.now()));
+            // As the cron turn on Milo (recheck on 0.15.41, +40:10.7): the slot says Thinking and
+            // its short answer comes in the change that ends the run.
+            if (note === null) engine.note(run, text, { kind: "completed" });
+            else engine.end(run);
             if (helperRunsOn) engine.waitOnHelpers();
             const frames = yield* Effect.promise(() =>
               new Promise((resolve) => setTimeout(resolve, 2500)).then(() =>
@@ -2470,28 +2476,44 @@ describe("owner-reported layout regressions", () => {
               "ASSERTION: the answer shows once in every frame",
             ).toBe(true);
             expect(last.answers, "ASSERTION: the answer stands once the turn is over").toBe(1);
-            expect(
-              frames.every(
-                (frame) => frame.head !== null && Math.abs(frame.head.top - first.head!.top) <= 1,
-              ),
-              `ASSERTION: the card's head stands still (ms:top): ${frames
-                .filter(
-                  (frame, index) => index === 0 || frame.head?.top !== frames[index - 1]!.head?.top,
-                )
-                .map(
-                  (frame) =>
-                    `${Math.round(frame.at - first.at)}:${frame.head === null ? "-" : Math.round(frame.head.top)}`,
-                )
-                .join(" ")}`,
-            ).toBe(true);
-            expect(
-              frames.every(
+            // The head stands still through the settle: its card folds under it. Then the room the
+            // fold left under the end goes in one short glide to the conversation's true end (the
+            // owner, 0.15.44: the view rested short of its end over an empty foot).
+            const trace = `(ms:top) ${frames
+              .filter(
+                (frame, index) => index === 0 || frame.head?.top !== frames[index - 1]!.head?.top,
+              )
+              .map(
                 (frame) =>
-                  first.asked === null ||
-                  (frame.asked !== null && Math.abs(frame.asked - first.asked) <= 1),
-              ),
-              "ASSERTION: the person's message above the card stands still",
+                  `${Math.round(frame.at - endedAt)}:${frame.head === null ? "-" : Math.round(frame.head.top)}`,
+              )
+              .join(" ")}`;
+            const moved = frames.findIndex(
+              (frame) => frame.head === null || Math.abs(frame.head.top - first.head!.top) > 1,
+            );
+            expect(
+              moved === -1 || frames[moved]!.at - endedAt >= 300,
+              `ASSERTION: the card's head stands still through the settle ${trace}`,
             ).toBe(true);
+            const glide = moved === -1 ? [] : frames.slice(moved - 1);
+            expect(
+              glide.every(
+                (frame, index) =>
+                  index === 0 || Math.abs(frame.head!.top - glide[index - 1]!.head!.top) < 40,
+              ),
+              `ASSERTION: then the view glides to the end, never a jump ${trace}`,
+            ).toBe(true);
+            const rests = frames.findLastIndex(
+              (frame, index) => index > 0 && frame.head?.top !== frames[index - 1]!.head?.top,
+            );
+            expect(
+              moved === -1 || frames[rests]!.at - frames[moved]!.at <= 450,
+              `ASSERTION: the glide is short ${trace}`,
+            ).toBe(true);
+            expect(
+              last.fromEnd,
+              "ASSERTION: the conversation rests at its end",
+            ).toBeLessThanOrEqual(1);
             // Recheck on 0.15.41 (+32:54.1): the job's strip left, shrank, then snapped back 32 px.
             expect(
               frames
@@ -2522,6 +2544,144 @@ describe("owner-reported layout regressions", () => {
         it.effect(
           "a turn ending on a job still running lands its answer once, its job's strip standing under the card",
           () => settlesInPlace(true, "with its end"),
+        );
+
+        interface RestFrame {
+          /** Empty card under the card's last drawn line, to its edge. */
+          readonly band: number;
+          /** The conversation's last row's foot, a screen y. */
+          readonly lastRow: number;
+          /** How far the view stands from its end. */
+          readonly fromEnd: number;
+        }
+        const readRest = (page: Page) =>
+          page.evaluate((): RestFrame => {
+            const card = [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1)!;
+            const record = card.closest<HTMLElement>("[data-timeline-row-id]")!;
+            const rows = [...document.querySelectorAll<HTMLElement>("[data-timeline-row-id]")];
+            const from = rows.indexOf(record);
+            const end = rows.findIndex(
+              (row, index) => index > from && row.dataset.timelineRowId?.startsWith("card-end:"),
+            );
+            const slices = rows.slice(from, end === -1 ? from + 1 : end + 1);
+            const edge = Math.max(...slices.map((row) => row.getBoundingClientRect().bottom));
+            let drawn = -Infinity;
+            for (const row of slices.slice(0, end === -1 ? undefined : -1)) {
+              const walker = document.createTreeWalker(row, NodeFilter.SHOW_ELEMENT);
+              while (walker.nextNode()) {
+                const element = walker.currentNode as HTMLElement;
+                if (element.closest("[hidden], .sr-only, [aria-hidden='true']") !== null) continue;
+                const box = element.getBoundingClientRect();
+                const leaf =
+                  element.children.length === 0 &&
+                  ((element.textContent ?? "").trim() !== "" ||
+                    ["IMG", "svg", "BUTTON"].includes(element.tagName));
+                if (leaf && box.height > 0 && box.width > 0) drawn = Math.max(drawn, box.bottom);
+              }
+            }
+            const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+            // The room a closing panel lent the card's edge (`holdCardRoom`), drawn as card.
+            const lent =
+              Number.parseFloat(
+                record
+                  .querySelector<HTMLElement>(".run-tray")
+                  ?.style.getPropertyValue("--card-room") ?? "",
+              ) || 0;
+            return {
+              band: Math.max(edge, edge + lent) - drawn,
+              lastRow: rows.at(-1)!.getBoundingClientRect().bottom,
+              fromEnd: list.scrollHeight - list.clientHeight - list.scrollTop,
+            };
+          });
+        /**
+         * The owner, 0.15.44 (Milo, "a couple of times"): a settled card, folded or open, kept an
+         * empty band at its foot that ran under the composer, and the view rested short of its end.
+         * After the settle the card and the conversation's end read as a reload draws them.
+         */
+        const restsAtItsEnd = (ending: "stopped with its helpers" | "completed" | "on its job") =>
+          Effect.gen(function* () {
+            const { s, engine, run } = yield* miloAtWork();
+            const chat = mateChat(s);
+            const helpers = ["work-helper-a", "work-helper-b"].map((work, index) =>
+              engine.item(run, {
+                kind: "work",
+                work,
+                workKind: "helper",
+                status: "running",
+                title: `Helper ${index + 1}: 90-second tick loop`,
+              }),
+            );
+            engine.item(run, {
+              kind: "thought",
+              preview: "Both helpers run their loops in the foreground; I wait for them.",
+              length: 64,
+              streaming: false,
+            });
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 3000)));
+            const words = "Both helpers reported their last tick, 90.";
+            if (ending === "stopped with its helpers") {
+              // As on Milo: the Stop ends the helpers first, the run a moment after.
+              for (const helper of helpers) engine.update(helper, { status: "stopped" });
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 150)));
+              engine.end(run, { kind: "stopped", by: { kind: "person", subject: "owner" } });
+            } else {
+              if (ending === "completed")
+                for (const helper of helpers) engine.update(helper, { status: "done" });
+              engine.item(run, { kind: "note", text: words, streaming: false, answer: false });
+              engine.end(run);
+              if (ending === "on its job") engine.waitOnHelpers();
+            }
+            const settled = (open: boolean) =>
+              Effect.gen(function* () {
+                yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 2500)));
+                const folded = yield* Effect.promise(() => readRest(s.page));
+                yield* chat.when.activateLast(open ? "Show work" : "Hide work");
+                yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1500)));
+                const other = yield* Effect.promise(() => readRest(s.page));
+                return open ? { folded, open: other } : { folded: other, open: folded };
+              });
+            // A watched run settles closed, a waiting one stays open.
+            const live = yield* settled(ending !== "on its job");
+            yield* chat.when.reload("Ada", "Live stress test 4A");
+            const drawn = yield* settled(ending !== "on its job");
+            const said = (rest: { folded: RestFrame; open: RestFrame }) =>
+              (["folded", "open"] as const)
+                .map(
+                  (state) =>
+                    `${state} band ${Math.round(rest[state].band)} last row ${Math.round(rest[state].lastRow)} from its end ${Math.round(rest[state].fromEnd)}`,
+                )
+                .join(", ");
+            const seen = `live: ${said(live)}; reloaded: ${said(drawn)}`;
+            for (const state of ["folded", "open"] as const)
+              expect(
+                Math.abs(live[state].band - drawn[state].band),
+                `ASSERTION: the settled card hugs its content, ${state}: ${seen}`,
+              ).toBeLessThanOrEqual(2);
+            expect(
+              Math.abs(live.folded.lastRow - drawn.folded.lastRow),
+              `ASSERTION: the conversation rests at its end above the composer: ${seen}`,
+            ).toBeLessThanOrEqual(2);
+            expect(
+              live.folded.fromEnd,
+              `ASSERTION: the view stands at its end: ${seen}`,
+            ).toBeLessThanOrEqual(1);
+            yield* s.then.noExternalNetwork;
+          });
+
+        it.effect(
+          "after a run settles, its card hugs its content and the conversation rests at its end above the composer",
+          () =>
+            Effect.gen(function* () {
+              yield* restsAtItsEnd("stopped with its helpers");
+            }),
+        );
+        it.effect(
+          "after a run completes, its card hugs its content and the conversation rests at its end above the composer",
+          () => restsAtItsEnd("completed"),
+        );
+        it.effect(
+          "after a turn ends on a job still running, its card hugs its content and the conversation rests at its end above the composer",
+          () => restsAtItsEnd("on its job"),
         );
 
         // Recheck on 0.15.41 (+40:10.7): the slot said Thinking, the short answer came with the
