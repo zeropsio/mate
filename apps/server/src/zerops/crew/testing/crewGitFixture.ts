@@ -24,7 +24,6 @@ import * as CrewApp from "../CrewApp.ts";
 import * as CrewChecks from "../CrewChecks.ts";
 import * as CrewIntegration from "../CrewIntegration.ts";
 import * as CrewShell from "../CrewShell.ts";
-import * as CrewStateRef from "../CrewStateRef.ts";
 import * as CrewStore from "../CrewStore.ts";
 import * as CrewWorkspace from "../CrewWorkspace.ts";
 
@@ -218,12 +217,10 @@ export const crewStoreLayer = CrewStore.layer.pipe(
 export const crewGitLayer = (root: string, options: CrewShellFixtureOptions = {}) => {
   const shell = crewShellLayer([serviceRepository(root)], options);
   const checks = CrewChecks.layer.pipe(Layer.provideMerge(shell));
-  return Layer.mergeAll(
-    CrewWorkspace.layer,
-    CrewIntegration.layer,
-    CrewStateRef.layer,
-    CrewApp.layer,
-  ).pipe(Layer.provideMerge(checks), Layer.provideMerge(crewStoreLayer));
+  return Layer.mergeAll(CrewWorkspace.layer, CrewIntegration.layer, CrewApp.layer).pipe(
+    Layer.provideMerge(checks),
+    Layer.provideMerge(crewStoreLayer),
+  );
 };
 
 /** Runs `body` against a fresh service repository, removed afterwards. */

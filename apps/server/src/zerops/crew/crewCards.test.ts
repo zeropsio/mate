@@ -2,14 +2,12 @@ import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import { describe, expect, it } from "@effect/vitest";
 
 import {
-  afterLandCard,
   claimReleaseCard,
   carriedCard,
   claimStartCard,
   continueCard,
   fixCard,
   resolveCard,
-  rotationSeed,
   savedSeamWords,
   sweptSeamWords,
   stintReasonWords,
@@ -96,20 +94,6 @@ describe("crew cards", () => {
       ].join("\n"),
     ],
     [
-      "restart the dev server after a landing",
-      afterLandCard({
-        ...TASK,
-        commit: "a1b2c3d4e5f6",
-        host: "appdev",
-        devServer: { port: 3000, command: "npm run dev" },
-      }),
-      [
-        CREW_CARD_OPENER,
-        "#12 Camera rig · restart the dev server",
-        'Your task landed as a1b2c3d. Restart appdev\'s dev server from the tree with zerops_dev_server: action=restart hostname=appdev port=3000 processMatch="npm run dev", no workDir. Nothing else.',
-      ].join("\n"),
-    ],
-    [
       "show the copy on dev once the person granted it",
       claimStartCard({
         host: "appdev",
@@ -133,37 +117,6 @@ describe("crew cards", () => {
     ],
   ])("%s", (_, text, expected) => {
     expect(text).toBe(expected);
-  });
-
-  it("seeds a new conversation from the open task, the copy's commits and the last report", () => {
-    expect(
-      rotationSeed({
-        handle: "backend",
-        reason: "prompt-changed",
-        task: {
-          ...TASK,
-          card: { brief: "Follow the player.", doneWhen: "", note: null },
-          report: "Camera follows; jitter left.",
-        },
-        commits: ["a1b2c3d wip(t-1): turn 2", "b2c3d4e wip(t-1): turn 1"],
-      }),
-    ).toBe(
-      [
-        "This is a new conversation for @backend: the brief or your job changed. Your copy of the code and its history carry on.",
-        "",
-        "You are working on #12 Camera rig:",
-        "Follow the player.",
-        "",
-        "Commits in your copy since the task started:",
-        "a1b2c3d wip(t-1): turn 2",
-        "b2c3d4e wip(t-1): turn 1",
-        "",
-        "Your last report: Camera follows; jitter left.",
-      ].join("\n"),
-    );
-    expect(rotationSeed({ handle: "erik", reason: "start-fresh", task: null, commits: [] })).toBe(
-      "This is a new conversation for @erik: the person started you fresh. Your copy of the code and its history carry on.",
-    );
   });
 
   it.each([

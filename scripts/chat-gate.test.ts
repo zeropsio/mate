@@ -81,15 +81,15 @@ it("the gate proves the Mate engine on the proof harness's fixed seeds and the r
   ]);
 });
 
-it("the gate runs the crew's journeys on the engine's world, beside the unit suite's V1 run", () => {
+it("the gate runs the crew's journeys on the engine, every case certified", () => {
   const commands = chatGateStages.flatMap((stage) =>
     stage.commands.flatMap((command: ChatGateCommand) =>
       command.args.some((arg) => arg.startsWith("src/zerops/crew/CrewEngine"))
         ? [
             [
               stage.name,
-              command.env?.CREW_WORLD,
               command.args.filter((arg) => arg.startsWith("src/")),
+              command.args.includes("--reporter=../../scripts/chat-gate-reporter.ts"),
             ],
           ]
         : [],
@@ -98,7 +98,6 @@ it("the gate runs the crew's journeys on the engine's world, beside the unit sui
   expect(commands).toEqual([
     [
       "F: crew journeys on the engine",
-      "engine",
       [
         ...["attachments", "endings", "lead", "memory", "midway", "operations", "runs"].map(
           (part) => `src/zerops/crew/CrewEngine.${part}.test.ts`,
@@ -106,6 +105,7 @@ it("the gate runs the crew's journeys on the engine's world, beside the unit sui
         "src/zerops/crew/CrewEngine.test.ts",
         "src/zerops/crew/registerCrewRpc.test.ts",
       ],
+      true,
     ],
   ]);
 });

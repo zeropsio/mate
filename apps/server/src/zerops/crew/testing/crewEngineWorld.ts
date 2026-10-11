@@ -2,8 +2,8 @@
 /**
  * The engine world for the crew's journeys (`crewWorld.ts`): the crew as an owner of the Mate
  * engine, over the engine's live layer on a SQLite file, a scripted provider for the crewmates'
- * agents, and the real git core over the local ssh shim, with the platform faked as V1's world
- * fakes it (`crewEngineFixture.ts`).
+ * agents, and the real git core over the local ssh shim, with the platform faked
+ * (`crewEngineFixture.ts`).
  *
  * A phase is one server lifetime on the same file: its layers built fresh, the engine started at
  * once on the first and at `serverReady` on each later one (the engine boots in the server's
@@ -84,6 +84,7 @@ import { delivering, initialCrewState, membersInOrder, type CrewState } from "..
 import { stintReasonWords } from "../crewCards.ts";
 import type { RotationReason } from "../rotationDecision.ts";
 import {
+  KAREL,
   ZEROPS,
   admissionFake,
   countingSsh,
@@ -93,7 +94,6 @@ import {
   writeCrewHome,
   type CrewFixtureWorld,
 } from "./crewEngineFixture.ts";
-import { KAREL } from "./crewEngineSteps.ts";
 import { removeServiceRepository } from "./crewGitFixture.ts";
 import type {
   CrewChat,
@@ -556,7 +556,6 @@ const enginePort = (input: {
 
   return {
     sendsReached,
-    name: "engine",
     root: fx.root,
     workspace: fx.workspace,
     devServerPidFile: fx.devServerPidFile,

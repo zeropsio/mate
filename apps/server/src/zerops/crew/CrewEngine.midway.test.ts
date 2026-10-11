@@ -3,21 +3,15 @@ import type { CrewRunOptions } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
 import {
-  AS_CREW,
   applied,
   crewJourney,
   eventually,
   firstTurn,
-  CREW_WORLD,
-  lastAdmitted,
   reportDone,
   turnsSent,
-  v1Journey,
   type CrewChat,
   type CrewWorld,
 } from "./testing/crewWorld.ts";
-import { CREW_ID } from "./CrewHome.ts";
-import { CrewStore } from "./CrewStore.ts";
 import { git, write } from "./testing/crewGitFixture.ts";
 
 const OPTIONS: CrewRunOptions = {
@@ -40,10 +34,6 @@ const attemptsOfFirst = (world: CrewWorld) =>
       row.endedAt !== null,
     ]);
   });
-
-/** The rig's backend #16: started at 05:43:55, last touched at 05:49:15, 26 s before its $3 run paused. */
-const RIG_STARTED = "2026-09-27T05:43:55.000Z";
-const RIG_IDLE_SINCE = "2026-09-27T05:49:15.000Z";
 
 const firstTask = (world: CrewWorld) =>
   Effect.map(world.tasks, (rows) => rows.find((row) => row.number === 1)!);
@@ -136,100 +126,6 @@ describe("CrewEngine tasks stopped mid-way", () => {
         );
       }),
     ),
-  );
-
-  // The rig's rows are an old V1 engine's, written into V1's own tables.
-  it.live.skipIf(CREW_WORLD !== "v1")(
-    "the rig: a working task with no turn stops its queue; the next run carries it on as its starter",
-    () => {
-      let thread: CrewChat | undefined;
-      let before = 0;
-      return v1Journey([
-        (world) =>
-          Effect.gen(function* () {
-            yield* applied(world);
-            yield* world.press({ _tag: "start", ...OPTIONS });
-            const runId = (yield* world.snapshotWhere(
-              (current) => current.run?.state === "running",
-            )).run!.id;
-            thread = yield* firstTurn(world, () => undefined);
-            for (const title of ["Health check", "Metrics"]) {
-              yield* world.press({
-                _tag: "taskCreate",
-                owner: "backend",
-                title,
-                brief: title,
-                doneWhen: "",
-                dependsOn: [],
-              });
-            }
-            yield* world.turnEnds(thread, { reason: "budget_exhausted", sessionCostUsd: 3 });
-            yield* world.snapshotWhere((current) => current.run?.state === "paused");
-            yield* endedAttempts(world);
-            yield* world.press({ _tag: "stop", runId });
-            yield* world.snapshotWhere((current) => current.run?.state === "stopped");
-            // The rig's rows, as an engine before attempt endings left them.
-            yield* world.v1.run(
-              Effect.gen(function* () {
-                const store = yield* CrewStore;
-                const task = (yield* store.assignments(CREW_ID)).find((row) => row.number === 1)!;
-                const [attempt] = yield* store.attemptsOf(task.assignment);
-                yield* store.putAttempt({
-                  ...attempt!,
-                  ending: null,
-                  endingDetail: null,
-                  endedAt: null,
-                  startedAt: RIG_STARTED,
-                });
-                yield* store.putAssignment({ ...task, updatedAt: RIG_IDLE_SINCE });
-              }),
-            );
-            before = (yield* turnsSent(world)).length;
-          }),
-        (world) =>
-          Effect.gen(function* () {
-            yield* world.serverReady;
-            yield* endedAttempts(world);
-            const [attempt] = yield* world.attempts((yield* firstTask(world)).id);
-            const idle = yield* world.snapshotWhere(
-              (current) => current.attention[0]?.text != null,
-            );
-            const quiet = yield* turnsAfter(world, before, 0);
-            yield* world.press({
-              _tag: "start",
-              ...OPTIONS,
-              budgetUsd: "unlimited",
-              landing: "lead",
-            });
-            const carried = yield* turnsAfter(world, before, 1);
-            const board = yield* world.snapshotWhere(() => true);
-            assert.deepStrictEqual(
-              {
-                closed: [attempt!.ending, attempt!.endingDetail, attempt!.endedAt],
-                idle: idle.board.tasks.map((task) => task.state),
-                waiting: idle.attention.map((row) => [row.kind, row.handle, row.text, row.at]),
-                quiet: quiet.length,
-                carried: carried.map((turn) => [turn.chat, turn.text.includes("stopped mid-way")]),
-                principal: yield* lastAdmitted(world),
-                board: board.board.tasks.map((task) => task.state),
-                after: board.attention,
-              },
-              {
-                closed: ["no-report", "its turn ended without a report", RIG_IDLE_SINCE],
-                idle: ["working", "queued", "queued"],
-                waiting: [
-                  ["stalled", "backend", "its turn ended without a report", RIG_IDLE_SINCE],
-                ],
-                quiet: 0,
-                carried: [[thread!, true]],
-                principal: AS_CREW,
-                board: ["working", "queued", "queued"],
-                after: [],
-              },
-            );
-          }),
-      ]);
-    },
   );
 
   it.live("Resume after a restart carries on the turn the pause stopped", () => {

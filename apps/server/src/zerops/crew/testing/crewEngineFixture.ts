@@ -1,14 +1,10 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * A crew engine for tests: the real engine and git core against a temporary
- * service repository (over the local ssh shim, as `crewGitFixture` does),
- * with everything above it faked and recorded — the orchestration engine
- * (every dispatched command), the projection (a Mate project and the threads
- * a test says run), admission (every principal it was asked about, the
- * logins each press was judged on, and the refusals a test can set), the
- * provider event bus (events a test publishes, each handled before its
- * publish returns) and the server's command
- * readiness (a test completes it).
+ * The platform around a crew for tests, as the engine world (`crewEngineWorld.ts`) builds it over
+ * a temporary service repository (over the local ssh shim, as `crewGitFixture` does): the
+ * service's mount and its verification, the Mate's logins and agents, the platform's process
+ * list, admission (every principal it was asked about, the logins each press was judged on, and
+ * the refusals a test can set), and the fixture state the fakes read and record.
  *
  * @module crewEngineFixture
  */
@@ -16,69 +12,48 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
-  EventId,
   OrchestrationDispatchCommandError,
-  ProjectId,
   ProviderDriverKind,
-  ThreadId,
-  TurnId,
-  type OrchestrationCommand,
-  type OrchestrationProject,
-  type OrchestrationThreadShell,
   type ServerProvider,
-  type SpiEvent,
   type ZeropsAgentAuthSnapshot,
   type ZeropsLogin,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
-import { handledQueue } from "@t3tools/shared/testing/handledQueue";
-import * as Result from "effect/Result";
-import { CrewDeployPoll } from "../crewBoot.ts";
-import { CrewPlatformProcesses } from "../crewDeployState.ts";
 import * as Ref from "effect/Ref";
+import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 
-import * as ServerConfig from "../../../config.ts";
 import * as ProcessRunner from "../../../processRunner.ts";
-import { OrchestrationEngineService } from "../../../orchestration/Services/OrchestrationEngine.ts";
-import { ProjectionSnapshotQuery } from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
-import { runMigrations } from "../../../persistence/Migrations.ts";
-import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
 import { ClaudeThreadExtensionRegistry } from "../../../spi/claudeThreadProfile.ts";
 import { type ProviderInstanceAgent, ProviderInstances } from "../../../spi/providerInstances.ts";
-import { ProviderRuntimeEventBusTest } from "../../../spi/ProviderRuntimeEventBus.ts";
-import { ServerCommandReadiness } from "../../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
 import { localSshProcessRunnerLayer } from "../../testing/localSsh.ts";
 import { resolveZeropsEnvironment } from "../../ZeropsEnvironment.ts";
 import { ZeropsAgentAuth } from "../../ZeropsAgentAuth.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "../../ZeropsMembershipWatch.ts";
 import { ZeropsLogins, type MateLogin } from "../../ZeropsLogins.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepositorySource.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
-import { CrewEngine } from "../CrewEngine.ts";
-import { crewServicesLayer, makeCrewEngine, type CrewPolicyInstaller } from "../crewLayer.ts";
-import { DevServerPidFile } from "../CrewRuntime.ts";
-import { CrewThreadDirectory, CrewToolHost } from "../crewSeams.ts";
-import { CrewShell } from "../CrewShell.ts";
-import { CrewStore } from "../CrewStore.ts";
-import {
-  makeServiceRepository,
-  removeServiceRepository,
-  serviceRepository,
-  TEST_IDENTITY,
-} from "./crewGitFixture.ts";
+import { CrewPlatformProcesses } from "../crewDeployState.ts";
+import { makeServiceRepository, serviceRepository, TEST_IDENTITY } from "./crewGitFixture.ts";
 
-export const PROJECT_ID = ProjectId.make("project-mate");
+/** The person who presses: Karel, in his own session. */
+export const KAREL: TurnPrincipal = {
+  kind: "session",
+  subject: `${ZEROPS_SUBJECT_PREFIX}user-karel`,
+};
+
+/** The engine acting for the person outside their session: a run's or a task's later turns. */
+export const AS_CREW: TurnPrincipal = {
+  kind: "crew",
+  startedBy: "user-karel",
+};
 
 export const ZEROPS = resolveZeropsEnvironment({
   projectId: TEST_IDENTITY.projectId,
@@ -95,8 +70,6 @@ export interface CrewWorld {
    * the machine writes it under the engine.
    */
   readonly devServerPidFile: string;
-  readonly beforeDispatch: Ref.Ref<Effect.Effect<void>>;
-  readonly dispatched: Ref.Ref<ReadonlyArray<OrchestrationCommand>>;
   readonly admitted: Ref.Ref<
     ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
   >;
@@ -111,8 +84,6 @@ export interface CrewWorld {
   >;
   /** Logins the person may not run, with the words admission refuses them in. */
   readonly notTheirs: Ref.Ref<ReadonlyMap<string, string>>;
-  /** Threads the projection reports, for the landing gate and restart inspection. */
-  readonly threads: Ref.Ref<ReadonlyArray<OrchestrationThreadShell>>;
   readonly installs: Ref.Ref<number>;
   /** ssh sessions the crew opened. */
   readonly sshCalls: Ref.Ref<number>;
@@ -128,11 +99,6 @@ export interface CrewWorld {
   readonly processes: Ref.Ref<ReadonlyArray<unknown> | "unreadable">;
   /** How many times the engine read the project's processes. */
   readonly processReads: Ref.Ref<number>;
-  /**
-   * Hands the engine a provider event and returns once the engine has handled
-   * it: its next pull of the bus comes only after its handler for this one.
-   */
-  readonly publish: (event: SpiEvent) => Effect.Effect<void>;
   /**
    * Holds the next ssh session whose remote script `matches` before it runs:
    * `reached` once the engine is waiting on it, `release` lets it run.
@@ -160,46 +126,6 @@ export interface PendingHold {
   readonly reached: Deferred.Deferred<void>;
   readonly release: Deferred.Deferred<void>;
 }
-
-const project: OrchestrationProject = {
-  id: PROJECT_ID,
-  title: "mate",
-  workspaceRoot: "/var/www",
-  defaultModelSelection: null,
-  scripts: [],
-  createdAt: "2026-09-27T10:00:00.000Z",
-  updatedAt: "2026-09-27T10:00:00.000Z",
-  deletedAt: null,
-};
-
-/** A person thread whose turn is running, for the landing gate. */
-export const runningPersonThread = (): OrchestrationThreadShell =>
-  ({
-    id: ThreadId.make("person-thread"),
-    archivedAt: null,
-    session: { status: "running" },
-    latestTurn: null,
-  }) as unknown as OrchestrationThreadShell;
-
-let eventCounter = 0;
-
-/** A provider event on a crew thread. */
-export const spiEvent = <T extends SpiEvent["type"]>(
-  type: T,
-  threadId: string,
-  payload: Extract<SpiEvent, { readonly type: T }>["payload"],
-  extra: Partial<SpiEvent> = {},
-): SpiEvent =>
-  ({
-    eventId: EventId.make(`event-${(eventCounter += 1)}`),
-    provider: ProviderDriverKind.make("claudeAgent"),
-    threadId: ThreadId.make(threadId),
-    createdAt: "2026-09-27T10:00:00.000Z",
-    turnId: TurnId.make(`turn-${eventCounter}`),
-    type,
-    payload,
-    ...extra,
-  }) as SpiEvent;
 
 /**
  * The service's mount and its verification, as on a container: the mount is
@@ -261,7 +187,7 @@ export type SignIn =
 /** The world's fixture state the fakes read and record. */
 export type CrewFixtureWorld = Omit<
   CrewWorld,
-  "publish" | "holdSsh" | "signedIn" | "signedInAs" | "extraSignedIn"
+  "holdSsh" | "signedIn" | "signedInAs" | "extraSignedIn"
 >;
 
 /**
@@ -365,54 +291,6 @@ export const admissionFake = (world: CrewFixtureWorld) =>
       ),
   });
 
-const fakes = (
-  world: CrewFixtureWorld,
-  events: Effect.Success<ReturnType<typeof handledQueue<SpiEvent>>>,
-  signIns: PubSub.PubSub<SignIn>,
-) =>
-  Layer.mergeAll(
-    platformFakes(world, signIns),
-    Layer.mock(OrchestrationEngineService)({
-      dispatch: (command) =>
-        (command.type === "thread.turn.start"
-          ? Ref.get(world.beforeDispatch).pipe(Effect.flatten)
-          : Effect.void
-        ).pipe(
-          Effect.andThen(Ref.update(world.dispatched, (all) => [...all, command])),
-          // The projection follows a conversation's new copy, as the reactor's does.
-          Effect.andThen(
-            command.type === "thread.meta.update" && command.worktreePath !== undefined
-              ? Ref.update(world.threads, (threads) =>
-                  threads.map((thread) =>
-                    thread.id === command.threadId
-                      ? { ...thread, worktreePath: command.worktreePath ?? null }
-                      : thread,
-                  ),
-                )
-              : Effect.void,
-          ),
-          Effect.as({ sequence: 1 }),
-        ),
-    }),
-    Layer.mock(ProjectionSnapshotQuery)({
-      getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.some(project)),
-      getShellSnapshot: () =>
-        Effect.map(Ref.get(world.threads), (threads) => ({
-          snapshotSequence: 1,
-          projects: [],
-          threads,
-          updatedAt: "2026-09-27T10:00:00.000Z",
-        })),
-      getThreadShellById: (threadId) =>
-        Effect.map(Ref.get(world.threads), (threads) =>
-          Option.fromNullishOr(threads.find((thread) => thread.id === threadId)),
-        ),
-    }),
-    admissionFake(world),
-    ProviderRuntimeEventBusTest.make(events.events),
-    ServerCommandReadiness.layer,
-  );
-
 /**
  * The agents the fixture's logins run, by id: Claude's carry the crew's
  * profile with its tools, Codex's without, Grok's with its tools but no
@@ -481,26 +359,6 @@ export const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray
     }),
   ).pipe(Layer.provide(localSshProcessRunnerLayer(TEST_IDENTITY)));
 
-/** Counts installs instead of installing the tools slice's policy. */
-const countingInstaller = (installs: Ref.Ref<number>): CrewPolicyInstaller =>
-  Ref.update(installs, (count) => count + 1);
-
-export type CrewEngineServices =
-  | CrewEngine
-  | CrewThreadDirectory
-  | CrewToolHost
-  | ServerCommandReadiness
-  | CrewStore
-  | CrewShell
-  | ThreadToolPolicyRegistry;
-
-/**
- * Runs each phase against its own live crew engine, one after another, over
- * one fresh service repository and one workspace (the zcp container's
- * `/var/www`, holding the crew home and the crew database): a phase after the
- * first is the Mate after a server restart. Each engine is built from fresh
- * layers and closed before the next starts.
- */
 /**
  * One world's fixture: a fresh service repository, the Mate's workspace and the fakes' records,
  * shared by every phase (server lifetime) of a journey.
@@ -510,15 +368,12 @@ export const makeFixtureWorld = Effect.gen(function* () {
   const workspace = NodeFS.realpathSync(
     NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-mate-")),
   );
-  const events = yield* handledQueue<SpiEvent>("120 seconds");
   const signIns = yield* PubSub.unbounded<SignIn>();
   const holds = yield* Ref.make<ReadonlyArray<PendingHold>>([]);
   const world: CrewWorld = {
     root,
     workspace,
     devServerPidFile: NodePath.join(workspace, "zcp-dev-server.log.pid"),
-    beforeDispatch: yield* Ref.make<Effect.Effect<void>>(Effect.void),
-    dispatched: yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]),
     admitted: yield* Ref.make<
       ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
     >([]),
@@ -530,7 +385,6 @@ export const makeFixtureWorld = Effect.gen(function* () {
       }>
     >([]),
     notTheirs: yield* Ref.make<ReadonlyMap<string, string>>(new Map()),
-    threads: yield* Ref.make<ReadonlyArray<OrchestrationThreadShell>>([]),
     installs: yield* Ref.make(0),
     sshCalls: yield* Ref.make(0),
     logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
@@ -539,7 +393,6 @@ export const makeFixtureWorld = Effect.gen(function* () {
     providerChanges: yield* PubSub.unbounded<ReadonlyArray<ServerProvider>>(),
     processes: yield* Ref.make<ReadonlyArray<unknown> | "unreadable">([]),
     processReads: yield* Ref.make(0),
-    publish: events.publish,
     holdSsh: (matches) =>
       Effect.gen(function* () {
         const hold: PendingHold = {
@@ -557,56 +410,8 @@ export const makeFixtureWorld = Effect.gen(function* () {
     signedInAs: (agent) => PubSub.publish(signIns, { _tag: "agent", agent }).pipe(Effect.asVoid),
     extraSignedIn: (id) => PubSub.publish(signIns, { _tag: "extra", id }).pipe(Effect.asVoid),
   };
-  return { world, events, signIns, holds };
+  return { world, signIns, holds };
 });
-
-export const withCrewEngines = <E>(
-  phases: ReadonlyArray<(world: CrewWorld) => Effect.Effect<void, E, CrewEngineServices>>,
-  options: { readonly installer?: (installs: Ref.Ref<number>) => CrewPolicyInstaller } = {},
-) =>
-  Effect.gen(function* () {
-    const { world, events, signIns, holds } = yield* makeFixtureWorld;
-    const { root, workspace } = world;
-    const installer = (options.installer ?? countingInstaller)(world.installs);
-    const engine = () =>
-      Layer.effectContext(makeCrewEngine(installer)).pipe(
-        Layer.provideMerge(crewServicesLayer),
-        Layer.provideMerge(
-          Layer.mergeAll(
-            fakes(world, events, signIns),
-            countingSsh(world.sshCalls, holds),
-            Layer.succeed(DevServerPidFile, world.devServerPidFile),
-            // A deploy's state is asked again within moments, not minutes.
-            Layer.succeed(CrewDeployPoll, {
-              first: Duration.millis(50),
-              max: Duration.millis(200),
-              unreadable: Duration.millis(600),
-            }),
-            ServerConfig.layer({
-              cwd: workspace,
-              attachmentsDir: NodePath.join(workspace, "attachments"),
-              zerops: ZEROPS,
-              zeropsCrew: true,
-            } as ServerConfig.ServerConfig["Service"]),
-            Layer.effectDiscard(runMigrations()).pipe(
-              Layer.provideMerge(
-                NodeSqliteClient.layer({ filename: NodePath.join(workspace, "crew.sqlite") }),
-              ),
-            ),
-          ).pipe(Layer.provideMerge(NodeServices.layer)),
-        ),
-      );
-    yield* Effect.forEach(phases, (phase) =>
-      phase(world).pipe(Effect.provide(engine(), { local: true })),
-    ).pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          removeServiceRepository(root);
-          NodeFS.rmSync(workspace, { recursive: true, force: true });
-        }),
-      ),
-    );
-  });
 
 /**
  * The budget of a test that drives a live crew engine: the server suite's own (`testTimeout` in
@@ -615,32 +420,6 @@ export const withCrewEngines = <E>(
  * git or shell process — takes longer on a loaded machine without anything going wrong.
  */
 export const CREW_ENGINE_TEST_TIMEOUT = Number(process.env.CREW_JOURNEY_TIMEOUT ?? 120_000);
-
-/** One engine: see {@link withCrewEngines}. */
-export const withCrewEngine = <E>(
-  body: (world: CrewWorld) => Effect.Effect<void, E, CrewEngineServices>,
-  options: { readonly installer?: (installs: Ref.Ref<number>) => CrewPolicyInstaller } = {},
-) => withCrewEngines([body], options);
-
-export const loginReconciled = <A, E, R>(trigger: Effect.Effect<A, E, R>) =>
-  Effect.gen(function* () {
-    const engine = yield* CrewEngine;
-    const done = yield* engine.nextLoginReconciliation.pipe(
-      Effect.forkChild({ startImmediately: true }),
-    );
-    yield* trigger;
-    yield* Fiber.join(done);
-  }).pipe(Effect.timeout("10 seconds"), Effect.orDie);
-
-/** All admitted finite engine work returned; callers admit their producers first. */
-export const drained = Effect.flatMap(CrewEngine, (engine) => engine.drain).pipe(
-  Effect.timeout("10 seconds"),
-  Effect.orDie,
-);
-export const booted = Effect.flatMap(CrewEngine, (engine) => engine.booted).pipe(
-  Effect.timeout("10 seconds"),
-  Effect.orDie,
-);
 
 /** Polls `check` until it holds, for work the engine runs in the background; dies when it never does. */
 export const eventually = <E, R>(

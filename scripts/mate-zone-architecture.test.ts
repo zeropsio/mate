@@ -1585,17 +1585,12 @@ const CREW_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
   "apps/server/src/config.ts",
   "apps/server/src/processRunner.ts",
   "apps/server/src/orchestration/Services/MessageAttachments.ts",
-  "apps/server/src/orchestration/Services/OrchestrationEngine.ts",
-  "apps/server/src/orchestration/Services/ProjectionSnapshotQuery.ts",
-  "apps/server/src/spi/ProviderRuntimeEventBus.ts",
   "apps/server/src/spi/claudeThreadProfile.ts",
   "apps/server/src/spi/providerInstances.ts",
-  "apps/server/src/spi/serverCommandReadiness.ts",
   "apps/server/src/spi/threadToolPolicy.ts",
   "apps/server/src/zerops/ZeropsAgentAuth.ts",
   "apps/server/src/zerops/ZeropsEnvironment.ts",
   "apps/server/src/zerops/ZeropsLogins.ts",
-  "apps/server/src/zerops/ZeropsProjectSigners.ts",
   "apps/server/src/zerops/ZeropsRepositorySource.ts",
   "apps/server/src/zerops/ZeropsTurnAdmission.ts",
   "apps/server/src/zerops/ZeropsWorkspaceAccess.ts",
@@ -1952,7 +1947,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
             'import { EngineWire } from "../../../engine/wire/EngineWire.ts";',
             "",
           ].join("\n"),
-          "apps/server/src/zerops/crew/crewCore.ts":
+          "apps/server/src/zerops/crew/crewCards.ts":
             'import { ownerKind } from "../../engine/owners.ts";\n',
         });
         const violations = [
@@ -1960,12 +1955,12 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           ...(yield* collectEngineBoundaryViolations(fixtureRoot)),
         ];
         assert.deepStrictEqual(violations, [
-          { file: "apps/server/src/zerops/crew/crewCore.ts", specifier: "../../engine/owners.ts" },
+          { file: "apps/server/src/zerops/crew/crewCards.ts", specifier: "../../engine/owners.ts" },
           {
             file: "apps/server/src/zerops/crew/engine/CrewOwner.ts",
             specifier: "../../../engine/wire/EngineWire.ts",
           },
-          { file: "apps/server/src/zerops/crew/crewCore.ts", specifier: "../../engine/owners.ts" },
+          { file: "apps/server/src/zerops/crew/crewCards.ts", specifier: "../../engine/owners.ts" },
           {
             file: "apps/server/src/zerops/crew/engine/CrewOwner.ts",
             specifier: "../../../engine/wire/EngineWire.ts",

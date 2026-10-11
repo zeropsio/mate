@@ -130,16 +130,12 @@ export const chatGateStages = [
     ],
   },
   {
-    // The crew's journeys on a Mate whose crew runs on the engine; the unit suite runs the same
-    // sentences on V1's crew, so each one holds on both. The files' V1-only tests (skipped off the
-    // V1 world: V1's own mechanism) skip here by design, so this run reports without the
-    // certifying reporter.
+    // The crew's journeys on a Mate whose crew runs on the engine.
     id: "F",
     name: "F: crew journeys on the engine",
     commands: [
       {
         cwd: "apps/server",
-        env: { CREW_WORLD: "engine" },
         args: [
           "test",
           "run",
@@ -149,6 +145,8 @@ export const chatGateStages = [
           "src/zerops/crew/CrewEngine.test.ts",
           "src/zerops/crew/registerCrewRpc.test.ts",
           "--allowOnly=false",
+          "--reporter=default",
+          "--reporter=../../scripts/chat-gate-reporter.ts",
         ],
       },
     ],

@@ -562,7 +562,7 @@ describe("CrewWorkspace", () => {
         assert.deepStrictEqual(
           {
             lanes: swept.lanes.map((lane) => [lane.handle, lane._tag]),
-            // What the WIP commit saved, and where: the person is told (`crewBoot`).
+            // What the WIP commit saved, and where: the person is told.
             saved: backend?._tag === "committed" ? backend.saved : undefined,
             savedTip: backend?._tag === "committed" ? backend.tip : undefined,
             merging: swept.lanes.find((lane) => lane.handle === "frontend"),
