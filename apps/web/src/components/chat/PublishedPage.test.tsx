@@ -38,6 +38,25 @@ describe("a published page in the conversation", () => {
     expect(frame!.getAttribute("title")).toBe("Launch plan");
   });
 
+  // Run 9 (Milo, step 5): reloaded, a recorded 369 px page stood in its 240 px first box for the
+  // list's first measure, and the conversation landed 320 px short of its end and glided there.
+  it("a page with a recorded height stands at it from its first paint, before its width is read", () => {
+    const box = markupDom(
+      renderToStaticMarkup(
+        <PublishedPageFrame
+          title="Launch plan"
+          html={null}
+          theme={theme}
+          heights={[
+            [640, 520],
+            [1180, 369],
+          ]}
+        />,
+      ),
+    ).querySelector("div[data-state]");
+    expect(box?.getAttribute("style")).toMatch(/height:\s*369px/u);
+  });
+
   it.each([
     { title: "while it is read", html: null, failed: false },
     { title: "when it could not be read", html: null, failed: true },

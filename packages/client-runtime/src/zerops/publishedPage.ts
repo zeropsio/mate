@@ -306,6 +306,17 @@ export function recordedPageHeight(
 }
 
 /**
+ * Where a page's frame stands before its width is read, in its first draw: the height last
+ * recorded, the likeliest at its width; null when none is. A list measures a row as it is first
+ * drawn, and a page reloaded in its first box was measured 129 px short (run 9: the conversation
+ * landed 320 px short of its end and glided there).
+ */
+export function pageFirstDrawHeight(heights: ReadonlyArray<PageHeight> | undefined): number | null {
+  const last = heights?.at(-1);
+  return last === undefined ? null : pageFrameHeight(last[1]);
+}
+
+/**
  * The heights this client laid pages out at while it runs, by the page's call: a frame mounted
  * again before its record carries them paints at them too. Memory only, never stored.
  */

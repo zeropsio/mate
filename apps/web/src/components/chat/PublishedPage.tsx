@@ -15,6 +15,7 @@ import {
   PAGE_THEME_VARS,
   linkToOpen,
   pageDocument,
+  pageFirstDrawHeight,
   pageStandHeight,
   readPageMessage,
   themeMessage,
@@ -201,7 +202,11 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
     frameRef.current?.contentWindow?.postMessage(themeMessage(theme), "*");
   }, [theme, opened]);
 
-  const height = full || width === null ? null : pageStandHeight({ content, heights, width });
+  const height = full
+    ? null
+    : width === null
+      ? pageFirstDrawHeight(heights)
+      : pageStandHeight({ content, heights, width });
   // It glides only once it stood: its first height is placed, never eased into from a default.
   const [glides, setGlides] = useState(false);
   useEffect(() => {

@@ -19,6 +19,7 @@ import { installArea, installEngineArea, reportContainer } from "./fake.ts";
 import { EngineChatWire } from "./engine.ts";
 import { TARGET_QUESTION } from "./wire.ts";
 import { menuScenario } from "../b-menu/dsl.ts";
+import { ANSWER, journey, sampled } from "./pageJourney.ts";
 import { reportConversation } from "../b-menu/fake.ts";
 
 // Use the actual resize control so every witness has the owner's menu width.
@@ -2557,6 +2558,71 @@ describe("owner-reported layout regressions", () => {
             ).toBe(3);
             yield* s.then.noExternalNetwork;
           }),
+        );
+      });
+    });
+
+    // Run 9 (Milo, step 5): reloaded, a conversation ending in a recorded 369 px page landed
+    // 320 px short of its end and glided there: the page's row was first measured in its 240 px
+    // first box, before its width was read.
+    describe("Decision: a reload paints nothing it takes back.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        it.effect(
+          "a conversation ending in a full-height page, reloaded, is at its end from its first visible frame",
+          () =>
+            Effect.gen(function* () {
+              const { s, chat, engine, publish } = yield* journey(369, {
+                earlierPage: true,
+                install: installEngineArea,
+              });
+              yield* sampled(
+                s,
+                Effect.sync(() => publish()),
+              );
+              yield* Effect.promise(async () => {
+                for (let wait = 0; wait < 50 && engine.pageHeights.length < 2; wait++)
+                  await new Promise((resolve) => setTimeout(resolve, 100));
+              });
+              // Every frame from the reload: how far the view stands from its end, and whether its
+              // rows are placed yet.
+              yield* Effect.promise(() =>
+                s.page.evaluateOnNewDocument(() => {
+                  const frames: Array<{ shown: boolean; fromEnd: number }> = [];
+                  (window as unknown as { reloadEnd: typeof frames }).reloadEnd = frames;
+                  const tick = () => {
+                    const list = document.querySelector<HTMLElement>(".timeline-legend-list");
+                    if (list !== null) {
+                      frames.push({
+                        // Placed, the list is what shows: the opening stage over it may still be
+                        // fading out, and on Milo it was seen gliding there (run 9).
+                        shown: document.querySelector("[data-timeline-placing]") === null,
+                        fromEnd: list.scrollHeight - list.clientHeight - list.scrollTop,
+                      });
+                    }
+                    requestAnimationFrame(tick);
+                  };
+                  requestAnimationFrame(tick);
+                }),
+              );
+              yield* chat.when.reload("Ada", ANSWER);
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1500)));
+              const frames = yield* Effect.promise(() =>
+                s.page.evaluate(
+                  () =>
+                    (window as unknown as { reloadEnd: Array<{ shown: boolean; fromEnd: number }> })
+                      .reloadEnd,
+                ),
+              );
+              const shown = frames.slice(frames.findIndex((frame) => frame.shown));
+              expect(shown.length, "ASSERTION: the reloaded conversation was seen").toBeGreaterThan(
+                20,
+              );
+              expect(
+                Math.max(...shown.map((frame) => frame.fromEnd)),
+                "ASSERTION: the view stands at its end in every frame it shows, nothing glides",
+              ).toBeLessThanOrEqual(1);
+              yield* s.then.noExternalNetwork;
+            }),
         );
       });
     });
