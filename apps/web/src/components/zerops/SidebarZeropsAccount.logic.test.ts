@@ -9,6 +9,7 @@ import {
   sidebarAccountOrganizationChoices,
   sidebarAccountRoleLine,
   sidebarAccountRoleParts,
+  signInTokensWords,
 } from "./SidebarZeropsAccount.logic";
 
 const organization = (name: string, id = name): ZeropsOrganization => ({
@@ -131,5 +132,18 @@ describe("sidebarAccountDestinationOf", () => {
     for (const destination of SIDEBAR_ACCOUNT_DESTINATIONS) {
       expect(sidebarAccountDestinationOf(destination.to)).toBe(destination.id);
     }
+  });
+});
+
+// The person's own sign-in tokens — the Zerops tokens Mate makes to open HQ — are cleaned up from
+// their account's menu, where it says how the cleanup goes, never as a lone button over the cards.
+describe("signInTokensWords", () => {
+  it.each([
+    { state: "idle", words: "Clean up sign-in tokens" },
+    { state: "running", words: "Cleaning up sign-in tokens…" },
+    { state: "done", words: "Sign-in tokens cleaned up" },
+    { state: "failed", words: "Cleanup failed. Try again" },
+  ] as const)("the account menu's cleanup says $words while $state", ({ state, words }) => {
+    expect(signInTokensWords(state)).toBe(words);
   });
 });

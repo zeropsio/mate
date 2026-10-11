@@ -326,3 +326,20 @@ export function hqCardView(input: HqCardInput): HqCardView {
       : [],
   };
 }
+
+/**
+ * What the HQ line says while HQ's navigation is not read: a refusal, or that HQ is unavailable —
+ * never that it is still being read, which a reload would paint in amber and take back a beat
+ * later.
+ */
+export function hqNavigationTrouble(navigation: {
+  readonly refusal: string | null;
+  readonly capped: boolean;
+  readonly reconnecting: boolean;
+}): string | null {
+  if (navigation.refusal !== null) return `HQ read refused: ${navigation.refusal}`;
+  if (navigation.capped || navigation.reconnecting) {
+    return "HQ is unavailable. Restore its connection or retry.";
+  }
+  return null;
+}

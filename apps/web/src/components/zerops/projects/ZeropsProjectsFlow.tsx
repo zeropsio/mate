@@ -73,6 +73,11 @@ export interface ZeropsProjectsFlowProps<T> {
   /** The projects no group holds, with the one verb each row offers. */
   /** Source coverage for rows whose HQ placement has not been read. */
   readonly placementNotice?: string | undefined;
+  /**
+   * Placement is only on its way — no refusal, no outage: an account not started yet says nothing
+   * for the beat it takes, so a reload paints no words it takes back.
+   */
+  readonly placementReading?: boolean | undefined;
   readonly ungrouped: ReadonlyArray<{ readonly item: T; readonly action: ZeropsRowAction["kind"] }>;
   readonly getKey: (item: T) => string;
   readonly isMate: (item: T) => boolean;
@@ -178,7 +183,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
       data-zerops-surface="projects-flow"
       role="region"
     >
-      {!started && props.placementNotice !== undefined ? (
+      {!started && props.placementNotice !== undefined && props.placementReading !== true ? (
         <>
           <p role="status" className="text-sm text-muted-foreground">
             {props.placementNotice}

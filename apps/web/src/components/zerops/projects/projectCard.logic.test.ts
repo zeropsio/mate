@@ -263,9 +263,26 @@ describe("a Mate on a card", () => {
         review: pull({ number: 41 }),
       },
       expected: {
-        text: "#41 is ready",
+        text: "Greet with a fuller line",
         tone: "ink",
         lift: { kind: "review", pull: pull({ number: 41 }) },
+      },
+    },
+    {
+      // Its last words are of another moment, a limit it hit: the menu's row names the change.
+      case: "names the change it lifts for review, not what the Mate said last",
+      input: {
+        view: view({
+          reply: { kind: "words", text: "Usage limit reached until Friday", tone: "muted" },
+        }),
+        status: "idle",
+        mine: true,
+        review: pull({ number: 7, title: "Build a reading list" }),
+      },
+      expected: {
+        text: "Build a reading list",
+        tone: "ink",
+        lift: { kind: "review", pull: pull({ number: 7, title: "Build a reading list" }) },
       },
     },
     {

@@ -5,7 +5,7 @@ import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { creationHandoff } from "@t3tools/client-runtime/data";
 
 import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
-import { ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
+import { throwawayCleanupSpeaks, ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
 import { ZeropsDeletionRecovery } from "./ZeropsDeletionRecovery";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUpgradeRecovery";
@@ -142,7 +142,11 @@ import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { MateUpdateStatusText } from "./MateUpdateLine";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
-import { useMateConversationsRead, useMateRowActivity } from "~/zerops/useMenuMateReadings";
+import {
+  useMateComingOf,
+  useMateConversationsRead,
+  useMateRowActivity,
+} from "~/zerops/useMenuMateReadings";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import {
@@ -841,6 +845,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const activityOf = useMateRowActivity(useMatesActivity());
   // Whether a Mate's conversations are read: one with none says nothing was asked yet.
   const conversationsRead = useMateConversationsRead();
+  // Whether a Mate is still coming up, or never came, as its menu row says it: its card says the same.
+  const comingOf = useMateComingOf(observedCandidates);
   const updates = useMateUpdateStates();
   // What this person may do with each Mate, from the one role function the
   // door runs too (D5). A `listed` row is shown and never opened.
@@ -2003,6 +2009,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         <OverviewCardMate
           candidate={candidate}
           change={review}
+          coming={comingOf(candidate)}
           // A Mate whose container has something to say first says it: coming up, a failed
           // connect and its retry, an update under way.
           containerActions={startAction ?? removeAction}
@@ -2204,7 +2211,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     <div className="space-y-6 pb-12">
       {status === "signed-in" && activeOrganization !== null && !inventory.isLoading ? (
         <>
-          <ZeropsThrowawayCleanup view={throwawayCleanup} />
+          {throwawayCleanupSpeaks(throwawayCleanup.state) ? (
+            <ZeropsThrowawayCleanup view={throwawayCleanup} />
+          ) : null}
           <ZeropsDeletionRecovery />
         </>
       ) : null}
@@ -2313,6 +2322,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                   : hqStructure.capped || placementStatus.reconnecting
                     ? "Placement not read — HQ is unavailable"
                     : "Reading HQ placement…"
+        }
+        placementReading={
+          !placementStatus.complete &&
+          placementStatus.unavailableReason === undefined &&
+          !hqStructure.capped &&
+          !placementStatus.reconnecting
         }
         ungrouped={ungroupedRows}
       />

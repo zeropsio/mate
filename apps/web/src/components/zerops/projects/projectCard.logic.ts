@@ -351,6 +351,9 @@ export function cardMateReading(input: {
           : undefined;
   if (lift === undefined && input.line !== undefined)
     return { text: input.line.text, tone: input.line.tone, lift };
+  // A change lifted for review is named by its title, as its menu row names it: the Mate's last
+  // words may be of another moment (a limit it hit).
+  if (lift?.kind === "review") return { text: lift.pull.title, tone: "ink", lift };
   return {
     text,
     tone: lift !== undefined && tone === "muted" ? "ink" : tone,

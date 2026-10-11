@@ -30,7 +30,12 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Button } from "../ui/button";
 import { MicroLabel, StatusDot } from "./primitives";
-import { hqCardView, type HqCardUpdateRead, type HqCardView } from "./ZeropsHqCard.logic";
+import {
+  hqCardView,
+  hqNavigationTrouble,
+  type HqCardUpdateRead,
+  type HqCardView,
+} from "./ZeropsHqCard.logic";
 import { ZeropsHqUpdate } from "./ZeropsHqUpdate";
 import { hqUpdateMount, type HqUpdateMount } from "./ZeropsHqUpdate.logic";
 
@@ -139,20 +144,11 @@ export function ZeropsHqCard() {
     updating,
     time: (ms) => formatDayAwareTimestamp(new Date(ms).toISOString(), timestampFormat),
   });
+  const trouble = hqNavigationTrouble(navigation);
   const view: HqCardView =
-    resolvedView.state !== null || navigation.read === "read"
+    resolvedView.state !== null || navigation.read === "read" || trouble === null
       ? resolvedView
-      : {
-          ...resolvedView,
-          troubles: [
-            ...resolvedView.troubles,
-            navigation.refusal !== null
-              ? `HQ read refused: ${navigation.refusal}`
-              : navigation.capped || navigation.reconnecting
-                ? "HQ is unavailable. Restore its connection or retry."
-                : "Reading HQ navigation…",
-          ],
-        };
+      : { ...resolvedView, troubles: [...resolvedView.troubles, trouble] };
   const mount = hqUpdateMount({
     admin,
     standing,

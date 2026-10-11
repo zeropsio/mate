@@ -5215,10 +5215,16 @@ a.ov-card-site:hover {
   height: 32px;
 }
 
+/* The menu row's owner mark (`MateOwnerMark`), on the card's smaller face: its corner, 14 px. */
 .ov-mate-owner {
   position: absolute;
+  top: auto;
   right: -4px;
   bottom: -3px;
+  left: auto;
+  width: 14px;
+  height: 14px;
+  font-size: 8px;
   box-shadow: 0 0 0 1.5px var(--ov-ground);
 }
 
@@ -5271,6 +5277,53 @@ a.ov-card-site:hover {
 .ov-mate-open:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* A change's *Review* in its Mate's time place, as its menu row has it: quiet where a colleague's
+   change waits on its reviewers, white where it waits on the viewer. */
+.ov-review {
+  display: inline-flex;
+  height: 22px;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    box-shadow 150ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
+
+.ov-review:hover {
+  background-color: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--foreground);
+}
+
+.ov-review[data-mine] {
+  background-color: var(--background);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
+    0 1px 2px color-mix(in oklab, var(--color-black) 8%, transparent);
+  color: var(--foreground);
+}
+
+.ov-review:active {
+  transform: scale(0.97);
+}
+
+.ov-review:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-review:active {
+    transform: none;
+  }
 }
 
 .ov-mate-time {

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
-import { ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
+import { throwawayCleanupSpeaks, ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
 import type { ThrowawaySweepView } from "../../zerops/useZeropsThrowawaySweep";
 
 describe("ZeropsThrowawayCleanup", () => {
@@ -30,6 +30,22 @@ describe("ZeropsThrowawayCleanup", () => {
         expect(html).toContain("Clean up sign-in tokens");
         if (state === "done") expect(html).toContain("Sign-in cleanup finished.");
       }
+    },
+  );
+
+  // Housekeeping that goes as it should says nothing over the overview's cards: the person's own
+  // cleanup is their account menu's. A cleanup that failed waits on them, so it stays in view.
+  it.each([
+    { state: "idle", speaks: false },
+    { state: "waiting", speaks: false },
+    { state: "running", speaks: false },
+    { state: "done", speaks: false },
+    { state: "failed", speaks: true },
+    { state: "unknown", speaks: true },
+  ] as const)(
+    "speaks over the cards only once it needs the person: $state",
+    ({ state, speaks }) => {
+      expect(throwawayCleanupSpeaks(state)).toBe(speaks);
     },
   );
 });

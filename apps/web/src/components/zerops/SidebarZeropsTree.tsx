@@ -127,7 +127,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -140,6 +139,7 @@ import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { SidebarComingEnds } from "./SidebarComingEnds";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { MateOwnerMark } from "./MateOwnerMark";
 import {
   activityOfNow,
   mateRunOf,
@@ -3403,86 +3403,6 @@ function MateSecondLine({
     case "none":
       return null;
   }
-}
-
-/**
- * Whose Mate it is, on the corner of its face (`OwnerSeat`): a colleague's
- * picture, 12 px round and cut out of the face rather than laid over it, or
- * their initial on a colour of their own (`ownerMark`) — never before the
- * name, where "(face) Cleo" read as a person called Cleo (the owner,
- * 2026-09-30). A Mate whose records name nobody sits on an empty seat there:
- * a dashed ring in the muted ink, the "no assignee" convention — never a
- * person without a picture, never a spinner — said in words on hover. The
- * badge stands in the face's box, so nothing moves when it arrives.
- *
- * The initial is part of a mark, not text: 7 px inside the 12 px disc, as a
- * picture would be.
- */
-function MateOwnerMark({ seat }: { readonly seat: BadgeSeat }) {
-  const [failed, setFailed] = useState(false);
-  if (seat.kind === "nobody") {
-    return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <span
-              className="menu-owner"
-              data-zerops-avatar="nobody"
-              data-zerops-surface="sidebar-mate-owner"
-            />
-          }
-        >
-          {/* Twelve even dashes: `pathLength` makes the ring's length 24, so
-              the pattern closes on itself with no short dash at the seam. */}
-          <svg aria-hidden="true" className="size-full" viewBox="0 0 16 16">
-            <circle
-              cx="8"
-              cy="8"
-              fill="none"
-              pathLength="24"
-              r="7.25"
-              stroke="currentColor"
-              strokeDasharray="1.25 0.75"
-              strokeWidth="1.25"
-            />
-          </svg>
-          <span className="sr-only">{seat.label}</span>
-        </TooltipTrigger>
-        <TooltipPopup side="right">{seat.label}</TooltipPopup>
-      </Tooltip>
-    );
-  }
-  const { mark } = seat;
-  const picture = failed ? null : mark.picture;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className="menu-owner"
-            data-zerops-avatar={picture === null ? "initials" : "picture"}
-            data-zerops-surface="sidebar-mate-owner"
-            style={{ "--menu-owner-hue": mark.hue } as CSSProperties}
-          />
-        }
-      >
-        {picture === null ? (
-          <span aria-hidden="true">{mark.initial}</span>
-        ) : (
-          <img
-            alt=""
-            className="size-full object-cover"
-            onError={() => {
-              setFailed(true);
-            }}
-            src={picture}
-          />
-        )}
-        <span className="sr-only">{mark.label}</span>
-      </TooltipTrigger>
-      <TooltipPopup side="right">{mark.label}</TooltipPopup>
-    </Tooltip>
-  );
 }
 
 /**

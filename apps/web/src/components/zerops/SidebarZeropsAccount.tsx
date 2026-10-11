@@ -13,7 +13,7 @@
  */
 
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { EllipsisIcon, LogOutIcon } from "lucide-react";
+import { EllipsisIcon, KeyRoundIcon, LogOutIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
@@ -24,6 +24,7 @@ import {
   readProjectsOnScreen,
   useProjectOrder,
 } from "~/zerops/projectOrderPreference";
+import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useSidebar } from "../ui/sidebar";
@@ -50,7 +51,9 @@ import {
   sidebarAccountOrganizationChoices,
   sidebarAccountRoleLine,
   sidebarAccountRoleParts,
+  signInTokensWords,
   type SidebarAccountDestination,
+  type SignInTokensCleanup,
 } from "./SidebarZeropsAccount.logic";
 
 export interface SidebarZeropsAccountProps {
@@ -66,6 +69,10 @@ export interface SidebarZeropsAccountProps {
   readonly onSignOut: () => void;
   readonly signingOut?: boolean;
   readonly signOutError?: string | null;
+  /** Cleaning up the person's own sign-in tokens, and how it goes; absent where it cannot run. */
+  readonly cleanup?:
+    | { readonly state: SignInTokensCleanup; readonly onCleanUp: () => void }
+    | undefined;
   /** The rail: the picture alone, with the name only in the tooltip's place. */
   readonly collapsed?: boolean;
 }
@@ -81,6 +88,7 @@ export function SidebarZeropsAccount({
   onSignOut,
   signingOut = false,
   signOutError = null,
+  cleanup,
   collapsed = false,
 }: SidebarZeropsAccountProps) {
   const lines = sidebarAccountLines({ name: account.name, organization: activeOrganization });
@@ -90,6 +98,7 @@ export function SidebarZeropsAccount({
       <SidebarZeropsAccountMenu
         account={account}
         activeOrganization={activeOrganization}
+        cleanup={cleanup}
         destination={destination}
         destinationIcon={destinationIcon}
         onGo={onGo}
@@ -175,6 +184,7 @@ export function SidebarZeropsAccountMenu({
   onSignOut,
   signingOut = false,
   signOutError = null,
+  cleanup,
 }: Omit<SidebarZeropsAccountProps, "collapsed">) {
   const choices = sidebarAccountOrganizationChoices(organizations);
   const projectOrder = useProjectOrder();
@@ -294,6 +304,20 @@ export function SidebarZeropsAccountMenu({
       ))}
 
       <MenuSeparator />
+      {/* The person's own sign-in tokens: Mate deletes each once used; this takes any left over,
+          their expired ones too. It keeps the menu open, as Sign out does, to say how it went. */}
+      {cleanup === undefined ? null : (
+        <MenuItem
+          closeOnClick={false}
+          data-zerops-account-cleanup={cleanup.state}
+          disabled={cleanup.state === "running"}
+          onClick={cleanup.onCleanUp}
+          variant={cleanup.state === "failed" ? "destructive" : "default"}
+        >
+          <KeyRoundIcon />
+          {signInTokensWords(cleanup.state)}
+        </MenuItem>
+      )}
       {/* Sign-out keeps the menu open so the busy and failed states show
             where the click landed; success unmounts the row with the session. */}
       <MenuItem
@@ -331,9 +355,40 @@ export function SidebarZeropsAccountRow({
   });
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  // The person's own sign-in tokens, cleaned up as the account's `throwaway-sweep` operation, by
+  // the organization it ran for: another organization's menu starts from its first words.
+  const operations = useAccountOperationsOptional();
+  const [cleaned, setCleaned] = useState<{
+    readonly orgId: string;
+    readonly state: SignInTokensCleanup;
+  } | null>(null);
 
   if (session === null || session.status !== "signed-in") return null;
   const { user, organizations, activeOrganization, selectOrganization, signOut } = session;
+  const orgId = activeOrganization?.id;
+  const cleanup =
+    operations === null || orgId === undefined
+      ? undefined
+      : {
+          state: cleaned?.orgId === orgId ? cleaned.state : ("idle" as const),
+          onCleanUp: () => {
+            setCleaned({ orgId, state: "running" });
+            void operations
+              .submit({ kind: "throwaway-sweep", clientId: orgId, userId: user.id, explicit: true })
+              .then(({ progress }) => {
+                setCleaned({
+                  orgId,
+                  state:
+                    progress.stage === "done" && progress.outcome === "succeeded"
+                      ? "done"
+                      : "failed",
+                });
+              })
+              .catch(() => {
+                setCleaned({ orgId, state: "failed" });
+              });
+          },
+        };
 
   const closeMobile = () => {
     if (isMobile) setOpenMobile(false);
@@ -343,6 +398,7 @@ export function SidebarZeropsAccountRow({
     <SidebarZeropsAccount
       account={zeropsAccountDisplay(user)}
       activeOrganization={activeOrganization}
+      cleanup={cleanup}
       collapsed={!isMobile && state === "collapsed"}
       destination={destination}
       destinationIcon={destinationIcon}

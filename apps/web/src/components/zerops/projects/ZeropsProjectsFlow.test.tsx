@@ -120,3 +120,17 @@ it("does not declare a first run before HQ placement is read", () => {
   expect(html).not.toContain("Start a project");
   expect(html).toContain("Placement not read — HQ is unavailable");
 });
+
+// A reload paints nothing it takes back: placement on its way says nothing for the beat it takes,
+// and neither the first run nor HQ's line stands in for it.
+it("says nothing while HQ placement is only on its way", () => {
+  const html = render({
+    onCreateProject: () => {},
+    placementNotice: "Reading HQ placement…",
+    placementReading: true,
+    hqCard: <p data-zerops-surface="hq-card">HQ</p>,
+  });
+  expect(html).not.toContain("Reading HQ placement…");
+  expect(html).not.toContain("Start a project");
+  expect(html).not.toContain('data-zerops-surface="hq-card"');
+});
