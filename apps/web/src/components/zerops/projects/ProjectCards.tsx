@@ -10,16 +10,8 @@
  * Structural like the list it replaced: a Mate's row, the project's menu, the release's door and
  * a place's panel are the page's slots (`ZeropsProjectsFlowProps`).
  */
-import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { ChevronRightIcon } from "lucide-react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -45,74 +37,15 @@ import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProject
 
 export const cardId = (groupId: string) => `project-${groupId}`;
 
-/** One card's width and the gap between cards: a step of the back and forward buttons. */
-const CARD_STEP = 360 + 16;
-
 /**
- * The row of cards: one width each, side by side; past the window's edge the row scrolls sideways
- * under a fade, with a round back and forward button on the side there is more.
+ * Every project's card at once, in a grid that wraps, each card as tall as what it holds: the
+ * overview shows the whole account, never four projects and an arrow to the other sixteen (the
+ * owner, 2026-10-11: "the 'overview' is not overview at all").
  */
 function CardRow({ children }: { readonly children: ReactNode }) {
-  const row = useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = useState({ left: false, right: false });
-  const measure = useCallback(() => {
-    const element = row.current;
-    if (element === null) return;
-    const max = element.scrollWidth - element.clientWidth;
-    const next = { left: element.scrollLeft > 2, right: element.scrollLeft < max - 2 };
-    setEdges((current) =>
-      current.left === next.left && current.right === next.right ? current : next,
-    );
-  }, []);
-  useLayoutEffect(() => {
-    const element = row.current;
-    if (element === null) return;
-    measure();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observer?.observe(element);
-    element.addEventListener("scroll", measure, { passive: true });
-    return () => {
-      observer?.disconnect();
-      element.removeEventListener("scroll", measure);
-    };
-  }, [measure]);
-  const step = (direction: -1 | 1) => {
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    row.current?.scrollBy({ left: direction * CARD_STEP, behavior: reduced ? "auto" : "smooth" });
-  };
   return (
-    <div
-      className="ov-rail"
-      data-can-left={edges.left ? "true" : undefined}
-      data-can-right={edges.right ? "true" : undefined}
-    >
-      <div
-        aria-label="Projects"
-        className="ov-row"
-        data-zerops-surface="project-cards"
-        ref={row}
-        role="list"
-      >
-        {children}
-      </div>
-      <button
-        aria-label="Back"
-        className="ov-nav ov-nav-left"
-        onClick={() => step(-1)}
-        tabIndex={-1}
-        type="button"
-      >
-        <ChevronLeftIcon aria-hidden="true" className="size-4" />
-      </button>
-      <button
-        aria-label="More projects"
-        className="ov-nav ov-nav-right"
-        onClick={() => step(1)}
-        tabIndex={-1}
-        type="button"
-      >
-        <ChevronRightIcon aria-hidden="true" className="size-4" />
-      </button>
+    <div aria-label="Projects" className="ov-row" data-zerops-surface="project-cards" role="list">
+      {children}
     </div>
   );
 }
@@ -417,9 +350,7 @@ export function ProjectCards<T>({
       scrolledTo.current = focusGroup;
       setPulsed(focusGroup);
     } else if (!following.current) return;
-    document
-      .getElementById(cardId(focusGroup))
-      ?.scrollIntoView({ block: "nearest", inline: "start" });
+    document.getElementById(cardId(focusGroup))?.scrollIntoView({ block: "nearest" });
   }, [focusGroup, shown, orderKey]);
   if (groups.length === 0) return null;
   return (
