@@ -11,6 +11,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import { ConversationId, RequestId, runId, type RunId, type ThreadId } from "@t3tools/contracts";
 import * as SqlClient from "effect/sql/SqlClient";
 
@@ -739,6 +740,42 @@ describe("the running engine", () => {
         yield* w.shutdown;
       }),
     ),
+  );
+
+  // Milo's final engine run, 2026-10-11 (J6): a wake armed before a restart fired about 3 minutes
+  // late. That one was Claude's own session cron, which the CLI holds while a background job of
+  // its own runs; the engine's own wakes fire on boot, and at their time.
+  it.effect.each([
+    { when: "came due while the server was down", dueIn: MINUTE, downFor: 2 * MINUTE, wait: 0 },
+    { when: "is due after the restart", dueIn: 3 * MINUTE, downFor: MINUTE, wait: 2 * MINUTE },
+  ])(
+    "a wake armed before a restart fires once, at boot when it $when, else at its time",
+    ({ dueIn, downFor, wait }) =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          const now = yield* Clock.currentTimeMillis;
+          yield* w.tell({
+            _tag: "ArmWake",
+            kind: "standup",
+            key: "j6",
+            dueAt: now + dueIn,
+            text: "j6 wake",
+          });
+          yield* w.kill;
+          yield* TestClock.adjust(downFor);
+          yield* w.boot;
+          if (wait > 0) {
+            yield* w.advance(wait - 1);
+            assert.isUndefined(yield* w.run(r(1)));
+            yield* w.advance(1);
+          }
+          assert.strictEqual((yield* w.run(r(1)))?.trigger.kind, "wake");
+          assert.strictEqual(w.provider.calls.filter((call) => call.endsWith("j6 wake")).length, 1);
+          assert.isUndefined(yield* w.run(r(2)));
+          yield* w.shutdown;
+        }),
+      ),
   );
 
   it.effect("a known reset holds work until that exact instant", () =>
