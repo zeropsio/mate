@@ -525,8 +525,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // The room the end follower stays out of: an answered ask's, which the view eases out of, and an
   // answer's landing room. An open ask's room is the end: the conversation glides up clear of it.
   const followRoomRef = useRef(0);
+  // The room under the end as drawn, all of it: what a landing under a held head reads the end by.
+  const askRoomRef = useRef(askRoom);
   useLayoutEffect(() => {
     followRoomRef.current = Math.max(0, askRoom - askRoomEnd);
+    askRoomRef.current = askRoom;
   }, [askRoom, askRoomEnd]);
   const noticeResizeRef = useRef<{
     position: RememberedTimelinePosition | undefined;
