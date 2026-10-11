@@ -27,6 +27,8 @@ vi.mock("../ui/tooltip", async () => {
     }) => createElement(render.type, render.props as object, children),
     TooltipPopup: ({ children }: { children?: React.ReactNode }) =>
       createElement("span", { role: "tooltip" }, children),
+    TooltipProvider: ({ children }: { children?: React.ReactNode }) =>
+      createElement(Fragment, null, children),
   };
 });
 

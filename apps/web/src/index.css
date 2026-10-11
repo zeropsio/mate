@@ -5013,6 +5013,83 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
     padding: 12px 0 16px;
   }
 
+  /* A Mate on the closed menu: its face, its name under it, so the rail says what is what. */
+  .menu-rail-mate {
+    grid-template-rows: 36px 14px;
+    gap: 2px;
+    width: 56px;
+    height: auto;
+    padding: 4px 0 3px;
+  }
+
+  .menu-rail-name {
+    max-width: 52px;
+    overflow: hidden;
+    color: var(--sidebar-muted-foreground);
+    font-size: 11px;
+    line-height: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-rail-mate:hover .menu-rail-name,
+  .menu-rail-mate[data-current] .menu-rail-name {
+    color: var(--sidebar-foreground);
+  }
+
+  /* On a face with its name under it, the owner's photo and the dot stay on the face's corners. */
+  .menu-rail-mate .menu-rail-owner {
+    top: 28px;
+    right: 6px;
+    bottom: auto;
+  }
+
+  .menu-rail-mate .menu-rail-dot {
+    top: 4px;
+    right: 8px;
+  }
+
+  /* A face's card beside the rail: its name and project, what was asked, its last answer. */
+  .menu-rail-card {
+    display: grid;
+    gap: 3px;
+    max-width: 320px;
+    padding: 4px 2px;
+  }
+
+  .menu-rail-card-name {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+  }
+
+  .menu-rail-card-project {
+    overflow: hidden;
+    color: var(--muted-foreground);
+    font-size: 13px;
+    font-weight: 400;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-rail-card-asked,
+  .menu-rail-card-answer {
+    display: -webkit-box;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 18px;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .menu-rail-card-answer {
+    color: var(--muted-foreground);
+  }
+
   .menu-rail-tip {
     display: grid;
     gap: 1px;
