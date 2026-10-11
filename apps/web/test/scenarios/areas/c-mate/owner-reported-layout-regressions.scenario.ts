@@ -549,8 +549,9 @@ describe("owner-reported layout regressions", () => {
                 await s.page.waitForFunction(
                   () => document.querySelectorAll("section[data-zerops-group]").length === 24,
                 );
+                // Past six projects the menu folds them by default; any left open is folded here.
                 for (const toggle of await s.page.$$(
-                  '[data-zerops-surface="sidebar-project-toggle"]',
+                  '[data-zerops-surface="sidebar-project-toggle"][aria-expanded="true"]',
                 )) {
                   await toggle.click();
                   // Folding moves the next heading; wait for completion before aiming its click.

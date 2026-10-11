@@ -26,7 +26,7 @@ describe("projectRoom", () => {
       last: false,
       room: 4,
     },
-    { name: "the list's last project, folded", open: false, last: true, room: 24 },
+    { name: "the list's last project, folded", open: false, last: true, room: 0 },
   ])("$name keeps $room px below its rows", ({ open, last, room }) => {
     expect(projectRoom({ open, last })).toBe(room);
   });

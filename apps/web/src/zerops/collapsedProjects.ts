@@ -11,9 +11,9 @@ const COLLAPSED_PROJECTS_KEY = "zerops.sidebar.collapsedProjects";
 const OPENED_PROJECTS_KEY = "zerops.sidebar.openedProjects";
 
 /**
- * From this many projects the menu starts folded, each project its one line until its person
- * opens it (the owner, 2026-10-11: "I'd have them collapsed all by default, when you have like
- * 6+").
+ * From this many projects with Mates the menu starts folded, each project its one line until its
+ * person opens it (the owner, 2026-10-11: "I'd have them collapsed all by default, when you have
+ * like 6+").
  */
 export const FOLDED_FROM_PROJECTS = 6;
 
@@ -70,7 +70,10 @@ export function writeOpenedProjects(opened: ReadonlySet<string>): void {
   writeProjectSet(OPENED_PROJECTS_KEY, opened);
 }
 
-/** Whether a project is folded: as its person left it, else folded where the menu lists many. */
+/**
+ * Whether a project is folded: as its person left it, else folded where the menu lists many
+ * projects with Mates (`projects`).
+ */
 export function projectFolded(folds: ProjectFolds, groupId: string, projects: number): boolean {
   if (folds.closed.has(groupId)) return true;
   if (folds.opened.has(groupId)) return false;

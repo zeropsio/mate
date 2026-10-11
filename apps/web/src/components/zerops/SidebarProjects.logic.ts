@@ -49,16 +49,18 @@ const PROJECT_AIR = 28;
  * is absolutely huge").
  */
 const FOLDED_AIR = 4;
-/** The list's last project: the list's own 4 px end makes it the same 28 px to the foot. */
-const LIST_END_ROOM = 24;
+/** The list's own end, below its last project: 4 px. */
+const LIST_END = 4;
 
 /**
  * The room below a project, in px: 28 px under an open project's rows to the next heading, 4 px
- * under a folded heading, and the same 28 px from the list's last project to the menu's foot. The
- * room is the project's own, below it, so a heading's own fold never moves it.
+ * under a folded heading — and the list's last project ends the same distance from the menu's
+ * foot as from the project above it, the list's own 4 px end counted in. The room is the
+ * project's own, below it, so a heading's own fold never moves it.
  */
 export function projectRoom(at: { readonly open: boolean; readonly last: boolean }): number {
-  return at.last ? LIST_END_ROOM : at.open ? PROJECT_AIR : FOLDED_AIR;
+  const air = at.open ? PROJECT_AIR : FOLDED_AIR;
+  return at.last ? air - LIST_END : air;
 }
 
 /** The dot on a folded heading's face: needs you, unread, or stopped on an error. */

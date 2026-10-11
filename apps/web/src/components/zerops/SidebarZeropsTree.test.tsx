@@ -3986,6 +3986,28 @@ describe("one project order, the person's", () => {
     expect(mountedIds(tree)).toEqual(["aaa", "links"]);
   });
 
+  it("folds its projects by default among six or more with Mates; projects of stages alone do not count", () => {
+    const mate = (index: number) =>
+      candidate(`mate-${index}`, { tags: ["mate"], hq: inApp(`app-${index}`, `App ${index}`) });
+    const stages = (index: number) =>
+      candidate(
+        `stage-${index}`,
+        { hq: inApp(`stages-${index}`, `Stages ${index}`, "stage") },
+        "ready",
+        false,
+      );
+    const expanded = (html: string, groupId: string) =>
+      html
+        .split(`data-zerops-group="${groupId}"`)[1]
+        ?.match(
+          /aria-expanded="(true|false)"[^>]*data-zerops-surface="sidebar-project-toggle"/u,
+        )?.[1];
+    const fewWithMates = render([mate(0), ...[1, 2, 3, 4, 5, 6].map(stages)]);
+    expect(expanded(fewWithMates, "app-0")).toBe("true");
+    const many = render([0, 1, 2, 3, 4, 5].map(mate));
+    for (const index of [0, 1, 2, 3, 4, 5]) expect(expanded(many, `app-${index}`)).toBe("false");
+  });
+
   // The owner (2026-10-11), of the "N other projects" fold: "I'd get rid of" it.
   it("lists every project in the person's order, whatever its Mates did and whoever waits", () => {
     vi.spyOn(Date, "now").mockReturnValue(now);

@@ -1536,11 +1536,17 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       environments.some(({ item }) => hasMate(item) && (shown?.(item) ?? true)) ||
       group.pending.some((member) => member.kind === "mate"),
   );
-  // Folded as its person left it, else folded among six or more projects (`projectFolded`).
+  // Folded as its person left it, else folded among six or more projects with Mates
+  // (`projectFolded`): a project of stages alone has no rows to fold, and does not count.
+  const projectsWithMates = groups.filter(
+    ({ group, environments }) =>
+      environments.some(({ item }) => hasMate(item)) ||
+      group.pending.some((member) => member.kind === "mate"),
+  ).length;
   const collapsed: ReadonlySet<string> = new Set(
     groups
       .map(({ group }) => group.groupId)
-      .filter((groupId) => projectFolded(projectFolds, groupId, groups.length)),
+      .filter((groupId) => projectFolded(projectFolds, groupId, projectsWithMates)),
   );
   const ungrouped = view.ungrouped.map((item) => ({ item, role: undefined }));
   const ungroupedMates = ungrouped.some(({ item }) => hasMate(item) && (shown?.(item) ?? true));
