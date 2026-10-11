@@ -45,20 +45,13 @@ import {
   mateDeletingView,
   mateOwnerView,
   mateRowAskLine,
-  mateRowAskOver,
   mateRowReading,
   mateRowSecond,
   ownerBadge,
-  type MateRowAskLine,
 } from "../SidebarMateRow.logic";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
 import { CardMate, CardMateTime } from "./ProjectCards";
-import {
-  cardMateReading,
-  cardSecondWords,
-  NOTHING_ASKED_YET,
-  type CardMateReading,
-} from "./projectCard.logic";
+import { cardMateReading, cardSecondWords, type CardMateReading } from "./projectCard.logic";
 
 export function OverviewCardMate({
   candidate,
@@ -69,6 +62,7 @@ export function OverviewCardMate({
   flow,
   change,
   coming,
+  preview,
   conversationsRead,
   outsideHq,
   containerLine,
@@ -86,6 +80,8 @@ export function OverviewCardMate({
   readonly change: FlowPullRequest | undefined;
   /** Still coming up, or never came, as its menu row reads it (`useMateComingOf`). */
   readonly coming?: MateComing | undefined;
+  /** Its preview's address, where its pair has one: a door on its row. */
+  readonly preview?: string | undefined;
   readonly conversationsRead: boolean;
   readonly outsideHq: boolean;
   /** What its container says first, where it says something: coming up, a failed connect. */
@@ -206,8 +202,6 @@ export function OverviewCardMate({
         ? undefined
         : { title: change.title, mine: people?.waitsOnViewer !== false },
   });
-  // What was asked, over the answer, as its row says it (`mateRowAskOver`).
-  const askOver = view.coming === undefined ? mateRowAskOver(askLine, second) : undefined;
   // A Mate still coming up, or that never came, says only that: nothing of it is lifted.
   const reading: CardMateReading =
     view.coming !== undefined
@@ -297,7 +291,7 @@ export function OverviewCardMate({
           </>
         ) : undefined)
       }
-      ask={askOver === undefined ? undefined : <CardAskLine line={askOver} />}
+      preview={preview}
       name={name}
       onOpen={onOpen}
       reading={reading}
@@ -322,22 +316,6 @@ export function OverviewCardMate({
       }
     />
   );
-}
-
-/** What was asked, over its answer: the ask, or *Draft* and its words over it, as its row has it. */
-function CardAskLine({
-  line,
-}: {
-  readonly line: Exclude<MateRowAskLine, { readonly kind: "sign-in" } | undefined>;
-}) {
-  if (line.kind === "nothing-asked") return <>{NOTHING_ASKED_YET}</>;
-  if (line.kind === "draft")
-    return (
-      <>
-        <span className="font-medium text-foreground">Draft:</span> {line.text}
-      </>
-    );
-  return <>{line.text}</>;
 }
 
 /** Its coming up in its menu row's words (`mateBornLine`), the attention's amber where it stopped. */

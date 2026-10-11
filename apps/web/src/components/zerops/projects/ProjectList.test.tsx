@@ -117,6 +117,8 @@ import {
   WREN,
   type Item,
 } from "./flowTestFixtures";
+import { create, type ReactTestRenderer } from "react-test-renderer";
+
 import { CardMateLiftActions } from "./ProjectCards";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 
@@ -409,20 +411,52 @@ describe("a row the page names (?group=)", () => {
 });
 
 describe("Projects detail demand", () => {
+  // A card says what its running release brought and where each merged change went (the owner,
+  // 2026-10-11: "quick history of latest PRs"), which is the project's detail: read for the cards a
+  // person can see, never for the whole organization at once.
   it.each([1, 12, 48])(
-    "%i collapsed applications hold no detail; opening one holds only its scope",
+    "%i applications hold detail only for the cards in view, and let it go once out of view",
     (count) => {
       detailHolds.clear();
+      const observers: Array<(seen: boolean) => void> = [];
+      vi.stubGlobal(
+        "IntersectionObserver",
+        class {
+          constructor(callback: IntersectionObserverCallback) {
+            observers.push((seen) => {
+              callback(
+                [{ isIntersecting: seen } as IntersectionObserverEntry],
+                this as unknown as IntersectionObserver,
+              );
+            });
+          }
+          observe() {}
+          disconnect() {}
+        },
+      );
+      vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
       const groups = Array.from({ length: count }, (_, index) => quiet(`app-${index}`));
-      const tree = mount(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={groups} />);
+      let tree: ReactTestRenderer | undefined;
+      act(() => {
+        // The row measures its scroll; a card is only observed.
+        tree = create(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={groups} />, {
+          createNodeMock: () => ({
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            scrollLeft: 0,
+            scrollWidth: 0,
+            clientWidth: 0,
+          }),
+        });
+      });
       expect([...detailHolds]).toEqual([]);
-      const card = tree.root.findByProps({ "data-zerops-group": "app-0" });
-      const place = card.findByProps({ "data-zerops-place": "production" });
-      act(() => place.props.onClick());
+      expect(observers).toHaveLength(count);
+      act(() => observers[0]!(true));
       expect([...detailHolds]).toEqual([["app-0", 1]]);
-      act(() => place.props.onClick());
+      act(() => observers[0]!(false));
       expect([...detailHolds]).toEqual([]);
-      act(() => tree.unmount());
+      act(() => tree?.unmount());
+      vi.unstubAllGlobals();
     },
   );
 });

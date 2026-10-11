@@ -5138,13 +5138,109 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
 /* ==== Pass 41 · the overview's cards ==== */
 /* The row: cards side by side, one width; past the window's edge it scrolls sideways under a fade,
    a round back and forward button on the side where there is more. */
-/* The overview's cards: every project at once, in a grid that wraps, each card as tall as what it
-   holds (the owner, 2026-10-11: "the 'overview' is not overview at all"). */
+@property --ov-fade-left {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --ov-fade-right {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+.ov-rail {
+  position: relative;
+  margin-inline: -20px;
+  transition:
+    --ov-fade-left 200ms var(--ease-out-strong),
+    --ov-fade-right 200ms var(--ease-out-strong);
+}
+
+.ov-rail[data-can-left] {
+  --ov-fade-left: 56px;
+}
+
+.ov-rail[data-can-right] {
+  --ov-fade-right: 96px;
+}
+
 .ov-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
-  gap: 16px;
-  align-items: start;
+  grid-auto-columns: min(380px, 100%);
+  grid-auto-flow: column;
+  column-gap: 16px;
+  align-items: stretch;
+  justify-content: start;
+  padding: 0 20px 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 20px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    var(--color-black) var(--ov-fade-left),
+    var(--color-black) calc(100% - var(--ov-fade-right)),
+    transparent
+  );
+}
+
+@media (min-width: 40rem) {
+  .ov-rail {
+    margin-inline: -24px;
+  }
+
+  .ov-row {
+    padding-inline: 24px;
+    scroll-padding-inline: 24px;
+  }
+}
+
+.ov-row::-webkit-scrollbar {
+  display: none;
+}
+
+.ov-nav {
+  position: absolute;
+  top: 10px;
+  z-index: 2;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 2px 8px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 150ms var(--ease-out-strong),
+    scale 160ms var(--ease-out-strong);
+}
+
+.ov-nav-left {
+  left: 12px;
+}
+
+.ov-nav-right {
+  right: 12px;
+}
+
+.ov-rail[data-can-left] .ov-nav-left,
+.ov-rail[data-can-right] .ov-nav-right {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ov-nav:active {
+  scale: 0.94;
 }
 
 /* A card: the project, its Mates, a release ready to go, production's line at its foot. */
@@ -5169,6 +5265,7 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
   padding: 18px 12px 12px;
   border-radius: 20px;
   background: var(--ov-ground);
+  scroll-snap-align: start;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -5436,22 +5533,6 @@ a.ov-card-site:hover {
 }
 
 /* What was asked, over the answer: the menu row's second ink. */
-.ov-mate-ask {
-  display: block;
-  min-width: 0;
-  margin-top: 1px;
-  overflow: hidden;
-  color: color-mix(in oklab, var(--foreground) 76%, transparent);
-  font-size: 14px;
-  line-height: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ov-mate-ask + .ov-mate-l2 {
-  margin-top: 0;
-}
-
 .ov-mate-l2 {
   display: block;
   min-width: 0;
@@ -5544,8 +5625,7 @@ a.ov-card-site:hover {
 }
 
 .ov-btn:focus-visible,
-.ov-fold:focus-visible,
-.ov-place:focus-visible {
+.ov-fold:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
@@ -5601,21 +5681,6 @@ a.ov-card-site:hover {
 }
 
 /* A release ready to go, lifted; then production's line, at every card's foot. */
-.ov-card-env {
-  display: grid;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 16px;
-}
-
-.ov-ready {
-  padding: 14px;
-  border-radius: 14px;
-  background: var(--ov-lift);
-  box-shadow:
-    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent),
-    0 1px 1px color-mix(in srgb, var(--contrast-foreground) 3%, transparent);
-}
 
 .ov-ready-title {
   font-size: 15px;
@@ -5630,50 +5695,7 @@ a.ov-card-site:hover {
   line-height: 20px;
 }
 
-.ov-foot {
-  display: grid;
-  gap: 2px;
-}
-
 /* A place: its name, its dot, its words — a click opens its panel — and its door at the end. */
-.ov-place-row {
-  position: relative;
-  display: flex;
-  min-width: 0;
-  align-items: center;
-}
-
-.ov-place {
-  display: flex;
-  min-width: 0;
-  height: 40px;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px;
-  border-radius: 12px;
-  color: var(--foreground);
-  font-size: 14px;
-  text-align: left;
-  transition: background-color 150ms var(--ease-out-strong);
-}
-
-.ov-place-row:has(.ov-place-open) .ov-place {
-  padding-right: 44px;
-}
-
-button.ov-place:hover,
-a.ov-place:hover,
-.ov-place[data-open] {
-  background: var(--ov-hover);
-}
-
-.ov-place-name {
-  flex: none;
-  min-width: 64px;
-  font-weight: 500;
-}
-
 .ov-place-words {
   min-width: 0;
   overflow: hidden;
@@ -5699,55 +5721,12 @@ a.ov-place:hover,
   color: var(--zerops-status-busy-text);
 }
 
-.ov-place-link {
-  color: var(--foreground);
-  text-decoration: underline 1px color-mix(in oklab, currentColor 30%, transparent);
-  text-underline-offset: 3px;
-}
-
-.ov-place-link:hover {
-  text-decoration-color: currentColor;
-}
-
 .ov-sep {
   margin: 0 6px;
   color: var(--muted-foreground);
 }
 
 /* A place's door: its address, opened beside the page; in sight, never only on hover. */
-.ov-place-open {
-  position: absolute;
-  right: 4px;
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border-radius: 10px;
-  color: var(--muted-foreground);
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong);
-}
-
-a.ov-place-open:hover {
-  background: var(--ov-hover);
-  color: var(--foreground);
-}
-
-span.ov-place-open {
-  pointer-events: none;
-}
-
-a.ov-place:hover + span.ov-place-open {
-  color: var(--foreground);
-}
-
-a.ov-place-open:focus-visible,
-a.ov-place-link:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
 .ov-dot {
   display: inline-block;
   flex: none;
@@ -5797,44 +5776,104 @@ a.ov-place-link:focus-visible {
   font-size: 12px;
 }
 
-/* A place's panel: what runs there, what it brought, what went wrong, and what to do. */
+/* A place on its card — production, a stage — said in full: its name and its door, what runs,
+   each service, what went wrong, what the running release brought, and what to do. */
 .ov-panel {
-  width: 344px;
-  max-width: 100%;
-  padding: 6px 6px 8px;
-  font-size: 13px;
-  line-height: 18px;
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 20px;
 }
 
 .ov-panel-head {
   display: flex;
-  height: 36px;
+  min-width: 0;
   align-items: center;
   gap: 8px;
-  padding: 0 10px;
-  font-size: 15px;
 }
 
-.ov-panel-head b {
+.ov-panel-name,
+.ov-sec-name {
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: 13px;
   font-weight: 600;
+  line-height: 20px;
 }
 
-.ov-panel-sub {
-  margin-top: -6px;
-  padding: 0 10px 0 34px;
+.ov-panel-host {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 6px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 13px;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
 }
 
-.ov-panel-sec {
-  padding: 12px 10px 0 34px;
+.ov-panel-host:hover {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+  color: var(--foreground);
 }
 
-.ov-panel-k {
-  margin-bottom: 4px;
-  color: var(--muted-foreground);
-  font-size: 12px;
+.ov-panel-host:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.ov-panel-state {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
   font-weight: 500;
+  line-height: 22px;
+}
+
+.ov-panel-services {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ov-service {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ov-service-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--zerops-status-ok);
+}
+
+.ov-service[data-state="stopped"] .ov-service-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.25px var(--muted-foreground);
+}
+
+.ov-service[data-state="down"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.ov-service[data-state="down"] .ov-service-dot {
+  background: var(--zerops-status-failed);
+}
+
+.ov-panel-note {
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .ov-panel-note[data-tone="attention"] {
@@ -5845,28 +5884,37 @@ a.ov-place-link:focus-visible {
   color: var(--zerops-status-failed-text);
 }
 
-.ov-panel-li {
+.ov-panel-sec {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  column-gap: 8px;
-  align-items: center;
-  min-height: 26px;
-  margin-left: -26px;
+  gap: 2px;
+  margin-top: 4px;
 }
 
-.ov-panel-li .ov-dot {
-  justify-self: center;
-  margin: 0;
+.ov-panel-k {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ov-panel-li {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .ov-panel-lt {
   min-width: 0;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .ov-panel-w {
+  flex: none;
   color: var(--muted-foreground);
   font-size: 12px;
   white-space: nowrap;
@@ -5877,8 +5925,11 @@ a.ov-place-link:focus-visible {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-top: 14px;
-  padding: 0 4px 0 34px;
+  margin-top: 4px;
+}
+
+.ov-panel-acts:empty {
+  display: none;
 }
 
 .ov-panel-acts .ov-btn {
@@ -5888,25 +5939,135 @@ a.ov-place-link:focus-visible {
   font-size: 13px;
 }
 
-.ov-panel-host {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
+/* A card's sections: each its own white card in the project's column. */
+.ov-sec {
+  display: grid;
   gap: 6px;
-  margin-left: -26px;
-  padding: 2px 6px 2px 4px;
-  border-radius: 6px;
-  color: var(--foreground);
+  margin-top: 10px;
+  padding: 12px 14px 14px;
+  border-radius: 14px;
+  background: var(--ov-lift);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 5%, transparent),
+    0 1px 1px color-mix(in srgb, var(--contrast-foreground) 3%, transparent);
+}
+
+/* The Mates stand on the column's own ground: what waits on you is the white there. */
+.ov-sec.ov-mates {
+  gap: 2px;
+  margin-top: 14px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ov-sec.ov-mates .ov-sec-name {
+  padding: 0 6px 4px;
+}
+
+/* A project's latest changes: open ones with what stops them, merged ones with where they went. */
+.ov-changes {
+  display: grid;
+  margin: 0 -8px;
+  padding: 0;
+  list-style: none;
+}
+
+.ov-change {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: start;
+  padding: 6px 8px;
+  border-radius: 10px;
+  text-align: left;
   transition: background-color 150ms var(--ease-out-strong);
 }
 
-.ov-panel-host:hover {
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
+.ov-change:hover {
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
 }
 
-.ov-panel-runs {
+.ov-change:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.ov-change-icon {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--muted-foreground);
+}
+
+.ov-change[data-open] .ov-change-icon {
+  color: var(--foreground);
+}
+
+.ov-change-text {
+  display: grid;
+  min-width: 0;
+}
+
+.ov-change-title {
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-change-line {
+  overflow: hidden;
   color: var(--muted-foreground);
   font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ov-change-time {
+  padding-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ov-change-line[data-tone="attention"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.ov-change-line[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+/* A Mate's preview, a door at its row's end. */
+.ov-mate-preview {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
+}
+
+.ov-mate-preview:hover {
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+  color: var(--foreground);
+}
+
+.ov-mate-preview:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
 }
 
 /* Under the cards: the projects without a Mate, a line each, then HQ. */
@@ -5972,12 +6133,15 @@ a.ov-place-link:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .ov-mate,
   .ov-btn,
+  .ov-nav,
+  .ov-rail,
   .ov-fold,
-  .ov-place {
+  .ov-change {
     transition: opacity 150ms linear;
   }
 
-  .ov-btn:active {
+  .ov-btn:active,
+  .ov-nav:active {
     scale: none;
   }
 }

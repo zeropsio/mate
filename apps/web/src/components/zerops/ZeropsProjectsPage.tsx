@@ -1995,6 +1995,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           conversationsRead={conversationsRead(candidate)}
           flow={tags.groupId === undefined ? undefined : projectFlow.flows.get(tags.groupId)}
           groupId={tags.groupId}
+          preview={preview}
           key={candidate.key}
           name={name}
           onOpen={select}
@@ -2272,6 +2273,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         }}
         cardPlaces={overview.cardPlaces}
         renderPlacePanel={overview.renderPlacePanel}
+        renderChanges={overview.renderChanges}
         renderCardPeople={overview.renderCardPeople}
         renderReleaseVerb={({ group, flow }) => {
           const { production } = flow;

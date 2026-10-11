@@ -107,17 +107,6 @@ export function budgets(s: Scenario) {
             count,
           ),
         ),
-      togglesProject: (name: string) =>
-        Effect.promise(async () => {
-          const id = s.appIds.get(name);
-          if (id === undefined) throw new Error(`No application fixture ${name}`);
-          // A card holds its project's detail only while production's panel is open.
-          await s.page
-            .locator(
-              `[data-zerops-surface="project-cards"] [data-zerops-group="${id}"] [data-zerops-place]`,
-            )
-            .click();
-        }),
       appDetailsAre: (names: ReadonlyArray<string>) =>
         Effect.promise(() =>
           observation.hq.appDetailsAre(

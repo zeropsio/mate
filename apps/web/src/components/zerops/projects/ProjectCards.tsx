@@ -10,15 +10,31 @@
  * Structural like the list it replaced: a Mate's row, the project's menu, the release's door and
  * a place's panel are the page's slots (`ZeropsProjectsFlowProps`).
  */
-import { ArrowUpRightIcon } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  ArrowUpRightIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  GitMergeIcon,
+  GitPullRequestIcon,
+} from "lucide-react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
+import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useNowMs } from "~/zerops/useNowMs";
-import { Popover, PopoverPopup, PopoverTrigger } from "../../ui/popover";
+import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { StopReadAgain } from "../StopReadAgain";
 import { heldLine } from "./emptyApps.logic";
 import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from "./flowSteps";
+import { placeLabel } from "./PlacePanel";
 import {
   cardReady,
   foldMates,
@@ -26,28 +42,85 @@ import {
   mateChangeForReview,
   mateIsLoud,
   placeLines,
-  previewLinks,
   readyLine,
   readyTitle,
-  siteOf,
+  type CardChange,
   type CardMateReading,
   type PlaceLine,
-  type PreviewLink,
 } from "./projectCard.logic";
 import { comingMateLine, projectRowLine, stopLine } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
 
+/** One card's width and the gap between cards: a step of the back and forward buttons. */
+const CARD_STEP = 380 + 16;
+
 /**
- * Every project's card at once, in a grid that wraps, each card as tall as what it holds: the
- * overview shows the whole account, never four projects and an arrow to the other sixteen (the
- * owner, 2026-10-11: "the 'overview' is not overview at all").
+ * The row of cards: one width each, side by side; past the window's edge the row scrolls sideways
+ * under a fade, with a round back and forward button on the side there is more.
  */
 function CardRow({ children }: { readonly children: ReactNode }) {
+  const row = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const measure = useCallback(() => {
+    const element = row.current;
+    if (element === null) return;
+    const max = element.scrollWidth - element.clientWidth;
+    const next = { left: element.scrollLeft > 2, right: element.scrollLeft < max - 2 };
+    setEdges((current) =>
+      current.left === next.left && current.right === next.right ? current : next,
+    );
+  }, []);
+  useLayoutEffect(() => {
+    const element = row.current;
+    if (element === null) return;
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    element.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      observer?.disconnect();
+      element.removeEventListener("scroll", measure);
+    };
+  }, [measure]);
+  const step = (direction: -1 | 1) => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    row.current?.scrollBy({ left: direction * CARD_STEP, behavior: reduced ? "auto" : "smooth" });
+  };
   return (
-    <div aria-label="Projects" className="ov-row" data-zerops-surface="project-cards" role="list">
-      {children}
+    <div
+      className="ov-rail"
+      data-can-left={edges.left ? "true" : undefined}
+      data-can-right={edges.right ? "true" : undefined}
+    >
+      <div
+        aria-label="Projects"
+        className="ov-row"
+        data-zerops-surface="project-cards"
+        ref={row}
+        role="list"
+      >
+        {children}
+      </div>
+      <button
+        aria-label="Back"
+        className="ov-nav ov-nav-left"
+        onClick={() => step(-1)}
+        tabIndex={-1}
+        type="button"
+      >
+        <ChevronLeftIcon aria-hidden="true" className="size-4" />
+      </button>
+      <button
+        aria-label="More projects"
+        className="ov-nav ov-nav-right"
+        onClick={() => step(1)}
+        tabIndex={-1}
+        type="button"
+      >
+        <ChevronRightIcon aria-hidden="true" className="size-4" />
+      </button>
     </div>
   );
 }
@@ -75,130 +148,97 @@ export function PlaceWords({ line }: { readonly line: PlaceLine }) {
   );
 }
 
-/** Holds the project's detail while a panel of it is open: its releases, for History. */
-function PanelHold({
-  groupId,
-  children,
-}: {
-  readonly groupId: string;
-  readonly children: ReactNode;
-}) {
-  useHqAppDetailHold([groupId]);
-  return <>{children}</>;
+/**
+ * Holds the project's detail — its releases, its merged changes — while its card is on screen or
+ * one card's width from it: what production's release brought and where each merged change went
+ * are read for the cards a person can see, never for the whole organization at once.
+ */
+function useDetailWhileSeen(groupId: string) {
+  const ref = useRef<HTMLElement>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const element = ref.current;
+    if (element === null || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([record]) => {
+        setSeen(record?.isIntersecting === true);
+      },
+      { rootMargin: `0px ${String(CARD_STEP)}px` },
+    );
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+  useHqAppDetailHold(seen ? [groupId] : NO_GROUPS);
+  return ref;
 }
 
-/** What a place's panel says where the page gives it nothing more: its line. */
+const NO_GROUPS: ReadonlyArray<string> = [];
+
+/** What a place says where the page gives it nothing more: its name and its line. */
 function PlainPanel({ line }: { readonly line: PlaceLine }) {
   return (
     <div className="ov-panel">
       <div className="ov-panel-head">
+        <b className="ov-panel-name">{placeLabel(line)}</b>
+      </div>
+      <p className="ov-panel-state">
         <PlaceDot dot={line.dot} />
-        <b>{line.name}</b>
-      </div>
-      <p className="ov-panel-sub">{line.words.join(" · ")}</p>
+        <PlaceWords line={line} />
+      </p>
     </div>
   );
 }
 
-/** Its address, opened beside the page: the door every place with one keeps in sight. */
-function PlaceOpen({ name, route }: { readonly name: string; readonly route: string }) {
-  return (
-    <a
-      aria-label={`Open ${name}`}
-      className="ov-place-open"
-      href={route}
-      rel="noreferrer"
-      target="_blank"
-    >
-      <ArrowUpRightIcon aria-hidden="true" className="size-4" />
-    </a>
-  );
+/** How long ago a change last moved, as a menu row says its time: "3h", "2d". */
+function ChangeAge({ at }: { readonly at: string | undefined }) {
+  const nowMs = useNowMs();
+  const when = at === undefined ? "" : compactSidebarTimeLabel(formatRelativeTimeLabel(at, nowMs));
+  return when.length === 0 ? null : <span className="ov-change-time">{when}</span>;
 }
 
-/** A place's line: its name, its dot, its words, its door; a click opens its panel. */
-function PlaceLineRow({
-  line,
-  panel,
-  groupId,
+/** One of a card's latest changes: what it is, whose, and where it stands; a click opens it. */
+export function CardChanges({
+  changes,
+  mateName,
+  onOpen,
 }: {
-  readonly line: PlaceLine;
-  readonly panel: ReactNode;
-  readonly groupId: string;
+  readonly changes: ReadonlyArray<CardChange>;
+  readonly mateName: (projectId: string) => string | undefined;
+  readonly onOpen: (change: CardChange, from: HTMLElement) => void;
 }) {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="ov-place-row">
-      <Popover onOpenChange={setOpen} open={open}>
-        <PopoverTrigger
-          render={
-            <button
-              aria-haspopup="dialog"
-              className="ov-place"
-              data-open={open ? "true" : undefined}
-              data-zerops-place={line.kind}
-              type="button"
-            />
-          }
-        >
-          <span className="ov-place-name">{line.name}</span>
-          <PlaceDot dot={line.dot} />
-          <PlaceWords line={line} />
-        </PopoverTrigger>
-        {open ? (
-          <PopoverPopup align="start" padding="none" side="bottom" sideOffset={6}>
-            <PanelHold groupId={groupId}>{panel}</PanelHold>
-          </PopoverPopup>
-        ) : null}
-      </Popover>
-      {line.route === undefined ? null : <PlaceOpen name={line.name} route={line.route} />}
-    </div>
-  );
-}
-
-/**
- * The Mates' previews, where a person looks at what a Mate made: one Mate's by its address, the
- * whole line its door; several by their Mates' names, each its own.
- */
-function PreviewRow({ links }: { readonly links: ReadonlyArray<PreviewLink> }) {
-  const [only] = links;
-  if (links.length === 1 && only !== undefined)
-    return (
-      <div className="ov-place-row">
-        <a
-          className="ov-place"
-          data-zerops-place="preview"
-          href={only.url}
-          rel="noreferrer"
-          target="_blank"
-        >
-          <span className="ov-place-name">Preview</span>
-          <span className="ov-place-words">{only.label}</span>
-        </a>
-        <span aria-hidden="true" className="ov-place-open">
-          <ArrowUpRightIcon className="size-4" />
-        </span>
-      </div>
-    );
-  return (
-    <div className="ov-place-row">
-      <div className="ov-place" data-zerops-place="preview">
-        <span className="ov-place-name">Preview</span>
-        <span className="ov-place-words">
-          {links.map((link, index) => (
-            <Fragment key={link.url}>
-              {index === 0 ? null : (
-                <span aria-hidden="true" className="ov-sep">
-                  ·
+    <section aria-label="Changes" className="ov-sec" data-zerops-surface="card-changes">
+      <h3 className="ov-sec-name">Changes</h3>
+      <ul className="ov-changes">
+        {changes.map((change) => {
+          const by = mateName(change.pull.mateProjectId);
+          const Icon = change.open ? GitPullRequestIcon : GitMergeIcon;
+          return (
+            <li key={`${change.pull.repository}#${String(change.pull.number)}`}>
+              <button
+                className="ov-change"
+                data-open={change.open ? "true" : undefined}
+                onClick={(event) => {
+                  onOpen(change, event.currentTarget);
+                }}
+                type="button"
+              >
+                <Icon aria-hidden="true" className="ov-change-icon" />
+                <span className="ov-change-text">
+                  <span className="ov-change-title">{change.pull.title}</span>
+                  <span className="ov-change-line" data-tone={change.tone}>
+                    {by === undefined ? change.words : `${by} · ${change.words}`}
+                  </span>
                 </span>
-              )}
-              <a className="ov-place-link" href={link.url} rel="noreferrer" target="_blank">
-                {link.label}
-              </a>
-            </Fragment>
-          ))}
-        </span>
-      </div>
-    </div>
+                <ChangeAge at={change.at} />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -254,7 +294,8 @@ function CardMates<T>({
     (mate): mate is Extract<FlowMateEntry<T>, { kind: "listed" }> => mate.kind === "listed",
   );
   return (
-    <section aria-label="Mates" className="ov-mates" data-zerops-step="mates">
+    <section aria-label="Mates" className="ov-sec ov-mates" data-zerops-step="mates">
+      <h3 className="ov-sec-name">Mates</h3>
       {shown.map(draw)}
       {unfolded ? folded.map(draw) : null}
       {folded.length > 0 && !unfolded ? (
@@ -308,15 +349,18 @@ function ProjectCard<T>({
 }) {
   const nowMs = useNowMs();
   const { group, flow } = entry;
-  const route = "stop" in flow.production ? flow.production.stop.route : undefined;
-  const site = siteOf(route);
+  const seen = useDetailWhileSeen(group.groupId);
   const quiet = [entry.line, heldLine(flow.mates.length, entry.contents)].find(
     (line) => line !== undefined,
   );
   const ready = cardReady(flow);
   const releaseDoor = ready === undefined ? null : props.renderReleaseVerb?.(entry);
   const lines = placeLines({ flow, ...props.cardPlaces?.(entry), nowMs });
-  const previews = previewLinks(flow.mates);
+  // Production first — what a person runs for others — then each stage behind it.
+  const places = [
+    ...lines.filter((line) => line.kind === "production"),
+    ...lines.filter((line) => line.kind === "stage"),
+  ];
   // Why its changes are not known, said plainly where they are not.
   const unknown = projectRowLine({
     flow,
@@ -332,6 +376,7 @@ function ProjectCard<T>({
       data-focused={focused ? "true" : undefined}
       data-zerops-group={group.groupId}
       id={cardId(group.groupId)}
+      ref={seen}
       role="listitem"
     >
       <header className="ov-card-head">
@@ -342,41 +387,32 @@ function ProjectCard<T>({
           {props.renderCardPeople?.(entry)}
           <span className="ov-card-menu">{props.renderGroupMenu(entry)}</span>
         </div>
-        {site !== undefined && route !== undefined ? (
-          <a className="ov-card-site" href={route} rel="noreferrer" target="_blank">
-            {site}
-          </a>
-        ) : quiet !== undefined ? (
-          <p className="ov-card-site">{quiet}</p>
-        ) : null}
+        {quiet === undefined ? null : <p className="ov-card-site">{quiet}</p>}
       </header>
+      {places.map((line) => (
+        <section
+          className="ov-sec"
+          data-zerops-place={line.kind}
+          key={`${line.kind}:${line.projectId ?? line.name}`}
+        >
+          {props.renderPlacePanel?.(entry, line) ?? <PlainPanel line={line} />}
+        </section>
+      ))}
+      {ready === undefined ? null : (
+        <section className="ov-sec" data-zerops-card-ready="true">
+          <p className="ov-ready-title">{readyTitle(ready)}</p>
+          <p className="ov-ready-line">{readyLine(ready)}</p>
+          {drawn(releaseDoor) ? <div className="ov-acts">{releaseDoor}</div> : null}
+        </section>
+      )}
+      {props.renderChanges?.(entry)}
       <CardMates entry={entry} props={props} />
       {unknown.kind === "unread" ? (
         <p className="ov-card-note" data-zerops-row-line="unread">
           {unknown.text}
         </p>
       ) : null}
-      <section aria-label="Release and production" className="ov-card-env">
-        {ready === undefined ? null : (
-          <div className="ov-ready" data-zerops-card-ready="true">
-            <p className="ov-ready-title">{readyTitle(ready)}</p>
-            <p className="ov-ready-line">{readyLine(ready)}</p>
-            {drawn(releaseDoor) ? <div className="ov-acts">{releaseDoor}</div> : null}
-          </div>
-        )}
-        <div className="ov-foot">
-          {previews.length === 0 ? null : <PreviewRow links={previews} />}
-          {lines.map((line) => (
-            <PlaceLineRow
-              groupId={group.groupId}
-              key={`${line.kind}:${line.projectId ?? line.name}`}
-              line={line}
-              panel={props.renderPlacePanel?.(entry, line) ?? <PlainPanel line={line} />}
-            />
-          ))}
-        </div>
-        <StopReads entry={entry} />
-      </section>
+      <StopReads entry={entry} />
     </article>
   );
 }
@@ -418,7 +454,9 @@ export function ProjectCards<T>({
       scrolledTo.current = focusGroup;
       setPulsed(focusGroup);
     } else if (!following.current) return;
-    document.getElementById(cardId(focusGroup))?.scrollIntoView({ block: "nearest" });
+    document
+      .getElementById(cardId(focusGroup))
+      ?.scrollIntoView({ block: "nearest", inline: "start" });
   }, [focusGroup, shown, orderKey]);
   if (groups.length === 0) return null;
   return (
@@ -443,8 +481,8 @@ export interface CardMateProps {
   /** The right of its name: its time, its dot. */
   readonly time: ReactNode;
   readonly reading: CardMateReading;
-  /** What was asked, over its answer (`mateRowAskOver`); `undefined` where its line is the ask. */
-  readonly ask?: ReactNode;
+  /** Its preview's address: a door at its row's end. */
+  readonly preview?: string | undefined;
   /** Drawn in place of the words where its container has something else to say. */
   readonly line?: ReactNode;
   /** Opens its conversation; `undefined` where it cannot open yet. */
@@ -457,7 +495,16 @@ export interface CardMateProps {
  * A Mate on a card: a 32 px face, its name and time, its second line. What waits on the viewer is
  * lifted onto a white card, its line in ink over two lines, its buttons under it.
  */
-export function CardMate({ name, face, time, reading, ask, line, onOpen, actions }: CardMateProps) {
+export function CardMate({
+  name,
+  face,
+  time,
+  reading,
+  preview,
+  line,
+  onOpen,
+  actions,
+}: CardMateProps) {
   const lifted = reading.lift !== undefined;
   return (
     <div
@@ -482,12 +529,18 @@ export function CardMate({ name, face, time, reading, ask, line, onOpen, actions
             </button>
           )}
           <span className="ov-mate-time">{time}</span>
+          {preview === undefined ? null : (
+            <a
+              aria-label={`Open ${name}'s preview`}
+              className="ov-mate-preview"
+              href={preview}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <ArrowUpRightIcon aria-hidden="true" className="size-3.5" />
+            </a>
+          )}
         </span>
-        {ask === undefined ? null : (
-          <span className="ov-mate-ask" data-zerops-surface="card-mate-ask">
-            {ask}
-          </span>
-        )}
         <span
           className="ov-mate-l2"
           data-tone={reading.tone}

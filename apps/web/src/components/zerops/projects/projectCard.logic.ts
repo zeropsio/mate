@@ -9,13 +9,14 @@
  *
  * Pure: no React, no clock of its own.
  */
-import type {
-  FlowPullRequest,
-  FlowReleaseRow,
-  GroupFlow,
-  GroupFlowMate,
-  GroupFlowProduction,
-  GroupFlowStop,
+import {
+  changeState,
+  type FlowPullRequest,
+  type FlowReleaseRow,
+  type GroupFlow,
+  type GroupFlowMate,
+  type GroupFlowProduction,
+  type GroupFlowStop,
 } from "@t3tools/client-runtime/zerops";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -513,6 +514,79 @@ export function cardPeople<P extends { readonly userId: string }>(
     people.push(owner);
   }
   return people.length > 1 ? people : [];
+}
+
+/** How many of its latest changes a card shows. */
+export const CARD_CHANGES = 5;
+
+/** One of a card's latest changes: open, with what stops it; or merged, with where it went. */
+export interface CardChange {
+  readonly pull: FlowPullRequest;
+  readonly open: boolean;
+  /** "Ready to merge", what stops it; "In v1.0.4", "On stage", "Not released yet", "Merged". */
+  readonly words: string;
+  /** Its words' tone: the change state's for an open one; quiet for a merged one. */
+  readonly tone: NonNullable<ReturnType<typeof changeState>>["tone"];
+  /** When it last moved: updated while open, merged once landed. */
+  readonly at: string | undefined;
+}
+
+const newestFirst = (left: string | undefined, right: string | undefined) =>
+  (right ?? "").localeCompare(left ?? "");
+
+/**
+ * A card's latest changes (the owner, 2026-10-11: "quick history of latest PRs"): the open ones
+ * first, each with what stops it, then the merged ones, each with where it went — in the oldest
+ * release made after it landed, else on stage, else not released yet where the project has a
+ * production, else merged — newest first, `limit` at most. Merged ones are known only while the
+ * project's detail is read.
+ */
+export function cardChanges(input: {
+  readonly open: ReadonlyArray<FlowPullRequest>;
+  readonly merged: ReadonlyArray<FlowPullRequest>;
+  /** Newest first, as the flow lists them. */
+  readonly releases: ReadonlyArray<Pick<FlowReleaseRow, "tag" | "taggedAt">>;
+  /** The project has a stage, where a merged change goes first. */
+  readonly stage: boolean;
+  /** The project has a production, where a merged change is released. */
+  readonly production: boolean;
+  readonly limit: number;
+}): ReadonlyArray<CardChange> {
+  const open = input.open
+    .toSorted((left, right) => newestFirst(left.updatedAt, right.updatedAt))
+    .map((pull): CardChange => {
+      const state = changeState(pull);
+      return {
+        pull,
+        open: true,
+        words: state?.word ?? "Open",
+        tone: state?.tone ?? "off",
+        at: pull.updatedAt,
+      };
+    });
+  const merged = input.merged
+    .filter((pull) => pull.mergedAt !== undefined)
+    .toSorted((left, right) => newestFirst(left.mergedAt, right.mergedAt))
+    .map((pull): CardChange => {
+      const took = input.releases.findLast(
+        (release) => pull.mergedAt !== undefined && release.taggedAt >= pull.mergedAt,
+      );
+      return {
+        pull,
+        open: false,
+        words:
+          took !== undefined
+            ? `In ${took.tag}`
+            : input.stage
+              ? "On stage"
+              : input.production
+                ? "Not released yet"
+                : "Merged",
+        tone: "off",
+        at: pull.mergedAt,
+      };
+    });
+  return [...open, ...merged].slice(0, input.limit);
 }
 
 /** A release as production's panel reads it: newest first, as the flow lists them. */

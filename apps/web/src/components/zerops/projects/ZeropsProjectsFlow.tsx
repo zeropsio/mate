@@ -135,6 +135,8 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly renderPlacePanel?:
     | ((entry: ProjectsFlowGroup<T>, line: PlaceLine) => ReactNode)
     | undefined;
+  /** A project's latest changes, open and merged (`cardChanges`); without it, none. */
+  readonly renderChanges?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** The people on a project, beside its name, where more than one. */
   readonly renderCardPeople?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
 }
