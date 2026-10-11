@@ -24,6 +24,7 @@ import {
   type RunId,
 } from "@t3tools/contracts";
 
+import { ITEM_TEXT_LIMIT } from "../pump/toCore.ts";
 import { turnStateOf } from "../read/runState.ts";
 
 const decodeRun = Schema.decodeUnknownEffect(RunRecord);
@@ -295,8 +296,30 @@ export const makeRecords = Effect.gen(function* () {
       });
     });
 
+  /**
+   * Each message whole: the record keeps a long one's first `ITEM_TEXT_LIMIT` characters in its
+   * body and the whole as its detail, and the wire cuts it to its budget saying so (`fitItem`), so
+   * a client reads the rest on demand. Read from the body alone, it came cut with no word of it.
+   */
+  const withWholeNotes = (decoded: ReadonlyArray<Item>) =>
+    Effect.gen(function* () {
+      const long = decoded.flatMap((item) =>
+        item.kind === "note" && item.text.length >= ITEM_TEXT_LIMIT ? [item.id as string] : [],
+      );
+      if (long.length === 0) return decoded;
+      const rows = yield* sql<{ readonly item_id: string; readonly body: string }>`
+        SELECT item_id, body FROM engine_item_detail WHERE ${sql.in("item_id", long)}
+      `;
+      if (rows.length === 0) return decoded;
+      const whole = new Map(rows.map((row) => [row.item_id, row.body]));
+      return decoded.map((item): Item => {
+        const text = whole.get(item.id);
+        return item.kind === "note" && text !== undefined ? { ...item, text } : item;
+      });
+    });
+
   const items = (rows: ReadonlyArray<ItemRow>) =>
-    readable(rows, itemOfRow).pipe(Effect.flatMap(withPageHeights));
+    readable(rows, itemOfRow).pipe(Effect.flatMap(withPageHeights), Effect.flatMap(withWholeNotes));
   const requests = (rows: ReadonlyArray<RequestRow>) => readable(rows, requestOfRow);
 
   /** The sequence space the tables were made in. */
@@ -579,10 +602,17 @@ export const makeRecords = Effect.gen(function* () {
       Effect.gen(function* () {
         switch (part) {
           case "text": {
-            const [row] = yield* sql<{ readonly body_json: string }>`
-              SELECT body_json FROM engine_item
-              WHERE conversation_id = ${conversation} AND item_id = ${itemId}
+            // A long message's whole is its detail (`withWholeNotes`).
+            const [row] = yield* sql<{
+              readonly kind: string;
+              readonly body_json: string;
+              readonly detail: string | null;
+            }>`
+              SELECT i.kind, i.body_json, d.body AS detail FROM engine_item i
+              LEFT JOIN engine_item_detail d ON d.item_id = i.item_id
+              WHERE i.conversation_id = ${conversation} AND i.item_id = ${itemId}
             `;
+            if (row?.kind === "note" && row.detail !== null) return row.detail;
             const body =
               row === undefined ? undefined : (parse(row.body_json) as { text?: unknown });
             return typeof body?.text === "string" ? body.text : undefined;
