@@ -163,8 +163,3 @@ export function OtherContainers<T>({
     </FlatCard>
   );
 }
-
-/** The page's end, quietly: the organization's HQ. */
-export function QuietEnd<T>({ props }: { readonly props: ZeropsProjectsFlowProps<T> }) {
-  return <section data-zerops-surface="quiet-end">{props.hqCard}</section>;
-}

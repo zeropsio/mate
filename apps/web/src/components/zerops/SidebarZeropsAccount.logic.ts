@@ -117,24 +117,3 @@ export function sidebarAccountDestinationOf(
   if (pathname === "/zerops") return "projects";
   return null;
 }
-
-/** Where the person's own sign-in tokens' cleanup stands, as their account's menu says it. */
-export type SignInTokensCleanup = "idle" | "running" | "done" | "failed";
-
-/**
- * The account menu's cleanup of the person's sign-in tokens — the Zerops tokens Mate makes to open
- * HQ, deleted by themselves once used; this takes the person's own expired ones too — in words
- * that say how it goes, as Sign out says its own.
- */
-export function signInTokensWords(state: SignInTokensCleanup): string {
-  switch (state) {
-    case "idle":
-      return "Clean up sign-in tokens";
-    case "running":
-      return "Cleaning up sign-in tokens…";
-    case "done":
-      return "Sign-in tokens cleaned up";
-    case "failed":
-      return "Cleanup failed. Try again";
-  }
-}

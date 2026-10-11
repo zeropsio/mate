@@ -22,7 +22,7 @@ import type { ReactNode } from "react";
 import { MateFace, Pill } from "../primitives";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
-import { OtherContainers, OtherProjects, QuietEnd } from "./ProjectList";
+import { OtherContainers, OtherProjects } from "./ProjectList";
 import { ProjectCards } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
@@ -167,6 +167,13 @@ function FirstRun({
   );
 }
 
+/** What a container outside every project shows on the overview for: it needs the person. */
+const CONTAINER_NEEDS_PERSON: ReadonlySet<ZeropsRowAction["kind"]> = new Set([
+  "retry-probe",
+  "start",
+  "restart",
+]);
+
 export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
   const { groups, ungrouped, creating = false, onCreateProject, focusGroup } = props;
   // The organization's HQ is not a project, so an account holding nothing
@@ -201,8 +208,12 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         groups={groups.filter((entry) => entry.flow.mates.length === 0)}
         props={props}
       />
-      <OtherContainers props={props} rows={ungrouped} />
-      {started ? <QuietEnd props={props} /> : null}
+      {/* Containers no project holds are the organization's inner workings, and HQ is Settings':
+          the overview names a container only while it needs the person — not answering, stopped. */}
+      <OtherContainers
+        props={props}
+        rows={ungrouped.filter((row) => CONTAINER_NEEDS_PERSON.has(row.action))}
+      />
     </div>
   );
 }
