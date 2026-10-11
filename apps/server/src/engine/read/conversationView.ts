@@ -58,6 +58,9 @@ export interface ViewCall {
   readonly at: number;
 }
 
+/** The wakes that start no run when they fire: a watch, an idle close, an expected turn. */
+const NO_RUN_WAKES: ReadonlySet<string> = new Set(["watchdog", "session-idle", "agent-turn-due"]);
+
 export interface ConversationView {
   readonly conversationId: ConversationId;
   /** The conversation's sequence: its own revision. */
@@ -94,6 +97,11 @@ export interface ConversationView {
   readonly background: "working" | "monitoring" | null;
   /** Its background work ended and the agent's own turn on it is due (`AGENT_TURN_DUE_MS`). */
   readonly turnDue?: true;
+  /**
+   * A wake that starts a run is due now (an answered value's word to the agent, a restart's
+   * continuation): the run is about to start, armed in the same commit that ended what came before.
+   */
+  readonly runDue?: true;
 }
 
 const decode = <S extends Schema.Top>(schema: S) =>
@@ -260,6 +268,11 @@ export const readConversationView = (conversationId: ConversationId) =>
             : "working",
       ...(Object.values(state.wakes).some((wake) => wake.kind === "agent-turn-due")
         ? { turnDue: true as const }
+        : {}),
+      ...(Object.values(state.wakes).some(
+        (wake) => !NO_RUN_WAKES.has(wake.kind) && wake.dueAt <= head.updated_at,
+      )
+        ? { runDue: true as const }
         : {}),
     };
     return view;
