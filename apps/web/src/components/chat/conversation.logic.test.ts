@@ -1079,6 +1079,19 @@ describe("activityCounts", () => {
       ],
     },
     {
+      // Recheck on 0.15.41: a picture read counted "1 file read" beside its row "Looked at a picture".
+      name: "a picture looked at counts as a picture, never a file read",
+      calls: [
+        entry({ requestKind: "file-read", viewedImagePath: "/var/www/og.png" }, true),
+        entry({ itemType: "image_view" }, true),
+        entry({ requestKind: "file-read" }, true),
+      ],
+      counts: [
+        { kind: "read", count: 1 },
+        { kind: "look", count: 2 },
+      ],
+    },
+    {
       name: "the code and the web searched",
       calls: [
         entry(
@@ -3319,6 +3332,21 @@ describe("tool calls in words", () => {
     ["SomeNewTool", "Using some new tool"],
   ])("says %s as %j, never its arguments", (name, words) => {
     expect(toolCallWords(name)).toBe(words);
+  });
+
+  // Engine recheck on 0.15.41: a wake Milo set read "Used cron create".
+  it.each([
+    [
+      'CronCreate: {"cron":"0 9 * * *","prompt":"Check the deploy","recurring":false}',
+      "Scheduling a wake for 09:00",
+    ],
+    ['CronCreate: {"cron":"30 14 * * 1-5","prompt":"Stand-up"}', "Scheduling a wake"],
+    ['CronCreate: {"cron":"*/5 * * * *","prompt":"Poll"}', "Scheduling a wake"],
+    ['CronDelete: {"id":"c1"}', "Cancelling a wake"],
+    ["CronList: {}", "Checking its wakes"],
+  ])("says a wake the Mate sets for itself in words: %s → %j", (detail, words) => {
+    const name = namedToolCall({ itemType: "dynamic_tool_call", label: "Tool call", detail })!;
+    expect(toolCallWords(name, detail)).toBe(words);
   });
 });
 

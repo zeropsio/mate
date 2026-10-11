@@ -837,6 +837,10 @@ export const CREW_JOB_WORDS = {
   nameTaken: "That name is taken.",
 } as const;
 
+/** A crewmate the crew home lists that the crew doesn't have yet, and its two presses. */
+export const crewWaitingWords = (name: string): string => `${name} isn't in the crew yet`;
+export const CREW_WAITING_REMOVE = "Remove";
+
 /** Who a crewmate is, under its name in its job. */
 export const crewOneOfWord = (mateName: string, lead: boolean): string =>
   lead ? `${crewPossessive(mateName)} lead` : `One of ${crewPossessive(mateName)} crew`;

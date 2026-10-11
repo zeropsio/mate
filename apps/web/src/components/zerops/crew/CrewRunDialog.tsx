@@ -144,7 +144,10 @@ export function CrewRunDialog({
 /** An amount's box as wide as what is typed, so its unit follows it: "8 hours", "90 %". */
 const fitted = (text: string) => ({ width: `calc(${Math.max(1, text.length)}ch + 1px)` });
 
-/** An amount, typed, beside its unit — and *No limit* after it. */
+/**
+ * An amount, typed, beside its unit — and *No limit* after it. While *No limit* is the pick the
+ * field holds no figure, so it never reads as the limit; the figure comes back on a focus.
+ */
 function LimitField(props: {
   readonly label: string;
   readonly kind: CrewLimitKind | null;
@@ -165,8 +168,8 @@ function LimitField(props: {
           inputMode="decimal"
           onChange={(event) => props.onChange("amount", event.target.value)}
           onFocus={() => props.onChange("amount", props.text)}
-          style={fitted(props.text)}
-          value={props.text}
+          style={fitted(props.kind === "unlimited" ? "" : props.text)}
+          value={props.kind === "unlimited" ? "" : props.text}
         />
         {props.suffix === undefined ? null : (
           <span className="text-muted-foreground">{props.suffix}</span>

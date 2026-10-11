@@ -126,10 +126,12 @@ export const rowStateOf = (view: ConversationView): ConversationRowState => {
   }
   const waiting = active ?? view.queued[0];
   if (waiting !== undefined) return { kind: "queued", since: waiting.queuedAt };
-  // A run due at once (an answered value's word to the agent): the answer's own commit armed it,
-  // so the row goes from waiting to working in one step, never through idle (Milo's run 9).
+  // A run due at once (an answered value's word to the agent, a crash's note): the commit that
+  // ended what came before armed it, so the row goes on working into it, never through idle
+  // (Milo's run 9). It reads as the turn a finished job is due, the one way every reader takes as
+  // going on with no run on: one that read "not waiting" flashed idle for a frame (recheck).
   if (view.runDue === true) {
-    return { kind: "working", since: view.updatedAt, waitsOnHelpers: false };
+    return { kind: "working", since: view.updatedAt, waitsOnHelpers: true, turnDue: true };
   }
   if (view.background === "working" || view.turnDue === true) {
     return {

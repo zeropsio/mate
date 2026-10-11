@@ -719,6 +719,8 @@ export function cardHeadLine(line: NowLine): NowLine {
     case "writing":
     case "condensing":
       return { kind: "working" };
+    case "starting":
+      return line.on === "workspace" ? { kind: "working" } : line;
     default:
       return line;
   }

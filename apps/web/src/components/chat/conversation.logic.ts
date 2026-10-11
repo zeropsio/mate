@@ -1221,7 +1221,15 @@ export function readsAsAnswer(text: string): boolean {
   );
 }
 
-type ActivityAction = "edit" | "command" | "read" | "code-search" | "search" | "fetch" | "other";
+type ActivityAction =
+  | "edit"
+  | "command"
+  | "read"
+  | "look"
+  | "code-search"
+  | "search"
+  | "fetch"
+  | "other";
 
 /** What a run's calls did, by kind: the effort its worked line counts. */
 export type ActivityKind =
@@ -1236,6 +1244,7 @@ export const ACTIVITY_ORDER: ReadonlyArray<ActivityKind> = [
   "edit",
   "command",
   "read",
+  "look",
   "code-search",
   "search",
   "fetch",
@@ -1261,6 +1270,8 @@ const NAMED_CALL_ACTION: Readonly<Record<string, ActivityAction>> = {
 };
 
 function activityAction(entry: WorkLogEntry): ActivityAction {
+  // A picture it looked at, however it read it: its row reads "Looked at a picture".
+  if (entry.itemType === "image_view" || entry.viewedImagePath !== undefined) return "look";
   // A name the effort has a word for says what the call did; any other
   // falls to what the call is, as its step reads it (`stepKind`).
   const named = namedToolCall(entry);
@@ -1268,7 +1279,6 @@ function activityAction(entry: WorkLogEntry): ActivityAction {
   if (action !== undefined) return action;
   if (
     entry.requestKind === "file-read" ||
-    entry.itemType === "image_view" ||
     (entry.itemType === "dynamic_tool_call" && entry.toolTitle === "Read File")
   ) {
     return "read";
@@ -1434,7 +1444,24 @@ const TOOL_CALL_WORDS: Readonly<Record<string, string>> = {
   ToolSearch: "Looking up a tool",
   TodoWrite: "Updating its list",
   ExitPlanMode: "Finishing the plan",
+  // The wakes Claude's agent sets for itself; no other driver has such a tool.
+  CronCreate: "Scheduling a wake",
+  CronDelete: "Cancelling a wake",
+  CronList: "Checking its wakes",
 };
+
+/** The time of day a wake's cron names, when it names one plain time ("0 9 * * *" is 09:00). */
+function wakeTime(detail: string | undefined): string | null {
+  const cron = /"cron"\s*:\s*"([^"]+)"/
+    .exec(detail ?? "")?.[1]
+    ?.trim()
+    .split(/\s+/);
+  if (cron?.length !== 5 || cron.slice(2).some((field) => field !== "*")) return null;
+  const [minute, hour] = cron.map(Number);
+  if (!Number.isInteger(minute) || !Number.isInteger(hour) || hour! > 23 || minute! > 59)
+    return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
 
 /**
  * What a named tool call is doing, in words: "Reading package.json",
@@ -1446,6 +1473,10 @@ export function toolCallWords(name: string, detail?: string): string {
   const file = verb === undefined ? null : calledFileName(detail);
   if (verb !== undefined && file !== null) return `${verb} ${file}`;
   const known = TOOL_CALL_WORDS[name];
+  if (name === "CronCreate") {
+    const time = wakeTime(detail);
+    if (time !== null) return `${known} for ${time}`;
+  }
   if (known !== undefined) return known;
   const words = name
     .replace(/^mcp__[^_]+__/, "")

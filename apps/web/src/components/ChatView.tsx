@@ -5312,10 +5312,12 @@ export default function ChatView(props: ChatViewProps) {
     void handleStopBackgroundWork();
   }, [handleStopBackgroundWork]);
   // An engine conversation's cards say it from the change that ended the run; the row's word
-  // comes a moment later.
-  const backgroundRunsOn =
-    activeBackgroundLiveness !== null ||
-    (!isWorking && engineCards !== null && engineWorkRunsOn(engineCards));
+  // comes a moment later (recheck on 0.15.41: the job's strip left at the turn's end, then came
+  // back with the row's word 0.4 s later).
+  const afterTurnLiveness =
+    activeBackgroundLiveness ??
+    (!isWorking && engineCards !== null && engineWorkRunsOn(engineCards) ? "working" : null);
+  const backgroundRunsOn = afterTurnLiveness !== null;
   const composerBackgroundWork = useMemo(
     () =>
       backgroundRunsOn ? { stopping: isStoppingBackgroundWork, onStop: stopBackgroundWork } : null,
@@ -5749,7 +5751,7 @@ export default function ChatView(props: ChatViewProps) {
         agentPanelModel,
         plan: activePlan ?? null,
         backgroundTasks,
-        backgroundLiveness: activeBackgroundLiveness,
+        backgroundLiveness: afterTurnLiveness,
         liveJobs,
         // The server's own pause when it keeps one; the thread's last words otherwise.
         pause: limit.kind === "limited" ? { resetsAt: limit.resetsAt } : null,
@@ -5765,7 +5767,7 @@ export default function ChatView(props: ChatViewProps) {
       agentPanelModel,
       activePlan,
       backgroundTasks,
-      activeBackgroundLiveness,
+      afterTurnLiveness,
       limit,
     ],
   );

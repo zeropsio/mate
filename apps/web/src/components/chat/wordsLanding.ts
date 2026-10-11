@@ -31,12 +31,10 @@ export function wordsStood(id: string, where: WordsStood): void {
     byHead.set(where.head.element, { whole: where.whole, top: where.head.top, at });
 }
 
-/** Where `head` stood as words stood whole under it just now; null otherwise. */
-export function headStood(head: HTMLElement): number | null {
+/** The words told under `head` just now ran past the slot's cap: the person read their tail. */
+export function wordsCutUnder(head: HTMLElement): boolean {
   const held = byHead.get(head);
-  return held === undefined || !held.whole || performance.now() - held.at > LANDS_WITHIN_MS
-    ? null
-    : held.top;
+  return held !== undefined && !held.whole && performance.now() - held.at <= LANDS_WITHIN_MS;
 }
 
 /** The answer's words stood in the slot just now: it lands from there, never rising in as new. */

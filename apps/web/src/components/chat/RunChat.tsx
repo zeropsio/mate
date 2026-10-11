@@ -131,7 +131,7 @@ import { restartWords } from "../../zerops/restartWords";
 import { calmClockMs } from "./nowLineCalm.logic";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
 import { useCalmLine } from "./useCalmLine";
-import { headStood, wordsStood } from "./wordsLanding";
+import { wordsCutUnder, wordsStood } from "./wordsLanding";
 import {
   SLOT_MAX_ROWS,
   slotHoldsIn,
@@ -1693,7 +1693,7 @@ function StepBubble({
       column
       opens={opens}
       running={running}
-      time={failure === null ? time : "Failed"}
+      time={failure !== null ? "Failed" : step.state === "stopped" ? "Stopped" : time}
       timeTone={failure === "broken" ? "failed" : "muted"}
     >
       {step.kind === "command" ? (
@@ -3968,18 +3968,39 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     if (row.live && !ctx.syncing) watchedRef.current = true;
     cardEasesRef.current = watchedRef.current && !ctx.syncing && !turnOver;
   });
-  // Its turn ends with the words the person read whole in its slot: the list holds its head where
-  // it stood, from this commit — before anything under it moves (`onTurnLands`).
+  // Its turn ends under the person's eyes: the list holds its head where it stood as last painted,
+  // from this commit — before anything under it moves (`onTurnLands`) — whatever its slot said
+  // last (recheck on 0.15.41: a slot saying Thinking as the answer came with the end held
+  // nothing, and the head travelled 120 px). Only words the slot's cap cut keep their last line
+  // instead (`onAnswerLands`).
   const turnOverRef = useRef(turnOver);
+  const headStoodRef = useRef<{ readonly top: number; readonly at: number } | null>(null);
+  useEffect(() => {
+    if (
+      turnOver ||
+      typeof requestAnimationFrame !== "function" ||
+      typeof cancelAnimationFrame !== "function"
+    )
+      return;
+    let frame = requestAnimationFrame(function tell() {
+      const head = rootRef.current?.querySelector<HTMLElement>(":scope > [data-run-head]");
+      if (head != null)
+        headStoodRef.current = { top: head.getBoundingClientRect().top, at: performance.now() };
+      frame = requestAnimationFrame(tell);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [turnOver]);
   const { onTurnLands } = ctx;
   useLayoutEffect(() => {
     const was = turnOverRef.current;
     turnOverRef.current = turnOver;
-    if (was || !turnOver || onTurnLands === undefined) return;
+    if (was || !turnOver || onTurnLands === undefined || !watchedRef.current || ctx.syncing) return;
     const head = rootRef.current?.querySelector<HTMLElement>(":scope > [data-run-head]") ?? null;
-    const top = head === null ? null : headStood(head);
-    if (head !== null && top !== null) onTurnLands(head, top);
-  }, [turnOver, onTurnLands]);
+    const stood = headStoodRef.current;
+    if (head === null || stood === null || performance.now() - stood.at > HEAD_STOOD_WITHIN_MS)
+      return;
+    if (!wordsCutUnder(head)) onTurnLands(head, stood.top);
+  }, [turnOver, onTurnLands, ctx.syncing]);
   const cardRoomsRef = useRef<Rooms | null>(null);
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -4496,6 +4517,9 @@ function useRunFold({
   }, [conversation, run, fold, aboveRef, rootRef, onFoldWork]);
   return { fold, foldNow, settling, motionAllowed: motionAllowed() };
 }
+
+/** How long after its last painted frame a head's place still holds: the same commit, give or take. */
+const HEAD_STOOD_WITHIN_MS = 1000;
 
 /** How tall a box stands as laid out; null drawn outside a page (a test's renderer). */
 function heightOf(element: HTMLElement | null): number | null {

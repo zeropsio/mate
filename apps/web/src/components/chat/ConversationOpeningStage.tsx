@@ -459,7 +459,13 @@ function OpeningSequence({
             mate={scene.mate}
             face="waking"
             faceSlot={carryFace}
-            headline={`${scene.name || "The Mate"} is opening the conversation.`}
+            // Named from the last visit on a reload (`mateIdentityMemory`); with nothing remembered
+            // it holds its place without a name, never one it takes back.
+            headline={
+              scene.name
+                ? `${scene.name} is opening the conversation.`
+                : "Opening the conversation."
+            }
             secondary={
               openingLimitWords(scene.activity, scene.name || "The Mate", scene.timestampFormat) ??
               "Picking up where you left off."

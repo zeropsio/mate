@@ -1570,6 +1570,7 @@
         "apps/web/src/components/zerops/crew/CrewTellComposer.logic.ts",
         "apps/web/src/components/zerops/crew/CrewRows.tsx",
         "apps/web/src/components/zerops/crew/CrewRows.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewWaiting.tsx",
         "apps/web/src/components/zerops/crew/CrewInFensCode.tsx",
         "apps/web/src/components/zerops/crew/CrewParts.tsx",
         "apps/web/src/zerops/crew/useCrew.ts",

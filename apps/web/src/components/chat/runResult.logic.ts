@@ -836,6 +836,7 @@ const EFFORT_WORDS: Readonly<Record<ActivityKind, (count: number) => string>> = 
   edit: (count) => (count === 1 ? "1 file edited" : `${count} files edited`),
   command: (count) => (count === 1 ? "1 command" : `${count} commands`),
   read: (count) => (count === 1 ? "1 file read" : `${count} files read`),
+  look: (count) => (count === 1 ? "1 picture looked at" : `${count} pictures looked at`),
   "code-search": (count) => (count === 1 ? "1 code search" : `${count} code searches`),
   search: (count) => (count === 1 ? "1 web search" : `${count} web searches`),
   fetch: (count) => (count === 1 ? "1 page fetched" : `${count} pages fetched`),

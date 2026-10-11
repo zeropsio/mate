@@ -10,6 +10,7 @@
 import {
   agentIdForDriverKind,
   agentIdForProviderInstance,
+  type CrewCommand,
   type CrewDevHost,
   type CrewLogin,
   type CrewSnapshot,
@@ -21,7 +22,7 @@ import {
   crewNoDevHostWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
-import type { CrewDefinition, CrewDefinitionIssue } from "@t3tools/shared/crewHome";
+import type { CrewDefinition, CrewDefinitionIssue, CrewMemberSpec } from "@t3tools/shared/crewHome";
 
 /** The tints a crewmate may take: its own and those nobody else wears, never the Mate's. */
 export function freeTints(
@@ -202,4 +203,36 @@ export function crewRewriteBlockers(
   issues: ReadonlyArray<CrewDefinitionIssue>,
 ): ReadonlyArray<CrewDefinitionIssue> {
   return issues.filter((issue) => issue.code === "field-unknown" || issue.code === "field-type");
+}
+
+/**
+ * What a crewmate's Save sends once the crew home is written: a crewmate the crew has gets its job
+ * at its next message (in a fresh conversation when its login changed); one it lacks joins by
+ * Apply whenever the crew stands, the first one of an emptied crew too. Before the crew stands,
+ * nothing: *Start the crew* applies it.
+ */
+export function crewmateSaveCommand(input: {
+  readonly handle: string;
+  readonly onRoster: boolean;
+  readonly crewApplied: boolean;
+  readonly loginChanged: boolean;
+}): CrewCommand | null {
+  if (input.onRoster) {
+    return {
+      _tag: "jobSave",
+      handle: input.handle,
+      apply: input.loginChanged ? "fresh" : "nextTurn",
+    };
+  }
+  return input.crewApplied ? { _tag: "apply" } : null;
+}
+
+/** The crewmates the crew home lists that the standing crew doesn't have: to add, or to remove. */
+export function crewWaitingMembers(
+  definition: CrewDefinition | null,
+  roster: ReadonlyArray<Pick<Crewmate, "handle">>,
+): ReadonlyArray<CrewMemberSpec> {
+  if (definition === null) return [];
+  const standing = new Set(roster.map((row) => row.handle));
+  return definition.members.filter((member) => !standing.has(member.handle));
 }

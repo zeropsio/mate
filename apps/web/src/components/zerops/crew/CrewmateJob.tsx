@@ -58,6 +58,7 @@ import {
   crewRewriteBlockers,
   crewServiceHint,
   crewWriterWithoutHost,
+  crewmateSaveCommand,
   freeTints,
 } from "./CrewEditors.logic";
 import { CrewPress } from "./CrewParts";
@@ -85,6 +86,8 @@ export interface CrewmateJobProps {
   readonly commands: UseCrewCommand;
   /** Handles the standing crew has: their handle is fixed and a save applies their job. */
   readonly applied: ReadonlySet<string>;
+  /** The crew stands, even with nobody on it: a crewmate it lacks joins at Save. */
+  readonly crewApplied: boolean;
   /** The Mate's coding agents; `undefined` while its config is not read. */
   readonly providers: ReadonlyArray<ServerProvider> | undefined;
   /** The dev services a copy may live on, with whether each reaches a database. */
@@ -122,6 +125,7 @@ function JobForm({
   target,
   commands,
   applied,
+  crewApplied,
   providers,
   devHosts,
   mateName,
@@ -193,12 +197,13 @@ function JobForm({
       crewJobFile(spec.handle),
     ]);
     if (!saved) return;
-    if (isApplied) {
-      const apply = loginChanged ? "fresh" : "nextTurn";
-      if ((await commands.send({ _tag: "jobSave", handle: spec.handle, apply })) === null) return;
-    } else if (applied.size > 0 && (await commands.send({ _tag: "apply" })) === null) {
-      return;
-    }
+    const command = crewmateSaveCommand({
+      handle: spec.handle,
+      onRoster: isApplied,
+      crewApplied,
+      loginChanged,
+    });
+    if (command !== null && (await commands.send(command)) === null) return;
     onClose();
   };
 
@@ -465,7 +470,7 @@ function JobForm({
         <span className="flex items-center gap-1.5">
           <CrewPress
             disabled={!ready}
-            label={isNew && applied.size > 0 ? CREW_JOB_WORDS.add : CREW_VIEW_WORDS.save}
+            label={!isApplied && crewApplied ? CREW_JOB_WORDS.add : CREW_VIEW_WORDS.save}
             onPress={() => void submit()}
             size="view"
           />

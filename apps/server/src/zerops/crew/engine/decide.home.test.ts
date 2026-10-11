@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { CrewWorld, home, newTask, writer } from "./crewDecideFixture.ts";
+import { CrewWorld, home, newTask, reader, writer } from "./crewDecideFixture.ts";
 import { DEFAULT_CREW_TIMING } from "./state.ts";
 
 interface Journey {
@@ -74,6 +74,17 @@ const journeys: ReadonlyArray<Journey> = [
       "Archive",
       true,
     ],
+  },
+  {
+    sentence: "the first crewmate added to a crew whose last one was removed joins it",
+    journey: (w) => {
+      w.apply(home(reader("reviewer")));
+      w.press({ _tag: "removeCrewmate", handle: "reviewer", discardUnlanded: false });
+      const emptied = [w.rejection(), w.state.order];
+      w.apply(home(reader("pip")));
+      return [emptied, w.state.order];
+    },
+    expected: [[undefined, []], ["pip"]],
   },
   {
     sentence: "an unreadable redeploy is asked less and less, then offered to the person to thaw",

@@ -1,12 +1,18 @@
 /** Route identities are HQ navigation joined to HQ overview, just as the menu names them. */
 import { useAtomValue } from "@effect/atom-react";
-import { shownHqMateIdentitiesAtom } from "@t3tools/client-runtime/data";
+import { shownHqMateIdentitiesAtom, shownHqMenuNavigationAtom } from "@t3tools/client-runtime/data";
 import { mateArrivingUntil } from "@t3tools/client-runtime/zerops";
 import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { heldCandidateRowsAtom } from "./useZeropsCandidates";
+import {
+  readMateMemory,
+  rememberMates,
+  seededIdentities,
+  writeMateMemory,
+} from "./mateIdentityMemory";
 import { sameValue } from "../lib/sameValue";
 
 import { zeropsEnvironmentsAtom } from "../state/zerops";
@@ -29,7 +35,13 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
     else held.push(row);
   }
   const mates = new Map<EnvironmentId, ZeropsMateIdentity>();
-  for (const mate of Object.values(get(shownHqMateIdentitiesAtom))) {
+  const named = Object.values(get(shownHqMateIdentitiesAtom));
+  const listRead = get(shownHqMenuNavigationAtom).read === "read";
+  // What the account's last visit had HQ name: the first frame paints it, HQ's answer replaces it.
+  const memory = readMateMemory();
+  const remembered = rememberMates(memory, named, listRead);
+  if (remembered !== memory) writeMateMemory(remembered);
+  for (const mate of seededIdentities(named, remembered, listRead)) {
     if (mate.environmentId !== undefined) {
       const bodiesHere = bodies.get(mate.projectId) ?? [];
       const body =

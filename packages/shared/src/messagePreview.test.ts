@@ -33,6 +33,13 @@ describe("messagePreviewText", () => {
       "Deploys:\n\n| Service | State |\n|:--------|------:|\n| api | **up** |\n| web | down |",
       "Deploys: Service State api up web down",
     ],
+    // Engine recheck on 0.15.41: the menu row read "rc-.txt or probe-.txt".
+    [
+      "a glob's literal asterisks",
+      "Remove rc-*.txt or probe-*.txt",
+      "Remove rc-*.txt or probe-*.txt",
+    ],
+    ["emphasis in brackets", "Done (*mostly*).", "Done (mostly)."],
     // Engine final run, B3: a draft with a picture read "Draft: \uFFFC What is this?" in the menu.
     [
       "a draft's picture, file and terminal places, without their marks",

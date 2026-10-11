@@ -103,6 +103,18 @@ describe("CrewStartBody — Let the crew work on its own", () => {
     expect(later).toContain('value="8"');
   });
 
+  it("reopens on the last run's No limit for the hours, with no figure in the field", () => {
+    const html = renderStart(true, {
+      ...RUN,
+      state: "stopped",
+      options: { ...RUN.options, timeLimitHours: "unlimited" },
+    });
+    expect(html).toMatch(
+      /aria-label="Stop after"[^>]*value=""|value=""[^>]*aria-label="Stop after"/u,
+    );
+    expect(html).toMatch(/aria-pressed="true"[^>]*>No limit</u);
+  });
+
   it("names no engine noun: no run, no budget, no landing, no versions", () => {
     const text = textOf(renderStart(true));
     expect(text).not.toMatch(/\b(?:run|budget|land|lands|landing|deliver|brief)\b/iu);
