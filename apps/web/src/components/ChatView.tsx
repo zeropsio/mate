@@ -5809,6 +5809,7 @@ export default function ChatView(props: ChatViewProps) {
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
     const urgentSystemItems = systemComposerBannerItems.filter(isUrgentSystemItem);
+    if (colleagueReadOnly !== null) return urgentSystemItems;
     // What belongs to the conversation — another of its chats at work, its compaction, its waking
     // or parking, its branch — waits until the conversation shows, not over its opening line.
     const conversationShown = !threadDetailLoading;
@@ -5898,6 +5899,7 @@ export default function ChatView(props: ChatViewProps) {
   }, [
     activeBranchMismatchKey,
     archivedThreadBannerItem,
+    colleagueReadOnly,
     branchAdvice.dismiss,
     alsoWorkingBannerItem,
     crewBannerItems,
