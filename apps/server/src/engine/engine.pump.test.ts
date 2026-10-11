@@ -945,16 +945,36 @@ describe("the running engine", () => {
     ),
   );
 
-  it.effect(
-    "background work its agent's crash took wakes the Mate once with a note naming it",
-    () =>
+  // Milo's final engine run, 2026-10-11 (J9): a killed agent's background job read "stopped", as
+  // if the person had stopped it, and nothing woke the Mate. Claude's turn had finished a moment
+  // before the kill there; a kill mid-turn ends the run crashed as well.
+  describe("background work its agent's crash took wakes the Mate once with a note naming it", () => {
+    it.effect.each([
+      { when: "while its turn runs", before: () => Effect.void, ended: "crashed" },
+      {
+        when: "after its turn ended",
+        before: (w: EngineWorld) =>
+          Effect.gen(function* () {
+            yield* w.agent((agent, thread) => agent.say(thread, "The tides rise twice a day, so"));
+            yield* w.agent((agent, thread) => agent.finish(thread));
+          }),
+        ended: "completed",
+      },
+    ])("the work reads lost, never stopped: $when", ({ before, ended }) =>
       scene(
         Effect.gen(function* () {
           const w = yield* world("claudeAgent");
           yield* send(w);
           yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* Effect.orDie(before(w));
           yield* w.agent((agent, thread) => agent.crash(thread));
           yield* w.advance(0);
+          assert.strictEqual((yield* w.run(r(1)))?.end?.kind, ended);
+          const work = (yield* w.items(r(1))).filter((item) => item.kind === "work");
+          assert.deepStrictEqual(
+            work.map((item) => item.body.status),
+            ["lost"],
+          );
           const woken = yield* w.run(r(2));
           assert.deepStrictEqual([woken?.trigger.cause, woken?.state], ["lost-work", "running"]);
           assert.match(
@@ -965,7 +985,8 @@ describe("the running engine", () => {
           yield* w.shutdown;
         }),
       ),
-  );
+    );
+  });
 
   // Milo's second stress run, 2026-10-09: Claude's background-result turns ran ahead of a queued
   // "carry on".

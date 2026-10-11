@@ -841,6 +841,15 @@ export function makeTranslator(options: TranslatorOptions): Translator {
             payload.title ??
             work.title;
         work.status = taskStatus(event, work.status);
+        // The agent's process died under the engine: the work its stop reports stopped was lost,
+        // never stopped by anyone (Milo's J9 read a killed job as stopped by the person).
+        if (
+          work.status === "stopped" &&
+          owner.sawProcessExit &&
+          owner.closeAsked === undefined &&
+          owner.open?.stopAsked !== true
+        )
+          work.status = "lost";
         if (facts() !== before) {
           emitWork(owner, work);
         }
