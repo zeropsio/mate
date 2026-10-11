@@ -29,10 +29,16 @@ export interface TimelineRowSharedState {
     input: Omit<Parameters<typeof import("./foldWork").foldWork>[0], "outer">,
   ) => () => void;
   /**
-   * The answer whose words were written in a run's live slot lands: the list holds its words'
-   * foot at `bottom` (a screen y), where their last line was read. Absent in standalone cards.
+   * The answer whose words were written in a run's live slot lands: the list holds its card's
+   * head where it stood, or its words' foot where their last line was read (`landingHolds`).
+   * Absent in standalone cards.
    */
-  onAnswerLands?: (words: HTMLElement, bottom: number) => void;
+  onAnswerLands?: (words: HTMLElement, stood: import("./wordsLanding").WordsStood) => void;
+  /**
+   * A run's turn ends under the person's eyes, its last words read whole in its slot: the list
+   * holds the card's head at `top` (a screen y) while the card settles. Absent in standalone cards.
+   */
+  onTurnLands?: (head: HTMLElement, top: number) => void;
   timestampFormat: TimestampFormat;
   routeThreadKey: string;
   threadRef: ScopedThreadRef | null;
@@ -75,8 +81,6 @@ export interface TimelineRowSharedState {
   onWithdrawHeldMessage?: ((runId: string) => void) | null;
   agentPanelModel: AgentPanelModel;
   onOpenAgents: () => void;
-  /** Stops the work that outlived the turn. */
-  onStopBackgroundWork: () => void;
   onSteerQueuedMessage: (id: string) => void;
   steerQueuedMessageShortcutLabel: string | null;
   /** A question or an approval waits on the person: the queue waits with it. */
@@ -109,8 +113,6 @@ export interface TimelineRowActivityState {
   latestTurnId: TurnId | null;
   /** Current plan step label for the working row, when the turn has a plan. */
   workingStepLabel: string | null;
-  /** A stop of the work that outlived the turn is on its way. */
-  stoppingBackgroundWork: boolean;
 }
 
 export const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);

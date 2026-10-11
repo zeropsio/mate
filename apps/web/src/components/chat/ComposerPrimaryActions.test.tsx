@@ -52,6 +52,28 @@ function renderRunningActions(hasSendableContent: boolean) {
   );
 }
 
+function renderAfterTurnActions(stopping: boolean) {
+  return renderToStaticMarkup(
+    createElement(ComposerPrimaryActions, {
+      compact: true,
+      pendingAction: null,
+      isRunning: false,
+      showPlanFollowUpPrompt: false,
+      promptHasText: true,
+      isSendBusy: false,
+      sendDisabledReason: null,
+      isConnecting: false,
+      isEnvironmentUnavailable: false,
+      isPreparingWorktree: false,
+      hasSendableContent: true,
+      backgroundWork: { stopping, onStop: () => {} },
+      onPreviousPendingQuestion: () => {},
+      onInterrupt: () => {},
+      onImplementPlanInNewThread: () => {},
+    }),
+  );
+}
+
 function renderSendButton(sendDisabledReason: string | null = null) {
   return renderToStaticMarkup(
     createElement(ComposerPrimaryActions, {
@@ -96,6 +118,20 @@ describe("ComposerPrimaryActions", () => {
     expect(markup).toContain('aria-label="Queue message"');
     expect(markup).toContain('type="submit"');
   });
+
+  it.each([
+    { stopping: false, label: "Stop background work" },
+    { stopping: true, label: "Stopping background work" },
+  ])(
+    "offers the only Stop beside Send while work the turn started runs on: $label",
+    ({ stopping, label }) => {
+      const markup = renderAfterTurnActions(stopping);
+
+      expect(markup).toContain(`aria-label="${label}"`);
+      expect(markup).toContain('aria-label="Send message"');
+      expect(markup).not.toContain("Queue message");
+    },
+  );
 
   it("keeps stop as the only action while running with an empty composer", () => {
     const markup = renderRunningActions(false);

@@ -38,7 +38,6 @@ const SHARED: TimelineRowSharedState = {
   onUsageAutoResumeChange: null,
   agentPanelModel: emptyAgentPanelModel(),
   onOpenAgents: () => undefined,
-  onStopBackgroundWork: () => undefined,
   onSteerQueuedMessage: () => undefined,
   steerQueuedMessageShortcutLabel: "⌘↑",
   onRemoveQueuedMessage: () => undefined,

@@ -24,7 +24,9 @@ import {
   formatClock,
   nowLineFace,
   nowLineOf,
+  cardHeadLine,
   nowLineWords,
+  type NowLine,
   reachesEarlier,
   recoveredFailures,
   runCardShows,
@@ -1484,5 +1486,39 @@ describe("slotWords", () => {
     },
   ] as const)("$name", ({ item, filler, words }) => {
     expect(slotWords(item as RecordItem | null, filler)).toBe(words);
+  });
+});
+
+// The owner, 2026-10-11, of the live card's controls: "the whole placement of the 'hide work' when
+// there is more content is absolute shit .. think outside the box a little". The card has one head,
+// its line in every state, the whole of it the work's toggle.
+describe("cardHeadWords", () => {
+  const worked = { kind: "worked", words: "Milo worked 3m 36s", effort: "10 commands" } as const;
+  it.each<{ readonly name: string; readonly line: NowLine; readonly words: string }>([
+    {
+      name: "while it thinks",
+      line: { kind: "thinking", thought: "The routes" },
+      words: "Working",
+    },
+    { name: "while it writes", line: { kind: "writing" }, words: "Working" },
+    { name: "while it condenses its context", line: { kind: "condensing" }, words: "Working" },
+    {
+      name: "while it waits on the person",
+      line: { kind: "waiting", on: "answer" },
+      words: "Waiting for your answer",
+    },
+    {
+      name: "while it waits on its helpers",
+      line: { kind: "after" },
+      words: "Waiting for its helpers",
+    },
+    {
+      name: "before its session starts",
+      line: { kind: "starting", on: "session" },
+      words: "Starting its session",
+    },
+    { name: "once it is over", line: worked, words: "Milo worked 3m 36s" },
+  ])("the card's head says what the run is $name", ({ line, words }) => {
+    expect(nowLineWords(cardHeadLine(line))).toBe(words);
   });
 });

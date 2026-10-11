@@ -107,6 +107,12 @@ export interface SlotOffer {
   readonly at: number;
   readonly final: boolean;
   /**
+   * Its turn is over and the run waits on what it started: what is neither live nor in the
+   * record left the card — the turn's answer, drawn under it — and leaves the slot at once.
+   * While the turn runs, such an entry only waits for its line (`useLiveSlot`'s pass 35 rule).
+   */
+  readonly turnOver?: boolean;
+  /**
    * When the quiet began, from the data — the record's newest line, else
    * the run's start — for a slot drawn or caught up mid-quiet: its
    * "Thinking" never restarts with a reload or a resync.
@@ -318,9 +324,15 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
     };
   }
   const live = new Set(offer.live);
-  const entries = slot.entries.map((entry) =>
-    entry.endedAt === null && !live.has(entry.key) ? { ...entry, endedAt: offer.at } : entry,
-  );
+  const held = new Set(offer.record);
+  // What left the card has no line to plop into: it leaves the slot as it leaves the card,
+  // never drawn twice.
+  const stays = (key: string) => offer.turnOver !== true || live.has(key) || held.has(key);
+  const entries = slot.entries
+    .filter((entry) => stays(entry.key))
+    .map((entry) =>
+      entry.endedAt === null && !live.has(entry.key) ? { ...entry, endedAt: offer.at } : entry,
+    );
   const fresh = offer.record.filter((key) => !slot.seen.has(key));
   const inSlot = new Set(entries.map((entry) => entry.key));
   const waitingAlready = new Set(slot.pending);
@@ -353,6 +365,7 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
     offer.live.length === slot.live.length &&
     offer.live.every((key, index) => slot.live[index] === key);
   const changed =
+    entries.length !== slot.entries.length ||
     fresh.length > 0 ||
     !sameLive ||
     pending !== slot.pending ||

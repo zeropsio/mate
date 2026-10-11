@@ -20,6 +20,7 @@ export function useLiveSlot({
   live,
   record,
   final,
+  turnOver = false,
   syncing = false,
   quietFrom,
   onChange,
@@ -28,6 +29,8 @@ export function useLiveSlot({
   readonly record: ReadonlyArray<string>;
   /** The run is over: everything is history at once. */
   readonly final: boolean;
+  /** Its turn is over, the run waiting on what it started (`SlotOffer.turnOver`). */
+  readonly turnOver?: boolean;
   /**
    * The thread catches up after a reload or a reconnect: what it brings is
    * history at once, never an arrival that stands or plops (`slotResync`).
@@ -80,7 +83,11 @@ export function useLiveSlot({
       setSlot(next);
       return;
     }
-    move(slotOffer(slotRef.current, { live, record, at: Date.now(), final }), true, onChange);
+    move(
+      slotOffer(slotRef.current, { live, record, at: Date.now(), final, turnOver }),
+      true,
+      onChange,
+    );
   });
   const due = slotDue(slot);
   useEffect(() => {

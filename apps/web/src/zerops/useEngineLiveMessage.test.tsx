@@ -266,7 +266,6 @@ it("shows an empty streaming thought when its words arrive, without rebuilding s
     onUsageAutoResumeChange: null,
     agentPanelModel: emptyAgentPanelModel(),
     onOpenAgents() {},
-    onStopBackgroundWork() {},
     onSteerQueuedMessage() {},
     steerQueuedMessageShortcutLabel: null,
     onRemoveQueuedMessage() {},
@@ -287,7 +286,6 @@ it("shows an empty streaming thought when its words arrive, without rebuilding s
                 isRevertingCheckpoint: false,
                 latestTurnId: null,
                 workingStepLabel: null,
-                stoppingBackgroundWork: false,
               }}
             >
               <Card />

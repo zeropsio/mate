@@ -812,6 +812,19 @@ function engineCardWaits(card: EngineRunCard | undefined): boolean {
   return card.state?.kind === "working" && card.state.waitsOnHelpers;
 }
 
+/**
+ * Whether work an engine conversation's runs started still runs after their turns: the composer
+ * offers its Stop. A card whose work is over and whose agent's turn on it is due waits on nothing
+ * the person could stop.
+ */
+export function engineWorkRunsOn(cards: Readonly<Record<string, EngineRunCard>>): boolean {
+  return Object.values(cards).some((card) =>
+    card.holdsWork === true
+      ? card.waitsOn !== undefined
+      : card.state?.kind === "working" && card.state.waitsOnHelpers,
+  );
+}
+
 export function deriveConversationStructure(given: {
   readonly timelineEntries: ReadonlyArray<TimelineEntry>;
   readonly runCards?: Readonly<Record<string, EngineRunCard>>;

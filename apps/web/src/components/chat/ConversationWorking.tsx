@@ -540,9 +540,14 @@ function usePanelRoom({
     }
     closing?.stop();
     closingRef.current = null;
-    // It grew, or holds the same — or the person asked for no motion — the
-    // room follows at once.
-    if (holds >= stood - 0.5 || asksForNoMotion()) {
+    // It grew, or holds the same — or the person asked for no motion, or its
+    // run's answer lands under the card's held head in this frame — the room
+    // follows at once.
+    if (
+      holds >= stood - 0.5 ||
+      asksForNoMotion() ||
+      panel.closest("[data-timeline-holds-head]") !== null
+    ) {
       stoodRef.current = holds;
       if (closing !== null) onRoom?.(null);
       return;
@@ -866,16 +871,14 @@ export function ConversationWorking({
 
 /**
  * The Mate at work once its turn is over and work runs on — a helper still at
- * it, a background task, a watch loop: its face, what still runs and a way to
- * stop it, at the conversation's bottom. When the work ends it leaves, and
+ * it, a background task, a watch loop: its face and what still runs, at the
+ * conversation's bottom; its Stop is the composer's. When the work ends it leaves, and
  * what the work did lands in the conversation as its own quiet line.
  */
 export function ConversationAfterWork({
   speaker,
   state,
   dock,
-  stopping,
-  onStop,
   environmentId,
   threadRef,
   onOpenAgents,
@@ -883,8 +886,6 @@ export function ConversationAfterWork({
   readonly speaker: ConversationSpeaker;
   readonly state: "working" | "monitoring";
   readonly dock: DockModel | null;
-  readonly stopping: boolean;
-  readonly onStop: () => void;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
   readonly onOpenAgents: () => void;
@@ -910,9 +911,6 @@ export function ConversationAfterWork({
             {watching ? "Watching in the background" : "Still working in the background"}
           </span>
         </span>
-        <Button disabled={stopping} onClick={onStop} size="xs" variant="ghost">
-          {stopping ? "Stopping…" : "Stop"}
-        </Button>
       </div>
       <Instruments
         dock={dock}
