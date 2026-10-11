@@ -167,6 +167,32 @@ export function helperReportLine(helper: RuntimeSubagent): string | null {
   return said === undefined ? null : said.replace(/^#+\s*/, "").trim();
 }
 
+/** Words as a title reads them: no "Helper N:" before them, no case, no closing stop. */
+function asTitle(words: string): string {
+  return words
+    .trim()
+    .replace(/^helper\s+\d+\s*:\s*/iu, "")
+    .replace(/[\s.…]+$/u, "")
+    .toLowerCase();
+}
+
+/** What a line says beyond the title it stands under; null when it says only the title. */
+export function beyondTitle(title: string, line: string | null): string | null {
+  if (line === null || line.trim().length === 0) return null;
+  return asTitle(line) === asTitle(title) ? null : line;
+}
+
+/**
+ * A helper row's second line: at work, what it does now; settled, its report or why it failed.
+ * Never its title again: a helper with nothing more to say is one line.
+ */
+export function helperRowLine(helper: RuntimeSubagent): string | null {
+  const line = isActiveSubagentStatus(helper.status)
+    ? helperNowWords(helper)
+    : helperReportLine(helper);
+  return beyondTitle(helper.title, line);
+}
+
 export interface HelperMapRow {
   readonly helper: RuntimeSubagent;
   /** How far down the tree: 0 for a helper the Mate started. */

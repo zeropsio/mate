@@ -80,3 +80,57 @@ describe("the bubble of helpers a launch started", () => {
     });
   });
 });
+
+// The owner, live on Milo (0.15.44): the open group's head listed "Helper 1: … · Helper 2: …" over
+// rows that named them again.
+describe("the head of a helpers group", () => {
+  it.each([
+    {
+      name: "folded, its helpers' names are said nowhere else: the head names them",
+      workflow: null,
+      open: false,
+      what: "Helper h0 · Helper h1",
+    },
+    {
+      name: "open, its rows name them: the head names none",
+      workflow: null,
+      open: true,
+      what: null,
+    },
+    {
+      name: "a workflow's own name, which no row says: named open or folded",
+      workflow: "Nightly audit",
+      open: true,
+      what: "Nightly audit",
+    },
+  ])(
+    "the helpers group's head never lists the names its rows show: $name",
+    ({ workflow, open, what }) => {
+      const agents = [helper("h0", "cancelled"), helper("h1", "cancelled")];
+      const model = deriveAgentPanelModel({ agents });
+      const bubble = helpersBubbleOf(
+        workflow === null
+          ? model
+          : {
+              ...model,
+              workflows: [
+                {
+                  workflow: {
+                    ...helper("wf", "cancelled"),
+                    kind: "workflow",
+                    workflowName: workflow,
+                  },
+                  phases: [],
+                  unphasedMembers: agents,
+                } as unknown as (typeof model.workflows)[number],
+              ],
+            },
+        {
+          workflowId: workflow === null ? null : "wf",
+          agentTaskIds: agents.map((agent) => agent.id),
+        },
+      );
+      expect(open ? bubble.whatOpen : bubble.what).toBe(what);
+    },
+  );
+});
