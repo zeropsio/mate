@@ -483,3 +483,85 @@ describe("a conversation's row as a request is answered", () => {
       ),
   );
 });
+
+// Milo's final engine run, 2026-10-11: at a turn end the faces flashed "done" for 37–245 ms. A turn
+// the engine knows is next keeps the row on the work from one commit to the next, as the wire reads
+// it: never at rest between the two.
+describe("a conversation's row from a turn's end to the next turn the engine knows is due", () => {
+  const revision = { environmentId: "env", epoch: 1 };
+  type World = Effect.Success<typeof world>;
+  /** What happens before the turn ends (it may start a job), and the turn's end up to the next. */
+  type Before = (w: World) => Effect.Effect<string | undefined>;
+  type End = (w: World, job: string | undefined) => Effect.Effect<void>;
+  const before =
+    <E>(act: (w: World) => Effect.Effect<string | undefined, E>): Before =>
+    (w) =>
+      Effect.orDie(act(w));
+  const end =
+    <E>(act: (w: World, job: string | undefined) => Effect.Effect<unknown, E>): End =>
+    (w, job) =>
+      Effect.asVoid(Effect.orDie(act(w, job)));
+  const ends: ReadonlyArray<readonly [string, Before, End]> = [
+    [
+      "a queued message",
+      before((w) => Effect.as(w.tell({ _tag: "Send", text: "and then the docs" }), undefined)),
+      end((w) => w.agent((agent, thread) => agent.finish(thread))),
+    ],
+    [
+      "the agent's own turn on its finished job",
+      before((w) =>
+        Effect.gen(function* () {
+          const job = yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          return job;
+        }),
+      ),
+      end((w, job) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.endWork(thread, job!));
+          yield* w.agent((agent, thread) => agent.selfTurn(thread));
+        }),
+      ),
+    ],
+    [
+      "a wake its crash armed",
+      before((w) => w.agent((agent, thread) => agent.startWork(thread))),
+      end((w) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.agent((agent, thread) => agent.crash(thread));
+          yield* w.advance(0);
+        }),
+      ),
+    ],
+  ];
+  it.effect.each(ends.map(([next, first, ending]) => ({ next, first, ending })))(
+    "never reads at rest between them: $next",
+    ({ first, ending }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const engine = yield* w.engine;
+          yield* w.tell({ _tag: "Send", text: "Deploy the api" });
+          const job = yield* first(w);
+          const kinds: Array<string> = [];
+          const reading = yield* Effect.forkScoped(
+            Stream.runForEach(engine.changes, () =>
+              Effect.map(viewOf(w), (view) => {
+                if (view != null) kinds.push(conversationRowOf(view, revision).state.kind);
+              }),
+            ),
+          );
+          yield* ending(w, job);
+          yield* Fiber.interrupt(reading);
+          assert.isAbove(kinds.length, 0);
+          assert.deepStrictEqual(
+            kinds.filter((kind) => kind === "idle" || kind === "failed"),
+            [],
+          );
+          assert.strictEqual((yield* w.run(runId(mate, 2)))?.state, "running");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+});

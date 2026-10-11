@@ -2011,7 +2011,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           body: run.end === null ? signal.body : settledBody(signal.body, run.end),
         });
       }
-      if (signal.kind !== "item-updated" && signal.detail !== undefined) {
+      if (signal.detail !== undefined) {
         b.details.push({ itemId: id, body: signal.detail });
       }
       if (signal.kind === "item-closed" && signal.data !== undefined) {

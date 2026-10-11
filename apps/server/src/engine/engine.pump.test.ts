@@ -11,6 +11,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import { ConversationId, RequestId, runId, type RunId, type ThreadId } from "@t3tools/contracts";
 import * as SqlClient from "effect/sql/SqlClient";
 
@@ -19,6 +20,7 @@ import type { Command } from "./domain/command.ts";
 import { CONTINUE_TEXT, resentText } from "./domain/decide.ts";
 import { PROVIDER_CALL_BOUND_MS } from "./effects/shared.ts";
 import { Conversations } from "./Conversations.ts";
+import { TEXT_KEPT_EVERY_MS } from "./pump/toCore.ts";
 import { DRIVERS, makeEngineWorld, mate, type EngineWorld } from "./testing/pump/engineWorld.ts";
 
 const r = (n: number): RunId => runId(mate, n);
@@ -414,6 +416,99 @@ describe("the running engine", () => {
       ),
   );
 
+  // Milo's final engine run, 2026-10-11: a restart (J2) and a double Stop (D7) each cut a thought
+  // Claude streamed with no item of its own; the record held it empty, live and after a reload.
+  /** A step of a scene: whatever it fails with fails the test. */
+  type Step = (w: EngineWorld) => Effect.Effect<void>;
+  const step =
+    <E>(act: (w: EngineWorld) => Effect.Effect<unknown, E>): Step =>
+    (w) =>
+      Effect.asVoid(Effect.orDie(act(w)));
+  const CUTS: ReadonlyArray<readonly [string, Step]> = [
+    ["a Stop", step(stop)],
+    ["a double Stop", step((w) => Effect.andThen(stop(w), stop(w)))],
+    ["a restart", step((w) => Effect.andThen(w.crash, w.boot))],
+    ["a kill of the server", step((w) => Effect.andThen(w.kill, w.boot))],
+    ["its agent's crash", step((w) => w.agent((agent, thread) => agent.crash(thread)))],
+  ];
+  /** A thought longer than its preview: the record holds the rest as the item's detail. */
+  const LONG = "Reading the build output line by line for the failing step. ".repeat(6);
+  const STREAMS: ReadonlyArray<readonly [string, Step, Record<string, unknown>, string | null]> = [
+    [
+      "a thought",
+      step((w) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.summarize(thread, "Checking the "));
+          yield* w.agent((agent, thread) => agent.summarize(thread, "deploy logs"));
+        }),
+      ),
+      { kind: "thought", preview: "Checking the deploy logs", length: 24, streaming: false },
+      null,
+    ],
+    [
+      "a thought longer than its preview",
+      step((w) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.summarize(thread, LONG.slice(0, 200)));
+          yield* w.agent((agent, thread) => agent.summarize(thread, LONG.slice(200)));
+        }),
+      ),
+      { kind: "thought", length: LONG.length, streaming: false },
+      LONG,
+    ],
+    [
+      "an answer",
+      step((w) =>
+        Effect.gen(function* () {
+          yield* w.agent((agent, thread) => agent.stream(thread, "m-cut", "The deploy failed "));
+          yield* w.agent((agent, thread) => agent.stream(thread, "m-cut", "because the port"));
+        }),
+      ),
+      { kind: "note", text: "The deploy failed because the port", streaming: false },
+      null,
+    ],
+  ];
+  const detailOf = (w: EngineWorld, itemId: string) =>
+    w.within(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const rows = yield* sql<{ readonly body: string }>`
+          SELECT body FROM engine_item_detail WHERE item_id = ${itemId}
+        `;
+        return rows[0]?.body ?? null;
+      }),
+    );
+  it.effect.each(
+    CUTS.flatMap(([cut, cutting]) =>
+      STREAMS.map(([what, streaming, kept, detail]) => ({
+        title: `a run cut by ${cut} keeps everything it had streamed: ${what}`,
+        cutting,
+        streaming,
+        kept,
+        detail,
+      })),
+    ),
+  )("$title", ({ cutting, streaming, kept, detail }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("claudeAgent");
+        yield* send(w);
+        yield* streaming(w);
+        // What streams goes into the record while it streams, not only once its item closes.
+        yield* w.advance(TEXT_KEPT_EVERY_MS);
+        yield* cutting(w);
+        const items = (yield* w.items(r(1))).filter((item) => item.kind === kept.kind);
+        assert.deepStrictEqual(
+          items.map((item) => item.state),
+          ["closed"],
+        );
+        assert.deepInclude(items[0]!.body, kept);
+        assert.strictEqual(yield* detailOf(w, items[0]!.item_id), detail);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("a second Stop closes the session", () =>
     scene(
       Effect.gen(function* () {
@@ -647,6 +742,42 @@ describe("the running engine", () => {
     ),
   );
 
+  // Milo's final engine run, 2026-10-11 (J6): a wake armed before a restart fired about 3 minutes
+  // late. That one was Claude's own session cron, which the CLI holds while a background job of
+  // its own runs; the engine's own wakes fire on boot, and at their time.
+  it.effect.each([
+    { when: "came due while the server was down", dueIn: MINUTE, downFor: 2 * MINUTE, wait: 0 },
+    { when: "is due after the restart", dueIn: 3 * MINUTE, downFor: MINUTE, wait: 2 * MINUTE },
+  ])(
+    "a wake armed before a restart fires once, at boot when it $when, else at its time",
+    ({ dueIn, downFor, wait }) =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          const now = yield* Clock.currentTimeMillis;
+          yield* w.tell({
+            _tag: "ArmWake",
+            kind: "standup",
+            key: "j6",
+            dueAt: now + dueIn,
+            text: "j6 wake",
+          });
+          yield* w.kill;
+          yield* TestClock.adjust(downFor);
+          yield* w.boot;
+          if (wait > 0) {
+            yield* w.advance(wait - 1);
+            assert.isUndefined(yield* w.run(r(1)));
+            yield* w.advance(1);
+          }
+          assert.strictEqual((yield* w.run(r(1)))?.trigger.kind, "wake");
+          assert.strictEqual(w.provider.calls.filter((call) => call.endsWith("j6 wake")).length, 1);
+          assert.isUndefined(yield* w.run(r(2)));
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   it.effect("a known reset holds work until that exact instant", () =>
     scene(
       Effect.gen(function* () {
@@ -851,16 +982,36 @@ describe("the running engine", () => {
     ),
   );
 
-  it.effect(
-    "background work its agent's crash took wakes the Mate once with a note naming it",
-    () =>
+  // Milo's final engine run, 2026-10-11 (J9): a killed agent's background job read "stopped", as
+  // if the person had stopped it, and nothing woke the Mate. Claude's turn had finished a moment
+  // before the kill there; a kill mid-turn ends the run crashed as well.
+  describe("background work its agent's crash took wakes the Mate once with a note naming it", () => {
+    it.effect.each([
+      { when: "while its turn runs", before: () => Effect.void, ended: "crashed" },
+      {
+        when: "after its turn ended",
+        before: (w: EngineWorld) =>
+          Effect.gen(function* () {
+            yield* w.agent((agent, thread) => agent.say(thread, "The tides rise twice a day, so"));
+            yield* w.agent((agent, thread) => agent.finish(thread));
+          }),
+        ended: "completed",
+      },
+    ])("the work reads lost, never stopped: $when", ({ before, ended }) =>
       scene(
         Effect.gen(function* () {
           const w = yield* world("claudeAgent");
           yield* send(w);
           yield* w.agent((agent, thread) => agent.startWork(thread));
+          yield* Effect.orDie(before(w));
           yield* w.agent((agent, thread) => agent.crash(thread));
           yield* w.advance(0);
+          assert.strictEqual((yield* w.run(r(1)))?.end?.kind, ended);
+          const work = (yield* w.items(r(1))).filter((item) => item.kind === "work");
+          assert.deepStrictEqual(
+            work.map((item) => item.body.status),
+            ["lost"],
+          );
           const woken = yield* w.run(r(2));
           assert.deepStrictEqual([woken?.trigger.cause, woken?.state], ["lost-work", "running"]);
           assert.match(
@@ -871,7 +1022,8 @@ describe("the running engine", () => {
           yield* w.shutdown;
         }),
       ),
-  );
+    );
+  });
 
   // Milo's second stress run, 2026-10-09: Claude's background-result turns ran ahead of a queued
   // "carry on".

@@ -4,7 +4,8 @@
  * plane, pump) on a SQLite file, over a scripted ProviderService and a WorkspaceHistory that
  * remembers what it was asked. A life is one process: `boot` builds the layers and starts the
  * engine, `shutdown` closes them as a graceful stop does, `crash` kills every driver process
- * first; the next `boot` is the restart, on the same file, with drivers that hold nothing.
+ * first, `kill` leaves the file as it was the instant the server died; the next `boot` is the
+ * restart, on the same file, with drivers that hold nothing.
  *
  * Time is the test clock: `settle` lets every fiber run to its next wait, `advance` moves the
  * clock (wakes come due) and settles.
@@ -242,6 +243,21 @@ export const makeEngineWorld = (options: WorldOptions) =>
       provider = yield* makeScriptedProvider({ driver: options.driver });
     });
 
+    /**
+     * The server is killed (SIGKILL, a container restart): the file holds what was committed at
+     * that instant and nothing of a stop — no finalizer of it writes.
+     */
+    const kill = Effect.gen(function* () {
+      const files = NodeFS.readdirSync(dir).filter((name) => name.startsWith("state.sqlite"));
+      const kept = new Map(
+        files.map((name) => [name, NodeFS.readFileSync(NodePath.join(dir, name))] as const),
+      );
+      yield* crash;
+      for (const name of NodeFS.readdirSync(dir))
+        if (name.startsWith("state.sqlite")) NodeFS.rmSync(NodePath.join(dir, name));
+      for (const [name, bytes] of kept) NodeFS.writeFileSync(NodePath.join(dir, name), bytes);
+    });
+
     let commands = 0;
     const tell = (command: Command, by: Principal = ana, conversation: ConversationId = mate) =>
       within(
@@ -372,6 +388,7 @@ export const makeEngineWorld = (options: WorldOptions) =>
       boot,
       shutdown,
       crash,
+      kill,
       settle,
       advance: (millis: number) =>
         Effect.gen(function* () {

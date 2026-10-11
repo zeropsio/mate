@@ -313,7 +313,9 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     const owner = turn.session;
     // Open items close with the turn: a call never came back, text stopped
     // where it was. A helper's call outlives the turn while its helper works.
-    for (const item of owner.items.values()) {
+    // Text the driver streamed under no item of its own (Claude's thinking) closes with it too: a
+    // Stop that cut such a thought recorded it empty (Milo, D7).
+    for (const item of [...owner.items.values(), ...turn.synthetic.values()]) {
       if (item.turn !== turn || item.status !== "running") continue;
       if (item.body.kind === "tool") {
         if (workIsLive(owner, item.helper)) continue;
@@ -322,6 +324,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
         upsertItem(item, outcome.kind === "completed" ? "completed" : "cut");
       }
     }
+    turn.synthetic.clear();
     for (const request of owner.requests.values()) {
       if (request.open && request.turn === turn && request.byMessage !== true)
         closeRequest(request, "superseded");
@@ -838,6 +841,15 @@ export function makeTranslator(options: TranslatorOptions): Translator {
             payload.title ??
             work.title;
         work.status = taskStatus(event, work.status);
+        // The agent's process died under the engine: the work its stop reports stopped was lost,
+        // never stopped by anyone (Milo's J9 read a killed job as stopped by the person).
+        if (
+          work.status === "stopped" &&
+          owner.sawProcessExit &&
+          owner.closeAsked === undefined &&
+          owner.open?.stopAsked !== true
+        )
+          work.status = "lost";
         if (facts() !== before) {
           emitWork(owner, work);
         }

@@ -5,7 +5,9 @@
  *
  * - A turn's signals carry their turn, so `decide` files each on its own run.
  * - Text and reasoning flow live as appends; at an item's close its whole text goes into the
- *   record (16 KiB in the body, all of it as the item's detail when longer).
+ *   record (16 KiB in the body, all of it as the item's detail when longer). While it streams, its
+ *   words so far go into the record every `TEXT_KEPT_EVERY_MS` (`keepText`): a server killed
+ *   mid-stream loses no more than that.
  * - Deltas say the turn is alive: at most one `activity` a minute per turn, since every boundary
  *   the actor takes writes a receipt.
  * - A session the engine closed itself is settled by its own effect; any other close is the
@@ -48,6 +50,11 @@ export const ITEM_TEXT_LIMIT = 16 * 1024;
 export const THOUGHT_PREVIEW = 280;
 /** At most one `activity` per turn in this long. */
 export const ACTIVITY_EVERY_MS = 60_000;
+/**
+ * How often a streaming item's words so far go into the record: what a kill (SIGKILL, a
+ * container restart) can lose. Milo's restart lost a 1,359-character thought it held only here.
+ */
+export const TEXT_KEPT_EVERY_MS = 2_000;
 
 /** What a send learned from the driver: taken (into which turn), refused, or its session closed. */
 export type SendEvidence =
@@ -111,6 +118,10 @@ export interface ToCore {
    * with the words it streamed, which only this fold holds. Its closes, for the record.
    */
   readonly cutText: (now: number) => ReadonlyArray<ProviderSignal>;
+  /** Each open text item's words so far, where they grew since the record last took them. */
+  readonly keepText: (now: number) => ReadonlyArray<ProviderSignal>;
+  /** An open text item streamed words the record does not hold yet. */
+  readonly unkept: () => boolean;
   /** What it holds now, for its bounds: open items, their streams, the turns it remembers. */
   readonly retained: () => {
     readonly items: number;
@@ -146,7 +157,23 @@ interface ItemState {
   /** The body last given to `decide`, so a repeat is not told again. */
   told: string | null;
   closed: boolean;
+  /** How many characters of its streams the record holds. */
+  kept: number;
 }
+
+/** How many characters an item streamed, over all its streams. */
+const streamed = (item: ItemState): number => {
+  let length = 0;
+  for (const text of item.text.values()) length += text.length;
+  return length;
+};
+
+/** An open text item whose words the record does not hold yet. */
+const holdsUnkept = (item: ItemState): boolean =>
+  !item.closed &&
+  item.status === "running" &&
+  TEXT_KINDS.has(item.body.kind) &&
+  streamed(item) !== item.kept;
 
 const ASKED_CLOSES: ReadonlySet<SessionCloseCause> = new Set<SessionCloseAsk>([
   "rotate",
@@ -302,6 +329,7 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
             text: new Map(),
             told: null,
             closed: false,
+            kept: 0,
           };
           items.set(signal.item, item);
         }
@@ -478,9 +506,29 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
     return closes;
   };
 
+  const keepText = (now: number): ReadonlyArray<ProviderSignal> => {
+    const kept: Array<ProviderSignal> = [];
+    for (const [key, item] of items) {
+      if (!holdsUnkept(item)) continue;
+      item.kept = streamed(item);
+      const { body, detail } = engineBody(item, now);
+      item.told = JSON.stringify(body);
+      kept.push({
+        kind: "item-updated",
+        turn: item.turn,
+        key,
+        body,
+        ...(detail === undefined ? {} : { detail }),
+      });
+    }
+    return kept;
+  };
+
   return {
     step,
     cutText,
+    keepText,
+    unkept: () => [...items.values()].some(holdsUnkept),
     liveWork: () => liveWork.size,
     reportDueUntil: () =>
       reportDue === null

@@ -477,6 +477,18 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
             payload: { streamKind: "reasoning_text", delta },
           });
         }),
+      /**
+       * Claude's thinking: its summary streams with no item of its own (`ClaudeAdapter`
+       * `emitReasoningSummaryDelta`), and no item ever closes it.
+       */
+      summarize: (thread: string, delta: string) =>
+        Effect.gen(function* () {
+          const session = live(thread);
+          yield* emit("content.delta", thread, {
+            ...(session.open === null ? {} : { turnId: session.open }),
+            payload: { streamKind: "reasoning_summary_text", delta },
+          });
+        }),
       /** A command starts running (ACP calls first show as an update). */
       call: (thread: string) =>
         Effect.gen(function* () {
@@ -582,11 +594,14 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
           const turnId = session.open;
           switch (driver) {
             case "claudeAgent":
+              // Its stream dies (`handleStreamExit`): the error first, the open turn failed, then
+              // the stop of what is left, which reports each task still running as stopped.
               yield* emit("runtime.error", thread, {
-                turnId,
+                ...(turnId === null ? {} : { turnId }),
                 payload: { message: words, class: "process_exit" },
               });
               yield* endTurn(session, { state: "failed", errorMessage: words });
+              yield* stopTasks(session);
               yield* die(session, words);
               yield* emit("session.exited", thread, { payload: { exitKind: "graceful" } });
               return;
