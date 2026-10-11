@@ -56,5 +56,6 @@ export const serverHandedOverResume = Layer.effect(
 
 /** Metadata and protected bytes use the same conversation owner: the engine's. */
 export const resolveAssetContext = Effect.fn("resolveAssetContext")(function* (thread: ThreadId) {
-  return yield* (yield* MateEngine).assetContext(thread);
+  const engine = yield* Effect.serviceOption(MateEngine);
+  return Option.isNone(engine) ? undefined : yield* engine.value.assetContext(thread);
 });

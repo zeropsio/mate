@@ -28,7 +28,6 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import { OtlpTracer, OtlpSerialization } from "effect/observability";
 
 import * as ServerConfig from "./config.ts";
-import { MateEngine } from "./engine/MateEngine.ts";
 import { resolveAssetContext } from "./engineSessionDirectory.ts";
 import { contentAssetsAt, ContentAssetError } from "./assets/ContentAssets.ts";
 import { contentAssetFailure, protectedContentAsset } from "./assets/ContentAssetHttp.ts";
@@ -419,8 +418,7 @@ export const assetRouteLayer = HttpRouter.add(
         const config = yield* ServerConfig.ServerConfig;
         const store = contentAssetsAt(config.stateDir);
         const query = yield* Effect.serviceOption(ProjectionSnapshotQuery);
-        const engine = yield* Effect.serviceOption(MateEngine);
-        if (Option.isNone(query) || Option.isNone(engine))
+        if (Option.isNone(query))
           return yield* Effect.fail(contentAssetFailure("access-unverified", 503));
         const preview = match[2] === "preview";
         const owners = yield* Effect.tryPromise({
@@ -445,7 +443,6 @@ export const assetRouteLayer = HttpRouter.add(
             break;
           }
           const context = yield* resolveAssetContext(owner.threadId).pipe(
-            Effect.provideService(MateEngine, engine.value),
             Effect.mapError(() => contentAssetFailure("access-unverified", 503)),
           );
           if (context !== undefined) {

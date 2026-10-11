@@ -23,17 +23,16 @@ const TURN_COMMAND_PATTERN = /\btype:\s*"(?:thread\.turn\.start|thread\.user-inp
 const CLIENT_COMMAND_PATTERN = /\bnormalizeDispatchCommand\(/u;
 const ADMISSION_PATTERN = /\.admit\(/u;
 
-/** The files that accept commands from a client. Each must admit them. */
-const CLIENT_ENTRY_POINTS = ["apps/server/src/ws.ts", "apps/server/src/orchestration/http.ts"];
+/**
+ * The files that accept commands from a client. Each must admit them. None does since V1 went: a
+ * person's turn reaches the engine's wire, whose runs the engine admits (below).
+ */
+const CLIENT_ENTRY_POINTS: ReadonlyArray<string> = [];
 
 /** Files that build a turn without admitting it, and why that is sound. */
 const UNADMITTED_TURN_BUILDERS: Readonly<Record<string, string>> = {
   "apps/server/src/orchestration/decider.ts":
     "the turn a message-mode answer becomes; admission gates the answer itself (isTurnStartingCommand)",
-  "apps/server/src/orchestration/Layers/ProviderCommandReactor.ts":
-    "re-dispatches a turn already admitted, after its session had to be replaced",
-  "apps/server/src/orchestration/Layers/ThreadUsagePauseReactor.ts":
-    "resumes a turn the usage limit paused; it was admitted when it started (a signer change during the pause is an open D6 question)",
 };
 
 /**
@@ -187,19 +186,6 @@ it.layer(NodeServices.layer)("turn start sites (D6)", (it) => {
         "apps/server/src/somewhere/NewEngine.ts",
       );
       assert.isUndefined(turnStartViolation(site));
-    }),
-  );
-
-  it.effect("flags a listed entry point that stopped admitting", () =>
-    Effect.sync(() => {
-      const site = classifyTurnStartSite(
-        "const command = yield* normalizeDispatchCommand(args.payload);",
-        "apps/server/src/orchestration/http.ts",
-      );
-      assert.strictEqual(
-        turnStartViolation(site),
-        "apps/server/src/orchestration/http.ts accepts client commands without admitting them",
-      );
     }),
   );
 
