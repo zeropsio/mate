@@ -22,6 +22,7 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { CircleAlertIcon, GitPullRequestIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { useComposerDraftStore } from "~/composerDraftStore";
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { formatShortTimestamp } from "~/timestampFormat";
@@ -34,6 +35,7 @@ import { useAskMate } from "~/zerops/useAskMate";
 import { useMateFaceWatch } from "~/zerops/useMateMoments";
 import { useMateLinkedInHq, useMateOfflineSince } from "~/zerops/useMenuMateReadings";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
+import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -47,6 +49,7 @@ import {
   mateOwnerView,
   mateRowAskLine,
   mateAsker,
+  mateRowDraft,
   mateRowReading,
   mateRowSecond,
   ownerBadge,
@@ -166,13 +169,27 @@ export function OverviewCardMate({
     outsideHq || (containerless && seated.seat.kind === "nobody")
       ? null
       : ownerBadge(seated.seat, owner?.isViewer === true);
+  // What waits in its composer, and what this browser just sent it, as its menu row reads them
+  // (`mateRowDraft`, `mateRowSentAsk`): a card led with its last words where its row led with
+  // the draft.
+  const draft = useComposerDraftStore((state) =>
+    mateRowDraft(state, {
+      environmentId: candidate.environmentId,
+      threadId: activity?.threadId,
+      threadKey: activity?.threadKey,
+    }),
+  );
+  const sentAsk = usePendingSentAsk(candidate.environmentId);
   // Its line 2 as the menu's row says it (`mateRowSecond`): the same words in both places.
   const askLine = mateRowAskLine({
     view,
     signIn:
       signIn === undefined ? undefined : { text: signIn, waitsOnViewer: seated.waitsOnViewer },
-    draft: undefined,
-    sent: undefined,
+    draft,
+    sent:
+      sentAsk !== undefined && (activity === undefined || activity.threadId === sentAsk.threadId)
+        ? sentAsk.text
+        : undefined,
     deleting,
     finishing: false,
     read: conversationsRead,

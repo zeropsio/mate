@@ -1,5 +1,7 @@
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { create, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 const linked = vi.hoisted(() => ({ value: false }));
@@ -44,6 +46,11 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSessionOptional: () => session.value,
 }));
 vi.mock("~/zerops/useMateWrite", () => ({ useMateWrite: () => ({ requests: {} }) }));
+
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+
+import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 
 import { pull } from "./flowTestFixtures";
 import { OverviewCardMate } from "./OverviewCardMate";
@@ -137,5 +144,56 @@ describe("a Mate on its card", () => {
     expect(markup).toContain("Build a reading list");
     expect(markup).toContain('data-lift="review"');
     expect(markup).not.toContain('data-zerops-surface="card-mate-review"');
+  });
+
+  // The card read the Mate as if nothing waited in its composer, while its menu row led with the
+  // draft (round 5's follow-ups, 2026-10-11).
+  it("says the draft waiting in its Mate's composer, as its menu row does", () => {
+    linked.value = false;
+    session.value = { user: { id: "me" } };
+    people.value = { waitsOnViewer: true, owner: { ...KAREL, userId: "me" } };
+    const draft = DraftId.make("draft-ada");
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(
+      scopeProjectRef(EnvironmentId.make("env-ada"), ProjectId.make("project-ada")),
+      draft,
+      { threadId: ThreadId.make("thread-new"), createdAt: new Date().toISOString() },
+    );
+    store.setPrompt(draft, "set up a staging");
+    try {
+      // Mounted: the composer's store is the browser's, which a static render never reads.
+      let tree: ReactTestRenderer | undefined;
+      act(() => {
+        tree = create(
+          <OverviewCardMate
+            candidate={
+              {
+                ...ada("ready"),
+                environmentId: "env-ada",
+                service: { id: "zcp" },
+              } as ZeropsCandidate
+            }
+            change={undefined}
+            containerActions={null}
+            containerLine={undefined}
+            conversationsRead
+            flow={undefined}
+            groupId="shop"
+            name="Ada"
+            onOpen={undefined}
+            outsideHq={false}
+            shape={undefined}
+            tint="sky"
+          />,
+        );
+      });
+      const said = JSON.stringify(tree?.toJSON());
+      tree?.unmount();
+      expect(said).toContain("Draft: set up a staging");
+      expect(said).not.toContain("Nothing asked yet");
+    } finally {
+      store.setPrompt(draft, "");
+      store.clearDraftThread(draft);
+    }
   });
 });
