@@ -586,6 +586,35 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
           return itemId;
         }),
       finish: (thread: string) => endTurn(live(thread), { state: "completed" }),
+      /**
+       * Claude's CLI killed mid-turn, as Milo's two live kills reached the engine: the answer so
+       * far whole and the turn closed completed, then, milliseconds later, the stream's death
+       * with no turn open (`turnActive: false`), its tasks reported stopped and the session gone.
+       */
+      killMidTurn: (thread: string, words: string) =>
+        Effect.gen(function* () {
+          const session = live(thread);
+          const itemId = `m${++items}`;
+          const at = session.open === null ? {} : { turnId: session.open };
+          yield* emit("content.delta", thread, {
+            ...at,
+            itemId,
+            payload: { streamKind: "assistant_text", delta: words },
+          });
+          yield* emit("item.completed", thread, {
+            ...at,
+            itemId,
+            payload: { itemType: "assistant_message", status: "completed" },
+          });
+          yield* endTurn(session, { state: "completed" });
+          const killed = "Claude Code was stopped by the system, most often for lack of memory.";
+          yield* emit("runtime.error", thread, {
+            payload: { message: killed, class: "process_exit" },
+          });
+          yield* stopTasks(session);
+          yield* die(session, killed);
+          yield* emit("session.exited", thread, { payload: { exitKind: "graceful" } });
+        }),
       /** The agent's process dies mid-turn, each driver as its adapter reports it. */
       crash: (thread: string) =>
         Effect.gen(function* () {
