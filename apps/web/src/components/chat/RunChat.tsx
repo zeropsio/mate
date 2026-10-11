@@ -1693,7 +1693,7 @@ function StepBubble({
       column
       opens={opens}
       running={running}
-      time={failure === null ? time : "Failed"}
+      time={failure !== null ? "Failed" : step.state === "stopped" ? "Stopped" : time}
       timeTone={failure === "broken" ? "failed" : "muted"}
     >
       {step.kind === "command" ? (

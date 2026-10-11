@@ -287,6 +287,8 @@ const inputNotArrived = (line: string) => /^[\w.-]+:\s*\{\s*\}$/u.test(line.trim
 function callActivities(
   item: Extract<Item, { kind: "call" }>,
   cardOf: CardOf,
+  /** The work it started was stopped: its call ended failed only as the stop broke it off. */
+  workStopped = false,
 ): ReadonlyArray<OrchestrationThreadActivity> {
   const title = item.words ?? item.presentation?.title ?? item.tool.name;
   const payload = {
@@ -330,7 +332,10 @@ function callActivities(
       title,
       {
         ...payload,
-        status: CALL_STATUS[item.state] ?? "completed",
+        status:
+          workStopped && item.state === "failed"
+            ? "stopped"
+            : (CALL_STATUS[item.state] ?? "completed"),
         ...(item.state === "unreturned" ? { unreturned: true } : {}),
       },
       card,
@@ -846,6 +851,14 @@ export function engineThreadOf(
     const run = runId === null ? undefined : runById.get(runId);
     return run !== undefined && run.state === "ended" && run.startedAt === null;
   };
+  // A call whose work the person stopped: Stop ends the call failed and the work stopped.
+  const stoppedCalls = new Set(
+    items.flatMap((item) =>
+      item.kind === "work" && item.status === "stopped" && item.call !== undefined
+        ? [item.call as string]
+        : [],
+    ),
+  );
   for (const item of items) {
     const message = messageOf(
       item,
@@ -856,7 +869,7 @@ export function engineThreadOf(
     if (message !== null) messages.push(message);
     switch (item.kind) {
       case "call":
-        activities.push(...callActivities(item, cardOf));
+        activities.push(...callActivities(item, cardOf, stoppedCalls.has(item.id)));
         break;
       case "work":
         activities.push(...workActivities(item, cardOf));

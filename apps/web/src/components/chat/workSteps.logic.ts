@@ -18,7 +18,7 @@ import { spilledOutputOf, spilledOutputPhrase, type SpilledOutput } from "./spil
 
 export type StepKind = "command" | "look" | "read" | "edit" | "search" | "web" | "tool";
 
-export type StepState = "running" | "done" | "failed";
+export type StepState = "running" | "done" | "failed" | "stopped";
 
 /**
  * A call said plainly, in its parts: what it did and what it did it to — the
@@ -798,6 +798,8 @@ function titleName(label: string): string | null {
 }
 
 function stepState(entry: WorkLogEntry, live: boolean): StepState {
+  // The record's word: the person's Stop broke it off, whatever error that left.
+  if (entry.toolLifecycleStatus === "stopped") return "stopped";
   if (entry.toolLifecycleStatus === "failed" || entry.tone === "error") return "failed";
   return live && entry.toolLifecycleStatus === "inProgress" ? "running" : "done";
 }
