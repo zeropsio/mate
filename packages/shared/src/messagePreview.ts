@@ -13,7 +13,9 @@ const HORIZONTAL_RULE = /^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/gmu;
 const IMAGE = /!\[([^\]]*)\]\([^)]*\)/gu;
 const LINK = /\[([^\]]+)\]\([^)]*\)/gu;
 const STRONG = /(\*\*|__)(?=\S)([^\n]*?\S)\1/gu;
-const EMPHASIS = /(^|[^\w*])\*(?=\S)([^*\n]*?\S)\*(?![\w*])/gu;
+// Opens where a word may start (a line's start, a space, an opening bracket or quote), never inside
+// one: "rc-*.txt or probe-*.txt" is a glob, not emphasis.
+const EMPHASIS = /(^|[\s([{"'“‘])\*(?=\S)([^*\n]*?\S)\*(?![\w*])/gu;
 const STRIKE = /~~(?=\S)([^\n]*?\S)~~/gu;
 const CODE = /`([^`\n]+)`/gu;
 /** Where a composer's draft holds a picture, a file or a terminal's lines: marks, never words. */
