@@ -150,12 +150,7 @@ export type ProviderSignal =
     }
   /** A limit whose reset was unknown learned its reset time (the driver's rate-limit report). */
   | { readonly kind: "usage-reset-known"; readonly resetsAt: number }
-  | {
-      readonly kind: "session-exited";
-      readonly reason: string;
-      /** The agent's process died (killed, crashed), never a close anyone asked for. */
-      readonly crashed?: true;
-    }
+  | { readonly kind: "session-exited"; readonly reason: string }
   /**
    * The agent is between turns with nothing waiting for it: every result of its finished work has
    * reached it, however many one turn took (Claude's idle, after it drained what it held).

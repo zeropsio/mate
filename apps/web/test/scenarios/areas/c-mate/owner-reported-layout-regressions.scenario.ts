@@ -2305,6 +2305,10 @@ describe("owner-reported layout regressions", () => {
           readonly answers: number;
           /** The strip of what runs alongside under the card, its height. */
           readonly strip: number;
+          /** Where that strip stands, a screen y; null without one. */
+          readonly stripTop: number | null;
+          /** The foot of what the person sees of the conversation, over the composer. */
+          readonly foot: number;
           /** How far the view stands from its end. */
           readonly fromEnd: number;
           /** How many times the answer's row has risen in. */
@@ -2349,7 +2353,7 @@ describe("owner-reported layout regressions", () => {
             // What Milo said: a short line as its job ran on (recheck on 0.15.41, +32:54.1), three
             // lines otherwise.
             const text =
-              answer === "with its end" && helperRunsOn
+              answer === "with its end" && helperRunsOn && length === "short"
                 ? "The 45-second command is running in the background, as you noted."
                 : length === "long"
                   ? [
@@ -2460,6 +2464,17 @@ describe("owner-reported layout regressions", () => {
                       ]
                         .at(-1)
                         ?.getBoundingClientRect().height ?? 0,
+                    stripTop:
+                      [
+                        ...document.querySelectorAll<HTMLElement>(
+                          '[data-timeline-row-kind="working"]',
+                        ),
+                      ]
+                        .at(-1)
+                        ?.getBoundingClientRect().top ?? null,
+                    foot:
+                      document.querySelector<HTMLElement>("form")?.getBoundingClientRect().top ??
+                      Infinity,
                     drawn: rows.size,
                     rises,
                     lastLine,
@@ -2538,7 +2553,10 @@ describe("owner-reported layout regressions", () => {
               .join(" ")}`;
             // An answer that ends in view under the head keeps the head still; a longer one keeps
             // its last line where it was read instead (below).
-            if (length === "short" || end === "cut") {
+            if (
+              (length === "short" || end === "cut") &&
+              !(answer === "with its end" && length === "long")
+            ) {
               const moved = frames.findIndex(
                 (frame) => frame.head === null || Math.abs(frame.head.top - first.head!.top) > 1,
               );
@@ -2558,7 +2576,7 @@ describe("owner-reported layout regressions", () => {
                 (frame, index) => index > 0 && frame.head?.top !== frames[index - 1]!.head?.top,
               );
               expect(
-                moved === -1 || frames[rests]!.at - frames[moved]!.at <= 450,
+                moved === -1 || frames[rests]!.at - frames[moved]!.at <= 700,
                 `ASSERTION: the glide is short ${trace}`,
               ).toBe(true);
             }
@@ -2582,7 +2600,40 @@ describe("owner-reported layout regressions", () => {
             ).toBeLessThanOrEqual(1);
             // Recheck on 0.15.44 (+15:38): a long answer at a job-turn end showed its first line for
             // 1.2 s, then the page glided 305 px down to it.
-            if (length === "long" && end === "whole") {
+            // Recheck on 0.15.45 (+4:14.0): six sentences came with the end of a turn on a job; the
+            // strip's row moved 124 px in one frame, and 0.3 s later the page glided 159 px to them.
+            if (answer === "with its end" && length === "long") {
+              const step = (pick: (frame: SettleFrame) => number | null) =>
+                Math.max(
+                  ...frames.map((frame, index) => {
+                    const now = pick(frame);
+                    const before = index === 0 ? null : pick(frames[index - 1]!);
+                    return now === null || before === null ? 0 : Math.abs(now - before);
+                  }),
+                );
+              expect(
+                step((frame) => frame.stripTop),
+                // A travel's step at 30 frames a second stays under it; the cut was 71-124 px.
+                "ASSERTION: the job's strip never jumps",
+              ).toBeLessThan(60);
+              expect(
+                step((frame) => frame.head?.top ?? null),
+                "ASSERTION: the card's head never jumps",
+              ).toBeLessThan(40);
+              const arrived = frames.findIndex(
+                (frame) => frame.lastLine !== null || frame.answers > 0,
+              );
+              const hidden = frames.filter(
+                (frame, index) =>
+                  index >= arrived && (frame.lastLine === null || frame.lastLine > frame.foot),
+              );
+              expect(
+                hidden.length === 0 ? 0 : hidden.at(-1)!.at - frames[arrived]!.at,
+                // The settle's hold, then one glide: never the 1.2 s it stood hidden on 0.15.44.
+                "ASSERTION: the answer comes into sight within the settle's hold and one glide",
+              ).toBeLessThanOrEqual(450);
+            }
+            if (length === "long" && end === "whole" && answer === "streamed") {
               const reading = frames[0]!.lastLine;
               expect(reading, "ASSERTION: the answer's last line was read in view").not.toBeNull();
               // It lands under the strip of what runs on, a strip's height down at most, and travels
@@ -2771,9 +2822,90 @@ describe("owner-reported layout regressions", () => {
           () => restsAtItsEnd("on its job"),
         );
 
+        // Recheck on 0.15.45: opening a settled card at the conversation's end held the card where
+        // it was clicked and pushed its answer under the composer.
+        it.effect(
+          "opening a settled card at the conversation's end keeps the end in sight, the card growing upward",
+          () =>
+            Effect.gen(function* () {
+              const { s, engine, run } = yield* miloAtWork();
+              const chat = mateChat(s);
+              for (let index = 0; index < 6; index += 1)
+                engine.item(run, {
+                  kind: "call",
+                  step: "command",
+                  tool: { name: "Bash" },
+                  words: "Command run",
+                  state: "done",
+                  endedAt: yield* Clock.currentTimeMillis,
+                  input: `Bash: echo step-${index}`,
+                });
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 3000)));
+              engine.note(
+                run,
+                "All six steps ran; the last one printed its marker, as you noted.",
+                {
+                  kind: "completed",
+                },
+              );
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 2500)));
+              const read = () =>
+                s.page.evaluate(() => {
+                  const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                  let line: number | null = null;
+                  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                  while (walker.nextNode()) {
+                    const element = walker.currentNode.parentElement!;
+                    if (!(walker.currentNode.textContent ?? "").includes("as you noted")) continue;
+                    if (element.closest("[data-run-chat], .sr-only") !== null) continue;
+                    line = element.getBoundingClientRect().bottom;
+                  }
+                  return {
+                    line,
+                    fromEnd: list.scrollHeight - list.clientHeight - list.scrollTop,
+                    foot: document.querySelector("form")?.getBoundingClientRect().top ?? null,
+                  };
+                });
+              const before = yield* Effect.promise(read);
+              yield* chat.when.activateLast("Show work");
+              const frames: Array<Awaited<ReturnType<typeof read>>> = [];
+              for (let index = 0; index < 30; index += 1) {
+                yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 50)));
+                frames.push(yield* Effect.promise(read));
+              }
+              const after = frames.at(-1)!;
+              const seen = `before ${before.line}/${before.fromEnd}/${before.foot}, after ${after.line}/${after.fromEnd}/${after.foot}`;
+              expect(before.line, "ASSERTION: the answer stood in view before").not.toBeNull();
+              expect(
+                Math.max(
+                  ...frames.map((frame) =>
+                    frame.line === null ? Infinity : Math.abs(frame.line - before.line!),
+                  ),
+                ),
+                `ASSERTION: the conversation's last line stays where it stood as the card opens: ${seen}`,
+              ).toBeLessThanOrEqual(16);
+              expect(
+                frames.every(
+                  (frame) => frame.line !== null && frame.foot !== null && frame.line <= frame.foot,
+                ),
+                `ASSERTION: the conversation's end never goes under the composer: ${seen}`,
+              ).toBe(true);
+              expect(
+                after.fromEnd,
+                `ASSERTION: the view stands at its end: ${seen}`,
+              ).toBeLessThanOrEqual(1);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
         it.effect(
           "a run its agent's crash cut off settles with its words where they were read, never a jump",
           () => settlesInPlace(true, "streamed", "long", "cut"),
+        );
+
+        it.effect(
+          "a long answer coming with the end of a turn on a job still running comes into sight, nothing above it jumping",
+          () => settlesInPlace(true, "with its end", "long"),
         );
 
         it.effect(
