@@ -5,9 +5,6 @@ import {
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
 } from "@t3tools/shared/usageLimits";
-import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
-import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -24,12 +21,9 @@ import {
   type AuthAccessStreamEvent,
   AuthSessionId,
   ClientSurface,
-  CommandId,
-  EventId,
   type EditorId,
   type FileManagerRevealKind,
   type OrchestrationClientOrigin,
-  type OrchestrationCommand,
   type GitActionProgressEvent,
   type GitManagerServiceError,
   OrchestrationDispatchCommandError,
@@ -87,15 +81,8 @@ import {
 } from "./orchestration/ActivityPayloadProjection.ts";
 import { makeThreadLiveEventCoalescer } from "./orchestration/ThreadLiveEventCoalescer.ts";
 import { makeLiveStreamBudget, type RetainedLiveItem } from "./orchestration/LiveStreamBudget.ts";
-import {
-  cleanupFailedUploadedAttachments,
-  normalizeDispatchCommand,
-} from "./orchestration/Normalizer.ts";
-import { makeFirstTurnEffort } from "./zerops/firstTurnEffort.ts";
-import { OrchestrationCommandInvariantError } from "./orchestration/Errors.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
-import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
 import { rpcInstrumentationLayer } from "./observability/RpcInstrumentation.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as ModelManifest from "./provider/ModelManifest.ts";
@@ -107,7 +94,6 @@ import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts"
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
-import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import { withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
@@ -124,7 +110,6 @@ import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
-import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
@@ -139,7 +124,6 @@ import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import { engineArchiveSnapshotOf } from "./zerops/engineOverview.ts";
 import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
 import { withoutUnworkableSlashCommands } from "./zerops/providerSlashCommands.ts";
-import { ZeropsTurnAdmission } from "./zerops/ZeropsTurnAdmission.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
 import { McpServers } from "./zerops/mcp/McpServers.ts";
@@ -179,10 +163,7 @@ import { failEnvironmentCredentialRejected, failEnvironmentInternal } from "./au
 import { runExecCommand } from "./zerops/ExecService.ts";
 import * as ProcessRunner from "./processRunner.ts";
 import * as RelayClient from "@t3tools/shared/relayClient";
-import { zeropsPolicy } from "./zerops/ZeropsPolicy.ts";
-const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 
-const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
 
 const resolveDiscoveryForConfig = <A, E, R>(
@@ -207,18 +188,6 @@ function unexpectedCompatibilityError(error: never): never {
 }
 
 /** Preserve the setup runner's broader pre-refactor message normalization. */
-function legacySetupFailureDescription(cause: unknown): string {
-  if (
-    typeof cause === "object" &&
-    cause !== null &&
-    "message" in cause &&
-    typeof cause.message === "string"
-  ) {
-    return cause.message;
-  }
-  return String(cause);
-}
-
 function projectEntriesFailureContext(error: WorkspaceEntries.WorkspaceEntriesError): {
   readonly failure: ProjectEntriesFailure;
   readonly normalizedCwd?: string;
@@ -329,19 +298,6 @@ function projectFileFailureContext(
   }
 }
 
-function projectSetupScriptCompatibilityDetail(
-  error: ProjectSetupScriptRunner.ProjectSetupScriptRunnerError,
-): string {
-  switch (error._tag) {
-    case "ProjectSetupScriptOperationError":
-      return legacySetupFailureDescription(error.cause);
-    case "ProjectSetupScriptProjectNotFoundError":
-      return "Project was not found for setup script execution.";
-    default:
-      return unexpectedCompatibilityError(error);
-  }
-}
-
 export function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
   OrchestrationEvent,
   {
@@ -444,36 +400,12 @@ function readClientConnectionOrigin(
   };
 }
 
-const makeWsRpcLayer = (
-  currentSession: EnvironmentAuth.AuthenticatedSession,
-  clientOrigin: OrchestrationClientOrigin,
-) =>
+const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
-      const crypto = yield* Crypto.Crypto;
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
-      const threadDeletionReactor = yield* ThreadDeletionReactor;
-      // Every command dispatched on this connection carries the connecting
-      // client's origin, including server-generated bootstrap sub-commands:
-      // the client's request caused them.
-      const hasClientOrigin =
-        clientOrigin.surface !== undefined || clientOrigin.appVersion !== undefined;
-      const dispatchFromClient: OrchestrationEngine.OrchestrationEngineShape["dispatch"] = (
-        command,
-      ) =>
-        v1Parked
-          ? Effect.fail(
-              new OrchestrationCommandInvariantError({
-                commandType: command.type,
-                detail: ENGINE_MOVED,
-              }),
-            )
-          : orchestrationEngine.dispatch(
-              command,
-              hasClientOrigin ? { origin: clientOrigin } : undefined,
-            );
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
       const usageLimitSources = yield* UsageLimitSources.UsageLimitSources;
@@ -493,12 +425,9 @@ const makeWsRpcLayer = (
       const providerInstances = yield* ProviderInstanceRegistry;
       const providerInstallation = yield* makeProviderInstallation();
       const config = yield* ServerConfig.ServerConfig;
-      // The Mate engine owns the conversation: every door into V1 is closed, before admission.
-      const v1Parked = config.mateEngine === "mate";
       const engineMoved = () => new OrchestrationDispatchCommandError({ message: ENGINE_MOVED });
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
-      const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
       const canReplayPersistedRange = Effect.fnUntraced(function* (
@@ -537,7 +466,6 @@ const makeWsRpcLayer = (
         }
         return true;
       });
-      const projectSetupScriptRunner = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
       const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
       const repositoryIdentityResolver =
         yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
@@ -587,7 +515,6 @@ const makeWsRpcLayer = (
       const resourceTelemetry = yield* ResourceTelemetry.ResourceTelemetry;
       const zeropsLifecycle = yield* ZeropsLifecycle.ZeropsLifecycle;
       const zeropsAgentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
-      const turnAdmission = yield* ZeropsTurnAdmission;
       const zeropsSetup = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsSetup));
       // A Mate's own server starts its stand-up; absent where no Zerops layer runs.
       const zeropsAgentLogin = yield* ZeropsAgentLoginModule.ZeropsAgentLogin;
@@ -658,21 +585,6 @@ const makeWsRpcLayer = (
                   WS_METHODS.zeropsAgentLoginSubmitCode,
                 ].some((candidate) => candidate === method),
             );
-      const toDispatchCommandError = (cause: unknown, fallbackMessage: string) =>
-        isOrchestrationDispatchCommandError(cause)
-          ? cause
-          : new OrchestrationDispatchCommandError({
-              message: cause instanceof Error ? cause.message : fallbackMessage,
-              cause,
-            });
-      const randomUUID = crypto.randomUUIDv4.pipe(
-        Effect.mapError((cause) =>
-          toDispatchCommandError(cause, "Failed to generate orchestration command identifier."),
-        ),
-      );
-      const serverEventId = randomUUID.pipe(Effect.map(EventId.make));
-      const serverCommandId = (tag: string) =>
-        randomUUID.pipe(Effect.map((uuid) => CommandId.make(`server:${tag}:${uuid}`)));
 
       const loadAuthAccessSnapshot = () =>
         Effect.all({
@@ -686,48 +598,6 @@ const makeWsRpcLayer = (
               }),
           ),
         );
-
-      const appendSetupScriptActivity = (input: {
-        readonly threadId: ThreadId;
-        readonly kind: "setup-script.requested" | "setup-script.started" | "setup-script.failed";
-        readonly summary: string;
-        readonly createdAt: string;
-        readonly payload: Record<string, unknown>;
-        readonly tone: "info" | "error";
-      }) =>
-        Effect.all({
-          commandId: serverCommandId("setup-script-activity"),
-          activityId: serverEventId,
-        }).pipe(
-          Effect.flatMap(({ commandId, activityId }) =>
-            dispatchFromClient({
-              type: "thread.activity.append",
-              commandId,
-              threadId: input.threadId,
-              activity: {
-                id: activityId,
-                tone: input.tone,
-                kind: input.kind,
-                summary: input.summary,
-                payload: input.payload,
-                turnId: null,
-                createdAt: input.createdAt,
-              },
-              createdAt: input.createdAt,
-            }),
-          ),
-        );
-
-      const toBootstrapDispatchCommandCauseError = (cause: Cause.Cause<unknown>) => {
-        const error = Cause.squash(cause);
-        return isOrchestrationDispatchCommandError(error)
-          ? error
-          : new OrchestrationDispatchCommandError({
-              message:
-                error instanceof Error ? error.message : "Failed to bootstrap thread turn start.",
-              cause,
-            });
-      };
 
       // Shell updates refetch the aggregate. Message and tool bodies are not needed.
       const toShellEvent = ({
@@ -942,326 +812,6 @@ const makeWsRpcLayer = (
           return output;
         });
 
-      const dispatchBootstrapTurnStart = (
-        command: Extract<OrchestrationCommand, { type: "thread.turn.start" }>,
-      ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> =>
-        Effect.gen(function* () {
-          const bootstrap = command.bootstrap;
-          const { bootstrap: _bootstrap, ...finalTurnStartCommand } = command;
-          // The decider already refuses to persist a worktree path on Zerops;
-          // this is what stops the worktree from being created on the dev
-          // service in the first place, and stops a setup script running in a
-          // directory that will never exist.
-          const worktreesAllowed = (yield* zeropsPolicy).worktreesAllowed;
-          let createdThread = false;
-          let targetProjectId = bootstrap?.createThread?.projectId;
-          let targetProjectCwd = bootstrap?.prepareWorktree?.projectCwd;
-          let targetWorktreePath = worktreesAllowed
-            ? (bootstrap?.createThread?.worktreePath ?? null)
-            : null;
-
-          const cleanupCreatedThread = () =>
-            createdThread
-              ? serverCommandId("bootstrap-thread-delete").pipe(
-                  Effect.flatMap((commandId) =>
-                    dispatchFromClient({
-                      type: "thread.delete",
-                      commandId,
-                      threadId: command.threadId,
-                    }),
-                  ),
-                  Effect.as(true),
-                )
-              : Effect.succeed(false);
-
-          const recordSetupScriptLaunchFailure = (input: {
-            readonly error: ProjectSetupScriptRunner.ProjectSetupScriptRunnerError;
-            readonly requestedAt: string;
-            readonly worktreePath: string;
-          }) => {
-            const detail = projectSetupScriptCompatibilityDetail(input.error);
-            return appendSetupScriptActivity({
-              threadId: command.threadId,
-              kind: "setup-script.failed",
-              summary: "Setup script failed to start",
-              createdAt: input.requestedAt,
-              payload: {
-                detail,
-                worktreePath: input.worktreePath,
-              },
-              tone: "error",
-            }).pipe(
-              Effect.ignoreCause({ log: false }),
-              Effect.flatMap(() =>
-                Effect.logWarning("bootstrap turn start failed to launch setup script", {
-                  threadId: command.threadId,
-                  worktreePath: input.worktreePath,
-                  detail,
-                }),
-              ),
-            );
-          };
-
-          const recordSetupScriptStarted = (input: {
-            readonly requestedAt: string;
-            readonly worktreePath: string;
-            readonly scriptId: string;
-            readonly scriptName: string;
-            readonly terminalId: string;
-          }) =>
-            Effect.gen(function* () {
-              const startedAt = yield* nowIso;
-              const payload = {
-                scriptId: input.scriptId,
-                scriptName: input.scriptName,
-                terminalId: input.terminalId,
-                worktreePath: input.worktreePath,
-              };
-              yield* Effect.all([
-                appendSetupScriptActivity({
-                  threadId: command.threadId,
-                  kind: "setup-script.requested",
-                  summary: "Starting setup script",
-                  createdAt: input.requestedAt,
-                  payload,
-                  tone: "info",
-                }),
-                appendSetupScriptActivity({
-                  threadId: command.threadId,
-                  kind: "setup-script.started",
-                  summary: "Setup script started",
-                  createdAt: startedAt,
-                  payload,
-                  tone: "info",
-                }),
-              ]).pipe(
-                Effect.asVoid,
-                Effect.catch((error) =>
-                  Effect.logWarning(
-                    "bootstrap turn start launched setup script but failed to record setup activity",
-                    {
-                      threadId: command.threadId,
-                      worktreePath: input.worktreePath,
-                      scriptId: input.scriptId,
-                      terminalId: input.terminalId,
-                      detail: error.message,
-                    },
-                  ),
-                ),
-              );
-            });
-
-          const runSetupProgram = () =>
-            Effect.gen(function* () {
-              if (!bootstrap?.runSetupScript || !targetWorktreePath) {
-                return;
-              }
-              const worktreePath = targetWorktreePath;
-              const requestedAt = yield* nowIso;
-              yield* projectSetupScriptRunner
-                .runForThread({
-                  threadId: command.threadId,
-                  ...(targetProjectId ? { projectId: targetProjectId } : {}),
-                  ...(targetProjectCwd ? { projectCwd: targetProjectCwd } : {}),
-                  worktreePath,
-                })
-                .pipe(
-                  Effect.matchEffect({
-                    onFailure: (error) =>
-                      recordSetupScriptLaunchFailure({
-                        error,
-                        requestedAt,
-                        worktreePath,
-                      }),
-                    onSuccess: (setupResult) => {
-                      if (setupResult.status !== "started") {
-                        return Effect.void;
-                      }
-                      return recordSetupScriptStarted({
-                        requestedAt,
-                        worktreePath,
-                        scriptId: setupResult.scriptId,
-                        scriptName: setupResult.scriptName,
-                        terminalId: setupResult.terminalId,
-                      });
-                    },
-                  }),
-                );
-            });
-
-          const bootstrapProgram = Effect.gen(function* () {
-            if (bootstrap?.createThread) {
-              const created = yield* dispatchFromClient({
-                type: "thread.create",
-                commandId: yield* serverCommandId("bootstrap-thread-create"),
-                threadId: command.threadId,
-                projectId: bootstrap.createThread.projectId,
-                title: bootstrap.createThread.title,
-                modelSelection: bootstrap.createThread.modelSelection,
-                runtimeMode: bootstrap.createThread.runtimeMode,
-                interactionMode: bootstrap.createThread.interactionMode,
-                branch: bootstrap.createThread.branch,
-                worktreePath: bootstrap.createThread.worktreePath,
-                createdAt: bootstrap.createThread.createdAt,
-              });
-              // The successful create is a fence in the engine command queue:
-              // every delete for the prior incarnation committed before it.
-              // Drain through that event before setup or turn start can own
-              // terminals and provider sessions under the reused thread id.
-              yield* threadDeletionReactor.drainThrough(created.sequence);
-              createdThread = true;
-            }
-
-            if (bootstrap?.prepareWorktree && worktreesAllowed) {
-              let worktreeBaseRef = bootstrap.prepareWorktree.baseBranch;
-              // "Start from origin" is a stored default; repos without an
-              // origin remote fall back to the local base branch instead of
-              // failing the whole bootstrap on `git fetch origin`.
-              const startFromOrigin =
-                bootstrap.prepareWorktree.startFromOrigin === true &&
-                (yield* gitWorkflow.remoteExists({
-                  cwd: bootstrap.prepareWorktree.projectCwd,
-                  remoteName: "origin",
-                }));
-              if (startFromOrigin) {
-                yield* gitWorkflow.fetchRemote({
-                  cwd: bootstrap.prepareWorktree.projectCwd,
-                  remoteName: "origin",
-                });
-                const resolvedRemoteBase = yield* gitWorkflow.resolveRemoteTrackingCommit({
-                  cwd: bootstrap.prepareWorktree.projectCwd,
-                  refName: bootstrap.prepareWorktree.baseBranch,
-                  fallbackRemoteName: "origin",
-                });
-                worktreeBaseRef = resolvedRemoteBase.commitSha;
-              }
-              // The environment setting, or null so the driver reads the new
-              // checkout's own t3.json (the branch may declare something the
-              // project root does not). Settings that fail to load fall through.
-              const submodules = yield* serverSettings.getSettings.pipe(
-                Effect.map((settings) => settings.worktreeSubmodules),
-                Effect.orElseSucceed(() => null),
-              );
-              const worktree = yield* gitWorkflow.createWorktree(
-                {
-                  cwd: bootstrap.prepareWorktree.projectCwd,
-                  refName: worktreeBaseRef,
-                  newRefName: bootstrap.prepareWorktree.branch,
-                  baseRefName: bootstrap.prepareWorktree.baseBranch,
-                  path: null,
-                },
-                { submodules },
-              );
-              targetWorktreePath = worktree.worktree.path;
-              yield* dispatchFromClient({
-                type: "thread.meta.update",
-                commandId: yield* serverCommandId("bootstrap-thread-meta-update"),
-                threadId: command.threadId,
-                branch: worktree.worktree.refName,
-                worktreePath: targetWorktreePath,
-              });
-              yield* refreshGitStatus(targetWorktreePath);
-            }
-
-            yield* runSetupProgram();
-
-            return yield* dispatchFromClient(finalTurnStartCommand);
-          });
-
-          return yield* bootstrapProgram.pipe(
-            Effect.catchCause((cause) => {
-              const dispatchError = toBootstrapDispatchCommandCauseError(cause);
-              if (Cause.hasInterruptsOnly(cause)) {
-                return Effect.fail(dispatchError);
-              }
-              return Effect.uninterruptible(cleanupCreatedThread()).pipe(
-                Effect.matchCauseEffect({
-                  onFailure: (cleanupCause) =>
-                    Effect.logWarning("bootstrap thread cleanup failed", {
-                      threadId: command.threadId,
-                      detail: Cause.pretty(cleanupCause),
-                    }).pipe(Effect.flatMap(() => Effect.fail(dispatchError))),
-                  onSuccess: (threadDeleted) =>
-                    Effect.fail(
-                      threadDeleted
-                        ? new OrchestrationDispatchCommandError({
-                            message: dispatchError.message,
-                            ...(dispatchError.cause !== undefined
-                              ? { cause: dispatchError.cause }
-                              : {}),
-                            bootstrapThreadDisposition: "deleted",
-                          })
-                        : dispatchError,
-                    ),
-                }),
-              );
-            }),
-          );
-        });
-
-      // D10: a new conversation's first turn runs on Extra High when it names no effort, and the
-      // thread stores what it runs on (zerops/firstTurnEffort.ts).
-      const firstTurnEffort = makeFirstTurnEffort({
-        providers: providerRegistry.getProviders,
-        threadShell: projectionSnapshotQuery.getThreadShellById,
-      });
-      const dispatchNormalizedCommand = (
-        incomingCommand: OrchestrationCommand,
-      ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> =>
-        firstTurnEffort(incomingCommand).pipe(
-          Effect.flatMap(({ command, store }) => dispatchPlannedCommand(command, store)),
-        );
-      const dispatchPlannedCommand = (
-        normalizedCommand: OrchestrationCommand,
-        store: OrchestrationCommand | undefined,
-      ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> => {
-        if (v1Parked) return Effect.fail(engineMoved());
-        const storeEffect =
-          store === undefined
-            ? Effect.void
-            : orchestrationEngine
-                .dispatch(store)
-                .pipe(
-                  Effect.mapError((cause) =>
-                    toDispatchCommandError(cause, "Failed to store the conversation's model"),
-                  ),
-                );
-        const turnEffect =
-          normalizedCommand.type === "thread.turn.start" && normalizedCommand.bootstrap
-            ? dispatchBootstrapTurnStart(normalizedCommand)
-            : dispatchFromClient(normalizedCommand).pipe(
-                Effect.tap(({ sequence }) =>
-                  // Returning from thread.create is the handoff point at which
-                  // clients may start resources for the new incarnation. Use
-                  // its event sequence as the exact deletion-cleanup fence.
-                  normalizedCommand.type === "thread.create"
-                    ? threadDeletionReactor.drainThrough(sequence)
-                    : Effect.void,
-                ),
-                Effect.mapError((cause) =>
-                  toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
-                ),
-              );
-        const dispatchEffect = Effect.andThen(storeEffect, turnEffect);
-
-        return turnAdmission
-          .admit({
-            command: normalizedCommand,
-            principal: { kind: "session", subject: currentSession.subject },
-          })
-          .pipe(
-            Effect.andThen(
-              startup
-                .enqueueCommand(dispatchEffect)
-                .pipe(
-                  Effect.mapError((cause) =>
-                    toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
-                  ),
-                ),
-            ),
-          );
-      };
-
       // On Zerops, whether Claude Code and Codex can be picked is the
       // project's answer (its sign-in flag), not their drivers' — every
       // provider list a client receives goes through this, and leaves it
@@ -1346,109 +896,9 @@ const makeWsRpcLayer = (
           .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
       return WsRpcGroup.of({
-        [ORCHESTRATION_WS_METHODS.dispatchCommand]: (command) =>
-          admit(
-            ORCHESTRATION_WS_METHODS.dispatchCommand,
-            Effect.gen(function* () {
-              if (v1Parked) return yield* engineMoved();
-              yield* ProjectCloneTracker.rejectCommandsDuringClone(projectCloneTracker, command);
-              const normalizedCommand = yield* normalizeDispatchCommand(command);
-              // Archive and settle both mean "done with this thread", so a
-              // live provider session must not keep running background work
-              // (PR monitors, dev servers, subagent fleets) after either
-              // lands. The decider rejects settling a starting/running
-              // session, so for settle this only ever stops an idle one; a
-              // stopped session-set does not count as activity, so the stop
-              // cannot un-settle the thread it follows.
-              const parkingCommand =
-                normalizedCommand.type === "thread.archive" ||
-                normalizedCommand.type === "thread.settle"
-                  ? normalizedCommand
-                  : undefined;
-              // Best-effort on purpose: the user's archive/settle must not
-              // fail because this cleanup read blipped, so a failed read
-              // logs and skips the stop instead of propagating.
-              const shouldStopSessionAfterCommand = parkingCommand
-                ? yield* projectionSnapshotQuery.getThreadShellById(parkingCommand.threadId).pipe(
-                    Effect.map(
-                      Option.match({
-                        onNone: () => false,
-                        onSome: (thread) =>
-                          thread.session !== null && thread.session.status !== "stopped",
-                      }),
-                    ),
-                    Effect.catchCause((cause) =>
-                      Effect.logWarning(
-                        "failed to read thread session state before session-stop check",
-                        { threadId: parkingCommand.threadId, cause },
-                      ).pipe(Effect.as(false)),
-                    ),
-                  )
-                : false;
-              const result = yield* dispatchNormalizedCommand(normalizedCommand).pipe(
-                Effect.tapError(() => cleanupFailedUploadedAttachments(command, normalizedCommand)),
-              );
-              yield* ProjectCloneTracker.discardCloneForDeletedProject(
-                projectCloneTracker,
-                normalizedCommand,
-              );
-              if (parkingCommand) {
-                const parkingKind = parkingCommand.type === "thread.archive" ? "archive" : "settle";
-                if (shouldStopSessionAfterCommand) {
-                  yield* Effect.gen(function* () {
-                    const stopCommand = yield* normalizeDispatchCommand({
-                      type: "thread.session.stop",
-                      commandId: CommandId.make(
-                        `session-stop-for-${parkingKind}:${parkingCommand.commandId}`,
-                      ),
-                      threadId: parkingCommand.threadId,
-                      createdAt: yield* nowIso,
-                      // A settled thread can be re-engaged before this stop is
-                      // decided; the decider then drops the stop instead of
-                      // killing the new session. Archive stops stay
-                      // unconditional: turn starts on archived threads are
-                      // rejected, so there is no new session to protect.
-                      ...(parkingKind === "settle" ? { onlyIfSettled: true } : {}),
-                    });
-
-                    yield* dispatchNormalizedCommand(stopCommand);
-                  }).pipe(
-                    Effect.catchCause((cause) =>
-                      Effect.logWarning(`failed to stop provider session during ${parkingKind}`, {
-                        threadId: parkingCommand.threadId,
-                        cause,
-                      }),
-                    ),
-                  );
-                }
-
-                // Terminals are user-opened panes, not thread background
-                // work: archive removes the thread from view so they close
-                // with it, but a settled thread stays reachable and may be
-                // un-settled, so its terminals stay up.
-                if (parkingCommand.type === "thread.archive") {
-                  yield* terminalManager.close({ threadId: parkingCommand.threadId }).pipe(
-                    Effect.catch((error) =>
-                      Effect.logWarning("failed to close thread terminals after archive", {
-                        threadId: parkingCommand.threadId,
-                        error: error.message,
-                      }),
-                    ),
-                  );
-                }
-              }
-              return result;
-            }).pipe(
-              Effect.mapError((cause) =>
-                isOrchestrationDispatchCommandError(cause)
-                  ? cause
-                  : new OrchestrationDispatchCommandError({
-                      message: "Failed to dispatch orchestration command",
-                      cause,
-                    }),
-              ),
-            ),
-          ),
+        // The Mate engine owns every conversation: only an app older than it dispatches here.
+        [ORCHESTRATION_WS_METHODS.dispatchCommand]: () =>
+          admit(ORCHESTRATION_WS_METHODS.dispatchCommand, Effect.fail(engineMoved())),
         [ORCHESTRATION_WS_METHODS.getWorkflowScript]: (input) =>
           readWorkflowScript({ scriptPath: input.scriptPath }),
         [ORCHESTRATION_WS_METHODS.getTurnDiff]: (input) =>
@@ -2168,49 +1618,8 @@ const makeWsRpcLayer = (
             WS_METHODS.sourceControlCloneRepository,
             sourceControlRepositories.cloneRepository(input),
           ),
-        [WS_METHODS.projectCloneStart]: (input) =>
-          admit(
-            WS_METHODS.projectCloneStart,
-            v1Parked
-              ? Effect.fail(engineMoved())
-              : projectCloneTracker.start(input, {
-                  createProject: (project) =>
-                    Effect.gen(function* () {
-                      const normalizedCommand = yield* normalizeDispatchCommand({
-                        type: "project.create",
-                        commandId: yield* serverCommandId("project-clone-create"),
-                        projectId: project.projectId,
-                        title: project.title,
-                        workspaceRoot: project.workspaceRoot,
-                        createWorkspaceRootIfMissing: true,
-                        createdAt: project.createdAt,
-                      });
-                      yield* dispatchNormalizedCommand(normalizedCommand);
-                    }).pipe(Effect.provideContext(normalizerContext)),
-                  onCloned: (project) =>
-                    // The project was created against an empty directory, so its
-                    // cached identity is "not a repository" until this refresh.
-                    // Re-emitting the project shell carries the new identity to
-                    // every client without a round trip.
-                    repositoryIdentityResolver
-                      .resolve(project.workspaceRoot, { refresh: true })
-                      .pipe(
-                        Effect.andThen(
-                          Effect.gen(function* () {
-                            const command = yield* normalizeDispatchCommand({
-                              type: "project.meta.update",
-                              commandId: yield* serverCommandId("project-clone-done"),
-                              projectId: project.projectId,
-                            });
-                            yield* dispatchNormalizedCommand(command);
-                          }),
-                        ),
-                        Effect.andThen(refreshGitStatus(project.workspaceRoot)),
-                        Effect.ignoreCause({ log: true }),
-                        Effect.provideContext(normalizerContext),
-                      ),
-                }),
-          ),
+        [WS_METHODS.projectCloneStart]: () =>
+          admit(WS_METHODS.projectCloneStart, Effect.fail(engineMoved())),
         [WS_METHODS.projectCloneCancel]: (input) =>
           admit(
             WS_METHODS.projectCloneCancel,
@@ -2788,7 +2197,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
       return httpEffect;
     }).pipe(
       Effect.provide(
-        makeWsRpcLayer(session, clientOrigin).pipe(
+        makeWsRpcLayer(session).pipe(
           Layer.provideMerge(RpcSerialization.layerJson),
           // Request fibers run in the handlers' context, so this reporter sees
           // their defects, not the rest of the server's.

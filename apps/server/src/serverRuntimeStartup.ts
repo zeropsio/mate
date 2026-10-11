@@ -1,21 +1,8 @@
-import { V1UpdateDrain } from "./update/V1UpdateDrain.ts";
-import {
-  CommandId,
-  EventId,
-  DEFAULT_MODEL,
-  DEFAULT_PROVIDER_INTERACTION_MODE,
-  type ModelSelection,
-  ProjectId,
-  ProviderInstanceId,
-  ThreadId,
-} from "@t3tools/contracts";
-import * as Cause from "effect/Cause";
-import * as Clock from "effect/Clock";
+import { CommandId, ProjectId } from "@t3tools/contracts";
 import * as Console from "effect/Console";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
-import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -27,13 +14,9 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
-import { ProjectionTurnRepository } from "./persistence/Services/ProjectionTurns.ts";
-import { ProjectionThreadActivityRepository } from "./persistence/Services/ProjectionThreadActivities.ts";
-import { ProjectionPendingApprovalRepository } from "./persistence/Services/ProjectionPendingApprovals.ts";
 import { ProjectionTurnRepositoryLive } from "./persistence/Layers/ProjectionTurns.ts";
 import { ProjectionThreadActivityRepositoryLive } from "./persistence/Layers/ProjectionThreadActivities.ts";
 import { ProjectionPendingApprovalRepositoryLive } from "./persistence/Layers/ProjectionPendingApprovals.ts";
-import { openUserInputRequests } from "./orchestration/pendingUserInput.ts";
 import * as ServerConfig from "./config.ts";
 import { mateUpdateBootPending } from "./mateUpdateBoot.ts";
 import { MateEngine, type MateEngineService } from "./engine/MateEngine.ts";
@@ -41,20 +24,9 @@ import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
-import * as OrchestrationReactor from "./orchestration/Services/OrchestrationReactor.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
-import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
-import * as ProviderService from "./provider/Services/ProviderService.ts";
-import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
-import * as ProviderSessionReaper from "./provider/Services/ProviderSessionReaper.ts";
-import {
-  isBootstrapDecidable,
-  resolveZeropsBootstrapModelSelection,
-} from "./zerops/ZeropsBootstrapModel.ts";
-import { legacyRestartCause, restartCause, ZeropsRestartRead } from "./zerops/ZeropsRestartRead.ts";
-import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 import { forkParked } from "./serverActivation.ts";
 import { ServerCommandReadiness } from "./spi/serverCommandReadiness.ts";
 import {
@@ -153,93 +125,6 @@ export const makeCommandGate = Effect.gen(function* () {
   } satisfies CommandGate;
 });
 
-export const getAutoBootstrapThreadModelSelection = (): ModelSelection => ({
-  instanceId: ProviderInstanceId.make("codex"),
-  model: DEFAULT_MODEL,
-});
-
-/**
- * The model selection the auto-bootstrapped project and its first thread open
- * on.
- *
- * Outside a Zerops container this is upstream's hardcoded Codex default,
- * unchanged. Inside one it becomes the first provider instance that can
- * actually serve a turn (see `ZeropsBootstrapModel`), because the container's
- * authenticated CLI is usually Claude Code rather than Codex and a landing
- * thread pinned to an unauthenticated provider is a dead end.
- *
- * `ProviderRegistry` is read as an optional service so this stays callable
- * from every context the bootstrap already runs in; without it the upstream
- * default stands.
- */
-/**
- * How long the Zerops bootstrap will wait for the provider probes to land.
- *
- * The auth probe's own ceiling is 10s per provider and they run concurrently,
- * so this is generous headroom rather than an expected wait. It only elapses in
- * full when an instance never settles at all, and the cost of that is a landing
- * thread on the upstream default - the same thread the user got before.
- */
-export const ZEROPS_BOOTSTRAP_PROVIDER_WAIT = Duration.seconds(30);
-
-/** How often the bootstrap re-reads the registry while waiting. */
-export const ZEROPS_BOOTSTRAP_PROVIDER_POLL_INTERVAL = Duration.millis(250);
-
-/**
- * Read the registry until it carries a decidable picture, or the bound
- * elapses.
- *
- * Polling rather than `streamChanges`: the aggregator's stream subscribes on
- * stream start, so a probe that lands between our first read and the
- * subscription would be missed entirely. `getProviders` is a `Ref.get`, so
- * re-reading costs nothing and cannot race.
- */
-const awaitDecidableProviders = (registry: ProviderRegistry.ProviderRegistry["Service"]) =>
-  Effect.gen(function* () {
-    const startedAt = yield* Clock.currentTimeMillis;
-    const waitMillis = Duration.toMillis(ZEROPS_BOOTSTRAP_PROVIDER_WAIT);
-
-    for (;;) {
-      const providers = yield* registry.getProviders;
-      if (isBootstrapDecidable(providers)) {
-        return providers;
-      }
-      const elapsed = (yield* Clock.currentTimeMillis) - startedAt;
-      if (elapsed >= waitMillis) {
-        yield* Effect.logWarning(
-          "provider probes did not settle before the bootstrap deadline; using the default model selection",
-          { waitMillis, providerCount: providers.length },
-        );
-        return providers;
-      }
-      yield* Effect.sleep(ZEROPS_BOOTSTRAP_PROVIDER_POLL_INTERVAL);
-    }
-  });
-
-export const resolveAutoBootstrapThreadModelSelection = Effect.gen(function* () {
-  // The machine-wide default model from settings wins over every derived default.
-  const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
-  if (Option.isSome(serverSettings)) {
-    const settings = yield* serverSettings.value.getSettings.pipe(Effect.option);
-    if (Option.isSome(settings) && settings.value.defaultModelSelection !== null) {
-      return settings.value.defaultModelSelection;
-    }
-  }
-
-  const serverConfig = yield* ServerConfig.ServerConfig;
-  if (!isZeropsEnvironment(serverConfig)) {
-    return getAutoBootstrapThreadModelSelection();
-  }
-
-  const registry = yield* Effect.serviceOption(ProviderRegistry.ProviderRegistry);
-  if (Option.isNone(registry)) {
-    return getAutoBootstrapThreadModelSelection();
-  }
-
-  const providers = yield* awaitDecidableProviders(registry.value);
-  return resolveZeropsBootstrapModelSelection(providers) ?? getAutoBootstrapThreadModelSelection();
-});
-
 export const resolveWelcomeBase = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig.ServerConfig;
   const segments = serverConfig.cwd.split(/[/\\]/).filter(Boolean);
@@ -252,18 +137,22 @@ export const resolveWelcomeBase = Effect.gen(function* () {
 });
 
 /**
- * The project at the server's working directory, made when it has none: on the Mate engine, the
- * shell every client lays its conversations over, which are made by their first send or the
- * stand-up, never here.
+ * The project at the server's working directory, made when it has none: the shell every client
+ * lays the engine's conversations over. Its conversations are the engine's, made by their first
+ * send or the stand-up, never here.
  */
 export const resolveAutoBootstrapProject = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const serverConfig = yield* ServerConfig.ServerConfig;
-  const projection = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const projectionReadModelQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
   const path = yield* Path.Path;
-  const existing = yield* projection.getActiveProjectByWorkspaceRoot(serverConfig.cwd);
-  if (Option.isSome(existing)) return { bootstrapProjectId: existing.value.id };
+
+  if (!serverConfig.autoBootstrapProjectFromCwd) return {} as const;
+  const existingProject = yield* projectionReadModelQuery.getActiveProjectByWorkspaceRoot(
+    serverConfig.cwd,
+  );
+  if (Option.isSome(existingProject)) return { bootstrapProjectId: existingProject.value.id };
   const bootstrapProjectId = ProjectId.make(yield* crypto.randomUUIDv4);
   yield* orchestrationEngine.dispatch({
     type: "project.create",
@@ -274,78 +163,6 @@ export const resolveAutoBootstrapProject = Effect.gen(function* () {
     createdAt: DateTime.formatIso(yield* DateTime.now),
   });
   return { bootstrapProjectId };
-});
-
-export const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
-  const crypto = yield* Crypto.Crypto;
-  const randomUUID = crypto.randomUUIDv4;
-  const serverConfig = yield* ServerConfig.ServerConfig;
-  const projectionReadModelQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
-  const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
-  const path = yield* Path.Path;
-
-  let bootstrapProjectId: ProjectId | undefined;
-  let bootstrapThreadId: ThreadId | undefined;
-
-  if (serverConfig.autoBootstrapProjectFromCwd) {
-    yield* Effect.gen(function* () {
-      const existingProject = yield* projectionReadModelQuery.getActiveProjectByWorkspaceRoot(
-        serverConfig.cwd,
-      );
-      let nextProjectId: ProjectId;
-      let nextThreadModelSelection: ModelSelection;
-
-      if (Option.isNone(existingProject)) {
-        const createdAt = DateTime.formatIso(yield* DateTime.now);
-        nextProjectId = ProjectId.make(yield* randomUUID);
-        const bootstrapProjectTitle = path.basename(serverConfig.cwd) || "project";
-        nextThreadModelSelection = yield* resolveAutoBootstrapThreadModelSelection;
-        yield* orchestrationEngine.dispatch({
-          type: "project.create",
-          commandId: CommandId.make(yield* randomUUID),
-          projectId: nextProjectId,
-          title: bootstrapProjectTitle,
-          workspaceRoot: serverConfig.cwd,
-          createdAt,
-        });
-      } else {
-        nextProjectId = existingProject.value.id;
-        nextThreadModelSelection =
-          existingProject.value.defaultModelSelection ??
-          (yield* resolveAutoBootstrapThreadModelSelection);
-      }
-
-      const existingThreadId =
-        yield* projectionReadModelQuery.getFirstActiveThreadIdByProjectId(nextProjectId);
-      if (Option.isNone(existingThreadId)) {
-        const createdAt = DateTime.formatIso(yield* DateTime.now);
-        const createdThreadId = ThreadId.make(yield* randomUUID);
-        yield* orchestrationEngine.dispatch({
-          type: "thread.create",
-          commandId: CommandId.make(yield* randomUUID),
-          threadId: createdThreadId,
-          projectId: nextProjectId,
-          title: "New thread",
-          modelSelection: nextThreadModelSelection,
-          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-          runtimeMode: "full-access",
-          branch: null,
-          worktreePath: null,
-          createdAt,
-        });
-        bootstrapProjectId = nextProjectId;
-        bootstrapThreadId = createdThreadId;
-      } else {
-        bootstrapProjectId = nextProjectId;
-        bootstrapThreadId = existingThreadId.value;
-      }
-    });
-  }
-
-  return {
-    ...(bootstrapProjectId ? { bootstrapProjectId } : {}),
-    ...(bootstrapThreadId ? { bootstrapThreadId } : {}),
-  } as const;
 });
 
 const resolveStartupBrowserTarget = Effect.gen(function* () {
@@ -382,234 +199,25 @@ const runStartupPhase = <A, E, R>(phase: string, effect: Effect.Effect<A, E, R>)
     Effect.withSpan(`server.startup.${phase}`),
   );
 
-type ScopedRoot = { readonly start: () => Effect.Effect<void, never, Scope.Scope> };
-
 /**
- * The conversation's roots, by the engine that owns it. V1's: its reactors
- * and the session reaper in `reactorScope`, then its boot reconcile. The Mate
- * engine's: its own start in the same scope, with V1 built but parked (no
- * reactor, no reaper, no reconcile).
+ * The conversation's roots: the engine's start in `reactorScope`, after an automatic update's
+ * boot fence when this boot is one.
  */
-export const startConversationRoots = <E, R>(input: {
-  readonly engine: Pick<MateEngineService, "live" | "start" | "updateDrain">;
+export const startConversationRoots = (input: {
+  readonly engine: Pick<MateEngineService, "start" | "updateDrain">;
   readonly reactorScope: Scope.Scope;
-  readonly v1: {
-    readonly reactor: ScopedRoot;
-    readonly reaper: ScopedRoot;
-    readonly reconcile: Effect.Effect<void, E, R>;
-  };
-}): Effect.Effect<void, E, R> =>
-  input.engine.live
-    ? runStartupPhase(
-        "engine.start",
-        Effect.gen(function* () {
-          if (mateUpdateBootPending()) {
-            if (input.engine.updateDrain === undefined)
-              return yield* Effect.die(
-                new Error("This Mate cannot fence an automatic update boot."),
-              );
-            yield* input.engine.updateDrain.begin;
-          }
-          yield* input.engine.start().pipe(Scope.provide(input.reactorScope));
-        }),
-      )
-    : Effect.gen(function* () {
-        yield* runStartupPhase(
-          "reactors.start",
-          Effect.gen(function* () {
-            yield* input.v1.reactor.start().pipe(Scope.provide(input.reactorScope));
-            yield* input.v1.reaper.start().pipe(Scope.provide(input.reactorScope));
-          }),
-        );
-        yield* runStartupPhase("provider-sessions.reconcile", input.v1.reconcile);
-      });
-
-/**
- * What the auto-bootstrap makes: V1's project and first thread, or, while the Mate engine owns
- * the conversation, the project alone, the shell its conversations show under.
- */
-export const autoBootstrapOf = (
-  config: Pick<ServerConfig.ServerConfig["Service"], "autoBootstrapProjectFromCwd">,
-  engine: Pick<MateEngineService, "live">,
-): "none" | "project" | "project-and-thread" =>
-  !config.autoBootstrapProjectFromCwd ? "none" : engine.live ? "project" : "project-and-thread";
-
-export const reconcileProviderSessions = Effect.gen(function* () {
-  const bootAt = DateTime.formatIso(yield* DateTime.now);
-  const crypto = yield* Crypto.Crypto;
-  const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
-  const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
-  const providerService = yield* ProviderService.ProviderService;
-  const query = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
-
-  const liveThreadIds = new Set(
-    (yield* providerService.listSessions()).map((session) => session.threadId),
-  );
-  const { threads } = yield* query.getCommandReadModel();
-  const orphanedThreads = threads.filter(
-    (thread) =>
-      thread.session !== null &&
-      (thread.session.status === "starting" ||
-        thread.session.status === "running" ||
-        thread.latestTurn?.state === "running" ||
-        (thread.session.status === "error" &&
-          thread.session.activeTurnId === null &&
-          thread.latestTurn?.state === "error" &&
-          legacyRestartCause(thread.session.lastError) !== null)) &&
-      !liveThreadIds.has(thread.id),
-  );
-
-  if (orphanedThreads.length === 0) return;
-  // The platform is asked once for the whole boot, never once per thread and never retried.
-  // Outside Zerops the observed boot remains the restart evidence.
-  const reader = yield* Effect.serviceOption(ZeropsRestartRead);
-  const evidence =
-    orphanedThreads.some(
-      (thread) => thread.session?.status !== "error" || thread.session.activeTurnId !== null,
-    ) && Option.isSome(reader)
-      ? yield* reader.value.read.pipe(
-          Effect.catchCause((cause) =>
-            Cause.hasInterrupts(cause) ? Effect.failCause(cause) : Effect.succeed(null),
-          ),
-        )
-      : null;
-
-  for (const thread of orphanedThreads) {
-    const session = thread.session;
-    if (session === null) {
-      continue;
-    }
-    yield* Effect.gen(function* () {
-      const binding = yield* directory.getBinding(thread.id);
-      if (Option.isSome(binding)) {
-        yield* directory.upsert({
-          ...binding.value,
-          status: "stopped",
-          runtimePayload: { activeTurnId: null },
-        });
+}): Effect.Effect<void> =>
+  runStartupPhase(
+    "engine.start",
+    Effect.gen(function* () {
+      if (mateUpdateBootPending()) {
+        if (input.engine.updateDrain === undefined)
+          return yield* Effect.die(new Error("This Mate cannot fence an automatic update boot."));
+        yield* input.engine.updateDrain.begin;
       }
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Cause.hasInterrupts(cause)
-          ? Effect.failCause(cause)
-          : Effect.logWarning("failed to reconcile orphaned provider session directory binding", {
-              threadId: thread.id,
-              cause,
-            }),
-      ),
-    );
-
-    const reconciledAt = DateTime.formatIso(yield* DateTime.now);
-    const activities = yield* ProjectionThreadActivityRepository;
-    const approvals = yield* ProjectionPendingApprovalRepository;
-    const nativeQuestions = openUserInputRequests(
-      yield* activities.listUserInputLifecycleByThreadId({ threadId: thread.id }),
-    ).filter(
-      (activity) =>
-        typeof activity.payload === "object" &&
-        activity.payload !== null &&
-        (activity.payload as Record<string, unknown>).responseMode !== "message",
-    );
-    const deadRequests = [
-      ...nativeQuestions.map((activity) => ({
-        kind: "user-input.resolved",
-        turnId: activity.turnId,
-        requestId: (activity.payload as Record<string, unknown>).requestId,
-      })),
-      ...(yield* approvals.listByThreadId({ threadId: thread.id }))
-        .filter((approval) => approval.status === "pending")
-        .map((approval) => ({
-          kind: "approval.resolved",
-          turnId: approval.turnId,
-          requestId: approval.requestId,
-        })),
-    ];
-    for (const request of deadRequests) {
-      yield* orchestrationEngine.dispatch({
-        type: "thread.activity.append",
-        commandId: CommandId.make(yield* crypto.randomUUIDv4),
-        threadId: thread.id,
-        createdAt: reconciledAt,
-        activity: {
-          id: EventId.make(yield* crypto.randomUUIDv4),
-          createdAt: reconciledAt,
-          tone: "info",
-          kind: request.kind,
-          summary: "Request ended when the Mate restarted",
-          payload: { requestId: request.requestId },
-          turnId: request.turnId,
-        },
-      });
-    }
-    const legacyRestart =
-      session.status === "error" &&
-      session.activeTurnId === null &&
-      thread.latestTurn?.state === "error"
-        ? legacyRestartCause(session.lastError)
-        : null;
-    const interruptedTurnId =
-      thread.latestTurn?.state === "running" || legacyRestart !== null
-        ? (thread.latestTurn?.turnId ?? null)
-        : null;
-    const pending =
-      interruptedTurnId !== null
-        ? Option.none()
-        : yield* (yield* ProjectionTurnRepository).getPendingTurnStartByThreadId({
-            threadId: thread.id,
-          });
-    const messageId = Option.isSome(pending) ? pending.value.messageId : null;
-    const commandId = CommandId.make(yield* crypto.randomUUIDv4);
-    yield* Effect.gen(function* () {
-      yield* orchestrationEngine.dispatch({
-        type: "thread.session.set",
-        commandId,
-        threadId: thread.id,
-        session: {
-          ...session,
-          status: "interrupted",
-          activeTurnId: null,
-          lastError: null,
-          interruption:
-            interruptedTurnId === null && messageId === null
-              ? null
-              : {
-                  turnId: interruptedTurnId,
-                  ...(messageId === null ? {} : { messageId }),
-                  continuation: "manual",
-                  restart:
-                    legacyRestart ??
-                    restartCause({
-                      evidence,
-                      lastActivityAt:
-                        Date.parse(thread.updatedAt) > Date.parse(session.updatedAt)
-                          ? thread.updatedAt
-                          : session.updatedAt,
-                      bootAt,
-                    }),
-                },
-          updatedAt: reconciledAt,
-        },
-        createdAt: reconciledAt,
-      });
-    }).pipe(
-      Effect.retry({ times: 1 }),
-      Effect.catchCause((cause) =>
-        Cause.hasInterrupts(cause)
-          ? Effect.failCause(cause)
-          : Effect.logWarning("failed to settle orphaned provider session projection", {
-              threadId: thread.id,
-              cause,
-            }),
-      ),
-    );
-  }
-}).pipe(
-  Effect.catchCause((cause) =>
-    Cause.hasInterrupts(cause)
-      ? Effect.failCause(cause)
-      : Effect.logWarning("provider session startup reconciliation failed", { cause }),
-  ),
-);
+      yield* input.engine.start().pipe(Scope.provide(input.reactorScope));
+    }),
+  );
 
 interface StartupOptions {
   readonly activate?: Effect.Effect<void>;
@@ -621,10 +229,7 @@ export const make = (options?: StartupOptions) =>
   Effect.gen(function* () {
     const serverConfig = yield* ServerConfig.ServerConfig;
     const keybindings = yield* Keybindings.Keybindings;
-    const orchestrationReactor = yield* OrchestrationReactor.OrchestrationReactor;
-    const providerSessionReaper = yield* ProviderSessionReaper.ProviderSessionReaper;
     const mateEngine = yield* MateEngine;
-    const v1Drain = yield* Effect.serviceOption(V1UpdateDrain);
     const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
     const serverSettings = yield* ServerSettings.ServerSettingsService;
     const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
@@ -671,53 +276,28 @@ export const make = (options?: StartupOptions) =>
         ),
       );
 
-      yield* Effect.logDebug("startup phase: parking orchestration roots at activation");
-      if (!mateEngine.live && mateUpdateBootPending()) {
-        if (Option.isNone(v1Drain))
-          return yield* Effect.die(new Error("This Mate cannot fence a V1 update boot."));
-        yield* v1Drain.value.begin;
-      }
-      yield* startConversationRoots({
-        engine: mateEngine,
-        reactorScope,
-        v1: {
-          reactor: orchestrationReactor,
-          reaper: providerSessionReaper,
-          reconcile: reconcileProviderSessions,
-        },
-      });
+      yield* Effect.logDebug("startup phase: starting the Mate engine");
+      yield* startConversationRoots({ engine: mateEngine, reactorScope });
 
       const welcomeBase = yield* resolveWelcomeBase;
       const environment = yield* serverEnvironment.getDescriptor;
       yield* Effect.logDebug("startup phase: preparing welcome payload");
 
-      const autoBootstrap = autoBootstrapOf(serverConfig, mateEngine);
-      if (autoBootstrap !== "none") {
+      if (serverConfig.autoBootstrapProjectFromCwd) {
         yield* forkParked(
           runStartupPhase(
             "welcome.autobootstrap",
             Effect.gen(function* () {
-              const bootstrapTargets: {
-                readonly bootstrapProjectId?: ProjectId;
-                readonly bootstrapThreadId?: ThreadId;
-              } =
-                autoBootstrap === "project"
-                  ? yield* resolveAutoBootstrapProject.pipe(
-                      Effect.provideService(Crypto.Crypto, crypto),
-                    )
-                  : yield* resolveAutoBootstrapWelcomeTargets.pipe(
-                      Effect.provideService(Crypto.Crypto, crypto),
-                    );
-              if (!bootstrapTargets.bootstrapProjectId && !bootstrapTargets.bootstrapThreadId) {
-                return;
-              }
+              const bootstrapTargets = yield* resolveAutoBootstrapProject.pipe(
+                Effect.provideService(Crypto.Crypto, crypto),
+              );
+              if (!bootstrapTargets.bootstrapProjectId) return;
 
               yield* Effect.logDebug("startup phase: publishing bootstrapped welcome event", {
                 environmentId: environment.environmentId,
                 cwd: welcomeBase.cwd,
                 projectName: welcomeBase.projectName,
                 bootstrapProjectId: bootstrapTargets.bootstrapProjectId,
-                bootstrapThreadId: bootstrapTargets.bootstrapThreadId,
               });
               yield* lifecycleEvents.publish({
                 version: 1,

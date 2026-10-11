@@ -109,7 +109,7 @@ it.effect.each(["screenshot", "attachment"] as const)(
         expect(resolved?.relativeUrl).toBe(preview.relativeUrl);
       }).pipe(
         Effect.provideService(MateEngine, engine),
-        Effect.provideService(ServerConfig, { ...config, mateEngine: "mate" }),
+        Effect.provideService(ServerConfig, config),
         Effect.provide(Layer.mergeAll(auth, NodeHttpServer.layerTest)),
       );
       yield* w.shutdown;

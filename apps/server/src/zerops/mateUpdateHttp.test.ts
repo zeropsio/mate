@@ -1,15 +1,15 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { MateEngine, inertMateEngine } from "../engine/MateEngine.ts";
+import { MateEngine } from "../engine/MateEngine.ts";
 import { TerminalManager } from "../terminal/Manager.ts";
-import { V1UpdateDrain } from "../update/V1UpdateDrain.ts";
 import { RpcUpdateAdmission } from "../RpcUpdateAdmission.ts";
 import { ProjectCloneTracker } from "../project/ProjectCloneTracker.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ProviderUpdateSafety } from "../spi/ProviderUpdateSafety.ts";
 import { isLocalUpdateRequest, readMateUpdateIdleFacts } from "./mateUpdateHttp.ts";
+import { inertMateEngine } from "../engine/testing/inertEngine.ts";
 describe("zcp's update control door", () => {
   it.each([
     ["127.0.0.1", {}, true],
@@ -55,7 +55,10 @@ describe("update readiness reads every owner", () => {
       }),
       Effect.provide(
         Layer.mergeAll(
-          Layer.succeed(MateEngine, inertMateEngine),
+          Layer.succeed(MateEngine, {
+            ...inertMateEngine,
+            updateDrain: { facts: Effect.succeed({ idle: engine, blockers: [] }) } as never,
+          }),
           Layer.mock(TerminalManager)({
             updateDrain: {
               begin: Effect.void,
@@ -64,7 +67,6 @@ describe("update readiness reads every owner", () => {
               facts: Effect.succeed({ idle: true, blockers: [] }),
             },
           }),
-          Layer.mock(V1UpdateDrain)({ facts: Effect.succeed({ idle: engine, blockers: [] }) }),
           Layer.mock(RpcUpdateAdmission)({ facts: Effect.succeed({ idle: true, blockers: [] }) }),
           Layer.mock(ProjectCloneTracker)({
             updateFacts: Effect.succeed({ idle: true, blockers: [] }),

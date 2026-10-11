@@ -974,7 +974,6 @@ const lifeLayer = (
       attachmentsDir: NodePath.join(world.workspace, "attachments"),
       zerops: ZEROPS,
       zeropsCrew: true,
-      mateEngine: "mate",
     } as ServerConfig.ServerConfig["Service"]),
     Layer.effectDiscard(runMigrations()).pipe(
       Layer.provideMerge(

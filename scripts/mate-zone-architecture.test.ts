@@ -1573,8 +1573,6 @@ const UPDATE_NEUTRAL_SEAMS = [
 ] as const;
 const CREW_DIR = "apps/server/src/zerops/crew";
 const CREW_WIRING_FILES: ReadonlySet<string> = new Set([
-  // The crew's engine switch, read where the config settles which engine a Mate runs.
-  "apps/server/src/cli/config.ts",
   // The engine's workspace port, which reads a crewmate's workspace off the crew's directory.
   "apps/server/src/zerops/engineAdapters.ts",
   "apps/server/src/zerops/mateUpdateHttp.ts",

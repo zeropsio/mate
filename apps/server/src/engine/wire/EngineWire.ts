@@ -10,8 +10,6 @@
  * boundary record is sent. Calls enter the conversation's actor as the person, under the client's
  * command id, so a retry answers with the stored receipt.
  *
- * In V1 mode `unservedWire` refuses engine reads and commands; nothing is read.
- *
  * @module engine/wire/EngineWire
  */
 import * as Duration from "effect/Duration";
@@ -160,8 +158,6 @@ export interface EngineWireShape {
 
 // ── unserved ────────────────────────────────────────────────────────────────────────────────
 
-/** What a client hears from a Mate whose conversation is on the V1 wire. */
-export const NOT_ON_ENGINE = "This Mate's conversation runs on the orchestration wire.";
 /** What a client hears when it speaks a protocol newer than this Mate's. */
 export const MATE_TOO_OLD = "This Mate is older than this app. Update the Mate to talk to it here.";
 /**
@@ -185,30 +181,6 @@ export const protocolRefusal = (protocol: number): EngineUnserved | undefined =>
     "protocol",
     protocol > Math.max(...MATE_ENGINE_PROTOCOLS) ? MATE_TOO_OLD : APP_TOO_OLD,
   );
-};
-
-const notOnEngine = unserved("not-on-engine", NOT_ON_ENGINE);
-
-/** The wire of a Mate whose conversations belong to V1 refuses engine reads and commands. */
-export const unservedWire: EngineWireShape = {
-  readArchived: () => Effect.fail(new EngineWireError({ message: NOT_ON_ENGINE })),
-  subscribe: () => Stream.make(notOnEngine),
-  subscribeRows: () => Stream.make(notOnEngine),
-  readEarlier: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  readRun: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  readDetail: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  receipt: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  recordPageHeight: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  send: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  stop: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  continue: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  answer: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  dismiss: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  steer: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  switchModel: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  setArchived: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  setRuntimeMode: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
-  assignAgent: () => Effect.succeed({ _tag: "Unserved", unserved: notOnEngine }),
 };
 
 // ── served ──────────────────────────────────────────────────────────────────────────────────

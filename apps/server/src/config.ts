@@ -29,23 +29,6 @@ export type RuntimeMode = typeof RuntimeMode.Type;
 export const StartupPresentation = Schema.Literals(["browser", "headless"]);
 export type StartupPresentation = typeof StartupPresentation.Type;
 
-export type MateEngineMode = "v1" | "mate";
-
-/**
- * Reads `T3CODE_MATE_ENGINE` leniently: trimmed and case-blind. The engine is
- * the default (the owner, 2026-10-11: "switch everything to v2"): absent or
- * empty is `mate`, only `v1` keeps V1 (an escape hatch until V1 goes), and a
- * name it does not know is `mate` flagged `unknown` so the caller warns
- * instead of crash-looping the unit.
- */
-export const readMateEngine = (
-  raw: string | undefined,
-): { readonly engine: MateEngineMode; readonly unknown: boolean } => {
-  const name = raw?.trim().toLowerCase() ?? "";
-  if (name === "v1") return { engine: "v1", unknown: false };
-  return { engine: "mate", unknown: name !== "" && name !== "mate" };
-};
-
 /**
  * ServerDerivedPaths - Derived paths from the base directory.
  */
@@ -132,13 +115,6 @@ export class ServerConfig extends Context.Service<
      * project, and with no crew applied a Mate stays byte-identical.
      */
     readonly zeropsCrew: boolean;
-    /**
-     * Which engine owns this Mate's conversation (`T3CODE_MATE_ENGINE`): the
-     * Mate engine unless `v1`. An env variable, never a `serve` flag, valid
-     * everywhere and not only in Zerops; an unknown value runs the engine (see
-     * `readMateEngine`).
-     */
-    readonly mateEngine: MateEngineMode;
     readonly noBrowser: boolean;
     readonly startupPresentation: StartupPresentation;
     readonly desktopBootstrapToken: string | undefined;
@@ -294,7 +270,6 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     zeropsFixtures: undefined,
     zerops: undefined,
     zeropsCrew: true,
-    mateEngine: "v1",
     noBrowser: false,
     startupPresentation: "browser",
   });

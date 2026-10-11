@@ -1,25 +1,16 @@
 /**
- * MateEngine — the conversation engine that replaces V1 behind the
- * `T3CODE_MATE_ENGINE` switch. Every process builds it; one form runs:
- *
- * - live (`mate`, the default): V1's roots stay parked and its doors refuse
- *   with {@link ENGINE_MOVED}; `start` runs in the startup's reactor scope;
- * - inert (`v1`, asked for only): `live` is false, nothing starts, nothing
- *   is served, and V1 owns the conversation exactly as before.
- *
- * The domain, the store and the runtime behind the live form are built
- * beside this file; until they land the live form starts nothing and serves
- * no conversation. What the Zerops grafts call (`conversations`, `changes`,
- * `stopSessionsOn`, `wake`, `runOutcome`) speaks engine types only.
+ * MateEngine — the conversation engine every Mate's conversation runs on. V1's doors refuse with
+ * {@link ENGINE_MOVED}; `start` runs in the startup's reactor scope. What the Zerops grafts call
+ * (`conversations`, `changes`, `stopSessionsOn`, `wake`, `runOutcome`) speaks engine types only.
  *
  * @module engine/MateEngine
  */
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
-import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
+import type * as Effect from "effect/Effect";
+import type * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
-import * as Stream from "effect/Stream";
+import type * as Stream from "effect/Stream";
 
 import type {
   CommandId,
@@ -43,7 +34,7 @@ import type { Command } from "./domain/command.ts";
 import type { Domain, OwnerEvent } from "./owners.ts";
 import type { WakeKind } from "./ports.ts";
 import type { ConversationList, ConversationView } from "./read/conversationView.ts";
-import { unservedWire, type EngineWireShape } from "./wire/EngineWire.ts";
+import type { EngineWireShape } from "./wire/EngineWire.ts";
 
 export {
   brokeOffLine,
@@ -67,7 +58,7 @@ export type {
 } from "./read/conversationView.ts";
 
 /**
- * What a V1 door answers once the Mate engine owns the conversation. Only a stale app reaches a V1
+ * What a V1 door answers: the Mate engine owns every conversation. Only a stale app reaches a V1
  * door, so the words are for it: a web app reloads, a desktop or phone app updates.
  */
 export const ENGINE_MOVED =
@@ -134,8 +125,6 @@ export interface RunOutcome {
 
 export interface MateEngineService {
   readonly updateDrain?: MateUpdateDrain;
-  /** True when this Mate's conversation runs on the engine. */
-  readonly live: boolean;
   /** Boot reconcile, SPI ingestion, outbox and wakes, scoped to the startup's reactor scope. */
   readonly start: () => Effect.Effect<void, never, Scope.Scope>;
   /**
@@ -209,10 +198,7 @@ export interface MateEngineService {
     conversationId: ConversationId,
     find: { readonly itemIds: ReadonlyArray<string> } | { readonly naming: string },
   ) => Effect.Effect<ReadonlyArray<CallData>>;
-  /**
-   * The conversation wire the clients subscribe to and call (`registerEngineRpc`): in V1 mode it
-   * answers every method `unserved`.
-   */
+  /** The conversation wire the clients subscribe to and call (`registerEngineRpc`). */
   readonly wire: EngineWireShape;
   /**
    * The crew's door into a crewmate's conversation (or the Mate's): one command as `principal`,
@@ -274,34 +260,3 @@ export interface MateEngineService {
 export class MateEngine extends Context.Service<MateEngine, MateEngineService>()(
   "t3/engine/MateEngine",
 ) {}
-
-const notRunning = () =>
-  Effect.fail(new WakeRefused({ message: "The Mate engine is not running on this Mate." }));
-
-/** The engine with the switch on `v1`: nothing starts, nothing is served. */
-export const inertMateEngine: MateEngineService = {
-  live: false,
-  start: () => Effect.void,
-  conversations: Effect.succeed({ views: [], unread: [], complete: true }),
-  conversation: () => Effect.succeed(undefined),
-  assetContext: () => Effect.succeed(undefined),
-  changes: Stream.empty,
-  stopSessionsOn: () => Effect.void,
-  wake: notRunning,
-  runOutcome: () => Effect.succeed(undefined),
-  assignAgent: () => Effect.succeed(false),
-  importHistory: () => Effect.succeed(0),
-  holdSends: Effect.succeed(Effect.void),
-  callProgress: () => Effect.void,
-  callData: () => Effect.succeed([]),
-  runOf: () => Effect.succeed(undefined),
-  deliver: () =>
-    Effect.succeed({
-      _tag: "Rejected",
-      rejection: { reason: "unknown", detail: "The Mate engine is not running on this Mate." },
-    }),
-  eventsAfter: () => Effect.succeed([]),
-  owner: () => Option.none(),
-  generation: () => Effect.succeed(undefined),
-  wire: unservedWire,
-};

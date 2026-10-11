@@ -33,13 +33,7 @@ import { serverMessagePictures } from "../../zerops/engineAdapters.ts";
 import { MessagePictures } from "../ports.ts";
 import { PIXEL } from "../testing/bridge/callHeavy.ts";
 import { makeEngineWorld, mate, type EngineWorld } from "../testing/pump/engineWorld.ts";
-import {
-  NOT_ON_ENGINE,
-  makeEngineWire,
-  unservedWire,
-  type EngineWireOptions,
-  type WireCaller,
-} from "./EngineWire.ts";
+import { makeEngineWire, type EngineWireOptions, type WireCaller } from "./EngineWire.ts";
 
 /** A send as the RPC decodes it. */
 const decodeSendInput = Schema.decodeUnknownSync(EngineSendInput);
@@ -1756,23 +1750,5 @@ describe("the pictures a person sends an engine Mate", () => {
         yield* w.shutdown;
       }),
     ),
-  );
-});
-
-describe("a Mate whose conversation is on V1", () => {
-  it.effect("does not serve the engine's wire: every method answers unserved", () =>
-    Effect.gen(function* () {
-      const frames = yield* Stream.runCollect(
-        unservedWire.subscribe({ protocol, conversationId: mate }, ana),
-      );
-      assert.deepStrictEqual(Array.from(frames), [
-        { type: "unserved", reason: "not-on-engine", protocols: [], message: NOT_ON_ENGINE },
-      ]);
-      const sent = yield* unservedWire.send(
-        { protocol, conversationId: mate, commandId: CommandId.make("c"), text: "Hi" },
-        ana,
-      );
-      assert.strictEqual(sent._tag, "Unserved");
-    }),
   );
 });

@@ -410,7 +410,7 @@ it.effect("an engine conversation resolves the screenshot captured by its provid
         path: `mate-asset:${occurrence.id}`,
       },
       imageMode: "reference",
-    }).pipe(Effect.provideService(ServerConfig, { ...config, mateEngine: "mate" }), Effect.result);
+    }).pipe(Effect.provideService(ServerConfig, config), Effect.result);
     expect(
       result._tag,
       "ASSERTION: the engine conversation can resolve its provider-session screenshot",

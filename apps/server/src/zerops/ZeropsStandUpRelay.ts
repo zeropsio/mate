@@ -6,34 +6,14 @@
  * CLI's headless stream drops MCP progress notifications. zcp writes the same
  * progress into its status file (`ZCP_STATUS_FILE`, its `standup` section), so
  * while a stand-up call runs this reads that section and relays every change
- * as the call's progress: one `tool.progress` activity per call, under one
- * stable id, so it is updated in place and a reload shows where it got.
- *
- * While the Mate engine owns the conversation, the progress goes live on the call's item in the
- * engine's record (`MateEngine.callProgress`), never stored: the call's result is what it keeps.
- *
- * Compatibility: no new event type and no new shell field. The activity rides
- * `thread.activity-appended`, which every client already takes, its progress
- * at the payload's top level (`zeropsStandUp`, beside `toolCallId`) where the
- * slimming of tool data never reaches. An older client drops every
- * `tool.progress` row from its work log and reads only an agent's own
- * heartbeat off the kind (a `taskId` this never carries), so it shows nothing
- * new and nothing twice.
+ * as the call's progress, live on the call's item in the engine's record
+ * (`MateEngine.callProgress`), never stored: the call's result is what it keeps.
  *
  * @module ZeropsStandUpRelay
  */
-import {
-  CommandId,
-  EventId,
-  ThreadId,
-  type OrchestrationThreadActivity,
-  type SpiEvent,
-  type TurnId,
-} from "@t3tools/contracts";
+import type { SpiEvent } from "@t3tools/contracts";
 import { completionReceipt } from "@t3tools/shared/completionReceipt";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
-import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -41,7 +21,6 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
 import { MateEngine } from "../engine/MateEngine.ts";
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsSetup } from "./ZeropsSetup.ts";
 import { SECTION_SKEW_MS, type ZcpStatus } from "./zeropsSetupSteps.ts";
@@ -105,23 +84,6 @@ export const standUpProgressOf = (
   };
 };
 
-/** The call's one progress row: the same id every time, so each write replaces the last. */
-export const standUpProgressActivity = (input: {
-  readonly threadId: string;
-  readonly turnId: TurnId | null;
-  readonly toolCallId: string;
-  readonly progress: StandUpProgress;
-  readonly at: string;
-}): OrchestrationThreadActivity => ({
-  id: EventId.make(`zerops-standup:${input.threadId}:${input.toolCallId}`),
-  createdAt: input.at,
-  tone: "info",
-  kind: "tool.progress",
-  summary: "Stand-up progress",
-  payload: { toolCallId: input.toolCallId, zeropsStandUp: input.progress },
-  turnId: input.turnId,
-});
-
 /** One string per distinct progress: a write only when it moves. */
 const progressKey = (progress: StandUpProgress): string =>
   [
@@ -153,9 +115,7 @@ export class ZeropsStandUpRelay extends Context.Service<
 export const make = Effect.gen(function* () {
   const bus = yield* ProviderRuntimeEventBus;
   const setup = yield* ZeropsSetup;
-  const orchestration = yield* OrchestrationEngineService;
   const engine = yield* MateEngine;
-  const crypto = yield* Crypto.Crypto;
   const scope = yield* Effect.scope;
   /**
    * The one call followed per thread — its newest stand-up call: its id, when
@@ -199,27 +159,9 @@ export const make = Effect.gen(function* () {
       if (yield* setup.standUpGone(status)) return true;
       const written = progressKey(progress);
       if (written === call.last) return false;
-      // On the engine the progress is live on the call's item, never stored: the call's
-      // own result is what the record keeps.
-      if (engine.live) {
-        yield* engine.callProgress(event.threadId, STAND_UP_TOOL_NAME, progress);
-        call.last = written;
-        return false;
-      }
-      const at = DateTime.formatIso(yield* DateTime.now);
-      yield* orchestration.dispatch({
-        type: "thread.activity.append",
-        commandId: CommandId.make(`zerops-standup:${yield* crypto.randomUUIDv4}`),
-        threadId: ThreadId.make(event.threadId),
-        activity: standUpProgressActivity({
-          threadId: event.threadId,
-          turnId: event.turnId ?? null,
-          toolCallId: event.itemId!,
-          progress,
-          at,
-        }),
-        createdAt: at,
-      });
+      // The progress is live on the call's item, never stored: the call's own result is what the
+      // record keeps.
+      yield* engine.callProgress(event.threadId, STAND_UP_TOOL_NAME, progress);
       call.last = written;
       return false;
     }).pipe(
@@ -271,20 +213,11 @@ export const make = Effect.gen(function* () {
         // The call's end: what the file says of it last, once more.
         yield* relayOnce(event, followed);
         // Its result is in the record now: what was live of it goes.
-        if (engine.live) yield* engine.callProgress(event.threadId, STAND_UP_TOOL_NAME, null);
+        yield* engine.callProgress(event.threadId, STAND_UP_TOOL_NAME, null);
       }
     });
 
   yield* Effect.forkScoped(Stream.runForEach(bus.events, handle));
-  yield* Effect.forkScoped(
-    Stream.runForEach(orchestration.streamDomainEvents, (event) =>
-      event.type === "thread.deleted"
-        ? Effect.sync(() => ended.delete(event.payload.threadId)).pipe(
-            Effect.andThen(unfollow(event.payload.threadId)),
-          )
-        : Effect.void,
-    ),
-  );
   return {
     nextPass: Effect.suspend(passes.next),
     finished: Effect.suspend(() =>

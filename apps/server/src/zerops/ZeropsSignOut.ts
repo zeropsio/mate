@@ -17,11 +17,8 @@
  *  c. stop every live provider session running on it — required, not
  *     optional: measured live 2026-09-22 on project 111111, a running turn
  *     keeps working after its credential file is replaced (the provider holds
- *     its token in memory). Each stop is `thread.session.stop` through
- *     orchestration, then waited on until the session reads stopped, at most
- *     {@link SESSION_STOP_WAIT_TIMEOUT}: the dispatch returns once the command
- *     is persisted, while the provider behind it may still be alive, and could
- *     still rewrite the credential the next step logs out;
+ *     its token in memory). The Mate engine stops every session on the
+ *     login's instances (`stopSessionsOnEngine`);
  *  d. run the CLI's own logout in the login's home (`claude auth logout` /
  *     `codex logout`, idempotent); if it fails, or the credential is still
  *     there afterwards, remove the file;
@@ -42,32 +39,22 @@
  * @module ZeropsSignOut
  */
 import {
-  agentIdForProviderInstance,
-  CommandId,
   defaultInstanceIdForDriver,
-  type OrchestrationThreadShell,
   ProviderDriverKind,
-  type ThreadId,
   ZeropsAgentLoginError,
   type ZeropsAgentId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
-import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import type * as PlatformError from "effect/PlatformError";
 import * as NodeOS from "node:os";
 
 import { ServerConfig } from "../config.ts";
 import { MateEngine, type MateEngineService } from "../engine/MateEngine.ts";
-import type { OrchestrationDispatchError } from "../orchestration/Errors.ts";
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { ZeropsAgentFlag } from "./ZeropsAgentFlag.ts";
@@ -102,10 +89,6 @@ const LOGOUT_COMMAND: Readonly<
 const LOGOUT_TIMEOUT = Duration.seconds(15);
 const LOGOUT_MAX_OUTPUT_BYTES = 16 * 1024;
 
-const SESSION_STOP_POLL_INTERVAL = Duration.millis(250);
-/** How long a stopped session is waited on before the sign-out moves on. */
-export const SESSION_STOP_WAIT_TIMEOUT = Duration.seconds(10);
-
 /** The two default instances' ids — an agent's own logins, never removed. */
 const DEFAULT_LOGIN_IDS: ReadonlySet<string> = new Set(
   Object.values(LOGIN_DRIVER_KIND).map((driver) =>
@@ -121,81 +104,7 @@ export interface LoginHome {
 }
 
 /**
- * Which of `threads`' live sessions run on `target` — by the session's own
- * instance, falling back to the thread's selection only when the session names
- * none (older or partial snapshots): a thread can be repointed at another
- * agent while a session of the previous one is still live, and that is the one
- * to stop. An agent's own login is its default instance
- * (`agentIdForProviderInstance`); a thread with no session, or one already
- * stopped, has nothing to stop.
- */
-export const threadsToStop = (
-  threads: ReadonlyArray<Pick<OrchestrationThreadShell, "id" | "modelSelection" | "session">>,
-  target: SignOutTarget,
-): ReadonlyArray<ThreadId> =>
-  threads
-    .filter((thread) => thread.session !== null && thread.session.status !== "stopped")
-    .filter((thread) => {
-      const instanceId = thread.session?.providerInstanceId ?? thread.modelSelection.instanceId;
-      return "agentId" in target
-        ? agentIdForProviderInstance(instanceId) === target.agentId
-        : instanceId === target.loginId;
-    })
-    .map((thread) => thread.id);
-
-/**
- * Polls `isLive` until it answers `false`, or `timeout` elapses — whichever
- * comes first. Never fails: a sign-out goes on even when a session cannot be
- * confirmed stopped in time.
- */
-export const waitUntilNotLive = (
-  isLive: Effect.Effect<boolean>,
-  options: { readonly pollInterval: Duration.Duration; readonly timeout: Duration.Duration },
-): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    while (yield* isLive) {
-      yield* Effect.sleep(options.pollInterval);
-    }
-  }).pipe(Effect.timeout(options.timeout), Effect.ignore);
-
-/**
- * Step (c) over orchestration: every live session on `target` stopped, each
- * waited on until it reads stopped or the cap. Best-effort end to end: a
- * snapshot that cannot be read, or one stop that fails, is logged and skipped.
- */
-export const stopSessionsVia =
-  (orchestration: {
-    readonly threads: Effect.Effect<ReadonlyArray<OrchestrationThreadShell>>;
-    readonly isLive: (threadId: ThreadId) => Effect.Effect<boolean>;
-    readonly stop: (threadId: ThreadId) => Effect.Effect<void, OrchestrationDispatchError>;
-  }) =>
-  (target: SignOutTarget): Effect.Effect<void> =>
-    Effect.flatMap(orchestration.threads, (threads) =>
-      Effect.forEach(
-        threadsToStop(threads, target),
-        (threadId) =>
-          orchestration.stop(threadId).pipe(
-            Effect.andThen(
-              waitUntilNotLive(orchestration.isLive(threadId), {
-                pollInterval: SESSION_STOP_POLL_INTERVAL,
-                timeout: SESSION_STOP_WAIT_TIMEOUT,
-              }),
-            ),
-            Effect.catchCause((cause) =>
-              Effect.logWarning("zerops sign-out: could not stop a live session", {
-                ...target,
-                threadId,
-                cause,
-              }),
-            ),
-          ),
-        { discard: true },
-      ),
-    );
-
-/**
- * Step (c) when the Mate engine owns the conversation: the engine stops every
- * live session on the target's instances. An agent's own login is its default
+ * Step (c): the Mate engine stops every live session on the target's instances. An agent's own login is its default
  * instance, under either spelling a session may carry; any other login is its
  * own instance.
  */
@@ -235,7 +144,7 @@ export interface ZeropsSignOutOptions {
   readonly zeropsAgentLogin: Pick<ZeropsAgentLogin["Service"], "cancel">;
   readonly zeropsAgentFlag: Pick<ZeropsAgentFlag["Service"], "clearSignedIn">;
   readonly zeropsLogins: Pick<ZeropsLogins["Service"], "resolve" | "recheckNow" | "forget">;
-  /** Step (c): every live session on the target stopped (`stopSessionsVia`). */
+  /** Step (c): every live session on the target stopped (`stopSessionsOnEngine`). */
   readonly stopSessions: (target: SignOutTarget) => Effect.Effect<void>;
   /** The CLI's own logout once, in the login's home. `success: false` covers every failure. */
   readonly runLogout: (login: LoginHome) => Effect.Effect<{ readonly success: boolean }>;
@@ -398,47 +307,10 @@ export const layer = Layer.effect(
     const processRunner = yield* ProcessRunner.ProcessRunner;
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const orchestration = yield* OrchestrationEngineService;
-    const crypto = yield* Crypto.Crypto;
-    const projection = yield* ProjectionSnapshotQuery;
     const homeDir = NodeOS.homedir();
 
     const engine = yield* MateEngine;
-    const stopSessions = engine.live
-      ? stopSessionsOnEngine(engine)
-      : stopSessionsVia({
-          threads: projection.getShellSnapshot().pipe(
-            Effect.map((shell) => shell.threads),
-            Effect.catchCause((cause) =>
-              Effect.logWarning("zerops sign-out: could not read the shell snapshot", {
-                cause,
-              }).pipe(Effect.as([])),
-            ),
-          ),
-          isLive: (threadId) =>
-            projection.getThreadShellById(threadId).pipe(
-              Effect.map(
-                Option.match({
-                  onNone: () => false,
-                  onSome: (thread) =>
-                    thread.session !== null && thread.session.status !== "stopped",
-                }),
-              ),
-              Effect.catchCause(() => Effect.succeed(false)),
-            ),
-          stop: (threadId) =>
-            Effect.gen(function* () {
-              const createdAt = DateTime.formatIso(yield* DateTime.now);
-              yield* orchestration.dispatch({
-                type: "thread.session.stop",
-                commandId: CommandId.make(
-                  `server:sign-out:${yield* crypto.randomUUIDv4.pipe(Effect.orDie)}`,
-                ),
-                threadId,
-                createdAt,
-              });
-            }),
-        });
+    const stopSessions = stopSessionsOnEngine(engine);
 
     return yield* make({
       isZeropsEnvironment: isZeropsEnvironment(config),

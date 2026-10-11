@@ -49,8 +49,6 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 import { ServerConfig } from "../config.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { engineAttentionReads } from "./engineOverview.ts";
 import { CPU_SAMPLE_WINDOW_USEC } from "./mateCpuHealth.ts";
@@ -258,19 +256,16 @@ export const nextMateEpoch = (path: string) =>
   }).pipe(Effect.mapError((cause) => new MateEpochPersistenceError({ path, cause })));
 
 /**
- * The attention of the project at the workspace root (the threads the stand-up and every client
- * open the Mate to), from the projection and the engine's domain events; its incarnation a new id
- * and its epoch one more at every start.
+ * The attention of the Mate's conversations (the ones the stand-up and every client open it to),
+ * from the Mate engine; its incarnation a new id and its epoch one more at every start.
  */
 export const layer = Layer.effect(
   ZeropsMateAttention,
   Effect.gen(function* () {
     const config = yield* ServerConfig;
-    const projection = yield* ProjectionSnapshotQuery;
-    const engine = yield* OrchestrationEngineService;
     const mateEngine = yield* MateEngine;
     const healthDemand = yield* PubSub.unbounded<void>();
-    // The Mate's identity and its container's health, whichever engine owns the conversation.
+    // The Mate's identity and its container's health.
     const shared = {
       environmentId: yield* (yield* ServerEnvironment).getEnvironmentId,
       epoch: yield* nextMateEpoch(config.mateEpochPath),
@@ -292,24 +287,8 @@ export const layer = Layer.effect(
         ),
       ),
     };
-    // While the Mate engine owns the conversation, the attention counts its runs and requests
-    // alone: a thread V1 left running at the flip is never read, so it never counts as working.
-    if (mateEngine.live) {
-      return yield* makeZeropsMateAttention({ ...shared, ...engineAttentionReads(mateEngine) });
-    }
-    return yield* makeZeropsMateAttention({
-      ...shared,
-      project: projection
-        .getActiveProjectByWorkspaceRoot(config.cwd)
-        .pipe(Effect.map(Option.map((project) => project.id))),
-      threadsOf: (project) =>
-        projection
-          .getShellSnapshot()
-          .pipe(
-            Effect.map((shell) => shell.threads.filter((thread) => thread.projectId === project)),
-          ),
-      thread: projection.getThreadShellById,
-      domainEvents: engine.streamDomainEvents,
-    });
+    // The attention counts the engine's runs and requests alone: a thread V1 left running at the
+    // flip is never read, so it never counts as working.
+    return yield* makeZeropsMateAttention({ ...shared, ...engineAttentionReads(mateEngine) });
   }),
 );

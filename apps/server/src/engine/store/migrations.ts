@@ -1,6 +1,6 @@
 /**
  * The engine's own migration track, recorded in `engine_migrations`, never in V1's
- * `effect_sql_migrations`: it runs in mate mode only, and the two chains never interleave.
+ * `effect_sql_migrations`: the two chains never interleave.
  *
  * @module engine/store/migrations
  */

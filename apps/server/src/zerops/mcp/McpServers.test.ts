@@ -12,13 +12,14 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 
-import { inertMateEngine, MateEngine } from "../../engine/MateEngine.ts";
+import { MateEngine } from "../../engine/MateEngine.ts";
 import { ProviderMcpError, type McpConfigChange, type McpLiveServer } from "../../spi/mcpLive.ts";
 import { antigravityProfileDirectory } from "../../spi/driverHomes.ts";
 import { mcpAgentPaths, resolveMcpAgentPaths } from "./mcpAgentPaths.ts";
 import { type McpAgentPaths } from "./mcpAgents.ts";
 import { McpFileConflict } from "./mcpFileStore.ts";
 import { make, nodeFileStore, type McpLiveAccess } from "./McpServers.ts";
+import { inertMateEngine } from "../../engine/testing/inertEngine.ts";
 
 const HOME = "/home/zerops";
 const PATHS: McpAgentPaths = mcpAgentPaths({
@@ -84,13 +85,16 @@ const setup = (input: {
   Effect.gen(function* () {
     const rig: Rig = { files: input.files ?? zcpFiles(), writes: [], calls: [], locks: [] };
     let agentWrite = input.agentWritesOnce;
+    // A running agent runs in the conversation's current session (`<conversation>/s/<n>`).
+    const generation = input.generation ?? (input.running === undefined ? undefined : 1);
+    const runningThread = input.running?.thread ?? ThreadId.make(`${THREAD}/s/${generation ?? 1}`);
     const live: McpLiveAccess = {
       installedDrivers: Effect.succeed(
         (input.installed ?? ALL_AGENTS).map((driver) => ProviderDriverKind.make(driver)),
       ),
       status: (threadId) =>
         Effect.succeed(
-          threadId === (input.running?.thread ?? THREAD) && input.running !== undefined
+          threadId === runningThread && input.running !== undefined
             ? {
                 driver: ProviderDriverKind.make(input.running.driver),
                 servers: input.running.servers,
@@ -101,7 +105,7 @@ const setup = (input: {
         input.running?.reconnectFails
           ? Effect.fail(new ProviderMcpError({ detail: "spawn ENOENT" }))
           : Effect.sync(() => {
-              expect(threadId).toBe(input.running?.thread ?? THREAD);
+              expect(threadId).toBe(runningThread);
               rig.calls.push(`reconnect ${name}`);
             }),
       setEnabled: () => Effect.void,
@@ -133,8 +137,7 @@ const setup = (input: {
       Effect.provide(
         Layer.succeed(MateEngine, {
           ...inertMateEngine,
-          live: input.generation !== undefined,
-          generation: () => Effect.succeed(input.generation),
+          generation: () => Effect.succeed(generation),
         }),
       ),
     );

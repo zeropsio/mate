@@ -16,7 +16,6 @@ import {
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 
 import {
-  inertMateEngine,
   ViewUnreadable,
   type ConversationView,
   type MateEngineService,
@@ -27,6 +26,7 @@ import { rowStateOf } from "../engine/read/conversationRow.ts";
 import { chatsSource, engineAttentionReads, engineShellOf } from "./engineOverview.ts";
 import { mateAttentionOf } from "./zeropsAttentionValue.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
+import { inertMateEngine } from "../engine/testing/inertEngine.ts";
 
 const c = ConversationId.make("thread-main");
 /** The conversation's id is its V1 thread's: the shells carry it as one. */
@@ -93,7 +93,6 @@ const overviewOf = (threads: ReadonlyArray<OrchestrationThreadShell>) =>
 
 const liveEngine = (views: ReadonlyArray<ConversationView>): MateEngineService => ({
   ...inertMateEngine,
-  live: true,
   conversations: Effect.succeed({ views, unread: [], complete: true }),
   conversation: (id) => Effect.succeed(views.find((one) => one.conversationId === id)),
   changes: Stream.make(c),
@@ -296,33 +295,6 @@ describe("HQ's overview of a Mate on the engine", () => {
     });
   });
 
-  it.effect(
-    "a thread V1 left running at the flip never shows working: mate mode reads only the engine",
-    () =>
-      Effect.gen(function* () {
-        const v1Running = {
-          ...engineShellOf(view({ activeRun: run(1) })),
-          id: "v1-thread" as never,
-        };
-        const chats = chatsSource(
-          liveEngine([view({ lastEnded: ended(1, { kind: "completed" }) })]),
-          {
-            threads: Effect.succeed([v1Running]),
-            domainEvents: Stream.empty,
-          },
-          Effect.succeed(source),
-        );
-        const threads = yield* chats.threads;
-        const overview = overviewOf(threads);
-        assert.strictEqual(overview.main?.id, thread);
-        assert.deepStrictEqual(
-          overview.threads.list.map((digest) => [digest.id, digest.kind]),
-          [[thread, "idle"]],
-        );
-        assert.strictEqual(mateAttentionOf(threads, undefined, source).working, 0);
-      }),
-  );
-
   it("a crewmate's conversation is the crew's: never one of the person's chats, its line reads its run", () => {
     const crewmate = ConversationId.make("crew-main-backend-1");
     const threads = [
@@ -380,10 +352,9 @@ describe("HQ's overview of a Mate on the engine", () => {
         const archived = { ...view(), conversationId: ConversationId.make("gone"), archived: true };
         const chats = chatsSource(
           liveEngine([view({ activeRun: run(1) }), archived]),
-          { threads: Effect.succeed([]), domainEvents: Stream.empty },
           Effect.succeed(source),
         );
-        const rows = chats.conversations === undefined ? [] : yield* chats.conversations;
+        const rows = yield* chats.conversations;
         assert.deepStrictEqual(
           rows.map((row) => [row.conversationId, row.state.kind, row.revision]),
           [[c, "working", { environmentId: "env-1", epoch: 3, seq: 9 }]],
@@ -391,11 +362,6 @@ describe("HQ's overview of a Mate on the engine", () => {
         assert.deepStrictEqual(chats.engine, { protocol: 1 });
       }),
   );
-
-  it("with the switch off, the chats are V1's, exactly as before", () => {
-    const v1 = { threads: Effect.succeed([]), domainEvents: Stream.empty };
-    assert.strictEqual(chatsSource(inertMateEngine, v1, Effect.succeed(source)), v1);
-  });
 });
 
 describe("HQ's overview of a Mate held by a usage limit", () => {

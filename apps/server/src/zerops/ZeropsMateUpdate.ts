@@ -1,4 +1,3 @@
-import { V1UpdateDrain } from "../update/V1UpdateDrain.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 /**
  * The server's half of spec-mate.md §2.9 "Updates in the product — one
@@ -263,7 +262,6 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const policy = yield* MateAutoUpdatePolicy;
     const engine = yield* MateEngine;
-    const legacyDrain = Option.getOrUndefined(yield* Effect.serviceOption(V1UpdateDrain));
     const terminal = yield* TerminalManager;
     const rpcAdmission = Option.getOrUndefined(yield* Effect.serviceOption(RpcUpdateAdmission));
     return yield* make({
@@ -272,9 +270,7 @@ export const layer = Layer.effect(
       policy,
       stateFile: process.env.ZCP_MATE_UPDATE_STATE_FILE,
       manifestFile: zcpManifestCacheFile(),
-      recoverAdmission: (
-        (engine.live ? engine.updateDrain : legacyDrain)?.cancel ?? Effect.void
-      ).pipe(
+      recoverAdmission: (engine.updateDrain?.cancel ?? Effect.void).pipe(
         Effect.andThen(terminal.updateDrain?.cancel ?? Effect.void),
         Effect.andThen(rpcAdmission?.cancel ?? Effect.void),
       ),

@@ -9,7 +9,6 @@ import * as NetService from "@t3tools/shared/Net";
 import packageJson from "../package.json" with { type: "json" };
 import { sharedServerCommandFlags } from "./cli/config.ts";
 import { isEntrypoint } from "./entrypoint.ts";
-import { projectCommand } from "./cli/project.ts";
 import { runDefaultServerCommand, serveCommand, startCommand } from "./cli/server.ts";
 import { serviceCommand } from "./cli/service.ts";
 import { traceCommand } from "./cli/trace.ts";
@@ -30,7 +29,6 @@ const makeCli = () =>
       ),
       startCommand,
       serveCommand,
-      projectCommand,
       serviceCommand,
       traceCommand,
       triageCommand,

@@ -11,39 +11,21 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
 import { backfillThreadMedia } from "../assets/ConversationMedia.ts";
 import { projectThreadDetailSnapshot } from "./ActivityPayloadProjection.ts";
-import { cleanupFailedUploadedAttachments, normalizeDispatchCommand } from "./Normalizer.ts";
 import {
   annotateEnvironmentRequest,
   failEnvironmentInternal,
-  failEnvironmentInvalidRequest,
   failEnvironmentNotFound,
   failEnvironmentOperationForbidden,
   requireEnvironmentScope,
   EnvironmentHttpRequestStartedAt,
 } from "../auth/http.ts";
-import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
-import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./Services/ProjectionSnapshotQuery.ts";
-import { ServerConfig } from "../config.ts";
-import { ZeropsTurnAdmission } from "../zerops/ZeropsTurnAdmission.ts";
-import { makeFirstTurnEffort } from "../zerops/firstTurnEffort.ts";
-import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 
 export const orchestrationHttpApiLayer = HttpApiBuilder.group(
   EnvironmentHttpApi,
   "orchestration",
   Effect.fnUntraced(function* (handlers) {
     const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
-    const orchestrationEngine = yield* OrchestrationEngineService;
-    const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
-    const turnAdmission = yield* ZeropsTurnAdmission;
-    const serverConfig = yield* ServerConfig;
-    // D10: a new conversation's first turn runs on Extra High when it names no effort, and the
-    // thread stores what it runs on — over HTTP as over the socket.
-    const firstTurnEffort = makeFirstTurnEffort({
-      providers: (yield* ProviderRegistry).getProviders,
-      threadShell: projectionSnapshotQuery.getThreadShellById,
-    });
 
     return handlers
       .handle(
@@ -154,57 +136,9 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         "dispatch",
         Effect.fn("environment.orchestration.dispatch")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
-          const session = yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
-          // The Mate engine owns the conversation: V1's door is closed, before admission.
-          if (serverConfig.mateEngine === "mate") {
-            return yield* failEnvironmentOperationForbidden("engine_moved");
-          }
-          yield* ProjectCloneTracker.rejectCommandsDuringClone(
-            projectCloneTracker,
-            args.payload,
-          ).pipe(
-            Effect.catch((cause) =>
-              failEnvironmentInternal("orchestration_dispatch_failed", cause),
-            ),
-          );
-          const { command: normalizedCommand, store } = yield* normalizeDispatchCommand(
-            args.payload,
-          ).pipe(
-            Effect.catch(() => failEnvironmentInvalidRequest("invalid_command")),
-            Effect.flatMap(firstTurnEffort),
-          );
-          // A turn over HTTP spends the same login a turn over the socket
-          // does, so it passes the same gate (D6) as the same person. A
-          // refusal is the caller's to hear, not a server failure.
-          const result = yield* turnAdmission
-            .admit({
-              command: normalizedCommand,
-              principal: { kind: "session", subject: session.subject },
-            })
-            .pipe(
-              Effect.matchEffect({
-                onFailure: (refusal) =>
-                  Effect.logInfo("orchestration dispatch refused a turn (D6)", {
-                    reason: refusal.message,
-                  }).pipe(Effect.andThen(failEnvironmentOperationForbidden("zerops_turn_refused"))),
-                onSuccess: () =>
-                  (store === undefined ? Effect.void : orchestrationEngine.dispatch(store))
-                    .pipe(Effect.andThen(orchestrationEngine.dispatch(normalizedCommand)))
-                    .pipe(
-                      Effect.catch((cause) =>
-                        failEnvironmentInternal("orchestration_dispatch_failed", cause),
-                      ),
-                    ),
-              }),
-              Effect.tapError(() =>
-                cleanupFailedUploadedAttachments(args.payload, normalizedCommand),
-              ),
-            );
-          yield* ProjectCloneTracker.discardCloneForDeletedProject(
-            projectCloneTracker,
-            normalizedCommand,
-          );
-          return result;
+          yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
+          // The Mate engine owns every conversation: only an app older than it dispatches here.
+          return yield* failEnvironmentOperationForbidden("engine_moved");
         }),
       );
   }),

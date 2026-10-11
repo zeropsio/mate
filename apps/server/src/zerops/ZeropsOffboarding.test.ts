@@ -1,5 +1,4 @@
 import { assert, describe, it } from "@effect/vitest";
-import { type OrchestrationThreadShell, ThreadId } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -21,7 +20,7 @@ import { ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
 import {
   make as makeSignOut,
   type SignOutTarget,
-  stopSessionsVia,
+  stopSessionsOnEngine,
   ZeropsSignOut,
 } from "./ZeropsSignOut.ts";
 
@@ -36,13 +35,6 @@ const WORK: MateLogin = {
   home: "/home/zerops/.mate/logins/claudeAgent-work",
   keyStored: false,
 };
-
-const live = (id: string, instanceId: string) =>
-  ({
-    id: ThreadId.make(id),
-    modelSelection: { instanceId, model: "m" },
-    session: { providerInstanceId: instanceId, status: "running" },
-  }) as unknown as OrchestrationThreadShell;
 
 /**
  * Offboarding over the real sign-out: Eva signed in Claude Code's own login and the `work` login,
@@ -67,10 +59,8 @@ const offboarding = (access: Readonly<Record<string, boolean | undefined>>) =>
         recheckNow: (id) => step(`recheck:${id}`),
         forget: () => Effect.void,
       },
-      stopSessions: stopSessionsVia({
-        threads: Effect.succeed([live("eva-claude", "claudeAgent"), live("eva-work", WORK.id)]),
-        isLive: (threadId) => Effect.map(Ref.get(stopped), (all) => !all.includes(threadId)),
-        stop: (threadId) => Ref.update(stopped, (all) => [...all, threadId]),
+      stopSessions: stopSessionsOnEngine({
+        stopSessionsOn: (instanceIds) => Ref.update(stopped, (all) => [...all, ...instanceIds]),
       }),
       runLogout: (login) =>
         step(`logout:${login.home ?? login.agent}`).pipe(Effect.as({ success: true })),
@@ -94,7 +84,7 @@ describe("ZeropsOffboarding", () => {
     Effect.gen(function* () {
       const { service, stopped, steps } = yield* offboarding({ [EVA]: false, [JAN]: true });
       assert.strictEqual(yield* service.checkNow, 2);
-      assert.deepStrictEqual(yield* Ref.get(stopped), ["eva-claude", "eva-work"]);
+      assert.deepStrictEqual(yield* Ref.get(stopped), ["claudeAgent", "claude-code", WORK.id]);
       const done = yield* Ref.get(steps);
       for (const expected of [
         "cancel:claude-code",
