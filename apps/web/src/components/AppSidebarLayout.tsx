@@ -36,7 +36,14 @@ import {
   THREAD_SIDEBAR_MIN_WIDTH,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "./threadSidebarWidth";
-import { Sidebar, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "./ui/sidebar";
+import {
+  readSidebarOpen,
+  Sidebar,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+  useSidebar,
+} from "./ui/sidebar";
 import { resolveSidebarOpenerPlacement } from "./ui/sidebarState";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { SidebarRevealBridge } from "./zerops/SidebarRevealBridge";
@@ -247,6 +254,8 @@ export function AppSidebarLayout({
   });
   // Closed on a desktop, the menu is a 64 px rail (`SidebarRail`); settings and the gate close away.
   const rail = !isOnSettings && !gated;
+  // A menu its person left closed comes back closed: the rail, as the first frame drew it.
+  const [leftOpen] = useState(readSidebarOpen);
   const sidebarProviderStyle = {
     "--sidebar-width": `${sidebarWidth}px`,
     "--sidebar-width-icon": "64px",
@@ -296,7 +305,7 @@ export function AppSidebarLayout({
     <SidebarProvider
       className="h-dvh! min-h-0!"
       data-sidebar-rail={rail ? "" : undefined}
-      defaultOpen
+      defaultOpen={!rail || leftOpen}
       style={sidebarProviderStyle}
     >
       <ProjectProjectionRetention />

@@ -29,7 +29,13 @@ function bootFrameOf(input: {
   readonly innerWidth: number;
   readonly storageThrows?: boolean;
   readonly desktop?: boolean;
-}): { readonly mode: string | undefined; readonly menuWidth: string | undefined } {
+  /** `document.cookie`. */
+  readonly cookie?: string;
+}): {
+  readonly mode: string | undefined;
+  readonly menuWidth: string | undefined;
+  readonly menu?: string | undefined;
+} {
   const variables: Record<string, string> = {};
   const documentElement = {
     dataset: {} as Record<string, string | undefined>,
@@ -46,8 +52,17 @@ function bootFrameOf(input: {
       },
     },
   };
-  new Function("window", "document", frameScript)(fakeWindow, { documentElement });
-  return { mode: documentElement.dataset.bootFrame, menuWidth: variables["--boot-menu-width"] };
+  new Function("window", "document", frameScript)(fakeWindow, {
+    documentElement,
+    cookie: input.cookie ?? "",
+  });
+  return {
+    mode: documentElement.dataset.bootFrame,
+    menuWidth: variables["--boot-menu-width"],
+    ...(documentElement.dataset.bootMenu === undefined
+      ? {}
+      : { menu: documentElement.dataset.bootMenu }),
+  };
 }
 
 const SESSION = "a-stored-session";
@@ -157,6 +172,23 @@ describe("the boot frame", () => {
       [accountStorageKeyOf("user/1", THREAD_SIDEBAR_WIDTH_STORAGE_KEY)]: "437",
     };
     expect(bootFrameOf({ storage, pathname: "/", innerWidth: 1786 }).menuWidth).toBe("437px");
+  });
+
+  // A menu closed to the rail opened again on every reload: its toggle's cookie was written, never
+  // read. The app opens it as it was left, and the first frame draws the rail it will draw.
+  it.each([
+    { left: "closed", cookie: "theme=dark; sidebar_state=false", width: "64px", menu: "rail" },
+    { left: "open", cookie: "sidebar_state=true", width: "437px", menu: undefined },
+    { left: "never touched", cookie: "", width: "437px", menu: undefined },
+  ])("draws the menu its person left $left", ({ cookie, width, menu }) => {
+    const storage: Record<string, string> = {
+      [BOOT_FRAME_STORAGE_KEY]: "app",
+      [ZEROPS_SESSION_STORAGE_KEY]: SESSION,
+      "zerops-mate.zerops-session-owner.v1": JSON.stringify({ userId: "user/1" }),
+      [accountStorageKeyOf("user/1", THREAD_SIDEBAR_WIDTH_STORAGE_KEY)]: "437",
+    };
+    const frame = bootFrameOf({ storage, pathname: "/", innerWidth: 1786, cookie });
+    expect([frame.menuWidth, frame.menu]).toEqual([width, menu]);
   });
 
   it("paints the sign-in's mark when storage is refused, except on the way back", () => {
