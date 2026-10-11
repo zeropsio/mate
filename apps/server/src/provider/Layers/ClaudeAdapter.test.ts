@@ -3307,6 +3307,64 @@ describe("ClaudeAdapterLive", () => {
       );
     });
 
+    // Milo's final engine run (seg E): a helper's command needed approval after the turn ended,
+    // and the request named no helper, so it reached no card.
+    it.effect("a helper's permission request names its helper and the launch it runs under", () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const callFiber = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil(
+            (event) => event.type === "item.started" && String(event.itemId) === "tool-h9",
+          ),
+          Stream.runDrain,
+          Effect.forkChild,
+        );
+        const session = yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "approval-required",
+        });
+        yield* adapter.sendTurn({ threadId: session.threadId, input: "delegate", attachments: [] });
+        for (const message of [
+          launch("toolu_agent_a", { description: "Review the API", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          returned(null, "toolu_agent_a", "Async agent launched successfully."),
+          turnEnd,
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h9", name: "Bash", input: { command: "for f in *; do wc -l $f; done" } },
+          ]),
+        ]) {
+          harness.query.emit(message);
+        }
+        yield* Fiber.join(callFiber);
+        const eventsFiber = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "request.opened"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        const canUseTool = harness.getLastCreateQueryInput()?.options.canUseTool;
+        assert.equal(typeof canUseTool, "function");
+        if (!canUseTool) return;
+        void canUseTool(
+          "Bash",
+          { command: "for f in *; do wc -l $f; done" },
+          { signal: new AbortController().signal, toolUseID: "tool-h9", requestId: "request-h9" },
+        );
+        const events = Array.from(yield* Fiber.join(eventsFiber));
+        const opened = events.find((event) => event.type === "request.opened");
+        assert.deepStrictEqual(
+          opened?.type === "request.opened"
+            ? [opened.payload.agentId, opened.payload.parentToolUseId, opened.turnId]
+            : null,
+          ["task-a", "toolu_agent_a", undefined],
+        );
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    });
+
     it.effect.each(
       Array.from(cases, ({ name, messages, check }) => ({ title: name, messages, check })),
     )("$title", ({ messages, check }) => {

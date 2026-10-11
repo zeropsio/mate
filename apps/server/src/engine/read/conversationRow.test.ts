@@ -81,6 +81,18 @@ describe("the menu row", () => {
     expect(row.at).toBe(900);
   });
 
+  it.each([
+    {
+      name: "Supervised once a person picked it",
+      set: "approval-required",
+      reads: "approval-required",
+    },
+    { name: "Full access once a person picked it", set: "full-access", reads: "full-access" },
+    { name: "nothing while no person set it", set: null, reads: undefined },
+  ] as const)("says the access its agent works with: $name", ({ set, reads }) => {
+    expect(conversationRowOf(view({ runtimeMode: set }), revision).runtimeMode).toBe(reads);
+  });
+
   // Milo, 2026-10-08: the row read "[Picture 1]" for a pasted picture and its question.
   it.each([
     {
@@ -236,6 +248,45 @@ describe("the menu row", () => {
       revision,
     );
     expect(row.askedAt).toBe(300);
+  });
+});
+
+// Milo's final engine run (seg E +1:32): helpers waited on an approval while the face said
+// "Waiting for its helpers", with nothing to press.
+describe("the menu row while a helper asks", () => {
+  const helperAsk = { kind: "approval", requestKind: "command", detail: "wc -l *" } as never;
+  it.each([
+    {
+      name: "a helper's approval after its run ended waits on the person",
+      openRequests: [request(helperAsk)],
+      state: { kind: "waiting", on: "approval", words: "wc -l *" },
+    },
+    {
+      name: "a question asked by message after its run ended leaves the helpers working",
+      openRequests: [
+        request({
+          kind: "question",
+          questions: [{ question: "Which region?" }],
+          dismissible: true,
+        }),
+      ],
+      state: { kind: "working", since: 500, waitsOnHelpers: true },
+    },
+    {
+      name: "an ask nobody can answer any more leaves the helpers working",
+      openRequests: [{ ...request(helperAsk), answerable: false }],
+      state: { kind: "working", since: 500, waitsOnHelpers: true },
+    },
+  ])("$name", ({ openRequests, state }) => {
+    const row = conversationRowOf(
+      view({
+        lastEnded: ended(1, { kind: "completed" }),
+        background: "working",
+        openRequests: openRequests as ReadonlyArray<ViewRequest>,
+      }),
+      revision,
+    );
+    expect(row.state).toEqual(state);
   });
 });
 

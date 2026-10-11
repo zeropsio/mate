@@ -173,6 +173,8 @@ interface RequestState {
   readonly native?: string;
   /** Asked by message: no callback waits on it, so neither its turn's end nor a close ends it. */
   readonly byMessage?: true;
+  /** Asked by a helper, or by work after its turn: its turn's end leaves it waiting. */
+  readonly byHelper?: true;
   open: boolean;
 }
 
@@ -326,7 +328,12 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     }
     turn.synthetic.clear();
     for (const request of owner.requests.values()) {
-      if (request.open && request.turn === turn && request.byMessage !== true)
+      if (
+        request.open &&
+        request.turn === turn &&
+        request.byMessage !== true &&
+        request.byHelper !== true
+      )
         closeRequest(request, "superseded");
     }
     turn.phase = "ended";
@@ -628,15 +635,38 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     byMessage = false,
   ): RequestState => {
     owner.requestCount += 1;
-    const turn =
-      event.turnId === undefined ? owner.open : owner.nativeTurns.get(String(event.turnId));
+    const asked =
+      event.turnId === undefined ? undefined : owner.nativeTurns.get(String(event.turnId));
+    // A helper asks under the turn that started it, whatever turn is open when it asks: by its
+    // call (Claude's tool use, Codex's item), else by the helper its driver names.
+    const callId = event.providerRefs?.providerItemId ?? event.itemId;
+    const call = callId === undefined ? undefined : owner.items.get(String(callId));
+    const payload = event.payload as {
+      readonly agentId?: string;
+      readonly parentToolUseId?: string;
+    };
+    const named = [payload.agentId, payload.parentToolUseId].flatMap((id) =>
+      id === undefined ? [] : [owner.work.get(id)],
+    )[0];
+    const helper = call?.helper ?? named?.key;
+    const helperTurn =
+      call?.helper !== undefined
+        ? call.turn
+        : named === undefined || named.origin === "unknown"
+          ? undefined
+          : turns.get(named.origin);
+    // Work asks after its turn ended (a helper, a child thread under a turn of its own): the driver
+    // still waits on the answer, so the person is asked on the last turn rather than never.
+    const turn = helperTurn ?? asked ?? owner.open ?? owner.last;
+    const byHelper = helper !== undefined || (turn !== undefined && turn.phase !== "open");
     const request: RequestState = {
       key: `${owner.key}.r${owner.requestCount}` as RequestKey,
       session: owner,
-      ...(turn !== undefined && turn.phase === "open" ? { turn } : {}),
+      ...(turn === undefined ? {} : { turn }),
       kind,
       ...(event.requestId === undefined ? {} : { native: String(event.requestId) }),
       ...(byMessage ? { byMessage: true as const } : {}),
+      ...(byHelper && !byMessage ? { byHelper: true as const } : {}),
       open: true,
     };
     if (event.requestId !== undefined) owner.requests.set(String(event.requestId), request);
@@ -862,6 +892,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
           type: "request.opened",
           request: request.key,
           ...(request.turn === undefined ? {} : { turn: request.turn.handle }),
+          ...(request.byHelper === undefined ? {} : { byHelper: true }),
           ask: {
             kind: "approval",
             requestType: payload.requestType,
@@ -888,6 +919,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
           type: "request.opened",
           request: request.key,
           ...(request.turn === undefined ? {} : { turn: request.turn.handle }),
+          ...(request.byHelper === undefined ? {} : { byHelper: true }),
           ...(asking?.body.kind === "text" ? { item: asking.key } : {}),
           ask: {
             kind: "question",

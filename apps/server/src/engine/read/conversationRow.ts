@@ -95,13 +95,23 @@ const vaultAsk = (view: ConversationView): ViewRequest | undefined =>
   view.openRequests.find((request) => request.ask.kind === "vault");
 
 /**
+ * A helper's ask after the run that started it ended: the only approval or question the agent
+ * waits on that outlives its run (one asked by message is answered by a message, never waited on).
+ */
+const helperWaitsOn = (request: ViewRequest): boolean =>
+  request.answerable &&
+  (request.ask.kind === "approval" ||
+    (request.ask.kind === "question" && request.ask.dismissible !== true));
+
+/**
  * The row's state: a question first, then the run on, a value asked of the person, the queue, a
  * pause, a failure, rest.
  */
 export const rowStateOf = (view: ConversationView): ConversationRowState => {
   const active = view.activeRun;
   const asked = view.openRequests.find(
-    (request) => request.runId === active?.id && waitsOn(request.ask.kind),
+    (request) =>
+      waitsOn(request.ask.kind) && (request.runId === active?.id || helperWaitsOn(request)),
   );
   if (asked !== undefined && waitsOn(asked.ask.kind)) {
     return { kind: "waiting", on: asked.ask.kind, words: askWords(asked) };
@@ -172,5 +182,6 @@ export const conversationRowOf = (
     snippet: rowText(view.lastAgent?.text),
     at: view.updatedAt,
     askedAt: asked?.at ?? null,
+    ...(view.runtimeMode == null ? {} : { runtimeMode: view.runtimeMode }),
   };
 };

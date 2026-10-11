@@ -634,17 +634,42 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
               return;
           }
         }),
-      /** The agent asks: an approval or a question (one asked by message, too). Returns its id. */
-      ask: (thread: string, kind: "approval" | "question" | "message-question") =>
+      /**
+       * The agent asks: an approval or a question (one asked by message, too). Returns its id. A
+       * helper's approval names its helper and its call as Claude's `canUseTool` reports them, and
+       * comes under no turn once the agent's own turn ended.
+       */
+      ask: (
+        thread: string,
+        kind: "approval" | "question" | "message-question",
+        helper?: {
+          readonly agentId?: string;
+          readonly parentToolUseId?: string;
+          readonly call?: string;
+          /** A turn of the helper's own (Codex's child thread), never the conversation's. */
+          readonly turnId?: string;
+        },
+      ) =>
         Effect.gen(function* () {
           const session = live(thread);
           const requestId = `req-${++requests}`;
           session.requests.set(requestId, kind === "approval" ? "approval" : "question");
           if (kind === "approval") {
+            const turnId = helper?.turnId ?? session.open;
             yield* emit("request.opened", thread, {
-              turnId: session.open,
+              ...(turnId === null ? {} : { turnId }),
               requestId,
-              payload: { requestType: "command_execution_approval", detail: "rm -rf dist" },
+              payload: {
+                requestType: "command_execution_approval",
+                detail: "rm -rf dist",
+                ...(helper?.agentId === undefined ? {} : { agentId: helper.agentId }),
+                ...(helper?.parentToolUseId === undefined
+                  ? {}
+                  : { parentToolUseId: helper.parentToolUseId }),
+              },
+              ...(helper?.call === undefined
+                ? {}
+                : { providerRefs: { providerItemId: helper.call } }),
             });
           } else {
             // A question asked by message (Codex's async one): the agent does not wait on it.

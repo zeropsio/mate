@@ -920,8 +920,15 @@ const endRun = (
   }
   for (const request of Object.values(b.state.requests)) {
     // A question asked by message outlives its turn: the person answers it with a message. A
-    // value asked of the person outlives it too: they answer it on its card.
-    if (request.runId !== run.id || request.dismissible === true || isVaultAsk(request)) continue;
+    // value asked of the person outlives it too: they answer it on its card. A helper's ask
+    // outlives it while its helper waits on the answer.
+    if (
+      request.runId !== run.id ||
+      request.dismissible === true ||
+      request.byHelper === true ||
+      isVaultAsk(request)
+    )
+      continue;
     b.emit({ _tag: "RequestClosed", runId: run.id, requestId: request.id, state: "lapsed" });
   }
   const carried = answerCarried(b, run);
@@ -1182,24 +1189,27 @@ const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): 
   if (!request.answerable) throw new Rejected("not-answerable");
   if (isVaultAsk(request)) return answerVault(b, request, command);
   if (request.dismissible === true) return answerByMessage(b, request, command);
-  const run = b.run(request.runId);
-  const effect = b.effect("provider.respond", request.id, request.answers + 1, run.id, {
+  // A helper's ask may outlive the run the state keeps: the session it asked in takes the answer.
+  const run = b.state.runs[request.runId];
+  const sessionId =
+    run?.sessionId ?? (request.byHelper === true ? (b.state.session?.id ?? null) : null);
+  const effect = b.effect("provider.respond", request.id, request.answers + 1, request.runId, {
     requestId: request.id,
     key: request.key,
-    sessionId: run.sessionId,
+    sessionId,
     answer: command.answer,
   });
   b.emit({
     _tag: "RequestAnswered",
-    runId: run.id,
+    runId: request.runId,
     requestId: request.id,
     by: b.envelope.principal,
     summary: command.summary,
     effectId: effect,
     ...(request.kind === "question" ? questionAnswer(command.answer) : {}),
   });
-  b.result = { ...b.result, requestId: request.id, runId: run.id };
-  resumeIfAnswered(b, run.id);
+  b.result = { ...b.result, requestId: request.id, runId: request.runId };
+  resumeIfAnswered(b, request.runId);
 };
 
 /**
@@ -1644,6 +1654,13 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
     } else reopenCarried(b, answered, `The answer did not reach the agent: ${failure}`);
   }
   const run = effect.runId === null ? undefined : b.state.runs[effect.runId];
+  if (
+    effect.kind === "provider.respond" &&
+    answered?.byHelper === true &&
+    (run === undefined || !isLive(run))
+  ) {
+    return helperAnswerSettled(b, answered, outcome, failure);
+  }
   if (run === undefined || run.state === "ended") {
     if (effect.kind === "session.open" && outcome.kind === "ok") openSession(b, outcome.value);
     admitNext(b);
@@ -1774,6 +1791,37 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
     default:
       return;
   }
+};
+
+/**
+ * The answer to a helper's ask after its run ended: one the driver can no longer take expired,
+ * one that never reached it is the person's to give again; one that timed out waits on its close.
+ */
+const helperAnswerSettled = (
+  b: StepBuilder,
+  answered: OpenRequest,
+  outcome: EffectOutcome,
+  failure: string | null,
+): void => {
+  if (failure === null || outcome.kind === "timed-out") return;
+  if (outcome.kind === "failed" && outcome.refused === true) {
+    b.emit({
+      _tag: "RequestClosed",
+      runId: answered.runId,
+      requestId: answered.id,
+      state: "expired",
+    });
+    return;
+  }
+  b.emit({
+    _tag: "RequestReopened",
+    runId: answered.runId,
+    requestId: answered.id,
+    key: answered.key,
+    principal: answered.principal,
+    reason: failure,
+    answers: answered.answers,
+  });
 };
 
 /**
@@ -2031,14 +2079,18 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       // A value asked of the person is not waited on either: its card answers it after the turn.
       const byMessage =
         (signal.ask.kind === "question" && signal.ask.dismissible) || signal.ask.kind === "vault";
+      // A helper's ask outlives the turn that started its helper: the driver waits on it while
+      // the session that asked lives (Milo's final engine run, seg E: helpers hung unasked).
+      const byHelper = signal.byHelper === true && !byMessage && b.state.session?.id === sessionId;
       b.emit({
         _tag: "RequestOpened",
         runId: run.id,
         requestId: id,
         key: signal.key,
         ask: signal.ask,
-        answerable: (live || byMessage) && (signal.answerable ?? true),
+        answerable: (live || byMessage || byHelper) && (signal.answerable ?? true),
         principal: run.principal,
+        ...(byHelper ? { byHelper: true as const } : {}),
       });
       // The agent's message that asked it: the request takes its place in the record.
       const asker =
@@ -2053,7 +2105,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           body: { kind: "request", requestId: id },
         });
       }
-      if (byMessage) return;
+      if (byMessage || (byHelper && !live)) return;
       if (!live) {
         // Its turn already ended: nothing can take the answer.
         b.emit({ _tag: "RequestClosed", runId: run.id, requestId: id, state: "lapsed" });

@@ -1141,11 +1141,56 @@ describe("the fold's rules", () => {
       "s1.r3 asks: approval in h1",
       "s1.r3 closed: superseded",
       "h1 ended completed — agent",
-      "s1.r4 asks: approval",
+      // Asked after its turn ended, the driver still waits on it: the person is asked on that turn.
+      "s1.r4 asks: approval in h1",
       "s1.r4 closed: expired",
       "session s1 closed: process-exit",
     ]);
   });
+
+  it.each([
+    {
+      name: "by its call, after the turn that started its helper ended",
+      ask: { providerRefs: { providerItemId: "helper-call" } },
+      endsFirst: true,
+    },
+    {
+      name: "by its helper, asked while that turn runs",
+      ask: { turnId: "X1", payload: { agentId: "t1" } },
+      endsFirst: false,
+    },
+  ])(
+    "claudeAgent [scripted]: a helper's request goes under the turn that started its helper and outlives that turn's end: $name",
+    ({ ask, endsFirst }) => {
+      const w = wire("claudeAgent");
+      const request = w.event("request.opened", {
+        requestId: "req-h",
+        ...ask,
+        payload: {
+          requestType: "command_execution_approval",
+          detail: "for f in *; do wc -l $f; done",
+          ...ask.payload,
+        },
+      });
+      const lines = runScript("claudeAgent", [
+        ...w.open(),
+        ...w.begin(H1, "X1"),
+        w.task(
+          "task.started",
+          { taskId: "t1", toolUseId: "agent-call", taskType: "local_agent", description: "Review" },
+          "X1",
+        ),
+        w.tool("X1", "helper-call", "started", { agentId: "t1" }),
+        ...(endsFirst ? [w.completed("X1"), request] : [request, w.completed("X1")]),
+        w.event("request.resolved", {
+          requestId: "req-h",
+          payload: { requestType: "command_execution_approval", decision: "accept" },
+        }),
+      ]);
+      assert.includeMembers([...lines], ["s1.r1 asks: approval in h1", "s1.r1 closed: answered"]);
+      assert.notInclude(lines, "s1.r1 closed: superseded");
+    },
+  );
 
   it("codex [scripted]: the host reaches a turn and an open request by the driver's own ids, a closed request by none", () => {
     const w = wire("codex");

@@ -318,6 +318,11 @@ export type SignalBody =
       readonly type: "request.opened";
       readonly request: RequestKey;
       readonly turn?: TurnHandle;
+      /**
+       * Asked by a helper, or by work after its turn ended: the driver waits on it past that
+       * turn's end, while its session lives.
+       */
+      readonly byHelper?: true;
       readonly ask: RequestAsk;
       /**
        * The agent's text item that asked it (Codex's async question is a message): the question

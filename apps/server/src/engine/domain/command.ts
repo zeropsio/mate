@@ -93,6 +93,8 @@ export type ProviderSignal =
       readonly kind: "request-opened";
       /** Absent when the driver could not tie the request to a turn: the active run's. */
       readonly turn?: TurnHandle;
+      /** Asked by a helper (or work after its turn): it outlives its run while its session lives. */
+      readonly byHelper?: true;
       readonly key: string;
       readonly ask: RequestAsk;
       readonly answerable?: boolean;

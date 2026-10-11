@@ -21,6 +21,7 @@ import {
   RunTrigger,
   type ConversationAgent,
   type RunState,
+  type RuntimeMode,
 } from "@t3tools/contracts";
 
 import { Conversations } from "../Conversations.ts";
@@ -66,6 +67,8 @@ export interface ConversationView {
   /** The conversation's sequence: its own revision. */
   readonly seq: number;
   readonly agent: ConversationAgent | null;
+  /** How freely its agent works, once a person set it. */
+  readonly runtimeMode?: RuntimeMode | null;
   readonly archived: boolean;
   /** When its record began, and when it last changed. */
   readonly createdAt: number;
@@ -238,6 +241,7 @@ export const readConversationView = (conversationId: ConversationId) =>
       conversationId,
       seq: head.head_seq,
       agent: state.agent,
+      runtimeMode: state.runtimeMode,
       archived: state.archived,
       createdAt: first?.at ?? head.updated_at,
       updatedAt: head.updated_at,

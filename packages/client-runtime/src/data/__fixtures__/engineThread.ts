@@ -1,8 +1,10 @@
 /** An engine conversation's records held in an account, drawn as the thread the view reads. */
 import type {
+  ConversationHeader,
   ConversationRow,
   Item,
   OrchestrationThread,
+  OrchestrationThreadShell,
   Request,
   RunRecord,
 } from "@t3tools/contracts";
@@ -16,11 +18,15 @@ import {
   type EngineConversationKey,
   type EngineSpanValue,
 } from "../families/mateEngine.ts";
+import type { EnvironmentShellState } from "../adapters/mateShellReplay.ts";
 import { emptyAccount } from "../model.ts";
 import {
   engineCardPagingOf,
+  engineHeldTurns,
+  engineRows,
   engineRunCards,
   engineThread,
+  overlayEngineShell,
   type EngineCardPaging,
 } from "../projections/mateEngine.ts";
 import { reduceAccount, type Row } from "../reducer.ts";
@@ -40,6 +46,8 @@ export interface EngineRecords {
   readonly row?: ConversationRow;
   readonly items: ReadonlyArray<Item>;
   readonly requests?: ReadonlyArray<Request>;
+  /** What the conversation's header says beyond its runs, such as the access a person set. */
+  readonly header?: Partial<ConversationHeader>;
   /** The stretches held of runs not read whole. */
   readonly spans?: ReadonlyArray<Omit<EngineSpanValue, "environmentId" | "conversationId">>;
 }
@@ -50,6 +58,33 @@ export function engineThreadOfRecords(
   records: EngineRecords,
 ): OrchestrationThread | null {
   return Option.getOrNull(engineThread.derive(engineReadsOfRecords(key, records), key).data);
+}
+
+/**
+ * The thread shell a Mate's V1 shell thread reads as once the account holds the conversation's
+ * records and its row (`records.row`): the engine's word laid over V1's.
+ */
+export function engineShellThreadOfRecords(
+  key: EngineConversationKey,
+  records: EngineRecords & { readonly row: ConversationRow },
+  v1: OrchestrationThreadShell,
+): OrchestrationThreadShell | null {
+  const read = engineReadsOfRecords(key, records);
+  const shell = overlayEngineShell(
+    {
+      status: "live",
+      error: Option.none(),
+      snapshot: Option.some({
+        snapshotSequence: 1,
+        projects: [],
+        threads: [v1],
+        updatedAt: v1.updatedAt,
+      }),
+    } as unknown as EnvironmentShellState,
+    engineRows.derive(read, key.environmentId),
+    engineHeldTurns.derive(read, key.environmentId),
+  );
+  return Option.getOrNull(shell.snapshot)?.threads.find((thread) => thread.id === v1.id) ?? null;
 }
 
 /** What the cards of a conversation's records not held whole count and hold. */
@@ -79,6 +114,7 @@ function engineReadsOfRecords(key: EngineConversationKey, records: EngineRecords
           latestRunId: latest?.id ?? null,
           runStatus:
             active !== undefined ? "running" : latest?.turnState === "error" ? "error" : "ready",
+          ...records.header,
         }),
         window: { oldestOrdinal: 1, earlier: false },
       },

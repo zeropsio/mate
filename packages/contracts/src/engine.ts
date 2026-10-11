@@ -734,6 +734,8 @@ export const ConversationRow = Schema.Struct({
   snippet: Schema.NullOr(Schema.String),
   at: Millis,
   askedAt: Schema.NullOr(Millis),
+  /** How freely its agent works, once a person set it; absent: the workspace's mode. */
+  runtimeMode: Schema.optionalKey(forwardCompatibleLiterals(RuntimeMode.literals)),
 });
 export type ConversationRow = typeof ConversationRow.Type;
 
@@ -907,6 +909,11 @@ export const RequestOpened = event("RequestOpened", {
   ask: RequestAsk,
   answerable: Schema.Boolean,
   principal: Principal,
+  /**
+   * Asked by work that runs on past its turn (a helper): it outlives the run that started that
+   * work, and the person answers it while its session lives.
+   */
+  byHelper: Schema.optionalKey(Schema.Literal(true)),
 });
 export const RequestAnswered = event("RequestAnswered", {
   runId: RunId,
