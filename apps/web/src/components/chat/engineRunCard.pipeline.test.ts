@@ -1129,3 +1129,40 @@ describe("a run imported from V1 keeps its result pictures", () => {
     ]);
   });
 });
+
+// Milo, run 9 (2026-10-11): zcp refused a request under a name it keeps for itself (MATE_PROBE_X),
+// and the run's result read "the project · Settings change failed · Ask Milo to fix it".
+describe("a value zcp refused to ask for", () => {
+  const envCall = (action: string, key: string) =>
+    call(2, 40_000, {
+      step: "mcp",
+      state: "failed",
+      tool: { name: "mcp__zerops__zerops_env", server: "zerops" },
+      words: "MCP tool call",
+      input: `mcp__zerops__zerops_env: {"action":"${action}","key":"${key}","project":true}`,
+      shows: {
+        toolName: "mcp__zerops__zerops_env",
+        input: { action, key, project: true, label: "Probe", why: "for a test" },
+      },
+      result: {
+        toolName: "zerops_env",
+        resultText: `{"code":"INVALID_PARAMETER","error":"${key} is a name Mate and zcp keep for themselves"}`,
+      },
+    } as never);
+  const outcomeOf = (action: string, key: string) =>
+    cardOf(
+      render({
+        runs: [stressRun({ summary: { ...stressSummary, calls: { mcp: 1 } } } as never)],
+        items: [personItem(run1, 1, "Ask me for a probe", { at: t0 }), envCall(action, key)],
+        zerops: true,
+      }),
+    ).outcome;
+
+  it.each([
+    { name: "a request zcp refused is no failure of the person's", action: "request", rows: 0 },
+    { name: "a change zcp refused still waits on the person", action: "set", rows: 1 },
+  ])("$name", ({ action, rows }) => {
+    const outcome = outcomeOf(action, "MATE_PROBE_X");
+    expect(outcome?.notDone.length ?? 0).toBe(rows);
+  });
+});
