@@ -522,6 +522,11 @@ function basename(path: string): string {
   return path.split(/[\\/]/).findLast((part) => part.length > 0) ?? path;
 }
 
+/** A picture's name, by its path; none for a picture the person gave, kept by its asset id. */
+function pictureName(path: string | null): string | null {
+  return path === null || path.startsWith("mate-asset:") ? null : basename(path);
+}
+
 /** A file a call names in its arguments, where the runtime wrote them into its detail. */
 function detailFile(detail: string | undefined): string | null {
   return /"file_path"\s*:\s*"([^"]+)"/.exec(detail ?? "")?.[1] ?? null;
@@ -650,10 +655,10 @@ function plainPhrase(entry: WorkLogEntry, kind: StepKind, running: boolean): Ste
     case "command":
       return null;
     case "look": {
-      const path = lookedAt(entry);
-      return path === null
+      const name = pictureName(lookedAt(entry));
+      return name === null
         ? alone(say("Looking at a picture", "Looked at a picture"))
-        : phraseOf(say("Looking at", "Looked at"), [basename(path)]);
+        : phraseOf(say("Looking at", "Looked at"), [name]);
     }
     case "read": {
       const file = input?.filePath ?? detailFile(entry.detail) ?? entry.changedFiles?.[0];
@@ -710,10 +715,10 @@ function plainWords(entry: WorkLogEntry, kind: StepKind, running: boolean): stri
     case "command":
       return null;
     case "look": {
-      const path = lookedAt(entry);
-      return path === null
+      const name = pictureName(lookedAt(entry));
+      return name === null
         ? say("Looking at a picture", "Looked at a picture")
-        : say(`Looking at ${basename(path)}`, `Looked at ${basename(path)}`);
+        : say(`Looking at ${name}`, `Looked at ${name}`);
     }
     case "read": {
       const file = input?.filePath ?? detailFile(entry.detail) ?? entry.changedFiles?.[0];
@@ -876,7 +881,7 @@ export function foldSteps(
     ) {
       // A look still running is the slot's, never folded: these ended.
       const images = [...previous.images, ...step.images];
-      const names = images.map(basename);
+      const names = images.flatMap((image) => pictureName(image) ?? []);
       steps[steps.length - 1] = {
         ...previous,
         words: names.length === 0 ? "Looked at pictures" : `Looked at ${listed(names)}`,
