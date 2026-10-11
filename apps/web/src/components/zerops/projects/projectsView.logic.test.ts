@@ -108,7 +108,7 @@ const PRODUCTION = {
     coverage: "complete" as const,
     freshness: { kind: "live" as const },
   },
-  route: undefined,
+  addresses: [],
 };
 
 const FLOWS = {
@@ -363,7 +363,7 @@ describe("a stop's line", () => {
     state: "deployed",
     version,
     source: "main",
-    route: undefined,
+    addresses: [],
     ...over,
   });
   it.each([
@@ -601,8 +601,8 @@ describe("groupFlowInputOf", () => {
         talked: true,
       },
     ]);
-    expect(input.stops.map((stop) => [stop.projectId, stop.tier, stop.route])).toEqual([
-      ["p-stage", "stage", "https://app-1.prg1.zerops.app"],
+    expect(input.stops.map((stop) => [stop.projectId, stop.tier, stop.addresses])).toEqual([
+      ["p-stage", "stage", [{ service: "app", url: "https://app-1.prg1.zerops.app" }]],
     ]);
     // Unread: nothing waits, and no release is offered.
     expect(input.pullRequests).toEqual([]);
@@ -882,7 +882,7 @@ describe("projectRowLine — a project row's second line", () => {
       name: "fixture-stage",
       version: undefined,
       source: "main",
-      route: undefined,
+      addresses: [],
       ...over,
     };
     const flow: GroupFlow = { ...FLOWS.none, stages: [stage] };

@@ -2,14 +2,14 @@
  * A place on its project's card — production, or a stage — said in full where the card stands, not
  * behind a click (the owner, 2026-10-11: "why not like have actual state of prod, why not have like
  * link"): what runs there and since when, each service up or down, what went wrong and who would
- * fix it, what the running release brought, its address — and its actions (Ask <Mate> to fix it,
+ * fix it, what the running release brought, its addresses — and its actions (Ask <Mate> to fix it,
  * Open logs, Roll back, History), which are the page's.
  */
 import { ArrowUpRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { PlaceDot, PlaceWords } from "./ProjectCards";
-import { placeLabel, siteOf, type PlaceLine } from "./projectCard.logic";
+import { placeLabel, soleSite, type PlaceLine } from "./projectCard.logic";
 
 /** One service of a place, as the platform reads it. */
 export interface PlacePanelService {
@@ -29,8 +29,6 @@ export interface PlacePanelModel {
     readonly title: string;
     readonly by?: string | undefined;
   }>;
-  /** Its public address. */
-  readonly route: string | undefined;
   /** Its services, each up, stopped or down. */
   readonly services: ReadonlyArray<PlacePanelService>;
 }
@@ -44,23 +42,42 @@ export function PlacePanel({
   readonly actions: ReactNode;
 }) {
   const { line } = model;
+  const { addresses } = line;
   const label = placeLabel(line);
-  const host = siteOf(model.route);
+  const host = soleSite(addresses);
   return (
     <div aria-label={label} className="ov-panel" data-zerops-surface="place-panel">
       <div className="ov-panel-head">
         <b className="ov-panel-name">{label}</b>
-        {host === undefined || model.route === undefined ? null : (
+        {host === undefined || addresses[0] === undefined ? null : (
           <a
             aria-label={`Open ${label}`}
             className="ov-panel-host"
-            href={model.route}
+            href={addresses[0].url}
             rel="noreferrer"
             target="_blank"
           >
             <span className="truncate">{host}</span>
             <ArrowUpRightIcon aria-hidden="true" className="size-3.5 shrink-0" />
           </a>
+        )}
+        {/* Several services serving: a door each, by its service. */}
+        {addresses.length < 2 ? null : (
+          <span className="ov-panel-doors">
+            {addresses.map((address) => (
+              <a
+                aria-label={`Open ${address.service} on ${label}`}
+                className="ov-panel-host"
+                href={address.url}
+                key={address.service}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span className="truncate">{address.service}</span>
+                <ArrowUpRightIcon aria-hidden="true" className="size-3.5 shrink-0" />
+              </a>
+            ))}
+          </span>
         )}
       </div>
       <p className="ov-panel-state">

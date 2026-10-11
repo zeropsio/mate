@@ -203,7 +203,6 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
               title: `#${String(pull.number)} ${pull.title}`,
             }))
           : [],
-      route: stop?.route,
       services: (item?.services?.statuses ?? []).map((service) => ({
         hostname: service.hostname,
         state: down.includes(service.hostname)

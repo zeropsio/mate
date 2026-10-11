@@ -165,7 +165,7 @@ function said(moment: Moment) {
             })
           : undefined,
         deployment: moment.deployment,
-        route: undefined,
+        addresses: [],
       },
     ],
     release: {

@@ -57,7 +57,7 @@ function said(deploy: HqJob, status = "ACTIVE", born = false) {
         tier: "stage",
         row,
         deployment: NONE,
-        route: undefined,
+        addresses: [],
         projectStatus: "ACTIVE",
         services,
       },

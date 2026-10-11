@@ -233,7 +233,7 @@ function said(moment: Moment) {
         tier: "stage",
         row,
         deployment: moment.deployment,
-        route: undefined,
+        addresses: [],
         projectStatus,
         services,
       },

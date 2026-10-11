@@ -955,7 +955,7 @@ describe("a deploy of a commit only moves forward", () => {
       pullRequests: [],
       merged: [],
       stops: [
-        { projectId: "p-stage", name: "stage", tier: "stage", row, deployment, route: undefined },
+        { projectId: "p-stage", name: "stage", tier: "stage", row, deployment, addresses: [] },
       ],
       release: {
         gate: { allowed: false, reason: "" },

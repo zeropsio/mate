@@ -5839,6 +5839,19 @@ a.ov-card-site:hover {
     color 150ms var(--ease-out-strong);
 }
 
+/* Several services serving: a door each, by its service (`placeAddresses`). */
+.ov-panel-doors {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.ov-panel-doors .ov-panel-host {
+  margin-left: 0;
+}
+
 .ov-panel-host:hover {
   background: color-mix(in oklab, var(--foreground) 6%, transparent);
   color: var(--foreground);

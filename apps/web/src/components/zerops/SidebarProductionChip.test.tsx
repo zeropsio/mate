@@ -113,7 +113,7 @@ function stageOf(
         label: "3f9c1b2",
       },
       source: "main",
-      route: undefined,
+      addresses: [],
     },
     chip: { label: "stage", state: "ok", version: "main" },
     deployedAt: undefined,

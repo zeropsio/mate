@@ -137,7 +137,7 @@ const FSADFDASFSA = group({
         appVersionName: MAIN_SHA,
       }),
       deployment: NOTHING_RUNS,
-      route: undefined,
+      addresses: [],
     },
   ],
   release: {
@@ -169,7 +169,7 @@ const SM_FIXTURE = group({
         status: "live",
       }),
       deployment: runs(STAGE_SHA),
-      route: "https://app-31f4-3000.prg1.zerops.app",
+      addresses: [{ service: "app", url: "https://app-31f4-3000.prg1.zerops.app" }],
     },
   ],
   mainHasCode: true,
@@ -210,7 +210,7 @@ const ZEROPS_MATE = group({
       tier: "stage",
       row: undefined,
       deployment: NOTHING_RUNS,
-      route: undefined,
+      addresses: [],
     },
   ],
   mainHasCode: false,
@@ -277,7 +277,7 @@ describe("groupFlow", () => {
         state: "deployed",
         version: deployedVersion(STAGE_SHA),
         source: "main",
-        route: "https://app-31f4-3000.prg1.zerops.app",
+        addresses: [{ service: "app", url: "https://app-31f4-3000.prg1.zerops.app" }],
       },
     ]);
     expect(flow.production).toEqual({ kind: "absent" });
@@ -330,7 +330,7 @@ describe("groupFlow", () => {
         state: "empty",
         version: undefined,
         source: undefined,
-        route: undefined,
+        addresses: [],
       },
     ]);
     expect(flow.production).toEqual({ kind: "absent" });
@@ -371,7 +371,7 @@ describe("groupFlow", () => {
           status: "failed",
         }),
         deployment: runs(STAGE_SHA),
-        route: undefined,
+        addresses: [],
       },
     ],
   };
@@ -971,7 +971,7 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     projectStatus: "ACTIVE",
     row: declared({ projectId: "p-pantry-stage", name: "Pantry - stage", tier: "stage" }),
     deployment: NOTHING_RUNS,
-    route: undefined,
+    addresses: [],
     ...over,
   });
   /** The stage's row with HQ's newest job of each of its services, asked for `msAgo`. */
