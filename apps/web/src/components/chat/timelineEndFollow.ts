@@ -90,7 +90,7 @@ export function createEndFollow({
   readonly follows: () => boolean;
   /**
    * Room under the end the person may scroll into and the follower never goes into, nor out of:
-   * what an ask over the composer covers.
+   * what an answered ask over the composer covered, while the view eases out of it.
    */
   readonly room?: () => number;
   /** The list commits this measured alignment after pending virtualizer layout. */

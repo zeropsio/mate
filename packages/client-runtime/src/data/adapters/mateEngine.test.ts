@@ -1212,6 +1212,49 @@ describe("an engine call whose result the wire cut", () => {
   );
 });
 
+describe("an engine message the wire cut", () => {
+  const answer = Array.from({ length: 5_000 }, (_, line) => `${line + 1}`).join(" ");
+  const whole: Detailer = () =>
+    Effect.succeed({
+      _tag: "Detail",
+      text: answer,
+      from: 0,
+      to: answer.length,
+      total: answer.length,
+    });
+  const cases = [
+    {
+      who: "the Mate's",
+      item: noteItem(run1, 2, answer.slice(0, 16_384), {
+        cut: { part: "text", total: answer.length },
+      }),
+    },
+    {
+      who: "the person's",
+      item: personItem(run1, 2, answer.slice(0, 16_384), {
+        cut: { part: "text", total: answer.length },
+      }),
+    },
+  ];
+
+  // Engine final run, A6: the answer's record came cut at 16,384 characters and its end was gone.
+  it.live("a message longer than 16,384 characters can be read to its end", () =>
+    Effect.gen(function* () {
+      for (const { who, item } of cases) {
+        const r = rig(undefined, whole);
+        r.conversations.hold(ada);
+        yield* settle;
+        yield* r.send(snapshot({ items: [item] }), synchronized(12));
+        expect(r.details, who).toEqual([`${run1}/i/2 text`]);
+        const held = r.item(`${run1}/i/2`);
+        expect(held, who).toMatchObject({ kind: "known", value: { text: answer } });
+        expect(held.kind === "known" && "cut" in held.value, who).toBe(false);
+        r.close();
+      }
+    }),
+  );
+});
+
 describe("an engine thought longer than its preview", () => {
   const thought = "I'm weighing the api's deploy against the worker's: ".repeat(12);
   const preview = thought.slice(0, 280);

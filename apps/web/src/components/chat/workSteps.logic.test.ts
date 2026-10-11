@@ -301,6 +301,20 @@ describe("stepOf", () => {
       phrase: { verb: "Looked at", targets: ["v1.png"], more: 0, code: true },
     },
     {
+      // Engine final run, C3: the row read "Looked at mate-asset:97860ff6-…".
+      name: "a look at a picture the person gave, which has no file name",
+      entry: entry({
+        id: "1",
+        itemType: "image_view",
+        label: "Image view",
+        viewedImagePath: "mate-asset:97860ff6-2b1c-4d3e-9f00-1a2b3c4d5e6f",
+      }),
+      words: "Looked at a picture",
+      code: null,
+      kind: "look",
+      phrase: { verb: "Looked at a picture", targets: [], more: 0, code: false },
+    },
+    {
       name: "a read, by the file its detail names",
       entry: entry({ id: "1", detail: 'Read: {"file_path":"/var/www/app/src/page.tsx"}' }),
       words: "Read page.tsx",
@@ -565,6 +579,20 @@ describe("backgroundJobOf", () => {
       ],
       job: { state: "failed", report: "Exit code 3" },
       step: { state: "failed" },
+    },
+    {
+      // Engine final run, D6: the job Stop killed read "Failed" while the engine said stopped.
+      name: "stopped: it reads stopped, though the kill ended it with an error",
+      tasks: [
+        started,
+        finished({
+          tone: "error",
+          toolLifecycleStatus: "stopped",
+          detail: 'Background command "Run the soak test" failed with exit code 143',
+        }),
+      ],
+      job: { state: "stopped" },
+      step: { state: "done" },
     },
   ])("$name", ({ tasks, job, step }) => {
     const tracked = trackCommands([launch, ...tasks]);

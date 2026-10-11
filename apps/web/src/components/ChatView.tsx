@@ -259,6 +259,7 @@ import { undoLatestThreadAction } from "../hooks/showUndoToast";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import {
   AlarmClockIcon,
+  ArchiveRestoreIcon,
   ArrowDownIcon,
   CheckCircle2Icon,
   DownloadIcon,
@@ -1409,7 +1410,8 @@ export default function ChatView(props: ChatViewProps) {
   const shownThreadSyncPhase = useDelayedStatus(`${environmentId}:${threadId}`, threadSyncPhase);
   const threadDetailLoading = threadSyncPhase === "loading";
   const handleNewThread = useNewThreadHandler();
-  const { settleThread, pinThread, unpinThread, archiveThread } = useThreadActions();
+  const { settleThread, pinThread, unpinThread, archiveThread, unarchiveThread } =
+    useThreadActions();
   const routeThreadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
@@ -5374,6 +5376,35 @@ export default function ChatView(props: ChatViewProps) {
     isUnsnoozing,
     isUnsettling,
   ]);
+  // An archived conversation reads as one and offers its way back: reopened from the chats menu it
+  // drew a live composer that sent nothing, and Restore was gone with the archive's toast (engine
+  // final run, G10).
+  const activeThreadArchived = activeServerThread?.archivedAt != null;
+  const [restoringThreadKey, setRestoringThreadKey] = useState<string | null>(null);
+  const archivedThreadBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+    if (!activeThreadArchived || activeThreadRef === null) return null;
+    const restoring = restoringThreadKey === activeThreadKey;
+    return {
+      id: `thread-archived:${activeThreadKey ?? "unknown"}`,
+      variant: "info",
+      icon: <ArchiveRestoreIcon />,
+      title: "This conversation is archived",
+      description: "Restore it to carry on here.",
+      actions: (
+        <Button
+          size="xs"
+          variant="outline"
+          disabled={restoring}
+          onClick={() => {
+            setRestoringThreadKey(activeThreadKey);
+            void unarchiveThread(activeThreadRef).finally(() => setRestoringThreadKey(null));
+          }}
+        >
+          {restoring ? "Restoring..." : "Restore"}
+        </Button>
+      ),
+    };
+  }, [activeThreadArchived, activeThreadKey, activeThreadRef, restoringThreadKey, unarchiveThread]);
   // Session-scoped dismissals, one key per (thread, snapshot). A set rather
   // than a single slot so dismissing the banner on one thread does not
   // resurface it on another thread dismissed earlier.
@@ -5761,6 +5792,8 @@ export default function ChatView(props: ChatViewProps) {
       !conversationShown || wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
     const parkedThreadItems =
       !conversationShown || parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
+    const archivedThreadItems =
+      !conversationShown || archivedThreadBannerItem === null ? [] : [archivedThreadBannerItem];
     // The user asked for this one, so it leads the notice tier instead of trailing it.
     const usageLimitsItems = usageLimitsBanner === null ? [] : [usageLimitsBanner];
     const projectCloneItems = projectCloneBannerItem === null ? [] : [projectCloneBannerItem];
@@ -5781,6 +5814,7 @@ export default function ChatView(props: ChatViewProps) {
         ...resumeCompactionItems,
         ...wokeThreadItems,
         ...parkedThreadItems,
+        ...archivedThreadItems,
       ];
     }
     return [
@@ -5830,9 +5864,11 @@ export default function ChatView(props: ChatViewProps) {
         onDismiss: branchAdvice.dismiss,
       },
       ...parkedThreadItems,
+      ...archivedThreadItems,
     ];
   }, [
     activeBranchMismatchKey,
+    archivedThreadBannerItem,
     branchAdvice.dismiss,
     alsoWorkingBannerItem,
     crewBannerItems,

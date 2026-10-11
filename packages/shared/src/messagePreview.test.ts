@@ -33,6 +33,12 @@ describe("messagePreviewText", () => {
       "Deploys:\n\n| Service | State |\n|:--------|------:|\n| api | **up** |\n| web | down |",
       "Deploys: Service State api up web down",
     ],
+    // Engine final run, B3: a draft with a picture read "Draft: \uFFFC What is this?" in the menu.
+    [
+      "a draft's picture, file and terminal places, without their marks",
+      "\uFFFB What is \uFFFAthis?\uFFFC",
+      "What is this?",
+    ],
   ])("quotes %s as plain words", (_, markdown, expected) => {
     expect(messagePreviewText(markdown)).toBe(expected);
   });

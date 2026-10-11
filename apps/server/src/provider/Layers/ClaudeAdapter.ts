@@ -1154,6 +1154,10 @@ function classifyToolItemType(
   ) {
     return "command_execution";
   }
+  // A scheduled wake (CronCreate, CronDelete) creates no file.
+  if (normalized.startsWith("cron")) {
+    return "dynamic_tool_call";
+  }
   if (
     normalized.includes("edit") ||
     normalized.includes("write") ||

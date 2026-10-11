@@ -1310,6 +1310,115 @@ describe("owner-reported layout regressions", () => {
           );
       });
     });
+    describe("Decision: what the agent asks opens with the conversation's end in sight above it.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // Engine final run, C1 and C9 (light and dark): the question and the secret drawer opened
+        // over the person's message and the run's card, and only a scroll brought them out.
+        const asks: ReadonlyArray<{
+          readonly ask: string;
+          readonly shows: string;
+          readonly raise: (engine: EngineChatWire["engine"], run: string) => void;
+        }> = [
+          {
+            ask: "question",
+            shows: "Which environment should I inspect?",
+            raise: (engine, run) =>
+              engine.ask(
+                { kind: "question", questions: [TARGET_QUESTION], dismissible: false },
+                { runId: run },
+              ),
+          },
+          {
+            ask: "secret",
+            shows: "Goes to this project's vault for every app, never into this chat.",
+            raise: (engine, run) =>
+              engine.ask(
+                {
+                  kind: "vault",
+                  key: "STRIPE_SECRET_KEY",
+                  label: "Stripe secret key",
+                  scope: { kind: "shared" },
+                  sensitive: true,
+                  reason: "to take card payments",
+                },
+                { runId: run },
+              ),
+          },
+        ];
+        const MESSAGE = "Lay out the summary for me";
+        const LAST_WORDS = "Step 8: your choice of format.";
+        it.effect(
+          "an open question or secret panel never covers the person's last message or the run card",
+          () =>
+            Effect.gen(function* () {
+              for (const { ask, shows, raise } of asks) {
+                const s = yield* createScenario([installEngineArea]);
+                yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+                yield* s.given.project("Ada", { mate: true });
+                const chat = mateChat(s);
+                for (const round of [1, 2, 3])
+                  chat
+                    .fixture()
+                    .exchange(
+                      `How did deploy ${round} go?`,
+                      "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                        12,
+                      ),
+                    );
+                chat.fixture().exchange("And now?", "The existing conversation is still here");
+                yield* s.given.signedIn;
+                yield* chat.when.open();
+                yield* Effect.promise(() => ownerMenu(s.page));
+                const wire = chat.fixture().wire;
+                if (!(wire instanceof EngineChatWire))
+                  throw new Error("This witness runs on the engine's wire");
+                const engine = wire.engine;
+                const run = engine.personRun(MESSAGE);
+                engine.note(run, LAST_WORDS);
+                yield* chat.then.text(LAST_WORDS);
+                yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+                raise(engine, run);
+                yield* chat.then.text(shows);
+                // Nobody scrolls: what the person reads is what the ask opened on.
+                yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 900)));
+                const end = yield* Effect.promise(() => s.page.evaluate(readEnd));
+                const message = yield* Effect.promise(() =>
+                  s.page.evaluate((text) => {
+                    const bubble = [
+                      ...document.querySelectorAll('[data-message-role="user"]'),
+                    ].findLast((element) => element.textContent?.includes(text));
+                    return bubble?.getBoundingClientRect().bottom ?? null;
+                  }, MESSAGE),
+                );
+                yield* Effect.promise(async () => {
+                  if (process.env.MATE_LAYOUT_EVIDENCE)
+                    await s.page.screenshot({
+                      path: `${process.env.MATE_LAYOUT_EVIDENCE}/ask-open-${ask}.png`,
+                      clip: { x: 435, y: 300, width: 1786 - 435, height: 700 },
+                    });
+                });
+                const seen = quoted({ ask, message, ...end });
+                expect(message, `ASSERTION: the person's message is on the page: ${seen}`).not.toBe(
+                  null,
+                );
+                expect(
+                  message!,
+                  `ASSERTION: the person's message stands above the ${ask}: ${seen}`,
+                ).toBeLessThanOrEqual(end.composerTop);
+                expect(
+                  end.last.text,
+                  `ASSERTION: the conversation's last row is the run's card: ${seen}`,
+                ).toContain(LAST_WORDS);
+                expect(
+                  end.last.bottom,
+                  `ASSERTION: the run's card ends above the ${ask}: ${seen}`,
+                ).toBeLessThanOrEqual(end.composerTop);
+                yield* s.then.noExternalNetwork;
+              }
+            }),
+        );
+      });
+    });
     describe("Decision: what the composer's drawer says stands fully clear of the composer card.", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         /**

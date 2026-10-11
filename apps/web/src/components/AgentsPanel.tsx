@@ -591,7 +591,10 @@ function MateRoot({
   const counts = [
     model.liveCount > 0 ? `${model.liveCount} working` : null,
     model.idleCount > 0 ? `${model.idleCount} idle` : null,
-    model.settledCount > 0 ? `${model.settledCount} done` : null,
+    model.settledCount > model.stoppedCount
+      ? `${model.settledCount - model.stoppedCount} done`
+      : null,
+    model.stoppedCount > 0 ? `${model.stoppedCount} stopped` : null,
   ].filter((part): part is string => part !== null);
   return (
     <div className="helper-map-root">

@@ -570,21 +570,40 @@ export function makeMateEngineConversations(options: {
   /** A thought held only by its preview: the rest is read on demand, as the import kept it. */
   const cutThought = (item: Item) =>
     item.kind === "thought" && !item.streaming && item.preview.length < item.length;
+  /** A message the wire cut to its budget: its words are read whole before it is drawn. */
+  const cutMessage = (item: Item) =>
+    (item.kind === "note" || item.kind === "person") && item.cut?.part === "text";
 
   /**
    * Items as a card draws them: a call's result the wire cut (a document its card decodes whole)
    * read back whole first; one whose whole cannot be read says it was too long, as V1's does. A
    * thought longer than its preview is read whole too, as V1 holds its reasoning; one that cannot
-   * be keeps its preview.
+   * be keeps its preview. A message the wire cut is read whole too; one whose whole cannot be
+   * read keeps what came.
    */
   const wholeResults = (
     key: EngineConversationKey,
     items: ReadonlyArray<Item>,
   ): Effect.Effect<ReadonlyArray<Item>> =>
-    items.some((item) => (item.kind === "call" && item.cut?.part === "result") || cutThought(item))
+    items.some(
+      (item) =>
+        (item.kind === "call" && item.cut?.part === "result") ||
+        cutThought(item) ||
+        cutMessage(item),
+    )
       ? Effect.forEach(
           items,
           (item): Effect.Effect<Item> => {
+            if (cutMessage(item) && (item.kind === "note" || item.kind === "person"))
+              return wire.readDetail(key, item.id, "text").pipe(
+                Effect.map((detail): Item => {
+                  if (detail._tag !== "Detail" || detail.from !== 0 || detail.to !== detail.total)
+                    return item;
+                  const { cut: _cut, ...uncut } = item;
+                  return { ...uncut, text: detail.text };
+                }),
+                Effect.orElseSucceed(() => item),
+              );
             if (cutThought(item) && item.kind === "thought")
               return wire.readDetail(key, item.id, "detail").pipe(
                 Effect.map((detail): Item =>

@@ -819,6 +819,8 @@ export interface HeldTurn {
   readonly activeTurnId: string | null;
   /** The access the engine's record holds once a person set it: what the next run works with. */
   readonly runtimeMode?: RuntimeMode | null;
+  /** Archived, as its header says: the menu's row never says so. */
+  readonly archived?: boolean;
 }
 
 /** The engine conversation, held or not, as the thread the view draws. */
@@ -1331,6 +1333,10 @@ export function overlayEngineRow(
         }),
     // Held, its records name the turn; until they do, the row's run — never the V1 thread's.
     latestTurn: held?.latestTurn ?? latestTurn,
+    // Held, its header says whether it is archived: the V1 thread never was, and the row never says.
+    ...(held?.archived === undefined
+      ? {}
+      : { archivedAt: held.archived ? (thread.archivedAt ?? thread.updatedAt) : null }),
     ...rowWords(row),
     // Its turn over, its helpers work on: the row says so, never the V1 thread's liveness.
     backgroundLiveness: row.state.kind === "working" && row.state.waitsOnHelpers ? "working" : null,
@@ -1409,11 +1415,10 @@ export const engineHeldTurns: Projection<string, Readonly<Record<string, HeldTur
       });
       const conversation = read.fact("mateEngineConversation", conversationKey);
       if (conversation.kind !== "known") continue;
-      turns[row.value.conversationId] = cardsOf(
-        read,
-        conversationKey,
-        conversation.value.header,
-      ).turn;
+      turns[row.value.conversationId] = {
+        ...cardsOf(read, conversationKey, conversation.value.header).turn,
+        archived: conversation.value.header.archived === true,
+      };
     }
     return turns;
   },

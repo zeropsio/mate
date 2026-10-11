@@ -1578,6 +1578,53 @@ describe("an engine conversation's row in the menu", () => {
     expect(overlaid?.runtimeMode).toBe("approval-required");
     expect(overlaid?.session?.runtimeMode).toBe("approval-required");
   });
+
+  // Engine final run, G10: the archived conversation's menu shell said nothing of it, so its view
+  // read live, with a composer that sent nothing and no Restore.
+  it.each([
+    { archived: true, reads: "archived" },
+    { archived: false, reads: "live" },
+  ])(
+    "gives a held conversation's thread shell its archive as its record says: $reads",
+    ({ archived }) => {
+      const state = apply(held({ header: { archived } }), [
+        {
+          kind: "delivery",
+          via: "mate-direct",
+          scopes: [{ scope: engineRowsScope(ENV), generation: 0 }],
+          reset: true,
+          rows: [
+            {
+              family: "mateEngineRow",
+              id: engineFactId(ENV, "thread-ada"),
+              value: { ...engineRow(ENV, "thread-ada"), environmentId: ENV },
+              revision: revision(100),
+            },
+          ],
+          removals: [],
+        },
+      ]);
+      const shellState = {
+        snapshot: Option.some({
+          snapshotSequence: 1,
+          projects: [],
+          threads: [shellThread],
+          updatedAt: "2026-10-01T00:00:00.000Z",
+        }),
+        status: "live",
+        error: Option.none(),
+      } as unknown as Parameters<typeof overlayEngineShell>[0];
+      const read = readsOfState(state);
+      const overlaid = Option.getOrNull(
+        overlayEngineShell(
+          shellState,
+          engineRows.derive(read, ENV),
+          engineHeldTurns.derive(read, ENV),
+        ).snapshot,
+      )?.threads[0];
+      expect(overlaid?.archivedAt != null).toBe(archived);
+    },
+  );
 });
 
 describe("a crewmate's engine conversation", () => {

@@ -634,6 +634,42 @@ describe("a client reading more of an engine conversation", () => {
       }),
     ),
   );
+  // Engine final run, A6: a 23,879-character answer streamed whole, and its record came cut to
+  // 16,384 characters with nothing saying so.
+  it.effect("a message longer than 16,384 characters can be read to its end", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const text = Array.from({ length: 5_000 }, (_, line) => `${line + 1}`).join(" ");
+        yield* send(wire, "Count to 5000");
+        yield* w.settle;
+        yield* w.agent((agent, thread) => agent.say(thread, text));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const [snapshot] = yield* Effect.scoped(watch(w, wire));
+        if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+        const note = snapshot.items.find((item) => item.kind === "note");
+        if (note?.kind !== "note") throw new Error("no note");
+        assert.isAbove(text.length, 16_384);
+        assert.deepStrictEqual(note.cut, { part: "text", total: text.length });
+        assert.isTrue(text.startsWith(note.text));
+        const whole = yield* wire.readDetail({
+          protocol,
+          conversationId: mate,
+          itemId: note.id,
+          part: "text",
+        });
+        assert.deepStrictEqual(whole, {
+          _tag: "Detail",
+          text,
+          from: 0,
+          to: text.length,
+          total: text.length,
+        });
+        yield* w.shutdown;
+      }),
+    ),
+  );
 });
 
 describe("a client reading an engine call", () => {
