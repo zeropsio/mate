@@ -451,7 +451,8 @@ describe("SidebarZeropsTree", () => {
     expect(unnamed).not.toContain("sidebar-mate-sign-in");
   });
 
-  // The owner, 2026-10-11: "continue" over its answer read like a label, not the person's words.
+  // The owner, 2026-10-11: "continue" with nobody's name on it read like a label, not the
+  // person's words. A row says what was asked only where its Mate has not answered.
   it.each([
     { whose: "the viewer's own", owner: { isViewer: true }, by: "You" },
     { whose: "a colleague's", owner: { isViewer: false }, by: "Jan" },
@@ -464,7 +465,7 @@ describe("SidebarZeropsTree", () => {
       face: "idle",
       subject: "Fix the login redirect",
       at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-      snippet: "The redirect keeps the page you came from.",
+      snippet: undefined,
       unread: false,
       pausedUntil: undefined,
       threadKey: "env:thread",

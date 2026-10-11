@@ -67,6 +67,7 @@ import {
 } from "lucide-react";
 import {
   memo,
+  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -257,6 +258,7 @@ import { releaseFailureOf } from "./zerops/SidebarProductionChip.logic";
 import { useMatesActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
+import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
@@ -1774,6 +1776,20 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
 /** How long the menu's rows wait for HQ to say what waits on the viewer before they stand without it. */
 const MENU_WAITS_PATIENCE_MS = 800;
 
+/** How long a press stands for the Mate it opens before its route must have arrived. */
+const MENU_PRESS_BOUND_MS = 6_000;
+
+/** Runs `run` once the browser has painted the frame now being drawn; at once where none paints. */
+function afterNextPaint(run: () => void): void {
+  if (typeof requestAnimationFrame !== "function") {
+    run();
+    return;
+  }
+  requestAnimationFrame(() => {
+    window.setTimeout(run, 0);
+  });
+}
+
 /** How the menu's Mate tree names the listing it is drawn from. */
 const ZEROPS_SIDEBAR_SURFACE = {
   subject: "your projects",
@@ -2429,6 +2445,28 @@ export default function Sidebar() {
   ]);
   const activeZeropsProjectId = activeZeropsProject.id;
   const activeZeropsProjectResolving = activeZeropsProject.resolving;
+  // The Mate a press in the menu opens, lit from the press while its route is on its way
+  // (`menuLitMate`): the band slides at the click, not once the conversation has loaded.
+  const [zeropsPress, setZeropsPress] = useState<MenuPress | null>(null);
+  const zeropsPressHeld =
+    zeropsPress !== null &&
+    menuPressHeld(zeropsPress, { active: activeZeropsProjectId, overviewOpen: zeropsOverviewOpen });
+  useEffect(() => {
+    if (zeropsPress === null) return;
+    if (!zeropsPressHeld) {
+      setZeropsPress(null);
+      return;
+    }
+    // A press whose route never comes — the Mate gone meanwhile — stops standing for it.
+    const timer = window.setTimeout(() => {
+      setZeropsPress(null);
+    }, MENU_PRESS_BOUND_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [zeropsPress, zeropsPressHeld]);
+  const litZeropsProjectId =
+    zeropsPressHeld && zeropsPress !== null ? zeropsPress.projectId : activeZeropsProjectId;
   // Whose Mates the menu lists (the account menu's Mine / Everyone): the
   // tree and the waiting faces read the same answer.
   const [zeropsMateScope, setZeropsMateScope] = useMateScope();
@@ -2471,9 +2509,21 @@ export default function Sidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
-      openMate(candidate);
+      startTransition(() => {
+        setZeropsPress({
+          projectId: candidate.project.id,
+          from: activeZeropsProjectId,
+          fromOverview: zeropsOverviewOpen,
+        });
+      });
+      // The route changes once the band's slide — set by the press itself (`slideSelectedBandTo`)
+      // — has painted: the change redraws every page reading the route at once, 40–80 ms in which
+      // no frame paints.
+      afterNextPaint(() => {
+        openMate(candidate);
+      });
     },
-    [isMobile, openMate, setOpenMobile],
+    [activeZeropsProjectId, isMobile, openMate, setOpenMobile, zeropsOverviewOpen],
   );
   const onZeropsOpenCrew = useCallback(
     (candidate: (typeof zeropsCandidates)[number], setUp: boolean) => {
@@ -4332,8 +4382,8 @@ export default function Sidebar() {
             <SidebarZeropsTree
               hold={zeropsListHeld}
               onShowEveryone={zeropsMateScope === "mine" ? showEveryoneMates : undefined}
-              activeProjectId={activeZeropsProjectId}
-              activeProjectResolving={activeZeropsProjectResolving}
+              activeProjectId={litZeropsProjectId}
+              activeProjectResolving={activeZeropsProjectResolving && !zeropsPressHeld}
               births={zeropsPlacedBirths}
               candidates={zeropsCandidates}
               complete={zeropsMenuComplete}

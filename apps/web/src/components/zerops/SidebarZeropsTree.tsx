@@ -187,7 +187,7 @@ import {
 } from "~/zerops/useZeropsMateOwners";
 import { SidebarMateAge } from "./SidebarMateAge";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
-import { SidebarSelectedBand } from "./SidebarSelectedBand";
+import { SidebarSelectedBand, slideSelectedBandTo } from "./SidebarSelectedBand";
 import { KeyChip, MateFace } from "./primitives";
 import { groupNameUnread } from "./ZeropsGroupTree.logic";
 import { STOP_ARM_MS, stopArmStep, type StopArm, type StopArmEvent } from "./SidebarStopArm.logic";
@@ -247,7 +247,6 @@ import {
   mateRowPropsEqual,
   mateRowReading,
   mateRowHeldLines,
-  mateRowAskOver,
   mateAsker,
   mateRowSecond,
   pendingBornLine,
@@ -2774,8 +2773,7 @@ function MateRowView<T extends RosterCandidate>({
     // Its open change stands in its own strip under the row, so the row's lines stay the Mate's.
     change: undefined,
   });
-  const askOver = mateRowAskOver(askLine, second);
-  const heldLines = mateRowHeldLines({ askLine, second, read: conversationsRead });
+  const heldLines = mateRowHeldLines({ second, read: conversationsRead });
   // Its change's *Review*, in the time's place: white where it waits on the viewer, quiet where
   // it is a colleague's to review.
   const review =
@@ -2943,6 +2941,8 @@ function MateRowView<T extends RosterCandidate>({
             return;
           }
           if (deleting || outsideHq) return;
+          // The band leaves for this row in the press's own frame (`slideSelectedBandTo`).
+          slideSelectedBandTo(candidate.project.id);
           onSelect(candidate);
         }}
         onKeyDown={(event) => {
@@ -3071,13 +3071,9 @@ function MateRowView<T extends RosterCandidate>({
               ) : null}
             </span>
           </span>
-          {/* What was asked, over the last answer (the owner, 2026-10-11): the row says both,
-              as the conversation's own top says the question. A row whose line is the ask
-              itself — nothing answered yet, a draft — says it once, below. */}
-          {askOver === undefined ? null : <MateAskLine line={askOver} rises={askChanged} />}
-          {Array.from({ length: heldLines }, (_, line) => (
-            <span aria-hidden="true" className="menu-line2 h-5" key={line} />
-          ))}
+          {/* One line under the name: the Mate's answer alone (the owner, 2026-10-12: "just go
+              with answer"), else what was asked of it while it has no words yet. */}
+          {heldLines === 0 ? null : <span aria-hidden="true" className="menu-line2 h-5" />}
           <MateSecondLine
             askChanged={askChanged}
             askLine={askLine}
@@ -3089,10 +3085,10 @@ function MateRowView<T extends RosterCandidate>({
           />
         </span>
       </button>
-      {/* A change waiting for review stands under its Mate as a strip of its own, aligned with the
-          words: its title and Review — solid where it waits on the viewer, quiet where it is a
-          colleague's (the owner, 2026-10-11: one word in the time's place was "incredibly poor
-          indication of a new merge request"). */}
+      {/* A change waiting for review stands under its Mate as a chip of its own on the words'
+          column, the same for every change: its title and Review — solid where it waits on the
+          viewer, quiet where it is a colleague's (the owner, 2026-10-12: it "absolutely blends
+          with the content"; one Mate's "looks completely different"). */}
       {review === undefined || change === undefined ? null : (
         <div
           className="menu-change"
@@ -3288,14 +3284,15 @@ function MateSecondLine({
         </span>
       );
     case "ask":
+      // No words of its own yet: what was asked of it — the dots after it while its words are on
+      // their way, until a step is relayed — its draft, or that nothing was.
       if (askLine === undefined || askLine.kind === "sign-in") return null;
-      // Asked: the question stands over this place (`mateRowAskOver`), which holds the dots while
-      // the answer is on its way, and its line's height while nothing is — the row never jumps.
-      if (askLine.kind !== "nothing-asked")
-        return second.pending ? (
-          <MateReplyPending />
-        ) : (
-          <span aria-hidden="true" className="menu-line2 h-5" />
+      if (second.pending && askLine.kind === "ask")
+        return (
+          <span className="flex min-w-0 items-center gap-2">
+            <MateAskLine line={askLine} rises={askChanged} />
+            <MateReplyPending />
+          </span>
         );
       return <MateAskLine line={askLine} rises={askChanged} />;
     case "none":
