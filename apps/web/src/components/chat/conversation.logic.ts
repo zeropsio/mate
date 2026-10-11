@@ -2805,10 +2805,13 @@ export function deriveOutcome(input: {
   // What the turn set out to do and did not: a push, a service it could not
   // create, remove or change. A call that failed on the way (the "error"
   // kind — a workflow asked for a service that is not there) is a stumble
-  // the log keeps, never an outcome: the run went on past it.
+  // the log keeps, never an outcome: the run went on past it. So is a value
+  // zcp refused to ask the person for (a name it keeps for itself): nothing
+  // was asked, and nothing waits on the person.
   const notDone = unrecoveredFailures(settled)
     .filter(
       (operation) =>
+        operation.envChange?.action !== "request" &&
         (operation.kind !== "deploy" || isGitPushOnly(operation)) &&
         operation.kind !== "verify" &&
         operation.kind !== "devServer" &&
