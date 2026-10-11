@@ -57,11 +57,10 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   actions?: ReactNode;
 }) {
   return (
-    // The logo row: the top bar's height, which the menu's header takes as `--menu-top-height`
-    // (index.css). On the web its 40 px mark, on the Mates' faces' column,
-    // stands 17 px from the top as it stands 17 px from the left (the owner, 2026-09-29: "visually
-    // logo has smaller padding on top than on the left"). Beside a desktop's traffic lights it is
-    // the title bar's height, centred on them.
+    // The row is the top bar's (`--workspace-topbar-height`), so a page's header beside it shares
+    // its centre and its bottom edge; on the web its 40 px mark stands centred in it on the Mates'
+    // faces' column. Beside a desktop's traffic lights the bar is the title bar's height, centred
+    // on them.
     <SidebarHeader
       className={cn(
         "@container/sidebar-header relative h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center px-3 py-0 md:px-0",
@@ -174,7 +173,7 @@ function SidebarBrand() {
     >
       {/* The live mark alone, 40 px wide on the faces' own column, so its centre is theirs (the
           owner, 2026-10-11: "alignment of Mate logo against mates below is shit"), centred in the
-          81 px row 17 px from its top. Awake as it mounts: the boot frame painted the same mark
+          row. Awake as it mounts: the boot frame painted the same mark
           in the same box, and this one takes over from it. */}
       <MateMark awake playful className="h-12 w-10" />
     </Link>

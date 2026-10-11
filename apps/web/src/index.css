@@ -121,17 +121,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --desktop-window-right-resize-inset: 0px;
   /* The top bar: every page's header and the menu's logo row beside it, one
      height, so the logo, the header's content and their bottom edges stand
-     on one line. Where the menu stands beside the page (md up) it is 65 px:
-     the menu's 33 px mark, centred in it, stands 16 px from the top as it
-     stands 16 px from the left (the owner, 2026-09-29). On a phone the menu
-     is a sheet over the page, and the bar keeps 52. A desktop window's bar
-     is its title bar's (`.electron`, `.wco`). */
+     on one line. Where the menu stands beside the page (md up) it is 65 px,
+     the menu's 40 px mark centred in it on the Mates' faces' column (the
+     owner, 2026-10-11: "cant you really see the logo is off?"). On a phone
+     the menu is a sheet over the page, and the bar keeps 52. A desktop
+     window's bar is its title bar's (`.electron`, `.wco`). */
   --workspace-topbar-height: 52px;
-  /* The menu's logo row: the top bar's, except beside the page on the web (md up), where its
-     40 px mark — as wide as the Mates' faces under it, on their column — stands 17 px from the top
-     as it stands 17 px from the left: 17 + 47 + 17 (the owner, 2026-09-29: "visually logo has
-     smaller padding on top than on the left"; 2026-10-11: "cant you really see the logo is off?"). */
-  --menu-top-height: var(--workspace-topbar-height);
   --workspace-controls-top: 0px;
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
   --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
@@ -150,7 +145,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
   @variant md {
     --workspace-topbar-height: 4.0625rem;
-    --menu-top-height: 5.0625rem;
   }
 
   @variant dark {
@@ -169,17 +163,10 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
    the overlay's own where Windows draws one (`.wco`). */
 .electron {
   --workspace-topbar-height: 52px;
-  --menu-top-height: 52px;
-}
-
-/* The menu's logo row stands at its own height: the top bar's, read there as the menu's. */
-[data-app-sidebar] [data-sidebar="header"] {
-  --workspace-topbar-height: var(--menu-top-height);
 }
 
 .wco {
   --workspace-topbar-height: max(40px, env(titlebar-area-height, 52px));
-  --menu-top-height: var(--workspace-topbar-height);
   --workspace-controls-top: env(titlebar-area-y, 0px);
   --workspace-controls-left: calc(env(titlebar-area-x, 0px) + 0.75rem);
   --workspace-controls-right: calc(

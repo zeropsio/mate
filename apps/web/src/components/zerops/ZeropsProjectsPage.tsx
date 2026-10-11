@@ -475,7 +475,7 @@ export function ZeropsProjectsHeader() {
   return (
     // Its row stands on the menu's logo row, centre to centre, not a bar's height below it.
     <div
-      className="mt-[2.5px] flex items-center justify-between gap-3"
+      className="-mt-1.5 flex items-center justify-between gap-3"
       data-zerops-project-scope="true"
     >
       <h1 className="text-xl font-medium text-foreground">Overview</h1>
