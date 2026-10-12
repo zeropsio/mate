@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { CONTENT_CONTRACT } from "../contentContract.ts";
+import { MAC_HOST_INSTRUCTIONS } from "../zerops/mac/macInstructions.ts";
 import { buildRuntimeInstructions } from "./RuntimeInstructions.ts";
 
 describe("buildRuntimeInstructions", () => {
@@ -9,7 +10,16 @@ describe("buildRuntimeInstructions", () => {
       expect(buildRuntimeInstructions({ harness })).toMatch(
         /^<runtime_info>[^\n]*<\/runtime_info>\n<writing>/,
       );
-      expect(buildRuntimeInstructions({ harness }).endsWith(CONTENT_CONTRACT)).toBe(true);
+      expect(buildRuntimeInstructions({ harness })).toContain(
+        `</runtime_info>\n${CONTENT_CONTRACT}`,
+      );
+    },
+  );
+
+  it.each(["Claude Code", "Codex", "Cursor", "OpenCode", "Grok", "Antigravity"])(
+    "tells the %s harness how to work on a Mac the user pairs",
+    (harness) => {
+      expect(buildRuntimeInstructions({ harness }).endsWith(MAC_HOST_INSTRUCTIONS)).toBe(true);
     },
   );
 
