@@ -2268,7 +2268,8 @@ export function livePauseStageId(
   serverPause: { readonly resetsAt: string } | null,
 ): string | null {
   if (limit.kind !== "limited" || serverPause === null) return null;
-  const last = rows.at(-1);
+  // A notice at the end (S6) is the person's to read, not something that followed the pause.
+  const last = rows.findLast((row) => row.kind !== "notice");
   return last?.kind === "pause" && last.resumedAt === null ? last.id : null;
 }
 

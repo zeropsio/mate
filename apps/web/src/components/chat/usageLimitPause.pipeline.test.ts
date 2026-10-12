@@ -53,7 +53,10 @@ function milo(
     liftedAt = null,
     driver,
     window,
+    notices,
   }: {
+    /** What happened that still holds, at the conversation's end (`ConversationNotice`). */
+    notices?: ReadonlyArray<string>;
     reload?: boolean;
     /** The run worked before the limit; without, the limit refused it before it did anything. */
     work?: boolean;
@@ -192,6 +195,7 @@ function milo(
     activeTurnStartedAt: null,
     turnDiffSummaries: [],
     supportsConversationRollback: false,
+    ...(notices === undefined ? {} : { notices }),
     ...(reload ? { cardPaging: engineCardPagingOfRecords(key, records) } : {}),
   });
   return { rows, limit };
@@ -399,4 +403,13 @@ describe("a conversation paused at the usage limit", () => {
       );
     },
   );
+
+  // A notice row under it (S6) is the person's to read, not something the run did after the pause.
+  it("the server's pause stays the stage with the /usage-limits answer under it", () => {
+    const { rows, limit } = milo("paused", { work: false, notices: ["usage-limits:1"] });
+    expect(rows.at(-1)).toMatchObject({ kind: "notice" });
+    expect(
+      livePauseStageId(rows, limit, { resetsAt: "2099-10-11T11:00:00.000Z", autoResume: false }),
+    ).toBe(rows[pauseIndex(rows)]!.id);
+  });
 });
