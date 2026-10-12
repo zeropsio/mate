@@ -297,12 +297,16 @@ export function MateMenu({
         ) : (
           <>
             <MenuGroup>
-              <MenuGroupLabel className="truncate">{project.name}</MenuGroupLabel>
+              <MenuGroupLabel>
+                <span className="block truncate">{project.name}</span>
+              </MenuGroupLabel>
               <ProjectMenuItems entries={project.entries} />
             </MenuGroup>
             <MenuSeparator />
             <MenuGroup>
-              <MenuGroupLabel className="truncate">{name}</MenuGroupLabel>
+              <MenuGroupLabel>
+                <span className="block truncate">{name}</span>
+              </MenuGroupLabel>
               <MateMenuItems {...items} name={name} />
             </MenuGroup>
           </>
