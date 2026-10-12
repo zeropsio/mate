@@ -31,6 +31,20 @@ const decodeRun = Schema.decodeUnknownEffect(RunRecord);
 const decodeItem = Schema.decodeUnknownEffect(Item);
 const decodeRequest = Schema.decodeUnknownEffect(Request);
 
+/** Ends that cut a run before it finished, to go on in its continuation: it has not answered. */
+const CUT_ENDS: ReadonlySet<string> = new Set(["usage-limit", "cut-by-restart"]);
+
+/** A run's end's kind from its stored record, read loosely: none for an unreadable one. */
+const endKindOf = (endJson: string | null): string => {
+  if (endJson === null) return "";
+  try {
+    const kind = (JSON.parse(endJson) as { readonly kind?: unknown } | null)?.kind;
+    return typeof kind === "string" ? kind : "";
+  } catch {
+    return "";
+  }
+};
+
 interface RunRow {
   readonly run_id: string;
   readonly conversation_id: string;
@@ -209,9 +223,12 @@ export const makeRecords = Effect.gen(function* () {
           AND json_extract(by_json, '$.kind') = 'mate'
         ORDER BY opened_seq
       `;
-      const summaryOf = (id: string) => {
+      const summaryOf = (id: string, endJson: string | null) => {
         const count = counts.find((row) => row.run_id === id);
-        const answer = answers.findLast((row) => row.run_id === id);
+        // A run a usage limit or a restart cut has not answered: its last words are cut words, and
+        // the ask's answer is the one its continuation gives (the owner's B5, 2026-10-12).
+        const cut = CUT_ENDS.has(endKindOf(endJson));
+        const answer = cut ? undefined : answers.findLast((row) => row.run_id === id);
         return {
           items: count?.items ?? 0,
           calls: Object.fromEntries(
@@ -253,7 +270,7 @@ export const makeRecords = Effect.gen(function* () {
           startedAt: row.started_at,
           endedAt: row.ended_at,
           unresponsiveSince: row.unresponsive_since,
-          summary: summaryOf(row.run_id),
+          summary: summaryOf(row.run_id, row.end_json),
         }),
       ).pipe(Effect.map((runs) => runs.map((run) => ({ ...run, turnState: turnStateOf(run) }))));
     });

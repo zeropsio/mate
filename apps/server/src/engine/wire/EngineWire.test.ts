@@ -102,6 +102,93 @@ const send = (
   commandId = `send-${text}`,
 ) => wire.send({ protocol, conversationId: mate, commandId: CommandId.make(commandId), text }, ana);
 
+// The owner's pick on the "Answer Then More Work" board (B5, 2026-10-12): a run a usage limit or a
+// restart cut has not answered; its last words are cut words, and the ask's answer is the one its
+// continuation gives. A run that truly answered and is woken later keeps its answer.
+describe("a run's answer, as its summary says it", () => {
+  /** Each run's end and the words of its answer, as a client's snapshot reads them. */
+  const answers = (w: EngineWorld) =>
+    Effect.gen(function* () {
+      const wire = yield* wireOf(w);
+      const frames = yield* watch(w, wire);
+      const snapshot = frames[0];
+      if (snapshot?.type !== "snapshot") throw new Error("no snapshot");
+      const textOf = (id: string | null) => {
+        const item = snapshot.items.find((each) => each.id === id);
+        return item !== undefined && "text" in item ? item.text : null;
+      };
+      return snapshot.runs.map((run) => [
+        run.id,
+        run.end?.kind ?? null,
+        textOf(run.summary.answerItemId),
+      ]);
+    });
+
+  it.effect(
+    "a run a usage limit cut has not answered; its continuation's answer is the ask's answer",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          yield* w.tell({ _tag: "Send", text: "Tell me a story" });
+          yield* w.agent((agent, thread) => agent.say(thread, "Wren kept the lamp lit, calling"));
+          const resetsAt = (yield* DateTime.now).pipe(DateTime.add({ hours: 1 }));
+          yield* w.agent((agent, thread) => agent.limit(thread, DateTime.formatIso(resetsAt)));
+          yield* w.advance(60 * 60_000);
+          yield* w.agent((agent, thread) => agent.say(thread, "…and the keeper slept at last."));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          assert.deepStrictEqual(yield* answers(w), [
+            [runId(mate, 1), "usage-limit", null],
+            [runId(mate, 2), "completed", "…and the keeper slept at last."],
+          ]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "a run a restart cut has not answered; its continuation's answer is the ask's answer",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          yield* w.tell({ _tag: "Send", text: "Tell me a story" });
+          yield* w.agent((agent, thread) => agent.say(thread, "Wren kept the lamp lit, calling"));
+          yield* w.crash;
+          yield* w.boot;
+          yield* w.agent((agent, thread) => agent.say(thread, "…and the keeper slept at last."));
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          assert.deepStrictEqual(yield* answers(w), [
+            [runId(mate, 1), "cut-by-restart", null],
+            [runId(mate, 2), "completed", "…and the keeper slept at last."],
+          ]);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("a run that answered and was woken later keeps its answer", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({ _tag: "Send", text: "Watch the build" });
+        const job = yield* w.agent((agent, thread) => agent.startWork(thread));
+        yield* w.agent((agent, thread) => agent.say(thread, "Watching it."));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.agent((agent, thread) => agent.endWork(thread, job));
+        yield* w.agent((agent, thread) => agent.selfTurn(thread));
+        yield* w.agent((agent, thread) => agent.say(thread, "The build is green."));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        assert.deepStrictEqual(yield* answers(w), [
+          [runId(mate, 1), "completed", "Watching it."],
+          [runId(mate, 2), "completed", "The build is green."],
+        ]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+});
+
 describe("a client subscribed to an engine conversation", () => {
   it.effect(
     "gets the window snapshot, then synchronized, then each commit's changes in order",
