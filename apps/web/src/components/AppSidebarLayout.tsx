@@ -47,6 +47,7 @@ import {
 import { resolveSidebarOpenerPlacement } from "./ui/sidebarState";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { SidebarRevealBridge } from "./zerops/SidebarRevealBridge";
+import { SidebarAccountMenuProvider } from "./zerops/SidebarZeropsAccount";
 import { useHqGate } from "../zerops/hqGate";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "var(--desktop-window-controls-inset, 90px)";
@@ -310,40 +311,42 @@ export function AppSidebarLayout({
       style={sidebarProviderStyle}
     >
       <ProjectProjectionRetention />
-      <Sidebar
-        side="left"
-        collapsible={rail ? "icon" : "offcanvas"}
-        layered={rail}
-        data-app-sidebar=""
-        role="navigation"
-        aria-label={isOnSettings ? "Settings" : "Mates"}
-        className={rail ? undefined : "border-r border-sidebar-border"}
-        resizable={{
-          maxWidth: sidebarMaximumWidth,
-          minWidth: THREAD_SIDEBAR_MIN_WIDTH,
-          shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
-            nextWidth <= currentWidth ||
-            wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-          storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-          onResize: setSidebarWidth,
-        }}
-      >
-        {isOnSettings ? (
-          <>
-            <SidebarChromeHeader isElectron={isElectron} />
-            <SettingsSidebarNav pathname={pathname} />
-          </>
-        ) : gated ? (
-          <>
-            <SidebarChromeHeader isElectron={isElectron} />
-            <div className="min-h-0 flex-1" />
-            <SidebarChromeFooter />
-          </>
-        ) : (
-          <ThreadSidebar />
-        )}
-        <SidebarRail onDoubleClick={resetSidebarWidth} />
-      </Sidebar>
+      <SidebarAccountMenuProvider>
+        <Sidebar
+          side="left"
+          collapsible={rail ? "icon" : "offcanvas"}
+          layered={rail}
+          data-app-sidebar=""
+          role="navigation"
+          aria-label={isOnSettings ? "Settings" : "Mates"}
+          className={rail ? undefined : "border-r border-sidebar-border"}
+          resizable={{
+            maxWidth: sidebarMaximumWidth,
+            minWidth: THREAD_SIDEBAR_MIN_WIDTH,
+            shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+              nextWidth <= currentWidth ||
+              wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+            storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+            onResize: setSidebarWidth,
+          }}
+        >
+          {isOnSettings ? (
+            <>
+              <SidebarChromeHeader isElectron={isElectron} />
+              <SettingsSidebarNav pathname={pathname} />
+            </>
+          ) : gated ? (
+            <>
+              <SidebarChromeHeader isElectron={isElectron} />
+              <div className="min-h-0 flex-1" />
+              <SidebarChromeFooter />
+            </>
+          ) : (
+            <ThreadSidebar />
+          )}
+          <SidebarRail onDoubleClick={resetSidebarWidth} />
+        </Sidebar>
+      </SidebarAccountMenuProvider>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="relative flex min-h-0 flex-1">{children}</div>
         {status}

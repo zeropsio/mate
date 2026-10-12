@@ -14,7 +14,7 @@
 
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { EllipsisIcon, LogOutIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -53,6 +53,18 @@ import {
   type SidebarAccountDestination,
 } from "./SidebarZeropsAccount.logic";
 
+type AccountMenuControl = "rail" | "menu";
+const AccountMenuContext = createContext<{
+  readonly open: AccountMenuControl | null;
+  readonly setOpen: (control: AccountMenuControl | null) => void;
+} | null>(null);
+
+/** The HQ gate replaces the sidebar tree, but must keep the account menu the person opened. */
+export function SidebarAccountMenuProvider({ children }: { readonly children: ReactNode }) {
+  const [open, setOpen] = useState<AccountMenuControl | null>(null);
+  return <AccountMenuContext value={{ open, setOpen }}>{children}</AccountMenuContext>;
+}
+
 export interface SidebarZeropsAccountProps {
   readonly account: ZeropsAccountDisplay;
   readonly organizations: ReadonlyArray<ZeropsOrganization>;
@@ -83,6 +95,15 @@ export function SidebarZeropsAccount({
   signOutError = null,
   collapsed = false,
 }: SidebarZeropsAccountProps) {
+  const accountMenu = useContext(AccountMenuContext);
+  const control = collapsed ? "rail" : "menu";
+  const menuState =
+    accountMenu === null
+      ? {}
+      : {
+          open: accountMenu.open === control,
+          onOpenChange: (open: boolean) => accountMenu.setOpen(open ? control : null),
+        };
   const lines = sidebarAccountLines({ name: account.name, organization: activeOrganization });
   const role = sidebarAccountRoleParts(activeOrganization);
   const menu = (
@@ -105,7 +126,7 @@ export function SidebarZeropsAccount({
   // The rail: the picture alone opens the menu.
   if (collapsed) {
     return (
-      <Menu>
+      <Menu {...menuState}>
         <MenuTrigger
           render={
             <button
@@ -126,7 +147,7 @@ export function SidebarZeropsAccount({
   // The viewer's photo, name and role are the one control, its ··· the sign that it opens: how the
   // list reads, the organization, the places, and the way out.
   return (
-    <Menu>
+    <Menu {...menuState}>
       <MenuTrigger
         render={
           <button
