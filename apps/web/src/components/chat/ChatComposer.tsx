@@ -162,13 +162,13 @@ import {
 } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
+import { ComposerAskFace, useComposerAskName } from "./ComposerAsk";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import {
   ComposerVaultAskContainer,
   useOpenVaultAskId,
 } from "../zerops/vault/ComposerVaultAskContainer";
-import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import {
   ComposerAccessControl,
   ComposerInteractionModeToggle,
@@ -300,7 +300,6 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import { CircleAlertIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
-import { proposedPlanTitle } from "../../proposedPlan";
 import { hasProviderSetup } from "./ProviderStatusBanner";
 import {
   applyProviderInstanceSettings,
@@ -1613,15 +1612,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const isChoiceOnlyPendingQuestion =
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
-  // A value the Mate asked for waits in the same drawer, after any approval or question.
+  // A value the Mate asked for waits after any approval or question: one ask at a time.
   const openVaultAskId = useOpenVaultAskId(routeKind === "server" ? routeThreadRef : null);
-  const vaultAskInDrawer =
+  const vaultAskWaits =
     openVaultAskId !== null && !isComposerApprovalState && pendingUserInputs.length === 0;
-  const showComposerTopDrawer =
-    isComposerApprovalState ||
-    pendingUserInputs.length > 0 ||
-    vaultAskInDrawer ||
-    (!isComposerCollapsedMobile && showPlanFollowUpPrompt && activeProposedPlan !== null);
+  // What the agent asks stands at the composer's top in the look of the change waiting for review
+  // (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12); a phone's folded composer
+  // keeps it in the drawer over its one line.
+  const composerAsks = isComposerApprovalState || pendingUserInputs.length > 0 || vaultAskWaits;
+  const showComposerTopDrawer = isComposerCollapsedMobile && composerAsks;
+  const askFace = <ComposerAskFace environmentId={environmentId} />;
+  const askName = useComposerAskName(environmentId);
   const showCollapsedMobilePromptRow =
     isComposerCollapsedMobile && !isComposerApprovalState && pendingUserInputs.length === 0;
 
@@ -3011,8 +3012,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeTasksTurnId !== null && dismissedTasksTurnId === activeTasksTurnId;
   const visibleTasksProgress = tasksDismissedForActiveTurn ? null : activeTasksProgress;
   const visibleTaskSteps = tasksDismissedForActiveTurn ? null : activeTaskSteps;
-  const hasBlockingComposerTopDrawer =
-    activePendingApproval !== null || pendingUserInputs.length > 0 || vaultAskInDrawer;
+  // An ask closes the tasks drawer and hides the shoulder tabs while it waits, as the drawer did.
+  const hasBlockingComposerTopDrawer = composerAsks;
   const dismissTasks = useCallback(() => {
     if (activeTasksTurnId !== null) {
       setDismissedTasksTurnId(activeTasksTurnId);
@@ -3023,7 +3024,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     stashQueue.length > 0 &&
     !isComposerApprovalState &&
     (props.externalDrawerAttached ||
-      showComposerTopDrawer ||
+      composerAsks ||
       isTasksDrawerOpen ||
       isComposerCollapsedMobile);
   const inlineStashBadge = showInlineStashBadge ? (
@@ -3041,7 +3042,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     visibleTaskSteps !== null &&
     !isTasksDrawerOpen &&
     !hasBlockingComposerTopDrawer &&
-    (props.externalDrawerAttached || showComposerTopDrawer || isComposerCollapsedMobile);
+    (props.externalDrawerAttached || isComposerCollapsedMobile);
   const inlineTasksBadge = showInlineTasksBadge ? (
     <ComposerTasksBadge
       expanded={false}
@@ -3054,7 +3055,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ) : null;
   const showShoulderTabs =
     !props.externalDrawerAttached &&
-    !showComposerTopDrawer &&
+    !composerAsks &&
     !isTasksDrawerOpen &&
     !isComposerCollapsedMobile;
   const hasShoulderTab =
@@ -3423,6 +3424,74 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ],
   );
 
+  const approvalActions =
+    activePendingApproval === null ? null : (
+      <ComposerPendingApprovalActions
+        requestId={activePendingApproval.requestId}
+        isResponding={respondingRequestIds.includes(activePendingApproval.requestId)}
+        options={activePendingApproval.options}
+        onRespondToApproval={onRespondToApproval}
+      />
+    );
+  // What the agent asks, one at a time, where the change waiting for review stands; it takes the
+  // place of that change until it is answered.
+  const askTop = isComposerCollapsedMobile ? null : activePendingApproval ? (
+    <ComposerPendingApprovalPanel
+      approval={activePendingApproval}
+      pendingCount={pendingApprovals.length}
+      face={askFace}
+      who={askName}
+      actions={approvalActions}
+    />
+  ) : pendingUserInputs.length > 0 ? (
+    <>
+      <ComposerPendingUserInputPanel
+        pendingUserInputs={pendingUserInputs}
+        respondingRequestIds={respondingRequestIds}
+        answers={activePendingDraftAnswers}
+        questionIndex={activePendingQuestionIndex}
+        onToggleOption={onSelectActivePendingUserInputOption}
+        onAdvance={onAdvanceActivePendingUserInput}
+        onDismiss={onDismissActivePendingUserInput}
+        face={askFace}
+        who={askName}
+      />
+      {props.questionAttachments?.current.map(({ attachment }) => (
+        <div key={attachment.id} className="flex items-center gap-2 px-3 pb-2">
+          <span>{attachment.name}</span>
+          <span>
+            {props.questionAttachments?.uploads[attachment.id]?.status === "ready"
+              ? "Attached to this answer"
+              : props.questionAttachments?.uploads[attachment.id]?.status === "failed"
+                ? "Upload failed"
+                : "Uploading"}
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            aria-label={`Remove ${attachment.name} from this answer`}
+            onClick={() => props.questionAttachments?.remove(attachment.id)}
+          >
+            Remove
+          </Button>
+          {props.questionAttachments?.uploads[attachment.id]?.status === "failed" && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => props.questionAttachments?.retry(attachment.id)}
+            >
+              Retry upload
+            </Button>
+          )}
+        </div>
+      ))}
+    </>
+  ) : vaultAskWaits ? (
+    <ComposerVaultAskContainer environmentId={environmentId} threadRef={routeThreadRef} />
+  ) : null;
+
   // Render
   // ------------------------------------------------------------------
   return (
@@ -3456,109 +3525,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         data-chat-composer-form="true"
         data-composer-full={fullComposer === "off" ? undefined : fullComposer}
       >
-        {showComposerTopDrawer && (!isTasksDrawerOpen || hasBlockingComposerTopDrawer) ? (
+        {showComposerTopDrawer ? (
           <div
             className="chat-composer-top-drawer"
             data-chat-composer-top-drawer="true"
-            // What the agent asks the person stands over the conversation's end: it never moves it.
-            data-chat-composer-asks={
-              activePendingApproval || pendingUserInputs.length > 0 || vaultAskInDrawer
-                ? "true"
-                : undefined
-            }
-            data-variant={activePendingApproval ? "warning" : "info"}
+            data-variant="info"
           >
-            {!isComposerCollapsedMobile && activePendingApproval ? (
-              <div className="flex min-w-0 flex-wrap items-center gap-1 px-3 py-1.5 sm:px-4">
-                <ComposerPendingApprovalPanel
-                  approval={activePendingApproval}
-                  pendingCount={pendingApprovals.length}
-                />
-                <div className="flex min-w-0 flex-wrap items-center gap-0.5">
-                  <ComposerPendingApprovalActions
-                    requestId={activePendingApproval.requestId}
-                    isResponding={respondingRequestIds.includes(activePendingApproval.requestId)}
-                    options={activePendingApproval.options}
-                    onRespondToApproval={onRespondToApproval}
-                  />
-                </div>
-              </div>
-            ) : !isComposerCollapsedMobile && pendingUserInputs.length > 0 ? (
-              <>
-                <ComposerPendingUserInputPanel
-                  pendingUserInputs={pendingUserInputs}
-                  respondingRequestIds={respondingRequestIds}
-                  answers={activePendingDraftAnswers}
-                  questionIndex={activePendingQuestionIndex}
-                  onToggleOption={onSelectActivePendingUserInputOption}
-                  onAdvance={onAdvanceActivePendingUserInput}
-                  onDismiss={onDismissActivePendingUserInput}
-                />
-                {props.questionAttachments?.current.map(({ attachment }) => (
-                  <div key={attachment.id} className="flex items-center gap-2 px-3 pb-2">
-                    <span>{attachment.name}</span>
-                    <span>
-                      {props.questionAttachments?.uploads[attachment.id]?.status === "ready"
-                        ? "Attached to this answer"
-                        : props.questionAttachments?.uploads[attachment.id]?.status === "failed"
-                          ? "Upload failed"
-                          : "Uploading"}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      aria-label={`Remove ${attachment.name} from this answer`}
-                      onClick={() => props.questionAttachments?.remove(attachment.id)}
-                    >
-                      Remove
-                    </Button>
-                    {props.questionAttachments?.uploads[attachment.id]?.status === "failed" && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="xs"
-                        onClick={() => props.questionAttachments?.retry(attachment.id)}
-                      >
-                        Retry upload
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </>
-            ) : vaultAskInDrawer ? (
-              <div
-                data-chat-composer-collapsed-controls={
-                  isComposerCollapsedMobile ? "true" : undefined
-                }
-              >
-                <ComposerVaultAskContainer
-                  environmentId={environmentId}
-                  threadRef={routeThreadRef}
-                />
-              </div>
-            ) : !isComposerCollapsedMobile && showPlanFollowUpPrompt && activeProposedPlan ? (
-              <ComposerPlanFollowUpBanner
-                key={activeProposedPlan.id}
-                planTitle={proposedPlanTitle(activeProposedPlan.planMarkdown) ?? null}
-              />
-            ) : isComposerCollapsedMobile && activePendingApproval ? (
+            {activePendingApproval ? (
               <div data-chat-composer-collapsed-controls="true">
                 <ComposerPendingApprovalPanel
                   approval={activePendingApproval}
                   pendingCount={pendingApprovals.length}
-                  className="px-3 pt-2 sm:px-4"
+                  face={askFace}
+                  who={askName}
+                  actions={approvalActions}
                 />
-                <div className="flex flex-wrap items-center justify-end gap-1 px-3 pt-2 pb-3 sm:px-4">
-                  <ComposerPendingApprovalActions
-                    requestId={activePendingApproval.requestId}
-                    isResponding={respondingRequestIds.includes(activePendingApproval.requestId)}
-                    options={activePendingApproval.options}
-                    onRespondToApproval={onRespondToApproval}
-                  />
-                </div>
               </div>
-            ) : isComposerCollapsedMobile && pendingUserInputs.length > 0 ? (
+            ) : pendingUserInputs.length > 0 ? (
               <div data-chat-composer-collapsed-controls="true">
                 <ComposerPendingUserInputPanel
                   pendingUserInputs={pendingUserInputs}
@@ -3568,6 +3551,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   onToggleOption={onSelectActivePendingUserInputOption}
                   onAdvance={onAdvanceActivePendingUserInput}
                   onDismiss={onDismissActivePendingUserInput}
+                  face={askFace}
+                  who={askName}
                 />
                 <div className="px-3 pb-3 sm:px-4">
                   <div
@@ -3617,6 +3602,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     ) : null}
                   </div>
                 </div>
+              </div>
+            ) : vaultAskWaits ? (
+              <div data-chat-composer-collapsed-controls="true">
+                <ComposerVaultAskContainer
+                  environmentId={environmentId}
+                  threadRef={routeThreadRef}
+                />
               </div>
             ) : null}
           </div>
@@ -3670,7 +3662,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 composerProviderState.composerSurfaceClassName,
               )}
             >
-              {top}
+              {askTop ?? top}
               {showCollapsedMobilePromptRow ? (
                 <div className="flex items-center justify-between gap-2 px-3 py-2">
                   <button

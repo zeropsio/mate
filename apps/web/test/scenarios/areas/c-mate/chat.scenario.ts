@@ -629,7 +629,7 @@ describe("C: opening a Mate and chat", () => {
         yield* s.given.signedIn;
         yield* chat.when.open();
         chat.fixture().approval();
-        yield* chat.then.text("Command approval");
+        yield* chat.then.text("wants to run this command");
         yield* chat.then.text("vp run build");
         yield* chat.when.click("Approve");
         yield* chat.then.text("Agent received your response");

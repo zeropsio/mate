@@ -7,72 +7,69 @@
  * waiting on shows what it asks without a way to answer it. The one thing left
  * to do is the D6 way out — sign the agent in with one's own account.
  *
- * It wears the composer's own parts: the pending request sits in the
- * composer's top drawer, and the footer body is the composer's main surface
- * inside the glass host that `ChatView` wraps it in.
+ * It wears the composer's own parts: the footer body is the composer's main
+ * surface inside the glass host that `ChatView` wraps it in, and the pending
+ * request stands at its top in the look it has for the person it waits on,
+ * whom it names.
  */
 
 import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/agentSignIn";
+import type { EnvironmentId } from "@t3tools/contracts";
 
 import type { PendingApproval, PendingUserInput } from "../../session-logic";
 import type { ZeropsConversationReadOnly } from "../ChatView.logic";
+import { ComposerAskFace, useComposerAskName } from "../chat/ComposerAsk";
 import { ComposerPendingApprovalPanel } from "../chat/ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputReadOnlyPanel } from "../chat/ComposerPendingUserInputPanel";
 import { Button } from "../ui/button";
 
 export function ZeropsReadOnlyConversationFooter({
   readOnly,
+  environmentId,
   pendingApprovals,
   pendingUserInputs,
   onSignIn,
 }: {
   readonly readOnly: ZeropsConversationReadOnly;
+  /** Where the agent lives: its Mate's face and name ask. */
+  readonly environmentId: EnvironmentId;
   readonly pendingApprovals: ReadonlyArray<PendingApproval>;
   readonly pendingUserInputs: PendingUserInput[];
   /** Its one action; absent where the viewer has none — a colleague's Mate is only read along. */
   readonly onSignIn?: (() => void) | undefined;
 }) {
   const approval = pendingApprovals[0];
+  const face = <ComposerAskFace environmentId={environmentId} />;
+  const who = useComposerAskName(environmentId);
   return (
     <div className="mx-auto w-full min-w-0 max-w-3xl" data-zerops-read-only-conversation="true">
-      {approval !== undefined ? (
-        <div
-          className="chat-composer-top-drawer"
-          data-chat-composer-top-drawer="true"
-          data-variant="warning"
-        >
-          <div className="flex min-w-0 px-3 py-1.5 sm:px-4">
-            <ComposerPendingApprovalPanel
-              approval={approval}
-              pendingCount={pendingApprovals.length}
-              waitingLabel={readOnly.waitingLabel}
-            />
-          </div>
-        </div>
-      ) : pendingUserInputs.length > 0 ? (
-        <div
-          className="chat-composer-top-drawer"
-          data-chat-composer-top-drawer="true"
-          data-variant="info"
-        >
+      {/* The composer's main surface: with a banner attached above, the shell hands its glass and
+          outline to this element. */}
+      <div data-chat-composer-main-surface="true" className="relative z-10 min-w-0">
+        {approval !== undefined ? (
+          <ComposerPendingApprovalPanel
+            approval={approval}
+            face={face}
+            pendingCount={pendingApprovals.length}
+            waitingLabel={readOnly.waitingLabel}
+            who={who}
+          />
+        ) : pendingUserInputs.length > 0 ? (
           <ComposerPendingUserInputReadOnlyPanel
+            face={face}
             pendingUserInputs={pendingUserInputs}
             waitingLabel={readOnly.waitingLabel}
+            who={who}
           />
+        ) : null}
+        <div className="flex min-w-0 flex-col items-center gap-3 px-4 py-3 text-center">
+          <p className="min-w-0 flex-1 text-foreground/85 text-sm">{readOnly.notice}</p>
+          {onSignIn === undefined ? null : (
+            <Button size="compact" variant="link" onClick={onSignIn}>
+              {AGENT_OWNERSHIP_RECOVERY_LABEL}
+            </Button>
+          )}
         </div>
-      ) : null}
-      {/* The composer's main surface: with a banner or drawer attached above,
-          the shell hands its glass and outline to this element. */}
-      <div
-        data-chat-composer-main-surface="true"
-        className="relative z-10 flex min-w-0 flex-col items-center gap-3 px-4 py-3 text-center"
-      >
-        <p className="min-w-0 flex-1 text-foreground/85 text-sm">{readOnly.notice}</p>
-        {onSignIn === undefined ? null : (
-          <Button size="compact" variant="link" onClick={onSignIn}>
-            {AGENT_OWNERSHIP_RECOVERY_LABEL}
-          </Button>
-        )}
       </div>
     </div>
   );

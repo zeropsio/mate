@@ -1,15 +1,16 @@
 import { type ApprovalRequestId } from "@t3tools/contracts";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type PendingUserInput } from "../../session-logic";
 import {
   derivePendingUserInputProgress,
   type PendingUserInputDraftAnswer,
 } from "../../pendingUserInput";
 import { CheckIcon, ChevronDownIcon, XIcon } from "lucide-react";
-import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
-import { StatusDot } from "../zerops/primitives";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
+
+import { ComposerAsk, ComposerAskMark } from "./ComposerAsk";
 
 /**
  * What a keystroke means for the option list, or undefined when the card should
@@ -52,6 +53,10 @@ interface PendingUserInputPanelBaseProps {
   respondingRequestIds: ApprovalRequestId[];
   answers: Record<string, PendingUserInputDraftAnswer>;
   questionIndex: number;
+  /** The asking Mate's face (`ComposerAskFace`); a plain agent's mark without one. */
+  face?: ReactNode;
+  /** Who asks, by name. */
+  who?: string;
 }
 
 /** What answering the card does. A read-only card has none of it. */
@@ -66,6 +71,8 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
   respondingRequestIds,
   answers,
   questionIndex,
+  face,
+  who,
   onToggleOption,
   onAdvance,
   onDismiss,
@@ -85,6 +92,8 @@ export const ComposerPendingUserInputPanel = memo(function ComposerPendingUserIn
       answers={answers}
       questionIndex={questionIndex}
       waitingLabel="Waiting for you"
+      face={face}
+      who={who}
       answer={answer}
     />
   );
@@ -100,9 +109,13 @@ export const ComposerPendingUserInputReadOnlyPanel = memo(
   function ComposerPendingUserInputReadOnlyPanel({
     pendingUserInputs,
     waitingLabel,
+    face,
+    who,
   }: {
     pendingUserInputs: PendingUserInput[];
     waitingLabel: string;
+    face?: ReactNode;
+    who?: string;
   }) {
     const activePrompt = pendingUserInputs[0];
     if (!activePrompt) return null;
@@ -116,6 +129,8 @@ export const ComposerPendingUserInputReadOnlyPanel = memo(
         answers={NO_DRAFT_ANSWERS}
         questionIndex={0}
         waitingLabel={waitingLabel}
+        face={face}
+        who={who}
         answer={null}
       />
     );
@@ -130,6 +145,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   answers,
   questionIndex,
   waitingLabel,
+  face,
+  who = "The agent",
   answer,
 }: {
   prompt: PendingUserInput;
@@ -137,6 +154,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   answers: Record<string, PendingUserInputDraftAnswer>;
   questionIndex: number;
   waitingLabel: string;
+  face?: ReactNode | undefined;
+  who?: string | undefined;
   answer: PendingUserInputAnswerHandlers | null;
 }) {
   const progress = derivePendingUserInputProgress(prompt.questions, answers, questionIndex);
@@ -268,189 +287,197 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
 
   return (
     <Collapsible
-      className="py-2"
       open={!isCollapsed}
       onOpenChange={(open) => {
         setCollapsedQuestionId(open ? null : activeQuestion.id);
       }}
     >
-      {/* The trigger's wrapper is inset less than the card's text column, and
-          the trigger pays the difference back as padding: the hover background
-          and focus ring bleed 10px past that column on both sides, while the
-          header label and the chevron still line up with the left and right
-          edges of the question text below. The negative block margin keeps the
-          taller hit area from pushing the panel down. */}
-      <div className="flex items-center gap-1 px-1 sm:px-2">
-        <CollapsibleTrigger
-          title={
-            isCollapsed ? "Show the question and its options" : "Hide the question and its options"
-          }
-          data-pending-user-input-toggle={isCollapsed ? "collapsed" : "expanded"}
-          className="group -my-1 flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-2 py-1.5 text-left outline-none transition-colors duration-150 hover:bg-muted/35 focus-visible:ring-1 focus-visible:ring-primary/25"
-        >
-          {/* Whom it waits on, as a phrase: the product sets no label in
-              capitals, and the amber is the conversation's for who is next. */}
-          <StatusDot
-            className="text-status-attention-text text-xs"
-            data-pending-user-input-waiting
-            label={waitingLabel}
-            pulse={false}
-            sentence
-            tone="attention"
-          />
-          <span
-            className="text-xs font-medium text-foreground/85"
-            data-pending-request-kind="question"
-          >
-            Question
-          </span>
-          <span className="text-xs text-muted-foreground group-hover:text-foreground/85">
-            {activeQuestion.header}
-          </span>
-          {prompt.questions.length > 1 ? (
-            <span
-              className="text-xs font-medium text-muted-foreground tabular-nums"
-              data-pending-request-progress={`${questionIndex + 1}/${prompt.questions.length}`}
-            >
-              {questionIndex + 1}/{prompt.questions.length}
+      <ComposerAsk
+        actions={
+          answer === null ? (
+            <span className="text-line text-muted-foreground" data-pending-user-input-waiting>
+              {waitingLabel}
             </span>
-          ) : null}
-          {/* Collapsed, the header is otherwise just a section label and a
-              counter, so the question itself is echoed here as a one-line
-              reminder of what is being asked. */}
-          {isCollapsed ? (
-            <span className="min-w-0 flex-1 truncate text-secondary-label text-xs">
-              {activeQuestion.question}
-            </span>
-          ) : null}
-          {/* The chevron points at the body: down while it is open below the
-              header, up while it is collapsed into it. */}
-          <ChevronDownIcon
-            aria-hidden="true"
-            className={cn(
-              "ml-auto size-3.5 shrink-0 text-secondary-label transition-transform duration-150 group-hover:text-foreground",
-              isCollapsed && "rotate-180",
-            )}
-          />
-        </CollapsibleTrigger>
-        {answer !== null && prompt.dismissible ? (
-          // Dismiss closes an async question without sending a reply.
-          <Button
-            type="button"
-            size="icon-xs"
-            variant="ghost"
-            aria-label="Dismiss question without answering"
-            title="Dismiss question without answering"
-            disabled={isResponding}
-            data-pending-user-input-dismiss
-            onClick={() => answer.onDismiss(prompt.requestId)}
-          >
-            <XIcon aria-hidden="true" />
-          </Button>
-        ) : null}
-      </div>
-      {/* The panel carries the horizontal padding itself: it clips its content
-          while the height animates, so the option buttons have to sit inside
-          that padding or their focus rings get shaved off at the edges. */}
-      <CollapsiblePanel className="px-3 sm:px-4">
-        <div className="pt-2 pb-0.5">
-          <p className="text-sm text-foreground/85">{activeQuestion.question}</p>
-          {activeQuestion.multiSelect ? (
-            <p className="mt-1 text-secondary-label text-xs">Select one or more options.</p>
-          ) : null}
-          <div className="mt-2 space-y-0.5">
-            {activeQuestion.options.map((option, index) => {
-              const optionValue = option.value ?? option.label;
-              const isOptimisticallySelected =
-                optimisticSingleSelect?.questionId === activeQuestion.id &&
-                optimisticSingleSelect.optionValue === optionValue;
-              const isSelected =
-                isOptimisticallySelected ||
-                (!customAnswerActive && progress.selectedOptionValues.includes(optionValue));
-              const isHighlighted = index === highlightedIndex;
-              if (answer === null) {
-                return (
-                  <div
-                    key={`${activeQuestion.id}:${optionValue}`}
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left",
-                      isSelected ? "bg-muted/55 text-foreground" : "text-foreground/85",
-                    )}
+          ) : prompt.dismissible ? (
+            // Dismiss closes an async question without sending a reply.
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    aria-label="Dismiss question without answering"
+                    className="composer-top-dismiss"
+                    data-pending-user-input-dismiss
+                    disabled={isResponding}
+                    onClick={() => answer.onDismiss(prompt.requestId)}
+                    type="button"
                   >
-                    <PendingUserInputOptionLabel option={option} />
-                    {isSelected ? <CheckIcon className="size-3.5 shrink-0 text-primary" /> : null}
-                  </div>
-                );
-              }
-              const shortcutKey = index < 9 ? index + 1 : null;
-              const className = cn(
-                "group flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-primary/25",
-                isSelected
-                  ? "bg-muted/55 text-foreground"
-                  : "bg-transparent text-foreground/85 hover:bg-muted/30",
-                isHighlighted && "ring-1 ring-primary/40",
-                isResponding && "opacity-50 cursor-not-allowed",
-                !isResponding && "cursor-pointer",
-              );
-              const content = (
-                <>
-                  <PendingUserInputOptionLabel option={option} />
-                  {isSelected ? (
-                    <CheckIcon className="size-3.5 shrink-0 text-primary" />
-                  ) : shortcutKey !== null ? (
-                    <kbd
+                    <XIcon aria-hidden="true" />
+                  </button>
+                }
+              />
+              <TooltipPopup side="top">Dismiss without answering</TooltipPopup>
+            </Tooltip>
+          ) : undefined
+        }
+        detail={
+          // The question itself, to be read whole; folded, its first line stands for it.
+          <span className={cn("block text-foreground/85", isCollapsed && "truncate")}>
+            {activeQuestion.question}
+          </span>
+        }
+        face={face ?? <ComposerAskMark />}
+        kind="question"
+        label={`${who} asks: ${activeQuestion.header}`}
+        title={
+          // The head folds the options away, so a tall question stops covering the conversation.
+          <CollapsibleTrigger
+            title={
+              isCollapsed
+                ? "Show the question and its options"
+                : "Hide the question and its options"
+            }
+            data-pending-user-input-toggle={isCollapsed ? "collapsed" : "expanded"}
+            className="group -mx-1 inline-flex max-w-full items-center gap-1.5 rounded-sm px-1 align-bottom outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="min-w-0 truncate">
+              <span data-pending-request-kind="question">{`${who} asks`}</span>
+              <span className="font-normal text-muted-foreground">
+                {" · "}
+                {activeQuestion.header}
+              </span>
+              {prompt.questions.length > 1 ? (
+                <span
+                  className="font-normal text-muted-foreground tabular-nums"
+                  data-pending-request-progress={`${questionIndex + 1}/${prompt.questions.length}`}
+                >
+                  {` · ${questionIndex + 1} of ${prompt.questions.length}`}
+                </span>
+              ) : null}
+              {/* Whom it waits on: the face's needs pose says it is the viewer; someone else is
+                  named where the dismiss would stand. */}
+              {answer === null ? null : (
+                <span className="sr-only" data-pending-user-input-waiting>
+                  {waitingLabel}
+                </span>
+              )}
+            </span>
+            {/* The chevron points at the options: down while they are open below, up folded. */}
+            <ChevronDownIcon
+              aria-hidden="true"
+              className={cn(
+                "size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 group-hover:text-foreground",
+                isCollapsed && "rotate-180",
+              )}
+            />
+          </CollapsibleTrigger>
+        }
+      >
+        {/* The options' text lines up with the question's: each option's own inset is paid
+            back to the left, and the panel's pixel keeps their focus rings from being shaved
+            while its height animates. */}
+        <CollapsiblePanel className="-ms-[11px]">
+          <div className="p-px">
+            {activeQuestion.multiSelect ? (
+              <p className="ps-2.5 pb-1 text-secondary-label text-xs">
+                Select one or more options.
+              </p>
+            ) : null}
+            <div className="space-y-0.5">
+              {activeQuestion.options.map((option, index) => {
+                const optionValue = option.value ?? option.label;
+                const isOptimisticallySelected =
+                  optimisticSingleSelect?.questionId === activeQuestion.id &&
+                  optimisticSingleSelect.optionValue === optionValue;
+                const isSelected =
+                  isOptimisticallySelected ||
+                  (!customAnswerActive && progress.selectedOptionValues.includes(optionValue));
+                const isHighlighted = index === highlightedIndex;
+                if (answer === null) {
+                  return (
+                    <div
+                      key={`${activeQuestion.id}:${optionValue}`}
                       className={cn(
-                        "flex size-5 shrink-0 items-center justify-center text-xs font-medium text-muted-foreground tabular-nums",
+                        "flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left",
+                        isSelected ? "bg-muted/55 text-foreground" : "text-foreground/85",
                       )}
                     >
-                      {shortcutKey}
-                    </kbd>
-                  ) : null}
-                </>
-              );
-              return (
-                <button
-                  key={`${activeQuestion.id}:${optionValue}`}
-                  type="button"
-                  aria-current={isHighlighted ? "true" : undefined}
-                  disabled={isResponding}
-                  onClick={() => {
-                    handleOptionSelection(activeQuestion.id, optionValue);
-                  }}
-                  className={className}
-                >
-                  {content}
-                </button>
-              );
-            })}
-          </div>
-          {answer === null ? null : (
-            /*
+                      <PendingUserInputOptionLabel option={option} />
+                      {isSelected ? <CheckIcon className="size-3.5 shrink-0 text-primary" /> : null}
+                    </div>
+                  );
+                }
+                const shortcutKey = index < 9 ? index + 1 : null;
+                const className = cn(
+                  "group flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left outline-none transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-primary/25",
+                  isSelected
+                    ? "bg-muted/55 text-foreground"
+                    : "bg-transparent text-foreground/85 hover:bg-muted/30",
+                  isHighlighted && "ring-1 ring-primary/40",
+                  isResponding && "opacity-50 cursor-not-allowed",
+                  !isResponding && "cursor-pointer",
+                );
+                const content = (
+                  <>
+                    <PendingUserInputOptionLabel option={option} />
+                    {isSelected ? (
+                      <CheckIcon className="size-3.5 shrink-0 text-primary" />
+                    ) : shortcutKey !== null ? (
+                      <kbd
+                        className={cn(
+                          "flex size-5 shrink-0 items-center justify-center text-xs font-medium text-muted-foreground tabular-nums",
+                        )}
+                      >
+                        {shortcutKey}
+                      </kbd>
+                    ) : null}
+                  </>
+                );
+                return (
+                  <button
+                    key={`${activeQuestion.id}:${optionValue}`}
+                    type="button"
+                    aria-current={isHighlighted ? "true" : undefined}
+                    disabled={isResponding}
+                    onClick={() => {
+                      handleOptionSelection(activeQuestion.id, optionValue);
+                    }}
+                    className={className}
+                  >
+                    {content}
+                  </button>
+                );
+              })}
+            </div>
+            {answer === null ? null : (
+              /*
             Free text already worked — typing in the composer answers the
             question and overrides any selected option — but nothing on screen
             said so, so it was reachable only by knowing. This is that
             affordance, and it doubles as the read-back of what was typed.
           */
-            <div
-              className={cn(
-                "mt-1 flex items-center gap-2 rounded-md px-2.5 py-2 text-left",
-                customAnswerActive ? "bg-muted/55 text-foreground" : "text-secondary-label",
-              )}
-              data-pending-user-input-other={customAnswerActive ? "answered" : "empty"}
-            >
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="font-medium text-sm">Other</span>
-                <span className="text-line">
-                  {customAnswerActive
-                    ? progress.customAnswer
-                    : "Type your own answer in the composer below."}
-                </span>
+              <div
+                className={cn(
+                  "mt-1 flex items-center gap-2 rounded-md px-2.5 py-2 text-left",
+                  customAnswerActive ? "bg-muted/55 text-foreground" : "text-secondary-label",
+                )}
+                data-pending-user-input-other={customAnswerActive ? "answered" : "empty"}
+              >
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="font-medium text-sm">Other</span>
+                  <span className="text-line">
+                    {customAnswerActive
+                      ? progress.customAnswer
+                      : "Type your own answer in the composer below."}
+                  </span>
+                </div>
+                {customAnswerActive ? (
+                  <CheckIcon className="size-3.5 shrink-0 text-primary" />
+                ) : null}
               </div>
-              {customAnswerActive ? <CheckIcon className="size-3.5 shrink-0 text-primary" /> : null}
-            </div>
-          )}
-        </div>
-      </CollapsiblePanel>
+            )}
+          </div>
+        </CollapsiblePanel>
+      </ComposerAsk>
     </Collapsible>
   );
 });

@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { visitElements } from "../../test/reactElementTree";
+import { ComposerAskButton } from "../chat/ComposerAsk";
 import { closeAccountLifetime, openAccountLifetime } from "../../zerops/accountLifetime";
 import { InventoryContext, type Inventory } from "../../zerops/inventoryContext";
 import { nextStepBeforeChanges, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
@@ -234,7 +235,7 @@ describe("ZeropsNextStepStrip", () => {
   it("opens the change's review from the button that was pressed", () => {
     const onReview = vi.fn();
     const tree = ZeropsNextStepStrip({ onReview, strip: STRIP }) as ReactElement;
-    const button = visitElements(tree, (element) => element.type === "button");
+    const button = visitElements(tree, (element) => element.type === ComposerAskButton);
     if (button === null) throw new Error("the strip has no Review button");
     const pressed = { tagName: "BUTTON" } as unknown as HTMLElement;
     (button.props.onClick as (event: { currentTarget: HTMLElement }) => void)({

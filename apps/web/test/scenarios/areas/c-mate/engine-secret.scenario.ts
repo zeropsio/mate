@@ -62,7 +62,7 @@ describe("C: a secret the Mate asks the person for", () => {
           { runId: run },
         );
         engine.note(run, "I asked for your Stripe key on a private card.", { kind: "completed" });
-        // The ask waits in the composer's drawer, never as a card in the conversation.
+        // The ask waits at the composer's top, never as a card in the conversation.
         yield* chat.then.text(`needs your ${LABEL}, ${WHY}`);
         yield* chat.then.text("Goes to this project's vault for every app, never into this chat.");
         yield* chat.then.noText("Put in vault");

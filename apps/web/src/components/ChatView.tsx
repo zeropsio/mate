@@ -8587,6 +8587,7 @@ export default function ChatView(props: ChatViewProps) {
                             <ComposerRoomHeld draft={zeropsHeldDraft} />
                           ) : colleagueReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter
+                              environmentId={environmentId}
                               pendingApprovals={pendingApprovals}
                               pendingUserInputs={pendingUserInputs}
                               readOnly={colleagueReadOnly}

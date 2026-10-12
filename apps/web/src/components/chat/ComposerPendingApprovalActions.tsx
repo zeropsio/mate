@@ -8,6 +8,7 @@ import { EllipsisIcon, TriangleAlertIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { ComposerAskButton } from "./ComposerAsk";
 
 interface ComposerPendingApprovalActionsProps {
   requestId: ApprovalRequestId;
@@ -48,33 +49,46 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
             : option.decision === "acceptForSession" || option.decision === "acceptAlways"
               ? "secondary"
               : "quiet";
-        const variant =
-          actionTone === "primary"
-            ? "pill"
-            : actionTone === "secondary"
-              ? "secondary"
-              : "ghost-muted";
+        const variant = actionTone === "secondary" ? "secondary" : "ghost-muted";
 
-        const button = (
-          <Button
-            key={option.decision}
-            size="sm"
-            variant={variant}
-            className={`${APPROVAL_ACTION_CLASS_NAME} h-auto min-h-7 max-w-full px-2.5 py-1.5${
-              option.warning ? " text-warning" : ""
-            }`}
-            data-approval-decision={option.decision}
-            data-approval-action-tone={actionTone}
-            disabled={isResponding}
-            aria-description={option.warning}
-            onClick={() => void onRespondToApproval(requestId, option.decision)}
-          >
+        const label = (
+          <>
             {option.warning ? <TriangleAlertIcon className="size-3 shrink-0" /> : null}
             <span className="max-w-48 whitespace-normal break-words text-center">
               {option.label}
             </span>
-          </Button>
+          </>
         );
+        // Approve is the ask's one blue button, the look Review has at the composer's top.
+        const button =
+          actionTone === "primary" ? (
+            <ComposerAskButton
+              key={option.decision}
+              data-approval-decision={option.decision}
+              data-approval-action-tone={actionTone}
+              disabled={isResponding}
+              aria-description={option.warning}
+              onClick={() => void onRespondToApproval(requestId, option.decision)}
+            >
+              {label}
+            </ComposerAskButton>
+          ) : (
+            <Button
+              key={option.decision}
+              size="sm"
+              variant={variant}
+              className={`${APPROVAL_ACTION_CLASS_NAME} h-auto min-h-7 max-w-full px-2.5 py-1.5${
+                option.warning ? " text-warning" : ""
+              }`}
+              data-approval-decision={option.decision}
+              data-approval-action-tone={actionTone}
+              disabled={isResponding}
+              aria-description={option.warning}
+              onClick={() => void onRespondToApproval(requestId, option.decision)}
+            >
+              {label}
+            </Button>
+          );
         // A provider caution, such as a prompt injection warning on "allow
         // always", rides along as a tooltip so the row stays one line.
         return option.warning ? (

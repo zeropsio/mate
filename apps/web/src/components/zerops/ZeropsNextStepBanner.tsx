@@ -37,6 +37,7 @@ import {
 import { useOpenReview, type ReviewTarget } from "../../zerops/review";
 import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { ComposerAskButton } from "../chat/ComposerAsk";
 import { MateFace } from "./primitives";
 
 /** What waits on the person in the composer right now. */
@@ -186,15 +187,13 @@ export function ZeropsNextStepStrip({
         <p className="truncate font-medium text-foreground text-line leading-4.5">{strip.title}</p>
         <p className="truncate text-muted-foreground text-line leading-4.5">{strip.detail}</p>
       </div>
-      <button
-        className="composer-review-button"
+      <ComposerAskButton
         onClick={(event) => {
           onReview(strip.target, event.currentTarget);
         }}
-        type="button"
       >
         Review
-      </button>
+      </ComposerAskButton>
       {dismissButton(strip.target, onDismiss)}
     </section>
   );
