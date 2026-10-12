@@ -300,7 +300,8 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import { CircleAlertIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
-import { hasProviderSetup } from "./providerAvailability.logic";
+import { hasProviderSetup, providerAvailability } from "./providerAvailability.logic";
+import { AvailabilityDot, UnavailableAgentControl, availabilityName } from "./AgentAvailability";
 import {
   applyProviderInstanceSettings,
   deriveProviderInstanceEntries,
@@ -953,6 +954,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ? providerInstanceEntries.find((entry) => hasProviderSetup(entry.snapshot))?.instanceId
         : undefined))
     : undefined;
+  // The agent's availability, wherever this person can act on the agent (S6). A colleague's
+  // read-along footer and a held footer replace these controls and say none of it: that viewer
+  // cannot act on the agent.
+  const agentAvailability = providerAvailability(agentStatus);
+  const unavailableAgent = showProviderUnavailable
+    ? (agentAvailability ??
+      providerAvailability(
+        providerInstanceEntries.find((entry) => entry.instanceId === providerSetupInstanceId)
+          ?.snapshot ?? null,
+      ))
+    : null;
   const resolvedCompactDisabledReason =
     compactDisabledReason ?? (noProviderAvailable ? "Compacting is unavailable right now" : null);
   // The driver kind follows the instance that will actually run the turn,
@@ -3679,8 +3691,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={isChoiceOnlyPendingQuestion ? undefined : expandMobileComposer}
                     disabled={isChoiceOnlyPendingQuestion}
-                    aria-label="Expand composer"
+                    aria-label={availabilityName("Expand composer", agentAvailability)}
                   >
+                    {agentAvailability === null ? null : (
+                      <AvailabilityDot availability={agentAvailability} />
+                    )}
                     {activePendingProgress
                       ? isChoiceOnlyPendingQuestion
                         ? "Choose an option above"
@@ -3950,7 +3965,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 >
                   <div className="-m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {crewRunsOn !== undefined ? (
-                      <CrewRunsOnControl label={crewRunsOn.label} onEdit={crewRunsOn.onEdit} />
+                      <CrewRunsOnControl
+                        label={crewRunsOn.label}
+                        onEdit={crewRunsOn.onEdit}
+                        availability={agentAvailability}
+                        onOpenSetup={
+                          agentAvailability?.setup === true
+                            ? () => onOpenProviderSetup(agentAvailability.instanceId)
+                            : null
+                        }
+                      />
+                    ) : showProviderUnavailable && !zeropsSignInRequired && unavailableAgent ? (
+                      <UnavailableAgentControl
+                        availability={unavailableAgent}
+                        onOpenSetup={
+                          providerSetupInstanceId
+                            ? () => onOpenProviderSetup(providerSetupInstanceId)
+                            : null
+                        }
+                      />
                     ) : showProviderUnavailable && !zeropsSignInRequired ? (
                       <Button
                         type="button"
