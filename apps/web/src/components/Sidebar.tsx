@@ -2978,7 +2978,7 @@ export default function Sidebar() {
           )
         }
       >
-        <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1.5 pt-0">
+        <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
           {zeropsSignedIn && !isSearchingThreads ? (
             <SidebarZeropsTree
               hold={zeropsListHeld}
