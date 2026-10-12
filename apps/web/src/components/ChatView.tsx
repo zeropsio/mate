@@ -393,7 +393,12 @@ import {
   shouldShowComposerContextStrip,
   shouldShowEnvironmentIndicator,
 } from "./BranchToolbar.logic";
-import { threadErrorNotice } from "./chat/threadErrorNotice.logic";
+import {
+  dismissThreadError,
+  threadErrorDismissalKey,
+  threadErrorDismissed,
+  threadErrorNotice,
+} from "./chat/threadErrorNotice.logic";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { deriveDock, foldBackgroundTasks } from "./chat/conversationDock.logic";
 import { liveJobsOf } from "./chat/liveJobs.logic";
@@ -5321,6 +5326,12 @@ export default function ChatView(props: ChatViewProps) {
       ),
     [conversationEntries, latestTurnIdForNotice, shownThreadError],
   );
+  // The row's ×: a local error is cleared, a server-held one masked for the session; the mask is
+  // no state of the view's, so the × bumps a render of its own.
+  const [, setEndNoticeDismissals] = useState(0);
+  const endNoticeKey =
+    shownThreadError === null ? null : threadErrorDismissalKey(routeThreadKey, shownThreadError);
+  const endNoticeDismissed = endNoticeKey !== null && threadErrorDismissed(endNoticeKey);
   const endNotice = useMemo(
     () =>
       threadErrorNotice({
@@ -5328,9 +5339,17 @@ export default function ChatView(props: ChatViewProps) {
         mateName: endNoticeMateName,
         driver: endNoticeDriver,
         usageLimitShown: endNoticeLimitShown,
+        dismissed: endNoticeDismissed,
       }),
-    [endNoticeDriver, endNoticeLimitShown, endNoticeMateName, shownThreadError],
+    [endNoticeDismissed, endNoticeDriver, endNoticeLimitShown, endNoticeMateName, shownThreadError],
   );
+  const activeThreadIdForNotice = activeThread?.id ?? null;
+  const dismissEndNotice = useCallback(() => {
+    if (endNoticeKey === null) return;
+    dismissThreadError(endNoticeKey);
+    setThreadError(activeThreadIdForNotice, null);
+    setEndNoticeDismissals((count) => count + 1);
+  }, [activeThreadIdForNotice, endNoticeKey, setThreadError]);
   // A crewmate's *Change its job*, and its composer's *Runs on*: its job in
   // the Crew tab; the lead's *Change the goal*: the crew's goal there.
   const editCrewmateJob = (handle: string) => {
@@ -8310,6 +8329,7 @@ export default function ChatView(props: ChatViewProps) {
                   working: dockModel,
                   afterTurnWork: activeBackgroundLiveness,
                   endNotice,
+                  onDismissEndNotice: dismissEndNotice,
                   liveJobs,
                   isWorking,
                   workingStepLabel,

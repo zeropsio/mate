@@ -24,6 +24,7 @@ import {
   PauseIcon,
   SendIcon,
   TerminalIcon,
+  XIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -413,16 +414,19 @@ export function ErrorLine({
   label,
   detail,
   calm = false,
+  onDismiss,
 }: {
   readonly label: string;
   readonly detail?: string | undefined;
   /** An expected refusal — a usage limit, a sign-in — told, never alerted. */
   readonly calm?: boolean | undefined;
+  /** The conversation's end row goes at a quiet ×. */
+  readonly onDismiss?: (() => void) | undefined;
 }) {
   const extra = detail !== undefined && detail.trim() !== label.trim() ? detail : null;
-  return (
+  const line = (
     <div
-      className="flex min-h-7 min-w-0 items-start py-1 text-line text-foreground"
+      className="flex min-h-7 min-w-0 flex-1 items-start py-1 text-line text-foreground"
       data-conversation-error
       role={calm ? "status" : "alert"}
     >
@@ -438,6 +442,21 @@ export function ErrorLine({
         <p className="min-w-0">{label}</p>
         {extra ? <p className="min-w-0 text-muted-foreground">{extra}</p> : null}
       </div>
+    </div>
+  );
+  if (onDismiss === undefined) return line;
+  return (
+    <div className="flex min-w-0 items-start gap-2">
+      {line}
+      <Button
+        aria-label="Dismiss"
+        className="mt-1"
+        onClick={onDismiss}
+        size="icon-xs"
+        variant="ghost-muted"
+      >
+        <XIcon />
+      </Button>
     </div>
   );
 }

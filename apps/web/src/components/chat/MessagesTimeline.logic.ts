@@ -712,6 +712,8 @@ type MessagesTimelineRowBody =
       entry: WorkLogEntry;
       /** An expected refusal — a usage limit, a sign-in — said calmly (`ThreadEndNotice`). */
       calm?: boolean;
+      /** The conversation's end row (`ThreadEndNotice`): the person may dismiss it. */
+      dismissible?: boolean;
     }
   | {
       /** A usage limit: one pause, however many attempts ran into it. */
@@ -3358,6 +3360,7 @@ export function deriveMessagesTimelineRows(input: {
         tone: input.endNotice.calm ? "info" : "error",
       },
       calm: input.endNotice.calm,
+      dismissible: true,
     });
   }
   input.queuedMessages?.forEach((queuedMessage, index) => {

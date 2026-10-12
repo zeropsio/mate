@@ -53,6 +53,8 @@ export interface TimelineRowSharedState {
   onRunShellCommand: ((command: string) => void) | undefined;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string, fromTurnId?: TurnId) => void;
+  /** Takes the conversation's end row away (`ThreadEndNotice`); absent, it has no ×. */
+  onDismissEndNotice?: (() => void) | undefined;
   /** Who the conversation is with: the Mate's name and colour. */
   speaker: ConversationSpeaker;
   /**

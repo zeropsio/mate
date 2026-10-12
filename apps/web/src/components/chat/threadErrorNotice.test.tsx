@@ -9,7 +9,12 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { ErrorLine } from "./ConversationRows";
 import { deriveMessagesTimelineRows } from "./MessagesTimeline.logic";
-import { threadErrorNotice } from "./threadErrorNotice.logic";
+import {
+  dismissThreadError,
+  threadErrorDismissalKey,
+  threadErrorDismissed,
+  threadErrorNotice,
+} from "./threadErrorNotice.logic";
 
 const SIGNED_OUT =
   "Claude could not authenticate. For subscription login, run `claude auth login` on this environment's machine, then start a new thread. For API-key authentication, check this instance's configured credentials.";
@@ -65,6 +70,8 @@ function ConversationEnd(props: {
   readonly mateName?: string;
   readonly driver?: string | null;
   readonly usageLimitShown?: boolean;
+  readonly dismissed?: boolean;
+  readonly onDismiss?: () => void;
 }) {
   const rows = deriveMessagesTimelineRows({
     timelineEntries: [],
@@ -75,7 +82,13 @@ function ConversationEnd(props: {
     endNotice: threadErrorNotice(props),
   });
   const end = rows.at(-1);
-  return end?.kind === "error" ? <ErrorLine label={end.entry.label} calm={end.calm} /> : null;
+  return end?.kind === "error" ? (
+    <ErrorLine
+      label={end.entry.label}
+      calm={end.calm}
+      onDismiss={end.dismissible ? props.onDismiss : undefined}
+    />
+  ) : null;
 }
 
 describe("the thread's error at the conversation's end", () => {
@@ -155,6 +168,40 @@ describe("the thread's error at the conversation's end", () => {
 
   it("says nothing when nothing failed", () => {
     expect(renderToStaticMarkup(<ConversationEnd mateName="Rosa" error={null} />)).toBe("");
+  });
+
+  // The board's S6 row: a quiet ×, as the usage-limit row has.
+  it("goes at its quiet ×, and comes back only for another failure", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const error = "The container is not reachable.";
+    const key = threadErrorDismissalKey("env:thread-a", error);
+    const host = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(host);
+    const draw = () =>
+      root.render(
+        <ConversationEnd
+          mateName="Rosa"
+          error={error}
+          dismissed={threadErrorDismissed(key)}
+          onDismiss={() => dismissThreadError(key)}
+        />,
+      );
+    try {
+      await act(draw);
+      const dismiss = host.querySelector<HTMLButtonElement>('button[aria-label="Dismiss"]');
+      expect(dismiss).not.toBeNull();
+      await act(() => dismiss!.click());
+      await act(draw);
+      expect(host.textContent).toBe("");
+      expect(
+        threadErrorDismissed(threadErrorDismissalKey("env:thread-a", "Another failure.")),
+      ).toBe(false);
+      expect(threadErrorDismissed(threadErrorDismissalKey("env:thread-b", error))).toBe(false);
+    } finally {
+      await act(() => root.unmount());
+      host.remove();
+      vi.unstubAllGlobals();
+    }
   });
 });
 

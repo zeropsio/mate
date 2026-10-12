@@ -350,6 +350,8 @@ interface MessagesTimelineProps {
   afterTurnWork?: "working" | "monitoring" | null;
   /** A failure no run shows, as the conversation's last row (`threadErrorNotice`). */
   endNotice?: ThreadEndNotice | null;
+  /** Takes that row away, at its quiet ×. */
+  onDismissEndNotice?: () => void;
   /** The background jobs the server holds live, as watched (`useLiveJobs`). */
   liveJobs?: LiveJobs | null;
   isWorking: boolean;
@@ -459,6 +461,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   working: workingNow = null,
   afterTurnWork = null,
   endNotice = null,
+  onDismissEndNotice,
   liveJobs = null,
   listRef,
   timelineEntries,
@@ -1665,6 +1668,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onImageExpand,
       onOpenTurnDiff,
       speaker,
+      onDismissEndNotice,
       driver: provider,
       standUpAsk,
       livePauseId,
@@ -1710,6 +1714,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onImageExpand,
       onOpenTurnDiff,
       speaker,
+      onDismissEndNotice,
       provider,
       standUpAsk,
       livePauseId,
@@ -2678,9 +2683,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "event" ? <EventTimelineRow row={row} /> : null}
       {row.kind === "crew-card" ? <CrewCardTimelineRow row={row} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
-      {row.kind === "error" ? (
-        <ErrorLine label={row.entry.label} detail={row.entry.detail} calm={row.calm} />
-      ) : null}
+      {row.kind === "error" ? <ErrorTimelineRow row={row} /> : null}
       {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}
       {row.kind === "outcome" ? <OutcomeTimelineRow row={row} /> : null}
       {row.kind === "page" ? <PageTimelineRow row={row} /> : null}
@@ -2690,6 +2693,18 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
     </>
+  );
+}
+
+function ErrorTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "error" }> }) {
+  const { onDismissEndNotice } = use(TimelineRowCtx);
+  return (
+    <ErrorLine
+      label={row.entry.label}
+      detail={row.entry.detail}
+      calm={row.calm}
+      onDismiss={row.dismissible ? onDismissEndNotice : undefined}
+    />
   );
 }
 
