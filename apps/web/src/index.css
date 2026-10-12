@@ -4389,6 +4389,497 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
   }
 }
 
+/* ==== Project sites (the menu by project): the globe, the environment tag, their popover ==== */
+
+/* The globe: a 20 px row action, as the row's ■ and ··· are. Dimmed — still pressable — where
+   nothing anywhere has an address yet. */
+.zerops-sites-globe {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  color: var(--sidebar-muted-foreground);
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong),
+    opacity 150ms var(--ease-out-strong);
+}
+
+.zerops-sites-globe:hover {
+  background-color: var(--sidebar-row-hover);
+  color: var(--sidebar-foreground);
+}
+
+.zerops-sites-globe:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.zerops-sites-globe[data-popup-open] {
+  background-color: var(--sidebar-row-active);
+  color: var(--sidebar-foreground);
+}
+
+.zerops-sites-globe[data-empty]:not(:hover, [data-popup-open]) {
+  opacity: 0.45;
+}
+
+/* The environment tag: the row's tags' metrics (22 px, 12/16 · 500, radius 7), its dot before
+   its word. Red and amber on their status grounds; moving on the quiet card ground the Review
+   tag wears; landed on the ok ground. */
+.zerops-sites-tag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  transition: box-shadow 150ms var(--ease-out-strong);
+}
+
+.zerops-sites-tag[data-tone="red"] {
+  background-color: var(--zerops-status-failed-surface);
+  color: var(--zerops-status-failed-text);
+}
+
+.zerops-sites-tag[data-tone="amber"] {
+  background-color: var(--zerops-status-attention-surface);
+  color: var(--zerops-status-attention-text);
+}
+
+.zerops-sites-tag[data-tone="busy"] {
+  background-color: var(--card);
+  color: var(--sidebar-foreground);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.zerops-sites-tag[data-tone="ok"] {
+  background-color: var(--zerops-status-ok-surface);
+  color: var(--zerops-status-ok-text);
+}
+
+.zerops-sites-tag:is(:hover, [data-popup-open]) {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 30%, transparent);
+}
+
+.zerops-sites-tag:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+/* The popover: 360 px, its own scroll under its title, grown from the door's side. */
+.zerops-sites {
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 16px));
+  max-height: min(560px, 70vh, var(--available-height));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background-color: var(--card);
+  color: var(--card-foreground);
+  box-shadow:
+    0 18px 40px -18px color-mix(in srgb, var(--color-black) 38%, transparent),
+    0 2px 6px -2px color-mix(in srgb, var(--color-black) 8%, transparent);
+  font-size: 13px;
+  line-height: 18px;
+  outline: none;
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity 160ms var(--ease-out-strong),
+    scale 160ms var(--ease-out-strong);
+}
+
+.zerops-sites:is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+  scale: 0.98;
+}
+
+.zerops-sites[data-ending-style] {
+  transition-duration: 120ms;
+}
+
+.dark .zerops-sites {
+  box-shadow:
+    0 18px 44px -18px color-mix(in srgb, var(--color-black) 90%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--color-black) 35%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zerops-sites {
+    transition: opacity 120ms ease;
+  }
+
+  .zerops-sites:is([data-starting-style], [data-ending-style]) {
+    scale: 1;
+  }
+}
+
+.zerops-sites-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.zerops-sites-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 8px;
+}
+
+.zerops-sites-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zerops-sites-count {
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.zerops-sites-filter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  margin: 0 8px 6px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background-color: color-mix(in oklab, var(--card-foreground) 5%, transparent);
+  color: var(--muted-foreground);
+  transition: box-shadow 150ms var(--ease-out-strong);
+}
+
+.zerops-sites-filter:focus-within {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.zerops-sites-filter input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--card-foreground);
+  font: inherit;
+  outline: none;
+}
+
+.zerops-sites-filter input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.zerops-sites-scroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 6px 6px;
+}
+
+/* A section: its head sticks while its rows pass under it; a hairline between two shown. */
+.zerops-sites-section {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+}
+
+.zerops-sites-section:not([hidden]) ~ .zerops-sites-section:not([hidden]) {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 10px 10px;
+}
+
+.zerops-sites-sectionhead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background-color: var(--card);
+}
+
+.zerops-sites-place,
+.zerops-sites-mate {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 9px;
+  text-align: start;
+  scroll-margin-top: 0;
+}
+
+.zerops-sites-mate {
+  grid-template-columns: 16px minmax(0, 1fr);
+}
+
+.zerops-sites-place > .zerops-envdot {
+  justify-self: center;
+}
+
+.zerops-sites-face {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+/* A colleague's Mate wears its owner's initial on its face's corner, cut from the card. */
+.zerops-sites-owner {
+  position: absolute;
+  right: -4px;
+  bottom: -3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: oklch(var(--menu-owner-l) var(--menu-owner-c) var(--menu-owner-hue));
+  box-shadow: 0 0 0 1.5px var(--card);
+  color: var(--color-white);
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+
+.zerops-sites-whose {
+  color: var(--muted-foreground);
+}
+
+.zerops-sites-zerops {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  outline: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
+}
+
+.zerops-sites-zerops:is(:hover, :focus-visible) {
+  background-color: var(--accent);
+  color: var(--foreground);
+}
+
+/* The mark repeats down the list: quiet until pointed at, then in its own colour. */
+.zerops-sites-zerops > svg {
+  opacity: 0.5;
+  filter: grayscale(1);
+  transition:
+    opacity 150ms var(--ease-out-strong),
+    filter 150ms var(--ease-out-strong);
+}
+
+.zerops-sites-zerops:is(:hover, :focus-visible) > svg {
+  opacity: 1;
+  filter: none;
+}
+
+.zerops-sites-note {
+  padding: 0 10px 6px 36px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.zerops-sites-access {
+  padding: 0 10px 0 36px;
+}
+
+.zerops-sites-access:empty {
+  display: none;
+}
+
+.zerops-sites-quiet {
+  padding: 2px 10px 8px 36px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* An address: its service (and its role), its host cut short, ↗ — and, at its end, in room kept
+   for it, the copy its hover or focus shows. */
+.zerops-sites-linkrow {
+  position: relative;
+}
+
+.zerops-sites-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 38px 6px 36px;
+  border-radius: 9px;
+  color: var(--muted-foreground);
+  outline: none;
+  scroll-margin-top: 36px;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
+}
+
+.zerops-sites-linkrow:hover > .zerops-sites-link,
+.zerops-sites-link:focus-visible {
+  background-color: var(--accent);
+  color: var(--foreground);
+}
+
+.zerops-sites-service {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--foreground);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zerops-sites-role {
+  flex: none;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background-color: color-mix(in oklab, var(--card-foreground) 7%, transparent);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.zerops-sites-host {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zerops-sites-arrow {
+  flex: none;
+  width: 13px;
+  height: 13px;
+}
+
+.zerops-sites-copy {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 7px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  opacity: 0;
+  translate: 0 -50%;
+  transition:
+    opacity 120ms var(--ease-out-strong),
+    background-color 120ms var(--ease-out-strong),
+    color 120ms var(--ease-out-strong);
+}
+
+.zerops-sites-linkrow:is(:hover, :focus-within) > .zerops-sites-copy,
+.zerops-sites-linkrow[data-copied] > .zerops-sites-copy {
+  opacity: 1;
+}
+
+.zerops-sites-copy:hover {
+  background-color: color-mix(in oklab, var(--card-foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+.zerops-sites-linkrow[data-copied] > .zerops-sites-copy {
+  background-color: var(--card);
+  box-shadow: 0 0 0 1px var(--border);
+  color: var(--zerops-status-ok-text);
+}
+
+@media (pointer: coarse) {
+  .zerops-sites-copy {
+    opacity: 1;
+  }
+}
+
+.zerops-sites-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 16px 14px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.zerops-sites-empty > p:first-child {
+  color: var(--card-foreground);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.zerops-sites-empty > .zerops-envpop-act {
+  align-self: stretch;
+  margin-top: 8px;
+  color: var(--card-foreground);
+  text-align: start;
+}
+
+/* The section the tag spoke of, lit for a moment as the popover opens on it. */
+.zerops-sites-section[data-flash],
+.zerops-sites-section[data-flash] > .zerops-sites-sectionhead {
+  animation: zerops-sites-flash 1200ms ease-out;
+}
+
+@keyframes zerops-sites-flash {
+  0%,
+  40% {
+    background-color: color-mix(in oklab, var(--info-foreground) 12%, var(--card));
+  }
+}
+
+/* ==== end of project sites ==== */
+
 /* A folded heading's busy face (M15): its dot on the face's corner, cut out of
    the menu's ground by a 2 px ring. */
 .zerops-heading-dot {

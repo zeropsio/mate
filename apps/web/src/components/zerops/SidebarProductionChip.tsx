@@ -44,7 +44,7 @@ import {
 } from "./SidebarProductionChip.logic";
 import { roadTone, type Road, type RoadPlace, type RoadTip } from "./SidebarRoad.logic";
 
-const ChipPortal = gatedPortal(PopoverPrimitive.Portal);
+export const ChipPortal = gatedPortal(PopoverPrimitive.Portal);
 
 /** One of the project's Mates, as the fix may be offered to it (S6, `fixMatesOf`). */
 export interface ChipMate {
@@ -481,7 +481,7 @@ function StopGroup({
   );
 }
 
-function OpenInZerops({ projectId }: { readonly projectId: string }) {
+export function OpenInZerops({ projectId }: { readonly projectId: string }) {
   return (
     <a
       className="zerops-envpop-act zerops-envpop-press"
@@ -510,7 +510,7 @@ function Separator() {
  * press shows what will be written into the Mate's composer — nothing is sent
  * from here — and the second opens its conversation with it there.
  */
-function AskToFix({
+export function AskToFix({
   problem,
   mates,
   groupId,
