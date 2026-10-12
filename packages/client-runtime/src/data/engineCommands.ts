@@ -10,6 +10,7 @@
 import {
   ChatFileAttachment,
   ChatImageAttachment,
+  ENGINE_SEND_CONTEXT_LIMITS,
   OrchestrationDispatchCommandError,
   type ConversationHeader,
   type ClientOrchestrationCommand,
@@ -47,6 +48,7 @@ import {
   engineSteerTarget,
   engineStopTarget,
 } from "./projections/mateEngine.ts";
+import { fitContextLine } from "./projections/agentContext.ts";
 import { readsOfState } from "./store.ts";
 
 type Command<T extends ClientOrchestrationCommand["type"]> = Omit<
@@ -145,10 +147,12 @@ export const engineStartTurn =
       const target = { environmentId, conversationId: input.threadId };
       // What the agent hears with the words that the person did not type (what merged, the vault's
       // key names): the engine tells it in front of them, and the record keeps the words alone.
-      const context =
-        input.agentNotes === undefined || input.agentNotes.length === 0
-          ? {}
-          : { context: input.agentNotes };
+      // Fitted to the engine's bound, so context never makes the send fail.
+      const lines = (input.agentNotes ?? [])
+        .map(fitContextLine)
+        .filter((line) => line.length > 0)
+        .slice(0, ENGINE_SEND_CONTEXT_LIMITS.lines);
+      const context = lines.length === 0 ? {} : { context: lines };
       const send = (commandId: string) =>
         host.operations.send({
           ...target,
