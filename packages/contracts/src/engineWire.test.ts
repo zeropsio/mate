@@ -244,12 +244,17 @@ describe("a conversation's settings on the wire", () => {
     roundTrips(EngineSteerInput, { ...call, runId: run, text: "And this", context });
   });
 
-  it.each<{ readonly title: string; readonly context: ReadonlyArray<string> }>([
+  it.each<{ readonly title: string; readonly context: unknown }>([
     { title: "more than five lines", context: Array.from({ length: 6 }, (_, n) => `line ${n}`) },
+    { title: "words that are not lines", context: "appdev #3 landed" },
     { title: "a line past 240 characters", context: ["x".repeat(241)] },
     { title: "a blank line", context: ["   "] },
-  ])("a send's context is bounded: $title never decodes", ({ context }) => {
-    expect(() => decodeSend({ ...call, text: "hi", context })).toThrow();
+  ])("a send whose context does not fit still decodes, without it: $title", ({ context }) => {
+    expect(decodeSend({ ...call, text: "hi", context })).toEqual({
+      ...call,
+      text: "hi",
+      context: null,
+    });
   });
 
   it("a model switch carries the model's options; one without them keeps the conversation's", () => {

@@ -21,6 +21,7 @@
  * @module engineWire
  */
 import * as Schema from "effect/Schema";
+import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import { CommandId, ForwardCompatibleArray, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
@@ -384,10 +385,31 @@ const call = { ...protocol, conversationId: ConversationId, commandId: CommandId
  * The engine places it in front of the words for the agent alone: the person's message in the
  * record stays what they typed. Bounded on purpose: a handful of short lines, never a feed.
  */
+export const ENGINE_SEND_CONTEXT_LIMITS = { lines: 5, lineChars: 240 } as const;
 export const EngineSendContext = Schema.Array(
-  TrimmedNonEmptyString.check(Schema.isMaxLength(240)),
-).check(Schema.isMaxLength(5));
+  TrimmedNonEmptyString.check(Schema.isMaxLength(ENGINE_SEND_CONTEXT_LIMITS.lineChars)),
+).check(Schema.isMaxLength(ENGINE_SEND_CONTEXT_LIMITS.lines));
 export type EngineSendContext = typeof EngineSendContext.Type;
+
+const fitsContext = Schema.decodeUnknownOption(EngineSendContext);
+const FittedContext = Schema.NullOr(EngineSendContext);
+
+/**
+ * A send's context as it arrives: one that does not fit the bound decodes as `null`, so the engine
+ * delivers the person's words without it and says so in its log. Context never fails a send.
+ */
+export const EngineSendContextField = Schema.Unknown.pipe(
+  Schema.decodeTo(
+    FittedContext,
+    SchemaTransformation.transform<typeof FittedContext.Encoded, unknown>({
+      decode: (raw) => {
+        const fitted = fitsContext(raw);
+        return fitted._tag === "Some" ? fitted.value : null;
+      },
+      encode: (value) => value,
+    }),
+  ),
+);
 
 /**
  * A person's message: queued, or sent at once when nothing is on. Pictures by reference, files by
@@ -397,7 +419,7 @@ export type EngineSendContext = typeof EngineSendContext.Type;
 export const EngineSendInput = Schema.Struct({
   ...call,
   text: Schema.String,
-  context: Schema.optionalKey(EngineSendContext),
+  context: Schema.optionalKey(EngineSendContextField),
   attachments: Schema.optionalKey(
     Schema.Array(Schema.Union([ChatImageAttachment, ChatFileAttachment])),
   ),
@@ -463,7 +485,7 @@ export const EngineSteerInput = Schema.Struct({
   ...call,
   runId: RunId,
   text: Schema.String,
-  context: Schema.optionalKey(EngineSendContext),
+  context: Schema.optionalKey(EngineSendContextField),
 });
 export type EngineSteerInput = typeof EngineSteerInput.Type;
 
