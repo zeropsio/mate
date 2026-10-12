@@ -1,5 +1,5 @@
 import { CONTENT_CONTRACT } from "../contentContract.ts";
-import { MAC_HOST_INSTRUCTIONS } from "../zerops/mac/macInstructions.ts";
+import { MAC_HOST_INSTRUCTIONS } from "../macHostInstructions.ts";
 
 /**
  * Shared runtime context; omit model and effort when the harness manages them dynamically.

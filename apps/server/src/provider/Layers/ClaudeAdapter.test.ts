@@ -39,7 +39,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { CONTENT_CONTRACT } from "../../contentContract.ts";
-import { MAC_HOST_INSTRUCTIONS } from "../../zerops/mac/macInstructions.ts";
+import { MAC_HOST_INSTRUCTIONS } from "../../macHostInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   SYNTHETIC_CLAUDE_CAPABLE_MODEL,

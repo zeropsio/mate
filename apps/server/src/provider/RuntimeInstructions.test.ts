@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { CONTENT_CONTRACT } from "../contentContract.ts";
-import { MAC_HOST_INSTRUCTIONS } from "../zerops/mac/macInstructions.ts";
+import { MAC_HOST_INSTRUCTIONS } from "../macHostInstructions.ts";
 import { buildRuntimeInstructions } from "./RuntimeInstructions.ts";
 
 describe("buildRuntimeInstructions", () => {
