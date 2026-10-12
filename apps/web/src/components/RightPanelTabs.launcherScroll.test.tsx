@@ -22,6 +22,7 @@ const ALL_AVAILABLE = {
   crew: "available",
   mcp: "available",
   vault: "available",
+  overview: "hidden",
 } as const;
 
 let host: HTMLDivElement;

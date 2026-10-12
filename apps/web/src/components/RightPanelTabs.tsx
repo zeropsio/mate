@@ -10,6 +10,7 @@ import {
   GitBranch,
   GitPullRequestArrow,
   Globe,
+  LayersIcon,
   type LucideIcon,
   Plus,
   TerminalSquare,
@@ -94,6 +95,7 @@ const SURFACE_DISABLED_REASONS = {
   crew: "The crew is only available from a Zerops project thread with crew mode on.",
   mcp: "MCP servers are only available from a conversation.",
   vault: "The vault is only available from a Zerops project thread.",
+  overview: "The overview opens from a Mastermate's conversation.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
 /** Overlays that must win over the launcher's letter shortcuts. */
@@ -205,6 +207,8 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
       return Plug;
     case "vault":
       return Vault;
+    case "overview":
+      return LayersIcon;
   }
 }
 
@@ -419,6 +423,8 @@ function surfaceTitle(
       return "MCP";
     case "vault":
       return "Vault";
+    case "overview":
+      return "Overview";
     case "change":
       return `${surface.repository} #${String(surface.number)}`;
   }
@@ -457,6 +463,8 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <Plug className="size-3 shrink-0" />;
     case "vault":
       return <Vault className="size-3 shrink-0" />;
+    case "overview":
+      return <LayersIcon className="size-3 shrink-0" />;
     case "change":
       return <GitPullRequestArrow className="size-3 shrink-0" />;
   }

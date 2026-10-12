@@ -12,6 +12,8 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { LayersIcon } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
+import { MateMark } from "../MateMark";
+
 import { hqNavigationAtom } from "~/state/zerops";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -94,7 +96,13 @@ export function SidebarOverviewRow({
   current,
   onOpen,
   waiting,
+  mastermate = false,
 }: {
+  /**
+   * The organization's Mastermate stands in for the overview (prototype): the menu's top row,
+   * the Mate's own mark and its name, opening its conversation, whose panel holds the overview.
+   */
+  readonly mastermate?: boolean;
   /** The organization in one line (`overviewHeadline`). */
   readonly headline: string;
   /** The overview is the page open now. */
@@ -124,7 +132,7 @@ export function SidebarOverviewRow({
   const items = waiting?.items ?? [];
   const summary = items.length === 0 ? undefined : waitingSummary(items);
   return (
-    <div className="menu-overview">
+    <div className="menu-overview" data-master={mastermate ? "" : undefined}>
       <button
         aria-current={current ? "page" : undefined}
         aria-keyshortcuts="Alt+0"
@@ -136,11 +144,15 @@ export function SidebarOverviewRow({
         type="button"
       >
         <span className="menu-chrome-disc" aria-hidden="true">
-          <LayersIcon className="size-4.5" />
+          {mastermate ? (
+            <MateMark awake playful className="h-9 w-7.5" />
+          ) : (
+            <LayersIcon className="size-4.5" />
+          )}
         </span>
         <span className="menu-chrome-text">
           <span className="menu-chrome-name" data-waiting-line="">
-            Overview
+            {mastermate ? "Mastermate" : "Overview"}
           </span>
           {summary === undefined ? (
             <span className="menu-chrome-line" data-zerops-surface="sidebar-overview-headline">

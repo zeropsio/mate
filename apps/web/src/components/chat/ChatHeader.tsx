@@ -14,7 +14,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ArchiveIcon, ChevronDownIcon, EllipsisIcon } from "lucide-react";
+import { ArchiveIcon, ChevronDownIcon, EllipsisIcon, LayersIcon } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -30,6 +30,7 @@ import { createPortal } from "react-dom";
 import GitActionsControl from "../GitActionsControl";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { type DraftId } from "~/composerDraftStore";
+import { useRightPanelStore } from "~/rightPanelStore";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
@@ -51,6 +52,7 @@ import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsProjectLink } from "../zerops/ZeropsProjectLink";
+import { MateFaceAsMark } from "../zerops/primitives";
 import { ChatHeaderLinks } from "./ChatHeaderLinks";
 import { ConversationStrip } from "./ConversationStrip";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
@@ -559,153 +561,172 @@ export const ChatHeader = memo(function ChatHeader({
     </>
   );
   return (
-    <div
-      className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3"
-      onContextMenu={handleHeaderContextMenu}
-    >
-      {lead === "reserved" ? (
-        <div aria-hidden="true" className="min-w-0 flex-1" data-header-lead-reserved />
-      ) : lead === "strip" ? (
-        // The line of the Mate's conversations: the Mate, then its crew. What
-        // the chat is about is the Mate's hover, never words on the line.
-        <>
-          <ConversationStrip
-            crewChat={
-              crewOrigin === null ? null : { handle: crewOrigin.crewmate, title: activeThreadTitle }
-            }
-            currentThreadId={isServerThread ? activeThreadId : null}
-            environmentId={activeThreadEnvironmentId}
-            onEditBrief={onEditBrief}
-            onEditJob={onEditCrewmateJob}
-            onRename={isServerThread && crewOrigin === null ? startRename : null}
-            renameField={
-              renamingTitle === null ? null : (
-                <div className="absolute inset-y-0 start-8.5 end-0 flex max-w-96 items-center">
-                  {renameInput(true)}
-                </div>
-              )
-            }
-            subject={crewOrigin === null && spoken ? headline : null}
-          />
-          {status === null ? null : (
-            <MateStatusMarker
-              mateName={mate?.name}
-              status={status}
-              timestampFormat={settings.timestampFormat}
+    // A Mastermate's face is the product's own mark here as in its conversation.
+    <MateFaceAsMark.Provider value={mate?.master === true}>
+      <div
+        className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3"
+        onContextMenu={handleHeaderContextMenu}
+      >
+        {lead === "reserved" ? (
+          <div aria-hidden="true" className="min-w-0 flex-1" data-header-lead-reserved />
+        ) : lead === "strip" ? (
+          // The line of the Mate's conversations: the Mate, then its crew. What
+          // the chat is about is the Mate's hover, never words on the line.
+          <>
+            <ConversationStrip
+              crewChat={
+                crewOrigin === null
+                  ? null
+                  : { handle: crewOrigin.crewmate, title: activeThreadTitle }
+              }
+              currentThreadId={isServerThread ? activeThreadId : null}
+              environmentId={activeThreadEnvironmentId}
+              onEditBrief={onEditBrief}
+              onEditJob={onEditCrewmateJob}
+              onRename={isServerThread && crewOrigin === null ? startRename : null}
+              renameField={
+                renamingTitle === null ? null : (
+                  <div className="absolute inset-y-0 start-8.5 end-0 flex max-w-96 items-center">
+                    {renameInput(true)}
+                  </div>
+                )
+              }
+              subject={crewOrigin === null && spoken ? headline : null}
             />
-          )}
-        </>
-      ) : (
-        <WorkspaceBreadcrumb ariaLabel="Thread breadcrumb" className="flex-1">
-          {/* The project always leads the header: knowing which project a
+            {status === null ? null : (
+              <MateStatusMarker
+                mateName={mate?.name}
+                status={status}
+                timestampFormat={settings.timestampFormat}
+              />
+            )}
+          </>
+        ) : (
+          <WorkspaceBreadcrumb ariaLabel="Thread breadcrumb" className="flex-1">
+            {/* The project always leads the header: knowing which project a
             thread lives in is priority zero, and the thread title alone
             doesn't answer it. */}
-          {whoLivesHere.kind === "nobody" && activeProjectName ? (
-            <>
-              <WorkspaceBreadcrumbItem>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        type="button"
-                        aria-label={`New thread in ${activeProjectName}`}
-                        onClick={onNewThreadInProject}
-                        className="inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                      />
-                    }
-                  >
-                    <ProjectFavicon
-                      environmentId={activeThreadEnvironmentId}
-                      cwd={activeProjectCwd ?? ""}
-                      faviconPath={activeProjectFaviconPath}
-                      className="size-3.5"
-                    />
-                    <span className="max-w-40 truncate">{activeProjectName}</span>
-                  </TooltipTrigger>
-                  <TooltipPopup side="top">New thread in {activeProjectName}</TooltipPopup>
-                </Tooltip>
-              </WorkspaceBreadcrumbItem>
-              <WorkspaceBreadcrumbSeparator />
-            </>
-          ) : null}
-          {crewOrigin !== null || (whoLivesHere.kind !== "nobody" && !spoken) ? null : (
-            <WorkspaceBreadcrumbItem current className="flex-1">
-              {titleContent}
-            </WorkspaceBreadcrumbItem>
-          )}
-        </WorkspaceBreadcrumb>
-      )}
-      {/* The sync indicator's seat: always this size, so a thread catching up
-          with its server spins here and moves nothing (`threadSyncSlot.ts`). */}
-      <span
-        className="flex size-4 shrink-0 items-center justify-center"
-        data-thread-sync-slot="true"
-        ref={registerThreadSyncSlot}
-      />
-      <div
-        ref={headerActionsRef}
-        data-chat-header-actions
-        className={cn(
-          "flex shrink-0 items-center justify-end",
-          // A Mate's header is a row of borderless buttons, 4 px apart like
-          // the panel toggles beside it — held so while its Mate is not named yet.
-          lead === "breadcrumb" ? "gap-2 @3xl/header-actions:gap-3" : "gap-1",
-          // Reserve two panel toggles (32px, 28px at sm) with their 4px gap and
-          // 1px edge inset, plus the gap the actions keep between themselves so
-          // the terminal toggle does not sit against the last action. The page
-          // header adds 8px more right padding at sm.
-          rightPanelOpen
-            ? "pr-0"
-            : lead === "breadcrumb"
-              ? "pr-19.25 sm:pr-15.25 @3xl/header-actions:pr-16.25"
-              : "pr-18.25 sm:pr-14.25",
-        )}
-      >
-        {/* The Mate's version and its update live with its body in the right
-            panel's Zerops view, not over the conversation. */}
-        <Menu open={menuShown && actionsOpen} onOpenChange={setActionsOpen}>
-          <MenuTrigger
-            className={menuShown ? undefined : "hidden"}
-            render={
-              <Button
-                aria-label="More header actions"
-                data-chat-header-ghost
-                size="icon-sm"
-                variant="ghost-muted"
-              />
-            }
-          >
-            <EllipsisIcon className="size-4" />
-          </MenuTrigger>
-          <div ref={mountInlineActions} className="contents" />
-          <MenuPopup
-            data-chat-header-actions
-            keepMounted
-            aria-label="Header actions"
-            align="end"
-            finalFocus={menuShown ? undefined : false}
-          >
-            <div ref={mountMenuActions} className="contents" />
-            {createPortal(headerActions, actionsContainer)}
-            {startsFresh ? (
+            {whoLivesHere.kind === "nobody" && activeProjectName ? (
               <>
-                {projectActionsInMenu ? <MenuSeparator /> : null}
-                <StartFreshMenuItem onStartFresh={onStartFresh} />
+                <WorkspaceBreadcrumbItem>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          aria-label={`New thread in ${activeProjectName}`}
+                          onClick={onNewThreadInProject}
+                          className="inline-flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                        />
+                      }
+                    >
+                      <ProjectFavicon
+                        environmentId={activeThreadEnvironmentId}
+                        cwd={activeProjectCwd ?? ""}
+                        faviconPath={activeProjectFaviconPath}
+                        className="size-3.5"
+                      />
+                      <span className="max-w-40 truncate">{activeProjectName}</span>
+                    </TooltipTrigger>
+                    <TooltipPopup side="top">New thread in {activeProjectName}</TooltipPopup>
+                  </Tooltip>
+                </WorkspaceBreadcrumbItem>
+                <WorkspaceBreadcrumbSeparator />
               </>
             ) : null}
-          </MenuPopup>
-        </Menu>
-        <ChatHeaderLinks environmentId={activeThreadEnvironmentId} threadId={activeThreadId} />
-        {mate === undefined ? null : (
-          <span
-            aria-hidden={conversationLoading ? true : undefined}
-            className={conversationLoading ? "invisible contents" : "contents"}
-            data-opening-waits=""
-          >
-            <ZeropsProjectLink projectUrl={mate.projectUrl} />
-          </span>
+            {crewOrigin !== null || (whoLivesHere.kind !== "nobody" && !spoken) ? null : (
+              <WorkspaceBreadcrumbItem current className="flex-1">
+                {titleContent}
+              </WorkspaceBreadcrumbItem>
+            )}
+          </WorkspaceBreadcrumb>
         )}
+        {/* The sync indicator's seat: always this size, so a thread catching up
+          with its server spins here and moves nothing (`threadSyncSlot.ts`). */}
+        <span
+          className="flex size-4 shrink-0 items-center justify-center"
+          data-thread-sync-slot="true"
+          ref={registerThreadSyncSlot}
+        />
+        <div
+          ref={headerActionsRef}
+          data-chat-header-actions
+          className={cn(
+            "flex shrink-0 items-center justify-end",
+            // A Mate's header is a row of borderless buttons, 4 px apart like
+            // the panel toggles beside it — held so while its Mate is not named yet.
+            lead === "breadcrumb" ? "gap-2 @3xl/header-actions:gap-3" : "gap-1",
+            // Reserve two panel toggles (32px, 28px at sm) with their 4px gap and
+            // 1px edge inset, plus the gap the actions keep between themselves so
+            // the terminal toggle does not sit against the last action. The page
+            // header adds 8px more right padding at sm.
+            rightPanelOpen
+              ? "pr-0"
+              : lead === "breadcrumb"
+                ? "pr-19.25 sm:pr-15.25 @3xl/header-actions:pr-16.25"
+                : "pr-18.25 sm:pr-14.25",
+          )}
+        >
+          {/* The Mate's version and its update live with its body in the right
+            panel's Zerops view, not over the conversation. */}
+          <Menu open={menuShown && actionsOpen} onOpenChange={setActionsOpen}>
+            <MenuTrigger
+              className={menuShown ? undefined : "hidden"}
+              render={
+                <Button
+                  aria-label="More header actions"
+                  data-chat-header-ghost
+                  size="icon-sm"
+                  variant="ghost-muted"
+                />
+              }
+            >
+              <EllipsisIcon className="size-4" />
+            </MenuTrigger>
+            <div ref={mountInlineActions} className="contents" />
+            <MenuPopup
+              data-chat-header-actions
+              keepMounted
+              aria-label="Header actions"
+              align="end"
+              finalFocus={menuShown ? undefined : false}
+            >
+              <div ref={mountMenuActions} className="contents" />
+              {createPortal(headerActions, actionsContainer)}
+              {startsFresh ? (
+                <>
+                  {projectActionsInMenu ? <MenuSeparator /> : null}
+                  <StartFreshMenuItem onStartFresh={onStartFresh} />
+                </>
+              ) : null}
+            </MenuPopup>
+          </Menu>
+          <ChatHeaderLinks environmentId={activeThreadEnvironmentId} threadId={activeThreadId} />
+          {mate === undefined ? null : (
+            <span
+              aria-hidden={conversationLoading ? true : undefined}
+              className={conversationLoading ? "invisible contents" : "contents"}
+              data-opening-waits=""
+            >
+              {mate.master === true ? (
+                // A Mastermate's way out is its organization: the overview's cards beside it.
+                <Button
+                  aria-label="Overview"
+                  data-chat-header-ghost
+                  onClick={() => useRightPanelStore.getState().open(activeThreadRef, "overview")}
+                  size="sm"
+                  variant="ghost-muted"
+                >
+                  <LayersIcon className="size-3.5 shrink-0" />
+                  <span className="hidden text-line @3xl/header-actions:inline">Overview</span>
+                </Button>
+              ) : (
+                <ZeropsProjectLink projectUrl={mate.projectUrl} />
+              )}
+            </span>
+          )}
+        </div>
       </div>
-    </div>
+    </MateFaceAsMark.Provider>
   );
 });

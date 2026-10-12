@@ -945,7 +945,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // — so every row agrees on which container is the environment's.
   const mates = selectMateEnvironments(candidates);
   const mateByProject = new Map(mates.map((mate) => [mate.project.id, mate]));
-  // The person's Mastermate is the organization's, not a project's: drawn first, on its own.
+  // The person's Mastermate is the organization's, not a project's: the menu's top row, not here.
   const master = mates.find((mate) => isMastermate(mate.project));
   const everyEnvironment = [
     ...candidates.filter((candidate) => !mateByProject.has(candidate.project.id)),
@@ -1817,29 +1817,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         </div>
       ) : null}
       <SidebarSelectedBand current={activeProjectId} />
-      {master === undefined ? null : (
-        <div className="mb-5 flex flex-col" data-zerops-surface="sidebar-mastermate">
-          <MateUnit active={master.project.id === activeProjectId} projectId={master.project.id}>
-            <MateRow
-              keyedReadings={keyedReadings}
-              actions={getMateActions?.(master, getActivity?.(master))}
-              active={master.project.id === activeProjectId}
-              activity={keyedReadings ? undefined : getActivity?.(master)}
-              up={mateAwake(master, hqMates)}
-              apps={NO_APPS}
-              candidate={master}
-              coming={getComing?.(master)}
-              conversationsRead={getConversationsRead?.(master) === true}
-              keys={mateKeys}
-              numbers={altHeld}
-              onSelect={onSelect}
-              owner={keyedReadings ? undefined : getOwner?.(master)}
-              timestampFormat={timestampFormat}
-              {...faceOf(master.project)}
-            />
-          </MateUnit>
-        </div>
-      )}
       {/* Every project, one list: none folds behind "N other projects" (the owner, 2026-10-11). */}
       {groupSections}
       {ungroupedSection}

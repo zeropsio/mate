@@ -4536,6 +4536,15 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
     padding-right: 52px;
   }
 
+  /* The Mastermate in the menu's top bar (prototype): the bar's own height, the Mate's mark bare. */
+  .menu-overview[data-master] .menu-chrome-row {
+    height: 48px;
+  }
+
+  .menu-overview[data-master] .menu-chrome-disc {
+    background: transparent;
+  }
+
   .menu-overview .menu-chrome-count {
     position: absolute;
     top: 50%;
