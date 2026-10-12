@@ -74,6 +74,23 @@ describe("a published page's document", () => {
     expect(PAGE_POLICY).not.toMatch(/'self'|https?:|\*/);
   });
 
+  // The page's frame is the wrapper's srcdoc, so both policies hold for it: a picture shows only
+  // where the wrapper allows it too (the owner, 2026-10-13: "why are these not loading?").
+  it.each(["img-src", "font-src", "media-src"])(
+    "lets through what the page carries inline, in the wrapper as in the page: %s",
+    (directive) => {
+      const of = (policy: string) =>
+        new Map(
+          policy.split(";").map((part) => {
+            const [name, ...values] = part.trim().split(/\s+/);
+            return [name!, values.join(" ")] as const;
+          }),
+        ).get(directive);
+      expect(of(WRAPPER_POLICY)).toBe(of(PAGE_POLICY));
+      expect(WRAPPER_POLICY).not.toMatch(/'self'|https?:|\*/);
+    },
+  );
+
   it("carries the conversation's colours as the page's own variables, in its scheme", () => {
     const doc = pageOf("<p>x</p>");
     expect(doc).toContain("--background:#111;");
