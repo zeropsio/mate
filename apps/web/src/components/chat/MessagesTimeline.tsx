@@ -1783,11 +1783,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 
   // Stable renderItem — no closure deps. Row components read shared state
-  // from TimelineRowCtx, which propagates through LegendList's memo.
+  // from TimelineRowCtx, which propagates through LegendList's memo. A page the
+  // Mate published stands in a column of its own, wider than the words' (the
+  // owner, 2026-10-12: "let it go wider").
   const renderItem = useCallback(
     ({ item }: { item: MessagesTimelineRow }) => (
       <div
-        className="mx-auto w-full min-w-0 max-w-3xl overflow-x-clip"
+        className={cn(
+          "mx-auto w-full min-w-0 overflow-x-clip",
+          item.kind === "page" ? "max-w-6xl" : "max-w-3xl",
+        )}
         data-timeline-root={item.id}
       >
         <TimelineRowContent row={item} />

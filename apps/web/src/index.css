@@ -13202,7 +13202,7 @@ button.rv-relrow:hover .rv-relrow-go {
   /* The page is the answer: it stands at its full height on the conversation's own ground, with
      no card around it. Before a client ever measured it, a modest first box it glides from. */
   height: 240px;
-  max-height: 2000px;
+  max-height: 4000px;
   overflow: hidden;
   border-radius: var(--radius-lg);
 }

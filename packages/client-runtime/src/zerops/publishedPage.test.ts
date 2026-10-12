@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { PAGE_MAX_HEIGHT } from "@t3tools/contracts";
 
 import {
   PAGE_POLICY,
@@ -220,7 +221,11 @@ describe("a published page in a phone's web view", () => {
 describe("a published page's frame height", () => {
   it.each([
     { title: "once the page says it, its own", content: 212, want: 212 },
-    { title: "a page taller than 2000 px, 2000: it scrolls inside", content: 2400, want: 2000 },
+    {
+      title: "a page taller than the cap, the cap: it scrolls inside",
+      content: PAGE_MAX_HEIGHT + 400,
+      want: PAGE_MAX_HEIGHT,
+    },
     { title: "an empty page, still a line tall", content: 0, want: 48 },
   ])("is $title", ({ content, want }) => {
     expect(pageFrameHeight(content)).toBe(want);
@@ -257,12 +262,12 @@ describe("the height a client records for a page", () => {
       width: 727.6,
       content: 9000,
     });
-    expect(first).toEqual([728, 2000]);
+    expect(first).toEqual([728, PAGE_MAX_HEIGHT]);
     // Known now, in memory: a frame mounted again paints at it, and records nothing again.
     const known = knownPageHeights("c/r/1/i/2", undefined);
-    expect(known).toEqual([[728, 2000]]);
+    expect(known).toEqual([[728, PAGE_MAX_HEIGHT]]);
     expect(
-      pageHeightToRecord({ itemId: "c/r/1/i/2", heights: known, width: 728, content: 2400 }),
+      pageHeightToRecord({ itemId: "c/r/1/i/2", heights: known, width: 728, content: 9000 }),
     ).toBeNull();
   });
 

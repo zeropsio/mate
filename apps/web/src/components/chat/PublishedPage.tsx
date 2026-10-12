@@ -118,7 +118,7 @@ export interface PublishedPageFrameProps {
 /**
  * The page in its frames: two deep, sandboxed with scripts alone, its navigation refused before
  * it leaves (`@t3tools/client-runtime/zerops/publishedPage`). The page stands at its full height,
- * like the answer it is — at most 2000 px, past which it scrolls inside. From its first paint the
+ * like the answer it is — at most 4000 px, past which it scrolls inside. From its first paint the
  * frame stands at the height recorded at the nearest width, so a page measured once never moves;
  * only its very first landing starts from a modest box and glides, once, to the page's height. The
  * page settled, the frame reports its height at its width (`onMeasured`) for later views. When the
