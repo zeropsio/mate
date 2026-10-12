@@ -4,6 +4,7 @@ import {
   GitPullRequestIcon,
   LayersIcon,
   PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
   PlusIcon,
   SettingsIcon,
 } from "lucide-react";
@@ -260,7 +261,7 @@ export function sidebarAccountDestinationIcon(id: SidebarAccountDestination["id"
 
 export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const navigateToMainApp = useNavigateToMainApp();
-  const { isMobile, setOpenMobile, toggleSidebar } = useSidebar();
+  const { isMobile, open, setOpenMobile, toggleSidebar } = useSidebar();
   const showBackFooter = useLocation({
     select: (location) => location.pathname !== "/usage" && isSidebarUtilityPage(location.pathname),
   });
@@ -295,10 +296,11 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
         </SidebarMenuItem>
       )}
       <SidebarUpdatePill />
+      {/* Peeking out of the rail, the menu docks where it stands. */}
       <SidebarUtilityItem
         className="ml-auto"
-        icon={<PanelLeftCloseIcon />}
-        label="Collapse sidebar"
+        icon={isMobile || open ? <PanelLeftCloseIcon /> : <PanelLeftOpenIcon />}
+        label={isMobile || open ? "Collapse sidebar" : "Open the menu"}
         onClick={toggleSidebar}
       />
     </SidebarMenu>

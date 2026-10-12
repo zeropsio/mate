@@ -1,5 +1,5 @@
 /**
- * The closed menu on a desktop (`SidebarRail.logic.ts`): a 64 px rail. The mark leads to the
+ * The closed menu on a desktop (`SidebarRail.logic.ts`): a 72 px rail. The mark leads to the
  * overview; Overview wears the selected band while it is open, and what waits on the viewer as a
  * count on its corner, which opens the same Waiting on you list beside the rail — one control, as
  * the open menu's Overview row (the owner, 2026-10-12: "why is this still split into waiting for
@@ -8,10 +8,11 @@
  * the viewer's photo opens the account menu, and the last button opens the menu again.
  *
  * A closed menu still says what is what (the owner, 2026-10-11: "absolutely shit for navigation,
- * you have absolutely no idea what is what, the tooltip is slow and small"): each project's name
- * heads its faces — the project is how a Mate is found (2026-10-12) — and a face's tooltip, at
- * once and instant from one face to the next, is a card of its name, its project, what was asked
- * and its last answer. A Mate in no project carries its own name under its face.
+ * you have absolutely no idea what is what, the tooltip is slow and small"): each project is a
+ * pod, its name inside over its faces — the project is how a Mate is found (2026-10-12) — and the
+ * open Mate's whole pod wears the selected band. A Mate in no project carries its own name under
+ * its face. A pointer resting on the rail peeks the open menu out over it (`SidebarPeek.tsx`), so
+ * a face's card — its name, its project, what was asked, its last answer — is the keyboard's.
  */
 import {
   assignCandidateMateTints,
@@ -258,8 +259,9 @@ export function SidebarRail({
 }) {
   const summary = waitingSummary(waiting);
   return (
-    // Tooltips open at once, and instantly from one control to the next while moving along the rail.
-    <TooltipProvider closeDelay={0} delay={80} timeout={700}>
+    // A resting pointer peeks the open menu out over the rail before a card would open; focus
+    // opens a card at once, and instantly from one control to the next.
+    <TooltipProvider closeDelay={0} delay={600} timeout={700}>
       <div className="menu-rail" data-zerops-surface="sidebar-rail">
         <div className="menu-rail-top">
           {showMark ? (
@@ -312,10 +314,13 @@ export function SidebarRail({
             // (the owner, 2026-10-12: "you absolutely do not identify your mate by the name,
             // shape or color, it's the project what is the main identifier").
             const project = group[0]?.projectName ?? "";
+            const current = group.some((mate) => mate.projectId === activeProjectId);
             return (
               <div
                 aria-label={project.length > 0 ? project : undefined}
                 className="menu-rail-project"
+                aria-current={current ? "true" : undefined}
+                data-single={group.length === 1 ? "" : undefined}
                 data-zerops-surface="sidebar-rail-project"
                 key={group[0]?.groupId ?? index}
                 role="group"
@@ -349,7 +354,7 @@ export function SidebarRail({
                     }
                   >
                     <MateFace
-                      className="size-9"
+                      className="size-8"
                       shape={mate.shape}
                       size="md"
                       state={mate.face}

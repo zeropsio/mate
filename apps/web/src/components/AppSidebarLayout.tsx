@@ -252,13 +252,14 @@ export function AppSidebarLayout({
       ? getWindowFullscreenState()
       : false;
   });
-  // Closed on a desktop, the menu is a 64 px rail (`SidebarRail`); settings and the gate close away.
+  // Closed on a desktop, the menu is a 72 px rail (`SidebarRail`) the open menu peeks out of and
+  // docks from (`SidebarPeekStage`); settings and the gate close away.
   const rail = !isOnSettings && !gated;
   // A menu its person left closed comes back closed: the rail, as the first frame drew it.
   const [leftOpen] = useState(readSidebarOpen);
   const sidebarProviderStyle = {
     "--sidebar-width": `${sidebarWidth}px`,
-    "--sidebar-width-icon": "64px",
+    "--sidebar-width-icon": "72px",
     ...(isMacosDesktop && !isWindowFullscreen
       ? { "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET }
       : {}),
@@ -312,10 +313,11 @@ export function AppSidebarLayout({
       <Sidebar
         side="left"
         collapsible={rail ? "icon" : "offcanvas"}
+        layered={rail}
         data-app-sidebar=""
         role="navigation"
         aria-label={isOnSettings ? "Settings" : "Mates"}
-        className="border-r border-sidebar-border"
+        className={rail ? undefined : "border-r border-sidebar-border"}
         resizable={{
           maxWidth: sidebarMaximumWidth,
           minWidth: THREAD_SIDEBAR_MIN_WIDTH,
