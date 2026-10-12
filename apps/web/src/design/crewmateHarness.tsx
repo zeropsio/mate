@@ -499,6 +499,7 @@ function ComposerSlot({ current }: { readonly current: HarnessState }) {
           <div className="chat-composer-glass-host relative z-10 w-full">
             {locked && LOCKED !== null ? (
               <ZeropsReadOnlyConversationFooter
+                environmentId={ENVIRONMENT}
                 onSignIn={noop}
                 pendingApprovals={[]}
                 pendingUserInputs={[]}

@@ -7965,17 +7965,23 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   border-radius: calc(var(--composer-radius) - 1px);
 }
 
-/* C3: Review, the one blue button on the composer's top — blue is for what
-   can be clicked (S3), and the strip around it stays neutral. */
-.composer-review-button {
-  height: 30px;
-  padding: 0 12px;
+/* C3: the one blue button on the composer's top — Review, Approve, Save to
+   vault — blue is for what can be clicked (S3), and the ask around it stays
+   neutral. */
+.composer-top-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  /* 30 px on one line; a provider's long label wraps inside it. */
+  min-height: 30px;
+  padding: 6px 12px;
   border-radius: 9px;
   background: var(--primary);
   color: var(--primary-foreground);
   font-size: var(--text-line);
   font-weight: 500;
-  line-height: 1;
+  line-height: 18px;
   white-space: nowrap;
   cursor: pointer;
   outline: none;
@@ -7984,12 +7990,17 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
     filter 150ms ease;
 }
 
-.composer-review-button:hover {
+.composer-top-button:hover:not(:disabled) {
   filter: brightness(1.06);
 }
 
-.composer-review-button:active {
+.composer-top-button:active:not(:disabled) {
   transform: scale(0.97);
+}
+
+.composer-top-button:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 /* The strip's ×: quiet beside Review, the one button that asks for anything. */
@@ -8132,18 +8143,18 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   }
 }
 
-.composer-review-button:focus-visible {
+.composer-top-button:focus-visible {
   box-shadow:
     0 0 0 2px var(--card),
     0 0 0 4px var(--ring);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .composer-review-button {
+  .composer-top-button {
     transition: filter 150ms ease;
   }
 
-  .composer-review-button:active {
+  .composer-top-button:active:not(:disabled) {
     transform: none;
   }
 }

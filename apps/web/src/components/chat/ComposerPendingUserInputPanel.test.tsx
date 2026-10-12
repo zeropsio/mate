@@ -58,14 +58,15 @@ describe("ComposerPendingUserInputPanel", () => {
     );
 
     for (const markup of [questionMarkup, approvalMarkup]) {
-      expect(markup).toContain('data-zerops-primitive="status-dot"');
-      expect(markup).toContain('data-zerops-status-tone="attention"');
+      // Whom it waits on, said once: the asking face's needs pose shows it, these words read it.
       expect(markup).toContain("Waiting for you");
+      // Each stands at the composer's top, over the conversation's end, without moving it.
+      expect(markup).toContain('data-chat-composer-asks="true"');
     }
     expect(questionMarkup).toContain('data-pending-request-kind="question"');
-    expect(questionMarkup).toContain(">Question<");
+    expect(questionMarkup).toContain(">The agent asks<");
     expect(approvalMarkup).toContain('data-pending-request-kind="command-approval"');
-    expect(approvalMarkup).toContain(">Command approval<");
+    expect(approvalMarkup).toContain(">The agent wants to run this command<");
   });
 
   it("says whom an approval waits on when that is not the viewer", () => {

@@ -1,4 +1,4 @@
-import { ApprovalRequestId } from "@t3tools/contracts";
+import { ApprovalRequestId, EnvironmentId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -41,6 +41,7 @@ function render(input: {
 }) {
   return renderToStaticMarkup(
     <ZeropsReadOnlyConversationFooter
+      environmentId={EnvironmentId.make("environment-1")}
       readOnly={readOnly}
       pendingApprovals={input.pendingApprovals ?? []}
       pendingUserInputs={[...(input.pendingUserInputs ?? [])]}
@@ -107,6 +108,7 @@ describe("ZeropsReadOnlyConversationFooter", () => {
   it("offers no action where it is given none", () => {
     const html = renderToStaticMarkup(
       <ZeropsReadOnlyConversationFooter
+        environmentId={EnvironmentId.make("environment-1")}
         readOnly={readOnly}
         pendingApprovals={[]}
         pendingUserInputs={[]}

@@ -22,6 +22,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { useDetailDemand } from "~/zerops/ZeropsAccountData";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
+import { ComposerAskFace } from "../../chat/ComposerAsk";
 import { ComposerVaultAsk, type ComposerVaultAskProps } from "./ComposerVaultAsk";
 import { useVaultWriter } from "./VaultPanelContainer";
 import { openVaultAsk, vaultAskState } from "./vaultRequest.logic";
@@ -112,6 +113,7 @@ export function ComposerVaultAskContainer({
   return (
     <ComposerVaultAsk
       ask={open.ask}
+      face={<ComposerAskFace environmentId={environmentId} />}
       key={open.requestId}
       mateName={mateName}
       onNotNow={onNotNow}

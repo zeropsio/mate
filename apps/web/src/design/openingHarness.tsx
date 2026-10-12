@@ -15,6 +15,7 @@
  * Fixtures only. Nothing here ships — `design-opening.html` is not `index.html`, and no route
  * imports this module.
  */
+import { EnvironmentId } from "@t3tools/contracts";
 import {
   conversationFooter,
   type ConversationWriter,
@@ -38,6 +39,8 @@ import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import "../index.css";
+
+const HARNESS_ENVIRONMENT = EnvironmentId.make("environment-opening-harness");
 
 const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
@@ -72,6 +75,7 @@ function ConversationFooter({ writer }: { readonly writer: ConversationWriter })
     return (
       <ComposerStandInDock>
         <ZeropsReadOnlyConversationFooter
+          environmentId={HARNESS_ENVIRONMENT}
           onSignIn={writer.kind === "someone" ? nothing : undefined}
           pendingApprovals={[]}
           pendingUserInputs={[]}
