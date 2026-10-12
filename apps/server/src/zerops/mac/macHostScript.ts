@@ -12,9 +12,12 @@
  */
 import { shellQuote } from "./MacHost.ts";
 import { MAC_VIEW_SCRIPT } from "./macViewScript.ts";
+import { MAC_VIEW_STREAM_SOURCE } from "./macViewStreamScript.ts";
 
 /** Ends the heredoc that writes the view helper; no line of the script is this word. */
 const VIEW_SCRIPT_END = "ZEROPS_MATE_VIEW_SCRIPT";
+/** Ends the heredoc that writes the smooth streamer's source; no line of it is this word. */
+const VIEW_STREAM_END = "ZEROPS_MATE_VIEW_STREAM";
 
 export interface MacHostScriptInput {
   readonly projectId: string;
@@ -71,7 +74,7 @@ NODE_FILE=$(realpath "$NODE" 2>/dev/null || echo "$NODE")
 NPM=$(command -v npm) || fail "npm is missing. Install Node.js with npm, then run this again."
 
 say "installing agent-device into $ROOT"
-mkdir -p "$ROOT/bin" "$ROOT/sshd" "$ROOT/logs" "$ROOT/agent-device/state" "$WORKSPACE" "$AGENTS"
+mkdir -p "$ROOT/bin" "$ROOT/src" "$ROOT/sshd" "$ROOT/logs" "$ROOT/agent-device/state" "$WORKSPACE" "$AGENTS"
 chmod 700 "$ROOT"
 "$NPM" install --silent --no-audit --no-fund --prefix "$ROOT/agent-device" "$AGENT_DEVICE" >/dev/null
 CLI="$ROOT/agent-device/node_modules/agent-device/bin/agent-device.mjs"
@@ -106,6 +109,27 @@ chmod 755 "$ROOT/bin/check-access"
 # served on a socket in $ROOT, which only you reach; the Mate reads it over its ssh.
 cat > "$ROOT/bin/view.mjs" <<'${VIEW_SCRIPT_END}'
 ${MAC_VIEW_SCRIPT}${VIEW_SCRIPT_END}
+
+# The smooth live view: a ScreenCaptureKit streamer view.mjs runs as its child, so it records
+# under node's Screen Recording too. Built with Apple's compiler, again only when its source changed;
+# without one the view keeps the slower capture.
+STREAM_SRC="$ROOT/src/view-stream.swift"
+cat > "$STREAM_SRC.new" <<'${VIEW_STREAM_END}'
+${MAC_VIEW_STREAM_SOURCE}${VIEW_STREAM_END}
+if [ -x "$ROOT/bin/view-stream" ] && cmp -s "$STREAM_SRC.new" "$STREAM_SRC"; then
+  rm -f "$STREAM_SRC.new"
+else
+  mv "$STREAM_SRC.new" "$STREAM_SRC"
+  rm -f "$ROOT/bin/view-stream"
+  # xcode-select first: xcrun on a Mac without the tools offers to install them on screen.
+  if [ -d "$(xcode-select -p 2>/dev/null)" ] && xcrun --find swiftc >/dev/null 2>&1 &&
+    xcrun swiftc -O -o "$ROOT/bin/view-stream.new" "$STREAM_SRC" 2>"$ROOT/logs/view-stream-build.log"; then
+    mv "$ROOT/bin/view-stream.new" "$ROOT/bin/view-stream"
+  else
+    rm -f "$ROOT/bin/view-stream.new"
+    say "smooth live view needs Apple's command line tools: xcode-select --install; using the slower capture"
+  fi
+fi
 
 # The Mate's way in: an sshd of your own, on the VPN address only, for its key only.
 [ -f "$ROOT/sshd/host_key" ] || ssh-keygen -q -t ed25519 -N '' -C "zerops-mate-$PROJECT" -f "$ROOT/sshd/host_key"

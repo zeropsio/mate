@@ -11,6 +11,7 @@ import { PNG } from "pngjs";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
 
 import { MAC_VIEW_SCRIPT } from "./macViewScript.ts";
+import { MAC_VIEW_STREAM_SOURCE } from "./macViewStreamScript.ts";
 import { makeMacViewParser, type MacViewMessage } from "./macViewWire.ts";
 
 interface ViewModule {
@@ -138,9 +139,17 @@ describe("the view helper's stream", () => {
     for (const child of running.splice(0)) child.kill();
   });
 
-  /** Runs the helper as its LaunchAgent would, with macOS's tools replaced by stubs. */
-  const startHelper = (tools: Record<string, string>) => {
+  /**
+   * Runs the helper as its LaunchAgent would, with macOS's tools replaced by stubs, and with the
+   * smooth streamer the pairing builds when `streamer` gives a stub for it.
+   */
+  const startHelper = (tools: Record<string, string>, streamer?: string) => {
     const { root, file } = installed();
+    if (streamer !== undefined) {
+      NodeFS.writeFileSync(NodePath.join(root, "bin", "view-stream"), `#!/bin/sh\n${streamer}\n`, {
+        mode: 0o755,
+      });
+    }
     const bin = tempDir("mac-view-tools-");
     for (const [name, body] of Object.entries(tools)) {
       NodeFS.writeFileSync(NodePath.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
@@ -157,6 +166,7 @@ describe("the view helper's stream", () => {
   const read = async (
     socket: string,
     enough: (messages: ReadonlyArray<MacViewMessage>) => boolean,
+    fps = 5,
   ): Promise<ReadonlyArray<MacViewMessage>> => {
     for (let attempt = 0; attempt < 100 && !NodeFS.existsSync(socket); attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -165,7 +175,7 @@ describe("the view helper's stream", () => {
       const parser = makeMacViewParser();
       const messages: MacViewMessage[] = [];
       const request = NodeHttp.get(
-        { socketPath: socket, path: "/stream?app=com.example.Counter&fps=5" },
+        { socketPath: socket, path: `/stream?app=com.example.Counter&fps=${fps}` },
         (response) => {
           response.on("data", (chunk: Buffer) => {
             messages.push(...parser.push(chunk));
@@ -208,6 +218,107 @@ describe("the view helper's stream", () => {
     );
   });
 
+  /** The streamer's wire: a JSON header line, then the bytes it announces; no in-use flag. */
+  const streamerSays = (header: object, file?: string) =>
+    file === undefined
+      ? `printf '%s\\n' '${JSON.stringify(header)}'`
+      : `printf '%s\\n' '${JSON.stringify({ ...header, size: NodeFS.statSync(file).size })}'; cat '${file}'`;
+
+  const counterWindow = {
+    osascript: `echo '{"running":true,"windows":[{"number":42,"layer":0,"onscreen":true,"alpha":1,"bounds":{"x":100,"y":50,"width":230,"height":408}}]}'`,
+    ioreg: `echo '    |   "HIDIdleTime" = 3000000000'`,
+    sips: "exit 0",
+  };
+
+  it("streams the app's window through the smooth streamer when the pairing built one", async () => {
+    const image = tempDir("mac-view-image-");
+    const capture = NodePath.join(image, "window.jpg");
+    NodeFS.writeFileSync(capture, jpeg(460, 816));
+    const { socket } = startHelper(
+      { ...counterWindow, screencapture: "exit 1" },
+      [
+        `echo "$@" > '${NodePath.join(image, "arguments")}'`,
+        streamerSays({ type: "state", status: "no-window" }),
+        streamerSays(
+          {
+            type: "frame",
+            mimeType: "image/jpeg",
+            width: 460,
+            height: 816,
+            bounds: { x: 100, y: 50, width: 230, height: 408 },
+          },
+          capture,
+        ),
+        `while :; do ${streamerSays({ type: "tick" })}; sleep 1; done`,
+      ].join("\n"),
+    );
+
+    const messages = await read(socket, (all) => all.some((m) => m.type === "frame"), 12);
+
+    expect(messages[0]).toEqual({ type: "state", status: "no-window", inUse: true });
+    const frame = messages.find((m) => m.type === "frame");
+    expect(frame).toMatchObject({
+      type: "frame",
+      mimeType: "image/jpeg",
+      width: 460,
+      height: 816,
+      bounds: { x: 100, y: 50, width: 230, height: 408 },
+      inUse: true,
+    });
+    expect(Buffer.from(frame?.type === "frame" ? frame.bytes : []).equals(jpeg(460, 816))).toBe(
+      true,
+    );
+    expect(NodeFS.readFileSync(NodePath.join(image, "arguments"), "utf8")).toBe(
+      "com.example.Counter 12 1600\n",
+    );
+  });
+
+  it.each([
+    ["macOS refuses the smooth streamer the capture", "exit 77"],
+    ["the smooth streamer talks nonsense", "echo 'Segmentation fault'; sleep 5"],
+  ])("falls back to its own capture when %s", async (_, streamer) => {
+    const image = tempDir("mac-view-image-");
+    const capture = NodePath.join(image, "window.jpg");
+    NodeFS.writeFileSync(capture, jpeg(46, 81));
+    const { socket } = startHelper(
+      { ...counterWindow, screencapture: `[ "$4" = 42 ] && cp '${capture}' "$7"` },
+      streamer,
+    );
+
+    const messages = await read(socket, (all) => all.some((m) => m.type === "frame"));
+
+    expect(messages.find((m) => m.type === "frame")).toMatchObject({
+      width: 46,
+      height: 81,
+      bounds: { x: 100, y: 50, width: 230, height: 408 },
+    });
+  });
+
+  it("stops the smooth streamer when the Mate hangs up", async () => {
+    const image = tempDir("mac-view-image-");
+    const pidFile = NodePath.join(image, "pid");
+    const { socket } = startHelper(
+      { ...counterWindow, screencapture: "exit 1" },
+      `echo $$ > '${pidFile}'; while :; do ${streamerSays({ type: "tick" })}; sleep 1; done`,
+    );
+
+    await read(socket, (all) => all.length > 0);
+
+    const pid = Number(NodeFS.readFileSync(pidFile, "utf8"));
+    const alive = () => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    for (let attempt = 0; attempt < 60 && alive(); attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(alive()).toBe(false);
+  });
+
   it("says when the app is not running", async () => {
     const { socket } = startHelper({
       osascript: `echo '{"running":false,"windows":[]}'`,
@@ -220,6 +331,30 @@ describe("the view helper's stream", () => {
 
     expect(messages[0]).toEqual({ type: "state", status: "no-app", inUse: false });
   });
+});
+
+/** Apple's Swift compiler, without offering to install it on a Mac that lacks it; Linux has neither tool. */
+const hasSwiftCompiler =
+  NodeChildProcess.spawnSync("xcode-select", ["-p"]).status === 0 &&
+  NodeChildProcess.spawnSync("xcrun", ["--find", "swiftc"]).status === 0;
+
+describe("the Mac's smooth streamer", () => {
+  it.runIf(hasSwiftCompiler)(
+    "compiles as the pairing writes it (a Mac with Apple's command line tools only; skipped on Linux CI)",
+    () => {
+      const dir = tempDir("mac-view-stream-");
+      const source = NodePath.join(dir, "view-stream.swift");
+      NodeFS.writeFileSync(source, MAC_VIEW_STREAM_SOURCE);
+      const build = NodeChildProcess.spawnSync(
+        "xcrun",
+        ["swiftc", "-O", "-o", NodePath.join(dir, "view-stream"), source],
+        { encoding: "utf8" },
+      );
+      expect(build.stderr).toBe("");
+      expect(build.status).toBe(0);
+    },
+    120_000,
+  );
 });
 
 describe("reading the view helper's stream", () => {
