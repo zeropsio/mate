@@ -359,7 +359,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             r.registry,
             ENV,
             engineStartTurn(ENV, { ...turn(), agentNotes: [LANDED, vault] } as never),
-            r.v1,
           ),
         );
         expect(r.calls).toMatchObject([{ kind, text: "And the worker", context: [LANDED, vault] }]);
@@ -383,12 +382,7 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
       const r = rig(1);
       const { lines } = agentContext([LANDED, "apidev #4 landed"], vaultKeys(9));
       yield* r.run(
-        viaEngine(
-          r.registry,
-          ENV,
-          engineStartTurn(ENV, { ...turn(), agentNotes: lines } as never),
-          r.v1,
-        ),
+        viaEngine(r.registry, ENV, engineStartTurn(ENV, { ...turn(), agentNotes: lines } as never)),
       );
       const sent = r.calls[0] as { readonly kind: string; readonly context?: unknown };
       expect(sent.kind).toBe("send");
@@ -408,12 +402,7 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
       const r = rig(1);
       const notes = Array.from({ length: 7 }, (_, n) => `${"word ".repeat(60)}${n}`);
       yield* r.run(
-        viaEngine(
-          r.registry,
-          ENV,
-          engineStartTurn(ENV, { ...turn(), agentNotes: notes } as never),
-          r.v1,
-        ),
+        viaEngine(r.registry, ENV, engineStartTurn(ENV, { ...turn(), agentNotes: notes } as never)),
       );
       const sent = r.calls[0] as { readonly context?: unknown };
       expect(fitsEngine(sent.context)).toBe(true);
@@ -423,7 +412,7 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
   it.effect("a message with nothing to tell sends no context", () =>
     Effect.gen(function* () {
       const r = rig(1);
-      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1));
+      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn())));
       expect(r.calls).toHaveLength(1);
       expect(r.calls[0]).not.toHaveProperty("context");
     }),
@@ -468,7 +457,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
           r.registry,
           ENV,
           engineStartTurn(ENV, { ...turn(), agentNotes: [note!] } as never),
-          r.v1,
         ),
       );
       const sent = JSON.stringify(r.calls);
