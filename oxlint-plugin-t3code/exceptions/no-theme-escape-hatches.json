@@ -2570,30 +2570,6 @@
   {
     "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
     "kind": "Literal",
-    "fingerprint": "\"group-hover/sidebar-row:text-emerald-600 dark:group-hover/sidebar-row:text-emerald-300/90\"",
-    "owner": "karel",
-    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"group-hover/sidebar-row:text-red-600 dark:group-hover/sidebar-row:text-red-300/90\"",
-    "owner": "karel",
-    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
-    "kind": "Literal",
-    "fingerprint": "\"group-hover/sidebar-row:text-violet-600 dark:group-hover/sidebar-row:text-violet-300/90\"",
-    "owner": "karel",
-    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
-    "expires": "F4"
-  },
-  {
-    "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
-    "kind": "Literal",
     "fingerprint": "\"text-emerald-600 dark:text-emerald-300/90\"",
     "owner": "karel",
     "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",

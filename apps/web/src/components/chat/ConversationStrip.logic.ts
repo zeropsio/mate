@@ -76,21 +76,6 @@ export function mateChats(
   return [primary, ...others];
 }
 
-/**
- * The chat to pin when a new one is first sent, or null. *Archive and start
- * fresh* in the main chat archives it and its pin goes with it; the chat that
- * takes its place is the new main one, so its first send takes the pin. That
- * is the one moment other chats are open and none of them is main.
- */
-export function replacementChatToPin(
-  threads: ReadonlyArray<EnvironmentThreadShell>,
-  sentThreadId: ThreadId,
-): ThreadId | null {
-  const others = mateChats(threads).filter((thread) => thread.id !== sentThreadId);
-  if (others.length === 0 || others.some((thread) => thread.pinnedAt != null)) return null;
-  return sentThreadId;
-}
-
 /** The Mate, as it leads the line. */
 export interface LineMate {
   readonly name: string;

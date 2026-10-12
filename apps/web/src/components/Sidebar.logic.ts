@@ -1,5 +1,5 @@
 import * as React from "react";
-import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
+import { type AnimateLayoutChanges } from "@dnd-kit/sortable";
 import { statusLabel, statusPulses } from "@t3tools/client-runtime/zerops/statusPresentation";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -8,7 +8,6 @@ import type { ThreadStatus, ThreadStatusToneId } from "@t3tools/shared/threadSta
 import {
   activeThreadAnchorTimestampMs,
   getThreadSortTimestamp,
-  sortThreads,
   toSortableTimestamp,
   type ThreadSortInput,
 } from "../lib/threadSort";
@@ -81,12 +80,6 @@ export function resolveThreadProviderIconClassName(): string {
 export function shouldShowProjectIdentityInSidebarSection(section: SidebarThreadSection): boolean {
   return section === "snoozed" || section === "settled";
 }
-
-// The list already reaches its destination through sortable transforms while
-// the pointer is down. dnd-kit's default also animates the committed DOM order
-// after release, replaying the same movement across every affected row.
-export const animatePinnedLayoutChanges: AnimateLayoutChanges = (args) =>
-  args.isSorting ? defaultAnimateLayoutChanges(args) : false;
 
 type SidebarProject = {
   id: string;
@@ -554,8 +547,6 @@ export function sortThreadsForSidebar<
 
 // Pinned-reorder key math and the keyed sort live in client-runtime
 // (state/thread-sort) so web and mobile compute identical pinned orders.
-export { pinOrderKeyBetween, planPinnedReorder } from "@t3tools/client-runtime/state/thread-sort";
-export { sortPinnedThreadsByOrderKey as sortPinnedThreadsForSidebar } from "@t3tools/client-runtime/state/thread-sort";
 
 const EMPTY_CONTENT_MATCH_KEYS: ReadonlySet<string> = new Set<string>();
 
@@ -595,55 +586,6 @@ export function searchSidebarThreads<
   return [...titleMatches, ...contentMatches];
 }
 
-export type SettledTimestampInput = Pick<
-  SidebarThreadSummary,
-  "settledAt" | "latestUserMessageAt" | "latestTurn" | "updatedAt"
->;
-
-/** The timestamp a settled row sorts and labels by: settledAt when stamped
-    (explicit settles), otherwise last activity — the same candidates
-    threadLastActivityAt feeds the auto-settle window (user message plus all
-    latestTurn stamps), so a thread whose last activity was a turn completion
-    doesn't sort by an older message time. updatedAt is the final net. */
-export function resolveSettledTimestamp(thread: SettledTimestampInput): string | null {
-  const settledAt = firstValidTimestamp(thread.settledAt);
-  if (settledAt !== null) return settledAt;
-  let latest: string | null = null;
-  let latestMs = Number.NEGATIVE_INFINITY;
-  for (const candidate of [
-    thread.latestUserMessageAt,
-    thread.latestTurn?.requestedAt,
-    thread.latestTurn?.startedAt,
-    thread.latestTurn?.completedAt,
-  ]) {
-    if (candidate == null) continue;
-    const parsed = Date.parse(candidate);
-    if (!Number.isNaN(parsed) && parsed > latestMs) {
-      latest = candidate;
-      latestMs = parsed;
-    }
-  }
-  return latest ?? firstValidTimestamp(thread.updatedAt);
-}
-
-// Settled rows are history, so they order by when the work ENDED, not when
-// the thread was created or last touched. Each key resolves once per sort,
-// not once per comparison.
-export function sortSettledThreadsForSidebar<
-  T extends SettledTimestampInput & { readonly id: string },
->(threads: readonly T[]): T[] {
-  return threads
-    .map((thread) => {
-      const timestamp = resolveSettledTimestamp(thread);
-      return { thread, timestampMs: timestamp === null ? 0 : Date.parse(timestamp) };
-    })
-    .sort(
-      (left, right) =>
-        right.timestampMs - left.timestampMs || left.thread.id.localeCompare(right.thread.id),
-    )
-    .map(({ thread }) => thread);
-}
-
 /** The timestamp a working thread's elapsed label counts from: the running
     turn's start (request time until adoption), falling back to the session's
     last transition when the turn projection lags behind. Malformed
@@ -666,32 +608,6 @@ export function formatWorkingDurationLabel(elapsedMs: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-export function getFallbackThreadIdAfterDelete<
-  T extends Pick<Thread, "id" | "projectId" | "createdAt" | "updatedAt"> & ThreadSortInput,
->(input: {
-  threads: readonly T[];
-  deletedThreadId: T["id"];
-  sortOrder: SidebarThreadSortOrder;
-  deletedThreadIds?: ReadonlySet<T["id"]>;
-}): T["id"] | null {
-  const { deletedThreadId, deletedThreadIds, sortOrder, threads } = input;
-  const deletedThread = threads.find((thread) => thread.id === deletedThreadId);
-  if (!deletedThread) {
-    return null;
-  }
-
-  return (
-    sortThreads(
-      threads.filter(
-        (thread) =>
-          thread.projectId === deletedThread.projectId &&
-          thread.id !== deletedThreadId &&
-          !deletedThreadIds?.has(thread.id),
-      ),
-      sortOrder,
-    )[0]?.id ?? null
-  );
-}
 export function getProjectSortTimestamp(
   project: SidebarProject,
   projectThreads: readonly ThreadSortInput[],

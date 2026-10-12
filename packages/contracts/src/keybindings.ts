@@ -39,8 +39,6 @@ const THREAD_KEYBINDING_COMMANDS = [
   "thread.steerQueuedMessage",
   "thread.previous",
   "thread.next",
-  "thread.settle",
-  "thread.pin",
   "thread.undo",
   ...THREAD_JUMP_KEYBINDING_COMMANDS,
 ] as const;

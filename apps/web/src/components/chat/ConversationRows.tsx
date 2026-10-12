@@ -36,7 +36,6 @@ import {
 } from "../../timestampFormat";
 import { usageLimitWords, usageLimitHistoryWords } from "../../zerops/noticeWords";
 import { Button } from "../ui/button";
-import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
 import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
@@ -416,7 +415,6 @@ export function PauseBlock({
   timestampFormat,
   serverPause,
   limit = NO_MATE_LIMIT,
-  onAutoResumeChange,
   onContinue = null,
   triesBeforeReset = false,
   blockedByAnswer = false,
@@ -431,7 +429,6 @@ export function PauseBlock({
   readonly serverPause: ServerUsagePause | null;
   /** Current source refusal; a historical deadline alone cannot block another attempt. */
   readonly limit?: MateLimit;
-  readonly onAutoResumeChange: ((enabled: boolean) => void) | null;
   readonly onContinue?: (() => void) | null;
   /**
    * The Mate's engine tries the provider itself and pauses again if it still refuses: Continue
@@ -491,18 +488,6 @@ export function PauseBlock({
         >
           Continue
         </Button>
-      )}
-      {history || serverPause === null || onAutoResumeChange === null ? null : (
-        <label
-          className="flex cursor-pointer items-center gap-2 text-line text-foreground"
-          data-pause-switch
-        >
-          <Switch
-            checked={serverPause.autoResume}
-            onCheckedChange={(checked) => onAutoResumeChange(checked)}
-          />
-          Continue automatically
-        </label>
       )}
     </div>
   ) : null;

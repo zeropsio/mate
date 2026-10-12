@@ -65,7 +65,6 @@ const responses = {
     capabilities: { repositoryIdentity: true },
   },
   "/api/auth/websocket-ticket": { ticket: "test-ticket", expiresAt: timestamp },
-  "/api/orchestration/threads/thread-1": { snapshotSequence: 1, thread },
 };
 const httpClient = HttpClient.make((request) =>
   Effect.sync(() => {

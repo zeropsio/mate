@@ -376,46 +376,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/hooks/useThreadActions.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Delete the worktree too?\"",
-    "owner": "karel",
-    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/hooks/useThreadActions.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Worktree cleanup failed after thread deletion\"",
-    "owner": "karel",
-    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/hooks/useThreadActions.ts",
-    "kind": "Literal",
-    "fingerprint": "\"This thread is the only one linked to this worktree:\"",
-    "owner": "karel",
-    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/hooks/useThreadActions.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Failed to delete worktree\"",
-    "owner": "karel",
-    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/hooks/useThreadActions.ts",
-    "kind": "Literal",
-    "fingerprint": "\"Worktree deleted, but Git status refresh failed\"",
-    "owner": "karel",
-    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
-    "expires": "never"
-  },
-  {
     "path": "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",
     "kind": "Literal",
     "fingerprint": "\"Setting up worktree\u2026\"",

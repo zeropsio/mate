@@ -128,7 +128,6 @@ export function HelperCard({
       standUpAsk: null,
       livePauseId: null,
       usagePause: null,
-      onUsageAutoResumeChange: null,
       agentPanelModel: emptyAgentPanelModel(),
       onOpenAgents: NOOP,
       onSteerQueuedMessage: NOOP,

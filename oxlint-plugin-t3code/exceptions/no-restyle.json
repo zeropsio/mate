@@ -330,14 +330,6 @@
   {
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "Literal",
-    "fingerprint": "<Button> opacity-80 in \"z-20 opacity-80\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/Sidebar.tsx",
-    "kind": "Literal",
     "fingerprint": "<Button> text-sidebar-foreground in \"bg-sidebar-row-active text-sidebar-foreground\"",
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",

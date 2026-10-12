@@ -49,14 +49,6 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       Absent: the orchestration (V1) wire owns the conversation. */
   mateEngine: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
   connectionProbe: Schema.optionalKey(Schema.Boolean),
-  /** The HTTP thread snapshot takes a turn window (the socket config's
-      `threadSnapshotPagination`), told before any socket exists so a client
-      reads the snapshot while its socket still connects. Absent on older
-      servers, whose clients wait for the socket's config. */
-  threadSnapshotPagination: Schema.optionalKey(Schema.Boolean),
-  /** The HTTP thread snapshot can carry reasoning messages (the socket
-      config's `reasoningMessages`); same contract as threadSnapshotPagination. */
-  reasoningMessages: Schema.optionalKey(Schema.Boolean),
   /** Missing on older servers, which still accept inline image attachments. */
   attachmentUploads: Schema.optionalKey(Schema.Boolean),
   contentAddressedImages: Schema.optionalKey(Schema.Boolean),
@@ -76,13 +68,6 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       allow worktrees, so only an explicit false from a Zerops server hides
       the client option; the server-side policy remains the enforcement. */
   worktreesAllowed: Schema.optionalKey(Schema.Boolean),
-  /** Server understands thread.settle / thread.unsettle commands. Absent on
-      pre-settlement servers, so clients treat missing as unsupported and
-      never send the commands under version skew. */
-  threadSettlement: Schema.optionalKey(Schema.Boolean),
-  /** Server understands thread.snooze / thread.unsnooze commands. Same
-      version-skew contract as threadSettlement. */
-  threadSnooze: Schema.optionalKey(Schema.Boolean),
   /** Server streams quota from configured usage-limit sources. Absent on
       servers from before usage limits shipped, which never emit the events --
       so a client reconnecting to one must drop reported quota rather than
@@ -92,17 +77,6 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   usagePriceOverrides: Schema.optionalKey(Schema.Boolean),
   /** Server persists model mappings and folds mapped usage into the target model. */
   usageModelAliases: Schema.optionalKey(Schema.Boolean),
-  /** Server understands thread.pin / thread.unpin commands. Same
-      version-skew contract as threadSettlement. */
-  threadPinning: Schema.optionalKey(Schema.Boolean),
-  /** Server understands thread.pin.reorder (and orderKey on thread.pin).
-      Same version-skew contract as threadSettlement. */
-  threadPinReorder: Schema.optionalKey(Schema.Boolean),
-  /** Server persists manual Active order through thread.active.reorder. */
-  threadActiveReorder: Schema.optionalKey(Schema.Boolean),
-  /** Server understands thread.auto-settle.set (per-thread auto-settle off).
-      Same version-skew contract as threadSettlement. */
-  threadAutoSettleOptOut: Schema.optionalKey(Schema.Boolean),
   /** Server understands regenerateTitle on thread.meta.update. Absent on
       older servers, so clients hide the action instead of sending it. */
   threadTitleRegeneration: Schema.optionalKey(Schema.Boolean),

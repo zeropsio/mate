@@ -19,8 +19,6 @@ import {
   Item,
   MATE_ENGINE_PROTOCOLS,
   ORCHESTRATION_WS_METHODS,
-  OrchestrationThreadDetailSnapshot,
-  OrchestrationThreadStreamItem,
   Request,
   RunRecord,
   WS_METHODS,
@@ -48,8 +46,6 @@ const encodeReceipt = Schema.encodeSync(EngineReceiptResult);
 const encodePage = Schema.encodeSync(EnginePage);
 const encodeDetail = Schema.encodeSync(EngineDetail);
 const encodeRecordPageHeight = Schema.encodeSync(EngineRecordPageHeightResult);
-const encodeThreadItem = Schema.encodeSync(OrchestrationThreadStreamItem);
-const encodeSnapshot = Schema.encodeSync(OrchestrationThreadDetailSnapshot);
 
 const AT = Date.parse("2026-10-05T12:00:00.000Z");
 const OPS: Readonly<Record<string, EngineOp>> = {
@@ -205,21 +201,12 @@ export class MateEngineFake {
     return other;
   }
 
-  /** The Mate advertises the engine, serves its wire ahead of every other handler, parks V1. */
+  /** The Mate advertises the engine and serves its wire ahead of every other handler. */
   install(): this {
     const mateEngine = { protocol: PROTOCOL };
     Object.assign(this.mate.descriptor.capabilities, { mateEngine });
     Object.assign(this.mate.config.environment.capabilities, { mateEngine });
     this.mate.rpcHandlers.unshift((request, socket) => this.serve(request, socket));
-    const original = this.mate.handle;
-    this.mate.handle = (request) => {
-      const path = request.url.pathname.replace(/^\/mate/u, "");
-      if (path.startsWith("/api/orchestration/threads/")) {
-        this.mate.unknownMethods.add(`GET ${path} (V1 history of an engine conversation)`);
-        return { body: encodeSnapshot(this.parkedThread()) };
-      }
-      return original(request);
-    };
     return this;
   }
 
@@ -887,13 +874,6 @@ export class MateEngineFake {
     });
   }
 
-  private parkedThread() {
-    return {
-      snapshotSequence: this.mate.sequence,
-      thread: { ...this.mate.thread, messages: [], activities: [] },
-    };
-  }
-
   // ── the wire ───────────────────────────────────────────────────────────────────────────────
 
   private serve(request: RpcRequest, socket: WebSocket): boolean {
@@ -1142,13 +1122,6 @@ export class MateEngineFake {
         this.mate.reply(socket, id, encodeRecordPageHeight({ _tag: "Recorded" }));
         return true;
       }
-      case ORCHESTRATION_WS_METHODS.subscribeThread:
-        this.mate.unknownMethods.add(`${tag} (V1 history of an engine conversation)`);
-        this.mate.chunk(socket, id, [
-          encodeThreadItem({ kind: "snapshot", snapshot: this.parkedThread() } as never),
-          encodeThreadItem({ kind: "synchronized" }),
-        ]);
-        return true;
       case ORCHESTRATION_WS_METHODS.dispatchCommand: {
         // The engine owns the conversation: every V1 command is refused, as the server's door does.
         const type = (payload as { type?: string }).type ?? "unknown";

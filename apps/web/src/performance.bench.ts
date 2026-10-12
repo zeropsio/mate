@@ -1,10 +1,5 @@
 import { EventId, ProjectId, TurnId, type OrchestrationThreadActivity } from "@t3tools/contracts";
-import {
-  getLatestThreadForProject,
-  sortActiveThreadsByOrderKey,
-  sortPinnedThreadsByOrderKey,
-  sortThreads,
-} from "@t3tools/client-runtime/state/thread-sort";
+import { getLatestThreadForProject, sortThreads } from "@t3tools/client-runtime/state/thread-sort";
 import { formatHourShort, formatRelativeHourShort } from "@t3tools/shared/usageFormat";
 import { describe, test } from "vite-plus/test";
 
@@ -44,16 +39,6 @@ describe("client performance", () => {
   test("sort 1000 threads by recent activity", async ({ bench }) => {
     await bench("sort", () => {
       sortThreads(threads, "updated_at");
-    }).run();
-  });
-  test("sort 1000 active threads", async ({ bench }) => {
-    await bench("sort", () => {
-      sortActiveThreadsByOrderKey(threads);
-    }).run();
-  });
-  test("sort 1000 keyless pinned threads", async ({ bench }) => {
-    await bench("sort", () => {
-      sortPinnedThreadsByOrderKey(threads);
     }).run();
   });
   test("select latest project thread from 1000 threads", async ({ bench }) => {

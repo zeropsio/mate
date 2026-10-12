@@ -40,20 +40,7 @@ export function HomeRouteScreen() {
     startAppUpdateForegroundRecheck();
   }, []);
 
-  const {
-    archiveThread,
-    confirmDeleteThread,
-    settleThread,
-    snoozeThread,
-    unsnoozeThread,
-    pinThread,
-    unpinThread,
-    setThreadAutoSettle,
-    movePinnedThread,
-    renameThread,
-    regenerateThreadTitle,
-    unsettleThread,
-  } = useThreadListActions();
+  const { archiveThread, renameThread, regenerateThreadTitle } = useThreadListActions();
   const pendingTasks = usePendingNewTasks();
   const { openPendingTask, confirmDeletePendingTask } = usePendingTaskListActions();
   const environments = useMemo(() => {
@@ -185,15 +172,6 @@ export function HomeRouteScreen() {
             })
           }
           onArchiveThread={archiveThread}
-          onDeleteThread={confirmDeleteThread}
-          onSettleThread={settleThread}
-          onSnoozeThread={snoozeThread}
-          onUnsnoozeThread={unsnoozeThread}
-          onUnsettleThread={unsettleThread}
-          onPinThread={pinThread}
-          onUnpinThread={unpinThread}
-          onSetThreadAutoSettle={setThreadAutoSettle}
-          onMovePinnedThread={movePinnedThread}
           onRenameThread={renameThread}
           onRegenerateThreadTitle={regenerateThreadTitle}
           onEnvironmentChange={setSelectedEnvironmentId}

@@ -292,58 +292,13 @@ export function readEnvironmentAllowsWorktrees(environmentId: EnvironmentId): bo
   );
 }
 
-/** Whether the environment's server understands thread.settle/unsettle.
-    False for pre-settlement servers (capability defaults false on decode),
-    so clients under version skew fall back instead of erroring. */
-export function readEnvironmentSupportsSettlement(environmentId: EnvironmentId): boolean {
-  return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadSettlement === true
-  );
-}
-
-/** Whether the environment's server understands thread.snooze/unsnooze.
-    Same version-skew contract as settlement. */
-export function readEnvironmentSupportsSnooze(environmentId: EnvironmentId): boolean {
-  return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadSnooze === true
-  );
-}
-
-/** Whether the environment's server understands thread.pin/unpin.
-    Same version-skew contract as settlement. */
-export function readEnvironmentSupportsPinning(environmentId: EnvironmentId): boolean {
-  return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadPinning === true
-  );
-}
-
 /** Whether the environment's server understands thread title regeneration.
-    Same version-skew contract as settlement. */
+    False for older servers (capability defaults false on decode), so clients under
+    version skew fall back instead of erroring. */
 export function readEnvironmentSupportsTitleRegeneration(environmentId: EnvironmentId): boolean {
   return (
     appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
       .threadTitleRegeneration === true
-  );
-}
-
-/** Whether the environment's server understands thread.pin.reorder (and
-    orderKey on thread.pin). Same version-skew contract as settlement. */
-export function readEnvironmentSupportsPinReorder(environmentId: EnvironmentId): boolean {
-  return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadPinReorder === true
-  );
-}
-
-/** Whether the environment's server understands thread.auto-settle.set.
-    Same version-skew contract as settlement. */
-export function readEnvironmentSupportsAutoSettleOptOut(environmentId: EnvironmentId): boolean {
-  return (
-    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
-      .threadAutoSettleOptOut === true
   );
 }
 

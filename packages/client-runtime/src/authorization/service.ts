@@ -32,7 +32,6 @@ import * as HttpClient from "effect/http/HttpClient";
 import {
   DPOP_ACCESS_TOKEN_REFRESH_SKEW_MS,
   type PreparedHttpAuthorization,
-  type ThreadSnapshotCapabilities,
 } from "../connection/model.ts";
 
 export interface RelayEnvironmentAuthorization {
@@ -47,8 +46,6 @@ export interface AuthorizedRemoteEnvironment {
   readonly httpBaseUrl: string;
   readonly socketUrl: string;
   readonly httpAuthorization: PreparedHttpAuthorization;
-  /** What the descriptor says of the thread snapshot; absent when it does not say. */
-  readonly threadSnapshot?: ThreadSnapshotCapabilities;
   readonly contentAddressedImages?: boolean;
   /** The engine conversation protocol the Mate serves; absent when its conversation is on V1. */
   readonly mateEngine?: number;
@@ -59,16 +56,6 @@ const mateEngineOf = (descriptor: ExecutionEnvironmentDescriptor) =>
   descriptor.capabilities.mateEngine === undefined
     ? {}
     : { mateEngine: descriptor.capabilities.mateEngine.protocol };
-
-/** The descriptor's word on the HTTP thread snapshot, only when it names both parameters. */
-function threadSnapshotCapabilitiesOf(
-  descriptor: ExecutionEnvironmentDescriptor,
-): ThreadSnapshotCapabilities | undefined {
-  const { threadSnapshotPagination, reasoningMessages } = descriptor.capabilities;
-  return threadSnapshotPagination === undefined || reasoningMessages === undefined
-    ? undefined
-    : { pagination: threadSnapshotPagination, reasoningMessages };
-}
 
 export class RemoteEnvironmentAuthorization extends Context.Service<
   RemoteEnvironmentAuthorization,
@@ -174,7 +161,6 @@ export const make = Effect.gen(function* () {
         Effect.mapError(mapRemoteEnvironmentError),
         Effect.provideService(HttpClient.HttpClient, httpClient),
       );
-      const threadSnapshot = threadSnapshotCapabilitiesOf(descriptor);
       return {
         environmentId: descriptor.environmentId,
         label: descriptor.label,
@@ -186,7 +172,6 @@ export const make = Effect.gen(function* () {
         },
         contentAddressedImages: descriptor.capabilities.contentAddressedImages === true,
         ...mateEngineOf(descriptor),
-        ...(threadSnapshot === undefined ? {} : { threadSnapshot }),
       };
     },
   );
@@ -268,11 +253,9 @@ export const make = Effect.gen(function* () {
               actual: descriptor.environmentId,
             });
           }
-          const threadSnapshot = threadSnapshotCapabilitiesOf(descriptor);
           return {
             contentAddressedImages: descriptor.capabilities.contentAddressedImages === true,
             ...mateEngineOf(descriptor),
-            ...(threadSnapshot === undefined ? {} : { threadSnapshot }),
             environmentId: cached.value.environmentId,
             label: cached.value.label,
             httpBaseUrl: cached.value.endpoint.httpBaseUrl,
@@ -344,14 +327,12 @@ export const make = Effect.gen(function* () {
       yield* tokenStore
         .put(token)
         .pipe(Effect.withSpan("environment.authorization.accessToken.persist"));
-      const threadSnapshot = threadSnapshotCapabilitiesOf(descriptor);
       return {
         environmentId: descriptor.environmentId,
         label: descriptor.label,
         httpBaseUrl: bootstrap.endpoint.httpBaseUrl,
         contentAddressedImages: descriptor.capabilities.contentAddressedImages === true,
         ...mateEngineOf(descriptor),
-        ...(threadSnapshot === undefined ? {} : { threadSnapshot }),
         socketUrl,
         httpAuthorization: {
           _tag: "Dpop" as const,

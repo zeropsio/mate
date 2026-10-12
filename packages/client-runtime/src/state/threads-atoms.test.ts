@@ -1,16 +1,13 @@
 import {
   EnvironmentId,
-  ORCHESTRATION_WS_METHODS,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
   type OrchestrationThread,
   type OrchestrationThreadDetailSnapshot,
-  type OrchestrationThreadStreamItem,
 } from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "@effect/vitest";
 import * as Clock from "effect/Clock";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -84,7 +81,6 @@ const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?
   readonly connected?: boolean;
   readonly httpNone?: boolean;
   readonly initialLoad?: Effect.Effect<Option.Option<OrchestrationThreadDetailSnapshot>>;
-  readonly stream?: Stream.Stream<OrchestrationThreadStreamItem, Error>;
   /** The door has not answered yet: no prepared connection. */
   readonly unprepared?: boolean;
   /** The engine protocol the door names, where it names one. */
@@ -96,42 +92,10 @@ const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?
 }) {
   const clock = yield* Clock.Clock;
   const wakeups = yield* Queue.unbounded<ConnectionWakeup>();
-  const subscriptions = yield* Queue.unbounded<{
-    readonly afterSequence: number | undefined;
-    readonly events: Queue.Queue<OrchestrationThreadStreamItem, Error>;
-    readonly closed: Deferred.Deferred<void>;
-  }>();
-  let httpLoads = 0;
-  let diskLoads = 0;
-  let opened = 0;
-  let active = 0;
-  const client = {
-    [ORCHESTRATION_WS_METHODS.subscribeThread]: (input: { readonly afterSequence?: number }) =>
-      Stream.unwrap(
-        Effect.gen(function* () {
-          const events = yield* Queue.unbounded<OrchestrationThreadStreamItem, Error>();
-          const closed = yield* Deferred.make<void>();
-          yield* Effect.acquireRelease(
-            Effect.sync(() => {
-              opened += 1;
-              active += 1;
-            }),
-            () =>
-              Effect.sync(() => {
-                active -= 1;
-              }).pipe(Effect.andThen(Deferred.succeed(closed, undefined))),
-          );
-          yield* Queue.offer(subscriptions, { afterSequence: input.afterSequence, events, closed });
-          return options?.stream ?? Stream.fromQueue(events);
-        }),
-      ),
-  } as unknown as WsRpcProtocolClient;
+  const client = {} as unknown as WsRpcProtocolClient;
   const session: RpcSession = {
     client,
-    initialConfig: Effect.succeed({
-      threadResumeCompletionMarker: true,
-      threadSnapshotPagination: true,
-    } as never),
+    initialConfig: Effect.succeed({} as never),
     subscribeServerConfig: (input) => client.subscribeServerConfig(input),
     ready: Effect.void,
     probe: Effect.void,
@@ -198,11 +162,7 @@ const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?
         EnvironmentCacheStore.of({
           loadShell: () => Effect.succeedNone,
           saveShell: () => Effect.void,
-          loadThread: () =>
-            Effect.sync(() => {
-              diskLoads += 1;
-              return Option.fromNullishOr(options?.cachedThread);
-            }),
+          loadThread: () => Effect.succeed(Option.fromNullishOr(options?.cachedThread)),
           saveThread: () => Effect.void,
           removeThread: () => Effect.void,
           loadServerConfig: () =>
@@ -244,12 +204,10 @@ const makeHarness = Effect.fn("TestThreadAtoms.makeHarness")(function* (options?
     stateAtom,
     details,
     ref,
-    subscriptions,
     connectionState,
     session,
     sessionRef,
     wakeups,
-    counts: () => ({ httpLoads, diskLoads, opened, active }),
   };
 });
 
@@ -303,7 +261,6 @@ describe("createEnvironmentThreadStateAtoms", () => {
           "Deployed.",
         ]);
         expect(engine.counts.held).toBe(1);
-        expect(h.counts().opened).toBe(0);
         unmount();
       }),
   );
@@ -333,7 +290,6 @@ describe("createEnvironmentThreadStateAtoms", () => {
       expect(Option.getOrThrow(read.data).messages.map(({ text }) => text)).toEqual([
         "Deploy the api",
       ]);
-      expect(h.counts().opened).toBe(0);
       unmount();
     }),
   );
@@ -347,7 +303,6 @@ describe("createEnvironmentThreadStateAtoms", () => {
       );
       expect(Option.getOrThrow(update.error)).toMatch(/Update the app/);
       expect(update.data).toEqual(Option.none());
-      expect(h.counts().opened).toBe(0);
       unmount();
     }),
   );
@@ -361,7 +316,6 @@ describe("createEnvironmentThreadStateAtoms", () => {
       );
       expect(Option.getOrThrow(update.error)).toMatch(/Update the Mate/);
       expect(update.data).toEqual(Option.none());
-      expect(h.counts().opened).toBe(0);
       unmount();
     }),
   );

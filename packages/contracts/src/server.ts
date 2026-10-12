@@ -516,16 +516,6 @@ export const ServerConfig = Schema.Struct({
   shellRevealInFileManager: Schema.optionalKey(Schema.Boolean),
   /** File-manager wording clients should use for reveal actions. */
   shellRevealInFileManagerKind: Schema.optionalKey(FileManagerRevealKind),
-  /** Whether thread subscriptions can emit an opt-in catch-up completion marker. */
-  threadResumeCompletionMarker: Schema.optionalKey(Schema.Boolean),
-  /**
-   * Whether thread detail reads accept a turn window (`turnLimit`/
-   * `beforeCursor`) and return `page` metadata. Clients must not send window
-   * fields to servers that don't advertise this.
-   */
-  threadSnapshotPagination: Schema.optionalKey(Schema.Boolean),
-  /** Whether thread reads accept the reasoningMessages opt-in. */
-  reasoningMessages: Schema.optionalKey(Schema.Boolean),
   /**
    * Quota reported by configured `usageLimitSources`. Never sent in a config
    * snapshot: the source stream emits the current set on subscribe, and it

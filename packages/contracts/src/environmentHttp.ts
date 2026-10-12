@@ -20,14 +20,13 @@ import {
   AuthZeropsIdentityRequest,
   ServerAuthSessionMethod,
 } from "./auth.ts";
-import { AuthSessionId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { AuthSessionId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
 import {
   ClientOrchestrationCommand,
   DispatchResult,
   OrchestrationReadModel,
   OrchestrationShellSnapshot,
-  OrchestrationThreadDetailSnapshot,
 } from "./orchestration.ts";
 import {
   RelayCloudEnvironmentHealthRequest,
@@ -337,11 +336,6 @@ const EnvironmentOrchestrationSnapshotErrors = [
   EnvironmentScopeRequiredError,
   EnvironmentInternalError,
 ] as const;
-const EnvironmentOrchestrationThreadSnapshotErrors = [
-  EnvironmentScopeRequiredError,
-  EnvironmentResourceNotFoundError,
-  EnvironmentInternalError,
-] as const;
 const EnvironmentOrchestrationDispatchErrors = [
   EnvironmentRequestInvalidError,
   EnvironmentScopeRequiredError,
@@ -480,21 +474,6 @@ class EnvironmentAuthHttpApi extends HttpApiGroup.make("auth")
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 
-const EnvironmentOrchestrationThreadSnapshotParams = Schema.Struct({
-  threadId: ThreadId,
-});
-
-// Query-string window for windowed thread snapshots (GET payloads must encode
-// to strings). Both fields optional: omitting them keeps the full-snapshot
-// behavior, so pagination stays opt-in per request.
-const EnvironmentOrchestrationThreadSnapshotQuery = {
-  reasoningMessages: Schema.optional(Schema.Literal("true")),
-  turnLimit: Schema.optional(
-    Schema.FiniteFromString.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1)),
-  ),
-  beforeCursor: Schema.optional(TrimmedNonEmptyString),
-};
-
 export class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestration")
   .add(
     HttpApiEndpoint.get("snapshot", "/api/orchestration/snapshot", {
@@ -508,15 +487,6 @@ export class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestr
       headers: OptionalBearerHeaders,
       success: OrchestrationShellSnapshot,
       error: EnvironmentOrchestrationSnapshotErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
-  .add(
-    HttpApiEndpoint.get("threadSnapshot", "/api/orchestration/threads/:threadId", {
-      headers: OptionalBearerHeaders,
-      params: EnvironmentOrchestrationThreadSnapshotParams,
-      payload: EnvironmentOrchestrationThreadSnapshotQuery,
-      success: OrchestrationThreadDetailSnapshot,
-      error: EnvironmentOrchestrationThreadSnapshotErrors,
     }).middleware(EnvironmentAuthenticatedAuth),
   )
   .add(

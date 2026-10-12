@@ -984,13 +984,6 @@ const WsOrchestrationSubscribeShellRpc = Rpc.make(ORCHESTRATION_WS_METHODS.subsc
   stream: true,
 });
 
-const WsOrchestrationSubscribeThreadRpc = Rpc.make(ORCHESTRATION_WS_METHODS.subscribeThread, {
-  payload: OrchestrationRpcSchemas.subscribeThread.input,
-  success: OrchestrationRpcSchemas.subscribeThread.output,
-  error: Schema.Union([OrchestrationGetSnapshotError, EnvironmentAuthorizationError]),
-  stream: true,
-});
-
 const WsSubscribeTerminalEventsRpc = Rpc.make(WS_METHODS.subscribeTerminalEvents, {
   payload: Schema.Struct({}),
   success: TerminalEvent,
@@ -1566,7 +1559,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsEngineGetArchivedShellSnapshotRpc,
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
-  WsOrchestrationSubscribeThreadRpc,
 )
   .middleware(RpcScopeAuthorization)
   // Middleware added later wraps middleware added earlier.

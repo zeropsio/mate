@@ -7,9 +7,6 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 
-import { createOptimisticThreadLifecycle } from "./threadLifecycle.ts";
-import { canSnooze } from "./threadSettled.ts";
-
 import {
   createAtomCommandScheduler,
   createEnvironmentCommand,
@@ -18,7 +15,6 @@ import {
 import {
   type ArchiveThreadInput,
   type CreateThreadInput,
-  type DeleteThreadInput,
   type InterruptThreadTurnInput,
   type RespondToThreadApprovalInput,
   type RespondToThreadUserInputInput,
@@ -26,33 +22,12 @@ import {
   type RevertThreadCheckpointInput,
   type SetThreadInteractionModeInput,
   type SetThreadRuntimeModeInput,
-  type PinThreadInput,
-  type ReorderPinnedThreadInput,
-  type ReorderActiveThreadInput,
-  type SetThreadAutoSettleInput,
-  type SetThreadUsageAutoResumeInput,
-  type SettleThreadInput,
-  type SnoozeThreadInput,
   type StartThreadTurnInput,
   type StopThreadSessionInput,
   type UnarchiveThreadInput,
-  type UnpinThreadInput,
-  type UnsettleThreadInput,
-  type UnsnoozeThreadInput,
   type UpdateThreadMetadataInput,
-  deleteThread,
   revertThreadCheckpoint,
-  pinThread,
-  reorderPinnedThread,
-  reorderActiveThread,
-  setThreadAutoSettle,
-  setThreadUsageAutoResume,
-  settleThread,
-  snoozeThread,
   stopThreadSession,
-  unpinThread,
-  unsettleThread,
-  unsnoozeThread,
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
@@ -76,7 +51,6 @@ import {
 export type {
   ArchiveThreadInput,
   CreateThreadInput,
-  DeleteThreadInput,
   InterruptThreadTurnInput,
   RespondToThreadApprovalInput,
   RespondToThreadUserInputInput,
@@ -84,19 +58,9 @@ export type {
   RevertThreadCheckpointInput,
   SetThreadInteractionModeInput,
   SetThreadRuntimeModeInput,
-  PinThreadInput,
-  ReorderPinnedThreadInput,
-  ReorderActiveThreadInput,
-  SetThreadAutoSettleInput,
-  SetThreadUsageAutoResumeInput,
-  SettleThreadInput,
-  SnoozeThreadInput,
   StartThreadTurnInput,
   StopThreadSessionInput,
   UnarchiveThreadInput,
-  UnpinThreadInput,
-  UnsettleThreadInput,
-  UnsnoozeThreadInput,
   UpdateThreadMetadataInput,
 } from "../operations/commands.ts";
 
@@ -124,12 +88,6 @@ export function createThreadEnvironmentAtoms<R, E>(
       scheduler,
       concurrency,
     }),
-    delete: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:delete",
-      execute: (input: DeleteThreadInput) => deleteThread(input),
-      scheduler,
-      concurrency,
-    }),
     archive: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:archive",
       execute: (input: ArchiveThreadInput, registry, environmentId) =>
@@ -141,66 +99,6 @@ export function createThreadEnvironmentAtoms<R, E>(
       label: "environment-data:commands:thread:unarchive",
       execute: (input: UnarchiveThreadInput, registry, environmentId) =>
         viaEngine(registry, environmentId, engineSetArchived(environmentId, input, false)),
-      scheduler,
-      concurrency,
-    }),
-    settle: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:settle",
-      execute: (input: SettleThreadInput) => settleThread(input),
-      scheduler,
-      concurrency,
-    }),
-    unsettle: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:unsettle",
-      execute: (input: UnsettleThreadInput) => unsettleThread(input),
-      scheduler,
-      concurrency,
-    }),
-    snooze: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:snooze",
-      execute: (input: SnoozeThreadInput) => snoozeThread(input),
-      scheduler,
-      concurrency,
-    }),
-    unsnooze: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:unsnooze",
-      execute: (input: UnsnoozeThreadInput) => unsnoozeThread(input),
-      scheduler,
-      concurrency,
-    }),
-    pin: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:pin",
-      execute: (input: PinThreadInput) => pinThread(input),
-      scheduler,
-      concurrency,
-    }),
-    unpin: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:unpin",
-      execute: (input: UnpinThreadInput) => unpinThread(input),
-      scheduler,
-      concurrency,
-    }),
-    reorderPin: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:reorder-pin",
-      execute: (input: ReorderPinnedThreadInput) => reorderPinnedThread(input),
-      scheduler,
-      concurrency,
-    }),
-    setAutoSettle: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:set-auto-settle",
-      execute: (input: SetThreadAutoSettleInput) => setThreadAutoSettle(input),
-      scheduler,
-      concurrency,
-    }),
-    setUsageAutoResume: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:set-usage-auto-resume",
-      execute: (input: SetThreadUsageAutoResumeInput) => setThreadUsageAutoResume(input),
-      scheduler,
-      concurrency,
-    }),
-    reorderActive: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:reorder-active",
-      execute: (input: ReorderActiveThreadInput) => reorderActiveThread(input),
       scheduler,
       concurrency,
     }),
@@ -311,81 +209,5 @@ export function createThreadEnvironmentAtoms<R, E>(
       concurrency,
     }),
   };
-  const optimistic = createOptimisticThreadLifecycle(snapshotAtom);
-  return {
-    ...commands,
-    snapshotAtom: optimistic.snapshotAtom,
-    settle: optimistic.wrap(commands.settle, (thread, _input, now, accepted) =>
-      !accepted &&
-      (!canSnooze(thread, { now }) ||
-        thread.session?.status === "starting" ||
-        thread.session?.status === "running")
-        ? thread
-        : {
-            ...thread,
-            hasPendingApprovals: false,
-            hasPendingUserInput: false,
-            pendingQuestion: null,
-            settledOverride: "settled",
-            settledAt: thread.settledOverride === "settled" ? (thread.settledAt ?? now) : now,
-            unsettledAt: null,
-            activeOrderKey: null,
-            pinnedAt: null,
-            pinOrderKey: null,
-            snoozedAt: null,
-            snoozedUntil: null,
-          },
-    ),
-    unsettle: optimistic.wrap(commands.unsettle, (thread, input, now) => ({
-      ...thread,
-      settledOverride: input.reason === "user" ? "active" : null,
-      settledAt: null,
-      unsettledAt: thread.settledOverride === "active" ? (thread.unsettledAt ?? null) : now,
-    })),
-    snooze: optimistic.wrap(commands.snooze, (thread, input, now, accepted) =>
-      (!accepted && !canSnooze(thread, { now })) ||
-      !(Date.parse(input.snoozedUntil) > Date.parse(now))
-        ? thread
-        : {
-            ...thread,
-            hasPendingApprovals: false,
-            hasPendingUserInput: false,
-            pendingQuestion: null,
-            snoozedUntil: input.snoozedUntil,
-            snoozedAt: thread.snoozedUntil === input.snoozedUntil ? (thread.snoozedAt ?? now) : now,
-          },
-    ),
-    unsnooze: optimistic.wrap(commands.unsnooze, (thread) => ({
-      ...thread,
-      snoozedUntil: null,
-      snoozedAt: null,
-    })),
-    pin: optimistic.wrap(commands.pin, (thread, input, now) => ({
-      ...thread,
-      pinnedAt: thread.pinnedAt ?? now,
-      pinOrderKey: thread.pinnedAt == null ? (input.orderKey ?? null) : thread.pinOrderKey,
-      ...(thread.settledOverride === "settled"
-        ? {
-            settledOverride: "active" as const,
-            settledAt: null,
-            unsettledAt: now,
-          }
-        : {}),
-      snoozedUntil: null,
-      snoozedAt: null,
-    })),
-    unpin: optimistic.wrap(commands.unpin, (thread) => ({
-      ...thread,
-      pinnedAt: null,
-      pinOrderKey: null,
-    })),
-    reorderPin: optimistic.wrap(commands.reorderPin, (thread, input) => ({
-      ...thread,
-      pinOrderKey: input.orderKey,
-    })),
-    reorderActive: optimistic.wrap(commands.reorderActive, (thread, input) => ({
-      ...thread,
-      activeOrderKey: input.orderKey,
-    })),
-  };
+  return { ...commands, snapshotAtom };
 }

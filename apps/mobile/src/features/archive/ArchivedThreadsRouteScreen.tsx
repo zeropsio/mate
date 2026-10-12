@@ -63,8 +63,7 @@ export function ArchivedThreadsRouteScreen() {
     },
     [],
   );
-  const { unarchiveThread, confirmDeleteThread } =
-    useArchivedThreadListActions(refreshChangedEnvironment);
+  const { unarchiveThread } = useArchivedThreadListActions(refreshChangedEnvironment);
 
   useFocusEffect(
     useCallback(() => {
@@ -78,7 +77,6 @@ export function ArchivedThreadsRouteScreen() {
       error={error}
       groups={groups}
       isLoading={isLoading}
-      onDeleteThread={confirmDeleteThread}
       onEnvironmentChange={setSelectedEnvironmentId}
       onRefresh={refresh}
       onSearchQueryChange={setSearchQuery}

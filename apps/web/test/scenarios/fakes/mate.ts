@@ -190,7 +190,6 @@ export class MateFake {
       },
       settings: encodeServerSettings(DEFAULT_SERVER_SETTINGS),
       shellResumeCompletionMarker: true,
-      threadResumeCompletionMarker: true,
     });
     this.engine = new MateEngineFake(this).install();
     this.conversation = this.engine;

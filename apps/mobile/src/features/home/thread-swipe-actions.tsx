@@ -78,26 +78,12 @@ function swipeActionsWidth(hasSecondaryAction: boolean) {
   return hasSecondaryAction ? THREAD_SWIPE_ACTIONS_WIDTH : ACTION_ITEM_WIDTH;
 }
 
-/** `undefined` keeps the v1 Delete default; `null` means one action only. */
+/** Absent or `null`: one action only. */
 function resolveSecondaryAction(input: {
   readonly close: () => void;
-  readonly onDelete: () => void;
   readonly secondaryAction: ThreadSwipeAction | null | undefined;
-  readonly threadTitle: string;
 }): ThreadSwipeSecondaryAction | null {
-  if (input.secondaryAction === null) return null;
-  if (input.secondaryAction === undefined) {
-    return {
-      accessibilityLabel: `Delete ${input.threadTitle}`,
-      tone: "danger",
-      icon: "trash",
-      label: "Delete",
-      onPress: () => {
-        input.close();
-        input.onDelete();
-      },
-    };
-  }
+  if (input.secondaryAction == null) return null;
   const action = input.secondaryAction;
   return {
     ...action,
@@ -240,23 +226,12 @@ interface ThreadSwipeableProps {
   /** Disables NEW swipe activations (e.g. while the list scrolls). */
   readonly enabled?: boolean;
   readonly enableTrackpadSwipe?: boolean;
-  /**
-   * What a full swipe commits. Omitted keeps the v1 Delete behavior only when
-   * the built-in Delete secondary action is in use; custom or absent
-   * secondary actions default to the advertised primary action.
-   */
-  readonly fullSwipeAction?: "delete" | "primary";
   readonly fullSwipeWidth: number;
-  readonly onDelete: () => void;
   readonly onSwipeableClose?: (methods: SwipeableMethods) => void;
   readonly onSwipeableWillOpen?: (methods: SwipeableMethods) => void;
   readonly primaryAction: ThreadSwipeAction;
   readonly threadKey: string;
-  /**
-   * Omitted keeps the v1 destructive Delete action. Explicit null opts out of
-   * a secondary action entirely so a gated Snooze can never fall back to an
-   * unadvertised Delete.
-   */
+  /** Absent or null: the primary action alone. A full swipe commits the primary action. */
   readonly secondaryAction?: ThreadSwipeAction | null;
   /**
    * Identity of the content being wrapped. When a recycled list reuses this
@@ -298,11 +273,9 @@ export function ThreadSwipeable(props: ThreadSwipeableProps) {
 function ThreadSwipeableRow(props: ThreadSwipeableProps) {
   const swipeableRef = useRef<SwipeableMethods | null>(null);
   const fullSwipeArmedRef = useRef(false);
-  const hasSecondaryAction = props.secondaryAction !== null;
+  const hasSecondaryAction = props.secondaryAction != null;
   const actionsWidth = swipeActionsWidth(hasSecondaryAction);
   const fullSwipeThreshold = Math.max(actionsWidth + 44, props.fullSwipeWidth * 0.58);
-  const fullSwipeAction =
-    props.fullSwipeAction ?? (props.secondaryAction === undefined ? "delete" : "primary");
   const close = useCallback(() => swipeableRef.current?.close(), []);
   const gateEnabled = use(SwipeableScrollGateContext);
   const mountedRef = useRef(true);
@@ -405,13 +378,13 @@ function ThreadSwipeableRow(props: ThreadSwipeableProps) {
     (translation: SharedValue<number>) => {
       "worklet";
       if (dismissing.value) return true;
-      if (fullSwipeAction === "primary" && -translation.value >= fullSwipeThreshold) {
+      if (-translation.value >= fullSwipeThreshold) {
         runOnJS(commitPrimaryAction)();
         return true;
       }
       return false;
     },
-    [commitPrimaryAction, dismissing, fullSwipeAction, fullSwipeThreshold],
+    [commitPrimaryAction, dismissing, fullSwipeThreshold],
   );
   const handleFullSwipeArmedChange = useCallback((armed: boolean) => {
     if (armed && !fullSwipeArmedRef.current) {
@@ -461,11 +434,6 @@ function ThreadSwipeableRow(props: ThreadSwipeableProps) {
             }
 
             props.onSwipeableWillOpen?.(methods);
-            if (fullSwipeArmedRef.current && fullSwipeAction !== "primary") {
-              fullSwipeArmedRef.current = false;
-              methods.close();
-              props.onDelete();
-            }
           }}
           overshootFriction={1}
           overshootRight
@@ -479,7 +447,6 @@ function ThreadSwipeableRow(props: ThreadSwipeableProps) {
               <ThreadSwipeActions
                 backgroundColor={props.backgroundColor}
                 compact={props.compactActions === true}
-                fullSwipeAction={fullSwipeAction}
                 fullSwipeThreshold={fullSwipeThreshold}
                 onFullSwipeArmedChange={handleFullSwipeArmedChange}
                 primaryAction={{
@@ -488,9 +455,7 @@ function ThreadSwipeableRow(props: ThreadSwipeableProps) {
                 }}
                 secondaryAction={resolveSecondaryAction({
                   close: () => methods.close(),
-                  onDelete: props.onDelete,
                   secondaryAction: props.secondaryAction,
-                  threadTitle: props.threadTitle,
                 })}
                 translation={translation}
               />
@@ -703,7 +668,6 @@ function SwipeActionButton(props: {
 export function ThreadSwipeActions(props: {
   readonly backgroundColor: ColorValue;
   readonly compact: boolean;
-  readonly fullSwipeAction?: "delete" | "primary";
   readonly fullSwipeThreshold: number;
   readonly onFullSwipeArmedChange: (armed: boolean) => void;
   readonly primaryAction: ThreadSwipeAction;
@@ -711,7 +675,6 @@ export function ThreadSwipeActions(props: {
   readonly translation: SharedValue<number>;
 }) {
   const { fullSwipeThreshold, onFullSwipeArmedChange, secondaryAction, translation } = props;
-  const fullSwipeIsPrimary = props.fullSwipeAction === "primary" || secondaryAction === null;
   const actionsWidth = swipeActionsWidth(secondaryAction !== null);
   useAnimatedReaction(
     () => -translation.value >= fullSwipeThreshold,
@@ -746,7 +709,7 @@ export function ThreadSwipeActions(props: {
         icon={props.primaryAction.icon}
         label={props.primaryAction.label}
         onPress={props.primaryAction.onPress}
-        stretchesOnFullSwipe={fullSwipeIsPrimary}
+        stretchesOnFullSwipe
         translation={props.translation}
       />
       {secondaryAction === null ? null : (
@@ -761,7 +724,7 @@ export function ThreadSwipeActions(props: {
           label={secondaryAction.label}
           menu={secondaryAction.menu}
           onPress={secondaryAction.onPress}
-          stretchesOnFullSwipe={!fullSwipeIsPrimary}
+          stretchesOnFullSwipe={false}
           translation={props.translation}
         />
       )}

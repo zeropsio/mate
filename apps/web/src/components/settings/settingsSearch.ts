@@ -113,16 +113,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
   },
   {
-    id: "auto-settle-inactive-threads",
-    title: "Auto-settle inactive threads",
-    to: "/settings/general",
-  },
-  {
-    id: "auto-settle-merged-threads",
-    title: "Auto-settle merged threads",
-    to: "/settings/general",
-  },
-  {
     id: "thread-notifications",
     title: "Thread notifications",
     to: "/settings/general",
@@ -198,11 +188,6 @@ export const SETTINGS_SEARCH_ITEMS = [
   {
     id: "archive-confirmation",
     title: "Archive confirmation",
-    to: "/settings/general",
-  },
-  {
-    id: "delete-confirmation",
-    title: "Delete confirmation",
     to: "/settings/general",
   },
   {

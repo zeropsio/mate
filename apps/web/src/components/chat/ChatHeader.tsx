@@ -14,7 +14,6 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type { ChangeRequestSettleSource } from "@t3tools/client-runtime/state/thread-settled";
 import { ArchiveIcon, ChevronDownIcon, EllipsisIcon } from "lucide-react";
 import {
   memo,
@@ -76,8 +75,6 @@ interface ChatHeaderProps {
   conversationLoading?: boolean;
   /** Drafts have no server thread yet, so the title carries no action menu. */
   isServerThread: boolean;
-  /** PR feeding the settled classification, resolved by ChatView. */
-  changeRequest: ChangeRequestSettleSource | null;
   activeProjectName: string | undefined;
   activeProjectCwd: string | null;
   activeProjectFaviconPath: string | null;
@@ -193,7 +190,6 @@ export const ChatHeader = memo(function ChatHeader({
   activeThreadTitle,
   conversationLoading = false,
   isServerThread,
-  changeRequest,
   activeProjectName,
   activeProjectCwd,
   activeProjectFaviconPath,
@@ -340,7 +336,6 @@ export const ChatHeader = memo(function ChatHeader({
   const { openMenu, closeMenu } = useThreadActionMenu({
     threadRef: isServerThread && crewOrigin === null ? activeThreadRef : null,
     projectCwd: activeProjectCwd,
-    changeRequest,
     onStartRename: startRename,
   });
   const titleButtonRef = useRef<HTMLButtonElement | null>(null);

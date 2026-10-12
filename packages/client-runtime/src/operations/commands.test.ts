@@ -22,14 +22,10 @@ import * as EnvironmentSupervisor from "../connection/supervisor.ts";
 import * as RpcSession from "../rpc/session.ts";
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import {
-  deleteThread,
   createProject,
+  deleteProject,
   revertThreadCheckpoint,
-  reorderActiveThread,
-  setThreadUsageAutoResume,
-  settleThread,
   stopThreadSession,
-  unsettleThread,
 } from "./commands.ts";
 
 const TEST_CRYPTO_LAYER = Layer.succeed(
@@ -153,87 +149,16 @@ describe("environment commands", () => {
       const dispatched: ClientOrchestrationCommand[] = [];
       const supervisor = yield* makeSupervisor(dispatched);
 
-      yield* deleteThread({
+      yield* deleteProject({
         commandId: CommandId.make("delete-command"),
-        threadId: ThreadId.make("thread-1"),
+        projectId: ProjectId.make("project-1"),
       }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
 
       expect(dispatched).toEqual([
         {
-          type: "thread.delete",
+          type: "project.delete",
           commandId: "delete-command",
-          threadId: "thread-1",
-        },
-      ]);
-    }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
-  );
-
-  it.effect("dispatches settle and unsettle commands without timestamps", () =>
-    Effect.gen(function* () {
-      const dispatched: ClientOrchestrationCommand[] = [];
-      const supervisor = yield* makeSupervisor(dispatched);
-
-      yield* settleThread({
-        commandId: CommandId.make("settle-command"),
-        threadId: ThreadId.make("thread-1"),
-      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
-      yield* unsettleThread({
-        commandId: CommandId.make("unsettle-command"),
-        threadId: ThreadId.make("thread-1"),
-        reason: "user",
-      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
-
-      expect(dispatched).toEqual([
-        {
-          type: "thread.settle",
-          commandId: "settle-command",
-          threadId: "thread-1",
-        },
-        {
-          type: "thread.unsettle",
-          commandId: "unsettle-command",
-          threadId: "thread-1",
-          reason: "user",
-        },
-      ]);
-    }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
-  );
-
-  it.effect.each([true, false])("sets a thread's usage auto-resume to %s", (enabled) =>
-    Effect.gen(function* () {
-      const dispatched: ClientOrchestrationCommand[] = [];
-      const supervisor = yield* makeSupervisor(dispatched);
-      yield* setThreadUsageAutoResume({
-        commandId: CommandId.make("auto-resume-command"),
-        threadId: ThreadId.make("thread-1"),
-        enabled,
-      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
-      expect(dispatched).toEqual([
-        {
-          type: "thread.usage-auto-resume.set",
-          commandId: "auto-resume-command",
-          threadId: "thread-1",
-          enabled,
-        },
-      ]);
-    }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),
-  );
-
-  it.effect("sends an active order key without changing activity timestamps", () =>
-    Effect.gen(function* () {
-      const dispatched: ClientOrchestrationCommand[] = [];
-      const supervisor = yield* makeSupervisor(dispatched);
-      yield* reorderActiveThread({
-        commandId: CommandId.make("reorder-command"),
-        threadId: ThreadId.make("thread-1"),
-        orderKey: "mf",
-      }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
-      expect(dispatched).toEqual([
-        {
-          type: "thread.active.reorder",
-          commandId: "reorder-command",
-          threadId: "thread-1",
-          orderKey: "mf",
+          projectId: "project-1",
         },
       ]);
     }).pipe(Effect.provide(TEST_CRYPTO_LAYER)),

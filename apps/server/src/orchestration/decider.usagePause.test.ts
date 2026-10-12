@@ -97,28 +97,4 @@ it.layer(NodeServices.layer)("usage pause decider", (it) => {
       expect(Exit.isFailure(exit)).toBe(true);
     }),
   );
-
-  it.effect.each([
-    { enabled: false, disabled: true },
-    { enabled: true, disabled: false },
-  ])("the auto-resume switch set to $enabled", ({ enabled, disabled }) =>
-    Effect.gen(function* () {
-      const [event] = yield* decide(autoResumeCommand(enabled));
-      expect(event?.type).toBe("thread.usage-auto-resume-set");
-      if (event?.type === "thread.usage-auto-resume-set") {
-        expect(event.payload.threadId).toBe("thread-1");
-        expect(event.payload.usageAutoResumeDisabledAt === null).toBe(!disabled);
-        if (disabled) expect(event.payload.usageAutoResumeDisabledAt).toBe(event.occurredAt);
-      }
-    }),
-  );
-
-  it.effect("refuses the switch on an archived thread", () =>
-    Effect.gen(function* () {
-      const exit = yield* Effect.exit(
-        decide(autoResumeCommand(false), makeReadModel({ archivedAt: NOW })),
-      );
-      expect(Exit.isFailure(exit)).toBe(true);
-    }),
-  );
 });

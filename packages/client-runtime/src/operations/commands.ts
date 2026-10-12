@@ -32,19 +32,8 @@ export type CreateProjectInput = CommandInput<"project.create">;
 export type UpdateProjectInput = CommandInput<"project.meta.update">;
 export type DeleteProjectInput = CommandInput<"project.delete">;
 export type CreateThreadInput = CommandInput<"thread.create">;
-export type DeleteThreadInput = CommandInput<"thread.delete">;
 export type ArchiveThreadInput = CommandInput<"thread.archive">;
 export type UnarchiveThreadInput = CommandInput<"thread.unarchive">;
-export type SettleThreadInput = CommandInput<"thread.settle">;
-export type UnsettleThreadInput = CommandInput<"thread.unsettle">;
-export type SnoozeThreadInput = CommandInput<"thread.snooze">;
-export type UnsnoozeThreadInput = CommandInput<"thread.unsnooze">;
-export type PinThreadInput = CommandInput<"thread.pin">;
-export type UnpinThreadInput = CommandInput<"thread.unpin">;
-export type ReorderPinnedThreadInput = CommandInput<"thread.pin.reorder">;
-export type SetThreadAutoSettleInput = CommandInput<"thread.auto-settle.set">;
-export type SetThreadUsageAutoResumeInput = CommandInput<"thread.usage-auto-resume.set">;
-export type ReorderActiveThreadInput = CommandInput<"thread.active.reorder">;
 export type UpdateThreadMetadataInput = CommandInput<"thread.meta.update">;
 export type SetThreadRuntimeModeInput = CommandInput<"thread.runtime-mode.set">;
 export type SetThreadInteractionModeInput = CommandInput<"thread.interaction-mode.set">;
@@ -120,116 +109,6 @@ export const deleteProject: (input: DeleteProjectInput) => CommandEffect = Effec
   return yield* dispatch({
     ...input,
     type: "project.delete",
-    commandId: yield* commandId(input),
-  });
-});
-
-export const deleteThread: (input: DeleteThreadInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.deleteThread",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.delete",
-    commandId: yield* commandId(input),
-  });
-});
-
-export const settleThread: (input: SettleThreadInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.settleThread",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.settle",
-    commandId: yield* commandId(input),
-  });
-});
-
-export const unsettleThread: (input: UnsettleThreadInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.unsettleThread",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.unsettle",
-    commandId: yield* commandId(input),
-  });
-});
-
-export const snoozeThread: (input: SnoozeThreadInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.snoozeThread",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.snooze",
-    commandId: yield* commandId(input),
-  });
-});
-
-export const unsnoozeThread: (input: UnsnoozeThreadInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.unsnoozeThread",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.unsnooze",
-    commandId: yield* commandId(input),
-  });
-});
-
-export const pinThread: (input: PinThreadInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.pinThread",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.pin",
-    commandId: yield* commandId(input),
-  });
-});
-
-export const unpinThread: (input: UnpinThreadInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.unpinThread",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.unpin",
-    commandId: yield* commandId(input),
-  });
-});
-
-export const setThreadAutoSettle: (input: SetThreadAutoSettleInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.setThreadAutoSettle",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.auto-settle.set",
-    commandId: yield* commandId(input),
-  });
-});
-
-/** The thread's switch for resuming by itself when a usage limit resets (`usagePause.autoResume`). */
-export const setThreadUsageAutoResume: (input: SetThreadUsageAutoResumeInput) => CommandEffect =
-  Effect.fn("EnvironmentCommands.setThreadUsageAutoResume")(function* (input) {
-    return yield* dispatch({
-      ...input,
-      type: "thread.usage-auto-resume.set",
-      commandId: yield* commandId(input),
-    });
-  });
-
-export const reorderPinnedThread: (input: ReorderPinnedThreadInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.reorderPinnedThread",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.pin.reorder",
-    commandId: yield* commandId(input),
-  });
-});
-
-export const reorderActiveThread: (input: ReorderActiveThreadInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.reorderActiveThread",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.active.reorder",
     commandId: yield* commandId(input),
   });
 });

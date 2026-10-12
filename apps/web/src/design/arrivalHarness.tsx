@@ -574,7 +574,6 @@ const SHARED: TimelineRowSharedState = {
   standUpAsk: mateStandUpAskLine(WREN, ADA),
   livePauseId: null,
   usagePause: null,
-  onUsageAutoResumeChange: null,
   agentPanelModel: emptyAgentPanelModel(),
   onOpenAgents: () => undefined,
   onSteerQueuedMessage: () => undefined,
@@ -943,7 +942,7 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
     window.setTimeout(() => go("conversation"), 1400);
   }, [go]);
   const signingIn = state.logins !== undefined;
-  const [autoResume, setAutoResume] = useState(false);
+
   const stage = (
     <MateEmptyStateView
       addedBy={state.addedBy}
@@ -999,8 +998,7 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
               speaker={WREN}
               nowMs={Date.parse("2026-10-08T08:00:00Z")}
               timestampFormat="24-hour"
-              serverPause={{ resetsAt: "2026-10-08T12:00:00Z", autoResume }}
-              onAutoResumeChange={setAutoResume}
+              serverPause={{ resetsAt: "2026-10-08T12:00:00Z", autoResume: false }}
               onContinue={() => go("conversation")}
             />
           </div>
