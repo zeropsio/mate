@@ -163,12 +163,7 @@ import { zeropsSessionAtom } from "~/state/zerops";
 import { organization, project } from "~/zerops/__fixtures__/platformData";
 import type { SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
-import {
-  ProjectHeader,
-  SidebarHqStatus,
-  SidebarZeropsTree,
-  type SidebarProjectFlow,
-} from "./SidebarZeropsTree";
+import { SidebarHqStatus, SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
 import { projectHeadingMenu } from "./SidebarZeropsTree.logic";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { useProjectFlows } from "~/zerops/projectFlows";
@@ -2343,27 +2338,6 @@ describe("a project collapsed to its heading", () => {
     expect(dot.props["data-arrived"]).toBeUndefined();
   });
 
-  // The faces arrive once the rows have folded away, under a pointer still on
-  // the heading: ··· stands after the room that takes them up, never after
-  // the faces, so nothing a person is about to press moves.
-  it("puts the road right after the name and ··· at the heading's end, past the faces", () => {
-    const html = renderToStaticMarkup(
-      <ProjectHeader
-        collapsed
-        faces={<span data-zerops-surface="sidebar-project-faces" />}
-        name="Links"
-        onBrowseProjects={() => {}}
-        onToggle={() => {}}
-        chips={<span data-zerops-surface="sidebar-road" />}
-      />,
-    );
-    const at = (needle: string) => html.indexOf(needle);
-    expect(at("sidebar-road")).toBeGreaterThan(at("sidebar-project-toggle"));
-    expect(at("sidebar-project-faces")).toBeGreaterThan(at("sidebar-road"));
-    expect(at("sidebar-project-more")).toBeGreaterThan(at("sidebar-project-faces"));
-    expect(html).not.toContain("sidebar-project-add-mate");
-  });
-
   // The owner, 2026-09-29: the + "leaves the conversation". Its ··· asks for the New Mate dialog
   // over whatever is on screen, and goes nowhere.
   it.each(["Add a Mate"])("asks for a Mate in place from its %s, going nowhere", (verb) => {
@@ -2391,25 +2365,36 @@ describe("a project collapsed to its heading", () => {
 
   it("collapses rather than opens the project from its name; the page is the menu's to open", () => {
     let opened = 0;
-    let toggled = 0;
+    const GROUP = [
+      named("crm-a", "Ada", { tags: ["mate"], hq: AAA("mate", true) }),
+      named("crm-b", "Bo", { tags: ["mate"], hq: AAA("mate", true) }),
+    ];
     const mounted = mount(
-      <ProjectHeader
-        name="Links"
+      <SidebarZeropsTree
+        candidates={GROUP}
+        complete
         onBrowseProjects={() => {}}
-        onOpen={() => {
+        onOpenGroup={() => {
           opened += 1;
         }}
-        onToggle={() => {
-          toggled += 1;
-        }}
+        onSelect={() => {}}
       />,
     );
-    press(mounted, "sidebar-project-toggle");
-    expect({ opened, toggled }).toEqual({ opened: 0, toggled: 1 });
-    // The ungrouped heading is not a project: nothing to collapse.
-    expect(
-      renderToStaticMarkup(<ProjectHeader muted name="Ungrouped" onBrowseProjects={() => {}} />),
-    ).not.toContain("sidebar-project-toggle");
+    expect(surface(mounted, "sidebar-project").props["aria-expanded"]).toBe(false);
+    press(mounted, "sidebar-project");
+    expect(surface(mounted, "sidebar-project").props["aria-expanded"]).toBe(true);
+    expect(opened).toBe(0);
+    // Mates in no project are no project's: nothing over them folds or opens.
+    const html = renderToStaticMarkup(
+      <SidebarZeropsTree
+        candidates={[...GROUP, named("solo", "Cy", { tags: ["mate"] })]}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    expect(html).toContain("Ungrouped");
+    expect(html.match(/aria-expanded/gu) ?? []).toHaveLength(1);
   });
 
   it("opens a collapsed project when one of its Mates' conversations opens, and lets it collapse again", () => {

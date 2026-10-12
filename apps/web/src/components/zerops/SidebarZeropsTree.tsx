@@ -191,6 +191,7 @@ import {
   type CrewRowFacts,
   type SidebarCrewRead,
 } from "./crew/SidebarCrewMinis";
+import { ProjectSites, type ProjectSitesInput } from "./SidebarProjectSites";
 import {
   ProjectReviewTags,
   changeReviewItem,
@@ -1388,7 +1389,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               ),
             ),
           ];
-    const tags: ReactNode =
+    const reviewTags: ReactNode =
       group === undefined ? undefined : (
         <ProjectReviewTags
           groupId={id}
@@ -1404,13 +1405,86 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           }
         />
       );
-    const globe: ReactNode = null;
-    void line;
-    void openStop;
-    void stopDeployedAt;
-    void downOf;
-    void stageMenu;
-    void productionMenu;
+    // Its places — production, its stages, and every address each of its Mates has — behind the
+    // globe; what goes wrong with them, or comes up, as the tag beside its changes (`ProjectSites`).
+    const everyOrdered = groupMateOrder(
+      everyMate.map(({ item }) => ({
+        projectId: item.project.id,
+        mine: mine(item),
+        createdAt: item.project.created,
+        name: projectNameInApp(item.project),
+        item,
+      })),
+    );
+    const sitesInput: ProjectSitesInput | undefined =
+      group === undefined
+        ? undefined
+        : {
+            groupId: id,
+            projectName,
+            production:
+              prodChip === undefined
+                ? undefined
+                : (nowMs) =>
+                    productionMenu({
+                      chip: prodChip,
+                      projectId: productionItem?.project.id,
+                      failure: releases.kind === "answered" ? releases.failure : undefined,
+                      down: downOf(productionServing),
+                      routes: productionItem?.routes ?? [],
+                      nowMs,
+                    }),
+            stages:
+              stages.length === 0 && projectFlow.creatingStages.length === 0
+                ? undefined
+                : (nowMs) =>
+                    stageMenu({
+                      stages: stages.map(({ name, stop, serving }, index) => ({
+                        projectId: stop.projectId,
+                        name,
+                        stop,
+                        chip: stageChips[index],
+                        deployedAt: stopDeployedAt(stop.projectId),
+                        down: downOf(serving),
+                        routes: stopItem(stop.projectId)?.routes ?? [],
+                      })),
+                      creating: projectFlow.creatingStages.map((creation) => ({
+                        projectId: creation.projectId,
+                        name: creation.name,
+                      })),
+                      nowMs,
+                    }),
+            mates: everyOrdered.map(({ item, name }) => ({
+              candidate: item,
+              ...faceOf(item.project),
+              mine: personFacts[item.project.id]?.mine,
+              threadKey: getActivity?.(item)?.threadKey,
+              name,
+              owner: getOwner?.(item),
+            })),
+            prodChip,
+            stageChip: stageChipDrawn,
+            line,
+            onAskToFix,
+            onOpenStop: openStop,
+          };
+    // The project's own row, with its tags and its globe where it is a project.
+    const withSites = (render: (tags: ReactNode, globe: ReactNode) => ReactNode): ReactNode =>
+      sitesInput === undefined ? (
+        render(undefined, undefined)
+      ) : (
+        <ProjectSites {...sitesInput}>
+          {({ tag, globe }) =>
+            render(
+              <>
+                {reviewTags}
+                {tag}
+              </>,
+              globe,
+            )
+          }
+        </ProjectSites>
+      );
     const dragOf =
       group === undefined || projectOrder.order !== "custom"
         ? undefined
@@ -1420,7 +1494,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             });
           };
     // One Mate's row, as its project's (solo) or under its open group (kid).
-    const mateRow = (item: T, at: "solo" | "kid" | "alone") => {
+    const mateRow = (
+      item: T,
+      at: "solo" | "kid" | "alone",
+      tags?: ReactNode,
+      globe?: ReactNode,
+    ) => {
       numbered += 1;
       const active = item.project.id === activeProjectId;
       const apps =
@@ -1491,7 +1570,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             ? coming[0] === undefined
               ? null
               : comingRow(coming[0], "solo")
-            : mateRow(only.item, "solo")}
+            : withSites((tags, globe) => mateRow(only.item, "solo", tags, globe))}
         </>
       );
     }
@@ -1499,18 +1578,20 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       return (
         <>
           {demand}
-          <ProjectBareRow
-            globe={globe}
-            groupId={id}
-            keys={mateKeys}
-            menu={projectMenu ?? NO_MENU}
-            name={projectName}
-            onDragStart={dragOf}
-            onOpen={() => {
-              (onOpenGroup === undefined ? onBrowseProjects : () => onOpenGroup(id))();
-            }}
-            tags={tags}
-          />
+          {withSites((tags, globe) => (
+            <ProjectBareRow
+              globe={globe}
+              groupId={id}
+              keys={mateKeys}
+              menu={projectMenu ?? NO_MENU}
+              name={projectName}
+              onDragStart={dragOf}
+              onOpen={() => {
+                (onOpenGroup === undefined ? onBrowseProjects : () => onOpenGroup(id))();
+              }}
+              tags={tags}
+            />
+          ))}
         </>
       );
     }
@@ -1612,7 +1693,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       setFolds((moving) => new Map(moving).set(id, opening ? "opening" : "closing"));
     };
     const mineIds = ordered.filter((entry) => entry.mine).map((entry) => entry.projectId);
-    const row = (
+    const row = withSites((tags, globe) => (
       <ProjectGroupRow
         asksMore={Math.max(0, asks.length - 1)}
         current={current}
@@ -1662,7 +1743,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         tags={tags}
         timestampFormat={timestampFormat}
       />
-    );
+    ));
     // Folded, the group is its row alone; a fold under way keeps its Mates drawn until they have
     // folded away. A fragment either way, so the row keeps its node — and the focus of the press
     // that folded it.
@@ -2712,27 +2793,28 @@ function revealLanding(
       return { focus: row, flash: row.closest<HTMLElement>("[data-zerops-mate-unit]") ?? row };
     }
     case "stop": {
-      // A stop is no row of its own: its chip on the heading carries it —
-      // production's, or the stages' — and its menu says the rest, so that
-      // chip is focused, flashed and opened.
-      const chip = find(
-        `[data-zerops-group="${target.groupId}"] [data-zerops-surface="sidebar-production-chip"][data-zerops-stops~="${CSS.escape(target.projectId)}"]`,
+      // A stop is no row of its own: its project's globe carries it — production's, the stages',
+      // and every Mate's addresses — so the globe is focused, its row flashed, its popover opened.
+      const globe = find(
+        `[data-zerops-group="${target.groupId}"] [data-zerops-surface="sidebar-project-sites"]`,
       );
-      return chip === null ? null : { focus: chip, flash: chip, press: chip };
+      if (globe === null) return null;
+      const unit = globe.closest<HTMLElement>("[data-zerops-mate-unit]") ?? globe;
+      return { focus: globe, flash: unit, press: globe };
     }
     case "change": {
-      // Its own row among the other Mates' changes, or the row of the Mate it rides.
-      const key = CSS.escape(target.key);
-      const row = find(
-        `[data-zerops-group="${target.groupId}"] :is([data-zerops-change="${key}"], [data-zerops-changes~="${key}"])`,
+      // A change rides its project's row, behind its Review: one opens with Enter, several open
+      // their list at once.
+      const review = find(
+        `[data-zerops-group="${target.groupId}"] [data-zerops-surface="sidebar-project-review"]`,
       );
-      if (row === null) return null;
-      // Its *Review*, the one door to it: Enter opens the review.
-      const review = row.querySelector<HTMLElement>(
-        '[data-zerops-surface="sidebar-pull-request-review"], [data-zerops-surface="sidebar-mate-review"]',
-      );
-      const mate = row.querySelector<HTMLElement>('[data-zerops-surface="sidebar-mate"]');
-      return { focus: review ?? mate ?? row, flash: row };
+      if (review === null) return null;
+      const unit = review.closest<HTMLElement>("[data-zerops-mate-unit]") ?? review;
+      return {
+        focus: review,
+        flash: unit,
+        ...(review.hasAttribute("aria-haspopup") ? { press: review } : {}),
+      };
     }
   }
 }
