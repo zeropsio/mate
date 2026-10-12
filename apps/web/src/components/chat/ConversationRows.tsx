@@ -155,6 +155,44 @@ export function MessageReceipt({
   );
 }
 
+/**
+ * Under a message a usage limit holds: when it goes, and Don't send — said where the message stands,
+ * not only in a hover (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12).
+ */
+export function HeldMessageLine({
+  resetsAt,
+  timestampFormat,
+  onWithdraw,
+}: {
+  /** The limit's reset, when it names one. */
+  readonly resetsAt: string | null;
+  readonly timestampFormat: TimestampFormat;
+  /** Takes the message back before it goes; null where it cannot be. */
+  readonly onWithdraw: (() => void) | null;
+}) {
+  return (
+    <p
+      className="mt-1 flex items-center justify-end gap-3 pe-1.5 text-muted-foreground text-xs"
+      data-held-message-line=""
+    >
+      <span>
+        {resetsAt === null
+          ? "Sends when the limit resets"
+          : `Sends when the limit resets ${spokenUpcoming(resetsAt, timestampFormat)}`}
+      </span>
+      {onWithdraw === null ? null : (
+        <button
+          className="cursor-pointer rounded-sm font-medium text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={onWithdraw}
+          type="button"
+        >
+          Don't send
+        </button>
+      )}
+    </p>
+  );
+}
+
 /** A coming moment as a sentence says it: "at 1:00 PM", "tomorrow at 1:00 PM", "on Oct 12 1:00 PM". */
 function spokenUpcoming(iso: string, timestampFormat: TimestampFormat): string {
   const stamp = formatUpcomingTimestamp(iso, timestampFormat);

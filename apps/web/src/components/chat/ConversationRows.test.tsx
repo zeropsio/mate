@@ -6,7 +6,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { formatUpcomingTimestamp } from "../../timestampFormat";
-import { EventLine, PauseBlock, type ConversationSpeaker } from "./ConversationRows";
+import {
+  EventLine,
+  HeldMessageLine,
+  PauseBlock,
+  type ConversationSpeaker,
+} from "./ConversationRows";
 
 const NOVA: ConversationSpeaker = { name: "Nova", tint: "sky" };
 const NOW_MS = Date.parse("2026-09-27T10:00:00.000Z");
@@ -393,6 +398,51 @@ describe("the pause's automatic-resume choice", () => {
       expect(toggle.getAttribute("aria-checked")).toBe(String(!autoResume));
     },
   );
+});
+
+// The owner's pick on the "Composer Strips" board (S6, 2026-10-12): "the held message shows its send
+// time under it instead of only on hover".
+describe("a message a usage limit holds", () => {
+  let root: Root | undefined;
+  beforeEach(() => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+  });
+  afterEach(async () => {
+    await act(() => root?.unmount());
+    root = undefined;
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    {
+      resetsAt: "2026-09-27T14:00:00.000Z",
+      says: `Sends when the limit resets at ${formatUpcomingTimestamp("2026-09-27T14:00:00.000Z", "24-hour")}`,
+    },
+    { resetsAt: null, says: "Sends when the limit resets" },
+  ])(
+    "says under it when it goes, and Don't send withdraws it: $says",
+    async ({ resetsAt, says }) => {
+      const withdrawn = vi.fn();
+      await act(() =>
+        root!.render(
+          <HeldMessageLine onWithdraw={withdrawn} resetsAt={resetsAt} timestampFormat="24-hour" />,
+        ),
+      );
+      expect(document.body.textContent).toBe(`${says}Don't send`);
+      await act(() => document.querySelector<HTMLButtonElement>("button")!.click());
+      expect(withdrawn).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("offers no Don't send where the message cannot be withdrawn", async () => {
+    await act(() =>
+      root!.render(<HeldMessageLine onWithdraw={null} resetsAt={null} timestampFormat="24-hour" />),
+    );
+    expect(document.body.textContent).toBe("Sends when the limit resets");
+    expect(document.querySelector("button")).toBeNull();
+  });
 });
 
 describe("a slash command's line", () => {
