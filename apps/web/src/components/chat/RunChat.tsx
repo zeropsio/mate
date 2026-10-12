@@ -240,6 +240,7 @@ import {
   type TimelineRowSharedState,
 } from "./timelineContext";
 import { stepOf, type StepKind, type StepPhrase, type WorkStep } from "./workSteps.logic";
+import { mateFailureWords } from "../../zerops/noticeWords";
 
 // ---------------------------------------------------------------------------
 // Shared with the rest of the card
@@ -3467,15 +3468,18 @@ function BrokeOffLine({
   /** Watched as the run ends: its room opens as the line settles. */
   readonly rises: boolean;
 }) {
+  const ctx = use(TimelineRowCtx);
   const [heldNext, setHeldNext] = useState(brokeOff.next);
   if (brokeOff.next !== null && brokeOff.next !== heldNext) setHeldNext(brokeOff.next);
+  // A usage limit or a refused sign-in in the voice the Mate's other surfaces use.
+  const reason = mateFailureWords(brokeOff.reason, ctx.driver, ctx.speaker.name);
   return (
     <div
       className={cn("grid min-w-0 [grid-column:2/-1]", rises && "motion-safe:animate-room-open")}
       data-run-broke-off
     >
       <p className="min-h-0 min-w-0 overflow-hidden pt-0.5 text-sm leading-5 text-status-failed-text">
-        {brokeOff.reason}
+        {reason}
         {heldNext === null ? null : (
           <span
             aria-hidden={brokeOff.next === null ? true : undefined}

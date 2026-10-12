@@ -56,6 +56,11 @@ export interface TimelineRowSharedState {
   /** Who the conversation is with: the Mate's name and colour. */
   speaker: ConversationSpeaker;
   /**
+   * The conversation's agent driver (its session's `providerName`): only its own sign-in failure
+   * is said as one (`mateFailureWords`).
+   */
+  driver?: string | null;
+  /**
    * The quiet line a Mate's main conversation draws its stand-up's ask as
    * (`mateStandUpAskLine`); null where the words are just a message.
    */
