@@ -1218,3 +1218,64 @@ describe("a value zcp refused to ask for", () => {
     expect(outcome?.notDone.length ?? 0).toBe(rows);
   });
 });
+
+// The owner, 2026-10-12, a second time: "Flora does have an official MCP… Reading the docs:" stood
+// under the card "Working · 7:39 · 29 steps", its colon pointing down at nothing while the reading
+// it announced went on in the card above it. The engine names a run's last whole words its answer
+// as they close, steps after them or not.
+it.each([
+  { run: "still at work", live: true, end: null },
+  {
+    run: "stopped by the person",
+    live: false,
+    end: { kind: "stopped", by: { kind: "person", subject: "user-ada" } },
+  },
+])(
+  "a message that more work follows stands in the run's card where it was said, never under it: a run $run",
+  ({ live, end }) => {
+    const announced = noteItem(
+      run1,
+      12,
+      'Flora does have an official MCP: their academy has a "FLORA MCP Overview" video, and their docs moved to flora.ai. Reading the docs:',
+      { answer: true, at: t0 + 60_000 } as never,
+    );
+    const rows = render({
+      runs: [
+        stressRun({
+          summary: { ...stressSummary, answerItemId: announced.id },
+          ...(live
+            ? { state: "running", turnState: "running", endedAt: null, end: null }
+            : { end, endedAt: t0 + 63_000 }),
+        } as never),
+      ],
+      items: [
+        ...stressItems("completed").slice(0, 11),
+        announced,
+        call(13, 61_000, {
+          step: "tool",
+          tool: { name: "WebFetch" },
+          words: "Tool call",
+          input: 'WebFetch: {"url":"https://flora.ai/docs"}',
+          shows: { toolName: "WebFetch", input: { url: "https://flora.ai/docs" } },
+        } as never),
+        {
+          ...bash(14, 62_000, "cat flora-mcp.md", "Read the MCP page"),
+          ...(live ? { state: "running", endedAt: null } : {}),
+        } as Item,
+      ],
+      isWorking: live,
+    });
+    // Nothing of it stands under the card.
+    expect(rows.some((row) => row.kind === "message" && row.id === announced.id)).toBe(false);
+    // In the card, it comes before the work it announced.
+    const card = rows.find((row) => row.kind === "record");
+    const items = card?.kind === "record" ? card.items : [];
+    const said = items.findIndex(
+      (item) => item.kind === "note" && String(item.message.id) === announced.id,
+    );
+    expect(said).toBeGreaterThan(-1);
+    expect(
+      items.slice(said + 1).some((item) => item.kind !== "note" && item.kind !== "thought"),
+    ).toBe(true);
+  },
+);

@@ -673,18 +673,59 @@ function endedOnAStep(entries: ReadonlyArray<TimelineEntry>): boolean {
 
 /** A turn's last entry of the Mate's own: what `endedOnAStep` reads. */
 function lastOwnEntry(entries: ReadonlyArray<TimelineEntry>): TimelineEntry | undefined {
-  return entries.findLast(
-    (entry) =>
-      entry.kind !== "turn-plan" &&
-      entry.kind !== "change-landed" &&
-      !(entry.kind === "message" && saysNothing(entry.message)) &&
-      !(
-        (entry.kind === "work" || entry.kind === "generic-call") &&
-        (isTaskReport(entry) ||
-          entry.entry.sourceActivityKind === "context-compaction" ||
-          !workLogEntryIsToolLike(entry.entry))
-      ),
+  return entries.findLast(isOwnEntry);
+}
+
+/**
+ * The Mate's own entry: its words, a thought, a step. A plan update, a landing, a message of
+ * nothing, a background task reporting in, the context condensed, or a row that only tells is not.
+ */
+function isOwnEntry(entry: TimelineEntry): boolean {
+  return (
+    entry.kind !== "turn-plan" &&
+    entry.kind !== "change-landed" &&
+    !(entry.kind === "message" && saysNothing(entry.message)) &&
+    !(
+      (entry.kind === "work" || entry.kind === "generic-call") &&
+      (isTaskReport(entry) ||
+        entry.entry.sourceActivityKind === "context-compaction" ||
+        !workLogEntryIsToolLike(entry.entry))
+    )
   );
+}
+
+/**
+ * The words that stand under an engine card, oldest first: the answers of its runs whose turns are
+ * over that nothing in the card follows — the tail of what it said. Words a step or a thought
+ * follows are a note of the card where they were said, the work they announced under them (the
+ * owner, 2026-10-12, twice: "Reading the docs:" stood under the card the reading went on in). What
+ * the Mate asked the person for, or proposed, stands under its words and moves none into the card.
+ * A running turn's words are its working row's until it ends (D4).
+ */
+function wordsUnderCard(
+  entries: ReadonlyArray<TimelineEntry>,
+  runs: ReadonlyArray<RunRecord>,
+): ReadonlyArray<MessageEntry> {
+  const answers = new Set(
+    runs.flatMap((run) =>
+      run.turnState === "running" || run.summary.answerItemId === null
+        ? []
+        : [String(run.summary.answerItemId)],
+    ),
+  );
+  const under: MessageEntry[] = [];
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]!;
+    if (!isOwnEntry(entry)) continue;
+    if (
+      entry.kind === "operation" &&
+      (vaultAskOf(entry.operation) !== null || entry.operation.proposal !== undefined)
+    )
+      continue;
+    if (entry.kind !== "message" || !answers.has(String(entry.message.id))) break;
+    under.unshift(entry);
+  }
+  return under;
 }
 
 /**
@@ -1043,28 +1084,16 @@ export function deriveConversationStructure(given: {
               latest: span === spans.at(-1),
               refused: refusal.hasRefusal,
             });
+    // The words an engine card stands over: its runs' answers nothing in the card follows. The
+    // engine names a run's last whole words its answer as they close, steps after them or not.
+    const under = typed ? wordsUnderCard(turnEntries, cardRuns) : [];
     const answer =
       live || waiting || brokeOff !== null
         ? null
         : typed
-          ? (turnEntries.find(
-              (entry): entry is MessageEntry =>
-                entry.kind === "message" && String(entry.message.id) === run?.summary.answerItemId,
-            ) ?? null)
+          ? (under.find((entry) => String(entry.message.id) === run?.summary.answerItemId) ?? null)
           : span.terminalEntry;
-    const earlierAnswers = typed
-      ? cardRuns.flatMap((each) => {
-          const id = each.summary.answerItemId;
-          const said =
-            id === null
-              ? undefined
-              : turnEntries.find(
-                  (entry): entry is MessageEntry =>
-                    entry.kind === "message" && String(entry.message.id) === id,
-                );
-          return said === undefined || said === answer ? [] : [said];
-        })
-      : [];
+    const earlierAnswers = under.filter((entry) => entry !== answer);
     // Words still streaming, nothing after them: the working row's, as they
     // come. Anything after them — a step, a thought — makes them a note in
     // the record, and so does their end: Codex says nothing of a command
