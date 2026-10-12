@@ -579,10 +579,33 @@ const enginePort = (input: {
       Effect.gen(function* () {
         yield* settled;
         const thread = yield* threadOf(chat);
-        // Nothing the crew sent is on its way: the agent opens a turn of its own (V1's world
-        // publishes a turn's start the same way). Idle must hold for a beat: under load a press's
-        // delivery can show a moment after the press returned, and a turn opened in that moment
-        // is one the crew never asked for.
+        // A press can return before its conversation receipt reaches the crew observer.
+        // The observer's cursor proves it has consumed that receipt before an idle agent
+        // opens a turn of its own; pending deliveries keep the existing idle verdict busy.
+        const conversations = yield* run(Conversations);
+        const cursor = (yield* crewState).headSeq;
+        yield* Stream.concat(
+          Stream.succeed(undefined),
+          conversations
+            .owner(crewDomain)
+            .subscribe(CREW_OWNER_ID, cursor)
+            .pipe(Stream.map(() => undefined)),
+        ).pipe(
+          Stream.mapEffect(() =>
+            Effect.gen(function* () {
+              const conversation = yield* conversations.state(ConversationId.make(chat));
+              const state = yield* crewState;
+              return (state.cursors[chat] ?? 0) >= conversation.headSeq;
+            }),
+          ),
+          Stream.filter((ready) => ready),
+          Stream.runHead,
+          Effect.orDie,
+          Effect.timeoutOrElse({
+            duration: QUIET_WAIT,
+            orElse: () => Effect.die(new Error(`crew never observed ${chat}'s turn receipts`)),
+          }),
+        );
         const idle = Effect.gen(function* () {
           const state = yield* crewState;
           const member = membersInOrder(state).find((entry) => entry.conversationId === chat);
@@ -603,12 +626,7 @@ const enginePort = (input: {
             session.open === null
           );
         });
-        let quiet = true;
-        for (let held = 0; held < 1_000 && quiet; held += 50) {
-          quiet = yield* idle;
-          if (quiet) yield* Effect.sleep("50 millis");
-        }
-        if (quiet && (yield* idle)) {
+        if (yield* idle) {
           yield* provider.agent.selfTurn(thread);
         }
         yield* waitFor(`a turn in ${chat}`, turnRunning(chat));
