@@ -10,9 +10,13 @@ import { CircleAlertIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import { MateMark } from "../../MateMark";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
+import { zeropsAccountDisplay } from "../landing/ZeropsAccountControl.logic";
+import { MateOwnerMark } from "../MateOwnerMark";
+import { ownerMark } from "../SidebarMateRow.logic";
 import { SidebarWaitingPopover, type WaitingVerbs } from "../SidebarWaiting";
 import { waitingSummary, type WaitingItem } from "../SidebarWaiting.logic";
 import type { ChiefSetupRowState } from "./chiefTop.logic";
@@ -26,43 +30,29 @@ export interface SidebarChiefRowProps {
   /** Its conversation, or the Chief page, is the page open now. */
   readonly current: boolean;
   readonly onOpen: () => void;
-  /** The organization's Mates: how many, and how many are at work. */
-  readonly org?: ChiefOrg | undefined;
   /** What waits on the person, and what its list asks of the menu. */
   readonly waiting?:
     | { readonly items: ReadonlyArray<WaitingItem>; readonly verbs: WaitingVerbs }
     | undefined;
 }
 
-export function SidebarChiefRow({
-  face,
-  line,
-  current,
-  onOpen,
-  waiting,
-  org,
-}: SidebarChiefRowProps) {
+export function SidebarChiefRow({ face, line, current, onOpen, waiting }: SidebarChiefRowProps) {
   const items = waiting?.items ?? [];
   const summary = items.length === 0 ? undefined : waitingSummary(items);
-  // Under its name, live, as a Mate row's line is (the owner, 2026-10-12: "Ask about any project is
-  // pretty mid"): what waits on the person, else how the organization's Mates stand; its setup's
-  // line while it has one.
-  const shown =
-    line ??
-    (summary !== undefined ? (
-      <span className="menu-line2 menu-chief-asks truncate">
-        {summary.more > 0 ? `${summary.words}, ${String(summary.more)} more` : summary.words}
-      </span>
-    ) : org === undefined ? null : (
-      <span className="menu-line2 menu-ink-3 truncate">{chiefOrgLine(org)}</span>
-    ));
+  // The person's own Chief, by their name and with their picture on its mark (the owner,
+  // 2026-10-13: "Aleš's Chief Mate and combine it with avatar, no second line"); a line only while
+  // its setup has one to say.
+  const session = useZeropsSessionOptional();
+  const account =
+    session !== null && session.status === "signed-in" ? zeropsAccountDisplay(session.user) : null;
+  const shown = line ?? null;
   return (
     <div className="menu-top-chief" data-zerops-surface="sidebar-chief">
       <button
         aria-current={current ? "page" : undefined}
         className="menu-chief-row"
         data-current={current ? "" : undefined}
-        data-lined=""
+        data-lined={shown === null ? undefined : ""}
         data-waits={summary === undefined ? undefined : ""}
         data-zerops-surface="sidebar-chief-row"
         onClick={(event) => {
@@ -87,12 +77,25 @@ export function SidebarChiefRow({
               className="h-9 w-7.5"
               {...(face === undefined ? {} : { state: face })}
             />
+            {account === null ? null : (
+              <MateOwnerMark
+                seat={{
+                  kind: "person",
+                  mark: ownerMark({
+                    name: account.fullName ?? account.name,
+                    initials: account.initials,
+                    avatarUrl: account.avatarUrl,
+                  }),
+                }}
+              />
+            )}
           </span>
           <span className="menu-chief-words">
             <span className="menu-chief-name" data-waiting-line="">
-              Chief <span className="menu-chief-name-mate">Mate</span>
+              {account === null ? null : `${account.name}'s `}Chief{" "}
+              <span className="menu-chief-name-mate">Mate</span>
             </span>
-            <span className="menu-chief-line">{shown}</span>
+            {shown === null ? null : <span className="menu-chief-line">{shown}</span>}
           </span>
         </span>
       </button>
@@ -209,18 +212,4 @@ export function ChiefSetupRowLine({ state }: { readonly state: ChiefSetupRowStat
       {SETUP_WORDS[state]}
     </span>
   );
-}
-
-/** The organization's Mates as the Chief's line counts them. */
-export interface ChiefOrg {
-  readonly mates: number;
-  readonly working: number;
-}
-
-/** How the organization's Mates stand, when nothing waits on the person. */
-export function chiefOrgLine(org: ChiefOrg): string {
-  const mates = `${String(org.mates)} Mate${org.mates === 1 ? "" : "s"}`;
-  return org.working > 0
-    ? `${String(org.working)} of ${mates} at work`
-    : `All quiet across ${mates}`;
 }

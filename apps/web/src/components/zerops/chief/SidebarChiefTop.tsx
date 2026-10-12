@@ -29,7 +29,6 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
   onOpenMate,
   onOpenPage,
   waiting,
-  org,
   tile = false,
 }: {
   /** The person's own Chief among the listed Mates; undefined while it is not listed. */
@@ -48,8 +47,6 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
   readonly onOpenMate: (chief: T) => void;
   readonly onOpenPage: () => void;
   readonly waiting: SidebarChiefRowProps["waiting"];
-  /** The organization's Mates, for the Chief's line while nothing waits. */
-  readonly org?: SidebarChiefRowProps["org"];
   /** Drawn as the closed menu's rail draws it (`SidebarChiefTile`). */
   readonly tile?: boolean;
 }) {
@@ -61,7 +58,6 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
         current={currentPage}
         line={line?.kind === "setup" ? <ChiefSetupRowLine state={line.state} /> : undefined}
         onOpen={onOpenPage}
-        org={org}
         waiting={waiting}
       />
     );
@@ -83,7 +79,6 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
             // Its words live in its conversation; the row says only what its setup needs.
             line={line?.kind === "setup" ? <ChiefSetupRowLine state={line.state} /> : undefined}
             onOpen={opens === "mate" ? () => onOpenMate(chief) : onOpenPage}
-            org={org}
             waiting={waiting}
           />
         );

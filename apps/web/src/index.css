@@ -5717,16 +5717,16 @@ code {
   /* The organization's own Mate: on a ground of the mark's teal at rest, set apart from every
      project's row (the owner, 2026-10-12: "this should look different"). */
   .menu-chief-row {
-    background: color-mix(in oklab, var(--zerops-mate-mark-side) 8%, transparent);
+    --chief-ground: color-mix(in oklab, var(--zerops-mate-mark-side) 8%, var(--sidebar));
+    background: var(--chief-ground);
   }
 
   .menu-chief-row:hover {
-    background: color-mix(in oklab, var(--zerops-mate-mark-side) 13%, transparent);
+    --chief-ground: color-mix(in oklab, var(--zerops-mate-mark-side) 13%, var(--sidebar));
   }
 
-  /* What waits on the person, said in the Chief's line in the words' ink. */
-  .menu-chief-asks {
-    color: color-mix(in oklab, var(--sidebar-foreground) 82%, transparent);
+  .menu-chief-row:is([data-current], [data-pressed]) {
+    --chief-ground: var(--sidebar-row-active);
   }
 
   /* Lit from the press, as a Mate's row is under its band (`menu-chief-lit`): its own layer, grown
@@ -5773,12 +5773,23 @@ code {
   }
 
   .menu-chief-mark {
+    position: relative;
     display: grid;
     flex: none;
     place-items: center;
     /* A row's face column, so "Chief Mate" starts where every project's name does. */
     width: 36px;
     height: 40px;
+  }
+
+  /* Whose Chief it is: the person's picture on the mark's corner, as on a colleague's Mate, ringed
+     in the row's own ground. */
+  .menu-chief-mark .menu-owner {
+    top: auto;
+    left: auto;
+    right: -4px;
+    bottom: -2px;
+    box-shadow: 0 0 0 2px var(--chief-ground);
   }
 
   /* The name alone stands in the row's middle; a line arriving under it lifts it as it grows in. */
