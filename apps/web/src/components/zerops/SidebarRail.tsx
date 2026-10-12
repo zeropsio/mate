@@ -1,7 +1,9 @@
 /**
  * The closed menu on a desktop (`SidebarRail.logic.ts`): a 64 px rail. The mark leads to the
- * overview; the waiting count opens the same Waiting on you list beside the rail; Overview wears
- * the selected band while it is open; each Mate's face opens its conversation, a colleague's with
+ * overview; Overview wears the selected band while it is open, and what waits on the viewer as a
+ * count on its corner, which opens the same Waiting on you list beside the rail — one control, as
+ * the open menu's Overview row (the owner, 2026-10-12: "why is this still split into waiting for
+ * you?"); each Mate's face opens its conversation, a colleague's with
  * its owner's photo on its corner and a dot when it waits, failed or has a result not yet seen;
  * the viewer's photo opens the account menu, and the last button opens the menu again.
  *
@@ -266,7 +268,18 @@ export function SidebarRail({
             </Link>
           ) : null}
         </div>
-        <div className="menu-rail-slot">
+        <div className="menu-rail-overview">
+          <RailButton
+            current={overviewCurrent}
+            label="Overview"
+            onClick={onOverview}
+            surface="sidebar-rail-overview"
+            tip={<RailTip line={headline} name="Overview" shortcut="⌥0" />}
+          >
+            <span className="menu-rail-disc" aria-hidden="true">
+              <LayersIcon className="size-4.5" />
+            </span>
+          </RailButton>
           {waiting.length === 0 ? null : (
             <SidebarWaitingPopover
               items={waiting}
@@ -292,17 +305,6 @@ export function SidebarRail({
             </SidebarWaitingPopover>
           )}
         </div>
-        <RailButton
-          current={overviewCurrent}
-          label="Overview"
-          onClick={onOverview}
-          surface="sidebar-rail-overview"
-          tip={<RailTip line={headline} name="Overview" shortcut="⌥0" />}
-        >
-          <span className="menu-rail-disc" aria-hidden="true">
-            <LayersIcon className="size-4.5" />
-          </span>
-        </RailButton>
         <i aria-hidden="true" className="menu-rail-sep" />
         <div className="menu-rail-faces">
           {groups.map((group, index) => {

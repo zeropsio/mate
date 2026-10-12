@@ -5048,24 +5048,30 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
     box-shadow: 0 0 0 2px var(--ring);
   }
 
-  .menu-rail-slot {
+  /* Overview and what waits on the viewer, one control: the count rides its disc's corner. */
+  .menu-rail-overview {
+    position: relative;
     display: grid;
     flex: none;
-    place-items: center;
-    height: 44px;
   }
 
   .menu-rail-count {
+    position: absolute;
+    top: -1px;
+    right: -3px;
     display: grid;
     place-items: center;
-    width: 36px;
-    height: 36px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
     border-radius: 9999px;
     background: var(--zerops-status-attention-surface);
+    box-shadow: 0 0 0 2px var(--sidebar);
     color: var(--zerops-status-attention-text);
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 650;
     font-variant-numeric: tabular-nums;
+    line-height: 1;
     cursor: pointer;
     outline: none;
     transition: background-color 150ms var(--ease-out-strong);
