@@ -269,8 +269,12 @@ export function attentionActivity(input: {
       ? read.kind
       : question !== undefined
         ? question.kind
-        : // Its run's helpers and background commands are not runs the attention counts.
-          attention.working > 0 || read.waitsOnHelpers === true
+        : // Its run's helpers and background commands are not runs the attention counts, and an
+          // engine Mate's own row goes on into a queued run — a restart's continuation — before
+          // HQ's count of it comes: either says it works, so the face never passes through idle.
+          attention.working > 0 ||
+            read.waitsOnHelpers === true ||
+            (row !== undefined && UNDER_WAY.has(read.kind))
           ? UNDER_WAY.has(read.kind)
             ? read.kind
             : "working"

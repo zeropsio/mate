@@ -340,6 +340,31 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
     },
   );
 
+  // Recheck at a restart cut (2026-10-12): the face flashed idle for ~150 ms as the cut run's
+  // continuation queued: the row said so before HQ's count of the runs at work did.
+  it.each([
+    {
+      name: "a queued run, a restart's continuation",
+      state: { kind: "queued", since: Date.parse(ASKED) },
+      face: "working",
+    },
+    {
+      name: "a run at work",
+      state: { kind: "working", since: Date.parse(ASKED), waitsOnHelpers: false },
+      face: "working",
+    },
+    { name: "nothing", state: { kind: "idle" }, face: "idle" },
+  ])(
+    "an engine Mate's face works while its own row says it does, before HQ's count of it: $name",
+    ({ state, face }) => {
+      const activity = read({
+        attention: attention(said({ mainThreadId: ThreadId.make("t1"), working: 0 })),
+        overviews: onEngine(engineRow("t1", { state })),
+      });
+      expect(activity?.face).toBe(face);
+    },
+  );
+
   // Pass 41: the menu's row has one line under the name, and while HQ's word is stale that line
   // is this one — it keeps what the Mate was on.
   it.each([
