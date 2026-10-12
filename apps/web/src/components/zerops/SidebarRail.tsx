@@ -6,9 +6,10 @@
  * the viewer's photo opens the account menu, and the last button opens the menu again.
  *
  * A closed menu still says what is what (the owner, 2026-10-11: "absolutely shit for navigation,
- * you have absolutely no idea what is what, the tooltip is slow and small"): each face carries its
- * name under it, and its tooltip — at once, and instant from one face to the next — is a card of
- * its name, its project, what was asked and its last answer.
+ * you have absolutely no idea what is what, the tooltip is slow and small"): each project's name
+ * heads its faces — the project is how a Mate is found (2026-10-12) — and a face's tooltip, at
+ * once and instant from one face to the next, is a card of its name, its project, what was asked
+ * and its last answer. A Mate in no project carries its own name under its face.
  */
 import {
   assignCandidateMateTints,
@@ -21,7 +22,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { Link } from "@tanstack/react-router";
 import { LayersIcon, PanelLeftOpenIcon } from "lucide-react";
-import { Fragment, useMemo, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { APP_BASE_NAME } from "~/branding";
 import { mateFaceOf, type ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -187,6 +188,7 @@ function RailButton({
   children,
   surface,
   mate = false,
+  named = false,
 }: {
   readonly label: string;
   readonly tip: ReactNode;
@@ -194,8 +196,10 @@ function RailButton({
   readonly onClick: () => void;
   readonly children: ReactNode;
   readonly surface: string;
-  /** A Mate's face, its name under it. */
+  /** A Mate's face. */
   readonly mate?: boolean;
+  /** Its own name under it: a Mate in no project, which its project cannot name. */
+  readonly named?: boolean;
 }) {
   return (
     <Tooltip>
@@ -205,6 +209,7 @@ function RailButton({
             aria-current={current ? "page" : undefined}
             aria-label={label}
             className={mate ? "menu-rail-button menu-rail-mate" : "menu-rail-button"}
+            data-named={mate && named ? "" : undefined}
             data-current={current ? "" : undefined}
             data-zerops-surface={surface}
             onClick={onClick}
@@ -300,53 +305,76 @@ export function SidebarRail({
         </RailButton>
         <i aria-hidden="true" className="menu-rail-sep" />
         <div className="menu-rail-faces">
-          {groups.map((group, index) => (
-            <Fragment key={group[0]?.groupId ?? index}>
-              {index === 0 ? null : <i aria-hidden="true" className="menu-rail-sep" />}
-              {group.map((mate) => (
-                <RailButton
-                  current={mate.projectId === activeProjectId}
-                  key={mate.projectId}
-                  mate
-                  label={
-                    mate.projectName.length > 0 ? `${mate.name}, ${mate.projectName}` : mate.name
-                  }
-                  onClick={() => {
-                    onSelect(mate.projectId);
-                  }}
-                  surface="sidebar-rail-mate"
-                  tip={
-                    <RailMateTip
-                      line={mate.line}
-                      name={mate.name}
-                      projectId={mate.projectId}
-                      projectName={mate.projectName}
-                      waits={mate.waits}
-                    />
-                  }
-                >
-                  <MateFace
-                    className="size-9"
-                    shape={mate.shape}
-                    size="md"
-                    state={mate.face}
-                    tint={mate.tint}
-                  />
-                  {mate.owner === undefined ? null : (
-                    <span className="menu-rail-owner" aria-hidden="true">
-                      <Avatar initials={mate.owner.initials} size="xs" src={mate.owner.avatarUrl} />
-                    </span>
-                  )}
-                  {mate.dot === undefined ? null : (
-                    <i aria-hidden="true" className="menu-rail-dot" data-dot={mate.dot} />
-                  )}
-                  <span aria-hidden="true" className="menu-rail-name">
-                    {mate.name}
+          {groups.map((group, index) => {
+            // The project leads: a Mate is found by where it works, its name and face its own
+            // (the owner, 2026-10-12: "you absolutely do not identify your mate by the name,
+            // shape or color, it's the project what is the main identifier").
+            const project = group[0]?.projectName ?? "";
+            return (
+              <div
+                aria-label={project.length > 0 ? project : undefined}
+                className="menu-rail-project"
+                data-zerops-surface="sidebar-rail-project"
+                key={group[0]?.groupId ?? index}
+                role="group"
+              >
+                {project.length === 0 ? null : (
+                  <span aria-hidden="true" className="menu-rail-project-name">
+                    {project}
                   </span>
-                </RailButton>
-              ))}
-            </Fragment>
-          ))}
+                )}
+                {group.map((mate) => (
+                  <RailButton
+                    current={mate.projectId === activeProjectId}
+                    key={mate.projectId}
+                    mate
+                    named={project.length === 0}
+                    label={
+                      mate.projectName.length > 0 ? `${mate.name}, ${mate.projectName}` : mate.name
+                    }
+                    onClick={() => {
+                      onSelect(mate.projectId);
+                    }}
+                    surface="sidebar-rail-mate"
+                    tip={
+                      <RailMateTip
+                        line={mate.line}
+                        name={mate.name}
+                        projectId={mate.projectId}
+                        projectName={mate.projectName}
+                        waits={mate.waits}
+                      />
+                    }
+                  >
+                    <MateFace
+                      className="size-9"
+                      shape={mate.shape}
+                      size="md"
+                      state={mate.face}
+                      tint={mate.tint}
+                    />
+                    {mate.owner === undefined ? null : (
+                      <span className="menu-rail-owner" aria-hidden="true">
+                        <Avatar
+                          initials={mate.owner.initials}
+                          size="xs"
+                          src={mate.owner.avatarUrl}
+                        />
+                      </span>
+                    )}
+                    {mate.dot === undefined ? null : (
+                      <i aria-hidden="true" className="menu-rail-dot" data-dot={mate.dot} />
+                    )}
+                    {project.length > 0 ? null : (
+                      <span aria-hidden="true" className="menu-rail-name">
+                        {mate.name}
+                      </span>
+                    )}
+                  </RailButton>
+                ))}
+              </div>
+            );
+          })}
         </div>
         <span className="menu-rail-spring" />
         <div className="menu-rail-foot">

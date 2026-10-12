@@ -140,18 +140,36 @@ describe("SidebarRail — the closed menu on a desktop", () => {
     expect(onSelect).toHaveBeenCalledWith("noibit");
   });
 
-  it("puts a hairline between projects", async () => {
-    const { container } = await mount();
-    const faces = container.querySelector(
-      '[data-zerops-surface="sidebar-rail-mate"]',
-    )?.parentElement;
-    expect(
-      [...(faces?.children ?? [])]
-        .filter((child) => child.getAttribute("role") !== "tooltip")
-        .map((child) =>
-          child.getAttribute("data-zerops-surface") === "sidebar-rail-mate" ? "face" : "line",
-        ),
-    ).toEqual(["face", "face", "line", "face"]);
+  // The owner (2026-10-12): "you absolutely do not identify your mate by the name, shape or
+  // color, it's the project what is the main identifier".
+  it("heads each project's faces with the project's name, a Mate in no project with its own", async () => {
+    const { container } = await mount({
+      groups: [
+        [face("Sage", "Tea Shop"), face("Rhea", "Tea Shop")],
+        [face("Noibit", "Ledger API")],
+        [face("Juno", "")],
+      ],
+    });
+    const projects = surface(container, "sidebar-rail-project").map((project) => ({
+      says: [...project.childNodes]
+        .filter(
+          (node) => !(node instanceof HTMLElement && node.matches('button, [role="tooltip"]')),
+        )
+        .map((node) => node.textContent)
+        .join(""),
+      faces: [...project.querySelectorAll('[data-zerops-surface="sidebar-rail-mate"]')].map(
+        (mate) =>
+          [...mate.childNodes]
+            .map((node) => node.textContent ?? "")
+            .join("")
+            .trim(),
+      ),
+    }));
+    expect(projects).toEqual([
+      { says: "Tea Shop", faces: ["", ""] },
+      { says: "Ledger API", faces: [""] },
+      { says: "", faces: ["Juno"] },
+    ]);
   });
 
   it("opens the menu again from its foot", async () => {
