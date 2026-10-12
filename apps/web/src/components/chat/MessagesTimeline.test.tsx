@@ -1532,7 +1532,10 @@ describe("MessagesTimeline — the conversation", () => {
         const band = list.appendChild(document.createElement("div"));
         const marker = band.appendChild(document.createElement("div"));
         let naturalHeight = 80;
-        panel.getBoundingClientRect = () => ({ height: 300 }) as DOMRect;
+        // The panel stands in the list's view: what replaces it takes its stand from there.
+        list.classList.add("timeline-legend-list");
+        list.getBoundingClientRect = () => ({ top: 0, bottom: 800, height: 800 }) as DOMRect;
+        panel.getBoundingClientRect = () => ({ top: 400, bottom: 700, height: 300 }) as DOMRect;
         band.getBoundingClientRect = () =>
           ({ height: Number.parseFloat(band.style.height) || naturalHeight }) as DOMRect;
         const viewport = { scrollTop: 1180, scrollHeight: 2000, clientHeight: 800 };
