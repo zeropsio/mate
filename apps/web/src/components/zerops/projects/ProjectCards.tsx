@@ -285,7 +285,16 @@ export function CardChanges({
                       {by === undefined ? change.words : `${by} · ${change.words}`}
                     </span>
                   </span>
-                  <ChangeAge at={change.at} />
+                  {/* Review on a change still open, as the menu has it (the owner, 2026-10-12: "more
+                      limited in functionality than the left menu"); the row opens it too. */}
+                  <span className="ov-change-end">
+                    <ChangeAge at={change.at} />
+                    {change.open ? (
+                      <span className="ov-review" data-zerops-surface="card-change-review">
+                        Review
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
               </li>
             );
