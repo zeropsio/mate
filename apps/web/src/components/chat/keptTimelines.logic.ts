@@ -23,13 +23,14 @@ const nothing = () => undefined;
 /**
  * A list out of sight answers nothing the pane asks of the open one: where
  * its end is, a gesture, an anchor; and it says none of the open one's own
- * failures (`endNotice`), which are that conversation's alone.
+ * failures (`endNotice`) or notices (`notices`), which are that conversation's alone.
  */
 function outOfSight(timeline: TimelineProps): TimelineProps {
   const { cancelPositionRestoreRef: _restore, ...rest } = timeline;
   return {
     ...rest,
     endNotice: null,
+    notices: [],
     onIsAtEndChange: nothing,
     onPersonInput: nothing,
     onManualNavigation: nothing,

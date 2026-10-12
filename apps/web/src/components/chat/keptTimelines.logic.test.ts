@@ -136,4 +136,33 @@ describe("a conversation warmed out of sight", () => {
     expect(b.routeThreadKey).toBe("env:thread-b");
     expect(rows.filter((row) => row.kind === "error")).toEqual([]);
   });
+
+  it("holds none of the open conversation's notices", () => {
+    const openA = {
+      routeThreadKey: "env:thread-a",
+      timelineEntries: [],
+      turnDiffSummaries: [],
+      isWorking: false,
+      activeTurnStartedAt: null,
+      supportsConversationRollback: false,
+      notices: [{ id: "usage-limits:1", icon: null, words: "Usage limits" }],
+    } as unknown as Open;
+    const warmedB = {
+      routeThreadKey: "env:thread-b",
+      timelineEntries: [],
+      isWorking: false,
+      activeTurnStartedAt: null,
+    } as unknown as Warmed;
+
+    const b = keptSlotTimeline(openA, warmedB);
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: b.timelineEntries,
+      isWorking: b.isWorking,
+      activeTurnStartedAt: b.activeTurnStartedAt,
+      turnDiffSummaries: b.turnDiffSummaries,
+      supportsConversationRollback: b.supportsConversationRollback,
+      notices: (b.notices ?? []).map((notice) => notice.id),
+    });
+    expect(rows.filter((row) => row.kind === "notice")).toEqual([]);
+  });
 });
