@@ -283,7 +283,10 @@ export function useZeropsNextStepStrip(
   return useMemo(
     () =>
       shown === null ? (
-        reserved ? (
+        // Its room is held for the viewer's own composer, which must not move when the change
+        // comes; a colleague's read-along line holds none (HQ may never list that viewer the
+        // changes, and the blank would stand for good).
+        reserved && yours ? (
           <div aria-label="Reading review" data-composer-top="unread" className="h-[61px]" />
         ) : null
       ) : (
@@ -298,6 +301,6 @@ export function useZeropsNextStepStrip(
           strip={JSON.parse(shown) as ZeropsNextStepStripModel}
         />
       ),
-    [dismiss, navigate, openReview, reserved, shown],
+    [dismiss, navigate, openReview, reserved, shown, yours],
   );
 }
