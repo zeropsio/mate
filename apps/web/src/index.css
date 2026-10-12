@@ -5226,9 +5226,10 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
     font-weight: 600;
     line-height: 12.5px;
     text-align: center;
-    /* Balanced over words only: a word too long for the pod breaks where it hyphenates. */
+    /* Balanced over words: a word that fits is never split ("Design sys-tem token…"), and only a
+       word wider than the pod breaks inside itself. */
     text-wrap: balance;
-    hyphens: auto;
+    overflow-wrap: anywhere;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
   }
