@@ -124,7 +124,7 @@ export function mateCrewOf(mate: MateLiveView | undefined, current: boolean): Ma
  * none for no project.
  */
 const NO_MATE_CREW = Atom.make(mateCrewOf(undefined, false));
-const mateCrewAtom = Atom.family((projectId: string) =>
+export const mateCrewAtom = Atom.family((projectId: string) =>
   Atom.make((get) =>
     mateCrewOf(
       get(hqMateOverviewAtom(projectId)) ?? undefined,
