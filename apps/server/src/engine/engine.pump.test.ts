@@ -108,6 +108,72 @@ describe("the running engine", () => {
       ),
   );
 
+  // What the person did not type but the agent should hear: a merged change, a vault key's name.
+  const CONTEXT = [
+    "appdev #3 landed: Add the order summary",
+    "Vault changes since your last turn (values are never shown to you):\n+ STRIPE_KEY  Shared · sensitive · nothing reads it yet",
+  ];
+  const told = (text: string) =>
+    `<zerops-update>\n${CONTEXT.join("\n")}\n</zerops-update>\n\n${text}`;
+  const personWords = (w: EngineWorld, run: RunId) =>
+    Effect.map(w.items(run), (items) =>
+      items.filter((item) => item.kind === "person").map((item) => item.body.text),
+    );
+
+  it.effect.each(
+    Array.from(DRIVERS, (driver) => ({
+      title: `the context a message carries reaches the agent with its words, never as the person's (${driver})`,
+      driver,
+    })),
+  )("$title", ({ driver }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world(driver);
+        yield* w.tell({ _tag: "Send", text: "Inspect what landed", context: CONTEXT });
+        assert.deepStrictEqual(w.provider.calls, [
+          `start ${w.thread}`,
+          sendLine(w, told("Inspect what landed")),
+        ]);
+        assert.deepStrictEqual(yield* personWords(w, r(1)), ["Inspect what landed"]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect(
+    "a slash command reaches the agent without the context, so the agent still runs it",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          yield* w.tell({ _tag: "Send", text: "/compact", maintenance: true, context: CONTEXT });
+          assert.deepStrictEqual(w.provider.calls.at(-1), sendLine(w, "/compact"));
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect.each(
+    Array.from(
+      DRIVERS.filter((driver) => driver === "claudeAgent" || driver === "opencode"),
+      (driver) => ({
+        title: `a message steered into the running turn carries its context to the agent, never as the person's (${driver})`,
+        driver,
+      }),
+    ),
+  )("$title", ({ driver }) =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world(driver);
+        yield* send(w);
+        yield* w.tell({ _tag: "Steer", runId: r(1), text: "And the api too", context: CONTEXT });
+        assert.deepStrictEqual(w.provider.calls.at(-1), sendLine(w, told("And the api too")));
+        assert.deepStrictEqual(yield* personWords(w, r(1)), ["hello", "And the api too"]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect(
     "a capture that can't snapshot a service still sends the message and records the gap",
     () =>

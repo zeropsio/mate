@@ -240,6 +240,22 @@ const wireError = (message: string) => (cause: unknown) =>
     Effect.andThen(Effect.fail(new EngineWireError({ message }))),
   );
 
+/**
+ * A context that did not fit its bound arrives as `null`: the person's words go without it, never
+ * refused for it, and the log says what the agent was not told.
+ */
+const unfitContext = (input: {
+  readonly conversationId: string;
+  readonly commandId: string;
+  readonly context?: ReadonlyArray<string> | null;
+}) =>
+  input.context === null
+    ? Effect.logWarning(
+        "Mate engine wire: a message's context did not fit; its words go without it",
+        { conversationId: input.conversationId, commandId: input.commandId },
+      )
+    : Effect.void;
+
 const decodeResult = Schema.decodeUnknownEffect(Schema.fromJsonString(CommandResult));
 /** A header as text: a subscriber is sent it again only when this changes. */
 const headerJson = Schema.encodeSync(Schema.fromJsonString(ConversationHeader));
@@ -950,40 +966,45 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       send: (input, caller) =>
         // A crewmate's chat takes a person's message through its crew (`zerops.crew.command`),
         // which routes it to the crewmate's task; never straight into its conversation.
-        conversations.state(input.conversationId).pipe(
-          Effect.map((state) => state.agent?.profile.kind === "crewmate"),
-          Effect.orElseSucceed(() => false),
-          Effect.flatMap((crewmate) =>
-            crewmate && protocolRefusal(input.protocol) === undefined
-              ? Effect.succeed<EngineCallResult>({
-                  _tag: "Rejected",
-                  rejection: { reason: "unknown", detail: CREWMATE_SENDS },
-                })
-              : Effect.andThen(
-                  options.sendsWait ?? Effect.void,
-                  withPictures(
-                    input.protocol,
-                    input.conversationId,
-                    input.commandId,
-                    caller,
-                    input.attachments ?? [],
-                    (claimed) => ({
-                      _tag: "Send",
-                      text: input.text,
-                      ...(input.attachments === undefined
-                        ? {}
-                        : {
-                            attachments: claimed as ReadonlyArray<
-                              ChatImageAttachment | ChatFileAttachment
-                            >,
-                          }),
-                      // A mode a newer client knows and this engine does not: the default.
-                      ...(input.interactionMode === undefined || input.interactionMode === "unknown"
-                        ? {}
-                        : { interactionMode: input.interactionMode }),
-                    }),
+        Effect.andThen(
+          unfitContext(input),
+          conversations.state(input.conversationId).pipe(
+            Effect.map((state) => state.agent?.profile.kind === "crewmate"),
+            Effect.orElseSucceed(() => false),
+            Effect.flatMap((crewmate) =>
+              crewmate && protocolRefusal(input.protocol) === undefined
+                ? Effect.succeed<EngineCallResult>({
+                    _tag: "Rejected",
+                    rejection: { reason: "unknown", detail: CREWMATE_SENDS },
+                  })
+                : Effect.andThen(
+                    options.sendsWait ?? Effect.void,
+                    withPictures(
+                      input.protocol,
+                      input.conversationId,
+                      input.commandId,
+                      caller,
+                      input.attachments ?? [],
+                      (claimed) => ({
+                        _tag: "Send",
+                        text: input.text,
+                        ...(input.context == null ? {} : { context: input.context }),
+                        ...(input.attachments === undefined
+                          ? {}
+                          : {
+                              attachments: claimed as ReadonlyArray<
+                                ChatImageAttachment | ChatFileAttachment
+                              >,
+                            }),
+                        // A mode a newer client knows and this engine does not: the default.
+                        ...(input.interactionMode === undefined ||
+                        input.interactionMode === "unknown"
+                          ? {}
+                          : { interactionMode: input.interactionMode }),
+                      }),
+                    ),
                   ),
-                ),
+            ),
           ),
         ),
       stop: (input, caller) =>
@@ -1053,11 +1074,15 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           requestId: input.requestId,
         }),
       steer: (input, caller) =>
-        command(input.protocol, input.conversationId, input.commandId, caller, {
-          _tag: "Steer",
-          runId: input.runId,
-          text: input.text,
-        }),
+        Effect.andThen(
+          unfitContext(input),
+          command(input.protocol, input.conversationId, input.commandId, caller, {
+            _tag: "Steer",
+            runId: input.runId,
+            text: input.text,
+            ...(input.context == null ? {} : { context: input.context }),
+          }),
+        ),
       switchModel: (input, caller) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {
           _tag: "SwitchModel",

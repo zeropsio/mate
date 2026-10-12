@@ -120,6 +120,7 @@ export type {
 } from "./projections/vaultModel.ts";
 export { isMateOwned, vault, type VaultKey } from "./projections/vault.ts";
 export { vaultChangesSince, vaultImpact, vaultNote } from "./projections/vaultChanges.ts";
+export { agentContext, fitContextLine } from "./projections/agentContext.ts";
 export {
   projectVariablesScope,
   type ProjectVariablesValue,

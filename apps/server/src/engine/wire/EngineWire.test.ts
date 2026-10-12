@@ -9,10 +9,12 @@ import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import {
   CommandId,
+  EngineSendInput,
   MATE_ENGINE_PROTOCOLS,
   RequestId,
   runId,
@@ -39,6 +41,8 @@ import {
   type WireCaller,
 } from "./EngineWire.ts";
 
+/** A send as the RPC decodes it. */
+const decodeSendInput = Schema.decodeUnknownSync(EngineSendInput);
 const ana: WireCaller = { subject: "zerops-user:ana", environmentId: "env-1", epoch: 4 };
 const protocol = MATE_ENGINE_PROTOCOLS[0]!;
 const preview = {
@@ -1275,6 +1279,66 @@ describe("a client's calls to an engine conversation", () => {
           yield* w.shutdown;
         }),
       ),
+  );
+
+  it.effect(
+    "a send's context reaches the agent through the wire, and the conversation shows only the person's words",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const context = ["appdev #3 landed: Add the order summary"];
+          yield* wire.send(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make("send-context"),
+              text: "Inspect what landed",
+              context,
+            },
+            ana,
+          );
+          yield* w.settle;
+          const sent = w.provider.sends.at(-1) as { readonly input?: string } | undefined;
+          assert.strictEqual(
+            sent?.input,
+            "<zerops-update>\nappdev #3 landed: Add the order summary\n</zerops-update>\n\nInspect what landed",
+          );
+          const frames = yield* watch(w, wire);
+          const snapshot = frames.find((frame) => frame.type === "snapshot");
+          if (snapshot?.type !== "snapshot") return assert.fail("no snapshot");
+          assert.deepStrictEqual(
+            snapshot.items.flatMap((item) => (item.kind === "person" ? [item.text] : [])),
+            ["Inspect what landed"],
+          );
+          assert.notInclude(JSON.stringify(snapshot), "zerops-update");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect("a send whose context does not fit delivers the person's words without it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        // As the RPC decodes it: a line past the bound fits nothing, so the context is dropped.
+        const input = decodeSendInput({
+          protocol,
+          conversationId: mate,
+          commandId: "send-unfit",
+          text: "Inspect what landed",
+          context: ["x".repeat(300)],
+        });
+        const result = yield* wire.send(input, ana);
+        assert.strictEqual(result._tag, "Accepted");
+        yield* w.settle;
+        const sent = w.provider.sends.at(-1) as { readonly input?: string } | undefined;
+        assert.strictEqual(sent?.input, "Inspect what landed");
+        yield* w.shutdown;
+      }),
+    ),
   );
 
   it.effect(

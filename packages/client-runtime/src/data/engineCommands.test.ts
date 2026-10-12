@@ -3,6 +3,7 @@ import {
   ThreadId,
   ProjectId,
   ProviderInstanceId,
+  EngineSendContext,
   ORCHESTRATION_WS_METHODS,
   RunId,
   type EngineCallResult,
@@ -13,6 +14,7 @@ import * as Crypto from "effect/Crypto";
 import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { Atom, AtomRegistry } from "effect/reactivity";
 
@@ -41,6 +43,9 @@ import {
 } from "./families/mateEngine.ts";
 import { engineHeader, engineRun } from "./__fixtures__/mateEngine.ts";
 import { engineResendId } from "./projections/mateEngine.ts";
+import { agentContext } from "./projections/agentContext.ts";
+import { vaultChangesSince, vaultNote } from "./projections/vaultChanges.ts";
+import type { VaultChange, VaultView } from "./projections/vaultModel.ts";
 
 const ENV = "env-ada";
 const turn = (attachments: ReadonlyArray<unknown> = []) =>
@@ -387,6 +392,140 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
         ]);
         expect(r.v1Calls).toEqual([]);
       }),
+  );
+
+  const LANDED = "appdev #3 landed: Add the order summary";
+  it.effect.each([
+    { how: "its send", runs: [engineRun("thread-ada", 1)], steer: false, kind: "send" },
+    { how: "its steer", runs: [working("running")], steer: true, kind: "steer" },
+  ])(
+    "the agent hears the merged changes and the vault's key names with the message, on $how",
+    ({ runs, steer, kind }) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.runs(runs, SESSION(steer, steer));
+        const vault = "Vault changes since your last turn:\n+ STRIPE_KEY  Shared · sensitive";
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, { ...turn(), agentNotes: [LANDED, vault] } as never),
+            r.v1,
+          ),
+        );
+        expect(r.calls).toMatchObject([{ kind, text: "And the worker", context: [LANDED, vault] }]);
+      }),
+  );
+
+  const fitsEngine = Schema.is(EngineSendContext);
+  const vaultKeys = (count: number): ReadonlyArray<VaultChange> =>
+    Array.from({ length: count }, (_, n) => ({
+      scope: { kind: "shared" },
+      hostname: null,
+      key: `KEY_${n + 1}`,
+      kind: "added",
+      sensitive: true,
+      at: "2026-10-07T11:00:00Z",
+      impact: { restart: [], unread: true, literal: [] },
+    }));
+
+  it.effect("a message with more vault changes than fit still sends, its context fitted", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      const { lines } = agentContext([LANDED, "apidev #4 landed"], vaultKeys(9));
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineStartTurn(ENV, { ...turn(), agentNotes: lines } as never),
+          r.v1,
+        ),
+      );
+      const sent = r.calls[0] as { readonly kind: string; readonly context?: unknown };
+      expect(sent.kind).toBe("send");
+      expect(fitsEngine(sent.context)).toBe(true);
+      expect(sent.context).toEqual([
+        LANDED,
+        "apidev #4 landed",
+        expect.stringContaining("KEY_1"),
+        expect.stringContaining("KEY_2"),
+        "and 7 more vault changes",
+      ]);
+    }),
+  );
+
+  it.effect("notes past the engine's bound are fitted before they go, never refused", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      const notes = Array.from({ length: 7 }, (_, n) => `${"word ".repeat(60)}${n}`);
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineStartTurn(ENV, { ...turn(), agentNotes: notes } as never),
+          r.v1,
+        ),
+      );
+      const sent = r.calls[0] as { readonly context?: unknown };
+      expect(fitsEngine(sent.context)).toBe(true);
+    }),
+  );
+
+  it.effect("a message with nothing to tell sends no context", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1));
+      expect(r.calls).toHaveLength(1);
+      expect(r.calls[0]).not.toHaveProperty("context");
+    }),
+  );
+
+  it.effect("a vault value never travels with a message: the agent hears its key's name", () =>
+    Effect.gen(function* () {
+      const VALUE = ["synthetic", "billing", "secret"].join("-");
+      const view = {
+        status: "ready",
+        complete: true,
+        notLive: [],
+        scopes: [
+          {
+            ref: { kind: "shared" },
+            id: "shared",
+            hostname: null,
+            kind: "shared",
+            serviceType: null,
+            editable: true,
+            reads: [],
+            startedAt: null,
+            values: [
+              {
+                id: "e-billing",
+                key: "BILLING_KEY",
+                value: VALUE,
+                sensitive: false,
+                createdAt: "2026-10-07T11:00:00Z",
+                changedAt: "2026-10-07T11:00:00Z",
+                madeByZerops: false,
+                readers: [],
+              },
+            ],
+          },
+        ],
+      } as unknown as VaultView;
+      const note = vaultNote(vaultChangesSince(view, "2026-10-07T10:00:00Z", []));
+      const r = rig(1);
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineStartTurn(ENV, { ...turn(), agentNotes: [note!] } as never),
+          r.v1,
+        ),
+      );
+      const sent = JSON.stringify(r.calls);
+      expect(sent).toContain("BILLING_KEY");
+      expect(sent).not.toContain(VALUE);
+    }),
   );
 
   const picture = {

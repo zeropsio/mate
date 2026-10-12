@@ -13,6 +13,7 @@ import {
   EngineRowsFrame,
   EngineSendInput,
   EngineSetRuntimeModeInput,
+  EngineSteerInput,
   EngineSwitchModelInput,
 } from "./engineWire.ts";
 
@@ -231,6 +232,28 @@ describe("a conversation's settings on the wire", () => {
         { type: "file", id: "file-1", name: "spec.pdf", mimeType: "application/pdf", sizeBytes: 9 },
       ],
       interactionMode: "plan",
+    });
+  });
+
+  it("a send carries what the agent hears beside the person's words, line by line", () => {
+    const context = [
+      "appdev #3 landed: Add the order summary",
+      "Vault changes since your last turn (values are never shown to you):\n+ STRIPE_KEY  Shared · sensitive · nothing reads it yet",
+    ];
+    roundTrips(EngineSendInput, { ...call, text: "Inspect what landed", context });
+    roundTrips(EngineSteerInput, { ...call, runId: run, text: "And this", context });
+  });
+
+  it.each<{ readonly title: string; readonly context: unknown }>([
+    { title: "more than five lines", context: Array.from({ length: 6 }, (_, n) => `line ${n}`) },
+    { title: "words that are not lines", context: "appdev #3 landed" },
+    { title: "a line past 240 characters", context: ["x".repeat(241)] },
+    { title: "a blank line", context: ["   "] },
+  ])("a send whose context does not fit still decodes, without it: $title", ({ context }) => {
+    expect(decodeSend({ ...call, text: "hi", context })).toEqual({
+      ...call,
+      text: "hi",
+      context: null,
     });
   });
 

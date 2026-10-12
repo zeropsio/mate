@@ -9,6 +9,7 @@
  * the send, and parks again once the surface lets it go. Nothing is sent before the read: a send
  * asked earlier answers `undefined`, and the surface waits for `detail`.
  */
+import { agentContext } from "@t3tools/client-runtime/data";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { derivePendingRequests } from "@t3tools/client-runtime/pending-requests";
 import { agentLastSpokeAt, agentNotesFor, agentTurnNotes } from "@t3tools/client-runtime/zerops";
@@ -65,12 +66,13 @@ export function useMateWrite(environmentId: EnvironmentId | null, threadId: Thre
       return undefined;
     // When the agent last spoke: the line between what it knows and what landed since — the
     // conversation's own reading of it. A slash command carries none.
-    const notes = agentNotesFor(text, [
-      ...agentTurnNotes(landed, agentLastSpokeAt(detail.messages)),
-      ...(vaultTurn.note === null ? [] : [vaultTurn.note]),
-    ]);
-    const toldVault =
-      vaultTurn.note !== null && notes.includes(vaultTurn.note) ? vaultTurn.changes : [];
+    // Fitted to the bound a send takes: a vault change a line, the rest counted and told later.
+    const context = agentContext(
+      agentTurnNotes(landed, agentLastSpokeAt(detail.messages)),
+      vaultTurn.changes,
+    );
+    const notes = agentNotesFor(text, context.lines);
+    const toldVault = notes.length > 0 ? context.told : [];
     return startTurn({
       environmentId,
       input: {
