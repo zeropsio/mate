@@ -1121,9 +1121,7 @@ const chats = new WeakMap<MateFake, ChatDriver>();
 /** The area: each Mate's conversation runs on its engine, served ahead of the area's handlers. */
 export const installArea: ScenarioExtension = (drivers) => {
   drivers.onMate.push((mate) => {
-    const chat = new ChatDriver(mate);
-    chats.set(mate, chat);
-    chat.wire.install();
+    chats.set(mate, new ChatDriver(mate));
   });
 };
 export function chatFor(mate: MateFake) {

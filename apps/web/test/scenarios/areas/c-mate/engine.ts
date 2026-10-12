@@ -1,7 +1,7 @@
 import type { EngineAnswer } from "@t3tools/contracts";
 
 import type { MateFake } from "../../fakes/mate.ts";
-import { MateEngineFake } from "../../fakes/mateEngine.ts";
+import type { MateEngineFake } from "../../fakes/mateEngine.ts";
 import {
   RESPONSE_RECEIVED,
   effortOf,
@@ -48,7 +48,7 @@ export class EngineChatWire {
   /** The engine's item for each call and each piece of work the journey named. */
   private readonly named = new Map<string, string>();
   constructor(mate: MateFake) {
-    this.engine = new MateEngineFake(mate);
+    this.engine = mate.engine;
     // The fixture's agent acknowledges an answer and ends the run it waited in, unless the
     // journey runs that run itself: then the journey ends it.
     this.engine.onAnswer.push((request) =>
@@ -63,12 +63,6 @@ export class EngineChatWire {
               : { kind: "completed" },
           ),
     );
-  }
-
-  /** Serves the engine's wire ahead of the area's own handlers: call once they are installed. */
-  install() {
-    this.engine.install();
-    return this;
   }
 
   /** The engine's run for the journey's run `turnId`. */

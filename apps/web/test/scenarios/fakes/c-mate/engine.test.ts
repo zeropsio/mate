@@ -30,7 +30,7 @@ interface Frame {
 async function connect() {
   const mate = new MateFake("Ada", "Ada");
   const chat = new ChatDriver(mate);
-  const wire = chat.wire.install();
+  const wire = chat.wire;
   const server = await serve(mate.handle, mate.socket);
   const socket = new WebSocket(server.origin.replace("http:", "ws:") + "/ws");
   const frames: Frame[] = [];
