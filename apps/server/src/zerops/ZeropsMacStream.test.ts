@@ -58,6 +58,9 @@ interface FakeConnection {
 }
 
 /** A Mac reached over a fake ssh: each stream it opens is a queue the test writes the helper's wire into. */
+/** The commands the Mate hands out for pairing: the vpn first, then the pairing itself. */
+const PAIR = ["zcli vpn up Prj0AAAAAAAAAAAAAAAAAA", "ssh zcp mac host | sh"] as const;
+
 const fakeMac = (options: {
   readonly paired?: boolean;
   readonly view?: MacViewRecord | undefined;
@@ -70,6 +73,7 @@ const fakeMac = (options: {
       "view" in options ? options.view : { app: "com.example.Counter", at: 1 },
     );
     const service = yield* make({
+      pairCommands: PAIR,
       readRecord: Effect.succeed(options.paired === false ? undefined : record),
       readView: Ref.get(view),
       openStream: (_, app) =>
@@ -145,6 +149,7 @@ describe("ZeropsMacStream", () => {
         type: "state",
         status: "not-paired",
         inUse: false,
+        pairCommands: PAIR,
       });
       expect(mac.connections).toHaveLength(0);
       yield* viewer.leave;
@@ -227,7 +232,10 @@ describe("ZeropsMacStream", () => {
       yield* viewer.until(stateIs("connecting"));
       yield* settle;
       yield* mac.exitWith(0, code);
-      expect(yield* viewer.until(stateIs(status))).toMatchObject({ macName: "Test Mac" });
+      expect(yield* viewer.until(stateIs(status))).toMatchObject({
+        macName: "Test Mac",
+        pairCommands: PAIR,
+      });
       yield* TestClock.adjust(Duration.millis(1000));
       yield* settle;
       expect(mac.connections).toHaveLength(2);
@@ -248,7 +256,12 @@ describe("ZeropsMacStream", () => {
       yield* mac.send(0, windowFrame());
       yield* viewer.until((event) => event.type === "frame");
       yield* mac.send(0, wire({ type: "state", status: reported, inUse: false }));
-      expect(yield* viewer.until(stateIs(status))).toMatchObject({ app: "com.example.Counter" });
+      const said = yield* viewer.until(stateIs(status));
+      expect(said).toMatchObject({ app: "com.example.Counter" });
+      // Only a step for the person comes with the commands for it.
+      expect(said.type === "state" ? said.pairCommands : undefined).toEqual(
+        status === "no-helper" ? PAIR : undefined,
+      );
       const late = yield* watch(mac.service);
       expect(yield* late.next).toMatchObject({ type: "state", status });
       yield* viewer.leave;
@@ -286,7 +299,10 @@ describe("ZeropsMacStream", () => {
       yield* viewer.until((event) => event.type === "frame");
       yield* TestClock.adjust(Duration.millis(15_000));
       yield* settle;
-      expect(yield* viewer.until(stateIs("unreachable"))).toMatchObject({ macName: "Test Mac" });
+      expect(yield* viewer.until(stateIs("unreachable"))).toMatchObject({
+        macName: "Test Mac",
+        pairCommands: PAIR,
+      });
       expect(mac.connections[0]!.closed).toBe(true);
       yield* viewer.leave;
     }),

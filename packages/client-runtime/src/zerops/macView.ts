@@ -17,6 +17,8 @@ export interface ZeropsMacViewState {
   readonly app?: string;
   /** Someone is working on the Mac: input from the view would take over their screen. */
   readonly inUse: boolean;
+  /** While the view waits on the person (not paired, not answering, an old pairing): what they run on the Mac. */
+  readonly pairCommands?: ReadonlyArray<string>;
   /** The latest window while `live`; absent otherwise, so an old window never passes for current. */
   readonly frame?: ZeropsMacFrame;
 }
@@ -34,6 +36,7 @@ export function foldMacViewEvent(
     ...(event.macName === undefined ? {} : { macName: event.macName }),
     ...(event.app === undefined ? {} : { app: event.app }),
     inUse: event.inUse,
+    ...(event.pairCommands === undefined ? {} : { pairCommands: event.pairCommands }),
     ...(event.status === "live" && state.frame !== undefined && state.app === event.app
       ? { frame: state.frame }
       : {}),

@@ -78,6 +78,16 @@ describe("the Mac tab's view", () => {
     },
   );
 
+  it("hands the panel the commands for the person's next step on the Mac, and drops them once live", () => {
+    const r = rig();
+    const pairCommands = ["zcli vpn up Prj0AAAAAAAAAAAAAAAAAA", "ssh zcp mac host | sh"];
+    r.sink.event(state("not-paired", { pairCommands }));
+    expect(r.view()).toMatchObject({ status: "not-paired", pairCommands });
+    r.sink.event(state("live"));
+    expect(r.view()).not.toHaveProperty("pairCommands");
+    r.registry.dispose();
+  });
+
   it("keeps the window while someone uses the Mac, saying so", () => {
     const r = rig();
     r.sink.event(state("live"));

@@ -22,6 +22,7 @@ import type {
   ZeropsMacInput,
   ZeropsMacStateEvent,
   ZeropsMacStreamEvent,
+  ZeropsMacStreamStatus,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -46,6 +47,7 @@ import {
   macDeviceCommand,
   macHostPaths,
   type MacHostRecord,
+  macPairCommands,
   macScreenPoint,
   macSshArgs,
   type MacViewRecord,
@@ -60,6 +62,8 @@ export interface MacStreamProcess {
 }
 
 export interface ZeropsMacStreamOptions {
+  /** The commands that pair a Mac with this Mate, handed to the person while a step of theirs is due. */
+  readonly pairCommands: ReadonlyArray<string>;
   /** The pairing, read fresh on every attempt; `undefined` when no Mac is paired. */
   readonly readRecord: Effect.Effect<MacHostRecord | undefined>;
   /** The app to show, read fresh on every attempt and while streaming. */
@@ -116,6 +120,13 @@ type ConnectionOutcome =
 
 const toBase64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString("base64");
 
+/** The states the view waits on the person for: pairing, reaching the Mac, or pairing again. */
+const PERSON_STEP: ReadonlySet<ZeropsMacStreamStatus> = new Set([
+  "not-paired",
+  "unreachable",
+  "no-helper",
+]);
+
 const INITIAL_STATE: ZeropsMacStateEvent = { type: "state", status: "connecting", inUse: false };
 
 const sameState = (left: ZeropsMacStateEvent, right: ZeropsMacStateEvent) =>
@@ -141,7 +152,11 @@ export const make = (options: ZeropsMacStreamOptions) =>
     const publishState = (patch: Partial<Omit<ZeropsMacStateEvent, "type">>) =>
       Effect.gen(function* () {
         const current = yield* Ref.get(lastState);
-        const next: ZeropsMacStateEvent = { ...current, ...patch, type: "state" };
+        const { pairCommands: _stale, ...rest } = { ...current, ...patch };
+        // Only a step for the person on the Mac comes with the commands for it.
+        const next: ZeropsMacStateEvent = PERSON_STEP.has(rest.status)
+          ? { ...rest, type: "state", pairCommands: options.pairCommands }
+          : { ...rest, type: "state" };
         // A frame from an earlier app or session never shows under a state that is not live.
         if (next.status !== "live") yield* Ref.set(latestFrame, undefined);
         if (sameState(current, next)) return;
@@ -357,6 +372,10 @@ export const layer = Layer.effect(
     const ssh = (record: MacHostRecord, remoteCommand: string) =>
       spawner.spawn(ChildProcess.make("ssh", [...macSshArgs(record, paths, remoteCommand)]));
     return yield* make({
+      pairCommands: macPairCommands(
+        config.zerops?.projectId ?? process.env["projectId"] ?? "<project id>",
+        process.env["hostname"] ?? "zcp",
+      ),
       readRecord: readDecoded(paths.record, decodeMacHostRecord),
       readView: readDecoded(paths.view, decodeMacViewRecord),
       openStream: (record, app) =>
