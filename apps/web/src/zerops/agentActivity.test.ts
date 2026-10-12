@@ -403,6 +403,24 @@ describe("agentActivitySubject", () => {
     ).toBe("Start two helpers (sleep 25 && echo done and exit 4)");
   });
 
+  // J03: the stand-up the person's sign-in sent is no task they wrote: never the Mate's subject.
+  it.each([
+    [
+      "its latest ask",
+      {
+        title: "Stand up development of the project.",
+        latestUserMessagePreview: {
+          role: "user",
+          text: "Stand up development of the project.",
+          createdAt: "2026-10-05T14:00:00.000Z",
+        },
+      },
+    ],
+    ["its title", { title: "Stand up development of the project." }],
+  ] as const)("is never the stand-up its sign-in sent, as %s", (_, patch) => {
+    expect(agentActivitySubject(shell(patch as never), "done")).toBeUndefined();
+  });
+
   it("is the running step over the task while the server reports one", () => {
     expect(
       agentActivitySubject(

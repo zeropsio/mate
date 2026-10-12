@@ -23,6 +23,7 @@
  * (`@t3tools/shared/mateLink`), which carries the fields a row reads and no more
  * (`AgentActivityThread`). A Mate with neither has no entry, and the caller draws it asleep.
  */
+import { isMateStandUpAsk } from "./mateStandUp";
 import {
   IMAGE_ONLY_BOOTSTRAP_PROMPT,
   isSlashCommand,
@@ -425,6 +426,8 @@ function isPersonsWords(text: string): boolean {
   return (
     !isSlashCommand(trimmed) &&
     !isUsageLimitResumePrompt(trimmed) &&
+    // The stand-up its person's sign-in sent on their behalf, never words they wrote.
+    !isMateStandUpAsk(trimmed) &&
     trimmed !== IMAGE_ONLY_BOOTSTRAP_PROMPT
   );
 }
