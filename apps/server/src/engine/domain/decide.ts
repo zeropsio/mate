@@ -1793,7 +1793,12 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
         endRun(
           b,
           run,
-          { kind: "failed", reason: outcome.reason, next: null },
+          {
+            kind: "failed",
+            reason: outcome.reason,
+            next: null,
+            ...(outcome.admission === undefined ? {} : { admission: outcome.admission }),
+          },
           "inferred-from-effect",
           undefined,
           { detail: "refused", refusal: outcome.reason },

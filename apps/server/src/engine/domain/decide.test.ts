@@ -284,6 +284,21 @@ const transitions: ReadonlyArray<Row> = [
       expect(scene.effects.map((effect) => effect.kind)).toEqual(["workspace.finish"]),
   },
   {
+    name: "a run its admission refuses for a login ends naming that login, so its sign-in explains it",
+    given: [send()],
+    when: prepared(1, {
+      kind: "failed",
+      reason: "Claude's sign-in has expired.",
+      refused: true,
+      admission: { loginId: "claude-code", reason: "expired-login" },
+    }),
+    run: { n: 1, end: "failed", source: "inferred-from-effect" },
+    also: (scene) =>
+      expect(scene.events.find((event) => event._tag === "RunEnded")).toMatchObject({
+        end: { kind: "failed", admission: { loginId: "claude-code", reason: "expired-login" } },
+      }),
+  },
+  {
     name: "a maintenance turn skips the capture",
     given: [],
     when: send("/compact", { maintenance: true }),

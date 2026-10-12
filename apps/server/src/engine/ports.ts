@@ -15,7 +15,7 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
-import type { MateRestart } from "@t3tools/contracts";
+import type { MateRestart, RunAdmissionRefusal } from "@t3tools/contracts";
 import type {
   ChatAttachment,
   ConversationId,
@@ -38,9 +38,10 @@ export type WakeKind =
   | "self"
   | "crew";
 
-/** A run its principal may not start, in the sentence the person reads. */
+/** A run its principal may not start, in the sentence the person reads, and whose login it was. */
 export class RunRefused extends Data.TaggedError("RunRefused")<{
   readonly message: string;
+  readonly admission?: RunAdmissionRefusal;
 }> {}
 
 /**

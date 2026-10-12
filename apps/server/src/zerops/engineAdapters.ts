@@ -77,9 +77,17 @@ export const zeropsRunAdmission = Layer.effect(
         if (turnPrincipal === null) {
           return Effect.fail(new RunRefused({ message: "Nobody this run could act for." }));
         }
-        return admission
-          .admitRun({ instanceId, principal: turnPrincipal })
-          .pipe(Effect.mapError((refusal) => new RunRefused({ message: refusal.message })));
+        return admission.admitRun({ instanceId, principal: turnPrincipal }).pipe(
+          Effect.mapError(
+            (refusal) =>
+              new RunRefused({
+                message: refusal.message,
+                ...(refusal.agentAdmission === undefined
+                  ? {}
+                  : { admission: refusal.agentAdmission }),
+              }),
+          ),
+        );
       },
     }),
   ),

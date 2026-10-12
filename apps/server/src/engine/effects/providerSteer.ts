@@ -41,7 +41,7 @@ export const makeProviderSteer = Effect.gen(function* () {
             principal: payload.principal,
             trigger: { kind: "person", itemId: payload.itemId as never },
           });
-          if (refused !== null) return failed(refused, { undelivered: true });
+          if (refused !== null) return failed(refused.words, { undelivered: true });
         }
         const sent = yield* deliver(row, {
           session: payload.sessionId,
