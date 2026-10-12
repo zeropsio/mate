@@ -25,7 +25,13 @@ import { MateFake } from "../fakes/mate.ts";
 import { hqConnection } from "../fakes/hqConnection.ts";
 import { serve } from "./http.ts";
 import { openScenarioNavigation, startScenarioCore, type HqTimings } from "./hqCore.ts";
-import { openBrowser, clickText, visibleText, sendConversationMessage } from "./browser.ts";
+import {
+  openBrowser,
+  clickText,
+  visibleText,
+  visibleInMenu,
+  sendConversationMessage,
+} from "./browser.ts";
 
 const decodeOverview = Schema.decodeUnknownEffect(MateOverview);
 const encodeLink = Schema.encodeEffect(MateLinkUp);
@@ -411,7 +417,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
           appears: (options: { within?: number } = {}) =>
             Effect.promise(async () => {
               try {
-                await visibleText(page, "sidebar-environments", name, options.within);
+                await visibleInMenu(page, "sidebar-environments", name, options.within);
               } catch (error) {
                 throw new Error(
                   `Menu row ${name} missing\n${await page.evaluate(() => document.body.innerText)}\n${web.errors.join("\n")}\n${JSON.stringify([...zerops.requests])}\nFrames: ${JSON.stringify([...zerops.framesByKind])}\nSubscriptions: ${JSON.stringify([...zerops.subscriptions.values()].map(({ kind, name, receiver, output, search }) => ({ kind, name, receiver, output, search })))}`,
