@@ -203,6 +203,7 @@ const fixture = Effect.gen(function* () {
   const reads = yield* Ref.make(0);
   const detailReads: string[] = [];
   const sqlReads: Array<{ query: string; values: ReadonlyArray<unknown> }> = [];
+  let chiefRows: ReadonlyArray<{ readonly project_id: string; readonly user_id: string }> = [];
   const recipeRead = yield* Queue.unbounded<string>();
   const structureChanged = yield* PubSub.unbounded<number>();
   const rolesChanged = yield* PubSub.unbounded<{
@@ -437,7 +438,7 @@ const fixture = Effect.gen(function* () {
         (strings: TemplateStringsArray, ...values: ReadonlyArray<unknown>) =>
           Effect.sync(() => {
             sqlReads.push({ query: strings.join("?"), values });
-            return [];
+            return strings.join("?").includes("FROM hq_chief") ? chiefRows : [];
           }),
         {
           in: (column: string, values: ReadonlyArray<unknown>) => ({ column, values }),
@@ -550,6 +551,10 @@ const fixture = Effect.gen(function* () {
     reads,
     detailReads,
     sqlReads,
+    /** The Chiefs HQ records: whose each Chief project is. */
+    chiefs: (rows: typeof chiefRows) => {
+      chiefRows = rows;
+    },
     recipeRead,
     overviews,
     official,
@@ -881,6 +886,37 @@ describe("revisioned HQ values", () => {
           assert.deepStrictEqual(project.everSignedIn, signers);
           assert.include(json(delivery.values), '"avatarUrl":"avatar-owner"');
           if (client === reader) assert.notInclude(json(delivery.values), "avatar-signer");
+        }
+      }),
+    ),
+  );
+  it.effect("a person's own Chief reads as theirs, and someone else's as another's", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture;
+        f.chiefs([{ project_id: "P", user_id: "owner" }]);
+        yield* f.roles({
+          ...facts,
+          projects: facts.projects.map((project) => ({ ...project, tags: ["mate", "chief"] })),
+        });
+        const link = yield* f.overviews.connect("P");
+        yield* f.overviews.report("P", link, {
+          type: "overview",
+          full: true,
+          overview: overviewOf(),
+        });
+        for (const [userId, chief] of [
+          ["owner", "mine"],
+          ["reader", "another"],
+        ] as const) {
+          const client = yield* f.connect(userId);
+          yield* client.subscribe([{ scope: nav }]);
+          const delivery = resetOf(yield* client.take);
+          yield* client.take;
+          const project = delivery.values.find((value) => value.key === "project:P")!.value as {
+            person: { chief?: string };
+          };
+          assert.strictEqual(project.person.chief, chief);
         }
       }),
     ),
