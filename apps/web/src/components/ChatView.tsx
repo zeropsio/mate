@@ -45,6 +45,7 @@ import { usageLimitsNotice } from "./chat/UsageLimitsNotice";
 import { ServiceBrowserScope } from "./ServiceBrowserLink";
 import { feedbackNotice } from "./chat/FeedbackNotice";
 import { ComposerPlaceLine, composerPlaceNotice } from "./chat/ComposerPlace";
+import { cloneSendBlockReason, ComposerCloneAsk } from "./chat/ComposerCloneAsk";
 import {
   branchChangedNotice,
   crewNextConversationNotice,
@@ -5263,7 +5264,7 @@ export default function ChatView(props: ChatViewProps) {
     [activeCrewmate, threadId],
   );
   // What stops the person writing takes the composer's own place, with its one way out (S6): the
-  // conversation archived, a crewmate's earlier conversation, the project's repository cloning.
+  // conversation archived, a crewmate's earlier conversation.
   const composerPlace = useMemo(
     () =>
       composerPlaceNotice(
@@ -5273,7 +5274,6 @@ export default function ChatView(props: ChatViewProps) {
               ? { restoring: restoringThreadKey === activeThreadKey }
               : null,
           crewRetired: crewNotices?.retired ?? null,
-          clone: activeProjectRef === null ? null : activeProjectClone,
         },
         {
           restore: () => {
@@ -5289,36 +5289,54 @@ export default function ChatView(props: ChatViewProps) {
               params: buildThreadRouteParams(scopeThreadRef(environmentId, current)),
             });
           },
-          cancelClone: () => {
-            if (activeProjectRef === null) return;
-            const { environmentId, projectId } = activeProjectRef;
-            void runProjectCloneAction("Failed to cancel clone", () =>
-              cancelProjectClone({ environmentId, input: { projectId } }),
-            );
-          },
-          retryClone: () => {
-            if (activeProjectRef === null) return;
-            const { environmentId, projectId } = activeProjectRef;
-            void runProjectCloneAction("Failed to retry clone", () =>
-              retryProjectClone({ environmentId, input: { projectId } }),
-            );
-          },
         },
       ),
     [
-      activeProjectClone,
-      activeProjectRef,
       activeThreadArchived,
       activeThreadKey,
       activeThreadRef,
-      cancelProjectClone,
       crewNotices,
       environmentId,
       navigate,
       restoringThreadKey,
+      unarchiveThread,
+    ],
+  );
+  // The project's repository while it clones stops only Send: its line stands at the composer's
+  // top, and the composer stays (`ComposerCloneAsk`).
+  const cloneShown = activeProjectRef === null ? null : activeProjectClone;
+  const cloneTop = useMemo(
+    () =>
+      cloneShown === null || cloneShown.phase === "done" || activeProjectRef === null ? null : (
+        <ComposerCloneAsk
+          clone={cloneShown}
+          actions={{
+            cancel: () => {
+              const { environmentId, projectId } = activeProjectRef;
+              void runProjectCloneAction("Failed to cancel clone", () =>
+                cancelProjectClone({ environmentId, input: { projectId } }),
+              );
+            },
+            retry: () => {
+              const { environmentId, projectId } = activeProjectRef;
+              void runProjectCloneAction("Failed to retry clone", () =>
+                retryProjectClone({ environmentId, input: { projectId } }),
+              );
+            },
+            remove: () => {
+              const { environmentId, projectId } = activeProjectRef;
+              void removeClonedProject({ environmentId, projectId });
+            },
+          }}
+        />
+      ),
+    [
+      activeProjectRef,
+      cancelProjectClone,
+      cloneShown,
+      removeClonedProject,
       retryProjectClone,
       runProjectCloneAction,
-      unarchiveThread,
     ],
   );
   // What a crew thread's task cards need beyond their text: the board, and
@@ -8452,7 +8470,7 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               idlePlaceholder={crewComposerPlaceholder ?? composerPlaceholders.idle}
                               mentionCrewmates={crewMentions}
-                              top={threadDetailLoading ? null : composerTop}
+                              top={threadDetailLoading ? null : (cloneTop ?? composerTop)}
                               vaultChanges={vaultTurn.changes}
                               onDismissVaultChange={vaultTurn.dismiss}
                               {...(crewRunsOnLabel === null || activeCrewmate === null
@@ -8476,7 +8494,7 @@ export default function ChatView(props: ChatViewProps) {
                                   ? "Sending feedback"
                                   : threadDetailLoading
                                     ? "Messages loading"
-                                    : null
+                                    : cloneSendBlockReason(cloneShown)
                               }
                               zeropsSendBlockReason={zeropsSendBlockReason ?? null}
                               isPreparingWorktree={isPreparingWorktree}

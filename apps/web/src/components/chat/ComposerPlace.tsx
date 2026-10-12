@@ -1,19 +1,13 @@
 /**
  * What stops the person writing in a conversation takes the composer's own place: one quiet line
  * that says it once and offers its one way out — an archived conversation, a crewmate's earlier
- * one, a repository still cloning (the owner's pick, S6 on the "Composer Strips" board,
- * 2026-10-12). A colleague's Mate has its own (`ZeropsReadOnlyConversationFooter`).
+ * one (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12). A colleague's Mate has its
+ * own (`ZeropsReadOnlyConversationFooter`). A repository cloning stops nothing but Send: it stands
+ * at the composer's top (`ComposerCloneAsk`).
  */
-import {
-  projectCloneDisplayName,
-  projectCloneProgressSummary,
-  type ProjectCloneSnapshot,
-  type ThreadId,
-} from "@t3tools/contracts";
-import { ArchiveRestoreIcon, DownloadIcon, HistoryIcon } from "lucide-react";
+import type { ThreadId } from "@t3tools/contracts";
+import { ArchiveRestoreIcon, HistoryIcon } from "lucide-react";
 import type { ReactNode } from "react";
-
-import { cn } from "~/lib/utils";
 
 export interface ComposerPlaceNotice {
   readonly id: string;
@@ -26,8 +20,6 @@ export interface ComposerPlaceNotice {
     /** It is under way: the button says so and waits. */
     readonly busy?: boolean;
   };
-  /** It says that something failed. */
-  readonly failed?: boolean;
 }
 
 /** What may stop the writing, as the records say it; the first that holds takes the place. */
@@ -39,15 +31,11 @@ export interface ComposerPlaceRecord {
     readonly text: string;
     readonly currentThreadId: ThreadId | null;
   } | null;
-  /** The project's repository clone, while it is not done. */
-  readonly clone: ProjectCloneSnapshot | null;
 }
 
 export interface ComposerPlaceActions {
   readonly restore: () => void;
   readonly openCurrent: () => void;
-  readonly cancelClone: () => void;
-  readonly retryClone: () => void;
 }
 
 export function composerPlaceNotice(
@@ -78,35 +66,7 @@ export function composerPlaceNotice(
         : { action: { label: "Open it", onAction: actions.openCurrent } }),
     };
   }
-  const clone = record.clone;
-  if (clone === null || clone.phase === "done") return null;
-  const name = projectCloneDisplayName(clone);
-  if (clone.phase === "running") {
-    return {
-      id: "clone",
-      icon: <DownloadIcon />,
-      words: (
-        <>
-          <strong>Cloning {name}</strong> · {projectCloneProgressSummary(clone)}
-        </>
-      ),
-      action: { label: "Cancel", onAction: actions.cancelClone },
-    };
-  }
-  const cancelled = clone.phase === "cancelled";
-  const why = cancelled ? "Retry to bring in the repository." : clone.error;
-  return {
-    id: "clone",
-    icon: <DownloadIcon />,
-    words: (
-      <>
-        <strong>{cancelled ? `Cancelled cloning ${name}` : `Failed to clone ${name}`}</strong>
-        {why ? ` · ${why}` : null}
-      </>
-    ),
-    action: { label: "Retry", onAction: actions.retryClone },
-    ...(cancelled ? {} : { failed: true }),
-  };
+  return null;
 }
 
 /** The line in the composer's place: drawn as the composer's main surface, inside its glass. */
@@ -117,12 +77,9 @@ export function ComposerPlaceLine({ notice }: { readonly notice: ComposerPlaceNo
       <div
         className="relative z-10 flex min-h-12 min-w-0 items-center gap-2.5 px-4 py-2 text-line text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground"
         data-chat-composer-main-surface="true"
-        role={notice.failed ? "alert" : "status"}
+        role="status"
       >
-        <span
-          aria-hidden="true"
-          className={cn("flex shrink-0 [&_svg]:size-4", notice.failed && "text-status-failed-text")}
-        >
+        <span aria-hidden="true" className="flex shrink-0 [&_svg]:size-4">
           {notice.icon}
         </span>
         <span className="min-w-0 flex-1 truncate">{notice.words}</span>
