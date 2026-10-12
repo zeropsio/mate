@@ -676,12 +676,47 @@ it.effect.each([
 );
 
 it.each([
-  ["runs when V1 owns the conversation and the flag is on", true, false, true],
-  ["stays off when the flag is off", false, false, false],
-  ["stays off when the Mate engine owns the conversation", true, true, false],
-] as const)("the V1 auto-bootstrap %s", (_, autoBootstrapProjectFromCwd, live, expected) => {
+  ["makes nothing when the flag is off", false, true, "none"],
+  [
+    "makes the project and its first thread while V1 owns the conversation",
+    true,
+    false,
+    "project-and-thread",
+  ],
+  ["makes the project alone when the Mate engine owns the conversation", true, true, "project"],
+] as const)("the auto-bootstrap %s", (_, autoBootstrapProjectFromCwd, live, expected) => {
   assert.strictEqual(
-    ServerRuntimeStartup.runsV1AutoBootstrap({ autoBootstrapProjectFromCwd }, { live }),
+    ServerRuntimeStartup.autoBootstrapOf({ autoBootstrapProjectFromCwd }, { live }),
     expected,
   );
 });
+
+// A Mate's engine conversations show under its project (`overlayEngineShell` reads the shell's
+// first project): a Mate born on the engine needs that project, and V1's first thread never.
+it.effect(
+  "a brand-new Mate on the engine has its project, and its conversation shows under it",
+  () =>
+    Effect.gen(function* () {
+      const dispatched = yield* Ref.make<ReadonlyArray<{ readonly type: string }>>([]);
+      const targets = yield* ServerRuntimeStartup.resolveAutoBootstrapProject.pipe(
+        Effect.provideService(ServerConfig.ServerConfig, {
+          cwd: "/tmp/startup-project",
+          autoBootstrapProjectFromCwd: true,
+        } as never),
+        Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
+          getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
+        } as never),
+        Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
+          dispatch: (command: { readonly type: string }) =>
+            Ref.update(dispatched, (all) => [...all, command]).pipe(Effect.as({ sequence: 1 })),
+        } as never),
+        Effect.provide(NodeServices.layer),
+      );
+      assert.equal(typeof targets.bootstrapProjectId, "string");
+      assert.notProperty(targets, "bootstrapThreadId");
+      assert.deepStrictEqual(
+        (yield* Ref.get(dispatched)).map((command) => command.type),
+        ["project.create"],
+      );
+    }),
+);

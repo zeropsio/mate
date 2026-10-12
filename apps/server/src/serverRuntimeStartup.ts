@@ -251,6 +251,31 @@ export const resolveWelcomeBase = Effect.gen(function* () {
   } as const;
 });
 
+/**
+ * The project at the server's working directory, made when it has none: on the Mate engine, the
+ * shell every client lays its conversations over, which are made by their first send or the
+ * stand-up, never here.
+ */
+export const resolveAutoBootstrapProject = Effect.gen(function* () {
+  const crypto = yield* Crypto.Crypto;
+  const serverConfig = yield* ServerConfig.ServerConfig;
+  const projection = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
+  const path = yield* Path.Path;
+  const existing = yield* projection.getActiveProjectByWorkspaceRoot(serverConfig.cwd);
+  if (Option.isSome(existing)) return { bootstrapProjectId: existing.value.id };
+  const bootstrapProjectId = ProjectId.make(yield* crypto.randomUUIDv4);
+  yield* orchestrationEngine.dispatch({
+    type: "project.create",
+    commandId: CommandId.make(yield* crypto.randomUUIDv4),
+    projectId: bootstrapProjectId,
+    title: path.basename(serverConfig.cwd) || "project",
+    workspaceRoot: serverConfig.cwd,
+    createdAt: DateTime.formatIso(yield* DateTime.now),
+  });
+  return { bootstrapProjectId };
+});
+
 export const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const randomUUID = crypto.randomUUIDv4;
@@ -399,11 +424,15 @@ export const startConversationRoots = <E, R>(input: {
         yield* runStartupPhase("provider-sessions.reconcile", input.v1.reconcile);
       });
 
-/** V1's auto-bootstrap (a project and its first thread) runs only while V1 owns the conversation. */
-export const runsV1AutoBootstrap = (
+/**
+ * What the auto-bootstrap makes: V1's project and first thread, or, while the Mate engine owns
+ * the conversation, the project alone, the shell its conversations show under.
+ */
+export const autoBootstrapOf = (
   config: Pick<ServerConfig.ServerConfig["Service"], "autoBootstrapProjectFromCwd">,
   engine: Pick<MateEngineService, "live">,
-): boolean => config.autoBootstrapProjectFromCwd && !engine.live;
+): "none" | "project" | "project-and-thread" =>
+  !config.autoBootstrapProjectFromCwd ? "none" : engine.live ? "project" : "project-and-thread";
 
 export const reconcileProviderSessions = Effect.gen(function* () {
   const bootAt = DateTime.formatIso(yield* DateTime.now);
@@ -662,14 +691,23 @@ export const make = (options?: StartupOptions) =>
       const environment = yield* serverEnvironment.getDescriptor;
       yield* Effect.logDebug("startup phase: preparing welcome payload");
 
-      if (runsV1AutoBootstrap(serverConfig, mateEngine)) {
+      const autoBootstrap = autoBootstrapOf(serverConfig, mateEngine);
+      if (autoBootstrap !== "none") {
         yield* forkParked(
           runStartupPhase(
             "welcome.autobootstrap",
             Effect.gen(function* () {
-              const bootstrapTargets = yield* resolveAutoBootstrapWelcomeTargets.pipe(
-                Effect.provideService(Crypto.Crypto, crypto),
-              );
+              const bootstrapTargets: {
+                readonly bootstrapProjectId?: ProjectId;
+                readonly bootstrapThreadId?: ThreadId;
+              } =
+                autoBootstrap === "project"
+                  ? yield* resolveAutoBootstrapProject.pipe(
+                      Effect.provideService(Crypto.Crypto, crypto),
+                    )
+                  : yield* resolveAutoBootstrapWelcomeTargets.pipe(
+                      Effect.provideService(Crypto.Crypto, crypto),
+                    );
               if (!bootstrapTargets.bootstrapProjectId && !bootstrapTargets.bootstrapThreadId) {
                 return;
               }
