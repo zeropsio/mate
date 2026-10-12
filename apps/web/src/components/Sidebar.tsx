@@ -213,7 +213,12 @@ import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, SidebarOverviewRow, useMenuProjects } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
 import { ownChiefAmong } from "~/zerops/chief";
-import { openChiefSetup, useChiefSetupLine } from "~/zerops/chiefSetup";
+import {
+  openChiefSetup,
+  resumeChiefSetup,
+  useChiefSetupLine,
+  useChiefUnfinished,
+} from "~/zerops/chiefSetup";
 import { useOwnChief } from "~/zerops/ownChief";
 import { SidebarChiefSetupLine } from "./zerops/chief/SidebarChiefSetupLine";
 import { SidebarRail, useRailMates } from "./zerops/SidebarRail";
@@ -1914,6 +1919,7 @@ export default function Sidebar() {
     [zeropsCandidates, ownChief],
   );
   const chiefSetupLine = useChiefSetupLine();
+  const chiefUnfinished = useChiefUnfinished(zeropsChief?.project.id ?? null);
   const onZeropsSelect = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) => {
       if (isMobile) {
@@ -2970,6 +2976,18 @@ export default function Sidebar() {
                 <SidebarChiefSetupLine onOpen={openChiefSetup} state={chiefSetupLine} />
               )}
             </div>
+          ) : null}
+          {zeropsSignedIn &&
+          !isSearchingThreads &&
+          zeropsChief !== undefined &&
+          chiefUnfinished &&
+          zeropsSession.activeOrganization !== null ? (
+            <SidebarChiefSetupLine
+              onOpen={() =>
+                resumeChiefSetup(zeropsSession.activeOrganization!.id, zeropsChief.project.id)
+              }
+              state="unfinished"
+            />
           ) : null}
           {zeropsSignedIn && !isSearchingThreads ? (
             <SidebarZeropsTree

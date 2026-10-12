@@ -55,6 +55,35 @@ export function openChiefSetup(): void {
   useChiefSetupStore.setState({ open: true });
 }
 
+/**
+ * Finishes a Chief whose zcp holds no access — a reload between HQ's answer and its writes left
+ * it so: HQ is asked again, and its fresh credential written, with the dialog showing the steps.
+ */
+export function resumeChiefSetup(orgId: string, projectId: string): void {
+  useChiefSetupStore.setState((state) => ({
+    open: true,
+    orgId,
+    setup: chiefSetupAfter(state.setup, { type: "resume", projectId }),
+  }));
+}
+
+/** Whether the person's own Chief stands without its access: its zcp holds no `ZCP_ORG_TOKEN`. */
+export function useChiefUnfinished(projectId: string | null): boolean {
+  const { activeOrganization } = useZeropsSession();
+  const orgId = activeOrganization?.id ?? null;
+  const { setup } = useChiefSetupStore();
+  useDetailDemand("serviceVariable", undefined, projectId);
+  const serviceId = chiefServiceOf(useProjectServices(projectId).services);
+  const ids = useProjection(
+    serviceVariableIds,
+    orgId === null || projectId === null || serviceId === undefined
+      ? null
+      : { orgId, projectId, serviceId },
+    NO_IDS,
+  );
+  return setup.phase === "idle" && ids !== null && ids["ZCP_ORG_TOKEN"] === undefined;
+}
+
 export function closeChiefSetup(): void {
   useChiefSetupStore.setState({ open: false });
 }

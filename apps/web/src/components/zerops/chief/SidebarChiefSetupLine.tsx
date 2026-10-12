@@ -4,12 +4,13 @@
  */
 import { ChevronRightIcon } from "lucide-react";
 
-export type ChiefSetupLineState = "offer" | "running" | "stopped";
+export type ChiefSetupLineState = "offer" | "running" | "stopped" | "unfinished";
 
 const WORDS: Readonly<Record<ChiefSetupLineState, string>> = {
   offer: "Set up your Chief",
   running: "Setting up your Chief…",
   stopped: "Your Chief's setup stopped",
+  unfinished: "Finish setting up your Chief",
 };
 
 export function SidebarChiefSetupLine({

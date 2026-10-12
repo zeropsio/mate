@@ -33,6 +33,18 @@ describe("chiefSetupAfter", () => {
       running("project", null),
     ],
     [
+      "a Chief left without its access by a reload resumes at HQ, its project kept",
+      CHIEF_SETUP_IDLE,
+      { type: "resume", projectId: "p-chief" },
+      { phase: "running", step: "hq", birthId: "resume:p-chief", projectId: "p-chief" },
+    ],
+    [
+      "a resume while a setup runs changes nothing",
+      running("project", null),
+      { type: "resume", projectId: "p-chief" },
+      running("project", null),
+    ],
+    [
       "its project made, HQ is asked to record it",
       running("project", null),
       { type: "project-made", projectId: "p-chief" },

@@ -48,7 +48,9 @@ export type ChiefSetupEvent =
   | { readonly type: "variables-written" }
   /** The running step stopped. */
   | { readonly type: "failed"; readonly reason: string }
-  | { readonly type: "again" };
+  | { readonly type: "again" }
+  /** Its project stands, recorded or not, but its zcp holds no access: HQ is asked again. */
+  | { readonly type: "resume"; readonly projectId: string };
 
 export const CHIEF_SETUP_IDLE: ChiefSetup = { phase: "idle" };
 
@@ -74,6 +76,15 @@ export function chiefSetupAfter(setup: ChiefSetup, event: ChiefSetupEvent): Chie
     case "failed":
       return setup.phase === "running"
         ? { ...setup, phase: "failed", reason: event.reason }
+        : setup;
+    case "resume":
+      return setup.phase === "idle"
+        ? {
+            phase: "running",
+            step: "hq",
+            birthId: `resume:${event.projectId}`,
+            projectId: event.projectId,
+          }
         : setup;
     case "again":
       if (setup.phase !== "failed") return setup;
