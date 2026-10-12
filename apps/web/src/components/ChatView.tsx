@@ -3,6 +3,7 @@ import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
 import {
   agentAdmission,
+  engineCardsShowError,
   engineRunRefusal,
   type AgentRefusalSource,
 } from "@t3tools/client-runtime/data";
@@ -3311,7 +3312,11 @@ export default function ChatView(props: ChatViewProps) {
       setDismissedProviderStatusBannerKey(null);
     }
   }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
-  const shownThreadError = admission.explainsRefusal ? null : visibleThreadError;
+  // An engine run that broke off says so on its card, as a V1 turn's error activity did.
+  const shownThreadError =
+    admission.explainsRefusal || engineCardsShowError(engineCards, visibleThreadError)
+      ? null
+      : visibleThreadError;
   const visibleProviderStatus = shouldShowProviderStatusBanner(
     admission.providerStatus,
     dismissedProviderStatusBannerKey,

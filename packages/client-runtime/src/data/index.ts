@@ -565,6 +565,7 @@ export {
   engineCardCounts,
   engineCardPagingOf,
   engineRows,
+  engineCardsShowError,
   engineRunCards,
   engineThread,
   engineThreadOf,

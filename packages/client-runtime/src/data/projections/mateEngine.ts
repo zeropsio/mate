@@ -1076,6 +1076,28 @@ export const engineRunCards: Projection<
   },
 };
 
+/**
+ * Whether the latest run's card says `error` itself: a run that broke off once it ran draws its
+ * reason on its card. One refused before anything of it ran has no card line; the banner says it.
+ */
+export function engineCardsShowError(
+  cards: Readonly<Record<string, EngineRunCard>> | null,
+  error: string | null,
+): boolean {
+  if (cards === null || error === null) return false;
+  const latest = Object.values(cards)
+    .flatMap((card) => card.runs)
+    .reduce<RunRecord | undefined>(
+      (a, b) => (a === undefined || b.ordinal > a.ordinal ? b : a),
+      undefined,
+    );
+  return (
+    latest?.startedAt != null &&
+    (latest.end?.kind === "failed" || latest.end?.kind === "crashed") &&
+    latest.end.reason === error
+  );
+}
+
 /** What a card's runs' calls came to, as the server counts them (`RunSummary`). */
 export interface EngineCardCounts {
   readonly calls: Readonly<Record<string, number>>;

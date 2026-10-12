@@ -39,6 +39,7 @@ import {
   engineHeldTurns,
   engineResendId,
   engineRows,
+  engineCardsShowError,
   engineRunCards,
   engineStopTarget,
   engineThread,
@@ -1887,4 +1888,30 @@ it("a message admission refused before anything ran goes back to its sender, nev
     messageId: `send-${run1}-1`,
     text: "Start work",
   });
+});
+
+// The run's card says how it broke off; the banner never says it a second time.
+const failedEnd = (reason: string) => ({ kind: "failed", reason, next: null }) as const;
+it.each([
+  ["a run that failed once it ran", { end: failedEnd("The agent process failed") }, true],
+  [
+    "a run that crashed once it ran",
+    { end: { kind: "crashed", reason: "The agent process failed" } },
+    true,
+  ],
+  [
+    "a run refused before anything of it ran",
+    { startedAt: null, end: failedEnd("The agent process failed") },
+    false,
+  ],
+  ["a run that broke off with other words", { end: failedEnd("Another failure") }, false],
+  ["a run that completed", { end: { kind: "completed" } }, false],
+] as const)("the error a card draws is its card's to say: %s", (_, patch, shown) => {
+  const state = held({ runs: [engineRun("thread-ada", 1, patch as Partial<RunRecord>)] });
+  expect(
+    engineCardsShowError(
+      engineRunCards.derive(readsOfState(state), key),
+      "The agent process failed",
+    ),
+  ).toBe(shown);
 });
