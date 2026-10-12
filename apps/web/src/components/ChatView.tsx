@@ -3082,13 +3082,15 @@ function ConversationView(props: ChatViewProps) {
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
     activeThreadKey !== null && dockedDraftHeroThreadKey === activeThreadKey;
+  // The person's Chief: the organization's Mate (`chief.ts`).
+  const chiefConversation = (() => {
+    const at = zeropsMateAt(zeropsMates, environmentId);
+    return at.kind === "mate" && at.mate.chief === true;
+  })();
   // A Chief no coding agent is signed in to: the Mate sign-in stands in place of its question and
   // the composer, as an empty conversation's opening (`chiefShowsSignIn`).
   const chiefSignIn = chiefShowsSignIn({
-    chief: (() => {
-      const at = zeropsMateAt(zeropsMates, environmentId);
-      return at.kind === "mate" && at.mate.chief === true;
-    })(),
+    chief: chiefConversation,
     signInRequired: admissionNeedsSignIn(zeropsAgentAuthRead, providerStatuses),
     said: timelineEntries.length > 0,
   });
@@ -3285,7 +3287,8 @@ function ConversationView(props: ChatViewProps) {
     [keybindings, terminalShortcutLabelOptions],
   );
   const onToggleDiff = useCallback(() => {
-    if (!isServerThread) {
+    // A Chief's panel offers no diff (`rightPanelKinds.ts`): its shortcut opens none either.
+    if (!isServerThread || chiefConversation) {
       return;
     }
     if (!diffOpen) {
@@ -3294,7 +3297,7 @@ function ConversationView(props: ChatViewProps) {
     if (activeThreadRef) {
       useRightPanelStore.getState().toggle(activeThreadRef, "diff");
     }
-  }, [activeThreadRef, diffOpen, isServerThread, onDiffPanelOpen]);
+  }, [activeThreadRef, chiefConversation, diffOpen, isServerThread, onDiffPanelOpen]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -7951,6 +7954,7 @@ function ConversationView(props: ChatViewProps) {
     serverThread: isServerThread,
     zeropsPanel: zeropsChrome.panel,
     crewStatus: crew.status,
+    chief: chiefConversation,
   });
   const onAddRightPanelSurface = (kind: Exclude<RightPanelKind, "file" | "terminal">): void => {
     switch (kind) {

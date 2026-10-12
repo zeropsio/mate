@@ -127,7 +127,57 @@ describe("right panel kinds", () => {
   it("derives every launcher row in right-panel kind tuple order", () => {
     expect(
       launcherActions(resolveRightPanelAvailability(AVAILABLE_INPUT)).map(({ kind }) => kind),
-    ).toEqual(RIGHT_PANEL_KINDS.filter((kind) => RIGHT_PANEL_KIND_META[kind].launcher !== null));
+    ).toEqual(
+      RIGHT_PANEL_KINDS.filter(
+        (kind) =>
+          RIGHT_PANEL_KIND_META[kind].launcher !== null &&
+          resolveRightPanelAvailability(AVAILABLE_INPUT)[kind] !== "hidden",
+      ),
+    );
+  });
+
+  // The owner, 2026-10-12: a Chief is the organization's, with no workspace or project of its own
+  // to browse; its panel holds what it uses.
+  it.each([
+    [
+      "a Chief's panel offers the overview, terminal, helpers and MCP",
+      true,
+      ["terminal", "agents", "mcp", "overview"],
+    ],
+    [
+      "a Mate's panel offers every surface but the overview, as before",
+      false,
+      [
+        "terminal",
+        "files",
+        "diff",
+        "agents",
+        "zerops",
+        "browser",
+        "mac",
+        "data",
+        "git",
+        "crew",
+        "mcp",
+        "vault",
+      ],
+    ],
+  ] as const)("%s", (_title, chief, kinds) => {
+    expect(
+      launcherActions(resolveRightPanelAvailability({ ...AVAILABLE_INPUT, chief })).map(
+        ({ kind }) => kind,
+      ),
+    ).toEqual(kinds);
+  });
+
+  it("a Chief's panel opens nothing else, whatever its project would offer", () => {
+    const availability = resolveRightPanelAvailability({ ...AVAILABLE_INPUT, chief: true });
+    expect(RIGHT_PANEL_KINDS.filter((kind) => availability[kind] !== "hidden").toSorted()).toEqual([
+      "agents",
+      "mcp",
+      "overview",
+      "terminal",
+    ]);
   });
 
   const cases = [

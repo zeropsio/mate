@@ -40,7 +40,20 @@ export interface RightPanelAvailabilityInput {
    * feed's capability alone would only say the method exists (seam 21).
    */
   readonly crewStatus: CrewStatus | null;
+  /**
+   * A Chief's conversation (`chief.ts`): the organization's, with no workspace or project of its
+   * own to browse, so its panel offers only what it uses (`CHIEF_PANEL_KINDS`).
+   */
+  readonly chief?: boolean;
 }
+
+/** What a Chief's panel offers: the organization's cards, its shell, its helpers and its tools. */
+const CHIEF_PANEL_KINDS: ReadonlySet<RightPanelKind> = new Set([
+  "overview",
+  "terminal",
+  "agents",
+  "mcp",
+]);
 
 export interface RightPanelKindMeta {
   readonly launcher: {
@@ -186,11 +199,15 @@ export const RIGHT_PANEL_KIND_META = {
     },
     availability: (input) => input.zeropsPanel,
   },
-  // The organization's cards in a Chief's conversation: opened by its header's Overview,
-  // never offered as a card of the launcher.
+  // The organization's cards, a Chief's alone: its header's Overview opens them too.
   overview: {
-    launcher: null,
-    availability: () => "hidden",
+    launcher: {
+      label: "Overview",
+      description: "Your organization's projects, side by side.",
+      shortcut: "O",
+      unavailableHint: "Available in your Chief's conversation.",
+    },
+    availability: (input) => (input.chief === true ? "available" : "hidden"),
   },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 
@@ -209,7 +226,12 @@ export function resolveRightPanelAvailability(
   input: RightPanelAvailabilityInput,
 ): Record<RightPanelKind, RightPanelAvailability> {
   return Object.fromEntries(
-    RIGHT_PANEL_KINDS.map((kind) => [kind, RIGHT_PANEL_KIND_META[kind].availability(input)]),
+    RIGHT_PANEL_KINDS.map((kind) => [
+      kind,
+      input.chief === true && !CHIEF_PANEL_KINDS.has(kind)
+        ? "hidden"
+        : RIGHT_PANEL_KIND_META[kind].availability(input),
+    ]),
   ) as Record<RightPanelKind, RightPanelAvailability>;
 }
 
