@@ -229,7 +229,9 @@ jobs:
     name: Chat Contract (${{ matrix.name }})
     needs: chat_bundle
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Shard 2 ran 11.5–14 min of cases on 2026-10-12 and a slower runner crossed 15 min: three
+    # cancels in an hour, none a failing case.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
