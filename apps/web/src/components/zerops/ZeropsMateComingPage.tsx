@@ -971,24 +971,29 @@ export function MateComingHeader({
   const nowMs = useNowMs();
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
-      <ConversationStripView
-        chats={null}
-        crew={null}
-        mate={{
-          name: mate.name,
-          tint: mate.tint,
-          shape: mate.shape,
-          face: face ?? mateFaceFor(mate.connected, undefined, mateIdentityPose(mate, nowMs)),
-          open: true,
-          threadId: null,
-          tooltip: standsIn?.subject ?? null,
-        }}
-        onCloseChat={() => undefined}
-        onOpen={() => undefined}
-        onRename={null}
-        renameField={null}
-        renderCrewmateMenu={() => null}
-      />
+      {mate.chief === true ? (
+        // The Chief is named by the menu's top row, lit while it is open: its header is controls.
+        <span className="min-w-0 flex-1" />
+      ) : (
+        <ConversationStripView
+          chats={null}
+          crew={null}
+          mate={{
+            name: mate.name,
+            tint: mate.tint,
+            shape: mate.shape,
+            face: face ?? mateFaceFor(mate.connected, undefined, mateIdentityPose(mate, nowMs)),
+            open: true,
+            threadId: null,
+            tooltip: standsIn?.subject ?? null,
+          }}
+          onCloseChat={() => undefined}
+          onOpen={() => undefined}
+          onRename={null}
+          renameField={null}
+          renderCrewmateMenu={() => null}
+        />
+      )}
       <span className="flex size-4 shrink-0" />
       <div className="flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25">
         {standsIn === null ? null : (
