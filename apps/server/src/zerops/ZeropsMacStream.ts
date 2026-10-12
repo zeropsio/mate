@@ -74,7 +74,11 @@ export interface ZeropsMacStreamOptions {
     app: string,
   ) => Effect.Effect<MacStreamProcess, never, Scope.Scope>;
   /** Runs one guarded agent-device command on the Mac; its exit code (75: someone is using the Mac). */
-  readonly runDevice: (record: MacHostRecord, args: ReadonlyArray<string>) => Effect.Effect<number>;
+  readonly runDevice: (
+    record: MacHostRecord,
+    args: ReadonlyArray<string>,
+    options: { readonly whileInUse: boolean },
+  ) => Effect.Effect<number>;
   /** Backoff while a subscriber remains and the view is not live; the last entry repeats. */
   readonly retryDelaysMs?: ReadonlyArray<number>;
   /** How often the app to show is re-read while streaming, and the stream checked for silence. */
@@ -103,8 +107,6 @@ const DEFAULT_STALL_MS = 20_000;
  * without it captures at most 5 a second, as fast as launchd lets it.
  */
 export const MAC_VIEW_FPS = 12;
-/** `mac device`'s guard: someone is working on the Mac. */
-const IN_USE_EXIT = 75;
 const SSH_FAILED_EXIT = 255;
 
 type InternalEvent =
@@ -340,8 +342,9 @@ export const make = (options: ZeropsMacStreamOptions) =>
           } else {
             args = ["type", input.text];
           }
-          const code = yield* options.runDevice(record, args);
-          if (code === IN_USE_EXIT) yield* publishState({ inUse: true });
+          // The person's own click or typing in the Mac tab is their go-ahead, so it does not
+          // wait for the Mac to be free the way the Mate's own driving does.
+          yield* options.runDevice(record, args, { whileInUse: true });
         }),
       );
 
@@ -390,10 +393,10 @@ export const layer = Layer.effect(
           })),
           Effect.orElseSucceed(() => failedProcess),
         ),
-      runDevice: (record, args) =>
+      runDevice: (record, args, { whileInUse }) =>
         Effect.scoped(
           Effect.gen(function* () {
-            const process = yield* ssh(record, macDeviceCommand(record, args));
+            const process = yield* ssh(record, macDeviceCommand(record, args, { whileInUse }));
             const [, , code] = yield* Effect.all(
               [Stream.runDrain(process.stdout), Stream.runDrain(process.stderr), process.exitCode],
               { concurrency: "unbounded" },
