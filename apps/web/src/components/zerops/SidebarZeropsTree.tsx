@@ -278,6 +278,7 @@ import {
   type MateRowAskLine,
   type MateRowReply,
   type MateRowSecond,
+  type MateRowState,
   type MateRowView as MateRowReading,
   type MateRowSlot,
   ownerBadge,
@@ -3093,6 +3094,62 @@ function KeyedMateRow<T extends RosterCandidate>(props: Parameters<typeof MateRo
       owner={zeropsMateOwnerOf(person?.owner, viewer)}
     />
   );
+}
+
+/**
+ * A Mate drawn outside the list — the person's Chief, the menu's top row (`SidebarChiefRow`) — read
+ * as its row in the list would read it (`useMateRowState`), and its one line drawn the same way.
+ */
+export function MenuMateLine<T extends RosterCandidate>({
+  candidate,
+  coming,
+  conversationsRead,
+  timestampFormat,
+  children,
+}: {
+  readonly candidate: T;
+  readonly coming: MateComing | undefined;
+  readonly conversationsRead: boolean;
+  readonly timestampFormat: TimestampFormat;
+  /** Draws what its reading says: the face's state, and its line where the caller keeps it. */
+  readonly children: (read: {
+    readonly face: MateMarkState;
+    readonly state: MateRowState;
+    readonly second: MateRowSecond;
+    readonly line: ReactNode;
+  }) => ReactNode;
+}) {
+  const activity = useProjectMateActivity(candidate.project.id);
+  const person = useHqProjectPerson(candidate.project.id);
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const linked = useMateLinkedInHq(candidate.project.id);
+  const hqMates = useAtomValue(menuHqPresenceAtom);
+  const { view, second, askLine, askChanged, known, finishing } = useMateRowState({
+    candidate,
+    activity,
+    up: mateAwake(candidate, hqMates) || linked,
+    coming,
+    conversationsRead,
+    owner: zeropsMateOwnerOf(person?.owner, viewer),
+    timestampFormat,
+    reviewWaits: false,
+  });
+  return children({
+    face: view.face,
+    state: view.state,
+    second,
+    line: (
+      <MateSecondLine
+        askChanged={askChanged}
+        askLine={askLine}
+        finishing={finishing}
+        known={known}
+        second={second}
+        timestampFormat={timestampFormat}
+        view={view}
+      />
+    ),
+  });
 }
 
 /**

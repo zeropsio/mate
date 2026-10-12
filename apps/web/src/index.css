@@ -5145,15 +5145,40 @@ code {
 }
 
 @layer components {
-  /* Overview: the Mates' rows' measure — a 40 px disc in the faces' column, a 15 px name over a
-     14 px line, 59 px a row. */
-  .menu-chrome-row {
-    display: flex;
+  /* The bar with the Chief in it (`SidebarChromeHeader`'s brand): one grid the bar's height, the
+     Chief's row across both its columns and the squares in the second, floating over the row's
+     end. The row's words keep to the first column; its band runs on under the squares. */
+  .menu-top {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 12px;
-    width: 100%;
-    height: 59px;
-    padding: 0 8px;
+    align-self: stretch;
+    min-width: 0;
+  }
+
+  .menu-top > *,
+  .menu-top-chief > * {
+    grid-row: 1;
+  }
+
+  .menu-top-squares {
+    grid-column: 2;
+  }
+
+  .menu-top-chief {
+    display: contents;
+  }
+
+  /* The Chief (`SidebarChiefRow`): a Mate row's measure in the bar — its mark on the faces' column,
+     a 15 px name over a 14 px line, 48 px tall, its band from the list's inset to the divider's. */
+  .menu-chief-row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    height: 48px;
+    margin-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
     border-radius: 12px;
     text-align: left;
     cursor: pointer;
@@ -5161,116 +5186,59 @@ code {
     transition: background-color 150ms var(--ease-out-strong);
   }
 
-  .menu-chrome-row:hover,
-  .menu-chrome-row[data-popup-open] {
+  .menu-chief-row:hover {
     background: var(--sidebar-row-hover);
   }
 
-  .menu-chrome-row[data-current] {
+  .menu-chief-row[data-current] {
     background: var(--sidebar-row-active);
   }
 
-  .menu-chrome-row:focus-visible {
+  .menu-chief-row:focus-visible {
     box-shadow: 0 0 0 2px var(--ring);
   }
 
-  /* The Overview row and what waits beside it (`SidebarOverviewRow`): the count at the row's
-     end, 12 px in, its own door to the list of what waits; the row's words stop short of it. */
-  .menu-overview {
-    position: relative;
-  }
-
-  .menu-chrome-row[data-waits] {
-    padding-right: 52px;
-  }
-
-  /* The Chief in the menu's top bar (prototype): the bar's own height, the Mate's mark bare. */
-  .menu-overview[data-chief] .menu-chrome-row {
-    height: 48px;
-  }
-
-  .menu-overview[data-chief] .menu-chrome-disc {
-    background: transparent;
-  }
-
-  /* Its slot in the bar: the rest of the row beside the squares, its mark on the faces' column. */
-  .menu-top-chief {
+  .menu-chief-body {
+    display: flex;
+    grid-column: 1;
+    align-items: center;
+    gap: 12px;
     min-width: 0;
-    flex: 1 1 auto;
-    padding-inline-start: calc(var(--sidebar-content-inset) + 1px);
+    padding-inline: 8px 12px;
   }
 
-  .menu-overview .menu-chrome-count {
-    position: absolute;
-    top: 50%;
-    right: 12px;
-    width: auto;
-    min-width: 28px;
-    height: 28px;
-    padding: 0 9px;
-    translate: 0 -50%;
-    font-size: 13px;
-    line-height: 16px;
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      scale 150ms var(--ease-out-strong);
+  /* The count stands at the first column's end, 4 px before the squares as they stand apart. */
+  .menu-chief-row[data-waits] .menu-chief-body {
+    padding-inline-end: 44px;
   }
 
-  @media (hover: hover) and (pointer: fine) {
-    .menu-overview .menu-chrome-count:hover,
-    .menu-overview .menu-chrome-count[data-popup-open] {
-      background: color-mix(
-        in oklab,
-        var(--zerops-status-attention-text) 16%,
-        var(--zerops-status-attention-surface)
-      );
-    }
-  }
-
-  .menu-overview .menu-chrome-count:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .menu-overview .menu-chrome-count:active {
-      scale: 0.96;
-    }
-  }
-
-  .menu-chrome-disc,
-  .menu-chrome-count {
+  .menu-chief-mark {
     display: grid;
     flex: none;
     place-items: center;
     width: 40px;
     height: 40px;
-    border-radius: 9999px;
   }
 
-  .menu-chrome-disc {
-    background: color-mix(in oklab, var(--sidebar-foreground) 7%, transparent);
-    color: var(--sidebar-foreground);
-  }
-
-  .menu-chrome-count {
-    background: var(--zerops-status-attention-surface);
-    color: var(--zerops-status-attention-text);
-    font-size: 15px;
-    line-height: 20px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .menu-chrome-text {
-    display: flex;
-    min-width: 0;
+  /* The name alone stands in the row's middle; a line arriving under it lifts it as it grows in. */
+  .menu-chief-words {
+    display: grid;
     flex: 1 1 auto;
-    flex-direction: column;
+    grid-template-rows: auto 0fr;
+    min-width: 0;
   }
 
-  .menu-chrome-name {
+  .menu-chief-row[data-lined] .menu-chief-words {
+    grid-template-rows: auto 1fr;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-chief-words {
+      transition: grid-template-rows 200ms var(--ease-out-strong);
+    }
+  }
+
+  .menu-chief-name {
     overflow: hidden;
     font-size: 15px;
     line-height: 21px;
@@ -5280,30 +5248,55 @@ code {
     white-space: nowrap;
   }
 
-  .menu-chrome-line {
+  .menu-chief-line {
     display: flex;
-    gap: 4px;
     min-width: 0;
-    min-height: 20px;
+    min-height: 0;
     overflow: hidden;
-    font-size: 14px;
-    line-height: 20px;
-    color: var(--muted-foreground);
-    white-space: nowrap;
   }
 
-  .menu-chrome-line > :first-child {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .menu-chief-count {
+    display: grid;
+    grid-column: 1;
+    justify-self: end;
+    place-items: center;
+    min-width: 28px;
+    height: 28px;
+    margin-inline-end: 4px;
+    padding: 0 9px;
+    border-radius: 9999px;
+    background: var(--zerops-status-attention-surface);
+    color: var(--zerops-status-attention-text);
+    font-size: 13px;
+    line-height: 16px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      scale 150ms var(--ease-out-strong);
   }
 
-  .menu-chrome-line[data-ink] > :first-child {
-    color: var(--sidebar-foreground);
+  @media (hover: hover) and (pointer: fine) {
+    .menu-chief-count:hover,
+    .menu-chief-count[data-popup-open] {
+      background: color-mix(
+        in oklab,
+        var(--zerops-status-attention-text) 16%,
+        var(--zerops-status-attention-surface)
+      );
+    }
   }
 
-  .menu-chrome-line > :not(:first-child) {
-    flex: none;
+  .menu-chief-count:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-chief-count:active {
+      scale: 0.96;
+    }
   }
 }
 

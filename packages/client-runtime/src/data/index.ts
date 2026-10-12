@@ -624,6 +624,7 @@ export {
 } from "./projections/restart.ts";
 
 export {
+  admissionNeedsSignIn,
   agentAdmission,
   resolveZeropsProviderAvailability,
   isZeropsInstanceRunnable,

@@ -2,6 +2,7 @@ import { useBranchAdvice } from "./useBranchAdvice";
 import { isUsageLimitError, mateHealthAtom } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
 import {
+  admissionNeedsSignIn,
   agentAdmission,
   engineCardsShowError,
   engineRunRefusal,
@@ -372,6 +373,7 @@ import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
+import { chiefShowsSignIn } from "~/zerops/chief";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useSendTurnReceipts } from "~/zerops/sentAsk";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
@@ -3080,13 +3082,27 @@ function ConversationView(props: ChatViewProps) {
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
     activeThreadKey !== null && dockedDraftHeroThreadKey === activeThreadKey;
-  const isDraftHeroState = resolveDraftHeroState({
-    isLocalDraftThread,
-    hasTimelineEntries: timelineEntries.length > 0,
-    isWorking,
-    draftHeroDockRequested,
-    backgroundSubmissionPending,
+  // The person's Chief: the organization's Mate (`chief.ts`).
+  const chiefConversation = (() => {
+    const at = zeropsMateAt(zeropsMates, environmentId);
+    return at.kind === "mate" && at.mate.chief === true;
+  })();
+  // A Chief no coding agent is signed in to: the Mate sign-in stands in place of its question and
+  // the composer, as an empty conversation's opening (`chiefShowsSignIn`).
+  const chiefSignIn = chiefShowsSignIn({
+    chief: chiefConversation,
+    signInRequired: admissionNeedsSignIn(zeropsAgentAuthRead, providerStatuses),
+    said: timelineEntries.length > 0,
   });
+  const isDraftHeroState =
+    !chiefSignIn &&
+    resolveDraftHeroState({
+      isLocalDraftThread,
+      hasTimelineEntries: timelineEntries.length > 0,
+      isWorking,
+      draftHeroDockRequested,
+      backgroundSubmissionPending,
+    });
   const [
     attachDraftHeroTransitionGroupRef,
     attachDraftHeroComposerAnchorRef,
@@ -3271,7 +3287,8 @@ function ConversationView(props: ChatViewProps) {
     [keybindings, terminalShortcutLabelOptions],
   );
   const onToggleDiff = useCallback(() => {
-    if (!isServerThread) {
+    // A Chief's panel offers no diff (`rightPanelKinds.ts`): its shortcut opens none either.
+    if (!isServerThread || chiefConversation) {
       return;
     }
     if (!diffOpen) {
@@ -3280,7 +3297,7 @@ function ConversationView(props: ChatViewProps) {
     if (activeThreadRef) {
       useRightPanelStore.getState().toggle(activeThreadRef, "diff");
     }
-  }, [activeThreadRef, diffOpen, isServerThread, onDiffPanelOpen]);
+  }, [activeThreadRef, chiefConversation, diffOpen, isServerThread, onDiffPanelOpen]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -4053,7 +4070,7 @@ function ConversationView(props: ChatViewProps) {
   );
   // A started conversation keeps its login; its admission item explains why Send waits.
   const zeropsSendBlockReason = admission.sendBlockReason;
-  const zeropsArrivalHoldsComposer = admission.holdsComposer;
+  const zeropsArrivalHoldsComposer = admission.holdsComposer || chiefSignIn;
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
     () =>
@@ -7937,6 +7954,7 @@ function ConversationView(props: ChatViewProps) {
     serverThread: isServerThread,
     zeropsPanel: zeropsChrome.panel,
     crewStatus: crew.status,
+    chief: chiefConversation,
   });
   const onAddRightPanelSurface = (kind: Exclude<RightPanelKind, "file" | "terminal">): void => {
     switch (kind) {

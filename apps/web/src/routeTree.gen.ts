@@ -28,6 +28,7 @@ import { Route as SettingsConnectionsRouteImport } from './routes/settings.conne
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
+import { Route as ChatChiefRouteImport } from './routes/_chat.chief'
 import { Route as ChatMateProjectIdRouteImport } from './routes/_chat.mate.$projectId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
@@ -130,6 +131,11 @@ const ProjectsProjectKeyRoute = ProjectsProjectKeyRouteImport.update({
   path: '/projects/$projectKey',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChatChiefRoute = ChatChiefRouteImport.update({
+  id: '/chief',
+  path: '/chief',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatMateProjectIdRoute = ChatMateProjectIdRouteImport.update({
   id: '/mate/$projectId',
   path: '/mate/$projectId',
@@ -176,6 +182,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
+  '/chief': typeof ChatChiefRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -202,6 +209,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
+  '/chief': typeof ChatChiefRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -231,6 +239,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/zerops': typeof ZeropsRoute
+  '/_chat/chief': typeof ChatChiefRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
@@ -261,6 +270,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/usage'
     | '/zerops'
+    | '/chief'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
@@ -287,6 +297,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/usage'
     | '/zerops'
+    | '/chief'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
@@ -315,6 +326,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/usage'
     | '/zerops'
+    | '/_chat/chief'
     | '/projects/$projectKey'
     | '/settings/appearance'
     | '/settings/archived'
@@ -484,6 +496,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectKeyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_chat/chief': {
+      id: '/_chat/chief'
+      path: '/chief'
+      fullPath: '/chief'
+      preLoaderRoute: typeof ChatChiefRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/mate/$projectId': {
       id: '/_chat/mate/$projectId'
       path: '/mate/$projectId'
@@ -537,6 +556,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface ChatRouteChildren {
+  ChatChiefRoute: typeof ChatChiefRoute
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
   ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
@@ -548,6 +568,7 @@ interface ChatRouteChildren {
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
+  ChatChiefRoute: ChatChiefRoute,
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,
   ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,

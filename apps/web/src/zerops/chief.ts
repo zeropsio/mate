@@ -2,8 +2,8 @@
  * The Chief: a person's own Mate for the whole organization rather than one project, the way the
  * owner works with a coding agent that reaches every project. Its project carries
  * {@link CHIEF_TAG}, and HQ says whose it is (`GET /api/chief`): the viewer's own is the menu's top
- * row, apart from the projects, and its empty conversation asks about the organization. Another
- * person's Chief appears nowhere.
+ * row, apart from the projects — the Chief page's door while there is none (`ChiefPage`) — and its
+ * empty conversation asks about the organization. Another person's Chief appears nowhere.
  */
 export const CHIEF_TAG = "chief";
 
@@ -57,6 +57,21 @@ export function withoutOwnChief<T extends { readonly project: { readonly id: str
   return candidates.filter((candidate) => candidate.project.id !== own);
 }
 
+/**
+ * Whether a Chief's empty conversation is its sign-in: while no coding agent is signed in, the
+ * Mate sign-in every empty conversation offers stands in place of its question and the composer —
+ * nothing typed there could be acted on. A conversation under way keeps its own notice.
+ */
+export function chiefShowsSignIn(input: {
+  readonly chief: boolean;
+  /** No agent is signed in (`zeropsAgentSignInRequired`). */
+  readonly signInRequired: boolean;
+  /** Something is said in it already. */
+  readonly said: boolean;
+}): boolean {
+  return input.chief && input.signInRequired && !input.said;
+}
+
 /** The person a Chief is named after, as Zerops knows them. */
 export interface ChiefPerson {
   readonly firstName?: string | undefined;
@@ -81,8 +96,8 @@ export function chiefNames(person: ChiefPerson | null): {
 }
 
 /**
- * What the menu says of setting up a Chief beside the Overview row: an offer to a person with none
- * who may make its project, the setup while it runs or once it stopped, else nothing.
+ * Where setting up a Chief stands, for the menu's top row (`chiefRowLine`): an offer to a person with
+ * none who may make its project, the setup while it runs or once it stopped, else nothing.
  */
 export function chiefSetupLine(input: {
   readonly own: OwnChief;

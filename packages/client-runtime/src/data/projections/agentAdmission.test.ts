@@ -6,7 +6,12 @@ import {
   type ZeropsAgentAuthSnapshot,
   type ZeropsLogin,
 } from "@t3tools/contracts";
-import { agentAdmission, admissionProviderStatus, engineRunRefusal } from "./agentAdmission.ts";
+import {
+  admissionNeedsSignIn,
+  agentAdmission,
+  admissionProviderStatus,
+  engineRunRefusal,
+} from "./agentAdmission.ts";
 
 it.each(["unknown", "authenticated", "unauthenticated"] as const)(
   "only a proved failed provider login asks for sign-in (%s)",
@@ -386,6 +391,36 @@ describe("mateArrivalHoldsComposer", () => {
       ).toBe(holds);
     },
   );
+});
+
+describe("admissionNeedsSignIn", () => {
+  const known = (authorized: boolean) =>
+    ({
+      state: "known",
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+      value: {
+        available: true,
+        agents: [
+          {
+            agentId: "codex",
+            credPresent: authorized,
+            flagOAuth: authorized,
+            flagToken: false,
+            providerAuth: authorized ? "authenticated" : "unauthenticated",
+            state: authorized ? "authorized" : "not-authorized",
+          },
+        ],
+      },
+    }) as const;
+  it.each([
+    ["needs a sign-in where no agent is signed in", known(false), true],
+    ["needs none once an agent is signed in", known(true), false],
+    ["says nothing until the agents' sign-in is read", undefined, false],
+  ] as const)("%s", (_title, read, needs) => {
+    expect(admissionNeedsSignIn(read, [])).toBe(needs);
+  });
 });
 
 describe("a colleague's Mate, as HQ records whose it is", () => {
