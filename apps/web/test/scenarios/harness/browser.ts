@@ -451,15 +451,20 @@ export async function menuMateRow(page: Page, name: string, timeout = 10_000) {
   try {
     return (await find(soon)).asElement() as ElementHandle<HTMLElement>;
   } catch {
-    await page.evaluate(() =>
-      document
-        .querySelector<HTMLElement>(
-          '[data-zerops-surface="sidebar-fold-all"][aria-label="Open all projects"]',
-        )
-        ?.click(),
-    );
+    await openFoldedGroups(page);
     return (await find(Math.max(timeout - soon, 1_000))).asElement() as ElementHandle<HTMLElement>;
   }
+}
+
+/** Every folded group in the menu opened as a person opens one from the keyboard: → on its row. */
+async function openFoldedGroups(page: Page) {
+  await page.evaluate(() => {
+    for (const row of document.querySelectorAll<HTMLElement>(
+      '[data-zerops-surface="sidebar-project"][aria-expanded="false"]',
+    )) {
+      row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    }
+  });
 }
 
 /**
@@ -470,13 +475,7 @@ export async function visibleInMenu(page: Page, surface: string, name: string, t
   try {
     await visibleText(page, surface, name, Math.min(timeout, 3_000));
   } catch {
-    await page.evaluate(() =>
-      document
-        .querySelector<HTMLElement>(
-          '[data-zerops-surface="sidebar-fold-all"][aria-label="Open all projects"]',
-        )
-        ?.click(),
-    );
+    await openFoldedGroups(page);
     await visibleText(page, surface, name, Math.max(timeout - 3_000, 1_000));
   }
 }

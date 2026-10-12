@@ -36,6 +36,17 @@ let pressTo: ((projectId: string) => void) | null = null;
  * came 70–90 ms after the click. That draw finds the band on its way there and leaves it going.
  */
 export function slideSelectedBandTo(projectId: string): void {
+  // The pressed row lights at once, over its own hover, while the band slides in under it.
+  const unit =
+    typeof document === "undefined"
+      ? null
+      : document.querySelector<HTMLElement>(`[data-zerops-mate-unit="${CSS.escape(projectId)}"]`);
+  if (unit !== null) {
+    unit.dataset["bandArriving"] = "";
+    setTimeout(() => {
+      delete unit.dataset["bandArriving"];
+    }, 600);
+  }
   pressTo?.(projectId);
 }
 

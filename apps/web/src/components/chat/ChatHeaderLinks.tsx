@@ -12,6 +12,8 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { ChevronDownIcon, GlobeIcon } from "lucide-react";
 
 import { useMateAddresses } from "~/zerops/useMateAddresses";
+import type { ProjectSitesInput } from "../zerops/SidebarProjectSites";
+import { HeaderSites } from "../zerops/SidebarProjectSites";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import {
@@ -23,11 +25,36 @@ import {
 export function ChatHeaderLinks({
   environmentId,
   threadId,
+  sites,
+  mateProjectId,
 }: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
+  /** The menu's panel of this Mate's project (`useProjectSitesOf`): where drawn, Sites opens it. */
+  readonly sites?: ProjectSitesInput | undefined;
+  readonly mateProjectId?: string | undefined;
 }) {
   const { addresses } = useMateAddresses(environmentId);
+  if (sites !== undefined && mateProjectId !== undefined) {
+    return (
+      <HeaderSites
+        mateProjectId={mateProjectId}
+        sites={sites}
+        trigger={
+          <Button
+            aria-label="Open the Mate's sites"
+            data-chat-header-ghost
+            size="sm"
+            variant="ghost-muted"
+          />
+        }
+      >
+        <GlobeIcon className="size-3.5 shrink-0" />
+        <span className="hidden text-line @3xl/header-actions:inline">Sites</span>
+        <ChevronDownIcon className="size-3 shrink-0 opacity-70" />
+      </HeaderSites>
+    );
+  }
   if (addresses.length === 0) return null;
   const threadRef = scopeThreadRef(environmentId, threadId);
   return (

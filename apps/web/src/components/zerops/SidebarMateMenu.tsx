@@ -81,8 +81,7 @@ export interface MenuPoint {
   readonly y: number;
 }
 
-const ROW_ACTION_CLASS =
-  "inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
+const ROW_ACTION_CLASS = "menu-row-action";
 
 /** The crew's door (`mateCrewItem`): its conversation on the Crew tab, set up or not. */
 export interface MateCrewEntry {

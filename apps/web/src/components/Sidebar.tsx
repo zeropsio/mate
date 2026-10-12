@@ -206,7 +206,7 @@ import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
-import { SidebarFoldAllButton } from "./zerops/SidebarFoldAllButton";
+import { SidebarScopeButton } from "./zerops/SidebarScopeButton";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
 import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
@@ -2733,7 +2733,7 @@ export default function Sidebar() {
           // or project is the +'s.
           rosterOnly ? (
             <>
-              <SidebarFoldAllButton />
+              <SidebarScopeButton onScope={setZeropsMateScope} scope={zeropsMateScope} />
               <SidebarJumpButton
                 onJump={() => {
                   // A phone's menu steps aside for the box, and comes back

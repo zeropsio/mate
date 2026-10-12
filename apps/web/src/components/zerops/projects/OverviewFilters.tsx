@@ -19,12 +19,15 @@ export function OverviewFilters({
   show,
   waiting,
   mine,
+  onShow,
 }: {
   readonly show: OverviewShow | undefined;
   /** How many projects something waits on the viewer in. */
   readonly waiting: number;
   /** How many projects hold a Mate of the viewer's. */
   readonly mine: number;
+  /** In a conversation's panel the filter stays where it is: no address to go to. */
+  readonly onShow?: ((show: OverviewShow | undefined) => void) | undefined;
 }) {
   return (
     <nav aria-label="Show projects" className="ov-filters" data-zerops-surface="overview-filters">
@@ -32,6 +35,29 @@ export function OverviewFilters({
         const current = filter.show === show;
         const count =
           filter.show === "waiting" ? waiting : filter.show === "mine" ? mine : undefined;
+        const words = (
+          <>
+            {filter.label}
+            {count === undefined || count === 0 ? null : (
+              <span className="ov-filter-count">{count}</span>
+            )}
+          </>
+        );
+        if (onShow !== undefined) {
+          return (
+            <button
+              aria-pressed={current}
+              className="ov-filter"
+              data-current={current ? "" : undefined}
+              data-show={filter.show ?? "all"}
+              key={filter.label}
+              onClick={() => onShow(filter.show)}
+              type="button"
+            >
+              {words}
+            </button>
+          );
+        }
         return (
           // Current only on its own address: by default an empty search is a part of every other,
           // and All read as current under each filter too.
@@ -44,10 +70,7 @@ export function OverviewFilters({
             search={filter.show === undefined ? {} : { show: filter.show }}
             to="/zerops"
           >
-            {filter.label}
-            {count === undefined || count === 0 ? null : (
-              <span className="ov-filter-count">{count}</span>
-            )}
+            {words}
           </Link>
         );
       })}
@@ -56,7 +79,13 @@ export function OverviewFilters({
 }
 
 /** A filter that leaves no project: what it would show, said calmly, and the way back to all. */
-export function OverviewFilterEmpty({ show }: { readonly show: OverviewShow }) {
+export function OverviewFilterEmpty({
+  show,
+  onShow,
+}: {
+  readonly show: OverviewShow;
+  readonly onShow?: ((show: OverviewShow | undefined) => void) | undefined;
+}) {
   return (
     <div className="ov-filter-empty" data-zerops-surface="overview-filter-empty" role="status">
       <MateFace className="size-10" size="md" state="idle" tint="slate" />
@@ -68,9 +97,15 @@ export function OverviewFilterEmpty({ show }: { readonly show: OverviewShow }) {
           ? "A question from one of your Mates, a change to review or a release to make shows up here."
           : "The projects where you have a Mate show up here."}
       </p>
-      <Link className="ov-filter-empty-back" search={{}} to="/zerops">
-        Show all projects
-      </Link>
+      {onShow === undefined ? (
+        <Link className="ov-filter-empty-back" search={{}} to="/zerops">
+          Show all projects
+        </Link>
+      ) : (
+        <button className="ov-filter-empty-back" onClick={() => onShow(undefined)} type="button">
+          Show all projects
+        </button>
+      )}
     </div>
   );
 }

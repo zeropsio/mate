@@ -43,7 +43,16 @@ export function SidebarChiefRow({ face, line, current, onOpen, waiting }: Sideba
         data-lined={lined ? "" : undefined}
         data-waits={summary === undefined ? undefined : ""}
         data-zerops-surface="sidebar-chief-row"
-        onClick={onOpen}
+        onClick={(event) => {
+          // Lit at once, over its own hover, as a Mate's row is (`slideSelectedBandTo`), until its
+          // conversation is the open one.
+          const row = event.currentTarget;
+          row.dataset["pressed"] = "";
+          setTimeout(() => {
+            delete row.dataset["pressed"];
+          }, 600);
+          onOpen();
+        }}
         type="button"
       >
         <span className="menu-chief-body">
@@ -57,7 +66,7 @@ export function SidebarChiefRow({ face, line, current, onOpen, waiting }: Sideba
           </span>
           <span className="menu-chief-words">
             <span className="menu-chief-name" data-waiting-line="">
-              Chief
+              Chief <span className="menu-chief-name-mate">Mate</span>
             </span>
             {lined ? <span className="menu-chief-line">{line}</span> : null}
           </span>

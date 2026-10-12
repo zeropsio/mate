@@ -8126,7 +8126,7 @@ function ConversationView(props: ChatViewProps) {
                 <div className="h-full min-h-0 overflow-y-auto">
                   {/* Its cards' Mates wear their own faces, not the Chief's mark. */}
                   <MateFaceAsMark.Provider value={false}>
-                    <ZeropsProjectsPage />
+                    <ZeropsProjectsPage inPanel />
                   </MateFaceAsMark.Provider>
                 </div>
               );
@@ -8811,6 +8811,9 @@ function ConversationView(props: ChatViewProps) {
         <RightPanelTabs
           mode="inline"
           widthStorageKey={`t3code:preview-panel-width:${activeThreadKey}`}
+          // A Chief's overview opens wide enough for two of its cards side by side (380 + 16 + 380,
+          // 24 on each side).
+          {...(chiefConversation ? { defaultWidth: 840 } : {})}
           maximized={rightPanelMaximized}
           surfaces={rightPanelState.surfaces}
           activeSurfaceId={activeRightPanelSurface?.id ?? null}

@@ -17,7 +17,7 @@ describe("MateMark", () => {
     expect(html).toContain('data-mate-mark="still"');
     for (const d of MATE_MARK.paths) expect(html).toContain(d);
     // Eyes shown, band hidden: the still mark is the open face.
-    expect(html).toContain('visibility="visible"');
+    expect(html).toContain('visibility="inherit"');
     expect(html).not.toContain(MATE_MARK_LIVE.band.left);
   });
 
@@ -38,8 +38,19 @@ describe("MateMark", () => {
     // The eyes show and the band, still drawn for the driver, is out of sight.
     const eyes = /<g fill="currentColor"[^>]*visibility="([a-z]+)"/u.exec(html)?.[1];
     const band = /<g clip-path="[^"]+"[^>]*visibility="([a-z]+)"/u.exec(html)?.[1];
-    expect(eyes).toBe("visible");
+    expect(eyes).toBe("inherit");
     expect(band).toBe("hidden");
+  });
+
+  // The owner, 2026-10-12: "two fixed floating mate eyes in the chief chat" — a finished
+  // opening stage, hidden, still showed its mark's eyes.
+  it("shows nothing of itself inside a hidden box, its eyes included", () => {
+    for (const html of [
+      renderToStaticMarkup(<MateMark />),
+      renderToStaticMarkup(<MateMark awake playful />),
+    ]) {
+      expect(html).not.toContain('visibility="visible"');
+    }
   });
 
   it("keeps the extruded side wall invisible until the slab turns", () => {
