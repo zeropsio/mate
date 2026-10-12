@@ -3281,10 +3281,6 @@ code {
     white-space: nowrap;
   }
 
-  .menu-change:not([data-mine]) .menu-change-title {
-    color: var(--sidebar-muted-foreground);
-  }
-
   .menu-review {
     display: inline-flex;
     flex: none;
@@ -3293,6 +3289,10 @@ code {
     height: 24px;
     padding: 0 10px;
     border-radius: 6px;
+    background-color: var(--sidebar-row-active);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 9%, transparent),
+      0 1px 2px color-mix(in oklab, var(--color-black) 6%, transparent);
     color: var(--sidebar-foreground);
     font-size: 12px;
     font-weight: 600;
@@ -3304,18 +3304,13 @@ code {
       transform 150ms var(--ease-out-strong);
   }
 
-  .menu-review[data-mine] {
-    background-color: var(--sidebar-foreground);
-    color: var(--sidebar);
-  }
-
   @media (hover: hover) and (pointer: fine) {
     .menu-review:hover {
-      background-color: color-mix(in oklab, var(--sidebar-foreground) 8%, transparent);
-    }
-
-    .menu-review[data-mine]:hover {
-      background-color: color-mix(in oklab, var(--sidebar-foreground) 86%, var(--sidebar));
+      background-color: color-mix(
+        in oklab,
+        var(--sidebar-foreground) 5%,
+        var(--sidebar-row-active)
+      );
     }
   }
 
@@ -5703,23 +5698,17 @@ a.ov-card-site:hover {
   flex: none;
 }
 
-.ov-mate-change .ov-review:not([data-mine]) {
-  padding: 0;
-}
-
-.ov-mate-change .ov-review:not([data-mine]):hover {
-  background-color: transparent;
-  text-decoration: underline 1px color-mix(in oklab, currentColor 40%, transparent);
-  text-underline-offset: 3px;
-}
-
 .ov-review {
   display: inline-flex;
   height: 22px;
   align-items: center;
   padding: 0 10px;
   border-radius: 999px;
-  color: var(--muted-foreground);
+  background-color: var(--background);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
+    0 1px 2px color-mix(in oklab, var(--color-black) 8%, transparent);
+  color: var(--foreground);
   font-size: 12px;
   font-weight: 600;
   line-height: 16px;
@@ -5732,16 +5721,7 @@ a.ov-card-site:hover {
 }
 
 .ov-review:hover {
-  background-color: color-mix(in oklab, var(--foreground) 6%, transparent);
-  color: var(--foreground);
-}
-
-.ov-review[data-mine] {
-  background-color: var(--background);
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--foreground) 8%, transparent),
-    0 1px 2px color-mix(in oklab, var(--color-black) 8%, transparent);
-  color: var(--foreground);
+  background-color: color-mix(in oklab, var(--foreground) 4%, var(--background));
 }
 
 .ov-review:active {

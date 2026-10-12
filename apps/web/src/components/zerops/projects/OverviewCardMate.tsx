@@ -250,8 +250,9 @@ export function OverviewCardMate({
     );
   };
   // Its change's *Review* at the change's end, as its row has it (the owner, 2026-10-11: one word
-  // in the time's place was "incredibly poor indication of a new merge request"): white where it
-  // waits on the viewer, quiet where it is a colleague's to review. Lifted for the viewer's
+  // in the time's place was "incredibly poor indication of a new merge request"): a white button,
+  // the same whoever's Mate made it (2026-10-12: "I still don't understand why rosa has a
+  // different looking merge request"). Lifted for the viewer's
   // review, its button carries it — one Review on a card, never two — and its time's place stays
   // empty. While its line says something else, a step on its way, the Review keeps the time's
   // place: a change never goes without its button.
@@ -265,7 +266,6 @@ export function OverviewCardMate({
     review === undefined || reading.lift?.kind === "review" ? null : (
       <button
         className="ov-review"
-        data-mine={review.mine ? "true" : undefined}
         data-zerops-surface="card-mate-review"
         onClick={(event) => {
           openChange(event.currentTarget);
