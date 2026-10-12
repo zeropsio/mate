@@ -140,7 +140,8 @@ export function useProjectReorder(treeRef: RefObject<HTMLElement | null>): Proje
       event: ReactPointerEvent<HTMLElement>,
       commit: (groupId: string, before: string | null) => void,
     ) => {
-      if (event.button !== 0) return;
+      // The primary button held: a press on it, or a row pulled while it is down.
+      if ((event.buttons & 1) === 0) return;
       event.preventDefault();
       event.currentTarget.setPointerCapture?.(event.pointerId);
       live.current.commit = commit;
