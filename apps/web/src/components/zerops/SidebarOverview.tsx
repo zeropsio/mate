@@ -25,7 +25,6 @@ import {
 import { releaseFailureOf, stopServing } from "./SidebarProductionChip.logic";
 import { SidebarWaitingPopover, type WaitingVerbs } from "./SidebarWaiting";
 import { waitingSummary, type WaitingItem } from "./SidebarWaiting.logic";
-import { sidebarMenuShown } from "./SidebarPeek";
 
 /** The organization's projects as HQ's navigation names them, by name. */
 export function useMenuProjects(): ReadonlyArray<SidebarCreateProject> {
@@ -112,8 +111,8 @@ export function SidebarOverviewRow({
       const { code, altKey, metaKey, ctrlKey, shiftKey } = event;
       const typing = typedIntoField(event.target);
       if (!overviewKeyPressed({ code, altKey, metaKey, ctrlKey, shiftKey, typing })) return;
-      // Waiting under the closed menu's rail, the row is not the keyboard's.
-      if (!sidebarMenuShown()) return;
+      // It opens the overview, whatever the menu shows: the closed rail offers it too (its tip
+      // says ⌥0), and it clicks no row hidden under the rail.
       event.preventDefault();
       onOpen();
     };
