@@ -5681,11 +5681,13 @@ code {
     grid-row: 1;
   }
 
-  /* Over the Chief's row, whose lit layer makes it a positioned box of its own. */
+  /* Over the Chief's row, whose lit layer makes it a positioned box of its own, and on its middle:
+     the same room above as the row has. */
   .menu-top-squares {
     position: relative;
     z-index: 1;
     grid-column: 2;
+    margin-block-start: calc(var(--sidebar-content-inset) + 1px);
   }
 
   .menu-top-chief {
@@ -5823,10 +5825,6 @@ code {
     white-space: nowrap;
   }
 
-  .menu-chief-name-mate {
-    color: var(--zerops-mate-mark-side);
-  }
-
   .menu-chief-line {
     display: flex;
     min-width: 0;
@@ -5835,9 +5833,10 @@ code {
   }
 
   .menu-chief-count {
-    /* Over the Chief's row, whose lit layer makes it a positioned box of its own. */
+    /* Over the Chief's row, whose lit layer makes it a positioned box of its own, on its middle. */
     position: relative;
     z-index: 1;
+    margin-block-start: calc(var(--sidebar-content-inset) + 1px);
     display: grid;
     grid-column: 1;
     justify-self: end;

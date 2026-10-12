@@ -8463,7 +8463,7 @@ function ConversationView(props: ChatViewProps) {
               className={
                 isDraftHeroState
                   ? "pointer-events-none absolute inset-0 z-20 flex items-center"
-                  : "chat-composer-dock pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-6 sm:pt-7"
+                  : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-6 sm:pt-7"
               }
             >
               <div

@@ -92,8 +92,7 @@ export function SidebarChiefRow({ face, line, current, onOpen, waiting }: Sideba
           </span>
           <span className="menu-chief-words">
             <span className="menu-chief-name" data-waiting-line="">
-              {account === null ? null : `${account.name}'s `}Chief{" "}
-              <span className="menu-chief-name-mate">Mate</span>
+              {account === null ? "Chief Mate" : `${account.name}'s Chief Mate`}
             </span>
             {shown === null ? null : <span className="menu-chief-line">{shown}</span>}
           </span>
@@ -152,9 +151,7 @@ export function SidebarChiefTile({ face, line, current, onOpen, waiting }: Sideb
         </TooltipTrigger>
         <TooltipPopup side="right">
           <span className="menu-rail-tip">
-            <span className="menu-rail-tip-name">
-              Chief <span className="menu-chief-name-mate">Mate</span>
-            </span>
+            <span className="menu-rail-tip-name">Chief Mate</span>
             {line === undefined || line === null ? null : (
               <span className="menu-rail-tip-line">{line}</span>
             )}

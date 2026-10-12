@@ -149,7 +149,7 @@ export function ProjectReviewMarks({
           role="img"
         >
           <GitMergeIcon aria-hidden="true" className="menu-mark-icon" />
-          {items.length > 1 ? <span className="menu-mark-count">{items.length}</span> : null}
+          {items.length > 1 ? <span>{items.length}</span> : null}
         </span>
       )}
       {release === undefined ? null : (
@@ -161,7 +161,7 @@ export function ProjectReviewMarks({
         >
           <RocketIcon aria-hidden="true" className="menu-mark-icon" />
           {release.waiting > 1 ? (
-            <span className="menu-mark-count">{`${String(release.waiting)}${release.atLeast ? "+" : ""}`}</span>
+            <span>{`${String(release.waiting)}${release.atLeast ? "+" : ""}`}</span>
           ) : null}
         </span>
       )}
