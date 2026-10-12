@@ -146,4 +146,61 @@ describe("the decisions HQ keeps, as a tab holds them", () => {
     );
     expect(hq.writes).toHaveLength(1);
   });
+
+  it("a card draws again once HQ answered what was decided of it", async () => {
+    const hq = fakeHq({ a: stored("a", { projectId: "p", decision: "declined" }) });
+    const record = makeProposalRecord();
+    const before = record.drawing();
+    expect(record.drawing()).toBe(before);
+    await record.read(hq.api, ["a"]);
+    expect(record.drawing()).not.toBe(before);
+    expect(before.entry("a").known).toBe(false);
+    expect(record.drawing().entry("a")).toEqual({
+      decision: { state: "declined", at: AT },
+      known: true,
+      runningHere: false,
+    });
+  });
+
+  it("asks HQ again for a card whose answer an account change took back", async () => {
+    const hq = fakeHq({ a: stored("a", { projectId: "p", decision: "declined" }) });
+    const record = makeProposalRecord();
+    await record.read(hq.api, ["a"]);
+    const asked = record.drawing().generation;
+    record.forget();
+    expect(record.entry("a").known).toBe(false);
+    expect(record.drawing().generation).not.toBe(asked);
+    await record.read(hq.api, ["a"]);
+    expect(hq.reads).toEqual([["a"], ["a"]]);
+    expect(record.entry("a").known).toBe(true);
+  });
+
+  it("a card drawn before an account change asks nothing until it is drawn again", async () => {
+    const hq = fakeHq();
+    const record = makeProposalRecord();
+    const drawn = record.drawing().generation;
+    record.forget();
+    await record.read(hq.api, ["a"], drawn);
+    expect(hq.reads).toEqual([]);
+    await record.read(hq.api, ["a"], record.drawing().generation);
+    expect(hq.reads).toEqual([["a"]]);
+  });
+
+  it("a read that answers after its account closed puts nothing in the next one", async () => {
+    let answer: (records: ReadonlyArray<HqProposalDecision>) => void = () => {};
+    const hq = {
+      read: () =>
+        new Promise<ReadonlyArray<HqProposalDecision>>((resolve) => {
+          answer = resolve;
+        }),
+      decide: () => Promise.reject(new Error("not asked")),
+    };
+    const record = makeProposalRecord();
+    const reading = record.read(hq, ["a"]);
+    await Promise.resolve();
+    record.forget();
+    answer([stored("a", { projectId: "p", decision: "declined" })]);
+    await reading;
+    expect(record.entry("a")).toEqual({ decision: undefined, known: false, runningHere: false });
+  });
 });

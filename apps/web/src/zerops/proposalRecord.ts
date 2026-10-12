@@ -51,6 +51,16 @@ export interface ProposalRecordEntry {
   readonly runningHere: boolean;
 }
 
+/**
+ * The record as the cards draw it: a new drawing on every change and the same one between them, so
+ * a card — memoized on what it drew — draws again once HQ answered.
+ */
+export interface ProposalRecordDrawing {
+  /** Counts the account changes that took back what was read: the cards key their reads on it. */
+  readonly generation: number;
+  readonly entry: (id: string) => ProposalRecordEntry;
+}
+
 const HQ_DID_NOT_KEEP = "HQ could not keep your decision, so nothing ran. Try again.";
 const DECIDED_ELSEWHERE = "It was decided elsewhere.";
 
@@ -62,9 +72,19 @@ export function makeProposalRecord() {
   let pending: { at: ProposalDecisionsAt; ids: Set<string> } | null = null;
   const runningHere = new Set<string>();
   const listeners = new Set<() => void>();
-  let version = 0;
+  let generation = 0;
+  const draw = (): ProposalRecordDrawing => {
+    const held = decisions;
+    const known = new Set(answered);
+    const running = new Set(runningHere);
+    return {
+      generation,
+      entry: (id) => ({ decision: held[id], known: known.has(id), runningHere: running.has(id) }),
+    };
+  };
+  let drawing = draw();
   const changed = () => {
-    version += 1;
+    drawing = draw();
     for (const listener of listeners) listener();
   };
 
@@ -83,19 +103,16 @@ export function makeProposalRecord() {
         listeners.delete(listener);
       };
     },
-    version: () => version,
-    entry(id: string): ProposalRecordEntry {
-      return {
-        decision: decisions[id],
-        known: answered.has(id),
-        runningHere: runningHere.has(id),
-      };
-    },
+    drawing: () => drawing,
+    entry: (id: string): ProposalRecordEntry => drawing.entry(id),
     /**
      * Asks HQ what it holds of `ids`: every id asked for in one task — a conversation's cards as
-     * they mount — read in one call once it ends, none read or being read already.
+     * they mount — read in one call once it ends, none read or being read already. A card asks with
+     * the `seen` generation it drew; one drawn before an account change asks nothing, since it is
+     * drawn again and asks then.
      */
-    read(at: ProposalDecisionsAt, ids: ReadonlyArray<string>): Promise<void> {
+    read(at: ProposalDecisionsAt, ids: ReadonlyArray<string>, seen = generation): Promise<void> {
+      if (seen !== generation) return Promise.resolve();
       const unread = ids.filter((id) => !answered.has(id) && !asking.has(id));
       if (unread.length === 0) return Promise.resolve();
       if (pending === null || pending.at !== at) pending = { at, ids: new Set() };
@@ -105,15 +122,21 @@ export function makeProposalRecord() {
         if (pending === batch) pending = null;
         const asked = [...batch.ids].filter((id) => !answered.has(id) && !asking.has(id));
         if (asked.length === 0) return;
+        const asOf = generation;
         for (const id of asked) asking.add(id);
         try {
-          adopt(await batch.at.read(asked));
+          const records = await batch.at.read(asked);
+          // An account change since took back what this read was for: it puts nothing in.
+          if (generation !== asOf) return;
+          adopt(records);
           for (const id of asked) answered.add(id);
         } catch {
           // HQ did not answer: the cards wait, and the next read asks again.
         } finally {
-          for (const id of asked) asking.delete(id);
-          changed();
+          if (generation === asOf) {
+            for (const id of asked) asking.delete(id);
+            changed();
+          }
         }
       });
     },
@@ -161,6 +184,7 @@ export function makeProposalRecord() {
       }
     },
     forget() {
+      generation += 1;
       decisions = {};
       pending = null;
       answered.clear();
@@ -223,10 +247,11 @@ export function useProposalDecision(
   projectId: string | undefined,
 ): ProposalDecisionHandle {
   const at = useDecisionsAt();
-  useSyncExternalStore(record.subscribe, record.version, record.version);
+  const drawn = useSyncExternalStore(record.subscribe, record.drawing, record.drawing);
+  // Asked again once an account change took back what was read.
   useEffect(() => {
-    if (at !== null) void record.read(at, [id]);
-  }, [at, id]);
+    if (at !== null) void record.read(at, [id], drawn.generation);
+  }, [at, id, drawn.generation]);
   const write = useCallback(
     async (next: ProposalDecision) =>
       at === null || projectId === undefined
@@ -235,7 +260,7 @@ export function useProposalDecision(
     [at, id, projectId],
   );
   return {
-    ...record.entry(id),
+    ...drawn.entry(id),
     unreachable: at === null || projectId === undefined,
     record: write,
   };
