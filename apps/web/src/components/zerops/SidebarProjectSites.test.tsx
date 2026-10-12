@@ -1,0 +1,357 @@
+// @vitest-environment happy-dom
+import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import { EnvironmentId } from "@t3tools/contracts";
+import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import type { FixProblem } from "~/zerops/fixRequest";
+
+import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
+import type { ChipMenuModel, ChipMenuStop, ProductionChip } from "./SidebarProductionChip.logic";
+import { ProjectSites, type ProjectSitesInput, type SitesMate } from "./SidebarProjectSites";
+
+vi.mock("~/zerops/accountForge", () => ({
+  useStopDeploymentDemand: () => {},
+  useStopDeployments: () => new Map(),
+}));
+
+const route = (service: string, host: string, port = 80): ZeropsPublicRoute => ({
+  service,
+  port,
+  host,
+  url: `https://${host}`,
+});
+
+const PROBLEM: FixProblem = {
+  what: "Production is down",
+  at: undefined,
+  error: undefined,
+  ask: "Find out why and bring it back.",
+};
+
+const stop = (over: Partial<ChipMenuStop> & Pick<ChipMenuStop, "name">): ChipMenuStop => ({
+  projectId: `quill-${over.name}`,
+  version: undefined,
+  dot: "ok",
+  word: "Healthy",
+  tone: "muted",
+  note: undefined,
+  fix: undefined,
+  routes: [],
+  ...over,
+});
+
+/** A Mate of the project `quill`, whose it is as given. */
+function mate(
+  name: string,
+  over: {
+    readonly mine?: boolean;
+    readonly owner?: SitesMate["owner"];
+    readonly routes?: ReadonlyArray<ZeropsPublicRoute> | undefined;
+  } = {},
+): SitesMate {
+  const id = `quill-${name.toLowerCase()}`;
+  return {
+    candidate: {
+      key: `${id}:zcp`,
+      project: {
+        id,
+        name,
+        status: "ACTIVE",
+        tagList: ["mate"],
+        hq: { appId: "quill", appName: "Quillmark", kind: "mate", mate: { face: "" } },
+      },
+      group: "connected",
+      environmentId: EnvironmentId.make(`env-${id}`),
+      service: { id: "zcp", name: "zcp", status: "ACTIVE" },
+      ...("routes" in over
+        ? over.routes === undefined
+          ? {}
+          : { routes: over.routes }
+        : {
+            routes: [route("appdev", `${id}.example.app`)],
+          }),
+    },
+    tint: "sky",
+    shape: MATE_SHAPE_OF_TINT.sky,
+    mine: over.mine ?? true,
+    threadKey: undefined,
+    name,
+    owner: over.owner,
+  };
+}
+
+const HEALTHY: ProductionChip = { label: "prod", state: "ok", version: "v2.3.0" };
+
+const PRODUCTION: ChipMenuModel = {
+  stops: [
+    stop({
+      name: "production",
+      version: "v2.3.0",
+      routes: [route("app", "quill.example.com"), route("api", "api.quill.example.com")],
+    }),
+  ],
+};
+const STAGES: ChipMenuModel = {
+  stops: [stop({ name: "stage", routes: [route("app", "stage.quill.example.app")] })],
+};
+
+const CALM: HeadingLineInput = {
+  production: { projectId: "quill-production", chip: HEALTHY, coming: undefined, building: false },
+  stages: [
+    { projectId: "quill-stage", name: "stage", coming: undefined, serves: true, building: false },
+  ],
+};
+
+const unmounts: Array<() => void> = [];
+afterEach(() => {
+  for (const unmount of unmounts.splice(0)) unmount();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+async function mount(over: Partial<ProjectSitesInput> = {}) {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const props: ProjectSitesInput = {
+    groupId: "quill",
+    projectName: "Quillmark",
+    production: () => PRODUCTION,
+    stages: () => STAGES,
+    mates: [mate("Nell"), mate("Odo", { mine: false, owner: owner("Pia Lund") })],
+    prodChip: HEALTHY,
+    stageChip: { label: "stage", state: "ok", version: "main" },
+    line: CALM,
+    onAskToFix: undefined,
+    onOpenStop: () => undefined,
+    ...over,
+  };
+  await act(async () => {
+    root.render(
+      <ProjectSites {...props}>
+        {({ tag, globe }) => (
+          <div data-row="">
+            {tag}
+            {globe}
+          </div>
+        )}
+      </ProjectSites>,
+    );
+  });
+  unmounts.push(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+  return container;
+}
+
+function owner(name: string): NonNullable<SitesMate["owner"]> {
+  return { name, initials: name.slice(0, 1), avatarUrl: null, isViewer: false };
+}
+
+const surface = (name: string) =>
+  document.querySelector<HTMLElement>(`[data-zerops-surface="${name}"]`);
+const surfaces = (name: string) => [
+  ...document.querySelectorAll<HTMLElement>(`[data-zerops-surface="${name}"]`),
+];
+
+async function press(element: HTMLElement | null, init: MouseEventInit = {}) {
+  await act(async () => {
+    element?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...init }));
+  });
+}
+
+/** Each section by its title, with the hosts it lists. */
+const listed = () =>
+  [...document.querySelectorAll<HTMLElement>("[data-sites-section]")]
+    .filter((section) => !section.hidden)
+    .map((section) => [
+      section.getAttribute("aria-label"),
+      [...section.querySelectorAll('[data-zerops-surface="sidebar-project-sites-link"]')].map(
+        (link) => link.getAttribute("href"),
+      ),
+    ]);
+
+describe("the project's addresses", () => {
+  it("the globe opens a popover that lists production's, each stage's and every Mate's addresses", async () => {
+    await mount();
+    const globe = surface("sidebar-project-sites");
+    expect(globe?.getAttribute("aria-label")).toBe("Addresses of Quillmark");
+    await press(globe);
+    expect(surface("sidebar-project-sites-popover")).not.toBeNull();
+    expect(listed()).toEqual([
+      ["Production", ["https://quill.example.com", "https://api.quill.example.com"]],
+      ["stage", ["https://stage.quill.example.app"]],
+      ["Nell", ["https://quill-nell.example.app"]],
+      ["Odo", ["https://quill-odo.example.app"]],
+    ]);
+    expect(globe?.hasAttribute("data-popup-open")).toBe(true);
+    const link = surface("sidebar-project-sites-link");
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(link?.getAttribute("rel")).toBe("noreferrer");
+  });
+
+  it("says whose a colleague's Mate is", async () => {
+    await mount();
+    await press(surface("sidebar-project-sites"));
+    const heads = surfaces("sidebar-project-sites-mate").map((head) => head.textContent ?? "");
+    expect(heads[0]).toBe("Nell");
+    expect(heads[1]).toContain("Odo · Pia's");
+  });
+
+  it("says it is reading a Mate not read yet, never that it has none", async () => {
+    await mount({ mates: [mate("Nell", { routes: undefined })] });
+    await press(surface("sidebar-project-sites"));
+    expect(surface("sidebar-project-sites-reading")?.textContent).toBe("Reading…");
+  });
+
+  it("says there is no public address yet where nothing has one, and offers Zerops", async () => {
+    await mount({
+      production: undefined,
+      stages: undefined,
+      line: undefined,
+      mates: [mate("Nell", { routes: [] })],
+    });
+    const globe = surface("sidebar-project-sites");
+    expect(globe?.hasAttribute("data-empty")).toBe(true);
+    await press(globe);
+    expect(surface("sidebar-project-sites-empty")?.textContent).toContain(
+      "No public addresses yet",
+    );
+    expect(surface("sidebar-production-zerops")?.getAttribute("href")).toBe(
+      "https://app.zerops.io/project/quill-nell",
+    );
+  });
+
+  it("copies an address from its row and says so", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    await mount();
+    await press(surface("sidebar-project-sites"));
+    const copy = surface("sidebar-project-sites-copy");
+    expect(copy?.getAttribute("aria-label")).toBe("Copy quill.example.com");
+    await press(copy);
+    expect(writeText).toHaveBeenCalledWith("https://quill.example.com");
+    expect(surface("sidebar-project-sites-copy")?.textContent).toBe("Copied");
+  });
+
+  it("copies the focused address on c", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    await mount();
+    await press(surface("sidebar-project-sites"));
+    const links = surfaces("sidebar-project-sites-link");
+    await act(async () => {
+      links[1]?.dispatchEvent(new KeyboardEvent("keydown", { key: "c", bubbles: true }));
+    });
+    expect(writeText).toHaveBeenCalledWith("https://api.quill.example.com");
+  });
+
+  it("opens production's first address in a new tab on a ⌘-click, without the popover", async () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    await mount();
+    await press(surface("sidebar-project-sites"), { metaKey: true });
+    expect(open).toHaveBeenCalledWith("https://quill.example.com", "_blank", "noopener,noreferrer");
+    expect(surface("sidebar-project-sites-popover")).toBeNull();
+  });
+
+  it("offers a filter over more than eight addresses, and Esc clears it before it closes", async () => {
+    const many = Array.from({ length: 8 }, (_, index) =>
+      route(`svc${String(index)}`, `svc${String(index)}.quill.example.com`),
+    );
+    await mount({
+      production: () => ({ stops: [stop({ name: "production", routes: many })] }),
+    });
+    await press(surface("sidebar-project-sites"));
+    const filter = document.querySelector<HTMLInputElement>("[data-sites-filter]");
+    expect(filter?.getAttribute("aria-label")).toBe("Filter addresses");
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      set?.call(filter, "odo");
+      filter?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(listed()).toEqual([["Odo", ["https://quill-odo.example.app"]]]);
+    await act(async () => {
+      filter?.focus();
+      filter?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(surface("sidebar-project-sites-popover")).not.toBeNull();
+    expect(listed()).toHaveLength(4);
+  });
+
+  it("says when nothing matches the filter", async () => {
+    const many = Array.from({ length: 9 }, (_, index) =>
+      route(`svc${String(index)}`, `svc${String(index)}.quill.example.com`),
+    );
+    await mount({ production: () => ({ stops: [stop({ name: "production", routes: many })] }) });
+    await press(surface("sidebar-project-sites"));
+    const filter = document.querySelector<HTMLInputElement>("[data-sites-filter]");
+    await act(async () => {
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      set?.call(filter, "nowhere");
+      filter?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(surface("sidebar-project-sites-nomatch")?.textContent).toBe(
+      "No address matches “nowhere”",
+    );
+  });
+
+  it("offers the fix to the viewer's own Mate only, and writes it into that Mate", async () => {
+    const ask = vi.fn();
+    await mount({
+      production: () => ({
+        stops: [
+          stop({ name: "production", dot: "failed", word: "Down", tone: "red", fix: PROBLEM }),
+        ],
+      }),
+      mates: [mate("Odo", { mine: false, owner: owner("Pia Lund") }), mate("Nell")],
+      onAskToFix: ask,
+    });
+    await press(surface("sidebar-project-sites"));
+    expect(surface("sidebar-production-ask-button")?.textContent).toBe("Ask Nell to fix it");
+    await press(surface("sidebar-production-ask-button"));
+    await press(surface("sidebar-production-ask-open"));
+    expect(ask).toHaveBeenCalledWith("quill-nell", PROBLEM);
+    expect(surface("sidebar-project-sites-popover")).toBeNull();
+  });
+});
+
+describe("the environment tag", () => {
+  it("is not there while every place is calm", async () => {
+    await mount();
+    expect(surface("sidebar-project-env-tag")).toBeNull();
+  });
+
+  it("says the sentence and opens the popover at the section it speaks of", async () => {
+    await mount({
+      prodChip: { label: "prod", state: "ok", version: "v2.3.0" },
+      line: {
+        ...CALM,
+        stages: [
+          {
+            projectId: "quill-stage",
+            name: "stage",
+            coming: { kind: "failed", reason: "the build exited 2" },
+            serves: false,
+            building: false,
+          },
+        ],
+      },
+    });
+    const tag = surface("sidebar-project-env-tag");
+    expect(tag?.textContent).toBe("Didn’t come up");
+    expect(tag?.getAttribute("aria-label")).toBe("Stage didn’t come up · the build exited 2");
+    await press(tag);
+    expect(surface("sidebar-project-sites-popover")).not.toBeNull();
+    expect(document.querySelector("[data-flash]")?.getAttribute("data-sites-section")).toBe(
+      "stage:stage",
+    );
+    expect(tag?.hasAttribute("data-popup-open")).toBe(true);
+  });
+});
