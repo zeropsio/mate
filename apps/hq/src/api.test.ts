@@ -1464,7 +1464,7 @@ describe("HQ API", () => {
       "drains on shutdown: gives the lead up, sends sockets away (1001), and still answers meanwhile",
       () =>
         Effect.gen(function* () {
-          const { call, socket, stop } = yield* startCore(true);
+          const { call, socket, stop } = yield* startCore(true, { drainFor: Duration.millis(300) });
           yield* untilHealth(call, "active");
           const session = yield* sessionFor(call, "door-owner");
           const open = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, session)}`);
