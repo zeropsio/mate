@@ -32,6 +32,7 @@ import { Sessions } from "../../src/sessions.ts";
 import { Official } from "../../src/official.ts";
 import { Backup, directoryStore } from "../../src/backup.ts";
 import { Changes } from "../../src/changes.ts";
+import { Deploys } from "../../src/deploys.ts";
 import { ChiefUpstream, makeChiefUpstreamHttp } from "../../src/chiefProxy.ts";
 import { coreApp } from "../../src/core.ts";
 import { OperationObserver, makeOperationWatch } from "../../src/operationWatch.ts";
@@ -433,6 +434,7 @@ export const startCore = (
       socket,
       gitHost: Context.get(context, GitHost),
       changes: Context.get(context, Changes),
+      deploys: Context.get(context, Deploys),
       overviews: Context.get(context, MateOverviews),
       backup: Context.get(context, Backup),
       official: Context.get(context, Official),

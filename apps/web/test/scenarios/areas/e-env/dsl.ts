@@ -1,6 +1,7 @@
 // @effect-diagnostics preferSchemaOverJson:off -- human-readable failure diagnostics.
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
+import * as Stream from "effect/Stream";
 import { expect } from "@effect/vitest";
 import type { Page } from "puppeteer-core";
 import type { environmentFixture } from "./fake.ts";
@@ -83,6 +84,18 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     ).pipe(
       Effect.filterOrFail((row) => row !== undefined),
       Effect.retry(Schedule.spaced("25 millis")),
+      Effect.tap((process) =>
+        s.drivers.core.deploys.changes.pipe(
+          Stream.mapEffect(() => s.drivers.core.deploys.operations(appId)),
+          Stream.filter((rows) =>
+            rows.some(
+              (row) => row.projectId === `Shop-${tier}` && row.handles.includes(process.id),
+            ),
+          ),
+          Stream.take(1),
+          Stream.runDrain,
+        ),
+      ),
       Effect.timeout("10 seconds"),
       Effect.tapError(() =>
         Effect.gen(function* () {
