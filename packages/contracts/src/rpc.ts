@@ -201,6 +201,8 @@ import {
   ZeropsLoginRemoveInput,
   ZeropsBrowserInput,
   ZeropsBrowserStreamEvent,
+  ZeropsMacInput,
+  ZeropsMacStreamEvent,
   ZeropsDataConsoleError,
   ZeropsDataConsoleRequest,
   ZeropsDataConsoleResponse,
@@ -386,6 +388,7 @@ export const WS_METHODS = {
   zeropsLoginAdd: "zerops.login.add",
   zeropsLoginRemove: "zerops.login.remove",
   zeropsBrowserInput: "zerops.browser.input",
+  zeropsMacInput: "zerops.mac.input",
   zeropsMateUpdate: "zerops.mate.update",
   zeropsMateCheckUpdate: "zerops.mate.checkUpdate",
   zeropsDataConsoleCall: "zerops.dataConsole.call",
@@ -427,6 +430,7 @@ export const WS_METHODS = {
   subscribeZeropsHealth: "subscribeZeropsHealth",
   subscribeZeropsAttention: "subscribeZeropsAttention",
   subscribeZeropsBrowserStream: "subscribeZeropsBrowserStream",
+  subscribeZeropsMacStream: "subscribeZeropsMacStream",
   subscribeZeropsDataConsole: "subscribeZeropsDataConsole",
   subscribeZeropsCrew: "subscribeZeropsCrew",
   subscribeEngineConversation: "subscribeEngineConversation",
@@ -1171,6 +1175,24 @@ const WsZeropsBrowserInputRpc = Rpc.make(WS_METHODS.zeropsBrowserInput, {
 });
 
 /**
+ * The live view of the app an agent opened on the paired Mac (the Mac tab):
+ * its window and the view's state. Reaches the Mac on the first subscriber and
+ * lets go on the last, like the browser view.
+ */
+const WsSubscribeZeropsMacStreamRpc = Rpc.make(WS_METHODS.subscribeZeropsMacStream, {
+  payload: Schema.Struct({}),
+  success: ZeropsMacStreamEvent,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+/** A click or typed text for the app in the Mac's live view; refused while someone uses the Mac. */
+const WsZeropsMacInputRpc = Rpc.make(WS_METHODS.zeropsMacInput, {
+  payload: ZeropsMacInput,
+  error: EnvironmentAuthorizationError,
+});
+
+/**
  * Runs `zcp mate update --json` (spec-mate.md §2.9 MU-2): offered only
  * inside a Zerops project with `zcp` on PATH, gated by `exec:operate`. A
  * failing update (zcp ran and reported its own failure) is still a success
@@ -1522,6 +1544,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsLoginRemoveRpc,
   WsSubscribeZeropsBrowserStreamRpc,
   WsZeropsBrowserInputRpc,
+  WsSubscribeZeropsMacStreamRpc,
+  WsZeropsMacInputRpc,
   WsZeropsMateUpdateRpc,
   WsZeropsMateCheckUpdateRpc,
   WsZeropsDataConsoleCallRpc,

@@ -3,6 +3,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import { afterAll, expect, inject } from "vite-plus/test";
 import puppeteer, {
+  type ElementHandle,
   type Page,
   type BrowserContext,
   type HTTPRequest,
@@ -310,13 +311,173 @@ export async function visibleText(page: Page, surface: string, text: string, tim
     (surface, text) =>
       [...document.querySelectorAll<HTMLElement>(`[data-zerops-surface="${surface}"]`)].some(
         (element) =>
-          element.innerText.split("\n").some((line) => line.trim() === text) &&
-          element.getBoundingClientRect().height > 0,
+          // A Mate alone in its project reads "Project · Mate": either name stands on its own.
+          element.innerText
+            .split("\n")
+            .some(
+              (line) =>
+                line.split(/\s·\s/).some((part) => part.trim() === text) || line.trim() === text,
+            ) && element.getBoundingClientRect().height > 0,
       ),
     { timeout, polling: "raf" },
     surface,
     text,
   );
+}
+
+/** Where Mate `name` stands in the menu against project `app`: drawn there, folded in it, or not. */
+function mateInApp(page: Page, name: string, app: string) {
+  return page.evaluate(
+    (name, app) => {
+      const shown = (node: Element) => node.getBoundingClientRect().height > 0;
+      const named = (row: Element) =>
+        row
+          .querySelector('[data-zerops-surface="sidebar-mate-name"]')
+          ?.textContent?.replaceAll("\u00a0", " ")
+          .trim();
+      const rows = (within: ParentNode) =>
+        [...within.querySelectorAll('[data-zerops-surface="sidebar-mate"]')].filter(shown);
+      // A project of one Mate is that Mate's row: "Shop · Ada".
+      if (rows(document).some((row) => named(row) === `${app} · ${name}`)) return "shown";
+      if (app === "Ungrouped") {
+        const ungrouped = document.querySelector("section[data-zerops-ungrouped]");
+        return ungrouped !== null && rows(ungrouped).some((row) => named(row) === name)
+          ? "shown"
+          : "missing";
+      }
+      for (const section of document.querySelectorAll("section[data-zerops-group]")) {
+        const group = section.querySelector(
+          '[data-zerops-surface="sidebar-project-row"] [data-zerops-surface="sidebar-project"]',
+        );
+        const title = group
+          ?.querySelector('[data-zerops-surface="sidebar-project-name"]')
+          ?.firstChild?.textContent?.trim();
+        if (group === null || group === undefined || title !== app) continue;
+        if (group.getAttribute("aria-expanded") === "false") return "folded";
+        if (rows(section).some((row) => named(row) === name)) return "shown";
+      }
+      return "missing";
+    },
+    name,
+    app,
+  );
+}
+
+/** The menu's row of group `app`, its project of several Mates. */
+function groupRow(page: Page, app: string) {
+  return page.waitForFunction(
+    (app) =>
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-zerops-surface="sidebar-project-row"] [data-zerops-surface="sidebar-project"]',
+        ),
+      ].find(
+        (group) =>
+          group.getBoundingClientRect().height > 0 &&
+          group
+            .querySelector('[data-zerops-surface="sidebar-project-name"]')
+            ?.firstChild?.textContent?.trim() === app,
+      ) ?? null,
+    { timeout: 10_000, polling: "raf" },
+    app,
+  );
+}
+
+/**
+ * Opens or folds group `app` from the keyboard — → opens it, ← folds it, and neither opens a
+ * Mate — then waits for it to stand so.
+ */
+export async function foldMenuGroup(page: Page, app: string, fold: boolean) {
+  const group = (await groupRow(page, app)).asElement() as ElementHandle<HTMLElement>;
+  if ((await group.evaluate((node) => node.getAttribute("aria-expanded"))) === String(!fold)) {
+    await group.focus();
+    await page.keyboard.press(fold ? "ArrowLeft" : "ArrowRight");
+  }
+  await page.waitForFunction(
+    (node, open) => node.getAttribute("aria-expanded") === open,
+    { timeout: 10_000, polling: "raf" },
+    group,
+    String(!fold),
+  );
+}
+
+/** Whether group `app` stands open in the menu. */
+
+/**
+ * Mate `name` stands in project `app` in the menu: as its row ("Shop · Ada"), under its group's
+ * row — the group opened as a person would, where it is folded — or among the ungrouped.
+ */
+export async function menuMateIn(page: Page, name: string, app: string, timeout = 15_000) {
+  const until = Date.now() + timeout;
+  for (;;) {
+    const where = await mateInApp(page, name, app);
+    if (where === "shown") return;
+    if (where === "folded") await foldMenuGroup(page, app, false);
+    if (Date.now() > until)
+      throw new Error(
+        `Menu did not show ${name} in ${app} (${where})\n${await page.evaluate(() => document.body.innerText)}`,
+      );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/**
+ * The menu's row of Mate `name`, drawn: its name alone (a Mate in no project, or under its open
+ * group), or its project's then its own ("Shop · Ada", a project of one Mate). A Mate in a folded
+ * group is drawn once a person opens its group: where none shows it soon, every group is opened
+ * from the menu's top row.
+ */
+export async function menuMateRow(page: Page, name: string, timeout = 10_000) {
+  const find = (within: number) =>
+    page.waitForFunction(
+      (name) =>
+        [...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-mate"]')].find(
+          (row) => {
+            const words = row
+              .querySelector('[data-zerops-surface="sidebar-mate-name"]')
+              ?.textContent?.replaceAll("\u00a0", " ")
+              .trim();
+            return (
+              row.getBoundingClientRect().height > 0 &&
+              (words === name || words?.endsWith(` · ${name}`) === true)
+            );
+          },
+        ) ?? null,
+      { timeout: within, polling: "raf" },
+      name,
+    );
+  const soon = Math.min(timeout, 3_000);
+  try {
+    return (await find(soon)).asElement() as ElementHandle<HTMLElement>;
+  } catch {
+    await page.evaluate(() =>
+      document
+        .querySelector<HTMLElement>(
+          '[data-zerops-surface="sidebar-fold-all"][aria-label="Open all projects"]',
+        )
+        ?.click(),
+    );
+    return (await find(Math.max(timeout - soon, 1_000))).asElement() as ElementHandle<HTMLElement>;
+  }
+}
+
+/**
+ * Mate `name` drawn in the menu's `surface`: a Mate in a folded group is drawn once a person
+ * opens its group, so where none shows it soon every group is opened.
+ */
+export async function visibleInMenu(page: Page, surface: string, name: string, timeout = 10_000) {
+  try {
+    await visibleText(page, surface, name, Math.min(timeout, 3_000));
+  } catch {
+    await page.evaluate(() =>
+      document
+        .querySelector<HTMLElement>(
+          '[data-zerops-surface="sidebar-fold-all"][aria-label="Open all projects"]',
+        )
+        ?.click(),
+    );
+    await visibleText(page, surface, name, Math.max(timeout - 3_000, 1_000));
+  }
 }
 
 export async function clickText(page: Page, surface: string, text: string) {

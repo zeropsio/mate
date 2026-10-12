@@ -17,6 +17,7 @@ const ALL_AVAILABLE = {
   agents: "available",
   zerops: "available",
   browser: "available",
+  mac: "available",
   data: "available",
   git: "available",
   crew: "available",

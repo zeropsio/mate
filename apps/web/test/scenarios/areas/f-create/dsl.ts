@@ -183,20 +183,32 @@ export function creation(s: Scenario) {
         if (projectId === undefined)
           throw new Error(`No project ${name} was made: ${JSON.stringify(control.accepted)}`);
         try {
+          // It stands on its project's page, outside the menu.
           await page.waitForFunction(
-            (projectId, tag) =>
-              [
-                ...document.querySelectorAll<HTMLElement>(
-                  `[data-zerops-surface="sidebar-production-chip"][data-zerops-chip="${tag}"]`,
-                ),
-              ].some((chip) => chip.dataset.zeropsStops?.split(" ").includes(projectId) === true),
+            (name, tag) => {
+              const menu = document.querySelector('[data-sidebar="sidebar"]');
+              const words = new Set(
+                [...document.querySelectorAll<HTMLElement>("body *")]
+                  .filter(
+                    (node) =>
+                      node.childElementCount === 0 &&
+                      menu?.contains(node) !== true &&
+                      node.getBoundingClientRect().height > 0,
+                  )
+                  .map((node) => node.textContent?.trim()),
+              );
+              // A stage stands under its name; production as the project's Production, set up.
+              return tag === "prod"
+                ? words.has("Production") && !words.has("Set up production")
+                : words.has(name);
+            },
             { timeout: 15_000, polling: "raf" },
-            projectId,
+            name,
             tag,
           );
         } catch (cause) {
           throw new Error(
-            `Missing environment ${name} on the ${tag} of its road\n${await page.evaluate(() => document.body.innerText)}`,
+            `Missing environment ${name} (${tag}) on its project's page\n${await page.evaluate(() => document.body.innerText)}`,
             { cause },
           );
         }

@@ -1,18 +1,29 @@
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   acceptMacRegistration,
+  decodeMacViewRecord,
   isIpv4InRange,
   knownHostsLine,
   macDeviceCommand,
   macHostPaths,
   type MacHostRecord,
   macRunCommand,
+  macScreenPoint,
+  macScreenshotCommand,
   macSshArgs,
   macStatusReport,
   renderMacStatus,
   macSshPort,
   macSyncArgs,
+  macViewStreamCommand,
+  macViewTarget,
   parseMacCommand,
 } from "./MacHost.ts";
 
@@ -40,10 +51,18 @@ describe("parseMacCommand", () => {
     [["run", "swift", "build"], { _tag: "run", command: ["swift", "build"] }],
     [
       ["device", "press", "@e4", "--settle"],
-      { _tag: "device", args: ["press", "@e4", "--settle"] },
+      { _tag: "device", args: ["press", "@e4", "--settle"], whileInUse: false },
     ],
-    [["screenshot"], { _tag: "screenshot", out: undefined }],
-    [["screenshot", "/tmp/a.png"], { _tag: "screenshot", out: "/tmp/a.png" }],
+    [
+      ["device", "--while-in-use", "press", "@e4"],
+      { _tag: "device", args: ["press", "@e4"], whileInUse: true },
+    ],
+    [["screenshot"], { _tag: "screenshot", out: undefined, whileInUse: false }],
+    [["screenshot", "/tmp/a.png"], { _tag: "screenshot", out: "/tmp/a.png", whileInUse: false }],
+    [
+      ["screenshot", "--while-in-use", "/tmp/a.png"],
+      { _tag: "screenshot", out: "/tmp/a.png", whileInUse: true },
+    ],
   ] as const)("reads `mac %j` as the command an agent meant", (args, expected) => {
     expect(parseMacCommand(args)).toEqual(expected);
   });
@@ -171,7 +190,7 @@ describe("commands on the Mac", () => {
     [["devices", "--platform", "ios"], "'devices' '--platform' 'ios'"],
     [["fill", "@e2", "it's done"], "'fill' '@e2' 'it'\\''s done' '--platform' 'macos'"],
   ])("aims agent-device %j at macOS apps unless a platform is given", (args, expected) => {
-    expect(macDeviceCommand(record, args)).toBe(
+    expect(macDeviceCommand(record, args)).toContain(
       `'/Users/ales/.zerops-mate/Prj0AAAAAAAAAAAAAAAAAA/bin/agent-device' ${expected}`,
     );
   });
@@ -243,5 +262,202 @@ describe("macStatusReport", () => {
       probe: probe("Accessibility missing, Screen Recording allowed"),
     });
     expect(report.mac?.node).toBe("/opt/homebrew/Cellar/node/24.1.0/bin/node");
+  });
+});
+
+describe("a Mac the user is working on", () => {
+  // Runs the remote command as the Mac would, with ioreg and agent-device stubbed.
+  const onMac = (command: (paired: MacHostRecord) => string, idleSeconds: number) => {
+    const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-busy-"));
+    try {
+      const bin = NodePath.join(home, "bin");
+      NodeFS.mkdirSync(bin);
+      NodeFS.writeFileSync(
+        NodePath.join(bin, "ioreg"),
+        `#!/bin/sh\necho '    |   "HIDIdleTime" = ${idleSeconds * 1_000_000_000}'\n`,
+        { mode: 0o755 },
+      );
+      NodeFS.writeFileSync(
+        NodePath.join(bin, "agent-device"),
+        `#!/bin/sh\necho "$@" >> "${home}/drove"\n`,
+        { mode: 0o755 },
+      );
+      const result = NodeChildProcess.spawnSync(
+        "/bin/sh",
+        ["-c", command({ ...record, root: home })],
+        {
+          encoding: "utf8",
+          env: { PATH: `${bin}:/usr/bin:/bin`, TMPDIR: home },
+        },
+      );
+      const drove = NodeFS.existsSync(NodePath.join(home, "drove"))
+        ? NodeFS.readFileSync(NodePath.join(home, "drove"), "utf8")
+        : "";
+      return { code: result.status, stderr: result.stderr, drove };
+    } finally {
+      NodeFS.rmSync(home, { recursive: true, force: true });
+    }
+  };
+
+  it.each([
+    ["press", (paired: MacHostRecord) => macDeviceCommand(paired, ["press", "@e4"])],
+    ["open", (paired: MacHostRecord) => macDeviceCommand(paired, ["open", "com.example.app"])],
+    ["snapshot", (paired: MacHostRecord) => macDeviceCommand(paired, ["snapshot", "-i"])],
+    ["screenshot", (paired: MacHostRecord) => macScreenshotCommand(paired)],
+  ])("does not take over their screen to %s while they work, and says why", (_, command) => {
+    const { code, stderr, drove } = onMac(command, 3);
+    expect(code).toBe(75);
+    expect(drove).toBe("");
+    expect(stderr).toContain("working on this Mac");
+    expect(stderr).toContain("--while-in-use");
+  });
+
+  it("drives the Mac once the user has stepped away", () => {
+    const { code, drove } = onMac((paired) => macDeviceCommand(paired, ["press", "@e4"]), 120);
+    expect(code).toBe(0);
+    expect(drove).toBe("press @e4 --platform macos\n");
+  });
+
+  it("with the user's go-ahead, drives the Mac while they work", () => {
+    const { code, drove } = onMac(
+      (paired) => macDeviceCommand(paired, ["press", "@e4"], { whileInUse: true }),
+      3,
+    );
+    expect(code).toBe(0);
+    expect(drove).toBe("press @e4 --platform macos\n");
+  });
+
+  it("lists apps and devices at any time, since that moves nothing on screen", () => {
+    const { code, drove } = onMac((paired) => macDeviceCommand(paired, ["apps"]), 3);
+    expect(code).toBe(0);
+    expect(drove).toBe("apps --platform macos\n");
+  });
+});
+
+describe("the app the live view follows", () => {
+  it.each([
+    [["open", "com.example.Counter"], "com.example.Counter"],
+    [["open", "Counter", "--relaunch"], "Counter"],
+    [["open", "--platform", "macos", "com.example.Counter"], "com.example.Counter"],
+    [["open", "--surface=app", "Counter"], "Counter"],
+  ] as const)("mac device %j shows that app in the live view", (args, app) => {
+    expect(macViewTarget(args)).toBe(app);
+  });
+
+  it.each([
+    [["open"]],
+    [["open", "--surface", "frontmost-app"]],
+    [["press", "@e4"]],
+    [[]],
+  ] as const)("mac device %j leaves the live view on the app it showed", (args) => {
+    expect(macViewTarget(args)).toBeUndefined();
+  });
+
+  it("reads back the app it recorded, and nothing from a broken record", () => {
+    expect(decodeMacViewRecord(JSON.stringify({ app: "com.example.Counter", at: 5 }))).toEqual({
+      app: "com.example.Counter",
+      at: 5,
+    });
+    expect(decodeMacViewRecord("{")).toBeUndefined();
+    expect(decodeMacViewRecord(JSON.stringify({ at: 5 }))).toBeUndefined();
+  });
+
+  it("asks the Mac's view helper for that app's window over the one ssh connection", () => {
+    const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-view-"));
+    try {
+      const bin = NodePath.join(home, "bin");
+      NodeFS.mkdirSync(bin);
+      NodeFS.writeFileSync(NodePath.join(bin, "curl"), `#!/bin/sh\nprintf '%s\\n' "$@"\n`, {
+        mode: 0o755,
+      });
+      const result = NodeChildProcess.spawnSync(
+        "/bin/sh",
+        ["-c", macViewStreamCommand({ ...record, root: home }, "Counter & Co's", 2)],
+        { encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin` } },
+      );
+      expect(result.status).toBe(0);
+      const args = result.stdout.trim().split("\n");
+      expect(args).toEqual(
+        expect.arrayContaining([
+          `${home}/view.sock`,
+          "http://mate/stream?app=Counter%20%26%20Co's&fps=2",
+        ]),
+      );
+    } finally {
+      NodeFS.rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a click in the live view", () => {
+  it.each([
+    // A Retina capture is twice the window's size in points.
+    [
+      { x: 230, y: 408 },
+      { x: 215, y: 254 },
+    ],
+    [
+      { x: 0, y: 0 },
+      { x: 100, y: 50 },
+    ],
+    [
+      { x: 460, y: 816 },
+      { x: 330, y: 458 },
+    ],
+  ])("at image pixel %j lands on the Mac's screen at %j", (pixel, point) => {
+    expect(
+      macScreenPoint(
+        { x: 100, y: 50, width: 230, height: 408 },
+        { width: 460, height: 816 },
+        pixel,
+      ),
+    ).toEqual(point);
+  });
+});
+
+describe("the Mate's own clicks", () => {
+  // Steps run in one Mac home, as a session of commands would: each with the idle time ioreg reports.
+  const session = (
+    steps: ReadonlyArray<{ readonly idle: number; readonly drovePast?: number }>,
+  ) => {
+    const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-own-"));
+    try {
+      const bin = NodePath.join(home, "bin");
+      NodeFS.mkdirSync(bin);
+      NodeFS.writeFileSync(
+        NodePath.join(bin, "agent-device"),
+        `#!/bin/sh\necho "$@" >> "${home}/drove"\n`,
+        { mode: 0o755 },
+      );
+      return steps.map((step) => {
+        NodeFS.writeFileSync(
+          NodePath.join(bin, "ioreg"),
+          `#!/bin/sh\necho '    |   "HIDIdleTime" = ${step.idle * 1_000_000_000}'\n`,
+          { mode: 0o755 },
+        );
+        if (step.drovePast !== undefined) {
+          NodeFS.writeFileSync(
+            NodePath.join(home, "last-drive"),
+            String(Math.floor(Date.now() / 1000) - step.drovePast),
+          );
+        }
+        return NodeChildProcess.spawnSync(
+          "/bin/sh",
+          ["-c", macDeviceCommand({ ...record, root: home }, ["press", "12", "34"])],
+          { encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin` } },
+        ).status;
+      });
+    } finally {
+      NodeFS.rmSync(home, { recursive: true, force: true });
+    }
+  };
+
+  it("never make the Mac look busy to the Mate's next click", () => {
+    // The first click finds the Mac idle; the second sees only the input the first one made.
+    expect(session([{ idle: 120 }, { idle: 1 }])).toEqual([0, 0]);
+  });
+
+  it("do not hide someone working on the Mac after the Mate's last click", () => {
+    expect(session([{ idle: 3, drovePast: 30 }])).toEqual([75]);
   });
 });

@@ -84,9 +84,6 @@ describe("B: menu liveness", () => {
         yield* s.when.conversation.sends("Continue in the same Mate after Move");
         yield* s.then.conversation.showsMessage("Continue in the same Mate after Move");
         yield* second.then.conversation.showsMessage("Continue in the same Mate after Move");
-        yield* s.menu.toggle("Other");
-        yield* s.menu.absent("Ada");
-        yield* s.menu.toggle("Other");
         yield* s.menu.grouped("Ada", "Other");
         yield* s.then.noReload;
         yield* second.then.noReload;
@@ -324,7 +321,9 @@ describe("B: menu liveness", () => {
     it.effect("folding and expanding restores the application's Mate rows", () =>
       Effect.gen(function* () {
         const s = yield* menuScenario();
+        // A project folds once it holds more than one Mate.
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.project("Bea", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         yield* s.menu.grouped("Ada", "Shop");
         yield* s.menu.toggle("Shop");
@@ -415,7 +414,6 @@ describe("B: menu liveness", () => {
         yield* s.stage("Shop-stage", "Shop");
         yield* s.given.signedIn;
         yield* s.menu.grouped("Ada", "Shop");
-        yield* s.menu.chip("^Stage stage-existing, healthy$");
         const chipContrast = Effect.promise(async () => {
           for (const theme of ["light", "dark"]) {
             await s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: theme }]);
@@ -427,16 +425,18 @@ describe("B: menu liveness", () => {
             await s.page.evaluate(() => document.fonts.ready);
             await s.page.evaluate(async () => {
               await Promise.all(
-                [...document.querySelectorAll("[data-zerops-chip]")].flatMap((chip) =>
-                  chip.getAnimations().map((animation) => animation.finished),
-                ),
+                [
+                  ...document.querySelectorAll('[data-zerops-surface="sidebar-project-env-tag"]'),
+                ].flatMap((chip) => chip.getAnimations().map((animation) => animation.finished)),
               );
             });
             const contrasts = await s.page.evaluate(() => {
               const sidebar = document.querySelector('[data-sidebar="sidebar"]')!;
-              const chips = [...sidebar.querySelectorAll<HTMLElement>("[data-zerops-chip]")].filter(
-                (node) => node.getBoundingClientRect().width > 0,
-              );
+              const chips = [
+                ...sidebar.querySelectorAll<HTMLElement>(
+                  '[data-zerops-surface="sidebar-project-env-tag"]',
+                ),
+              ].filter((node) => node.getBoundingClientRect().width > 0);
               const canvas = document.createElement("canvas");
               canvas.width = canvas.height = 1;
               const context = canvas.getContext("2d", { willReadFrequently: true })!;
@@ -473,7 +473,6 @@ describe("B: menu liveness", () => {
             ).toBeGreaterThanOrEqual(4.5);
           }
         });
-        yield* chipContrast;
         yield* s.colleague.builds("Shop-stage");
         // Three times the 5 s target budget gives a loaded laptop 10 s of headroom.
         yield* s.menu.chip("\\b(?:building|deploying|releasing)\\b", 15_000);

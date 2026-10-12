@@ -69,22 +69,31 @@ export function engineShellThreadOfRecords(
   records: EngineRecords & { readonly row: ConversationRow },
   v1: OrchestrationThreadShell,
 ): OrchestrationThreadShell | null {
+  const shell = engineShellOfRecords(key, records, {
+    status: "live",
+    error: Option.none(),
+    snapshot: Option.some({
+      snapshotSequence: 1,
+      projects: [],
+      threads: [v1],
+      updatedAt: v1.updatedAt,
+    }),
+  } as unknown as EnvironmentShellState);
+  return Option.getOrNull(shell.snapshot)?.threads.find((thread) => thread.id === v1.id) ?? null;
+}
+
+/** A Mate's shell, including engine-only conversations, over the account's records. */
+export function engineShellOfRecords(
+  key: EngineConversationKey,
+  records: EngineRecords & { readonly row: ConversationRow },
+  shell: EnvironmentShellState,
+): EnvironmentShellState {
   const read = engineReadsOfRecords(key, records);
-  const shell = overlayEngineShell(
-    {
-      status: "live",
-      error: Option.none(),
-      snapshot: Option.some({
-        snapshotSequence: 1,
-        projects: [],
-        threads: [v1],
-        updatedAt: v1.updatedAt,
-      }),
-    } as unknown as EnvironmentShellState,
+  return overlayEngineShell(
+    shell,
     engineRows.derive(read, key.environmentId),
     engineHeldTurns.derive(read, key.environmentId),
   );
-  return Option.getOrNull(shell.snapshot)?.threads.find((thread) => thread.id === v1.id) ?? null;
 }
 
 /** What the cards of a conversation's records not held whole count and hold. */

@@ -43,6 +43,8 @@ export interface MacHostPaths {
   readonly publicKey: string;
   readonly record: string;
   readonly knownHosts: string;
+  /** The app the live view shows: the last one an agent opened with `mac device open`. */
+  readonly view: string;
 }
 
 export const macHostPaths = (baseDir: string): MacHostPaths => {
@@ -53,11 +55,59 @@ export const macHostPaths = (baseDir: string): MacHostPaths => {
     publicKey: `${dir}/id_ed25519.pub`,
     record: `${dir}/host.json`,
     knownHosts: `${dir}/known_hosts`,
+    view: `${dir}/view.json`,
   };
 };
 
 export const decodeMacHostRecord = (json: string): MacHostRecord | undefined =>
   Option.getOrUndefined(decodeRecordJson(json));
+
+/** What the live view shows: an app (bundle id or name), and when an agent opened it. */
+export const MacViewRecord = Schema.Struct({ app: Schema.String, at: Schema.Number });
+export type MacViewRecord = typeof MacViewRecord.Type;
+
+const decodeViewJson = Schema.decodeUnknownOption(Schema.fromJsonString(MacViewRecord));
+
+export const decodeMacViewRecord = (json: string): MacViewRecord | undefined =>
+  Option.getOrUndefined(decodeViewJson(json));
+
+/** agent-device flags of `open` that take the next word as their value. */
+const OPEN_VALUE_FLAGS = new Set(["--platform", "--surface", "--device", "--session", "--udid"]);
+
+/** The app `mac device <args>` opens, which the live view then follows; none for any other command. */
+export const macViewTarget = (args: ReadonlyArray<string>): string | undefined => {
+  if (args[0] !== "open") return undefined;
+  for (let index = 1; index < args.length; index++) {
+    const arg = args[index]!;
+    if (OPEN_VALUE_FLAGS.has(arg)) {
+      index++;
+      continue;
+    }
+    if (!arg.startsWith("-")) return arg;
+  }
+  return undefined;
+};
+
+/** A window on the Mac's screen, in points, as macOS reports it. */
+export interface MacWindowBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * A point on a captured window image (pixels; a Retina capture is twice the
+ * window's size) to the screen point agent-device presses.
+ */
+export const macScreenPoint = (
+  bounds: MacWindowBounds,
+  image: { readonly width: number; readonly height: number },
+  pixel: { readonly x: number; readonly y: number },
+): { readonly x: number; readonly y: number } => ({
+  x: Math.round(bounds.x + (pixel.x * bounds.width) / (image.width || bounds.width || 1)),
+  y: Math.round(bounds.y + (pixel.y * bounds.height) / (image.height || bounds.height || 1)),
+});
 
 /**
  * The Mac's registration, accepted only from inside the project VPN range: the
@@ -119,6 +169,9 @@ export const macSshPort = (projectId: string): number => {
   return 22_000 + (hash % 1_000);
 };
 
+/** The user's go-ahead to drive a Mac they are working on; see {@link macInUseGuard}. */
+export const WHILE_IN_USE = "--while-in-use";
+
 export type MacCommand =
   | { readonly _tag: "help" }
   | { readonly _tag: "pair" }
@@ -127,8 +180,8 @@ export type MacCommand =
   | { readonly _tag: "status"; readonly json: boolean }
   | { readonly _tag: "sync" }
   | { readonly _tag: "run"; readonly command: ReadonlyArray<string> }
-  | { readonly _tag: "device"; readonly args: ReadonlyArray<string> }
-  | { readonly _tag: "screenshot"; readonly out: string | undefined }
+  | { readonly _tag: "device"; readonly args: ReadonlyArray<string>; readonly whileInUse: boolean }
+  | { readonly _tag: "screenshot"; readonly out: string | undefined; readonly whileInUse: boolean }
   | { readonly _tag: "unpair" }
   | { readonly _tag: "usage"; readonly message: string };
 
@@ -159,17 +212,23 @@ export const parseMacCommand = (args: ReadonlyArray<string>): MacCommand => {
       return rest.length > 0
         ? { _tag: "run", command: rest }
         : { _tag: "usage", message: "mac run needs a command, for example: mac run swift build" };
-    case "device":
-      return rest.length > 0
-        ? { _tag: "device", args: rest }
+    case "device": {
+      const whileInUse = rest[0] === WHILE_IN_USE;
+      const deviceArgs = whileInUse ? rest.slice(1) : rest;
+      return deviceArgs.length > 0
+        ? { _tag: "device", args: deviceArgs, whileInUse }
         : {
             _tag: "usage",
             message: "mac device needs agent-device arguments, for example: mac device snapshot -i",
           };
-    case "screenshot":
-      return rest.length <= 1
-        ? { _tag: "screenshot", out: rest[0] }
+    }
+    case "screenshot": {
+      const whileInUse = rest.includes(WHILE_IN_USE);
+      const paths = rest.filter((arg) => arg !== WHILE_IN_USE);
+      return paths.length <= 1
+        ? { _tag: "screenshot", out: paths[0], whileInUse }
         : { _tag: "usage", message: "mac screenshot takes at most one output path." };
+    }
     default:
       return { _tag: "usage", message: `Unknown command: mac ${word}. Run mac help.` };
   }
@@ -186,6 +245,9 @@ export const MAC_HELP = `mac - work on the Mac paired with this Mate, over the p
                             mac device snapshot -i
                             mac device press @e3 --settle
   mac screenshot [path]   Save a screenshot of the open app here and print its path.
+
+  mac device and mac screenshot raise the app and click on screen, so they wait while
+  someone is using the Mac (exit 75); --while-in-use goes ahead with the user's say-so.
   mac unpair              Forget the Mac (prints how to remove its setup too).`;
 
 /** POSIX single-quoting for one word of a remote shell command. */
@@ -274,19 +336,76 @@ export const macRunCommand = (
 
 const agentDevice = (record: MacHostRecord) => shellQuote(`${record.root}/bin/agent-device`);
 
+/** Seconds since the last keyboard or mouse input after which the Mac counts as free. */
+export const MAC_IDLE_SECONDS = 60;
+
+/** When the Mate last drove the Mac, in epoch seconds: its own clicks are input too. */
+const lastDriveFile = (record: MacHostRecord) => shellQuote(`${record.root}/last-drive`);
+
+/**
+ * Driving an app raises it and clicks where it points, so on a Mac its user is
+ * working on it would take over their screen. Unless they said go ahead, the
+ * command waits for the Mac to be idle and otherwise stops with EX_TEMPFAIL.
+ * Input no later than the Mate's own last drive was the Mate's, so it never
+ * makes the Mac look busy to the Mate's next click.
+ */
+const macInUseGuard = (record: MacHostRecord): string =>
+  `idle=$(ioreg -c IOHIDSystem 2>/dev/null | awk '/HIDIdleTime/ { print int($NF / 1000000000); exit }'); ` +
+  `own=$(cat ${lastDriveFile(record)} 2>/dev/null); case "$own" in ''|*[!0-9]*) own=0;; esac; ` +
+  `if [ "\${idle:-${MAC_IDLE_SECONDS}}" -lt ${MAC_IDLE_SECONDS} ] && [ $(( $(date +%s) - own )) -gt $(( \${idle:-${MAC_IDLE_SECONDS}} + 2 )) ]; then ` +
+  `echo "The user is working on this Mac right now (last input \${idle}s ago), so this did not take over their screen. Ask them, or wait until they step away; with their go-ahead, add ${WHILE_IN_USE}." >&2; exit 75; fi; `;
+
+/** agent-device commands that move nothing on screen, so they run while the user works. */
+const MOVES_NOTHING = new Set([
+  "apps",
+  "devices",
+  "doctor",
+  "help",
+  "--help",
+  "--version",
+  "close",
+  "logs",
+]);
+
 /** agent-device on the Mac, aimed at macOS apps unless the arguments pick a platform. */
-export const macDeviceCommand = (record: MacHostRecord, args: ReadonlyArray<string>): string => {
+export const macDeviceCommand = (
+  record: MacHostRecord,
+  args: ReadonlyArray<string>,
+  options: { readonly whileInUse?: boolean } = {},
+): string => {
   const platform = args.some((arg) => arg === "--platform" || arg.startsWith("--platform="))
     ? []
     : ["--platform", "macos"];
-  return [agentDevice(record), ...[...args, ...platform].map(shellQuote)].join(" ");
+  const command = [agentDevice(record), ...[...args, ...platform].map(shellQuote)].join(" ");
+  if (MOVES_NOTHING.has(args[0] ?? "")) return command;
+  const guard = options.whileInUse ? "" : macInUseGuard(record);
+  return `${guard}${command}; rc=$?; date +%s > ${lastDriveFile(record)} 2>/dev/null; exit $rc`;
 };
 
-/** Takes a screenshot on the Mac and streams the PNG to stdout. */
-export const macScreenshotCommand = (record: MacHostRecord): string => {
+/** Takes a screenshot on the Mac and streams the PNG to stdout; it raises the app, so it is guarded. */
+export const macScreenshotCommand = (
+  record: MacHostRecord,
+  options: { readonly whileInUse?: boolean } = {},
+): string => {
   const file = `"$TMPDIR/mate-screenshot-$$.png"`;
-  return `${agentDevice(record)} screenshot ${file} --platform macos >/dev/null && cat ${file} && rm -f ${file}`;
+  return `${options.whileInUse ? "" : macInUseGuard(record)}${agentDevice(record)} screenshot ${file} --platform macos >/dev/null && cat ${file} && rm -f ${file}`;
 };
+
+/** The Mac-side live view helper's socket; see `macViewScript.ts`. */
+export const macViewSocket = (record: MacHostRecord): string => `${record.root}/view.sock`;
+
+/**
+ * Streams the app's window from the Mac's view helper for as long as the ssh
+ * connection lasts: one connection, frames at `fps`. curl exits 7 when no
+ * helper answers (a pairing older than the live view).
+ */
+export const macViewStreamCommand = (record: MacHostRecord, app: string, fps: number): string =>
+  `exec curl -sN --unix-socket ${shellQuote(macViewSocket(record))} ${shellQuote(
+    `http://mate/stream?app=${encodeURIComponent(app)}&fps=${fps}`,
+  )}`;
+
+/** curl's own exit code for a socket nobody listens on. */
+export const MAC_VIEW_NO_HELPER_EXIT = 7;
 
 /** What the Mac reports about itself, one `key=value` per line for {@link macStatusReport}. */
 export const macStatusCommand = (record: MacHostRecord): string =>

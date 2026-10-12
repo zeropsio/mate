@@ -43,6 +43,7 @@ import { MATE_ENGINE_FAMILIES } from "./mateEngine.ts";
  */
 import { databaseFamily, databaseSessionFamily } from "./database.ts";
 import { mateBrowserFrameFamily } from "./mateBrowserFrame.ts";
+import { mateMacViewFamily } from "./mateMacView.ts";
 import { hqChangeReadFamily } from "./hqChangeRead.ts";
 import type { Family, MemberState, ScopeKey } from "../model.ts";
 import {
@@ -170,6 +171,7 @@ export const FAMILIES = defineFamilies([
   databaseFamily,
   databaseSessionFamily,
   mateBrowserFrameFamily,
+  mateMacViewFamily,
   mateUpdateAvailabilityFamily,
   mateUpdateRequestFamily,
 ]);
@@ -216,6 +218,7 @@ export function streamMode(key: string): "realtime" | "sampled" | "once" {
   if (key.startsWith("mate:image/")) return "once";
   if (
     key.startsWith("mate:browser-") ||
+    key.startsWith("mate:mac-") ||
     key.startsWith("mate:database-session-") ||
     key.startsWith("mate:engine-")
   )

@@ -109,10 +109,17 @@ describe("B: text-only drafts", () => {
             // 2026-10-11).
             await s.page.waitForFunction(
               () => {
+                // Their project's group, opened as a person would.
+                document
+                  .querySelector<HTMLElement>(
+                    '[data-zerops-surface="sidebar-fold-all"][aria-label="Open all projects"]',
+                  )
+                  ?.click();
                 const lines =
                   document
                     .querySelector<HTMLElement>('[data-zerops-surface="sidebar-environments"]')
                     ?.innerText.split("\n")
+                    .flatMap((line) => line.split(/\s·\s/))
                     .map((line) => line.trim()) ?? [];
                 return lines.includes("Ada") && lines.includes("Bea");
               },

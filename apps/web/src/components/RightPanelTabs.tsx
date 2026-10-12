@@ -10,6 +10,7 @@ import {
   GitBranch,
   GitPullRequestArrow,
   Globe,
+  Laptop,
   LayersIcon,
   type LucideIcon,
   Plus,
@@ -90,6 +91,7 @@ const SURFACE_DISABLED_REASONS = {
   agents: "Agents are only available from a thread.",
   zerops: "The Zerops project map is only available from a thread.",
   browser: "The Browser view is only available from a Zerops project thread.",
+  mac: "The Mac view is only available from a Zerops project thread.",
   data: "Data is only available from a Zerops project thread.",
   git: "Git is only available from a Zerops project thread.",
   crew: "The crew is only available from a Zerops project thread with crew mode on.",
@@ -118,13 +120,16 @@ type SurfaceShortcutEvent = Pick<
 >;
 
 export function surfaceShortcutActionForKey<
-  const Action extends { available: boolean; shortcut: string },
+  const Action extends { available: boolean; shortcut: string | null },
 >(actions: readonly Action[], event: SurfaceShortcutEvent): Action | null {
   if (event.defaultPrevented || event.isComposing) return null;
   if (event.metaKey || event.ctrlKey || event.altKey) return null;
   return (
     actions.find(
-      (action) => action.available && action.shortcut.toLowerCase() === event.key.toLowerCase(),
+      (action) =>
+        action.available &&
+        action.shortcut !== null &&
+        action.shortcut.toLowerCase() === event.key.toLowerCase(),
     ) ?? null
   );
 }
@@ -158,7 +163,7 @@ function DisabledReasonTooltip(props: { reason: string; trigger: ReactElement })
 function SurfaceMenuItem(props: {
   available: boolean;
   disabledReason?: string;
-  shortcut: string;
+  shortcut: string | null;
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -167,10 +172,10 @@ function SurfaceMenuItem(props: {
       className={!props.available ? "data-disabled:pointer-events-auto" : undefined}
       onClick={props.onClick}
       disabled={!props.available}
-      aria-keyshortcuts={props.shortcut}
+      aria-keyshortcuts={props.shortcut ?? undefined}
     >
       {props.children}
-      <MenuShortcut>{props.shortcut}</MenuShortcut>
+      {props.shortcut === null ? null : <MenuShortcut>{props.shortcut}</MenuShortcut>}
     </MenuItem>
   );
   if (props.available || !props.disabledReason) return item;
@@ -197,6 +202,8 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
       return Cloud;
     case "browser":
       return Globe;
+    case "mac":
+      return Laptop;
     case "data":
       return Database;
     case "git":
@@ -319,7 +326,9 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
             {action.badgeCount}
           </span>
         ) : null}
-        <Kbd className="ms-auto shrink-0">{action.shortcut}</Kbd>
+        {action.shortcut === null ? null : (
+          <Kbd className="ms-auto shrink-0">{action.shortcut}</Kbd>
+        )}
       </span>
     );
   };
@@ -335,7 +344,7 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
       tabIndex={0}
       onKeyDown={handleKeyDown}
       aria-label="Open a surface"
-      data-surface-launcher-keys={availableActions.map((action) => action.shortcut).join("")}
+      data-surface-launcher-keys={availableActions.map((action) => action.shortcut ?? "").join("")}
       className={cn(
         "flex min-h-0 flex-1 overflow-y-auto px-4 pt-4 outline-none @container",
         // The panel topbar sits above this container; matching bottom padding
@@ -413,6 +422,8 @@ function surfaceTitle(
       return "Zerops";
     case "browser":
       return "service" in surface ? surface.service : "Browser";
+    case "mac":
+      return "Mac";
     case "data":
       return "service" in surface ? surface.service : "Data";
     case "git":
@@ -453,6 +464,8 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <Cloud className="size-3 shrink-0" />;
     case "browser":
       return <Globe className="size-3 shrink-0" />;
+    case "mac":
+      return <Laptop className="size-3 shrink-0" />;
     case "data":
       return <Database className="size-3 shrink-0" />;
     case "git":

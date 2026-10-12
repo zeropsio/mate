@@ -69,32 +69,18 @@ describe("collapsed projects, per account", () => {
   });
 });
 
-// Twenty projects open at once made the menu two screens long (the owner, 2026-10-11: "I'd have
-// them collapsed all by default, when you have like 6+"): past five projects each starts as its
-// one line, and what the person opened or folded stays as they left it.
+// A project of several Mates is one row until its person opens it (the owner, 2026-10-12: "when
+// more it would be project and it would expand instead of going to detail"); what the person
+// opened or folded stays as they left it.
 describe("a project's fold", () => {
   const none = { closed: new Set<string>(), opened: new Set<string>() };
   it.each([
-    {
-      case: "folded by its person",
-      folds: { ...none, closed: new Set(["a"]) },
-      projects: 2,
-      folded: true,
-    },
-    {
-      case: "opened by its person among many",
-      folds: { ...none, opened: new Set(["a"]) },
-      projects: 20,
-      folded: false,
-    },
-    { case: "untouched among five", folds: none, projects: 5, folded: false },
-    { case: "untouched among six", folds: none, projects: 6, folded: true },
-  ])(
-    "stands as its person left it, else folded among six or more: $case",
-    ({ folds, projects: count, folded }) => {
-      expect(projects.projectFolded(folds, "a", count)).toBe(folded);
-    },
-  );
+    { case: "folded by its person", folds: { ...none, closed: new Set(["a"]) }, folded: true },
+    { case: "opened by its person", folds: { ...none, opened: new Set(["a"]) }, folded: false },
+    { case: "untouched", folds: none, folded: true },
+  ])("a group stands as its person left it, else folded: $case", ({ folds, folded }) => {
+    expect(projects.projectFolded(folds, "a")).toBe(folded);
+  });
 
   it("keeps one choice per project: folding takes back an opening, and opening a fold", () => {
     const opened = projects.withProjectFold(

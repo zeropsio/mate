@@ -3179,83 +3179,379 @@ code {
     line-height: 20px;
   }
 
-  /* A change waiting for review, under its Mate's row on the words' column (60 px in, 8 px from
-     the end, where the time ends): one chip for every change, a surface of its own so it never
-     reads as the row's words (the owner, 2026-10-12: the merge "absolutely blends with the
-     content", and one Mate's "looks completely different"). Its mark, its title and *Review*,
-     solid where the review waits on the viewer, quiet where it is a colleague's. Its button sits
-     4 px in, its corner the chip's less that: 10 = 6 + 4. */
-  .menu-change {
-    display: flex;
-    min-width: 0;
+  /* ==== a project's Review and Release tags, and its changes popover ==== */
+
+  /* The tags at a project row's end: 22 px, 12/16 · 500, 7 px corners, 6 px apart; one metric for
+     every tag on the row (the environment tag wears `.menu-tag` too). */
+  .menu-tags {
+    display: inline-flex;
+    flex: none;
     align-items: center;
-    gap: 7px;
-    height: 32px;
-    margin: -3px 8px 6px 60px;
-    padding: 0 4px 0 10px;
-    border-radius: 10px;
-    background-color: color-mix(in oklab, var(--sidebar-foreground) 5%, transparent);
+    gap: 6px;
+  }
+
+  .menu-tag {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    white-space: nowrap;
+    cursor: pointer;
+    outline: none;
+    transition:
+      box-shadow 150ms var(--ease-out-strong),
+      background-color 150ms var(--ease-out-strong),
+      scale 150ms var(--ease-out-strong);
+  }
+
+  .menu-tag:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+  }
+
+  /* Review: quiet, the card's ground in a hairline that firms under the pointer and while its
+     popover is open. */
+  .menu-tag-review {
+    background-color: var(--card);
+    box-shadow: inset 0 0 0 1px var(--border);
     color: var(--sidebar-foreground);
+  }
+
+  .menu-tag-review[data-popup-open] {
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
+  }
+
+  /* Release: the solid primary — what waits for production is the row's one loud word. */
+  .menu-tag-release {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .menu-tag-review:hover {
+      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
+    }
+
+    .menu-tag-release:hover {
+      background-color: color-mix(in oklab, var(--primary) 88%, var(--color-black));
+    }
+  }
+
+  .menu-tag[data-phase="exit"] {
+    pointer-events: none;
+  }
+
+  /* A count after Review, in its own clipped cell: the new number rolls in as the old rolls out. */
+  .menu-tag-count {
+    display: inline-grid;
+    height: 16px;
+    margin-left: 4px;
+    overflow: hidden;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .menu-tag-digit {
+    grid-area: 1 / 1;
+    text-align: end;
+  }
+
+  /* A popover of what is to review: 340 px under its tag, aligned to its end, its own scroll past
+     480 px, the heading held at its top. */
+  .menu-tagpop {
+    width: min(340px, calc(100vw - 16px));
+    max-height: min(480px, 70vh, var(--available-height));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 6px 6px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background-color: var(--card);
+    color: var(--card-foreground);
+    box-shadow:
+      0 18px 40px -18px color-mix(in srgb, var(--color-black) 38%, transparent),
+      0 2px 6px -2px color-mix(in srgb, var(--color-black) 8%, transparent);
+    outline: none;
+    transform-origin: var(--transform-origin);
+    transition:
+      opacity 160ms var(--ease-out-strong),
+      scale 160ms var(--ease-out-strong);
+  }
+
+  .menu-tagpop:is([data-starting-style], [data-ending-style]) {
+    opacity: 0;
+    scale: 0.98;
+  }
+
+  .menu-tagpop[data-ending-style] {
+    transition-duration: 120ms;
+  }
+
+  .dark .menu-tagpop {
+    box-shadow:
+      0 18px 44px -18px color-mix(in srgb, var(--color-black) 90%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--color-black) 35%, transparent);
+  }
+
+  .menu-tagpop-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    outline: none;
+  }
+
+  .menu-tagpop-title {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 12px 10px 6px;
+    background-color: var(--card);
     font-size: 13px;
+    font-weight: 600;
     line-height: 18px;
   }
 
-  .menu-change .menu-change-mark {
-    flex: none;
-    margin-right: 0;
-    color: var(--sidebar-muted-foreground);
+  /* An item that leaves fades and the list closes over it; one that arrives opens its place. */
+  .menu-tagpop-row {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition:
+      grid-template-rows 160ms var(--ease-out-strong),
+      opacity 120ms ease;
   }
 
-  .menu-change-title {
-    min-width: 0;
-    flex: 1;
+  .menu-tagpop-row > * {
+    min-height: 0;
     overflow: hidden;
+  }
+
+  .menu-tagpop-row[data-leaving] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+
+  /* One item: its maker's face, its title over who made it, and Review at its end — the whole
+     item opens it. */
+  .menu-tagpop-item {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    column-gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    text-align: start;
+    cursor: pointer;
+    outline: none;
+    transition: background-color 120ms ease;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .menu-tagpop-item:hover {
+      background-color: var(--accent);
+    }
+  }
+
+  .menu-tagpop-item:focus-visible {
+    background-color: var(--accent);
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+  }
+
+  .menu-tagpop-face {
+    position: relative;
+    display: flex;
+    width: 22px;
+    height: 22px;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted-foreground);
+  }
+
+  /* A colleague's Mate: its owner's mark, 12 px, cut out of the 22 px face's corner. */
+  .menu-tagpop-cut {
+    -webkit-mask-image: radial-gradient(
+      circle 8px at 18px 18px,
+      transparent 7.5px,
+      currentColor 8px
+    );
+    mask-image: radial-gradient(circle 8px at 18px 18px, transparent 7.5px, currentColor 8px);
+  }
+
+  .menu-owner.menu-tagpop-owner {
+    top: 12px;
+    left: 12px;
+    width: 12px;
+    height: 12px;
+    font-size: 7px;
+  }
+
+  .menu-tagpop-text {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .menu-tagpop-name {
+    display: block;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .menu-review {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    height: 24px;
-    padding: 0 10px;
-    border-radius: 6px;
-    background-color: var(--sidebar-row-active);
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 9%, transparent),
-      0 1px 2px color-mix(in oklab, var(--color-black) 6%, transparent);
-    color: var(--sidebar-foreground);
+  .menu-tagpop-mark {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 5px;
+    vertical-align: -1px;
+    color: var(--muted-foreground);
+  }
+
+  .menu-tagpop-by {
+    overflow: hidden;
+    color: var(--muted-foreground);
     font-size: 12px;
-    font-weight: 600;
     line-height: 16px;
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      transform 150ms var(--ease-out-strong);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  @media (hover: hover) and (pointer: fine) {
-    .menu-review:hover {
-      background-color: color-mix(
-        in oklab,
-        var(--sidebar-foreground) 5%,
-        var(--sidebar-row-active)
-      );
-    }
+  /* Review, the verb said: solid ink where the review waits on the viewer, a hairline where it is
+     a colleague's, whose face is paler too. */
+  .menu-tagpop-verb {
+    display: inline-grid;
+    height: 26px;
+    place-items: center;
+    padding: 0 10px;
+    border-radius: 7px;
+    background-color: var(--foreground);
+    color: var(--background);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    transition: scale 150ms var(--ease-out-strong);
   }
 
-  .menu-review:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
+  .menu-tagpop-item:not([data-mine]) .menu-tagpop-verb {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--muted-foreground);
+  }
+
+  .menu-tagpop-item:not([data-mine]) [data-mate-face-body] path {
+    fill-opacity: 0.55;
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    .menu-review:active {
-      transform: scale(0.96);
+    .menu-tag:active,
+    .menu-tagpop-item:active .menu-tagpop-verb {
+      scale: 0.96;
+    }
+
+    .menu-tag[data-phase="enter"] {
+      animation: menu-tag-in 160ms var(--ease-out-strong);
+    }
+
+    .menu-tag[data-phase="exit"] {
+      animation: menu-tag-out 120ms var(--ease-out-strong) forwards;
+    }
+
+    .menu-tag-digit[data-in][data-dir="up"] {
+      animation: menu-tag-digit-from-below 160ms var(--ease-out-strong);
+    }
+
+    .menu-tag-digit[data-in][data-dir="down"] {
+      animation: menu-tag-digit-from-above 160ms var(--ease-out-strong);
+    }
+
+    .menu-tag-digit[data-out][data-dir="up"] {
+      animation: menu-tag-digit-to-above 160ms var(--ease-out-strong) forwards;
+    }
+
+    .menu-tag-digit[data-out][data-dir="down"] {
+      animation: menu-tag-digit-to-below 160ms var(--ease-out-strong) forwards;
+    }
+
+    .menu-tagpop-row[data-arrive] {
+      animation: menu-tagpop-arrive 200ms var(--ease-out-strong);
     }
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .menu-tag[data-phase="exit"],
+    .menu-tag-digit[data-out] {
+      display: none;
+    }
+
+    .menu-tagpop,
+    .menu-tagpop-row {
+      transition: opacity 120ms ease;
+    }
+
+    .menu-tagpop:is([data-starting-style], [data-ending-style]) {
+      scale: 1;
+    }
+  }
+
+  /* The project tags' motion (`.menu-tag`, `.menu-tag-digit`, `.menu-tagpop-row`). */
+  @keyframes menu-tag-in {
+    from {
+      opacity: 0;
+      scale: 0.96;
+    }
+  }
+
+  @keyframes menu-tag-out {
+    to {
+      opacity: 0;
+      scale: 0.96;
+    }
+  }
+
+  @keyframes menu-tag-digit-from-below {
+    from {
+      opacity: 0;
+      translate: 0 70%;
+    }
+  }
+
+  @keyframes menu-tag-digit-from-above {
+    from {
+      opacity: 0;
+      translate: 0 -70%;
+    }
+  }
+
+  @keyframes menu-tag-digit-to-above {
+    to {
+      opacity: 0;
+      translate: 0 -70%;
+    }
+  }
+
+  @keyframes menu-tag-digit-to-below {
+    to {
+      opacity: 0;
+      translate: 0 70%;
+    }
+  }
+
+  @keyframes menu-tagpop-arrive {
+    from {
+      grid-template-rows: 0fr;
+      opacity: 0;
+    }
+  }
+
+  /* ==== end of a project's Review and Release tags ==== */
 
   /* A change on its Mate's line: the git-pull-request mark at 14 px before
      its title, in the line's own ink. */
@@ -3273,6 +3569,225 @@ code {
   .menu-unit {
     border-radius: 12px;
   }
+
+  /* ==== The menu by project (the owner, 2026-10-12) ==== */
+
+  /* The ground under a row's faces, which the cluster's rings and the "+N" are cut in: the menu's,
+     the row's hover, or the band's while the row is the open one. */
+  .menu-unit {
+    --menu-ground: var(--sidebar);
+  }
+
+  .menu-unit:hover,
+  .menu-unit:has([data-popup-open]) {
+    --menu-ground: var(--sidebar-row-hover);
+  }
+
+  .menu-unit:has([aria-current="true"]) {
+    --menu-ground: var(--sidebar-row-active);
+  }
+
+  /* A Mate under its open group's row: 20 px in, so the group's Mates read as its. */
+  .menu-row-kid {
+    padding-inline-start: 28px;
+  }
+
+  /* "Project · Mate": the project is the row's unit, so its name holds; the Mate's, after it in the
+     muted ink, gives way first when the room runs out, and the project's only after it. */
+  .menu-name-project {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-name-mate {
+    flex: 0 1000 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 400;
+    color: var(--sidebar-muted-foreground);
+  }
+
+  /* A project's tags — Review, Release, its places' — on its row's first line, beside the row's
+     own button and never in it: they end where the 64 px slot and its 8 px of air begin. The
+     name gives way to them by the width they measure (`useTagsRoom`). */
+  .menu-row-tags {
+    position: absolute;
+    top: 9px;
+    inset-inline-end: 80px;
+    z-index: 1;
+    display: flex;
+    height: 22px;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .menu-row-tags-room {
+    display: none;
+    flex: none;
+  }
+
+  [data-tags] .menu-row-tags-room {
+    display: block;
+    width: var(--menu-tags-w, 0px);
+  }
+
+  /* A group's faces in the face's column: two at 27 px on the diagonal, three at 23 px as a
+     triangle, the lead in front; each ringed in the ground where they overlap, and travelling to
+     its new place when the lead changes. */
+  .menu-cluster {
+    position: relative;
+    display: block;
+    width: 40px;
+    height: 40px;
+  }
+
+  .menu-cluster-face {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: 27px;
+    height: 27px;
+  }
+
+  .menu-cluster[data-count="2"] .menu-cluster-face[data-place="0"] {
+    z-index: 3;
+  }
+
+  .menu-cluster[data-count="2"] .menu-cluster-face[data-place="1"] {
+    z-index: 2;
+    transform: translate(13px, 13px);
+  }
+
+  .menu-cluster[data-count="3"] .menu-cluster-face {
+    width: 23px;
+    height: 23px;
+  }
+
+  .menu-cluster[data-count="3"] .menu-cluster-face[data-place="0"] {
+    z-index: 3;
+    transform: translate(8.5px, 0);
+  }
+
+  .menu-cluster[data-count="3"] .menu-cluster-face[data-place="1"] {
+    z-index: 2;
+    transform: translate(0, 17px);
+  }
+
+  .menu-cluster[data-count="3"] .menu-cluster-face[data-place="2"] {
+    z-index: 1;
+    transform: translate(17px, 17px);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-cluster-face {
+      transition: transform 220ms var(--ease-out-strong);
+    }
+  }
+
+  .menu-cluster-face [data-mate-face-body] svg {
+    overflow: visible;
+  }
+
+  .menu-cluster-face [data-mate-face-body] path {
+    stroke: var(--menu-ground);
+    stroke-width: 3px;
+    stroke-linejoin: round;
+    paint-order: stroke;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .menu-cluster .menu-owner.menu-cluster-owner {
+    top: auto;
+    left: auto;
+    right: -3px;
+    bottom: -3px;
+    width: 12px;
+    height: 12px;
+    font-size: 7px;
+    box-shadow: 0 0 0 1.5px var(--menu-ground);
+  }
+
+  .menu-cluster-more {
+    position: absolute;
+    right: -11px;
+    bottom: -6px;
+    z-index: 4;
+    display: grid;
+    min-width: 22px;
+    height: 16px;
+    place-items: center;
+    padding: 0 4px;
+    border-radius: 9999px;
+    background: var(--sidebar-row-active);
+    color: var(--sidebar-foreground);
+    box-shadow: 0 0 0 2px var(--menu-ground);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A row is a container its tags read: in a narrow menu each tag keeps its mark and lets its word
+     go, so a project's name keeps its room — the places' tag and Release first, Review last. */
+  .menu-row-box {
+    container: menu-row / inline-size;
+  }
+
+  .menu-tag-icon {
+    display: none;
+    flex: none;
+    width: 13px;
+    height: 13px;
+  }
+
+  @container menu-row (max-width: 400px) {
+    .zerops-sites-tag .menu-tag-word,
+    .menu-tag-release .menu-tag-word {
+      display: none;
+    }
+
+    .menu-tag-release .menu-tag-icon {
+      display: block;
+    }
+  }
+
+  @container menu-row (max-width: 340px) {
+    .menu-tag-review .menu-tag-word {
+      display: none;
+    }
+
+    .menu-tag-review .menu-tag-icon {
+      display: block;
+    }
+  }
+
+  /* A project with no Mate: its mark where a face would stand. */
+  .menu-project-mark {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: 9px;
+    background: color-mix(in oklab, var(--sidebar-foreground) 6%, transparent);
+    color: var(--sidebar-muted-foreground);
+  }
+
+  /* Mates in no project, after the projects: one quiet word above them. */
+  .menu-ungrouped {
+    padding: 14px 8px 4px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    color: var(--sidebar-muted-foreground);
+  }
+
+  /* ==== end of the menu by project ==== */
 
   /* A one-line row under the Mates — a change, the crew, a fold: 28 px tall
      and a smaller corner than the Mate's row above it. */
@@ -3401,19 +3916,128 @@ code {
     background: color-mix(in oklab, var(--info-foreground) 14%, transparent);
   }
 
-  /* A crewmate's face on its crew's line: a 24 px press around the 20 px
-     face. It stands in its Mate's unit, lit by the pointer or by the
-     selected band, so its own hover is a tint of the ink, which reads on
-     either as on the menu's ground. */
-  .menu-crewface {
-    border-radius: 7px;
+  /* ---- The crew as mini Mates (SidebarCrewMinis.tsx) ----
+     Ducklings after their Mate's name on its first line: 15 px faces 3 px
+     apart, 2 px after the name, centred on the line's 22 px; the one asking
+     17 px; the rest a small muted "+N". A mini's box holds its place, its
+     body moves: a cheer when its work ends while watched, a turn-out when it
+     comes to need you, both once (`data-crew-mini-greet`). At work they
+     march: each hops with its face's own working turn, on beats staggered
+     so the hops fall one after another; with reduced motion every pose
+     stands still. */
+  .menu-minis {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 3px;
+    height: 22px;
+    margin-inline-start: 2px;
   }
 
-  @media (hover: hover) {
-    .menu-crewface:hover {
-      background: color-mix(in oklab, var(--contrast-sidebar-foreground) 8%, transparent);
+  .menu-mini {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 15px;
+    height: 15px;
+  }
+
+  .menu-mini[data-crew-mini-state="needs"] {
+    width: 17px;
+    height: 17px;
+  }
+
+  .menu-mini-body {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform-origin: 50% 90%;
+  }
+
+  .menu-mini-more {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    height: 16px;
+    padding-inline: 5px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--contrast-sidebar-foreground) 8%, transparent);
+    color: var(--contrast-sidebar-muted-foreground);
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-mini-body[data-crew-mini-greet="cheer"] {
+      animation: menu-mini-cheer 900ms var(--ease-out-strong) both;
+    }
+
+    .menu-mini-body[data-crew-mini-greet="turn"] {
+      animation: menu-mini-turn 560ms var(--ease-out-strong) both;
+    }
+
+    /* At work, each hops as its face turns — the turn alone is a twitch at
+       15 px — on the turn's own beat, which the minis stagger. */
+    .menu-mini [data-mate-face-state="working"] [data-mate-face-hop] {
+      animation: menu-mini-march 2.4s infinite;
+      animation-delay: calc(var(--mate-face-phase, 0) * -0.18s);
     }
   }
+
+  /* A 3 px hop in a few frames when the face's turn starts (55 %), then
+     still: stepped, so a menu of crews costs a handful of frames a beat. */
+  @keyframes menu-mini-march {
+    0%,
+    55% {
+      transform: none;
+      animation-timing-function: steps(1, end);
+    }
+    56% {
+      transform: none;
+      animation-timing-function: steps(3, end);
+    }
+    60% {
+      transform: translateY(-3px);
+      animation-timing-function: steps(4, end);
+    }
+    66%,
+    100% {
+      transform: none;
+      animation-timing-function: steps(1, end);
+    }
+  }
+
+  /* Up with a little scale and tilt, a counter-tilt, settled. */
+  @keyframes menu-mini-cheer {
+    0% {
+      transform: none;
+    }
+    25% {
+      transform: translateY(-6px) scale(1.25) rotate(-10deg);
+    }
+    50% {
+      transform: translateY(0) scale(1) rotate(8deg);
+    }
+    72% {
+      transform: translateY(-2px) rotate(-4deg);
+    }
+    100% {
+      transform: none;
+    }
+  }
+
+  /* Turned away, it turns round to face you. */
+  @keyframes menu-mini-turn {
+    0% {
+      transform: perspective(60px) rotateY(85deg) scale(0.85);
+    }
+    100% {
+      transform: none;
+    }
+  }
+  /* ---- end of the crew as mini Mates ---- */
 
   /* The one selected band (`SidebarSelectedBand`): behind every row of the
      list, which is its own stacking context, over the open Mate's unit — its
@@ -3585,490 +4209,6 @@ code {
 /* ==== end of the menu's rows ==== */
 
 /* ==== Pass 16 · the menu's projects and production ==== */
-
-/* A project's name: 16 · 600 on a 24 px line, drawn a little tighter. */
-.zerops-project-name {
-  letter-spacing: -0.2px;
-}
-
-/* The heading's chevron: always there, so a project reads as one that folds (the owner,
-   2026-10-11), full ink under the pointer and while folded, a quarter turn down while open —
-   one glyph that turns as the rows unfold. */
-.zerops-project-chevron {
-  opacity: 0.6;
-  transition:
-    opacity 150ms ease,
-    rotate 220ms var(--ease-out-strong);
-}
-
-[data-zerops-surface="sidebar-project"]:is(:hover, :focus-within, [data-collapsed])
-  .zerops-project-chevron {
-  opacity: 1;
-}
-
-[data-zerops-surface="sidebar-project"]:not([data-collapsed]) .zerops-project-chevron {
-  rotate: 90deg;
-}
-
-@media (pointer: coarse) {
-  .zerops-project-chevron {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .zerops-project-chevron {
-    transition: opacity 150ms ease;
-  }
-}
-
-/* A heading that folds lights under the pointer, as a Mate's row does: a band
-   10 px from either side of the menu, fainter than a row's hover — pressing
-   it folds the project, it opens nothing. Its corners run parallel to its
-   chips' (10 + the 6 px around them, S4), and a reveal's ring follows them.
-   A chip's or ⋯'s open menu lights that control alone, never the heading (the
-   owner, 2026-10-12: "the 'active' bg is within the whole tag - why?"). The band is drawn under the heading's
-   contents rather than as its fill: behind every row of the list, which is
-   its own stacking context, as the selected band is. */
-.zerops-project-heading {
-  border-radius: 16px;
-}
-
-.zerops-project-heading::before {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: 16px;
-  transition: background-color 150ms ease;
-  content: "";
-  pointer-events: none;
-}
-
-@media (hover: hover) {
-  .zerops-project-heading:hover::before {
-    background-color: color-mix(in oklab, var(--sidebar-foreground) 3.5%, transparent);
-  }
-}
-
-/* A heading narrower than its name, road and faces (the owner, 2026-10-12: "this has no handling
-   when the left column is too small"): `headingFit.ts` steps what rides after the name aside, never
-   the name — the stage and the way's lead, then the faces, then, where something rides the way,
-   production — what rides the way staying to the last. */
-[data-zerops-surface="sidebar-project"][data-fit]
-  .zerops-road
-  > :first-child:not(.zerops-road-way):not(:last-child),
-[data-zerops-surface="sidebar-project"][data-fit] .zerops-road-way > .zerops-road-line:first-child,
-[data-zerops-surface="sidebar-project"][data-fit] .zerops-road-way[data-bare],
-[data-zerops-surface="sidebar-project"]:is([data-fit="2"], [data-fit="3"])
-  [data-zerops-surface="sidebar-project-faces"],
-[data-zerops-surface="sidebar-project"][data-fit="3"]
-  .zerops-road:has(.zerops-road-way:not([data-bare]))
-  > :last-child:not(.zerops-road-way),
-[data-zerops-surface="sidebar-project"][data-fit="3"]
-  .zerops-road-way:not([data-bare])
-  > .zerops-road-arrow {
-  display: none;
-}
-
-/* A heading's verbs — its grip and its ⋯ — quiet 28 px squares whose hover, press and open
-   menu read over the heading's own band (the owner, 2026-10-12: "clicking on these 'more'
-   buttons have no feedback"). */
-.menu-heading-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  color: var(--sidebar-muted-foreground);
-  cursor: pointer;
-  outline: none;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong),
-    scale 150ms var(--ease-out-strong);
-}
-
-.menu-heading-action[data-popup-open] {
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 10%, transparent);
-  color: var(--sidebar-foreground);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .menu-heading-action:hover {
-    background-color: color-mix(in oklab, var(--sidebar-foreground) 10%, transparent);
-    color: var(--sidebar-foreground);
-  }
-}
-
-.menu-heading-action:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
-/* A folded heading's face: its Mate's door, a soft disc under the pointer. */
-.menu-heading-face {
-  display: flex;
-  padding: 2px;
-  border-radius: 9999px;
-  cursor: pointer;
-  outline: none;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    scale 150ms var(--ease-out-strong);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .menu-heading-face:hover {
-    background-color: color-mix(in oklab, var(--sidebar-foreground) 10%, transparent);
-  }
-}
-
-.menu-heading-face:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .menu-heading-action:active,
-  .menu-heading-face:active {
-    scale: 0.96;
-  }
-}
-
-/* A face's tooltip: who, what it is doing, and its last line, two lines at most. */
-.menu-face-tip {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-width: 260px;
-}
-
-.menu-face-tip-head {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.menu-face-tip-name {
-  font-weight: 600;
-}
-
-.menu-face-tip-state,
-.menu-face-tip-line {
-  opacity: 0.72;
-}
-
-.menu-face-tip-line {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-/* p25/menu — D′: a project heading's second line, under the name and above the Mates. The
-   stack holds the heading and its line; the heading's band grows over the line (32 → 48 px)
-   as the line opens, and the Mates ride down on the line's height — a reveal, never a jump. */
-.zerops-heading-stack {
-  position: relative;
-}
-
-.zerops-heading-stack .zerops-project-heading::before {
-  transition:
-    background-color 150ms ease,
-    bottom 220ms var(--ease-out-strong);
-}
-
-.zerops-heading-stack:has(.zerops-heading-line[data-open]) .zerops-project-heading::before {
-  bottom: -24px;
-}
-
-@media (hover: hover) {
-  .zerops-heading-stack:hover .zerops-project-heading::before {
-    background-color: color-mix(in oklab, var(--sidebar-foreground) 3.5%, transparent);
-  }
-}
-
-/* p26/row — the line breathes under the name (13 px letter to letter, was 10) and stays one
-   group with it, twice that from the first Mate; 13/18 like the rows under it, where 12/16
-   tucked under the name read as squeezed and faint (the owner, 2026-09-30). */
-.zerops-heading-line {
-  display: grid;
-  grid-template-rows: 0fr;
-  margin: 0 2px 0 1px;
-  transition:
-    grid-template-rows 220ms var(--ease-out-strong),
-    margin-top 220ms var(--ease-out-strong),
-    padding-bottom 220ms var(--ease-out-strong),
-    opacity 220ms var(--ease-out-strong);
-  opacity: 0;
-}
-
-.zerops-heading-line[data-open] {
-  grid-template-rows: 1fr;
-  margin-top: -2px;
-  padding-bottom: 8px;
-  opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .zerops-heading-line,
-  .zerops-heading-stack .zerops-project-heading::before {
-    transition: none;
-  }
-}
-
-.zerops-heading-line-clip {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.zerops-heading-line-row {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 18px;
-  padding: 0 6px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 18px;
-}
-
-.zerops-heading-line-words {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.zerops-heading-line-words > .zerops-envdot {
-  display: inline-block;
-  margin-right: 6px;
-  vertical-align: -1px;
-}
-
-/* The release's tag, the one its folded heading's mark wears: the eye ties the two. */
-.zerops-heading-line-tag {
-  display: inline-block;
-  width: 13px;
-  height: 13px;
-  margin-right: 6px;
-  vertical-align: -2px;
-}
-
-/* The fact in ink; a landing in ok and trouble in amber carry weight as well. */
-.zerops-heading-line-fact {
-  color: var(--sidebar-foreground);
-}
-
-.zerops-heading-line-fact[data-tone="ok"] {
-  color: var(--zerops-status-ok-text);
-  font-weight: 500;
-}
-
-.zerops-heading-line-fact[data-tone="amber"] {
-  color: var(--zerops-status-attention-text);
-  font-weight: 500;
-}
-
-/* The door: a 20 px tint inside the heading's rounded band, its word in the column of the
-   Review below it. */
-.zerops-heading-line-door {
-  margin: -2px -2px -2px 0;
-  padding: 1px 6px;
-}
-
-/* The jump box's way in, in the logo row (M12): a quiet chip with its key
-   inside it, a step darker and inked under the pointer. */
-.zerops-jump-button {
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 5.5%, transparent);
-  color: var(--sidebar-muted-foreground);
-  transition:
-    background-color 150ms ease,
-    color 150ms ease;
-}
-
-.zerops-jump-button:hover {
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 9%, transparent);
-  color: var(--sidebar-foreground);
-}
-
-.zerops-jump-key {
-  line-height: 1;
-}
-
-/* Round 5 — a project's road after its name (`SidebarRoad`): a soft 26 px capsule, 12 · 500
-   muted, holding its places' words on 20 px segments and the hairline way between them. Grey
-   while all is well; a place's word takes amber, red or blue only when someone is needed or
-   there is news, and goes dim while stopped or with nothing released. What waits for a release
-   rides the way: solid blue (`--primary`, what clicks) where a release waits on you, grey where
-   production must be fixed first, blue words while a release is on its way. */
-.zerops-road {
-  /* Over the heading button's hit area, so its places and its chip take their own presses. */
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  height: 26px;
-  padding: 0 3px;
-  border-radius: 999px;
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 7%, transparent);
-  color: var(--sidebar-muted-foreground);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 16px;
-  white-space: nowrap;
-}
-
-.zerops-road-place {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 7px;
-  border-radius: 999px;
-  color: inherit;
-  cursor: pointer;
-  outline: none;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong);
-}
-
-button.zerops-road-place:is(:hover, [data-popup-open]) {
-  background-color: color-mix(in oklab, var(--sidebar-foreground) 8%, transparent);
-  color: var(--sidebar-foreground);
-}
-
-.zerops-road-place:focus-visible,
-.zerops-road-ready:focus-visible,
-.zerops-road-wait:focus-visible,
-.zerops-road-going:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
-.zerops-road-place[data-tone="amber"] {
-  color: var(--zerops-status-attention-text);
-}
-
-.zerops-road-place[data-tone="red"] {
-  color: var(--zerops-status-failed-text);
-}
-
-.zerops-road-place[data-tone="blue"] {
-  color: var(--zerops-status-busy-text);
-}
-
-.zerops-road-place[data-tone="off"],
-.zerops-road-place[data-none] {
-  color: color-mix(in oklab, var(--sidebar-muted-foreground) 50%, transparent);
-}
-
-.zerops-road-place:not(button) {
-  cursor: default;
-}
-
-/* The way: a line, what rides on it, a line ending in an arrowhead — muted at half. */
-.zerops-road-way {
-  --road-line: color-mix(in oklab, var(--sidebar-muted-foreground) 50%, transparent);
-  display: inline-flex;
-  align-items: center;
-}
-
-.zerops-road-line {
-  display: block;
-  flex: none;
-  width: 7px;
-  height: 1px;
-  background-color: var(--road-line);
-}
-
-.zerops-road-arrow {
-  position: relative;
-  width: 11px;
-  margin-right: 1px;
-}
-
-.zerops-road-arrow::after {
-  position: absolute;
-  top: -3px;
-  right: -1px;
-  border-top: 3.5px solid transparent;
-  border-bottom: 3.5px solid transparent;
-  border-left: 5px solid var(--road-line);
-  content: "";
-}
-
-.zerops-road-way[data-bare] > .zerops-road-line:first-child {
-  width: 4px;
-}
-
-.zerops-road-way[data-way="dashed"] > .zerops-road-line {
-  background: repeating-linear-gradient(90deg, var(--road-line) 0 2px, transparent 2px 4px);
-}
-
-.zerops-road-ready {
-  height: 20px;
-  margin: 0 1px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background-color: var(--primary);
-  color: var(--primary-foreground);
-  font-weight: 600;
-  cursor: pointer;
-  outline: none;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    scale 150ms var(--ease-out-strong);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .zerops-road-ready:hover {
-    background-color: color-mix(in oklab, var(--primary) 86%, var(--color-black));
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .zerops-road-ready:active {
-    scale: 0.96;
-  }
-}
-
-.zerops-road-wait {
-  padding: 0 6px;
-  border-radius: 999px;
-  outline: none;
-}
-
-.zerops-road-going {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 6px;
-  border-radius: 999px;
-  color: var(--zerops-status-busy-text);
-  outline: none;
-}
-
-.zerops-road-going > i {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background-color: var(--zerops-status-busy);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .zerops-road-going > i {
-    animation: menu-clock-breathe 1.2s steps(8, jump-none) infinite alternate;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .zerops-road-ready:active {
-    transform: none;
-  }
-}
 
 /* A stop's dot: its state's colour, hollow for a stop on purpose, a small
    stepped spinner while something is on its way. */
@@ -4389,56 +4529,496 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
   }
 }
 
-/* A folded heading's busy face (M15): its dot on the face's corner, cut out of
-   the menu's ground by a 2 px ring. */
-.zerops-heading-dot {
-  position: absolute;
-  right: -2px;
-  bottom: -1px;
-  width: 7px;
-  height: 7px;
-  border-radius: 9999px;
-  box-shadow: 0 0 0 2px var(--sidebar);
+/* ==== Project sites (the menu by project): the globe, the environment tag, their popover ==== */
+
+/* The globe: a 20 px row action, as the row's ■ and ··· are. Dimmed — still pressable — where
+   nothing anywhere has an address yet. */
+.zerops-sites-globe {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  color: var(--sidebar-muted-foreground);
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong),
+    opacity 150ms var(--ease-out-strong);
 }
 
-.zerops-heading-dot[data-dot="attention"] {
-  background-color: var(--zerops-status-attention);
+.zerops-sites-globe:hover {
+  background-color: var(--sidebar-row-hover);
+  color: var(--sidebar-foreground);
 }
 
-.zerops-heading-dot[data-dot="unread"] {
-  background-color: var(--info-foreground);
+.zerops-sites-globe:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
-.zerops-heading-dot[data-dot="failed"] {
-  background-color: var(--zerops-status-failed);
+.zerops-sites-globe[data-popup-open] {
+  background-color: var(--sidebar-row-active);
+  color: var(--sidebar-foreground);
 }
 
-/* A dot that arrives while watched scales in, once (T6); what a paint opened
-   onto is simply there (`HeadingFaceMark`). */
-@media (prefers-reduced-motion: no-preference) {
-  .zerops-heading-dot[data-arrived] {
-    animation: zerops-heading-dot-in 220ms var(--ease-out-strong) backwards;
-  }
+.zerops-sites-globe[data-empty]:not(:hover, [data-popup-open]) {
+  opacity: 0.45;
+}
+
+/* The environment tag: the row's tags' metrics (22 px, 12/16 · 500, radius 7), its dot before
+   its word. Red and amber on their status grounds; moving on the quiet card ground the Review
+   tag wears; landed on the ok ground. */
+.zerops-sites-tag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  transition: box-shadow 150ms var(--ease-out-strong);
+}
+
+.zerops-sites-tag[data-tone="red"] {
+  background-color: var(--zerops-status-failed-surface);
+  color: var(--zerops-status-failed-text);
+}
+
+.zerops-sites-tag[data-tone="amber"] {
+  background-color: var(--zerops-status-attention-surface);
+  color: var(--zerops-status-attention-text);
+}
+
+.zerops-sites-tag[data-tone="busy"] {
+  background-color: var(--card);
+  color: var(--sidebar-foreground);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.zerops-sites-tag[data-tone="ok"] {
+  background-color: var(--zerops-status-ok-surface);
+  color: var(--zerops-status-ok-text);
+}
+
+.zerops-sites-tag:is(:hover, [data-popup-open]) {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 30%, transparent);
+}
+
+.zerops-sites-tag:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+/* The popover: 360 px, its own scroll under its title, grown from the door's side. */
+.zerops-sites {
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 16px));
+  max-height: min(560px, 70vh, var(--available-height));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background-color: var(--card);
+  color: var(--card-foreground);
+  box-shadow:
+    0 18px 40px -18px color-mix(in srgb, var(--color-black) 38%, transparent),
+    0 2px 6px -2px color-mix(in srgb, var(--color-black) 8%, transparent);
+  font-size: 13px;
+  line-height: 18px;
+  outline: none;
+  transform-origin: var(--transform-origin);
+  transition:
+    opacity 160ms var(--ease-out-strong),
+    scale 160ms var(--ease-out-strong);
+}
+
+.zerops-sites:is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+  scale: 0.98;
+}
+
+.zerops-sites[data-ending-style] {
+  transition-duration: 120ms;
+}
+
+.dark .zerops-sites {
+  box-shadow:
+    0 18px 44px -18px color-mix(in srgb, var(--color-black) 90%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--color-black) 35%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .zerops-heading-dot[data-arrived] {
-    animation: zerops-heading-dot-fade 220ms ease-out backwards;
+  .zerops-sites {
+    transition: opacity 120ms ease;
+  }
+
+  .zerops-sites:is([data-starting-style], [data-ending-style]) {
+    scale: 1;
   }
 }
 
-@keyframes zerops-heading-dot-in {
-  from {
-    opacity: 0;
-    scale: 0;
+.zerops-sites-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.zerops-sites-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 8px;
+}
+
+.zerops-sites-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zerops-sites-count {
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.zerops-sites-filter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  margin: 0 8px 6px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background-color: color-mix(in oklab, var(--card-foreground) 5%, transparent);
+  color: var(--muted-foreground);
+  transition: box-shadow 150ms var(--ease-out-strong);
+}
+
+.zerops-sites-filter:focus-within {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.zerops-sites-filter input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--card-foreground);
+  font: inherit;
+  outline: none;
+}
+
+.zerops-sites-filter input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.zerops-sites-scroll {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 6px 6px;
+}
+
+/* A section: its head sticks while its rows pass under it; a hairline between two shown. */
+.zerops-sites-section {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+}
+
+.zerops-sites-section:not([hidden]) ~ .zerops-sites-section:not([hidden]) {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 10px 10px;
+}
+
+.zerops-sites-sectionhead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background-color: var(--card);
+}
+
+.zerops-sites-place,
+.zerops-sites-mate {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 9px;
+  text-align: start;
+  scroll-margin-top: 0;
+}
+
+.zerops-sites-mate {
+  grid-template-columns: 16px minmax(0, 1fr);
+}
+
+.zerops-sites-place > .zerops-envdot {
+  justify-self: center;
+}
+
+.zerops-sites-face {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+/* A colleague's Mate wears its owner's initial on its face's corner, cut from the card. */
+.zerops-sites-owner {
+  position: absolute;
+  right: -4px;
+  bottom: -3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: oklch(var(--menu-owner-l) var(--menu-owner-c) var(--menu-owner-hue));
+  box-shadow: 0 0 0 1.5px var(--card);
+  color: var(--color-white);
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+
+.zerops-sites-whose {
+  color: var(--muted-foreground);
+}
+
+.zerops-sites-zerops {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  outline: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
+}
+
+.zerops-sites-zerops:is(:hover, :focus-visible) {
+  background-color: var(--accent);
+  color: var(--foreground);
+}
+
+/* The mark repeats down the list: quiet until pointed at, then in its own colour. */
+.zerops-sites-zerops > svg {
+  opacity: 0.5;
+  filter: grayscale(1);
+  transition:
+    opacity 150ms var(--ease-out-strong),
+    filter 150ms var(--ease-out-strong);
+}
+
+.zerops-sites-zerops:is(:hover, :focus-visible) > svg {
+  opacity: 1;
+  filter: none;
+}
+
+.zerops-sites-note {
+  padding: 0 10px 6px 36px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.zerops-sites-access {
+  padding: 0 10px 0 36px;
+}
+
+.zerops-sites-access:empty {
+  display: none;
+}
+
+.zerops-sites-quiet {
+  padding: 2px 10px 8px 36px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* An address: its service (and its role), its host cut short, ↗ — and, at its end, in room kept
+   for it, the copy its hover or focus shows. */
+.zerops-sites-linkrow {
+  position: relative;
+}
+
+.zerops-sites-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 38px 6px 36px;
+  border-radius: 9px;
+  color: var(--muted-foreground);
+  outline: none;
+  scroll-margin-top: 36px;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
+}
+
+.zerops-sites-linkrow:hover > .zerops-sites-link,
+.zerops-sites-link:focus-visible {
+  background-color: var(--accent);
+  color: var(--foreground);
+}
+
+.zerops-sites-service {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--foreground);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zerops-sites-role {
+  flex: none;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background-color: color-mix(in oklab, var(--card-foreground) 7%, transparent);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.zerops-sites-host {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zerops-sites-arrow {
+  flex: none;
+  width: 13px;
+  height: 13px;
+}
+
+.zerops-sites-copy {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 7px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  opacity: 0;
+  translate: 0 -50%;
+  transition:
+    opacity 120ms var(--ease-out-strong),
+    background-color 120ms var(--ease-out-strong),
+    color 120ms var(--ease-out-strong);
+}
+
+.zerops-sites-linkrow:is(:hover, :focus-within) > .zerops-sites-copy,
+.zerops-sites-linkrow[data-copied] > .zerops-sites-copy {
+  opacity: 1;
+}
+
+.zerops-sites-copy:hover {
+  background-color: color-mix(in oklab, var(--card-foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+.zerops-sites-linkrow[data-copied] > .zerops-sites-copy {
+  background-color: var(--card);
+  box-shadow: 0 0 0 1px var(--border);
+  color: var(--zerops-status-ok-text);
+}
+
+@media (pointer: coarse) {
+  .zerops-sites-copy {
+    opacity: 1;
   }
 }
 
-@keyframes zerops-heading-dot-fade {
-  from {
-    opacity: 0;
+.zerops-sites-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 16px 14px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.zerops-sites-empty > p:first-child {
+  color: var(--card-foreground);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.zerops-sites-empty > .zerops-envpop-act {
+  align-self: stretch;
+  margin-top: 8px;
+  color: var(--card-foreground);
+  text-align: start;
+}
+
+/* The section the tag spoke of, lit for a moment as the popover opens on it. */
+.zerops-sites-section[data-flash],
+.zerops-sites-section[data-flash] > .zerops-sites-sectionhead {
+  animation: zerops-sites-flash 1200ms ease-out;
+}
+
+@keyframes zerops-sites-flash {
+  0%,
+  40% {
+    background-color: color-mix(in oklab, var(--info-foreground) 12%, var(--card));
   }
 }
+
+/* ==== end of project sites ==== */
 
 /* ==== end of the menu's projects and production ==== */
 

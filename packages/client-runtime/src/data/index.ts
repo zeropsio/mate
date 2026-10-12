@@ -341,6 +341,14 @@ export {
   startMateBrowserFrames,
   makeMateBrowserFrameSink,
 } from "./adapters/mateBrowserFrame.ts";
+export { mateMacViewFamily, mateMacViewScope, mateMacViewId } from "./families/mateMacView.ts";
+export { mateMacView } from "./projections/mateMacView.ts";
+export {
+  makeMateMacViewWire,
+  startMateMacView,
+  makeMateMacViewSink,
+  makeMateMacInputCommand,
+} from "./adapters/mateMacView.ts";
 
 export {
   inventoryTopology,

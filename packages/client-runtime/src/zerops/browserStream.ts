@@ -23,10 +23,12 @@ import {
  * 1.4 MB in run 12), and every draw of a card showing the live frame asks
  * for it — built anew each time, each draw held a copy of its own.
  */
-const frameSrcs = new WeakMap<ZeropsBrowserFrame, string>();
+const frameSrcs = new WeakMap<object, string>();
 
 /** The source image is never re-encoded; the daemon defaults to JPEG and tool images name their format. */
-export function frameImageSrc(frame: ZeropsBrowserFrame): string {
+export function frameImageSrc<Frame extends Pick<ZeropsBrowserFrame, "data" | "mimeType">>(
+  frame: Frame,
+): string {
   const known = frameSrcs.get(frame);
   if (known !== undefined) return known;
   const src = `data:${frame.mimeType ?? "image/jpeg"};base64,${frame.data}`;

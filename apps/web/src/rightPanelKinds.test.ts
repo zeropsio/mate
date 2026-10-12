@@ -25,7 +25,7 @@ describe("right panel kinds", () => {
     }
   });
 
-  it("keeps the eleven launcher rows in their established order", () => {
+  it("keeps the launcher rows in their established order", () => {
     expect(
       launcherActions(resolveRightPanelAvailability(AVAILABLE_INPUT)).map(
         ({ kind, label, description, shortcut, unavailableHint }) => ({
@@ -77,6 +77,13 @@ describe("right panel kinds", () => {
         label: "Browser",
         description: "Watch the agent's browser live.",
         shortcut: "B",
+        unavailableHint: "Available in a Zerops project.",
+      },
+      {
+        kind: "mac",
+        label: "Mac",
+        description: "Watch and use the app on the paired Mac.",
+        shortcut: null,
         unavailableHint: "Available in a Zerops project.",
       },
       {
@@ -135,6 +142,7 @@ describe("right panel kinds", () => {
         agents: "available",
         zerops: "available",
         browser: "available",
+        mac: "available",
         git: "available",
         data: "available",
         crew: "available",
@@ -160,6 +168,7 @@ describe("right panel kinds", () => {
         agents: "available",
         zerops: "unavailable",
         browser: "unavailable",
+        mac: "unavailable",
         git: "unavailable",
         data: "unavailable",
         crew: "hidden",
@@ -179,6 +188,7 @@ describe("right panel kinds", () => {
         agents: "available",
         zerops: "unknown",
         browser: "unknown",
+        mac: "unknown",
         git: "unknown",
         data: "unknown",
         crew: "hidden",
@@ -198,6 +208,7 @@ describe("right panel kinds", () => {
         agents: "available",
         zerops: "available",
         browser: "available",
+        mac: "available",
         git: "available",
         data: "available",
         crew: "available",

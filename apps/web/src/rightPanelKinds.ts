@@ -18,6 +18,7 @@ export const RIGHT_PANEL_KINDS = [
   "agents",
   "zerops",
   "browser",
+  "mac",
   "data",
   "git",
   "crew",
@@ -45,7 +46,8 @@ export interface RightPanelKindMeta {
   readonly launcher: {
     readonly label: string;
     readonly description: string;
-    readonly shortcut: string;
+    /** The launcher's letter; `null` where no letter is obvious. */
+    readonly shortcut: string | null;
     readonly unavailableHint: string;
   } | null;
   readonly availability: (input: RightPanelAvailabilityInput) => RightPanelAvailability;
@@ -118,6 +120,16 @@ export const RIGHT_PANEL_KIND_META = {
       label: "Browser",
       description: "Watch the agent's browser live.",
       shortcut: "B",
+      unavailableHint: "Available in a Zerops project.",
+    },
+    availability: (input) => input.zeropsPanel,
+  },
+  mac: {
+    launcher: {
+      label: "Mac",
+      description: "Watch and use the app on the paired Mac.",
+      // M is MCP's, and no other letter says Mac.
+      shortcut: null,
       unavailableHint: "Available in a Zerops project.",
     },
     availability: (input) => input.zeropsPanel,
