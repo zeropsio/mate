@@ -45,6 +45,7 @@ import {
   enableSubdomainAccessExecutor,
   enableZeropsMateExecutor,
   startServiceExecutor,
+  stopServiceExecutor,
 } from "./serviceWrites.ts";
 import { throwawaySweepExecutor } from "./throwawaySweep.ts";
 import { serviceRestartExecutor, vaultWriteExecutor } from "./vaultWrites.ts";
@@ -178,6 +179,9 @@ export function makeZeropsExecutor(input: {
     const startOne = startServiceExecutor({
       startService: (serviceId) => client.startService(serviceId),
     });
+    const stopOne = stopServiceExecutor({
+      stopService: (serviceId) => client.stopService(serviceId),
+    });
     const startAll = startProjectExecutor({
       startProject: (projectId) => client.startProject(projectId),
     });
@@ -253,6 +257,8 @@ export function makeZeropsExecutor(input: {
               return publish(requestId, intent);
             case "start-service":
               return startOne(requestId, intent);
+            case "stop-service":
+              return stopOne(requestId, intent);
             case "start-project":
               return startAll(requestId, intent);
             case "enable-zerops-mate":

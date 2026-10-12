@@ -36,6 +36,7 @@ import { renameProject } from "./renameProject.ts";
 import { serviceRestart } from "./serviceRestart.ts";
 import { startProject } from "./startProject.ts";
 import { startService } from "./startService.ts";
+import { stopService } from "./stopService.ts";
 import { throwawaySweep } from "./throwawaySweep.ts";
 import { updateProjectTags } from "./updateProjectTags.ts";
 import { vaultWrite } from "./vaultWrite.ts";
@@ -67,6 +68,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   deleteProject,
   enableSubdomainAccess,
   startService,
+  stopService,
   startProject,
   enableZeropsMate,
   renameProject,
