@@ -10,6 +10,7 @@ import {
   EventLine,
   HeldMessageLine,
   LimitContinue,
+  NoticeLine,
   PauseBlock,
   type ConversationSpeaker,
 } from "./ConversationRows";
@@ -365,4 +366,61 @@ describe("a slash command's line", () => {
     );
     expect(markup.replace(/<[^>]*>/g, "")).toBe(says);
   });
+});
+
+describe("a notice's row", () => {
+  let root: Root | undefined;
+  beforeEach(() => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+  });
+  afterEach(async () => {
+    await act(() => root?.unmount());
+    root = undefined;
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    { unavailable: null, runs: true },
+    { unavailable: "Compacting is unavailable right now", runs: false },
+  ])(
+    "says what happened, runs its one action unless it is unavailable ($unavailable), and dismisses",
+    async ({ unavailable, runs }) => {
+      const act1 = vi.fn();
+      const dismiss = vi.fn();
+      await act(() =>
+        root!.render(
+          <NoticeLine
+            notice={{
+              id: "n",
+              icon: <span />,
+              words: (
+                <>
+                  <strong>Resume with less context</strong> · 180k tokens from an older session
+                </>
+              ),
+              action: { label: "Compact", onAction: act1, unavailable },
+              dismissLabel: "Keep full history",
+              onDismiss: dismiss,
+            }}
+          />,
+        ),
+      );
+      expect(document.body.textContent).toContain(
+        "Resume with less context · 180k tokens from an older session",
+      );
+      const buttons = [...document.querySelectorAll<HTMLButtonElement>("button")];
+      const compact = buttons.find((button) => button.textContent === "Compact")!;
+      await act(() => compact.click());
+      expect(act1).toHaveBeenCalledTimes(runs ? 1 : 0);
+      expect(compact.disabled).toBe(!runs);
+      await act(() =>
+        buttons
+          .find((button) => button.getAttribute("aria-label") === "Keep full history")!
+          .click(),
+      );
+      expect(dismiss).toHaveBeenCalledOnce();
+    },
+  );
 });

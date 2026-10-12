@@ -378,6 +378,86 @@ export function EventLine({
 }
 
 /**
+ * Something that happened which the person may still act on — a command's answer, a compaction to
+ * offer, a branch that changed: a quiet row at the conversation's end while it holds, where the
+ * composer's strips once stacked (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12).
+ */
+export interface ConversationNotice {
+  readonly id: string;
+  readonly icon: ReactNode;
+  /** What happened, on one line; its key words in `<strong>`. */
+  readonly words: ReactNode;
+  /** What more it says, under its line: a command's whole answer. */
+  readonly detail?: ReactNode;
+  /** Its one action, a text button at the row's end. */
+  readonly action?: {
+    readonly label: string;
+    readonly onAction: () => void;
+    /** Why it cannot run now: it stays, disabled, and says why on hover. */
+    readonly unavailable?: string | null;
+  };
+  readonly dismissLabel?: string;
+  readonly onDismiss?: () => void;
+  /** It says that something failed. */
+  readonly failed?: boolean;
+}
+
+/** A notice's row: an event's grammar — its mark on the text edge, its words — and its action. */
+export function NoticeLine({ notice }: { readonly notice: ConversationNotice }) {
+  const { action } = notice;
+  const unavailable = action?.unavailable ?? null;
+  const button =
+    action === undefined ? null : (
+      <button
+        className="ms-3 shrink-0 cursor-pointer rounded-sm font-medium text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60 disabled:hover:no-underline"
+        disabled={unavailable !== null}
+        onClick={action.onAction}
+        type="button"
+      >
+        {action.label}
+      </button>
+    );
+  return (
+    <div
+      className="min-w-0 text-line text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground"
+      data-conversation-notice={notice.id}
+      role={notice.failed ? "alert" : "status"}
+    >
+      <div className="flex min-h-8 min-w-0 items-center">
+        <LineMark
+          className={cn("items-center [&_svg]:size-4", notice.failed && "text-status-failed-text")}
+        >
+          {notice.icon}
+        </LineMark>
+        <span className="min-w-0 flex-1 truncate">{notice.words}</span>
+        {button !== null && unavailable !== null ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
+              {button}
+            </TooltipTrigger>
+            <TooltipPopup side="top">{unavailable}</TooltipPopup>
+          </Tooltip>
+        ) : (
+          button
+        )}
+        {notice.onDismiss === undefined ? null : (
+          <Button
+            aria-label={notice.dismissLabel ?? "Dismiss"}
+            className="ms-2 shrink-0"
+            onClick={notice.onDismiss}
+            size="icon-xs"
+            variant="ghost-muted"
+          >
+            <XIcon className="size-3.5" />
+          </Button>
+        )}
+      </div>
+      {notice.detail === undefined ? null : <div className="ps-5 pb-1">{notice.detail}</div>}
+    </div>
+  );
+}
+
+/**
  * The ask a Mate's first sign-in sends for its person — "You asked Wren to stand up development
  * of Beviro" — as a quiet line on the text edge, never a bubble in the person's words: the words
  * are the product's, sent for them. Its time on hover, as every event's.

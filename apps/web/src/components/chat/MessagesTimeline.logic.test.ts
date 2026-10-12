@@ -3039,6 +3039,42 @@ describe("deriveMessagesTimelineRows", () => {
       calm: false,
     });
   });
+
+  // The owner's pick, S6 on the "Composer Strips" board (2026-10-12): what happened becomes a quiet
+  // row in the conversation, not a strip over the composer.
+  it.each([
+    { notices: [], last: ["queued-message"] },
+    { notices: ["feedback:1"], last: ["queued-message", "notice:feedback:1"] },
+    {
+      notices: ["resume-compaction:t", "branch-changed:t"],
+      last: ["queued-message", "notice:resume-compaction:t", "notice:branch-changed:t"],
+    },
+  ])(
+    "what happened stands at the conversation's end while it holds ($notices)",
+    ({ notices, last }) => {
+      const list = deriveMessagesTimelineRows({
+        timelineEntries: [user("m0", 0)],
+        isWorking: true,
+        activeTurnStartedAt: at(0),
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+        queuedMessages: [
+          {
+            id: "q1",
+            createdAt: at(1),
+            prompt: "and the footer",
+            images: [],
+            terminalContexts: [],
+            reviewComments: [],
+          } as never,
+        ],
+        notices,
+      });
+      expect(
+        list.slice(-last.length).map((row) => (row.kind === "notice" ? row.id : row.kind)),
+      ).toEqual(last);
+    },
+  );
 });
 
 describe("thoughtParagraphs", () => {

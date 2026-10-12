@@ -669,6 +669,12 @@ type MessagesTimelineRowBody =
       operation: ZeropsOperation;
     }
   | { kind: "event"; id: string; createdAt: string; event: ConversationEvent }
+  /**
+   * What happened that the person may still act on — a command's answer, a compaction to offer, a
+   * branch that changed: a quiet row at the conversation's end while it holds (`ConversationNotice`,
+   * drawn from the caller's notice of that id).
+   */
+  | { kind: "notice"; id: string; createdAt: string; noticeId: string }
   /** The task the server handed a crewmate: its card, never the person's bubble. */
   | { kind: "crew-card"; id: string; createdAt: string; task: CrewCard }
   /** A line the crew engine drew across a crewmate's chat (`crew.seam`), `words` its words. */
@@ -2267,6 +2273,8 @@ export function deriveMessagesTimelineRows(input: {
   supportsConversationRollback: boolean;
   /** Messages sent during the running turn, rendered after the live rows. */
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
+  /** What happened that still holds, by id: the conversation's last rows, in this order. */
+  notices?: ReadonlyArray<string>;
   /** When the person last saw this conversation, if something came since. */
   newSince?: string | null;
   /** The server's word on work that outlived the turn, while it runs on. */
@@ -3375,6 +3383,14 @@ export function deriveMessagesTimelineRows(input: {
         .some((ahead) => ahead.holdUntilUserAction === true),
     });
   });
+  for (const noticeId of input.notices ?? []) {
+    rows.push({
+      kind: "notice",
+      id: `notice:${noticeId}`,
+      createdAt: rows.at(-1)?.createdAt ?? "",
+      noticeId,
+    });
+  }
   const cards = new Map<number, CardSlice>();
   const whole = new Set<number>();
   for (const [start, end] of cardRanges) {
