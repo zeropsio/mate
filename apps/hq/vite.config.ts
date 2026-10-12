@@ -9,7 +9,6 @@ export default mergeConfig(
   defineConfig({
     test: {
       globalSetup: ["../../scripts/test-postgres.setup.ts"],
-      fileParallelism: false,
     },
     pack: {
       entry: ["src/main.ts"],

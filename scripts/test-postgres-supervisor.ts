@@ -74,6 +74,7 @@ async function guardPostgres() {
       `port = ${port}`,
       "listen_addresses = '127.0.0.1'",
       "unix_socket_directories = ''",
+      "max_connections = 400",
       "fsync = off",
       "synchronous_commit = off",
       "full_page_writes = off",
