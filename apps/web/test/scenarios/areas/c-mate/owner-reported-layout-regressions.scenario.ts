@@ -1737,8 +1737,7 @@ describe("owner-reported layout regressions", () => {
                   `Question ${index}`,
                   "An answer long enough to fill the column.\n\n".repeat(6),
                 );
-              wire.holdReplay = true;
-              const read = wire.holdPage("", s.drivers.mates.get("Sage")!.snapshot());
+              const read = wire.engine.holdOpen();
               yield* Effect.addFinalizer(() => Effect.sync(() => read.release()));
               yield* s.given.signedIn;
               yield* chat.when.openReadOnly("Sage");
@@ -1766,8 +1765,6 @@ describe("owner-reported layout regressions", () => {
                 }),
               );
               read.release();
-              yield* Effect.promise(() => wire.replaySubscribed());
-              wire.ready();
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
                   () =>
