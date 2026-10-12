@@ -144,6 +144,7 @@ function messageOf(
   cardOf: CardOf,
   neverStarted: NeverStarted = () => false,
   queued: (runId: string) => boolean = () => false,
+  refusedAtAdmission: NeverStarted = () => false,
 ): EngineMessage | null {
   const base = {
     turnId: cardOf(item.runId) as OrchestrationMessage["turnId"],
@@ -153,7 +154,7 @@ function messageOf(
   switch (item.kind) {
     case "person":
       // Refused before anything of its run ran (admission): its words go back to its sender.
-      if (item.delivery.state === "refused" && neverStarted(item.runId)) return null;
+      if (item.delivery.state === "refused" && refusedAtAdmission(item.runId)) return null;
       return {
         ...base,
         // A message whose run ended before it began names no run, as a V1 message no run took.
@@ -863,6 +864,9 @@ export function engineThreadOf(
     const run = runId === null ? undefined : runById.get(runId);
     return run !== undefined && run.state === "ended" && run.startedAt === null;
   };
+  // Only admission ends a run failed before anything of it ran.
+  const refusedAtAdmission: NeverStarted = (runId) =>
+    neverStarted(runId) && runById.get(runId!)?.end?.kind === "failed";
   // A call whose work the person stopped: Stop ends the call failed and the work stopped.
   const stoppedCalls = new Set(
     items.flatMap((item) =>
@@ -877,6 +881,7 @@ export function engineThreadOf(
       cardOf,
       neverStarted,
       (runId) => runById.get(runId)?.state === "queued",
+      refusedAtAdmission,
     );
     if (message !== null) messages.push(message);
     switch (item.kind) {
@@ -1061,7 +1066,8 @@ export const engineRunCards: Projection<
         if (
           opener.value.delivery.state === "refused" &&
           first.state === "ended" &&
-          first.startedAt === null
+          first.startedAt === null &&
+          first.end?.kind === "failed"
         )
           card.refused = { messageId: card.openerMessageId, text: opener.value.text };
       }
