@@ -33,7 +33,7 @@ import { gatedPortal } from "../ui/portal-gate";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
-import { routeMenuEntries } from "./ZeropsPublicRoutes";
+import { routeMenuEntries } from "./ZeropsPublicRoutes.logic";
 import {
   chipFace,
   draftParts,

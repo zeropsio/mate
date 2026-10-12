@@ -4,7 +4,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { visitElements } from "../../test/reactElementTree";
-import { routeMenuEntries, ZeropsRouteMenuItems, ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
+import { ZeropsRouteMenuItems, ZeropsRoutesMenu } from "./ZeropsPublicRoutes";
+import { routeMenuEntries } from "./ZeropsPublicRoutes.logic";
 
 const APP: ZeropsPublicRoute = {
   service: "app",
