@@ -3144,8 +3144,27 @@ export function deriveMessagesTimelineRows(input: {
     lastEnd = last.endedAt ?? last.startedAt;
   };
 
+  // A settled card the page holds nothing of yet (its lines page in as it opens) has no entry to
+  // stand at: it stands where its run began, among the entries (the run-card oracle: a wake that
+  // only ran commands lost its card on a reload, and with it the word of what woke it).
+  const unheld = structure.turns.filter(
+    (turn) => !turn.live && turn.span.openerIndex === null && turn.span.entryIndexes.length === 0,
+  );
+  const emitUnheldBefore = (createdAt: string | null) => {
+    const until = createdAt === null ? Infinity : Date.parse(createdAt);
+    while (unheld.length > 0) {
+      const next = unheld[0]!;
+      // An unreadable time stands it first, never lost.
+      if (Date.parse(next.stretches[0]?.startedAt ?? "") >= until) return;
+      unheld.shift();
+      if (emitted.has(next.key)) continue;
+      emitted.add(next.key);
+      emitTurn(next);
+    }
+  };
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]!;
+    emitUnheldBefore(entry.createdAt);
     if (isLooseActivity(index)) {
       // A run of background work no turn owns: one line, its tasks one click away.
       const run: WorkLogEntry[] = [];
@@ -3233,6 +3252,7 @@ export function deriveMessagesTimelineRows(input: {
     emitted.add(turn.key);
     emitTurn(turn);
   }
+  emitUnheldBefore(null);
   // A live turn that has drawn nothing yet — one a finished background task
   // woke, before its first words — is the conversation's bottom all the same.
   for (const turn of structure.turns) {
