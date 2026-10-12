@@ -438,6 +438,15 @@ function overlayModeForCommand(command: string | null): SearchOverlayMode | null
     : null;
 }
 
+/** HQ's Mates but for other people's Chiefs, which the jump box finds nowhere. */
+function withoutOthersChiefs<T>(
+  mates: ReadonlyMap<string, T> | null,
+  othersChiefs: ReadonlySet<string>,
+): ReadonlyMap<string, T> | null {
+  if (mates === null || !(othersChiefs.size > 0)) return mates;
+  return new Map([...mates].filter(([projectId]) => !othersChiefs.has(projectId)));
+}
+
 export function CommandPalette({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reduceCommandPaletteUiState, {
     open: false,
@@ -1252,12 +1261,7 @@ export function OpenCommandPaletteDialog(props: {
         .map((environment) => environment.environmentId),
     );
     return {
-      mates:
-        hqMates === null
-          ? null
-          : othersChiefs.size === 0
-            ? hqMates.mates
-            : new Map([...hqMates.mates].filter(([projectId]) => !othersChiefs.has(projectId))),
+      mates: withoutOthersChiefs(hqMates?.mates ?? null, othersChiefs),
       current: hqMates?.current === true,
       connected: (environmentId) => connected.has(environmentId),
       linkable,
