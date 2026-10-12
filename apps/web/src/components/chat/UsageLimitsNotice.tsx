@@ -45,6 +45,8 @@ export function usageLimitsNotice(
     detail: <UsageLimitsBody report={report} environmentId={environmentId} />,
     dismissLabel: "Dismiss usage limits",
     onDismiss,
+    // The answer to the person's own command.
+    byPerson: true,
   };
 }
 

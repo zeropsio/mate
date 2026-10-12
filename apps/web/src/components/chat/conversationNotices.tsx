@@ -7,6 +7,7 @@ import { GitBranchIcon, Minimize2Icon, RefreshCwIcon } from "lucide-react";
 
 import { formatContextWindowTokens } from "../../lib/contextWindow";
 import type { CrewChatNotices } from "../zerops/crew/crewChatNotices";
+import type { TimelineEntry } from "../../session-logic";
 import type { ConversationNotice } from "./ConversationRows";
 
 /** An older session that holds a lot of context: Compact, or keep its whole history. */
@@ -57,6 +58,8 @@ export function branchChangedNotice(input: {
       : { label: "Restore branch", onAction: input.onRestore },
     dismissLabel: "Dismiss branch change notice",
     onDismiss: input.onDismiss,
+    // It shows on the person's keystroke in a draft (`useBranchAdvice`).
+    byPerson: true,
   };
 }
 
@@ -81,4 +84,35 @@ export function crewNextConversationNotice(
       </>
     ),
   };
+}
+
+/**
+ * Where a conversation's notices stand: its last rows while it holds any; just above the composer,
+ * within its empty state, while there is no conversation to hold them — a fresh draft's hero, an
+ * empty conversation, a crewmate's with only its seams — so the empty state stays drawn and no
+ * list of one row replaces it.
+ */
+export function noticesHome(input: {
+  readonly heroDraft: boolean;
+  readonly entries: ReadonlyArray<TimelineEntry>;
+  readonly isWorking: boolean;
+  readonly queued: number;
+}): "conversation" | "composer" {
+  if (input.heroDraft) return "composer";
+  if (input.isWorking || input.queued > 0) return "conversation";
+  return input.entries.every((entry) => entry.kind === "work" && entry.entry.crewSeam != null)
+    ? "composer"
+    : "conversation";
+}
+
+/**
+ * A notice the person's own action brought — the /usage-limits answer, the branch advice on their
+ * keystroke — that was not there before: it brings the conversation to its end, as a send does.
+ * What arrives on its own follows the list's usual end-following.
+ */
+export function personNoticeArrived(
+  before: ReadonlySet<string>,
+  notices: ReadonlyArray<ConversationNotice>,
+): boolean {
+  return notices.some((notice) => notice.byPerson === true && !before.has(notice.id));
 }

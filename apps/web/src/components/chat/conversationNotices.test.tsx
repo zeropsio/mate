@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
-import { ThreadId, type CrewPromptVersion } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, type CrewPromptVersion } from "@t3tools/contracts";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -11,8 +11,12 @@ import { NoticeLine, type ConversationNotice } from "./ConversationRows";
 import {
   branchChangedNotice,
   crewNextConversationNotice,
+  noticesHome,
+  personNoticeArrived,
   resumeCompactionNotice,
 } from "./conversationNotices";
+import { usageLimitsNotice } from "./UsageLimitsNotice";
+import type { TimelineEntry } from "../../session-logic";
 
 let root: Root | undefined;
 
@@ -147,4 +151,108 @@ describe("a crewmate whose job changed", () => {
       expect(document.querySelector("button")).toBeNull();
     },
   );
+});
+
+describe("where a notice stands and whether it brings the end", () => {
+  const message = { kind: "message", id: "m1", createdAt: "", message: {} } as TimelineEntry;
+  const crewSeam = {
+    kind: "work",
+    id: "seam",
+    createdAt: "",
+    entry: { crewSeam: { seam: "stint" } },
+  } as unknown as TimelineEntry;
+  it.each([
+    {
+      name: "a fresh draft's hero",
+      heroDraft: true,
+      entries: [],
+      working: false,
+      home: "composer",
+    },
+    {
+      name: "an empty conversation",
+      heroDraft: false,
+      entries: [],
+      working: false,
+      home: "composer",
+    },
+    {
+      name: "a crewmate's conversation with only its seams",
+      heroDraft: false,
+      entries: [crewSeam],
+      working: false,
+      home: "composer",
+    },
+    {
+      name: "a conversation at work",
+      heroDraft: false,
+      entries: [],
+      working: true,
+      home: "conversation",
+    },
+    {
+      name: "a conversation with a message",
+      heroDraft: false,
+      entries: [message],
+      working: false,
+      home: "conversation",
+    },
+  ])("$name holds its notices in the $home", ({ heroDraft, entries, working, home }) => {
+    expect(noticesHome({ heroDraft, entries, isWorking: working, queued: 0 })).toBe(home);
+  });
+
+  const notice = (id: string, byPerson = false) =>
+    ({ id, icon: null, words: id, ...(byPerson ? { byPerson } : {}) }) as ConversationNotice;
+  it.each([
+    {
+      name: "the person's /usage-limits answer arriving",
+      before: [],
+      now: [notice("usage-limits:1", true)],
+      brings: true,
+    },
+    {
+      name: "the same answer still standing",
+      before: ["usage-limits:1"],
+      now: [notice("usage-limits:1", true)],
+      brings: false,
+    },
+    {
+      name: "a feedback result arriving on its own",
+      before: [],
+      now: [notice("feedback:1")],
+      brings: false,
+    },
+    {
+      name: "the branch advice the person's keystroke revealed",
+      before: ["feedback:1"],
+      now: [notice("feedback:1"), notice("branch-changed:t", true)],
+      brings: true,
+    },
+  ])("$name brings the conversation to its end: $brings", ({ before, now, brings }) => {
+    expect(personNoticeArrived(new Set(before), now)).toBe(brings);
+  });
+
+  it.each([
+    {
+      name: "usage limits",
+      notice: usageLimitsNotice(
+        "usage-limits:1",
+        { createdAt: "2026-10-12T10:00:00.000Z", accounts: [], notices: [] },
+        EnvironmentId.make("env"),
+        () => {},
+      ),
+    },
+    {
+      name: "a changed branch",
+      notice: branchChangedNotice({
+        key: "k",
+        mismatch: { threadBranch: "a", currentBranch: "b" },
+        restoring: false,
+        onRestore() {},
+        onDismiss() {},
+      }),
+    },
+  ])("$name is the person's own doing", ({ notice }) => {
+    expect(notice.byPerson).toBe(true);
+  });
 });

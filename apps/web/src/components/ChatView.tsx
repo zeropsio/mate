@@ -49,8 +49,11 @@ import { cloneSendBlockReason, ComposerCloneAsk } from "./chat/ComposerCloneAsk"
 import {
   branchChangedNotice,
   crewNextConversationNotice,
+  noticesHome,
+  personNoticeArrived,
   resumeCompactionNotice,
 } from "./chat/conversationNotices";
+import { NoticesOverComposer } from "./chat/NoticesOverComposer";
 import type { ConversationNotice } from "./chat/ConversationRows";
 import { derivePendingRequests } from "@t3tools/client-runtime/pending-requests";
 import {
@@ -6010,6 +6013,30 @@ export default function ChatView(props: ChatViewProps) {
   };
 
   const queuedMessages = useQueuedMessages(activeThreadKey ?? "");
+  // Where the notices stand: the conversation's last rows, or just above the composer while there
+  // is no conversation to hold them (`noticesHome`).
+  const noticesOverComposer =
+    noticesHome({
+      heroDraft: isDraftHeroState,
+      entries: conversationEntries,
+      isWorking,
+      queued: queuedMessages.length,
+    }) === "composer";
+  // A notice the person's own action brought brings the conversation to its end, as a send does.
+  const shownNoticeIdsRef = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const before = shownNoticeIdsRef.current;
+    shownNoticeIdsRef.current = new Set(conversationNotices.map((notice) => notice.id));
+    if (noticesOverComposer || !personNoticeArrived(before, conversationNotices)) return;
+    if (
+      nextTimelineFollow(
+        liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current,
+        { type: "sent", byPerson: true },
+      )
+    ) {
+      scrollToEnd(false, true);
+    }
+  }, [conversationNotices, noticesOverComposer, scrollToEnd]);
   const onSendRef = useRef<((ids?: ComposerSendIds) => Promise<void>) | null>(null);
   // What a surface asked this composer to send goes out through its own send.
   useComposerSendRequests({
@@ -8243,7 +8270,7 @@ export default function ChatView(props: ChatViewProps) {
                   loading: threadDetailLoading && !isDraftHeroState,
                   syncing: threadSyncPhase !== null || threadDetailLoading,
                   queuedMessages,
-                  notices: conversationNotices,
+                  notices: noticesOverComposer ? EMPTY_CONVERSATION_NOTICES : conversationNotices,
                   usagePause: activeThreadShell?.usagePause ?? null,
                   limit,
                   away: mateAway,
@@ -8380,10 +8407,18 @@ export default function ChatView(props: ChatViewProps) {
                           activeProjectTitle={activeProjectDisplayName ?? null}
                         />
                       </div>
+                      <NoticesOverComposer notices={conversationNotices} />
                       <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                     </div>
                   ) : (
                     <>
+                      {noticesOverComposer ? (
+                        // No conversation to hold them: they stand just above the composer, over
+                        // the empty state, holding no room in the composer's frame.
+                        <div className="pointer-events-auto absolute inset-x-0 bottom-full">
+                          <NoticesOverComposer notices={conversationNotices} />
+                        </div>
+                      ) : null}
                       <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                       {/* The lead's plan waits above its composer, where its
                           answer ends (PRD §4.6). */}

@@ -408,6 +408,8 @@ export interface ConversationNotice {
    * the list remounts as it scrolls would say it again.
    */
   readonly announce?: string;
+  /** The person's own action brought it: it brings the conversation to its end (`personNoticeArrived`). */
+  readonly byPerson?: boolean;
 }
 
 /** A notice's row: an event's grammar — its mark on the text edge, its words — and its action. */
