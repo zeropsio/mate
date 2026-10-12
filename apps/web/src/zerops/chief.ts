@@ -48,6 +48,15 @@ export function ownChiefAmong<T extends { readonly project: { readonly id: strin
   return candidates.find((candidate) => candidate.project.id === own);
 }
 
+/** The menu's list below its top row: every Mate but the viewer's own Chief, drawn once above. */
+export function withoutOwnChief<T extends { readonly project: { readonly id: string } }>(
+  candidates: ReadonlyArray<T>,
+  own: OwnChief,
+): ReadonlyArray<T> {
+  if (own === null || own === undefined) return candidates;
+  return candidates.filter((candidate) => candidate.project.id !== own);
+}
+
 /** The person a Chief is named after, as Zerops knows them. */
 export interface ChiefPerson {
   readonly firstName?: string | undefined;

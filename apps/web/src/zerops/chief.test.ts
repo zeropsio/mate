@@ -8,6 +8,7 @@ import {
   othersChiefs,
   ownChiefAmong,
   type OwnChief,
+  withoutOwnChief,
 } from "./chief";
 
 describe("isChief", () => {
@@ -63,6 +64,29 @@ describe("whose Chief", () => {
   ])("%s", (_title, ownChief, expected) => {
     const candidates = [own, theirs, shop].map((project) => ({ project }));
     expect(ownChiefAmong(candidates, ownChief)?.project.id).toBe(expected);
+  });
+
+  it.each<[string, OwnChief, ReadonlyArray<string>]>([
+    [
+      "the menu's list leaves out the viewer's own Chief, drawn once as its top row",
+      "p-own",
+      ["p-theirs", "p-shop"],
+    ],
+    [
+      "the menu's list keeps every Mate when the viewer has no Chief",
+      null,
+      ["p-own", "p-theirs", "p-shop"],
+    ],
+    [
+      "the menu's list keeps every Mate while whose Chief is not known",
+      undefined,
+      ["p-own", "p-theirs", "p-shop"],
+    ],
+  ])("%s", (_title, ownChief, expected) => {
+    const candidates = [own, theirs, shop].map((project) => ({ project }));
+    expect(withoutOwnChief(candidates, ownChief).map((candidate) => candidate.project.id)).toEqual(
+      expected,
+    );
   });
 });
 

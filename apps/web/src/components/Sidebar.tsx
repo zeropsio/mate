@@ -212,7 +212,7 @@ import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, SidebarOverviewRow, useMenuProjects } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
-import { ownChiefAmong } from "~/zerops/chief";
+import { ownChiefAmong, withoutOwnChief } from "~/zerops/chief";
 import {
   openChiefSetup,
   resumeChiefSetup,
@@ -1918,6 +1918,10 @@ export default function Sidebar() {
     () => ownChiefAmong(zeropsCandidates, ownChief),
     [zeropsCandidates, ownChief],
   );
+  const zeropsListed = useMemo(
+    () => withoutOwnChief(zeropsCandidates, ownChief),
+    [zeropsCandidates, ownChief],
+  );
   const chiefSetupLine = useChiefSetupLine();
   const chiefUnfinished = useChiefUnfinished(zeropsChief?.project.id ?? null);
   const onZeropsSelect = useCallback(
@@ -2996,7 +3000,7 @@ export default function Sidebar() {
               activeProjectId={litZeropsProjectId}
               activeProjectResolving={activeZeropsProjectResolving && !zeropsPressHeld}
               births={zeropsPlacedBirths}
-              candidates={zeropsCandidates}
+              candidates={zeropsListed}
               complete={zeropsMenuComplete}
               notice={zeropsNotice}
               reading={zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete}
