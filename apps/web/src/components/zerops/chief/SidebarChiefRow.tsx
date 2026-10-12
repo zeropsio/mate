@@ -15,6 +15,7 @@ import { MateMark } from "../../MateMark";
 import { SidebarWaitingPopover, type WaitingVerbs } from "../SidebarWaiting";
 import { waitingSummary, type WaitingItem } from "../SidebarWaiting.logic";
 import type { ChiefSetupRowState } from "./chiefTop.logic";
+import { carryBandToChief } from "./chiefLitTravel";
 
 export interface SidebarChiefRowProps {
   /** The state its mark wears, as its Mate's face would; at rest, its own idle and blinks. */
@@ -33,20 +34,25 @@ export interface SidebarChiefRowProps {
 export function SidebarChiefRow({ face, line, current, onOpen, waiting }: SidebarChiefRowProps) {
   const items = waiting?.items ?? [];
   const summary = items.length === 0 ? undefined : waitingSummary(items);
-  const lined = line !== undefined && line !== null;
+  // What it is for, under its name like a Mate row's line (the owner, 2026-10-12: "it still looks
+  // like logo, instead of a clickable thing"); its setup's line while it has one.
+  const shown = line ?? (
+    <span className="menu-line2 menu-ink-3 truncate">Ask about any project</span>
+  );
   return (
     <div className="menu-top-chief" data-zerops-surface="sidebar-chief">
       <button
         aria-current={current ? "page" : undefined}
         className="menu-chief-row"
         data-current={current ? "" : undefined}
-        data-lined={lined ? "" : undefined}
+        data-lined=""
         data-waits={summary === undefined ? undefined : ""}
         data-zerops-surface="sidebar-chief-row"
         onClick={(event) => {
           // Lit at once, over its own hover, as a Mate's row is (`slideSelectedBandTo`), until its
-          // conversation is the open one.
+          // conversation is the open one; the band, where a Mate's stood, travels up into it.
           const row = event.currentTarget;
+          if (row.dataset["current"] === undefined) carryBandToChief();
           row.dataset["pressed"] = "";
           setTimeout(() => {
             delete row.dataset["pressed"];
@@ -55,6 +61,7 @@ export function SidebarChiefRow({ face, line, current, onOpen, waiting }: Sideba
         }}
         type="button"
       >
+        <span aria-hidden="true" className="menu-chief-lit" />
         <span className="menu-chief-body">
           <span className="menu-chief-mark" aria-hidden="true">
             <MateMark
@@ -68,7 +75,7 @@ export function SidebarChiefRow({ face, line, current, onOpen, waiting }: Sideba
             <span className="menu-chief-name" data-waiting-line="">
               Chief <span className="menu-chief-name-mate">Mate</span>
             </span>
-            {lined ? <span className="menu-chief-line">{line}</span> : null}
+            <span className="menu-chief-line">{shown}</span>
           </span>
         </span>
       </button>

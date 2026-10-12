@@ -17,6 +17,8 @@
  */
 import { useLayoutEffect, useRef } from "react";
 
+import { carryChiefTo } from "./chief/chiefLitTravel";
+
 import {
   bandMove,
   bandPlacement,
@@ -42,6 +44,8 @@ export function slideSelectedBandTo(projectId: string): void {
       ? null
       : document.querySelector<HTMLElement>(`[data-zerops-mate-unit="${CSS.escape(projectId)}"]`);
   if (unit !== null) {
+    // From the Chief, its lit ground travels down to the pressed row (`chiefLitTravel`).
+    carryChiefTo(unit);
     unit.dataset["bandArriving"] = "";
     setTimeout(() => {
       delete unit.dataset["bandArriving"];

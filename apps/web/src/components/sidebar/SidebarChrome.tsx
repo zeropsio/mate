@@ -72,6 +72,8 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     <SidebarHeader
       className={cn(
         "@container/sidebar-header relative h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center px-3 py-0 md:px-0",
+        // The Chief Mate's row is a Mate row's measure, with the menu's own room above it.
+        brand !== undefined && "h-auto min-h-[var(--workspace-topbar-height)]",
         isElectron && "drag-region",
       )}
     >

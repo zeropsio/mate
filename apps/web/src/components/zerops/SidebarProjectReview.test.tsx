@@ -187,7 +187,10 @@ describe("a project's Release tag", () => {
   ])("opens the release review and says what waits: $says", async ({ release, says }) => {
     const { container } = await mount({ release });
     const tagged = tag(container, /^Release/u)!;
-    expect(tagged.textContent).toBe("Release");
+    // Its word, then how many wait where more than one does.
+    expect(tagged.textContent).toBe(
+      release.waiting > 1 ? `Release${String(release.waiting)}` : "Release",
+    );
     expect(tagged.getAttribute("aria-label")).toBe(`Release: ${says}`);
     await press(tagged);
     expect(effects.review).toHaveBeenCalledWith(

@@ -100,7 +100,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
    * tooltip, and toolbar controls cannot quietly drift apart.
    */
   --control-radius: 0.5rem;
-  --sidebar-content-inset: 0.5rem;
+  --sidebar-content-inset: 0.75rem;
   --sidebar-control-gap: 0.5rem;
   --sidebar-icon-color: color-mix(
     in srgb,
@@ -583,6 +583,84 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
+/* The conversation's list under a floating composer (the owner, 2026-10-12: "it should be a
+   floating element … fade on sides, so the content has fade in height of the composer"): faded
+   under the top bar as `topbar-scroll-fade`, and at its foot over the composer's height
+   (`--composer-fade`, ChatView), so what passes beside the composer thins out to nothing at the
+   window's edge. No layer stands behind the composer, and the scrollbar's lane stays whole. */
+@utility conversation-scroll-fade {
+  --topbar-scroll-fade-height: 2.5rem;
+  --conversation-foot-fade: var(--composer-fade, 10rem);
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 30%,
+      color-mix(in oklab, currentColor 12%, transparent) 45%,
+      color-mix(in oklab, currentColor 45%, transparent) 65%,
+      color-mix(in oklab, currentColor 85%, transparent) 85%,
+      currentColor 100%
+    ),
+    linear-gradient(currentColor, currentColor),
+    linear-gradient(
+      to top,
+      transparent 0,
+      transparent var(--composer-foot, 1.25rem),
+      color-mix(in oklab, currentColor 20%, transparent) calc(var(--composer-foot, 1.25rem) + 25%),
+      color-mix(in oklab, currentColor 60%, transparent) calc(var(--composer-foot, 1.25rem) + 50%),
+      color-mix(in oklab, currentColor 90%, transparent) calc(var(--composer-foot, 1.25rem) + 72%),
+      currentColor 100%
+    ),
+    linear-gradient(currentColor, currentColor);
+  -webkit-mask-position:
+    top,
+    0 var(--topbar-scroll-fade-height),
+    bottom,
+    right;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size:
+    100% calc(var(--topbar-scroll-fade-height) + 1px),
+    100% calc(100% - var(--topbar-scroll-fade-height) - var(--conversation-foot-fade) + 1px),
+    100% calc(var(--conversation-foot-fade) + 1px),
+    var(--app-scrollbar-width) 100%;
+  mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 30%,
+      color-mix(in oklab, currentColor 12%, transparent) 45%,
+      color-mix(in oklab, currentColor 45%, transparent) 65%,
+      color-mix(in oklab, currentColor 85%, transparent) 85%,
+      currentColor 100%
+    ),
+    linear-gradient(currentColor, currentColor),
+    linear-gradient(
+      to top,
+      transparent 0,
+      transparent var(--composer-foot, 1.25rem),
+      color-mix(in oklab, currentColor 20%, transparent) calc(var(--composer-foot, 1.25rem) + 25%),
+      color-mix(in oklab, currentColor 60%, transparent) calc(var(--composer-foot, 1.25rem) + 50%),
+      color-mix(in oklab, currentColor 90%, transparent) calc(var(--composer-foot, 1.25rem) + 72%),
+      currentColor 100%
+    ),
+    linear-gradient(currentColor, currentColor);
+  mask-position:
+    top,
+    0 var(--topbar-scroll-fade-height),
+    bottom,
+    right;
+  mask-repeat: no-repeat;
+  mask-size:
+    100% calc(var(--topbar-scroll-fade-height) + 1px),
+    100% calc(100% - var(--topbar-scroll-fade-height) - var(--conversation-foot-fade) + 1px),
+    100% calc(var(--conversation-foot-fade) + 1px),
+    var(--app-scrollbar-width) 100%;
+
+  @variant sm {
+    --topbar-scroll-fade-height: 3rem;
+  }
+}
+
 /* Virtualizers own their native scroll element, so they cannot use ScrollArea's
    viewport fade. Keep the scrollbar lane opaque while sharing the same fade
    contract across those lists. */
@@ -949,31 +1027,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     .chat-composer-glass-shell-with-context {
       /* The xs toolbar controls shrink by 4px at Tailwind's sm breakpoint. */
       --chat-composer-context-extension: 2rem;
-    }
-  }
-
-  /* The docked footer is opaque from the card's top edge down, so no row paints below the card,
-     and clear in the gap above it, so the conversation runs right up to the card. The gap is
-     the footer's own top padding (pt-6, sm:pt-7). */
-  .chat-composer-dock {
-    --chat-composer-dock-gap: calc(var(--spacing) * 6);
-  }
-
-  /* A solid layer, not a gradient: Chrome dithers a gradient by its tile's
-     origin, so the footer's colour shifted whenever the history above it was
-     repainted. The dock's stacking context keeps it behind the composer. */
-  .chat-composer-dock::before {
-    pointer-events: none;
-    position: absolute;
-    z-index: -1;
-    inset: var(--chat-composer-dock-gap) 0 0;
-    background: var(--background);
-    content: "";
-  }
-
-  @media (min-width: 40rem) {
-    .chat-composer-dock {
-      --chat-composer-dock-gap: calc(var(--spacing) * 7);
     }
   }
 
@@ -3246,6 +3299,116 @@ code {
     pointer-events: none;
   }
 
+  /* What waits in a project, marked after its row's name and nothing more (`ProjectReviewMarks`):
+     a change waiting on a review, what waits for production; a small number where there are more.
+     A press is the row's. */
+  .menu-marks {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Between a project's name and its Mate's: room on both sides, the dot after it. */
+  .menu-name .menu-marks {
+    margin-inline: 7px 1px;
+  }
+
+  /* Each on a chip of its own colour, so it stands apart from the name before it. */
+  .menu-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 18px;
+    padding-inline: 5px;
+    border-radius: 6px;
+    background: color-mix(in oklab, currentColor 11%, transparent);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .menu-mark-merge {
+    color: var(--info-foreground);
+  }
+
+  .menu-mark-release {
+    color: var(--primary);
+  }
+
+  .menu-mark-icon {
+    flex: none;
+    width: 12px;
+    height: 12px;
+  }
+
+  /* The conversation's header holds its project's Review and Release (`ProjectReviewTags`) first
+     on its line, after the Mate (the owner, 2026-10-12: "it's pretty important after all … more
+     prominent, enticing, maybe placed on the left"): Review the header's one solid blue, with the
+     menu's merge mark; Release beside it, quieter. */
+  .chat-header-review {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    margin-inline: 10px 12px;
+  }
+
+  .chat-header-review .menu-tags {
+    gap: 8px;
+  }
+
+  .chat-header-review .menu-tag-release {
+    background: color-mix(in oklab, var(--primary) 11%, transparent);
+    color: var(--primary);
+  }
+
+  .chat-header-review .menu-tag {
+    gap: 6px;
+    height: 30px;
+    padding: 0 13px 0 11px;
+    border-radius: 9999px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .chat-header-review .menu-tag-icon {
+    display: block;
+    width: 14px;
+    height: 14px;
+  }
+
+  .chat-header-review .menu-tag-review {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    box-shadow:
+      0 1px 2px color-mix(in oklab, var(--primary) 30%, transparent),
+      0 6px 14px -6px color-mix(in oklab, var(--primary) 60%, transparent);
+  }
+
+  .chat-header-review .menu-tag-review[data-popup-open] {
+    background: color-mix(in oklab, var(--primary) 88%, var(--color-black));
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .chat-header-review .menu-tag-review:hover {
+      background: color-mix(in oklab, var(--primary) 88%, var(--color-black));
+      box-shadow:
+        0 1px 2px color-mix(in oklab, var(--primary) 30%, transparent),
+        0 8px 18px -6px color-mix(in oklab, var(--primary) 70%, transparent);
+    }
+
+    .chat-header-review .menu-tag-release:hover {
+      background: color-mix(in oklab, var(--primary) 17%, transparent);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .chat-header-review .menu-tag {
+      animation: chat-review-arrive 260ms var(--ease-out-strong) both;
+    }
+  }
+
   /* A count after Review, in its own clipped cell: the new number rolls in as the old rolls out. */
   .menu-tag-count {
     display: inline-grid;
@@ -3597,9 +3760,10 @@ code {
     transition: none !important;
   }
 
-  /* A Mate under its open group's row: 20 px in, so the group's Mates read as its. */
-  .menu-row-kid {
-    padding-inline-start: 28px;
+  /* A Mate under its open group's row: its whole unit 18 px in, so the group's Mates read as its
+     and its band and hover start where it does. */
+  .menu-unit:has(.menu-row-kid) {
+    margin-inline-start: 18px;
   }
 
   /* "Project · Mate": the project is the row's unit, so its name holds; the Mate's, after it in the
@@ -3636,10 +3800,12 @@ code {
     height: 22px;
     align-items: center;
     gap: 8px;
+    /* Only its doors take a press; the rest of it — the review's mark — is its row's. */
+    pointer-events: none;
   }
 
-  .menu-row-box:has(.menu-row-kid) .menu-row-tags {
-    inset-inline-start: 78px;
+  .menu-row-tags :is(button, a, [role="button"]) {
+    pointer-events: auto;
   }
 
   [data-tags] .menu-row .menu-line2:not(.menu-line2 .menu-line2) {
@@ -4137,6 +4303,9 @@ code {
     background: var(--sidebar-row-active);
     opacity: 0;
     pointer-events: none;
+    /* Its own layer from the start: a slide runs on the compositor while the page it opens is
+       drawn, never waiting on that draw to begin. */
+    will-change: transform;
   }
 
   .menu-band[data-on] {
@@ -4268,6 +4437,14 @@ code {
 @keyframes menu-dot-fade {
   from {
     opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .menu-chief-lit:not([data-travel]) {
+    transition:
+      opacity 180ms var(--ease-out-strong),
+      transform 240ms var(--ease-out-strong);
   }
 }
 
@@ -5195,7 +5372,10 @@ code {
     grid-row: 1;
   }
 
+  /* Over the Chief's row, whose lit layer makes it a positioned box of its own. */
   .menu-top-squares {
+    position: relative;
+    z-index: 1;
     grid-column: 2;
   }
 
@@ -5210,12 +5390,18 @@ code {
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
     align-items: center;
-    height: 48px;
+    /* A Mate row's measure: 63 px, 11 px above and below its two lines. */
+    min-height: 63px;
+    padding-block: 11px;
+    /* Its room above it the same as on its left. */
+    margin-block-start: calc(var(--sidebar-content-inset) + 1px);
     margin-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
     border-radius: 12px;
     text-align: left;
     cursor: pointer;
     outline: none;
+    position: relative;
+    isolation: isolate;
     transition: background-color 150ms var(--ease-out-strong);
   }
 
@@ -5223,10 +5409,29 @@ code {
     background: var(--sidebar-row-hover);
   }
 
-  .menu-chief-row[data-current],
-  .menu-chief-row[data-pressed] {
+  /* Lit from the press, as a Mate's row is under its band (`menu-chief-lit`): its own layer, grown
+     into place by opacity and scale, or carried from the band and back (`chiefLitTravel`) — the
+     compositor runs either while the page it opens is drawn. */
+  .menu-chief-lit {
+    pointer-events: none;
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    border-radius: inherit;
     background: var(--sidebar-row-active);
-    transition: none;
+    opacity: 0;
+    transform: scale(0.96);
+    will-change: opacity, transform;
+  }
+
+  .menu-chief-row:is([data-current], [data-pressed]) .menu-chief-lit {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* The band stepped aside while its ground is carried up into the Chief's row. */
+  .menu-band[data-away] {
+    opacity: 0;
   }
 
   .menu-chief-row:focus-visible {
@@ -5299,6 +5504,9 @@ code {
   }
 
   .menu-chief-count {
+    /* Over the Chief's row, whose lit layer makes it a positioned box of its own. */
+    position: relative;
+    z-index: 1;
     display: grid;
     grid-column: 1;
     justify-self: end;
@@ -13283,5 +13491,13 @@ button.rv-relrow:hover .rv-relrow-go {
 @media (prefers-reduced-motion: reduce) {
   .published-page-frame {
     transition: none;
+  }
+}
+
+/* What waits on the person arrives in the header with a small rise, once. */
+@keyframes chat-review-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.96);
   }
 }

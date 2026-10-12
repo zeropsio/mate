@@ -169,7 +169,7 @@ import { zeropsSessionAtom } from "~/state/zerops";
 import { organization, project } from "~/zerops/__fixtures__/platformData";
 import type { SidebarCrewRead } from "./crew/SidebarCrewMinis.logic";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
-import { ProjectReviewTags } from "./SidebarProjectReview";
+import { ProjectReviewMarks } from "./SidebarProjectReview";
 import { ProjectSites, type ProjectSitesInput } from "./SidebarProjectSites";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
 import { reviewItemByline, type ProjectReviewItem } from "./SidebarProjectReview.logic";
@@ -362,11 +362,11 @@ function text(node: ReactTestInstance): string {
   return node.children.map((child) => (typeof child === "string" ? child : text(child))).join("");
 }
 
-/** The project's Review tag as drawn, where one stands: its button's opening tag. */
+/** The project's review mark as drawn, where one stands: its opening tag. */
 const reviewTagOf = (html: string) =>
-  /<button[^>]*data-zerops-surface="sidebar-project-review"[^>]*>/u.exec(html)?.[0];
+  /<span[^>]*data-zerops-surface="sidebar-project-review-mark"[^>]*>/u.exec(html)?.[0];
 
-/** What the project's Review tag says to somebody who cannot see it, where it stands. */
+/** What the project's review mark says to somebody who cannot see it, where it stands. */
 const reviewTagLabelOf = (html: string) =>
   /aria-label="([^"]*)"/u.exec(reviewTagOf(html) ?? "")?.[1]?.replaceAll("&#x27;", "'");
 
@@ -376,7 +376,7 @@ const reviewTagLabelOf = (html: string) =>
  */
 function reviewsOf(tree: ReactTestRenderer): ReadonlyArray<string> {
   return tree.root
-    .findAllByType(ProjectReviewTags)
+    .findAllByType(ProjectReviewMarks)
     .flatMap((tags) => (tags.props.items as ReadonlyArray<ProjectReviewItem>) ?? [])
     .map((item) => {
       const byline = reviewItemByline(item);
@@ -1579,10 +1579,11 @@ describe("the project's flow under it", () => {
 
   it("hangs the Mate's open pull requests under it", () => {
     const html = withFlow([own(), CRM_STAGE, CRM_PROD]);
-    // On its own row, after its name: the project's Review, which opens the change (2026-10-12).
+    // On its own row, after its name: the project's review mark; its Review is the conversation
+    // header's (2026-10-12).
     expect(reviewTagLabelOf(html)).toBe("Review Change 4");
     expect(html.indexOf('data-zerops-surface="sidebar-mate-name"')).toBeLessThan(
-      html.indexOf('data-zerops-surface="sidebar-project-review"'),
+      html.indexOf('data-zerops-surface="sidebar-project-review-mark"'),
     );
     expect(reviewing([own(), CRM_STAGE, CRM_PROD])).toEqual(["Change 4 — crm-dev · #4"]);
     // Nothing here opens a forge, and the verdict lives in the review: no check dot on the row.
@@ -1590,9 +1591,10 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain('aria-label="Passing"');
   });
 
-  // The one door to merging is the review (R1): every change says *Review*,
-  // and nothing on the row merges, asks or grades it.
-  it("offers Review on every change, and never Merge, Ask or a status dot from the row", () => {
+  // The one door to merging is the review (R1), and it is the conversation header's (the owner,
+  // 2026-10-12: "in the left menu, just add some clear indication without the ability to merge"):
+  // every change is marked on its row, and nothing there opens, merges, asks or grades it.
+  it("marks every change on its row, and never offers Review, Merge, Ask or a status dot there", () => {
     for (const change of [
       pull(4),
       pull(4, { mergeability: "conflicting" }),
@@ -1600,9 +1602,7 @@ describe("the project's flow under it", () => {
     ]) {
       const html = withFlow([own(), CRM_STAGE], flow({ pullRequests: [change] }));
       expect(reviewTagLabelOf(html)).toBe("Review Change 4");
-      expect(html).toMatch(
-        /data-zerops-surface="sidebar-project-review"[^>]*>(?:(?!<\/button>)[\s\S])*>Review<\/span><\/button>/u,
-      );
+      expect(html).not.toContain('data-zerops-surface="sidebar-project-review"');
       expect(html).not.toContain('data-zerops-primary-action="Merge"');
       expect(html).not.toContain('data-zerops-primary-action="Ask"');
       expect(html).not.toContain("sidebar-pull-request-blocked");
@@ -1836,8 +1836,9 @@ describe("a Mate and its crew, one unit in the menu", () => {
   it("offers Review where a task waits for your Land, opening that task's review", () => {
     const tree = withCrew(waitingCrew({ ready: true }));
     expect(reviewsOf(tree)).toEqual(["Frontend's work is ready — Frontend, in crm-dev's crew"]);
-    const [item] = tree.root.findByType(ProjectReviewTags).props
-      .items as ReadonlyArray<ProjectReviewItem>;
+    const [item] = tree.root
+      .findAllByType(ProjectReviewMarks)
+      .flatMap((marks) => marks.props.items as ReadonlyArray<ProjectReviewItem>);
     expect(item?.target).toEqual({
       kind: "crew-task",
       environmentId: EnvironmentId.make("env-crew"),
@@ -1926,9 +1927,9 @@ describe("production and the stages are the project's places, behind its globe",
     useSidebarJump
       .getState()
       .index?.stops.map(({ projectId, word, dot }) => ({ projectId, word, dot }));
-  /** The Release tag's words to somebody who cannot see it, where it stands. */
+  /** The release mark's words to somebody who cannot see it, where it stands. */
   const releaseTagOf = (html: string) =>
-    /<button[^>]*aria-label="([^"]*)"[^>]*data-zerops-surface="sidebar-project-release"/u.exec(
+    /<span[^>]*aria-label="([^"]*)"[^>]*data-zerops-surface="sidebar-project-release-mark"/u.exec(
       html,
     )?.[1];
   /** A second Mate in Beviro CRM: the project becomes a group, folded until its person opens it. */
@@ -2046,7 +2047,9 @@ describe("production and the stages are the project's places, behind its globe",
     expect(releaseTagOf(html)).toBe(release);
   });
 
-  it("opens the release's review from its Release tag", () => {
+  // The release is the conversation header's to open (the owner, 2026-10-12: "in the left menu,
+  // just add some clear indication"): the row marks it, and a press there is the row's.
+  it("marks what waits for production on its row, and opens no review from there", () => {
     const opened: Array<unknown> = [];
     const mounted = mount(
       <ReviewContext value={(target) => opened.push(target)}>
@@ -2064,8 +2067,17 @@ describe("production and the stages are the project's places, behind its globe",
         />
       </ReviewContext>,
     );
-    press(mounted, "sidebar-project-release");
-    expect(opened).toEqual([{ kind: "release", groupId: "aaa" }]);
+    expect(
+      mounted.root.findAll(
+        (node) => node.props["data-zerops-surface"] === "sidebar-project-release",
+      ),
+    ).toEqual([]);
+    expect(
+      mounted.root.findAll(
+        (node) => node.props["data-zerops-surface"] === "sidebar-project-release-mark",
+      ),
+    ).not.toEqual([]);
+    expect(opened).toEqual([]);
   });
 
   it("wears no environment tag while every place is calm, on a solo row or a folded group", () => {
@@ -4086,7 +4098,7 @@ describe("the menu's release offer", () => {
         </RegistryContext.Provider>,
       );
       expect(html).toMatch(
-        /<button[^>]*aria-label="Release: 1 change waits for production"[^>]*data-zerops-surface="sidebar-project-release"/u,
+        /<span[^>]*aria-label="Release: 1 change waits for production"[^>]*data-zerops-surface="sidebar-project-release-mark"/u,
       );
       expect(html).toContain('data-zerops-surface="sidebar-project-sites"');
       expect([...store.state().streams.keys()].some((key) => key.includes("hq-app-detail"))).toBe(

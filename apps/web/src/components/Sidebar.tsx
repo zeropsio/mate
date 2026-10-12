@@ -2720,6 +2720,7 @@ export default function Sidebar() {
         status={
           zeropsHqOutage === null ? undefined : (
             <SidebarHqStatus
+              compact={zeropsSignedIn && zeropsHoldsChief}
               serviceUrl={hqServiceUrl}
               kind={zeropsHqOutage.kind}
               line={zeropsHqOutage.line}

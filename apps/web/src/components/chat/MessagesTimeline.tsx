@@ -2136,7 +2136,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 onLoad={onListLoad}
                 className={cn(
                   "timeline-legend-list scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
-                  topFadeEnabled && "topbar-scroll-fade",
+                  topFadeEnabled && "conversation-scroll-fade",
                 )}
                 ListHeaderComponent={
                   loadEarlier !== null ? (

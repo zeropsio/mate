@@ -52,7 +52,8 @@ import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsProjectLink } from "../zerops/ZeropsProjectLink";
-import { useProjectSitesOf } from "~/zerops/projectSitesShown";
+import { useProjectReviewOf, useProjectSitesOf } from "~/zerops/projectPartsShown";
+import { ProjectReviewTags } from "../zerops/SidebarProjectReview";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { MateFaceAsMark } from "../zerops/primitives";
 import { ChatHeaderLinks } from "./ChatHeaderLinks";
@@ -273,6 +274,11 @@ export const ChatHeader = memo(function ChatHeader({
   const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
   // Sites opens the menu's panel for this Mate's project, with its ways to Zerops in it.
   const headerSites = useProjectSitesOf(mate?.chief === true ? undefined : mate?.projectId);
+  // What waits on a review in its project, the same Review its row's tag opened (the owner,
+  // 2026-10-12: "add it somewhere to the app bar in detail which would trigger the same pop").
+  const headerReview = useProjectReviewOf(mate?.chief === true ? undefined : mate?.projectId);
+  const headerChanges =
+    headerReview?.items.filter((item) => item.mateProjectId === mate?.projectId) ?? [];
   const lead = headerLead(whoLivesHere.kind, { chief: mate?.chief });
   const showOpenInPicker = shouldShowOpenInPicker({
     activeProjectName,
@@ -611,6 +617,22 @@ export const ChatHeader = memo(function ChatHeader({
                 )
               }
               subject={crewOrigin === null && spoken ? headline : null}
+              trailing={
+                // What waits on the person, right after the Mate (the owner, 2026-10-12: "it's
+                // pretty important after all … maybe placed on the left"): its changes to review,
+                // then what waits for production, together.
+                headerReview === undefined ||
+                (headerChanges.length === 0 && headerReview.release === undefined) ? null : (
+                  <span className="chat-header-review">
+                    <ProjectReviewTags
+                      {...headerReview}
+                      items={headerChanges}
+                      releaseWord="Review release"
+                      word={headerChanges.length > 1 ? "Review changes" : "Review change"}
+                    />
+                  </span>
+                )
+              }
             />
             {status === null ? null : (
               <MateStatusMarker

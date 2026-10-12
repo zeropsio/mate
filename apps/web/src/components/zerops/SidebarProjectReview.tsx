@@ -6,7 +6,7 @@
  * them (or in their popover, which React bubbles through them) never reaches the row.
  */
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
-import { GitPullRequestIcon, RocketIcon, UsersIcon } from "lucide-react";
+import { GitMergeIcon, GitPullRequestIcon, RocketIcon, UsersIcon } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -97,6 +97,8 @@ export function ProjectReviewTags({
   projectName,
   items,
   release,
+  word = "Review",
+  releaseWord = "Release",
 }: {
   readonly groupId: string;
   readonly projectName: string;
@@ -104,6 +106,10 @@ export function ProjectReviewTags({
   readonly items: ReadonlyArray<ProjectReviewItem>;
   /** HQ offers the viewer the release (`releaseOffered`): what waits for production. */
   readonly release: { readonly waiting: number; readonly atLeast: boolean } | undefined;
+  /** Review's own word. */
+  readonly word?: string;
+  /** Release's own word; the conversation's header says what a press does, "Review release". */
+  readonly releaseWord?: string;
 }): ReactNode {
   const review = usePresence(items.length > 0 ? items : undefined);
   const offer = usePresence(release);
@@ -117,10 +123,63 @@ export function ProjectReviewTags({
       onPointerDown={stopPress}
     >
       {review.shown === undefined ? null : (
-        <ReviewTag items={review.shown} phase={review.phase} projectName={projectName} />
+        <ReviewTag
+          items={review.shown}
+          phase={review.phase}
+          projectName={projectName}
+          word={word}
+        />
       )}
       {offer.shown === undefined ? null : (
-        <ReleaseTag groupId={groupId} phase={offer.phase} release={offer.shown} />
+        <ReleaseTag
+          groupId={groupId}
+          phase={offer.phase}
+          release={offer.shown}
+          word={releaseWord}
+        />
+      )}
+    </span>
+  );
+}
+
+/**
+ * The menu's word on what waits in a project (the owner, 2026-10-12: "in the left menu, just add
+ * some clear indication without the ability to merge … after the name, one for merge one for
+ * release … with small number when there are more"): a mark for the changes waiting on a review
+ * and one for what waits for production, after the row's name, never a door — the row's press
+ * opens the conversation, whose header holds Review and Release (`ProjectReviewTags`).
+ */
+export function ProjectReviewMarks({
+  projectName,
+  items,
+  release,
+}: Parameters<typeof ProjectReviewTags>[0]): ReactNode {
+  if (items.length === 0 && release === undefined) return null;
+  return (
+    <span className="menu-marks" data-zerops-surface="sidebar-project-marks">
+      {items.length === 0 ? null : (
+        <span
+          aria-label={reviewTagLabel(items, projectName)}
+          className="menu-mark menu-mark-merge"
+          data-zerops-surface="sidebar-project-review-mark"
+          role="img"
+        >
+          <GitMergeIcon aria-hidden="true" className="menu-mark-icon" />
+          {items.length > 1 ? <span className="menu-mark-count">{items.length}</span> : null}
+        </span>
+      )}
+      {release === undefined ? null : (
+        <span
+          aria-label={`Release: ${releaseTagTip(release)}`}
+          className="menu-mark menu-mark-release"
+          data-zerops-surface="sidebar-project-release-mark"
+          role="img"
+        >
+          <RocketIcon aria-hidden="true" className="menu-mark-icon" />
+          {release.waiting > 1 ? (
+            <span className="menu-mark-count">{`${String(release.waiting)}${release.atLeast ? "+" : ""}`}</span>
+          ) : null}
+        </span>
       )}
     </span>
   );
@@ -130,10 +189,12 @@ function ReleaseTag({
   groupId,
   release,
   phase,
+  word,
 }: {
   readonly groupId: string;
   readonly release: { readonly waiting: number; readonly atLeast: boolean };
   readonly phase: Phase;
+  readonly word: string;
 }) {
   const openReview = useOpenReview();
   const tip = releaseTagTip(release);
@@ -156,7 +217,8 @@ function ReleaseTag({
       >
         {/* In a narrow menu the word gives way to its mark, so the project's name keeps its room. */}
         <RocketIcon aria-hidden="true" className="menu-tag-icon" />
-        <span className="menu-tag-word">Release</span>
+        <span className="menu-tag-word">{word}</span>
+        <TagCount count={release.waiting > 1 ? release.waiting : undefined} />
       </TooltipTrigger>
       <TooltipPopup side="bottom">{tip}</TooltipPopup>
     </Tooltip>
@@ -167,10 +229,12 @@ function ReviewTag({
   items,
   projectName,
   phase,
+  word,
 }: {
   readonly items: ReadonlyArray<ProjectReviewItem>;
   readonly projectName: string;
   readonly phase: Phase;
+  readonly word: string;
 }) {
   const openReview = useOpenReview();
   const [open, setOpen] = useState(false);
@@ -216,8 +280,8 @@ function ReviewTag({
             />
           }
         >
-          <GitPullRequestIcon aria-hidden="true" className="menu-tag-icon" />
-          <span className="menu-tag-word">Review</span>
+          <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
+          <span className="menu-tag-word">{word}</span>
           <TagCount count={many ? items.length : undefined} />
         </TooltipTrigger>
         {only === undefined ? null : <TooltipPopup side="bottom">{only.title}</TooltipPopup>}

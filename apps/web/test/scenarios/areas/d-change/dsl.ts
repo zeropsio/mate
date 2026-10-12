@@ -209,10 +209,15 @@ export function review(s: Pick<Scenario, "page" | "web">) {
         () => (window as unknown as { dChangeUnknownOffers: string[] }).dChangeUnknownOffers,
       ),
     ),
-    // A Mate's change waiting on the viewer: the Review tag on its project's row.
+    // A Mate's change waiting on the viewer: its project's row marks it, and the conversation it
+    // opens holds the Review in its header.
     open: Effect.promise(async () => {
       await s.page
-        .locator('[data-zerops-surface="sidebar-project-review"]')
+        .locator('[data-zerops-surface="sidebar-project-review-mark"]')
+        .setTimeout(15_000)
+        .click();
+      await s.page
+        .locator('.chat-header-review [data-zerops-surface="sidebar-project-review"]')
         .setTimeout(15_000)
         .click();
     }),

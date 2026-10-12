@@ -34,6 +34,8 @@ export interface ProjectReviewItem {
   readonly label: string;
   /** The review waits on the viewer: else a colleague's, said "in review" and quieter. */
   readonly mine: boolean;
+  /** The Mate it is of, by its Zerops project: its row marks it after its name. */
+  readonly mateProjectId?: string | undefined;
 }
 
 /** A change's row, as the menu keys it and the jump box finds it: `repository#number`. */
@@ -69,6 +71,7 @@ export function changeReviewItem(input: {
     by: input.by,
     label: several ? `${pull.repository} ${number}` : number,
     mine: input.mine,
+    mateProjectId: pull.mateProjectId,
   };
 }
 
@@ -79,6 +82,8 @@ export function crewTaskReviewItem(input: {
   readonly title: string;
   readonly by: ProjectReviewItem["by"];
   readonly mine: boolean;
+  /** The Mate whose crew it is, by its Zerops project. */
+  readonly mateProjectId?: string | undefined;
 }): ProjectReviewItem {
   return {
     key: `crew:${input.environmentId}:${input.taskId}`,
@@ -87,6 +92,7 @@ export function crewTaskReviewItem(input: {
     by: input.by,
     label: "",
     mine: input.mine,
+    mateProjectId: input.mateProjectId,
   };
 }
 
