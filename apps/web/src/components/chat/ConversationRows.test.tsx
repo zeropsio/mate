@@ -262,21 +262,41 @@ describe("the pause's automatic-resume choice", () => {
     expect(document.body.textContent).not.toContain("can't continue");
   });
 
+  // A recovery before the reset is real on the notice of a turn refused before it did anything; a
+  // card the limit cut stops waiting once its limit is gone.
   it("an early recovery leaves the dated refusal but Continue submits immediately", async () => {
     const continued = vi.fn();
     const resetsAt = new Date(NOW_MS + 3_600_000).toISOString();
-    const show = (recovered: boolean) =>
-      head({
-        pause: { resetsAt, provider: "Claude" },
-        limit: recovered ? { kind: "none" } : limitAt(resetsAt),
-        onContinue: continued,
-      });
-    await show(false);
+    const show = (serverPause: { resetsAt: string; autoResume: boolean } | null) =>
+      act(() =>
+        root!.render(
+          <PauseBlock
+            nowMs={NOW_MS}
+            row={{
+              kind: "pause",
+              id: "recovered",
+              createdAt: at(600),
+              resetsAt,
+              resumedAt: null,
+              held: 0,
+              provider: "Claude",
+            }}
+            serverPause={serverPause}
+            limit={serverPause === null ? { kind: "none" } : limitAt(resetsAt)}
+            onContinue={continued}
+            speaker={NOVA}
+            timestampFormat="24-hour"
+          />,
+        ),
+      );
+    await show({ resetsAt, autoResume: false });
     await act(() => continueButton()!.click());
-    await show(true);
+    await show(null);
     await act(() => continueButton()!.click());
     expect(continued).toHaveBeenCalledOnce();
-    expect(document.body.textContent).not.toContain("can't continue");
+    expect(document.body.textContent).not.toContain("limit still holds");
+    expect(document.querySelector('[data-mate-status="limit"]')).toBeNull();
+    expect(document.body.textContent).toContain("Nova hit the Claude limit on");
   });
 });
 
