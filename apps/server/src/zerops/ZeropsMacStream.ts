@@ -93,8 +93,12 @@ const DEFAULT_RETRY_DELAYS_MS = [500, 1000, 2000, 5000] as const;
 const DEFAULT_POLL_MS = 1000;
 // Above the helper's slowest step (a 12 s capture), so a slow frame is never taken for a dead Mac.
 const DEFAULT_STALL_MS = 20_000;
-/** The view helper's frames per second: enough to follow an app, little enough for a VPN. */
-export const MAC_VIEW_FPS = 2;
+/**
+ * The frames per second asked of the view helper: enough to follow an app as it moves. The smooth
+ * streamer sends a frame only when the window changed, so a still app costs a tick a second; a Mac
+ * without it captures at most 5 a second, as fast as launchd lets it.
+ */
+export const MAC_VIEW_FPS = 12;
 /** `mac device`'s guard: someone is working on the Mac. */
 const IN_USE_EXIT = 75;
 const SSH_FAILED_EXIT = 255;
