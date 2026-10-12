@@ -10,11 +10,17 @@ import { CircleAlertIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import { MateMark } from "../../MateMark";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
+import { zeropsAccountDisplay } from "../landing/ZeropsAccountControl.logic";
+import { MateOwnerMark } from "../MateOwnerMark";
+import { ownerMark } from "../SidebarMateRow.logic";
 import { SidebarWaitingPopover, type WaitingVerbs } from "../SidebarWaiting";
 import { waitingSummary, type WaitingItem } from "../SidebarWaiting.logic";
 import type { ChiefSetupRowState } from "./chiefTop.logic";
+import { carryBandToChief } from "./chiefLitTravel";
 
 export interface SidebarChiefRowProps {
   /** The state its mark wears, as its Mate's face would; at rest, its own idle and blinks. */
@@ -33,20 +39,27 @@ export interface SidebarChiefRowProps {
 export function SidebarChiefRow({ face, line, current, onOpen, waiting }: SidebarChiefRowProps) {
   const items = waiting?.items ?? [];
   const summary = items.length === 0 ? undefined : waitingSummary(items);
-  const lined = line !== undefined && line !== null;
+  // The person's own Chief, by their name and with their picture on its mark (the owner,
+  // 2026-10-13: "Aleš's Chief Mate and combine it with avatar, no second line"); a line only while
+  // its setup has one to say.
+  const session = useZeropsSessionOptional();
+  const account =
+    session !== null && session.status === "signed-in" ? zeropsAccountDisplay(session.user) : null;
+  const shown = line ?? null;
   return (
     <div className="menu-top-chief" data-zerops-surface="sidebar-chief">
       <button
         aria-current={current ? "page" : undefined}
         className="menu-chief-row"
         data-current={current ? "" : undefined}
-        data-lined={lined ? "" : undefined}
+        data-lined={shown === null ? undefined : ""}
         data-waits={summary === undefined ? undefined : ""}
         data-zerops-surface="sidebar-chief-row"
         onClick={(event) => {
           // Lit at once, over its own hover, as a Mate's row is (`slideSelectedBandTo`), until its
-          // conversation is the open one.
+          // conversation is the open one; the band, where a Mate's stood, travels up into it.
           const row = event.currentTarget;
+          if (row.dataset["current"] === undefined) carryBandToChief();
           row.dataset["pressed"] = "";
           setTimeout(() => {
             delete row.dataset["pressed"];
@@ -55,6 +68,7 @@ export function SidebarChiefRow({ face, line, current, onOpen, waiting }: Sideba
         }}
         type="button"
       >
+        <span aria-hidden="true" className="menu-chief-lit" />
         <span className="menu-chief-body">
           <span className="menu-chief-mark" aria-hidden="true">
             <MateMark
@@ -63,12 +77,24 @@ export function SidebarChiefRow({ face, line, current, onOpen, waiting }: Sideba
               className="h-9 w-7.5"
               {...(face === undefined ? {} : { state: face })}
             />
+            {account === null ? null : (
+              <MateOwnerMark
+                seat={{
+                  kind: "person",
+                  mark: ownerMark({
+                    name: account.fullName ?? account.name,
+                    initials: account.initials,
+                    avatarUrl: account.avatarUrl,
+                  }),
+                }}
+              />
+            )}
           </span>
           <span className="menu-chief-words">
             <span className="menu-chief-name" data-waiting-line="">
-              Chief <span className="menu-chief-name-mate">Mate</span>
+              {account === null ? "Chief Mate" : `${account.name}'s Chief Mate`}
             </span>
-            {lined ? <span className="menu-chief-line">{line}</span> : null}
+            {shown === null ? null : <span className="menu-chief-line">{shown}</span>}
           </span>
         </span>
       </button>
@@ -79,6 +105,66 @@ export function SidebarChiefRow({ face, line, current, onOpen, waiting }: Sideba
             <button
               aria-label={`${String(items.length)} waiting on you: ${summary.words}${summary.more > 0 ? `, ${String(summary.more)} more` : ""}`}
               className="menu-chief-count"
+              data-waiting-trigger=""
+              data-zerops-surface="sidebar-waiting"
+              type="button"
+            />
+          }
+          verbs={waiting.verbs}
+        >
+          <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
+        </SidebarWaitingPopover>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The Chief on the closed menu's rail, in Overview's old place: its mark as a tile, wearing its
+ * state, what waits on the person counted on its corner; its name and line in its card.
+ */
+export function SidebarChiefTile({ face, line, current, onOpen, waiting }: SidebarChiefRowProps) {
+  const items = waiting?.items ?? [];
+  const summary = items.length === 0 ? undefined : waitingSummary(items);
+  return (
+    <div className="menu-rail-chief" data-zerops-surface="sidebar-chief">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              aria-current={current ? "page" : undefined}
+              aria-label="Chief Mate"
+              className="menu-rail-head"
+              data-current={current ? "" : undefined}
+              data-zerops-surface="sidebar-chief-row"
+              onClick={onOpen}
+              type="button"
+            />
+          }
+        >
+          <MateMark
+            awake
+            playful
+            className="h-8.25 w-7"
+            {...(face === undefined ? {} : { state: face })}
+          />
+        </TooltipTrigger>
+        <TooltipPopup side="right">
+          <span className="menu-rail-tip">
+            <span className="menu-rail-tip-name">Chief Mate</span>
+            {line === undefined || line === null ? null : (
+              <span className="menu-rail-tip-line">{line}</span>
+            )}
+          </span>
+        </TooltipPopup>
+      </Tooltip>
+      {waiting === undefined || summary === undefined ? null : (
+        <SidebarWaitingPopover
+          items={items}
+          trigger={
+            <button
+              aria-label={`${String(items.length)} waiting on you: ${summary.words}${summary.more > 0 ? `, ${String(summary.more)} more` : ""}`}
+              className="menu-rail-count"
               data-waiting-trigger=""
               data-zerops-surface="sidebar-waiting"
               type="button"

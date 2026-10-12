@@ -15,7 +15,6 @@
 
 import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/agentSignIn";
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { ReactNode } from "react";
 
 import type { PendingApproval, PendingUserInput } from "../../session-logic";
 import type { ZeropsConversationReadOnly } from "../ChatView.logic";
@@ -26,18 +25,12 @@ import { Button } from "../ui/button";
 
 export function ZeropsReadOnlyConversationFooter({
   readOnly,
-  change = null,
   environmentId,
   pendingApprovals,
   pendingUserInputs,
   onSignIn,
 }: {
   readonly readOnly: ZeropsConversationReadOnly;
-  /**
-   * Its change waiting for a review, as the composer's top shows the viewer's own (the owner's pick,
-   * S6: "A colleague's Mate shows its change like yours"); what the agent asks stands there first.
-   */
-  readonly change?: ReactNode;
   /** Where the agent lives: its Mate's face and name ask. */
   readonly environmentId: EnvironmentId;
   readonly pendingApprovals: ReadonlyArray<PendingApproval>;
@@ -68,9 +61,7 @@ export function ZeropsReadOnlyConversationFooter({
             waitingLabel={readOnly.waitingLabel}
             who={who}
           />
-        ) : (
-          change
-        )}
+        ) : null}
         <div className="flex min-w-0 flex-col items-center gap-3 px-4 py-3 text-center">
           <p className="min-w-0 flex-1 text-foreground/85 text-sm">{readOnly.notice}</p>
           {onSignIn === undefined ? null : (

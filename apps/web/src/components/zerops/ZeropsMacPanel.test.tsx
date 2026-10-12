@@ -132,28 +132,24 @@ describe("ZeropsMacPanel", () => {
     [
       "no Mac is paired",
       { status: "not-paired", inUse: false, pairCommands: PAIR },
-      "Pair a Mac to build and run macOS apps on it from here.",
+      "Build and run macOS apps on it, and use them from here.",
     ],
     [
       "the Mac does not answer",
       { status: "unreachable", macName: "Test Mac", inUse: false, pairCommands: PAIR },
-      "Test Mac does not answer.",
+      "It's asleep, signed out, or off this project's VPN.",
     ],
     [
       "nothing is open yet",
       { status: "no-app", macName: "Test Mac", inUse: false },
-      "Nothing open on Test Mac yet.",
+      "An app a Mate opens there shows here, live.",
     ],
     [
       "the Mac's pairing predates the view",
       { status: "no-helper", macName: "Test Mac", inUse: false, pairCommands: PAIR },
-      "Test Mac was paired before the live view. Pair it again to see it here.",
+      "It was paired before the live view, so nothing shows here yet.",
     ],
-    [
-      "this Mate cannot show a Mac",
-      "unavailable",
-      "This Mate's version doesn't include the Mac view yet.",
-    ],
+    ["this Mate cannot show a Mac", "unavailable", "This Mate's version doesn't include it yet."],
   ])("says in one plain line when %s", (_, view, line) => {
     feedState.view = view;
     expect(stateLine(render())).toBe(line);

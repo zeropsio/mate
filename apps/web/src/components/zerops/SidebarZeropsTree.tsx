@@ -1,4 +1,4 @@
-import { showProjectSites } from "~/zerops/projectSitesShown";
+import { showProjectParts } from "~/zerops/projectPartsShown";
 import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
 import { mateStatus } from "../../zerops/mateStatus.logic";
@@ -106,6 +106,7 @@ import {
   BellOffIcon,
   BoxIcon,
   CircleAlertIcon,
+  CloudOffIcon,
   EyeIcon,
   GitPullRequestIcon,
   PauseIcon,
@@ -115,7 +116,9 @@ import { Atom } from "effect/reactivity";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
 import {
+  createContext,
   memo,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -174,6 +177,7 @@ import {
   writeOpenedProjects,
   type ProjectFolds,
 } from "~/zerops/collapsedProjects";
+import { useMenuFolds } from "~/zerops/menuFolds";
 import {
   movedBefore,
   rememberProjectsOnScreen,
@@ -195,7 +199,8 @@ import {
 } from "./crew/SidebarCrewMinis";
 import { ProjectSites, type ProjectSitesInput, type SitesMate } from "./SidebarProjectSites";
 import {
-  ProjectReviewTags,
+  ProjectReviewMarks,
+  type ProjectReviewTags,
   changeReviewItem,
   changeRowKey,
   crewTaskReviewItem,
@@ -228,6 +233,7 @@ import {
   type MenuPoint,
 } from "./SidebarMateMenu";
 import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
+import { ProjectCluster, type ClusterFace } from "./SidebarProjectCluster";
 import {
   landingAfterDraw,
   openMateReveal,
@@ -264,6 +270,7 @@ import {
   mateCrewItem,
   mateDeletingView,
   mateFinishingView,
+  mateDotLabel,
   mateNotYours,
   mateOwnerView,
   mateRowAskLine,
@@ -650,6 +657,8 @@ interface ProjectRefs {
 
 /** What a project's rows were last handed, kept while it reads the same. */
 interface ProjectShared {
+  /** Its Mates' Zerops projects, which the conversation's header finds its parts by. */
+  readonly mateIds: ReadonlyArray<string>;
   readonly review: ProjectReviewData | undefined;
   readonly sitesRead:
     | {
@@ -736,6 +745,15 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     writeCollapsedProjects(projectFolds.closed);
     writeOpenedProjects(projectFolds.opened);
   }, [projectFolds]);
+  // The closed menu's rail stands its groups as these do, and folds them through this
+  // (`menuFolds.ts`): before the frame paints, so the rail never shows a fold the menu left.
+  const foldFromRail = useCallback((groupId: string, open: boolean) => {
+    setProjectFolds((current) => withProjectFold(current, groupId, !open));
+  }, []);
+  useLayoutEffect(() => {
+    useMenuFolds.getState().lend(projectFolds, foldFromRail);
+  }, [foldFromRail, projectFolds]);
+  useLayoutEffect(() => () => useMenuFolds.getState().withdraw(), []);
   // Opening a Mate's conversation opens its project: the row lit as the one
   // open may not be hidden under a heading. Only when the open conversation
   // changes — a person may collapse the project again afterwards, and a menu
@@ -774,9 +792,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const projectLatest = useRef(new Map<string, ProjectLatest>()).current;
   const projectRefs = useRef(new Map<string, ProjectRefs>()).current;
   const projectShared = useRef(new Map<string, ProjectShared>()).current;
-  // The header's Sites opens the panel a row's globe opens (`useProjectSitesOf`).
+  // The header's Sites and Review open what a row's globe and Review tag open (`projectPartsShown`).
   useEffect(() => {
-    showProjectSites([...projectShared.values()].map((shared) => shared.sites));
+    showProjectParts(projectShared.values());
   });
   const projectRefsOf = (id: string): ProjectRefs => {
     const kept = projectRefs.get(id);
@@ -1491,6 +1509,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               crewOf: projectNameInApp(item.project),
             },
             mine: own,
+            mateProjectId: projectId,
           }),
         ),
       ),
@@ -1616,7 +1635,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               onAskToFix,
               onOpenStop: refs.openStop,
             };
-    projectShared.set(id, { review, sitesRead, sites, onAskToFix });
+    const mateIds = everyOrdered.map(({ item }) => item.project.id);
+    projectShared.set(id, {
+      mateIds: shareEqual(held?.mateIds, mateIds) ?? mateIds,
+      review,
+      sitesRead,
+      sites,
+      onAskToFix,
+    });
     // One Mate's row, as its project's (solo), under its open group (kid), or in no project.
     const mateRow = (item: T, at: "solo" | "kid" | "alone") => {
       const active = item.project.id === activeProjectId;
@@ -1691,14 +1717,19 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         order,
         folds: false,
         render: () => (
-          <>
+          <RowMarks.Provider
+            value={{
+              review,
+              mates: only === undefined ? NO_MATES : new Set([only.projectId]),
+            }}
+          >
             {demand}
             {only === undefined
               ? coming[0] === undefined
                 ? null
                 : comingRow(coming[0], "solo")
               : mateRow(only.item, "solo")}
-          </>
+          </RowMarks.Provider>
         ),
       };
     }
@@ -1708,7 +1739,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         order,
         folds: false,
         render: () => (
-          <>
+          <RowMarks.Provider value={{ review, mates: NO_MATES }}>
             {demand}
             <ProjectBareRow
               groupId={id}
@@ -1722,7 +1753,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               review={review}
               sites={sites}
             />
-          </>
+          </RowMarks.Provider>
         ),
       };
     }
@@ -1871,12 +1902,17 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       folds: true,
       render: () =>
         !kidsDrawn ? (
-          <>
+          <RowMarks.Provider value={{ review, mates: NO_MATES }}>
             {demand}
             {row}
-          </>
+          </RowMarks.Provider>
         ) : (
-          <>
+          <RowMarks.Provider
+            value={{
+              review,
+              mates: open ? new Set(ordered.map((entry) => entry.projectId)) : NO_MATES,
+            }}
+          >
             {demand}
             {row}
             <SidebarProjectFold
@@ -1889,7 +1925,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               {ordered.map(({ item }) => mateRow(item, "kid"))}
               {coming.map((member) => comingRow(member, "kid"))}
             </SidebarProjectFold>
-          </>
+          </RowMarks.Provider>
         ),
     };
   };
@@ -2210,13 +2246,47 @@ export function SidebarHqStatus({
   line,
   onAgain,
   serviceUrl,
+  compact = false,
 }: {
   readonly serviceUrl?: string | undefined;
   readonly kind: HqOutage["kind"];
   readonly line: string;
   readonly onAgain?: (() => void) | undefined;
+  /** Beside the Chief Mate's row the bar has room for a square, not words: a sign, its words in
+   *  its tooltip (the owner, 2026-10-12, of the line drawn over the Chief's mark). */
+  readonly compact?: boolean;
 }) {
   const again = kind === "syncing" ? undefined : onAgain;
+  if (compact && kind !== "syncing") {
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            again === undefined ? (
+              <span
+                className="menu-round-button"
+                data-zerops-surface="sidebar-hq-outage"
+                role="status"
+              />
+            ) : (
+              <button
+                className="menu-round-button"
+                data-zerops-surface="sidebar-hq-outage"
+                onClick={again}
+                type="button"
+              />
+            )
+          }
+        >
+          <CloudOffIcon aria-hidden="true" className="size-4" />
+          <span className="sr-only">{again === undefined ? line : `${line} Try again.`}</span>
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">
+          {again === undefined ? line : `${line} Press to try again.`}
+        </TooltipPopup>
+      </Tooltip>
+    );
+  }
   // Words give way to the header's other members and wrap; the spinner keeps its size.
   const fit = kind === "syncing" ? "shrink-0" : "min-w-0";
   return (
@@ -2339,68 +2409,6 @@ function StopDemand({ projectId }: { readonly projectId: string }) {
   return null;
 }
 
-/** One face in a group's avatar, as its own row would wear it. */
-interface ClusterFace {
-  readonly projectId: string;
-  readonly name: string;
-  readonly tint: MateTintId;
-  readonly shape: MateShapeId;
-  readonly state: MateMarkState;
-  /** Its state was read, not remembered: only then does it greet a change. */
-  readonly known: boolean;
-  /** A colleague's: their mark on its corner, its face paler. */
-  readonly badge: BadgeSeat | null;
-}
-
-/**
- * A group's faces in the face's column (the owner, 2026-10-12: "when more it would be project"):
- * two on the diagonal, three as a triangle, the lead in front — the one that asks the viewer, else
- * the one at work, else the newest words — and past three, how many more. Each wears its row's
- * state and its owner's mark, ringed in the menu's ground where they overlap. When the lead
- * changes, the faces travel to their new places.
- */
-function ProjectCluster({
-  faces,
-  more,
-}: {
-  readonly faces: ReadonlyArray<ClusterFace>;
-  readonly more: number;
-}) {
-  const place = new Map(faces.map((face, index) => [face.projectId, index]));
-  // Drawn in one order whoever leads, so a new lead travels rather than being drawn anew.
-  const drawn = faces.toSorted((left, right) => left.projectId.localeCompare(right.projectId));
-  return (
-    <span
-      aria-hidden="true"
-      className="menu-cluster"
-      data-count={String(Math.min(faces.length, 3))}
-      data-zerops-surface="sidebar-project-faces"
-    >
-      {drawn.map((face) => (
-        <span
-          className="menu-cluster-face"
-          data-place={String(place.get(face.projectId) ?? 0)}
-          key={face.projectId}
-        >
-          <MateFace
-            className="size-full"
-            greets
-            known={face.known}
-            shape={face.shape}
-            size="md"
-            state={face.state}
-            tint={face.tint}
-          />
-          {face.badge === null ? null : (
-            <MateOwnerMark className="menu-cluster-owner" seat={face.badge} />
-          )}
-        </span>
-      ))}
-      {more > 0 ? <span className="menu-cluster-more">{`+${String(more)}`}</span> : null}
-    </span>
-  );
-}
-
 /** Who leads a group, as its row reads them: whose time, whose line. */
 interface GroupLeadInput<T extends RosterCandidate> {
   readonly candidate: T;
@@ -2458,12 +2466,15 @@ function GroupRowWords<T extends RosterCandidate>({
   return (
     <span className="flex min-w-0 flex-col">
       <span className="flex h-5.5 min-w-0 items-center gap-2">
-        <span
-          className="menu-name min-w-0 flex-1 truncate font-medium"
-          data-zerops-surface="sidebar-project-name"
-        >
-          {name}
-          <span className="sr-only">{`, ${String(mates)} Mates`}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span
+            className="menu-name min-w-0 truncate font-medium"
+            data-zerops-surface="sidebar-project-name"
+          >
+            {name}
+            <span className="sr-only">{`, ${String(mates)} Mates`}</span>
+          </span>
+          <ProjectNameMarks />
         </span>
         <span className="relative flex h-5.5 min-w-16 shrink-0 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0 pointer-coarse:opacity-0">
           <MateSlot
@@ -2591,7 +2602,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
   const [menuAt, setMenuAt] = useState<MenuPoint | undefined>(undefined);
   const rowBox = useRef<HTMLDivElement>(null);
   const tagsBox = useRef<HTMLSpanElement>(null);
-  const hasTags = review !== undefined || sites !== undefined;
+  const hasTags = sites !== undefined;
   useTagsRoom(rowBox, tagsBox, hasTags);
   const drag = useRowDrag(onDragStart);
   const longPress = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({
@@ -2688,11 +2699,14 @@ function ProjectGroupRow<T extends RosterCandidate>({
           {lead === undefined ? (
             <span className="flex min-w-0 flex-col">
               <span className="flex h-5.5 min-w-0 items-center gap-2">
-                <span
-                  className="menu-name min-w-0 flex-1 truncate font-medium"
-                  data-zerops-surface="sidebar-project-name"
-                >
-                  {name}
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <span
+                    className="menu-name min-w-0 truncate font-medium"
+                    data-zerops-surface="sidebar-project-name"
+                  >
+                    {name}
+                  </span>
+                  <ProjectNameMarks />
                 </span>
                 <span className="min-w-16 shrink-0" />
               </span>
@@ -2776,7 +2790,7 @@ function ProjectBareRow({
   const [menuAt, setMenuAt] = useState<MenuPoint | undefined>(undefined);
   const rowBox = useRef<HTMLDivElement>(null);
   const tagsBox = useRef<HTMLSpanElement>(null);
-  const hasTags = review !== undefined || sites !== undefined;
+  const hasTags = sites !== undefined;
   useTagsRoom(rowBox, tagsBox, hasTags);
   const drag = useRowDrag(onDragStart);
   const body = (tags: ReactNode, globe: ReactNode) => (
@@ -2824,11 +2838,14 @@ function ProjectBareRow({
           </span>
           <span className="flex min-w-0 flex-col">
             <span className="flex h-5.5 min-w-0 items-center gap-2">
-              <span
-                className="menu-name min-w-0 flex-1 truncate font-medium"
-                data-zerops-surface="sidebar-project-name"
-              >
-                {name}
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                <span
+                  className="menu-name min-w-0 truncate font-medium"
+                  data-zerops-surface="sidebar-project-name"
+                >
+                  {name}
+                </span>
+                <ProjectNameMarks />
               </span>
               <span className="min-w-16 shrink-0" />
             </span>
@@ -2928,25 +2945,10 @@ function revealLanding(
         within: `[data-zerops-surface="sidebar-project-sites-popover"] [data-sites-stop="${CSS.escape(target.projectId)}"]`,
       };
     }
-    case "change": {
-      // A change that waits for review rides its project's Review: alone there, the tag takes the
-      // focus and Enter opens it; among others, the tag opens their list and the change takes the
-      // focus there. A change that does not ask for review is no row: its own page opens instead.
-      const review = find(
-        `[data-zerops-group="${target.groupId}"] [data-zerops-surface="sidebar-project-review"]`,
-      );
-      const held = review?.getAttribute("data-zerops-changes")?.split(" ") ?? [];
-      if (review === null || !held.includes(target.key)) return null;
-      const unit = review.closest<HTMLElement>("[data-zerops-mate-unit]") ?? review;
-      return held.length === 1
-        ? { focus: review, flash: unit }
-        : {
-            focus: review,
-            flash: unit,
-            press: review,
-            within: `[data-zerops-surface="sidebar-project-changes"] [data-zerops-change="${CSS.escape(target.key)}"]`,
-          };
-    }
+    case "change":
+      // The menu only marks what waits for review; its Review is the conversation header's. A
+      // found change opens its own page.
+      return null;
   }
 }
 
@@ -3046,7 +3048,7 @@ function MateUnit({
 }
 
 import { mateOutsideHq, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
-import { sidebarMenuShown } from "./SidebarPeek";
+import { sidebarMenuShown } from "./SidebarStage";
 
 /** Memoised (`mateRowPropsEqual`): only the rows whose own props changed redraw with the tree. */
 function MateRowRead<T extends RosterCandidate>(
@@ -3848,10 +3850,17 @@ function MateRowView<T extends RosterCandidate>({
                   // a fixed one: a flex item drops a leading space.
                   <>
                     <span className="menu-name-project">{project}</span>
+                    {/* What waits for production after the project's name, the Mate's changes
+                        after the Mate's (the owner, 2026-10-12). */}
+                    {kid ? null : <ProjectNameMarks />}
                     <span className="menu-name-mate">{`\u00a0· ${name}`}</span>
                   </>
                 )}
               </span>
+              {kid || (project !== undefined && !sameName(project, name)) ? null : (
+                <ProjectNameMarks />
+              )}
+              <MateNameMarks mateProjectId={candidate.project.id} />
               {crewFacts === undefined ? null : <SidebarCrewMinis facts={crewFacts} />}
               {actions?.muted === true ? (
                 <BellOffIcon
@@ -4060,21 +4069,43 @@ function withProjectParts(
   sites: ProjectSitesInput | undefined,
   body: (tags: ReactNode, globe: ReactNode) => ReactNode,
 ): ReactNode {
-  const reviewTags = review === undefined ? null : <ProjectReviewTags {...review} />;
-  if (sites === undefined) return body(review === undefined ? undefined : reviewTags, undefined);
-  return (
-    <ProjectSites {...sites}>
-      {({ tag, globe }) =>
-        body(
-          <>
-            {reviewTags}
-            {tag}
-          </>,
-          globe,
-        )
-      }
-    </ProjectSites>
+  if (review === undefined && sites === undefined) return body(undefined, undefined);
+  return sites === undefined ? (
+    body(undefined, undefined)
+  ) : (
+    <ProjectSites {...sites}>{({ tag, globe }) => body(tag, globe)}</ProjectSites>
   );
+}
+
+/**
+ * What waits in a project, for its rows' marks (the owner, 2026-10-12: "release after project name
+ * and merge after mate name"): its review and release, and the Mates whose own rows mark their
+ * changes — a solo row's Mate, an open group's Mates; a folded group's row marks them all.
+ */
+interface RowMarksValue {
+  readonly review: ProjectReviewData | undefined;
+  readonly mates: ReadonlySet<string>;
+}
+
+const NO_MATES: ReadonlySet<string> = new Set();
+const RowMarks = createContext<RowMarksValue>({ review: undefined, mates: NO_MATES });
+
+/** After a project's name: what waits for production, and changes no Mate's row here marks. */
+function ProjectNameMarks() {
+  const { review, mates } = useContext(RowMarks);
+  if (review === undefined) return null;
+  const items = review.items.filter(
+    (item) => item.mateProjectId === undefined || !mates.has(item.mateProjectId),
+  );
+  return <ProjectReviewMarks {...review} items={items} />;
+}
+
+/** After a Mate's name: its own changes waiting on a review. */
+function MateNameMarks({ mateProjectId }: { readonly mateProjectId: string }) {
+  const { review, mates } = useContext(RowMarks);
+  if (review === undefined || !mates.has(mateProjectId)) return null;
+  const items = review.items.filter((item) => item.mateProjectId === mateProjectId);
+  return <ProjectReviewMarks {...review} items={items} release={undefined} />;
 }
 
 /**
@@ -4269,20 +4300,6 @@ function MateWorkingTime({
     </span>
   );
 }
-
-/**
- * The dot before the age: amber where the Mate needs you, blue where it
- * finished something you have not seen, red where it stopped on an error
- * (S3) — never a word. A dot that arrives while you watch scales in, once
- * (T6); what the menu opened onto, or what this browser remembered, is
- * simply there.
- */
-const mateDotLabel = (tone: "attention" | "unread" | "failed"): string =>
-  tone === "unread"
-    ? "Unseen reply"
-    : tone === "failed"
-      ? "Stopped on an error"
-      : "Waiting for you";
 
 /** The third line's inks: the answer in the third ink, unread in the second ink, a question in ink, an error red. */
 const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention", string> = {

@@ -621,15 +621,15 @@
           height: 36px;
         }
 
-        /* The rail (SidebarRail), where its person left the menu closed: its 72 px column and
-           its mark, 28 x 33 at 22, 16; the open menu's rows are not its. */
+        /* The rail (SidebarRail), where its person left the menu closed: its 88 px column and
+           the Chief's mark, 28 x 33 at 30, 16; the open menu's rows are not its. */
         html[data-boot-frame="app"][data-boot-menu="rail"] #boot-shell-menu-loading {
           display: none;
         }
 
         html[data-boot-frame="app"][data-boot-menu="rail"] #boot-shell-card {
           top: 16px;
-          left: 22px;
+          left: 30px;
           width: 28px;
           height: 33px;
         }
@@ -682,10 +682,10 @@
         const preferred = stored === null ? 19 * 16 : Math.max(minimum, stored);
         root.style.setProperty("--boot-menu-width", `${Math.min(preferred, maximum)}px`);
         // A menu its person left closed is the rail (`sidebar_state`, the cookie its toggle
-        // writes), as the app opens it: its 64 px column and its mark, nothing else.
+        // writes), as the app opens it: its 88 px column and its mark, nothing else.
         if (/(?:^|;\s*)sidebar_state=false(?:;|$)/.test(document.cookie ?? "")) {
           root.dataset.bootMenu = "rail";
-          root.style.setProperty("--boot-menu-width", "72px");
+          root.style.setProperty("--boot-menu-width", "88px");
         }
       })();
     </script>

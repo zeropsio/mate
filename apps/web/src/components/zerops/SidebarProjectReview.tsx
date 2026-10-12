@@ -6,7 +6,7 @@
  * them (or in their popover, which React bubbles through them) never reaches the row.
  */
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
-import { GitPullRequestIcon, RocketIcon, UsersIcon } from "lucide-react";
+import { GitMergeIcon, GitPullRequestIcon, RocketIcon, UsersIcon } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -126,6 +126,49 @@ export function ProjectReviewTags({
   );
 }
 
+/**
+ * The menu's word on what waits in a project (the owner, 2026-10-12: "in the left menu, just add
+ * some clear indication without the ability to merge … after the name, one for merge one for
+ * release … with small number when there are more"): a mark for the changes waiting on a review
+ * and one for what waits for production, after the row's name, never a door — the row's press
+ * opens the conversation, whose header holds Review and Release (`ProjectReviewTags`).
+ */
+export function ProjectReviewMarks({
+  projectName,
+  items,
+  release,
+}: Parameters<typeof ProjectReviewTags>[0]): ReactNode {
+  if (items.length === 0 && release === undefined) return null;
+  return (
+    <span className="menu-marks" data-zerops-surface="sidebar-project-marks">
+      {items.length === 0 ? null : (
+        <span
+          aria-label={reviewTagLabel(items, projectName)}
+          className="menu-mark menu-mark-merge"
+          data-zerops-surface="sidebar-project-review-mark"
+          role="img"
+        >
+          <GitMergeIcon aria-hidden="true" className="menu-mark-icon" />
+          {items.length > 1 ? <span>{items.length}</span> : null}
+        </span>
+      )}
+      {release === undefined ? null : (
+        <span
+          aria-label={`Release: ${releaseTagTip(release)}`}
+          className="menu-mark menu-mark-release"
+          data-zerops-surface="sidebar-project-release-mark"
+          role="img"
+        >
+          <RocketIcon aria-hidden="true" className="menu-mark-icon" />
+          {release.waiting > 1 ? (
+            <span>{`${String(release.waiting)}${release.atLeast ? "+" : ""}`}</span>
+          ) : null}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function ReleaseTag({
   groupId,
   release,
@@ -157,6 +200,7 @@ function ReleaseTag({
         {/* In a narrow menu the word gives way to its mark, so the project's name keeps its room. */}
         <RocketIcon aria-hidden="true" className="menu-tag-icon" />
         <span className="menu-tag-word">Release</span>
+        <TagCount count={release.waiting > 1 ? release.waiting : undefined} />
       </TooltipTrigger>
       <TooltipPopup side="bottom">{tip}</TooltipPopup>
     </Tooltip>
@@ -216,8 +260,8 @@ function ReviewTag({
             />
           }
         >
-          <GitPullRequestIcon aria-hidden="true" className="menu-tag-icon" />
-          <span className="menu-tag-word">Review</span>
+          <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
+          <span className="menu-tag-word">Review work</span>
           <TagCount count={many ? items.length : undefined} />
         </TooltipTrigger>
         {only === undefined ? null : <TooltipPopup side="bottom">{only.title}</TooltipPopup>}

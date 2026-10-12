@@ -309,6 +309,18 @@ export function changeMarkTone(
 }
 
 /**
+ * The dot before the age in words: amber where the Mate needs you, blue where it finished
+ * something you have not seen, red where it stopped on an error (S3). The row draws it, never the
+ * word; a screen reader and the closed menu's card say it.
+ */
+export const mateDotLabel = (tone: "attention" | "unread" | "failed"): string =>
+  tone === "unread"
+    ? "Unseen reply"
+    : tone === "failed"
+      ? "Stopped on an error"
+      : "Waiting for you";
+
+/**
  * A Mate's row in one of its states (M7): no status word says it — the
  * face, a dot and the content itself do.
  */

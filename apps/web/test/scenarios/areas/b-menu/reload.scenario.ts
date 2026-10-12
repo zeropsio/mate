@@ -158,7 +158,7 @@ describe("B: menu reload", () => {
               () => (window as unknown as { menuWidths: number[] }).menuWidths,
             );
           });
-          expect(widths, `The menu column after the reload: ${widths.join(" → ")}`).toEqual([72]);
+          expect(widths, `The menu column after the reload: ${widths.join(" → ")}`).toEqual([88]);
         }),
     );
   });

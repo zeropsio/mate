@@ -212,6 +212,7 @@ function MatePill({
   onOpen,
   onCloseChat,
   onRename,
+  trailing,
 }: {
   readonly mate: LineMate;
   /** It has a crew: the band says which conversation is on screen. */
@@ -220,6 +221,8 @@ function MatePill({
   readonly onOpen: (threadId: ThreadId) => void;
   readonly onCloseChat: (chat: NonNullable<LineChats["close"]>) => void;
   readonly onRename: (() => void) | null;
+  /** What stands right after its name, before what the chat is about (`ChatHeader`). */
+  readonly trailing?: ReactNode;
 }) {
   const band = crew && mate.open;
   const opens = crew && !mate.open && mate.threadId !== null;
@@ -252,6 +255,24 @@ function MatePill({
       {mate.name}
     </span>
   );
+  const subjectLine =
+    subject === null ? null : (
+      // Arriving after the line stands, it fades in where it stays: the
+      // name before it never moves.
+      <span
+        className="conversation-subject flex min-w-0 items-center gap-2.5"
+        data-arrived={arrived ? "" : undefined}
+        data-conversation-subject=""
+      >
+        <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
+        <span className="min-w-0 truncate text-sm text-muted-foreground" ref={subjectRef}>
+          {subject}
+        </span>
+      </span>
+    );
+  // What waits on the person stands between the name and the subject, outside the press.
+  const hasTrailing = trailing !== null && trailing !== undefined;
+  const inPress = !hasTrailing;
   const press = (
     <button
       aria-current={mate.open ? "page" : undefined}
@@ -274,20 +295,7 @@ function MatePill({
     >
       <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
       {name}
-      {subject === null ? null : (
-        // Arriving after the line stands, it fades in where it stays: the
-        // name before it never moves.
-        <span
-          className="conversation-subject flex min-w-0 items-center gap-2.5"
-          data-arrived={arrived ? "" : undefined}
-          data-conversation-subject=""
-        >
-          <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
-          <span className="min-w-0 truncate text-sm text-muted-foreground" ref={subjectRef}>
-            {subject}
-          </span>
-        </span>
-      )}
+      {inPress ? subjectLine : null}
     </button>
   );
   return (
@@ -313,6 +321,8 @@ function MatePill({
       {chats === null ? null : (
         <MateChatsMenu chats={chats} mateName={mate.name} onClose={onCloseChat} onOpen={onOpen} />
       )}
+      {hasTrailing ? trailing : null}
+      {hasTrailing ? subjectLine : null}
     </div>
   );
 }
@@ -590,6 +600,8 @@ export interface ConversationStripViewProps {
   readonly crew: ReadonlyArray<LineCrewmate> | null;
   /** The rename field, over the line from the Mate's name while its chat is renamed. */
   readonly renameField: ReactNode;
+  /** What stands right after the line (`ConversationStripProps.trailing`). */
+  readonly trailing?: ReactNode;
   /** The open crewmate's menu: its popup, or `null` while its crew is not read. */
   readonly renderCrewmateMenu: (crewmate: LineCrewmate) => ReactNode;
   readonly onOpen: (threadId: ThreadId) => void;
@@ -610,6 +622,7 @@ export function ConversationStripView({
   mate,
   chats,
   crew,
+  trailing,
   renameField,
   renderCrewmateMenu,
   onOpen,
@@ -657,6 +670,7 @@ export function ConversationStripView({
         onCloseChat={onCloseChat}
         onOpen={onOpen}
         onRename={onRename}
+        trailing={trailing}
       />
       {crew === null ? null : (
         <>
@@ -700,6 +714,8 @@ export interface ConversationStripProps {
   /** What the chat on screen is about, when it is the Mate's own: its hover. */
   readonly subject: string | null;
   readonly renameField: ReactNode;
+  /** What stands right after the line: what waits on the person in its project (`ChatHeader`). */
+  readonly trailing?: ReactNode;
   /** Renames the Mate's chat on screen; `null` where it cannot be renamed. */
   readonly onRename: (() => void) | null;
   /** *Change its job*: the crew's Crewmate editor on that crewmate. */
@@ -720,6 +736,7 @@ export function ConversationStrip({
   crewChat,
   subject,
   renameField,
+  trailing,
   onRename,
   onEditJob,
   onEditBrief,
@@ -818,21 +835,8 @@ export function ConversationStrip({
       onOpen={open}
       onRename={onRename}
       renameField={renameField}
+      trailing={trailing}
     />
-  );
-}
-
-/** Whether the Mate living in `environmentId` is at work in any of its chats (`mateWorks`). */
-export function useMateWorks(environmentId: EnvironmentId): boolean {
-  const shells = useThreadShells();
-  const activityByThread = useAtomValue(environmentActivitiesAtom(environmentId));
-  return useMemo(
-    () =>
-      mateWorks(
-        mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
-        activityByThread,
-      ),
-    [environmentId, shells, activityByThread],
   );
 }
 

@@ -97,7 +97,7 @@ describe("a project's Review tag", () => {
   it("one change says Review and opens that change's review at once", async () => {
     const { container } = await mount({ items: [change(4, "Add a due date")] });
     const review = tag(container, /^Review Add a due date$/u);
-    expect(review?.textContent).toBe("Review");
+    expect(review?.textContent).toBe("Review work");
     await press(review!);
     expect(effects.review).toHaveBeenCalledWith(
       { kind: "change", groupId: "orbit", repository: "appdev", number: 4 },
@@ -111,7 +111,7 @@ describe("a project's Review tag", () => {
       items: [change(4, "Add a due date"), change(5, "Sort by priority")],
     });
     const review = tag(container, /^2 to review in Orbit$/u)!;
-    expect(review.textContent).toBe("Review2");
+    expect(review.textContent).toBe("Review work2");
     await press(review);
     expect(effects.review).not.toHaveBeenCalled();
     expect(popover()?.textContent).toContain("2 changes in Orbit");
@@ -187,7 +187,10 @@ describe("a project's Release tag", () => {
   ])("opens the release review and says what waits: $says", async ({ release, says }) => {
     const { container } = await mount({ release });
     const tagged = tag(container, /^Release/u)!;
-    expect(tagged.textContent).toBe("Release");
+    // Its word, then how many wait where more than one does.
+    expect(tagged.textContent).toBe(
+      release.waiting > 1 ? `Release${String(release.waiting)}` : "Release",
+    );
     expect(tagged.getAttribute("aria-label")).toBe(`Release: ${says}`);
     await press(tagged);
     expect(effects.review).toHaveBeenCalledWith(
