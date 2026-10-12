@@ -236,7 +236,17 @@ function ReviewTag({
           <PopoverPrimitive.Popup
             className="menu-tagpop"
             data-zerops-surface="sidebar-project-changes"
-            finalFocus={() => !pressed.current}
+            // An item pressed keeps the focus its review takes; a tag that left with its last item
+            // hands it to its row, never to the page.
+            finalFocus={() =>
+              pressed.current
+                ? false
+                : leaving
+                  ? (tag.current
+                      ?.closest(".menu-row-box")
+                      ?.querySelector<HTMLElement>("[data-zerops-row]") ?? true)
+                  : true
+            }
             // A press opens it calm, nothing lit as if picked; ↓ then walks into it. Keys land on
             // its first item.
             initialFocus={(openType) => (openType === "keyboard" ? true : list.current)}
