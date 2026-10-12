@@ -35,6 +35,7 @@ const ALL_AVAILABLE = {
   agents: "available",
   zerops: "available",
   browser: "available",
+  mac: "available",
   data: "available",
   git: "available",
   crew: "available",
@@ -76,6 +77,14 @@ describe("RightPanelTabs launcher", () => {
     );
   });
 
+  it("offers a Mac card right after Browser, without a letter of its own", () => {
+    const html = renderLauncher();
+    expect(html).toContain("Watch and use the app on the paired Mac.");
+    expect(html.indexOf(">Mac<")).toBeGreaterThan(html.indexOf(">Browser<"));
+    expect(html.indexOf(">Mac<")).toBeLessThan(html.indexOf(">Data<"));
+    expect(html).toContain('data-surface-launcher-keys="TFDAZBVGCME"');
+  });
+
   it("draws a crew card only while the crew kind is not hidden", () => {
     expect(renderLauncher()).toContain("Set up a crew and follow its tasks.");
     const hidden = renderLauncher({ ...ALL_AVAILABLE, crew: "hidden" });
@@ -92,6 +101,7 @@ describe("RightPanelTabs launcher", () => {
       agents: "unavailable",
       zerops: "unavailable",
       browser: "unavailable",
+      mac: "unavailable",
       data: "unavailable",
       git: "unavailable",
       crew: "hidden",
@@ -102,7 +112,7 @@ describe("RightPanelTabs launcher", () => {
     expect(html).toContain("Available for Git repositories.");
     expect(html).toContain("Available from a thread.");
     expect(html).toContain("Available from a conversation.");
-    expect(html.match(/Available in a Zerops project\./gu)).toHaveLength(5);
+    expect(html.match(/Available in a Zerops project\./gu)).toHaveLength(6);
   });
 });
 

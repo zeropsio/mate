@@ -593,6 +593,11 @@ const ZeropsBrowserSurface = lazy(() =>
     default: module.ZeropsBrowserSurface,
   })),
 );
+const ZeropsMacSurface = lazy(() =>
+  import("./zerops/ZeropsMacSurface").then((module) => ({
+    default: module.ZeropsMacSurface,
+  })),
+);
 const ZeropsGitSurface = lazy(() =>
   import("./zerops/ZeropsGitSurface").then((module) => ({ default: module.ZeropsGitSurface })),
 );
@@ -3963,6 +3968,10 @@ export default function ChatView(props: ChatViewProps) {
   const addBrowserSurface = useCallback(() => {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "browser");
+  }, [activeThreadRef]);
+  const addMacSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "mac");
   }, [activeThreadRef]);
   const chromeMate =
     activeThreadEnvironmentId === null
@@ -7917,6 +7926,9 @@ export default function ChatView(props: ChatViewProps) {
       case "browser":
         addBrowserSurface();
         return;
+      case "mac":
+        addMacSurface();
+        return;
       case "data":
         addDataSurface();
         return;
@@ -7997,6 +8009,8 @@ export default function ChatView(props: ChatViewProps) {
               return "url" in activeRightPanelSurface ? null : (
                 <ZeropsBrowserSurface threadRef={zeropsChrome.threadRef} />
               );
+            case "mac":
+              return <ZeropsMacSurface threadRef={zeropsChrome.threadRef} />;
             case "data":
               // Every open Data tab stays mounted, the inactive ones hidden:
               // a switch between db and db2 keeps each tab's tree, selection,
