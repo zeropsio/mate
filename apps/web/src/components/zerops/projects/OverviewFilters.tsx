@@ -33,8 +33,10 @@ export function OverviewFilters({
         const count =
           filter.show === "waiting" ? waiting : filter.show === "mine" ? mine : undefined;
         return (
+          // Current only on its own address: by default an empty search is a part of every other,
+          // and All read as current under each filter too.
           <Link
-            aria-current={current ? "page" : undefined}
+            activeOptions={{ exact: true }}
             className="ov-filter"
             data-current={current ? "" : undefined}
             data-show={filter.show ?? "all"}
