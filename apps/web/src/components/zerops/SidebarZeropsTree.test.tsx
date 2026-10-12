@@ -410,7 +410,7 @@ describe("SidebarZeropsTree", () => {
     const nameAt = html.indexOf('data-zerops-surface="sidebar-mate-name"');
     const name = html.slice(nameAt, html.indexOf("</span></span>", nameAt));
     expect(name.indexOf("Beviro CRM")).toBeGreaterThan(-1);
-    expect(name.indexOf(" · crm-dev")).toBeGreaterThan(name.indexOf("Beviro CRM"));
+    expect(name.indexOf("· crm-dev")).toBeGreaterThan(name.indexOf("Beviro CRM"));
     expect(html).not.toContain('data-zerops-surface="sidebar-project"');
 
     expect(html.match(/data-zerops-surface="sidebar-mate"/gu)).toHaveLength(1);
@@ -432,8 +432,8 @@ describe("SidebarZeropsTree", () => {
   // name". Listed, or still being created, the project's one Mate is its row; a press opens it.
   it("draws a project of one Mate as that Mate's row, named for the project and then the Mate", () => {
     const words = (html: string, surfaceName: string) =>
-      [...markupDom(html).querySelectorAll(`[data-zerops-surface="${surfaceName}"]`)].map(
-        (row) => row.textContent,
+      [...markupDom(html).querySelectorAll(`[data-zerops-surface="${surfaceName}"]`)].map((row) =>
+        row.textContent?.replaceAll("\u00a0", " "),
       );
     const listed = render([LINKS_MATE, up(LINKS_STAGE)]);
     expect(listed).not.toContain('data-zerops-surface="sidebar-project"');
@@ -449,7 +449,9 @@ describe("SidebarZeropsTree", () => {
     });
     expect(coming).not.toContain('data-zerops-surface="sidebar-project"');
     expect(
-      markupDom(coming).querySelector('[data-zerops-surface="sidebar-mate-coming"]')?.textContent,
+      markupDom(coming)
+        .querySelector('[data-zerops-surface="sidebar-mate-coming"]')
+        ?.textContent?.replaceAll("\u00a0", " "),
     ).toContain("Todo · Vera");
     const opened: Array<string> = [];
     const mounted = mount(
@@ -1639,10 +1641,16 @@ describe("the project's flow under it", () => {
   // The owner, 2026-10-12: "I still don't understand why rosa has a different looking merge
   // request" — a Review solid only on their own Mate's change, nothing saying why.
   it("says a colleague's open change is in review, its Review the same as on the viewer's own", () => {
-    expect(reviewing([mine(CRM_DEV_CONNECTED, "u-karlos"), CRM_STAGE])).toEqual([
-      "Change 4 — crm-dev · #4 · in review",
-    ]);
-    const theirs = withFlow([mine(CRM_DEV_CONNECTED, "u-karlos"), CRM_STAGE]);
+    const karlos = { name: "Karlos Lee", initials: "KL", avatarUrl: null, isViewer: false };
+    expect(
+      reviewing([mine(CRM_DEV_CONNECTED, "u-karlos"), CRM_STAGE], flow(), {
+        getOwner: () => karlos,
+      }),
+    ).toEqual(["Change 4 — crm-dev · Karlos's · #4 · in review"]);
+    const theirs = render([mine(CRM_DEV_CONNECTED, "u-karlos"), CRM_STAGE], {
+      getFlow: () => flow(),
+      getOwner: () => karlos,
+    });
     const ours = withFlow([own(), CRM_STAGE]);
     // Its Review as drawn, attributes and all.
     expect(reviewTagOf(theirs)).toBeDefined();
@@ -2359,7 +2367,9 @@ describe("a group of Mates folded to its row", () => {
     expect(html).toMatch(/data-zerops-surface="sidebar-project-name"[^>]*>Beviro CRM</u);
     expect(html).toContain('data-zerops-surface="sidebar-project-faces"');
     expect(html.match(/data-zerops-primitive="mate-face"/gu)).toHaveLength(2);
-    expect(html).toContain('aria-label="Beviro CRM, 2 Mates"');
+    expect(
+      markupDom(html).querySelector('[data-zerops-surface="sidebar-project"]')?.textContent,
+    ).toMatch(/^Beviro CRM, 2 Mates/u);
   });
 
   // What needs the viewer rises to the project's row: the asking face leads, the line says the ask.
@@ -2392,9 +2402,7 @@ describe("a group of Mates folded to its row", () => {
       ["crm-c", "idle"],
     ]);
     expect(text(surface(mounted, "sidebar-project-lead"))).toBe("Bo asks: ");
-    expect(surface(mounted, "sidebar-project").props["aria-label"]).toBe(
-      "Beviro CRM, 3 Mates, Bo asks",
-    );
+    expect(text(surface(mounted, "sidebar-project"))).toMatch(/^Beviro CRM, 3 Mates.*Bo asks: /u);
   });
 
   it("says the oldest ask on its line, and how many more wait behind it", () => {
@@ -2926,9 +2934,11 @@ describe("arranging the projects by hand", () => {
         />,
       );
       const menuOf = (project: string) =>
-        mounted.root.findAll(
-          (node) => node.props.project === project && node.props.projectMenu !== undefined,
-        )[0]!.props.projectMenu as ReadonlyArray<HeadingMenuEntry>;
+        mounted.root
+          .findAll(
+            (node) => node.props.project === project && node.props.projectMenu !== undefined,
+          )[0]!
+          .props.projectMenu() as ReadonlyArray<HeadingMenuEntry>;
       const verb = (project: string, label: string) =>
         menuOf(project).find((entry) => entry.kind === "item" && entry.label === label);
       // The first can go nowhere up, the last nowhere down.
@@ -3518,8 +3528,8 @@ describe("a long list, kept scannable", () => {
   const activities = (id: string) =>
     id === "crm-old" ? act({ at: fortnight, subject: "Try a new renderer" }) : act();
   const names = (html: string) =>
-    [...markupDom(html).querySelectorAll('[data-zerops-surface="sidebar-mate-name"]')].map(
-      (name) => name.textContent,
+    [...markupDom(html).querySelectorAll('[data-zerops-surface="sidebar-mate-name"]')].map((name) =>
+      name.textContent?.replaceAll("\u00a0", " "),
     );
 
   it("never folds the Mate whose conversation is open", () => {
