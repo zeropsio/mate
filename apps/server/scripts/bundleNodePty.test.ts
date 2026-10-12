@@ -3,6 +3,9 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeModule from "node:module";
+import serverPackageJson from "../package.json" with { type: "json" };
+import { buildReleaseManifest } from "./releaseManifest.ts";
 
 import { afterEach, assert, beforeEach, describe, it } from "@effect/vitest";
 
@@ -106,6 +109,68 @@ describe("stageNodePty", () => {
 });
 
 describe("bundleNodePtyIntoTarball", () => {
+  it("an npm-installed release supplies the headers bundled node-pty needs to compile", () => {
+    const packageDir = NodePath.join(root, "package");
+    NodeFS.mkdirSync(packageDir);
+    const manifest = buildReleaseManifest({
+      serverPackageJson,
+      catalog: {},
+      version: "0.0.0-test",
+    });
+    // Exercise this native dependency's installation, without unrelated native downloads.
+    const dependencies = Object.fromEntries(
+      Object.entries(manifest.dependencies).filter(
+        ([name]) => name === "node-pty" || name === "node-addon-api",
+      ),
+    );
+    NodeFS.writeFileSync(
+      NodePath.join(packageDir, "package.json"),
+      JSON.stringify({ name: manifest.name, version: manifest.version, dependencies }),
+    );
+    const tarballPath = NodePath.join(root, "zerops-mate-0.0.0-test.tgz");
+    NodeChildProcess.execFileSync("tar", ["-czf", tarballPath, "-C", root, "package"]);
+    const require = NodeModule.createRequire(import.meta.url);
+    const nodePtyDir = NodePath.dirname(require.resolve("node-pty/package.json"));
+    // Published tarballs carry linux-x64. npm's supported build-from-source setting still
+    // selects compilation (as does installing on a platform without that prebuild).
+    const linuxPrebuildDir = NodePath.join(root, "linux-x64");
+    NodeFS.mkdirSync(linuxPrebuildDir);
+    NodeFS.writeFileSync(NodePath.join(linuxPrebuildDir, "pty.node"), "unused prebuild");
+    bundleNodePtyIntoTarball({ tarballPath, nodePtyDir, linuxPrebuildDir });
+    const installed = NodePath.join(root, "installed");
+    NodeFS.mkdirSync(installed);
+    const result = NodeChildProcess.spawnSync(
+      "npm",
+      [
+        "install",
+        "--prefix",
+        installed,
+        "--no-audit",
+        "--no-fund",
+        "--package-lock=false",
+        tarballPath,
+      ],
+      {
+        encoding: "utf8",
+        timeout: 90_000,
+        env: { ...process.env, npm_config_build_from_source: "true" },
+      },
+    );
+    assert.strictEqual(
+      result.status,
+      0,
+      `ASSERTION: npm installs the release with bundled node-pty's build dependencies\n${result.stderr.slice(-6000)}`,
+    );
+    const installedPty = NodeModule.createRequire(
+      NodePath.join(installed, "node_modules/zerops-mate/node_modules/node-pty/package.json"),
+    );
+    assert.isTrue(NodeFS.existsSync(installedPty.resolve("node-addon-api/napi.h")));
+    assert.isTrue(
+      NodeFS.existsSync(installedPty.resolve("./build/Release/pty.node")),
+      "ASSERTION: npm compiled node-pty from the release sources",
+    );
+  }, 100_000);
+
   it("ships the kernel health helper as an executable after unpacking", () => {
     const packageDir = NodePath.join(root, "package");
     NodeFS.mkdirSync(NodePath.join(packageDir, "dist"), { recursive: true });

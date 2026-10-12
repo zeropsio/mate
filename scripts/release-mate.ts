@@ -86,9 +86,8 @@ export function releaseNotes(log: string): string {
     .join("\n");
 }
 
-/** Release automation carries the same lane identity as the change it ships. */
-export function releaseMessage(version: string, notes: string, card?: string): string {
-  return `chore(release): mate ${version}\n\n${notes}${card?.trim() ? `\n\nCard: ${card.trim()}` : ""}`;
+export function releaseMessage(version: string, notes: string): string {
+  return `chore(release): mate ${version}\n\n${notes}`;
 }
 
 const git = (cwd: string, ...args: ReadonlyArray<string>) =>
@@ -176,7 +175,7 @@ async function main(args: ReadonlySet<string>): Promise<void> {
     );
     if (notes === "")
       throw new Error(`nothing reached main since the last release ${lastRelease.slice(0, 9)}`);
-    const message = releaseMessage(next, notes, process.env.BOARD_CARD);
+    const message = releaseMessage(next, notes);
     console.log(`${current} → ${next} (published: ${published ?? "none"})\n\n${message}\n`);
     if (args.has("--dry-run")) return;
 

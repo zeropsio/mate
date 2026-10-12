@@ -115,7 +115,7 @@ export function acquireWorktree(
   if (exists.status !== 1) throw new Error(`Cannot inspect branch ${job}`);
   git(cwd, ["rev-parse", "--verify", "origin/main"]);
   const layout = worktreeLayout(cwd);
-  const cwds = liveCwds();
+  const cwds = liveCwds(layout.roots);
   for (const candidate of parseWorktrees(git(cwd, ["worktree", "list", "--porcelain", "-z"]))) {
     if (
       candidate.path === layout.main ||
@@ -142,7 +142,7 @@ export function acquireWorktree(
         ...layout,
         merged: refreshed.merged,
         clean: refreshed.clean,
-        cwds: liveCwds(),
+        cwds: liveCwds(layout.roots),
       }) !== undefined
     )
       continue;

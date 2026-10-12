@@ -14,6 +14,7 @@ export {
 export { seedHqVerdict } from "./hqVerdict.ts";
 export {
   engineCardPagingOfRecords,
+  engineShellOfRecords,
   engineShellThreadOfRecords,
   engineThreadOfRecords,
   engineRunCardsOfRecords,

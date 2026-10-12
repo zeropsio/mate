@@ -22,8 +22,11 @@ The zcp↔mate release and environment contract belongs to `../zcp/docs/spec-mat
   `apps/server/src/codexModelOptions.ts`. Port upstream changes behind the SPI; keep our edits minimal.
 - **Owned core** — the remaining server and web code, shared packages, desktop and mobile source.
   Upstream changes are optional.
-- **Owned product** — Zerops, engine and HQ code, shared product helpers and these documents.
-  This code is ours only. Client code follows the [design guide](design-system.md).
+- **Owned product** — `apps/server/src/zerops/**`, `apps/server/src/engine/**`,
+  `packages/contracts/src/engine*.ts`, `apps/web/src/zerops/**`, `apps/web/src/components/zerops/**`,
+  `packages/client-runtime/src/zerops/**`, `apps/mobile/src/features/zerops/**`,
+  `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts`, `apps/hq/**`,
+  `packages/hq-git/**` and `docs/internals/zerops/**`. This code is ours only. Client code follows the [design guide](design-system.md).
 - **Removed** — delete retired code; do not disable it or preserve compatibility shims.
 
 ### 3.1 Boundaries
@@ -33,8 +36,7 @@ Re-import replaces that transform rather than accumulating local patches.
 
 Ported code imports no Zerops code. Owned product reaches providers only through the
 [provider runtime SPI](spi.md). The engine is the product's provider consumer; other product code
-reaches conversations through the engine. The engine imports neither Zerops nor V1 orchestration
-directly; integrations enter through its ports.
+reaches conversations through the engine. Zerops services enter the engine through its ports.
 
 ### 3.2 Provider ports
 
@@ -64,8 +66,9 @@ edit. The zcp-side names and `/mate` base path belong to the zcp↔mate seam.
 ## 5. Knowledge homes
 
 Knowledge homes and documentation rules live in
-[CLAUDE.md](../../../CLAUDE.md#what-a-doc-may-hold).
-Worktree, checks and shipping commands live in [Commands](../../../CLAUDE.md#commands).
+[AGENTS.md](../../../AGENTS.md#where-knowledge-lives).
+Worktree, checks and shipping commands live in
+[Size the work, then verify](../../../AGENTS.md#size-the-work-then-verify).
 
 ## 6. Upstream constraints
 

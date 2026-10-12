@@ -102,13 +102,7 @@ describe("releaseNotes", () => {
   });
 });
 
-it("release commits retain the lane Card trailer", () => {
-  expect(releaseMessage("0.14.105", "- fix: retain recovery outcomes", "notices-s5")).toBe(
-    "chore(release): mate 0.14.105\n\n- fix: retain recovery outcomes\n\nCard: notices-s5",
-  );
-});
-
-it("releases outside a lane do not invent a Card trailer", () => {
+it("a release commit carries the version and the notes that reached main", () => {
   expect(releaseMessage("0.14.105", "- fix: retain recovery outcomes")).toBe(
     "chore(release): mate 0.14.105\n\n- fix: retain recovery outcomes",
   );

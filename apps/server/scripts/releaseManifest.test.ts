@@ -98,6 +98,7 @@ describe("buildReleaseManifest", () => {
     assert.deepStrictEqual(Object.keys(manifest.dependencies).sort(), [
       "@ff-labs/fff-node",
       "msgpackr-extract",
+      "node-addon-api",
       "node-pty",
       "sharp",
     ]);

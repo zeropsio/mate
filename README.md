@@ -59,7 +59,7 @@ imported, ported, owned, or deleted, and why — is `docs/internals/zerops/fork.
 
 ## Where to read next
 
-- [`CLAUDE.md`](CLAUDE.md) — the knowledge map: where design, rules, measured facts, and tests
+- [`AGENTS.md`](AGENTS.md) — the knowledge map: where design, rules, measured facts, and tests
   each live.
 - [`docs/internals/zerops/fork.md`](docs/internals/zerops/fork.md) — the fork rules: the hard-fork
   decision, the zones, what was kept and what was deleted, how work gets done, upstream intake.

@@ -16,6 +16,6 @@
 - [Model catalogue test policy](internals/model-manifest.md)
 - [Instrumentation rules](operations/observability.md)
 
-- [Repository map](../CLAUDE.md)
+- [Repository map](../AGENTS.md)
 - [Contributor policy](../CONTRIBUTING.md)
 - [Release artifacts](https://github.com/zeropsio/mate/releases)

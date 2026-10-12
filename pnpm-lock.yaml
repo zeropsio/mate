@@ -497,6 +497,9 @@ importers:
       msgpackr-extract:
         specifier: 3.0.4
         version: 3.0.4
+      node-addon-api:
+        specifier: ^7.1.0
+        version: 7.1.1
       node-pty:
         specifier: ^1.1.0
         version: 1.1.0

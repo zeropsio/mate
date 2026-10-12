@@ -1,5 +1,17 @@
 # Shared runtime terms
 
+Clients send typed WebSocket requests. The server turns them into commands, a pure decider turns
+commands into persisted events, and a projector derives the read model. Provider adapters translate
+native CLI protocols into orchestration events. Queue-backed reactors perform side effects and emit
+receipts. Each turn ends with a checkpoint, stored as a hidden git ref, so the app can diff and
+restore.
+
+- **Server environment**: One running mate server and the machine, filesystem, provider credentials
+  and state it owns. Distinct from an application's environment in the
+  [domain glossary](zerops/primer.md).
+- **Mate home**: The server's base data directory. Runtime state lives below its `userdata`
+  directory; internal names keep `.t3` and `T3CODE_HOME`.
+
 - **Project**: An environment-local workspace record rooted at a directory.
 - **Workspace root**: A project’s root filesystem path.
 - **Worktree**: An isolated Git working tree.
