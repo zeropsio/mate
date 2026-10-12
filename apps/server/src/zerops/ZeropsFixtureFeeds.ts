@@ -52,6 +52,7 @@ import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
 import type { ZeropsAgentLoginByAgent } from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
+import * as ZeropsMacStreamModule from "./ZeropsMacStream.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
@@ -447,6 +448,22 @@ const browserStreamLayer = () =>
   );
 
 /**
+ * A fixture/showcase run pairs no Mac and must never read the real pairing or
+ * spawn ssh: it always reports `not-paired`, through the live service's own
+ * "no pairing" path.
+ */
+const macStreamLayer = () =>
+  Layer.effect(
+    ZeropsMacStreamModule.ZeropsMacStream,
+    ZeropsMacStreamModule.make({
+      readRecord: Effect.succeed(undefined),
+      readView: Effect.succeed(undefined),
+      openStream: () => Effect.die("ZeropsMacStream fixture: no Mac is paired"),
+      runDevice: () => Effect.succeed(69),
+    }),
+  );
+
+/**
  * A fixture/showcase run never has a real `zcp` and must never spawn a
  * process (determinism) — mate update is reported unavailable, matching a
  * standalone server (spec-mate.md §2.9 MU-3: absent, never fabricated).
@@ -566,6 +583,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     signOutFixtureLayer,
     loginsFixtureLayer,
     browserStreamLayer(),
+    macStreamLayer(),
     Layer.succeed(
       ZeropsMateAttentionModule.ZeropsMateAttention,
       ZeropsMateAttentionModule.ZeropsMateAttention.of({

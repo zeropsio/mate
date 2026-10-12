@@ -28,6 +28,7 @@ import type { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
+import * as ZeropsMacStreamModule from "./ZeropsMacStream.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import type * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
@@ -51,6 +52,8 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.subscribeZeropsAttention
   | typeof WS_METHODS.subscribeZeropsBrowserStream
   | typeof WS_METHODS.zeropsBrowserInput
+  | typeof WS_METHODS.subscribeZeropsMacStream
+  | typeof WS_METHODS.zeropsMacInput
   | typeof WS_METHODS.zeropsMateUpdate
   | typeof WS_METHODS.zeropsMateCheckUpdate
   | typeof WS_METHODS.zeropsDataConsoleCall
@@ -80,6 +83,7 @@ export interface RegisterZeropsRpcDeps {
   /** The Mate's attention, the same instance the link to HQ sends up. */
   readonly zeropsMateAttention: ZeropsMateAttentionModule.ZeropsMateAttention["Service"];
   readonly zeropsBrowserStream: ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"];
+  readonly zeropsMacStream: ZeropsMacStreamModule.ZeropsMacStream["Service"];
   readonly zeropsCli: ZeropsCli["Service"];
   readonly zeropsMateUpdate: ZeropsMateUpdate["Service"];
   /** Whether this server is running inside a Zerops project (spec-mate.md §2.9 MU-2). */
@@ -258,6 +262,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     zeropsSignOut,
     zeropsLogins,
     zeropsBrowserStream,
+    zeropsMacStream,
     zeropsMateAttention,
     zeropsDataConsole,
     zeropsGitRemoteProbe,
@@ -355,6 +360,9 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       ),
     [WS_METHODS.zeropsBrowserInput]: (input) =>
       admit(WS_METHODS.zeropsBrowserInput, zeropsBrowserStream.sendInput(input)),
+    [WS_METHODS.subscribeZeropsMacStream]: (_input) => Stream.unwrap(zeropsMacStream.subscribe),
+    [WS_METHODS.zeropsMacInput]: (input) =>
+      admit(WS_METHODS.zeropsMacInput, zeropsMacStream.sendInput(input)),
     [WS_METHODS.zeropsMateUpdate]: (_input) =>
       admit(WS_METHODS.zeropsMateUpdate, runZeropsMateUpdate(deps)),
     [WS_METHODS.zeropsMateCheckUpdate]: (_input) => runZeropsMateCheckUpdate(deps),

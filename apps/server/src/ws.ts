@@ -121,6 +121,7 @@ import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
 import { McpServers } from "./zerops/mcp/McpServers.ts";
 import * as ZeropsSignOutModule from "./zerops/ZeropsSignOut.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
+import * as ZeropsMacStreamModule from "./zerops/ZeropsMacStream.ts";
 import { ZeropsCli } from "./zerops/ZeropsCli.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
@@ -491,6 +492,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
             );
       const zeropsSignOut = yield* ZeropsSignOutModule.ZeropsSignOut;
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
+      const zeropsMacStream = yield* ZeropsMacStreamModule.ZeropsMacStream;
       const zeropsMateAttention = yield* ZeropsMateAttention;
       const mateEngine = yield* MateEngine;
       const updateAdmission = Option.getOrUndefined(
@@ -1311,6 +1313,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           zeropsSignOut,
           zeropsLogins,
           zeropsBrowserStream,
+          zeropsMacStream,
           zeropsMateAttention,
           zeropsCli,
           zeropsMateUpdate,
