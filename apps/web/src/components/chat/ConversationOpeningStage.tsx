@@ -287,6 +287,9 @@ function OpeningSequence({
       scene.timestampFormat !== timestampFormat)
   ) {
     setScene({ node, content: children, name, mate, notice, activity, timestampFormat });
+  } else if (phase === "waiting" && scene.activity === undefined && activity !== undefined) {
+    // What the Mate was last on fills a composition that had none to say, whichever stage read it.
+    setScene({ ...scene, activity });
   }
   useLayoutEffect(() => {
     onPhase?.(phase === "skipped" ? "complete" : phase);
