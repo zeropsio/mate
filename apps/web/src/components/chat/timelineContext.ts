@@ -36,9 +36,11 @@ export interface TimelineRowSharedState {
   onAnswerLands?: (words: HTMLElement, stood: import("./wordsLanding").WordsStood) => void;
   /**
    * A run's turn ends under the person's eyes, its last words read whole in its slot: the list
-   * holds the card's head at `top` (a screen y) while the card settles. Absent in standalone cards.
+   * holds the card's head at `top` (a screen y) while the card settles. `answerApart`: nothing of
+   * the slot becomes its answer — it comes with the run's end — so the view may travel to it.
+   * Absent in standalone cards.
    */
-  onTurnLands?: (head: HTMLElement, top: number) => void;
+  onTurnLands?: (head: HTMLElement, top: number, answerApart: boolean) => void;
   timestampFormat: TimestampFormat;
   routeThreadKey: string;
   threadRef: ScopedThreadRef | null;

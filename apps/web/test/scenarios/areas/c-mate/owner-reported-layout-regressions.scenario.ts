@@ -2969,6 +2969,25 @@ describe("owner-reported layout regressions", () => {
                 // The settle's hold, then one glide: never the 1.2 s it stood hidden on 0.15.44.
                 "ASSERTION: the answer comes into sight within the settle's hold and one glide",
               ).toBeLessThanOrEqual(450);
+              // z1 (2026-10-12): the card stood at its new height, then nothing moved for 160 ms
+              // with the answer's foot under the view, before the page glided 133 px to it.
+              let moved = frames[arrived]!.at;
+              let stood = 0;
+              for (let index = arrived + 1; index < frames.length; index += 1) {
+                const frame = frames[index]!;
+                const before = frames[index - 1]!;
+                if (frame.lastLine !== null && frame.lastLine <= frame.foot) break;
+                if (
+                  Math.abs((frame.head?.top ?? 0) - (before.head?.top ?? 0)) > 0.5 ||
+                  Math.abs((frame.lastLine ?? 0) - (before.lastLine ?? 0)) > 0.5
+                )
+                  moved = frame.at;
+                stood = Math.max(stood, frame.at - moved);
+              }
+              expect(
+                stood,
+                "ASSERTION: the page never stands still while the answer's foot is out of sight",
+              ).toBeLessThan(100);
             }
             if (length === "long" && end === "whole" && answer === "streamed") {
               const reading = frames[0]!.lastLine;
