@@ -3148,12 +3148,12 @@ code {
   /* A Mate's row: its corners, and the ones a row's own hover paints. The
      grid, the padding and the type are the row's utilities; only what no
      scale holds lives here. */
-  /* A Mate's row: a 40 px face in a 40 px column, 12 px to the words — its name and time, and one
+  /* A Mate's row: a 36 px face in a 36 px column, 12 px to the words — its name and time, and one
      line under them, its answer (the owner, 2026-10-12: "just go with answer") — 59 px, 8 px
      inside the row's own band. The face spans both lines, edge to edge with the words. */
   .menu-row {
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: 36px minmax(0, 1fr);
     column-gap: 12px;
     align-items: start;
     min-height: 59px;
@@ -3612,38 +3612,71 @@ code {
     color: var(--sidebar-muted-foreground);
   }
 
-  /* A project's tags — Review, Release, its places' — on its row's first line, beside the row's
-     own button and never in it: they end where the 64 px slot and its 8 px of air begin. The
-     name gives way to them by the width they measure (`useTagsRoom`). */
+  /* A project's tags — Review, Release, its places' — lead its row's second line at the words'
+     own edge, beside the row's own button and never in it: the row's verbs as blue words (S3), in
+     that line's 14/20, so none floats at the end of the name's line nor moves with its count (the
+     owner, 2026-10-12: "it's floating in space"). The line's words begin after them, by the width
+     they measure (`useTagsRoom`); the name's line keeps its whole width. */
   .menu-row-tags {
     position: absolute;
-    top: 9px;
-    inset-inline-end: 80px;
+    top: 31px;
+    inset-inline-start: 56px;
     z-index: 1;
     display: flex;
-    height: 22px;
+    height: 20px;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
   }
 
-  .menu-row-tags-room {
-    display: none;
-    flex: none;
+  .menu-row-box:has(.menu-row-kid) .menu-row-tags {
+    inset-inline-start: 76px;
   }
 
-  [data-tags] .menu-row-tags-room {
-    display: block;
-    width: var(--menu-tags-w, 0px);
+  [data-tags] .menu-row .menu-line2:not(.menu-line2 .menu-line2) {
+    padding-inline-start: calc(var(--menu-tags-w, 0px) + 6px);
   }
 
-  /* A group's faces in the face's column: two at 27 px on the diagonal, three at 23 px as a
+  .menu-row-tags .menu-tag {
+    height: 20px;
+    padding: 0 3px;
+    margin-inline: -3px;
+    border-radius: 5px;
+    font-size: 14px;
+    line-height: 20px;
+    background: none;
+    box-shadow: none;
+    color: var(--info-foreground);
+  }
+
+  .menu-row-tags .menu-tag-release {
+    font-weight: 600;
+  }
+
+  .menu-row-tags .menu-tag-count {
+    height: 20px;
+  }
+
+  .menu-row-tags .menu-tag[data-popup-open] {
+    background: color-mix(in oklab, var(--info-foreground) 10%, transparent);
+    box-shadow: none;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .menu-row-tags .menu-tag-review:hover,
+    .menu-row-tags .menu-tag-release:hover {
+      background: color-mix(in oklab, var(--info-foreground) 10%, transparent);
+      box-shadow: none;
+    }
+  }
+
+  /* A group's faces in the face's column: two at 24 px on the diagonal, three at 21 px as a
      triangle, the lead in front; each ringed in the ground where they overlap, and travelling to
      its new place when the lead changes. */
   .menu-cluster {
     position: relative;
     display: block;
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
   }
 
   .menu-cluster-face {
@@ -3651,8 +3684,8 @@ code {
     top: 0;
     left: 0;
     display: block;
-    width: 27px;
-    height: 27px;
+    width: 24px;
+    height: 24px;
   }
 
   .menu-cluster[data-count="2"] .menu-cluster-face[data-place="0"] {
@@ -3661,27 +3694,27 @@ code {
 
   .menu-cluster[data-count="2"] .menu-cluster-face[data-place="1"] {
     z-index: 2;
-    transform: translate(13px, 13px);
+    transform: translate(12px, 12px);
   }
 
   .menu-cluster[data-count="3"] .menu-cluster-face {
-    width: 23px;
-    height: 23px;
+    width: 21px;
+    height: 21px;
   }
 
   .menu-cluster[data-count="3"] .menu-cluster-face[data-place="0"] {
     z-index: 3;
-    transform: translate(8.5px, 0);
+    transform: translate(7.5px, 0);
   }
 
   .menu-cluster[data-count="3"] .menu-cluster-face[data-place="1"] {
     z-index: 2;
-    transform: translate(0, 17px);
+    transform: translate(0, 15px);
   }
 
   .menu-cluster[data-count="3"] .menu-cluster-face[data-place="2"] {
     z-index: 1;
-    transform: translate(17px, 17px);
+    transform: translate(15px, 15px);
   }
 
   @media (prefers-reduced-motion: no-preference) {
@@ -3705,12 +3738,22 @@ code {
   .menu-cluster .menu-owner.menu-cluster-owner {
     top: auto;
     left: auto;
-    right: -3px;
-    bottom: -3px;
-    width: 12px;
-    height: 12px;
-    font-size: 7px;
+    right: -2px;
+    bottom: -2px;
+    width: 14px;
+    height: 14px;
+    font-size: 8px;
     box-shadow: 0 0 0 1.5px var(--menu-ground);
+    transition: opacity 180ms var(--ease-out-strong);
+  }
+
+  /* A person stands only on the cluster's outer corner, the seat a lone Mate's wears: the face
+     there carries its owner, and a face in front would set its owner in the cluster's middle (the
+     owner, 2026-10-12). With a "+N" in that corner, none does. */
+  .menu-cluster[data-count="2"] .menu-cluster-face:not([data-place="1"]) .menu-cluster-owner,
+  .menu-cluster[data-count="3"] .menu-cluster-face:not([data-place="2"]) .menu-cluster-owner,
+  .menu-cluster:has(.menu-cluster-more) .menu-cluster-owner {
+    opacity: 0;
   }
 
   .menu-cluster-more {
@@ -3796,10 +3839,25 @@ code {
   }
 
   /* A fold — "3 quiet Mates", "2 other projects", "4 Mates hidden" — a 36 px
-     row, its chevrons in the faces' 40 px column, 14/20 muted. */
+     row, its chevrons in the faces' 36 px column, 14/20 muted. */
   .menu-fold {
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: 36px minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: center;
+    height: 36px;
+    padding: 0 8px;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  /* An unsent draft no Mate's row holds: a one-line row on the Mates' grid — the pen in the faces'
+     column, "Draft" and its words in the second line's 14/20 — never a tinted pill (the owner,
+     2026-10-12: "ugly nonfitting"). */
+  .menu-draft {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
     column-gap: 12px;
     align-items: center;
     height: 36px;
@@ -3836,7 +3894,7 @@ code {
 
   /* Whose Mate it is, on the face's corner: a colleague's picture or their
      initial on their own hue (`ownerMark`), lighter at the top left, 16 px
-     round, centred 25 px across and 29 px down the 28 px face — below its
+     round, centred 30 px across and down the 36 px face — below its
      corner, level with the ask, because a larger badge in the corner met the
      done face's smile; there it clears every pose's eyes and mouth by 1.3 px
      (the owner, 2026-09-30: "the not yours should have the avatar bigger").
@@ -3845,8 +3903,8 @@ code {
      picture off the ground. */
   .menu-owner {
     position: absolute;
-    top: 26px;
-    left: 26px;
+    top: 22px;
+    left: 22px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -3871,11 +3929,21 @@ code {
      16 px badge, whatever the face's shape reaches into that corner. */
   .menu-face-cut {
     -webkit-mask-image: radial-gradient(
-      circle 10px at 34px 34px,
+      circle 10px at 30px 30px,
       transparent 9.5px,
       currentColor 10px
     );
-    mask-image: radial-gradient(circle 10px at 34px 34px, transparent 9.5px, currentColor 10px);
+    mask-image: radial-gradient(circle 10px at 30px 30px, transparent 9.5px, currentColor 10px);
+  }
+
+  /* Under its project's row the face stands 28 px, 4 px into its column: the seat moves with it. */
+  .menu-row-kid .menu-face-cut {
+    -webkit-mask-image: radial-gradient(
+      circle 10px at 26px 26px,
+      transparent 9.5px,
+      currentColor 10px
+    );
+    mask-image: radial-gradient(circle 10px at 26px 26px, transparent 9.5px, currentColor 10px);
   }
 
   /* A Mate that is not the viewer's — a colleague's, or nobody's yet — wears

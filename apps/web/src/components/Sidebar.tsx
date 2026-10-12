@@ -453,38 +453,39 @@ export const SidebarDraftRow = memo(function SidebarDraftRow(props: {
         tabIndex={0}
         data-testid="sidebar-draft-row"
         className={cn(
-          "group/sidebar-row relative w-full cursor-pointer overflow-hidden menu-line text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-          props.isActive ? "bg-sidebar-row-active" : "bg-warning/4 hover:bg-warning/8",
+          "group/sidebar-row menu-draft relative w-full cursor-pointer text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          props.isActive ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
         )}
         onClick={handleActivate}
         onKeyDown={handleKeyDown}
       >
-        <div className="relative z-10 ps-1.75 pe-2">
-          <div className="flex h-7 min-w-0 items-center gap-3">
-            <span className="flex w-7 shrink-0 justify-center">
-              <SquarePenIcon aria-hidden className="size-3.5 text-warning-foreground" />
+        <span className="flex justify-center">
+          <SquarePenIcon aria-hidden className="size-4 text-muted-foreground" />
+        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate">
+            <span className="font-medium">Draft</span>
+            <span className="text-muted-foreground">
+              {` · ${props.projectTitle ? `${props.projectTitle} · ${preview}` : preview}`}
             </span>
-            <span className="min-w-0 flex-1 truncate text-line menu-ink-2">
-              {props.projectTitle ? `${props.projectTitle} · ${preview}` : preview}
-            </span>
-            <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-label="Discard draft"
-                      onClick={handleDiscard}
-                      className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
-                    >
-                      <XIcon className="size-3" />
-                    </button>
-                  }
-                />
-                <TooltipPopup side="top">Discard draft</TooltipPopup>
-              </Tooltip>
-            </span>
-          </div>
+          </span>
+          <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label="Discard draft"
+                    onClick={handleDiscard}
+                    className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
+                  >
+                    <XIcon className="size-3" />
+                  </button>
+                }
+              />
+              <TooltipPopup side="top">Discard draft</TooltipPopup>
+            </Tooltip>
+          </span>
         </div>
       </div>
     </li>
@@ -2963,7 +2964,7 @@ export default function Sidebar() {
           )
         }
       >
-        <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
+        <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1.5 pt-0">
           {zeropsSignedIn && !isSearchingThreads && zeropsChief === undefined ? (
             <div className="mt-2.5 mb-2" data-zerops-surface="sidebar-chrome-rows">
               <SidebarOverviewRow

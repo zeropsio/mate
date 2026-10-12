@@ -2051,7 +2051,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const groupSections = plans.map(({ group, plan }) => (
     <section
       className={cn(
-        "flex flex-col gap-0.5 transition-opacity",
+        "flex flex-col gap-1.5 transition-opacity",
         reorder.dragging === group.groupId && "opacity-40",
       )}
       data-zerops-group={group.groupId}
@@ -2065,7 +2065,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     shown === undefined ? 0 : candidates.filter((item) => hasMate(item) && !shown(item)).length;
   const ungroupedSection =
     ungroupedPlan === null ? null : (
-      <section className="flex flex-col gap-0.5" data-zerops-ungrouped="true">
+      <section className="flex flex-col gap-1.5" data-zerops-ungrouped="true">
         {/* Nothing groups these: a quiet word sets them apart where there are projects above. */}
         {groups.length > 0 ? (
           <span className="menu-ungrouped" data-zerops-surface="sidebar-ungrouped-label">
@@ -2090,7 +2090,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       // another, 43 px under the mark's foot (the owner, 2026-09-29: "first
       // project is too close to logo"). Its own stacking context, so the
       // selected band stands behind every row.
-      className={cn("relative isolate flex flex-col gap-0.5 pt-4", className)}
+      className={cn("relative isolate flex flex-col gap-1.5 pt-4", className)}
       data-zerops-surface="sidebar-environments"
       ref={treeRef}
     >
@@ -2447,7 +2447,6 @@ function GroupRowWords<T extends RosterCandidate>({
   mates,
   lead,
   asksMore,
-  tags,
   timestampFormat,
 }: {
   readonly name: string;
@@ -2456,7 +2455,6 @@ function GroupRowWords<T extends RosterCandidate>({
   readonly lead: GroupLeadInput<T>;
   /** Asks of the viewer behind the lead's: " · 1 more". */
   readonly asksMore: number;
-  readonly tags: boolean;
   readonly timestampFormat: TimestampFormat;
 }) {
   const state = useMateRowState({
@@ -2491,7 +2489,6 @@ function GroupRowWords<T extends RosterCandidate>({
           {name}
           <span className="sr-only">{`, ${String(mates)} Mates`}</span>
         </span>
-        {tags ? <span aria-hidden="true" className="menu-row-tags-room" /> : null}
         <span className="relative flex h-5.5 min-w-16 shrink-0 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0 pointer-coarse:opacity-0">
           <MateSlot
             at={lead.activity?.at}
@@ -2709,7 +2706,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
           }}
           type="button"
         >
-          <span className="relative flex size-10 items-center justify-center">
+          <span className="relative flex size-9 items-center justify-center">
             <ProjectCluster faces={faces} more={more} />
           </span>
           {lead === undefined ? (
@@ -2721,7 +2718,6 @@ function ProjectGroupRow<T extends RosterCandidate>({
                 >
                   {name}
                 </span>
-                {hasTags ? <span aria-hidden="true" className="menu-row-tags-room" /> : null}
                 <span className="min-w-16 shrink-0" />
               </span>
               <span className="menu-line2 truncate text-muted-foreground">
@@ -2735,7 +2731,6 @@ function ProjectGroupRow<T extends RosterCandidate>({
               lead={lead}
               mates={mates}
               name={name}
-              tags={hasTags}
               timestampFormat={timestampFormat}
             />
           ) : (
@@ -2745,7 +2740,6 @@ function ProjectGroupRow<T extends RosterCandidate>({
               lead={lead}
               mates={mates}
               name={name}
-              tags={hasTags}
               timestampFormat={timestampFormat}
             />
           )}
@@ -2847,7 +2841,7 @@ function ProjectBareRow({
           }}
           type="button"
         >
-          <span className="relative flex size-10 items-center justify-center">
+          <span className="relative flex size-9 items-center justify-center">
             <span aria-hidden="true" className="menu-project-mark">
               <BoxIcon className="size-4.5" />
             </span>
@@ -2860,7 +2854,6 @@ function ProjectBareRow({
               >
                 {name}
               </span>
-              {hasTags ? <span aria-hidden="true" className="menu-row-tags-room" /> : null}
               <span className="min-w-16 shrink-0" />
             </span>
             <span className="menu-line2 truncate text-muted-foreground">No Mate yet</span>
@@ -3337,9 +3330,9 @@ function useMateRowState<T extends RosterCandidate>({
 }
 
 /**
- * The room the project's tags take at the end of a row's first line (`menu-row-tags`): the tags
- * stand beside the row's own button, never inside it, and the name gives way to them by the width
- * they measure — before the first paint, and again whenever a tag comes, goes or changes its words.
+ * The room the project's tags take at the start of a row's second line (`menu-row-tags`): the tags
+ * stand beside the row's own button, never inside it, and that line's words begin after them by
+ * the width they measure — before the first paint, and again whenever a tag comes, goes or changes its words.
  */
 function useTagsRoom(
   row: RefObject<HTMLElement | null>,
@@ -3771,7 +3764,7 @@ function MateRowView<T extends RosterCandidate>({
         ref={rowButton}
         type="button"
       >
-        <span className="relative flex size-10 items-center justify-center">
+        <span className="relative flex size-9 items-center justify-center">
           {/* The Mate wears the card's face, and a colleague's Mate its
               owner's picture on the face's corner, cut out of it, over a paler
               face (the owner, 2026-09-30: a face before the name read as the
@@ -3790,7 +3783,7 @@ function MateRowView<T extends RosterCandidate>({
                 row's words as this browser remembered them: a Mate found
                 waiting then is not arriving at it. */}
             <MateFace
-              className={kid ? "size-7.5" : "size-10"}
+              className={kid ? "size-7" : "size-9"}
               cues={face.cues}
               greets
               known={known}
@@ -3838,7 +3831,6 @@ function MateRowView<T extends RosterCandidate>({
                 />
               ) : null}
             </span>
-            {tags === undefined ? null : <span aria-hidden="true" className="menu-row-tags-room" />}
             {/* A slot that is always there: the time, which gives way to the
                 row's verbs on hover and focus without anything moving. A
                 project's row holds three verbs there, a Mate under one two. */}
@@ -4552,10 +4544,10 @@ function ComingMateRow({
       }}
       type="button"
     >
-      <span className="relative flex size-10 items-center justify-center">
+      <span className="relative flex size-9 items-center justify-center">
         <span className="menu-face-cut menu-face-pale relative flex">
           <MateFace
-            className={kid ? "size-7.5" : "size-10"}
+            className={kid ? "size-7" : "size-9"}
             shape={coming.face?.shape ?? mateShapeOf(undefined, tint)}
             size={kid ? "md" : "lg"}
             state={mateBirthFace(coming.failed === true)}
