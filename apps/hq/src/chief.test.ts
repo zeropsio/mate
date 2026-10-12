@@ -348,6 +348,25 @@ describe("the Chief", () => {
       }),
     );
 
+    it.effect("a Chief whose project is no longer tagged chief reads nothing", () =>
+      Effect.gen(function* () {
+        const { proxy, core, upstream } = yield* withChief;
+        upstream.answer = () => ({
+          status: 200,
+          body: JSON.stringify({ id: "U", clientUserList: [{ clientId: "ORG" }] }),
+        });
+        assert.strictEqual((yield* proxy("GET", "user/info")).status, 200);
+        const at = core.fake.projects.findIndex((project) => project.id === "P_CHIEF");
+        core.fake.projects.splice(at, 1, { ...core.fake.projects[at]!, tags: [] });
+        const refused = yield* proxy("GET", "user/info").pipe(
+          Effect.filterOrFail((answer) => answer.status !== 200),
+          Effect.retry(Schedule.spaced(Duration.millis(50))),
+          Effect.timeout(Duration.seconds(5)),
+        );
+        assert.strictEqual(refused.status, 403);
+      }),
+    );
+
     it.effect("a Chief's calls are limited per credential", () =>
       Effect.gen(function* () {
         const { proxy, upstream } = yield* withChief;

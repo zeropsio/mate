@@ -229,8 +229,12 @@ export const chiefsLayer = (options: {
             const [holder] =
               hash === undefined
                 ? []
-                : yield* sql<{ readonly org_id: string; readonly user_id: string }>`
-                    SELECT org_id, user_id FROM hq_chief
+                : yield* sql<{
+                    readonly org_id: string;
+                    readonly user_id: string;
+                    readonly project_id: string;
+                  }>`
+                    SELECT org_id, user_id, project_id FROM hq_chief
                     WHERE credential_hash = ${hash} AND revoked_at IS NULL`;
             const view = yield* roles.view;
             if (holder === undefined || hash === undefined || holder.org_id !== view.orgId) {
@@ -254,6 +258,11 @@ export const chiefsLayer = (options: {
               )
             ) {
               return yield* refused("forbidden", "not_active_member");
+            }
+            // A credential is its Chief's only while that project stands, tagged a Chief's.
+            const chiefProject = view.projects.find((project) => project.id === holder.project_id);
+            if (chiefProject === undefined || !chiefProject.tags.includes(CHIEF_TAG)) {
+              return yield* refused("forbidden", "not_chief_project");
             }
             const reaches = (projectId: string) =>
               can({ kind: "person", userId }, "read_project", { projectId }, view).allow;
