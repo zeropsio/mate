@@ -158,6 +158,7 @@ import {
   ROOM_TAU_MS,
   approach,
   glideStep,
+  glidesTo,
   keepsFoot,
   movesAsPerson,
 } from "./runMotion.logic";
@@ -4883,6 +4884,11 @@ function RunScroll({
       gliding.at = element.scrollTop;
       gliding.last = 0;
       gliding.foot = footOf(positionOf(element));
+      // A way longer than a screen is not watched go by: it stands at its foot at once.
+      if (!glidesTo(gliding.foot - gliding.at, element.clientHeight)) {
+        putAt(element, gliding.foot);
+        return;
+      }
       const tick = (now: number) => {
         gliding.frame = 0;
         const element = scrollRef.current;
