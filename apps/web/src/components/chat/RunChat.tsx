@@ -158,6 +158,7 @@ import {
   ROOM_TAU_MS,
   approach,
   glideStep,
+  glidesTo,
   keepsFoot,
   movesAsPerson,
 } from "./runMotion.logic";
@@ -1192,6 +1193,28 @@ function DidMark({ icon: Icon }: { readonly icon: LucideIcon }) {
   return <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />;
 }
 
+/**
+ * A step's mark: its Mate's own face at work while it runs, its kind's once it is done (the
+ * owner, 2026-10-12: "the active row should always have the mate avatar do the job, it should
+ * change to the icon only after it's done") — the kind's arriving by a short fade.
+ */
+function StepMark({ icon, running }: { readonly icon: LucideIcon; readonly running: boolean }) {
+  const ctx = use(TimelineRowCtx);
+  const [ran, setRan] = useState(running);
+  if (running && !ran) setRan(true);
+  if (running)
+    return ctx.speaker.helper ? (
+      <HelperFace />
+    ) : (
+      <MateFace shape={ctx.speaker.shape} size="sm" state="working" tint={ctx.speaker.tint} />
+    );
+  return (
+    <span className={ran ? "run-mark-done" : "contents"}>
+      <DidMark icon={icon} />
+    </span>
+  );
+}
+
 /** Whether a failure still stands, or a later step undid it (K9). */
 type Failure = "broken" | "undone";
 
@@ -1721,10 +1744,10 @@ function StepBubble({
       failure={failure}
       kind={`step:${step.kind}`}
       mark={
-        failure === null ? (
-          <DidMark icon={STEP_GLYPH[step.kind]} />
-        ) : (
+        failure !== null ? (
           <FailedMark failure={failure} />
+        ) : (
+          <StepMark icon={STEP_GLYPH[step.kind]} running={running} />
         )
       }
     >
@@ -4861,6 +4884,11 @@ function RunScroll({
       gliding.at = element.scrollTop;
       gliding.last = 0;
       gliding.foot = footOf(positionOf(element));
+      // A way longer than a screen is not watched go by: it stands at its foot at once.
+      if (!glidesTo(gliding.foot - gliding.at, element.clientHeight)) {
+        putAt(element, gliding.foot);
+        return;
+      }
       const tick = (now: number) => {
         gliding.frame = 0;
         const element = scrollRef.current;

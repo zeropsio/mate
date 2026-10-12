@@ -30,7 +30,8 @@ import { PlayIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
+import { shownHqPersonFactsAtom, shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
+import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { hqPlacementsAtom, hqNavigationAtom, hqPlacementStatusAtom } from "~/state/zerops";
 import { useProjectOrderOptions } from "~/zerops/projectOrderPreference";
@@ -185,11 +186,13 @@ import {
 } from "./ZeropsGroupTree.logic";
 import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
 import {
+  overviewKeeps,
   parseProjectsSearch,
   withoutOfficialHq,
   shownUngrouped,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
+import { OverviewFilterEmpty, OverviewFilters } from "./projects/OverviewFilters";
 import { applicationContents, deleteOffered, groupIsEmpty } from "./projects/emptyApps.logic";
 import {
   type ZeropsRowAction,
@@ -723,6 +726,10 @@ export function useZeropsProjectConnection(): {
     finishBirth,
   };
 }
+
+/** Every Mate counts toward what waits on the viewer: the overview's filter is not the menu's. */
+const SHOWS_EVERY_MATE = () => true;
+const NO_ROWS: ReadonlyArray<never> = [];
 
 function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) {
   const openMate = useOpenMate();
@@ -1807,6 +1814,17 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const overview = useOverviewSlots<ZeropsCandidatePresentation>({
     flows: groupDeploys,
     deployments,
+    mateFace: (candidate) => {
+      const tint = tints.get(candidate.project.id) ?? "slate";
+      return (
+        <MateFace
+          shape={mateShapeOf(candidate.project, tint)}
+          size="sm"
+          state={mateFace(candidate)}
+          tint={tint}
+        />
+      );
+    },
     fixerOf: (entry) => {
       const mine = [...entry.mates.values()].find(
         (candidate) => projectPeople[candidate.project.id]?.waitsOnViewer === true,
@@ -1823,6 +1841,67 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     deployments,
     lines: groupLines,
   });
+  // The overview's filter (`overviewKeeps`): what waits on the viewer is the menu's own word —
+  // a Mate of theirs that asks, a change for their review, a release they may make — and theirs is
+  // what HQ records as theirs.
+  const waitingReleases = useMemo(
+    () =>
+      flowGroups.flatMap((entry) => {
+        const release = projectFlow.flows.get(entry.group.groupId)?.release;
+        return release?.gate.allowed === true
+          ? [
+              {
+                groupId: entry.group.groupId,
+                name: entry.group.name,
+                ahead: release.summary?.total,
+              },
+            ]
+          : [];
+      }),
+    [flowGroups, projectFlow.flows],
+  );
+  const waiting = useSidebarWaiting({
+    candidates,
+    activityOf,
+    shown: SHOWS_EVERY_MATE,
+    activeProjectId: null,
+    enabled: status === "signed-in",
+    releases: waitingReleases,
+  });
+  const personFacts = useAtomValue(shownHqPersonFactsAtom);
+  const filterFacts = useMemo(() => {
+    const groupOf = new Map(
+      candidates.map(
+        (candidate) =>
+          [candidate.project.id, readZeropsMembership(candidate.project).groupId] as const,
+      ),
+    );
+    const waits = new Set(
+      waiting.items.flatMap((item) => {
+        const groupId =
+          item.kind === "release" ? item.release.groupId : groupOf.get(item.mate.projectId);
+        return groupId === undefined ? [] : [groupId];
+      }),
+    );
+    const mine = new Set(
+      candidates.flatMap((candidate) => {
+        const groupId = groupOf.get(candidate.project.id);
+        return groupId !== undefined &&
+          hasMate(candidate) &&
+          personFacts[candidate.project.id]?.mine === true
+          ? [groupId]
+          : [];
+      }),
+    );
+    return { waits, mine };
+  }, [candidates, personFacts, waiting.items]);
+  const keptGroups = flowGroups.filter((entry) =>
+    overviewKeeps({
+      show: search.show,
+      waits: filterFacts.waits.has(entry.group.groupId),
+      mine: filterFacts.mine.has(entry.group.groupId),
+    }),
+  );
 
   // The session is checked before this page can draw (`ZeropsHostedLanding`): nothing to say here.
   if (status === "loading") return null;
@@ -2286,11 +2365,21 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           {notice}
         </p>
       ))}
+      {flowGroups.some((entry) => entry.flow.mates.length > 0) ? (
+        <OverviewFilters
+          mine={flowGroups.filter((entry) => filterFacts.mine.has(entry.group.groupId)).length}
+          show={search.show}
+          waiting={flowGroups.filter((entry) => filterFacts.waits.has(entry.group.groupId)).length}
+        />
+      ) : null}
+      {search.show !== undefined && keptGroups.length === 0 ? (
+        <OverviewFilterEmpty show={search.show} />
+      ) : null}
       <ZeropsProjectsFlow
         creating={creationRunning}
         focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
-        groups={flowGroups}
+        groups={keptGroups}
         isMate={hasMate}
         onCreateProject={
           hasNoZeropsProject({ listing, creationPending: activeBirths }) ? askNewProject : undefined
@@ -2317,6 +2406,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         cardPlaces={overview.cardPlaces}
         renderPlacePanel={overview.renderPlacePanel}
         renderChanges={overview.renderChanges}
+        setUpProduction={({ group }) =>
+          environmentOffers(group.groupId)?.production === true &&
+          !groupIsEmpty(group) &&
+          creatableRoles(group).includes("prod") &&
+          !creationRunning
+            ? () => {
+                requestEnvironment(group.groupId, "prod");
+              }
+            : undefined
+        }
         renderCardPeople={overview.renderCardPeople}
         renderReleaseVerb={({ group, flow }) => {
           const { production } = flow;
@@ -2346,7 +2445,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           !hqStructure.capped &&
           !placementStatus.reconnecting
         }
-        ungrouped={ungroupedRows}
+        // Under a filter, the projects it keeps alone: no container outside them.
+        ungrouped={search.show === undefined ? ungroupedRows : NO_ROWS}
       />
       {mateActions.dialogs}
       {confirmingSetUp === null ? null : (

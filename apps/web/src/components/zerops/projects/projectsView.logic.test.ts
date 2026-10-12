@@ -25,6 +25,7 @@ import {
   lastMergedCode,
   stopLine,
   nextStepAwaitsSomebody,
+  overviewKeeps,
   parseProjectsSearch,
   tiersAddable,
   rowMateActivitiesOf,
@@ -256,11 +257,30 @@ describe("parseProjectsSearch", () => {
     ["an old view is not read", { view: "projects", group: "g1" }, { group: "g1" }],
     ["an empty group names none", { group: "" }, {}],
     ["a group that is not a string names none", { group: 7 }, {}],
+    // The owner (2026-10-12): "we are maybe missing some filters like 'waiting on your' at the top".
+    ["what waits on you shows alone", { show: "waiting" }, { show: "waiting" }],
+    ["your own projects show alone", { show: "mine", group: "g1" }, { group: "g1", show: "mine" }],
+    ["a show it does not know is every project", { show: "everything" }, {}],
   ];
   it.each(Array.from(cases, ([name, raw, expected]) => ({ title: name, raw, expected })))(
     "$title",
     ({ raw, expected }) => {
       expect(parseProjectsSearch(raw)).toEqual(expected);
+    },
+  );
+});
+
+describe("overviewKeeps", () => {
+  it.each([
+    { show: undefined, waits: false, mine: false, kept: true },
+    { show: "waiting", waits: true, mine: false, kept: true },
+    { show: "waiting", waits: false, mine: true, kept: false },
+    { show: "mine", waits: false, mine: true, kept: true },
+    { show: "mine", waits: true, mine: false, kept: false },
+  ] as const)(
+    "keeps a project's card where it answers the overview's filter: $show, waits $waits, mine $mine",
+    ({ show, waits, mine, kept }) => {
+      expect(overviewKeeps({ show, waits, mine })).toBe(kept);
     },
   );
 });

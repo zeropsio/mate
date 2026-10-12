@@ -54,15 +54,40 @@ import { activityOfNow, mateFaceFor, type ZeropsAgentActivity } from "~/zerops/a
 import { COMING_UP_LINE, NOT_SET_UP_LINE, type ZeropsRowAction } from "../ZeropsProjectRow.logic";
 
 /** The page's URL: `/zerops?group=<groupId>` opens that project's row. */
+/**
+ * The overview's filter (the owner, 2026-10-12: "we are maybe missing some filters like 'waiting
+ * on your' at the top"): the projects where something waits on the viewer, or the viewer's own.
+ */
+export type OverviewShow = "waiting" | "mine";
+
 export interface ProjectsSearch {
   /** The group whose row opens and scrolls into view. */
   readonly group?: string;
+  /** Which projects show; every one without it. */
+  readonly show?: OverviewShow;
 }
 
-/** `/zerops?group=<groupId>`; anything else is the list as it stands. */
+/** `/zerops?group=<groupId>&show=waiting|mine`; anything else is the list as it stands. */
 export function parseProjectsSearch(raw: Record<string, unknown>): ProjectsSearch {
   const group = typeof raw.group === "string" && raw.group.length > 0 ? raw.group : undefined;
-  return group === undefined ? {} : { group };
+  const show = raw.show === "waiting" || raw.show === "mine" ? raw.show : undefined;
+  return {
+    ...(group === undefined ? {} : { group }),
+    ...(show === undefined ? {} : { show }),
+  };
+}
+
+/** Whether a project's card shows under the overview's filter. */
+export function overviewKeeps(input: {
+  readonly show: OverviewShow | undefined;
+  /** Something of it waits on the viewer: a Mate of theirs asks, a change or a release waits. */
+  readonly waits: boolean;
+  /** A Mate of it is the viewer's, as HQ records it. */
+  readonly mine: boolean;
+}): boolean {
+  if (input.show === "waiting") return input.waits;
+  if (input.show === "mine") return input.mine;
+  return true;
 }
 
 /**

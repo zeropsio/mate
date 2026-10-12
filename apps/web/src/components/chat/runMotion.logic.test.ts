@@ -11,6 +11,7 @@ import {
   LONG_GONE_MS,
   movesAsPerson,
   spendStep,
+  glidesTo,
 } from "./runMotion.logic";
 
 const FRAME_MS = 1000 / 60;
@@ -283,6 +284,22 @@ describe("spendStep", () => {
 // A glide to the foot chased a foot the history's ease kept moving, and hid
 // up to 0.37 of the growth, about 22 px, for 200 ms (the p43 verification):
 // the foot's own move is taken at once, and only the glide's way eases.
+describe("glidesTo", () => {
+  // The owner (2026-10-12): "and on open it scrolled to the very bottom for ages" — a glide at
+  // its top speed takes seconds over a long way.
+  it.each([
+    { way: 120, screen: 560, glides: true },
+    { way: 560, screen: 560, glides: true },
+    { way: 561, screen: 560, glides: false },
+    { way: 12_000, screen: 560, glides: false },
+  ])(
+    "glides a run's scroll to its foot only across a screen at most: $way px of $screen",
+    ({ way, screen, glides }) => {
+      expect(glidesTo(way, screen)).toBe(glides);
+    },
+  );
+});
+
 describe("glideStep", () => {
   it.each([
     { what: "the foot stands still", at: 100, lastFoot: 300, foot: 300 },

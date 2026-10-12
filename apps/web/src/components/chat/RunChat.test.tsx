@@ -606,6 +606,37 @@ describe("RunChat", () => {
     );
   });
 
+  // The owner (2026-10-12): "the active row should always have the mate avatar do the job, it
+  // should change to the icon only after it's done".
+  it("marks the step its Mate is making with its face at work, and a done one with its kind", () => {
+    const markOf = (markup: string) => {
+      const row = markup.slice(markup.indexOf('data-chat-kind="step:command"'));
+      return row.slice(0, row.indexOf("pnpm build"));
+    };
+    const making = markOf(
+      draw(
+        record([], {
+          live: true,
+          status: status(),
+          now: {
+            kind: "step",
+            step: stepOf(
+              command("w1", "pnpm build", {
+                toolLifecycleStatus: "inProgress",
+                updatedAt: undefined as never,
+              }),
+            ),
+            others: [],
+          },
+        }),
+      ),
+    );
+    expect(making).toContain('data-mate-face-state="working"');
+    const done = markOf(draw(record([step(command("w1", "pnpm build"))])));
+    expect(done).not.toContain("data-mate-face-state");
+    expect(done).toContain("<svg");
+  });
+
   // Several at once (pass 35): a row each in the live slot, three at most,
   // then how many more run.
   it("draws several steps at once as a row each, three at most, then how many more", () => {

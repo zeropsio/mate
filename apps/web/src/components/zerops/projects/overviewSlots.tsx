@@ -86,6 +86,8 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
   readonly deployments: ReadonlyMap<string, Shown<Deployment>>;
   /** The viewer's Mate in a project that would fix a place of it. */
   readonly fixerOf: (entry: ProjectsFlowGroup<T>) => PlaceFixer | undefined;
+  /** A Mate's face, small: whose a change is, beside it. */
+  readonly mateFace: (item: T) => ReactNode;
   readonly nowMs: number;
 }) {
   const { flows, deployments, nowMs } = input;
@@ -292,13 +294,25 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       production: entry.flow.production.kind !== "absent",
       limit: CARD_CHANGES,
     });
-    if (changes.length === 0) return null;
     const mateName = (projectId: string) =>
       entry.flow.mates.find((mate) => mate.projectId === projectId)?.name;
+    const releases =
+      read?.releasesKnown === true
+        ? read.releases.map((release) => ({
+            tag: release.tag,
+            taggedAt: release.taggedAt,
+            live: release.standing === "live",
+          }))
+        : [];
     return (
       <CardChanges
         changes={changes}
+        face={(projectId) => {
+          const item = entry.mates.get(projectId);
+          return item === undefined ? undefined : input.mateFace(item);
+        }}
         mateName={mateName}
+        releases={releases}
         onOpen={(change, from) => {
           openReview(
             {

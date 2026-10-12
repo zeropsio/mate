@@ -104,6 +104,15 @@ export function glideStep({
   return approach(at + (foot - lastFoot), foot, dtMs, FOLLOW_TAU_MS);
 }
 
+/**
+ * Whether a run's scroll glides to its foot or stands there at once: a glide across a screen at
+ * most, a longer way at once — at its top speed a glide over a run's whole history took seconds
+ * (the owner, 2026-10-12: "and on open it scrolled to the very bottom for ages").
+ */
+export function glidesTo(way: number, screen: number): boolean {
+  return way <= screen;
+}
+
 /** How long after the person's input a move of a run's scroll is still theirs. */
 export const PERSON_INPUT_MS = 500;
 
