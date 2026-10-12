@@ -113,23 +113,16 @@ describe("C: provider refusal and its real deadline", () => {
           yield* s.given.signedIn;
           yield* chat.when.open();
           yield* chat.then.text("Which environment should I inspect?");
-          yield* chat.then.text("Respond to Ada's pending request before continuing.");
+          // The card the limit cut waits with its question (B5): its head asks for the answer first.
+          yield* chat.then.text("Answer the pending question to continue.");
           const before = wire.engine.applied.length;
-          yield* Effect.promise(async () => {
-            const button = await s.page.$('::-p-aria([name="Continue"][role="button"])');
-            expect(button).not.toBeNull();
-            expect(await button!.evaluate((node) => (node as HTMLButtonElement).disabled)).toBe(
-              true,
-            );
-            await button!.evaluate((node) => {
-              (node as HTMLButtonElement).click();
-              (node as HTMLButtonElement).click();
-            });
-          });
+          expect(
+            yield* Effect.promise(() => s.page.$('::-p-aria([name="Continue"][role="button"])')),
+          ).toBeNull();
           expect(wire.engine.applied.length).toBe(before);
           yield* chat.when.click("Staging");
           yield* Effect.promise(() => wire.waitForAnswer("question-target"));
-          yield* chat.then.noText("Respond to Ada's pending request before continuing.");
+          yield* chat.then.noText("Answer the pending question to continue.");
           yield* chat.when.press("Continue");
           yield* Effect.promise(() => wire.waitForOp("continue"));
           expect(wire.engine.applied.filter(({ op }) => op === "continue")).toHaveLength(1);

@@ -2388,9 +2388,9 @@ describe("deriveMessagesTimelineRows", () => {
     const limit = "You've hit your session limit · resets 9:20pm (UTC)";
     const list = rows({
       limit: refusedLimit,
+      // Refused before it did anything: a run the limit cut after work waits in its card instead.
       entries: [
         user("m0", 0),
-        tool("w1", "t1", 1),
         assistant("a1", "t1", 48, limit),
         assistant("a2", "t2", 48, limit, { second: 10 }),
         assistant("a3", "t3", 48, limit, { second: 20 }),
@@ -2399,18 +2399,12 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       settled: "t4",
     });
-    expect(shape(list).slice(1)).toEqual([
-      "message:m0",
-      "record:record:msg:m0",
-      "pause:pause:msg:m0",
-      "message:m1",
-    ]);
-    expect(list[3]).toMatchObject({
+    expect(shape(list).slice(1)).toEqual(["message:m0", "pause:pause:msg:m0", "message:m1"]);
+    expect(list.find((row) => row.kind === "pause")).toMatchObject({
       held: 3,
       resumedAt: null,
       resetsAt: new Date(Date.UTC(2026, 8, 24, 21, 20)).toISOString(),
     });
-    expect(recordOf(list)?.status).toMatchObject({ face: "paused" });
     // Refused admission did no work: the pause tells it once, without a fabricated work duration.
     expect(list.some((row) => row.kind === "work-line")).toBe(false);
   });
@@ -2430,13 +2424,10 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       settled: "t1",
     });
-    expect(shape(list).slice(1)).toEqual([
-      "message:m0",
-      "record:record:msg:m0",
-      "pause:pause:msg:m0",
-      "message:a1",
-    ]);
-    expect(statusOf(list)).toMatchObject({ face: "paused" });
+    // The card it cut tells the limit (B5): no notice under it, no error line in it.
+    expect(shape(list).slice(1)).toEqual(["message:m0", "record:record:msg:m0", "message:a1"]);
+    expect(statusOf(list)).toMatchObject({ face: "paused", paused: { resetsAt: null } });
+    expect(allItems(list).some((item) => item.kind === "error")).toBe(false);
   });
 
   it("marks a pause resumed once the Mate works again", () => {
@@ -2444,7 +2435,6 @@ describe("deriveMessagesTimelineRows", () => {
     const list = rows({
       entries: [
         user("m0", 0),
-        tool("w1", "t1", 1),
         assistant("a1", "t1", 48, limit),
         tool("w2", "t2", 55),
         assistant("a2", "t2", 56, "Back at it."),
@@ -3149,7 +3139,9 @@ describe("a run the usage limit stopped", () => {
     });
     expect(statusOf(list)).toMatchObject({ face: "paused" });
     expect(statusOf(list)?.brokeOff).toBeUndefined();
-    expect(list.some((row) => row.kind === "pause")).toBe(true);
+    // Its card holds the pause and waits for the reset (B5).
+    expect(statusOf(list)?.paused).toBeDefined();
+    expect(list.some((row) => row.kind === "pause")).toBe(false);
   });
 });
 

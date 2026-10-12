@@ -29,6 +29,9 @@ import {
   type RunStatus,
   type TurnHeaderActivity,
 } from "./MessagesTimeline.logic";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
+
+import { formatTimeRange, spokenUpcomingTimestamp } from "../../timestampFormat";
 import type { ChatMessage } from "../../types";
 import type { StepKind, WorkStep } from "./workSteps.logic";
 
@@ -420,6 +423,8 @@ export type NowLine =
   | { readonly kind: "working" }
   /** Its Mate is out of reach: what the Mate's notice says. */
   | { readonly kind: "away"; readonly words: string }
+  /** A usage limit cut it and it waits in its card for the reset: whose limit (`pausedHeadWords`). */
+  | { readonly kind: "paused"; readonly provider: string | null }
   /** Over: who, what it did and for how long, and what the effort came to. */
   | { readonly kind: "worked"; readonly words: string; readonly effort: string | null };
 
@@ -473,6 +478,8 @@ export function nowLineOf(input: {
   if (!status.live) {
     return { kind: "worked", words: workedWords(input.speaker, status), effort: input.effort };
   }
+  if (status.paused !== undefined)
+    return { kind: "paused", provider: status.paused.provider ?? null };
   if (status.away !== undefined) return { kind: "away", words: status.away };
   if (input.compacting) return { kind: "condensing" };
   if (input.answering) return { kind: "writing" };
@@ -501,7 +508,44 @@ export function nowLineOf(input: {
     }
     case "away":
       return { kind: "away", words: now.words };
+    case "paused":
+      return { kind: "paused", provider: null };
   }
+}
+
+/** Whose limit a waiting card's head names: "Codex limit", else "Usage limit". */
+function limitVerb(provider: string | null | undefined): string {
+  return provider == null || provider === "coding agent" ? "Usage limit" : `${provider} limit`;
+}
+
+/**
+ * A card the usage limit cut, waiting for the reset, says it on its head as a live head says its
+ * work (the owner's B5, 2026-10-12): whose limit, then when it goes on — or, where nothing goes on
+ * by itself, when the limit resets.
+ */
+export function pausedHeadWords(input: {
+  readonly provider: string | null | undefined;
+  readonly resetsAt: string | null;
+  /** It goes on by itself at the reset: the engine, or a server whose switch is on. */
+  readonly automatic: boolean;
+  readonly timestampFormat: TimestampFormat;
+  readonly nowMs?: number;
+}): { readonly verb: string; readonly meta: string } {
+  const verb = limitVerb(input.provider);
+  if (input.resetsAt === null) {
+    return { verb, meta: input.automatic ? "goes on once it resets" : "waits for the reset" };
+  }
+  // Its reset passed and nothing went on yet: Continue tries it.
+  if (Date.parse(input.resetsAt) <= (input.nowMs ?? Date.now())) {
+    return { verb, meta: "the reset passed" };
+  }
+  const when = spokenUpcomingTimestamp(input.resetsAt, input.timestampFormat, input.nowMs);
+  return { verb, meta: input.automatic ? `goes on ${when}` : `resets ${when}` };
+}
+
+/** Where a card waited for the limit and went on, in its history: "Waited for the usage limit · 12:31 – 1:05 PM". */
+export function waitedWords(from: string, to: string, timestampFormat: TimestampFormat): string {
+  return `Waited for the usage limit · ${formatTimeRange(from, to, timestampFormat)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +560,8 @@ export type SlotFiller =
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
   | { readonly kind: "after"; readonly on?: AfterWait }
   | { readonly kind: "starting"; readonly on: EngineStart }
-  | { readonly kind: "away"; readonly words: string };
+  | { readonly kind: "away"; readonly words: string }
+  | { readonly kind: "paused" };
 
 /**
  * What the live slot holds (pass 35): what the Mate is doing this moment,
@@ -538,6 +583,11 @@ export function slotModelOf(input: {
 }): SlotModel {
   const { now } = input;
   if (now?.kind === "away") return { live: [], filler: now };
+  // Cut by the limit, its last words stay in its slot while it waits.
+  if (now?.kind === "paused") {
+    const held = now.key === null ? undefined : input.items.find((item) => item.key === now.key);
+    return { live: held === undefined ? [] : [held], filler: { kind: "paused" } };
+  }
   if (input.compacting) return { live: [], filler: { kind: "condensing" } };
   const thinking: SlotModel = { live: [], filler: { kind: "thinking" } };
   // Its words as they come stand in the slot as the note they become (D4).
@@ -701,6 +751,8 @@ export function nowLineWords(line: NowLine): string {
       return "Working";
     case "away":
       return line.words;
+    case "paused":
+      return limitVerb(line.provider);
     case "worked":
       return line.words;
   }
@@ -742,6 +794,8 @@ export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
         return nowLineWords(filler);
       case "thinking":
         return nowLineWords({ kind: "thinking", thought: null });
+      case "paused":
+        return "Waiting for the usage limit";
       default:
         return nowLineWords({ kind: filler.kind });
     }
@@ -812,8 +866,9 @@ export function nowLineFace(
       return { state: "working", gaze: "up" };
     case "writing":
       return { state: "working", gaze: "down" };
-    // Out of reach, it is not seen working: it sleeps, as its faces do through a restart.
+    // Out of reach, or waiting for the limit to reset, it is not seen working: it sleeps.
     case "away":
+    case "paused":
       return { state: "sleep" };
     default:
       return { state: "working" };

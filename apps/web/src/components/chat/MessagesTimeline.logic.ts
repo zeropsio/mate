@@ -429,6 +429,8 @@ export type TurnHeaderActivity =
   | { readonly kind: "starting"; readonly on: EngineStart }
   /** The Mate is out of reach (a restart, a lost link): what its notice says, never live work. */
   | { readonly kind: "away"; readonly words: string }
+  /** A usage limit cut the run and it waits for the reset: its last line (`key`) holds its slot. */
+  | { readonly kind: "paused"; readonly key: string | null }
   /**
    * It asked the person something — a question, an approval — and waits; a
    * question it asked in its own words is the record's item `key` too.
@@ -476,6 +478,8 @@ export type ConversationEvent =
   | { readonly type: "command"; readonly command: SlashCommand; readonly done: boolean }
   /** The server resumed the thread itself after a usage limit reset. */
   | { readonly type: "resumed" }
+  /** A card the usage limit cut waited for the reset from `from`, and went on in it at `to`. */
+  | { readonly type: "waited"; readonly from: string; readonly to: string }
   /**
    * What woke the Mate as the run went on: a helper, or work it sent to the
    * background, finishing (run 11) — said where the run took it in.
@@ -529,6 +533,14 @@ export interface RunStatus {
   readonly brokeOff?: BrokeOff | undefined;
   /** Live while its Mate is out of reach: what the Mate's notice says (`MateAway`). */
   readonly away?: string;
+  /** Live while the usage limit that cut it holds: it waits in its card for the reset. */
+  readonly paused?: RunPause;
+}
+
+/** The usage limit a card waits on: when it resets, and whose it is as its record names it. */
+export interface RunPause {
+  readonly resetsAt: string | null;
+  readonly provider?: string;
 }
 
 /**
@@ -2800,7 +2812,28 @@ export function deriveMessagesTimelineRows(input: {
     const paging = input.cardPaging?.[turn.turnId ?? ""] ?? null;
     // An engine Mate's card: the runs it draws, as the engine records them.
     const engineCard = input.runCards?.[turn.turnId ?? ""];
+    // Where a usage limit cut a run of the card and the card went on: its history says the wait,
+    // at the seam, and its clock leaves it out (the owner's B5, 2026-10-12).
+    let limitWaitMs = 0;
+    engineCard?.runs.forEach((run, index) => {
+      const next = engineCard.runs[index + 1];
+      const wentOn = next?.startedAt ?? null;
+      if (run.end?.kind !== "usage-limit" || run.endedAt === null || wentOn === null) return;
+      const from = new Date(run.endedAt).toISOString();
+      const to = new Date(wentOn).toISOString();
+      limitWaitMs += Math.max(0, wentOn - run.endedAt);
+      const at = items.findIndex((item) => Date.parse(item.at) >= wentOn);
+      items.splice(at === -1 ? items.length : at, 0, {
+        kind: "event",
+        key: `waited:${next!.id}`,
+        at: to,
+        event: { type: "waited", from, to },
+      });
+    });
     const unheld = paging?.hasWork ?? false;
+    // The limit refused the turn before it did anything: a page that holds only its words is no
+    // proof, its summary is (a reload holds the person's message and the run's last words alone).
+    const refusedOnly = turn.limitOnly && !unheld;
     const hasRecord = unheld || items.some((item) => item.kind !== "person");
     // A live run with nothing in its record whose answer is known already is
     // drawn as it will settle: a result that woke the Mate and was answered in
@@ -2886,6 +2919,23 @@ export function deriveMessagesTimelineRows(input: {
     }
     rows.push(...exchanges);
     const { personMs, ...waited } = waitedOn(turn);
+    // B5 (the owner, 2026-10-12): a run the usage limit cut has not answered. While the limit
+    // holds, its card waits open, its face asleep and its last line in its slot, and goes on in
+    // place; no notice stands under it. Only the latest limit, not lifted yet, keeps a card waiting.
+    const cutByLimit =
+      pausedHere &&
+      !refusedOnly &&
+      (engineCard === undefined || engineCard.runs.at(-1)?.end?.kind === "usage-limit");
+    const waitsOnLimit =
+      pause !== null &&
+      pause === pauseRows.at(-1) &&
+      pause.resumedAt === null &&
+      cutByLimit &&
+      hasRecord &&
+      !turn.live &&
+      !waiting &&
+      input.limit !== undefined &&
+      input.limit.kind !== "none";
     const engineWorked =
       engineCard === undefined || turn.live || waiting
         ? undefined
@@ -2896,8 +2946,8 @@ export function deriveMessagesTimelineRows(input: {
       answer !== null ||
       items.some((item) => item.kind === "note" && item.message.text.trim().length > 0);
     const status: RunStatus = {
-      // A run that waits on what it started is not over: its clock runs on.
-      live: turn.live || waiting,
+      // A run that waits on what it started, or for the limit to reset, is not over.
+      live: turn.live || waiting || waitsOnLimit,
       face: waiting
         ? "working"
         : pausedHere
@@ -2906,10 +2956,22 @@ export function deriveMessagesTimelineRows(input: {
             : "idle"
           : stretchFace({ stretch: last, turn, pausedHere: false }),
       startedAt: first.startedAt,
-      endedAt: waiting ? null : last.endedAt,
+      endedAt: waiting || waitsOnLimit ? null : last.endedAt,
       ...(turn.brokeOff === null || waiting ? {} : { brokeOff: turn.brokeOff }),
       ...(turn.interruption === undefined ? {} : { interruption: turn.interruption }),
       ...waited,
+      waitedMs: waited.waitedMs + limitWaitMs,
+      // Waiting for the reset, its clock stands where the limit cut it.
+      ...(waitsOnLimit
+        ? {
+            waitingSince: last.endedAt ?? pause.createdAt,
+            paused: {
+              // The live limit's reset, as the pause's notice read it; else its record's.
+              resetsAt: input.limit.resetsAt ?? pause.resetsAt,
+              ...(pause.provider === undefined ? {} : { provider: pause.provider }),
+            },
+          }
+        : {}),
       // Out of reach, the run's records stop where the Mate was last heard: the card holds there,
       // its clock standing, and says what the notice says (Milo's stress run 6: "Thinking", 0:06 →
       // 0:36, through a planned restart).
@@ -2960,23 +3022,29 @@ export function deriveMessagesTimelineRows(input: {
         const now =
           status.away !== undefined
             ? { kind: "away" as const, words: status.away }
-            : waiting
+            : waitsOnLimit
               ? {
-                  kind: "after" as const,
-                  ...(engineCard?.waitsOn === undefined ? {} : { on: engineCard.waitsOn }),
+                  kind: "paused" as const,
+                  key:
+                    items.findLast((item) => chatItemHasLine(item, input.liveLines))?.key ?? null,
                 }
-              : working && answer === null
-                ? starting === null
-                  ? liveActivity(last, turn.writing, tracked, batch)
-                  : { kind: "starting" as const, on: starting }
-                : null;
+              : waiting
+                ? {
+                    kind: "after" as const,
+                    ...(engineCard?.waitsOn === undefined ? {} : { on: engineCard.waitsOn }),
+                  }
+                : working && answer === null
+                  ? starting === null
+                    ? liveActivity(last, turn.writing, tracked, batch)
+                    : { kind: "starting" as const, on: starting }
+                  : null;
         const source = {
           kind: "record" as const,
           id: `record:${first.key}`,
           createdAt: first.startedAt,
           turnKey: turn.key,
           turnId: turn.turnId,
-          live: turn.live || waiting,
+          live: turn.live || waiting || waitsOnLimit,
           items,
           now,
           answering: answer !== null,
@@ -3106,8 +3174,9 @@ export function deriveMessagesTimelineRows(input: {
             cardKey: first.key,
             cardClosed: !carded || rows.at(-1)?.kind !== "card-end",
           };
-    // A provider pause owns its stage, outside the work card it follows.
-    if (pause !== null) rows.push(pause);
+    // A provider pause owns its stage where the limit refused the turn before it did anything; a
+    // card the limit cut holds its pause itself (B5).
+    if (pause !== null && !(carded && chatted && !refusedOnly)) rows.push(pause);
     // What the Mate published for the person stands right above its answer, outside the card.
     for (const page of pages) rows.push(page);
     // Each earlier run's answer stays under the card where it stood; the latest follows them.

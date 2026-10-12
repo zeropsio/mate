@@ -43,7 +43,9 @@ import {
   thoughtTicker,
   workedWords,
   noteText,
+  pausedHeadWords,
   slotWords,
+  waitedWords,
 } from "./runCard.logic";
 import { stepOf } from "./workSteps.logic";
 
@@ -651,6 +653,136 @@ describe("the now line", () => {
     expect(line).toEqual({ kind: "worked", words, effort });
     expect(workedWords("Nova", settled)).toBe(words);
     expect(nowLineFace(line, settled)).toEqual({ state: face });
+  });
+});
+
+// The owner's pick on the "Answer Then More Work" board (B5, 2026-10-12): "The card waits through
+// the pause. A run cut by a limit or a restart hasn't answered, so its last words stay in its card's
+// slot and the card waits with its face asleep, then goes on in place: only the head's words and the
+// face change."
+describe("a run the usage limit cut waits in its card", () => {
+  const local = (day: number, hour: number, minute: number) =>
+    new Date(2026, 9, day, hour, minute).toISOString();
+  const NOW = Date.parse(local(12, 12, 31));
+  it.each([
+    {
+      resetsAt: local(12, 13, 0),
+      automatic: true,
+      provider: "Codex",
+      says: "Codex limit · goes on at 13:00",
+    },
+    {
+      resetsAt: local(13, 4, 40),
+      automatic: true,
+      provider: "Claude",
+      says: "Claude limit · goes on tomorrow at 04:40",
+    },
+    {
+      resetsAt: local(12, 13, 0),
+      automatic: false,
+      provider: "Codex",
+      says: "Codex limit · resets at 13:00",
+    },
+    {
+      resetsAt: null,
+      automatic: true,
+      provider: "Codex",
+      says: "Codex limit · goes on once it resets",
+    },
+    {
+      resetsAt: null,
+      automatic: false,
+      provider: "Codex",
+      says: "Codex limit · waits for the reset",
+    },
+    {
+      resetsAt: local(12, 12, 0),
+      automatic: true,
+      provider: "Codex",
+      says: "Codex limit · the reset passed",
+    },
+    {
+      resetsAt: local(12, 13, 0),
+      automatic: true,
+      provider: null,
+      says: "Usage limit · goes on at 13:00",
+    },
+    {
+      resetsAt: local(12, 13, 0),
+      automatic: true,
+      provider: "coding agent",
+      says: "Usage limit · goes on at 13:00",
+    },
+  ])(
+    "its head says $says: reset $resetsAt, automatic $automatic, provider $provider",
+    ({ resetsAt, automatic, provider, says }) => {
+      const { verb, meta } = pausedHeadWords({
+        provider,
+        resetsAt,
+        automatic,
+        timestampFormat: "24-hour",
+        nowMs: NOW,
+      });
+      expect(`${verb} · ${meta}`).toBe(says);
+    },
+  );
+
+  it.each([
+    { provider: "Codex", verb: "Codex limit" },
+    { provider: undefined, verb: "Usage limit" },
+  ])("its head is a live head with its face asleep ($verb)", ({ provider, verb }) => {
+    const waiting = status({
+      face: "paused",
+      waitingSince: at(45),
+      paused: { resetsAt: null, ...(provider === undefined ? {} : { provider }) },
+    });
+    const line = nowLineOf({
+      status: waiting,
+      now: { kind: "paused", key: null },
+      answering: false,
+      compacting: false,
+      speaker: "Nova",
+      effort: null,
+    });
+    expect(nowLineWords(cardHeadLine(line))).toBe(verb);
+    expect(nowLineFace(line, waiting)).toEqual({ state: "sleep" });
+  });
+
+  it("its last words stay in its slot while it waits", () => {
+    const said: RecordItem = {
+      kind: "note",
+      key: "note:last",
+      at: at(40),
+      message: {
+        id: MessageId.make("last"),
+        role: "assistant",
+        text: "Deploying the API next.",
+        createdAt: at(40),
+        streaming: false,
+      } as ChatMessage,
+    };
+    const model = slotModelOf({
+      now: { kind: "paused", key: "note:last" },
+      answering: false,
+      compacting: false,
+      items: [said],
+    });
+    expect(model.live).toEqual([said]);
+  });
+
+  it.each([
+    {
+      from: local(12, 12, 31),
+      to: local(12, 13, 5),
+      says: "Waited for the usage limit · 12:31 – 13:05",
+    },
+    {
+      from: local(11, 12, 31),
+      to: local(12, 13, 5),
+      says: "Waited for the usage limit · Oct 11, 12:31 – Oct 12, 13:05",
+    },
+  ])("after it goes on, its history says where it waited: $says", ({ from, to, says }) => {
+    expect(waitedWords(from, to, "24-hour")).toBe(says);
   });
 });
 

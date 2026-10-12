@@ -33,12 +33,14 @@ import {
   formatChatTimestampTooltip,
   formatDayAwareTimestamp,
   formatUpcomingTimestamp,
+  spokenUpcomingTimestamp,
 } from "../../timestampFormat";
 import { usageLimitWords, usageLimitHistoryWords } from "../../zerops/noticeWords";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
 import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
+import { waitedWords } from "./runCard.logic";
 
 /** Who the conversation is with: a Mate's colour, or the neutral one for a thread without a Mate. */
 export interface ConversationSpeaker {
@@ -192,11 +194,8 @@ export function HeldMessageLine({
   );
 }
 
-/** A coming moment as a sentence says it: "at 1:00 PM", "tomorrow at 1:00 PM", "on Oct 12 1:00 PM". */
-function spokenUpcoming(iso: string, timestampFormat: TimestampFormat): string {
-  const stamp = formatUpcomingTimestamp(iso, timestampFormat);
-  return stamp.startsWith("tomorrow ") ? stamp : /^\d/.test(stamp) ? `at ${stamp}` : `on ${stamp}`;
-}
+const spokenUpcoming = (iso: string, timestampFormat: TimestampFormat) =>
+  spokenUpcomingTimestamp(iso, timestampFormat);
 
 const WEEKDAY = new Intl.DateTimeFormat(undefined, {
   weekday: "long",
@@ -364,6 +363,16 @@ export function EventLine({
         </EventShell>
       );
     }
+    case "waited":
+      return (
+        <EventShell
+          at={at}
+          icon={<PauseIcon className="size-3.5" />}
+          timestampFormat={timestampFormat}
+        >
+          {waitedWords(event.from, event.to, timestampFormat)}
+        </EventShell>
+      );
   }
 }
 
@@ -450,6 +459,85 @@ export interface ServerUsagePause {
 }
 
 /**
+ * What Continue does at a usage limit, wherever it stands: before a known reset it says why it
+ * waits instead of trying (`waits`), unless the Mate's engine tries the provider itself; a limit
+ * recovered early, or one whose reset passed or is unknown, is tried at once.
+ */
+function useLimitContinue({
+  refused,
+  resetsAt,
+  onContinue,
+  triesBeforeReset,
+}: {
+  /** The source still refuses (`MateLimit` "limited"). */
+  readonly refused: boolean;
+  readonly resetsAt: string | null;
+  readonly onContinue: (() => void) | null;
+  readonly triesBeforeReset: boolean;
+}): { readonly waits: boolean; readonly press: () => void } {
+  const [waitingAt, setWaitingAt] = useState<string | null>(null);
+  return {
+    waits: refused && resetsAt !== null && waitingAt === resetsAt,
+    press: () => {
+      if (refused && resetsAt !== null && !triesBeforeReset) setWaitingAt(resetsAt);
+      else onContinue?.();
+    },
+  };
+}
+
+/**
+ * Continue on the head of a card the usage limit cut, at its right edge, as a restart's Continue
+ * stands there (the owner's B5, 2026-10-12): while the card waits for the reset — `pause` null
+ * once it no longer does. A pending question comes first; before a known reset it says why it
+ * waits rather than trying again.
+ */
+export function LimitContinue({
+  pause,
+  speaker,
+  limit = NO_MATE_LIMIT,
+  onContinue = null,
+  triesBeforeReset = false,
+  blockedByAnswer = false,
+  nowMs,
+  timestampFormat,
+}: {
+  readonly pause: { readonly resetsAt: string | null; readonly provider?: string } | null;
+  readonly speaker: ConversationSpeaker;
+  /** Current source refusal; a recorded deadline alone cannot block another attempt. */
+  readonly limit?: MateLimit | undefined;
+  readonly onContinue?: (() => void) | null;
+  readonly triesBeforeReset?: boolean;
+  readonly blockedByAnswer?: boolean;
+  readonly nowMs?: number;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  const resetsAt = limit.kind === "none" ? (pause?.resetsAt ?? null) : limit.resetsAt;
+  const provider = pause?.provider ?? (limit.kind === "none" ? undefined : limit.provider);
+  const { waits, press } = useLimitContinue({
+    refused: limit.kind === "limited",
+    resetsAt,
+    onContinue,
+    triesBeforeReset,
+  });
+  if (pause === null) return null;
+  if (blockedByAnswer) return <span>Answer the pending question to continue.</span>;
+  if (waits && resetsAt !== null) {
+    return (
+      <span data-limit-wait="">
+        {speaker.name} can't continue with {provider ?? "the coding agent"} before{" "}
+        {formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}.
+      </span>
+    );
+  }
+  if (onContinue === null) return null;
+  return (
+    <Button className="relative z-1" variant="ghost" size="sm" onClick={press}>
+      Continue
+    </Button>
+  );
+}
+
+/**
  * A usage limit as one calm pause, quiet once the Mate
  * picked up again — however many attempts the limit refused. Both are one
  * block: a centred headline, what it says under its words, and its controls.
@@ -499,9 +587,14 @@ export function PauseBlock({
   const window = row.window ?? serverPause?.window;
   const autoResume = serverPause?.autoResume ?? false;
   const history = resumed || passed || !refused;
-  const [waitingAt, setWaitingAt] = useState<string | null>(null);
+  const { waits, press } = useLimitContinue({
+    refused,
+    resetsAt,
+    onContinue,
+    triesBeforeReset,
+  });
   const detail =
-    !history && resetsAt !== null && waitingAt === resetsAt
+    !history && waits && resetsAt !== null
       ? `${speaker.name} can't continue with ${provider ?? "the coding agent"} before ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}: the provider's limit still holds this work.`
       : resumed
         ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
@@ -524,15 +617,7 @@ export function PauseBlock({
         </p>
       ) : null}
       {onContinue === null && !blockedByAnswer ? null : (
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={blockedByAnswer}
-          onClick={() => {
-            if (refused && resetsAt !== null && !triesBeforeReset) setWaitingAt(resetsAt);
-            else onContinue?.();
-          }}
-        >
+        <Button size="sm" variant="ghost" disabled={blockedByAnswer} onClick={press}>
           Continue
         </Button>
       )}

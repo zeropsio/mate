@@ -2015,33 +2015,42 @@ describe("owner-reported layout regressions", () => {
 
     // Milo's stress run 4 (2026-10-10, engine): at the usage limit the notice stood at the top of a
     // viewport-tall row with ~520 px blank under it, then scrolled half out of view; a message sent
-    // while paused sat a viewport below it with no sign it was held.
-    describe("Decision: the limit's notice ends the run's card; what waits for the reset sits under it.", () => {
+    // while paused sat a viewport below it with no sign it was held. Then the owner's pick on the
+    // "Answer Then More Work" board (B5, 2026-10-12): the card waits through the pause, its face
+    // asleep and its head saying when it goes on; no notice stands under it.
+    describe("Decision: the card waits through the pause; what waits for the reset sits under it.", () => {
       interface LimitFrame {
         /** When the frame was sampled (ms, the page's clock). */
         readonly at: number;
         readonly listTop: number;
+        readonly scroll: number;
         /** How far the view stands from the list's end. */
         readonly end: number;
         readonly composer: number;
-        readonly notice: { readonly top: number; readonly bottom: number } | null;
+        /** The run's card the limit cut: its edges. */
+        readonly card: { readonly top: number; readonly bottom: number } | null;
         /** The top of the held message's words; null off screen. */
         readonly message: number | null;
-        /** The bottom of the run's card the notice follows. */
-        readonly card: number | null;
+        /** What its head says. */
+        readonly head: string | null;
       }
       const HELD = "Then write the table of every helper and job";
       const startTrace = (page: Page) =>
         page.evaluate((text) => {
           const frames: LimitFrame[] = [];
           const state = { active: true };
+          // The card the limit cut: the one that holds the Mate's command.
+          let cut: Element | null = null;
           const read = (): LimitFrame | null => {
             const list = document.querySelector<HTMLElement>(".timeline-legend-list");
             const composer = document.querySelector('[data-slot="composer-shell"]');
             if (!list || !composer) return null;
-            // The notice's row: what stands between the run's card and what follows it.
-            const notice = document.querySelector('[data-timeline-row-kind="pause"]');
-            const box = notice?.getBoundingClientRect();
+            if (cut === null || !cut.isConnected)
+              cut =
+                [...list.querySelectorAll("[data-run-chat]")].find((node) =>
+                  node.textContent?.includes("sleep 25"),
+                ) ?? null;
+            const box = cut?.getBoundingClientRect();
             let message: number | null = null;
             const walker = document.createTreeWalker(list, NodeFilter.SHOW_TEXT);
             while (walker.nextNode()) {
@@ -2053,13 +2062,12 @@ describe("owner-reported layout regressions", () => {
             return {
               at: performance.now(),
               listTop: list.getBoundingClientRect().top,
+              scroll: list.scrollTop,
               end: list.scrollHeight - list.clientHeight - list.scrollTop,
               composer: composer.getBoundingClientRect().top,
-              notice: box && box.height > 0 ? { top: box.top, bottom: box.bottom } : null,
+              card: box && box.height > 0 ? { top: box.top, bottom: box.bottom } : null,
               message,
-              card:
-                [...list.querySelectorAll("[data-run-chat]")].at(-1)?.getBoundingClientRect()
-                  .bottom ?? null,
+              head: cut?.querySelector(":scope > [data-run-head]")?.textContent ?? null,
             };
           };
           const sample = () => {
@@ -2125,7 +2133,7 @@ describe("owner-reported layout regressions", () => {
         yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 154)));
         engine.update(said, { text: "You've hit your weekly limit · resets 1pm (UTC)" });
         yield* Effect.promise(() =>
-          s.page.waitForSelector('[data-conversation-pause="paused"]', { timeout: 8000 }),
+          s.page.waitForSelector('[data-run-head][data-run-now="paused"]', { timeout: 8000 }),
         );
         const frames = yield* Effect.promise(() => stopTrace(s.page, 1500));
         return { s, chat, engine, frames };
@@ -2133,35 +2141,38 @@ describe("owner-reported layout regressions", () => {
 
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         it.effect(
-          "at the usage limit the notice lands where the run's card ends and the conversation stays at its end, fully visible above the composer",
+          "at the usage limit the card stays where it stands, and the conversation stays at its end, fully visible above the composer",
           () =>
             Effect.gen(function* () {
               const { s, frames } = yield* pausedMilo;
-              const shown = frames.filter((frame) => frame.notice !== null);
-              expect(shown.length, "ASSERTION: the notice was sampled").toBeGreaterThan(20);
+              const shown = frames.filter((frame) => frame.card !== null);
+              expect(shown.length, "ASSERTION: the card was sampled").toBeGreaterThan(20);
               const last = shown.at(-1)!;
+              expect(last.head, "ASSERTION: its head says when it goes on").toMatch(
+                /limit · goes on /,
+              );
               expect(last.end, "ASSERTION: the conversation stays at its end").toBeLessThanOrEqual(
                 1,
               );
               expect(
-                last.composer - last.notice!.bottom,
-                "ASSERTION: no blank stands between the notice and the composer",
+                last.composer - last.card!.bottom,
+                "ASSERTION: no blank stands between the card and the composer",
               ).toBeLessThan(80);
               expect(
-                last.notice!.top >= last.listTop && last.notice!.bottom <= last.composer,
-                "ASSERTION: the notice ends fully visible above the composer",
+                last.card!.bottom <= last.composer,
+                "ASSERTION: the card ends fully visible above the composer",
               ).toBe(true);
-              const under = shown.flatMap((frame) =>
-                frame.card === null ? [] : [frame.notice!.top - frame.card],
-              );
+              const tops = shown.map((frame) => frame.card!.top + frame.scroll);
               expect(
-                Math.max(...under) - Math.min(...under),
-                "ASSERTION: the notice stands right under the run's card, nothing drawn between",
-              ).toBeLessThan(8);
+                Math.max(...tops) - Math.min(...tops),
+                "ASSERTION: the card keeps its place in the conversation as it starts to wait",
+              ).toBeLessThanOrEqual(1);
               expect(
-                shown.every((frame) => frame.notice!.top >= frame.listTop - 1),
-                "ASSERTION: no scroll ever takes the notice past the top, not even in part",
-              ).toBe(true);
+                yield* Effect.promise(() =>
+                  s.page.$$eval('[data-timeline-row-kind="pause"]', (nodes) => nodes.length),
+                ),
+                "ASSERTION: no notice stands under the card",
+              ).toBe(0);
               yield* s.then.noExternalNetwork;
             }),
         );
@@ -2192,10 +2203,9 @@ describe("owner-reported layout regressions", () => {
         );
 
         // Milo's stress run 5: as the pause lifted the conversation moved 33 px. Above the new run
-        // nothing changed, yet the view followed it up, then sank back as the notice went quiet and
-        // the composer's empty band left (27 px up, 34 down, measured here before the fix).
+        // nothing changed, yet the view followed it up, then sank back.
         it.effect(
-          "when the pause lifts nothing above the live tail moves: the view only follows the run it starts, never back",
+          "when the pause lifts nothing above the live tail moves and the view only follows the run",
           () =>
             Effect.gen(function* () {
               const { s, chat, engine } = yield* pausedMilo;
@@ -2204,96 +2214,32 @@ describe("owner-reported layout regressions", () => {
                 s.page.waitForSelector('[data-message-receipt="held"]', { timeout: 8000 }),
               );
               yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
-              // Slowed tenfold, the notice's 220 ms glide spans 2.2 s of frames on any runner.
+              // Slowed tenfold, a glide spans ten times its frames on any runner.
               const slowed = yield* Effect.promise(() => slowAnimations(s.page, 0.1));
-              yield* Effect.promise(() =>
-                s.page.evaluate(() => {
-                  const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
-                  const notice = document.querySelector('[data-timeline-row-kind="pause"]')!;
-                  // The run the limit stopped: the card right above the notice.
-                  const card = [...list.querySelectorAll("[data-run-chat]")]
-                    .filter(
-                      (node) =>
-                        node.getBoundingClientRect().bottom <= notice.getBoundingClientRect().top,
-                    )
-                    .at(-1)!;
-                  const frames: Array<{
-                    at: number;
-                    card: number | null;
-                    notice: number | null;
-                    scroll: number;
-                    composer: number;
-                    height: number | null;
-                  }> = [];
-                  const state = { active: true };
-                  const sample = () => {
-                    const top = (node: Element) =>
-                      node.isConnected ? node.getBoundingClientRect().top : null;
-                    frames.push({
-                      at: performance.now(),
-                      card: top(card),
-                      notice: top(notice),
-                      scroll: list.scrollTop,
-                      composer: document
-                        .querySelector('[data-slot="composer-shell"]')!
-                        .getBoundingClientRect().top,
-                      height: notice.isConnected ? notice.getBoundingClientRect().height : null,
-                    });
-                    if (state.active) requestAnimationFrame(sample);
-                  };
-                  (window as unknown as { liftTrace: unknown }).liftTrace = { frames, state };
-                  sample();
-                }),
-              );
+              yield* Effect.promise(() => startTrace(s.page));
               engine.lift();
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 3000)));
-              const frames = yield* Effect.promise(() =>
-                s.page.evaluate(() => {
-                  const trace = (
-                    window as unknown as {
-                      liftTrace: {
-                        frames: Array<{
-                          at: number;
-                          card: number | null;
-                          notice: number | null;
-                          scroll: number;
-                          composer: number;
-                          height: number | null;
-                        }>;
-                        state: { active: boolean };
-                      };
-                    }
-                  ).liftTrace;
-                  trace.state.active = false;
-                  return trace.frames;
-                }),
+              const frames = (yield* Effect.promise(() => stopTrace(s.page, 3000))).filter(
+                (frame) => frame.card !== null,
               );
               yield* Effect.promise(() => slowed.restore());
-              const drawn = frames.filter((frame) => frame.card !== null && frame.notice !== null);
               expect(
-                drawn.at(-1)!.at - drawn[0]!.at,
+                frames.at(-1)!.at - frames[0]!.at,
                 "ASSERTION: the lift was sampled for as long as its slowed glide runs",
               ).toBeGreaterThan(2500);
-              const heights = drawn.map((frame) => frame.height!);
-              expect(
-                Math.max(...heights) - Math.min(...heights),
-                "ASSERTION: the notice went quiet while sampled",
-              ).toBeGreaterThan(8);
-              const first = drawn[0]!;
+              const first = frames[0]!;
               expect(
                 Math.max(
-                  ...drawn.map((frame) =>
-                    Math.max(
-                      Math.abs(frame.card! + frame.scroll - (first.card! + first.scroll)),
-                      Math.abs(frame.notice! + frame.scroll - (first.notice! + first.scroll)),
-                    ),
+                  ...frames.map((frame) =>
+                    Math.abs(frame.card!.top + frame.scroll - (first.card!.top + first.scroll)),
                   ),
                 ),
-                "ASSERTION: the notice and the run above it keep their place in the conversation",
+                "ASSERTION: the card the limit cut keeps its place in the conversation",
               ).toBeLessThanOrEqual(1);
               expect(
                 Math.max(
-                  ...drawn.slice(1).map((frame, index) => frame.card! - drawn[index]!.card!),
+                  ...frames
+                    .slice(1)
+                    .map((frame, index) => frame.card!.top - frames[index]!.card!.top),
                 ),
                 "ASSERTION: the view never sinks back: what stands above the new run only rises with it",
               ).toBeLessThanOrEqual(1);
@@ -2306,7 +2252,7 @@ describe("owner-reported layout regressions", () => {
         );
 
         it.effect(
-          "a message sent while paused sits right under the notice, held until the reset, and goes in place when the pause lifts",
+          "a message sent while paused sits right under the card, held until the reset, and goes in place when the pause lifts",
           () =>
             Effect.gen(function* () {
               const { s, chat, engine } = yield* pausedMilo;
@@ -2323,31 +2269,30 @@ describe("owner-reported layout regressions", () => {
               expect(held.end, "ASSERTION: the conversation stays at its end").toBeLessThanOrEqual(
                 1,
               );
-              expect(held.notice, "ASSERTION: the notice stays in view").not.toBeNull();
+              expect(held.card, "ASSERTION: the card stays in view").not.toBeNull();
+              expect(held.head, "ASSERTION: the card still waits").toMatch(/limit · goes on /);
               expect(
-                held.message! - held.notice!.bottom,
-                "ASSERTION: the held message sits right under the notice",
+                held.message! - held.card!.bottom,
+                "ASSERTION: the held message sits right under the card",
               ).toBeLessThan(96);
               expect(
                 held.message!,
                 "ASSERTION: the held message stands above the composer",
               ).toBeLessThan(held.composer);
 
-              // The notice's glide runs at a tenth of its speed while it is sampled: a CI runner that
-              // stalls for a few frames still samples it mid-way, and a cut still has no mid-way.
+              // Slowed tenfold while sampled: a CI runner that stalls for a few frames still samples
+              // a glide mid-way, and a cut still has no mid-way.
               const slowed = yield* Effect.promise(() => slowAnimations(s.page, 0.1));
               yield* Effect.promise(() => startTrace(s.page));
               engine.lift();
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
-                  () =>
-                    !document.querySelector('[data-message-receipt="held"]') &&
-                    document.querySelector('[data-conversation-pause="resumed"]'),
+                  () => !document.querySelector('[data-message-receipt="held"]'),
                   { polling: "raf", timeout: 8000 },
                 ),
               );
               const frames = (yield* Effect.promise(() => stopTrace(s.page, 3000))).filter(
-                (frame) => frame.notice !== null && frame.message !== null,
+                (frame) => frame.card !== null && frame.message !== null,
               );
               yield* Effect.promise(() => slowed.restore());
               expect(frames.length, "ASSERTION: the lift was sampled").toBeGreaterThan(10);
@@ -2357,31 +2302,21 @@ describe("owner-reported layout regressions", () => {
                     .slice(1)
                     .map((frame, index) => Math.abs(of(frame) - of(frames[index]!))),
                 );
-              // A cut goes from one height to the other between two frames; a glide shows heights in
-              // between, however long a frame takes on the machine sampling it — slowed tenfold, a
-              // 220 ms glide spans 2.2 s of frames.
-              const heights = frames.map((frame) => frame.notice!.bottom - frame.notice!.top);
-              const from = heights[0]!;
-              const to = heights.at(-1)!;
-              const between = heights.filter(
-                (height) => Math.min(height - Math.min(from, to), Math.max(from, to) - height) > 1,
-              );
-              expect(
-                Math.abs(to - from) <= 1 || between.length >= 3,
-                "ASSERTION: the notice goes quiet in place by a glide, never a cut",
-              ).toBe(true);
-              // The run it starts lands under it and the conversation follows, as after any send.
               expect(
                 steps((frame) => frame.message!),
                 "ASSERTION: the message moves by a glide as its run starts, never a jump",
               ).toBeLessThan(60);
               expect(
-                Math.abs(
-                  frames.at(-1)!.message! -
-                    frames.at(-1)!.notice!.bottom -
-                    (frames[0]!.message! - frames[0]!.notice!.bottom),
+                Math.max(
+                  ...frames.map((frame) =>
+                    Math.abs(
+                      frame.message! -
+                        frame.card!.bottom -
+                        (frames[0]!.message! - frames[0]!.card!.bottom),
+                    ),
+                  ),
                 ),
-                "ASSERTION: the message keeps its place under the notice as its mark clears",
+                "ASSERTION: the message keeps its place under the card as its mark clears",
               ).toBeLessThanOrEqual(2);
               expect(
                 [...engine.runs.values()].at(-1)!.state,
