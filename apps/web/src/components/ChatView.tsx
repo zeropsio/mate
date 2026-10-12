@@ -41,9 +41,15 @@ import {
   isUsageLimitsCommand,
 } from "@t3tools/shared/usageLimits";
 import { keptAgentPanelModel } from "./chat/keptAgentPanelModel";
-import { usageLimitsBannerItem } from "./chat/ComposerUsageLimits";
+import { usageLimitsNotice } from "./chat/UsageLimitsNotice";
 import { ServiceBrowserScope } from "./ServiceBrowserLink";
-import { feedbackBannerItem } from "./chat/ComposerFeedback";
+import { feedbackNotice } from "./chat/FeedbackNotice";
+import {
+  branchChangedNotice,
+  crewNextConversationNotice,
+  resumeCompactionNotice,
+} from "./chat/conversationNotices";
+import type { ConversationNotice } from "./chat/ConversationRows";
 import { derivePendingRequests } from "@t3tools/client-runtime/pending-requests";
 import {
   type ApprovalRequestId,
@@ -261,11 +267,8 @@ import {
   ArchiveRestoreIcon,
   ArrowDownIcon,
   DownloadIcon,
-  GitBranchIcon,
   HistoryIcon,
-  Minimize2Icon,
   PaperclipIcon,
-  RefreshCwIcon,
 } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
@@ -413,7 +416,7 @@ import {
   hasDismissedResumeCompaction,
   shouldOfferResumeCompaction,
 } from "./chat/ContextWindowMeter.logic";
-import { deriveLatestContextWindowSnapshot, formatContextWindowTokens } from "../lib/contextWindow";
+import { deriveLatestContextWindowSnapshot } from "../lib/contextWindow";
 import { ThreadSyncStatusPill } from "./chat/ThreadSyncStatusPill";
 import {
   DRAFT_HERO_TRANSITION_ANIMATION_ID,
@@ -504,13 +507,13 @@ import {
   AlertDialogPopup,
   AlertDialogTitle,
 } from "./ui/alert-dialog";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { useAssetUrls } from "../assets/assetUrls";
 
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
+const EMPTY_CONVERSATION_NOTICES: ReadonlyArray<ConversationNotice> = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
 function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
   const transitionGroupRef = useRef<HTMLDivElement | null>(null);
@@ -2784,11 +2787,11 @@ export default function ChatView(props: ChatViewProps) {
       usageLimitsPanel,
     ],
   );
-  const usageLimitsBanner = useMemo(
+  const usageLimitsAnswer = useMemo(
     () =>
       usageLimitsReport !== null && usageLimitsPanel !== null
-        ? // A fresh id per opening: the stack keeps the last dismissed id as "exiting".
-          usageLimitsBannerItem(
+        ? // A fresh id per opening: each answer is a row of its own.
+          usageLimitsNotice(
             `usage-limits:${usageLimitsPanel.key}:${usageLimitsPanel.now}`,
             usageLimitsReport,
             environmentId,
@@ -5203,7 +5206,7 @@ export default function ChatView(props: ChatViewProps) {
           ? "Compaction is unavailable for this provider"
           : "Compacting is unavailable right now"
     : null;
-  const resumeCompactionBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+  const resumeCompactionNoticeItem = useMemo<ConversationNotice | null>(() => {
     if (
       !activeThread ||
       !activeContextWindow ||
@@ -5222,39 +5225,17 @@ export default function ChatView(props: ChatViewProps) {
     ) {
       return null;
     }
-
-    const dismiss = () =>
-      setDismissedResumeCompactionKeys((keys) => new Set(keys).add(resumeCompactionKey));
-    const compactAction = (
-      <Button
-        size="xs"
-        variant="outline"
-        disabled={compactDisabled}
-        onClick={() => {
-          if (compactDisabled) return;
-          composerRef.current?.compactContext();
-        }}
-      >
-        Compact
-      </Button>
-    );
-    return {
-      id: `resume-compaction:${resumeCompactionKey}`,
-      variant: "info",
-      icon: <Minimize2Icon />,
-      title: "Resume with less context",
-      description: `${formatContextWindowTokens(activeContextWindow.usedTokens)} tokens from an older session`,
-      actions: compactDisabledReason ? (
-        <Tooltip>
-          <TooltipTrigger render={<span className="inline-flex">{compactAction}</span>} />
-          <TooltipPopup side="top">{compactDisabledReason}</TooltipPopup>
-        </Tooltip>
-      ) : (
-        compactAction
-      ),
-      dismissLabel: "Keep full history",
-      onDismiss: dismiss,
-    };
+    return resumeCompactionNotice({
+      key: resumeCompactionKey,
+      usedTokens: activeContextWindow.usedTokens,
+      unavailable: compactDisabledReason,
+      onCompact: () => {
+        if (compactDisabled) return;
+        composerRef.current?.compactContext();
+      },
+      onKeepFullHistory: () =>
+        setDismissedResumeCompactionKeys((keys) => new Set(keys).add(resumeCompactionKey)),
+    });
   }, [
     activeContextWindow,
     activeThread,
@@ -5416,14 +5397,6 @@ export default function ChatView(props: ChatViewProps) {
             }),
       });
     }
-    if (crewNotices.pending !== null) {
-      items.push({
-        id: `crew-pending:${crewNotices.pending}`,
-        variant: "default",
-        icon: <RefreshCwIcon />,
-        title: crewNotices.pending,
-      });
-    }
     return items;
   }, [crewNotices, environmentId, navigate, threadId]);
   // What a crew thread's task cards need beyond their text: the board, and
@@ -5495,10 +5468,10 @@ export default function ChatView(props: ChatViewProps) {
     zeropsMates,
   ]);
 
-  const feedbackBannerItems = useMemo(
+  const feedbackNotices = useMemo(
     () =>
       feedbackSubmissions.flatMap((submission) => {
-        const item = feedbackBannerItem(submission, () => {
+        const item = feedbackNotice(submission, () => {
           setFeedbackSubmissionsByThreadKey((current) => ({
             ...current,
             [routeThreadKey]: (current[routeThreadKey] ?? []).filter(
@@ -5565,101 +5538,76 @@ export default function ChatView(props: ChatViewProps) {
       item.urgent === true || item.variant === "error" || item.variant === "warning";
     const urgentSystemItems = systemComposerBannerItems.filter(isUrgentSystemItem);
     if (colleagueReadOnly !== null) return urgentSystemItems;
-    // What belongs to the conversation — another of its chats at work, its compaction, its waking
-    // or parking, its branch — waits until the conversation shows, not over its opening line.
+    // What belongs to the conversation — another of its chats at work, its waking or parking —
+    // waits until the conversation shows, not over its opening line.
     const conversationShown = !threadDetailLoading;
     const alsoWorkingItems =
       !conversationShown || alsoWorkingBannerItem === null ? [] : [alsoWorkingBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
-    const resumeCompactionItems =
-      !conversationShown || resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
     const archivedThreadItems =
       !conversationShown || archivedThreadBannerItem === null ? [] : [archivedThreadBannerItem];
-    // The user asked for this one, so it leads the notice tier instead of trailing it.
-    const usageLimitsItems = usageLimitsBanner === null ? [] : [usageLimitsBanner];
     const projectCloneItems = projectCloneBannerItem === null ? [] : [projectCloneBannerItem];
-    if (
-      !conversationShown ||
-      !localCheckoutBranchMismatch ||
-      !showBranchMismatchBanner ||
-      !activeBranchMismatchKey
-    ) {
-      return [
-        ...urgentSystemItems,
-        ...usageLimitsItems,
-        ...crewBannerItems,
-        ...alsoWorkingItems,
-        ...feedbackBannerItems,
-        ...projectCloneItems,
-        ...calmSystemItems,
-        ...resumeCompactionItems,
-        ...archivedThreadItems,
-      ];
-    }
     return [
       ...urgentSystemItems,
-      ...usageLimitsItems,
       ...crewBannerItems,
       ...alsoWorkingItems,
-      ...feedbackBannerItems,
       ...projectCloneItems,
       ...calmSystemItems,
-      ...resumeCompactionItems,
-      {
-        id: `branch-mismatch:${activeBranchMismatchKey}`,
-        variant: "info",
-        icon: <GitBranchIcon />,
-        title: (
-          <span className="flex min-w-0 items-baseline gap-1.5">
-            <span className="shrink-0 font-normal text-muted-foreground">Branch changed — was</span>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <code className="min-w-0 truncate font-medium text-foreground">
-                    {localCheckoutBranchMismatch.threadBranch}
-                  </code>
-                }
-              />
-              <TooltipPopup side="top">
-                This thread last ran on {localCheckoutBranchMismatch.threadBranch}. Sending will
-                continue on {localCheckoutBranchMismatch.currentBranch}.
-              </TooltipPopup>
-            </Tooltip>
-          </span>
-        ),
-        className: "dark:shadow-none",
-        actions: (
-          <Button
-            size="xs"
-            variant="ghost"
-            disabled={isRestoringThreadBranch}
-            onClick={handleRestoreThreadBranch}
-          >
-            {isRestoringThreadBranch ? "Restoring..." : "Restore branch"}
-          </Button>
-        ),
-        dismissLabel: "Dismiss branch change notice",
-        onDismiss: branchAdvice.dismiss,
-      },
       ...archivedThreadItems,
     ];
   }, [
-    activeBranchMismatchKey,
     archivedThreadBannerItem,
     colleagueReadOnly,
-    branchAdvice.dismiss,
     alsoWorkingBannerItem,
     crewBannerItems,
-    feedbackBannerItems,
-    handleRestoreThreadBranch,
-    isRestoringThreadBranch,
-    localCheckoutBranchMismatch,
     projectCloneBannerItem,
-    resumeCompactionBannerItem,
-    showBranchMismatchBanner,
     systemComposerBannerItems,
-    usageLimitsBanner,
     threadDetailLoading,
+  ]);
+  // What happened that the person may still act on: quiet rows at the conversation's end, in the
+  // order they come (S6). A colleague's conversation is read, not run, and says none of them.
+  const crewNextNotice = useMemo(() => crewNextConversationNotice(crewNotices), [crewNotices]);
+  const branchChangedNoticeItem = useMemo(
+    () =>
+      localCheckoutBranchMismatch === null ||
+      localCheckoutBranchMismatch === undefined ||
+      !showBranchMismatchBanner ||
+      !activeBranchMismatchKey
+        ? null
+        : branchChangedNotice({
+            key: activeBranchMismatchKey,
+            mismatch: localCheckoutBranchMismatch,
+            restoring: isRestoringThreadBranch,
+            onRestore: handleRestoreThreadBranch,
+            onDismiss: branchAdvice.dismiss,
+          }),
+    [
+      activeBranchMismatchKey,
+      branchAdvice.dismiss,
+      handleRestoreThreadBranch,
+      isRestoringThreadBranch,
+      localCheckoutBranchMismatch,
+      showBranchMismatchBanner,
+    ],
+  );
+  const conversationNotices = useMemo<ReadonlyArray<ConversationNotice>>(() => {
+    if (colleagueReadOnly !== null || threadDetailLoading) return EMPTY_CONVERSATION_NOTICES;
+    const notices = [
+      crewNextNotice,
+      ...feedbackNotices,
+      usageLimitsAnswer,
+      resumeCompactionNoticeItem,
+      branchChangedNoticeItem,
+    ].filter((notice): notice is ConversationNotice => notice !== null);
+    return notices.length === 0 ? EMPTY_CONVERSATION_NOTICES : notices;
+  }, [
+    branchChangedNoticeItem,
+    colleagueReadOnly,
+    crewNextNotice,
+    feedbackNotices,
+    resumeCompactionNoticeItem,
+    threadDetailLoading,
+    usageLimitsAnswer,
   ]);
   useEffect(() => {
     setPendingServerThreadEnvMode(null);
@@ -8378,6 +8326,7 @@ export default function ChatView(props: ChatViewProps) {
                   loading: threadDetailLoading && !isDraftHeroState,
                   syncing: threadSyncPhase !== null || threadDetailLoading,
                   queuedMessages,
+                  notices: conversationNotices,
                   usagePause: activeThreadShell?.usagePause ?? null,
                   limit,
                   away: mateAway,

@@ -5,8 +5,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
-import { feedbackBannerItem } from "./ComposerFeedback";
-import { ComposerBannerStack } from "./ComposerBannerStack";
+import { feedbackNotice } from "./FeedbackNotice";
+import { NoticeLine } from "./ConversationRows";
 
 vi.mock("../../hooks/useCopyToClipboard", () => ({
   writeTextToClipboard: vi.fn(async () => undefined),
@@ -28,8 +28,8 @@ afterEach(async () => {
 
 describe("Codex feedback", () => {
   it("sent feedback shows the reported thread ID and copies that ID", async () => {
-    // Notice derivation alone cannot protect the copy action the composer actually offers.
-    const item = feedbackBannerItem(
+    // Notice derivation alone cannot protect the copy action its row actually offers.
+    const item = feedbackNotice(
       {
         id: MessageId.make("feedback-submission"),
         command: "/feedback The answer stopped early.",
@@ -43,7 +43,7 @@ describe("Codex feedback", () => {
     const container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    await act(() => root?.render(<ComposerBannerStack items={[item]} />));
+    await act(() => root?.render(<NoticeLine notice={item} />));
     expect(container.textContent).toContain("Feedback sent to OpenAI");
     expect(container.textContent).toContain("Thread ID: reported-codex-thread");
     const copy = Array.from(container.querySelectorAll("button")).find(
