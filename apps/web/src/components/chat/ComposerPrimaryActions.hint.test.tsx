@@ -60,4 +60,51 @@ describe("Send's hover", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("says the other chat's work to everyone on Send, and a focused Send keeps focus as it starts and stops", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.body.appendChild(document.createElement("div"));
+    const root = createRoot(container);
+    const draw = (hint: string | null) =>
+      act(() =>
+        root.render(
+          <ComposerPrimaryActions
+            compact={false}
+            pendingAction={null}
+            isRunning={false}
+            showPlanFollowUpPrompt={false}
+            promptHasText
+            isSendBusy={false}
+            sendDisabledReason={null}
+            sendHint={hint}
+            isConnecting={false}
+            isEnvironmentUnavailable={false}
+            isPreparingWorktree={false}
+            hasSendableContent
+            onPreviousPendingQuestion={() => {}}
+            onInterrupt={() => {}}
+            onImplementPlanInNewThread={() => {}}
+          />,
+        ),
+      );
+    const hint = "Fen is also working in your main chat — both change the same files.";
+    try {
+      await draw(null);
+      const send = container.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!;
+      expect(send.getAttribute("aria-description")).toBeNull();
+      send.focus();
+      await draw(hint);
+      expect(container.querySelector('button[aria-label="Send message"]')).toBe(send);
+      expect(send.getAttribute("aria-description")).toBe(hint);
+      expect(document.activeElement).toBe(send);
+      await draw(null);
+      expect(container.querySelector('button[aria-label="Send message"]')).toBe(send);
+      expect(send.getAttribute("aria-description")).toBeNull();
+      expect(document.activeElement).toBe(send);
+    } finally {
+      await act(() => root.unmount());
+      container.remove();
+      vi.unstubAllGlobals();
+    }
+  });
 });

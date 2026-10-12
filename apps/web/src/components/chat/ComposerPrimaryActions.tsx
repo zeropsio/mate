@@ -228,6 +228,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       type="submit"
       className="flex h-9 w-9 items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out enabled:cursor-pointer enabled:inset-shadow-[0_1px_--theme(--color-white/16%)] enabled:shadow-message-action/24 hover:scale-105 hover:bg-message-action-hover active:scale-95 active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none disabled:pointer-events-none disabled:bg-foreground/9 disabled:text-muted-foreground disabled:shadow-none disabled:hover:scale-100 sm:h-8 sm:w-8"
       {...pointerFocusProps}
+      aria-description={sendHint ?? undefined}
       disabled={
         isSendBusy ||
         isSendDisabled ||
@@ -266,15 +267,14 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       )}
     </button>
   );
-  const sendButton =
-    sendHint === null ? (
-      sendButtonItself
-    ) : (
-      <Tooltip>
-        <TooltipTrigger render={sendButtonItself} />
-        <TooltipPopup side="top">{sendHint}</TooltipPopup>
-      </Tooltip>
-    );
+  // One Send, whether or not the Mate works in another chat: the hint comes and goes as its
+  // description and its hover, and a focused Send keeps its focus as it does.
+  const sendButton = (
+    <Tooltip disabled={sendHint === null}>
+      <TooltipTrigger render={sendButtonItself} />
+      <TooltipPopup side="top">{sendHint}</TooltipPopup>
+    </Tooltip>
+  );
 
   if (!isRunning) {
     if (backgroundWork === null) {
