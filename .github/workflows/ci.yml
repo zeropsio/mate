@@ -169,7 +169,7 @@ jobs:
   chat_bundle:
     name: Chat Contract bundle
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.chat != 'false' }}
+    if: ${{ !cancelled() && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -226,20 +226,34 @@ jobs:
         run: node scripts/chat-gate.ts --stages A,E,F,types
 
   chat_scenarios:
-    name: Chat Contract (${{ matrix.name }})
+    name: Test Web Scenarios (${{ matrix.name }})
     needs: chat_bundle
     runs-on: ubuntu-latest
-    # Shard 2 ran 11.5–14 min of cases on 2026-10-12 and a slower runner crossed 15 min: three
-    # cancels in an hour, none a failing case.
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
+        # C membership lives beside --shard in scripts/chat-gate.ts: sum measured Vitest
+        # per-file durations, keep the largest file on shard two, then move smaller files
+        # to shard one until totals meet. Sum the same per-file timings over Vitest's
+        # native non-C partitions to size those shards; their filter includes new areas.
         include:
           - name: C shard 1
-            args: --stages C --shard 1/2
+            command: node scripts/chat-gate.ts --stages C --shard 1/2
           - name: C shard 2
-            args: --stages C --shard 2/2
+            command: node scripts/chat-gate.ts --stages C --shard 2/2
+          - name: non-C shard 1
+            command: >-
+              vp -C apps/web test run --config test/scenarios/vitest.config.ts
+              --project scenarios test/scenarios/areas
+              --exclude 'test/scenarios/areas/c-mate/**' --shard 1/2 --allowOnly=false
+              --reporter=default --reporter=../../scripts/chat-gate-reporter.ts
+          - name: non-C shard 2
+            command: >-
+              vp -C apps/web test run --config test/scenarios/vitest.config.ts
+              --project scenarios test/scenarios/areas
+              --exclude 'test/scenarios/areas/c-mate/**' --shard 2/2 --allowOnly=false
+              --reporter=default --reporter=../../scripts/chat-gate-reporter.ts
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -271,7 +285,7 @@ jobs:
       - name: Certify every case in this shard
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
-        run: node scripts/chat-gate.ts ${{ matrix.args }}
+        run: ${{ matrix.command }}
 
   # Everything except `t3` (apps/server), `@t3tools/web` and `@t3tools/mobile`,
   # which have runners of their own. `--parallel` drops the package dependency ordering that

@@ -382,9 +382,16 @@ if (import.meta.main) {
     : chatGateStages;
   let stages: ReadonlyArray<ChatGateStage> = requested;
   if (shard) {
-    // Balanced from the measured C file times; every other C file belongs to shard two.
+    // Balance the summed Vitest per-file durations, putting the largest file on shard two
+    // and moving smaller files to shard one until their totals meet. Recomputed from the
+    // 2026-10-12 Vitest timings; all unlisted and newly added C files run on shard two.
     const first = new Set([
       "opening",
+      "chat",
+      "engine-page",
+      "report-room",
+      "composer",
+      "images",
       "recovery",
       "admission",
       "providerLimits",

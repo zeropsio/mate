@@ -467,6 +467,11 @@ it("Decision: no test deleted or weakened; titles unchanged; crew/actor's crew s
   expect(shards[0]?.map((file) => NodePath.basename(file, ".scenario.ts")).sort()).toEqual(
     [
       "opening",
+      "chat",
+      "engine-page",
+      "report-room",
+      "composer",
+      "images",
       "recovery",
       "admission",
       "providerLimits",
@@ -479,6 +484,53 @@ it("Decision: no test deleted or weakened; titles unchanged; crew/actor's crew s
   expect(new Set(shards.flat()).size).toBe(inventory.length);
 });
 
+it("Decision: L3 runs everything on every main push; no test is skipped, deleted or weakened", () => {
+  const { jobs } = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
+  ) as {
+    jobs: Record<
+      string,
+      {
+        if?: string;
+        name: string;
+        strategy: { matrix: { include: { command: string }[] } };
+      }
+    >;
+  };
+  // A false chat verdict must not prevent the shared bundle or its scenario consumers on main.
+  expect(jobs.chat_bundle!.if).toBe(
+    "${{ !cancelled() && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') }}",
+  );
+  expect(jobs.chat_scenarios!.if).toBeUndefined();
+  expect(jobs.chat_scenarios!.name).toMatch(/^Test Web /u);
+  const commands = jobs.chat_scenarios!.strategy.matrix.include.map((row) => row.command);
+  const nonC = commands.filter((command) => command.startsWith("vp -C"));
+  const allNonC =
+    "vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenarios test/scenarios/areas --exclude 'test/scenarios/areas/c-mate/**'";
+  const certification =
+    "--allowOnly=false --reporter=default --reporter=../../scripts/chat-gate-reporter.ts";
+  expect(nonC).toEqual([
+    `${allNonC} --shard 1/2 ${certification}`,
+    `${allNonC} --shard 2/2 ${certification}`,
+  ]);
+  // Vitest owns the partition; its complete input is every non-C file on disk.
+  const listed = NodeChildProcess.spawnSync(
+    `${allNonC.replace("test run", "test list --filesOnly")} ${certification}`,
+    { cwd: new URL("../", import.meta.url), shell: true, encoding: "utf8" },
+  );
+  expect(listed.status, listed.stderr).toBe(0);
+  const actual = [...listed.stdout.matchAll(/test\/scenarios\/areas\/[\w/-]+\.scenario\.ts/gu)]
+    .map(([file]) => file)
+    .sort();
+  const root = new URL("../apps/web/test/scenarios/areas/", import.meta.url);
+  const expected = NodeFS.readdirSync(root, { recursive: true, encoding: "utf8" })
+    .filter((file) => file.endsWith(".scenario.ts") && !file.startsWith("c-mate/"))
+    .map((file) => `test/scenarios/areas/${file}`)
+    .sort();
+  expect(actual).toEqual(expected);
+  expect(actual.length).toBeGreaterThan(0);
+});
+
 it("CI builds once and certifies both complete C shards from that artifact", () => {
   const { jobs } = parse(
     NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
@@ -487,7 +539,7 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
       string,
       {
         needs: string;
-        strategy?: { "fail-fast": boolean; matrix: { include: { args: string }[] } };
+        strategy?: { "fail-fast": boolean; matrix: { include: { command: string }[] } };
         steps: {
           uses?: string;
           run?: string;
@@ -506,9 +558,9 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
   ]);
   expect(journeys.needs).toBe("chat_bundle");
   expect(journeys.strategy?.["fail-fast"]).toBe(false);
-  expect(journeys.strategy?.matrix.include.map((row) => row.args)).toEqual([
-    "--stages C --shard 1/2",
-    "--stages C --shard 2/2",
+  expect(journeys.strategy?.matrix.include.slice(0, 2).map((row) => row.command)).toEqual([
+    "node scripts/chat-gate.ts --stages C --shard 1/2",
+    "node scripts/chat-gate.ts --stages C --shard 2/2",
   ]);
   const uploaded = build.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"))!;
   const downloaded = journeys.steps.find((step) =>
@@ -521,7 +573,7 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
   expect(downloaded.with).toEqual({ name: uploaded.with!.name, path: uploaded.with!.path });
   expect(journeys.steps.filter((step) => step.run)).toEqual([
     expect.objectContaining({
-      run: "node scripts/chat-gate.ts ${{ matrix.args }}",
+      run: "${{ matrix.command }}",
       env: { MATE_SCENARIO_REQUIRE_BUNDLE: "1" },
     }),
   ]);
