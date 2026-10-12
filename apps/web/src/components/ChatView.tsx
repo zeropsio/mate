@@ -1736,6 +1736,7 @@ export default function ChatView(props: ChatViewProps) {
   const localServerError = localThreadErrorStanding(
     localServerErrorsByThreadKey[routeThreadKey],
     activeServerNewestTurn,
+    activeServerThread?.latestTurn?.completedAt,
   );
   // Draft errors are keyed by draftId while server errors are keyed by thread
   // key, so a pending draft entry must migrate when the server thread loads or
