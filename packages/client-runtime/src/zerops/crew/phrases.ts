@@ -1020,13 +1020,9 @@ export function crewPendingNotice(pending: {
   return brief === null ? null : `The crew's goal changed. ${FRESH_NEXT}`;
 }
 
-/** An earlier conversation with a crewmate: where it goes on, and why nothing is sent from it. */
-export const crewEarlierStintNotice = (
-  name: string,
-): { readonly text: string; readonly sendBlock: string } => ({
-  text: `An earlier conversation with ${name} — it goes on in a newer one.`,
-  sendBlock: `Write to ${name} in its current conversation`,
-});
+/** An earlier conversation with a crewmate: where it goes on. */
+export const crewEarlierStintNotice = (name: string): string =>
+  `An earlier conversation with ${name} — it goes on in a newer one.`;
 
 /**
  * A crew seam's line on the engine, where the record gives the seam but no words of its own: work

@@ -692,10 +692,9 @@ describe("the chat's words", () => {
   });
 
   it("points an earlier conversation at the current one, by name", () => {
-    expect(crewEarlierStintNotice("Backend")).toEqual({
-      text: "An earlier conversation with Backend — it goes on in a newer one.",
-      sendBlock: "Write to Backend in its current conversation",
-    });
+    expect(crewEarlierStintNotice("Backend")).toBe(
+      "An earlier conversation with Backend — it goes on in a newer one.",
+    );
   });
 });
 

@@ -44,6 +44,7 @@ import { keptAgentPanelModel } from "./chat/keptAgentPanelModel";
 import { usageLimitsNotice } from "./chat/UsageLimitsNotice";
 import { ServiceBrowserScope } from "./ServiceBrowserLink";
 import { feedbackNotice } from "./chat/FeedbackNotice";
+import { ComposerPlaceLine, composerPlaceNotice } from "./chat/ComposerPlace";
 import {
   branchChangedNotice,
   crewNextConversationNotice,
@@ -263,13 +264,7 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import { isEditableFocused } from "../lib/editableFocus";
 import { undoLatestThreadAction } from "../hooks/showUndoToast";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
-import {
-  ArchiveRestoreIcon,
-  ArrowDownIcon,
-  DownloadIcon,
-  HistoryIcon,
-  PaperclipIcon,
-} from "lucide-react";
+import { ArrowDownIcon, PaperclipIcon } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
@@ -359,7 +354,6 @@ import { resolveProviderSkillsForCwd } from "@t3tools/client-runtime/providerSki
 import { vcsEnvironment } from "../state/vcs";
 import { sourceControlEnvironment } from "../state/sourceControl";
 import { useProjectClone } from "../state/projectClones";
-import { projectCloneDisplayName, projectCloneProgressSummary } from "@t3tools/contracts";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
 import {
   useEnvironmentProjectRefs,
@@ -2064,81 +2058,6 @@ export default function ChatView(props: ChatViewProps) {
     },
     [],
   );
-  const projectCloneSendBlockReason =
-    activeProjectClone === null
-      ? null
-      : activeProjectClone.phase === "running"
-        ? "Cloning repository"
-        : activeProjectClone.phase === "done"
-          ? null
-          : "Repository not cloned";
-  const projectCloneBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
-    if (!activeProjectClone || !activeProjectRef || activeProjectClone.phase === "done") {
-      return null;
-    }
-    const name = projectCloneDisplayName(activeProjectClone);
-    const { environmentId, projectId } = activeProjectRef;
-    if (activeProjectClone.phase === "running") {
-      return {
-        id: `project-clone:${projectId}`,
-        variant: "info",
-        priority: "activity",
-        icon: <DownloadIcon />,
-        title: `Cloning ${name}`,
-        description: projectCloneProgressSummary(activeProjectClone),
-        actions: (
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() =>
-              void runProjectCloneAction("Failed to cancel clone", () =>
-                cancelProjectClone({ environmentId, input: { projectId } }),
-              )
-            }
-          >
-            Cancel
-          </Button>
-        ),
-      };
-    }
-    const cancelled = activeProjectClone.phase === "cancelled";
-    return {
-      id: `project-clone:${projectId}`,
-      variant: cancelled ? "warning" : "error",
-      icon: <DownloadIcon />,
-      title: cancelled ? `Cancelled cloning ${name}` : `Failed to clone ${name}`,
-      description: cancelled ? "Retry to bring in the repository." : activeProjectClone.error,
-      actions: (
-        <>
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => void removeClonedProject({ environmentId, projectId })}
-          >
-            Remove project
-          </Button>
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() =>
-              void runProjectCloneAction("Failed to retry clone", () =>
-                retryProjectClone({ environmentId, input: { projectId } }),
-              )
-            }
-          >
-            Retry
-          </Button>
-        </>
-      ),
-    };
-  }, [
-    activeProjectClone,
-    activeProjectRef,
-    cancelProjectClone,
-    removeClonedProject,
-    retryProjectClone,
-    runProjectCloneAction,
-  ]);
   const handleNewThreadInActiveProject = useCallback(() => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
   }, [activeProjectRef, handleNewThread]);
@@ -5141,30 +5060,6 @@ export default function ChatView(props: ChatViewProps) {
   // final run, G10).
   const activeThreadArchived = activeServerThread?.archivedAt != null;
   const [restoringThreadKey, setRestoringThreadKey] = useState<string | null>(null);
-  const archivedThreadBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
-    if (!activeThreadArchived || activeThreadRef === null) return null;
-    const restoring = restoringThreadKey === activeThreadKey;
-    return {
-      id: `thread-archived:${activeThreadKey ?? "unknown"}`,
-      variant: "info",
-      icon: <ArchiveRestoreIcon />,
-      title: "This conversation is archived",
-      description: "Restore it to carry on here.",
-      actions: (
-        <Button
-          size="xs"
-          variant="outline"
-          disabled={restoring}
-          onClick={() => {
-            setRestoringThreadKey(activeThreadKey);
-            void unarchiveThread(activeThreadRef).finally(() => setRestoringThreadKey(null));
-          }}
-        >
-          {restoring ? "Restoring..." : "Restore"}
-        </Button>
-      ),
-    };
-  }, [activeThreadArchived, activeThreadKey, activeThreadRef, restoringThreadKey, unarchiveThread]);
   // Session-scoped dismissals, one key per (thread, snapshot). A set rather
   // than a single slot so dismissing the banner on one thread does not
   // resurface it on another thread dismissed earlier.
@@ -5367,38 +5262,65 @@ export default function ChatView(props: ChatViewProps) {
     () => (activeCrewmate === null ? null : crewChatNotices(activeCrewmate, threadId)),
     [activeCrewmate, threadId],
   );
-  const crewSendBlockReason = crewNotices?.retired?.sendBlock ?? null;
-  const crewBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
-    if (crewNotices === null) return [];
-    const items: ComposerBannerStackItem[] = [];
-    if (crewNotices.retired !== null) {
-      const current = crewNotices.retired.currentThreadId;
-      items.push({
-        id: `crew-retired:${threadId}`,
-        variant: "info",
-        icon: <HistoryIcon />,
-        title: crewNotices.retired.text,
-        ...(current === null
-          ? {}
-          : {
-              actions: (
-                <Button
-                  onClick={() =>
-                    void navigate({
-                      to: "/$environmentId/$threadId",
-                      params: buildThreadRouteParams(scopeThreadRef(environmentId, current)),
-                    })
-                  }
-                  size="xs"
-                >
-                  Open it
-                </Button>
-              ),
-            }),
-      });
-    }
-    return items;
-  }, [crewNotices, environmentId, navigate, threadId]);
+  // What stops the person writing takes the composer's own place, with its one way out (S6): the
+  // conversation archived, a crewmate's earlier conversation, the project's repository cloning.
+  const composerPlace = useMemo(
+    () =>
+      composerPlaceNotice(
+        {
+          archived:
+            activeThreadArchived && activeThreadRef !== null
+              ? { restoring: restoringThreadKey === activeThreadKey }
+              : null,
+          crewRetired: crewNotices?.retired ?? null,
+          clone: activeProjectRef === null ? null : activeProjectClone,
+        },
+        {
+          restore: () => {
+            if (activeThreadRef === null) return;
+            setRestoringThreadKey(activeThreadKey);
+            void unarchiveThread(activeThreadRef).finally(() => setRestoringThreadKey(null));
+          },
+          openCurrent: () => {
+            const current = crewNotices?.retired?.currentThreadId ?? null;
+            if (current === null) return;
+            void navigate({
+              to: "/$environmentId/$threadId",
+              params: buildThreadRouteParams(scopeThreadRef(environmentId, current)),
+            });
+          },
+          cancelClone: () => {
+            if (activeProjectRef === null) return;
+            const { environmentId, projectId } = activeProjectRef;
+            void runProjectCloneAction("Failed to cancel clone", () =>
+              cancelProjectClone({ environmentId, input: { projectId } }),
+            );
+          },
+          retryClone: () => {
+            if (activeProjectRef === null) return;
+            const { environmentId, projectId } = activeProjectRef;
+            void runProjectCloneAction("Failed to retry clone", () =>
+              retryProjectClone({ environmentId, input: { projectId } }),
+            );
+          },
+        },
+      ),
+    [
+      activeProjectClone,
+      activeProjectRef,
+      activeThreadArchived,
+      activeThreadKey,
+      activeThreadRef,
+      cancelProjectClone,
+      crewNotices,
+      environmentId,
+      navigate,
+      restoringThreadKey,
+      retryProjectClone,
+      runProjectCloneAction,
+      unarchiveThread,
+    ],
+  );
   // What a crew thread's task cards need beyond their text: the board, and
   // for the stint's first card — while the conversation is loaded from its
   // start — why this conversation began and the one before it, unless the
@@ -5544,26 +5466,8 @@ export default function ChatView(props: ChatViewProps) {
     const alsoWorkingItems =
       !conversationShown || alsoWorkingBannerItem === null ? [] : [alsoWorkingBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
-    const archivedThreadItems =
-      !conversationShown || archivedThreadBannerItem === null ? [] : [archivedThreadBannerItem];
-    const projectCloneItems = projectCloneBannerItem === null ? [] : [projectCloneBannerItem];
-    return [
-      ...urgentSystemItems,
-      ...crewBannerItems,
-      ...alsoWorkingItems,
-      ...projectCloneItems,
-      ...calmSystemItems,
-      ...archivedThreadItems,
-    ];
-  }, [
-    archivedThreadBannerItem,
-    colleagueReadOnly,
-    alsoWorkingBannerItem,
-    crewBannerItems,
-    projectCloneBannerItem,
-    systemComposerBannerItems,
-    threadDetailLoading,
-  ]);
+    return [...urgentSystemItems, ...alsoWorkingItems, ...calmSystemItems];
+  }, [colleagueReadOnly, alsoWorkingBannerItem, systemComposerBannerItems, threadDetailLoading]);
   // What happened that the person may still act on: quiet rows at the conversation's end, in the
   // order they come (S6). A colleague's conversation is read, not run, and says none of them.
   const crewNextNotice = useMemo(() => crewNextConversationNotice(crewNotices), [crewNotices]);
@@ -8522,6 +8426,8 @@ export default function ChatView(props: ChatViewProps) {
                               pendingUserInputs={pendingUserInputs}
                               readOnly={colleagueReadOnly}
                             />
+                          ) : composerPlace !== null ? (
+                            <ComposerPlaceLine notice={composerPlace} />
                           ) : (
                             <ChatComposer
                               composerRef={composerRef}
@@ -8574,7 +8480,7 @@ export default function ChatView(props: ChatViewProps) {
                                   ? "Sending feedback"
                                   : threadDetailLoading
                                     ? "Messages loading"
-                                    : (crewSendBlockReason ?? projectCloneSendBlockReason ?? null)
+                                    : null
                               }
                               zeropsSendBlockReason={zeropsSendBlockReason ?? null}
                               isPreparingWorktree={isPreparingWorktree}
