@@ -14,6 +14,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { useCallback, useMemo, useState } from "react";
 
+import { sendOutcomeOf } from "~/hooks/useComposerSendRequests";
+import { newCommandId, newMessageId } from "~/lib/utils";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useDetailDemand } from "~/zerops/ZeropsAccountData";
@@ -29,6 +31,7 @@ import {
   chiefAsk,
   chiefMessageTarget,
   envProposalWrite,
+  heldMessageWords,
   proposalMessage,
   proposalRecipient,
   proposalStage,
@@ -132,6 +135,25 @@ function Proposal({
     [record],
   );
 
+  /**
+   * Hands words to a Mate's conversation, sent at once (`useAskMate`): it ended once that
+   * conversation's composer said whether they went out, or wait there because its agent takes no
+   * turn now.
+   */
+  const handOver = async (
+    projectId: string,
+    words: string,
+    recipient: string,
+  ): Promise<VaultWriteOutcome> => {
+    const ids = { commandId: newCommandId(), messageId: newMessageId() };
+    const went = sendOutcomeOf(ids.messageId);
+    askMate(projectId, words, { send: true, ids });
+    const outcome = await went;
+    return outcome.sent
+      ? { ok: true }
+      : { ok: false, code: null, message: heldMessageWords(recipient, outcome.why) };
+  };
+
   /** Records the person's decision at HQ: false, saying why, where HQ did not keep it. */
   const decide = async (next: ProposalDecision): Promise<boolean> => {
     setRefusal(undefined);
@@ -171,23 +193,29 @@ function Proposal({
           return;
         }
         case "mate.message":
-          askMate(proposal.params.to.projectId, proposalMessage(proposal.params), { send: true });
-          ended({ ok: true });
+          ended(
+            await handOver(
+              proposal.params.to.projectId,
+              proposalMessage(proposal.params),
+              proposal.params.to.mateName,
+            ),
+          );
           return;
         case "chief.message":
           if (chief.kind !== "chief") {
             ended({ ok: false, code: null, message: "You have no Chief to ask." });
             return;
           }
-          askMate(
-            chief.projectId,
-            chiefAsk(proposal.params, {
-              mateName: proposer?.name ?? "Your Mate",
-              projectName: proposal.projectName ?? "its project",
-            }),
-            { send: true },
+          ended(
+            await handOver(
+              chief.projectId,
+              chiefAsk(proposal.params, {
+                mateName: proposer?.name ?? "Your Mate",
+                projectName: proposal.projectName ?? "its project",
+              }),
+              "your Chief",
+            ),
           );
-          ended({ ok: true });
           return;
       }
     } catch (cause) {

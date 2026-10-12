@@ -13,6 +13,7 @@ import {
   furtherDecision,
   hqWriteOf,
   proposalMessage,
+  heldMessageWords,
   proposalOutcomeWords,
   proposalRecipient,
   proposalStage,
@@ -477,5 +478,13 @@ describe("asking the Chief", () => {
     ["waits while whose Chief is not known", undefined, { kind: "unknown" }],
   ])("an ask of the Chief %s", (_title, own, target) => {
     expect(chiefMessageTarget(own)).toEqual(target);
+  });
+});
+
+describe("heldMessageWords", () => {
+  it("an approved message its Mate took no turn on says why, and where it waits", () => {
+    expect(heldMessageWords("Eddy", "Eddy needs a Claude sign-in to continue.")).toBe(
+      "Eddy needs a Claude sign-in to continue. Your message waits in Eddy's composer.",
+    );
   });
 });
