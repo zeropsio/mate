@@ -177,7 +177,7 @@ describe("the boot frame", () => {
   // A menu closed to the rail opened again on every reload: its toggle's cookie was written, never
   // read. The app opens it as it was left, and the first frame draws the rail it will draw.
   it.each([
-    { left: "closed", cookie: "theme=dark; sidebar_state=false", width: "64px", menu: "rail" },
+    { left: "closed", cookie: "theme=dark; sidebar_state=false", width: "72px", menu: "rail" },
     { left: "open", cookie: "sidebar_state=true", width: "437px", menu: undefined },
     { left: "never touched", cookie: "", width: "437px", menu: undefined },
   ])("draws the menu its person left $left", ({ cookie, width, menu }) => {
