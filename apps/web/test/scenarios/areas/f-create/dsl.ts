@@ -184,19 +184,18 @@ export function creation(s: Scenario) {
           throw new Error(`No project ${name} was made: ${JSON.stringify(control.accepted)}`);
         try {
           await page.waitForFunction(
-            (projectId, tag) =>
+            (projectId) =>
               [
                 ...document.querySelectorAll<HTMLElement>(
-                  `[data-zerops-surface="sidebar-production-chip"][data-zerops-chip="${tag}"]`,
+                  '[data-zerops-surface="sidebar-project-sites"]',
                 ),
-              ].some((chip) => chip.dataset.zeropsStops?.split(" ").includes(projectId) === true),
+              ].some((globe) => globe.dataset.zeropsStops?.split(" ").includes(projectId) === true),
             { timeout: 15_000, polling: "raf" },
             projectId,
-            tag,
           );
         } catch (cause) {
           throw new Error(
-            `Missing environment ${name} on the ${tag} of its road\n${await page.evaluate(() => document.body.innerText)}`,
+            `Missing environment ${name} (${tag}) among its project's places\n${await page.evaluate(() => document.body.innerText)}`,
             { cause },
           );
         }

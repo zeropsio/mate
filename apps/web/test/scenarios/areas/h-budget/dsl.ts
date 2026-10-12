@@ -79,14 +79,14 @@ export function budgets(s: Scenario) {
           );
           await observation.mateReady(name);
         }),
-      /** Opens the production chip's menu, which draws each stop's public addresses. */
-      opensProductionChip: Effect.promise(async () => {
+      /** Opens a project's addresses, which draws each stop's public addresses. */
+      opensAddresses: Effect.promise(async () => {
         await s.page
-          .locator('[data-zerops-surface="sidebar-production-chip"][data-zerops-chip="prod"]')
+          .locator('[data-zerops-surface="sidebar-project-sites"]')
           .setTimeout(15_000)
           .click();
         await s.page
-          .locator('[data-zerops-surface="sidebar-production-main"]')
+          .locator('[data-zerops-surface="sidebar-project-sites-popover"]')
           .setTimeout(15_000)
           .wait();
       }),

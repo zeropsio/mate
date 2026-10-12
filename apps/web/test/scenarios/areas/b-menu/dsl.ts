@@ -86,7 +86,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
           );
         } catch (cause) {
           throw new Error(
-            `Menu ${name} did not show ${words}\n${await s.page.evaluate(() => document.body.innerText)}\nChips: ${await s.page.evaluate(() => [...document.querySelectorAll('[data-zerops-surface="sidebar-production-chip"]')].map((chip) => chip.getAttribute("aria-label")))}`,
+            `Menu ${name} did not show ${words}\n${await s.page.evaluate(() => document.body.innerText)}\nChips: ${await s.page.evaluate(() => [...document.querySelectorAll('[data-zerops-surface="sidebar-project-env-tag"]')].map((chip) => chip.getAttribute("aria-label")))}`,
             { cause },
           );
         }
@@ -166,12 +166,12 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
           (name) =>
             ![
               ...document.querySelectorAll<HTMLElement>(
-                '[data-zerops-surface="sidebar-mate-name"], [data-zerops-surface="sidebar-project-toggle"]',
+                '[data-zerops-surface="sidebar-mate-name"], [data-zerops-surface="sidebar-project-name"]',
               ),
             ].some(
               (row) =>
                 row.getBoundingClientRect().height > 0 &&
-                row.innerText.split("\n").some((line) => line.trim() === name),
+                row.innerText.split(/\n|\s·\s/).some((line) => line.trim() === name),
             ),
           { timeout: 15_000, polling: "raf" },
           name,
@@ -254,7 +254,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
           app,
         );
       }),
-    toggle: (app: string) => Effect.promise(() => clickText(s.page, "sidebar-project-toggle", app)),
+    toggle: (app: string) => Effect.promise(() => clickText(s.page, "sidebar-project", app)),
     chip: (words: string, within = 15_000) =>
       Effect.promise(async () => {
         try {
@@ -262,7 +262,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
             (words) =>
               [
                 ...document.querySelectorAll<HTMLElement>(
-                  '[data-zerops-surface="sidebar-production-chip"]',
+                  '[data-zerops-surface="sidebar-project-env-tag"]',
                 ),
               ].some(
                 (chip) =>
@@ -274,7 +274,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
           );
         } catch (cause) {
           throw new Error(
-            `Menu environment chip did not show ${words}\n${await s.page.evaluate(() => document.body.innerText)}\nChips: ${await s.page.evaluate(() => [...document.querySelectorAll('[data-zerops-surface="sidebar-production-chip"]')].map((chip) => chip.getAttribute("aria-label")))}`,
+            `Menu places tag did not show ${words}\n${await s.page.evaluate(() => document.body.innerText)}\nChips: ${await s.page.evaluate(() => [...document.querySelectorAll('[data-zerops-surface="sidebar-project-env-tag"]')].map((chip) => chip.getAttribute("aria-label")))}`,
             { cause },
           );
         }

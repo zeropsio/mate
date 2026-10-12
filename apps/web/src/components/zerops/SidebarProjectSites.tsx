@@ -155,6 +155,12 @@ export function ProjectSites(
   });
   const reading = atRest.some((section) => section.links === undefined);
   const none = !reading && sitesLinkCount(atRest) === 0;
+  // The places it holds, by project: what a reader finds a new stage or production by.
+  const stopIds = atRest
+    .flatMap((section) =>
+      section.kind === "place" && section.stop !== undefined ? [section.stop.projectId] : [],
+    )
+    .join(" ");
   const prodUrl = productionUrl(production?.(0));
   const mac = typeof navigator !== "undefined" && isMacPlatform(navigator.platform);
   const globeTip = none
@@ -190,6 +196,7 @@ export function ProjectSites(
                 aria-label={`Addresses of ${projectName}`}
                 className="zerops-sites-globe"
                 data-empty={none ? "" : undefined}
+                data-zerops-stops={stopIds || undefined}
                 data-zerops-surface="sidebar-project-sites"
                 type="button"
               />

@@ -310,8 +310,13 @@ export async function visibleText(page: Page, surface: string, text: string, tim
     (surface, text) =>
       [...document.querySelectorAll<HTMLElement>(`[data-zerops-surface="${surface}"]`)].some(
         (element) =>
-          element.innerText.split("\n").some((line) => line.trim() === text) &&
-          element.getBoundingClientRect().height > 0,
+          // A Mate alone in its project reads "Project · Mate": either name stands on its own.
+          element.innerText
+            .split("\n")
+            .some(
+              (line) =>
+                line.split(/\s·\s/).some((part) => part.trim() === text) || line.trim() === text,
+            ) && element.getBoundingClientRect().height > 0,
       ),
     { timeout, polling: "raf" },
     surface,
