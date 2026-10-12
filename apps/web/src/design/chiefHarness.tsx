@@ -1,39 +1,52 @@
 /**
- * Setting up a person's Chief, as the owner sees it (1786 wide, the left menu at 435, `?menu=` for
- * another): the menu's line under the Overview row in each of its states — the offer, the setup
- * running, the setup stopped — and the Chief's top row coming up, then the setup dialog in the
- * state `?dialog=` names: `idle` (what a Chief is), `project`, `hq` or `variables` (that step
- * running), `failed-project`, `failed-hq` or `failed-variables` (that step stopped, with Try
- * again), or `none` for the menu alone. Set up Chief walks the steps 700 ms apart. `?theme=dark`
- * for dark.
+ * The Chief as the owner sees it (1786 wide, the left menu at 435, `?menu=` for another): the
+ * menu's top row in the state `?top=` names — `none` (no Chief yet), `setting-up`, `stopped`,
+ * `unfinished`, `rest`, `working`, `asks`, `sign-in` or `coming` — with what waits on you counted
+ * beside the squares (`?waiting=0` for none), and the Chief page beside it in the state `?page=`
+ * names: `offer`, `blocked`, `project`, `hq` or `variables` (that step running), `failed-project`,
+ * `failed-hq` or `failed-variables` (that step stopped, with Try again), or `finish`. Set up Chief
+ * walks the steps 700 ms apart. `?theme=dark` for dark.
  *
  * Served by the dev server at `/design-chief.html`. Fixtures only: nothing here ships, and no route
  * imports this module.
  */
-import { StrictMode, useState } from "react";
+import type { MateMarkState } from "@t3tools/shared/brand";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
+import { StrictMode, useState, type CSSProperties, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { ChiefSetupDialog } from "~/components/zerops/chief/ChiefSetupDialog";
+import { RunShimmer } from "~/components/chat/RunShimmer";
+import { SidebarProvider } from "~/components/ui/sidebar";
+import { ChiefStage } from "~/components/zerops/chief/ChiefPage";
 import {
   CHIEF_SETUP_IDLE,
   chiefSetupAfter,
   type ChiefSetup,
   type ChiefSetupStep,
 } from "~/components/zerops/chief/chiefSetup.logic";
-import {
-  SidebarChiefSetupLine,
-  type ChiefSetupLineState,
-} from "~/components/zerops/chief/SidebarChiefSetupLine";
-import { SidebarOverviewRow } from "~/components/zerops/SidebarOverview";
+import type { ChiefPageView } from "~/components/zerops/chief/chiefTop.logic";
+import { ChiefSetupRowLine, SidebarChiefRow } from "~/components/zerops/chief/SidebarChiefRow";
+import { MateFaceAsMark } from "~/components/zerops/primitives";
+import { waitingItemsOf, type WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
+import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
+import { SidebarFoldAllButton } from "~/components/zerops/SidebarFoldAllButton";
+import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
+import { MateComingHeader } from "~/components/zerops/ZeropsMateComingPage";
+import type { AppRouter } from "~/router";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const MENU = Number(params.get("menu") ?? 435);
-const DIALOG = params.get("dialog") ?? "idle";
-
-const HEADLINE = "6 projects · 2 deploying";
+const TOP = params.get("top") ?? "rest";
+const PAGE = params.get("page") ?? "offer";
+const WAITING = params.get("waiting") !== "0";
 
 const REASONS: Readonly<Record<ChiefSetupStep, string>> = {
   project: "Zerops refused the project: the organization has no room for another one.",
@@ -45,7 +58,7 @@ function setupOf(name: string): ChiefSetup {
   const [phase, step] = name.startsWith("failed-")
     ? (["failed", name.slice("failed-".length)] as const)
     : (["running", name] as const);
-  if (name === "idle" || !(step in REASONS)) return CHIEF_SETUP_IDLE;
+  if (!(step in REASONS)) return CHIEF_SETUP_IDLE;
   const at = step as ChiefSetupStep;
   const projectId = at === "project" ? null : "p-chief";
   return phase === "failed"
@@ -53,11 +66,69 @@ function setupOf(name: string): ChiefSetup {
     : { phase, step: at, birthId: "b1", projectId };
 }
 
-const LINES: ReadonlyArray<ChiefSetupLineState> = ["offer", "running", "stopped"];
+const ITEMS: ReadonlyArray<WaitingItem> = waitingItemsOf({
+  mates: [
+    {
+      projectId: "rhea",
+      name: "Rhea",
+      tint: "violet",
+      shape: "squircle",
+      face: "needs",
+      kind: "question",
+      environmentId: "env",
+      threadId: "thread",
+      text: "Stripe or Adyen?",
+    },
+  ],
+  releases: [{ groupId: "tea", name: "Tea Shop", ahead: 3 }],
+});
+
+const line = (words: ReactNode, ink: "muted" | "ink") => (
+  <span
+    className={
+      ink === "ink"
+        ? "menu-line2 truncate text-sidebar-foreground"
+        : "menu-line2 truncate text-muted-foreground"
+    }
+  >
+    {words}
+  </span>
+);
+
+/** The top row's states: its face, and its line where it has one. */
+const TOPS: Readonly<Record<string, { readonly face?: MateMarkState; readonly line?: ReactNode }>> =
+  {
+    none: {},
+    "setting-up": { line: <ChiefSetupRowLine state="running" /> },
+    stopped: { line: <ChiefSetupRowLine state="stopped" /> },
+    unfinished: { line: <ChiefSetupRowLine state="unfinished" /> },
+    rest: { face: "idle" },
+    working: {
+      face: "working",
+      line: line(
+        <RunShimmer inline sweeps>
+          Reading every project's last release
+        </RunShimmer>,
+        "muted",
+      ),
+    },
+    asks: { face: "needs", line: line("Should I ask Rhea to roll the Tea Shop back?", "ink") },
+    "sign-in": { line: line("Waiting for your sign-in", "ink") },
+    coming: { face: "waking", line: line("Coming up · 0:42", "muted") },
+  };
+
+function pageViewOf(setup: ChiefSetup): Exclude<ChiefPageView, { kind: "reading" | "coming" }> {
+  if (setup.phase === "running" || setup.phase === "failed") return { kind: "steps", setup };
+  if (PAGE === "finish") return { kind: "finish", projectId: "p-chief" };
+  return {
+    kind: "offer",
+    blocked: PAGE === "blocked" ? "Reaching your organization's HQ…" : undefined,
+  };
+}
 
 function Harness() {
-  const [setup, setSetup] = useState<ChiefSetup>(() => setupOf(DIALOG));
-  const [open, setOpen] = useState(DIALOG !== "none");
+  const [setup, setSetup] = useState<ChiefSetup>(() => setupOf(PAGE));
+  const [current, setCurrent] = useState(true);
   const walk = () => {
     const events = [
       { type: "start", birthId: "b1" },
@@ -66,39 +137,73 @@ function Harness() {
       { type: "variables-written" },
     ] as const;
     events.forEach((event, index) =>
-      setTimeout(() => setSetup((current) => chiefSetupAfter(current, event)), index * 700),
+      setTimeout(() => setSetup((now) => chiefSetupAfter(now, event)), index * 700),
     );
   };
+  const top = TOPS[TOP] ?? TOPS.rest!;
+  const view = setup.phase === "done" ? null : pageViewOf(setup);
   return (
     <div className="flex h-screen bg-background text-foreground">
-      <div
-        className="grid shrink-0 content-start gap-6 border-e border-border bg-sidebar px-3 py-4"
+      <aside
+        className="flex shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
+        data-sidebar="sidebar"
         style={{ width: MENU }}
       >
-        {LINES.map((line) => (
-          <div data-harness-state={`line:${line}`} key={line}>
-            <SidebarOverviewRow current={false} headline={HEADLINE} onOpen={() => setOpen(true)} />
-            <SidebarChiefSetupLine onOpen={() => setOpen(true)} state={line} />
+        <SidebarChromeHeader
+          isElectron={false}
+          brand={
+            <SidebarChiefRow
+              current={current}
+              face={top.face}
+              line={top.line}
+              onOpen={() => setCurrent(true)}
+              waiting={
+                WAITING
+                  ? { items: ITEMS, verbs: { onOpenMate: () => {}, onAskToFix: () => {} } }
+                  : undefined
+              }
+            />
+          }
+          actions={
+            <>
+              <SidebarFoldAllButton />
+              <SidebarJumpButton onJump={() => {}} shortcut="⌘K" />
+              <SidebarCreateButton onNewMate={() => {}} onNewProject={() => {}} projects={[]} />
+            </>
+          }
+        />
+      </aside>
+      <MateFaceAsMark.Provider value>
+        <main className="flex min-w-0 flex-1 flex-col" data-harness-state={`page:${PAGE}`}>
+          <header className="relative flex h-(--workspace-topbar-height) shrink-0 items-center px-5">
+            <MateComingHeader
+              arriving
+              mate={{
+                name: "Chief",
+                tint: "slate",
+                shape: "squircle",
+                connected: false,
+                projectUrl: undefined,
+                chief: true,
+              }}
+            />
+          </header>
+          <div className="relative min-h-0 flex-1">
+            {view === null ? (
+              <p className="p-6 text-sm text-muted-foreground">
+                Set up: the page is the Chief's own view while it comes up.
+              </p>
+            ) : (
+              <ChiefStage
+                onAgain={() => setSetup((now) => chiefSetupAfter(now, { type: "again" }))}
+                onFinish={() => setSetup(setupOf("hq"))}
+                onSetUp={walk}
+                view={view}
+              />
+            )}
           </div>
-        ))}
-        <div className="menu-top-chief" data-harness-state="top:coming">
-          <SidebarOverviewRow
-            chief
-            coming={{ kind: "coming", line: "Adding its container" }}
-            current={false}
-            headline={HEADLINE}
-            onOpen={() => setOpen(true)}
-          />
-        </div>
-      </div>
-      <div className="min-w-0 flex-1" />
-      <ChiefSetupDialog
-        onAgain={() => setSetup((current) => chiefSetupAfter(current, { type: "again" }))}
-        onOpenChange={setOpen}
-        onSetUp={walk}
-        open={open}
-        setup={setup}
-      />
+        </main>
+      </MateFaceAsMark.Provider>
     </div>
   );
 }
@@ -106,11 +211,25 @@ function Harness() {
 document.documentElement.classList.toggle("dark", appearance === "dark");
 applyThemePalette(ZEROPS_THEME_ID, appearance);
 
+const router = createRouter({
+  routeTree: createRootRoute({
+    component: () => (
+      <SidebarProvider
+        className="block"
+        style={{ "--sidebar-width": `${MENU}px` } as CSSProperties}
+      >
+        <Harness />
+      </SidebarProvider>
+    ),
+  }),
+  history: createMemoryHistory({ initialEntries: ["/"] }),
+}) as unknown as AppRouter;
+
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(
     <StrictMode>
-      <Harness />
+      <RouterProvider router={router} />
     </StrictMode>,
   );
 }

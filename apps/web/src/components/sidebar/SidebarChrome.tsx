@@ -47,7 +47,11 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   brand,
 }: {
   isElectron: boolean;
-  /** What stands in the mark's place: the Chief's row where the organization has one. */
+  /**
+   * What stands in the mark's place: the Chief's row, the bar's whole width, the squares floating
+   * over its end (`.menu-top`). Its own pieces take the bar's grid: whatever spans both columns
+   * runs under the squares, whatever keeps to the first stops short of them.
+   */
   brand?: ReactNode;
   /**
    * How current the menu is, while it is not (`SidebarHqStatus`): between the mark and the
@@ -72,17 +76,31 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
       )}
     >
       <SidebarTrigger className="md:hidden" />
-      {brand ?? <SidebarBrand />}
-      {status === undefined && actions === undefined ? null : (
-        <div
-          className={cn(
-            "flex min-w-0 items-center justify-end gap-1 md:pe-4",
-            brand === undefined ? "flex-1 md:ps-3" : "shrink-0 md:ps-1",
+      {brand === undefined ? (
+        <>
+          <SidebarBrand />
+          {status === undefined && actions === undefined ? null : (
+            <div
+              className="flex min-w-0 flex-1 items-center justify-end gap-1 md:ps-3 md:pe-4"
+              data-zerops-surface="sidebar-top-actions"
+            >
+              {status}
+              {actions}
+            </div>
           )}
-          data-zerops-surface="sidebar-top-actions"
-        >
-          {status}
-          {actions}
+        </>
+      ) : (
+        <div className="menu-top">
+          {brand}
+          {status === undefined && actions === undefined ? null : (
+            <div
+              className="menu-top-squares flex items-center justify-end gap-1 md:pe-4"
+              data-zerops-surface="sidebar-top-actions"
+            >
+              {status}
+              {actions}
+            </div>
+          )}
         </div>
       )}
     </SidebarHeader>

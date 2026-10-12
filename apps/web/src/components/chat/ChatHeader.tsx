@@ -14,7 +14,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ArchiveIcon, ChevronDownIcon, EllipsisIcon, LayersIcon } from "lucide-react";
+import { ArchiveIcon, ChevronDownIcon, EllipsisIcon } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -30,8 +30,8 @@ import { createPortal } from "react-dom";
 import GitActionsControl from "../GitActionsControl";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { type DraftId } from "~/composerDraftStore";
-import { useRightPanelStore } from "~/rightPanelStore";
 import { Button } from "../ui/button";
+import { ChiefOverviewButton } from "../zerops/chief/ChiefOverviewButton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import ProjectScriptsControl, {
@@ -710,16 +710,7 @@ export const ChatHeader = memo(function ChatHeader({
             >
               {mate.chief === true ? (
                 // A Chief's way out is its organization: the overview's cards beside it.
-                <Button
-                  aria-label="Overview"
-                  data-chat-header-ghost
-                  onClick={() => useRightPanelStore.getState().open(activeThreadRef, "overview")}
-                  size="sm"
-                  variant="ghost-muted"
-                >
-                  <LayersIcon className="size-3.5 shrink-0" />
-                  <span className="hidden text-line @3xl/header-actions:inline">Overview</span>
-                </Button>
+                <ChiefOverviewButton threadRef={activeThreadRef} />
               ) : (
                 <ZeropsProjectLink projectUrl={mate.projectUrl} />
               )}

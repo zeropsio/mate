@@ -45,6 +45,9 @@ import { environmentShell } from "~/state/shell";
  * another screen on its own (the owner, 2026-09-30: "it just throws me at /zerops page").
  */
 import { useMateRegistration } from "~/zerops/registration";
+import { useOwnChief } from "~/zerops/ownChief";
+import { ChiefOverviewButton } from "./chief/ChiefOverviewButton";
+import { MateFaceAsMark } from "./primitives";
 import { useMateOffers } from "~/zerops/useHqOffers";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -284,6 +287,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     live: false,
   });
   const [cameUp, setCameUp] = useState(false);
+  // The person's own Chief, by HQ's word or before HQ names it.
+  const ownChief = useOwnChief();
 
   // HQ names it as the menu does. Before registration, its creation or press names it.
   const identity = useAtomValue(shownHqMateIdentitiesAtom)[projectId];
@@ -319,6 +324,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       ...(creation !== undefined && viewer !== undefined ? { standUp: { by: viewer } } : {}),
     };
   }, [identity, press, candidate, creation, projectId, tints, viewer]);
+  const isChief = mate.chief === true || ownChief === projectId;
 
   // Up: its main conversation, read live, and its agents' sign-in — what the conversation paints
   // first, painted here first. Its environment is the one its machine opens, or its row's once
@@ -842,58 +848,62 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   if (detailFailure !== null && !projectUnavailable)
     return <MateDetailFailure mate={mate} message={detailFailure.message} again={readAgain} />;
   return (
-    <MateComingFrame
-      composer={standsInComposer ? <ConversationFooterStandIn draft={draft} /> : null}
-      header={
-        <MateComingHeader
-          arriving={shown !== undefined && !handingArrival}
-          face={
-            opening
-              ? "sleep"
-              : view === null || shown === undefined || handingArrival
-                ? undefined
-                : arrivalHeaderFace({
-                    kind: view.kind,
-                    over: view.over === true,
-                    connected: environmentId !== null,
-                    arriving: mateArriving(mate.arrivingUntil, clockMs),
-                  })
-          }
-          mate={{
-            ...mate,
-            projectUrl: projectUnavailable ? undefined : mate.projectUrl,
-            connected: stageAwake,
-          }}
-          standsIn={standsInComposer || handingArrival ? { subject: standInSubject } : null}
-        />
-      }
-    >
-      {opening ? (
-        <ConversationOpeningStage
-          ready={false}
-          name={named.name}
-          mate={named}
-          activity={liveActivity ?? toldActivity}
-          timestampFormat={timestampFormat}
-        />
-      ) : view === null ? null : (
-        <ConversationOpeningStage ready={false} name={named.name} mate={named}>
-          <MateEmptyStateView
-            coming={view}
-            // Handed over to from the creation's view, whose headline held the focus.
-            focusOnArrival={made !== undefined}
-            mate={{ ...(shown === undefined ? named : mate), connected: stageAwake }}
-            phase={handingArrival ? empty.phase : phaseAhead}
-            standUpFailure={empty.standUpFailure}
-            signIn={handingArrival ? empty.signIn : null}
-            runtimes={empty.runtimes}
-            signInRequired={empty.signInRequired}
-            agentReady={empty.agentReady}
-            unknown={handingArrival ? empty.unknown : null}
+    // The person's Chief wears the product's mark here as in its conversation (`chief.ts`).
+    <MateFaceAsMark.Provider value={isChief}>
+      <MateComingFrame
+        composer={standsInComposer ? <ConversationFooterStandIn draft={draft} /> : null}
+        header={
+          <MateComingHeader
+            arriving={shown !== undefined && !handingArrival}
+            face={
+              opening
+                ? "sleep"
+                : view === null || shown === undefined || handingArrival
+                  ? undefined
+                  : arrivalHeaderFace({
+                      kind: view.kind,
+                      over: view.over === true,
+                      connected: environmentId !== null,
+                      arriving: mateArriving(mate.arrivingUntil, clockMs),
+                    })
+            }
+            mate={{
+              ...mate,
+              projectUrl: projectUnavailable ? undefined : mate.projectUrl,
+              connected: stageAwake,
+              chief: isChief,
+            }}
+            standsIn={standsInComposer || handingArrival ? { subject: standInSubject } : null}
           />
-        </ConversationOpeningStage>
-      )}
-    </MateComingFrame>
+        }
+      >
+        {opening ? (
+          <ConversationOpeningStage
+            ready={false}
+            name={named.name}
+            mate={named}
+            activity={liveActivity ?? toldActivity}
+            timestampFormat={timestampFormat}
+          />
+        ) : view === null ? null : (
+          <ConversationOpeningStage ready={false} name={named.name} mate={named}>
+            <MateEmptyStateView
+              coming={view}
+              // Handed over to from the creation's view, whose headline held the focus.
+              focusOnArrival={made !== undefined}
+              mate={{ ...(shown === undefined ? named : mate), connected: stageAwake }}
+              phase={handingArrival ? empty.phase : phaseAhead}
+              standUpFailure={empty.standUpFailure}
+              signIn={handingArrival ? empty.signIn : null}
+              runtimes={empty.runtimes}
+              signInRequired={empty.signInRequired}
+              agentReady={empty.agentReady}
+              unknown={handingArrival ? empty.unknown : null}
+            />
+          </ConversationOpeningStage>
+        )}
+      </MateComingFrame>
+    </MateFaceAsMark.Provider>
   );
 }
 
@@ -947,7 +957,7 @@ export function MateComingHeader({
   readonly face?: MateMarkState | undefined;
   readonly mate: Pick<
     ZeropsMateIdentity,
-    "name" | "tint" | "shape" | "connected" | "arrivingUntil"
+    "name" | "tint" | "shape" | "connected" | "arrivingUntil" | "chief"
   > & {
     readonly projectUrl: string | undefined;
   };
@@ -992,7 +1002,10 @@ export function MateComingHeader({
             <EllipsisIcon className="size-4" />
           </Button>
         )}
-        {arriving || mate.projectUrl === undefined ? null : (
+        {mate.chief === true ? (
+          // A Chief's way out is its organization, as its conversation's header offers it.
+          <ChiefOverviewButton threadRef={null} />
+        ) : arriving || mate.projectUrl === undefined ? null : (
           // It waits with the chat header's for the opening conversation (`index.css`).
           <span className="contents" data-opening-waits="">
             <ZeropsProjectLink projectUrl={mate.projectUrl} />

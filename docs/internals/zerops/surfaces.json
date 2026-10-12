@@ -1158,9 +1158,11 @@
         "apps/web/src/zerops/useMenuRows.tsx",
         "apps/web/src/zerops/hqNavigation.tsx",
         "apps/web/src/components/zerops/ZeropsReadFailure.tsx",
-        "apps/web/src/components/zerops/chief/ChiefSetupDialog.tsx",
         "apps/web/src/components/zerops/chief/ChiefSetupHost.tsx",
-        "apps/web/src/components/zerops/chief/SidebarChiefSetupLine.tsx"
+        "apps/web/src/components/zerops/chief/ChiefPage.tsx",
+        "apps/web/src/components/zerops/chief/ChiefOverviewButton.tsx",
+        "apps/web/src/components/zerops/chief/SidebarChiefRow.tsx",
+        "apps/web/src/components/zerops/chief/SidebarChiefTop.tsx"
       ],
       "entryPoints": [
         {
@@ -1174,6 +1176,10 @@
         {
           "kind": "route",
           "value": "/mate/$projectId"
+        },
+        {
+          "kind": "route",
+          "value": "/chief"
         },
         {
           "kind": "inline",
