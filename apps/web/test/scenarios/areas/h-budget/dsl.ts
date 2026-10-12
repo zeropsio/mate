@@ -4,6 +4,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HqNavigationApp } from "@t3tools/shared/hqStream";
 import { ticketFor } from "../../../../../hq/test/harness/runningCore.ts";
+import { openAccountMenu } from "../../harness/browser.ts";
 import { openScenarioNavigation } from "../../harness/hqCore.ts";
 import type { createScenario } from "../../harness/scenario.ts";
 import { percentile, observeTabConnections } from "../../fakes/h-budget/traffic.ts";
@@ -118,7 +119,7 @@ export function budgets(s: Scenario) {
           ),
         ),
       opensUsage: Effect.promise(async () => {
-        await s.page.locator('[data-zerops-surface="sidebar-account"]').click();
+        await openAccountMenu(s.page);
         await s.page.locator('[data-zerops-account-destination="usage"]').click();
         await s.page.waitForFunction(() => location.pathname === "/usage");
       }),

@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
 import type { Page } from "puppeteer-core";
 import type { createScenario } from "../../harness/scenario.ts";
-import { visibleText } from "../../harness/browser.ts";
+import { openAccountMenu, visibleText } from "../../harness/browser.ts";
 import { deadline } from "../../harness/http.ts";
 import { secondOrganization, endSessionCheck, handoverCount } from "./fake.ts";
 
@@ -41,9 +41,7 @@ export const signInOrganization = Effect.fn("signin.chooseOrganization")(functio
 });
 
 export function account(page: Page) {
-  const openMenu = async () => {
-    await page.locator('[data-zerops-surface="sidebar-account"]').click();
-  };
+  const openMenu = () => openAccountMenu(page);
   return {
     showsOrganization: (name: string) =>
       Effect.promise(() => visibleText(page, "sidebar-account-organization", name)),
