@@ -70,6 +70,9 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  *   `@t3tools/shared/hqRelease`): `GET /api/apps/:appId/releases` → `{ releases }`; `POST
  *   /api/apps/:appId/releases` `{ tag, groupHead, entries }` and `POST
  *   /api/apps/:appId/releases/:tag/rollback` `{ groupHead }` → `201`, the release made.
+ * - A person's Chief and the decisions on its proposals (`chiefApi.ts`): `GET`, `POST
+ *   /api/chief`; `GET /api/proposals?ids=`, `PUT /api/proposals/:id`; and the Chief's own reads of
+ *   Zerops, `GET|POST /api/chief/zerops/<path>` with `Authorization: Bearer <Chief credential>`.
  *
  * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
  * HQ's org. Only the leading HQ answers: a standby or an HQ that is not the official one answers
@@ -127,6 +130,7 @@ import { Door } from "./door.ts";
 import { GitHost } from "./gitHost.ts";
 import { type LinkOptions, serveMateLink } from "./link.ts";
 import { Leader, NotLeader, RETRY_AFTER } from "./leader.ts";
+import { CHIEF_STATUS, ChiefRefused } from "./chiefRefused.ts";
 import { MateCredentials, MateRefused } from "./mateCredentials.ts";
 import { DOOR_LIMIT, DoorRateLimit, PERSON_ADDRESS_LIMIT, TooManyRequests } from "./rateLimit.ts";
 import { Writes } from "./writes.ts";
@@ -144,13 +148,13 @@ class MateCredentialRequired extends Schema.TaggedError<MateCredentialRequired>(
   "MateCredentialRequired",
   {},
 ) {}
-class TooLarge extends Schema.TaggedError<TooLarge>()("TooLarge", {}) {}
+export class TooLarge extends Schema.TaggedError<TooLarge>()("TooLarge", {}) {}
 
 /** How long an application's creation waits for git to open after a takeover. */
 const GIT_OPEN_WAIT = Duration.seconds(10);
 
 const DOOR_BODY_LIMIT = 8 * 1024;
-const BODY_LIMIT = 64 * 1024;
+export const BODY_LIMIT = 64 * 1024;
 /**
  * A change's description or a comment: 20 000 characters, which JSON may spell in up to six bytes
  * each (`\u0001`).
@@ -262,7 +266,8 @@ const CHANGE_STATUS = {
   too_large: 413,
 } as const;
 
-const json = (body: unknown, status: number) => HttpServerResponse.jsonUnsafe(body, { status });
+export const json = (body: unknown, status: number) =>
+  HttpServerResponse.jsonUnsafe(body, { status });
 
 /** Try again: this Core does not lead now, Zerops did not answer, or a failure HQ cannot name. */
 const unavailable = (code: string) =>
@@ -287,6 +292,7 @@ const isReleaseRefused = Schema.is(ReleaseRefused);
 const isDeployRefused = Schema.is(DeployRefused);
 const isChangeRefused = Schema.is(ChangeRefused);
 const isMateRefused = Schema.is(MateRefused);
+const isChiefRefused = Schema.is(ChiefRefused);
 const isGitError = Schema.is(GitError);
 
 /**
@@ -294,7 +300,7 @@ const isGitError = Schema.is(GitError);
  * byte is read; past `MaxBodySize` the Node server stops reading a body that declared none (and
  * drops its connection); the check after the read holds for any other host.
  */
-const jsonBody = <A, RD>(schema: Schema.Codec<A, unknown, RD>, limit: number) =>
+export const jsonBody = <A, RD>(schema: Schema.Codec<A, unknown, RD>, limit: number) =>
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
     if (Number(request.headers["content-length"] ?? 0) > limit) return yield* new TooLarge();
@@ -335,6 +341,14 @@ export const failure = (error: {
       HttpServerResponse.jsonUnsafe(
         { code: "repo_unavailable", reason: error.message },
         { status: 503, headers: RETRY_AFTER },
+      ),
+    );
+  }
+  if (isChiefRefused(error)) {
+    return Effect.succeed(
+      json(
+        { code: error.code, ...(error.reason === undefined ? {} : { reason: error.reason }) },
+        CHIEF_STATUS[error.code],
       ),
     );
   }
@@ -393,7 +407,7 @@ export const failure = (error: {
   }
 };
 
-const handle = <E extends { readonly _tag: string }, R>(
+export const handle = <E extends { readonly _tag: string }, R>(
   effect: Effect.Effect<HttpServerResponse.HttpServerResponse, E, R>,
 ) =>
   Effect.gen(function* () {
@@ -416,7 +430,7 @@ const holderOf = (token: string | undefined) =>
     return found.value.orgId === orgId ? found.value : yield* new SessionRequired();
   });
 
-const principal = Effect.flatMap(bearer, holderOf);
+export const principal = Effect.flatMap(bearer, holderOf);
 
 /**
  * A write's work, outliving its client (F22, 2026-10-03: a release whose client gave up at 20 s

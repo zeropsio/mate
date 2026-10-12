@@ -39,6 +39,7 @@ import { pruneUsageDetail, USAGE_PRUNE_BATCH_ROWS } from "./usageRetention.ts";
 
 import { directoryStore, setsIn } from "./backup.ts";
 import { BUCKET_ENV, bucketFromEnv, bucketStore } from "./bucketStore.ts";
+import { ChiefUpstream, makeChiefUpstreamHttp } from "./chiefProxy.ts";
 import { type CoreOptions, coreApp } from "./core.ts";
 import { bundledMigrations } from "./migrationFiles.ts";
 import { restoreSet } from "./restore.ts";
@@ -78,6 +79,7 @@ const core = Layer.unwrap(
       Layer.effect(ZeropsApi, makeZeropsApiHttp(api)),
       Layer.effect(ZeropsDeploy, makeZeropsDeployHttp(api)),
       Layer.effect(ZeropsObservation, makeZeropsObservationHttp(api)),
+      Layer.effect(ChiefUpstream, makeChiefUpstreamHttp(api)),
     ).pipe(Layer.provide(NodeHttpClient.layerNodeHttp));
     const options: CoreOptions = {
       drainFor: Duration.seconds(

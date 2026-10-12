@@ -26,6 +26,8 @@ import type * as Redacted from "effect/Redacted";
 import * as HttpRouter from "effect/http/HttpRouter";
 
 import { apiRoutes } from "./api.ts";
+import { chiefsLayer } from "./chief.ts";
+import { chiefRoutes } from "./chiefApi.ts";
 import { type BackupOptions, backupLayer } from "./backup.ts";
 import { changesLayer } from "./changes.ts";
 import { deployKeysLayer, keySecretOf, sealPlainTokens } from "./deployKeys.ts";
@@ -86,6 +88,7 @@ export interface CoreOptions {
 const routes = (options: CoreOptions) =>
   Layer.mergeAll(
     healthRoute(options.build),
+    chiefRoutes,
     apiRoutes({
       build: options.build,
       ...(options.streamRecheck === undefined ? {} : { recheck: options.streamRecheck }),
@@ -128,6 +131,7 @@ const services = (options: CoreOptions) => {
     }),
     doorLayer({ hqProjectId: options.hqProjectId }),
     mateCredentialsLayer({ credential: options.credential }),
+    chiefsLayer({ hqProjectId: options.hqProjectId, credential: options.credential }),
     streamTicketsLayer,
     mateLinkTicketsLayer,
     writesLayer,
