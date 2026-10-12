@@ -119,6 +119,10 @@ export type {
   VaultWrite,
 } from "./projections/vaultModel.ts";
 export { isMateOwned, vault, type VaultKey } from "./projections/vault.ts";
+export {
+  serviceVariableIds,
+  type ServiceVariableIdsKey,
+} from "./projections/serviceVariableIds.ts";
 export { vaultChangesSince, vaultImpact, vaultNote } from "./projections/vaultChanges.ts";
 export { agentContext, fitContextLine } from "./projections/agentContext.ts";
 export {
