@@ -56,6 +56,7 @@ export {
 } from "./deployLog.ts";
 export { hqUpdateOffered, hqUpdateState, type HqUpdateState } from "./update.ts";
 export {
+  birthFaceOf,
   birthIntentOf,
   heldOf,
   hqMateOffers,

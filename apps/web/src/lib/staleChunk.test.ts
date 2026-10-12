@@ -7,6 +7,8 @@ function page(options: { readonly storage?: "available" | "blocked"; readonly at
   const stored = new Map<string, string>();
   let now = options.at ?? 1_000_000;
   const state = { reloads: 0 };
+  /** A Mate's setup this tab runs (`pressesInFlight`). */
+  const setup = { running: false, listeners: new Set<() => void>() };
   const storage =
     options.storage === "blocked"
       ? {
@@ -29,12 +31,25 @@ function page(options: { readonly storage?: "available" | "blocked"; readonly at
       reload: () => {
         state.reloads += 1;
       },
+      busy: {
+        read: () => setup.running,
+        subscribe: (listener) => {
+          setup.listeners.add(listener);
+          return () => {
+            setup.listeners.delete(listener);
+          };
+        },
+      },
     });
   return {
     state,
     load,
     later: (ms: number) => {
       now += ms;
+    },
+    setupRuns: (running: boolean) => {
+      setup.running = running;
+      for (const listener of [...setup.listeners]) listener();
     },
   };
 }
@@ -78,6 +93,22 @@ describe("a lazy panel whose code a new build replaced", () => {
       expect(tab.state.reloads).toBe(1);
     },
   );
+
+  it("waits for a Mate's setup running in this tab before it reloads: the setup stops with the page", () => {
+    const tab = page();
+    tab.setupRuns(true);
+    const recovery = tab.load();
+    expect(recovery.recover(staleChunkErrors[0][1])).toBe(true);
+    expect({ reloads: tab.state.reloads, waiting: recovery.waiting() }).toEqual({
+      reloads: 0,
+      waiting: true,
+    });
+    tab.setupRuns(false);
+    expect({ reloads: tab.state.reloads, waiting: recovery.waiting() }).toEqual({
+      reloads: 1,
+      waiting: false,
+    });
+  });
 
   it("shows the error screen when the chunk still fails right after that reload, never a loop", () => {
     const tab = page();

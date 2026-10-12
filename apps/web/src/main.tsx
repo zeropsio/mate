@@ -13,6 +13,7 @@ import {
 import { AppRoot } from "./AppRoot";
 import { keepBootFrame } from "./zerops/bootFrame";
 import { staleChunkRecovery } from "./lib/staleChunk";
+import { pressesInFlight } from "./zerops/matePress";
 
 // Electron loads the app from a file-backed shell, so hash history avoids path resolution issues.
 const history = isElectron ? createHashHistory() : createBrowserHistory();
@@ -28,6 +29,14 @@ if (isElectron) {
 window.addEventListener("vite:preloadError", (event) => {
   staleChunkRecovery.recover(event.payload);
 });
+
+// A Mate's setup runs in the tab that pressed it and stops with the page: leaving asks first. Not
+// in Electron, where a prevented unload keeps the window from closing without asking.
+if (!isElectron) {
+  window.addEventListener("beforeunload", (event) => {
+    if (pressesInFlight.read()) event.preventDefault();
+  });
+}
 
 const root = document.getElementById("root") as HTMLElement;
 // index.html's first frame stands until the app draws into #root.

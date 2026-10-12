@@ -16,6 +16,7 @@ import { create } from "zustand";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { useNewMateDialog } from "./newMate";
+import { whilePressing } from "./matePress";
 import {
   creationEnds,
   creationOf,
@@ -128,12 +129,15 @@ export function refuseAddHere(birthId: string, reason: string): void {
   patchAsk(birthId, (held) => ({ ...held, refusedHere: reason }));
 }
 
-/** Runs a creation's steps, one run at a time: a press while one is at it does nothing. */
+/**
+ * Runs a creation's steps, one run at a time: a press while one is at it does nothing. Its HQ
+ * steps before the project count in flight as its press does (`whilePressing`).
+ */
 export async function runOnce(birthId: string, run: () => Promise<void>): Promise<void> {
   if (running.has(birthId)) return;
   running.add(birthId);
   try {
-    await run();
+    await whilePressing(run);
   } finally {
     running.delete(birthId);
   }

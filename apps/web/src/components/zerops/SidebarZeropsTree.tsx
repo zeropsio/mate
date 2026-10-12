@@ -86,6 +86,7 @@ import {
   type ZeropsPlacedBirth,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
+import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -1090,6 +1091,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const faceOf = (project: ZeropsCandidate["project"]) => {
     const identity = identities[project.id];
     if (identity !== undefined) return { tint: identity.tint, shape: identity.shape };
+    // Before HQ records it: the face picked at its Add — this tab's press, else its open birth.
+    const picked =
+      births.find((birth) => birth.projectId === project.id)?.placement.face ??
+      birthFaceOf(structureView.structure, project.id);
+    if (picked !== undefined) return picked;
     const tint = tints.get(project.id) ?? "slate";
     return { tint, shape: mateShapeOf(project, tint) };
   };

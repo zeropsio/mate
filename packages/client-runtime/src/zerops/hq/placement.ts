@@ -11,6 +11,7 @@
  * @module hq/placement
  */
 import { type HqOfferState, hqOffer } from "@t3tools/shared/hqOffers";
+import { type ZeropsMateFace, readMateFace } from "@t3tools/shared/mateFaces";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 
@@ -207,6 +208,26 @@ export function birthIntentOf(
   for (const app of structure?.apps ?? []) {
     const birth = app.births?.find((entry) => entry.id === birthId);
     if (birth !== undefined) return { appId: app.id, face: birth.face };
+  }
+  return undefined;
+}
+
+/**
+ * The face picked for a Mate at its birth, by the project its open birth intent names: what it
+ * wears until its attach records the face (a reload, or another browser, has no press to ask).
+ * None where it wears its name's tint, or where HQ's structure is not known.
+ */
+export function birthFaceOf(
+  structure: HqStructure | null,
+  projectId: string,
+): ZeropsMateFace | undefined {
+  for (const app of structure?.apps ?? []) {
+    const birth = app.births?.find((entry) => entry.projectId === projectId);
+    if (birth === undefined) continue;
+    const face = readMateFace(birth.face);
+    return face?.tint === undefined || face.shape === undefined
+      ? undefined
+      : { tint: face.tint, shape: face.shape };
   }
   return undefined;
 }
