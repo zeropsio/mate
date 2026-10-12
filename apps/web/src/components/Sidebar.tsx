@@ -217,8 +217,8 @@ import { useChiefSetupLine, useChiefUnfinished } from "~/zerops/chiefSetup";
 import { useAccountHq } from "~/zerops/accountHq";
 import { useOwnChief } from "~/zerops/ownChief";
 import { SidebarChiefTop } from "./zerops/chief/SidebarChiefTop";
-import { SidebarRail, useRailMates } from "./zerops/SidebarRail";
-import { SidebarPeekStage } from "./zerops/SidebarPeek";
+import { SidebarRail, useRailTiles } from "./zerops/SidebarRail";
+import { SidebarStage } from "./zerops/SidebarStage";
 import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
 
 import { useProjectFlows } from "../zerops/projectFlows";
@@ -2017,18 +2017,19 @@ export default function Sidebar() {
     }),
     [onZeropsAskToFix, onZeropsSelect, zeropsCandidates],
   );
-  // Closed on a desktop, the menu is a rail of faces: the same Mates, grouped by project.
+  // Closed on a desktop, the menu is a rail of tiles: the same projects, in the menu's order.
   const zeropsProjectName = useCallback(
     (groupId: string) => zeropsMenuProjects.find((project) => project.id === groupId)?.name,
     [zeropsMenuProjects],
   );
-  const zeropsRailGroups = useRailMates({
-    candidates: zeropsCandidates,
+  const zeropsRailTiles = useRailTiles({
+    candidates: zeropsListed,
     activityOf: zeropsRowActivity,
     shown: zeropsShown,
     ownerOf: zeropsMateOwner,
     projectName: zeropsProjectName,
     waiting: zeropsWaiting.items,
+    activeProjectId: zeropsOverviewOpen ? null : litZeropsProjectId,
   });
 
   // Archived threads stay hidden here: archive keeps its "remove from sidebar" meaning.
@@ -2667,15 +2668,66 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
-  // The closed menu on a desktop; the open one stays drawn under it and peeks (`SidebarPeekStage`).
+  // The menu's top: the person's Chief, as the open menu's row or the rail's tile.
+  const zeropsChiefTop = (tile: boolean) =>
+    zeropsSignedIn && zeropsHoldsChief ? (
+      <SidebarChiefTop
+        chief={zeropsChief}
+        coming={zeropsChief === undefined ? undefined : zeropsComing(zeropsChief)}
+        conversationsRead={
+          zeropsChief !== undefined && zeropsConversationsRead(zeropsChief) === true
+        }
+        currentMate={zeropsChief !== undefined && litZeropsProjectId === zeropsChief.project.id}
+        currentPage={zeropsChiefPageOpen}
+        onOpenMate={onZeropsSelect}
+        onOpenPage={openChiefPage}
+        setup={chiefSetupLine}
+        tile={tile}
+        timestampFormat={timestampFormat}
+        unfinished={chiefUnfinished}
+        waiting={
+          zeropsListHeld ? undefined : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
+        }
+      />
+    ) : undefined;
+  // Search and the +, on the open menu's top row and under the rail's Chief.
+  const zeropsJump = (
+    <SidebarJumpButton
+      onJump={() => {
+        // A phone's menu steps aside for the box, and comes back
+        // to show what is found in it (`SidebarRevealBridge`).
+        if (isMobile) setOpenMobile(false);
+        openCommandPalette();
+      }}
+      shortcut={shortcutLabelForCommand(keybindings, "commandPalette.toggle") ?? undefined}
+    />
+  );
+  const zeropsCreate =
+    zeropsSignedIn && zeropsSession.organizationStatus !== "needs-selection" ? (
+      <SidebarCreateButton
+        onNewMate={onZeropsNewMate}
+        onNewProject={openNewZeropsProject}
+        projects={zeropsMenuProjects}
+      />
+    ) : null;
+  // The closed menu on a desktop; the open one stays drawn under it (`SidebarStage`).
   const zeropsRail = isMobile ? null : (
     <SidebarRail
       account={
         <SidebarZeropsAccountRow collapsed destinationIcon={sidebarAccountDestinationIcon} />
       }
-      activeProjectId={zeropsOverviewOpen ? null : activeZeropsProjectId}
-      groups={zeropsRailGroups}
+      actions={
+        rosterOnly ? (
+          <>
+            {zeropsJump}
+            {zeropsCreate}
+          </>
+        ) : undefined
+      }
+      activeProjectId={zeropsOverviewOpen ? null : litZeropsProjectId}
+      chief={zeropsChiefTop(true)}
       headline={zeropsHeadline}
+      onFold={zeropsRailTiles.fold}
       onOpenMenu={() => {
         setOpen(true);
       }}
@@ -2684,38 +2736,15 @@ export default function Sidebar() {
       openShortcut={shortcutLabelForCommand(keybindings, "sidebar.toggle") ?? undefined}
       overviewCurrent={zeropsOverviewOpen}
       showMark={!(isElectron && isMacPlatform(navigator.platform))}
+      tiles={zeropsRailTiles.tiles}
       verbs={zeropsWaitingVerbs}
       waiting={zeropsWaiting.items}
     />
   );
   return (
-    <SidebarPeekStage rail={zeropsRail}>
+    <SidebarStage rail={zeropsRail}>
       <SidebarChromeHeader
-        brand={
-          zeropsSignedIn && zeropsHoldsChief ? (
-            <SidebarChiefTop
-              chief={zeropsChief}
-              coming={zeropsChief === undefined ? undefined : zeropsComing(zeropsChief)}
-              conversationsRead={
-                zeropsChief !== undefined && zeropsConversationsRead(zeropsChief) === true
-              }
-              currentMate={
-                zeropsChief !== undefined && litZeropsProjectId === zeropsChief.project.id
-              }
-              currentPage={zeropsChiefPageOpen}
-              onOpenMate={onZeropsSelect}
-              onOpenPage={openChiefPage}
-              setup={chiefSetupLine}
-              timestampFormat={timestampFormat}
-              unfinished={chiefUnfinished}
-              waiting={
-                zeropsListHeld
-                  ? undefined
-                  : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
-              }
-            />
-          ) : undefined
-        }
+        brand={zeropsChiefTop(false)}
         isElectron={isElectron}
         status={
           zeropsHqOutage === null ? undefined : (
@@ -2735,24 +2764,8 @@ export default function Sidebar() {
           rosterOnly ? (
             <>
               <SidebarScopeButton onScope={setZeropsMateScope} scope={zeropsMateScope} />
-              <SidebarJumpButton
-                onJump={() => {
-                  // A phone's menu steps aside for the box, and comes back
-                  // to show what is found in it (`SidebarRevealBridge`).
-                  if (isMobile) setOpenMobile(false);
-                  openCommandPalette();
-                }}
-                shortcut={
-                  shortcutLabelForCommand(keybindings, "commandPalette.toggle") ?? undefined
-                }
-              />
-              {zeropsSignedIn && zeropsSession.organizationStatus !== "needs-selection" ? (
-                <SidebarCreateButton
-                  onNewMate={onZeropsNewMate}
-                  onNewProject={openNewZeropsProject}
-                  projects={zeropsMenuProjects}
-                />
-              ) : null}
+              {zeropsJump}
+              {zeropsCreate}
             </>
           ) : undefined
         }
@@ -3308,6 +3321,6 @@ export default function Sidebar() {
           only the normal list-to-footer gutter remains. */}
       {zeropsSignedIn ? <AccountVoiceLine /> : null}
       <SidebarChromeFooter />
-    </SidebarPeekStage>
+    </SidebarStage>
   );
 }

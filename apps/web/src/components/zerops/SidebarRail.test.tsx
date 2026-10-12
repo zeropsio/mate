@@ -33,6 +33,7 @@ vi.mock("../ui/tooltip", async () => {
 });
 
 import { SidebarRail, type RailMate } from "./SidebarRail";
+import { railTiles } from "./SidebarRail.logic";
 import { waitingItemsOf } from "./SidebarWaiting.logic";
 
 const face = (name: string, projectName: string, extra: Partial<RailMate> = {}): RailMate => ({
@@ -43,11 +44,32 @@ const face = (name: string, projectName: string, extra: Partial<RailMate> = {}):
   tint: "slate",
   shape: "squircle",
   face: "idle",
+  known: true,
   dot: undefined,
-  owner: undefined,
+  badge: null,
+  mine: true,
+  asksViewer: false,
+  at: undefined,
+  working: false,
+  runSince: undefined,
   line: "",
   ...extra,
 });
+
+const TEA_SHOP = [face("Sage", "Tea Shop"), face("Rhea", "Tea Shop", { dot: "attention" })];
+const LEDGER = [face("Noibit", "Ledger API", { line: "Ivy reviews the schema" })];
+/** The tiles of these Mates, in this order, Tea Shop open as its person left it. */
+const tilesOf = (
+  mates: ReadonlyArray<RailMate>,
+  active: string | null = "rhea",
+  opened: ReadonlyArray<string> = ["tea shop"],
+) =>
+  railTiles({
+    mates,
+    order: mates.map((mate) => mate.projectId),
+    folds: { closed: new Set(), opened: new Set(opened) },
+    active,
+  });
 
 const unmounts: Array<() => void> = [];
 afterEach(() => {
@@ -62,22 +84,21 @@ async function mount(props: Partial<React.ComponentProps<typeof SidebarRail>> = 
   const onSelect = vi.fn();
   const onOverview = vi.fn();
   const onOpenMenu = vi.fn();
+  const onFold = vi.fn();
   await act(async () => {
     root.render(
       <SidebarRail
         account={null}
         activeProjectId="rhea"
-        groups={[
-          [face("Sage", "Tea Shop"), face("Rhea", "Tea Shop", { dot: "attention" })],
-          [face("Noibit", "Ledger API", { line: "Ivy reviews the schema" })],
-        ]}
         headline="Ledger API needs attention · 1 more"
+        onFold={onFold}
         onOpenMenu={onOpenMenu}
         onOverview={onOverview}
         onSelect={onSelect}
         openShortcut="⌘B"
         overviewCurrent={false}
         showMark
+        tiles={tilesOf([...TEA_SHOP, ...LEDGER])}
         verbs={{ onOpenMate: () => {}, onAskToFix: () => {} }}
         waiting={waitingItemsOf({
           mates: [],
@@ -91,7 +112,7 @@ async function mount(props: Partial<React.ComponentProps<typeof SidebarRail>> = 
     root.unmount();
     container.remove();
   });
-  return { container, onSelect, onOverview, onOpenMenu };
+  return { container, onSelect, onOverview, onOpenMenu, onFold };
 }
 
 const surface = (container: HTMLElement, name: string) => [
@@ -105,12 +126,24 @@ const tipOf = (control: Element | undefined) =>
 
 describe("SidebarRail — the closed menu on a desktop", () => {
   it("leads with the mark to the overview, the waiting count and Overview", async () => {
-    const { container } = await mount();
-    expect(container.querySelector("a")?.getAttribute("href")).toBe("/zerops");
+    const { container, onOverview } = await mount();
+    const overview = surface(container, "sidebar-rail-overview")[0];
+    expect(overview?.getAttribute("aria-label")).toBe("Overview");
+    expect(tipOf(overview)).toContain("Ledger API needs attention · 1 more");
     expect(surface(container, "sidebar-rail-waiting")[0]?.textContent).toBe("1");
-    expect(tipOf(surface(container, "sidebar-rail-overview")[0])).toContain(
-      "Ledger API needs attention · 1 more",
-    );
+    await act(async () => {
+      overview?.click();
+    });
+    expect(onOverview).toHaveBeenCalled();
+  });
+
+  it("puts the Chief in Overview's place where the organization holds one", async () => {
+    const { container } = await mount({
+      chief: <button data-zerops-surface="sidebar-chief-row" type="button" />,
+    });
+    expect(surface(container, "sidebar-chief-row")).toHaveLength(1);
+    expect(surface(container, "sidebar-rail-overview")).toHaveLength(0);
+    expect(surface(container, "sidebar-rail-waiting")).toHaveLength(0);
   });
 
   it("draws no count while nothing waits", async () => {
@@ -123,11 +156,19 @@ describe("SidebarRail — the closed menu on a desktop", () => {
     const faces = surface(container, "sidebar-rail-mate");
     expect(faces.map((entry) => entry.getAttribute("aria-label"))).toEqual([
       "Sage, Tea Shop",
-      "Rhea, Tea Shop",
+      "Rhea, Tea Shop, Waiting for you",
       "Noibit, Ledger API",
     ]);
-    expect(tipOf(faces[2])).toContain("Noibit · Ledger API");
+    expect(tipOf(faces[2])).toContain("Ledger API");
+    expect(tipOf(faces[2])).toContain("Noibit");
     expect(tipOf(faces[2])).toContain("Ivy reviews the schema");
+  });
+
+  it("says a tile's state in words in its card", async () => {
+    const { container } = await mount();
+    expect(tipOf(surface(container, "sidebar-rail-mate")[1])).toContain("Waiting for you");
+    expect(tipOf(surface(container, "sidebar-rail-group")[0])).toContain("Rhea");
+    expect(tipOf(surface(container, "sidebar-rail-group")[0])).toContain("Waiting for you");
   });
 
   it("marks the open Mate's face, and opens a Mate from its face", async () => {
@@ -144,32 +185,16 @@ describe("SidebarRail — the closed menu on a desktop", () => {
   // color, it's the project what is the main identifier".
   it("heads each project's faces with the project's name, a Mate in no project with its own", async () => {
     const { container } = await mount({
-      groups: [
-        [face("Sage", "Tea Shop"), face("Rhea", "Tea Shop")],
-        [face("Noibit", "Ledger API")],
-        [face("Juno", "")],
-      ],
-    });
-    const projects = surface(container, "sidebar-rail-project").map((project) => ({
-      says: [...project.childNodes]
-        .filter(
-          (node) => !(node instanceof HTMLElement && node.matches('button, [role="tooltip"]')),
-        )
-        .map((node) => node.textContent)
-        .join(""),
-      faces: [...project.querySelectorAll('[data-zerops-surface="sidebar-rail-mate"]')].map(
-        (mate) =>
-          [...mate.childNodes]
-            .map((node) => node.textContent ?? "")
-            .join("")
-            .trim(),
+      tiles: tilesOf(
+        [face("Sage", "Tea Shop"), face("Rhea", "Tea Shop"), ...LEDGER, face("Juno", "")],
+        null,
+        [],
       ),
-    }));
-    expect(projects).toEqual([
-      { says: "Tea Shop", faces: ["", ""] },
-      { says: "Ledger API", faces: [""] },
-      { says: "", faces: ["Juno"] },
-    ]);
+    });
+    const names = surface(container, "sidebar-rail-project").map(
+      (project) => project.querySelector('[data-zerops-surface="sidebar-rail-name"]')?.textContent,
+    );
+    expect(names).toEqual(["Tea Shop", "Ledger API", "Juno"]);
   });
 
   it("marks the open Mate's whole project as the current one", async () => {
@@ -179,6 +204,50 @@ describe("SidebarRail — the closed menu on a desktop", () => {
         project.getAttribute("aria-current"),
       ),
     ).toEqual(["true", null]);
+  });
+
+  it("opens and folds a group in place with the menu's fold, its Mates' tiles under it", async () => {
+    const folded = await mount({ tiles: tilesOf([...TEA_SHOP, ...LEDGER], null, []) });
+    expect(surface(folded.container, "sidebar-rail-mate")).toHaveLength(1);
+    const group = surface(folded.container, "sidebar-rail-group")[0];
+    expect(group?.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => {
+      group?.click();
+    });
+    expect(folded.onFold).toHaveBeenCalledWith("tea shop", true);
+
+    const open = await mount({ tiles: tilesOf([...TEA_SHOP, ...LEDGER], null) });
+    expect(surface(open.container, "sidebar-rail-group")[0]?.getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    await act(async () => {
+      surface(open.container, "sidebar-rail-group")[0]?.click();
+    });
+    expect(open.onFold).toHaveBeenCalledWith("tea shop", false);
+    expect(open.onSelect).not.toHaveBeenCalled();
+  });
+
+  it("wears one dot per tile, its state's", async () => {
+    const { container } = await mount({
+      tiles: tilesOf(
+        [
+          face("Sage", "Tea Shop", { dot: "working" }),
+          face("Rhea", "Tea Shop", { dot: "failed" }),
+          face("Noibit", "Ledger API", { dot: "unread" }),
+          face("Juno", "", { dot: "working" }),
+          face("Vesta", ""),
+        ],
+        null,
+        [],
+      ),
+    });
+    expect(
+      surface(container, "sidebar-rail-project").map((project) =>
+        [...project.querySelectorAll("[data-dot]")]
+          .filter((dot) => dot.closest('[role="tooltip"]') === null)
+          .map((dot) => dot.getAttribute("data-dot")),
+      ),
+    ).toEqual([["failed"], ["unread"], ["working"], []]);
   });
 
   it("opens the menu again from its foot", async () => {

@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { SidebarProvider } from "../ui/sidebar";
-import { SidebarPeekStage, sidebarMenuShown } from "./SidebarPeek";
+import { SidebarStage, sidebarMenuShown } from "./SidebarStage";
 
 const unmounts: Array<() => void> = [];
 afterEach(() => {
@@ -19,9 +19,9 @@ async function mount(open: boolean) {
   await act(async () => {
     root.render(
       <SidebarProvider defaultOpen={open}>
-        <SidebarPeekStage rail={<button type="button">Ada's face</button>}>
+        <SidebarStage rail={<button type="button">Ada's face</button>}>
           <button type="button">Ada's row</button>
-        </SidebarPeekStage>
+        </SidebarStage>
       </SidebarProvider>,
     );
   });
@@ -35,7 +35,7 @@ async function mount(open: boolean) {
 const button = (container: HTMLElement, name: string) =>
   [...container.querySelectorAll("button")].find((entry) => entry.textContent === name)!;
 
-describe("SidebarPeekStage — the closed menu over the open one", () => {
+describe("SidebarStage — the closed menu over the open one", () => {
   // The tree's own keys (⌥1–9 opens the nth Mate, j/k walk the rows) read this: on origin the
   // tree was not there at all while the menu was closed.
   it("keeps the open menu waiting under the rail out of the keyboard's reach", async () => {

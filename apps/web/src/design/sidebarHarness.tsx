@@ -74,8 +74,8 @@ import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { PanelLayoutControls } from "~/components/chat/PanelLayoutControls";
 import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
-import { SidebarChiefRow } from "~/components/zerops/chief/SidebarChiefRow";
-import { SidebarRail, useRailMates } from "~/components/zerops/SidebarRail";
+import { SidebarChiefRow, SidebarChiefTile } from "~/components/zerops/chief/SidebarChiefRow";
+import { SidebarRail, useRailTiles } from "~/components/zerops/SidebarRail";
 import { waitingItemsOf, type WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
 import { Button } from "~/components/ui/button";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
@@ -105,7 +105,7 @@ import {
   type SidebarProjectFlow,
 } from "~/components/zerops/SidebarZeropsTree";
 import { Sidebar, SidebarContent, SidebarProvider, useSidebar } from "~/components/ui/sidebar";
-import { SidebarPeekStage } from "~/components/zerops/SidebarPeek";
+import { SidebarStage } from "~/components/zerops/SidebarStage";
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { writeCollapsedProjects } from "~/zerops/collapsedProjects";
@@ -1420,11 +1420,11 @@ function HarnessJumpBox({
 
 /**
  * `?menu=closed`: the menu closed to its rail on a desktop (`RailFrame`), the harness's open menu
- * peeking out of it and docking from it as the app's does (`SidebarPeekStage`).
+ * docking from it as the app's does (`SidebarStage`).
  */
 const MENU_CLOSED = new URLSearchParams(location.search).get("menu") === "closed";
 
-/** The menu's own toggle: it closes the docked menu, and docks a peeking one, as the app's. */
+/** The menu's own toggle: it closes the docked menu, as the app's. */
 function SidebarFootToggle() {
   const { open, toggleSidebar } = useSidebar();
   return (
@@ -1447,9 +1447,11 @@ function SidebarFootToggle() {
 function RailFrame({
   open,
   setOpen,
+  onJump,
 }: {
   readonly open: string;
   readonly setOpen: (projectId: string) => void;
+  readonly onJump: () => void;
 }) {
   const [scope] = useMateScope();
   const shown = useCallback(
@@ -1466,13 +1468,14 @@ function RailFrame({
     releases: HARNESS_RELEASES,
   });
   const items = WAIT_ALL ?? waiting.items;
-  const groups = useRailMates({
+  const rail = useRailTiles({
     candidates: FIXTURES.candidates,
     activityOf: activityOfCandidate,
     shown,
     ownerOf: (item) => FIXTURES.owners.get(item.project.id),
     projectName: (groupId) => HARNESS_PROJECTS.find((project) => project.id === groupId)?.name,
     waiting: items,
+    activeProjectId: open === "" ? null : open,
   });
   const verbs = {
     onOpenMate: (projectId: string) => {
@@ -1498,9 +1501,29 @@ function RailFrame({
           organizations={[ORGANIZATION]}
         />
       }
+      actions={
+        <>
+          <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />
+          <SidebarCreateButton
+            onNewMate={(groupId) => menuActions.push(`new mate ${groupId}`)}
+            onNewProject={() => menuActions.push("new project")}
+            projects={HARNESS_PROJECTS}
+          />
+        </>
+      }
       activeProjectId={open === "" ? null : open}
-      groups={groups}
+      chief={
+        <SidebarChiefTile
+          current={open === ""}
+          onOpen={() => {
+            menuActions.push("chief");
+            setOpen("");
+          }}
+          waiting={{ items, verbs }}
+        />
+      }
       headline={HARNESS_HEADLINE}
+      onFold={rail.fold}
       onOpenMenu={() => {
         menu.setOpen(true);
       }}
@@ -1509,6 +1532,7 @@ function RailFrame({
       openShortcut="⌘B"
       overviewCurrent={open === ""}
       showMark
+      tiles={rail.tiles}
       verbs={verbs}
       waiting={items}
     />
@@ -1666,7 +1690,17 @@ function Harness() {
       </CommandDialog>
       {MENU_CLOSED && !phone ? (
         <Sidebar collapsible="icon" layered side="left">
-          <SidebarPeekStage rail={<RailFrame open={open} setOpen={setOpen} />}>
+          <SidebarStage
+            rail={
+              <RailFrame
+                onJump={() => {
+                  setJumping(true);
+                }}
+                open={open}
+                setOpen={setOpen}
+              />
+            }
+          >
             <SidebarFrame
               onJump={() => {
                 setJumping(true);
@@ -1675,7 +1709,7 @@ function Harness() {
               setOpen={setOpen}
               width={width}
             />
-          </SidebarPeekStage>
+          </SidebarStage>
         </Sidebar>
       ) : (
         <SidebarFrame
@@ -1766,7 +1800,7 @@ const router = createRouter({
           style={
             {
               "--sidebar-width": `${params.get("w") ?? 256}px`,
-              "--sidebar-width-icon": "72px",
+              "--sidebar-width-icon": "88px",
             } as CSSProperties
           }
         >

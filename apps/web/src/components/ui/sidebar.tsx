@@ -216,9 +216,8 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none";
   resizable?: boolean | SidebarResizableOptions;
   /**
-   * Its content paints its own surface and moves itself (`SidebarPeek`): the column only holds
-   * the page's room, which slides with the menu's own edge, and steps over the page while the
-   * menu peeks.
+   * Its content paints its own surface and moves itself (`SidebarStage`): the column only holds
+   * the page's room, which slides with the menu's own edge.
    */
   layered?: boolean;
 }) {
@@ -330,11 +329,7 @@ function Sidebar({
         <div
           className={cn(
             "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) md:flex",
-            layered
-              ? // Over the page while the menu peeks out of the rail (`data-menu-raised`): above what
-                // the page lifts to 40 (the conversation's minimap), never above its dialogs.
-                "has-[[data-menu-raised]]:z-50"
-              : "transition-[left,right,width] duration-200 ease-linear",
+            !layered && "transition-[left,right,width] duration-200 ease-linear",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -537,8 +532,6 @@ function SidebarRail({
               "group-data-[collapsible=offcanvas]:translate-x-0 hover:group-data-[collapsible=offcanvas]:bg-sidebar group-data-[collapsible=offcanvas]:after:left-full",
               "[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
               "[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",
-              // Out of the way while the menu peeks over it (`SidebarPeek`).
-              "group-has-[[data-menu-raised]]:invisible",
               className,
             )}
             data-sidebar="rail"

@@ -4119,7 +4119,8 @@ code {
   }
 
   /* Under its project's row the face stands 28 px, 4 px into its column: the seat moves with it. */
-  .menu-row-kid .menu-face-cut {
+  .menu-row-kid .menu-face-cut,
+  .menu-rail-face[data-kid] .menu-face-cut {
     -webkit-mask-image: radial-gradient(
       circle 10px at 26px 26px,
       transparent 9.5px,
@@ -5854,12 +5855,14 @@ code {
 }
 
 @layer components {
-  /* Closed on a desktop: a 72 px rail — the mark, the waiting count, Overview, a hairline, the
-     projects as pods, and at the foot the viewer and the open button. */
+  /* Closed on a desktop: an 88 px rail — the Chief, search and the +, one tile per project in the
+     open menu's order, and at the foot the viewer and the open button (the owner's pick of the
+     Menu Rail Board, 2026-10-12: tiles, and no reveal). `--menu-ground` is the ground a face's
+     rings, its owner's mark and its dot are cut in, as on the menu's rows. */
   .menu-rail {
-    --menu-rail-pod: color-mix(in oklab, var(--sidebar-foreground) 5%, var(--sidebar));
-    --menu-rail-press: color-mix(in oklab, var(--sidebar-foreground) 8%, transparent);
-    --menu-rail-ring: var(--sidebar);
+    --menu-ground: var(--sidebar);
+    --menu-rail-hover: var(--sidebar-row-hover);
+    --menu-rail-group: color-mix(in oklab, var(--sidebar-foreground) 4.5%, var(--sidebar));
 
     display: flex;
     flex-direction: column;
@@ -5877,28 +5880,45 @@ code {
     height: var(--workspace-topbar-height);
   }
 
-  .menu-rail-mark {
-    display: flex;
-    border-radius: 10px;
-    color: var(--sidebar-foreground);
-    outline: none;
-  }
-
-  .menu-rail-mark:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  /* Overview and what waits on the viewer, one control: the count rides its disc's corner. */
-  .menu-rail-overview {
-    position: relative;
+  /* Beside macOS's traffic lights the top cell is theirs: the Chief stands under it. */
+  .menu-rail-under-top {
     display: grid;
     flex: none;
+    place-items: center;
+    padding-bottom: 4px;
+  }
+
+  /* The Chief — or, where the organization holds none, the mark to the overview — with what waits
+     on the viewer counted on its corner. */
+  .menu-rail-chief {
+    position: relative;
+    display: grid;
+  }
+
+  .menu-rail-head {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    color: var(--sidebar-foreground);
+    cursor: pointer;
+    outline: none;
+    transition: background-color 150ms var(--ease-out-strong);
+  }
+
+  .menu-rail-head:hover {
+    background: var(--sidebar-row-hover);
+  }
+
+  .menu-rail-head[data-current] {
+    background: var(--sidebar-row-active);
   }
 
   .menu-rail-count {
     position: absolute;
-    top: -1px;
-    right: -3px;
+    top: -3px;
+    right: -8px;
     display: grid;
     place-items: center;
     min-width: 20px;
@@ -5926,87 +5946,137 @@ code {
     );
   }
 
-  .menu-rail-button {
-    position: relative;
-    display: grid;
-    flex: none;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    margin: 1px 0;
-    border-radius: 12px;
-    color: var(--sidebar-muted-foreground);
-    cursor: pointer;
-    outline: none;
-    transition:
-      background-color 150ms var(--ease-out-strong),
-      color 150ms var(--ease-out-strong);
-  }
-
-  .menu-rail-button:hover {
-    background: var(--sidebar-row-hover);
-    color: var(--sidebar-foreground);
-  }
-
-  .menu-rail-button[data-current] {
-    background: var(--sidebar-row-active);
-  }
-
-  .menu-rail-button:focus-visible,
-  .menu-rail-count:focus-visible {
-    box-shadow: 0 0 0 2px var(--ring);
-  }
-
-  .menu-rail-disc {
-    display: grid;
-    place-items: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 9999px;
-    background: color-mix(in oklab, var(--sidebar-foreground) 7%, transparent);
-    color: var(--sidebar-foreground);
-  }
-
-  .menu-rail-sep {
-    display: block;
-    flex: none;
-    width: 24px;
-    height: 1px;
-    margin: 10px 0;
-    background: var(--sidebar-border);
-  }
-
-  .menu-rail-faces {
+  .menu-rail-actions {
     display: flex;
-    flex: 0 1 auto;
+    flex: none;
+    justify-content: center;
+    gap: 4px;
+    padding: 2px 0 6px;
+  }
+
+  .menu-rail-tiles {
+    display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 2px;
     width: 100%;
     min-height: 0;
-    padding: 0 0 8px;
+    padding: 4px 0 12px;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
   }
 
-  .menu-rail-owner {
-    position: absolute;
-    right: 1px;
-    bottom: 1px;
-    display: flex;
-    border-radius: 9999px;
-    box-shadow: 0 0 0 1.5px var(--menu-rail-ring);
+  .menu-rail-tiles::-webkit-scrollbar {
+    display: none;
   }
 
+  /* A project: its tile, and while a group stands open its Mates' tiles under it on a ground of
+     their own. */
+  .menu-rail-project {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    width: 80px;
+    border-radius: 16px;
+  }
+
+  .menu-rail-project[data-open] {
+    --menu-ground: var(--menu-rail-group);
+    --menu-rail-hover: color-mix(in oklab, var(--sidebar-foreground) 6%, var(--menu-rail-group));
+
+    padding-bottom: 6px;
+    background: var(--menu-rail-group);
+  }
+
+  /* A tile: the menu row's face or its group's cluster over the project's name, one line. */
+  .menu-rail-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 80px;
+    padding: 7px 0 6px;
+    border-radius: 14px;
+    color: var(--sidebar-foreground);
+    cursor: pointer;
+    outline: none;
+    transition: background-color 150ms var(--ease-out-strong);
+  }
+
+  .menu-rail-kid {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 40px;
+    border-radius: 12px;
+    cursor: pointer;
+    outline: none;
+    transition: background-color 150ms var(--ease-out-strong);
+  }
+
+  .menu-rail-tile:hover,
+  .menu-rail-kid:hover {
+    --menu-ground: var(--menu-rail-hover);
+
+    background: var(--menu-rail-hover);
+  }
+
+  .menu-rail-tile[data-current],
+  .menu-rail-kid[data-current] {
+    --menu-ground: var(--sidebar-row-active);
+
+    background: var(--sidebar-row-active);
+  }
+
+  .menu-rail-head:focus-visible,
+  .menu-rail-count:focus-visible,
+  .menu-rail-tile:focus-visible,
+  .menu-rail-kid:focus-visible,
+  .menu-rail-open:focus-visible {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+
+  /* The face's box: the menu row's 36 px column, a kid's 28 px face inside it as under a group. */
+  .menu-rail-face {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+  }
+
+  .menu-rail-name {
+    max-width: 72px;
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* One dot on the face's corner: amber waits on you, red stopped on an error, blue an unseen
+     reply, the Mate's own tint at work. Still: the face already moves while it works. */
   .menu-rail-dot {
     position: absolute;
-    top: 1px;
-    right: 1px;
-    width: 10px;
-    height: 10px;
+    top: -2px;
+    right: -2px;
+    z-index: 6;
+    width: 9px;
+    height: 9px;
     border-radius: 9999px;
-    box-shadow: 0 0 0 2px var(--menu-rail-ring);
+    box-shadow: 0 0 0 2px var(--menu-ground);
+  }
+
+  .menu-rail-face[data-kid] .menu-rail-dot {
+    top: 2px;
+    right: 2px;
+    width: 8px;
+    height: 8px;
   }
 
   .menu-rail-dot[data-dot="attention"] {
@@ -6021,8 +6091,12 @@ code {
     background: var(--info-foreground);
   }
 
-  .menu-rail-spring {
-    flex: 1 1 auto;
+  .menu-rail-dot[data-dot="working"] {
+    background: color-mix(
+      in oklab,
+      var(--menu-rail-tint, var(--sidebar-muted-foreground)) 80%,
+      var(--sidebar-foreground)
+    );
   }
 
   .menu-rail-foot {
@@ -6030,107 +6104,32 @@ code {
     flex: none;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
-    padding: 12px 0 16px;
+    gap: 10px;
+    padding: 10px 0 14px;
   }
 
-  /* A project on the closed menu is a pod: its name inside, in ink, over its faces — the project
-     is how a Mate is found (the owner, 2026-10-12: "it's the project what is the main
-     identifier") — and the open Mate's whole pod wears the selected band. */
-  .menu-rail-project {
-    --menu-rail-ring: var(--menu-rail-pod);
-
-    display: flex;
-    flex: none;
-    flex-direction: column;
-    align-items: center;
-    gap: 1px;
-    width: 62px;
-    padding: 7px 0 3px;
-    border-radius: 14px;
-    background: var(--menu-rail-pod);
-    transition: background-color 150ms var(--ease-out-strong);
+  .menu-rail-open {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    color: var(--sidebar-muted-foreground);
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 150ms var(--ease-out-strong),
+      color 150ms var(--ease-out-strong);
   }
 
-  .menu-rail-project[aria-current] {
-    --menu-rail-ring: var(--sidebar-row-active);
-
-    background: var(--sidebar-row-active);
-  }
-
-  .menu-rail-project-name {
-    display: -webkit-box;
-    max-width: 56px;
-    overflow: hidden;
+  .menu-rail-open:hover {
+    background: var(--sidebar-row-hover);
     color: var(--sidebar-foreground);
-    font-size: 10.5px;
-    font-weight: 600;
-    line-height: 12.5px;
-    text-align: center;
-    /* Balanced over words: a word that fits is never split ("Design sys-tem token…"), and only a
-       word wider than the pod breaks inside itself. */
-    text-wrap: balance;
-    overflow-wrap: anywhere;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
   }
 
-  .menu-rail-mate {
-    width: 40px;
-    height: 40px;
-    margin: 0;
-    border-radius: 11px;
-  }
-
-  .menu-rail-mate:hover,
-  .menu-rail-mate[data-current] {
-    background: var(--menu-rail-press);
-  }
-
-  /* A pod of one is its Mate: the pod's band says it is open, the face needs none of its own. */
-  .menu-rail-project[data-single] .menu-rail-mate[data-current] {
-    background: transparent;
-  }
-
-  /* A Mate in no project: its face, its own name under it. */
-  .menu-rail-project:not(:has(.menu-rail-project-name)) {
-    padding-top: 3px;
-  }
-
-  .menu-rail-mate[data-named] {
-    grid-template-rows: 32px 14px;
-    gap: 2px;
-    width: 56px;
-    height: auto;
-    padding: 4px 0 3px;
-  }
-
-  .menu-rail-name {
-    max-width: 52px;
-    overflow: hidden;
-    color: var(--sidebar-foreground);
-    font-size: 11px;
-    line-height: 14px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* On a face with its name under it, the owner's photo and the dot stay on the face's corners. */
-  .menu-rail-mate[data-named] .menu-rail-owner {
-    top: 26px;
-    right: 8px;
-    bottom: auto;
-  }
-
-  .menu-rail-mate[data-named] .menu-rail-dot {
-    top: 3px;
-    right: 10px;
-  }
-
-  /* The closed menu and the open one as one surface (`SidebarPeek.tsx`): the rail stands over the
-     open menu, which waits clipped to the rail's edge. Peeking, the menu grows out of that edge
-     over the page; docked, it stands where it peeked while the page's edge travels with its own;
-     closing, it shrinks back into the rail. */
+  /* The closed menu and the open one as one surface (`SidebarStage.tsx`): the rail stands over the
+     open menu, which waits clipped to the rail's edge; opened, it grows out of that edge and docks
+     while the page's edge travels with its own; closing, it shrinks back into the rail. */
   .menu-stage {
     position: relative;
     display: flex;
@@ -6180,9 +6179,7 @@ code {
     z-index: -1;
     background-color: var(--sidebar);
     background-image: var(--surface-grain);
-    box-shadow: none;
     content: "";
-    transition: box-shadow 180ms var(--ease-out-strong);
   }
 
   .menu-stage:not([data-menu="rest"]) > .menu-stage-menu {
@@ -6192,15 +6189,6 @@ code {
     transition:
       clip-path 220ms var(--ease-out-strong),
       visibility 0s;
-  }
-
-  .menu-stage[data-menu="peek"] > .menu-stage-menu {
-    clip-path: inset(0 -48px 0 0);
-  }
-
-  .menu-stage[data-menu="peek"] > .menu-stage-menu::before {
-    box-shadow: var(--menu-peek-shadow);
-    transition-duration: 220ms;
   }
 
   .menu-stage-body {
@@ -6220,13 +6208,18 @@ code {
   @media (prefers-reduced-motion: reduce) {
     .menu-stage-rail,
     .menu-stage-menu,
-    .menu-stage-menu::before,
-    .menu-stage-body {
+    .menu-stage-body,
+    .menu-rail-head,
+    .menu-rail-count,
+    .menu-rail-tile,
+    .menu-rail-kid,
+    .menu-rail-open {
       transition: none !important;
     }
   }
 
-  /* A face's card beside the rail: its name and project, what was asked, its last answer. */
+  /* A tile's card beside the rail: its project and Mate, its state in words, what was asked, its
+     last answer; a group's, each of its Mates. */
   .menu-rail-card {
     display: grid;
     gap: 3px;
@@ -6253,6 +6246,28 @@ code {
     white-space: nowrap;
   }
 
+  .menu-rail-card-state {
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 18px;
+  }
+
+  .menu-rail-card-state[data-dot="attention"] {
+    color: var(--zerops-status-attention-text);
+  }
+
+  .menu-rail-card-state[data-dot="failed"] {
+    color: var(--zerops-status-failed-text);
+  }
+
+  .menu-rail-card-state[data-dot="unread"] {
+    color: var(--info-foreground);
+  }
+
+  .menu-rail-card-state[data-dot="working"] {
+    color: var(--muted-foreground);
+  }
+
   .menu-rail-card-asked,
   .menu-rail-card-answer {
     display: -webkit-box;
@@ -6265,6 +6280,30 @@ code {
 
   .menu-rail-card-answer {
     color: var(--muted-foreground);
+  }
+
+  .menu-rail-card-mate {
+    display: grid;
+    min-width: 0;
+    padding-top: 4px;
+  }
+
+  .menu-rail-card-mate-name {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
+  }
+
+  .menu-rail-card-line {
+    overflow: hidden;
+    color: var(--muted-foreground);
+    font-size: 12.5px;
+    line-height: 17px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .menu-rail-tip {
@@ -8927,15 +8966,12 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
    deeper one, since a light ring alone would not lift a surface off a dark
    canvas. */
 :root {
-  /* The open menu peeking out of the rail over the page: lifted off it to the right. */
-  --menu-peek-shadow: 18px 0 32px -18px rgb(15 18 24 / 22%);
   --chat-composer-shadow: 0 1px 2px rgb(15 18 24 / 5%), 0 14px 34px -16px rgb(15 18 24 / 28%);
   /* The composer's corners: the conversation's other box, a run's card,
      wears them too, in every state. */
   --composer-radius: 20px;
 
   @variant dark {
-    --menu-peek-shadow: 22px 0 36px -18px rgb(0 0 0 / 70%);
     --chat-composer-shadow: 0 16px 36px -18px rgb(0 0 0 / 85%);
   }
 }

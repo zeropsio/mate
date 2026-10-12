@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { cn } from "~/lib/utils";
 
 import { MateMark } from "../../MateMark";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { SidebarWaitingPopover, type WaitingVerbs } from "../SidebarWaiting";
 import { waitingSummary, type WaitingItem } from "../SidebarWaiting.logic";
 import type { ChiefSetupRowState } from "./chiefTop.logic";
@@ -86,6 +87,68 @@ export function SidebarChiefRow({ face, line, current, onOpen, waiting }: Sideba
             <button
               aria-label={`${String(items.length)} waiting on you: ${summary.words}${summary.more > 0 ? `, ${String(summary.more)} more` : ""}`}
               className="menu-chief-count"
+              data-waiting-trigger=""
+              data-zerops-surface="sidebar-waiting"
+              type="button"
+            />
+          }
+          verbs={waiting.verbs}
+        >
+          <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
+        </SidebarWaitingPopover>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The Chief on the closed menu's rail, in Overview's old place: its mark as a tile, wearing its
+ * state, what waits on the person counted on its corner; its name and line in its card.
+ */
+export function SidebarChiefTile({ face, line, current, onOpen, waiting }: SidebarChiefRowProps) {
+  const items = waiting?.items ?? [];
+  const summary = items.length === 0 ? undefined : waitingSummary(items);
+  return (
+    <div className="menu-rail-chief" data-zerops-surface="sidebar-chief">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              aria-current={current ? "page" : undefined}
+              aria-label="Chief Mate"
+              className="menu-rail-head"
+              data-current={current ? "" : undefined}
+              data-zerops-surface="sidebar-chief-row"
+              onClick={onOpen}
+              type="button"
+            />
+          }
+        >
+          <MateMark
+            awake
+            playful
+            className="h-8.25 w-7"
+            {...(face === undefined ? {} : { state: face })}
+          />
+        </TooltipTrigger>
+        <TooltipPopup side="right">
+          <span className="menu-rail-tip">
+            <span className="menu-rail-tip-name">
+              Chief <span className="menu-chief-name-mate">Mate</span>
+            </span>
+            {line === undefined || line === null ? null : (
+              <span className="menu-rail-tip-line">{line}</span>
+            )}
+          </span>
+        </TooltipPopup>
+      </Tooltip>
+      {waiting === undefined || summary === undefined ? null : (
+        <SidebarWaitingPopover
+          items={items}
+          trigger={
+            <button
+              aria-label={`${String(items.length)} waiting on you: ${summary.words}${summary.more > 0 ? `, ${String(summary.more)} more` : ""}`}
+              className="menu-rail-count"
               data-waiting-trigger=""
               data-zerops-surface="sidebar-waiting"
               type="button"

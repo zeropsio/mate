@@ -2,6 +2,7 @@
  * The menu's top row as the menu mounts it: the person's Chief once it is listed, read as the
  * list's row would read it (`MenuMateLine`), else the same row with its setup's line. Its press
  * opens the Chief's conversation, or the Chief page while there is none to open (`chiefRowOpens`).
+ * The closed menu's rail draws the same Chief as a tile.
  */
 import type { MateComing } from "@t3tools/client-runtime/data";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -9,7 +10,12 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 
 import { MenuMateLine } from "../SidebarZeropsTree";
 import { chiefRowLine, chiefRowOpens } from "./chiefTop.logic";
-import { ChiefSetupRowLine, SidebarChiefRow, type SidebarChiefRowProps } from "./SidebarChiefRow";
+import {
+  ChiefSetupRowLine,
+  SidebarChiefRow,
+  SidebarChiefTile,
+  type SidebarChiefRowProps,
+} from "./SidebarChiefRow";
 
 export function SidebarChiefTop<T extends ZeropsCandidate>({
   chief,
@@ -23,6 +29,7 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
   onOpenMate,
   onOpenPage,
   waiting,
+  tile = false,
 }: {
   /** The person's own Chief among the listed Mates; undefined while it is not listed. */
   readonly chief: T | undefined;
@@ -40,11 +47,14 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
   readonly onOpenMate: (chief: T) => void;
   readonly onOpenPage: () => void;
   readonly waiting: SidebarChiefRowProps["waiting"];
+  /** Drawn as the closed menu's rail draws it (`SidebarChiefTile`). */
+  readonly tile?: boolean;
 }) {
+  const Row = tile ? SidebarChiefTile : SidebarChiefRow;
   if (chief === undefined) {
     const line = chiefRowLine({ setup, unfinished: false, mate: undefined });
     return (
-      <SidebarChiefRow
+      <Row
         current={currentPage}
         line={line?.kind === "setup" ? <ChiefSetupRowLine state={line.state} /> : undefined}
         onOpen={onOpenPage}
@@ -63,7 +73,7 @@ export function SidebarChiefTop<T extends ZeropsCandidate>({
         const line = chiefRowLine({ setup, unfinished, mate: read });
         const opens = chiefRowOpens({ listed: true, line });
         return (
-          <SidebarChiefRow
+          <Row
             current={currentPage || currentMate}
             face={read.face}
             // Its words live in its conversation; the row says only what its setup needs.
