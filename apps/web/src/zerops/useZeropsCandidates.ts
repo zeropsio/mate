@@ -20,6 +20,7 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   presentCandidates,
   heldCandidates,
+  keepCandidates,
   type CandidateRow,
   type TakenBotNames,
 } from "@t3tools/client-runtime/zerops/projections";
@@ -185,12 +186,9 @@ export const candidateListingAtom = Atom.make(
         ...(connection === undefined ? {} : { connection }),
       };
     });
-    return othersChiefs.size === 0 || presented.state !== "known"
+    return othersChiefs.size === 0
       ? presented
-      : {
-          ...presented,
-          value: presented.value.filter((candidate) => !othersChiefs.has(candidate.project.id)),
-        };
+      : keepCandidates(presented, (candidate) => !othersChiefs.has(candidate.project.id));
   },
 ).pipe(Atom.withLabel("zerops:candidate-listing"));
 

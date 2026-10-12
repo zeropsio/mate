@@ -280,6 +280,15 @@ export function admittedOnly<T>(
  * A listing's rows as a surface presents them, as known as the listing is: a listing that holds no
  * rows (unread, being read, failed, gone, withheld) passes through as it is, never as an empty one.
  */
+/** The listing with only the rows `keep` holds, as it stands: unknown stays unknown. */
+export function keepCandidates<Row>(
+  listing: Shown<ReadonlyArray<Row>>,
+  keep: (row: Row) => boolean,
+): Shown<ReadonlyArray<Row>> {
+  if (listing.state !== "known") return listing;
+  return { ...listing, value: listing.value.filter(keep) };
+}
+
 export function presentCandidates<Row, Presented>(
   listing: Known<ReadonlyArray<Row>>,
   present: (row: Row) => Presented,
