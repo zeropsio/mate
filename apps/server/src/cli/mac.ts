@@ -236,7 +236,14 @@ const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
     }
     case "device": {
       const record = pairedRecord(paths);
-      return run("ssh", macSshArgs(record, paths, macDeviceCommand(record, command.args)));
+      return run(
+        "ssh",
+        macSshArgs(
+          record,
+          paths,
+          macDeviceCommand(record, command.args, { whileInUse: command.whileInUse }),
+        ),
+      );
     }
     case "screenshot": {
       const record = pairedRecord(paths);
@@ -252,7 +259,15 @@ const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
       const fd = NodeFS.openSync(out, "w");
       let code: number;
       try {
-        code = run("ssh", macSshArgs(record, paths, macScreenshotCommand(record)), fd);
+        code = run(
+          "ssh",
+          macSshArgs(
+            record,
+            paths,
+            macScreenshotCommand(record, { whileInUse: command.whileInUse }),
+          ),
+          fd,
+        );
       } finally {
         NodeFS.closeSync(fd);
       }
