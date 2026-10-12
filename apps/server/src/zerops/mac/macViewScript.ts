@@ -9,6 +9,13 @@
  * such grant, so the Mate never captures over ssh itself: it reads this
  * helper's stream through `curl --unix-socket` on one ssh connection.
  *
+ * When the pairing could build the smooth streamer (`macViewStreamScript.ts`,
+ * `$ROOT/bin/view-stream`), a stream runs it as a child - it records under
+ * node's permission too - and passes its messages through with the in-use flag
+ * added: frames as the window changes, up to 15 a second. Without it, or when
+ * it stops (macOS refused it the capture), the helper captures one frame at a
+ * time itself, which launchd makes take seconds.
+ *
  * The socket lives in `$ROOT` (mode 700), so only the pairing user reaches it;
  * nothing listens on a network port.
  *
@@ -30,8 +37,8 @@
  */
 
 export const MAC_VIEW_SCRIPT = String.raw`// Zerops Mate's live view of one app window on this Mac. Written by the Mate's pairing.
-import { execFile } from "node:child_process";
-import { chmodSync, readFileSync, rmSync } from "node:fs";
+import { execFile, spawn } from "node:child_process";
+import { chmodSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -47,6 +54,11 @@ const STEP_TIMEOUT_MS = 12000;
 const RESOLVE_EVERY_MS = 2000;
 const RETRY_RESOLVE_MS = 1000;
 const IDLE_EVERY_MS = 1000;
+/** The smooth streamer follows the window as it changes; the per-frame capture cannot keep up past 5. */
+const STREAMER_MAX_FPS = 15;
+const CAPTURE_MAX_FPS = 5;
+const MAX_HEADER_BYTES = 4096;
+const MAX_FRAME_BYTES = 16 * 1024 * 1024;
 
 /** macOS's own tools, by absolute path: launchd's PATH is not the user's. A test points them at stubs. */
 const tool = (name, real) =>
@@ -142,15 +154,53 @@ export function userWorking(idle, nowSeconds, lastDriveSeconds) {
   return nowSeconds - (lastDriveSeconds || 0) > idle + 2;
 }
 
-export function clampFps(value) {
+export function clampFps(value, most) {
   const fps = Number(value);
-  return Number.isFinite(fps) && fps > 0 ? Math.min(5, Math.max(0.2, fps)) : 2;
+  return Number.isFinite(fps) && fps > 0 ? Math.min(most, Math.max(0.2, fps)) : 2;
 }
 
 /** One message on the wire: a JSON header line, then the bytes it announces. */
 export function message(header, bytes) {
   const line = Buffer.from(JSON.stringify(bytes ? { ...header, size: bytes.length } : header) + "\n");
   return bytes ? Buffer.concat([line, bytes]) : line;
+}
+
+/**
+ * Reads this wire's messages off a byte stream as it comes, calling
+ * onMessage(header, bytes) for each; push returns false once the bytes are
+ * not this wire.
+ */
+export function makeReader(onMessage) {
+  let buffer = Buffer.alloc(0);
+  let pending;
+  return (chunk) => {
+    buffer = buffer.length === 0 ? chunk : Buffer.concat([buffer, chunk]);
+    while (true) {
+      if (pending !== undefined) {
+        if (buffer.length < pending.size) return true;
+        const bytes = buffer.subarray(0, pending.size);
+        buffer = buffer.subarray(pending.size);
+        const header = { ...pending };
+        delete header.size;
+        pending = undefined;
+        onMessage(header, bytes);
+        continue;
+      }
+      const end = buffer.indexOf(10);
+      if (end < 0) return buffer.length <= MAX_HEADER_BYTES;
+      let header;
+      try {
+        header = JSON.parse(buffer.subarray(0, end).toString("utf8"));
+      } catch {
+        return false;
+      }
+      buffer = buffer.subarray(end + 1);
+      if (!header || !["frame", "state", "tick"].includes(header.type)) return false;
+      if (header.type !== "frame") onMessage(header);
+      else if (Number.isInteger(header.size) && header.size > 0 && header.size <= MAX_FRAME_BYTES) pending = header;
+      else return false;
+    }
+  };
 }
 
 const run = (command, args) =>
@@ -176,7 +226,7 @@ async function resolveWindow(app) {
   return window ? { window } : { status: "no-window" };
 }
 
-async function capture(window, file) {
+async function captureWindow(window, file) {
   const shot = await run(tool("screencapture", "/usr/sbin/screencapture"), ["-x", "-o", "-l", String(window.number), "-t", "jpg", file]);
   if (!shot.ok) return undefined;
   let bytes;
@@ -204,35 +254,91 @@ function makeRoot() {
 
 let streams = 0;
 
+async function readInUse(root) {
+  let lastDrive = 0;
+  try {
+    lastDrive = Number(readFileSync(join(root, "last-drive"), "utf8").trim()) || 0;
+  } catch {}
+  const ioreg = await run(tool("ioreg", "/usr/sbin/ioreg"), ["-c", "IOHIDSystem"]);
+  return userWorking(idleSeconds(ioreg.stdout), Math.floor(Date.now() / 1000), lastDrive);
+}
+
+/**
+ * Streams through the smooth streamer until the client leaves ("closed") or
+ * the streamer stops first ("failed"): it exited, macOS refused it the
+ * capture, or it said something that is not this wire.
+ */
+function streamThrough(streamer, app, fps, closed, send, refreshInUse) {
+  return new Promise((resolve) => {
+    const child = spawn(streamer, [app, String(fps), String(MAX_SIDE)], { stdio: ["ignore", "pipe", "inherit"] });
+    let refreshing = false;
+    const timer = setInterval(() => {
+      if (refreshing) return;
+      refreshing = true;
+      refreshInUse().finally(() => {
+        refreshing = false;
+      });
+    }, IDLE_EVERY_MS);
+    let done = false;
+    const finish = (outcome) => {
+      if (done) return;
+      done = true;
+      clearInterval(timer);
+      child.kill();
+      resolve(outcome);
+    };
+    const read = makeReader(send);
+    child.stdout.on("data", (chunk) => {
+      if (!read(chunk)) finish("failed");
+    });
+    child.on("error", () => finish("failed"));
+    child.on("close", () => finish("failed"));
+    closed.then(() => finish("closed"));
+  });
+}
+
 async function stream(root, url, res) {
   const app = url.searchParams.get("app") || "";
-  const interval = 1000 / clampFps(url.searchParams.get("fps"));
-  const file = join(tmpdir(), "zerops-mate-view-" + process.pid + "-" + Math.random().toString(36).slice(2) + ".jpg");
+  const fps = url.searchParams.get("fps");
   let open = true;
-  res.on("close", () => {
-    open = false;
+  const closed = new Promise((resolve) => {
+    res.on("close", () => {
+      open = false;
+      resolve();
+    });
   });
   res.writeHead(200, { "content-type": "application/octet-stream", "cache-control": "no-store" });
-  let window;
-  let resolvedAt = 0;
-  let idleAt = 0;
   let inUse = false;
-  let last;
-  let failures = 0;
-  let lastStatus;
+  const refreshInUse = async () => {
+    inUse = await readInUse(root);
+  };
   const send = (header, bytes) => {
     if (open) res.write(message({ ...header, inUse }, bytes));
   };
+  await refreshInUse();
+  const streamer = join(root, "bin", "view-stream");
+  if (existsSync(streamer)) {
+    const outcome = await streamThrough(streamer, app, clampFps(fps, STREAMER_MAX_FPS), closed, send, refreshInUse);
+    if (outcome === "closed" || !open) return;
+  }
+  await capture(app, 1000 / clampFps(fps, CAPTURE_MAX_FPS), () => open, send, refreshInUse);
+}
+
+/** One frame at a time with screencapture, for a Mac without the smooth streamer. */
+async function capture(app, interval, isOpen, send, refreshInUse) {
+  const file = join(tmpdir(), "zerops-mate-view-" + process.pid + "-" + Math.random().toString(36).slice(2) + ".jpg");
+  let window;
+  let resolvedAt = 0;
+  let idleAt = Date.now();
+  let last;
+  let failures = 0;
+  let lastStatus;
   try {
-    while (open) {
+    while (isOpen()) {
       const started = Date.now();
       if (started - idleAt >= IDLE_EVERY_MS) {
         idleAt = started;
-        let lastDrive = 0;
-        try {
-          lastDrive = Number(readFileSync(join(root, "last-drive"), "utf8").trim()) || 0;
-        } catch {}
-        inUse = userWorking(idleSeconds((await run(tool("ioreg", "/usr/sbin/ioreg"), ["-c", "IOHIDSystem"])).stdout), Math.floor(Date.now() / 1000), lastDrive);
+        await refreshInUse();
       }
       if (started - resolvedAt >= (window === undefined ? RETRY_RESOLVE_MS : RESOLVE_EVERY_MS)) {
         resolvedAt = started;
@@ -246,7 +352,7 @@ async function stream(root, url, res) {
         }
       }
       if (window !== undefined) {
-        const shot = await capture(window, file);
+        const shot = await captureWindow(window, file);
         if (shot === undefined) {
           failures++;
           window = undefined;
