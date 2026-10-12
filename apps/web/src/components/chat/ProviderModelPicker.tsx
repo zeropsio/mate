@@ -8,7 +8,6 @@ import {
 import { ZapIcon } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Badge } from "../ui/badge";
-import { InlineButton } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
@@ -32,7 +31,8 @@ import {
 } from "./ComposerModelControl.logic";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { composerControl, type ComposerControlLook } from "@t3tools/client-runtime/data";
-import { providerAvailability, type ProviderAvailability } from "./providerAvailability.logic";
+import { providerAvailability } from "./providerAvailability.logic";
+import { AvailabilityDot, AvailabilityNote, availabilityName } from "./AgentAvailability";
 
 /**
  * The composer's one quiet control (C4): the trigger says the model and its
@@ -300,11 +300,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         <PopoverTrigger
           render={
             <ComposerControl
-              aria-label={
-                availability === null
-                  ? (props.triggerAriaLabel ?? text)
-                  : `${props.triggerAriaLabel ?? text}, ${availability.title}`
-              }
+              aria-label={availabilityName(props.triggerAriaLabel ?? text, availability)}
               className={cn("min-w-0 shrink", props.triggerClassName)}
               data-chat-provider-model-picker="true"
               data-composer-shortcut={props.composer.shortcuts}
@@ -320,7 +316,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           ) : (
             <span className="relative inline-flex shrink-0">
               {icon}
-              <AvailabilityDot availability={availability} />
+              <AvailabilityDot availability={availability} corner />
             </span>
           )}
           <Tooltip>
@@ -351,22 +347,25 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           <ComposerControlChevron size="quiet" />
         </PopoverTrigger>
         <PopoverPopup align="start" className="before:hidden" padding="none" ref={menuRef}>
-          {availability === null ? null : (
-            <AvailabilityNote
-              availability={availability}
-              onOpenSetup={
-                availability.setup && props.onOpenProviderSetup
-                  ? () => {
-                      setIsMenuOpen(false);
-                      props.onOpenProviderSetup?.(availability.instanceId);
-                    }
-                  : null
-              }
-            />
-          )}
-          <div className="composer-model-menu">
-            {content}
-            {props.composer.choices}
+          {/* The note and the menu share the room the popup has: the list scrolls inside it. */}
+          <div className="composer-model-popup">
+            {availability === null ? null : (
+              <AvailabilityNote
+                availability={availability}
+                onOpenSetup={
+                  availability.setup && props.onOpenProviderSetup
+                    ? () => {
+                        setIsMenuOpen(false);
+                        props.onOpenProviderSetup?.(availability.instanceId);
+                      }
+                    : null
+                }
+              />
+            )}
+            <div className="composer-model-menu">
+              {content}
+              {props.composer.choices}
+            </div>
           </div>
         </PopoverPopup>
       </Popover>
@@ -435,54 +434,3 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     </Popover>
   );
 });
-
-/** The control's dot: the agent is not fully available, in the tone its status has. */
-function AvailabilityDot({ availability }: { readonly availability: ProviderAvailability }) {
-  return (
-    <span
-      role="img"
-      aria-label={availability.title}
-      data-tone={availability.tone}
-      className={cn(
-        "absolute -top-0.5 -right-0.5 size-1.5 rounded-full ring-2 ring-(--contrast-input)",
-        availability.tone === "error" ? "bg-status-failed" : "bg-status-attention",
-      )}
-    />
-  );
-}
-
-/** What the dot means, at the top of the control's menu, and the way to fix it. */
-function AvailabilityNote({
-  availability,
-  onOpenSetup,
-}: {
-  readonly availability: ProviderAvailability;
-  readonly onOpenSetup: (() => void) | null;
-}) {
-  return (
-    <div
-      className="flex items-start gap-2 border-b border-border/70 px-3 py-2 text-xs leading-snug"
-      data-agent-availability=""
-      role={availability.tone === "error" ? "alert" : "status"}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "mt-1.5 size-1.5 shrink-0 rounded-full",
-          availability.tone === "error" ? "bg-status-failed" : "bg-status-attention",
-        )}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-foreground">{availability.title}</p>
-        {availability.message === null ? null : (
-          <p className="text-muted-foreground">{availability.message}</p>
-        )}
-        {onOpenSetup === null ? null : (
-          <InlineButton className="mt-0.5" onClick={onOpenSetup}>
-            Open coding agent setup
-          </InlineButton>
-        )}
-      </div>
-    </div>
-  );
-}
