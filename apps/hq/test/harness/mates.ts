@@ -7,6 +7,7 @@
  */
 import * as PgConnection from "@effect/sql-pg/PgConnection";
 import { assert } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
@@ -70,7 +71,11 @@ export const rowsWhere = (
         Effect.map((result) => result.rows as ReadonlyArray<Record<string, unknown>>),
         Effect.filterOrFail(matches),
         Effect.retry(Schedule.spaced(Duration.millis(50))),
-        Effect.timeout(Duration.seconds(10)),
+        Effect.timeoutOrElse({
+          duration: Duration.seconds(10),
+          orElse: () =>
+            Effect.fail(new Cause.TimeoutError("HQ rowsWhere projection timed out after 10s")),
+        }),
       );
     }),
   ).pipe(Effect.orDie);

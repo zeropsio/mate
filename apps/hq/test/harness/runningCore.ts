@@ -13,6 +13,7 @@ import * as NodeStreamConsumers from "node:stream/consumers";
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { assert } from "@effect/vitest";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -453,7 +454,10 @@ export const untilHealth = (call: Call, state: string) =>
         response.body.state === state,
     ),
     Effect.retry(Schedule.spaced(Duration.millis(50))),
-    Effect.timeout(Duration.seconds(10)),
+    Effect.timeoutOrElse({
+      duration: Duration.seconds(10),
+      orElse: () => Effect.fail(new Cause.TimeoutError("HQ setup readiness timed out after 10s")),
+    }),
   );
 
 /** A one-use ticket for `session`'s socket. */
