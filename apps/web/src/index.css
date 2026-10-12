@@ -3257,6 +3257,380 @@ code {
     }
   }
 
+  /* ==== a project's Review and Release tags, and its changes popover ==== */
+
+  /* The tags at a project row's end: 22 px, 12/16 · 500, 7 px corners, 6 px apart; one metric for
+     every tag on the row (the environment tag wears `.menu-tag` too). */
+  .menu-tags {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .menu-tag {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    white-space: nowrap;
+    cursor: pointer;
+    outline: none;
+    transition:
+      box-shadow 150ms var(--ease-out-strong),
+      background-color 150ms var(--ease-out-strong),
+      scale 150ms var(--ease-out-strong);
+  }
+
+  .menu-tag:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+  }
+
+  /* Review: quiet, the card's ground in a hairline that firms under the pointer and while its
+     popover is open. */
+  .menu-tag-review {
+    background-color: var(--card);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-tag-review[data-popup-open] {
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
+  }
+
+  /* Release: the solid primary — what waits for production is the row's one loud word. */
+  .menu-tag-release {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .menu-tag-review:hover {
+      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--sidebar-foreground) 30%, transparent);
+    }
+
+    .menu-tag-release:hover {
+      background-color: color-mix(in oklab, var(--primary) 88%, var(--color-black));
+    }
+  }
+
+  .menu-tag[data-phase="exit"] {
+    pointer-events: none;
+  }
+
+  /* A count after Review, in its own clipped cell: the new number rolls in as the old rolls out. */
+  .menu-tag-count {
+    display: inline-grid;
+    height: 16px;
+    margin-left: 4px;
+    overflow: hidden;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .menu-tag-digit {
+    grid-area: 1 / 1;
+    text-align: end;
+  }
+
+  /* A popover of what is to review: 340 px under its tag, aligned to its end, its own scroll past
+     480 px, the heading held at its top. */
+  .menu-tagpop {
+    width: min(340px, calc(100vw - 16px));
+    max-height: min(480px, 70vh, var(--available-height));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 6px 6px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background-color: var(--card);
+    color: var(--card-foreground);
+    box-shadow:
+      0 18px 40px -18px color-mix(in srgb, var(--color-black) 38%, transparent),
+      0 2px 6px -2px color-mix(in srgb, var(--color-black) 8%, transparent);
+    outline: none;
+    transform-origin: var(--transform-origin);
+    transition:
+      opacity 160ms var(--ease-out-strong),
+      scale 160ms var(--ease-out-strong);
+  }
+
+  .menu-tagpop:is([data-starting-style], [data-ending-style]) {
+    opacity: 0;
+    scale: 0.98;
+  }
+
+  .menu-tagpop[data-ending-style] {
+    transition-duration: 120ms;
+  }
+
+  .dark .menu-tagpop {
+    box-shadow:
+      0 18px 44px -18px color-mix(in srgb, var(--color-black) 90%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--color-black) 35%, transparent);
+  }
+
+  .menu-tagpop-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    outline: none;
+  }
+
+  .menu-tagpop-title {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 12px 10px 6px;
+    background-color: var(--card);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+  }
+
+  /* An item that leaves fades and the list closes over it; one that arrives opens its place. */
+  .menu-tagpop-row {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition:
+      grid-template-rows 160ms var(--ease-out-strong),
+      opacity 120ms ease;
+  }
+
+  .menu-tagpop-row > * {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .menu-tagpop-row[data-leaving] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+
+  /* One item: its maker's face, its title over who made it, and Review at its end — the whole
+     item opens it. */
+  .menu-tagpop-item {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    column-gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    text-align: start;
+    cursor: pointer;
+    outline: none;
+    transition: background-color 120ms ease;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .menu-tagpop-item:hover {
+      background-color: var(--accent);
+    }
+  }
+
+  .menu-tagpop-item:focus-visible {
+    background-color: var(--accent);
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+  }
+
+  .menu-tagpop-face {
+    position: relative;
+    display: flex;
+    width: 22px;
+    height: 22px;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted-foreground);
+  }
+
+  /* A colleague's Mate: its owner's mark, 12 px, cut out of the 22 px face's corner. */
+  .menu-tagpop-cut {
+    -webkit-mask-image: radial-gradient(
+      circle 8px at 18px 18px,
+      transparent 7.5px,
+      currentColor 8px
+    );
+    mask-image: radial-gradient(circle 8px at 18px 18px, transparent 7.5px, currentColor 8px);
+  }
+
+  .menu-owner.menu-tagpop-owner {
+    top: 12px;
+    left: 12px;
+    width: 12px;
+    height: 12px;
+    font-size: 7px;
+  }
+
+  .menu-tagpop-text {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .menu-tagpop-name {
+    display: block;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .menu-tagpop-mark {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 5px;
+    vertical-align: -1px;
+    color: var(--muted-foreground);
+  }
+
+  .menu-tagpop-by {
+    overflow: hidden;
+    color: var(--muted-foreground);
+    font-size: 12px;
+    line-height: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Review, the verb said: solid ink where the review waits on the viewer, a hairline where it is
+     a colleague's, whose face is paler too. */
+  .menu-tagpop-verb {
+    display: inline-grid;
+    height: 26px;
+    place-items: center;
+    padding: 0 10px;
+    border-radius: 7px;
+    background-color: var(--foreground);
+    color: var(--background);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    transition: scale 150ms var(--ease-out-strong);
+  }
+
+  .menu-tagpop-item:not([data-mine]) .menu-tagpop-verb {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--muted-foreground);
+  }
+
+  .menu-tagpop-item:not([data-mine]) [data-mate-face-body] path {
+    fill-opacity: 0.55;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-tag:active,
+    .menu-tagpop-item:active .menu-tagpop-verb {
+      scale: 0.96;
+    }
+
+    .menu-tag[data-phase="enter"] {
+      animation: menu-tag-in 160ms var(--ease-out-strong);
+    }
+
+    .menu-tag[data-phase="exit"] {
+      animation: menu-tag-out 120ms var(--ease-out-strong) forwards;
+    }
+
+    .menu-tag-digit[data-in][data-dir="up"] {
+      animation: menu-tag-digit-from-below 160ms var(--ease-out-strong);
+    }
+
+    .menu-tag-digit[data-in][data-dir="down"] {
+      animation: menu-tag-digit-from-above 160ms var(--ease-out-strong);
+    }
+
+    .menu-tag-digit[data-out][data-dir="up"] {
+      animation: menu-tag-digit-to-above 160ms var(--ease-out-strong) forwards;
+    }
+
+    .menu-tag-digit[data-out][data-dir="down"] {
+      animation: menu-tag-digit-to-below 160ms var(--ease-out-strong) forwards;
+    }
+
+    .menu-tagpop-row[data-arrive] {
+      animation: menu-tagpop-arrive 200ms var(--ease-out-strong);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .menu-tag[data-phase="exit"],
+    .menu-tag-digit[data-out] {
+      display: none;
+    }
+
+    .menu-tagpop,
+    .menu-tagpop-row {
+      transition: opacity 120ms ease;
+    }
+
+    .menu-tagpop:is([data-starting-style], [data-ending-style]) {
+      scale: 1;
+    }
+  }
+
+  /* The project tags' motion (`.menu-tag`, `.menu-tag-digit`, `.menu-tagpop-row`). */
+  @keyframes menu-tag-in {
+    from {
+      opacity: 0;
+      scale: 0.96;
+    }
+  }
+
+  @keyframes menu-tag-out {
+    to {
+      opacity: 0;
+      scale: 0.96;
+    }
+  }
+
+  @keyframes menu-tag-digit-from-below {
+    from {
+      opacity: 0;
+      translate: 0 70%;
+    }
+  }
+
+  @keyframes menu-tag-digit-from-above {
+    from {
+      opacity: 0;
+      translate: 0 -70%;
+    }
+  }
+
+  @keyframes menu-tag-digit-to-above {
+    to {
+      opacity: 0;
+      translate: 0 -70%;
+    }
+  }
+
+  @keyframes menu-tag-digit-to-below {
+    to {
+      opacity: 0;
+      translate: 0 70%;
+    }
+  }
+
+  @keyframes menu-tagpop-arrive {
+    from {
+      grid-template-rows: 0fr;
+      opacity: 0;
+    }
+  }
+
+  /* ==== end of a project's Review and Release tags ==== */
+
   /* A change on its Mate's line: the git-pull-request mark at 14 px before
      its title, in the line's own ink. */
   .menu-change-mark {
