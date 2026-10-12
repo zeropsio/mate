@@ -22,6 +22,34 @@ const setup = Effect.gen(function* () {
 
 describe("C: opening a Mate and chat", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    // Decision: keep fresh-send working; restore the guard's intent; Aleš's archive source is the one source.
+    it.effect(
+      "a Mate's non-crewmate engine conversation never becomes a generic sidebar thread",
+      () =>
+        Effect.gen(function* () {
+          const { s, chat } = yield* setup;
+          const fixture = chat.fixture();
+          // Fresh engine conversations have no V1 shell to borrow ownership from.
+          const shell = fixture.mate.shell.bind(fixture.mate);
+          fixture.mate.shell = () => ({ ...shell(), threads: [] });
+          yield* s.given.signedIn;
+          yield* chat.when.open();
+          yield* chat.then.text("The existing conversation is still here");
+          yield* Effect.promise(async () => {
+            await s.page.setViewport({ width: 1786, height: 1000 });
+            expect(
+              await s.page.$$("[data-thread-item]"),
+              "ASSERTION: a Mate-owned conversation has no generic sidebar duplicate",
+            ).toHaveLength(0);
+            expect(
+              await s.page.$$('[data-zerops-mate-row="Ada"]'),
+              "ASSERTION: the Mate has exactly one row in SidebarZeropsTree",
+            ).toHaveLength(1);
+          });
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
     it.effect(
       "archive and start fresh opens a new conversation and Undo restores the old one",
       () =>
