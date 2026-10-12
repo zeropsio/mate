@@ -59,6 +59,8 @@ export function SidebarProjectFold({
     }
     // Where it stands now, mid-movement included; a fold just drawn to open starts from nothing.
     const from = firstPaint && open ? 0 : element.getBoundingClientRect().height;
+    // Cancelling rejects its finished promise; nothing waits on it.
+    running.current?.finished.catch(() => undefined);
     running.current?.cancel();
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!open && reduced) {
