@@ -73,8 +73,9 @@ function milo(
           ...(window === undefined ? {} : { window }),
         },
         summary: {
-          items: 4,
-          calls: { command: 1 },
+          // Refused before it did anything: the person's message and the limit's own words.
+          items: work ? 4 : 2,
+          calls: work ? { command: 1 } : {},
           // The engine records no answer for a run a usage limit cut (B5).
           answerItemId: null,
           lastItemSeq: 4,
@@ -350,6 +351,17 @@ describe("a conversation paused at the usage limit", () => {
       }
     },
   );
+
+  // The server counts the person's message and the limit's own note as the run's two items.
+  it("a run the limit refused before it did anything reads as its notice after a reload too", () => {
+    const shown = (rows: ReturnType<typeof milo>["rows"]) => ({
+      pause: pauseIndex(rows) === rows.length - 1,
+      waiting: rows.some((row) => row.kind === "record" && row.status?.paused !== undefined),
+    });
+    const live = shown(milo("paused", { work: false }).rows);
+    expect(live).toEqual({ pause: true, waiting: false });
+    expect(shown(milo("paused", { work: false, reload: true }).rows)).toEqual(live);
+  });
 
   it("draws nothing for an answer the limit left empty", () => {
     const { rows } = milo("paused", { work: false, answer: "" });
