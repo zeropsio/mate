@@ -36,6 +36,7 @@ import {
   renderMacStatus,
   macSyncArgs,
   macSyncPrepareCommand,
+  macViewTarget,
   parseMacCommand,
 } from "../zerops/mac/MacHost.ts";
 import {
@@ -236,7 +237,7 @@ const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
     }
     case "device": {
       const record = pairedRecord(paths);
-      return run(
+      const code = run(
         "ssh",
         macSshArgs(
           record,
@@ -244,6 +245,14 @@ const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
           macDeviceCommand(record, command.args, { whileInUse: command.whileInUse }),
         ),
       );
+      // The live view (the Mac tab) follows the app an agent opened last.
+      const app = macViewTarget(command.args);
+      if (code === 0 && app !== undefined) {
+        NodeFS.writeFileSync(paths.view, `${JSON.stringify({ app, at: Date.now() })}\n`, {
+          mode: 0o600,
+        });
+      }
+      return code;
     }
     case "screenshot": {
       const record = pairedRecord(paths);
@@ -282,6 +291,7 @@ const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
       const record = readRecord(paths);
       NodeFS.rmSync(paths.record, { force: true });
       NodeFS.rmSync(paths.knownHosts, { force: true });
+      NodeFS.rmSync(paths.view, { force: true });
       console.log(
         [
           record ? `Forgot ${record.name}.` : "No Mac was paired.",

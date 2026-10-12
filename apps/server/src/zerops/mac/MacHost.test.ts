@@ -8,18 +8,22 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   acceptMacRegistration,
+  decodeMacViewRecord,
   isIpv4InRange,
   knownHostsLine,
   macDeviceCommand,
   macHostPaths,
   type MacHostRecord,
   macRunCommand,
+  macScreenPoint,
   macScreenshotCommand,
   macSshArgs,
   macStatusReport,
   renderMacStatus,
   macSshPort,
   macSyncArgs,
+  macViewStreamCommand,
+  macViewTarget,
   parseMacCommand,
 } from "./MacHost.ts";
 
@@ -327,6 +331,87 @@ describe("a Mac the user is working on", () => {
     const { code, drove } = onMac((paired) => macDeviceCommand(paired, ["apps"]), 3);
     expect(code).toBe(0);
     expect(drove).toBe("apps --platform macos\n");
+  });
+});
+
+describe("the app the live view follows", () => {
+  it.each([
+    [["open", "com.example.Counter"], "com.example.Counter"],
+    [["open", "Counter", "--relaunch"], "Counter"],
+    [["open", "--platform", "macos", "com.example.Counter"], "com.example.Counter"],
+    [["open", "--surface=app", "Counter"], "Counter"],
+  ] as const)("mac device %j shows that app in the live view", (args, app) => {
+    expect(macViewTarget(args)).toBe(app);
+  });
+
+  it.each([
+    [["open"]],
+    [["open", "--surface", "frontmost-app"]],
+    [["press", "@e4"]],
+    [[]],
+  ] as const)("mac device %j leaves the live view on the app it showed", (args) => {
+    expect(macViewTarget(args)).toBeUndefined();
+  });
+
+  it("reads back the app it recorded, and nothing from a broken record", () => {
+    expect(decodeMacViewRecord(JSON.stringify({ app: "com.example.Counter", at: 5 }))).toEqual({
+      app: "com.example.Counter",
+      at: 5,
+    });
+    expect(decodeMacViewRecord("{")).toBeUndefined();
+    expect(decodeMacViewRecord(JSON.stringify({ at: 5 }))).toBeUndefined();
+  });
+
+  it("asks the Mac's view helper for that app's window over the one ssh connection", () => {
+    const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-view-"));
+    try {
+      const bin = NodePath.join(home, "bin");
+      NodeFS.mkdirSync(bin);
+      NodeFS.writeFileSync(NodePath.join(bin, "curl"), `#!/bin/sh\nprintf '%s\\n' "$@"\n`, {
+        mode: 0o755,
+      });
+      const result = NodeChildProcess.spawnSync(
+        "/bin/sh",
+        ["-c", macViewStreamCommand({ ...record, root: home }, "Counter & Co's", 2)],
+        { encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin` } },
+      );
+      expect(result.status).toBe(0);
+      const args = result.stdout.trim().split("\n");
+      expect(args).toEqual(
+        expect.arrayContaining([
+          `${home}/view.sock`,
+          "http://mate/stream?app=Counter%20%26%20Co's&fps=2",
+        ]),
+      );
+    } finally {
+      NodeFS.rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a click in the live view", () => {
+  it.each([
+    // A Retina capture is twice the window's size in points.
+    [
+      { x: 230, y: 408 },
+      { x: 215, y: 254 },
+    ],
+    [
+      { x: 0, y: 0 },
+      { x: 100, y: 50 },
+    ],
+    [
+      { x: 460, y: 816 },
+      { x: 330, y: 458 },
+    ],
+  ])("at image pixel %j lands on the Mac's screen at %j", (pixel, point) => {
+    expect(
+      macScreenPoint(
+        { x: 100, y: 50, width: 230, height: 408 },
+        { width: 460, height: 816 },
+        pixel,
+      ),
+    ).toEqual(point);
   });
 });
 

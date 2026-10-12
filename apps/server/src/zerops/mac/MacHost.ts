@@ -43,6 +43,8 @@ export interface MacHostPaths {
   readonly publicKey: string;
   readonly record: string;
   readonly knownHosts: string;
+  /** The app the live view shows: the last one an agent opened with `mac device open`. */
+  readonly view: string;
 }
 
 export const macHostPaths = (baseDir: string): MacHostPaths => {
@@ -53,11 +55,59 @@ export const macHostPaths = (baseDir: string): MacHostPaths => {
     publicKey: `${dir}/id_ed25519.pub`,
     record: `${dir}/host.json`,
     knownHosts: `${dir}/known_hosts`,
+    view: `${dir}/view.json`,
   };
 };
 
 export const decodeMacHostRecord = (json: string): MacHostRecord | undefined =>
   Option.getOrUndefined(decodeRecordJson(json));
+
+/** What the live view shows: an app (bundle id or name), and when an agent opened it. */
+export const MacViewRecord = Schema.Struct({ app: Schema.String, at: Schema.Number });
+export type MacViewRecord = typeof MacViewRecord.Type;
+
+const decodeViewJson = Schema.decodeUnknownOption(Schema.fromJsonString(MacViewRecord));
+
+export const decodeMacViewRecord = (json: string): MacViewRecord | undefined =>
+  Option.getOrUndefined(decodeViewJson(json));
+
+/** agent-device flags of `open` that take the next word as their value. */
+const OPEN_VALUE_FLAGS = new Set(["--platform", "--surface", "--device", "--session", "--udid"]);
+
+/** The app `mac device <args>` opens, which the live view then follows; none for any other command. */
+export const macViewTarget = (args: ReadonlyArray<string>): string | undefined => {
+  if (args[0] !== "open") return undefined;
+  for (let index = 1; index < args.length; index++) {
+    const arg = args[index]!;
+    if (OPEN_VALUE_FLAGS.has(arg)) {
+      index++;
+      continue;
+    }
+    if (!arg.startsWith("-")) return arg;
+  }
+  return undefined;
+};
+
+/** A window on the Mac's screen, in points, as macOS reports it. */
+export interface MacWindowBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * A point on a captured window image (pixels; a Retina capture is twice the
+ * window's size) to the screen point agent-device presses.
+ */
+export const macScreenPoint = (
+  bounds: MacWindowBounds,
+  image: { readonly width: number; readonly height: number },
+  pixel: { readonly x: number; readonly y: number },
+): { readonly x: number; readonly y: number } => ({
+  x: Math.round(bounds.x + (pixel.x * bounds.width) / (image.width || bounds.width || 1)),
+  y: Math.round(bounds.y + (pixel.y * bounds.height) / (image.height || bounds.height || 1)),
+});
 
 /**
  * The Mac's registration, accepted only from inside the project VPN range: the
@@ -340,6 +390,22 @@ export const macScreenshotCommand = (
   const file = `"$TMPDIR/mate-screenshot-$$.png"`;
   return `${options.whileInUse ? "" : macInUseGuard(record)}${agentDevice(record)} screenshot ${file} --platform macos >/dev/null && cat ${file} && rm -f ${file}`;
 };
+
+/** The Mac-side live view helper's socket; see `macViewScript.ts`. */
+export const macViewSocket = (record: MacHostRecord): string => `${record.root}/view.sock`;
+
+/**
+ * Streams the app's window from the Mac's view helper for as long as the ssh
+ * connection lasts: one connection, frames at `fps`. curl exits 7 when no
+ * helper answers (a pairing older than the live view).
+ */
+export const macViewStreamCommand = (record: MacHostRecord, app: string, fps: number): string =>
+  `exec curl -sN --unix-socket ${shellQuote(macViewSocket(record))} ${shellQuote(
+    `http://mate/stream?app=${encodeURIComponent(app)}&fps=${fps}`,
+  )}`;
+
+/** curl's own exit code for a socket nobody listens on. */
+export const MAC_VIEW_NO_HELPER_EXIT = 7;
 
 /** What the Mac reports about itself, one `key=value` per line for {@link macStatusReport}. */
 export const macStatusCommand = (record: MacHostRecord): string =>
