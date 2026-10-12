@@ -267,6 +267,10 @@
       "types": "./src/zerops/browserStream.ts",
       "default": "./src/zerops/browserStream.ts"
     },
+    "./zerops/macView": {
+      "types": "./src/zerops/macView.ts",
+      "default": "./src/zerops/macView.ts"
+    },
     "./zerops/timelineFollow": {
       "types": "./src/zerops/timelineFollow.ts",
       "default": "./src/zerops/timelineFollow.ts"
