@@ -3966,6 +3966,129 @@ code {
     }
   }
 
+  /* ---- The crew as mini Mates (SidebarCrewMinis.tsx) ----
+     Ducklings after their Mate's name on its first line: 15 px faces 3 px
+     apart, 2 px after the name, centred on the line's 22 px; the one asking
+     17 px; the rest a small muted "+N". A mini's box holds its place, its
+     body moves: a cheer when its work ends while watched, a turn-out when it
+     comes to need you, both once (`data-crew-mini-greet`). At work they
+     march: each hops with its face's own working turn, on beats staggered
+     so the hops fall one after another; with reduced motion every pose
+     stands still. */
+  .menu-minis {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 3px;
+    height: 22px;
+    margin-inline-start: 2px;
+  }
+
+  .menu-mini {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 15px;
+    height: 15px;
+  }
+
+  .menu-mini[data-crew-mini-state="needs"] {
+    width: 17px;
+    height: 17px;
+  }
+
+  .menu-mini-body {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform-origin: 50% 90%;
+  }
+
+  .menu-mini-more {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    height: 16px;
+    padding-inline: 5px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--contrast-sidebar-foreground) 8%, transparent);
+    color: var(--contrast-sidebar-muted-foreground);
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-mini-body[data-crew-mini-greet="cheer"] {
+      animation: menu-mini-cheer 900ms var(--ease-out-strong) both;
+    }
+
+    .menu-mini-body[data-crew-mini-greet="turn"] {
+      animation: menu-mini-turn 560ms var(--ease-out-strong) both;
+    }
+
+    /* At work, each hops as its face turns — the turn alone is a twitch at
+       15 px — on the turn's own beat, which the minis stagger. */
+    .menu-mini [data-mate-face-state="working"] [data-mate-face-hop] {
+      animation: menu-mini-march 2.4s infinite;
+      animation-delay: calc(var(--mate-face-phase, 0) * -0.18s);
+    }
+  }
+
+  /* A 3 px hop in a few frames when the face's turn starts (55 %), then
+     still: stepped, so a menu of crews costs a handful of frames a beat. */
+  @keyframes menu-mini-march {
+    0%,
+    55% {
+      transform: none;
+      animation-timing-function: steps(1, end);
+    }
+    56% {
+      transform: none;
+      animation-timing-function: steps(3, end);
+    }
+    60% {
+      transform: translateY(-3px);
+      animation-timing-function: steps(4, end);
+    }
+    66%,
+    100% {
+      transform: none;
+      animation-timing-function: steps(1, end);
+    }
+  }
+
+  /* Up with a little scale and tilt, a counter-tilt, settled. */
+  @keyframes menu-mini-cheer {
+    0% {
+      transform: none;
+    }
+    25% {
+      transform: translateY(-6px) scale(1.25) rotate(-10deg);
+    }
+    50% {
+      transform: translateY(0) scale(1) rotate(8deg);
+    }
+    72% {
+      transform: translateY(-2px) rotate(-4deg);
+    }
+    100% {
+      transform: none;
+    }
+  }
+
+  /* Turned away, it turns round to face you. */
+  @keyframes menu-mini-turn {
+    0% {
+      transform: perspective(60px) rotateY(85deg) scale(0.85);
+    }
+    100% {
+      transform: none;
+    }
+  }
+  /* ---- end of the crew as mini Mates ---- */
+
   /* The one selected band (`SidebarSelectedBand`): behind every row of the
      list, which is its own stacking context, over the open Mate's unit — its
      row and its crew's line — with the row's corners. It is placed by
