@@ -84,9 +84,6 @@ describe("B: menu liveness", () => {
         yield* s.when.conversation.sends("Continue in the same Mate after Move");
         yield* s.then.conversation.showsMessage("Continue in the same Mate after Move");
         yield* second.then.conversation.showsMessage("Continue in the same Mate after Move");
-        yield* s.menu.toggle("Other");
-        yield* s.menu.absent("Ada");
-        yield* s.menu.toggle("Other");
         yield* s.menu.grouped("Ada", "Other");
         yield* s.then.noReload;
         yield* second.then.noReload;
@@ -324,7 +321,9 @@ describe("B: menu liveness", () => {
     it.effect("folding and expanding restores the application's Mate rows", () =>
       Effect.gen(function* () {
         const s = yield* menuScenario();
+        // A project folds once it holds more than one Mate.
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.project("Bea", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         yield* s.menu.grouped("Ada", "Shop");
         yield* s.menu.toggle("Shop");
