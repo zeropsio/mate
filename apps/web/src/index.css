@@ -7356,6 +7356,25 @@ button.run-bar:focus-visible {
   outline-offset: 2px;
   border-radius: 18px;
 }
+/* A step done: its kind's mark takes the place its Mate's face held while it ran. */
+.run-mark-done {
+  display: flex;
+  animation: run-mark-done 180ms var(--ease-out-strong) both;
+}
+
+@keyframes run-mark-done {
+  from {
+    opacity: 0;
+    scale: 0.7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-mark-done {
+    animation: none;
+  }
+}
+
 /* A fade at an edge says there is more past it. */
 .run-scroll[data-more-above] {
   mask-image: linear-gradient(to bottom, transparent, currentColor 24px);
