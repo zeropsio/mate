@@ -6245,6 +6245,21 @@ a.ov-card-site:hover {
   color: var(--muted-foreground);
 }
 
+/* The row's end: when it last moved, and Review on a change still open. */
+.ov-change-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ov-change[data-open] .ov-change-end {
+  align-self: center;
+}
+
+.ov-change:hover .ov-review {
+  background-color: color-mix(in oklab, var(--foreground) 4%, var(--background));
+}
+
 .ov-change[data-open] .ov-change-icon {
   color: var(--foreground);
 }

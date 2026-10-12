@@ -29,11 +29,16 @@ import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "~/components/zerops/projects/PlacePanel";
 import {
+  CardChanges,
   CardMate,
   CardMateLiftActions,
   CardMateTime,
 } from "~/components/zerops/projects/ProjectCards";
-import { cardMateReading, cardPeople } from "~/components/zerops/projects/projectCard.logic";
+import {
+  cardMateReading,
+  cardPeople,
+  type CardChange,
+} from "~/components/zerops/projects/projectCard.logic";
 import {
   ZeropsProjectsFlow,
   type ProjectsFlowGroup,
@@ -507,6 +512,30 @@ const OTHERS: ReadonlyArray<Project> = [
 const byId = new Map([...PROJECTS, ...OTHERS].map((entry) => [entry.entry.group.groupId, entry]));
 const mineOf = (entry: Mate) => entry.owner === ADA;
 
+/** A card's latest changes: one still open, its Review at its end, and one merged. */
+const HARNESS_CHANGES: ReadonlyArray<CardChange> = [true, false].map((open, index) => ({
+  pull: {
+    repository: "app",
+    number: index + 1,
+    title: open ? "Promo microsite: the rules and the receipt upload" : "The group's import files",
+    kind: "code",
+    mateProjectId: "p-wren",
+    url: undefined,
+    mergeability: "mergeable",
+    behind: false,
+    merged: !open,
+    mergedAt: undefined,
+    headSha: "abc",
+    baseBranch: "main",
+    line: `app #${String(index + 1)}`,
+    updatedAt: undefined,
+  },
+  open,
+  words: open ? "Ready to merge" : "Merged",
+  tone: "off",
+  at: undefined,
+}));
+
 function HarnessPage() {
   return (
     <div className="flex h-dvh bg-background text-foreground">
@@ -557,6 +586,13 @@ function HarnessPage() {
                 </span>
               );
             }}
+            renderChanges={() => (
+              <CardChanges
+                changes={HARNESS_CHANGES}
+                mateName={() => "Wren"}
+                onOpen={(change) => acted.push(`review:${String(change.pull.number)}`)}
+              />
+            )}
             renderEnvironment={() => null}
             renderGroupMenu={() => null}
             renderMate={(entry, options) => {
