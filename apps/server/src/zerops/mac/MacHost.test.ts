@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -186,11 +186,9 @@ describe("commands on the Mac", () => {
     [["devices", "--platform", "ios"], "'devices' '--platform' 'ios'"],
     [["fill", "@e2", "it's done"], "'fill' '@e2' 'it'\\''s done' '--platform' 'macos'"],
   ])("aims agent-device %j at macOS apps unless a platform is given", (args, expected) => {
-    expect(
-      macDeviceCommand(record, args).endsWith(
-        `'/Users/ales/.zerops-mate/Prj0AAAAAAAAAAAAAAAAAA/bin/agent-device' ${expected}`,
-      ),
-    ).toBe(true);
+    expect(macDeviceCommand(record, args)).toContain(
+      `'/Users/ales/.zerops-mate/Prj0AAAAAAAAAAAAAAAAAA/bin/agent-device' ${expected}`,
+    );
   });
 });
 
@@ -329,5 +327,52 @@ describe("a Mac the user is working on", () => {
     const { code, drove } = onMac((paired) => macDeviceCommand(paired, ["apps"]), 3);
     expect(code).toBe(0);
     expect(drove).toBe("apps --platform macos\n");
+  });
+});
+
+describe("the Mate's own clicks", () => {
+  // Steps run in one Mac home, as a session of commands would: each with the idle time ioreg reports.
+  const session = (
+    steps: ReadonlyArray<{ readonly idle: number; readonly drovePast?: number }>,
+  ) => {
+    const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-own-"));
+    try {
+      const bin = NodePath.join(home, "bin");
+      NodeFS.mkdirSync(bin);
+      NodeFS.writeFileSync(
+        NodePath.join(bin, "agent-device"),
+        `#!/bin/sh\necho "$@" >> "${home}/drove"\n`,
+        { mode: 0o755 },
+      );
+      return steps.map((step) => {
+        NodeFS.writeFileSync(
+          NodePath.join(bin, "ioreg"),
+          `#!/bin/sh\necho '    |   "HIDIdleTime" = ${step.idle * 1_000_000_000}'\n`,
+          { mode: 0o755 },
+        );
+        if (step.drovePast !== undefined) {
+          NodeFS.writeFileSync(
+            NodePath.join(home, "last-drive"),
+            String(Math.floor(Date.now() / 1000) - step.drovePast),
+          );
+        }
+        return NodeChildProcess.spawnSync(
+          "/bin/sh",
+          ["-c", macDeviceCommand({ ...record, root: home }, ["press", "12", "34"])],
+          { encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin` } },
+        ).status;
+      });
+    } finally {
+      NodeFS.rmSync(home, { recursive: true, force: true });
+    }
+  };
+
+  it("never make the Mac look busy to the Mate's next click", () => {
+    // The first click finds the Mac idle; the second sees only the input the first one made.
+    expect(session([{ idle: 120 }, { idle: 1 }])).toEqual([0, 0]);
+  });
+
+  it("do not hide someone working on the Mac after the Mate's last click", () => {
+    expect(session([{ idle: 3, drovePast: 30 }])).toEqual([75]);
   });
 });

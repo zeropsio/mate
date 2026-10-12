@@ -289,14 +289,20 @@ const agentDevice = (record: MacHostRecord) => shellQuote(`${record.root}/bin/ag
 /** Seconds since the last keyboard or mouse input after which the Mac counts as free. */
 export const MAC_IDLE_SECONDS = 60;
 
+/** When the Mate last drove the Mac, in epoch seconds: its own clicks are input too. */
+const lastDriveFile = (record: MacHostRecord) => shellQuote(`${record.root}/last-drive`);
+
 /**
  * Driving an app raises it and clicks where it points, so on a Mac its user is
  * working on it would take over their screen. Unless they said go ahead, the
  * command waits for the Mac to be idle and otherwise stops with EX_TEMPFAIL.
+ * Input no later than the Mate's own last drive was the Mate's, so it never
+ * makes the Mac look busy to the Mate's next click.
  */
-const macInUseGuard = (): string =>
+const macInUseGuard = (record: MacHostRecord): string =>
   `idle=$(ioreg -c IOHIDSystem 2>/dev/null | awk '/HIDIdleTime/ { print int($NF / 1000000000); exit }'); ` +
-  `if [ "\${idle:-${MAC_IDLE_SECONDS}}" -lt ${MAC_IDLE_SECONDS} ]; then ` +
+  `own=$(cat ${lastDriveFile(record)} 2>/dev/null); case "$own" in ''|*[!0-9]*) own=0;; esac; ` +
+  `if [ "\${idle:-${MAC_IDLE_SECONDS}}" -lt ${MAC_IDLE_SECONDS} ] && [ $(( $(date +%s) - own )) -gt $(( \${idle:-${MAC_IDLE_SECONDS}} + 2 )) ]; then ` +
   `echo "The user is working on this Mac right now (last input \${idle}s ago), so this did not take over their screen. Ask them, or wait until they step away; with their go-ahead, add ${WHILE_IN_USE}." >&2; exit 75; fi; `;
 
 /** agent-device commands that move nothing on screen, so they run while the user works. */
@@ -320,8 +326,10 @@ export const macDeviceCommand = (
   const platform = args.some((arg) => arg === "--platform" || arg.startsWith("--platform="))
     ? []
     : ["--platform", "macos"];
-  const guard = options.whileInUse || MOVES_NOTHING.has(args[0] ?? "") ? "" : macInUseGuard();
-  return guard + [agentDevice(record), ...[...args, ...platform].map(shellQuote)].join(" ");
+  const command = [agentDevice(record), ...[...args, ...platform].map(shellQuote)].join(" ");
+  if (MOVES_NOTHING.has(args[0] ?? "")) return command;
+  const guard = options.whileInUse ? "" : macInUseGuard(record);
+  return `${guard}${command}; rc=$?; date +%s > ${lastDriveFile(record)} 2>/dev/null; exit $rc`;
 };
 
 /** Takes a screenshot on the Mac and streams the PNG to stdout; it raises the app, so it is guarded. */
@@ -330,7 +338,7 @@ export const macScreenshotCommand = (
   options: { readonly whileInUse?: boolean } = {},
 ): string => {
   const file = `"$TMPDIR/mate-screenshot-$$.png"`;
-  return `${options.whileInUse ? "" : macInUseGuard()}${agentDevice(record)} screenshot ${file} --platform macos >/dev/null && cat ${file} && rm -f ${file}`;
+  return `${options.whileInUse ? "" : macInUseGuard(record)}${agentDevice(record)} screenshot ${file} --platform macos >/dev/null && cat ${file} && rm -f ${file}`;
 };
 
 /** What the Mac reports about itself, one `key=value` per line for {@link macStatusReport}. */
