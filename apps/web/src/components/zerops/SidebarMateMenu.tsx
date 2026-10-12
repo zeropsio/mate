@@ -28,6 +28,7 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } f
 import { CHANGE_FACE_VERB } from "./ZeropsChangeFaceDialog.logic";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import type { ZeropsMenuAction, ZeropsMenuEntry } from "./ZeropsProjectMenu";
+import type { HeadingMenuEntry } from "./SidebarZeropsTree.logic";
 
 /** One Mate's name, edited where it stands (`useMateActions.renameInPlace`). */
 export interface MateRenameAction {
@@ -237,6 +238,7 @@ export function MateMenu({
   open,
   at,
   onOpenChange,
+  project,
   ...items
 }: MateMenuItemsProps & {
   readonly name: string;
@@ -244,6 +246,11 @@ export function MateMenu({
   /** A right-click's point; absent, the menu hangs off its trigger. */
   readonly at: MenuPoint | undefined;
   readonly onOpenChange: (open: boolean) => void;
+  /**
+   * Its project's own items, where its row is the project's (one Mate): first, a line apart from
+   * the Mate's — one menu, never two ··· on one row.
+   */
+  readonly project?: ReadonlyArray<HeadingMenuEntry> | undefined;
 }) {
   return (
     <Menu onOpenChange={onOpenChange} open={open}>
@@ -274,7 +281,84 @@ export function MateMenu({
         className="w-56"
         data-zerops-surface="sidebar-mate-menu"
       >
+        {project === undefined || project.length === 0 ? null : (
+          <>
+            <ProjectMenuItems entries={project} />
+            <MenuSeparator />
+          </>
+        )}
         <MateMenuItems {...items} name={name} />
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+/** A project's items in a menu, each separator between two groups of them. */
+function ProjectMenuItems({ entries }: { readonly entries: ReadonlyArray<HeadingMenuEntry> }) {
+  return entries.map((entry, index) =>
+    entry.kind === "separator" ? (
+      <MenuSeparator key={`separator:${String(index)}`} />
+    ) : (
+      <MenuItem
+        data-zerops-project-menu={entry.label}
+        disabled={entry.disabled}
+        key={entry.label}
+        onClick={entry.act}
+      >
+        {entry.label}
+      </MenuItem>
+    ),
+  );
+}
+
+/**
+ * A project's ···, where its row carries no Mate's menu — a group of Mates, a project with none:
+ * the project's items alone, hung off its trigger or, opened by a right-click, at the pointer.
+ */
+export function ProjectMenu({
+  name,
+  entries,
+  open,
+  at,
+  onOpenChange,
+}: {
+  readonly name: string;
+  readonly entries: ReadonlyArray<HeadingMenuEntry>;
+  readonly open: boolean;
+  /** A right-click's point; absent, the menu hangs off its trigger. */
+  readonly at: MenuPoint | undefined;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Menu onOpenChange={onOpenChange} open={open}>
+      <MenuTrigger
+        render={
+          <button
+            aria-label={`More for ${name}`}
+            className={ROW_ACTION_CLASS}
+            data-zerops-surface="sidebar-project-more"
+            type="button"
+          />
+        }
+      >
+        <MoreHorizontalIcon aria-hidden="true" className="size-3.5" />
+      </MenuTrigger>
+      <MenuPopup
+        align="start"
+        {...(at === undefined
+          ? { side: "right" as const }
+          : {
+              side: "bottom" as const,
+              sideOffset: 0,
+              anchor: {
+                getBoundingClientRect: () =>
+                  DOMRect.fromRect({ x: at.x, y: at.y, width: 0, height: 0 }),
+              },
+            })}
+        className="w-56"
+        data-zerops-surface="sidebar-project-menu"
+      >
+        <ProjectMenuItems entries={entries} />
       </MenuPopup>
     </Menu>
   );

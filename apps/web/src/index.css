@@ -3274,6 +3274,183 @@ code {
     border-radius: 12px;
   }
 
+  /* ==== The menu by project (the owner, 2026-10-12) ==== */
+
+  /* The ground under a row's faces, which the cluster's rings and the "+N" are cut in: the menu's,
+     the row's hover, or the band's while the row is the open one. */
+  .menu-unit {
+    --menu-ground: var(--sidebar);
+  }
+
+  .menu-unit:hover,
+  .menu-unit:has([data-popup-open]) {
+    --menu-ground: var(--sidebar-row-hover);
+  }
+
+  .menu-unit:has([aria-current="true"]) {
+    --menu-ground: var(--sidebar-row-active);
+  }
+
+  /* A Mate under its open group's row: 20 px in, so the group's Mates read as its. */
+  .menu-row-kid {
+    padding-inline-start: 28px;
+  }
+
+  /* "Project · Mate": the Mate's name after the project's, in the muted ink, keeping up to its
+     share while the project's name gives way first. */
+  .menu-name-mate {
+    flex: none;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 400;
+    color: var(--sidebar-muted-foreground);
+  }
+
+  /* A project's tags — Review, Release, its places' — on its row's first line, beside the row's
+     own button and never in it: they end where the 64 px slot and its 8 px of air begin. The
+     name gives way to them by the width they measure (`useTagsRoom`). */
+  .menu-row-tags {
+    position: absolute;
+    top: 9px;
+    inset-inline-end: 80px;
+    z-index: 1;
+    display: flex;
+    height: 22px;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .menu-row-tags-room {
+    display: none;
+    flex: none;
+  }
+
+  [data-tags] .menu-row-tags-room {
+    display: block;
+    width: var(--menu-tags-w, 0px);
+  }
+
+  /* A group's faces in the face's column: two at 27 px on the diagonal, three at 23 px as a
+     triangle, the lead in front; each ringed in the ground where they overlap, and travelling to
+     its new place when the lead changes. */
+  .menu-cluster {
+    position: relative;
+    display: block;
+    width: 40px;
+    height: 40px;
+  }
+
+  .menu-cluster-face {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: 27px;
+    height: 27px;
+  }
+
+  .menu-cluster[data-count="2"] .menu-cluster-face[data-place="0"] {
+    z-index: 3;
+  }
+
+  .menu-cluster[data-count="2"] .menu-cluster-face[data-place="1"] {
+    z-index: 2;
+    transform: translate(13px, 13px);
+  }
+
+  .menu-cluster[data-count="3"] .menu-cluster-face {
+    width: 23px;
+    height: 23px;
+  }
+
+  .menu-cluster[data-count="3"] .menu-cluster-face[data-place="0"] {
+    z-index: 3;
+    transform: translate(8.5px, 0);
+  }
+
+  .menu-cluster[data-count="3"] .menu-cluster-face[data-place="1"] {
+    z-index: 2;
+    transform: translate(0, 17px);
+  }
+
+  .menu-cluster[data-count="3"] .menu-cluster-face[data-place="2"] {
+    z-index: 1;
+    transform: translate(17px, 17px);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-cluster-face {
+      transition: transform 220ms var(--ease-out-strong);
+    }
+  }
+
+  .menu-cluster-face [data-mate-face-body] svg {
+    overflow: visible;
+  }
+
+  .menu-cluster-face [data-mate-face-body] path {
+    stroke: var(--menu-ground);
+    stroke-width: 3px;
+    stroke-linejoin: round;
+    paint-order: stroke;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .menu-cluster .menu-owner.menu-cluster-owner {
+    top: auto;
+    left: auto;
+    right: -3px;
+    bottom: -3px;
+    width: 12px;
+    height: 12px;
+    font-size: 7px;
+    box-shadow: 0 0 0 1.5px var(--menu-ground);
+  }
+
+  .menu-cluster-more {
+    position: absolute;
+    right: -6px;
+    bottom: -4px;
+    z-index: 4;
+    display: grid;
+    min-width: 22px;
+    height: 16px;
+    place-items: center;
+    padding: 0 4px;
+    border-radius: 9999px;
+    background: var(--sidebar-row-active);
+    color: var(--sidebar-foreground);
+    box-shadow: 0 0 0 2px var(--menu-ground);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A project with no Mate: its mark where a face would stand. */
+  .menu-project-mark {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: 9px;
+    background: color-mix(in oklab, var(--sidebar-foreground) 6%, transparent);
+    color: var(--sidebar-muted-foreground);
+  }
+
+  /* Mates in no project, after the projects: one quiet word above them. */
+  .menu-ungrouped {
+    padding: 14px 8px 4px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    color: var(--sidebar-muted-foreground);
+  }
+
+  /* ==== end of the menu by project ==== */
+
   /* A one-line row under the Mates — a change, the crew, a fold: 28 px tall
      and a smaller corner than the Mate's row above it. */
   .menu-line {
