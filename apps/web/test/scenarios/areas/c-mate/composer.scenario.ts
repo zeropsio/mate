@@ -9,11 +9,11 @@ import { mateChat } from "./dsl.ts";
 
 describe("C: agent selection and contextual drafts", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    // The owner's pick on the "Composer Strips" board (S6, 2026-10-12): "A colleague's Mate shows
-    // its change like yours. The same section over the read-along line, with Review for anyone who
-    // may review."
+    // What waits for review moved from the composer to the conversation's header (the owner,
+    // 2026-10-13: "add it somewhere to the app bar in detail"): the same pill for the Mate's owner
+    // and for a colleague reading along, with Review for anyone who may review.
     it.effect(
-      "a colleague's Mate shows its change waiting for a review over the read-along line, and Review opens it",
+      "a Mate's change waiting for a review stands in its conversation's header, for its owner and a colleague reading along, and opens from there",
       () =>
         Effect.gen(function* () {
           const s = yield* createScenario([installArea]);
@@ -23,14 +23,13 @@ describe("C: agent selection and contextual drafts", () => {
           chat.fixture().history("Add the order summary to the shop");
           yield* s.given.signedIn;
           yield* chat.when.open("Ada", "Add the order summary to the shop");
-          yield* chat.then.text("Ada is waiting for your review of #1");
+          yield* chat.then.text("Review work");
           const colleague = yield* s.given.browserActor({ person: "dev" });
           yield* colleague.given.signedIn;
           const theirs = mateChat({ ...s, ...colleague });
           yield* theirs.when.openReadOnly("Ada");
-          yield* theirs.then.text("Ada is waiting for a review of #1");
-          yield* theirs.then.noText("Ada is waiting for your review of #1");
-          yield* theirs.when.press("Review");
+          yield* theirs.then.text("Review work");
+          yield* theirs.when.press("Review Add the order summary");
           yield* theirs.then.text("What it does");
           yield* s.then.noExternalNetwork;
         }),

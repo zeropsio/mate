@@ -5699,9 +5699,9 @@ code {
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
     align-items: center;
-    /* A Mate row's measure: 63 px, 11 px above and below its two lines. */
-    min-height: 63px;
-    padding-block: 11px;
+    /* The top bar's height, the menu's own room above it: the menu and the page's header keep
+       their centre line and bottom edge. */
+    height: calc(var(--workspace-topbar-height) - var(--sidebar-content-inset) - 1px);
     /* Its room above it the same as on its left. */
     margin-block-start: calc(var(--sidebar-content-inset) + 1px);
     margin-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
