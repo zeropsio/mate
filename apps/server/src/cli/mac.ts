@@ -36,6 +36,7 @@ import {
   renderMacStatus,
   macSyncArgs,
   macSyncPrepareCommand,
+  macOpenCommand,
   macViewTarget,
   parseMacCommand,
 } from "../zerops/mac/MacHost.ts";
@@ -94,6 +95,12 @@ const ensureMateKey = (paths: MacHostPaths, project: string): string => {
   }
   return NodeFS.readFileSync(paths.publicKey, "utf8").trim();
 };
+
+/** The live view (the Mac tab) follows the app an agent opened last. */
+const writeView = (paths: MacHostPaths, app: string) =>
+  NodeFS.writeFileSync(paths.view, `${JSON.stringify({ app, at: Date.now() })}\n`, {
+    mode: 0o600,
+  });
 
 /** Runs with the terminal attached; returns the exit code. */
 const run = (
@@ -235,6 +242,22 @@ const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
         macSshArgs(record, paths, macRunCommand(record, process.cwd(), command.command)),
       );
     }
+    case "open": {
+      const record = pairedRecord(paths);
+      const child = NodeChildProcess.spawnSync(
+        "ssh",
+        macSshArgs(record, paths, macOpenCommand(record, process.cwd(), command.app)),
+        { encoding: "utf8", stdio: ["inherit", "pipe", "inherit"] },
+      );
+      if (child.error) throw new MacFailure(`Could not run ssh: ${child.error.message}`);
+      const app = child.stdout.trim().split("\n").at(-1);
+      if (child.status !== 0 || !app) return child.status ?? 1;
+      writeView(paths, app);
+      console.log(
+        `Opened ${app} on ${record.name}, behind the user's windows; it shows in their Mac tab.`,
+      );
+      return 0;
+    }
     case "device": {
       const record = pairedRecord(paths);
       const code = run(
@@ -245,13 +268,8 @@ const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
           macDeviceCommand(record, command.args, { whileInUse: command.whileInUse }),
         ),
       );
-      // The live view (the Mac tab) follows the app an agent opened last.
       const app = macViewTarget(command.args);
-      if (code === 0 && app !== undefined) {
-        NodeFS.writeFileSync(paths.view, `${JSON.stringify({ app, at: Date.now() })}\n`, {
-          mode: 0o600,
-        });
-      }
+      if (code === 0 && app !== undefined) writeView(paths, app);
       return code;
     }
     case "screenshot": {

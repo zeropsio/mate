@@ -8,7 +8,7 @@
  * (`mac/macViewScript.ts`); the last one's leaving ends it. While a subscriber
  * remains, a dropped or refused connection is retried with backoff, re-reading
  * the pairing (`~/.t3/mac/host.json`) and the app to show
- * (`~/.t3/mac/view.json`, written by `mac device open`) on every attempt, so a
+ * (`~/.t3/mac/view.json`, written by `mac open` and `mac device open`) on every attempt, so a
  * new pairing or a newly opened app is picked up without a restart.
  *
  * Input goes through the same in-use guard as `mac device`: while someone is
