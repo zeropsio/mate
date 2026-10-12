@@ -1110,7 +1110,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ) {
       return undefined;
     }
-    const isAtEnd = resolveTimelineIsAtEnd(state, contentInsetEndAdjustment + askRoom);
+    const isAtEnd = resolveTimelineIsAtEnd(state);
     const anchor = state.data.length ? resolveTimelineScrollAnchor(state) : undefined;
     const row = anchor === undefined ? undefined : state.elementAtIndex(anchor.index);
     const element = listRef.current?.getScrollableNode();
@@ -1126,16 +1126,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       });
     }
     return isAtEnd;
-  }, [
-    askRoom,
-    contentInsetEndAdjustment,
-    listPlaced,
-    listReady,
-    listRef,
-    restoringReadingPosition,
-    routeThreadKey,
-    rows,
-  ]);
+  }, [listPlaced, listReady, listRef, restoringReadingPosition, routeThreadKey, rows]);
   // Once more as the conversation goes, while it still stands on the page:
   // what changed since the last scroll (a run opened or closed in place) is
   // where the person left it.

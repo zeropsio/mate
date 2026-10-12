@@ -125,23 +125,20 @@ export interface TimelineEndState {
  */
 const TIMELINE_FOLLOW_REARM_THRESHOLD_PX = 40;
 
-export function resolveTimelineIsAtEnd(
-  state: TimelineEndState | undefined,
-  endInset = 0,
-): boolean | undefined {
+export function resolveTimelineIsAtEnd(state: TimelineEndState | undefined): boolean | undefined {
   if (!state) {
     return undefined;
-  }
-  if (state.isAtEnd) {
-    return true;
   }
   const { contentLength, scroll, scrollLength } = state;
   if (contentLength === undefined || scroll === undefined || scrollLength === undefined) {
     return state.isAtEnd;
   }
-  // contentLength includes the end inset (composer overlay), so subtract it to
-  // measure the distance to the real content bottom.
-  return contentLength - scroll - scrollLength - endInset <= TIMELINE_FOLLOW_REARM_THRESHOLD_PX;
+  // The end is where the list stops, the composer's inset scrolled into view. LegendList's own
+  // flag is blind to that inset — it calls the end reached while the last rows still stand under
+  // the composer, a composer's height short of it — so a step down there re-armed following and
+  // the list leapt to its end (the owner, 2026-10-12: "at this scroll (like 100px from bottom), a
+  // single tiny scroll to bottom causes it to jump to bottom").
+  return contentLength - scroll - scrollLength <= TIMELINE_FOLLOW_REARM_THRESHOLD_PX;
 }
 
 export function shouldPreserveAssistantLineBreaks(text: string): boolean {

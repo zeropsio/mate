@@ -1671,6 +1671,181 @@ describe("owner-reported layout regressions", () => {
         );
       });
     });
+    describe("Decision: a conversation opens in place; nothing it does overflows its column.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // The owner (2026-10-12): "after mate is fully loaded (nad scrollbar is introduced I
+        // think) there is layout / width shift that looks shit". The arrival's rise overflowed
+        // the column for its frames: a scrollbar came and went, narrowing the column by its width.
+        it.effect(
+          "a conversation's opening never overflows its column, so no scrollbar narrows it",
+          () =>
+            Effect.gen(function* () {
+              const s = yield* createScenario([installArea]);
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.project("Sage", { mate: true });
+              const chat = mateChat(s);
+              const wire = chat.fixture("Sage");
+              for (let index = 0; index < 12; index++)
+                wire.exchange(
+                  `Question ${index}`,
+                  "An answer long enough to fill the column.\n\n".repeat(6),
+                );
+              wire.holdReplay = true;
+              const read = wire.holdPage("", s.drivers.mates.get("Sage")!.snapshot());
+              yield* Effect.addFinalizer(() => Effect.sync(() => read.release()));
+              yield* s.given.signedIn;
+              yield* chat.when.openReadOnly("Sage");
+              yield* Effect.promise(() => read.requested());
+              yield* Effect.promise(() =>
+                s.page.waitForSelector('[data-conversation-opening="waiting"]'),
+              );
+              yield* Effect.promise(() =>
+                s.page.evaluate(() => {
+                  const samples: Array<{ phase: string | undefined; overflow: number }> = [];
+                  Reflect.set(window, "openingOverflow", samples);
+                  const tick = () => {
+                    const column = document.querySelector<HTMLElement>(
+                      "[data-chat-column-maximized-away]",
+                    );
+                    const phase =
+                      document
+                        .querySelector("[data-conversation-opening]")
+                        ?.getAttribute("data-conversation-opening") ?? undefined;
+                    if (column !== null)
+                      samples.push({ phase, overflow: column.scrollHeight - column.clientHeight });
+                    if (phase !== "complete") requestAnimationFrame(tick);
+                  };
+                  requestAnimationFrame(tick);
+                }),
+              );
+              read.release();
+              yield* Effect.promise(() => wire.replaySubscribed());
+              wire.ready();
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () =>
+                    (Reflect.get(window, "openingOverflow") as Array<{ phase?: string }>).at(-1)
+                      ?.phase === "complete",
+                ),
+              );
+              const samples = yield* Effect.promise(() =>
+                s.page.evaluate(
+                  () =>
+                    Reflect.get(window, "openingOverflow") as Array<{
+                      phase: string | undefined;
+                      overflow: number;
+                    }>,
+                ),
+              );
+              const overflowing = samples.filter((sample) => sample.overflow > 0);
+              expect(
+                samples.some((sample) => sample.phase === "hand-off"),
+                `ASSERTION: the opening handed over in sight: ${quoted(samples.slice(0, 8))}`,
+              ).toBe(true);
+              expect(
+                overflowing,
+                `ASSERTION: nothing in the opening overflows the column: ${quoted(overflowing.slice(0, 6))}`,
+              ).toEqual([]);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+      });
+    });
+    describe("Decision: the end is where the list stops; a step short of it is the person's.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // The owner (2026-10-12): "at this scroll (like 100px from bottom), a single tiny scroll to
+        // bottom causes it to jump to bottom".
+        it.effect(
+          "a small step down short of the end moves the list by that step, never to its end",
+          () =>
+            Effect.gen(function* () {
+              const { s } = yield* composerLayout("plain");
+              yield* Effect.promise(() => ownerMenu(s.page));
+              const short = () =>
+                s.page.evaluate(() => {
+                  const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                  return list.scrollHeight - list.clientHeight - list.scrollTop;
+                });
+              const settle = () =>
+                s.page.evaluate(
+                  () =>
+                    new Promise((done) => {
+                      setTimeout(done, 600);
+                    }),
+                );
+              const list = (yield* Effect.promise(() => s.page.$(".timeline-legend-list")))!;
+              const box = (yield* Effect.promise(() => list.boundingBox()))!;
+              yield* Effect.promise(async () => {
+                await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 3);
+                await s.page.mouse.wheel({ deltaY: -120 });
+                await settle();
+              });
+              const before = yield* Effect.promise(short);
+              yield* Effect.promise(async () => {
+                await s.page.mouse.wheel({ deltaY: 10 });
+                await settle();
+              });
+              const after = yield* Effect.promise(short);
+              const seen = quoted({ before, after });
+              expect(before, `ASSERTION: the step up left the end: ${seen}`).toBeGreaterThan(60);
+              expect(
+                after,
+                `ASSERTION: the step down moved the list by itself, short of the end: ${seen}`,
+              ).toBeGreaterThan(before - 30);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+      });
+    });
+    describe("Decision: a calm notice is one quiet line on the composer; no room is held above it.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // The owner (2026-10-12): "this stacking looks absolute shit + there is extra space on top".
+        it.effect(
+          "a calm notice over the composer says itself on one line, no room held above it",
+          () =>
+            Effect.gen(function* () {
+              const { s } = yield* composerLayout("notice");
+              yield* Effect.promise(() => ownerMenu(s.page));
+              const geometry = yield* Effect.promise(() =>
+                s.page.evaluate(() => {
+                  const frame = document
+                    .querySelector("[data-composer-banner-anchor]")!
+                    .getBoundingClientRect();
+                  const notice = document.querySelector<HTMLElement>(
+                    '[data-composer-banner-drawer] [role="status"]',
+                  )!;
+                  const text = [...notice.querySelectorAll<HTMLElement>("span")].filter(
+                    (part) => part.childElementCount === 0 && part.textContent!.trim().length > 0,
+                  );
+                  const tops = text.map((part) => part.getBoundingClientRect().top);
+                  const line = parseFloat(getComputedStyle(notice).lineHeight);
+                  return {
+                    words: text.map((part) => part.textContent),
+                    spread: Math.max(...tops) - Math.min(...tops),
+                    line,
+                    frameTop: frame.top,
+                    noticeTop: notice.getBoundingClientRect().top,
+                  };
+                }),
+              );
+              const seen = quoted(geometry);
+              expect(
+                geometry.words.length,
+                `ASSERTION: the notice says its title and what it means: ${seen}`,
+              ).toBeGreaterThanOrEqual(2);
+              expect(
+                geometry.spread,
+                `ASSERTION: its title and what it means stand on one line: ${seen}`,
+              ).toBeLessThan(geometry.line / 2);
+              expect(
+                geometry.noticeTop - geometry.frameTop,
+                `ASSERTION: no room is held above the notice: ${seen}`,
+              ).toBeLessThanOrEqual(1);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+      });
+    });
     describe("Decision: restore pre-regression behaviour; no test weakened; titles kept.", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         for (const state of composerStates)
@@ -1684,8 +1859,11 @@ describe("owner-reported layout regressions", () => {
                 const attached = () =>
                   Effect.promise(async () => {
                     const geometry = await s.page.evaluate(() => {
+                      // The front notice, a card or a calm one's quiet line.
                       const front = document
-                        .querySelector('[data-composer-banner-drawer] [data-slot="alert"]')!
+                        .querySelector(
+                          '[data-composer-banner-drawer] :is([role="status"], [role="alert"])',
+                        )!
                         .getBoundingClientRect();
                       const input = document
                         .querySelector('[data-slot="composer-shell"]')!
@@ -1730,7 +1908,9 @@ describe("owner-reported layout regressions", () => {
                         .querySelector("[data-composer-banner-stack-expanded-items]")!
                         .getBoundingClientRect();
                       const front = document
-                        .querySelector('[data-composer-banner-drawer] [data-slot="alert"]')!
+                        .querySelector(
+                          '[data-composer-banner-drawer] :is([role="status"], [role="alert"])',
+                        )!
                         .getBoundingClientRect();
                       return {
                         height: expanded.height,

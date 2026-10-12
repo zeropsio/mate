@@ -144,6 +144,9 @@ describe("C: the conversation opening follows readiness", () => {
           );
           expect(samples[0]?.phase).toBe("waiting");
           expect(samples.at(-1)?.phase).toBe("complete");
+          // The stage hands over in place (the owner, 2026-10-12: the face's flight to the header
+          // was an "absolute shit effect, need to be removed"): its face fades with it, then is the
+          // header's — never two faces at once, and the header's once the conversation stands.
           expect(
             samples
               .filter(
@@ -152,8 +155,9 @@ describe("C: the conversation opening follows readiness", () => {
                   sample.phase === "hand-off" ||
                   sample.phase === "complete",
               )
-              .every((sample) => sample.faces === 1),
+              .every((sample) => sample.faces <= 1),
           ).toBe(true);
+          expect(samples.at(-1)?.faces).toBe(1);
           const waking = samples.filter((sample) => sample.phase === "wake");
           expect(waking.length).toBeGreaterThan(0);
           expect(

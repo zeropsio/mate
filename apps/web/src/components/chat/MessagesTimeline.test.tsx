@@ -373,13 +373,25 @@ describe("MessagesTimeline", () => {
         scrollLength: 800,
       }),
     ).toBe(false);
-    // The composer inset is part of contentLength and must not count as
-    // distance-to-end.
+    // The end is where the list stops, the composer's inset scrolled into view: 130 px short of
+    // it the last rows still stand under the composer, whatever LegendList's own flag says (the
+    // owner, 2026-10-12: "at this scroll (like 100px from bottom), a single tiny scroll to bottom
+    // causes it to jump to bottom").
     expect(
-      resolveTimelineIsAtEnd(
-        { isAtEnd: false, contentLength: 2100, scroll: 1170, scrollLength: 800 },
-        100,
-      ),
+      resolveTimelineIsAtEnd({
+        isAtEnd: true,
+        contentLength: 2100,
+        scroll: 1170,
+        scrollLength: 800,
+      }),
+    ).toBe(false);
+    expect(
+      resolveTimelineIsAtEnd({
+        isAtEnd: true,
+        contentLength: 2100,
+        scroll: 1270,
+        scrollLength: 800,
+      }),
     ).toBe(true);
     // Geometry missing (older state shape): fall back to the strict flag.
     expect(resolveTimelineIsAtEnd({ isAtEnd: false })).toBe(false);

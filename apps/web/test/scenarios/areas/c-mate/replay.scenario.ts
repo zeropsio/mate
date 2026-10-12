@@ -242,7 +242,9 @@ describe("C: reading, replay and attention", () => {
             yield* colleague.given.signedIn;
             const theirs = mateChat({ ...s, ...colleague });
             yield* chat.when.open("Bea", "Bea is the conversation I parked on");
-            yield* theirs.when.open("Bea", "Bea is the conversation I parked on");
+            // Bea is the owner's: a colleague reads it along, no composer of theirs on it.
+            yield* theirs.when.openReadOnly("Bea");
+            yield* theirs.then.text("Bea is the conversation I parked on");
             wire.run("attention-result", "running");
             wire.message(
               "attention-reply",

@@ -15,6 +15,7 @@ import {
 } from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
+import { useHqProjectPerson, zeropsMateOwnerOf } from "../zerops/useZeropsMateOwners";
 import { useEngineRunCards } from "../zerops/useEngineCardPaging";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
 import { vaultNote } from "@t3tools/client-runtime/data";
@@ -209,6 +210,7 @@ import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
+import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
 import { type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewCardOrigin } from "./zerops/crew/CrewTaskCard.logic";
@@ -471,6 +473,7 @@ import {
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
   resolveDraftHeroState,
+  colleagueMateReadOnly,
   composerOpenFocus,
   conversationContentPending,
   localThreadErrorStanding,
@@ -3241,6 +3244,15 @@ export default function ChatView(props: ChatViewProps) {
     threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
     messageCount: activeThread?.messages.length ?? 0,
   });
+  // Whose Mate it is, as HQ records it: a colleague's is read along, never written to.
+  const admissionMate = zeropsMateAt(zeropsMates, environmentId);
+  const admissionPeople = useHqProjectPerson(
+    admissionMate.kind === "mate" ? (admissionMate.mate.projectId ?? "") : "",
+  );
+  const admissionOwner =
+    zeropsViewerSubject === undefined
+      ? undefined
+      : zeropsMateOwnerOf(admissionPeople?.owner, zeropsViewerSubject);
   const admission = agentAdmission({
     environmentId,
     instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
@@ -3255,11 +3267,16 @@ export default function ChatView(props: ChatViewProps) {
           ? localDraftErrorsByDraftId[draftId ?? ""]?.refusalSource
           : undefined,
     providers: providerStatuses,
-    mateName: (() => {
-      const mate = zeropsMateAt(zeropsMates, environmentId);
-      return mate.kind === "mate" ? mate.mate.name : "This Mate";
-    })(),
+    mateName: admissionMate.kind === "mate" ? admissionMate.mate.name : "This Mate",
+    owner: admissionOwner === undefined ? undefined : { mine: admissionOwner.isViewer },
   });
+  const colleagueReadOnly =
+    admission.footer === "read-only" && admissionOwner !== undefined
+      ? colleagueMateReadOnly({
+          mateName: admissionMate.kind === "mate" ? admissionMate.mate.name : "This Mate",
+          ownerName: admissionOwner.name,
+        })
+      : null;
   // The agent the conversation runs on, where it is one the agents card signs in.
   const conversationInstanceId =
     activeProviderInstanceId ?? activeThread?.modelSelection.instanceId;
@@ -4627,7 +4644,7 @@ export default function ChatView(props: ChatViewProps) {
       // The re-arm band, not the strict flag: streaming growth makes isAtEnd
       // flicker false for a frame before the follow scroll catches up.
       const viewportIsAwayFromEnd = () =>
-        resolveTimelineIsAtEnd(legendListRef.current?.getState(), composerOverlayHeight) === false;
+        resolveTimelineIsAtEnd(legendListRef.current?.getState()) === false;
       switch (input.kind) {
         // Up is a leave; down far above the end comes back only through the
         // scroll it makes.
@@ -4645,9 +4662,7 @@ export default function ChatView(props: ChatViewProps) {
             !following &&
             nextTimelineFollow(following, {
               type: "toward-end-input",
-              inEndBand:
-                resolveTimelineIsAtEnd(legendListRef.current?.getState(), composerOverlayHeight) ===
-                true,
+              inEndBand: resolveTimelineIsAtEnd(legendListRef.current?.getState()) === true,
             })
           )
             resumeTimelineFollow();
@@ -4666,12 +4681,7 @@ export default function ChatView(props: ChatViewProps) {
           return;
       }
     },
-    [
-      composerOverlayHeight,
-      leaveTimelineFollow,
-      resumeTimelineFollow,
-      timelineRealContentOverflowsViewport,
-    ],
+    [leaveTimelineFollow, resumeTimelineFollow, timelineRealContentOverflowsViewport],
   );
 
   const onTimelineAnchorReady = useCallback((messageId: MessageId, anchorIndex: number) => {
@@ -5363,7 +5373,7 @@ export default function ChatView(props: ChatViewProps) {
       actions: (
         <Button
           size="xs"
-          variant="outline"
+          variant="ghost"
           disabled={isSnoozed ? isUnsnoozing : isUnsettling}
           onClick={() =>
             void (isSnoozed ? handleUnsnoozeActiveThread() : handleUnsettleActiveThread())
@@ -5792,6 +5802,7 @@ export default function ChatView(props: ChatViewProps) {
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
     const urgentSystemItems = systemComposerBannerItems.filter(isUrgentSystemItem);
+    if (colleagueReadOnly !== null) return urgentSystemItems;
     // What belongs to the conversation — another of its chats at work, its compaction, its waking
     // or parking, its branch — waits until the conversation shows, not over its opening line.
     const conversationShown = !threadDetailLoading;
@@ -5881,6 +5892,7 @@ export default function ChatView(props: ChatViewProps) {
   }, [
     activeBranchMismatchKey,
     archivedThreadBannerItem,
+    colleagueReadOnly,
     branchAdvice.dismiss,
     alsoWorkingBannerItem,
     crewBannerItems,
@@ -8566,6 +8578,7 @@ export default function ChatView(props: ChatViewProps) {
             activeThreadId={activeThread.id}
             {...(routeKind === "draft" && draftId ? { draftId } : {})}
             activeThreadTitle={activeThread.title}
+            conversationLoading={threadDetailLoading}
             isServerThread={isServerThread}
             changeRequest={activeThreadChangeRequest}
             activeProjectName={activeProjectDisplayName}
@@ -8897,6 +8910,12 @@ export default function ChatView(props: ChatViewProps) {
                           />
                           {zeropsFooter === "held" ? (
                             <ComposerRoomHeld draft={zeropsHeldDraft} />
+                          ) : colleagueReadOnly !== null ? (
+                            <ZeropsReadOnlyConversationFooter
+                              pendingApprovals={pendingApprovals}
+                              pendingUserInputs={pendingUserInputs}
+                              readOnly={colleagueReadOnly}
+                            />
                           ) : (
                             <ChatComposer
                               composerRef={composerRef}

@@ -103,8 +103,7 @@ describe("ZeropsReadOnlyConversationFooter", () => {
     expect(html).not.toContain("data-pending-user-input-other");
   });
 
-  // Remembered from an earlier visit, the strip says whose agent it is and offers nothing yet: its
-  // sign-in comes with the read answer.
+  // A colleague's Mate is read along: the strip says whose it is and offers nothing.
   it("offers no action where it is given none", () => {
     const html = renderToStaticMarkup(
       <ZeropsReadOnlyConversationFooter
