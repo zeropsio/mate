@@ -569,8 +569,8 @@
         html[data-boot-frame="app"] #boot-shell-menu-loading {
           position: absolute;
           top: 65px;
-          right: 8px;
-          left: 9px;
+          right: var(--sidebar-content-inset, 12px);
+          left: calc(var(--sidebar-content-inset, 12px) + 1px);
           display: flex;
           flex-direction: column;
           gap: 8px;
