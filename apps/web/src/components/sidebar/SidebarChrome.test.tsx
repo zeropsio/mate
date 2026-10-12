@@ -6,6 +6,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { APP_BASE_NAME } from "../../branding";
 
 const router = vi.hoisted(() => ({ pathname: "/" }));
+/** Whether the menu is docked open; closed, the open menu shown is the rail's peek. */
+const menu = vi.hoisted(() => ({ open: true }));
 
 vi.mock("@tanstack/react-router", async () => {
   const { createElement } = await import("react");
@@ -36,6 +38,7 @@ vi.mock("../ui/sidebar", async () => {
       createElement("button", { ...props, "data-active": isActive }),
     useSidebar: () => ({
       isMobile: false,
+      open: menu.open,
       setOpenMobile: () => {},
       toggleSidebar: () => {},
       state: "expanded",
@@ -150,6 +153,16 @@ describe("SidebarUtilityMenu", () => {
     expect(markup.includes('data-zerops-surface="sidebar-account"')).toBe(!back);
     // The collapse control is the foot's constant.
     expect(markup).toContain('aria-label="Collapse sidebar"');
+  });
+
+  it("peeking out of the closed menu, its foot docks it open", () => {
+    router.pathname = "/";
+    menu.open = false;
+    const markup = renderToStaticMarkup(<SidebarUtilityMenu />);
+    menu.open = true;
+
+    expect(markup).toContain('aria-label="Open the menu"');
+    expect(markup).not.toContain('aria-label="Collapse sidebar"');
   });
 
   it("says who is signed in and whose organization the rows above belong to", () => {

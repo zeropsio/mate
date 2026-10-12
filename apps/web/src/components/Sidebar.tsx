@@ -269,6 +269,7 @@ import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, SidebarOverviewRow, useMenuProjects } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
 import { SidebarRail, useRailMates } from "./zerops/SidebarRail";
+import { SidebarPeekStage } from "./zerops/SidebarPeek";
 import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
 
 import { useProjectFlows } from "../zerops/projectFlows";
@@ -1906,7 +1907,7 @@ export default function Sidebar() {
     [zeropsProjectFlows],
   );
   const router = useRouter();
-  const { isMobile, open, setOpen, setOpenMobile } = useSidebar();
+  const { isMobile, setOpen, setOpenMobile } = useSidebar();
   /** A stop's page, in place of the thread — the sidebar stays where it is. */
   const openStop = useCallback(
     (groupId: string, row: EnvironmentRow) => {
@@ -4081,28 +4082,29 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
-  if (!isMobile && !open) {
-    return (
-      <SidebarRail
-        account={<SidebarZeropsAccountRow destinationIcon={sidebarAccountDestinationIcon} />}
-        activeProjectId={zeropsOverviewOpen ? null : activeZeropsProjectId}
-        groups={zeropsRailGroups}
-        headline={zeropsHeadline}
-        onOpenMenu={() => {
-          setOpen(true);
-        }}
-        onOverview={navigateToZeropsProjects}
-        onSelect={zeropsWaitingVerbs.onOpenMate}
-        openShortcut={shortcutLabelForCommand(keybindings, "sidebar.toggle") ?? undefined}
-        overviewCurrent={zeropsOverviewOpen}
-        showMark={!(isElectron && isMacPlatform(navigator.platform))}
-        verbs={zeropsWaitingVerbs}
-        waiting={zeropsWaiting.items}
-      />
-    );
-  }
+  // The closed menu on a desktop; the open one stays drawn under it and peeks (`SidebarPeekStage`).
+  const zeropsRail = isMobile ? null : (
+    <SidebarRail
+      account={
+        <SidebarZeropsAccountRow collapsed destinationIcon={sidebarAccountDestinationIcon} />
+      }
+      activeProjectId={zeropsOverviewOpen ? null : activeZeropsProjectId}
+      groups={zeropsRailGroups}
+      headline={zeropsHeadline}
+      onOpenMenu={() => {
+        setOpen(true);
+      }}
+      onOverview={navigateToZeropsProjects}
+      onSelect={zeropsWaitingVerbs.onOpenMate}
+      openShortcut={shortcutLabelForCommand(keybindings, "sidebar.toggle") ?? undefined}
+      overviewCurrent={zeropsOverviewOpen}
+      showMark={!(isElectron && isMacPlatform(navigator.platform))}
+      verbs={zeropsWaitingVerbs}
+      waiting={zeropsWaiting.items}
+    />
+  );
   return (
-    <>
+    <SidebarPeekStage rail={zeropsRail}>
       <SidebarChromeHeader
         isElectron={isElectron}
         status={
@@ -4924,6 +4926,6 @@ export default function Sidebar() {
           only the normal list-to-footer gutter remains. */}
       {zeropsSignedIn ? <AccountVoiceLine /> : null}
       <SidebarChromeFooter />
-    </>
+    </SidebarPeekStage>
   );
 }

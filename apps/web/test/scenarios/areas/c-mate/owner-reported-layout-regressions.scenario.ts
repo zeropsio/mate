@@ -3940,5 +3940,251 @@ describe("owner-reported layout regressions", () => {
         );
       });
     });
+
+    // The owner, 2026-10-12, on the rail's board: "imo I'd go for peek, but it needs to be smooth
+    // and fully smoothly connected to the open state", "or maybe named pods", and "you absolutely
+    // do not identify your mate by the name, shape or color, it's the project what is the main
+    // identifier".
+    describe("Decision: the closed menu names its projects, and peeks the open menu out of itself.", () => {
+      const ANSWER_TEXT = "The existing conversation is still here";
+      /** Shop's Mate open at the owner's view, the menu closed to its rail, the pointer on the page. */
+      const closedOnShop = Effect.gen(function* () {
+        const s = yield* createScenario([installArea]);
+        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        const chat = mateChat(s);
+        chat.fixture().exchange("And now?", ANSWER_TEXT);
+        yield* s.given.signedIn;
+        yield* Effect.promise(() => ownerMenu(s.page));
+        yield* chat.when.open();
+        yield* chat.then.text(ANSWER_TEXT);
+        yield* Effect.promise(async () => {
+          await s.page.click('button[aria-label="Collapse sidebar"]');
+          await s.page.mouse.move(1200, 500);
+          await s.page.waitForFunction(
+            () => {
+              const face = document.querySelector('[data-zerops-surface="sidebar-rail-mate"]');
+              if (face === null) return false;
+              const box = face.getBoundingClientRect();
+              return face.contains(
+                document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2),
+              );
+            },
+            { timeout: 8000 },
+          );
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        });
+        return s;
+      });
+      /** Every frame until stopped: how far the open menu reaches over the page, and where the
+       * conversation's words stand. */
+      const sampleFrames = (page: Page) =>
+        page.evaluate((answer) => {
+          const frames: Array<{ reach: number; words: number }> = [];
+          const words = [...document.querySelectorAll<HTMLElement>("p, span, div")].find(
+            (element) => element.childElementCount === 0 && element.textContent === answer,
+          )!;
+          const inMenu = (x: number) =>
+            document.elementFromPoint(x, 600)?.closest('[data-zerops-surface="sidebar-menu"]') !=
+            null;
+          const state = { on: true };
+          (window as unknown as { peekFrames: typeof frames; peekState: typeof state }).peekFrames =
+            frames;
+          (window as unknown as { peekState: typeof state }).peekState = state;
+          const tick = () => {
+            let reach = 0;
+            for (let x = 4; x < 700; x += 4) if (inMenu(x)) reach = x;
+            frames.push({ reach, words: words.getBoundingClientRect().left });
+            if (state.on) requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }, ANSWER_TEXT);
+      const stopFrames = (page: Page) =>
+        page.evaluate(() => {
+          const w = window as unknown as {
+            peekFrames: Array<{ reach: number; words: number }>;
+            peekState: { on: boolean };
+          };
+          w.peekState.on = false;
+          return w.peekFrames;
+        });
+      /** The rows of the open menu, each by its place on the screen. */
+      const menuRows = (page: Page) =>
+        page.evaluate(() =>
+          [
+            ...document.querySelectorAll<HTMLElement>(
+              '[data-zerops-surface="sidebar-menu"] button, [data-zerops-surface="sidebar-menu"] a',
+            ),
+          ]
+            .filter((element) => element.getBoundingClientRect().height > 0)
+            .map((element) => ({
+              row: element.getAttribute("aria-label") ?? element.textContent?.slice(0, 24) ?? "",
+              left: element.getBoundingClientRect().left,
+              top: element.getBoundingClientRect().top,
+            })),
+        );
+      const restOnRail = (page: Page) =>
+        Effect.promise(async () => {
+          await page.mouse.move(36, 600, { steps: 4 });
+          await new Promise((resolve) => setTimeout(resolve, 700));
+        });
+
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        it.effect(
+          "at rest the closed menu draws each project as a named pod, its faces inside",
+          () =>
+            Effect.gen(function* () {
+              const s = yield* closedOnShop;
+              const pods = yield* Effect.promise(() =>
+                s.page.evaluate(() =>
+                  [
+                    ...document.querySelectorAll<HTMLElement>(
+                      '[data-zerops-surface="sidebar-rail-project"]',
+                    ),
+                  ].map((pod) => {
+                    const box = pod.getBoundingClientRect();
+                    const rail = pod
+                      .closest('[data-zerops-surface="sidebar-rail"]')!
+                      .getBoundingClientRect();
+                    const name = [...pod.querySelectorAll("span")].find(
+                      (span) => span.textContent === pod.getAttribute("aria-label"),
+                    );
+                    const nameBox = name?.getBoundingClientRect();
+                    return {
+                      project: pod.getAttribute("aria-label"),
+                      // A pod, not a heading: it stands in the rail with air on either side.
+                      pod: box.left > rail.left + 2 && box.right < rail.right - 2,
+                      nameInside:
+                        nameBox !== undefined &&
+                        nameBox.width > 0 &&
+                        nameBox.left >= box.left &&
+                        nameBox.right <= box.right &&
+                        nameBox.top >= box.top,
+                      faces: [
+                        ...pod.querySelectorAll('[data-zerops-surface="sidebar-rail-mate"]'),
+                      ].map((face) => {
+                        const faceBox = face.getBoundingClientRect();
+                        return (
+                          faceBox.left >= box.left &&
+                          faceBox.right <= box.right &&
+                          faceBox.top >= (nameBox?.bottom ?? box.top) &&
+                          faceBox.bottom <= box.bottom
+                        );
+                      }),
+                    };
+                  }),
+                ),
+              );
+              expect(pods, "ASSERTION: Shop is a pod, its name over its face, both inside").toEqual(
+                [{ project: "Shop", pod: true, nameInside: true, faces: [true] }],
+              );
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
+        it.effect(
+          "a rested pointer slides the open menu out over the page, the conversation never moving, and leaving it returns to the rail",
+          () =>
+            Effect.gen(function* () {
+              const s = yield* closedOnShop;
+              yield* Effect.promise(() => sampleFrames(s.page));
+              yield* restOnRail(s.page);
+              const out = yield* Effect.promise(() => stopFrames(s.page));
+              const reaches = out.map((frame) => frame.reach);
+              const seen = reaches.join(" ");
+              expect(reaches.at(-1), `ASSERTION: the menu peeks at its width: ${seen}`).toBe(432);
+              const growing = reaches.filter((reach) => reach > 76 && reach < 428);
+              expect(
+                growing.length,
+                `ASSERTION: it grows out of the rail's edge, not in one jump: ${seen}`,
+              ).toBeGreaterThanOrEqual(2);
+              expect(
+                reaches.every((reach, index) => index === 0 || reach >= reaches[index - 1]!),
+                `ASSERTION: it only grows: ${seen}`,
+              ).toBe(true);
+              const words = out.map((frame) => frame.words);
+              expect(
+                Math.max(...words) - Math.min(...words),
+                `ASSERTION: the conversation never moves: ${words.join(" ")}`,
+              ).toBeLessThanOrEqual(0.5);
+
+              yield* Effect.promise(() => sampleFrames(s.page));
+              yield* Effect.promise(async () => {
+                await s.page.mouse.move(1200, 600, { steps: 4 });
+                await new Promise((resolve) => setTimeout(resolve, 900));
+              });
+              const back = yield* Effect.promise(() => stopFrames(s.page));
+              expect(
+                back.at(-1)?.reach,
+                `ASSERTION: leaving it puts the menu back: ${back.map((f) => f.reach).join(" ")}`,
+              ).toBeLessThanOrEqual(72);
+              const after = back.map((frame) => frame.words);
+              expect(
+                Math.max(...after, ...words) - Math.min(...after, ...words),
+                "ASSERTION: the conversation never moved",
+              ).toBeLessThanOrEqual(0.5);
+              const faceShown = yield* Effect.promise(() =>
+                s.page.evaluate(() => {
+                  const face = document.querySelector('[data-zerops-surface="sidebar-rail-mate"]')!;
+                  const box = face.getBoundingClientRect();
+                  return face.contains(
+                    document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2),
+                  );
+                }),
+              );
+              expect(faceShown, "ASSERTION: the rail's face is there again").toBe(true);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+
+        it.effect(
+          "opening the menu from its peek keeps every row where it stood while the conversation slides",
+          () =>
+            Effect.gen(function* () {
+              const s = yield* closedOnShop;
+              yield* restOnRail(s.page);
+              const before = yield* Effect.promise(() => menuRows(s.page));
+              expect(before.length, "ASSERTION: the peek shows the menu's rows").toBeGreaterThan(3);
+              yield* Effect.promise(() => sampleFrames(s.page));
+              yield* Effect.promise(async () => {
+                await s.page.click(
+                  '[data-zerops-surface="sidebar-menu"] button[aria-label="Open the menu"]',
+                );
+                await new Promise((resolve) => setTimeout(resolve, 800));
+              });
+              const frames = yield* Effect.promise(() => stopFrames(s.page));
+              const after = yield* Effect.promise(() => menuRows(s.page));
+              const drift = Math.max(
+                ...before.map((row, index) =>
+                  Math.max(
+                    Math.abs(row.left - (after[index]?.left ?? Infinity)),
+                    Math.abs(row.top - (after[index]?.top ?? Infinity)),
+                  ),
+                ),
+              );
+              expect(
+                drift,
+                `ASSERTION: every row of the menu stays where it stood: ${before.map((row) => `${row.row} ${row.left},${row.top}`).join("; ")} → ${after.map((row) => `${row.row} ${row.left},${row.top}`).join("; ")}`,
+              ).toBeLessThanOrEqual(1);
+              const words = frames.map((frame) => Math.round(frame.words));
+              const seen = words.join(" ");
+              expect(
+                words.at(-1)! - words[0]!,
+                `ASSERTION: the conversation slides right: ${seen}`,
+              ).toBeGreaterThan(100);
+              expect(
+                words.filter((left) => left > words[0]! + 4 && left < words.at(-1)! - 4).length,
+                `ASSERTION: it slides, not jumps: ${seen}`,
+              ).toBeGreaterThanOrEqual(2);
+              expect(
+                // Docked, its edge is the resize handle's.
+                frames.every((frame) => frame.reach >= 420),
+                `ASSERTION: the menu stands out the whole time: ${frames.map((frame) => frame.reach).join(" ")}`,
+              ).toBe(true);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
+      });
+    });
   });
 });

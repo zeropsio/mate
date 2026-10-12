@@ -653,8 +653,8 @@
           height: 36px;
         }
 
-        /* The rail (SidebarRail), where its person left the menu closed: its 64 px column and
-           its mark, 28 x 33 at 18, 16; the open menu's rows are not its. */
+        /* The rail (SidebarRail), where its person left the menu closed: its 72 px column and
+           its mark, 28 x 33 at 22, 16; the open menu's rows are not its. */
         html[data-boot-frame="app"][data-boot-menu="rail"] #boot-shell-menu-overview,
         html[data-boot-frame="app"][data-boot-menu="rail"] #boot-shell-menu-loading {
           display: none;
@@ -662,7 +662,7 @@
 
         html[data-boot-frame="app"][data-boot-menu="rail"] #boot-shell-card {
           top: 16px;
-          left: 18px;
+          left: 22px;
           width: 28px;
           height: 33px;
         }
@@ -718,7 +718,7 @@
         // writes), as the app opens it: its 64 px column and its mark, nothing else.
         if (/(?:^|;\s*)sidebar_state=false(?:;|$)/.test(document.cookie ?? "")) {
           root.dataset.bootMenu = "rail";
-          root.style.setProperty("--boot-menu-width", "64px");
+          root.style.setProperty("--boot-menu-width", "72px");
         }
       })();
     </script>
