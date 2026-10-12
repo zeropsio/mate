@@ -10,6 +10,7 @@ import {
   earlierTurnsAnchor,
   livePauseId,
   rowGap,
+  streamedRecordGrowth,
   thoughtParagraphs,
   thoughtPreview,
   normalizeCompactToolLabel,
@@ -3962,4 +3963,93 @@ it("accepted work cut before the first provider handshake has a recovery card, t
   expect(continued?.kind).toBe("record");
   if (continued?.kind !== "record") return;
   expect(continued.status?.interruption?.continuation).toBe("requested");
+});
+
+describe("streamedRecordGrowth", () => {
+  const note = (text: string, streaming = true): RecordItem => ({
+    kind: "note",
+    key: "note",
+    at: at(1),
+    message: {
+      id: MessageId.make("note"),
+      turnId: null,
+      role: "assistant",
+      text,
+      createdAt: at(1),
+      updatedAt: at(1),
+      streaming,
+    },
+  });
+  const question: RecordItem = {
+    kind: "question",
+    key: "question",
+    at: at(2),
+    questions: ["Which environment?"],
+  };
+  const person: RecordItem = {
+    kind: "person",
+    key: "steer",
+    at: at(2),
+    words: "Also check the title",
+    imageOnly: false,
+  };
+  it.each([
+    {
+      title: "only streamed words growing carry the conversation's end",
+      previous: [note("First")],
+      next: [note("First, second, third")],
+      grows: true,
+    },
+    {
+      title: "a streaming note's words can grow before its record changes",
+      previous: [note("First")],
+      next: [note("First")],
+      grows: true,
+    },
+    {
+      title: "a run's first measurement still arrives by a glide",
+      previous: undefined,
+      next: [note("First")],
+      grows: false,
+    },
+    {
+      title: "a question entering a live run still arrives by a glide",
+      previous: [note("First")],
+      next: [note("First"), question],
+      grows: false,
+    },
+    {
+      title: "a steer entering a live run still arrives by a glide",
+      previous: [note("First")],
+      next: [note("First"), person],
+      grows: false,
+    },
+    {
+      title: "a note ending still arrives by a glide",
+      previous: [note("First")],
+      next: [note("First, second", false)],
+      grows: false,
+    },
+    {
+      title: "unchanged streamed words do not carry another change's growth",
+      previous: [note("First"), question],
+      next: [note("First"), { ...question, questions: ["Which environment and which branch?"] }],
+      grows: false,
+    },
+    {
+      title: "words arriving with a question still arrive by a glide",
+      previous: [note("First")],
+      next: [note("First, second"), question],
+      grows: false,
+    },
+  ])("$title", ({ previous, next, grows }) => {
+    expect(
+      streamedRecordGrowth(
+        previous === undefined
+          ? undefined
+          : { items: [], slot: { live: previous, record: [], filler: { kind: "thinking" } } },
+        { items: [], slot: { live: next, record: [], filler: { kind: "thinking" } } },
+      ),
+    ).toBe(grows);
+  });
 });

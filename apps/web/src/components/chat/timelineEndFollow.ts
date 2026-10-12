@@ -62,8 +62,8 @@ export function ownListScrolls(element: HTMLElement): () => void {
 }
 
 export interface EndFollow {
-  /** Something may have moved the end: the list stands at it, or glides there. */
-  readonly follow: () => void;
+  /** Follow the end, carrying measured live-row growth before easing any arriving row. */
+  readonly follow: (grew?: number) => void;
   /** A measurement may have clamped the native viewport before the next layout. */
   readonly observe: () => void;
   /**
@@ -197,12 +197,18 @@ export function createEndFollow({
         kept = { element, short, height: element.scrollHeight };
       }
     },
-    follow: () => {
+    follow: (grew = 0) => {
       const element = viewport();
       if (element === null || !follows()) return;
       const end = endOf(element);
-      const gap = end - element.scrollTop;
       observe(element);
+      // A live row's new lines are already laid out. Carry their measured growth even when a
+      // slow frame brought several at once; only the remaining way belongs to a row's arrival.
+      if (grew > 0 && end > element.scrollTop) {
+        scrollOwn(element, element.scrollTop + Math.min(grew, end - element.scrollTop));
+        at = element.scrollTop;
+      }
+      const gap = end - element.scrollTop;
       // Standing in the room under the end is the person's: it is not taken back.
       if (frame !== 0 || Math.abs(gap) < 0.5 || (gap < 0 && room() > 0)) return;
       // Out of sight, nobody watches it glide: it stands there at once.

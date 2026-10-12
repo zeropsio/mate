@@ -2755,7 +2755,11 @@ describe("MessagesTimeline — placing its rows", () => {
       viewport.scrollHeight = 2000 + growth;
       await act(() => renderer!.update(render(120 + growth)));
       if (growth === 300) expect(viewport.scrollTop).toBe(1500);
-      await act(() => renderer!.root.findByType(LegendList).props.onItemSizeChanged());
+      await act(() =>
+        renderer!.root
+          .findByType(LegendList)
+          .props.onItemSizeChanged({ index: 0, itemKey: "notice", previous: 120, size: 200 }),
+      );
       await settleFrames(4);
       expect(viewport.scrollTop).toBe(following ? 1200 + growth : 500);
       if (!following) expect(list.current.scrollToEnd).not.toHaveBeenCalled();
@@ -2874,7 +2878,11 @@ describe("MessagesTimeline — placing its rows", () => {
         scenario === "keyboard navigation"
           ? 500
           : 770;
-      await act(() => renderer!.root.findByType(LegendList).props.onItemSizeChanged());
+      await act(() =>
+        renderer!.root
+          .findByType(LegendList)
+          .props.onItemSizeChanged({ index: 0, itemKey: "notice", previous: 120, size: 200 }),
+      );
       await settleFrames(4);
       expect(viewport.scrollTop).toBe(
         scenario === "user scroll" ||
@@ -2889,7 +2897,11 @@ describe("MessagesTimeline — placing its rows", () => {
       if (scenario === "thread navigation") {
         shown = true;
         await act(() => renderer!.update(render(200)));
-        await act(() => renderer!.root.findByType(LegendList).props.onItemSizeChanged());
+        await act(() =>
+          renderer!.root
+            .findByType(LegendList)
+            .props.onItemSizeChanged({ index: 0, itemKey: "notice", previous: 120, size: 200 }),
+        );
         await settleFrames(4);
         expect(viewport.scrollTop).toBe(500);
       }

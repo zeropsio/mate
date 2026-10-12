@@ -102,6 +102,33 @@ describe("createEndFollow", () => {
     follow.follow();
   };
 
+  it.each([48, 96, 217])(
+    "a live row growing by %i px keeps its end in sight in the frame it arrives",
+    (grew) => {
+      const { scroll, follow } = atItsEnd();
+      scroll.element.scrollHeight += grew;
+      follow.follow(grew);
+      expect(
+        endOf(scroll) - scroll.element.scrollTop,
+        "ASSERTION: streamed growth stays at the conversation's end before paint",
+      ).toBe(0);
+      expect(scroll.element.hasAttribute(GLIDING_ATTRIBUTE)).toBe(false);
+    },
+  );
+
+  it("live row growth carries an arriving row's glide without adding to its remaining way", () => {
+    const { scroll, follow } = atItsEnd();
+    grow(scroll, follow, 300);
+    scroll.element.scrollHeight += 96;
+    follow.follow(96);
+    expect(
+      endOf(scroll) - scroll.element.scrollTop,
+      "ASSERTION: the glide has only the arriving row left to travel",
+    ).toBe(300);
+    play(scroll);
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
+  });
+
   it("a browser layout correction during row measurement does not release end-follow", () => {
     const scroll = list({ top: 2944, height: 3779, client: 835 });
     const follow = createEndFollow({

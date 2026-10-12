@@ -979,6 +979,40 @@ export type RecordItem =
       readonly entry: WorkLogEntry;
     };
 
+/** Streamed words move an existing line's foot; a changed item sequence still arrives by a glide. */
+export function streamedRecordGrowth(
+  previous: Pick<Extract<MessagesTimelineRow, { kind: "record" }>, "items" | "slot"> | undefined,
+  next: Pick<Extract<MessagesTimelineRow, { kind: "record" }>, "items" | "slot">,
+): boolean {
+  if (previous === undefined) return false;
+  // The active note lives in the slot; its words reach the leaf subscription before its record.
+  // Another item's new shape or a changed sequence still arrives by a glide.
+  return (
+    next.slot.live.some((item) => item.kind === "note" && item.message.streaming === true) &&
+    (
+      [
+        [previous.items, next.items],
+        [previous.slot.live, next.slot.live],
+      ] as const
+    ).every(
+      ([before, after]) =>
+        before === after ||
+        (before.length === after.length &&
+          after.every((item, index) => {
+            const old = before[index];
+            return (
+              item === old ||
+              (item.key === old?.key &&
+                item.kind === "note" &&
+                item.message.streaming === true &&
+                old.kind === "note" &&
+                old.message.streaming === true)
+            );
+          })),
+    )
+  );
+}
+
 export type MessagesTimelineRow = MessagesTimelineRowBody & {
   readonly gap?: RowGap;
   readonly card?: CardSlice;

@@ -61,7 +61,7 @@ import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
-import { LegendList, type LegendListRef } from "@legendapp/list/react";
+import { LegendList, type LegendListProps, type LegendListRef } from "@legendapp/list/react";
 import { ReviewCommentDiff } from "./ReviewCommentDiff";
 import {
   createMessageAttachmentPreviewProjector,
@@ -152,6 +152,7 @@ import {
   resolveTimelineMinimapInteractiveWidth,
   resolveTimelineMinimapTopPercent,
   shouldPreserveAssistantLineBreaks,
+  streamedRecordGrowth,
   toolGroupAction,
   workEntryIsVisibleInGroup,
   type StableMessagesTimelineRowsState,
@@ -919,9 +920,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     /** The held head's row as the last frame drew it, and how many frames it has stood so. */
     card?: { readonly height: number; readonly still: number };
   } | null>(null);
-  const followEnd = useCallback(() => {
+  const followEnd = useCallback((grew = 0) => {
     if (outerFoldsRef.current.size === 0 && landingRef.current === null) {
-      endFollowRef.current?.follow();
+      endFollowRef.current?.follow(grew);
     }
   }, []);
   // What it holds back where it stood, in the frame that moved it. An answer that comes with its
@@ -1173,7 +1174,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         );
     }
     if (!listPlaced) return;
-    const frame = requestAnimationFrame(followEnd);
+    const frame = requestAnimationFrame(() => followEnd());
     return () => cancelAnimationFrame(frame);
   }, [askRoom, contentInsetEndAdjustment, followEnd, followingEnd, listPlaced, rows]);
   useEffect(() => {
@@ -1189,24 +1190,45 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // Every measurement can move the end, including an estimated row becoming
   // shorter. Read its native clamp in the measurement callback before another
   // layout can hide it, then follow after the list applies its layout.
-  const onItemSizeChanged = useCallback(() => {
-    remeasurePositionRef.current?.();
-    placeFolds();
-    if (!followingEndRef.current) return;
-    endFollowRef.current?.observe();
-    holdAnswer();
-    queueMicrotask(() => {
+  // The first size receipt replaces an estimate, not a row's previously painted height.
+  const measuredRecordsRef = useRef(
+    new Map<string, Extract<MessagesTimelineRow, { kind: "record" }>>(),
+  );
+  useLayoutEffect(() => {
+    const keys = new Set(rowOrder.split("\n"));
+    for (const key of measuredRecordsRef.current.keys())
+      if (!keys.has(key)) measuredRecordsRef.current.delete(key);
+  }, [rowOrder]);
+  const onItemSizeChanged = useCallback<
+    NonNullable<LegendListProps<MessagesTimelineRow>["onItemSizeChanged"]>
+  >(
+    (info) => {
+      const previous = measuredRecordsRef.current.get(info.itemKey);
+      const record = info.itemData?.kind === "record" ? info.itemData : undefined;
+      if (record !== undefined) measuredRecordsRef.current.set(info.itemKey, record);
+      const grew =
+        record?.live && streamedRecordGrowth(previous, record)
+          ? Math.max(0, info.size - info.previous)
+          : 0;
+      remeasurePositionRef.current?.();
       placeFolds();
+      if (!followingEndRef.current) return;
+      endFollowRef.current?.observe();
       holdAnswer();
-      followEnd();
-    });
-    if (endRepinFrameRef.current !== null) return;
-    endRepinFrameRef.current = requestAnimationFrame(() => {
-      endRepinFrameRef.current = null;
-      placeFolds();
-      followEnd();
-    });
-  }, [followEnd, holdAnswer, placeFolds]);
+      queueMicrotask(() => {
+        placeFolds();
+        holdAnswer();
+        followEnd(grew);
+      });
+      if (endRepinFrameRef.current !== null) return;
+      endRepinFrameRef.current = requestAnimationFrame(() => {
+        endRepinFrameRef.current = null;
+        placeFolds();
+        followEnd();
+      });
+    },
+    [followEnd, holdAnswer, placeFolds],
+  );
 
   // Where the person is, kept as they move, by row: the row at the reading
   // line, how far into it, how tall it was, the run's line and the row above
