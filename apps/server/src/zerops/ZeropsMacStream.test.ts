@@ -60,6 +60,8 @@ interface FakeConnection {
 /** A Mac reached over a fake ssh: each stream it opens is a queue the test writes the helper's wire into. */
 /** The commands the Mate hands out for pairing: the vpn first, then the pairing itself. */
 const PAIR = ["zcli vpn up Prj0AAAAAAAAAAAAAAAAAA", "ssh zcp mac host | sh"] as const;
+/** The commands that remove a paired Mac: its setup removed, then the vpn. */
+const REMOVE = ["ssh zcp mac host --remove | sh", "zcli vpn down"] as const;
 
 const fakeMac = (options: {
   readonly paired?: boolean;
@@ -73,10 +75,16 @@ const fakeMac = (options: {
     const view = yield* Ref.make<MacViewRecord | undefined>(
       "view" in options ? options.view : { app: "com.example.Counter", at: 1 },
     );
+    const paired = yield* Ref.make(options.paired !== false);
     const service = yield* make({
       pairCommands: PAIR,
-      readRecord: Effect.succeed(options.paired === false ? undefined : record),
+      removeCommands: REMOVE,
+      readRecord: Ref.get(paired).pipe(Effect.map((is) => (is ? record : undefined))),
       readView: Ref.get(view),
+      forget: Effect.gen(function* () {
+        yield* Ref.set(paired, false);
+        yield* Ref.set(view, undefined);
+      }),
       openStream: (_, app) =>
         Effect.gen(function* () {
           const output = yield* Queue.unbounded<Uint8Array, Cause.Done>();
@@ -110,7 +118,7 @@ const fakeMac = (options: {
         yield* Queue.end(connections[index]!.output);
         yield* Deferred.succeed(connections[index]!.exit, code);
       });
-    return { service, connections, pressed, view, send, exitWith };
+    return { service, connections, pressed, view, paired, send, exitWith };
   });
 
 /** Subscribes, collecting events into a queue the test reads from. */
@@ -167,6 +175,7 @@ describe("ZeropsMacStream", () => {
         status: "no-app",
         macName: "Test Mac",
         inUse: false,
+        removeCommands: REMOVE,
       });
       expect(mac.connections).toHaveLength(0);
       yield* viewer.leave;
@@ -224,6 +233,26 @@ describe("ZeropsMacStream", () => {
     }),
   );
 
+  it.effect("forgets a Mac that does not answer at once, and offers pairing again", () =>
+    Effect.gen(function* () {
+      const mac = yield* fakeMac({});
+      const viewer = yield* watch(mac.service);
+      yield* viewer.until(stateIs("connecting"));
+      yield* settle;
+      yield* mac.exitWith(0, 255);
+      yield* viewer.until(stateIs("unreachable"));
+      yield* mac.service.forget;
+      expect(yield* viewer.until(stateIs("not-paired"))).toEqual({
+        type: "state",
+        status: "not-paired",
+        inUse: false,
+        pairCommands: PAIR,
+      });
+      expect(yield* Ref.get(mac.paired)).toBe(false);
+      yield* viewer.leave;
+    }),
+  );
+
   it.effect.each([
     ["does not answer", 255, "unreachable"],
     ["has no view helper", 7, "no-helper"],
@@ -237,6 +266,7 @@ describe("ZeropsMacStream", () => {
       expect(yield* viewer.until(stateIs(status))).toMatchObject({
         macName: "Test Mac",
         pairCommands: PAIR,
+        removeCommands: REMOVE,
       });
       yield* TestClock.adjust(Duration.millis(1000));
       yield* settle;
@@ -264,6 +294,8 @@ describe("ZeropsMacStream", () => {
       expect(said.type === "state" ? said.pairCommands : undefined).toEqual(
         status === "no-helper" ? PAIR : undefined,
       );
+      // A paired Mac always says how to remove it.
+      expect(said.type === "state" ? said.removeCommands : undefined).toEqual(REMOVE);
       const late = yield* watch(mac.service);
       expect(yield* late.next).toMatchObject({ type: "state", status });
       yield* viewer.leave;

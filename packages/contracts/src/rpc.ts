@@ -389,6 +389,7 @@ export const WS_METHODS = {
   zeropsLoginRemove: "zerops.login.remove",
   zeropsBrowserInput: "zerops.browser.input",
   zeropsMacInput: "zerops.mac.input",
+  zeropsMacForget: "zerops.mac.forget",
   zeropsMateUpdate: "zerops.mate.update",
   zeropsMateCheckUpdate: "zerops.mate.checkUpdate",
   zeropsDataConsoleCall: "zerops.dataConsole.call",
@@ -1186,9 +1187,15 @@ const WsSubscribeZeropsMacStreamRpc = Rpc.make(WS_METHODS.subscribeZeropsMacStre
   stream: true,
 });
 
-/** A click or typed text for the app in the Mac's live view; refused while someone uses the Mac. */
+/** A click or typed text for the app in the Mac's live view: the person's own, so it goes ahead while they use the Mac. */
 const WsZeropsMacInputRpc = Rpc.make(WS_METHODS.zeropsMacInput, {
   payload: ZeropsMacInput,
+  error: EnvironmentAuthorizationError,
+});
+
+/** Forgets the paired Mac on the Mate, for one that is gone or does not answer (`mac unpair`). */
+const WsZeropsMacForgetRpc = Rpc.make(WS_METHODS.zeropsMacForget, {
+  payload: Schema.Struct({}),
   error: EnvironmentAuthorizationError,
 });
 
@@ -1546,6 +1553,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsBrowserInputRpc,
   WsSubscribeZeropsMacStreamRpc,
   WsZeropsMacInputRpc,
+  WsZeropsMacForgetRpc,
   WsZeropsMateUpdateRpc,
   WsZeropsMateCheckUpdateRpc,
   WsZeropsDataConsoleCallRpc,

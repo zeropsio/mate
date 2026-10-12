@@ -226,13 +226,27 @@ done
 fail "paired, but $ACCESS. Allow node in both lists, then run this again."
 `;
 
-export const renderMacRemoveScript = (projectId: string): string => `${preamble(projectId)}
+/**
+ * Removes the pairing from the Mac, then has the Mate forget the Mac so its Mac
+ * tab offers pairing again; the Mac side finishes even when the Mate is out of
+ * reach.
+ */
+export const renderMacRemoveScript = (
+  projectId: string,
+  mateHost: string,
+): string => `${preamble(projectId)}
+MATE_HOST=${shellQuote(mateHost)}
 for name in sshd agent-device view; do
   launchctl bootout "$DOMAIN/$LABEL.$name" 2>/dev/null || true
   rm -f "$AGENTS/$LABEL.$name.plist"
 done
 rm -rf "$ROOT"
 say "removed this Mate's ssh server, agent-device and live view from this Mac. Copies in $HOME/ZeropsMate/$PROJECT are yours to keep or delete."
+if ssh -o BatchMode=yes "$MATE_HOST" mac unpair >/dev/null 2>&1; then
+  say "the Mate forgot this Mac."
+else
+  say "the Mate could not be reached; it forgets this Mac when you run mac unpair there."
+fi
 `;
 
 /** What `ssh zcp mac host | sh` runs when the Mate cannot render a script. */

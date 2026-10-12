@@ -66,7 +66,7 @@ const runOnFakeMac = (script: string, stubs: Record<string, string>) => {
 describe("the scripts the Mate hands a Mac", () => {
   it.each([
     ["pairing", renderMacHostScript(input)],
-    ["removal", renderMacRemoveScript(PROJECT)],
+    ["removal", renderMacRemoveScript(PROJECT, "zcp")],
     ["failure", renderMacHostFailure("this container does not know its project VPN.")],
   ])("the %s script is valid sh", (_, script) => {
     const check = NodeChildProcess.spawnSync("sh", ["-n"], { input: script, encoding: "utf8" });
@@ -117,7 +117,7 @@ describe("the scripts the Mate hands a Mac", () => {
   });
 
   it("removing the pairing stops both background services and deletes their files", () => {
-    const mac = runOnFakeMac(renderMacRemoveScript(PROJECT), {
+    const mac = runOnFakeMac(renderMacRemoveScript(PROJECT, "zcp"), {
       uname: "echo Darwin",
       launchctl: `echo "$@" >> "$HOME/launchctl.log"`,
       id: "echo 501",
@@ -140,8 +140,28 @@ describe("the scripts the Mate hands a Mac", () => {
     expect(log).toContain(`bootout gui/501/io.zerops.mate.${PROJECT}.agent-device\n`);
   });
 
+  it.each([
+    ["answers", "exit 0"],
+    ["cannot be reached", "exit 255"],
+  ])(
+    "removing the pairing makes the Mate forget the Mac, and finishes on the Mac when the Mate %s",
+    (_, answer) => {
+      const mac = runOnFakeMac(renderMacRemoveScript(PROJECT, "zcp"), {
+        uname: "echo Darwin",
+        launchctl: "true",
+        id: "echo 501",
+        ssh: `echo "$@" >> "$HOME/ssh.log"; ${answer}`,
+      });
+
+      expect(mac.run().status).toBe(0);
+      expect(NodeFS.readFileSync(NodePath.join(mac.home, "ssh.log"), "utf8")).toBe(
+        "-o BatchMode=yes zcp mac unpair\n",
+      );
+    },
+  );
+
   it("removing the pairing stops the live view too", () => {
-    const mac = runOnFakeMac(renderMacRemoveScript(PROJECT), {
+    const mac = runOnFakeMac(renderMacRemoveScript(PROJECT, "zcp"), {
       uname: "echo Darwin",
       launchctl: `echo "$@" >> "$HOME/launchctl.log"`,
       id: "echo 501",

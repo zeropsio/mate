@@ -806,6 +806,11 @@ export const ZeropsMacStateEvent = Schema.Struct({
    * (`not-paired`, `unreachable`, `no-helper`): the VPN first, then the pairing.
    */
   pairCommands: Schema.optional(Schema.Array(Schema.String)),
+  /**
+   * The commands that disconnect a paired Mac, in every state but `not-paired` and `connecting`:
+   * its setup removed from the Mac (which also makes the Mate forget it), then the VPN.
+   */
+  removeCommands: Schema.optional(Schema.Array(Schema.String)),
 });
 export type ZeropsMacStateEvent = typeof ZeropsMacStateEvent.Type;
 

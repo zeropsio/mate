@@ -6,6 +6,7 @@ import { visitElements } from "../../test/reactElementTree";
 
 const feedState = vi.hoisted(() => ({ view: undefined as unknown }));
 const commandSpy = vi.hoisted(() => vi.fn());
+const confirmState = vi.hoisted(() => ({ asked: [] as string[], answer: true }));
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
@@ -31,7 +32,14 @@ vi.mock("../../state/use-atom-command", () => ({
 }));
 
 vi.mock("../../state/zeropsCommands", () => ({
-  zeropsCommands: { macInput: Symbol("macInput") },
+  zeropsCommands: { macInput: Symbol("macInput"), macForget: Symbol("macForget") },
+}));
+
+vi.mock("../../confirmDialog", () => ({
+  requestConfirmDialog: (question: string) => {
+    confirmState.asked.push(question);
+    return Promise.resolve(confirmState.answer);
+  },
 }));
 
 import { LiveFrameViewer, type LiveFrameViewerProps } from "./LiveFrameViewer";
@@ -40,6 +48,7 @@ import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 
 /** The commands the Mate hands out for pairing: the VPN first, then the pairing. */
 const PAIR = ["zcli vpn up Prj0AAAAAAAAAAAAAAAAAA", "ssh zcp mac host | sh"];
+const REMOVE = ["ssh zcp mac host --remove | sh", "zcli vpn down"];
 
 const THREAD_REF: ScopedThreadRef = {
   environmentId: EnvironmentId.make("environment-1"),
@@ -169,6 +178,53 @@ describe("ZeropsMacPanel", () => {
   ])("walks the person through %s, with the Mate's own commands to copy", (_, view, commands) => {
     feedState.view = view;
     expect(macCommands(render())).toEqual(commands);
+  });
+
+  it.each([
+    ["nothing is open on it", { status: "no-app", macName: "Test Mac", inUse: false }],
+    ["it shows an app", { ...LIVE }],
+  ] as const)("offers to remove a paired Mac while %s, with the Mate's own commands", (_, view) => {
+    feedState.view = { ...view, removeCommands: REMOVE };
+    expect(macCommands(render())).toEqual(REMOVE);
+  });
+
+  it.each([
+    ["once the person confirms", true, 1],
+    ["not when the person declines", false, 0],
+  ] as const)(
+    "forgets a Mac that is gone or does not answer, right here, %s",
+    async (_, answer, calls) => {
+      confirmState.answer = answer;
+      confirmState.asked = [];
+      feedState.view = {
+        status: "unreachable",
+        macName: "Test Mac",
+        inUse: false,
+        pairCommands: PAIR,
+        removeCommands: REMOVE,
+      };
+      const forget = visitElements(
+        render(),
+        (element) =>
+          typeof element.props.onClick === "function" &&
+          element.props.children === "Forget it here",
+      );
+      (forget!.props.onClick as () => void)();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(confirmState.asked[0]).toContain("Forget Test Mac");
+      expect(commandSpy).toHaveBeenCalledTimes(calls);
+      if (calls > 0)
+        expect(commandSpy).toHaveBeenCalledWith({
+          environmentId: THREAD_REF.environmentId,
+          input: {},
+        });
+    },
+  );
+
+  it("offers no removal while no Mac is paired", () => {
+    feedState.view = { status: "not-paired", inUse: false, pairCommands: PAIR };
+    expect(macCommands(render())).toEqual(PAIR);
   });
 
   it("copies a command for the Mac's Terminal with one press", async () => {

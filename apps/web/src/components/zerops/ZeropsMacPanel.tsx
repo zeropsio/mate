@@ -10,6 +10,7 @@ import type { ScopedThreadRef, ZeropsMacInput } from "@t3tools/contracts";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { useRef, useState } from "react";
 
+import { requestConfirmDialog } from "../../confirmDialog";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { zeropsCommands } from "../../state/zeropsCommands";
 import { useMateMacView } from "../../zerops/macViewLinks";
@@ -22,15 +23,16 @@ import { Button } from "../ui/button";
 /** How long a copy button says so. */
 const COPIED_MS = 2_000;
 
-/** One command for the Mac's Terminal, copied with one press. */
+/** One command for the Mac's Terminal, its copy button inside the field. */
 export function MacCommand({ command }: { readonly command: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <span className="flex min-w-0 items-start gap-2">
-      <code className="min-w-0 flex-1 select-all rounded-md border border-border bg-muted px-2 py-1.5 font-mono text-xs break-all text-foreground">
+    <span className="flex min-w-0 items-center gap-1 rounded-md border border-border bg-muted py-1 pr-1 pl-2.5">
+      <code className="min-w-0 flex-1 select-all font-mono text-xs break-all text-foreground">
         {command}
       </code>
       <Button
+        aria-label={copied ? "Copied" : "Copy the command"}
         onClick={() => {
           void navigator.clipboard.writeText(command).then(
             () => {
@@ -40,11 +42,10 @@ export function MacCommand({ command }: { readonly command: string }) {
             () => undefined,
           );
         }}
-        size="sm"
-        variant="outline"
+        size="icon-xs"
+        variant="ghost-muted"
       >
         {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
-        {copied ? "Copied" : "Copy"}
       </Button>
     </span>
   );
@@ -103,12 +104,55 @@ function macSteps({
             { words: "Still no answer? Pair it again.", command: pair },
           ]
         : [{ words: "In Terminal on the Mac, run the pairing again.", command: pair }];
+  return stepList(steps, status);
+}
+
+/** Numbered steps on the Mac, each with its command to copy when it has one. */
+function stepList(
+  steps: ReadonlyArray<{ readonly words: string; readonly command?: string | undefined }>,
+  name: string,
+) {
   return (
-    <ol className="flex flex-col gap-4 px-1 pt-1" data-zerops-mac-steps={status}>
+    <ol className="flex flex-col gap-4 px-1 pt-1" data-zerops-mac-steps={name}>
       {steps.map((step, index) =>
         macStep({ command: step.command, n: index + 1, words: step.words }),
       )}
     </ol>
+  );
+}
+
+/**
+ * The way out of a pairing, folded away under the view: the Mac's setup removed (which also has
+ * the Mate forget the Mac) and the VPN, or, for a Mac that is gone or does not answer, the Mate
+ * forgetting it right here.
+ */
+function removal(removeCommands: ReadonlyArray<string>, forget: () => void) {
+  const [remove, vpn] = removeCommands;
+  return (
+    <details className="px-1 pt-2" data-zerops-mac-remove>
+      <summary className="w-fit cursor-pointer list-none select-none text-muted-foreground text-xs hover:text-foreground hover:underline [&::-webkit-details-marker]:hidden">
+        Remove this Mac
+      </summary>
+      <div className="flex flex-col gap-4 pt-3">
+        {stepList(
+          [
+            {
+              words:
+                "In Terminal on the Mac, remove this Mate's setup. The Mate forgets the Mac too.",
+              command: remove,
+            },
+            { words: "Then disconnect the VPN, if nothing else needs it.", command: vpn },
+          ],
+          "remove",
+        )}
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-muted-foreground text-xs">
+          Mac gone, or not answering?
+          <Button onClick={forget} size="xs" variant="destructive-outline">
+            Forget it here
+          </Button>
+        </p>
+      </div>
+    </details>
   );
 }
 
@@ -124,6 +168,7 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
   const environmentId = threadRef?.environmentId ?? null;
   const view = useMateMacView(environmentId);
   const sendInputCommand = useAtomCommand(zeropsCommands.macInput, "zerops mac input");
+  const forgetCommand = useAtomCommand(zeropsCommands.macForget, "zerops mac forget");
   const typedRef = useRef("");
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -215,6 +260,20 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
       ) : live?.status === "connecting" || live?.status === "live" ? (
         <StatusDot className="px-1" label="Connecting" pulse tone="busy" />
       ) : null}
+      {live?.removeCommands === undefined
+        ? null
+        : removal(live.removeCommands, () => {
+            if (environmentId === null) return;
+            void requestConfirmDialog(
+              [
+                `Forget ${macName}?`,
+                "This Mate stops using it, and the Mac tab offers pairing again. Whatever the pairing set up on the Mac stays there until you remove it.",
+              ].join("\n"),
+              { variant: "destructive" },
+            )?.then((yes) => {
+              if (yes) void forgetCommand({ environmentId, input: {} });
+            });
+          })}
     </section>
   );
 }
