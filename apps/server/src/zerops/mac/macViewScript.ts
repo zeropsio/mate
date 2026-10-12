@@ -41,7 +41,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export const IDLE_SECONDS = 60;
 const MAX_STREAMS = 4;
 const MAX_SIDE = 1600;
-const STEP_TIMEOUT_MS = 5000;
+// A window capture from a launchd job takes seconds on macOS (measured 2-6 s against 0.15 s
+// from a terminal), so a step gets room before it counts as failed.
+const STEP_TIMEOUT_MS = 12000;
 const RESOLVE_EVERY_MS = 2000;
 const RETRY_RESOLVE_MS = 1000;
 const IDLE_EVERY_MS = 1000;

@@ -91,7 +91,8 @@ export class ZeropsMacStream extends Context.Service<
 
 const DEFAULT_RETRY_DELAYS_MS = [500, 1000, 2000, 5000] as const;
 const DEFAULT_POLL_MS = 1000;
-const DEFAULT_STALL_MS = 15_000;
+// Above the helper's slowest step (a 12 s capture), so a slow frame is never taken for a dead Mac.
+const DEFAULT_STALL_MS = 20_000;
 /** The view helper's frames per second: enough to follow an app, little enough for a VPN. */
 export const MAC_VIEW_FPS = 2;
 /** `mac device`'s guard: someone is working on the Mac. */

@@ -132,7 +132,9 @@ agent() {
       '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \\
       '<plist version="1.0"><dict>' "<key>Label</key><string>$label</string>" '<key>ProgramArguments</key><array>'
     for arg in "$@"; do printf '<string>%s</string>\\n' "$(xml "$arg")"; done
-    printf '%s\\n' '</array><key>RunAtLoad</key><true/><key>KeepAlive</key><true/>' \\
+    # Interactive: launchd otherwise throttles an agent, and every capture and lookup crawls.
+    printf '%s\\n' '</array><key>ProcessType</key><string>Interactive</string>' \\
+      '<key>RunAtLoad</key><true/><key>KeepAlive</key><true/>' \\
       '<key>ThrottleInterval</key><integer>10</integer>' \\
       "<key>StandardErrorPath</key><string>$(xml "$ROOT/logs/$label.log")</string></dict></plist>"
   } > "$AGENTS/$label.plist"
@@ -173,10 +175,15 @@ restart_daemon() {
   done
 }
 
-if ACCESS=$("$ROOT/bin/check-access"); then
-  say "paired. The Mate works in $WORKSPACE."
-  exit 0
-fi
+# A daemon that has just started can fail its first check; give it a few tries before
+# opening System Settings on anyone's screen.
+for attempt in 1 2 3; do
+  if ACCESS=$("$ROOT/bin/check-access"); then
+    say "paired. The Mate works in $WORKSPACE."
+    exit 0
+  fi
+  sleep 3
+done
 say "macOS has to let the agent-device daemon see and record apps ($ACCESS)."
 say "In System Settings > Privacy & Security, turn on node under Accessibility and under Screen Recording."
 say "If node is not listed, add it with + (press Cmd-Shift-G and paste $NODE_FILE)."

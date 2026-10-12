@@ -197,6 +197,40 @@ describe("the scripts the Mate hands a Mac", () => {
     );
   });
 
+  it("a daemon that has just started gets a few tries before System Settings opens on anyone's screen", () => {
+    // The first permission check after the daemon starts sees nothing; the next one sees the app.
+    const state = `$HOME/.zerops-mate/${PROJECT}/agent-device/state`;
+    const mac = runOnFakeMac(renderMacHostScript(input), {
+      uname: "echo Darwin",
+      route: "echo '  interface: utun5'",
+      ifconfig: "printf '\\tinet 10.12.0.4 --> 10.12.0.4 netmask 0xffffffff\\n'",
+      node: [
+        `case "$2" in snapshot)`,
+        `  n=$(cat "$HOME/snapshots" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$HOME/snapshots"`,
+        `  if [ "$n" -ge 2 ]; then echo 'Snapshot: 12 nodes'; else echo 'Snapshot: 0 nodes'; fi;;`,
+        `esac; exit 0`,
+      ].join("\n"),
+      realpath: `echo "$1"`,
+      npm: [
+        `while [ "$1" != --prefix ]; do shift; done; P="$2/node_modules/agent-device"`,
+        `mkdir -p "$P/bin" "$P/dist/src/internal" && : > "$P/bin/agent-device.mjs" && : > "$P/dist/src/internal/daemon.js"`,
+      ].join("\n"),
+      launchctl: `case "$*" in bootstrap*agent-device*) : > "${state}/daemon.json";; esac`,
+      nc: "exit 0",
+      sleep: "exit 0",
+      scutil: "echo 'Test Mac'",
+      sw_vers: "echo 26.1",
+      ssh: "cat > /dev/null",
+      open: `echo "$@" >> "$HOME/opened"`,
+    });
+
+    const result = mac.run();
+
+    expect(result.stderr).toContain("paired.");
+    expect(result.status).toBe(0);
+    expect(NodeFS.existsSync(NodePath.join(mac.home, "opened"))).toBe(false);
+  });
+
   it("a Mac piping a failed render into sh sees why and stops", () => {
     const result = NodeChildProcess.spawnSync("sh", ["-s"], {
       input: renderMacHostFailure("mac works only inside a Zerops Mate container."),
