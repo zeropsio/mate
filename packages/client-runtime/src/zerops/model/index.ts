@@ -48,3 +48,11 @@ export type {
   ZeropsTimelineEntry,
   ZeropsWorkAttempt,
 } from "./types.ts";
+export {
+  ORG_TOOL_PREFIX,
+  readZeropsProposal,
+  type ZeropsEnvProposalParams,
+  type ZeropsMessageProposalParams,
+  type ZeropsProposal,
+  type ZeropsProposalKind,
+} from "./proposal.ts";

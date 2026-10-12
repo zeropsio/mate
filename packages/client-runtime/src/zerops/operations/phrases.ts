@@ -292,6 +292,8 @@ export function operationStatusWord(
         return "In progress";
       case "standup":
         return "Standing up";
+      case "proposal":
+        return "Proposing";
       case "error":
         return "Failed";
     }
@@ -346,6 +348,8 @@ export function operationStatusWord(
       return "Complete";
     case "standup":
       return "Stood up";
+    case "proposal":
+      return "Proposed";
     case "error":
       return "Failed";
   }
@@ -491,6 +495,8 @@ export function operationVoice(kind: ZeropsOperationKind, subject: string): stri
       return `Setting up ${subject}.`;
     case "standup":
       return `Standing ${subject} up.`;
+    case "proposal":
+      return `Proposing: ${subject}`;
     case "error":
       return `${subject} failed.`;
   }
@@ -651,6 +657,8 @@ export function operationClosing(
       return context.messageFirstParagraph ?? "Bootstrap complete.";
     case "standup":
       return context.message ?? "Finished.";
+    case "proposal":
+      return "Proposed.";
     case "error":
       return context.errorFirstLine ?? "Failed.";
   }

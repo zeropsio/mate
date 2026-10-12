@@ -17,6 +17,7 @@ import {
   isBootstrapStartWithRoute,
 } from "./classify.ts";
 import { compareAnchors } from "./order.ts";
+import { readZeropsProposal } from "./proposal.ts";
 import type {
   ZeropsCall,
   ZeropsOperation,
@@ -51,6 +52,7 @@ import {
   phaseFor,
   readInputString,
 } from "./builders/shared.ts";
+import { buildProposalFields } from "./builders/proposal.ts";
 import { buildSimpleFields } from "./builders/simple.ts";
 import { buildStandupFields } from "./builders/standup.ts";
 import { buildSubdomainFields } from "./builders/subdomain.ts";
@@ -108,6 +110,9 @@ function determineKind(call: ZeropsCall): ZeropsOperationKind {
   if (call.toolName === "zerops_workflow" && isBootstrapSessionCall(call.input)) {
     return "bootstrap";
   }
+  if (readZeropsProposal(call.toolName, call.resultText) !== undefined) {
+    return "proposal";
+  }
   return "error";
 }
 
@@ -141,6 +146,7 @@ const BUILDER_BY_KIND: Readonly<
   events: buildEventsFields,
   process: buildProcessFields,
   discover: buildDiscoverFields,
+  proposal: buildProposalFields,
   error: buildErrorFields,
 };
 
@@ -206,6 +212,7 @@ function buildStandaloneOperation(
     ...(fields.deviceName !== undefined ? { deviceName: fields.deviceName } : {}),
     ...(fields.readResult !== undefined ? { readResult: fields.readResult } : {}),
     ...(fields.envChange !== undefined ? { envChange: fields.envChange } : {}),
+    ...(fields.proposal !== undefined ? { proposal: fields.proposal } : {}),
   };
 }
 
@@ -408,7 +415,7 @@ export function reduceZeropsOperations(
     if (call.agentInternal) {
       continue;
     }
-    const visibility = classifyZeropsCall(call.toolName, call.input, call.status);
+    const visibility = classifyZeropsCall(call.toolName, call.input, call.status, call.resultText);
 
     if (visibility === "hidden" || visibility === "pending-unclassifiable") {
       if (isBootstrapRouteMenuStart(call.input)) {

@@ -1202,3 +1202,65 @@ describe("reduceZeropsOperations — the call the Mate waits on", () => {
     ]);
   });
 });
+
+describe("reduceZeropsOperations — an organization tool's proposal", () => {
+  const proposal = JSON.stringify({
+    proposal: {
+      id: "prop-1",
+      kind: "service.restart",
+      summary: "Restart medusa in Contoso",
+      reason: "It stopped answering.",
+      projectId: "p-contoso",
+      serviceId: "s-medusa",
+      serviceName: "medusa",
+      params: {},
+    },
+    note: "Nothing has run. The person approves or declines it on the card.",
+  });
+
+  it.each<[string, EntrySpec, string | null]>([
+    [
+      "a result holding a proposal is a proposal card titled by its summary",
+      {
+        id: "a1",
+        createdAt: "2026-10-12T10:00:00.000Z",
+        toolName: "zerops_org_restart",
+        status: "completed",
+        resultText: proposal,
+      },
+      "Restart medusa in Contoso",
+    ],
+    [
+      "a read of the organization is the plain row any call is",
+      {
+        id: "a1",
+        createdAt: "2026-10-12T10:00:00.000Z",
+        toolName: "zerops_org_projects",
+        status: "completed",
+        resultText: JSON.stringify({ projects: [] }),
+      },
+      null,
+    ],
+    [
+      "a proposal tool still running is the plain row until its proposal comes",
+      {
+        id: "a1",
+        createdAt: "2026-10-12T10:00:00.000Z",
+        toolName: "zerops_org_restart",
+        status: "inProgress",
+      },
+      null,
+    ],
+  ])("%s", (_title, entry, summary) => {
+    const { operations, genericCalls } = reduceFrom([entry]);
+    if (summary === null) {
+      expect(operations).toEqual([]);
+      expect(genericCalls.map((call) => call.id)).toEqual(["a1"]);
+      return;
+    }
+    expect(operations.map((operation) => [operation.kind, operation.proposal?.summary])).toEqual([
+      ["proposal", summary],
+    ]);
+    expect(genericCalls).toEqual([]);
+  });
+});
