@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { deriveMessagesTimelineRows } from "./MessagesTimeline.logic";
 import {
   keepTimelines,
   keptRests,
+  keptSlotTimeline,
   warmingTimeline,
   type KeptTimeline,
 } from "./keptTimelines.logic";
@@ -98,5 +100,40 @@ describe("keptRests", () => {
     },
   ])("$name", ({ input, rests }) => {
     expect(keptRests(input)).toBe(rests);
+  });
+});
+
+describe("a conversation warmed out of sight", () => {
+  type Open = Parameters<typeof keptSlotTimeline>[0];
+  type Warmed = Parameters<typeof keptSlotTimeline>[1];
+
+  it("holds no row of the open conversation's error", () => {
+    const openA = {
+      routeThreadKey: "env:thread-a",
+      timelineEntries: [],
+      turnDiffSummaries: [],
+      isWorking: false,
+      activeTurnStartedAt: null,
+      supportsConversationRollback: false,
+      endNotice: { words: "Select a base branch before sending.", calm: false },
+    } as unknown as Open;
+    const warmedB = {
+      routeThreadKey: "env:thread-b",
+      timelineEntries: [],
+      isWorking: false,
+      activeTurnStartedAt: null,
+    } as unknown as Warmed;
+
+    const b = keptSlotTimeline(openA, warmedB);
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: b.timelineEntries,
+      isWorking: b.isWorking,
+      activeTurnStartedAt: b.activeTurnStartedAt,
+      turnDiffSummaries: b.turnDiffSummaries,
+      supportsConversationRollback: b.supportsConversationRollback,
+      endNotice: b.endNotice ?? null,
+    });
+    expect(b.routeThreadKey).toBe("env:thread-b");
+    expect(rows.filter((row) => row.kind === "error")).toEqual([]);
   });
 });
