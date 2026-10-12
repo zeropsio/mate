@@ -11,6 +11,10 @@
  * @module macHostScript
  */
 import { shellQuote } from "./MacHost.ts";
+import { MAC_VIEW_SCRIPT } from "./macViewScript.ts";
+
+/** Ends the heredoc that writes the view helper; no line of the script is this word. */
+const VIEW_SCRIPT_END = "ZEROPS_MATE_VIEW_SCRIPT";
 
 export interface MacHostScriptInput {
   readonly projectId: string;
@@ -98,6 +102,11 @@ echo "Accessibility $ACCESSIBILITY, Screen Recording $RECORDING"
 EOF
 chmod 755 "$ROOT/bin/check-access"
 
+# The live view: the opened app's window, captured by node (Screen Recording is node's) and
+# served on a socket in $ROOT, which only you reach; the Mate reads it over its ssh.
+cat > "$ROOT/bin/view.mjs" <<'${VIEW_SCRIPT_END}'
+${MAC_VIEW_SCRIPT}${VIEW_SCRIPT_END}
+
 # The Mate's way in: an sshd of your own, on the VPN address only, for its key only.
 [ -f "$ROOT/sshd/host_key" ] || ssh-keygen -q -t ed25519 -N '' -C "zerops-mate-$PROJECT" -f "$ROOT/sshd/host_key"
 printf '%s\\n' "$MATE_KEY" > "$ROOT/sshd/authorized_keys"
@@ -135,11 +144,12 @@ agent() {
   fail "macOS would not start $label."
 }
 
-say "starting the ssh server on $ADDRESS:$PORT and the agent-device daemon"
+say "starting the ssh server on $ADDRESS:$PORT, the agent-device daemon and the live view"
 rm -f "$ROOT/agent-device/state/daemon.json"
 agent sshd /usr/sbin/sshd -D -f "$ROOT/sshd/sshd_config" -E "$ROOT/logs/sshd.log"
 agent agent-device /usr/bin/env "PATH=$PATH" AGENT_DEVICE_DAEMON_SERVER_MODE=http \\
   "AGENT_DEVICE_STATE_DIR=$ROOT/agent-device/state" AGENT_DEVICE_MACOS_APP_BACKEND=native "$NODE" "$DAEMON"
+agent view "$NODE" "$ROOT/bin/view.mjs"
 for attempt in $(seq 1 20); do
   [ -f "$ROOT/agent-device/state/daemon.json" ] && nc -z "$ADDRESS" "$PORT" 2>/dev/null && break
   [ "$attempt" = 20 ] && fail "the ssh server or the agent-device daemon did not come up; see $ROOT/logs."
@@ -186,12 +196,12 @@ fail "paired, but $ACCESS. Allow node in both lists, then run this again."
 `;
 
 export const renderMacRemoveScript = (projectId: string): string => `${preamble(projectId)}
-for name in sshd agent-device; do
+for name in sshd agent-device view; do
   launchctl bootout "$DOMAIN/$LABEL.$name" 2>/dev/null || true
   rm -f "$AGENTS/$LABEL.$name.plist"
 done
 rm -rf "$ROOT"
-say "removed this Mate's ssh server and agent-device from this Mac. Copies in $HOME/ZeropsMate/$PROJECT are yours to keep or delete."
+say "removed this Mate's ssh server, agent-device and live view from this Mac. Copies in $HOME/ZeropsMate/$PROJECT are yours to keep or delete."
 `;
 
 /** What `ssh zcp mac host | sh` runs when the Mate cannot render a script. */
