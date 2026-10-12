@@ -1208,7 +1208,15 @@ export function engineCardPagingOf(
       const words = personItemsOf(member.id);
       const asked = member.trigger.kind === "person" ? Math.max(1, words) : words;
       const answered = member.summary.answerItemId === null ? 0 : 1;
-      if (member.summary.items > asked + answered) hasWork = true;
+      // A run a usage limit cut records no answer, and the limit's own note is no work of it: a
+      // run refused before it did anything holds the person's words and that note alone.
+      const limitNote =
+        member.end?.kind === "usage-limit" && member.summary.answerItemId === null ? 1 : 0;
+      if (
+        Object.keys(member.summary.calls).length > 0 ||
+        member.summary.items > asked + answered + limitNote
+      )
+        hasWork = true;
     }
     cards[card] = {
       pageRuns: { earlier: earlier?.id ?? null, later: later?.id ?? null },

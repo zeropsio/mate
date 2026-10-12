@@ -71,7 +71,6 @@ describe("crewChatNotices", () => {
       retired: {
         text: "An earlier conversation with Backend — it goes on in a newer one.",
         currentThreadId: CURRENT,
-        sendBlock: "Write to Backend in its current conversation",
       },
       pending: null,
     });

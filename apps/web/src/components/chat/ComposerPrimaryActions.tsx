@@ -4,6 +4,7 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 interface PendingActionState {
   questionIndex: number;
@@ -21,6 +22,8 @@ interface ComposerPrimaryActionsProps {
   promptHasText: boolean;
   isSendBusy: boolean;
   sendDisabledReason: string | null;
+  /** What Send's hover says before it sends: the Mate at work in another chat on the same files. */
+  sendHint?: string | null;
   isConnecting: boolean;
   isEnvironmentUnavailable: boolean;
   isPreparingWorktree: boolean;
@@ -68,6 +71,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   promptHasText,
   isSendBusy,
   sendDisabledReason,
+  sendHint = null,
   isConnecting,
   isEnvironmentUnavailable,
   isPreparingWorktree,
@@ -219,11 +223,12 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
 
   // Blue is for what can be clicked (S3): with nothing to send the button is
   // the toolbar's neutral grey, and it turns blue the moment there is.
-  const sendButton = (
+  const sendButtonItself = (
     <button
       type="submit"
       className="flex h-9 w-9 items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out enabled:cursor-pointer enabled:inset-shadow-[0_1px_--theme(--color-white/16%)] enabled:shadow-message-action/24 hover:scale-105 hover:bg-message-action-hover active:scale-95 active:inset-shadow-[0_1px_--theme(--color-black/8%)] active:shadow-none disabled:pointer-events-none disabled:bg-foreground/9 disabled:text-muted-foreground disabled:shadow-none disabled:hover:scale-100 sm:h-8 sm:w-8"
       {...pointerFocusProps}
+      aria-description={sendHint ?? undefined}
       disabled={
         isSendBusy ||
         isSendDisabled ||
@@ -261,6 +266,14 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         </svg>
       )}
     </button>
+  );
+  // One Send, whether or not the Mate works in another chat: the hint comes and goes as its
+  // description and its hover, and a focused Send keeps its focus as it does.
+  const sendButton = (
+    <Tooltip disabled={sendHint === null}>
+      <TooltipTrigger render={sendButtonItself} />
+      <TooltipPopup side="top">{sendHint}</TooltipPopup>
+    </Tooltip>
   );
 
   if (!isRunning) {

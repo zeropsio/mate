@@ -3,6 +3,7 @@ import {
   type ProviderInstanceId,
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
+  type ServerProvider,
 } from "@t3tools/contracts";
 import { ZapIcon } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -30,6 +31,8 @@ import {
 } from "./ComposerModelControl.logic";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { composerControl, type ComposerControlLook } from "@t3tools/client-runtime/data";
+import { providerAvailability } from "./providerAvailability.logic";
+import { AvailabilityDot, AvailabilityNote, availabilityName } from "./AgentAvailability";
 
 /**
  * The composer's one quiet control (C4): the trigger says the model and its
@@ -83,6 +86,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   triggerLabelOverride?: string;
   onOpenChange?: (open: boolean) => void;
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
+  /**
+   * The status of the agent the conversation runs on, as admission reads it: when it is not fully
+   * available, the control carries a dot in its tone and its menu says why (S6).
+   */
+  agentStatus?: ServerProvider | null;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
   /** See `ModelPickerContent`'s `renderInstancePanel` — passed straight through. */
   renderInstancePanel?: ModelPickerRenderInstancePanel;
@@ -156,6 +164,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     pending: props.catalogPending === true,
   });
   const look = control.kind === "known" ? control.look : null;
+  const availabilityOfAgent = providerAvailability(props.agentStatus ?? null);
+  const availability =
+    availabilityOfAgent?.instanceId === activeInstanceId ? availabilityOfAgent : null;
 
   const setIsMenuOpen = (open: boolean) => {
     props.onOpenChange?.(open);
@@ -253,6 +264,28 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         : shownLabel === null
           ? triggerLabel
           : composerModelControlText(shownLabel);
+    const icon =
+      look !== null ? (
+        <ProviderInstanceIcon
+          driverKind={look.driverKind}
+          displayName={look.displayName}
+          accentColor={look.accentColor}
+          showBadge={look === resolvedLook && showInstanceBadge}
+          className="size-3.5"
+          iconClassName={cn("size-3.5", props.activeProviderIconClassName)}
+          indicatorBackground="var(--contrast-input)"
+        />
+      ) : control.kind !== "unknown" && activeEntry ? (
+        <ProviderInstanceIcon
+          driverKind={activeEntry.driverKind}
+          displayName={activeEntry.displayName}
+          accentColor={activeEntry.accentColor}
+          showBadge={showInstanceBadge}
+          className="size-3.5"
+          iconClassName={cn("size-3.5", props.activeProviderIconClassName)}
+          indicatorBackground="var(--contrast-input)"
+        />
+      ) : null;
     return (
       <Popover
         open={isMenuOpen}
@@ -267,7 +300,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         <PopoverTrigger
           render={
             <ComposerControl
-              aria-label={props.triggerAriaLabel ?? text}
+              aria-label={availabilityName(props.triggerAriaLabel ?? text, availability)}
               className={cn("min-w-0 shrink", props.triggerClassName)}
               data-chat-provider-model-picker="true"
               data-composer-shortcut={props.composer.shortcuts}
@@ -278,27 +311,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             />
           }
         >
-          {look !== null ? (
-            <ProviderInstanceIcon
-              driverKind={look.driverKind}
-              displayName={look.displayName}
-              accentColor={look.accentColor}
-              showBadge={look === resolvedLook && showInstanceBadge}
-              className="size-3.5"
-              iconClassName={cn("size-3.5", props.activeProviderIconClassName)}
-              indicatorBackground="var(--contrast-input)"
-            />
-          ) : control.kind !== "unknown" && activeEntry ? (
-            <ProviderInstanceIcon
-              driverKind={activeEntry.driverKind}
-              displayName={activeEntry.displayName}
-              accentColor={activeEntry.accentColor}
-              showBadge={showInstanceBadge}
-              className="size-3.5"
-              iconClassName={cn("size-3.5", props.activeProviderIconClassName)}
-              indicatorBackground="var(--contrast-input)"
-            />
-          ) : null}
+          {availability === null ? (
+            icon
+          ) : (
+            <span className="relative inline-flex shrink-0">
+              {icon}
+              <AvailabilityDot availability={availability} corner />
+            </span>
+          )}
           <Tooltip>
             <TooltipTrigger render={<span className="min-w-0 truncate" />}>
               {control.kind === "unknown"
@@ -327,9 +347,25 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           <ComposerControlChevron size="quiet" />
         </PopoverTrigger>
         <PopoverPopup align="start" className="before:hidden" padding="none" ref={menuRef}>
-          <div className="composer-model-menu">
-            {content}
-            {props.composer.choices}
+          {/* The note and the menu share the room the popup has: the list scrolls inside it. */}
+          <div className="composer-model-popup">
+            {availability === null ? null : (
+              <AvailabilityNote
+                availability={availability}
+                onOpenSetup={
+                  availability.setup && props.onOpenProviderSetup
+                    ? () => {
+                        setIsMenuOpen(false);
+                        props.onOpenProviderSetup?.(availability.instanceId);
+                      }
+                    : null
+                }
+              />
+            )}
+            <div className="composer-model-menu">
+              {content}
+              {props.composer.choices}
+            </div>
           </div>
         </PopoverPopup>
       </Popover>

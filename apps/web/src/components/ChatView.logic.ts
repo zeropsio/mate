@@ -1214,14 +1214,23 @@ export function newestPersonTurn(
  * (`after`; `null`, none yet) exists — the ask another of their browsers sent through a moment
  * later. The Mate's own messages, older history loaded, and a window a reconnect shrank move
  * nothing; an error that knows nothing of its turns (`after` absent) stands until the next send.
+ * A turn that ended after it was written (`turnEndedAt`, the latest turn's) takes it away too:
+ * it is the conversation's last row, and never stands under what the Mate wrote since.
  */
 export function localThreadErrorStanding(
   entry:
-    | { readonly message: string | null; readonly after?: string | null | undefined }
+    | {
+        readonly message: string | null;
+        readonly at?: number | undefined;
+        readonly after?: string | null | undefined;
+      }
     | undefined,
   newest: string | null | undefined,
+  turnEndedAt?: string | null | undefined,
 ): string | null {
   if (entry === undefined || entry.message === null) return null;
+  if (entry.at !== undefined && turnEndedAt != null && Date.parse(turnEndedAt) > entry.at)
+    return null;
   if (entry.after === undefined || newest === undefined || newest === null) return entry.message;
   if (entry.after === null || Date.parse(newest) > Date.parse(entry.after)) return null;
   return entry.message;

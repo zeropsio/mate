@@ -11,6 +11,41 @@
  * kept, and nothing warms while the pane is still placing the one it opened.
  */
 
+import type { ComponentProps } from "react";
+
+import type { MessagesTimeline } from "./MessagesTimeline";
+import type { WarmTimelineProps } from "./useWarmTimeline";
+
+type TimelineProps = ComponentProps<typeof MessagesTimeline>;
+
+const nothing = () => undefined;
+
+/**
+ * A list out of sight answers nothing the pane asks of the open one: where
+ * its end is, a gesture, an anchor; and it says none of the open one's own
+ * failures (`endNotice`) or notices (`notices`), which are that conversation's alone.
+ */
+function outOfSight(timeline: TimelineProps): TimelineProps {
+  const { cancelPositionRestoreRef: _restore, ...rest } = timeline;
+  return {
+    ...rest,
+    endNotice: null,
+    notices: [],
+    onIsAtEndChange: nothing,
+    onPersonInput: nothing,
+    onManualNavigation: nothing,
+    onAnchorReady: nothing,
+  };
+}
+
+/** A kept or warming list's props: the pane's, out of sight, under the conversation's own. */
+export function keptSlotTimeline(
+  timeline: TimelineProps,
+  warmed: WarmTimelineProps | null,
+): TimelineProps {
+  return { ...outOfSight(timeline), ...warmed };
+}
+
 /** A kept list, in the order it arrived: a list never moves in the page. */
 export interface KeptTimeline {
   readonly key: string;

@@ -45,15 +45,21 @@ const LIMIT_WORDS = "You've hit your weekly limit · resets Oct 11, 11am (UTC)";
  * words as they stood (the end's commit carried it empty; its words came 154 ms later).
  */
 function milo(
-  phase: "paused" | "held" | "lifted",
+  phase: "paused" | "held" | "lifted" | "continued",
   {
     reload = false,
+    work = true,
     answer = LIMIT_WORDS,
     liftedAt = null,
     driver,
     window,
+    notices,
   }: {
+    /** What happened that still holds, at the conversation's end (`ConversationNotice`). */
+    notices?: ReadonlyArray<string>;
     reload?: boolean;
+    /** The run worked before the limit; without, the limit refused it before it did anything. */
+    work?: boolean;
     answer?: string;
     liftedAt?: number | null;
     driver?: string;
@@ -70,43 +76,62 @@ function milo(
           ...(window === undefined ? {} : { window }),
         },
         summary: {
-          items: 4,
-          calls: { command: 1 },
-          answerItemId: `${limited}/i/4` as never,
+          // Refused before it did anything: the person's message and the limit's own words.
+          items: work ? 4 : 2,
+          calls: work ? { command: 1 } : {},
+          // The engine records no answer for a run a usage limit cut (B5).
+          answerItemId: null,
           lastItemSeq: 4,
         },
       }),
     ),
     ...(phase === "paused"
       ? []
-      : [
-          decode(
-            engineRun(
-              key.conversationId,
-              2,
-              phase === "held"
-                ? {
-                    state: "queued",
-                    end: null,
-                    admittedAt: null,
-                    startedAt: null,
-                    endedAt: null,
-                  }
-                : {
-                    state: "running",
-                    end: null,
-                    endedAt: null,
-                    ...(liftedAt === null
-                      ? {}
-                      : { queuedAt: SENT_AT, admittedAt: liftedAt, startedAt: liftedAt }),
-                  },
+      : phase === "continued"
+        ? [
+            // The engine's resume at the reset joins the run the limit cut.
+            decode(
+              engineRun(key.conversationId, 2, {
+                trigger: { kind: "wake", cause: "usage-resume", wakeId: null },
+                joins: limited,
+                queuedAt: LIFTED_AT,
+                admittedAt: LIFTED_AT,
+                startedAt: LIFTED_AT,
+                state: "running",
+                turnState: "running",
+                endedAt: null,
+                end: null,
+              } as never),
             ),
-          ),
-        ]),
+          ]
+        : [
+            decode(
+              engineRun(
+                key.conversationId,
+                2,
+                phase === "held"
+                  ? {
+                      state: "queued",
+                      end: null,
+                      admittedAt: null,
+                      startedAt: null,
+                      endedAt: null,
+                    }
+                  : {
+                      state: "running",
+                      end: null,
+                      endedAt: null,
+                      ...(liftedAt === null
+                        ? {}
+                        : { queuedAt: SENT_AT, admittedAt: liftedAt, startedAt: liftedAt }),
+                    },
+              ),
+            ),
+          ]),
   ];
   const items: Item[] = [
     personItem(limited, 1, PROMPT),
-    ...(reload
+    ...(reload || !work
       ? []
       : [
           thoughtItem(limited, 2, "I'm planning out three concurrent background jobs"),
@@ -115,24 +140,31 @@ function milo(
     noteItem(limited, 4, answer, { answer: false }),
     ...(phase === "paused"
       ? []
-      : [
-          personItem(held, 5, "Then write the table", {
-            ...(liftedAt === null ? {} : { at: SENT_AT }),
-            delivery:
-              phase === "held" ? { state: "queued", at: null } : { state: "delivered", at: 5 },
-          }),
-          ...(liftedAt === null
-            ? []
-            : [
-                {
-                  ...thoughtItem(held, 6, "Reading the notes file first"),
-                  at: liftedAt + 4_000,
-                } as Item,
-              ]),
-        ]),
+      : phase === "continued"
+        ? [
+            {
+              ...thoughtItem(held, 6, "Reading the notes file first"),
+              at: LIFTED_AT + 4_000,
+            } as Item,
+          ]
+        : [
+            personItem(held, 5, "Then write the table", {
+              ...(liftedAt === null ? {} : { at: SENT_AT }),
+              delivery:
+                phase === "held" ? { state: "queued", at: null } : { state: "delivered", at: 5 },
+            }),
+            ...(liftedAt === null
+              ? []
+              : [
+                  {
+                    ...thoughtItem(held, 6, "Reading the notes file first"),
+                    at: liftedAt + 4_000,
+                  } as Item,
+                ]),
+          ]),
   ];
   const state: ConversationRowState =
-    phase === "lifted"
+    phase === "lifted" || phase === "continued"
       ? { kind: "working", since: 6, waitsOnHelpers: false }
       : { kind: "paused", resetsAt: RESETS_AT };
   const row: ConversationRow = engineRow(key.environmentId, key.conversationId, {
@@ -159,10 +191,11 @@ function milo(
       deriveWorkLogEntries(thread.activities),
     ),
     latestTurn: thread.latestTurn,
-    isWorking: phase === "lifted",
+    isWorking: phase === "lifted" || phase === "continued",
     activeTurnStartedAt: null,
     turnDiffSummaries: [],
     supportsConversationRollback: false,
+    ...(notices === undefined ? {} : { notices }),
     ...(reload ? { cardPaging: engineCardPagingOfRecords(key, records) } : {}),
   });
   return { rows, limit };
@@ -172,23 +205,113 @@ const pauseIndex = (rows: ReturnType<typeof milo>["rows"]) =>
   rows.findIndex((row) => row.kind === "pause");
 const sentIndex = (rows: ReturnType<typeof milo>["rows"]) =>
   rows.findIndex((row) => row.kind === "message" && row.message.text === "Then write the table");
+const cardOf = (rows: ReturnType<typeof milo>["rows"]) =>
+  rows.find((row) => row.kind === "record" && row.status !== null) as
+    | Extract<ReturnType<typeof milo>["rows"][number], { kind: "record" }>
+    | undefined;
+const cardEndIndex = (rows: ReturnType<typeof milo>["rows"]) =>
+  rows.findIndex((row) => row.kind === "card-end");
 
-describe("a conversation paused at the usage limit", () => {
-  it("draws the limit as one notice right after the run it stopped, the conversation's last row", () => {
+// The owner's pick on the "Answer Then More Work" board (B5, 2026-10-12): "The card waits through
+// the pause. A run cut by a limit or a restart hasn't answered, so its last words stay in its card's
+// slot and the card waits with its face asleep, then goes on in place: only the head's words and the
+// face change. The ask ends with one card and one answer, and a reload reads the same."
+describe("a run the usage limit cut", () => {
+  it("waits in its card with its face asleep, no notice under it, the card the conversation's end", () => {
     const { rows } = milo("paused");
-    expect(pauseIndex(rows)).toBe(rows.length - 1);
-    expect(rows[pauseIndex(rows) - 1]).toMatchObject({ kind: "card-end" });
+    expect(pauseIndex(rows)).toBe(-1);
+    expect(cardOf(rows)).toMatchObject({
+      live: true,
+      now: { kind: "paused" },
+      status: {
+        live: true,
+        face: "paused",
+        paused: { resetsAt: new Date(RESETS_AT).toISOString() },
+      },
+    });
+    expect(rows.at(-1)).toMatchObject({ kind: "card-end" });
   });
 
-  it("holds a message sent while paused right after the notice, sending when the limit resets", () => {
+  it("holds its last line in its slot while it waits", () => {
+    const card = cardOf(milo("paused").rows)!;
+    expect(card.slot.live.map((item) => item.key)).toEqual([card.slot.record.at(-1)!.key]);
+  });
+
+  it("a reload draws the waiting card as it stood live", () => {
+    const shown = (rows: ReturnType<typeof milo>["rows"]) => {
+      const card = cardOf(rows)!;
+      return {
+        live: card.live,
+        now: card.now?.kind,
+        face: card.status!.face,
+        paused: card.status!.paused,
+        last: rows.at(-1)!.kind,
+        pauses: pauseIndex(rows),
+      };
+    };
+    expect(shown(milo("paused", { reload: true }).rows)).toEqual(shown(milo("paused").rows));
+  });
+
+  it.each([
+    { driver: "claudeAgent", provider: "Claude" },
+    { driver: "codex", provider: "Codex" },
+  ])("names whose limit it waits on from the run's own end ($driver)", ({ driver, provider }) => {
+    expect(cardOf(milo("paused", { driver }).rows)!.status!.paused).toMatchObject({ provider });
+  });
+
+  it("holds a message sent while paused right under its card, sending when the limit resets", () => {
     const { rows } = milo("held");
+    expect(pauseIndex(rows)).toBe(-1);
+    expect(sentIndex(rows)).toBe(cardEndIndex(rows) + 1);
+    expect(rows[sentIndex(rows)]).toMatchObject({ receipt: "held" });
+  });
+
+  it("settles in place when the held message's run starts, nothing drawn between them", () => {
+    const { rows } = milo("lifted");
+    expect(pauseIndex(rows)).toBe(-1);
+    expect(cardOf(rows)).toMatchObject({ live: false });
+    expect(cardOf(rows)!.status!.paused).toBeUndefined();
+    expect(sentIndex(rows)).toBe(cardEndIndex(rows) + 1);
+    expect(rows[sentIndex(rows)]).not.toMatchObject({ receipt: "held" });
+  });
+
+  it("goes on in its card when the limit lifts, its history saying where it waited", () => {
+    const { rows } = milo("continued");
+    const cards = rows.filter((row) => row.kind === "record");
+    expect(cards).toHaveLength(1);
+    expect(pauseIndex(rows)).toBe(-1);
+    const card = cardOf(rows)!;
+    expect(card.live).toBe(true);
+    expect(card.status!.paused).toBeUndefined();
+    const waited = card.items.find((item) => item.kind === "event" && item.event.type === "waited");
+    expect(waited).toMatchObject({
+      at: new Date(LIFTED_AT).toISOString(),
+      event: { type: "waited", to: new Date(LIFTED_AT).toISOString() },
+    });
+    // At the seam: after what it did before the cut, before what it does after.
+    const keys = card.items.map((item) => item.key);
+    expect(keys.indexOf(waited!.key)).toBe(keys.length - 1);
+  });
+
+  it("its clock leaves the wait out once it goes on", () => {
+    const card = cardOf(milo("continued").rows)!;
+    const waited = card.items.find((item) => item.kind === "event" && item.event.type === "waited");
+    const from =
+      waited?.kind === "event" && waited.event.type === "waited" ? waited.event.from : "";
+    expect(card.status!.waitedMs).toBeGreaterThanOrEqual(LIFTED_AT - Date.parse(from));
+  });
+});
+
+describe("a conversation paused at the usage limit", () => {
+  it("holds a message sent while paused right after the notice, sending when the limit resets", () => {
+    const { rows } = milo("held", { work: false });
     expect(sentIndex(rows)).toBe(pauseIndex(rows) + 1);
     expect(rows[sentIndex(rows)]).toMatchObject({ receipt: "held" });
   });
 
   it("starts the held message's run when the pause lifts: the notice goes quiet in place and the mark clears", () => {
-    const before = milo("held").rows;
-    const { rows } = milo("lifted");
+    const before = milo("held", { work: false }).rows;
+    const { rows } = milo("lifted", { work: false });
     expect(rows[pauseIndex(rows)]).toMatchObject({ id: before[pauseIndex(before)]!.id });
     expect(rows[pauseIndex(rows)]).not.toMatchObject({ resumedAt: null });
     expect(sentIndex(rows)).toBe(pauseIndex(rows) + 1);
@@ -196,7 +319,7 @@ describe("a conversation paused at the usage limit", () => {
   });
 
   it("the pause row says when the Mate really picked up again", () => {
-    const { rows } = milo("lifted", { liftedAt: LIFTED_AT });
+    const { rows } = milo("lifted", { work: false, liftedAt: LIFTED_AT });
     expect(rows[pauseIndex(rows)]).toMatchObject({
       resumedAt: new Date(LIFTED_AT).toISOString(),
     });
@@ -211,7 +334,7 @@ describe("a conversation paused at the usage limit", () => {
     "names the agent whose limit it was from the run's own end, before any session is read ($driver)",
     ({ driver, provider }) => {
       for (const phase of ["paused", "held", "lifted"] as const) {
-        const { rows } = milo(phase, driver === undefined ? {} : { driver });
+        const { rows } = milo(phase, { work: false, ...(driver === undefined ? {} : { driver }) });
         const pause = rows[pauseIndex(rows)];
         expect(pause?.kind === "pause" ? pause.provider : "no pause").toBe(provider);
       }
@@ -223,6 +346,7 @@ describe("a conversation paused at the usage limit", () => {
     ({ window }) => {
       for (const phase of ["paused", "held", "lifted"] as const) {
         const { rows } = milo(phase, {
+          work: false,
           driver: "claudeAgent",
           ...(window === undefined ? {} : { window }),
         });
@@ -232,8 +356,19 @@ describe("a conversation paused at the usage limit", () => {
     },
   );
 
+  // The server counts the person's message and the limit's own note as the run's two items.
+  it("a run the limit refused before it did anything reads as its notice after a reload too", () => {
+    const shown = (rows: ReturnType<typeof milo>["rows"]) => ({
+      pause: pauseIndex(rows) === rows.length - 1,
+      waiting: rows.some((row) => row.kind === "record" && row.status?.paused !== undefined),
+    });
+    const live = shown(milo("paused", { work: false }).rows);
+    expect(live).toEqual({ pause: true, waiting: false });
+    expect(shown(milo("paused", { work: false, reload: true }).rows)).toEqual(live);
+  });
+
   it("draws nothing for an answer the limit left empty", () => {
-    const { rows } = milo("paused", { answer: "" });
+    const { rows } = milo("paused", { work: false, answer: "" });
     expect(
       rows.filter((row) => row.kind === "message" && row.message.role === "assistant"),
     ).toEqual([]);
@@ -259,7 +394,7 @@ describe("a conversation paused at the usage limit", () => {
   ] as const)(
     "the $phase pause fills the conversation only when it is the server's and nothing follows it ($stage)",
     ({ phase, server, stage }) => {
-      const { rows, limit } = milo(phase);
+      const { rows, limit } = milo(phase, { work: false });
       const serverPause = server
         ? { resetsAt: "2099-10-11T11:00:00.000Z", autoResume: false }
         : null;
@@ -268,4 +403,13 @@ describe("a conversation paused at the usage limit", () => {
       );
     },
   );
+
+  // A notice row under it (S6) is the person's to read, not something the run did after the pause.
+  it("the server's pause stays the stage with the /usage-limits answer under it", () => {
+    const { rows, limit } = milo("paused", { work: false, notices: ["usage-limits:1"] });
+    expect(rows.at(-1)).toMatchObject({ kind: "notice" });
+    expect(livePauseStageId(rows, limit, { resetsAt: "2099-10-11T11:00:00.000Z" })).toBe(
+      rows[pauseIndex(rows)]!.id,
+    );
+  });
 });

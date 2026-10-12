@@ -8,6 +8,7 @@ import {
   conversationSpeaker,
   deriveMessagesTimelineRows,
   earlierTurnsAnchor,
+  livePauseId,
   rowGap,
   thoughtParagraphs,
   thoughtPreview,
@@ -2388,9 +2389,9 @@ describe("deriveMessagesTimelineRows", () => {
     const limit = "You've hit your session limit · resets 9:20pm (UTC)";
     const list = rows({
       limit: refusedLimit,
+      // Refused before it did anything: a run the limit cut after work waits in its card instead.
       entries: [
         user("m0", 0),
-        tool("w1", "t1", 1),
         assistant("a1", "t1", 48, limit),
         assistant("a2", "t2", 48, limit, { second: 10 }),
         assistant("a3", "t3", 48, limit, { second: 20 }),
@@ -2399,18 +2400,12 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       settled: "t4",
     });
-    expect(shape(list).slice(1)).toEqual([
-      "message:m0",
-      "record:record:msg:m0",
-      "pause:pause:msg:m0",
-      "message:m1",
-    ]);
-    expect(list[3]).toMatchObject({
+    expect(shape(list).slice(1)).toEqual(["message:m0", "pause:pause:msg:m0", "message:m1"]);
+    expect(list.find((row) => row.kind === "pause")).toMatchObject({
       held: 3,
       resumedAt: null,
       resetsAt: new Date(Date.UTC(2026, 8, 24, 21, 20)).toISOString(),
     });
-    expect(recordOf(list)?.status).toMatchObject({ face: "paused" });
     // Refused admission did no work: the pause tells it once, without a fabricated work duration.
     expect(list.some((row) => row.kind === "work-line")).toBe(false);
   });
@@ -2430,13 +2425,10 @@ describe("deriveMessagesTimelineRows", () => {
       ],
       settled: "t1",
     });
-    expect(shape(list).slice(1)).toEqual([
-      "message:m0",
-      "record:record:msg:m0",
-      "pause:pause:msg:m0",
-      "message:a1",
-    ]);
-    expect(statusOf(list)).toMatchObject({ face: "paused" });
+    // The card it cut tells the limit (B5): no notice under it, no error line in it.
+    expect(shape(list).slice(1)).toEqual(["message:m0", "record:record:msg:m0", "message:a1"]);
+    expect(statusOf(list)).toMatchObject({ face: "paused", paused: { resetsAt: null } });
+    expect(allItems(list).some((item) => item.kind === "error")).toBe(false);
   });
 
   it("marks a pause resumed once the Mate works again", () => {
@@ -2444,7 +2436,6 @@ describe("deriveMessagesTimelineRows", () => {
     const list = rows({
       entries: [
         user("m0", 0),
-        tool("w1", "t1", 1),
         assistant("a1", "t1", 48, limit),
         tool("w2", "t2", 55),
         assistant("a2", "t2", 56, "Back at it."),
@@ -3023,6 +3014,68 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(list.at(-1)).toMatchObject({ kind: "queued-message", isNext: true });
   });
+
+  it("ends the conversation on a failure no run shows, before the messages waiting to go", () => {
+    const list = deriveMessagesTimelineRows({
+      timelineEntries: [user("m0", 0)],
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+      endNotice: { words: "Select a base branch before sending.", calm: false },
+      queuedMessages: [
+        {
+          id: "q1",
+          createdAt: at(1),
+          prompt: "and the footer",
+          images: [],
+          terminalContexts: [],
+          reviewComments: [],
+        } as never,
+      ],
+    });
+    expect(list.map((row) => row.kind).slice(-2)).toEqual(["error", "queued-message"]);
+    expect(list.at(-2)).toMatchObject({
+      entry: { label: "Select a base branch before sending." },
+      calm: false,
+    });
+  });
+
+  // The owner's pick, S6 on the "Composer Strips" board (2026-10-12): what happened becomes a quiet
+  // row in the conversation, not a strip over the composer.
+  it.each([
+    { notices: [], last: ["queued-message"] },
+    { notices: ["feedback:1"], last: ["queued-message", "notice:feedback:1"] },
+    {
+      notices: ["resume-compaction:t", "branch-changed:t"],
+      last: ["queued-message", "notice:resume-compaction:t", "notice:branch-changed:t"],
+    },
+  ])(
+    "what happened stands at the conversation's end while it holds ($notices)",
+    ({ notices, last }) => {
+      const list = deriveMessagesTimelineRows({
+        timelineEntries: [user("m0", 0)],
+        isWorking: true,
+        activeTurnStartedAt: at(0),
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+        queuedMessages: [
+          {
+            id: "q1",
+            createdAt: at(1),
+            prompt: "and the footer",
+            images: [],
+            terminalContexts: [],
+            reviewComments: [],
+          } as never,
+        ],
+        notices,
+      });
+      expect(
+        list.slice(-last.length).map((row) => (row.kind === "notice" ? row.id : row.kind)),
+      ).toEqual(last);
+    },
+  );
 });
 
 describe("thoughtParagraphs", () => {
@@ -3100,6 +3153,46 @@ describe("a run that broke off", () => {
 });
 
 describe("a run the usage limit stopped", () => {
+  const limitWords = "You've hit your session limit · resets 9:20pm (UTC)";
+
+  // One live pause, the newest (review of B5, 2026-10-12): a later run that worked ends every
+  // earlier open pause as history, whether or not the limit then cut it too.
+  it("a run that worked ends the notice of a limit before it, even when the limit cuts it too", () => {
+    const list = rows({
+      limit: refusedLimit,
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 1, limitWords),
+        user("m1", 10),
+        tool("w1", "t2", 11),
+        assistant("a2", "t2", 12, limitWords),
+      ],
+      settled: "t2",
+    });
+    const pauses = list.filter((row) => row.kind === "pause");
+    expect(pauses).toHaveLength(1);
+    expect(pauses[0]).toMatchObject({ id: "pause:msg:m0" });
+    expect(pauses[0]).not.toMatchObject({ resumedAt: null });
+    expect(statusOf(list)?.paused).toBeDefined();
+    expect(livePauseId(list)).toBeNull();
+  });
+
+  // A result under a waiting card left as the resume joined it and came back as it settled.
+  it("a card waiting on the limit draws no result under it until it settles", () => {
+    const entries = [
+      user("m0", 0),
+      tool("w1", "t1", 1),
+      landed("l1", 2),
+      assistant("a1", "t1", 3, limitWords),
+    ];
+    const waiting = rows({ limit: refusedLimit, entries, settled: "t1" });
+    expect(statusOf(waiting)?.paused).toBeDefined();
+    expect(waiting.some((row) => row.kind === "outcome")).toBe(false);
+    const settled = rows({ entries, settled: "t1" });
+    expect(statusOf(settled)?.paused).toBeUndefined();
+    expect(settled.some((row) => row.kind === "outcome")).toBe(true);
+  });
+
   // Codex's limit in its own words, typed by the server: the run reads
   // "stopped at the usage limit", with the pause under it — never a break.
   it("pauses, whatever the driver's words", () => {
@@ -3123,7 +3216,9 @@ describe("a run the usage limit stopped", () => {
     });
     expect(statusOf(list)).toMatchObject({ face: "paused" });
     expect(statusOf(list)?.brokeOff).toBeUndefined();
-    expect(list.some((row) => row.kind === "pause")).toBe(true);
+    // Its card holds the pause and waits for the reset (B5).
+    expect(statusOf(list)?.paused).toBeDefined();
+    expect(list.some((row) => row.kind === "pause")).toBe(false);
   });
 });
 

@@ -19,6 +19,7 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 const EMPTY_AGENT_PANEL_MODEL = emptyAgentPanelModel();
 const NOOP_OPEN_AGENTS = () => {};
 const EMPTY_QUEUED_MESSAGES: ReadonlyArray<QueuedComposerMessage> = [];
+const EMPTY_NOTICES: ReadonlyArray<ConversationNotice> = [];
 const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import {
@@ -136,6 +137,7 @@ import {
   createMessagesTimelineRowsCache,
   conversationSpeaker,
   deriveMessagesTimelineRows,
+  livePauseId,
   livePauseStageId,
   earlierTurnsAnchor,
   helperFinishesOf,
@@ -161,6 +163,7 @@ import {
   type TimelineLatestTurn,
   type MateAway,
 } from "./MessagesTimeline.logic";
+import type { ThreadEndNotice } from "./threadErrorNotice.logic";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipScrollDismissArea, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -200,6 +203,7 @@ import { ConversationOpeningStage } from "./ConversationOpeningStage";
 import { useZeropsThreadActivity } from "../../zerops/useZeropsAgentActivity";
 import type { CarriedRow } from "./stepHeight";
 import {
+  TimelineNoticesCtx,
   TimelineRowActivityCtx,
   TimelineRowCtx,
   TimelineWorkingCtx,
@@ -211,6 +215,9 @@ import {
   ErrorLine,
   EventLine,
   HeldMessageLine,
+  NoticeAnnouncer,
+  NoticeLine,
+  type ConversationNotice,
   MessageReceipt,
   PauseBlock,
   Seam,
@@ -347,6 +354,10 @@ interface MessagesTimelineProps {
   working?: DockModel | null;
   /** The server's word on work that outlived the turn, while it runs on. */
   afterTurnWork?: "working" | "monitoring" | null;
+  /** A failure no run shows, as the conversation's last row (`threadErrorNotice`). */
+  endNotice?: ThreadEndNotice | null;
+  /** Takes that row away, at its quiet ×. */
+  onDismissEndNotice?: () => void;
   /** The background jobs the server holds live, as watched (`useLiveJobs`). */
   liveJobs?: LiveJobs | null;
   isWorking: boolean;
@@ -423,6 +434,8 @@ interface MessagesTimelineProps {
   loadEarlier?: { readonly loading: boolean; readonly onLoadEarlier: () => void } | null;
   /** Messages sent during the running turn. They render as ghost bubbles after the live rows. */
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
+  /** What happened that still holds: the conversation's last rows while it does. */
+  notices?: ReadonlyArray<ConversationNotice>;
   /** The server's pause on this thread, when a usage limit holds it now. */
   usagePause?: ServerUsagePause | null;
   limit?: MateLimit;
@@ -455,6 +468,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenAgents = NOOP_OPEN_AGENTS,
   working: workingNow = null,
   afterTurnWork = null,
+  endNotice = null,
+  onDismissEndNotice,
   liveJobs = null,
   listRef,
   timelineEntries,
@@ -490,6 +505,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   topFadeEnabled = false,
   loadEarlier = null,
   queuedMessages = EMPTY_QUEUED_MESSAGES,
+  notices = EMPTY_NOTICES,
   usagePause = null,
   limit = NO_MATE_LIMIT,
   away = null,
@@ -612,6 +628,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const cardPaging = useEngineCardSnapshots(timelineThread);
   const liveLines = useEngineLiveStructure(timelineThread, timelineEntries);
   const runCards = useEngineRunCards(timelineThread);
+  // By id, so a notice whose words or action change redraws its row alone.
+  const noticeKey = notices.map((notice) => notice.id).join("\n");
+  const noticeIds = useMemo(() => (noticeKey === "" ? [] : noticeKey.split("\n")), [noticeKey]);
+  const noticesById = useMemo(
+    () => new Map(notices.map((notice) => [notice.id, notice] as const)),
+    [notices],
+  );
   const rawRows = useMemo(
     () =>
       deriveMessagesTimelineRows({
@@ -629,7 +652,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         turnDiffSummaries,
         supportsConversationRollback,
         queuedMessages,
+        notices: noticeIds,
         afterTurnWork,
+        endNotice,
         liveJobs,
         helperFinishes,
         alongside,
@@ -653,7 +678,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       turnDiffSummaries,
       supportsConversationRollback,
       queuedMessages,
+      noticeIds,
       afterTurnWork,
+      endNotice,
       liveJobs,
       helperFinishes,
       alongside,
@@ -772,10 +799,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   // Which rows stand where: what the list's containers are drawn again for.
   const rowOrder = useMemo(() => rows.map((row) => row.id).join("\n"), [rows]);
-  const livePauseId = useMemo(
-    () => rows.findLast((row) => row.kind === "pause" && row.resumedAt === null)?.id ?? null,
-    [rows],
-  );
+  const livePause = useMemo(() => livePauseId(rows), [rows]);
   // Only the server's own pause with nothing after it fills the conversation; the engine's pause
   // is a notice card where its run ended (Milo's run 4 drew it a viewport tall, blank below).
   const pauseStageId = useMemo(
@@ -1659,8 +1683,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onImageExpand,
       onOpenTurnDiff,
       speaker,
+      onDismissEndNotice,
+      driver: provider,
       standUpAsk,
-      livePauseId,
+      livePauseId: livePause,
       usagePause,
       pauseStage: {
         id: pauseStageId,
@@ -1703,8 +1729,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onImageExpand,
       onOpenTurnDiff,
       speaker,
+      onDismissEndNotice,
+      provider,
       standUpAsk,
-      livePauseId,
+      livePause,
       pauseStageId,
       usagePause,
       mate,
@@ -2014,102 +2042,108 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     )
   ) : (
     <TimelineRowCtx value={sharedState}>
-      <TimelineRowActivityCtx value={activityState}>
-        <TimelineWorkingCtx value={working}>
-          <TooltipScrollDismissArea
-            ref={setTimelineViewportElement}
-            className="relative h-full min-h-0"
-            // Whether the list follows its end: a run's fold then keeps its
-            // line in place while the list catches up (`foldAway`).
-            data-timeline-follows-end={followingEnd ? "" : undefined}
-            // Rows waiting their turn to enter (`usePace`): a run's fold waits for them.
-            data-timeline-arriving={rowsHeldKey === "" ? undefined : ""}
-            data-timeline-placing={listPlaced ? undefined : ""}
-            // Placement proves readiness; the opening stage owns the conversation's entrance.
-            data-timeline-arrives="at-once"
-            data-timeline-thread={routeThreadKey}
-          >
-            <LegendList<MessagesTimelineRow>
-              ref={listRef}
-              data={rows}
-              // Each container reads its row again whenever a row comes, goes
-              // or moves. LegendList (3.3.5) draws `data[indexByKey(key)]`
-              // once per container and keeps it until that container's own
-              // data changes: read while a row was being inserted, the index
-              // was the old one, and the container went on drawing the row
-              // that slid into it — a row twice, a card's edge gone (Rhea,
-              // run 11). A row that only changed in place is its container's
-              // own data, which the list hands it: the rest are not drawn
-              // again for it, on every streamed update.
-              extraData={rowOrder}
-              keyExtractor={keyExtractor}
-              getItemType={getItemType}
-              renderItem={renderItem}
-              estimatedItemSize={90}
-              initialScrollAtEnd={rememberedPosition?.atEnd !== false}
-              {...(restoringAlwaysRender ? { alwaysRender: restoringAlwaysRender } : {})}
-              {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
-              contentInsetEndAdjustment={contentInsetEndAdjustment}
-              // Off, no band: an end scroll LegendList queued before the person
-              // left is dropped once their scroll lands.
-              maintainScrollAtEndThreshold={followingEnd ? TIMELINE_FOLLOW_THRESHOLD : 0}
-              // The end is kept here (`createEndFollow`), never by the list: its keeping jumps.
-              maintainScrollAtEnd={false}
-              onItemSizeChanged={onItemSizeChanged}
-              maintainVisibleContentPosition={
-                restoringReadingPosition || followingEnd ? false : MAINTAIN_VISIBLE_CONTENT_POSITION
-              }
-              onScroll={handleScroll}
-              onLoad={onListLoad}
-              className={cn(
-                "timeline-legend-list scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
-                topFadeEnabled && "topbar-scroll-fade",
-              )}
-              ListHeaderComponent={
-                loadEarlier !== null ? (
-                  <TimelineLoadEarlierHeader
-                    loading={loadEarlier.loading}
-                    onLoadEarlier={onLoadEarlier}
-                    fade={topFadeEnabled}
-                  />
-                ) : topFadeEnabled ? (
-                  TIMELINE_LIST_FADE_HEADER
-                ) : (
-                  TIMELINE_LIST_HEADER
-                )
-              }
-              ListFooterComponent={
-                askRoom > 0 ? (
-                  <>
-                    {pauseStageId === null ? TIMELINE_LIST_FOOTER : null}
-                    <div aria-hidden style={{ height: askRoom }} />
-                  </>
-                ) : pauseStageId === null ? (
-                  TIMELINE_LIST_FOOTER
-                ) : null
-              }
-            />
-            <TimelineMinimap
-              items={minimapItems}
-              hasPersistentGutter={minimapHasPersistentGutter}
-              hitStripWidth={minimapHitStripWidth}
-              currentIndex={minimapCurrentIndex}
-              stripMap={minimapStripMap}
-              onSelect={(item) => {
-                onManualNavigation();
-                // The person picked where to go: the list's way there is
-                // theirs, and landing on the latest follows it.
-                notePersonSession({ type: "input", at: performance.now() });
-                void listRef.current?.scrollToIndex({
-                  index: item.rowIndex,
-                  animated: !reducedMotion(),
-                  viewOffset: 24,
-                });
-              }}
-            />
-          </TooltipScrollDismissArea>
-        </TimelineWorkingCtx>
-      </TimelineRowActivityCtx>
+      <TimelineNoticesCtx value={noticesById}>
+        <TimelineRowActivityCtx value={activityState}>
+          <TimelineWorkingCtx value={working}>
+            {/* A failed notice is said once here, outside the list that remounts its rows. */}
+            <NoticeAnnouncer notices={notices} />
+            <TooltipScrollDismissArea
+              ref={setTimelineViewportElement}
+              className="relative h-full min-h-0"
+              // Whether the list follows its end: a run's fold then keeps its
+              // line in place while the list catches up (`foldAway`).
+              data-timeline-follows-end={followingEnd ? "" : undefined}
+              // Rows waiting their turn to enter (`usePace`): a run's fold waits for them.
+              data-timeline-arriving={rowsHeldKey === "" ? undefined : ""}
+              data-timeline-placing={listPlaced ? undefined : ""}
+              // Placement proves readiness; the opening stage owns the conversation's entrance.
+              data-timeline-arrives="at-once"
+              data-timeline-thread={routeThreadKey}
+            >
+              <LegendList<MessagesTimelineRow>
+                ref={listRef}
+                data={rows}
+                // Each container reads its row again whenever a row comes, goes
+                // or moves. LegendList (3.3.5) draws `data[indexByKey(key)]`
+                // once per container and keeps it until that container's own
+                // data changes: read while a row was being inserted, the index
+                // was the old one, and the container went on drawing the row
+                // that slid into it — a row twice, a card's edge gone (Rhea,
+                // run 11). A row that only changed in place is its container's
+                // own data, which the list hands it: the rest are not drawn
+                // again for it, on every streamed update.
+                extraData={rowOrder}
+                keyExtractor={keyExtractor}
+                getItemType={getItemType}
+                renderItem={renderItem}
+                estimatedItemSize={90}
+                initialScrollAtEnd={rememberedPosition?.atEnd !== false}
+                {...(restoringAlwaysRender ? { alwaysRender: restoringAlwaysRender } : {})}
+                {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
+                contentInsetEndAdjustment={contentInsetEndAdjustment}
+                // Off, no band: an end scroll LegendList queued before the person
+                // left is dropped once their scroll lands.
+                maintainScrollAtEndThreshold={followingEnd ? TIMELINE_FOLLOW_THRESHOLD : 0}
+                // The end is kept here (`createEndFollow`), never by the list: its keeping jumps.
+                maintainScrollAtEnd={false}
+                onItemSizeChanged={onItemSizeChanged}
+                maintainVisibleContentPosition={
+                  restoringReadingPosition || followingEnd
+                    ? false
+                    : MAINTAIN_VISIBLE_CONTENT_POSITION
+                }
+                onScroll={handleScroll}
+                onLoad={onListLoad}
+                className={cn(
+                  "timeline-legend-list scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
+                  topFadeEnabled && "topbar-scroll-fade",
+                )}
+                ListHeaderComponent={
+                  loadEarlier !== null ? (
+                    <TimelineLoadEarlierHeader
+                      loading={loadEarlier.loading}
+                      onLoadEarlier={onLoadEarlier}
+                      fade={topFadeEnabled}
+                    />
+                  ) : topFadeEnabled ? (
+                    TIMELINE_LIST_FADE_HEADER
+                  ) : (
+                    TIMELINE_LIST_HEADER
+                  )
+                }
+                ListFooterComponent={
+                  askRoom > 0 ? (
+                    <>
+                      {pauseStageId === null ? TIMELINE_LIST_FOOTER : null}
+                      <div aria-hidden style={{ height: askRoom }} />
+                    </>
+                  ) : pauseStageId === null ? (
+                    TIMELINE_LIST_FOOTER
+                  ) : null
+                }
+              />
+              <TimelineMinimap
+                items={minimapItems}
+                hasPersistentGutter={minimapHasPersistentGutter}
+                hitStripWidth={minimapHitStripWidth}
+                currentIndex={minimapCurrentIndex}
+                stripMap={minimapStripMap}
+                onSelect={(item) => {
+                  onManualNavigation();
+                  // The person picked where to go: the list's way there is
+                  // theirs, and landing on the latest follows it.
+                  notePersonSession({ type: "input", at: performance.now() });
+                  void listRef.current?.scrollToIndex({
+                    index: item.rowIndex,
+                    animated: !reducedMotion(),
+                    viewOffset: 24,
+                  });
+                }}
+              />
+            </TooltipScrollDismissArea>
+          </TimelineWorkingCtx>
+        </TimelineRowActivityCtx>
+      </TimelineNoticesCtx>
     </TimelineRowCtx>
   );
   return (
@@ -2668,11 +2702,10 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       ) : null}
       {row.kind === "operation" ? <OperationTimelineRow row={row} /> : null}
       {row.kind === "event" ? <EventTimelineRow row={row} /> : null}
+      {row.kind === "notice" ? <NoticeTimelineRow row={row} /> : null}
       {row.kind === "crew-card" ? <CrewCardTimelineRow row={row} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
-      {row.kind === "error" ? (
-        <ErrorLine label={row.entry.label} detail={row.entry.detail} />
-      ) : null}
+      {row.kind === "error" ? <ErrorTimelineRow row={row} /> : null}
       {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}
       {row.kind === "outcome" ? <OutcomeTimelineRow row={row} /> : null}
       {row.kind === "page" ? <PageTimelineRow row={row} /> : null}
@@ -2682,6 +2715,18 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
     </>
+  );
+}
+
+function ErrorTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "error" }> }) {
+  const { onDismissEndNotice } = use(TimelineRowCtx);
+  return (
+    <ErrorLine
+      label={row.entry.label}
+      detail={row.entry.detail}
+      calm={row.calm}
+      onDismiss={row.dismissible ? onDismissEndNotice : undefined}
+    />
   );
 }
 
@@ -3037,6 +3082,11 @@ function EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }
       timestampFormat={ctx.timestampFormat}
     />
   );
+}
+
+function NoticeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "notice" }> }) {
+  const notice = use(TimelineNoticesCtx).get(row.noticeId);
+  return notice === undefined ? null : <NoticeLine notice={notice} />;
 }
 
 /** The task the server handed a crewmate, drawn as a task (`CrewTaskCard.tsx`). */

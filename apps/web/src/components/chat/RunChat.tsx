@@ -37,6 +37,7 @@
  */
 import { AssetImage } from "~/assets/AssetImage";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
@@ -179,7 +180,7 @@ import {
 } from "./operationBar.logic";
 import { opensOnto, stepOutput } from "./opens.logic";
 import { showHelper } from "./helperFocus";
-import { ElapsedSince } from "./ConversationRows";
+import { ElapsedSince, LimitContinue } from "./ConversationRows";
 import { helperRowLine, helperSpan } from "./helpers.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -209,6 +210,8 @@ import {
   nowLineFace,
   nowLineOf,
   nowLineWords,
+  pausedHeadWords,
+  waitedWords,
   noteText,
   slotWords,
   operationNowWords,
@@ -240,6 +243,7 @@ import {
   type TimelineRowSharedState,
 } from "./timelineContext";
 import { stepOf, type StepKind, type StepPhrase, type WorkStep } from "./workSteps.logic";
+import { mateFailureWords } from "../../zerops/noticeWords";
 
 // ---------------------------------------------------------------------------
 // Shared with the rest of the card
@@ -2629,8 +2633,14 @@ function ErrorBubble({ entry }: { readonly entry: WorkLogEntry }) {
 export function recordEventWords(
   event: ConversationEvent,
   speaker: string,
+  timestampFormat: TimestampFormat = "locale",
 ): { readonly words: string; readonly detail: string | null } {
   switch (event.type) {
+    // Where its card waited for the usage limit and went on (B5): "· 12:31 – 1:05 PM".
+    case "waited": {
+      const [words, detail] = waitedWords(event.from, event.to, timestampFormat).split(" · ");
+      return { words: words!, detail: detail ?? null };
+    }
     case "landed":
       return {
         words: `${event.event.repository} #${event.event.number} landed`,
@@ -2669,7 +2679,7 @@ export function recordEventWords(
 /** What merely happened: no one's bubble — a caption between hairlines, across the chat. */
 function EventCaption({ event }: { readonly event: ConversationEvent }) {
   const ctx = use(TimelineRowCtx);
-  const { words, detail } = recordEventWords(event, ctx.speaker.name);
+  const { words, detail } = recordEventWords(event, ctx.speaker.name, ctx.timestampFormat);
   return (
     <div className={cn("flex min-w-0 items-center gap-3", META)} data-chat-kind="event">
       <span aria-hidden="true" className="h-px min-w-4 flex-1 bg-border/70" />
@@ -3158,6 +3168,9 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
     // Out of reach: what the notice says, held, never a sign of work going on.
     case "away":
       return <span className="run-now-verb">{line.words}</span>;
+    // Waiting for the usage limit to reset: whose limit; the head's meta says when it goes on.
+    case "paused":
+      return <span className="run-now-verb">{nowLineWords(line)}</span>;
     case "after":
     case "starting":
       return (
@@ -3378,7 +3391,18 @@ function NowLine({
         {head !== undefined && status.live ? (
           <span className="run-now-meta">
             {" · "}
-            <RunTicker status={status} />
+            {/* Waiting for the reset, it says when it goes on where its clock stood (B5). */}
+            {status.paused === undefined ? (
+              <RunTicker status={status} />
+            ) : (
+              pausedHeadWords({
+                provider: status.paused.provider,
+                resetsAt: status.paused.resetsAt,
+                // The Mate's engine goes on by itself at the reset; elsewhere, the server's switch.
+                automatic: ctx.usageContinueTries === true || ctx.usagePause?.autoResume === true,
+                timestampFormat: ctx.timestampFormat,
+              }).meta
+            )}
             {head.steps > 0 ? ` · ${head.steps} ${head.steps === 1 ? "step" : "steps"}` : null}
           </span>
         ) : null}
@@ -3394,6 +3418,17 @@ function NowLine({
         // The head's right edge: what it does when pressed, its chevron turning over; a run that
         // waits on a Continue offers that too.
         <span className="run-now-end">
+          {status.paused !== undefined ? (
+            <LimitContinue
+              pause={status.paused}
+              speaker={ctx.speaker}
+              limit={ctx.limit}
+              onContinue={ctx.onUsageContinue ?? null}
+              triesBeforeReset={ctx.usageContinueTries === true}
+              blockedByAnswer={ctx.queueBlockedByAnswer === true}
+              timestampFormat={ctx.timestampFormat}
+            />
+          ) : null}
           {restartPending ? (
             ctx.queueBlockedByAnswer ? (
               <span>Answer the pending question to continue.</span>
@@ -3467,15 +3502,18 @@ function BrokeOffLine({
   /** Watched as the run ends: its room opens as the line settles. */
   readonly rises: boolean;
 }) {
+  const ctx = use(TimelineRowCtx);
   const [heldNext, setHeldNext] = useState(brokeOff.next);
   if (brokeOff.next !== null && brokeOff.next !== heldNext) setHeldNext(brokeOff.next);
+  // A usage limit or a refused sign-in in the voice the Mate's other surfaces use.
+  const reason = mateFailureWords(brokeOff.reason, ctx.driver, ctx.speaker.name);
   return (
     <div
       className={cn("grid min-w-0 [grid-column:2/-1]", rises && "motion-safe:animate-room-open")}
       data-run-broke-off
     >
       <p className="min-h-0 min-w-0 overflow-hidden pt-0.5 text-sm leading-5 text-status-failed-text">
-        {brokeOff.reason}
+        {reason}
         {heldNext === null ? null : (
           <span
             aria-hidden={brokeOff.next === null ? true : undefined}
@@ -3669,6 +3707,8 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
       );
     case "away":
       return <span className="run-slot-word">{filler.words}</span>;
+    case "paused":
+      return <span className="run-slot-word">{slotWords(null, filler)}</span>;
     case "after":
     case "starting":
       return (
@@ -3694,7 +3734,12 @@ const NO_ITEMS: ReadonlyMap<string, RecordItem> = new Map();
 
 /** A wait the card's head says, never the slot. */
 function headSays(filler: SlotFiller): boolean {
-  return filler.kind === "waiting" || filler.kind === "after" || filler.kind === "starting";
+  return (
+    filler.kind === "waiting" ||
+    filler.kind === "after" ||
+    filler.kind === "starting" ||
+    filler.kind === "paused"
+  );
 }
 
 /** What the empty slot says, as a key: the same words are no change. */

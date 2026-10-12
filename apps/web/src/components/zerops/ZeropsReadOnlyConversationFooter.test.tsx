@@ -38,9 +38,11 @@ const question: PendingUserInput = {
 function render(input: {
   readonly pendingApprovals?: ReadonlyArray<PendingApproval>;
   readonly pendingUserInputs?: ReadonlyArray<PendingUserInput>;
+  readonly change?: string;
 }) {
   return renderToStaticMarkup(
     <ZeropsReadOnlyConversationFooter
+      change={input.change === undefined ? null : <section>{input.change}</section>}
       environmentId={EnvironmentId.make("environment-1")}
       readOnly={readOnly}
       pendingApprovals={input.pendingApprovals ?? []}
@@ -105,6 +107,21 @@ describe("ZeropsReadOnlyConversationFooter", () => {
   });
 
   // A colleague's Mate is read along: the strip says whose it is and offers nothing.
+  // The owner's pick on the "Composer Strips" board (S6, 2026-10-12): "A colleague's Mate shows its
+  // change like yours. The same section over the read-along line".
+  it.each([
+    { pending: "nothing", input: {}, shows: true },
+    { pending: "an approval", input: { pendingApprovals: [approval] }, shows: false },
+    { pending: "a question", input: { pendingUserInputs: [question] }, shows: false },
+  ] as const)(
+    "shows its change waiting for a review over the read-along line, after what it asks: $pending",
+    ({ input, shows }) => {
+      const html = render({ ...input, change: "Rosa is waiting for a review of #2" });
+      expect(html.includes("Rosa is waiting for a review of #2")).toBe(shows);
+      expect(html).toContain(readOnly.notice);
+    },
+  );
+
   it("offers no action where it is given none", () => {
     const html = renderToStaticMarkup(
       <ZeropsReadOnlyConversationFooter

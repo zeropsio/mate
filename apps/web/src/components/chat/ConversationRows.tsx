@@ -24,6 +24,7 @@ import {
   PauseIcon,
   SendIcon,
   TerminalIcon,
+  XIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -33,12 +34,14 @@ import {
   formatChatTimestampTooltip,
   formatDayAwareTimestamp,
   formatUpcomingTimestamp,
+  spokenUpcomingTimestamp,
 } from "../../timestampFormat";
 import { usageLimitWords, usageLimitHistoryWords } from "../../zerops/noticeWords";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatWorkDuration } from "./conversation.logic";
 import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
+import { waitedWords } from "./runCard.logic";
 
 /** Who the conversation is with: a Mate's colour, or the neutral one for a thread without a Mate. */
 export interface ConversationSpeaker {
@@ -192,11 +195,8 @@ export function HeldMessageLine({
   );
 }
 
-/** A coming moment as a sentence says it: "at 1:00 PM", "tomorrow at 1:00 PM", "on Oct 12 1:00 PM". */
-function spokenUpcoming(iso: string, timestampFormat: TimestampFormat): string {
-  const stamp = formatUpcomingTimestamp(iso, timestampFormat);
-  return stamp.startsWith("tomorrow ") ? stamp : /^\d/.test(stamp) ? `at ${stamp}` : `on ${stamp}`;
-}
+const spokenUpcoming = (iso: string, timestampFormat: TimestampFormat) =>
+  spokenUpcomingTimestamp(iso, timestampFormat);
 
 const WEEKDAY = new Intl.DateTimeFormat(undefined, {
   weekday: "long",
@@ -364,7 +364,137 @@ export function EventLine({
         </EventShell>
       );
     }
+    case "waited":
+      return (
+        <EventShell
+          at={at}
+          icon={<PauseIcon className="size-3.5" />}
+          timestampFormat={timestampFormat}
+        >
+          {waitedWords(event.from, event.to, timestampFormat)}
+        </EventShell>
+      );
   }
+}
+
+/**
+ * Something that happened which the person may still act on — a command's answer, a compaction to
+ * offer, a branch that changed: a quiet row at the conversation's end while it holds, where the
+ * composer's strips once stacked (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12).
+ */
+export interface ConversationNotice {
+  readonly id: string;
+  readonly icon: ReactNode;
+  /** What happened, on one line; its key words in `<strong>`. */
+  readonly words: ReactNode;
+  /** What more it says, under its line: a command's whole answer. */
+  readonly detail?: ReactNode;
+  /** Its one action, a text button at the row's end. */
+  readonly action?: {
+    readonly label: string;
+    readonly onAction: () => void;
+    /** Why it cannot run now: it stays, disabled, and says why on hover. */
+    readonly unavailable?: string | null;
+  };
+  readonly dismissLabel?: string;
+  readonly onDismiss?: () => void;
+  /**
+   * It says that something failed: its words whole, wrapped, four lines and the rest scrolled in
+   * the row — a failure's words are never cut.
+   */
+  readonly failed?: boolean;
+  /**
+   * What a screen reader is told once when it comes (`NoticeAnnouncer`), outside the list: a row
+   * the list remounts as it scrolls would say it again.
+   */
+  readonly announce?: string;
+  /** The person's own action brought it: it brings the conversation to its end (`personNoticeArrived`). */
+  readonly byPerson?: boolean;
+}
+
+/** A notice's row: an event's grammar — its mark on the text edge, its words — and its action. */
+export function NoticeLine({ notice }: { readonly notice: ConversationNotice }) {
+  const { action } = notice;
+  const unavailable = action?.unavailable ?? null;
+  const button =
+    action === undefined ? null : (
+      <button
+        className="ms-3 shrink-0 cursor-pointer rounded-sm font-medium text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60 disabled:hover:no-underline"
+        disabled={unavailable !== null}
+        onClick={action.onAction}
+        type="button"
+      >
+        {action.label}
+      </button>
+    );
+  return (
+    <div
+      className="min-w-0 text-line text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground"
+      data-conversation-notice={notice.id}
+    >
+      <div
+        className={cn(
+          "flex min-h-8 min-w-0",
+          notice.failed ? "items-start py-1.5" : "items-center",
+        )}
+      >
+        <LineMark
+          className={cn(
+            "items-center [&_svg]:size-4",
+            notice.failed && "h-5 text-status-failed-text",
+          )}
+        >
+          {notice.icon}
+        </LineMark>
+        {notice.failed ? (
+          <span className="max-h-20 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap wrap-break-word">
+            {notice.words}
+          </span>
+        ) : (
+          <span className="min-w-0 flex-1 truncate">{notice.words}</span>
+        )}
+        {button !== null && unavailable !== null ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
+              {button}
+            </TooltipTrigger>
+            <TooltipPopup side="top">{unavailable}</TooltipPopup>
+          </Tooltip>
+        ) : (
+          button
+        )}
+        {notice.onDismiss === undefined ? null : (
+          <Button
+            aria-label={notice.dismissLabel ?? "Dismiss"}
+            className="ms-2 shrink-0"
+            onClick={notice.onDismiss}
+            size="icon-xs"
+            variant="ghost-muted"
+          >
+            <XIcon className="size-3.5" />
+          </Button>
+        )}
+      </div>
+      {notice.detail === undefined ? null : <div className="ps-5 pb-1">{notice.detail}</div>}
+    </div>
+  );
+}
+
+/**
+ * Says each failed notice to a screen reader once, as it comes: one live region outside the list,
+ * whose words change only when another notice asks to be said (`ConversationNotice.announce`).
+ */
+export function NoticeAnnouncer({
+  notices,
+}: {
+  readonly notices: ReadonlyArray<ConversationNotice>;
+}) {
+  const said = notices.flatMap((notice) => (notice.announce ? [notice.announce] : [])).at(-1);
+  return (
+    <div aria-live="assertive" className="sr-only" data-notice-announcer="">
+      {said ?? ""}
+    </div>
+  );
 }
 
 /**
@@ -396,30 +526,57 @@ export function StandUpAskLine({
 
 /**
  * What stopped the turn, in the failure tone: its icon on the text edge, its
- * words after it. Only a turn-ending error reaches here — a step that failed
- * on the way stays in the log it belongs to.
+ * words after it. Only a turn-ending error, or a failure no run shows at the
+ * conversation's end, reaches here — a step that failed on the way stays in
+ * the log it belongs to.
  */
 export function ErrorLine({
   label,
   detail,
+  calm = false,
+  onDismiss,
 }: {
   readonly label: string;
   readonly detail?: string | undefined;
+  /** An expected refusal — a usage limit, a sign-in — told, never alerted. */
+  readonly calm?: boolean | undefined;
+  /** The conversation's end row goes at a quiet ×. */
+  readonly onDismiss?: (() => void) | undefined;
 }) {
   const extra = detail !== undefined && detail.trim() !== label.trim() ? detail : null;
-  return (
+  const line = (
     <div
-      className="flex min-h-7 min-w-0 items-start py-1 text-line text-foreground"
+      className="flex min-h-7 min-w-0 flex-1 items-start py-1 text-line text-foreground"
       data-conversation-error
-      role="alert"
+      role={calm ? "status" : "alert"}
     >
       <LineMark className="h-5 items-center">
-        <CircleAlertIcon className="size-3.5 text-status-failed-text" />
+        <CircleAlertIcon
+          className={cn(
+            "size-3.5",
+            calm ? "text-status-attention-text" : "text-status-failed-text",
+          )}
+        />
       </LineMark>
       <div className="min-w-0">
         <p className="min-w-0">{label}</p>
         {extra ? <p className="min-w-0 text-muted-foreground">{extra}</p> : null}
       </div>
+    </div>
+  );
+  if (onDismiss === undefined) return line;
+  return (
+    <div className="flex min-w-0 items-start gap-2">
+      {line}
+      <Button
+        aria-label="Dismiss"
+        className="mt-1"
+        onClick={onDismiss}
+        size="icon-xs"
+        variant="ghost-muted"
+      >
+        <XIcon />
+      </Button>
     </div>
   );
 }
@@ -438,6 +595,85 @@ export interface ServerUsagePause {
   readonly autoResume: boolean;
   /** The window that refused ("7-day"); a stand-in ("usage") names none. */
   readonly window?: string;
+}
+
+/**
+ * What Continue does at a usage limit, wherever it stands: before a known reset it says why it
+ * waits instead of trying (`waits`), unless the Mate's engine tries the provider itself; a limit
+ * recovered early, or one whose reset passed or is unknown, is tried at once.
+ */
+function useLimitContinue({
+  refused,
+  resetsAt,
+  onContinue,
+  triesBeforeReset,
+}: {
+  /** The source still refuses (`MateLimit` "limited"). */
+  readonly refused: boolean;
+  readonly resetsAt: string | null;
+  readonly onContinue: (() => void) | null;
+  readonly triesBeforeReset: boolean;
+}): { readonly waits: boolean; readonly press: () => void } {
+  const [waitingAt, setWaitingAt] = useState<string | null>(null);
+  return {
+    waits: refused && resetsAt !== null && waitingAt === resetsAt,
+    press: () => {
+      if (refused && resetsAt !== null && !triesBeforeReset) setWaitingAt(resetsAt);
+      else onContinue?.();
+    },
+  };
+}
+
+/**
+ * Continue on the head of a card the usage limit cut, at its right edge, as a restart's Continue
+ * stands there (the owner's B5, 2026-10-12): while the card waits for the reset — `pause` null
+ * once it no longer does. A pending question comes first; before a known reset it says why it
+ * waits rather than trying again.
+ */
+export function LimitContinue({
+  pause,
+  speaker,
+  limit = NO_MATE_LIMIT,
+  onContinue = null,
+  triesBeforeReset = false,
+  blockedByAnswer = false,
+  nowMs,
+  timestampFormat,
+}: {
+  readonly pause: { readonly resetsAt: string | null; readonly provider?: string } | null;
+  readonly speaker: ConversationSpeaker;
+  /** Current source refusal; a recorded deadline alone cannot block another attempt. */
+  readonly limit?: MateLimit | undefined;
+  readonly onContinue?: (() => void) | null;
+  readonly triesBeforeReset?: boolean;
+  readonly blockedByAnswer?: boolean;
+  readonly nowMs?: number;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  const resetsAt = limit.kind === "none" ? (pause?.resetsAt ?? null) : limit.resetsAt;
+  const provider = pause?.provider ?? (limit.kind === "none" ? undefined : limit.provider);
+  const { waits, press } = useLimitContinue({
+    refused: limit.kind === "limited",
+    resetsAt,
+    onContinue,
+    triesBeforeReset,
+  });
+  if (pause === null) return null;
+  if (blockedByAnswer) return <span>Answer the pending question to continue.</span>;
+  if (waits && resetsAt !== null) {
+    return (
+      <span data-limit-wait="">
+        {speaker.name} can't continue with {provider ?? "the coding agent"} before{" "}
+        {formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}.
+      </span>
+    );
+  }
+  if (onContinue === null) return null;
+  return (
+    <Button className="relative z-1" variant="ghost" size="sm" onClick={press}>
+      Continue
+    </Button>
+  );
 }
 
 /**
@@ -490,9 +726,14 @@ export function PauseBlock({
   const window = row.window ?? serverPause?.window;
   const autoResume = serverPause?.autoResume ?? false;
   const history = resumed || passed || !refused;
-  const [waitingAt, setWaitingAt] = useState<string | null>(null);
+  const { waits, press } = useLimitContinue({
+    refused,
+    resetsAt,
+    onContinue,
+    triesBeforeReset,
+  });
   const detail =
-    !history && resetsAt !== null && waitingAt === resetsAt
+    !history && waits && resetsAt !== null
       ? `${speaker.name} can't continue with ${provider ?? "the coding agent"} before ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}: the provider's limit still holds this work.`
       : resumed
         ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
@@ -515,15 +756,7 @@ export function PauseBlock({
         </p>
       ) : null}
       {onContinue === null && !blockedByAnswer ? null : (
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={blockedByAnswer}
-          onClick={() => {
-            if (refused && resetsAt !== null && !triesBeforeReset) setWaitingAt(resetsAt);
-            else onContinue?.();
-          }}
-        >
+        <Button size="sm" variant="ghost" disabled={blockedByAnswer} onClick={press}>
           Continue
         </Button>
       )}

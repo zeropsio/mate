@@ -47,6 +47,7 @@ import {
   KEPT_RESTS_AFTER_MS,
   keepTimelines,
   keptRests,
+  keptSlotTimeline,
   warmingTimeline,
   type KeptTimeline,
 } from "./keptTimelines.logic";
@@ -231,25 +232,8 @@ export function KeptTimelines({
   return slots;
 }
 
-const nothing = () => undefined;
-
 /** A kept list at rest out of sight: skipped by layout and style until it shows. */
 const SKIPPED = { contentVisibility: "hidden" } as const;
-
-/**
- * A list out of sight answers nothing the pane asks of the open one: where
- * its end is, a gesture, an anchor.
- */
-function outOfSight(timeline: TimelineProps): TimelineProps {
-  const { cancelPositionRestoreRef: _restore, ...rest } = timeline;
-  return {
-    ...rest,
-    onIsAtEndChange: nothing,
-    onPersonInput: nothing,
-    onManualNavigation: nothing,
-    onAnchorReady: nothing,
-  };
-}
 
 /**
  * One list. Out of sight it keeps its layout — invisible, over the open one's
@@ -315,10 +299,10 @@ const TimelineSlot = memo(function TimelineSlot({
   const props: TimelineProps | null = opened
     ? timeline
     : mode === "hidden"
-      ? { ...outOfSight(timeline), ...warmed }
+      ? keptSlotTimeline(timeline, warmed)
       : warmed === null
         ? null
-        : { ...outOfSight(timeline), ...warmed };
+        : keptSlotTimeline(timeline, warmed);
   return (
     <ConversationOpeningLayer>
       <div

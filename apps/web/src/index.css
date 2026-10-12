@@ -863,73 +863,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     mask-image: none;
   }
 
-  /* A calm notice over the composer — settled, snoozed, woken — is one quiet line on the
-     composer's own text edge, never a second card stacked on it (the owner, 2026-10-12: "this
-     stacking looks absolute shit + there is extra space on top"): its mark, its title, what it
-     means muted after it, its action at the end. Warnings and errors keep their card. */
-  .chat-composer-drawer-slot:has(.chat-composer-quiet-notice) {
-    --chat-composer-drawer-inset: 1rem;
-  }
-
-  .chat-composer-quiet-notice {
-    display: flex;
-    min-height: 1.75rem;
-    align-items: center;
-    gap: 0.5rem;
-    padding-bottom: 0.375rem;
-    color: var(--foreground);
-    font-size: 0.75rem;
-    line-height: 1rem;
-  }
-
-  .chat-composer-quiet-notice-mark {
-    display: flex;
-    flex-shrink: 0;
-    color: var(--muted-foreground);
-
-    & > svg {
-      width: 0.875rem;
-      height: 0.875rem;
-    }
-  }
-
-  .chat-composer-quiet-notice[data-variant="info"] .chat-composer-quiet-notice-mark {
-    color: var(--info);
-  }
-
-  .chat-composer-quiet-notice[data-variant="success"] .chat-composer-quiet-notice-mark {
-    color: var(--success);
-  }
-
-  .chat-composer-quiet-notice-words {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    align-items: baseline;
-    gap: 0.375rem;
-  }
-
-  .chat-composer-quiet-notice-title {
-    flex-shrink: 0;
-    font-weight: 500;
-  }
-
-  .chat-composer-quiet-notice-more {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--muted-foreground);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .chat-composer-quiet-notice-actions {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 0.25rem;
-    margin-inline-end: -0.5rem;
-  }
-
   :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)[data-variant="error"] {
     --chat-composer-attached-outline: var(--border);
     --chat-composer-attached-tint: transparent;
@@ -7150,6 +7083,13 @@ a.ov-card-site:hover {
 .run-now[data-run-head] .run-now-head {
   display: inline;
 }
+/* Waiting for the limit to reset, its head stays one line however narrow: when it goes on gives
+   way, Continue keeps its place. */
+.run-now[data-run-head][data-run-now="paused"] .run-now-words {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .run-head-chevron {
   width: 16px;
   height: 16px;
@@ -8307,8 +8247,17 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
    when a model has more of them (Opus 5.5's seven efforts, two context
    windows and fast mode with the four accesses run 642px in the 448px menu);
    a narrow screen stacks them. */
+/* The agent's note over the menu: both share the popup's room, the menu giving way. */
+.composer-model-popup {
+  display: flex;
+  flex-direction: column;
+  max-height: var(--available-height, 100vh);
+}
+
 .composer-model-menu {
   display: flex;
+  flex: 0 1 auto;
+  min-height: 0;
   height: min(28rem, var(--available-height, 100vh));
 }
 

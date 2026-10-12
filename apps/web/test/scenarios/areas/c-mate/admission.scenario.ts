@@ -7,6 +7,7 @@ import {
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import type { Page } from "puppeteer-core";
 import { reportConversation } from "../b-menu/fake.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
@@ -33,6 +34,34 @@ const signInExplanations = () =>
     .filter((node) => node.getBoundingClientRect().height > 0 && !node.closest("[inert]"))
     .map((node) => node.textContent ?? "")
     .filter((text) => /sign-in|signed in|signed out|authorization/iu.test(text));
+
+// The agent's version advisory is the model control's (S6): a dot named for it, its menu says why.
+const agentUnsupported = (page: Page) =>
+  Effect.promise(async () => {
+    const control = "[data-chat-provider-model-picker]";
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            (control) =>
+              [...document.querySelectorAll(`${control} [role="img"]`)].map((node) => [
+                node.getAttribute("aria-label"),
+                node.getAttribute("data-tone"),
+              ]),
+            control,
+          ),
+        { timeout: 8000 },
+      )
+      .toEqual([[expect.stringMatching(/ is unsupported$/u), "warning"]]);
+    await page.click(control);
+    await page.waitForFunction(() =>
+      document
+        .querySelector("[data-agent-availability]")
+        ?.textContent?.includes("Update Claude to a supported version."),
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.querySelector("[data-agent-availability]") === null);
+  });
 
 describe("C: agent admission", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -78,14 +107,14 @@ describe("C: agent admission", () => {
               ),
             ),
           ).toEqual([]);
-          yield* chat.then.text("Update Claude to a supported version.");
+          yield* agentUnsupported(s.page);
           yield* chat.then.sendDisabled;
           // Only the authoritative login feed catches up; the config keeps its obsolete auth error.
           const staleProviders = [...wire.mate.config.providers];
           wire.claudeLoginFacts("ready");
           wire.providers(staleProviders);
           yield* chat.then.noText("Ada needs a Claude sign-in to continue.");
-          yield* chat.then.text("Update Claude to a supported version.");
+          yield* agentUnsupported(s.page);
           yield* chat.then.noText("Claude Code is not signed in on this project.");
           const expired =
             "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.";

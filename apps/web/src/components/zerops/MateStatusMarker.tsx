@@ -55,7 +55,9 @@ export function MateStatusMarker({
         }
       >
         <Icon aria-hidden="true" className="size-3 shrink-0" />
-        <span className="truncate">
+        {/* On a phone's header its words would draw over the Mate's name (390 px): the icon stays,
+            and its name and tooltip say the rest. */}
+        <span className="truncate @max-md/header-actions:hidden">
           {label}
           {status.until === undefined
             ? null

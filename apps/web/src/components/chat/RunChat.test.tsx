@@ -3329,3 +3329,63 @@ it.each([
     expect(html).not.toContain(">Continue</button>");
   }
 });
+
+// S6 (the owner, 2026-10-12): a turn's error is the run's own result row, never an alert over the
+// chat — said there in the words the alert gave it.
+describe("a run that broke off", () => {
+  const SIGNED_OUT =
+    "Claude could not authenticate. For subscription login, run `claude auth login` on this environment's machine, then start a new thread. For API-key authentication, check this instance's configured credentials.";
+  const brokeOffOn = (reason: string, driver: string | null) =>
+    renderToStaticMarkup(
+      <TimelineRowCtx value={{ ...SHARED, driver }}>
+        <TimelineRowActivityCtx value={{ ...ACTIVITY, isWorking: false }}>
+          <RunChat
+            row={record([thought("r1", "Looking.")], {
+              status: status({
+                live: false,
+                face: "brokeOff",
+                endedAt: at(30),
+                brokeOff: { entryId: null, reason, next: null },
+              }),
+            })}
+          />
+        </TimelineRowActivityCtx>
+      </TimelineRowCtx>,
+    );
+
+  it.each([
+    {
+      case: "a usage limit",
+      reason: "Claude usage limit reached. Send the message again once the limit resets.",
+      driver: "claudeAgent",
+      says: "Nova hit the Claude limit.",
+      never: "Send the message again",
+    },
+    {
+      case: "a sign-in its own agent refused",
+      reason: SIGNED_OUT,
+      driver: "claudeAgent",
+      says: "Nova&#x27;s turn could not continue because Claude was signed out.",
+      never: "claude auth login",
+    },
+    {
+      case: "Claude's words in another driver's conversation",
+      reason: SIGNED_OUT,
+      driver: "codex",
+      says: "Claude could not authenticate.",
+      never: "signed out",
+    },
+    {
+      case: "any other failure",
+      reason: "The container is not reachable.",
+      driver: "claudeAgent",
+      says: "The container is not reachable.",
+      never: "signed out",
+    },
+  ])("says why it ended on $case with the run", ({ reason, driver, says, never }) => {
+    const markup = brokeOffOn(reason, driver);
+    const line = markup.slice(markup.indexOf("data-run-broke-off"));
+    expect(line).toContain(says);
+    expect(line).not.toContain(never);
+  });
+});

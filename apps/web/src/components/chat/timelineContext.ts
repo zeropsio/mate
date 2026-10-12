@@ -18,6 +18,7 @@ import type {
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { createContext } from "react";
+import type { ConversationNotice } from "./ConversationRows";
 
 import type { ConversationSpeaker, ServerUsagePause, PauseBlock } from "./ConversationRows";
 import type { DockModel } from "./conversationDock.logic";
@@ -53,8 +54,15 @@ export interface TimelineRowSharedState {
   onRunShellCommand: ((command: string) => void) | undefined;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string, fromTurnId?: TurnId) => void;
+  /** Takes the conversation's end row away (`ThreadEndNotice`); absent, it has no ×. */
+  onDismissEndNotice?: (() => void) | undefined;
   /** Who the conversation is with: the Mate's name and colour. */
   speaker: ConversationSpeaker;
+  /**
+   * The conversation's agent driver (its session's `providerName`): only its own sign-in failure
+   * is said as one (`mateFailureWords`).
+   */
+  driver?: string | null;
   /**
    * The quiet line a Mate's main conversation draws its stand-up's ask as
    * (`mateStandUpAskLine`); null where the words are just a message.
@@ -117,6 +125,8 @@ export interface TimelineRowActivityState {
 }
 
 export const TimelineRowCtx = createContext<TimelineRowSharedState>(null!);
+/** What happened that still holds, by id: a notice row draws the one it names (`NoticeLine`). */
+export const TimelineNoticesCtx = createContext<ReadonlyMap<string, ConversationNotice>>(new Map());
 export const TimelineRowActivityCtx = createContext<TimelineRowActivityState>(null!);
 /** What runs now, for the Mate at work: its own context, so a pipeline stepping on re-renders that row alone. */
 export const TimelineWorkingCtx = createContext<DockModel | null>(null);

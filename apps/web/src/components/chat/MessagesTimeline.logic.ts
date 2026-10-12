@@ -85,6 +85,7 @@ import type { LiveJobs } from "./liveJobs.logic";
 import { engineCardEffort, heldLines, withPagedEffort } from "../../zerops/engineCardPaging.logic";
 import { chatItemHasLine, selectChatItems, slotModelOf } from "./runCard.logic";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
+import type { ThreadEndNotice } from "./threadErrorNotice.logic";
 
 export type TimelineLatestTurn = Pick<
   OrchestrationLatestTurn,
@@ -428,6 +429,8 @@ export type TurnHeaderActivity =
   | { readonly kind: "starting"; readonly on: EngineStart }
   /** The Mate is out of reach (a restart, a lost link): what its notice says, never live work. */
   | { readonly kind: "away"; readonly words: string }
+  /** A usage limit cut the run and it waits for the reset: its last line (`key`) holds its slot. */
+  | { readonly kind: "paused"; readonly key: string | null }
   /**
    * It asked the person something — a question, an approval — and waits; a
    * question it asked in its own words is the record's item `key` too.
@@ -475,6 +478,8 @@ export type ConversationEvent =
   | { readonly type: "command"; readonly command: SlashCommand; readonly done: boolean }
   /** The server resumed the thread itself after a usage limit reset. */
   | { readonly type: "resumed" }
+  /** A card the usage limit cut waited for the reset from `from`, and went on in it at `to`. */
+  | { readonly type: "waited"; readonly from: string; readonly to: string }
   /**
    * What woke the Mate as the run went on: a helper, or work it sent to the
    * background, finishing (run 11) — said where the run took it in.
@@ -528,6 +533,14 @@ export interface RunStatus {
   readonly brokeOff?: BrokeOff | undefined;
   /** Live while its Mate is out of reach: what the Mate's notice says (`MateAway`). */
   readonly away?: string;
+  /** Live while the usage limit that cut it holds: it waits in its card for the reset. */
+  readonly paused?: RunPause;
+}
+
+/** The usage limit a card waits on: when it resets, and whose it is as its record names it. */
+export interface RunPause {
+  readonly resetsAt: string | null;
+  readonly provider?: string;
 }
 
 /**
@@ -656,6 +669,12 @@ type MessagesTimelineRowBody =
       operation: ZeropsOperation;
     }
   | { kind: "event"; id: string; createdAt: string; event: ConversationEvent }
+  /**
+   * What happened that the person may still act on — a command's answer, a compaction to offer, a
+   * branch that changed: a quiet row at the conversation's end while it holds (`ConversationNotice`,
+   * drawn from the caller's notice of that id).
+   */
+  | { kind: "notice"; id: string; createdAt: string; noticeId: string }
   /** The task the server handed a crewmate: its card, never the person's bubble. */
   | { kind: "crew-card"; id: string; createdAt: string; task: CrewCard }
   /** A line the crew engine drew across a crewmate's chat (`crew.seam`), `words` its words. */
@@ -697,6 +716,10 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       entry: WorkLogEntry;
+      /** An expected refusal — a usage limit, a sign-in — said calmly (`ThreadEndNotice`). */
+      calm?: boolean;
+      /** The conversation's end row (`ThreadEndNotice`): the person may dismiss it. */
+      dismissible?: boolean;
     }
   | {
       /** A usage limit: one pause, however many attempts ran into it. */
@@ -2222,6 +2245,19 @@ export function assembleRecordCard(input: {
 }
 
 /**
+ * The one live usage-limit pause: the newest notice not picked up again, unless a card waiting on
+ * the limit stands after it (a later run that worked holds the live pause itself).
+ */
+export function livePauseId(rows: ReadonlyArray<MessagesTimelineRow>): string | null {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index]!;
+    if (row.kind === "record" && row.status?.paused !== undefined) return null;
+    if (row.kind === "pause") return row.resumedAt === null ? row.id : null;
+  }
+  return null;
+}
+
+/**
  * The live usage-limit pause that fills the conversation as its stage: the server's own pause,
  * while the limit holds, with nothing after it. Otherwise the pause is a notice card where the run
  * ended, and what follows it (a message held for the reset) sits right under it.
@@ -2232,7 +2268,8 @@ export function livePauseStageId(
   serverPause: { readonly resetsAt: string } | null,
 ): string | null {
   if (limit.kind !== "limited" || serverPause === null) return null;
-  const last = rows.at(-1);
+  // A notice at the end (S6) is the person's to read, not something that followed the pause.
+  const last = rows.findLast((row) => row.kind !== "notice");
   return last?.kind === "pause" && last.resumedAt === null ? last.id : null;
 }
 
@@ -2250,10 +2287,14 @@ export function deriveMessagesTimelineRows(input: {
   supportsConversationRollback: boolean;
   /** Messages sent during the running turn, rendered after the live rows. */
   queuedMessages?: ReadonlyArray<QueuedComposerMessage>;
+  /** What happened that still holds, by id: the conversation's last rows, in this order. */
+  notices?: ReadonlyArray<string>;
   /** When the person last saw this conversation, if something came since. */
   newSince?: string | null;
   /** The server's word on work that outlived the turn, while it runs on. */
   afterTurnWork?: "working" | "monitoring" | null;
+  /** A failure no run shows, at the conversation's end (`threadErrorNotice`). */
+  endNotice?: ThreadEndNotice | null;
   /** The background jobs the server holds live (`liveJobs.logic`): one it does not never reports. */
   liveJobs?: LiveJobs | null;
   /** The clock a running turn's last words wait against (`LAST_WORDS_GRACE_MS`). */
@@ -2351,21 +2392,32 @@ export function deriveMessagesTimelineRows(input: {
   const foldedTurnKeys = new Set<string>();
   let openPause: Extract<MessagesTimelineRow, { kind: "pause" }> | null = null;
   const pauseRows: Array<Extract<MessagesTimelineRow, { kind: "pause" }>> = [];
+  // The limit refused the turn before it did anything: a page that holds only its words is no
+  // proof, its card's summary is (a reload holds the person's message and the run's last words).
+  const refusedOnlyOf = (turn: ConversationTurn) =>
+    turn.limitOnly && !(input.cardPaging?.[turn.turnId ?? ""]?.hasWork ?? false);
+  // Picked up when it ran again: a held message was sent long before.
+  const resumeOpenPause = (turn: ConversationTurn) => {
+    if (openPause === null) return;
+    const index = pauseRows.indexOf(openPause);
+    const resumed = {
+      ...openPause,
+      resumedAt: turn.ranFrom ?? turn.stretches[0]?.startedAt ?? null,
+    };
+    pauseRows[index] = resumed;
+    for (const [key, value] of pauseByTurnKey)
+      if (value.row === openPause) pauseByTurnKey.set(key, { row: resumed });
+    openPause = null;
+  };
   for (const turn of structure.turns) {
     if (turn.limit === null) {
       const didWork = turn.stretches.some((stretch) => stretch.entries.length > 0) || turn.live;
-      if (openPause && didWork) {
-        const index = pauseRows.indexOf(openPause);
-        // Picked up when it ran again: a held message was sent long before.
-        const resumedAt = turn.ranFrom ?? turn.stretches[0]?.startedAt ?? null;
-        const resumed = { ...openPause, resumedAt };
-        pauseRows[index] = resumed;
-        for (const [key, value] of pauseByTurnKey)
-          if (value.row === openPause) pauseByTurnKey.set(key, { row: resumed });
-        openPause = null;
-      }
+      if (didWork) resumeOpenPause(turn);
       continue;
     }
+    // A run that worked before the limit cut it ends the pause before it: one live pause, the
+    // newest (review of B5, 2026-10-12).
+    if (!refusedOnlyOf(turn)) resumeOpenPause(turn);
     if (openPause && turn.limitOnly) {
       const index = pauseRows.indexOf(openPause);
       const grown: Extract<MessagesTimelineRow, { kind: "pause" }> = {
@@ -2795,7 +2847,26 @@ export function deriveMessagesTimelineRows(input: {
     const paging = input.cardPaging?.[turn.turnId ?? ""] ?? null;
     // An engine Mate's card: the runs it draws, as the engine records them.
     const engineCard = input.runCards?.[turn.turnId ?? ""];
+    // Where a usage limit cut a run of the card and the card went on: its history says the wait,
+    // at the seam, and its clock leaves it out (the owner's B5, 2026-10-12).
+    let limitWaitMs = 0;
+    engineCard?.runs.forEach((run, index) => {
+      const next = engineCard.runs[index + 1];
+      const wentOn = next?.startedAt ?? null;
+      if (run.end?.kind !== "usage-limit" || run.endedAt === null || wentOn === null) return;
+      const from = new Date(run.endedAt).toISOString();
+      const to = new Date(wentOn).toISOString();
+      limitWaitMs += Math.max(0, wentOn - run.endedAt);
+      const at = items.findIndex((item) => Date.parse(item.at) >= wentOn);
+      items.splice(at === -1 ? items.length : at, 0, {
+        kind: "event",
+        key: `waited:${next!.id}`,
+        at: to,
+        event: { type: "waited", from, to },
+      });
+    });
     const unheld = paging?.hasWork ?? false;
+    const refusedOnly = refusedOnlyOf(turn);
     const hasRecord = unheld || items.some((item) => item.kind !== "person");
     // A live run with nothing in its record whose answer is known already is
     // drawn as it will settle: a result that woke the Mate and was answered in
@@ -2819,6 +2890,23 @@ export function deriveMessagesTimelineRows(input: {
       turn.brokeOff !== null ||
       turn.interrupted ||
       extras.length > 0;
+    // B5 (the owner, 2026-10-12): a run the usage limit cut has not answered. While the limit
+    // holds, its card waits open, its face asleep and its last line in its slot, and goes on in
+    // place; no notice stands under it. Only the latest limit, not lifted yet, keeps a card waiting.
+    const cutByLimit =
+      pausedHere &&
+      !refusedOnly &&
+      (engineCard === undefined || engineCard.runs.at(-1)?.end?.kind === "usage-limit");
+    const waitsOnLimit =
+      pause !== null &&
+      pause === pauseRows.at(-1) &&
+      pause.resumedAt === null &&
+      cutByLimit &&
+      hasRecord &&
+      !turn.live &&
+      !waiting &&
+      input.limit !== undefined &&
+      input.limit.kind !== "none";
     const diffs = turn.span.turnIds.flatMap((turnId) => diffByTurnId.get(turnId) ?? []);
     const outcome =
       turn.live || waiting
@@ -2842,7 +2930,8 @@ export function deriveMessagesTimelineRows(input: {
           });
     // What the result draws under the line: an outcome of what its calls came
     // to alone is said on the line (`outcomeDraws`).
-    const result = outcome !== null && outcomeDraws(outcome) ? outcome : null;
+    // A card waiting on the limit is live for it too: its result stands once it settles.
+    const result = !waitsOnLimit && outcome !== null && outcomeDraws(outcome) ? outcome : null;
 
     if (lead === null) {
       // A run nobody wrote to start opens with what woke it, where the
@@ -2891,8 +2980,8 @@ export function deriveMessagesTimelineRows(input: {
       answer !== null ||
       items.some((item) => item.kind === "note" && item.message.text.trim().length > 0);
     const status: RunStatus = {
-      // A run that waits on what it started is not over: its clock runs on.
-      live: turn.live || waiting,
+      // A run that waits on what it started, or for the limit to reset, is not over.
+      live: turn.live || waiting || waitsOnLimit,
       face: waiting
         ? "working"
         : pausedHere
@@ -2901,10 +2990,22 @@ export function deriveMessagesTimelineRows(input: {
             : "idle"
           : stretchFace({ stretch: last, turn, pausedHere: false }),
       startedAt: first.startedAt,
-      endedAt: waiting ? null : last.endedAt,
+      endedAt: waiting || waitsOnLimit ? null : last.endedAt,
       ...(turn.brokeOff === null || waiting ? {} : { brokeOff: turn.brokeOff }),
       ...(turn.interruption === undefined ? {} : { interruption: turn.interruption }),
       ...waited,
+      waitedMs: waited.waitedMs + limitWaitMs,
+      // Waiting for the reset, its clock stands where the limit cut it.
+      ...(waitsOnLimit
+        ? {
+            waitingSince: last.endedAt ?? pause.createdAt,
+            paused: {
+              // The live limit's reset, as the pause's notice read it; else its record's.
+              resetsAt: input.limit.resetsAt ?? pause.resetsAt,
+              ...(pause.provider === undefined ? {} : { provider: pause.provider }),
+            },
+          }
+        : {}),
       // Out of reach, the run's records stop where the Mate was last heard: the card holds there,
       // its clock standing, and says what the notice says (Milo's stress run 6: "Thinking", 0:06 →
       // 0:36, through a planned restart).
@@ -2955,23 +3056,29 @@ export function deriveMessagesTimelineRows(input: {
         const now =
           status.away !== undefined
             ? { kind: "away" as const, words: status.away }
-            : waiting
+            : waitsOnLimit
               ? {
-                  kind: "after" as const,
-                  ...(engineCard?.waitsOn === undefined ? {} : { on: engineCard.waitsOn }),
+                  kind: "paused" as const,
+                  key:
+                    items.findLast((item) => chatItemHasLine(item, input.liveLines))?.key ?? null,
                 }
-              : working && answer === null
-                ? starting === null
-                  ? liveActivity(last, turn.writing, tracked, batch)
-                  : { kind: "starting" as const, on: starting }
-                : null;
+              : waiting
+                ? {
+                    kind: "after" as const,
+                    ...(engineCard?.waitsOn === undefined ? {} : { on: engineCard.waitsOn }),
+                  }
+                : working && answer === null
+                  ? starting === null
+                    ? liveActivity(last, turn.writing, tracked, batch)
+                    : { kind: "starting" as const, on: starting }
+                  : null;
         const source = {
           kind: "record" as const,
           id: `record:${first.key}`,
           createdAt: first.startedAt,
           turnKey: turn.key,
           turnId: turn.turnId,
-          live: turn.live || waiting,
+          live: turn.live || waiting || waitsOnLimit,
           items,
           now,
           answering: answer !== null,
@@ -3056,7 +3163,7 @@ export function deriveMessagesTimelineRows(input: {
       // What it sent to the background, on its own card: one line, the jobs
       // as they stand now — reported since. While they run, the card waits
       // on them, and what runs alongside says them.
-      if (!turn.live && !waiting) {
+      if (!turn.live && !waiting && !waitsOnLimit) {
         const jobs = turn.stretches.flatMap((stretch) =>
           stretch.entries.flatMap((candidate) => {
             if (candidate.kind !== "work") return [];
@@ -3101,8 +3208,9 @@ export function deriveMessagesTimelineRows(input: {
             cardKey: first.key,
             cardClosed: !carded || rows.at(-1)?.kind !== "card-end",
           };
-    // A provider pause owns its stage, outside the work card it follows.
-    if (pause !== null) rows.push(pause);
+    // A provider pause owns its stage where the limit refused the turn before it did anything; a
+    // card the limit cut holds its pause itself (B5).
+    if (pause !== null && !(carded && chatted && !refusedOnly)) rows.push(pause);
     // What the Mate published for the person stands right above its answer, outside the card.
     for (const page of pages) rows.push(page);
     // Each earlier run's answer stays under the card where it stood; the latest follows them.
@@ -3271,6 +3379,22 @@ export function deriveMessagesTimelineRows(input: {
       state: input.afterTurnWork,
     });
   }
+  if (input.endNotice != null) {
+    const at = rows.at(-1)?.createdAt ?? "";
+    rows.push({
+      kind: "error",
+      id: "thread-error",
+      createdAt: at,
+      entry: {
+        id: "thread-error",
+        createdAt: at,
+        label: input.endNotice.words,
+        tone: input.endNotice.calm ? "info" : "error",
+      },
+      calm: input.endNotice.calm,
+      dismissible: true,
+    });
+  }
   input.queuedMessages?.forEach((queuedMessage, index) => {
     rows.push({
       kind: "queued-message",
@@ -3283,6 +3407,14 @@ export function deriveMessagesTimelineRows(input: {
         .some((ahead) => ahead.holdUntilUserAction === true),
     });
   });
+  for (const noticeId of input.notices ?? []) {
+    rows.push({
+      kind: "notice",
+      id: `notice:${noticeId}`,
+      createdAt: rows.at(-1)?.createdAt ?? "",
+      noticeId,
+    });
+  }
   const cards = new Map<number, CardSlice>();
   const whole = new Set<number>();
   for (const [start, end] of cardRanges) {

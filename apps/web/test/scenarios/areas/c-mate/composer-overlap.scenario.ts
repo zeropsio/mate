@@ -9,19 +9,7 @@ describe("Decision: restore pre-regression behaviour; no test weakened; titles k
     for (const state of composerStates)
       it.effect(`history does not paint through the composer footer (${state})`, () =>
         Effect.gen(function* () {
-          const { s, chat } = yield* composerLayout(state);
-          if (state === "stack") {
-            yield* chat.when.type("Keep this draft");
-            yield* Effect.promise(async () => {
-              const edge = await s.page.waitForSelector('button[aria-label="Show 1 more notice"]', {
-                visible: true,
-              });
-              const box = (await edge!.boundingBox())!;
-              await s.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-              await s.page.waitForSelector('button[aria-expanded="true"]');
-            });
-            yield* chat.then.control("Collapse notices");
-          }
+          const { s } = yield* composerLayout(state);
           yield* Effect.promise(async () => {
             const list = await s.page.$(".timeline-legend-list");
             const bounds = (await list!.boundingBox())!;

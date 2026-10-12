@@ -348,9 +348,11 @@ const UNREAD: Inventory = {
 
 const THREAD = scopeThreadRef(EnvironmentId.make("env-nova"), ThreadId.make("thread-1"));
 
-function ComposerTop() {
+function ComposerTop({ yours = true }: { readonly yours?: boolean }) {
   return (
-    <>{useZeropsNextStepStrip(THREAD, { question: false, approval: false, working: false })}</>
+    <>
+      {useZeropsNextStepStrip(THREAD, { question: false, approval: false, working: false }, yours)}
+    </>
   );
 }
 
@@ -389,5 +391,16 @@ describe("the composer's top on a reload's first render", () => {
     expect(markup).toContain('data-composer-top="unread"');
     expect(markup).not.toContain("Old review");
     expect(markup).not.toContain('data-composer-top="review"');
+  });
+
+  // A colleague's read-along line has no composer to keep still, and HQ may never list that
+  // viewer the changes: a reserved blank would stand there for good.
+  it("holds no room on a colleague's Mate while its change is unread", () => {
+    const markup = renderToStaticMarkup(
+      <InventoryContext value={UNREAD}>
+        <ComposerTop yours={false} />
+      </InventoryContext>,
+    );
+    expect(markup).toBe("");
   });
 });

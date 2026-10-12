@@ -220,6 +220,45 @@ export function formatUpcomingTimestamp(
   return `${dateFormatter.format(date)} ${time}`;
 }
 
+/** A coming moment as a sentence says it: "at 1:00 PM", "tomorrow at 1:00 PM", "on Oct 12 1:00 PM". */
+export function spokenUpcomingTimestamp(
+  isoDate: string,
+  timestampFormat: TimestampFormat,
+  nowMs: number = Date.now(),
+): string {
+  const stamp = formatUpcomingTimestamp(isoDate, timestampFormat, nowMs);
+  return stamp.startsWith("tomorrow ") ? stamp : /^\d/.test(stamp) ? `at ${stamp}` : `on ${stamp}`;
+}
+
+const rangeDayFormatterCache = new Map<TimestampFormat, Intl.DateTimeFormat>();
+
+/** A span on the clock: "12:31 – 1:05 PM" within a day, "Oct 11, 12:31 PM – Oct 12, 1:05 PM" across. */
+export function formatTimeRange(
+  fromIso: string,
+  toIso: string,
+  timestampFormat: TimestampFormat,
+): string {
+  const from = parseTimestampDate(fromIso);
+  const to = parseTimestampDate(toIso);
+  if (!from || !to) return "";
+  const sameDay = from.toDateString() === to.toDateString();
+  let formatter = getTimestampFormatter(timestampFormat, false);
+  if (!sameDay) {
+    const cached = rangeDayFormatterCache.get(timestampFormat);
+    formatter =
+      cached ??
+      new Intl.DateTimeFormat(timestampLocale, {
+        month: "short",
+        day: "numeric",
+        ...getTimestampFormatOptions(timestampFormat, false),
+      });
+    rangeDayFormatterCache.set(timestampFormat, formatter);
+  }
+  const [start, end] = to < from ? [to, from] : [from, to];
+  // The range's thin spaces read as plain ones in a line of words.
+  return formatter.formatRange(start, end).replaceAll("\u2009", " ");
+}
+
 /**
  * Format a relative time string from an ISO date.
  * Returns `{ value: "20s", suffix: "ago" }` or `{ value: "just now", suffix: null }`

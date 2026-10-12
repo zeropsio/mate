@@ -9,6 +9,8 @@ import { formatUpcomingTimestamp } from "../../timestampFormat";
 import {
   EventLine,
   HeldMessageLine,
+  LimitContinue,
+  NoticeLine,
   PauseBlock,
   type ConversationSpeaker,
 } from "./ConversationRows";
@@ -156,6 +158,9 @@ describe("the usage-limit pause", () => {
   });
 });
 
+// The owner's pick on the "Answer Then More Work" board (B5, 2026-10-12): "The card waits through
+// the pause." Continue stands at the waiting card's head, at its right edge, with every rule the
+// pause's notice had.
 describe("the pause's automatic-resume choice", () => {
   let root: Root | undefined;
   beforeEach(() => {
@@ -168,45 +173,36 @@ describe("the pause's automatic-resume choice", () => {
     document.body.innerHTML = "";
     vi.unstubAllGlobals();
   });
+  const head = (props: Partial<Parameters<typeof LimitContinue>[0]>) =>
+    act(() =>
+      root!.render(
+        <LimitContinue
+          nowMs={NOW_MS}
+          pause={{ resetsAt: null, provider: "Claude" }}
+          speaker={NOVA}
+          timestampFormat="24-hour"
+          {...props}
+        />,
+      ),
+    );
+  const continueButton = () =>
+    [...document.querySelectorAll("button")].find((button) => button.textContent === "Continue");
 
   it("an expired refusal cannot Continue until the pending request is answered", async () => {
     const continued = vi.fn();
     const show = (blockedByAnswer: boolean) =>
-      act(() =>
-        root!.render(
-          <PauseBlock
-            nowMs={NOW_MS}
-            row={{
-              kind: "pause",
-              id: "refused",
-              createdAt: at(600),
-              resetsAt: at(60),
-              resumedAt: null,
-              held: 0,
-              provider: "Claude",
-            }}
-            serverPause={null}
-            limit={limitAt(at(60))}
-            blockedByAnswer={blockedByAnswer}
-            onContinue={blockedByAnswer ? null : continued}
-            speaker={NOVA}
-            timestampFormat="24-hour"
-          />,
-        ),
-      );
+      head({
+        pause: { resetsAt: at(60), provider: "Claude" },
+        limit: limitAt(at(60)),
+        blockedByAnswer,
+        onContinue: blockedByAnswer ? null : continued,
+      });
     await show(true);
-    const button = document.querySelector<HTMLButtonElement>("button")!;
-    expect(button.disabled).toBe(true);
-    expect(document.body.textContent).toContain(
-      "Respond to Nova's pending request before continuing.",
-    );
-    await act(() => {
-      button.click();
-      button.click();
-    });
+    expect(continueButton()).toBeUndefined();
+    expect(document.body.textContent).toContain("Answer the pending question to continue.");
     expect(continued).not.toHaveBeenCalled();
     await show(false);
-    await act(() => document.querySelector<HTMLButtonElement>("button")!.click());
+    await act(() => continueButton()!.click());
     expect(continued).toHaveBeenCalledOnce();
   });
 
@@ -214,37 +210,22 @@ describe("the pause's automatic-resume choice", () => {
     "offers an explicit continuation whether the reset time is known (%s)",
     async (resetsAt) => {
       const continued = vi.fn();
-      const row = {
-        kind: "pause" as const,
-        id: "pause:continue",
-        createdAt: at(600),
-        resetsAt,
-        resumedAt: null,
-        held: 0,
-      };
-      const show = (resumedAt: string | null) =>
-        act(() =>
-          root!.render(
-            <PauseBlock
-              nowMs={NOW_MS}
-              row={{ ...row, resumedAt }}
-              serverPause={null}
-              limit={limitAt(resetsAt)}
-              onContinue={continued}
-              speaker={NOVA}
-              timestampFormat="24-hour"
-            />,
-          ),
-        );
-      await show(null);
-      const button = document.querySelector<HTMLButtonElement>("button");
+      const show = (resumed: boolean) =>
+        head({
+          // Gone on, the card waits no more: its head offers nothing.
+          pause: resumed ? null : { resetsAt },
+          limit: limitAt(resetsAt),
+          onContinue: continued,
+        });
+      await show(false);
+      const button = continueButton();
       expect(button?.textContent).toBe("Continue");
       await act(() => button!.click());
       if (resetsAt !== null && Date.parse(resetsAt) > NOW_MS) {
         expect(continued).not.toHaveBeenCalled();
         expect(document.body.textContent).toContain("can't continue");
       } else expect(continued).toHaveBeenCalledOnce();
-      await show(at(30));
+      await show(true);
       expect(document.querySelector("button")).toBeNull();
     },
   );
@@ -252,28 +233,12 @@ describe("the pause's automatic-resume choice", () => {
   it("Continue before a known reset explains the wait without submitting another attempt", async () => {
     const continued = vi.fn();
     const resetsAt = new Date(NOW_MS + 3_600_000).toISOString();
-    await act(() =>
-      root!.render(
-        <PauseBlock
-          nowMs={NOW_MS}
-          row={{
-            kind: "pause",
-            id: "waiting",
-            createdAt: at(600),
-            resetsAt,
-            resumedAt: null,
-            held: 0,
-            provider: "Claude",
-          }}
-          serverPause={{ resetsAt, autoResume: false }}
-          limit={limitAt(resetsAt)}
-          onContinue={continued}
-          speaker={NOVA}
-          timestampFormat="24-hour"
-        />,
-      ),
-    );
-    await act(() => document.querySelector<HTMLButtonElement>("button")!.click());
+    await head({
+      pause: { resetsAt, provider: "Claude" },
+      limit: limitAt(resetsAt),
+      onContinue: continued,
+    });
+    await act(() => continueButton()!.click());
     expect(continued).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain("Nova can't continue with Claude before");
     expect(document.body.textContent).toContain(
@@ -286,33 +251,19 @@ describe("the pause's automatic-resume choice", () => {
   it("on the Mate's engine, Continue before a known reset asks the Mate to try now", async () => {
     const continued = vi.fn();
     const resetsAt = new Date(NOW_MS + 3_600_000).toISOString();
-    await act(() =>
-      root!.render(
-        <PauseBlock
-          nowMs={NOW_MS}
-          row={{
-            kind: "pause",
-            id: "waiting",
-            createdAt: at(600),
-            resetsAt,
-            resumedAt: null,
-            held: 0,
-            provider: "Claude",
-          }}
-          serverPause={{ resetsAt, autoResume: false }}
-          limit={limitAt(resetsAt)}
-          onContinue={continued}
-          triesBeforeReset
-          speaker={NOVA}
-          timestampFormat="24-hour"
-        />,
-      ),
-    );
-    await act(() => document.querySelector<HTMLButtonElement>("button")!.click());
+    await head({
+      pause: { resetsAt, provider: "Claude" },
+      limit: limitAt(resetsAt),
+      onContinue: continued,
+      triesBeforeReset: true,
+    });
+    await act(() => continueButton()!.click());
     expect(continued).toHaveBeenCalledOnce();
     expect(document.body.textContent).not.toContain("can't continue");
   });
 
+  // A recovery before the reset is real on the notice of a turn refused before it did anything; a
+  // card the limit cut stops waiting once its limit is gone.
   it("an early recovery leaves the dated refusal but Continue submits immediately", async () => {
     const continued = vi.fn();
     const resetsAt = new Date(NOW_MS + 3_600_000).toISOString();
@@ -339,9 +290,9 @@ describe("the pause's automatic-resume choice", () => {
         ),
       );
     await show({ resetsAt, autoResume: false });
-    await act(() => document.querySelector<HTMLButtonElement>("button")!.click());
+    await act(() => continueButton()!.click());
     await show(null);
-    await act(() => document.querySelector<HTMLButtonElement>("button")!.click());
+    await act(() => continueButton()!.click());
     expect(continued).toHaveBeenCalledOnce();
     expect(document.body.textContent).not.toContain("limit still holds");
     expect(document.querySelector('[data-mate-status="limit"]')).toBeNull();
@@ -435,4 +386,61 @@ describe("a slash command's line", () => {
     );
     expect(markup.replace(/<[^>]*>/g, "")).toBe(says);
   });
+});
+
+describe("a notice's row", () => {
+  let root: Root | undefined;
+  beforeEach(() => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+  });
+  afterEach(async () => {
+    await act(() => root?.unmount());
+    root = undefined;
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    { unavailable: null, runs: true },
+    { unavailable: "Compacting is unavailable right now", runs: false },
+  ])(
+    "says what happened, runs its one action unless it is unavailable ($unavailable), and dismisses",
+    async ({ unavailable, runs }) => {
+      const act1 = vi.fn();
+      const dismiss = vi.fn();
+      await act(() =>
+        root!.render(
+          <NoticeLine
+            notice={{
+              id: "n",
+              icon: <span />,
+              words: (
+                <>
+                  <strong>Resume with less context</strong> · 180k tokens from an older session
+                </>
+              ),
+              action: { label: "Compact", onAction: act1, unavailable },
+              dismissLabel: "Keep full history",
+              onDismiss: dismiss,
+            }}
+          />,
+        ),
+      );
+      expect(document.body.textContent).toContain(
+        "Resume with less context · 180k tokens from an older session",
+      );
+      const buttons = [...document.querySelectorAll<HTMLButtonElement>("button")];
+      const compact = buttons.find((button) => button.textContent === "Compact")!;
+      await act(() => compact.click());
+      expect(act1).toHaveBeenCalledTimes(runs ? 1 : 0);
+      expect(compact.disabled).toBe(!runs);
+      await act(() =>
+        buttons
+          .find((button) => button.getAttribute("aria-label") === "Keep full history")!
+          .click(),
+      );
+      expect(dismiss).toHaveBeenCalledOnce();
+    },
+  );
 });

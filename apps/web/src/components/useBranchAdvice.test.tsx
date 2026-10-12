@@ -4,7 +4,8 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
 import { useBranchAdvice } from "./useBranchAdvice";
-import { ComposerBannerStack } from "./chat/ComposerBannerStack";
+import { NoticeLine } from "./chat/ConversationRows";
+import { branchChangedNotice } from "./chat/conversationNotices";
 
 function Advice({
   threadKey,
@@ -22,24 +23,18 @@ function Advice({
     currentGitBranch: currentBranch,
   });
   const advice = useBranchAdvice({ threadKey, mismatch, composerHasContent: draft });
-  return (
-    <ComposerBannerStack
-      items={
-        advice.visible && advice.key
-          ? [
-              {
-                id: advice.key,
-                variant: "warning",
-                icon: null,
-                title: `Continue on ${currentBranch}`,
-                dismissLabel: "Dismiss branch change notice",
-                onDismiss: advice.dismiss,
-              },
-            ]
-          : []
-      }
+  // Drawn as the conversation draws it: a row at its end (`branchChangedNotice`).
+  return advice.visible && advice.key && mismatch ? (
+    <NoticeLine
+      notice={branchChangedNotice({
+        key: advice.key,
+        mismatch,
+        restoring: false,
+        onRestore: () => {},
+        onDismiss: advice.dismiss,
+      })}
     />
-  );
+  ) : null;
 }
 
 describe("Decision: one derivation per state; consumers never recompute it; no new domain concepts; mobile stays out (later).", () => {
@@ -70,9 +65,9 @@ describe("Decision: one derivation per state; consumers never recompute it; no n
       await render("A");
       expect(host.textContent).toBe("");
       await render("C");
-      expect(host.textContent).toContain("Continue on C");
+      expect(host.textContent).toContain("sending continues on C");
       await render("A", "environment-b:advice-dismissal");
-      expect(host.textContent).toContain("Continue on A");
+      expect(host.textContent).toContain("sending continues on A");
     } finally {
       await act(() => root.unmount());
       host.remove();
@@ -93,9 +88,9 @@ describe("Decision: one derivation per state; consumers never recompute it; no n
       await render("A", false);
       expect(host.textContent).toBe("");
       await render("A", true);
-      expect(host.textContent).toContain("Continue on A");
+      expect(host.textContent).toContain("sending continues on A");
       await render("A", false);
-      expect(host.textContent).toContain("Continue on A");
+      expect(host.textContent).toContain("sending continues on A");
       await render("topic", false);
       expect(host.textContent).toBe("");
       await render("A", false);

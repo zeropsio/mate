@@ -41,9 +41,20 @@ import {
   isUsageLimitsCommand,
 } from "@t3tools/shared/usageLimits";
 import { keptAgentPanelModel } from "./chat/keptAgentPanelModel";
-import { usageLimitsBannerItem } from "./chat/ComposerUsageLimits";
+import { usageLimitsNotice } from "./chat/UsageLimitsNotice";
 import { ServiceBrowserScope } from "./ServiceBrowserLink";
-import { feedbackBannerItem } from "./chat/ComposerFeedback";
+import { feedbackNotice } from "./chat/FeedbackNotice";
+import { ComposerPlaceLine, composerPlaceNotice } from "./chat/ComposerPlace";
+import { cloneSendBlockReason, ComposerCloneAsk } from "./chat/ComposerCloneAsk";
+import {
+  branchChangedNotice,
+  crewNextConversationNotice,
+  noticesHome,
+  personNoticeArrived,
+  resumeCompactionNotice,
+} from "./chat/conversationNotices";
+import { NoticesOverComposer } from "./chat/NoticesOverComposer";
+import type { ConversationNotice } from "./chat/ConversationRows";
 import { derivePendingRequests } from "@t3tools/client-runtime/pending-requests";
 import {
   type ApprovalRequestId,
@@ -257,16 +268,7 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import { isEditableFocused } from "../lib/editableFocus";
 import { undoLatestThreadAction } from "../hooks/showUndoToast";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
-import {
-  ArchiveRestoreIcon,
-  ArrowDownIcon,
-  DownloadIcon,
-  GitBranchIcon,
-  HistoryIcon,
-  Minimize2Icon,
-  PaperclipIcon,
-  RefreshCwIcon,
-} from "lucide-react";
+import { ArrowDownIcon, PaperclipIcon } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
@@ -356,7 +358,6 @@ import { resolveProviderSkillsForCwd } from "@t3tools/client-runtime/providerSki
 import { vcsEnvironment } from "../state/vcs";
 import { sourceControlEnvironment } from "../state/sourceControl";
 import { useProjectClone } from "../state/projectClones";
-import { projectCloneDisplayName, projectCloneProgressSummary } from "@t3tools/contracts";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
 import {
   useEnvironmentProjectRefs,
@@ -382,7 +383,7 @@ import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
 import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
 import { resolveTimelineIsAtEnd, type MateAway } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
-import { useAlsoWorkingBanner, useMateWorks } from "./chat/ConversationStrip";
+import { useAlsoWorkingHint, useMateWorks } from "./chat/ConversationStrip";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -394,17 +395,11 @@ import {
   shouldShowEnvironmentIndicator,
 } from "./BranchToolbar.logic";
 import {
-  getProviderStatusBannerKey,
-  ProviderStatusBannerRegion,
-  shouldShowProviderStatusBanner,
-} from "./chat/ProviderStatusBanner";
-import {
-  dismissThreadErrorBannerForSession,
-  getThreadErrorBannerKey,
-  isThreadErrorBannerDismissedForSession,
-  shouldShowThreadErrorBanner,
-  ThreadErrorBanner,
-} from "./chat/ThreadErrorBanner";
+  dismissThreadError,
+  threadErrorDismissalKey,
+  threadErrorDismissed,
+  threadErrorNotice,
+} from "./chat/threadErrorNotice.logic";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { deriveDock, foldBackgroundTasks } from "./chat/conversationDock.logic";
 import { liveJobsOf } from "./chat/liveJobs.logic";
@@ -419,7 +414,7 @@ import {
   hasDismissedResumeCompaction,
   shouldOfferResumeCompaction,
 } from "./chat/ContextWindowMeter.logic";
-import { deriveLatestContextWindowSnapshot, formatContextWindowTokens } from "../lib/contextWindow";
+import { deriveLatestContextWindowSnapshot } from "../lib/contextWindow";
 import { ThreadSyncStatusPill } from "./chat/ThreadSyncStatusPill";
 import {
   DRAFT_HERO_TRANSITION_ANIMATION_ID,
@@ -510,13 +505,13 @@ import {
   AlertDialogPopup,
   AlertDialogTitle,
 } from "./ui/alert-dialog";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { useAssetUrls } from "../assets/assetUrls";
 
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
+const EMPTY_CONVERSATION_NOTICES: ReadonlyArray<ConversationNotice> = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
 function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
   const transitionGroupRef = useRef<HTMLDivElement | null>(null);
@@ -1747,6 +1742,7 @@ export default function ChatView(props: ChatViewProps) {
   const localServerError = localThreadErrorStanding(
     localServerErrorsByThreadKey[routeThreadKey],
     activeServerNewestTurn,
+    activeServerThread?.latestTurn?.completedAt,
   );
   // Draft errors are keyed by draftId while server errors are keyed by thread
   // key, so a pending draft entry must migrate when the server thread loads or
@@ -1819,11 +1815,6 @@ export default function ChatView(props: ChatViewProps) {
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;
-  // Dismissals can only mask the shown error, never clear it: a server thread
-  // keeps its error in session.lastError, so clearing the local shadow would
-  // just fall through to the persisted one. Mask the current error until a
-  // different error arrives, mirroring the provider status banner.
-  const threadErrorBannerKey = getThreadErrorBannerKey(routeThreadKey, threadError);
   // A persisted runtime failure already has its place in the conversation.
   // Keep command refusals in the banner; they have no durable timeline entry.
   const threadErrorInTimeline =
@@ -1842,21 +1833,7 @@ export default function ChatView(props: ChatViewProps) {
             "message" in activity.payload &&
             activity.payload.message === threadError)),
     );
-  const visibleThreadError =
-    !threadErrorInTimeline &&
-    shouldShowThreadErrorBanner(
-      routeThreadKey,
-      threadError,
-      isThreadErrorBannerDismissedForSession(threadErrorBannerKey),
-    )
-      ? threadError
-      : null;
-  // Dismissing only mutates the session-scoped mask set, which does not
-  // trigger a render on its own; setThreadError(null) can also bail when the
-  // local shadow is already empty and the banner is driven purely by
-  // session.lastError. Bump a tick so the banner hides immediately. Mirrors
-  // the branch mismatch banner.
-  const [, setThreadErrorBannerDismissTick] = useState(0);
+  const visibleThreadError = threadErrorInTimeline ? null : threadError;
   const runtimeMode = composerRuntimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
@@ -2085,81 +2062,6 @@ export default function ChatView(props: ChatViewProps) {
     },
     [],
   );
-  const projectCloneSendBlockReason =
-    activeProjectClone === null
-      ? null
-      : activeProjectClone.phase === "running"
-        ? "Cloning repository"
-        : activeProjectClone.phase === "done"
-          ? null
-          : "Repository not cloned";
-  const projectCloneBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
-    if (!activeProjectClone || !activeProjectRef || activeProjectClone.phase === "done") {
-      return null;
-    }
-    const name = projectCloneDisplayName(activeProjectClone);
-    const { environmentId, projectId } = activeProjectRef;
-    if (activeProjectClone.phase === "running") {
-      return {
-        id: `project-clone:${projectId}`,
-        variant: "info",
-        priority: "activity",
-        icon: <DownloadIcon />,
-        title: `Cloning ${name}`,
-        description: projectCloneProgressSummary(activeProjectClone),
-        actions: (
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() =>
-              void runProjectCloneAction("Failed to cancel clone", () =>
-                cancelProjectClone({ environmentId, input: { projectId } }),
-              )
-            }
-          >
-            Cancel
-          </Button>
-        ),
-      };
-    }
-    const cancelled = activeProjectClone.phase === "cancelled";
-    return {
-      id: `project-clone:${projectId}`,
-      variant: cancelled ? "warning" : "error",
-      icon: <DownloadIcon />,
-      title: cancelled ? `Cancelled cloning ${name}` : `Failed to clone ${name}`,
-      description: cancelled ? "Retry to bring in the repository." : activeProjectClone.error,
-      actions: (
-        <>
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => void removeClonedProject({ environmentId, projectId })}
-          >
-            Remove project
-          </Button>
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() =>
-              void runProjectCloneAction("Failed to retry clone", () =>
-                retryProjectClone({ environmentId, input: { projectId } }),
-              )
-            }
-          >
-            Retry
-          </Button>
-        </>
-      ),
-    };
-  }, [
-    activeProjectClone,
-    activeProjectRef,
-    cancelProjectClone,
-    removeClonedProject,
-    retryProjectClone,
-    runProjectCloneAction,
-  ]);
   const handleNewThreadInActiveProject = useCallback(() => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
   }, [activeProjectRef, handleNewThread]);
@@ -2808,11 +2710,11 @@ export default function ChatView(props: ChatViewProps) {
       usageLimitsPanel,
     ],
   );
-  const usageLimitsBanner = useMemo(
+  const usageLimitsAnswer = useMemo(
     () =>
       usageLimitsReport !== null && usageLimitsPanel !== null
-        ? // A fresh id per opening: the stack keeps the last dismissed id as "exiting".
-          usageLimitsBannerItem(
+        ? // A fresh id per opening: each answer is a row of its own.
+          usageLimitsNotice(
             `usage-limits:${usageLimitsPanel.key}:${usageLimitsPanel.now}`,
             usageLimitsReport,
             environmentId,
@@ -3218,9 +3120,6 @@ export default function ChatView(props: ChatViewProps) {
     resumeCompactionPermanentlyDismissed,
     setResumeCompactionPermanentlyDismissed,
   ]);
-  const [dismissedProviderStatusBannerKey, setDismissedProviderStatusBannerKey] = useState<
-    string | null
-  >(null);
   const mateStandUp = useMateStandUp({
     environmentId: activeThreadEnvironmentId,
     threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
@@ -3289,24 +3188,11 @@ export default function ChatView(props: ChatViewProps) {
     agentIdForDriverKind(
       providerStatuses.find((provider) => provider.instanceId === conversationInstanceId)?.driver,
     ) ?? agentIdForProviderInstance(conversationInstanceId);
-  const providerStatusBannerKey = getProviderStatusBannerKey(admission.providerStatus);
-  useEffect(() => {
-    if (providerStatusBannerKey === null && dismissedProviderStatusBannerKey !== null) {
-      setDismissedProviderStatusBannerKey(null);
-    }
-  }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
   // An engine run that broke off says so on its card, as a V1 turn's error activity did.
   const shownThreadError =
     admission.explainsRefusal || engineCardsShowError(engineCards, visibleThreadError)
       ? null
       : visibleThreadError;
-  const visibleProviderStatus = shouldShowProviderStatusBanner(
-    admission.providerStatus,
-    dismissedProviderStatusBannerKey,
-  )
-    ? admission.providerStatus
-    : null;
-  const hasTimelineTopBanner = Boolean(shownThreadError) || visibleProviderStatus !== null;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
@@ -5178,30 +5064,6 @@ export default function ChatView(props: ChatViewProps) {
   // final run, G10).
   const activeThreadArchived = activeServerThread?.archivedAt != null;
   const [restoringThreadKey, setRestoringThreadKey] = useState<string | null>(null);
-  const archivedThreadBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
-    if (!activeThreadArchived || activeThreadRef === null) return null;
-    const restoring = restoringThreadKey === activeThreadKey;
-    return {
-      id: `thread-archived:${activeThreadKey ?? "unknown"}`,
-      variant: "info",
-      icon: <ArchiveRestoreIcon />,
-      title: "This conversation is archived",
-      description: "Restore it to carry on here.",
-      actions: (
-        <Button
-          size="xs"
-          variant="outline"
-          disabled={restoring}
-          onClick={() => {
-            setRestoringThreadKey(activeThreadKey);
-            void unarchiveThread(activeThreadRef).finally(() => setRestoringThreadKey(null));
-          }}
-        >
-          {restoring ? "Restoring..." : "Restore"}
-        </Button>
-      ),
-    };
-  }, [activeThreadArchived, activeThreadKey, activeThreadRef, restoringThreadKey, unarchiveThread]);
   // Session-scoped dismissals, one key per (thread, snapshot). A set rather
   // than a single slot so dismissing the banner on one thread does not
   // resurface it on another thread dismissed earlier.
@@ -5243,7 +5105,7 @@ export default function ChatView(props: ChatViewProps) {
           ? "Compaction is unavailable for this provider"
           : "Compacting is unavailable right now"
     : null;
-  const resumeCompactionBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+  const resumeCompactionNoticeItem = useMemo<ConversationNotice | null>(() => {
     if (
       !activeThread ||
       !activeContextWindow ||
@@ -5262,39 +5124,17 @@ export default function ChatView(props: ChatViewProps) {
     ) {
       return null;
     }
-
-    const dismiss = () =>
-      setDismissedResumeCompactionKeys((keys) => new Set(keys).add(resumeCompactionKey));
-    const compactAction = (
-      <Button
-        size="xs"
-        variant="outline"
-        disabled={compactDisabled}
-        onClick={() => {
-          if (compactDisabled) return;
-          composerRef.current?.compactContext();
-        }}
-      >
-        Compact
-      </Button>
-    );
-    return {
-      id: `resume-compaction:${resumeCompactionKey}`,
-      variant: "info",
-      icon: <Minimize2Icon />,
-      title: "Resume with less context",
-      description: `${formatContextWindowTokens(activeContextWindow.usedTokens)} tokens from an older session`,
-      actions: compactDisabledReason ? (
-        <Tooltip>
-          <TooltipTrigger render={<span className="inline-flex">{compactAction}</span>} />
-          <TooltipPopup side="top">{compactDisabledReason}</TooltipPopup>
-        </Tooltip>
-      ) : (
-        compactAction
-      ),
-      dismissLabel: "Keep full history",
-      onDismiss: dismiss,
-    };
+    return resumeCompactionNotice({
+      key: resumeCompactionKey,
+      usedTokens: activeContextWindow.usedTokens,
+      unavailable: compactDisabledReason,
+      onCompact: () => {
+        if (compactDisabled) return;
+        composerRef.current?.compactContext();
+      },
+      onKeepFullHistory: () =>
+        setDismissedResumeCompactionKeys((keys) => new Set(keys).add(resumeCompactionKey)),
+    });
   }, [
     activeContextWindow,
     activeThread,
@@ -5325,15 +5165,19 @@ export default function ChatView(props: ChatViewProps) {
    * approval waits on the person, and while the Mate works in any of its chats.
    */
   const mateAtWork = useMateWorks(environmentId);
-  const composerTop = useZeropsNextStepStrip(activeThreadRef, {
-    question: activePendingUserInput !== null,
-    approval: activePendingApproval !== null,
-    working: isWorking || mateAtWork,
-  });
-  // Typing here while the Mate works in another of its chats (`ConversationStrip.tsx`).
-  // A crewmate works on its own copy of the code, so another chat's work is
-  // no warning there.
-  const alsoWorkingBannerItem = useAlsoWorkingBanner({
+  const composerTop = useZeropsNextStepStrip(
+    activeThreadRef,
+    {
+      question: activePendingUserInput !== null,
+      approval: activePendingApproval !== null,
+      working: isWorking || mateAtWork,
+    },
+    colleagueReadOnly === null,
+  );
+  // Typing here while the Mate works in another of its chats, Send's hover says so
+  // (`ConversationStrip.tsx`). A crewmate works on its own copy of the code, so another chat's
+  // work is no warning there.
+  const alsoWorkingHint = useAlsoWorkingHint({
     environmentId,
     currentThreadId: isServerThread ? threadId : null,
     typing: composerHasUnsentContent && activeThreadShell?.crew == null,
@@ -5349,6 +5193,43 @@ export default function ChatView(props: ChatViewProps) {
         : displayedTimeline.entries,
     [displayedTimeline.entries, inCrewChat, loadEarlierTurns],
   );
+  // A failure no run shows — a send refused here, a Mate that cannot say its run state — is the
+  // conversation's last row, never an alert over it (S6).
+  const endNoticeMateName = admissionMate.kind === "mate" ? admissionMate.mate.name : undefined;
+  const endNoticeDriver = activeServerThread?.session?.providerName ?? null;
+  const latestTurnIdForNotice = activeThread?.latestTurn?.turnId;
+  const endNoticeLimitShown = useMemo(
+    () =>
+      shownThreadError !== null &&
+      conversationEntries.some(
+        (entry) => isUsageLimitError(entry) && timelineEntryTurnId(entry) === latestTurnIdForNotice,
+      ),
+    [conversationEntries, latestTurnIdForNotice, shownThreadError],
+  );
+  // The row's ×: a local error is cleared, a server-held one masked for the session; the mask is
+  // no state of the view's, so the × bumps a render of its own.
+  const [, setEndNoticeDismissals] = useState(0);
+  const endNoticeKey =
+    shownThreadError === null ? null : threadErrorDismissalKey(routeThreadKey, shownThreadError);
+  const endNoticeDismissed = endNoticeKey !== null && threadErrorDismissed(endNoticeKey);
+  const endNotice = useMemo(
+    () =>
+      threadErrorNotice({
+        error: shownThreadError,
+        mateName: endNoticeMateName,
+        driver: endNoticeDriver,
+        usageLimitShown: endNoticeLimitShown,
+        dismissed: endNoticeDismissed,
+      }),
+    [endNoticeDismissed, endNoticeDriver, endNoticeLimitShown, endNoticeMateName, shownThreadError],
+  );
+  const activeThreadIdForNotice = activeThread?.id ?? null;
+  const dismissEndNotice = useCallback(() => {
+    if (endNoticeKey === null) return;
+    dismissThreadError(endNoticeKey);
+    setThreadError(activeThreadIdForNotice, null);
+    setEndNoticeDismissals((count) => count + 1);
+  }, [activeThreadIdForNotice, endNoticeKey, setThreadError]);
   // A crewmate's *Change its job*, and its composer's *Runs on*: its job in
   // the Crew tab; the lead's *Change the goal*: the crew's goal there.
   const editCrewmateJob = (handle: string) => {
@@ -5385,46 +5266,82 @@ export default function ChatView(props: ChatViewProps) {
     () => (activeCrewmate === null ? null : crewChatNotices(activeCrewmate, threadId)),
     [activeCrewmate, threadId],
   );
-  const crewSendBlockReason = crewNotices?.retired?.sendBlock ?? null;
-  const crewBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
-    if (crewNotices === null) return [];
-    const items: ComposerBannerStackItem[] = [];
-    if (crewNotices.retired !== null) {
-      const current = crewNotices.retired.currentThreadId;
-      items.push({
-        id: `crew-retired:${threadId}`,
-        variant: "info",
-        icon: <HistoryIcon />,
-        title: crewNotices.retired.text,
-        ...(current === null
-          ? {}
-          : {
-              actions: (
-                <Button
-                  onClick={() =>
-                    void navigate({
-                      to: "/$environmentId/$threadId",
-                      params: buildThreadRouteParams(scopeThreadRef(environmentId, current)),
-                    })
-                  }
-                  size="xs"
-                >
-                  Open it
-                </Button>
-              ),
-            }),
-      });
-    }
-    if (crewNotices.pending !== null) {
-      items.push({
-        id: `crew-pending:${crewNotices.pending}`,
-        variant: "default",
-        icon: <RefreshCwIcon />,
-        title: crewNotices.pending,
-      });
-    }
-    return items;
-  }, [crewNotices, environmentId, navigate, threadId]);
+  // What stops the person writing takes the composer's own place, with its one way out (S6): the
+  // conversation archived, a crewmate's earlier conversation.
+  const composerPlace = useMemo(
+    () =>
+      composerPlaceNotice(
+        {
+          archived:
+            activeThreadArchived && activeThreadRef !== null
+              ? { restoring: restoringThreadKey === activeThreadKey }
+              : null,
+          crewRetired: crewNotices?.retired ?? null,
+        },
+        {
+          restore: () => {
+            if (activeThreadRef === null) return;
+            setRestoringThreadKey(activeThreadKey);
+            void unarchiveThread(activeThreadRef).finally(() => setRestoringThreadKey(null));
+          },
+          openCurrent: () => {
+            const current = crewNotices?.retired?.currentThreadId ?? null;
+            if (current === null) return;
+            void navigate({
+              to: "/$environmentId/$threadId",
+              params: buildThreadRouteParams(scopeThreadRef(environmentId, current)),
+            });
+          },
+        },
+      ),
+    [
+      activeThreadArchived,
+      activeThreadKey,
+      activeThreadRef,
+      crewNotices,
+      environmentId,
+      navigate,
+      restoringThreadKey,
+      unarchiveThread,
+    ],
+  );
+  // The project's repository while it clones stops only Send: its line stands at the composer's
+  // top, and the composer stays (`ComposerCloneAsk`).
+  const cloneShown = activeProjectRef === null ? null : activeProjectClone;
+  const cloneTop = useMemo(
+    () =>
+      cloneShown === null || cloneShown.phase === "done" || activeProjectRef === null ? null : (
+        <ComposerCloneAsk
+          clone={cloneShown}
+          actions={{
+            cancel: () => {
+              const { environmentId, projectId } = activeProjectRef;
+              void runProjectCloneAction("Failed to cancel clone", () =>
+                cancelProjectClone({ environmentId, input: { projectId } }),
+              );
+            },
+            retry: () => {
+              const { environmentId, projectId } = activeProjectRef;
+              void runProjectCloneAction("Failed to retry clone", () =>
+                retryProjectClone({ environmentId, input: { projectId } }),
+              );
+            },
+            remove: () => {
+              const { environmentId, projectId } = activeProjectRef;
+              void removeClonedProject({ environmentId, projectId });
+            },
+          }}
+        />
+      ),
+    [
+      activeProjectRef,
+      cancelProjectClone,
+      cloneShown,
+      removeClonedProject,
+      retryProjectClone,
+      runProjectCloneAction,
+    ],
+  );
   // What a crew thread's task cards need beyond their text: the board, and
   // for the stint's first card — while the conversation is loaded from its
   // start — why this conversation began and the one before it, unless the
@@ -5494,10 +5411,10 @@ export default function ChatView(props: ChatViewProps) {
     zeropsMates,
   ]);
 
-  const feedbackBannerItems = useMemo(
+  const feedbackNotices = useMemo(
     () =>
       feedbackSubmissions.flatMap((submission) => {
-        const item = feedbackBannerItem(submission, () => {
+        const item = feedbackNotice(submission, () => {
           setFeedbackSubmissionsByThreadKey((current) => ({
             ...current,
             [routeThreadKey]: (current[routeThreadKey] ?? []).filter(
@@ -5556,109 +5473,61 @@ export default function ChatView(props: ChatViewProps) {
       limit,
     ],
   );
+  // Over the composer stands only the Mate's link and the connection (S6 sends the rest to the
+  // conversation and to the composer's place). Someone else's conversation is read, not run: a
+  // calm word about this Mate's link offers a step on it, so only an urgent one is said there.
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
-    // Someone else's conversation is read, not run: every other banner offers
-    // a step on this Mate (add production, release, stop, compact, restore),
-    // so only the viewer's own connection is said.
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
     const urgentSystemItems = systemComposerBannerItems.filter(isUrgentSystemItem);
     if (colleagueReadOnly !== null) return urgentSystemItems;
-    // What belongs to the conversation — another of its chats at work, its compaction, its waking
-    // or parking, its branch — waits until the conversation shows, not over its opening line.
-    const conversationShown = !threadDetailLoading;
-    const alsoWorkingItems =
-      !conversationShown || alsoWorkingBannerItem === null ? [] : [alsoWorkingBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
-    const resumeCompactionItems =
-      !conversationShown || resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
-    const archivedThreadItems =
-      !conversationShown || archivedThreadBannerItem === null ? [] : [archivedThreadBannerItem];
-    // The user asked for this one, so it leads the notice tier instead of trailing it.
-    const usageLimitsItems = usageLimitsBanner === null ? [] : [usageLimitsBanner];
-    const projectCloneItems = projectCloneBannerItem === null ? [] : [projectCloneBannerItem];
-    if (
-      !conversationShown ||
-      !localCheckoutBranchMismatch ||
+    return [...urgentSystemItems, ...calmSystemItems];
+  }, [colleagueReadOnly, systemComposerBannerItems]);
+  // What happened that the person may still act on: quiet rows at the conversation's end, in the
+  // order they come (S6). A colleague's conversation is read, not run, and says none of them.
+  const crewNextNotice = useMemo(() => crewNextConversationNotice(crewNotices), [crewNotices]);
+  const branchChangedNoticeItem = useMemo(
+    () =>
+      localCheckoutBranchMismatch === null ||
+      localCheckoutBranchMismatch === undefined ||
       !showBranchMismatchBanner ||
       !activeBranchMismatchKey
-    ) {
-      return [
-        ...urgentSystemItems,
-        ...usageLimitsItems,
-        ...crewBannerItems,
-        ...alsoWorkingItems,
-        ...feedbackBannerItems,
-        ...projectCloneItems,
-        ...calmSystemItems,
-        ...resumeCompactionItems,
-        ...archivedThreadItems,
-      ];
-    }
-    return [
-      ...urgentSystemItems,
-      ...usageLimitsItems,
-      ...crewBannerItems,
-      ...alsoWorkingItems,
-      ...feedbackBannerItems,
-      ...projectCloneItems,
-      ...calmSystemItems,
-      ...resumeCompactionItems,
-      {
-        id: `branch-mismatch:${activeBranchMismatchKey}`,
-        variant: "info",
-        icon: <GitBranchIcon />,
-        title: (
-          <span className="flex min-w-0 items-baseline gap-1.5">
-            <span className="shrink-0 font-normal text-muted-foreground">Branch changed — was</span>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <code className="min-w-0 truncate font-medium text-foreground">
-                    {localCheckoutBranchMismatch.threadBranch}
-                  </code>
-                }
-              />
-              <TooltipPopup side="top">
-                This thread last ran on {localCheckoutBranchMismatch.threadBranch}. Sending will
-                continue on {localCheckoutBranchMismatch.currentBranch}.
-              </TooltipPopup>
-            </Tooltip>
-          </span>
-        ),
-        className: "dark:shadow-none",
-        actions: (
-          <Button
-            size="xs"
-            variant="ghost"
-            disabled={isRestoringThreadBranch}
-            onClick={handleRestoreThreadBranch}
-          >
-            {isRestoringThreadBranch ? "Restoring..." : "Restore branch"}
-          </Button>
-        ),
-        dismissLabel: "Dismiss branch change notice",
-        onDismiss: branchAdvice.dismiss,
-      },
-      ...archivedThreadItems,
-    ];
+        ? null
+        : branchChangedNotice({
+            key: activeBranchMismatchKey,
+            mismatch: localCheckoutBranchMismatch,
+            restoring: isRestoringThreadBranch,
+            onRestore: handleRestoreThreadBranch,
+            onDismiss: branchAdvice.dismiss,
+          }),
+    [
+      activeBranchMismatchKey,
+      branchAdvice.dismiss,
+      handleRestoreThreadBranch,
+      isRestoringThreadBranch,
+      localCheckoutBranchMismatch,
+      showBranchMismatchBanner,
+    ],
+  );
+  const conversationNotices = useMemo<ReadonlyArray<ConversationNotice>>(() => {
+    if (colleagueReadOnly !== null || threadDetailLoading) return EMPTY_CONVERSATION_NOTICES;
+    const notices = [
+      crewNextNotice,
+      ...feedbackNotices,
+      usageLimitsAnswer,
+      resumeCompactionNoticeItem,
+      branchChangedNoticeItem,
+    ].filter((notice): notice is ConversationNotice => notice !== null);
+    return notices.length === 0 ? EMPTY_CONVERSATION_NOTICES : notices;
   }, [
-    activeBranchMismatchKey,
-    archivedThreadBannerItem,
+    branchChangedNoticeItem,
     colleagueReadOnly,
-    branchAdvice.dismiss,
-    alsoWorkingBannerItem,
-    crewBannerItems,
-    feedbackBannerItems,
-    handleRestoreThreadBranch,
-    isRestoringThreadBranch,
-    localCheckoutBranchMismatch,
-    projectCloneBannerItem,
-    resumeCompactionBannerItem,
-    showBranchMismatchBanner,
-    systemComposerBannerItems,
-    usageLimitsBanner,
+    crewNextNotice,
+    feedbackNotices,
+    resumeCompactionNoticeItem,
     threadDetailLoading,
+    usageLimitsAnswer,
   ]);
   useEffect(() => {
     setPendingServerThreadEnvMode(null);
@@ -6144,6 +6013,30 @@ export default function ChatView(props: ChatViewProps) {
   };
 
   const queuedMessages = useQueuedMessages(activeThreadKey ?? "");
+  // Where the notices stand: the conversation's last rows, or just above the composer while there
+  // is no conversation to hold them (`noticesHome`).
+  const noticesOverComposer =
+    noticesHome({
+      heroDraft: isDraftHeroState,
+      entries: conversationEntries,
+      isWorking,
+      queued: queuedMessages.length,
+    }) === "composer";
+  // A notice the person's own action brought brings the conversation to its end, as a send does.
+  const shownNoticeIdsRef = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const before = shownNoticeIdsRef.current;
+    shownNoticeIdsRef.current = new Set(conversationNotices.map((notice) => notice.id));
+    if (noticesOverComposer || !personNoticeArrived(before, conversationNotices)) return;
+    if (
+      nextTimelineFollow(
+        liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current,
+        { type: "sent", byPerson: true },
+      )
+    ) {
+      scrollToEnd(false, true);
+    }
+  }, [conversationNotices, noticesOverComposer, scrollToEnd]);
   const onSendRef = useRef<((ids?: ComposerSendIds) => Promise<void>) | null>(null);
   // What a surface asked this composer to send goes out through its own send.
   useComposerSendRequests({
@@ -8284,24 +8177,6 @@ export default function ChatView(props: ChatViewProps) {
         </WorkspacePageHeader>
         {zeropsSignInDialog.dialog}
 
-        <ThreadErrorBanner
-          mateName={(() => {
-            const at = zeropsMateAt(zeropsMates, environmentId);
-            return at.kind === "mate" ? at.mate.name : undefined;
-          })()}
-          driver={activeServerThread?.session?.providerName ?? null}
-          error={shownThreadError}
-          usageLimitShown={conversationEntries.some(
-            (entry) =>
-              isUsageLimitError(entry) &&
-              timelineEntryTurnId(entry) === activeThread.latestTurn?.turnId,
-          )}
-          onDismiss={() => {
-            setThreadError(activeThread.id, null);
-            dismissThreadErrorBannerForSession(threadErrorBannerKey);
-            setThreadErrorBannerDismissTick((tick) => tick + 1);
-          }}
-        />
         {/* Main content area with optional plan sidebar */}
         <div className="flex min-h-0 min-w-0 flex-1">
           {/* Chat column */}
@@ -8327,11 +8202,6 @@ export default function ChatView(props: ChatViewProps) {
                 </div>
               </div>
             ) : null}
-            <ProviderStatusBannerRegion
-              status={visibleProviderStatus}
-              onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}
-              onOpenProviderSetup={openProviderSetup}
-            />
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Messages — LegendList handles virtualization and scrolling
@@ -8350,6 +8220,8 @@ export default function ChatView(props: ChatViewProps) {
                   onOpenAgents: addAgentsSurface,
                   working: dockModel,
                   afterTurnWork: activeBackgroundLiveness,
+                  endNotice,
+                  onDismissEndNotice: dismissEndNotice,
                   liveJobs,
                   isWorking,
                   workingStepLabel,
@@ -8398,6 +8270,7 @@ export default function ChatView(props: ChatViewProps) {
                   loading: threadDetailLoading && !isDraftHeroState,
                   syncing: threadSyncPhase !== null || threadDetailLoading,
                   queuedMessages,
+                  notices: noticesOverComposer ? EMPTY_CONVERSATION_NOTICES : conversationNotices,
                   usagePause: activeThreadShell?.usagePause ?? null,
                   limit,
                   away: mateAway,
@@ -8466,7 +8339,7 @@ export default function ChatView(props: ChatViewProps) {
                     { context: { terminalFocus: false } },
                   ),
                   onRemoveQueuedMessage,
-                  topFadeEnabled: !hasTimelineTopBanner,
+                  topFadeEnabled: true,
                   loadEarlier: loadEarlierTurns,
                 }}
               />
@@ -8534,10 +8407,18 @@ export default function ChatView(props: ChatViewProps) {
                           activeProjectTitle={activeProjectDisplayName ?? null}
                         />
                       </div>
+                      <NoticesOverComposer notices={conversationNotices} />
                       <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                     </div>
                   ) : (
                     <>
+                      {noticesOverComposer ? (
+                        // No conversation to hold them: they stand just above the composer, over
+                        // the empty state, holding no room in the composer's frame.
+                        <div className="pointer-events-auto absolute inset-x-0 bottom-full">
+                          <NoticesOverComposer notices={conversationNotices} />
+                        </div>
+                      ) : null}
                       <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                       {/* The lead's plan waits above its composer, where its
                           answer ends (PRD §4.6). */}
@@ -8587,11 +8468,14 @@ export default function ChatView(props: ChatViewProps) {
                             <ComposerRoomHeld draft={zeropsHeldDraft} />
                           ) : colleagueReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter
+                              change={threadDetailLoading ? null : composerTop}
                               environmentId={environmentId}
                               pendingApprovals={pendingApprovals}
                               pendingUserInputs={pendingUserInputs}
                               readOnly={colleagueReadOnly}
                             />
+                          ) : composerPlace !== null ? (
+                            <ComposerPlaceLine notice={composerPlace} />
                           ) : (
                             <ChatComposer
                               composerRef={composerRef}
@@ -8621,7 +8505,7 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               idlePlaceholder={crewComposerPlaceholder ?? composerPlaceholders.idle}
                               mentionCrewmates={crewMentions}
-                              top={threadDetailLoading ? null : composerTop}
+                              top={threadDetailLoading ? null : (cloneTop ?? composerTop)}
                               vaultChanges={vaultTurn.changes}
                               onDismissVaultChange={vaultTurn.dismiss}
                               {...(crewRunsOnLabel === null || activeCrewmate === null
@@ -8639,12 +8523,13 @@ export default function ChatView(props: ChatViewProps) {
                               // its spinner until the turn runs and it turns
                               // into Stop, never the arrow in between.
                               isSendBusy={isSendBusy || phase === "connecting"}
+                              sendHint={alsoWorkingHint}
                               sendDisabledReason={
                                 feedbackUploading
                                   ? "Sending feedback"
                                   : threadDetailLoading
                                     ? "Messages loading"
-                                    : (crewSendBlockReason ?? projectCloneSendBlockReason ?? null)
+                                    : cloneSendBlockReason(cloneShown)
                               }
                               zeropsSendBlockReason={zeropsSendBlockReason ?? null}
                               isPreparingWorktree={isPreparingWorktree}
@@ -8717,6 +8602,7 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               onProviderModelSelect={onProviderModelSelect}
                               onOpenProviderSetup={openProviderSetup}
+                              agentStatus={admission.providerStatus}
                               getModelDisabledReason={getModelDisabledReason}
                               toggleInteractionMode={toggleInteractionMode}
                               handleRuntimeModeChange={handleRuntimeModeChange}

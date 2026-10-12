@@ -49,30 +49,6 @@ describe("ComposerBannerStack", () => {
     expect(markup).toContain("failed notice");
   });
 
-  it("keeps unavailable compaction disabled and offers the named dismissal", () => {
-    const markup = renderToStaticMarkup(
-      <ComposerBannerStack
-        items={[
-          {
-            ...banner("resume-compaction", "info"),
-            title: "Resume with less context",
-            description: "250k tokens from an older session",
-            actions: (
-              <button type="button" disabled>
-                Compact
-              </button>
-            ),
-            dismissLabel: "Keep full history",
-            onDismiss: () => {},
-          },
-        ]}
-      />,
-    );
-    expect(markup).toContain("250k tokens from an older session");
-    expect(markup).toContain('disabled=""');
-    expect(markup).toContain('aria-label="Keep full history"');
-  });
-
   it("keeps additional notices reachable by an explicit control and preserves focus through arrivals", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const host = document.body.appendChild(document.createElement("div"));

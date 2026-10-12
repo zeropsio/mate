@@ -2263,8 +2263,26 @@ describe("the view's own thread error", () => {
       expected: "Refused.",
     },
     { name: "an error cleared", entry: { message: null, after: T1 }, newest: T1, expected: null },
-  ])("$name", ({ entry, newest, expected }) => {
-    expect(localThreadErrorStanding(entry, newest)).toBe(expected);
+    // The owner's S6 row stands at the conversation's end: a turn that ended since takes it away,
+    // or a refusal written while a turn ran stays under everything the Mate wrote after.
+    {
+      name: "a turn that ended after it was written",
+      entry: { message: "Interrupt the current turn first.", at: Date.parse(T1), after: T1 },
+      newest: T1,
+      ended: T2,
+      expected: null,
+    },
+    {
+      name: "a turn that had ended before it was written",
+      entry: { message: "Refused.", at: Date.parse(T2), after: T1 },
+      newest: T1,
+      ended: T1,
+      expected: "Refused.",
+    },
+  ])("$name", ({ entry, newest, expected, ...turn }) => {
+    expect(localThreadErrorStanding(entry, newest, "ended" in turn ? turn.ended : undefined)).toBe(
+      expected,
+    );
   });
 
   it.each([

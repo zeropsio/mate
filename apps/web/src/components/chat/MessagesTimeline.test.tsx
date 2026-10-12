@@ -2223,7 +2223,6 @@ describe("MessagesTimeline — the conversation", () => {
         latestTurn={{ ...settled, turnId: TurnId.make("turn-b3") }}
         timelineEntries={[
           buildUserTimelineEntry("Keep going"),
-          tool("w1", 5),
           assistant("a1", 30, limit),
           background("b2", 31),
           background("b3", 32),

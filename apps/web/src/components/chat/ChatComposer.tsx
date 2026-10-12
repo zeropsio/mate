@@ -300,7 +300,8 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import { CircleAlertIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
-import { hasProviderSetup } from "./ProviderStatusBanner";
+import { hasProviderSetup, providerAvailability } from "./providerAvailability.logic";
+import { AvailabilityDot, UnavailableAgentControl, availabilityName } from "./AgentAvailability";
 import {
   applyProviderInstanceSettings,
   deriveProviderInstanceEntries,
@@ -406,6 +407,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   promptHasText: boolean;
   isSendBusy: boolean;
   sendDisabledReason: string | null;
+  sendHint: string | null;
   isConnecting: boolean;
   isEnvironmentUnavailable: boolean;
   hasSendableContent: boolean;
@@ -442,6 +444,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         promptHasText={props.promptHasText}
         isSendBusy={props.isSendBusy}
         sendDisabledReason={props.sendDisabledReason}
+        sendHint={props.sendHint}
         isConnecting={props.isConnecting}
         isEnvironmentUnavailable={props.isEnvironmentUnavailable}
         isPreparingWorktree={props.isPreparingWorktree}
@@ -560,6 +563,8 @@ export interface ChatComposerProps {
   isConnecting: boolean;
   isSendBusy: boolean;
   sendDisabledReason: string | null;
+  /** What Send's hover says before it sends: the Mate at work in another chat on the same files. */
+  sendHint?: string | null | undefined;
   /**
    * D6: this agent is not runnable by this viewer right now, on a thread
    * that stays locked to it (the picker offers sign-in instead of a
@@ -672,6 +677,8 @@ export interface ChatComposerProps {
 
   onProviderModelSelect: (instanceId: ProviderInstanceId, model: string) => void;
   onOpenProviderSetup: (instanceId: ProviderInstanceId) => void;
+  /** The status of the agent the conversation runs on, as admission reads it (the model control's dot). */
+  agentStatus: ServerProvider | null;
   getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => string | null;
   toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
@@ -713,6 +720,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isConnecting,
     isSendBusy,
     sendDisabledReason: externalSendDisabledReason,
+    sendHint = null,
     zeropsSendBlockReason,
     isPreparingWorktree,
     environmentUnavailable,
@@ -763,6 +771,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onChangeActivePendingUserInputCustomAnswer,
     onProviderModelSelect,
     onOpenProviderSetup,
+    agentStatus,
     getModelDisabledReason,
     toggleInteractionMode,
     handleRuntimeModeChange,
@@ -950,6 +959,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         ? providerInstanceEntries.find((entry) => hasProviderSetup(entry.snapshot))?.instanceId
         : undefined))
     : undefined;
+  // The agent's availability, wherever this person can act on the agent (S6). A colleague's
+  // read-along footer and a held footer replace these controls and say none of it: that viewer
+  // cannot act on the agent.
+  const agentAvailability = providerAvailability(agentStatus);
+  const unavailableAgent = showProviderUnavailable
+    ? (agentAvailability ??
+      providerAvailability(
+        providerInstanceEntries.find((entry) => entry.instanceId === providerSetupInstanceId)
+          ?.snapshot ?? null,
+      ))
+    : null;
   const resolvedCompactDisabledReason =
     compactDisabledReason ?? (noProviderAvailable ? "Compacting is unavailable right now" : null);
   // The driver kind follows the instance that will actually run the turn,
@@ -3676,8 +3696,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={isChoiceOnlyPendingQuestion ? undefined : expandMobileComposer}
                     disabled={isChoiceOnlyPendingQuestion}
-                    aria-label="Expand composer"
+                    aria-label={availabilityName("Expand composer", agentAvailability)}
                   >
+                    {agentAvailability === null ? null : (
+                      <AvailabilityDot availability={agentAvailability} />
+                    )}
                     {activePendingProgress
                       ? isChoiceOnlyPendingQuestion
                         ? "Choose an option above"
@@ -3933,6 +3956,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               <ComposerPromptLengthValidation
                 message={providerInputSubmissionError ?? composerSubmissionError}
               />
+              {/* What stops the agent taking a message is the composer's own to say (S6): the
+                  model control's dot names it, and this line says why sending waits. */}
+              {providerSendBlockReason === null ||
+              providerInputSubmissionError !== null ||
+              composerSubmissionError !== null ||
+              isComposerCollapsedMobile ? null : (
+                <p
+                  className="px-3 pb-2 text-xs text-muted-foreground sm:px-4"
+                  data-chat-composer-blocked=""
+                >
+                  {providerSendBlockReason}
+                </p>
+              )}
 
               {/* Bottom toolbar */}
               {isComposerCollapsedMobile || isComposerApprovalState ? null : (
@@ -3947,7 +3983,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 >
                   <div className="-m-1 -ms-3.5 flex min-w-0 flex-1 items-center gap-2 overflow-x-auto p-1 ps-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {crewRunsOn !== undefined ? (
-                      <CrewRunsOnControl label={crewRunsOn.label} onEdit={crewRunsOn.onEdit} />
+                      <CrewRunsOnControl
+                        label={crewRunsOn.label}
+                        onEdit={crewRunsOn.onEdit}
+                        availability={agentAvailability}
+                        onOpenSetup={
+                          agentAvailability?.setup === true
+                            ? () => onOpenProviderSetup(agentAvailability.instanceId)
+                            : null
+                        }
+                      />
+                    ) : showProviderUnavailable && !zeropsSignInRequired && unavailableAgent ? (
+                      <UnavailableAgentControl
+                        availability={unavailableAgent}
+                        onOpenSetup={
+                          providerSetupInstanceId
+                            ? () => onOpenProviderSetup(providerSetupInstanceId)
+                            : null
+                        }
+                      />
                     ) : showProviderUnavailable && !zeropsSignInRequired ? (
                       <Button
                         type="button"
@@ -4022,6 +4076,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         getModelDisabledReason={getModelDisabledReason}
                         onInstanceModelChange={onProviderModelSelect}
                         onOpenProviderSetup={onOpenProviderSetup}
+                        agentStatus={agentStatus}
                       />
                     )}
 
@@ -4063,6 +4118,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       promptHasText={prompt.trim().length > 0}
                       isSendBusy={isSendBusy}
                       sendDisabledReason={sendDisabledReason}
+                      sendHint={sendHint}
                       isConnecting={isConnecting}
                       isEnvironmentUnavailable={
                         environmentUnavailable || noProviderAvailable || projectSelectionRequired

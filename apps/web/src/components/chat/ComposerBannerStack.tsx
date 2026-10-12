@@ -144,11 +144,6 @@ export function ComposerBannerStack({ className, items, stackRef }: ComposerBann
   );
 }
 
-/** A calm notice — neither a warning nor an error — sits on the composer as one quiet line. */
-function quietNotice(item: ComposerBannerStackItem): boolean {
-  return item.variant !== "error" && item.variant !== "warning" && item.layout !== "centered";
-}
-
 function ComposerBannerStackAlert({
   item,
   attached,
@@ -171,29 +166,6 @@ function ComposerBannerStackAlert({
       <XIcon className="size-3.5" />
     </Button>
   ) : null;
-
-  if (attached && quietNotice(item)) {
-    return (
-      <div className="chat-composer-quiet-notice" data-variant={item.variant} role="status">
-        <span aria-hidden="true" className="chat-composer-quiet-notice-mark">
-          {item.icon}
-        </span>
-        <span className="chat-composer-quiet-notice-words">
-          <span className="chat-composer-quiet-notice-title">{item.title}</span>
-          {item.description ? (
-            <span className="chat-composer-quiet-notice-more">{item.description}</span>
-          ) : null}
-        </span>
-        {item.actions || dismiss || stackToggle ? (
-          <span className="chat-composer-quiet-notice-actions">
-            {stackToggle}
-            {item.actions}
-            {dismiss}
-          </span>
-        ) : null}
-      </div>
-    );
-  }
 
   return (
     <Alert
