@@ -123,6 +123,17 @@ describe("commands on the Mac", () => {
     expect(status.text).toContain("ssh zcp mac host | sh");
   });
 
+  it("asks the Mac itself every time, never through a connection an earlier command left open", () => {
+    // The container's ssh config multiplexes every host for 10 minutes; through
+    // a lingering connection a Mac whose ssh server is gone still looked ready.
+    expect(macSshArgs(record, paths, "true")).toEqual(
+      expect.arrayContaining(["ControlMaster=no", "ControlPath=none"]),
+    );
+    expect(macSyncArgs(record, paths, "/var/www/counter")).toEqual(
+      expect.arrayContaining([expect.stringContaining("'ControlPath=none'")]),
+    );
+  });
+
   it("reaches only the paired Mac, with this Mate's key, without prompting", () => {
     const args = macSshArgs(record, paths, "true");
     expect(args).toEqual(

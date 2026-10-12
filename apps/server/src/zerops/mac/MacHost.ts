@@ -210,6 +210,12 @@ const sshOptions = (record: MacHostRecord, paths: MacHostPaths): ReadonlyArray<s
   "ServerAliveInterval=15",
   "-o",
   "LogLevel=ERROR",
+  // The container multiplexes every host for minutes (~/.ssh/config); a lingering
+  // connection would answer for a Mac whose ssh server is gone.
+  "-o",
+  "ControlMaster=no",
+  "-o",
+  "ControlPath=none",
 ];
 
 export const knownHostsLine = (record: MacHostRecord): string =>
