@@ -415,6 +415,12 @@ export const macStatusCommand = (record: MacHostRecord): string =>
     `printf 'access=%s\\n' "$(${shellQuote(`${record.root}/bin/check-access`)} 2>/dev/null)"`,
   ].join("; ");
 
+/** The commands a person runs on their Mac to pair it with this Mate: the VPN first, then the pairing. */
+export const macPairCommands = (projectId: string, host: string): ReadonlyArray<string> => [
+  `zcli vpn up ${projectId}`,
+  `ssh ${host} mac host | sh`,
+];
+
 export type MacStage = "not-paired" | "unreachable" | "needs-permissions" | "ready";
 
 /**
@@ -447,7 +453,7 @@ export const macStatusReport = (input: {
   readonly probe: { readonly code: number; readonly stdout: string } | undefined;
 }): MacStatusReport => {
   const commands = {
-    pairCommands: [`zcli vpn up ${input.projectId}`, `ssh ${input.host} mac host | sh`],
+    pairCommands: macPairCommands(input.projectId, input.host),
     removeCommand: `ssh ${input.host} mac host --remove | sh`,
   };
   const { record, probe } = input;
