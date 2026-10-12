@@ -625,8 +625,7 @@ export type ThreadUsagePauseState = typeof ThreadUsagePauseState.Type;
  * resumes the thread's work itself by sending `USAGE_LIMIT_RESUME_PROMPT`
  * (`@t3tools/shared/userAsk`) as a user message — clients recognise it with
  * `isUsageLimitResumePrompt` and render it as an event, never as the person's
- * bubble. `thread.usage-auto-resume.set` turns it off (a server that reports a
- * pause accepts that command). A message the person sends while paused goes
+ * bubble. A message the person sends while paused goes
  * to the provider as always; its reply waits for the reset, and the resume
  * picks it up.
  */
@@ -1158,94 +1157,6 @@ const ThreadUnarchiveCommand = Schema.Struct({
   threadId: ThreadId,
 });
 
-const ThreadSettleCommand = Schema.Struct({
-  type: Schema.Literal("thread.settle"),
-  commandId: CommandId,
-  threadId: ThreadId,
-});
-
-const ThreadUnsettleCommand = Schema.Struct({
-  type: Schema.Literal("thread.unsettle"),
-  commandId: CommandId,
-  threadId: ThreadId,
-  // Commands only carry "user": activity un-settles are decided server-side
-  // (the decider emits thread.unsettled(reason: "activity") events directly,
-  // never through this command), so a client cannot forge the neutral reset.
-  reason: Schema.Literal("user"),
-});
-
-const ThreadSnoozeCommand = Schema.Struct({
-  type: Schema.Literal("thread.snooze"),
-  commandId: CommandId,
-  threadId: ThreadId,
-  // The wake time. Event-based wake conditions (PR merged, review posted)
-  // will arrive as an optional condition field alongside this; time-based
-  // snooze is just the first kind of condition.
-  snoozedUntil: IsoDateTime,
-});
-
-const ThreadUnsnoozeCommand = Schema.Struct({
-  type: Schema.Literal("thread.unsnooze"),
-  commandId: CommandId,
-  threadId: ThreadId,
-  // Commands only carry "user": activity wakes are decided server-side (the
-  // decider emits thread.unsnoozed(reason: "activity") directly), and timer
-  // wakes need no event at all — clients derive visibility from snoozedUntil,
-  // so a passed wake time simply stops classifying as snoozed.
-  reason: Schema.Literal("user"),
-});
-
-const ThreadPinCommand = Schema.Struct({
-  type: Schema.Literal("thread.pin"),
-  commandId: CommandId,
-  threadId: ThreadId,
-  // Initial slot in the user-arranged pinned order (see ThreadPinReorderCommand).
-  // Optional: clients on pre-reorder servers omit it, and the pinned block
-  // falls back to creation order for keyless threads.
-  orderKey: Schema.optional(TrimmedNonEmptyString),
-});
-
-const ThreadUnpinCommand = Schema.Struct({
-  type: Schema.Literal("thread.unpin"),
-  commandId: CommandId,
-  threadId: ThreadId,
-});
-
-const ThreadPinReorderCommand = Schema.Struct({
-  type: Schema.Literal("thread.pin.reorder"),
-  commandId: CommandId,
-  threadId: ThreadId,
-  // Fractional index key: pinned threads sort by plain string comparison of
-  // these keys, so a drag writes one key to one thread — neighbors (possibly
-  // on other servers) are never touched. Clients compute a key that sorts
-  // between the dropped position's neighbors.
-  orderKey: TrimmedNonEmptyString,
-});
-
-const ThreadAutoSettleSetCommand = Schema.Struct({
-  type: Schema.Literal("thread.auto-settle.set"),
-  commandId: CommandId,
-  threadId: ThreadId,
-  // false turns automatic settlement off for this thread, true turns it back on.
-  enabled: Schema.Boolean,
-});
-
-const ThreadUsageAutoResumeSetCommand = Schema.Struct({
-  type: Schema.Literal("thread.usage-auto-resume.set"),
-  commandId: CommandId,
-  threadId: ThreadId,
-  // false: after a usage limit resets the thread waits for the person; true
-  // (the default): the server resumes its work at the reset.
-  enabled: Schema.Boolean,
-});
-
-const ThreadActiveReorderCommand = Schema.Struct({
-  type: Schema.Literal("thread.active.reorder"),
-  commandId: CommandId,
-  threadId: ThreadId,
-  orderKey: TrimmedNonEmptyString,
-});
-
 const ThreadMetaUpdateCommand = Schema.Struct({
   type: Schema.Literal("thread.meta.update"),
   commandId: CommandId,
@@ -1440,19 +1351,8 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ProjectMetaUpdateCommand,
   ProjectDeleteCommand,
   ThreadCreateCommand,
-  ThreadDeleteCommand,
   ThreadArchiveCommand,
   ThreadUnarchiveCommand,
-  ThreadSettleCommand,
-  ThreadUnsettleCommand,
-  ThreadSnoozeCommand,
-  ThreadUnsnoozeCommand,
-  ThreadPinCommand,
-  ThreadUnpinCommand,
-  ThreadPinReorderCommand,
-  ThreadAutoSettleSetCommand,
-  ThreadUsageAutoResumeSetCommand,
-  ThreadActiveReorderCommand,
   ThreadMetaUpdateCommand,
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
@@ -1473,19 +1373,8 @@ export const ClientOrchestrationCommand = Schema.Union([
   ProjectMetaUpdateCommand,
   ProjectDeleteCommand,
   ThreadCreateCommand,
-  ThreadDeleteCommand,
   ThreadArchiveCommand,
   ThreadUnarchiveCommand,
-  ThreadSettleCommand,
-  ThreadUnsettleCommand,
-  ThreadSnoozeCommand,
-  ThreadUnsnoozeCommand,
-  ThreadPinCommand,
-  ThreadUnpinCommand,
-  ThreadPinReorderCommand,
-  ThreadAutoSettleSetCommand,
-  ThreadUsageAutoResumeSetCommand,
-  ThreadActiveReorderCommand,
   ThreadMetaUpdateCommand,
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
@@ -1629,6 +1518,8 @@ const ThreadCrewCreateCommand = Schema.Struct({
 });
 
 const InternalOrchestrationCommand = Schema.Union([
+  // Only project.delete's decision deletes a thread.
+  ThreadDeleteCommand,
   ThreadCrewCreateCommand,
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,

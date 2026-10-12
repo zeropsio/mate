@@ -114,13 +114,6 @@ it.effect("parses keybinding rules", () =>
     });
     assert.strictEqual(parsedThreadPrevious.command, "thread.previous");
 
-    const parsedThreadSettle = yield* decode(KeybindingRule, {
-      key: "mod+shift+s",
-      command: "thread.settle",
-      when: "!terminalFocus",
-    });
-    assert.strictEqual(parsedThreadSettle.command, "thread.settle");
-
     const parsedThreadStop = yield* decode(KeybindingRule, {
       key: "mod+escape",
       command: "thread.stop",

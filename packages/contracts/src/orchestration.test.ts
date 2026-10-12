@@ -539,35 +539,6 @@ it.effect("decodes thread archive and unarchive commands", () =>
   }),
 );
 
-it.effect("decodes thread settle and unsettle commands", () =>
-  Effect.gen(function* () {
-    const settle = yield* decodeOrchestrationCommand({
-      type: "thread.settle",
-      commandId: "cmd-settle-1",
-      threadId: "thread-1",
-    });
-    const unsettle = yield* decodeOrchestrationCommand({
-      type: "thread.unsettle",
-      commandId: "cmd-unsettle-1",
-      threadId: "thread-1",
-      reason: "user",
-    });
-
-    assert.strictEqual(settle.type, "thread.settle");
-    assert.strictEqual(unsettle.type, "thread.unsettle");
-
-    // "activity" is server-owned: it exists on the event, never on the
-    // command, so a client cannot forge the neutral reset.
-    const forged = yield* decodeOrchestrationCommand({
-      type: "thread.unsettle",
-      commandId: "cmd-unsettle-2",
-      threadId: "thread-1",
-      reason: "activity",
-    }).pipe(Effect.flip);
-    assert.ok(forged);
-  }),
-);
-
 it.effect("defaults settled fields when decoding historical thread data", () =>
   Effect.gen(function* () {
     const common = {
@@ -847,30 +818,6 @@ it.effect("accepts a title seed in thread.turn.start", () =>
       createdAt: "2026-01-01T00:00:00.000Z",
     });
     assert.strictEqual(parsed.titleSeed, "Investigate reconnect failures");
-  }),
-);
-
-it.effect("decodes active reorder commands through client and orchestration boundaries", () =>
-  Effect.gen(function* () {
-    const input = {
-      type: "thread.active.reorder",
-      commandId: "cmd-active-reorder",
-      threadId: "thread-1",
-      orderKey: "gm",
-    };
-    const clientCommand = yield* decodeClientOrchestrationCommand(input);
-    const command = yield* decodeOrchestrationCommand(input);
-    for (const decoded of [clientCommand, command]) {
-      assert.strictEqual(decoded.type, "thread.active.reorder");
-      if (decoded.type === "thread.active.reorder") {
-        assert.strictEqual(decoded.threadId, "thread-1");
-        assert.strictEqual(decoded.orderKey, "gm");
-      }
-    }
-    const emptyKey = yield* Effect.exit(
-      decodeClientOrchestrationCommand({ ...input, orderKey: " " }),
-    );
-    assert.isTrue(Exit.isFailure(emptyKey));
   }),
 );
 
@@ -1281,21 +1228,8 @@ it.effect("rejects a usage pause with a negative held count or no window", () =>
   }),
 );
 
-it.effect("the auto-resume switch is a client command; the pause itself is set by the server", () =>
+it.effect("the usage pause is set by the server, never by a client", () =>
   Effect.gen(function* () {
-    const autoResume = {
-      type: "thread.usage-auto-resume.set",
-      commandId: "cmd-usage-auto-resume",
-      threadId: "thread-1",
-      enabled: false,
-    };
-    for (const decoded of [
-      yield* decodeClientOrchestrationCommand(autoResume),
-      yield* decodeOrchestrationCommand(autoResume),
-    ]) {
-      assert.strictEqual(decoded.type, "thread.usage-auto-resume.set");
-    }
-
     const pause = {
       type: "thread.usage-pause.set",
       commandId: "server:usage-pause:1",
