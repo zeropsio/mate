@@ -40,7 +40,7 @@ import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
-import { macPairCommands } from "./mac/MacHost.ts";
+import { macPairCommands, macRemoveCommands } from "./mac/MacHost.ts";
 import { engineLayer } from "../engine/layer.ts";
 import { serverHandedOverResume } from "../engineSessionDirectory.ts";
 import {
@@ -459,9 +459,11 @@ const macStreamLayer = () =>
     ZeropsMacStreamModule.make({
       readRecord: Effect.succeed(undefined),
       readView: Effect.succeed(undefined),
+      forget: Effect.void,
       openStream: () => Effect.die("ZeropsMacStream fixture: no Mac is paired"),
       runDevice: () => Effect.succeed(69),
       pairCommands: macPairCommands("fixture-project", "zcp"),
+      removeCommands: macRemoveCommands("zcp"),
     }),
   );
 

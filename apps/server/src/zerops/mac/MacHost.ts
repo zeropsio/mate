@@ -505,6 +505,12 @@ export const macStatusCommand = (record: MacHostRecord): string =>
   ].join("; ");
 
 /** The commands a person runs on their Mac to pair it with this Mate: the VPN first, then the pairing. */
+/** What the person runs on the Mac to disconnect it: this Mate's setup removed, then the VPN. */
+export const macRemoveCommands = (host: string): ReadonlyArray<string> => [
+  `ssh ${host} mac host --remove | sh`,
+  "zcli vpn down",
+];
+
 export const macPairCommands = (projectId: string, host: string): ReadonlyArray<string> => [
   `zcli vpn up ${projectId}`,
   `ssh ${host} mac host | sh`,
@@ -543,7 +549,7 @@ export const macStatusReport = (input: {
 }): MacStatusReport => {
   const commands = {
     pairCommands: macPairCommands(input.projectId, input.host),
-    removeCommand: `ssh ${input.host} mac host --remove | sh`,
+    removeCommand: macRemoveCommands(input.host)[0]!,
   };
   const { record, probe } = input;
   if (record === undefined) return { stage: "not-paired", mac: null, missing: [], ...commands };

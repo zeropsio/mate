@@ -19,6 +19,8 @@ export interface ZeropsMacViewState {
   readonly inUse: boolean;
   /** While the view waits on the person (not paired, not answering, an old pairing): what they run on the Mac. */
   readonly pairCommands?: ReadonlyArray<string>;
+  /** How to disconnect the paired Mac: its setup removed, then the VPN. */
+  readonly removeCommands?: ReadonlyArray<string>;
   /** The latest window while `live`; absent otherwise, so an old window never passes for current. */
   readonly frame?: ZeropsMacFrame;
 }
@@ -37,6 +39,7 @@ export function foldMacViewEvent(
     ...(event.app === undefined ? {} : { app: event.app }),
     inUse: event.inUse,
     ...(event.pairCommands === undefined ? {} : { pairCommands: event.pairCommands }),
+    ...(event.removeCommands === undefined ? {} : { removeCommands: event.removeCommands }),
     ...(event.status === "live" && state.frame !== undefined && state.app === event.app
       ? { frame: state.frame }
       : {}),

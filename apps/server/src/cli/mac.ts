@@ -212,7 +212,7 @@ const runMac = async (args: ReadonlyArray<string>, baseDir: string): Promise<num
       try {
         const project = projectId();
         if (command.remove) {
-          process.stdout.write(renderMacRemoveScript(project));
+          process.stdout.write(renderMacRemoveScript(project, env("hostname") ?? "zcp"));
           return 0;
         }
         const mateAddress = env("ZEROPS_VxLanIPv4");

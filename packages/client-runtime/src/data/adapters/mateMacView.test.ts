@@ -88,6 +88,16 @@ describe("the Mac tab's view", () => {
     r.registry.dispose();
   });
 
+  it("hands the panel how to remove a paired Mac, and drops it once none is paired", () => {
+    const r = rig();
+    const removeCommands = ["ssh zcp mac host --remove | sh", "zcli vpn down"];
+    r.sink.event(state("no-app", { removeCommands }));
+    expect(r.view()).toMatchObject({ status: "no-app", removeCommands });
+    r.sink.event(state("not-paired"));
+    expect(r.view()).not.toHaveProperty("removeCommands");
+    r.registry.dispose();
+  });
+
   it("keeps the window while someone uses the Mac, saying so", () => {
     const r = rig();
     r.sink.event(state("live"));

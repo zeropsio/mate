@@ -105,6 +105,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.zeropsBrowserInput]: "zerops",
   [WS_METHODS.subscribeZeropsMacStream]: "zerops",
   [WS_METHODS.zeropsMacInput]: "zerops",
+  [WS_METHODS.zeropsMacForget]: "zerops",
   [WS_METHODS.zeropsMateUpdate]: "zerops",
   [WS_METHODS.zeropsMateCheckUpdate]: "zerops",
   [WS_METHODS.zeropsDataConsoleCall]: "zerops",

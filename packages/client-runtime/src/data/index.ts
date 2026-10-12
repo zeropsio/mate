@@ -350,6 +350,7 @@ export {
   startMateMacView,
   makeMateMacViewSink,
   makeMateMacInputCommand,
+  makeMateMacForgetCommand,
 } from "./adapters/mateMacView.ts";
 
 export {

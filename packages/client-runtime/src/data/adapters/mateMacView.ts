@@ -209,6 +209,16 @@ export function startMateMacView(options: {
   };
 }
 
+/** Forgets the paired Mac on the Mate, on the same typed Mate transport as the view. */
+export function makeMateMacForgetCommand<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+) {
+  return createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:macForget",
+    tag: WS_METHODS.zeropsMacForget,
+  });
+}
+
 /** A click or typed text for the Mac's app, on the same typed Mate transport as the view. */
 export function makeMateMacInputCommand<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,

@@ -129,6 +129,7 @@ export const RPC_REQUIRED_SCOPES = {
   // The Mac's live view, the same pair: watching is a read, a click or typing operates.
   [WS_METHODS.subscribeZeropsMacStream]: AuthOrchestrationReadScope,
   [WS_METHODS.zeropsMacInput]: AuthOrchestrationOperateScope,
+  [WS_METHODS.zeropsMacForget]: AuthOrchestrationOperateScope,
   // Runs a real update on the container — the same authority as exec.run,
   // not a read (spec-mate.md §2.9 MU-2).
   [WS_METHODS.zeropsMateUpdate]: AuthExecOperateScope,

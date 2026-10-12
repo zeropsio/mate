@@ -48,6 +48,7 @@ import {
   macHostPaths,
   type MacHostRecord,
   macPairCommands,
+  macRemoveCommands,
   macScreenPoint,
   macSshArgs,
   type MacViewRecord,
@@ -64,10 +65,14 @@ export interface MacStreamProcess {
 export interface ZeropsMacStreamOptions {
   /** The commands that pair a Mac with this Mate, handed to the person while a step of theirs is due. */
   readonly pairCommands: ReadonlyArray<string>;
+  /** The commands that disconnect the paired Mac, handed to the person in every state a Mac is paired. */
+  readonly removeCommands: ReadonlyArray<string>;
   /** The pairing, read fresh on every attempt; `undefined` when no Mac is paired. */
   readonly readRecord: Effect.Effect<MacHostRecord | undefined>;
   /** The app to show, read fresh on every attempt and while streaming. */
   readonly readView: Effect.Effect<MacViewRecord | undefined>;
+  /** Drops the pairing and the app to show, as `mac unpair` does. */
+  readonly forget: Effect.Effect<void>;
   /** Starts streaming `app`'s window from the Mac; closing the scope ends it. */
   readonly openStream: (
     record: MacHostRecord,
@@ -94,6 +99,8 @@ export class ZeropsMacStream extends Context.Service<
     readonly subscribe: Effect.Effect<Stream.Stream<ZeropsMacStreamEvent>, never, Scope.Scope>;
     /** A click or text for the app; a no-op without a pairing or (for a click) a frame. */
     readonly sendInput: (input: ZeropsMacInput) => Effect.Effect<void>;
+    /** Forgets the paired Mac here, for one that is gone or does not answer; the Mac's own setup stays. */
+    readonly forget: Effect.Effect<void>;
   }
 >()("t3/zerops/ZeropsMacStream") {}
 
@@ -128,6 +135,13 @@ const PERSON_STEP: ReadonlySet<ZeropsMacStreamStatus> = new Set([
   "unreachable",
   "no-helper",
 ]);
+/** The statuses of a paired Mac, which come with the way to disconnect it. */
+const PAIRED: ReadonlySet<ZeropsMacStreamStatus> = new Set([
+  "live",
+  "no-app",
+  "unreachable",
+  "no-helper",
+]);
 
 const INITIAL_STATE: ZeropsMacStateEvent = { type: "state", status: "connecting", inUse: false };
 
@@ -154,11 +168,22 @@ export const make = (options: ZeropsMacStreamOptions) =>
     const publishState = (patch: Partial<Omit<ZeropsMacStateEvent, "type">>) =>
       Effect.gen(function* () {
         const current = yield* Ref.get(lastState);
-        const { pairCommands: _stale, ...rest } = { ...current, ...patch };
-        // Only a step for the person on the Mac comes with the commands for it.
-        const next: ZeropsMacStateEvent = PERSON_STEP.has(rest.status)
-          ? { ...rest, type: "state", pairCommands: options.pairCommands }
-          : { ...rest, type: "state" };
+        const {
+          pairCommands: _stalePair,
+          removeCommands: _staleRemove,
+          ...merged
+        } = { ...current, ...patch };
+        // With no Mac paired there is no Mac's name or app to carry over.
+        const { macName: _macName, app: _app, ...unpaired } = merged;
+        const rest = merged.status === "not-paired" ? unpaired : merged;
+        // Only a step for the person on the Mac comes with the commands for it, and only a
+        // paired Mac with the way to disconnect it.
+        const next: ZeropsMacStateEvent = {
+          ...rest,
+          type: "state",
+          ...(PERSON_STEP.has(rest.status) ? { pairCommands: options.pairCommands } : {}),
+          ...(PAIRED.has(rest.status) ? { removeCommands: options.removeCommands } : {}),
+        };
         // A frame from an earlier app or session never shows under a state that is not live.
         if (next.status !== "live") yield* Ref.set(latestFrame, undefined);
         if (sameState(current, next)) return;
@@ -348,7 +373,12 @@ export const make = (options: ZeropsMacStreamOptions) =>
         }),
       );
 
-    return { subscribe, sendInput } satisfies ZeropsMacStream["Service"];
+    // The loop sees the pairing gone on its next pass; a Mac in retry backoff would make that wait.
+    const forget = options.forget.pipe(
+      Effect.andThen(publishState({ status: "not-paired", inUse: false })),
+    );
+
+    return { subscribe, sendInput, forget } satisfies ZeropsMacStream["Service"];
   });
 
 /** A process that never ran: no output, exit as ssh's own failure. */
@@ -379,8 +409,12 @@ export const layer = Layer.effect(
         config.zerops?.projectId ?? process.env["projectId"] ?? "<project id>",
         process.env["hostname"] ?? "zcp",
       ),
+      removeCommands: macRemoveCommands(process.env["hostname"] ?? "zcp"),
       readRecord: readDecoded(paths.record, decodeMacHostRecord),
       readView: readDecoded(paths.view, decodeMacViewRecord),
+      forget: Effect.forEach([paths.record, paths.knownHosts, paths.view], (file) =>
+        fs.remove(file, { force: true }).pipe(Effect.ignore),
+      ).pipe(Effect.asVoid),
       openStream: (record, app) =>
         ssh(record, macViewStreamCommand(record, app, MAC_VIEW_FPS)).pipe(
           Effect.tap((process) => Effect.forkScoped(Stream.runDrain(process.stderr))),

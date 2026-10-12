@@ -223,12 +223,17 @@
         "@t3tools/client-runtime/zerops/macView",
         "subscribeZeropsMacStream",
         "zerops.mac.input",
+        "zerops.mac.forget",
         "@t3tools/client-runtime/data"
       ],
       "reverseStates": [
         {
           "action": "Click or type into the app",
           "reverse": "none: the input reaches the real app on the Mac; it is undone there, like any click."
+        },
+        {
+          "action": "Forget the Mac here",
+          "reverse": "none: pairing again is done on the Mac, with the steps and commands the tab then shows."
         }
       ],
       "docs": {

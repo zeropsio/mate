@@ -54,6 +54,7 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsBrowserInput
   | typeof WS_METHODS.subscribeZeropsMacStream
   | typeof WS_METHODS.zeropsMacInput
+  | typeof WS_METHODS.zeropsMacForget
   | typeof WS_METHODS.zeropsMateUpdate
   | typeof WS_METHODS.zeropsMateCheckUpdate
   | typeof WS_METHODS.zeropsDataConsoleCall
@@ -363,6 +364,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     [WS_METHODS.subscribeZeropsMacStream]: (_input) => Stream.unwrap(zeropsMacStream.subscribe),
     [WS_METHODS.zeropsMacInput]: (input) =>
       admit(WS_METHODS.zeropsMacInput, zeropsMacStream.sendInput(input)),
+    [WS_METHODS.zeropsMacForget]: () => admit(WS_METHODS.zeropsMacForget, zeropsMacStream.forget),
     [WS_METHODS.zeropsMateUpdate]: (_input) =>
       admit(WS_METHODS.zeropsMateUpdate, runZeropsMateUpdate(deps)),
     [WS_METHODS.zeropsMateCheckUpdate]: (_input) => runZeropsMateCheckUpdate(deps),
