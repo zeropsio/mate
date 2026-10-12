@@ -229,6 +229,7 @@ import { CrewSeamActivity, CrewTaskCard, CrewTimelineContext } from "../zerops/c
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { ProposalCardContainer } from "../zerops/proposal/ProposalCardContainer";
+import { useProposalDecisionsRead } from "../../zerops/proposalRecord";
 import { VaultRequestCardContainer } from "../zerops/vault/VaultRequestCardContainer";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
@@ -722,6 +723,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const held = new Set(rowsHeldKey.split("\n"));
     return stableRows.filter((row) => !held.has(row.id));
   }, [stableRows, rowsHeldKey]);
+  // What was decided of every proposal in the conversation, read from HQ in one call.
+  const proposalIds = useMemo(
+    () =>
+      stableRows.flatMap((row) =>
+        row.kind === "proposal" && row.operation.proposal !== undefined
+          ? [row.operation.proposal.id]
+          : [],
+      ),
+    [stableRows],
+  );
+  useProposalDecisionsRead(proposalIds);
   // A crewmate's conversation (`CrewTimelineContext`, given for a crew thread
   // only) is empty while it holds nothing but seams.
   const crew = use(CrewTimelineContext);

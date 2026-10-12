@@ -1,8 +1,10 @@
 /**
- * A Chief's proposal: what an organization tool (`zerops_org_*`) asks the person to approve.
- * Those tools never act. Each returns one document with a top-level `proposal`; the person approves
- * or declines it on its card, and the client carries out an approved one with the person's own
- * Zerops token. The contract is zcp's (`../zcp/docs/spec-mate.md`, org mode).
+ * A proposal: what a Zerops tool asks the person to approve. The Chief's organization tools
+ * (`zerops_org_*`) propose changes to the organization; a project's Mate proposes asking the
+ * person's Chief (`zerops_propose_ask_chief`). Those tools never act. Each returns one document
+ * with a top-level `proposal`; the person approves or declines it on its card, and the client
+ * carries out an approved one as the person. The contract is zcp's (`../zcp/docs/spec-mate.md`,
+ * org mode).
  *
  * Only a whole proposal is read: a document whose proposal misses what its kind needs is no
  * proposal, and its call stays the plain row any tool's call is.
@@ -13,12 +15,16 @@ import * as Schema from "effect/Schema";
 /** The organization's tools: they read freely and propose what they would change. */
 export const ORG_TOOL_PREFIX = "zerops_org_";
 
+/** Every Zerops tool: any of them may answer a proposal. */
+const ZEROPS_TOOL_PREFIX = "zerops_";
+
 export type ZeropsProposalKind =
   | "service.restart"
   | "service.start"
   | "service.stop"
   | "env.set"
-  | "mate.message";
+  | "mate.message"
+  | "chief.message";
 
 interface ProposalHead {
   readonly id: string;
@@ -47,6 +53,12 @@ export interface ZeropsMessageProposalParams {
   readonly attachment?: { readonly title: string; readonly text: string };
 }
 
+export interface ZeropsChiefMessageParams {
+  readonly words: string;
+  /** Something handed along with the words, such as a log excerpt. */
+  readonly attachment?: { readonly title: string; readonly text: string };
+}
+
 export type ZeropsProposal =
   | (ProposalHead & {
       readonly kind: "service.restart" | "service.start" | "service.stop";
@@ -61,6 +73,12 @@ export type ZeropsProposal =
   | (ProposalHead & {
       readonly kind: "mate.message";
       readonly params: ZeropsMessageProposalParams;
+    })
+  | (ProposalHead & {
+      readonly kind: "chief.message";
+      /** The asking Mate's project. */
+      readonly projectId: string;
+      readonly params: ZeropsChiefMessageParams;
     });
 
 const Words = Schema.NonEmptyString;
@@ -104,8 +122,18 @@ const MessageProposal = Schema.Struct({
   }),
 });
 
+const ChiefMessageProposal = Schema.Struct({
+  ...Head,
+  kind: Schema.Literal("chief.message"),
+  projectId: Words,
+  params: Schema.Struct({
+    words: Words,
+    attachment: Schema.optionalKey(Schema.Struct({ title: Schema.String, text: Schema.String })),
+  }),
+});
+
 const ProposalDocument = Schema.Struct({
-  proposal: Schema.Union([ServiceProposal, EnvProposal, MessageProposal]),
+  proposal: Schema.Union([ServiceProposal, EnvProposal, MessageProposal, ChiefMessageProposal]),
 });
 
 type DecodedProposal = (typeof ProposalDocument.Type)["proposal"];
@@ -156,18 +184,31 @@ function shaped(proposal: DecodedProposal): ZeropsProposal | undefined {
         },
       };
     }
+    case "chief.message": {
+      const { words, attachment } = proposal.params;
+      if (blank(words) || blank(proposal.projectId)) return undefined;
+      return {
+        ...head,
+        kind: "chief.message",
+        projectId: proposal.projectId,
+        params: {
+          words,
+          ...(attachment === undefined ? {} : { attachment: { ...attachment } }),
+        },
+      };
+    }
   }
 }
 
 /**
- * The proposal an organization tool's result holds, or undefined: another tool's, a result that
- * is not a JSON document, or one whose proposal is not whole.
+ * The proposal a Zerops tool's result holds, or undefined: another tool's, a result that is not a
+ * JSON document, or one whose proposal is not whole.
  */
 export function readZeropsProposal(
   toolName: string,
   resultText: string | undefined,
 ): ZeropsProposal | undefined {
-  if (!toolName.startsWith(ORG_TOOL_PREFIX) || resultText === undefined) return undefined;
+  if (!toolName.startsWith(ZEROPS_TOOL_PREFIX) || resultText === undefined) return undefined;
   let parsed: unknown;
   try {
     parsed = JSON.parse(resultText);

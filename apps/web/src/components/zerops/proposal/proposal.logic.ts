@@ -1,14 +1,19 @@
 /**
- * A Chief's proposal on its card: what the person decided of it, how an approved one is
- * carried out, and the words a message to another Mate is sent in. Nothing here acts; the card's
- * container carries out an approval with the person's own token.
+ * A proposal on its card: what the person decided of it, as HQ keeps it (`hq/chief.ts`), how an
+ * approved one is carried out, and the words a message to another Mate — or to the person's own
+ * Chief — is sent in. Nothing here acts; the card's container carries out an approval as the
+ * person.
  */
 import type { VaultScopeRef, VaultView, VaultWrite } from "@t3tools/client-runtime/data";
 import type {
+  HqProposalDecision,
+  HqProposalDecisionWrite,
+} from "@t3tools/client-runtime/zerops/hq";
+import type {
+  ZeropsChiefMessageParams,
   ZeropsMessageProposalParams,
   ZeropsProposal,
 } from "@t3tools/client-runtime/zerops/model";
-import * as Schema from "effect/Schema";
 
 /** What the person decided of one proposal, and how what they approved ended. */
 export type ProposalDecision =
@@ -17,19 +22,10 @@ export type ProposalDecision =
   | { readonly state: "failed"; readonly at: string; readonly message: string }
   | { readonly state: "declined"; readonly at: string };
 
-export const ProposalDecisionSchema = Schema.Union([
-  Schema.Struct({ state: Schema.Literal("running"), at: Schema.String }),
-  Schema.Struct({ state: Schema.Literal("done"), at: Schema.String }),
-  Schema.Struct({ state: Schema.Literal("failed"), at: Schema.String, message: Schema.String }),
-  Schema.Struct({ state: Schema.Literal("declined"), at: Schema.String }),
-]);
-
 /** Each proposal's decision, by its id. */
 export type ProposalDecisions = Readonly<Record<string, ProposalDecision>>;
 
-export const ProposalDecisionsSchema = Schema.Record(Schema.String, ProposalDecisionSchema);
-
-/** How many decisions the account keeps: the newest, so the record never grows without end. */
+/** How many decisions this tab holds: the newest, so the record never grows without end. */
 export const PROPOSAL_DECISIONS_KEPT = 200;
 
 /**
@@ -73,8 +69,59 @@ export function recordDecision(
   );
 }
 
+/** What a failed approval says where HQ holds no words of it. */
+const FAILED_WORDS = "Zerops did not do it.";
+
+/** A decision as HQ holds it, in the card's terms: an approval with no end yet is running. */
+export function decisionFromHq(record: HqProposalDecision): ProposalDecision {
+  if (record.decision === "declined") return { state: "declined", at: record.at };
+  switch (record.outcome) {
+    case null:
+      return { state: "running", at: record.at };
+    case "done":
+      return { state: "done", at: record.at };
+    case "failed":
+      return { state: "failed", at: record.at, message: record.words ?? FAILED_WORDS };
+  }
+}
+
+/** The write HQ is sent for a decision, under the project of the conversation its card is in. */
+export function hqWriteOf(decision: ProposalDecision, projectId: string): HqProposalDecisionWrite {
+  switch (decision.state) {
+    case "running":
+      return { projectId, decision: "approved" };
+    case "done":
+      return { projectId, decision: "approved", outcome: "done" };
+    case "failed":
+      return { projectId, decision: "approved", outcome: "failed", words: decision.message };
+    case "declined":
+      return { projectId, decision: "declined" };
+  }
+}
+
+const REACH: Readonly<Record<ProposalDecision["state"], number>> = {
+  running: 1,
+  done: 2,
+  failed: 2,
+  declined: 2,
+};
+
+/**
+ * What a card holds once HQ answered `answered`: whichever has got further — an answer read
+ * before this tab's own write landed takes nothing back, and an end another tab saw is shown.
+ */
+export function furtherDecision(
+  before: ProposalDecision | undefined,
+  answered: ProposalDecision,
+): ProposalDecision {
+  if (before === undefined) return answered;
+  return REACH[answered.state] > REACH[before.state] ? answered : before;
+}
+
 /** The message another Mate is sent: the words, then the attachment titled and quoted whole. */
-export function proposalMessage(params: ZeropsMessageProposalParams): string {
+export function proposalMessage(
+  params: ZeropsMessageProposalParams | ZeropsChiefMessageParams,
+): string {
   const { attachment } = params;
   if (attachment === undefined) return params.words;
   const text = attachment.text.replace(/\s+$/u, "");
@@ -129,6 +176,28 @@ const SERVICE_VERBS = {
   "service.stop": ["Stopping", "Stopped"],
 } as const;
 
+/**
+ * What the person's Chief is sent when a project's Mate asks it: who asks and from where, then the
+ * words and what they hand along.
+ */
+export function chiefAsk(
+  params: ZeropsChiefMessageParams,
+  from: { readonly mateName: string; readonly projectName: string },
+): string {
+  return `From ${from.mateName} in ${from.projectName}:\n\n${proposalMessage(params)}`;
+}
+
+/** Where an ask of the Chief goes: the viewer's own Chief, none to set up, or not known yet. */
+export function chiefMessageTarget(
+  own: string | null | undefined,
+):
+  | { readonly kind: "chief"; readonly projectId: string }
+  | { readonly kind: "none" }
+  | { readonly kind: "unknown" } {
+  if (own === undefined) return { kind: "unknown" };
+  return own === null ? { kind: "none" } : { kind: "chief", projectId: own };
+}
+
 /** What a card says of a decided proposal; a failed one says the platform's own words instead. */
 export function proposalOutcomeWords(
   proposal: ZeropsProposal,
@@ -154,6 +223,8 @@ export function proposalOutcomeWords(
       return running
         ? `Sending to ${proposal.params.to.mateName}…`
         : `Sent to ${proposal.params.to.mateName}.`;
+    case "chief.message":
+      return running ? "Sending to your Chief…" : "Sent to your Chief.";
   }
 }
 
@@ -171,6 +242,7 @@ export function proposalWhere(proposal: ZeropsProposal): string | null {
         ? `Every app${project === undefined ? "" : ` in ${project}`}`
         : within(`${proposal.serviceName ?? "The service"}'s own`);
     case "mate.message":
+    case "chief.message":
       return null;
   }
 }

@@ -2,8 +2,10 @@
  * What a Chief proposes, as its cards stand in its conversation at the owner's size (1786
  * wide, the left menu at 435, `?menu=` for another): a restart, a secret value, a service's plain
  * value, a message with an attachment to another Mate, and each outcome — running, done, failed,
- * declined, and an approval a reload interrupted. Every face is the mark there; the receiving Mate
- * keeps its own. Approve answers after 900 ms; `?fail=1` refuses it. `?theme=dark` for dark.
+ * declined, and an approval a reload interrupted. Below them, a project's Mate asking the person's
+ * Chief: with a Chief, without one (*Set up your Chief*), sent, and refused by HQ. Every face is
+ * the mark there; the receiving Mate keeps its own. Approve answers after 900 ms; `?fail=1`
+ * refuses it. `?theme=dark` for dark.
  *
  * Served by the dev server at `/design-proposal.html`. Fixtures only: nothing here ships, and no
  * route imports this module.
@@ -80,6 +82,23 @@ const MESSAGE: ZeropsProposal = {
   },
 };
 
+const ASK_CHIEF: ZeropsProposal = {
+  id: "ask-chief",
+  kind: "chief.message",
+  summary: "Ask your Chief which project owns the orders table",
+  reason: "Shop and Contoso both write to it, and I should not change its schema alone.",
+  projectId: "p-shop",
+  projectName: "Shop",
+  params: {
+    words:
+      "Shop and Contoso both write the orders table. Which project owns its schema, and who should approve the migration below?",
+    attachment: {
+      title: "migration · 0042_orders_currency.sql",
+      text: "ALTER TABLE orders ADD COLUMN currency char(3) NOT NULL DEFAULT 'EUR';",
+    },
+  },
+};
+
 const ROSSY: ProposalRecipient = { name: "Rossy", tint: "coral", shape: "gem" };
 
 const STOP: ZeropsProposal = {
@@ -95,6 +114,10 @@ const CARDS: ReadonlyArray<{
   readonly proposal: ZeropsProposal;
   readonly stage: ProposalStage;
   readonly failure?: string;
+  /** `chief.message`: the person has no Chief, so setting one up stands in for Approve. */
+  readonly noChief?: boolean;
+  /** HQ did not keep the person's last decision. */
+  readonly refusal?: string;
 }> = [
   { proposal: RESTART, stage: "open" },
   { proposal: SECRET, stage: "open" },
@@ -110,6 +133,14 @@ const CARDS: ReadonlyArray<{
   },
   { proposal: { ...SECRET, id: "s2" }, stage: "declined" },
   { proposal: { ...RESTART, id: "r3" }, stage: "unseen" },
+  { proposal: ASK_CHIEF, stage: "open" },
+  { proposal: { ...ASK_CHIEF, id: "ask-none" }, stage: "open", noChief: true },
+  { proposal: { ...ASK_CHIEF, id: "ask-sent" }, stage: "done" },
+  {
+    proposal: { ...ASK_CHIEF, id: "ask-refused" },
+    stage: "open",
+    refusal: "HQ could not keep your decision, so nothing ran. Try again.",
+  },
 ];
 
 function Card(card: (typeof CARDS)[number]) {
@@ -130,8 +161,10 @@ function Card(card: (typeof CARDS)[number]) {
       }}
       onDecline={() => setStage("declined")}
       onOpenRecipient={() => undefined}
+      onSetUpChief={card.noChief === true ? () => undefined : undefined}
       proposal={card.proposal}
       recipient={card.proposal.kind === "mate.message" ? ROSSY : undefined}
+      refusal={card.refusal}
       stage={stage}
     />
   );

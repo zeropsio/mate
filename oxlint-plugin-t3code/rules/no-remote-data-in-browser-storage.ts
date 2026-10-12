@@ -93,7 +93,6 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/lib/staleChunk.ts",
   "apps/web/src/zerops/creationMemory.ts",
   "apps/web/src/zerops/diagnostics.ts",
-  "apps/web/src/zerops/proposalDecisions.ts",
   "apps/web/src/zerops/throwawayDebt.ts",
 ]);
 

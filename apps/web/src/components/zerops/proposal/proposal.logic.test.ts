@@ -2,9 +2,16 @@ import type { VaultView } from "@t3tools/client-runtime/data";
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
+import type { HqProposalDecision } from "@t3tools/client-runtime/zerops/hq";
+
 import {
   PROPOSAL_DECISIONS_KEPT,
+  chiefAsk,
+  chiefMessageTarget,
+  decisionFromHq,
   envProposalWrite,
+  furtherDecision,
+  hqWriteOf,
   proposalMessage,
   proposalOutcomeWords,
   proposalRecipient,
@@ -270,6 +277,13 @@ describe("proposalOutcomeWords", () => {
     summary: "Ask Rossy",
     params: { to: { projectId: "p", mateName: "Rossy" }, words: "Hi" },
   };
+  const askChief: ZeropsProposal = {
+    id: "p3",
+    kind: "chief.message",
+    summary: "Ask your Chief",
+    projectId: "p-shop",
+    params: { words: "Who owns orders?" },
+  };
   it.each<[ZeropsProposal, Exclude<ProposalStage, "open" | "failed">, string]>([
     [restart, "running", "Restarting medusa…"],
     [restart, "done", "Restarted medusa."],
@@ -281,6 +295,8 @@ describe("proposalOutcomeWords", () => {
     [env, "done", "STRIPE_KEY is in the vault."],
     [message, "running", "Sending to Rossy…"],
     [message, "done", "Sent to Rossy."],
+    [askChief, "running", "Sending to your Chief…"],
+    [askChief, "done", "Sent to your Chief."],
     [restart, "declined", "Declined. Nothing ran."],
     [restart, "unseen", "Approved before the page reloaded. How it ended was not seen here."],
   ])("%j %s: %s", (proposal, stage, words) => {
@@ -348,5 +364,118 @@ describe("proposalRecipient", () => {
     expect(proposalRecipient(identities, { projectId: "p-shop", mateName: "Rossy" })?.tint).toBe(
       tint,
     );
+  });
+});
+
+const held = (fields: Partial<HqProposalDecision>): HqProposalDecision => ({
+  id: "p1",
+  projectId: "p-chief",
+  decision: "approved",
+  outcome: null,
+  words: null,
+  by: "u1",
+  at: AT,
+  ...fields,
+});
+
+describe("decisions kept at HQ", () => {
+  it.each<[string, HqProposalDecision, ProposalDecision]>([
+    ["an approval HQ holds no end of is still running", held({}), { state: "running", at: AT }],
+    ["an approval that ended done", held({ outcome: "done" }), { state: "done", at: AT }],
+    [
+      "an approval that failed says the platform's words",
+      held({ outcome: "failed", words: "Zerops said no." }),
+      { state: "failed", at: AT, message: "Zerops said no." },
+    ],
+    [
+      "a failure HQ holds no words of still says it failed",
+      held({ outcome: "failed" }),
+      { state: "failed", at: AT, message: "Zerops did not do it." },
+    ],
+    ["a decline", held({ decision: "declined" }), { state: "declined", at: AT }],
+  ])("a card reads %s", (_title, record, decision) => {
+    expect(decisionFromHq(record)).toEqual(decision);
+  });
+
+  it.each<[string, ProposalDecision, ReturnType<typeof hqWriteOf>]>([
+    [
+      "an approval as approved",
+      { state: "running", at: AT },
+      { projectId: "p-chief", decision: "approved" },
+    ],
+    [
+      "an approval's end as done",
+      { state: "done", at: AT },
+      { projectId: "p-chief", decision: "approved", outcome: "done" },
+    ],
+    [
+      "a failure with the platform's words",
+      { state: "failed", at: AT, message: "No." },
+      { projectId: "p-chief", decision: "approved", outcome: "failed", words: "No." },
+    ],
+    [
+      "a decline as declined",
+      { state: "declined", at: AT },
+      { projectId: "p-chief", decision: "declined" },
+    ],
+  ])("HQ is sent %s, under the conversation's project", (_title, decision, write) => {
+    expect(hqWriteOf(decision, "p-chief")).toEqual(write);
+  });
+
+  it.each<[string, ProposalDecision | undefined, ProposalDecision, ProposalDecision]>([
+    [
+      "HQ's answer draws a card this tab knew nothing of",
+      undefined,
+      { state: "declined", at: AT },
+      { state: "declined", at: AT },
+    ],
+    [
+      "an answer read before this tab's approval landed takes nothing back",
+      { state: "running", at: LATER },
+      { state: "running", at: AT },
+      { state: "running", at: LATER },
+    ],
+    [
+      "an approval's end another tab saw replaces the running one",
+      { state: "running", at: AT },
+      { state: "done", at: LATER },
+      { state: "done", at: LATER },
+    ],
+    [
+      "a running approval HQ has no word of yet stays running",
+      { state: "done", at: LATER },
+      { state: "running", at: AT },
+      { state: "done", at: LATER },
+    ],
+  ])("%s", (_title, before, answered, after) => {
+    expect(furtherDecision(before, answered)).toEqual(after);
+  });
+});
+
+describe("asking the Chief", () => {
+  it.each<[string, Parameters<typeof chiefAsk>[0], string]>([
+    [
+      "says who asks and from where, then the words",
+      { words: "Who owns the orders table?" },
+      "From Rossy in Shop:\n\nWho owns the orders table?",
+    ],
+    [
+      "hands the attachment along, titled and quoted whole",
+      {
+        words: "Is this ours?",
+        attachment: { title: "schema diff", text: "ALTER TABLE orders\n" },
+      },
+      "From Rossy in Shop:\n\nIs this ours?\n\nschema diff:\n```\nALTER TABLE orders\n```",
+    ],
+  ])("%s", (_title, params, message) => {
+    expect(chiefAsk(params, { mateName: "Rossy", projectName: "Shop" })).toBe(message);
+  });
+
+  it.each<[string, string | null | undefined, ReturnType<typeof chiefMessageTarget>]>([
+    ["goes to the viewer's own Chief", "p-chief", { kind: "chief", projectId: "p-chief" }],
+    ["offers to set one up where the viewer has none", null, { kind: "none" }],
+    ["waits while whose Chief is not known", undefined, { kind: "unknown" }],
+  ])("an ask of the Chief %s", (_title, own, target) => {
+    expect(chiefMessageTarget(own)).toEqual(target);
   });
 });

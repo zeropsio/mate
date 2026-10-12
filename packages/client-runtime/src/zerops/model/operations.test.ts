@@ -1242,6 +1242,27 @@ describe("reduceZeropsOperations — an organization tool's proposal", () => {
       null,
     ],
     [
+      "a project's Mate asking its Chief is a proposal card",
+      {
+        id: "a1",
+        createdAt: "2026-10-12T10:00:00.000Z",
+        toolName: "zerops_propose_ask_chief",
+        status: "completed",
+        resultText: JSON.stringify({
+          proposal: {
+            id: "prop-2",
+            kind: "chief.message",
+            summary: "Ask your Chief who owns orders",
+            projectId: "p-shop",
+            projectName: "Shop",
+            params: { words: "Who owns the orders table?" },
+          },
+          note: "Nothing has been sent.",
+        }),
+      },
+      "Ask your Chief who owns orders",
+    ],
+    [
       "a proposal tool still running is the plain row until its proposal comes",
       {
         id: "a1",

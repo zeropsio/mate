@@ -130,11 +130,56 @@ describe("readZeropsProposal", () => {
     expect(readZeropsProposal("zerops_org_propose", text)).toEqual(expected);
   });
 
-  it.each<[string, string, string | undefined]>([
+  it.each<[string, string, string, ZeropsProposal]>([
     [
-      "a tool outside the organization's",
+      "a project's Mate asks its Chief in words, with what it hands along",
+      "zerops_propose_ask_chief",
+      result({
+        id: base.id,
+        kind: "chief.message",
+        summary: "Ask your Chief about the shared database",
+        reason: "Two projects write the same tables.",
+        projectId: "p-shop",
+        projectName: "Shop",
+        params: {
+          words: "Which project owns the orders table?",
+          attachment: { title: "schema diff", text: "ALTER TABLE orders" },
+        },
+      }),
+      {
+        id: base.id,
+        kind: "chief.message",
+        summary: "Ask your Chief about the shared database",
+        reason: "Two projects write the same tables.",
+        projectId: "p-shop",
+        projectName: "Shop",
+        params: {
+          words: "Which project owns the orders table?",
+          attachment: { title: "schema diff", text: "ALTER TABLE orders" },
+        },
+      },
+    ],
+    [
+      "any Zerops tool's result holding a proposal is read, not only the organization's",
       "zerops_manage",
       result({ ...base, kind: "service.restart" }),
+      { ...base, kind: "service.restart", projectId: "p-contoso", serviceId: "s-medusa" },
+    ],
+  ])("%s", (_title, toolName, text, expected) => {
+    expect(readZeropsProposal(toolName, text)).toEqual(expected);
+  });
+
+  it.each<[string, string, string | undefined]>([
+    ["a tool outside Zerops's", "github_restart", result({ ...base, kind: "service.restart" })],
+    [
+      "an ask of the Chief with no words",
+      "zerops_propose_ask_chief",
+      result({ ...base, kind: "chief.message", params: { words: " " } }),
+    ],
+    [
+      "an ask of the Chief that names no asking project",
+      "zerops_propose_ask_chief",
+      result({ ...base, projectId: undefined, kind: "chief.message", params: { words: "Hi" } }),
     ],
     ["a result that is not JSON", "zerops_org_restart", "Restarted medusa."],
     ["a result with no proposal", "zerops_org_projects", JSON.stringify({ projects: [] })],

@@ -51,6 +51,7 @@ export type {
 export {
   ORG_TOOL_PREFIX,
   readZeropsProposal,
+  type ZeropsChiefMessageParams,
   type ZeropsEnvProposalParams,
   type ZeropsMessageProposalParams,
   type ZeropsProposal,

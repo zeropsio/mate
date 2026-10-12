@@ -1,9 +1,9 @@
 /**
- * What the organization's Mate proposes, on its card: what it would do as its title, why in the
- * Mate's words, what exactly — the service, the value (hidden when it is secret), or the words and
- * attachment another Mate would be sent — and Approve or Decline. Decided, the same card says how
- * it went in place: running, done, failed in the platform's words, or declined. Nothing ran before
- * the person approved it. Props only: the container carries out the approval.
+ * What a Mate proposes, on its card: what it would do as its title, why in the Mate's words, what
+ * exactly — the service, the value (hidden when it is secret), or the words and attachment another
+ * Mate, or the person's own Chief, would be sent — and Approve or Decline. Decided, the same card
+ * says how it went in place: running, done, failed in the platform's words, or declined. Nothing
+ * ran before the person approved it. Props only: the container carries out the approval.
  */
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { MateMark } from "../../MateMark";
 import { Button } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
 import { FlatCard, MateFace } from "../primitives";
@@ -45,8 +46,12 @@ export interface ProposalCardProps {
   readonly approveBlocked?: string | undefined;
   readonly onApprove: () => void;
   readonly onDecline: () => void;
-  /** `mate.message` only: opens the Mate it went to. */
+  /** `mate.message` and `chief.message`: opens the Mate it went to. */
   readonly onOpenRecipient?: (() => void) | undefined;
+  /** `chief.message` where the person has no Chief: setting one up stands in for Approve. */
+  readonly onSetUpChief?: (() => void) | undefined;
+  /** Why the person's last decision was not kept, in HQ's or the platform's words. */
+  readonly refusal?: string | undefined;
 }
 
 const KIND_ICON: Record<ZeropsProposal["kind"], LucideIcon> = {
@@ -55,6 +60,7 @@ const KIND_ICON: Record<ZeropsProposal["kind"], LucideIcon> = {
   "service.stop": SquareIcon,
   "env.set": KeyRoundIcon,
   "mate.message": SendIcon,
+  "chief.message": SendIcon,
 };
 
 /** A secret value is never drawn: the card says it is hidden. */
@@ -121,6 +127,19 @@ function ProposalBody({
       </div>
     );
   }
+  if (proposal.kind === "chief.message") {
+    const { words, attachment } = proposal.params;
+    return (
+      <div className="grid min-w-0 gap-2">
+        <div className="flex min-w-0 items-center gap-2 text-xs" data-proposal-recipient>
+          <MateMark className="h-4 w-3.5 shrink-0" />
+          <span className="min-w-0 truncate font-medium text-foreground">Ask your Chief</span>
+        </div>
+        <Words words={words} />
+        {attachment === undefined ? null : <Attachment {...attachment} />}
+      </div>
+    );
+  }
   if (proposal.kind !== "mate.message") return null;
   const { to, words, attachment } = proposal.params;
   return (
@@ -141,15 +160,21 @@ function ProposalBody({
           {recipient?.name ?? to.mateName}
         </span>
       </div>
-      {/* Quoted, not paraphrased: this is the text being authorised. */}
-      <p
-        className="min-w-0 rounded-md bg-muted px-3 py-2 text-sm whitespace-pre-wrap wrap-anywhere text-foreground"
-        data-proposal-words
-      >
-        {words}
-      </p>
+      <Words words={words} />
       {attachment === undefined ? null : <Attachment {...attachment} />}
     </div>
+  );
+}
+
+/** Quoted, not paraphrased: this is the text being authorised. */
+function Words({ words }: { readonly words: string }) {
+  return (
+    <p
+      className="min-w-0 rounded-md bg-muted px-3 py-2 text-sm whitespace-pre-wrap wrap-anywhere text-foreground"
+      data-proposal-words
+    >
+      {words}
+    </p>
   );
 }
 
@@ -182,15 +207,32 @@ function ProposalFoot(props: ProposalCardProps) {
   const { proposal, stage } = props;
   if (stage === "open") {
     return (
-      <div className="flex flex-wrap items-center gap-2" data-proposal-decide>
-        <Button disabled={props.approveBlocked !== undefined} onClick={props.onApprove} size="xs">
-          Approve
-        </Button>
-        <Button onClick={props.onDecline} size="xs" variant="ghost-muted">
-          Decline
-        </Button>
-        {props.approveBlocked === undefined ? null : (
-          <span className="text-xs text-muted-foreground">{props.approveBlocked}</span>
+      <div className="grid gap-1.5">
+        <div className="flex flex-wrap items-center gap-2" data-proposal-decide>
+          {props.onSetUpChief === undefined ? (
+            <Button
+              disabled={props.approveBlocked !== undefined}
+              onClick={props.onApprove}
+              size="xs"
+            >
+              Approve
+            </Button>
+          ) : (
+            <Button onClick={props.onSetUpChief} size="xs">
+              Set up your Chief
+            </Button>
+          )}
+          <Button onClick={props.onDecline} size="xs" variant="ghost-muted">
+            Decline
+          </Button>
+          {props.approveBlocked === undefined || props.onSetUpChief !== undefined ? null : (
+            <span className="text-xs text-muted-foreground">{props.approveBlocked}</span>
+          )}
+        </div>
+        {props.refusal === undefined ? null : (
+          <p className="text-xs leading-4 text-destructive-foreground" role="alert">
+            {props.refusal}
+          </p>
         )}
       </div>
     );
@@ -221,12 +263,16 @@ function ProposalFoot(props: ProposalCardProps) {
         ) : null}
         {words}
       </span>
-      {stage === "done" &&
-      proposal.kind === "mate.message" &&
-      props.onOpenRecipient !== undefined ? (
-        <Button onClick={props.onOpenRecipient} size="xs" variant="outline">
-          Open {props.recipient?.name ?? proposal.params.to.mateName}
-        </Button>
+      {stage === "done" && props.onOpenRecipient !== undefined ? (
+        proposal.kind === "mate.message" ? (
+          <Button onClick={props.onOpenRecipient} size="xs" variant="outline">
+            Open {props.recipient?.name ?? proposal.params.to.mateName}
+          </Button>
+        ) : proposal.kind === "chief.message" ? (
+          <Button onClick={props.onOpenRecipient} size="xs" variant="outline">
+            Open Chief
+          </Button>
+        ) : null
       ) : null}
     </div>
   );

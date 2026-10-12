@@ -4,8 +4,8 @@
  * row, hidden from the timeline entirely, or — while still `inProgress` with
  * no arguments yet — not renderable at all (§2.3 R4).
  *
- * An organization tool (`zerops_org_*`) is a card once its result holds a proposal
- * (`proposal.ts`); a read of the organization, and a proposal not yet returned,
+ * A Zerops tool is a card once its result holds a proposal (`proposal.ts`); an
+ * organization tool's read (`zerops_org_*`), and a proposal not yet returned,
  * are the plain row any call is.
  *
  * `toolName` is already normalized (no `mcp__<server>__` prefix) — see
@@ -137,8 +137,11 @@ export function classifyZeropsCall(
   if (status === "failed") {
     return "card";
   }
+  if (readZeropsProposal(toolName, resultText) !== undefined) {
+    return "card";
+  }
   if (toolName.startsWith(ORG_TOOL_PREFIX)) {
-    return readZeropsProposal(toolName, resultText) === undefined ? "generic" : "card";
+    return "generic";
   }
   if (
     PENDING_UNCLASSIFIABLE_TOOLS.has(toolName) &&

@@ -47,6 +47,18 @@ const message: ZeropsProposal = {
   },
 };
 
+const askChief: ZeropsProposal = {
+  id: "p4",
+  kind: "chief.message",
+  summary: "Ask your Chief who owns orders",
+  projectId: "p-shop",
+  projectName: "Shop",
+  params: {
+    words: "Which project owns the orders table?",
+    attachment: { title: "schema diff", text: "ALTER TABLE orders" },
+  },
+};
+
 async function mount(over: Partial<ProposalCardProps> & { readonly proposal: ZeropsProposal }) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
@@ -153,5 +165,43 @@ describe("ProposalCard", () => {
     );
     await act(async () => open?.click());
     expect(opened).toBe(1);
+  });
+
+  it("an ask of the Chief says it goes to your Chief, quoting the words and what it hands along", async () => {
+    const { container } = await mount({ proposal: askChief });
+    expect(container.textContent).toContain("Ask your Chief");
+    expect(container.querySelector("[data-proposal-words]")?.textContent).toBe(
+      "Which project owns the orders table?",
+    );
+    expect(container.textContent).toContain("schema diff");
+  });
+
+  it("an ask of the Chief offers to set one up in place of Approve where the person has none", async () => {
+    const setUp: string[] = [];
+    const { container } = await mount({
+      proposal: askChief,
+      onSetUpChief: () => setUp.push("set up"),
+    });
+    expect(buttons(container)).toEqual(["schema diff", "Set up your Chief", "Decline"]);
+    const offer = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "Set up your Chief",
+    );
+    await act(async () => offer?.click());
+    expect(setUp).toEqual(["set up"]);
+  });
+
+  it("an ask sent to the Chief opens it", async () => {
+    const opened: string[] = [];
+    const { container } = await mount({
+      proposal: askChief,
+      stage: "done",
+      onOpenRecipient: () => opened.push("chief"),
+    });
+    expect(container.textContent).toContain("Sent to your Chief.");
+    const open = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "Open Chief",
+    );
+    await act(async () => open?.click());
+    expect(opened).toEqual(["chief"]);
   });
 });

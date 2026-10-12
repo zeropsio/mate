@@ -1,9 +1,10 @@
 /**
- * A proposal of the organization's Mate, carried out as the person: an approved restart, start or
- * stop is the account's own operation at Zerops with their token; a value is the vault panel's
- * write; a message goes into the other Mate's conversation the way every hand-over to a Mate goes
- * (`useAskMate`). What the person decided is kept by proposal id (`proposalDecisions.ts`), so a
- * reload draws it as it was and no card offers Approve twice.
+ * A Mate's proposal, carried out as the person: an approved restart, start or stop is the
+ * account's own operation at Zerops with their token; a value is the vault panel's write; a
+ * message goes into the other Mate's conversation — an ask of the Chief into the person's own
+ * Chief's — the way every hand-over to a Mate goes (`useAskMate`). What the person decided is kept
+ * at HQ by proposal id (`proposalRecord.ts`), so a reload draws it as it was and no card offers
+ * Approve twice; an approval is carried out only once HQ kept it.
  */
 import { NOT_READ_VAULT, vaultAtom } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -18,15 +19,20 @@ import { useDetailDemand } from "~/zerops/ZeropsAccountData";
 import { useKnownMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { recordVaultWrite } from "~/zerops/vaultTurnNotes";
-import { useProposalDecision } from "~/zerops/proposalDecisions";
+import { openChiefSetup } from "~/zerops/chiefSetup";
+import { useOwnChief } from "~/zerops/ownChief";
+import { useProposalDecision } from "~/zerops/proposalRecord";
 import { useVaultWriter } from "../vault/VaultPanelContainer";
 import type { VaultWriteOutcome } from "../vault/VaultPanel";
 import { ProposalCard } from "./ProposalCard";
 import {
+  chiefAsk,
+  chiefMessageTarget,
   envProposalWrite,
   proposalMessage,
   proposalRecipient,
   proposalStage,
+  type ProposalDecision,
 } from "./proposal.logic";
 
 const UNREAD = Atom.make(NOT_READ_VAULT);
@@ -57,10 +63,16 @@ function Proposal({
   readonly proposal: ZeropsProposal;
   readonly environmentId: EnvironmentId;
 }) {
-  const { decision, runningHere, record } = useProposalDecision(proposal.id);
-  const stage = proposalStage(decision, runningHere);
-  // The organization's Mate's own project names the organization every approval acts in.
+  // The conversation's own project: the organization every approval acts in, and where HQ keeps
+  // what was decided of it.
   const home = useZeropsEnvironmentProject(environmentId);
+  const { decision, known, runningHere, unreachable, record } = useProposalDecision(
+    proposal.id,
+    home?.projectId,
+  );
+  const stage = proposalStage(decision, runningHere);
+  const [refusal, setRefusal] = useState<string | undefined>(undefined);
+  const chief = chiefMessageTarget(useOwnChief());
   const proposer = useKnownMate(environmentId);
   const directory = useZeropsMateDirectory();
   const recipient = useMemo(
@@ -95,13 +107,19 @@ function Proposal({
   const approveBlocked =
     home === undefined
       ? "Reading your organization…"
-      : envWrite !== null && "refused" in envWrite
-        ? envWrite.refused
-        : undefined;
+      : unreachable
+        ? "Reaching your organization's HQ…"
+        : !known
+          ? "Reading what was decided…"
+          : proposal.kind === "chief.message" && chief.kind === "unknown"
+            ? "Finding your Chief…"
+            : envWrite !== null && "refused" in envWrite
+              ? envWrite.refused
+              : undefined;
 
   const ended = useCallback(
     (outcome: VaultWriteOutcome) =>
-      record(
+      void record(
         outcome.ok
           ? { state: "done", at: new Date().toISOString() }
           : {
@@ -113,11 +131,20 @@ function Proposal({
     [record],
   );
 
+  /** Records the person's decision at HQ: false, saying why, where HQ did not keep it. */
+  const decide = async (next: ProposalDecision): Promise<boolean> => {
+    setRefusal(undefined);
+    const refused = await record(next);
+    if (refused !== null) setRefusal(refused);
+    return refused === null;
+  };
+
   const approve = async () => {
-    if (busy || stage !== "open" || home === undefined) return;
+    if (busy || stage !== "open" || home === undefined || approveBlocked !== undefined) return;
     setBusy(true);
-    record({ state: "running", at: new Date().toISOString() });
     try {
+      // Nothing runs before HQ kept the approval: no card anywhere offers it twice.
+      if (!(await decide({ state: "running", at: new Date().toISOString() }))) return;
       switch (proposal.kind) {
         case "service.restart":
         case "service.start":
@@ -146,6 +173,21 @@ function Proposal({
           askMate(proposal.params.to.projectId, proposalMessage(proposal.params), { send: true });
           ended({ ok: true });
           return;
+        case "chief.message":
+          if (chief.kind !== "chief") {
+            ended({ ok: false, code: null, message: "You have no Chief to ask." });
+            return;
+          }
+          askMate(
+            chief.projectId,
+            chiefAsk(proposal.params, {
+              mateName: proposer?.name ?? "Your Mate",
+              projectName: proposal.projectName ?? "its project",
+            }),
+            { send: true },
+          );
+          ended({ ok: true });
+          return;
       }
     } catch (cause) {
       ended({
@@ -164,14 +206,20 @@ function Proposal({
       failure={decision?.state === "failed" ? decision.message : undefined}
       mateName={proposer?.name ?? "Your Mate"}
       onApprove={() => void approve()}
-      onDecline={() => record({ state: "declined", at: new Date().toISOString() })}
+      onDecline={() => void decide({ state: "declined", at: new Date().toISOString() })}
       onOpenRecipient={
         proposal.kind === "mate.message"
           ? () => openMate({ projectId: proposal.params.to.projectId })
-          : undefined
+          : proposal.kind === "chief.message" && chief.kind === "chief"
+            ? () => openMate({ projectId: chief.projectId })
+            : undefined
+      }
+      onSetUpChief={
+        proposal.kind === "chief.message" && chief.kind === "none" ? openChiefSetup : undefined
       }
       proposal={proposal}
       recipient={recipient}
+      refusal={refusal}
       stage={stage}
     />
   );
