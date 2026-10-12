@@ -1,3 +1,4 @@
+import { isMastermate } from "~/zerops/mastermate";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useProjectsPageRows } from "~/zerops/projectsPageRows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
@@ -1835,8 +1836,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     },
     nowMs,
   });
+  // The person's Mastermate is the organization's, not a project: no card of its own.
+  const projectGroups = useMemo(
+    () =>
+      groupTree.groups.filter(
+        ({ environments }) => !environments.some(({ item }) => isMastermate(item.project)),
+      ),
+    [groupTree.groups],
+  );
   const flowGroups = useProjectsPageRows({
-    groups: groupTree.groups,
+    groups: projectGroups,
     flows: projectFlow,
     deployments,
     lines: groupLines,

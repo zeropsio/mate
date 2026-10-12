@@ -147,6 +147,7 @@ import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
 import { type HqOutage } from "~/zerops/hqNavigation";
 import type { MateComing } from "@t3tools/client-runtime/data";
 import { mateFace } from "~/zerops/mateFace.logic";
+import { isMastermate } from "~/zerops/mastermate";
 import { useMateFaceWatch } from "~/zerops/useMateMoments";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
@@ -944,6 +945,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // — so every row agrees on which container is the environment's.
   const mates = selectMateEnvironments(candidates);
   const mateByProject = new Map(mates.map((mate) => [mate.project.id, mate]));
+  // The person's Mastermate is the organization's, not a project's: drawn first, on its own.
+  const master = mates.find((mate) => isMastermate(mate.project));
   const everyEnvironment = [
     ...candidates.filter((candidate) => !mateByProject.has(candidate.project.id)),
     ...mates,
@@ -1591,9 +1594,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // The viewer's Mate filter still hides applications whose Mates are all filtered out.
   const groups = orderedGroups.filter(
     ({ group, environments }) =>
-      !environments.some(({ item }) => hasMate(item)) ||
-      environments.some(({ item }) => hasMate(item) && (shown?.(item) ?? true)) ||
-      group.pending.some((member) => member.kind === "mate"),
+      !environments.some(({ item }) => item.project.id === master?.project.id) &&
+      (!environments.some(({ item }) => hasMate(item)) ||
+        environments.some(({ item }) => hasMate(item) && (shown?.(item) ?? true)) ||
+        group.pending.some((member) => member.kind === "mate")),
   );
   // Folded as its person left it, else folded among six or more projects with Mates
   // (`projectFolded`): a project of stages alone has no rows to fold, and does not count.
@@ -1813,6 +1817,29 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         </div>
       ) : null}
       <SidebarSelectedBand current={activeProjectId} />
+      {master === undefined ? null : (
+        <div className="mb-5 flex flex-col" data-zerops-surface="sidebar-mastermate">
+          <MateUnit active={master.project.id === activeProjectId} projectId={master.project.id}>
+            <MateRow
+              keyedReadings={keyedReadings}
+              actions={getMateActions?.(master, getActivity?.(master))}
+              active={master.project.id === activeProjectId}
+              activity={keyedReadings ? undefined : getActivity?.(master)}
+              up={mateAwake(master, hqMates)}
+              apps={NO_APPS}
+              candidate={master}
+              coming={getComing?.(master)}
+              conversationsRead={getConversationsRead?.(master) === true}
+              keys={mateKeys}
+              numbers={altHeld}
+              onSelect={onSelect}
+              owner={keyedReadings ? undefined : getOwner?.(master)}
+              timestampFormat={timestampFormat}
+              {...faceOf(master.project)}
+            />
+          </MateUnit>
+        </div>
+      )}
       {/* Every project, one list: none folds behind "N other projects" (the owner, 2026-10-11). */}
       {groupSections}
       {ungroupedSection}
