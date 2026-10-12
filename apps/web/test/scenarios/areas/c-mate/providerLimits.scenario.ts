@@ -336,10 +336,13 @@ describe("C: provider refusal and its real deadline", () => {
               ),
             );
             yield* capture("refused");
-            const before = wire.engine.applied.length;
+            // On the engine, an early Continue asks the Mate to try (owner, 2026-10-10: a limit may be
+            // gone early); the provider still refuses, so the pause and its words stand.
+            wire.engine.onContinue.push(() => {});
             yield* chat.when.press("Continue");
-            yield* chat.then.text("Ada can't continue with Claude before");
-            expect(wire.engine.applied.length).toBe(before);
+            yield* Effect.promise(() => wire.waitForOp("continue"));
+            yield* chat.then.text("Ada hit Claude's weekly limit.");
+            expect(yield* Effect.promise(adaRow)).toContain("At its usage limit");
             yield* capture("before-reset");
             const remaining =
               Date.parse(resetsAt) -
@@ -362,7 +365,7 @@ describe("C: provider refusal and its real deadline", () => {
                 { timeout: 8000, polling: "raf" },
               ),
             );
-            yield* chat.then.text("Ada hit the Claude limit on");
+            yield* chat.then.text("Ada hit Claude's weekly limit on");
             yield* chat.then.noText("Ada paused at the limit");
             yield* chat.then.noText("Ada thought");
             yield* chat.then.control("Continue");
