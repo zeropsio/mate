@@ -50,7 +50,7 @@ import { Roles, type OrgView } from "./roles.ts";
 import { makeSourceFence } from "./sourceFence.ts";
 import { makeScopeJournal } from "./scopeJournal.ts";
 import { Structure, type StructureSource, type StructureRead } from "./structure.ts";
-import { CHIEF_TAG } from "./chief";
+import { CHIEF_TAG } from "./chief.ts";
 
 const isZeropsRefused = Schema.is(ZeropsRefused);
 
