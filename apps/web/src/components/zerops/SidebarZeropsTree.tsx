@@ -2348,7 +2348,7 @@ function GroupRowWords<T extends RosterCandidate>({
           {name}
         </span>
         {tags ? <span aria-hidden="true" className="menu-row-tags-room" /> : null}
-        <span className="relative flex h-5.5 min-w-16 shrink-0 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0">
+        <span className="relative flex h-5.5 min-w-16 shrink-0 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0 pointer-coarse:opacity-0">
           <MateSlot
             at={lead.activity?.at}
             slot={state.view.slot}
@@ -3653,7 +3653,7 @@ function MateRowView<T extends RosterCandidate>({
             <span
               className={cn(
                 "relative flex h-5.5 shrink-0 items-center justify-end",
-                project === undefined ? "min-w-11" : "min-w-16",
+                project === undefined ? "min-w-11" : "min-w-16 pointer-coarse:opacity-0",
                 menuShown &&
                   "transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
                 armed && "opacity-0",
@@ -3723,8 +3723,10 @@ function MateRowView<T extends RosterCandidate>({
       {!menuShown && globe === undefined ? null : (
         <span
           className={cn(
-            "absolute top-3.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100",
+            "absolute top-3.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
             "end-2",
+            // A finger never hovers: a project's row holds its verbs where its time stood.
+            project !== undefined && "pointer-coarse:opacity-100",
             armed && "opacity-100",
           )}
           data-row-control=""
