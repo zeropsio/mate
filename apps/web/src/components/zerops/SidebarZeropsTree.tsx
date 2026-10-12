@@ -4310,9 +4310,9 @@ const mateDotLabel = (tone: "attention" | "unread" | "failed"): string =>
       ? "Stopped on an error"
       : "Waiting for you";
 
-/** The third line's inks: the answer muted, unread in the second ink, a question in ink, an error red. */
+/** The third line's inks: the answer in the third ink, unread in the second ink, a question in ink, an error red. */
 const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention", string> = {
-  muted: "text-muted-foreground",
+  muted: "menu-ink-3",
   "ink-2": "menu-ink-2",
   ink: "text-sidebar-foreground",
   failed: "text-status-failed-text",
@@ -4337,7 +4337,7 @@ function MateAskLine({
   if (line.kind === "nothing-asked") {
     return (
       <span
-        className="truncate menu-line2 text-muted-foreground"
+        className="truncate menu-line2 menu-ink-3"
         data-zerops-surface="sidebar-mate-nothing-asked"
       >
         {NOTHING_ASKED_YET}
@@ -4369,7 +4369,7 @@ function MateAskLine({
       )}
       {drafting ? (
         <span
-          className="col-start-1 row-start-1 truncate text-muted-foreground"
+          className="col-start-1 row-start-1 truncate menu-ink-3"
           data-zerops-surface="sidebar-mate-draft"
         >
           <span className="font-medium text-sidebar-foreground">Draft:</span> {line.text}
@@ -4407,7 +4407,7 @@ function MateReply({
     return (
       <span
         aria-hidden="true"
-        className="menu-line2 h-5.25"
+        className="menu-line2 h-5.5"
         data-zerops-surface="sidebar-mate-held"
       />
     );
@@ -4419,7 +4419,7 @@ function MateReply({
       // took the rise's place and a new step never rose.
       <span
         className={cn(
-          "truncate menu-line2 text-muted-foreground",
+          "truncate menu-line2 menu-ink-3",
           wordsChanged && "animate-words-in motion-reduce:animate-none",
         )}
         data-zerops-surface="sidebar-mate-live-step"
@@ -4458,7 +4458,7 @@ function MateReply({
  */
 function MateReplyPending() {
   return (
-    <span className="flex h-5 items-center gap-1" data-zerops-surface="sidebar-mate-pending">
+    <span className="flex h-5.5 items-center gap-1" data-zerops-surface="sidebar-mate-pending">
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />

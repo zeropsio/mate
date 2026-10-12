@@ -3161,7 +3161,7 @@ code {
     border-radius: 12px;
   }
 
-  /* One scale for the menu: a project 16/600, a name 15/21, every line under a name 14/20, the
+  /* One scale for the menu: a project 16/600, a name 15/21, every line under a name 14/22, the
      time and counts 12/16, muted and tabular. */
   .menu-name {
     font-size: 15px;
@@ -3176,7 +3176,7 @@ code {
   .menu-line2 {
     display: block;
     font-size: 14px;
-    line-height: 20px;
+    line-height: 22px;
   }
 
   /* ==== a project's Review and Release tags, and its changes popover ==== */
@@ -3614,7 +3614,7 @@ code {
 
   /* A project's tags — Review, Release, its places' — lead its row's second line at the words'
      own edge, beside the row's own button and never in it: the row's verbs as blue words (S3), in
-     that line's 14/20, so none floats at the end of the name's line nor moves with its count (the
+     that line's 14/22, so none floats at the end of the name's line nor moves with its count (the
      owner, 2026-10-12: "it's floating in space"). The line's words begin after them, by the width
      they measure (`useTagsRoom`); the name's line keeps its whole width. */
   .menu-row-tags {
@@ -3623,7 +3623,7 @@ code {
     inset-inline-start: 56px;
     z-index: 1;
     display: flex;
-    height: 20px;
+    height: 22px;
     align-items: center;
     gap: 8px;
   }
@@ -3890,6 +3890,12 @@ code {
 
   .dark .menu-ink-2 {
     color: color-mix(in oklab, var(--contrast-sidebar-foreground) 78%, transparent);
+  }
+
+  /* The words' third ink, a shade under the muted one: a row's last words once read, and what
+     stands in for them, so the name above leads. */
+  .menu-ink-3 {
+    color: color-mix(in oklab, var(--color-muted-foreground) 91%, var(--color-sidebar));
   }
 
   /* Whose Mate it is, on the face's corner: a colleague's picture or their
