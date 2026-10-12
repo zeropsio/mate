@@ -201,10 +201,8 @@ table keeps the decisions.
   - _Decisions:_ 500 upstream commits since row 5, every one given a verdict in eight triage slices
     (take 106, adapt 74, blocked 84, deleted 108, irrelevant 61, superseded 35, idea 22, skip 9,
     security 1); five port lanes landed **90 `port:` + 1 `import:` + 16 fork fixes**, merged in
-    one branch with three integration fixes. **Declined: upstream's V2 orchestrator** (`de3439142`
-    deletes V1 and the V1 adapters behind a protocol-2 wire cut): Mate is building its own engine,
-    so the fork stays on V1, and V2-only driver fixes arrive as hand translations into the V1
-    adapters. Effect stays at `4.0.0-rc.115` (4.0.1 waits for a codemod over the tree). **Now
+    one branch with three integration fixes. Effect stays at `4.0.0-rc.115` (4.0.1 waits for a codemod
+    over the tree). **Now
     lane (1 port + 6 fixes):** upstream's PostHog telemetry is deleted outright (on by default,
     keyed by a hash of the agent account id; the service, its heartbeat, the ws client properties
     and all 13 provider call sites go, with `product-analytics.md`); **security:** workspace HTML
@@ -225,8 +223,7 @@ table keeps the decisions.
     pricing and usage, editors; repository identity keeps main's cache lifetimes. **Runtime lane
     (16 ports + 3 fixes):** the connection ladder (2 s doubling to 30 s, jittered; an explicit
     retry probes before replacing; a credential rotation still replaces the socket), RPC
-    resubscribe back-off, forward-compatible V1 thread and shell streams (an unknown event is
-    skipped and its sequence passed), markdown file links keep their prose label, settings writes
+    resubscribe back-off, markdown file links keep their prose label, settings writes
     follow symlinks. **Web lane (21 ports + 3 fixes):** badges and type scale, a11y landmarks,
     usage shares follow the metric, model picker, tooltips close on a person's scroll (not on a
     box following its end), titlebar zoom, monospace fonts, pictures off the main thread, bare
@@ -255,14 +252,7 @@ table keeps the decisions.
     pruned, atomic cache writes, Antigravity reads an unsupported file by path, usage version
     mismatches named per Mate, a subagent's own model, Claude commands per workspace (retry backing
     off 10 s → 5 min), "Restart the coding agent" in ⌘K (only while the agent is idle), two lint
-    rules. **Conv (3 ports + 10 V1 re-implementations of V2 fixes + 4 fixes):** queued messages
-    leave while their conversation is not open (a root sender, one in-flight record per thread,
-    Stop per thread), skill calls name the skill, MCP calls carry their tool's own title and server
-    (SPI 2.7) and a cancelled call ends `stopped` (SPI 2.8), a model change that would end
-    background work is refused with its reason, an archived Codex session resumes, a local branch
-    named `t3code`, settling closes idle shells, passive rows stop retaining pollers (the web row
-    flags wait for the entity store's key), stale action shortcuts, file preview read errors,
-    composer suggestions for screen readers. **Dev fix:** the dev server loads jsonc-parser by name
+    rules. **Dev fix:** the dev server loads jsonc-parser by name
     again; only the bundle aliases its ES build. **Sweep (3 ports, hand-ported):** a link to the
     project root opens the Files explorer; the `mate` CLI refuses an accidental launch (a bare word
     that is no directory, `mate`/`mate start` over a live server; `serve`, zcp's supervised launch,

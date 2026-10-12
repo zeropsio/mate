@@ -36,8 +36,7 @@ Re-import replaces that transform rather than accumulating local patches.
 
 Ported code imports no Zerops code. Owned product reaches providers only through the
 [provider runtime SPI](spi.md). The engine is the product's provider consumer; other product code
-reaches conversations through the engine. The engine imports neither Zerops nor V1 orchestration
-directly; integrations enter through its ports.
+reaches conversations through the engine. Zerops services enter the engine through its ports.
 
 ### 3.2 Provider ports
 
