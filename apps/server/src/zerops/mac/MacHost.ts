@@ -30,6 +30,8 @@ export const MacHostRecord = Schema.Struct({
   workspace: Schema.String,
   name: Schema.String,
   macos: Schema.String,
+  /** The node the agent-device daemon runs on: what the user allows in System Settings. */
+  node: Schema.optional(Schema.String),
 });
 export type MacHostRecord = typeof MacHostRecord.Type;
 
@@ -122,7 +124,7 @@ export type MacCommand =
   | { readonly _tag: "pair" }
   | { readonly _tag: "host"; readonly remove: boolean }
   | { readonly _tag: "register" }
-  | { readonly _tag: "status" }
+  | { readonly _tag: "status"; readonly json: boolean }
   | { readonly _tag: "sync" }
   | { readonly _tag: "run"; readonly command: ReadonlyArray<string> }
   | { readonly _tag: "device"; readonly args: ReadonlyArray<string> }
@@ -138,9 +140,12 @@ export const parseMacCommand = (args: ReadonlyArray<string>): MacCommand => {
     case "--help":
     case "-h":
       return { _tag: "help" };
+    case "status":
+      return rest.length === 0 || (rest.length === 1 && rest[0] === "--json")
+        ? { _tag: "status", json: rest[0] === "--json" }
+        : { _tag: "usage", message: "mac status takes only --json." };
     case "pair":
     case "register":
-    case "status":
     case "sync":
     case "unpair":
       return rest.length === 0
@@ -277,6 +282,114 @@ export const macScreenshotCommand = (record: MacHostRecord): string => {
   return `${agentDevice(record)} screenshot ${file} --platform macos >/dev/null && cat ${file} && rm -f ${file}`;
 };
 
-/** Who the Mac is, and whether macOS lets agent-device see and record apps there. */
+/** What the Mac reports about itself, one `key=value` per line for {@link macStatusReport}. */
 export const macStatusCommand = (record: MacHostRecord): string =>
-  `printf '%s · macOS %s · agent-device %s\\n' "$(scutil --get ComputerName 2>/dev/null || hostname)" "$(sw_vers -productVersion)" "$(${agentDevice(record)} --version 2>/dev/null || echo missing)"; ${shellQuote(`${record.root}/bin/check-access`)} || echo "On the Mac, allow node under Accessibility and Screen Recording (System Settings > Privacy & Security), or run the pairing there again."`;
+  [
+    `printf 'macos=%s\\n' "$(sw_vers -productVersion)"`,
+    `printf 'agent-device=%s\\n' "$(${agentDevice(record)} --version 2>/dev/null)"`,
+    `printf 'access=%s\\n' "$(${shellQuote(`${record.root}/bin/check-access`)} 2>/dev/null)"`,
+  ].join("; ");
+
+export type MacStage = "not-paired" | "unreachable" | "needs-permissions" | "ready";
+
+/**
+ * Where pairing stands and what the user does next. `mac status --json` prints
+ * it, and zcp's guided pairing reads it: the shape is the seam between them.
+ */
+export interface MacStatusReport {
+  readonly stage: MacStage;
+  readonly pairCommands: ReadonlyArray<string>;
+  readonly removeCommand: string;
+  readonly mac: {
+    readonly name: string;
+    readonly user: string;
+    readonly address: string;
+    readonly port: number;
+    readonly macos: string | null;
+    readonly agentDevice: string | null;
+    readonly node: string | null;
+  } | null;
+  readonly missing: ReadonlyArray<"Accessibility" | "Screen Recording">;
+}
+
+const PERMISSIONS = ["Accessibility", "Screen Recording"] as const;
+
+export const macStatusReport = (input: {
+  readonly projectId: string;
+  readonly host: string;
+  readonly record: MacHostRecord | undefined;
+  /** The ssh run of {@link macStatusCommand}; 255 is ssh's own failure to connect. */
+  readonly probe: { readonly code: number; readonly stdout: string } | undefined;
+}): MacStatusReport => {
+  const commands = {
+    pairCommands: [`zcli vpn up ${input.projectId}`, `ssh ${input.host} mac host | sh`],
+    removeCommand: `ssh ${input.host} mac host --remove | sh`,
+  };
+  const { record, probe } = input;
+  if (record === undefined) return { stage: "not-paired", mac: null, missing: [], ...commands };
+  const reported = new Map(
+    (probe?.code === 0 ? probe.stdout : "").split("\n").flatMap((line) => {
+      const at = line.indexOf("=");
+      return at > 0 ? [[line.slice(0, at), line.slice(at + 1).trim()] as const] : [];
+    }),
+  );
+  const mac = {
+    name: record.name,
+    user: record.user,
+    address: record.address,
+    port: record.port,
+    macos: reported.get("macos") || null,
+    agentDevice: reported.get("agent-device") || null,
+    node: record.node ?? null,
+  };
+  if (probe === undefined || probe.code !== 0) {
+    return { stage: "unreachable", mac, missing: [], ...commands };
+  }
+  const access = reported.get("access") ?? "";
+  const missing = PERMISSIONS.filter((permission) => !access.includes(`${permission} allowed`));
+  return {
+    stage: missing.length === 0 ? "ready" : "needs-permissions",
+    mac,
+    missing,
+    ...commands,
+  };
+};
+
+/** `mac status` for a person or an agent reading text; the exit code says whether it is ready. */
+export const renderMacStatus = (
+  report: MacStatusReport,
+): { readonly text: string; readonly exitCode: number } => {
+  const [vpnUp, pair] = report.pairCommands;
+  const { mac } = report;
+  if (mac === null) {
+    return {
+      exitCode: 69,
+      text: [
+        "No Mac is paired with this Mate. To pair one, run these in Terminal on the Mac:",
+        "",
+        ...report.pairCommands.map((command) => `  ${command}`),
+        "",
+        "The Mac needs zcli (logged in) and Node.js. The second command installs agent-device and",
+        "starts, as the user, a private ssh server reachable only over this project's VPN.",
+      ].join("\n"),
+    };
+  }
+  const who = `${mac.name} (${mac.user}@${mac.address}:${mac.port})`;
+  switch (report.stage) {
+    case "unreachable":
+      return {
+        exitCode: 1,
+        text: `Paired with ${who}, but it does not answer. On the Mac: make sure it is awake and logged in, and connect the VPN (${vpnUp}). If it still does not answer, pair again (${pair}).`,
+      };
+    case "needs-permissions":
+      return {
+        exitCode: 1,
+        text: `Paired with ${who}, but macOS has not allowed node ${report.missing.join(" and ")} yet. On the Mac, in System Settings > Privacy & Security, turn on node under ${report.missing.join(" and under ")}${mac.node ? ` (add ${mac.node} with + if it is not listed)` : ""}, or run ${pair} again to be walked through it.`,
+      };
+    default:
+      return {
+        exitCode: 0,
+        text: `Paired with ${who} · macOS ${mac.macos ?? "?"} · agent-device ${mac.agentDevice ?? "?"} · Accessibility and Screen Recording allowed.`,
+      };
+  }
+};

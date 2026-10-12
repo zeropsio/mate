@@ -9,7 +9,8 @@ import {
   type MacHostRecord,
   macRunCommand,
   macSshArgs,
-  macStatusCommand,
+  macStatusReport,
+  renderMacStatus,
   macSshPort,
   macSyncArgs,
   parseMacCommand,
@@ -30,7 +31,8 @@ const paths = macHostPaths("/home/zerops/.t3");
 describe("parseMacCommand", () => {
   it.each([
     [[], { _tag: "help" }],
-    [["status"], { _tag: "status" }],
+    [["status"], { _tag: "status", json: false }],
+    [["status", "--json"], { _tag: "status", json: true }],
     [["pair"], { _tag: "pair" }],
     [["sync"], { _tag: "sync" }],
     [["host"], { _tag: "host", remove: false }],
@@ -106,9 +108,19 @@ describe("the Mac's ssh port", () => {
 
 describe("commands on the Mac", () => {
   it("mac status says whether macOS lets agent-device see and record apps, and how to fix it", () => {
-    const command = macStatusCommand(record);
-    expect(command).toContain("'/Users/ales/.zerops-mate/Prj0AAAAAAAAAAAAAAAAAA/bin/check-access'");
-    expect(command).toContain("allow node under Accessibility and Screen Recording");
+    const status = renderMacStatus(
+      macStatusReport({
+        projectId: "Prj0AAAAAAAAAAAAAAAAAA",
+        host: "zcp",
+        record: { ...record, node: "/usr/local/bin/node" },
+        probe: { code: 0, stdout: "access=Accessibility missing, Screen Recording allowed\n" },
+      }),
+    );
+    expect(status.exitCode).toBe(1);
+    expect(status.text).toContain(
+      "turn on node under Accessibility (add /usr/local/bin/node with + if it is not listed)",
+    );
+    expect(status.text).toContain("ssh zcp mac host | sh");
   });
 
   it("reaches only the paired Mac, with this Mate's key, without prompting", () => {
@@ -151,5 +163,74 @@ describe("commands on the Mac", () => {
     expect(macDeviceCommand(record, args)).toBe(
       `'/Users/ales/.zerops-mate/Prj0AAAAAAAAAAAAAAAAAA/bin/agent-device' ${expected}`,
     );
+  });
+});
+
+describe("macStatusReport", () => {
+  const pairing = { projectId: "Prj0AAAAAAAAAAAAAAAAAA", host: "zcp" };
+  const commands = {
+    pairCommands: ["zcli vpn up Prj0AAAAAAAAAAAAAAAAAA", "ssh zcp mac host | sh"],
+    removeCommand: "ssh zcp mac host --remove | sh",
+  };
+  const mac = {
+    name: "Ales's Mac mini",
+    user: "ales",
+    address: "10.12.0.4",
+    port: 22_417,
+    macos: "26.1",
+    agentDevice: "0.21.24",
+    node: null,
+  };
+  const probe = (access: string) => ({
+    code: 0,
+    stdout: `macos=26.1\nagent-device=0.21.24\naccess=${access}\n`,
+  });
+
+  it.each([
+    ["no Mac is paired", undefined, undefined, { stage: "not-paired", mac: null, missing: [] }],
+    [
+      "the Mac does not answer over the VPN",
+      record,
+      { code: 255, stdout: "" },
+      { stage: "unreachable", mac: { ...mac, macos: null, agentDevice: null }, missing: [] },
+    ],
+    [
+      "macOS has not allowed Accessibility",
+      record,
+      probe("Accessibility missing, Screen Recording allowed"),
+      { stage: "needs-permissions", mac, missing: ["Accessibility"] },
+    ],
+    [
+      "macOS has allowed neither",
+      record,
+      probe("Accessibility missing, Screen Recording missing"),
+      { stage: "needs-permissions", mac, missing: ["Accessibility", "Screen Recording"] },
+    ],
+    [
+      "the Mac cannot report its permissions yet",
+      record,
+      probe(""),
+      { stage: "needs-permissions", mac, missing: ["Accessibility", "Screen Recording"] },
+    ],
+    [
+      "everything works",
+      record,
+      probe("Accessibility allowed, Screen Recording allowed"),
+      { stage: "ready", mac, missing: [] },
+    ],
+  ] as const)("tells the next step when %s", (_, paired, result, expected) => {
+    expect(macStatusReport({ ...pairing, record: paired, probe: result })).toEqual({
+      ...expected,
+      ...commands,
+    });
+  });
+
+  it("names the node the user has to allow, once the Mac reported it", () => {
+    const report = macStatusReport({
+      ...pairing,
+      record: { ...record, node: "/opt/homebrew/Cellar/node/24.1.0/bin/node" },
+      probe: probe("Accessibility missing, Screen Recording allowed"),
+    });
+    expect(report.mac?.node).toBe("/opt/homebrew/Cellar/node/24.1.0/bin/node");
   });
 });

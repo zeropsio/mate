@@ -63,6 +63,7 @@ if [ -z "$ADDRESS" ] || ! in_range "$ADDRESS" "$VPN_RANGE"; then
   fail "this Mac is not on the project VPN. Connect it first: zcli vpn up $PROJECT"
 fi
 NODE=$(command -v node) || fail "Node.js is missing. Install it (brew install node, or nodejs.org), then run this again."
+NODE_FILE=$(realpath "$NODE" 2>/dev/null || echo "$NODE")
 NPM=$(command -v npm) || fail "npm is missing. Install Node.js with npm, then run this again."
 
 say "installing agent-device into $ROOT"
@@ -148,9 +149,9 @@ done
 say "registering with the Mate"
 NAME=$(scutil --get ComputerName 2>/dev/null || hostname)
 HOST_KEY=$(cut -d ' ' -f 1,2 "$ROOT/sshd/host_key.pub")
-printf '{"address":%s,"port":%s,"user":%s,"hostKey":%s,"root":%s,"workspace":%s,"name":%s,"macos":%s}' \\
+printf '{"address":%s,"port":%s,"user":%s,"hostKey":%s,"root":%s,"workspace":%s,"name":%s,"macos":%s,"node":%s}' \\
   "$(json "$ADDRESS")" "$PORT" "$(json "$ME")" "$(json "$HOST_KEY")" "$(json "$ROOT")" \\
-  "$(json "$WORKSPACE")" "$(json "$NAME")" "$(json "$(sw_vers -productVersion)")" |
+  "$(json "$WORKSPACE")" "$(json "$NAME")" "$(json "$(sw_vers -productVersion)")" "$(json "$NODE_FILE")" |
   ssh -o BatchMode=yes "$MATE_HOST" mac register
 
 restart_daemon() {
@@ -166,7 +167,6 @@ if ACCESS=$("$ROOT/bin/check-access"); then
   say "paired. The Mate works in $WORKSPACE."
   exit 0
 fi
-NODE_FILE=$(realpath "$NODE" 2>/dev/null || echo "$NODE")
 say "macOS has to let the agent-device daemon see and record apps ($ACCESS)."
 say "In System Settings > Privacy & Security, turn on node under Accessibility and under Screen Recording."
 say "If node is not listed, add it with + (press Cmd-Shift-G and paste $NODE_FILE)."

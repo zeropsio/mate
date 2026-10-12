@@ -32,6 +32,8 @@ import {
   macSshArgs,
   macSshPort,
   macStatusCommand,
+  macStatusReport,
+  renderMacStatus,
   macSyncArgs,
   macSyncPrepareCommand,
   parseMacCommand,
@@ -105,19 +107,29 @@ const run = (
   return child.status ?? 1;
 };
 
-const pairInstructions = (project: string, host: string, paired: MacHostRecord | undefined) =>
-  [
-    ...(paired
-      ? [`Paired now with ${paired.name} at ${paired.address}; pairing again replaces it.`, ""]
-      : []),
-    "To pair a Mac with this Mate, run these two commands in Terminal on the Mac:",
-    "",
-    `  zcli vpn up ${project}`,
-    `  ssh ${host} mac host | sh`,
-    "",
-    "The Mac needs Node.js. The second command installs agent-device and starts a private ssh",
-    "server and the agent-device daemon as your user, reachable only over this project's VPN.",
-  ].join("\n");
+/** Runs the status probe on the Mac with its output captured; 255 when ssh cannot connect. */
+const probeMac = (record: MacHostRecord, paths: MacHostPaths) => {
+  const child = NodeChildProcess.spawnSync(
+    "ssh",
+    macSshArgs(record, paths, macStatusCommand(record)),
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 60_000,
+    },
+  );
+  return { code: child.error ? 255 : (child.status ?? 255), stdout: child.stdout ?? "" };
+};
+
+const statusReport = (paths: MacHostPaths, probe: boolean) => {
+  const record = readRecord(paths);
+  return macStatusReport({
+    projectId: projectId(),
+    host: env("hostname") ?? "zcp",
+    record,
+    probe: record && probe ? probeMac(record, paths) : undefined,
+  });
+};
 
 const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
   const paths = macHostPaths(baseDir);
@@ -129,9 +141,15 @@ const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
     case "usage":
       throw new MacFailure(command.message, 64);
     case "pair": {
-      const project = projectId();
-      ensureMateKey(paths, project);
-      console.log(pairInstructions(project, env("hostname") ?? "zcp", readRecord(paths)));
+      ensureMateKey(paths, projectId());
+      const paired = readRecord(paths);
+      const report = statusReport(paths, false);
+      console.log(
+        [
+          ...(paired ? [`Paired now with ${paired.name}; pairing again replaces it.`, ""] : []),
+          renderMacStatus({ ...report, mac: null }).text,
+        ].join("\n"),
+      );
       return 0;
     }
     case "host": {
@@ -187,16 +205,14 @@ const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
       return 0;
     }
     case "status": {
-      const record = pairedRecord(paths);
-      console.log(`Paired with ${record.name} (${record.user}@${record.address}:${record.port}).`);
-      const code = run("ssh", macSshArgs(record, paths, macStatusCommand(record)));
-      if (code !== 0) {
-        throw new MacFailure(
-          "The Mac does not answer. Is it awake, logged in, and on the project VPN (zcli vpn up)?",
-          code,
-        );
+      const report = statusReport(paths, true);
+      if (command.json) {
+        console.log(JSON.stringify(report));
+        return 0;
       }
-      return 0;
+      const { text, exitCode } = renderMacStatus(report);
+      console.log(text);
+      return exitCode;
     }
     case "sync": {
       const record = pairedRecord(paths);
