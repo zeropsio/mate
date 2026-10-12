@@ -39,6 +39,8 @@ import {
   crewLandingWords,
   crewLineNeedsWord,
   crewLineReadyWord,
+  crewMiniDoingWord,
+  crewRowWords,
   crewLoginRunsWord,
   crewMenuFailureWord,
   crewmateDoesWords,
@@ -1040,5 +1042,43 @@ describe("the plan the usage stop names", () => {
     expect(
       crewStoppedWords({ ...crewSnapshotFixture().run!, reason: "usage", usagePercent: 80 }, words),
     ).toBe(`Stopped working on its own: ${plan} is at 80 %`);
+  });
+});
+
+describe("the crew as mini faces after its Mate's name", () => {
+  it.each([
+    { kind: "working", mine: true, says: "Working" },
+    { kind: "monitoring", mine: true, says: "Working" },
+    { kind: "connecting", mine: true, says: "Starting" },
+    { kind: "approval", mine: true, says: "Asks for your approval" },
+    { kind: "approval", mine: false, says: "Asks for an approval" },
+    { kind: "input", mine: true, says: "Asks you something" },
+    { kind: "input", mine: false, says: "Asks a question" },
+    { kind: "planReady", mine: true, says: "Has a plan for you" },
+    { kind: "planReady", mine: false, says: "Has a plan" },
+    { kind: "failed", mine: true, says: "Stopped on an error" },
+    { kind: "idle", mine: true, says: undefined },
+    { kind: null, mine: true, says: undefined },
+  ] as const)(
+    "says what a crewmate is doing in its tooltip: $kind → $says",
+    ({ kind, mine, says }) => {
+      expect(crewMiniDoingWord(kind, mine)).toBe(says);
+    },
+  );
+
+  it.each([
+    {
+      case: "one at work, one asking, two resting",
+      minis: [
+        { name: "Ada", state: "working" },
+        { name: "Bo", state: "needs" },
+        { name: "Cy", state: "idle" },
+        { name: "Dee", state: "idle" },
+      ],
+      says: "Crew: Ada working, Bo needs you, Cy, Dee",
+    },
+    { case: "a crew at rest", minis: [{ name: "Ada", state: "idle" }], says: "Crew: Ada" },
+  ] as const)("says the whole crew in words for its Mate's row: $case", ({ minis, says }) => {
+    expect(crewRowWords(minis)).toBe(says);
   });
 });

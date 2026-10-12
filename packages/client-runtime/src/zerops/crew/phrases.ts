@@ -26,6 +26,7 @@ import type {
   CrewTask,
   Crewmate,
 } from "@t3tools/contracts";
+import type { MateThreadKind } from "@t3tools/shared/mateLink";
 import { GITHUB_ALERT_WORDS, quoteWords } from "@t3tools/shared/messagePreview";
 
 /* ------------------------------------------------------------ helpers */
@@ -1114,6 +1115,48 @@ export function crewLineReadyWord(names: ReadonlyArray<string>): string {
   const [only, second] = names;
   if (only !== undefined && second === undefined) return `${crewPossessive(only)} work is ready`;
   return `${String(names.length)} pieces of work are ready`;
+}
+
+/* ------------------------------------------------------------ the crew as mini faces */
+
+/**
+ * What a crewmate's mini face after its Mate's name says it is doing, in its tooltip: its chat's
+ * kind. Under a colleague's Mate (`mine` false) an ask waits on that Mate's owner, so it never
+ * says "you". Nothing at rest.
+ */
+export function crewMiniDoingWord(kind: MateThreadKind | null, mine: boolean): string | undefined {
+  switch (kind) {
+    case "working":
+    case "monitoring":
+      return "Working";
+    case "connecting":
+      return "Starting";
+    case "approval":
+      return mine ? "Asks for your approval" : "Asks for an approval";
+    case "input":
+      return mine ? "Asks you something" : "Asks a question";
+    case "planReady":
+      return mine ? "Has a plan for you" : "Has a plan";
+    case "failed":
+      return "Stopped on an error";
+    case "idle":
+    case null:
+      return undefined;
+  }
+}
+
+/** A crewmate the crew's waiting list names, when its chat itself asks nothing. */
+export const CREW_MINI_NEEDS_WORD = "Needs you";
+
+/**
+ * The whole crew in words, for its Mate's row's accessible name: "Crew: Ada working, Bo needs
+ * you, Cy" — every crewmate, the ones folded into "+N" too.
+ */
+export function crewRowWords(
+  minis: ReadonlyArray<{ readonly name: string; readonly state: "working" | "needs" | "idle" }>,
+): string {
+  const word = { working: " working", needs: " needs you", idle: "" } as const;
+  return `Crew: ${minis.map((mini) => `${mini.name}${word[mini.state]}`).join(", ")}`;
 }
 
 /** Which crewmates run on a login, by name, the lead said as the lead. */
