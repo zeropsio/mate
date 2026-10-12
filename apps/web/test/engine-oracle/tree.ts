@@ -82,8 +82,10 @@ export interface Model {
   wakeOf: Entity | null;
   /** Work lost since the last lost-work wake, by card. */
   lostCards: Set<string>;
-  /** Cards the Mate said words on: a wake after them draws a card of its own, under them. */
+  /** Cards the Mate answered on: a wake after them draws a card of its own, under them. */
   readonly answeredCards: Set<string>;
+  /** The card of each run the Mate said words in: a run a restart cut has not answered (B5). */
+  readonly saidIn: Map<string, string>;
   wakes: number;
   played: Array<Op>;
   skipped: number;
@@ -97,6 +99,7 @@ export const emptyModel = (): Model => ({
   wakeOf: null,
   lostCards: new Set(),
   answeredCards: new Set(),
+  saidIn: new Map(),
   wakes: 0,
   played: [],
   skipped: 0,
@@ -234,8 +237,11 @@ export const play = (world: OracleWorld, model: Model, op: Op) =>
       }
       case "say": {
         if (!turnOpen()) return false;
-        const card = mateCard()?.card;
-        if (card !== undefined) model.answeredCards.add(card);
+        const at = mateCard();
+        if (at !== null) {
+          model.saidIn.set(at.run, at.card);
+          model.answeredCards.add(at.card);
+        }
         yield* w.agent((agent, thread) => agent.say(thread, "Working on it."));
         break;
       }
@@ -411,6 +417,13 @@ export const play = (world: OracleWorld, model: Model, op: Op) =>
         // The oracle reads a fresh client here (`checkReload`).
         break;
       case "restart": {
+        // The run it cuts has not answered: its words stay on its card, and the work goes on
+        // there (B5) — the card answered only where a run it did not cut said words.
+        const cut = turnOpen() ? mateCard() : null;
+        if (cut !== null && model.saidIn.delete(cut.run)) {
+          model.answeredCards.clear();
+          for (const card of model.saidIn.values()) model.answeredCards.add(card);
+        }
         markAll("lost");
         yield* world.restart;
         break;
