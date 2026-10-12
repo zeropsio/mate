@@ -122,6 +122,14 @@ describe("chiefPageView", () => {
       { kind: "offer", blocked: "Your organization has no HQ to record a Chief." },
     ],
     [
+      "says why where the organization's HQ runs an older Core than this app carries",
+      { ...ready, hq: "behind", own: null, setup: { phase: "idle" } },
+      {
+        kind: "offer",
+        blocked: "Your organization's HQ needs its update before it can record a Chief.",
+      },
+    ],
+    [
       "says why where the person may not make the project it lives in",
       { ...ready, mayCreate: false, own: null, setup: { phase: "idle" } },
       {

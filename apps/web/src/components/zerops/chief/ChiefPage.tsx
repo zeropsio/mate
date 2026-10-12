@@ -7,7 +7,7 @@
  * while its container comes up (`ZeropsMateComingPage`), which hands over to its conversation.
  */
 import { useNowMs } from "~/zerops/useNowMs";
-import { useAccountHq } from "~/zerops/accountHq";
+import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
 import {
   resumeChiefSetup,
   startChiefSetup,
@@ -20,6 +20,9 @@ import { useOwnChief } from "~/zerops/ownChief";
 import { useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
+import { hqUpdateOffered } from "@t3tools/client-runtime/zerops/hq";
+import { useAtomValue } from "@effect/atom-react";
+import { hqStandingAtom } from "~/state/zerops";
 
 import { Button } from "../../ui/button";
 import { ArrivalSwap } from "../ArrivalSwap";
@@ -48,13 +51,20 @@ export function ChiefPage() {
   const accountHq = useAccountHq(orgId);
   const unfinished = useChiefUnfinished(typeof own === "string" ? own : null);
   const create = useOrgOffers()("create_app");
+  // An HQ on an older Core than this app's records no Chief: its update comes first.
+  const standing = useAtomValue(hqStandingAtom);
+  const carried = useCarriedCoreBuild();
+  const answering =
+    standing.kind === "healthy" || standing.kind === "unchecked" ? standing.build : undefined;
   const view = chiefPageView({
     own,
     setup,
     unfinished,
     hq:
       accountHq.hq.kind === "official"
-        ? "official"
+        ? answering !== undefined && carried !== undefined && hqUpdateOffered(answering, carried)
+          ? "behind"
+          : "official"
         : accountHq.status === "ready"
           ? "none"
           : "reading",

@@ -74,6 +74,7 @@ export type ChiefPageView =
 
 const HQ_READING = "Reaching your organization's HQ…";
 const NO_HQ = "Your organization has no HQ to record a Chief.";
+const HQ_BEHIND = "Your organization's HQ needs its update before it can record a Chief.";
 const MAY_NOT_CREATE = "Only someone who may create projects in this organization can set one up.";
 
 export function chiefPageView(input: {
@@ -81,8 +82,11 @@ export function chiefPageView(input: {
   readonly setup: ChiefSetup;
   /** Its own Chief stands without its access (`useChiefUnfinished`). */
   readonly unfinished: boolean;
-  /** The organization's HQ: reached, still being reached, or none. */
-  readonly hq: "official" | "reading" | "none";
+  /**
+   * The organization's HQ: reached, still being reached, none, or reached but running an older
+   * Core than this app carries — one that cannot record a Chief, so a setup would stop half made.
+   */
+  readonly hq: "official" | "reading" | "none" | "behind";
   /** The person may make the project a Chief lives in (HQ's `create_app`). */
   readonly mayCreate: boolean;
 }): ChiefPageView {
@@ -99,8 +103,10 @@ export function chiefPageView(input: {
       ? NO_HQ
       : input.hq === "reading"
         ? HQ_READING
-        : input.mayCreate
-          ? undefined
-          : MAY_NOT_CREATE;
+        : input.hq === "behind"
+          ? HQ_BEHIND
+          : input.mayCreate
+            ? undefined
+            : MAY_NOT_CREATE;
   return { kind: "offer", blocked };
 }
