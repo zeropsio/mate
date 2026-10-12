@@ -4545,6 +4545,13 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
     background: transparent;
   }
 
+  /* Its slot in the bar: the rest of the row beside the squares, its mark on the faces' column. */
+  .menu-top-master {
+    min-width: 0;
+    flex: 1 1 auto;
+    padding-inline-start: calc(var(--sidebar-content-inset) + 1px);
+  }
+
   .menu-overview .menu-chrome-count {
     position: absolute;
     top: 50%;

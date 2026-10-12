@@ -2670,7 +2670,7 @@ export default function Sidebar() {
       <SidebarChromeHeader
         brand={
           zeropsSignedIn && zeropsMastermate !== undefined ? (
-            <div className="min-w-0 flex-1 ps-[calc(var(--sidebar-content-inset)+1px)]">
+            <div className="menu-top-master">
               <SidebarOverviewRow
                 current={litZeropsProjectId === zeropsMastermate.project.id}
                 headline={zeropsHeadline}
