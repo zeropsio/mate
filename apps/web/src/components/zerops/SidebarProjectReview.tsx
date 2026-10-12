@@ -97,8 +97,6 @@ export function ProjectReviewTags({
   projectName,
   items,
   release,
-  word = "Review",
-  releaseWord = "Release",
 }: {
   readonly groupId: string;
   readonly projectName: string;
@@ -106,10 +104,6 @@ export function ProjectReviewTags({
   readonly items: ReadonlyArray<ProjectReviewItem>;
   /** HQ offers the viewer the release (`releaseOffered`): what waits for production. */
   readonly release: { readonly waiting: number; readonly atLeast: boolean } | undefined;
-  /** Review's own word. */
-  readonly word?: string;
-  /** Release's own word; the conversation's header says what a press does, "Review release". */
-  readonly releaseWord?: string;
 }): ReactNode {
   const review = usePresence(items.length > 0 ? items : undefined);
   const offer = usePresence(release);
@@ -123,20 +117,10 @@ export function ProjectReviewTags({
       onPointerDown={stopPress}
     >
       {review.shown === undefined ? null : (
-        <ReviewTag
-          items={review.shown}
-          phase={review.phase}
-          projectName={projectName}
-          word={word}
-        />
+        <ReviewTag items={review.shown} phase={review.phase} projectName={projectName} />
       )}
       {offer.shown === undefined ? null : (
-        <ReleaseTag
-          groupId={groupId}
-          phase={offer.phase}
-          release={offer.shown}
-          word={releaseWord}
-        />
+        <ReleaseTag groupId={groupId} phase={offer.phase} release={offer.shown} />
       )}
     </span>
   );
@@ -189,12 +173,10 @@ function ReleaseTag({
   groupId,
   release,
   phase,
-  word,
 }: {
   readonly groupId: string;
   readonly release: { readonly waiting: number; readonly atLeast: boolean };
   readonly phase: Phase;
-  readonly word: string;
 }) {
   const openReview = useOpenReview();
   const tip = releaseTagTip(release);
@@ -217,7 +199,7 @@ function ReleaseTag({
       >
         {/* In a narrow menu the word gives way to its mark, so the project's name keeps its room. */}
         <RocketIcon aria-hidden="true" className="menu-tag-icon" />
-        <span className="menu-tag-word">{word}</span>
+        <span className="menu-tag-word">Release</span>
         <TagCount count={release.waiting > 1 ? release.waiting : undefined} />
       </TooltipTrigger>
       <TooltipPopup side="bottom">{tip}</TooltipPopup>
@@ -229,12 +211,10 @@ function ReviewTag({
   items,
   projectName,
   phase,
-  word,
 }: {
   readonly items: ReadonlyArray<ProjectReviewItem>;
   readonly projectName: string;
   readonly phase: Phase;
-  readonly word: string;
 }) {
   const openReview = useOpenReview();
   const [open, setOpen] = useState(false);
@@ -281,7 +261,7 @@ function ReviewTag({
           }
         >
           <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
-          <span className="menu-tag-word">{word}</span>
+          <span className="menu-tag-word">Review</span>
           <TagCount count={many ? items.length : undefined} />
         </TooltipTrigger>
         {only === undefined ? null : <TooltipPopup side="bottom">{only.title}</TooltipPopup>}

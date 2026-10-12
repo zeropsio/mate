@@ -2685,6 +2685,16 @@ export default function Sidebar() {
         tile={tile}
         timestampFormat={timestampFormat}
         unfinished={chiefUnfinished}
+        org={
+          zeropsListHeld
+            ? undefined
+            : {
+                mates: zeropsListed.length,
+                working: zeropsListed.filter(
+                  (candidate) => zeropsRowActivity(candidate)?.kind === "working",
+                ).length,
+              }
+        }
         waiting={
           zeropsListHeld ? undefined : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
         }

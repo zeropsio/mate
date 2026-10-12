@@ -3299,6 +3299,296 @@ code {
     pointer-events: none;
   }
 
+  /* The Mac panel while there is nothing to show (`ZeropsMacPanel`): the Mac's glyph, a headline
+     and one plain line in the middle of its room, then the person's steps on the Mac in one card,
+     each command in its own field with its copy button. */
+  .mac-wait {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 32rem;
+    margin: 56px auto 0;
+    padding-inline: 16px;
+    text-align: center;
+  }
+
+  .mac-wait-glyph {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    margin-bottom: 16px;
+    border-radius: 16px;
+    background: var(--muted);
+    color: var(--muted-foreground);
+  }
+
+  .mac-wait-glyph > svg {
+    width: 28px;
+    height: 28px;
+    stroke-width: 1.5;
+  }
+
+  .mac-wait-badge {
+    position: absolute;
+    inset-inline-end: -5px;
+    bottom: -5px;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 9999px;
+    background: var(--background);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--muted-foreground);
+  }
+
+  .mac-wait-glyph[data-status="unreachable"] .mac-wait-badge {
+    color: var(--zerops-status-attention-text);
+  }
+
+  .mac-wait-badge > svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .mac-wait-title {
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 22px;
+    color: var(--foreground);
+  }
+
+  .mac-wait-line {
+    margin-top: 4px;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--muted-foreground);
+    text-wrap: pretty;
+  }
+
+  .mac-wait-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    margin-top: 24px;
+    padding: 16px;
+    border-radius: 14px;
+    background: var(--card);
+    box-shadow: inset 0 0 0 1px var(--border);
+    text-align: left;
+  }
+
+  .mac-wait-step {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr);
+    align-items: start;
+    column-gap: 12px;
+    row-gap: 8px;
+  }
+
+  .mac-wait-num {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 9999px;
+    background: var(--muted);
+    color: var(--muted-foreground);
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mac-wait-step-words {
+    padding-top: 1px;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--foreground);
+  }
+
+  .mac-wait-step-field {
+    grid-column: 2;
+  }
+
+  .mac-command {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    min-height: 36px;
+    padding-inline: 12px 4px;
+    border-radius: 10px;
+    background: var(--muted);
+  }
+
+  .mac-command-text {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 18px;
+    color: var(--foreground);
+    overflow-wrap: anywhere;
+    user-select: all;
+  }
+
+  /* What the Mac needs before it pairs: each thing, how to get it, its command where it has one. */
+  .mac-ready {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: color-mix(in oklab, var(--muted) 60%, transparent);
+  }
+
+  .mac-ready-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mac-ready-name {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+    color: var(--foreground);
+  }
+
+  .mac-ready-optional {
+    margin-inline-start: 6px;
+    font-weight: 500;
+    color: var(--muted-foreground);
+  }
+
+  .mac-ready-how {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--muted-foreground);
+  }
+
+  .mac-ready-how code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--foreground);
+  }
+
+  .mac-ready-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    color: var(--info-foreground);
+    font-weight: 500;
+  }
+
+  .mac-ready-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .mac-ready-link > svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .mac-ready-item > .mac-command {
+    background: var(--background);
+  }
+
+  /* Pairing again, for when nothing else helps: folded under the steps. */
+  .mac-wait-more {
+    width: 100%;
+    margin-top: 14px;
+    text-align: left;
+  }
+
+  .mac-wait-more > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-inline-start: 4px;
+    font-size: 13px;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+
+  .mac-wait-more > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mac-wait-more > summary:hover {
+    color: var(--foreground);
+  }
+
+  .mac-wait-more-mark {
+    width: 14px;
+    height: 14px;
+    transition: rotate 150ms var(--ease-out-strong);
+  }
+
+  .mac-wait-more[open] .mac-wait-more-mark {
+    rotate: 180deg;
+  }
+
+  .mac-wait-more > .mac-command {
+    margin-top: 10px;
+  }
+
+  .mac-wait-update {
+    margin-top: 20px;
+  }
+
+  /* The way out of a pairing, at the panel's foot: quiet until opened. */
+  .mac-remove {
+    width: 100%;
+    max-width: 32rem;
+    margin: 32px auto 0;
+    padding-inline: 16px;
+  }
+
+  .mac-remove > summary {
+    width: fit-content;
+    margin-inline: auto;
+    font-size: 13px;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+
+  .mac-remove > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mac-remove > summary:hover {
+    color: var(--foreground);
+  }
+
+  .mac-remove-body .mac-wait-steps {
+    margin-top: 12px;
+  }
+
+  .mac-remove-forget {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px 12px;
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--muted-foreground);
+  }
+
   /* What waits in a project, marked after its row's name and nothing more (`ProjectReviewMarks`):
      a change waiting on a review, what waits for production; a small number where there are more.
      A press is the row's. */
@@ -3343,33 +3633,54 @@ code {
     height: 12px;
   }
 
-  /* The conversation's header holds its project's Review and Release (`ProjectReviewTags`) first
-     on its line, after the Mate (the owner, 2026-10-12: "it's pretty important after all … more
-     prominent, enticing, maybe placed on the left"): Review the header's one solid blue, with the
-     menu's merge mark; Release beside it, quieter. */
+  /* The conversation's header holds what waits on the person right after the Mate's name
+     (`ProjectReviewTags`): one solid pill, a door per half — Review, then Release, each with its
+     count where more than one waits (the owner's pick, direction B, 2026-10-13). */
   .chat-header-review {
     display: inline-flex;
     flex: none;
     align-items: center;
-    margin-inline: 10px 12px;
+    margin-inline: 12px 14px;
   }
 
   .chat-header-review .menu-tags {
-    gap: 8px;
-  }
-
-  .chat-header-review .menu-tag-release {
-    background: color-mix(in oklab, var(--primary) 11%, transparent);
-    color: var(--primary);
+    gap: 0;
+    height: 28px;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    box-shadow:
+      0 1px 2px color-mix(in oklab, var(--primary) 30%, transparent),
+      0 6px 14px -7px color-mix(in oklab, var(--primary) 55%, transparent);
   }
 
   .chat-header-review .menu-tag {
+    position: relative;
     gap: 6px;
-    height: 30px;
-    padding: 0 13px 0 11px;
-    border-radius: 9999px;
+    height: 100%;
+    padding: 0 10px 0 11px;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
     font-size: 13px;
     font-weight: 600;
+  }
+
+  .chat-header-review .menu-tag:last-child {
+    padding-inline-end: 11px;
+  }
+
+  /* The seam between the doors: a short light rule, so each half reads as its own. */
+  .chat-header-review .menu-tag + .menu-tag::before {
+    position: absolute;
+    inset-inline-start: 0;
+    top: 7px;
+    width: 1px;
+    height: 14px;
+    background: color-mix(in oklab, var(--primary-foreground) 34%, transparent);
+    content: "";
   }
 
   .chat-header-review .menu-tag-icon {
@@ -3378,33 +3689,30 @@ code {
     height: 14px;
   }
 
-  .chat-header-review .menu-tag-review {
-    background: var(--primary);
-    color: var(--primary-foreground);
-    box-shadow:
-      0 1px 2px color-mix(in oklab, var(--primary) 30%, transparent),
-      0 6px 14px -6px color-mix(in oklab, var(--primary) 60%, transparent);
+  .chat-header-review .menu-tag-count {
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    margin-left: 1px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: color-mix(in oklab, var(--primary-foreground) 22%, transparent);
+    font-size: 11px;
   }
 
-  .chat-header-review .menu-tag-review[data-popup-open] {
-    background: color-mix(in oklab, var(--primary) 88%, var(--color-black));
+  .chat-header-review .menu-tag[data-popup-open] {
+    background: color-mix(in oklab, var(--color-black) 14%, transparent);
   }
 
   @media (hover: hover) and (pointer: fine) {
-    .chat-header-review .menu-tag-review:hover {
-      background: color-mix(in oklab, var(--primary) 88%, var(--color-black));
-      box-shadow:
-        0 1px 2px color-mix(in oklab, var(--primary) 30%, transparent),
-        0 8px 18px -6px color-mix(in oklab, var(--primary) 70%, transparent);
-    }
-
-    .chat-header-review .menu-tag-release:hover {
-      background: color-mix(in oklab, var(--primary) 17%, transparent);
+    .chat-header-review .menu-tag:hover {
+      background: color-mix(in oklab, var(--color-black) 14%, transparent);
+      box-shadow: none;
     }
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    .chat-header-review .menu-tag {
+    .chat-header-review .menu-tags {
       animation: chat-review-arrive 260ms var(--ease-out-strong) both;
     }
   }
@@ -5406,8 +5714,19 @@ code {
     transition: background-color 150ms var(--ease-out-strong);
   }
 
+  /* The organization's own Mate: on a ground of the mark's teal at rest, set apart from every
+     project's row (the owner, 2026-10-12: "this should look different"). */
+  .menu-chief-row {
+    background: color-mix(in oklab, var(--zerops-mate-mark-side) 8%, transparent);
+  }
+
   .menu-chief-row:hover {
-    background: var(--sidebar-row-hover);
+    background: color-mix(in oklab, var(--zerops-mate-mark-side) 13%, transparent);
+  }
+
+  /* What waits on the person, said in the Chief's line in the words' ink. */
+  .menu-chief-asks {
+    color: color-mix(in oklab, var(--sidebar-foreground) 82%, transparent);
   }
 
   /* Lit from the press, as a Mate's row is under its band (`menu-chief-lit`): its own layer, grown

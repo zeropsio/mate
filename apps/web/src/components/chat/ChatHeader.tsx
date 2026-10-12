@@ -624,12 +624,7 @@ export const ChatHeader = memo(function ChatHeader({
                 headerReview === undefined ||
                 (headerChanges.length === 0 && headerReview.release === undefined) ? null : (
                   <span className="chat-header-review">
-                    <ProjectReviewTags
-                      {...headerReview}
-                      items={headerChanges}
-                      releaseWord="Review release"
-                      word={headerChanges.length > 1 ? "Review changes" : "Review change"}
-                    />
+                    <ProjectReviewTags {...headerReview} items={headerChanges} />
                   </span>
                 )
               }

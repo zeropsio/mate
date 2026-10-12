@@ -26,20 +26,36 @@ export interface SidebarChiefRowProps {
   /** Its conversation, or the Chief page, is the page open now. */
   readonly current: boolean;
   readonly onOpen: () => void;
+  /** The organization's Mates: how many, and how many are at work. */
+  readonly org?: ChiefOrg | undefined;
   /** What waits on the person, and what its list asks of the menu. */
   readonly waiting?:
     | { readonly items: ReadonlyArray<WaitingItem>; readonly verbs: WaitingVerbs }
     | undefined;
 }
 
-export function SidebarChiefRow({ face, line, current, onOpen, waiting }: SidebarChiefRowProps) {
+export function SidebarChiefRow({
+  face,
+  line,
+  current,
+  onOpen,
+  waiting,
+  org,
+}: SidebarChiefRowProps) {
   const items = waiting?.items ?? [];
   const summary = items.length === 0 ? undefined : waitingSummary(items);
-  // What it is for, under its name like a Mate row's line (the owner, 2026-10-12: "it still looks
-  // like logo, instead of a clickable thing"); its setup's line while it has one.
-  const shown = line ?? (
-    <span className="menu-line2 menu-ink-3 truncate">Ask about any project</span>
-  );
+  // Under its name, live, as a Mate row's line is (the owner, 2026-10-12: "Ask about any project is
+  // pretty mid"): what waits on the person, else how the organization's Mates stand; its setup's
+  // line while it has one.
+  const shown =
+    line ??
+    (summary !== undefined ? (
+      <span className="menu-line2 menu-chief-asks truncate">
+        {summary.more > 0 ? `${summary.words}, ${String(summary.more)} more` : summary.words}
+      </span>
+    ) : org === undefined ? null : (
+      <span className="menu-line2 menu-ink-3 truncate">{chiefOrgLine(org)}</span>
+    ));
   return (
     <div className="menu-top-chief" data-zerops-surface="sidebar-chief">
       <button
@@ -193,4 +209,18 @@ export function ChiefSetupRowLine({ state }: { readonly state: ChiefSetupRowStat
       {SETUP_WORDS[state]}
     </span>
   );
+}
+
+/** The organization's Mates as the Chief's line counts them. */
+export interface ChiefOrg {
+  readonly mates: number;
+  readonly working: number;
+}
+
+/** How the organization's Mates stand, when nothing waits on the person. */
+export function chiefOrgLine(org: ChiefOrg): string {
+  const mates = `${String(org.mates)} Mate${org.mates === 1 ? "" : "s"}`;
+  return org.working > 0
+    ? `${String(org.working)} of ${mates} at work`
+    : `All quiet across ${mates}`;
 }

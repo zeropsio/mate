@@ -7,8 +7,17 @@
  * reaches the app even while someone works on the Mac; the line says so.
  */
 import type { ScopedThreadRef, ZeropsMacInput } from "@t3tools/contracts";
-import { CheckIcon, CopyIcon } from "lucide-react";
-import { useRef, useState } from "react";
+import {
+  ArrowUpRightIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  CopyIcon,
+  LaptopIcon,
+  LinkIcon,
+  MoonIcon,
+  RefreshCwIcon,
+} from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { requestConfirmDialog } from "../../confirmDialog";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -27,10 +36,8 @@ const COPIED_MS = 2_000;
 export function MacCommand({ command }: { readonly command: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <span className="flex min-w-0 items-center gap-1 rounded-md border border-border bg-muted py-1 pr-1 pl-2.5">
-      <code className="min-w-0 flex-1 select-all font-mono text-xs break-all text-foreground">
-        {command}
-      </code>
+    <span className="mac-command">
+      <code className="mac-command-text">{command}</code>
       <Button
         aria-label={copied ? "Copied" : "Copy the command"}
         onClick={() => {
@@ -51,33 +58,121 @@ export function MacCommand({ command }: { readonly command: string }) {
   );
 }
 
-/** One numbered step of what the person does on the Mac: its words, then its command if it has one. */
+/** One numbered step of what the person does on the Mac: its words, then its command or more. */
 function macStep({
   n,
   words,
   command,
+  more,
 }: {
   readonly n: number;
   readonly words: string;
   readonly command?: string | undefined;
+  readonly more?: ReactNode;
 }) {
   return (
-    <li className="arrival-open-step" key={words}>
-      <span className="arrival-num">{n}</span>
-      <span className="arrival-open-step-words text-sm">{words}</span>
-      <span />
+    <li className="mac-wait-step" key={words}>
+      <span aria-hidden="true" className="mac-wait-num">
+        {n}
+      </span>
+      <span className="mac-wait-step-words">{words}</span>
       {command === undefined ? null : (
-        <span className="arrival-open-step-field">
+        <span className="mac-wait-step-field">
           <MacCommand command={command} />
         </span>
       )}
+      {more === undefined ? null : <span className="mac-wait-step-field">{more}</span>}
     </li>
+  );
+}
+
+/** A command that readies the Mac itself, not one of the Mate's own. */
+function SetupCommand({ command }: { readonly command: string }) {
+  return <MacCommand command={command} />;
+}
+
+/** A page to install from, opened beside the app. */
+function InstallLink({ href, children }: { readonly href: string; readonly children: ReactNode }) {
+  return (
+    <a className="mac-ready-link" href={href} rel="noreferrer" target="_blank">
+      {children}
+      <ArrowUpRightIcon aria-hidden="true" />
+    </a>
+  );
+}
+
+/**
+ * What the Mac needs before it pairs (the owner, 2026-10-12: "this should like say zcli +
+ * wgtools etc and link to install"), as the pairing script checks it: zcli signed in, WireGuard
+ * for its VPN, Node.js from its own installer — macOS keeps the permissions it grants node at that
+ * path across updates, never at Homebrew's — and, optionally, Xcode's command-line tools for the
+ * smooth live view.
+ */
+function macReady() {
+  return (
+    <ul className="mac-ready" data-zerops-mac-ready>
+      <li className="mac-ready-item">
+        <span className="mac-ready-name">zcli, signed in</span>
+        <span className="mac-ready-how">
+          <InstallLink href="https://docs.zerops.io/references/cli">Install zcli</InstallLink>
+          <InstallLink href="https://app.zerops.io/settings/token-management">
+            Make a token
+          </InstallLink>
+          <span>
+            then <code>zcli login &lt;token&gt;</code>
+          </span>
+        </span>
+      </li>
+      <li className="mac-ready-item">
+        <span className="mac-ready-name">WireGuard tools, for the VPN</span>
+        <span className="mac-ready-how">
+          <InstallLink href="https://brew.sh/">Homebrew</InstallLink>
+          <span>then</span>
+        </span>
+        <SetupCommand command="brew install wireguard-tools" />
+      </li>
+      <li className="mac-ready-item">
+        <span className="mac-ready-name">Node.js 22.12 or newer</span>
+        <span className="mac-ready-how">
+          <InstallLink href="https://nodejs.org/en/download">The nodejs.org installer</InstallLink>
+          <span>not Homebrew's: macOS keeps node's permissions across its updates</span>
+        </span>
+      </li>
+      <li className="mac-ready-item">
+        <span className="mac-ready-name">
+          Xcode's command-line tools <span className="mac-ready-optional">optional</span>
+        </span>
+        <span className="mac-ready-how">
+          <span>For the smooth live view and building apps.</span>
+        </span>
+        <SetupCommand command="xcode-select --install" />
+      </li>
+    </ul>
+  );
+}
+
+/** Numbered steps on the Mac, in one card, each with its command to copy when it has one. */
+function stepList(
+  steps: ReadonlyArray<{
+    readonly words: string;
+    readonly command?: string | undefined;
+    readonly more?: ReactNode;
+  }>,
+  name: string,
+) {
+  return (
+    <ol className="mac-wait-steps" data-zerops-mac-steps={name}>
+      {steps.map((step, index) =>
+        macStep({ command: step.command, more: step.more, n: index + 1, words: step.words }),
+      )}
+    </ol>
   );
 }
 
 /**
  * What the person does on their Mac while the view waits on them, with the Mate's own commands
- * (the VPN first, then the pairing): pairing it, reaching it again, or pairing it again.
+ * (the VPN first, then the pairing): pairing it, reaching it again — pairing it again folded
+ * under that, for when nothing else helps — or pairing it again.
  */
 function macSteps({
   status,
@@ -87,53 +182,84 @@ function macSteps({
   readonly pairCommands: ReadonlyArray<string>;
 }) {
   const [vpn, pair] = pairCommands;
-  const steps =
-    status === "not-paired"
-      ? [
-          { words: "On the Mac, have zcli (signed in) and Node.js ready." },
-          {
-            words: "In Terminal, connect it to this project's VPN. It asks for the Mac's password.",
-            command: vpn,
-          },
-          { words: "Then set it up for this Mate. Allow node if macOS asks.", command: pair },
-        ]
-      : status === "unreachable"
-        ? [
-            { words: "Wake the Mac and sign in." },
-            { words: "Connect its VPN in Terminal.", command: vpn },
-            { words: "Still no answer? Pair it again.", command: pair },
-          ]
-        : [{ words: "In Terminal on the Mac, run the pairing again.", command: pair }];
-  return stepList(steps, status);
-}
-
-/** Numbered steps on the Mac, each with its command to copy when it has one. */
-function stepList(
-  steps: ReadonlyArray<{ readonly words: string; readonly command?: string | undefined }>,
-  name: string,
-) {
+  if (status === "not-paired") {
+    return stepList(
+      [
+        { words: "Get the Mac ready.", more: macReady() },
+        {
+          words: "In Terminal, connect it to this project's VPN. It asks for the Mac's password.",
+          command: vpn,
+        },
+        {
+          words:
+            "Then pair it with this Mate. Allow node in Accessibility and Screen Recording when macOS asks.",
+          command: pair,
+        },
+      ],
+      status,
+    );
+  }
+  if (status === "no-helper") {
+    return stepList([{ words: "In Terminal on the Mac, pair it again.", command: pair }], status);
+  }
   return (
-    <ol className="flex flex-col gap-4 px-1 pt-1" data-zerops-mac-steps={name}>
-      {steps.map((step, index) =>
-        macStep({ command: step.command, n: index + 1, words: step.words }),
+    <>
+      {stepList(
+        [
+          { words: "Wake it and sign in." },
+          { words: "Connect its VPN in Terminal.", command: vpn },
+        ],
+        status,
       )}
-    </ol>
+      {pair === undefined ? null : (
+        <details className="mac-wait-more" data-zerops-mac-again>
+          <summary>
+            Still not answering? Pair it again
+            <ChevronDownIcon aria-hidden="true" className="mac-wait-more-mark" />
+          </summary>
+          <MacCommand command={pair} />
+        </details>
+      )}
+    </>
   );
 }
 
+/** The Mac's glyph for the state it waits in: the laptop, and on its corner why it waits. */
+function macGlyph(status: MacWaitKind) {
+  const Badge =
+    status === "unreachable"
+      ? MoonIcon
+      : status === "not-paired"
+        ? LinkIcon
+        : status === "no-helper"
+          ? RefreshCwIcon
+          : undefined;
+  return (
+    <span aria-hidden="true" className="mac-wait-glyph" data-status={status}>
+      <LaptopIcon />
+      {Badge === undefined ? null : (
+        <span className="mac-wait-badge">
+          <Badge />
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** The panel's states with nothing to show: each its glyph, its headline and its one line. */
+type MacWaitKind = "not-paired" | "unreachable" | "no-helper" | "no-app" | "unavailable";
+
 /**
- * The way out of a pairing, folded away under the view: the Mac's setup removed (which also has
- * the Mate forget the Mac) and the VPN, or, for a Mac that is gone or does not answer, the Mate
- * forgetting it right here.
+ * The way out of a pairing, folded away at the panel's foot: the Mac's setup removed (which also
+ * has the Mate forget the Mac) and the VPN, or, for a Mac that is gone or does not answer, the
+ * Mate forgetting it right here.
  */
 function removal(removeCommands: ReadonlyArray<string>, forget: () => void) {
   const [remove, vpn] = removeCommands;
   return (
-    <details className="px-1 pt-2" data-zerops-mac-remove>
-      <summary className="w-fit cursor-pointer list-none select-none text-muted-foreground text-xs hover:text-foreground hover:underline [&::-webkit-details-marker]:hidden">
-        Remove this Mac
-      </summary>
-      <div className="flex flex-col gap-4 pt-3">
+    <details className="mac-remove" data-zerops-mac-remove>
+      <summary>Remove this Mac</summary>
+      <div className="mac-remove-body">
         {stepList(
           [
             {
@@ -145,7 +271,7 @@ function removal(removeCommands: ReadonlyArray<string>, forget: () => void) {
           ],
           "remove",
         )}
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-muted-foreground text-xs">
+        <p className="mac-remove-forget">
           Mac gone, or not answering?
           <Button onClick={forget} size="xs" variant="destructive-outline">
             Forget it here
@@ -189,22 +315,46 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
   const frame = live?.status === "live" ? live.frame : undefined;
   const inputDisabled = live?.status !== "live";
 
-  const line =
+  // While there is nothing to show, the panel says so in the middle of its room: the Mac's glyph,
+  // a headline, one plain line, and the person's steps on the Mac where it waits on them.
+  const wait: { readonly kind: MacWaitKind; readonly title: string; readonly line: string } | null =
     view === "unavailable"
-      ? "This Mate's version doesn't include the Mac view yet."
+      ? {
+          kind: "unavailable",
+          title: "The Mac view needs an update",
+          line: "This Mate's version doesn't include it yet.",
+        }
       : live === undefined
         ? null
         : live.status === "not-paired"
-          ? "Pair a Mac to build and run macOS apps on it from here."
+          ? {
+              kind: "not-paired",
+              title: "Pair a Mac",
+              line: "Build and run macOS apps on it, and use them from here.",
+            }
           : live.status === "unreachable"
-            ? `${macName} does not answer.`
+            ? {
+                kind: "unreachable",
+                title: `${macName} isn't answering`,
+                line: "It's asleep, signed out, or off this project's VPN.",
+              }
             : live.status === "no-app"
-              ? `Nothing open on ${macName} yet.`
+              ? {
+                  kind: "no-app",
+                  title: `Nothing open on ${macName}`,
+                  line: "An app a Mate opens there shows here, live.",
+                }
               : live.status === "no-helper"
-                ? `${macName} was paired before the live view. Pair it again to see it here.`
-                : live.status === "live" && live.inUse
-                  ? `Someone is using ${macName} right now. Clicks and typing here still reach the app.`
-                  : null;
+                ? {
+                    kind: "no-helper",
+                    title: `Pair ${macName} again`,
+                    line: "It was paired before the live view, so nothing shows here yet.",
+                  }
+                : null;
+  const line =
+    live?.status === "live" && live.inUse
+      ? `Someone is using ${macName} right now. Clicks and typing here still reach the app.`
+      : null;
   // The person's next step on the Mac, wherever the view waits on one and the Mate said how.
   const steps =
     live !== undefined &&
@@ -230,21 +380,31 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
 
   return (
     <section aria-label="The paired Mac" className="flex flex-col gap-1.5" data-zerops-mac-panel>
-      <div className="flex min-h-6 items-center gap-2 px-1">
-        <MicroLabel>{live?.macName ?? "Mac"}</MicroLabel>
-      </div>
+      {wait === null ? (
+        <div className="flex min-h-6 items-center gap-2 px-1">
+          <MicroLabel>{live?.macName ?? "Mac"}</MicroLabel>
+        </div>
+      ) : (
+        <div className="mac-wait" data-zerops-mac-wait={wait.kind}>
+          {macGlyph(wait.kind)}
+          <h3 className="mac-wait-title">{wait.title}</h3>
+          <p className="mac-wait-line" data-zerops-mac-line>
+            {wait.line}
+          </p>
+          {steps}
+          {view === "unavailable" ? (
+            <div className="mac-wait-update">
+              <ZeropsMateUpdateControl environmentId={environmentId}>
+                {({ line: update }) => update}
+              </ZeropsMateUpdateControl>
+            </div>
+          ) : null}
+        </div>
+      )}
       {line !== null ? (
         <p className="px-1 text-muted-foreground text-xs" data-zerops-mac-line>
           {line}
         </p>
-      ) : null}
-      {steps}
-      {view === "unavailable" ? (
-        <div className="px-1">
-          <ZeropsMateUpdateControl environmentId={environmentId}>
-            {({ line: update }) => update}
-          </ZeropsMateUpdateControl>
-        </div>
       ) : null}
       {frame !== undefined ? (
         <LiveFrameViewer
