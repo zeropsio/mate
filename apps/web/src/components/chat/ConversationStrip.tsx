@@ -9,7 +9,7 @@ import {
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import { ChevronDownIcon, MessagesSquareIcon } from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
 import {
   useLayoutEffect,
   useMemo,
@@ -42,7 +42,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CrewmateMenu } from "../zerops/crew/CrewmateMenu";
 import { crewFaces } from "../zerops/crew/SidebarCrewLine.logic";
 import { MateFace } from "../zerops/primitives";
-import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import {
   alsoWorkingLine,
   crewmateAccessibleName,
@@ -834,10 +833,11 @@ export function useMateWorks(environmentId: EnvironmentId): boolean {
 }
 
 /**
- * The quiet line over the composer while you type in one of a Mate's chats
- * and it works in another. Nothing is refused: it only says so.
+ * What Send's hover says while you type in one of a Mate's chats and it works in another: both
+ * change the same files. Nothing is refused: it only says so — the line it once was over the
+ * composer went (S6, the owner's pick on the "Composer Strips" board, 2026-10-12).
  */
-export function useAlsoWorkingBanner({
+export function useAlsoWorkingHint({
   environmentId,
   currentThreadId,
   typing,
@@ -845,26 +845,19 @@ export function useAlsoWorkingBanner({
   readonly environmentId: EnvironmentId;
   readonly currentThreadId: ThreadId | null;
   readonly typing: boolean;
-}): ComposerBannerStackItem | null {
+}): string | null {
   const whoLivesHere = useZeropsMate(environmentId);
   const shells = useThreadShells();
   const activityByThread = useAtomValue(environmentActivitiesAtom(environmentId));
   const mateName = whoLivesHere.kind === "mate" ? whoLivesHere.mate.name : null;
   return useMemo(() => {
     if (mateName === null) return null;
-    const line = alsoWorkingLine({
+    return alsoWorkingLine({
       mateName,
       chats: mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
       currentThreadId,
       typing,
       activityByThread,
     });
-    if (line === null) return null;
-    return {
-      id: "mate-also-working",
-      variant: "default",
-      icon: <MessagesSquareIcon />,
-      title: line,
-    };
   }, [currentThreadId, environmentId, mateName, shells, typing, activityByThread]);
 }

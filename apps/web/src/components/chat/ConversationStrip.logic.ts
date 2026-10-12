@@ -493,9 +493,9 @@ export function mateWorks(
 }
 
 /**
- * The quiet line over the composer while you type in one chat and the Mate is
- * at work in another: nothing is refused — two chats are two terminals on one
- * tree — but the person should know both are changing the same files. The
+ * What Send's hover says while you type in one chat and the Mate is at work in
+ * another: nothing is refused — two chats are two terminals on one tree — but
+ * the person should know both are changing the same files. The
  * main chat is named first; otherwise the first other chat that works.
  */
 export function alsoWorkingLine(input: {

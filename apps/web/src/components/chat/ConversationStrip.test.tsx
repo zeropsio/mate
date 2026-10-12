@@ -96,12 +96,7 @@ vi.mock("../zerops/crew/CrewmateMenu", () => ({
   ),
 }));
 
-import type { ComposerBannerStackItem } from "./ComposerBannerStack";
-import {
-  ConversationStrip,
-  ConversationStripView,
-  useAlsoWorkingBanner,
-} from "./ConversationStrip";
+import { ConversationStrip, ConversationStripView, useAlsoWorkingHint } from "./ConversationStrip";
 import type { LineCrewmate } from "./ConversationStrip.logic";
 
 function shell(
@@ -588,23 +583,23 @@ describe("ConversationStripView", () => {
   });
 });
 
-describe("useAlsoWorkingBanner", () => {
+describe("useAlsoWorkingHint", () => {
   function Probe({
     typing,
     receive,
   }: {
     readonly typing: boolean;
-    readonly receive: (item: ComposerBannerStackItem | null) => void;
+    readonly receive: (hint: string | null) => void;
   }) {
     receive(
-      useAlsoWorkingBanner({ environmentId: FEN, currentThreadId: ThreadId.make("logs"), typing }),
+      useAlsoWorkingHint({ environmentId: FEN, currentThreadId: ThreadId.make("logs"), typing }),
     );
     return null;
   }
-  function banner(typing: boolean): ComposerBannerStackItem | null {
-    const items: Array<ComposerBannerStackItem | null> = [];
-    renderToStaticMarkup(<Probe receive={(item) => items.push(item)} typing={typing} />);
-    return items[0] ?? null;
+  function hint(typing: boolean): string | null {
+    const hints: Array<string | null> = [];
+    renderToStaticMarkup(<Probe receive={(said) => hints.push(said)} typing={typing} />);
+    return hints[0] ?? null;
   }
 
   it("says the Mate is at work in the main chat while you type in another", () => {
@@ -612,10 +607,7 @@ describe("useAlsoWorkingBanner", () => {
       shell("main", { latestTurn: running, latestUserMessageAt: "2026-09-05T12:00:00.000Z" }),
       shell("logs", { title: "Logs", createdAt: "2026-09-05T11:00:00.000Z" }),
     ];
-    expect(banner(true)).toMatchObject({
-      variant: "default",
-      title: "Fen is also working in your main chat — both change the same files.",
-    });
-    expect(banner(false)).toBeNull();
+    expect(hint(true)).toBe("Fen is also working in your main chat — both change the same files.");
+    expect(hint(false)).toBeNull();
   });
 });

@@ -379,7 +379,7 @@ import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
 import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
 import { resolveTimelineIsAtEnd, type MateAway } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
-import { useAlsoWorkingBanner, useMateWorks } from "./chat/ConversationStrip";
+import { useAlsoWorkingHint, useMateWorks } from "./chat/ConversationStrip";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -5170,10 +5170,10 @@ export default function ChatView(props: ChatViewProps) {
     },
     colleagueReadOnly === null,
   );
-  // Typing here while the Mate works in another of its chats (`ConversationStrip.tsx`).
-  // A crewmate works on its own copy of the code, so another chat's work is
-  // no warning there.
-  const alsoWorkingBannerItem = useAlsoWorkingBanner({
+  // Typing here while the Mate works in another of its chats, Send's hover says so
+  // (`ConversationStrip.tsx`). A crewmate works on its own copy of the code, so another chat's
+  // work is no warning there.
+  const alsoWorkingHint = useAlsoWorkingHint({
     environmentId,
     currentThreadId: isServerThread ? threadId : null,
     typing: composerHasUnsentContent && activeThreadShell?.crew == null,
@@ -5452,22 +5452,17 @@ export default function ChatView(props: ChatViewProps) {
       limit,
     ],
   );
+  // Over the composer stands only the Mate's link and the connection (S6 sends the rest to the
+  // conversation and to the composer's place). Someone else's conversation is read, not run: a
+  // calm word about this Mate's link offers a step on it, so only an urgent one is said there.
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
-    // Someone else's conversation is read, not run: every other banner offers
-    // a step on this Mate (add production, release, stop, compact, restore),
-    // so only the viewer's own connection is said.
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
     const urgentSystemItems = systemComposerBannerItems.filter(isUrgentSystemItem);
     if (colleagueReadOnly !== null) return urgentSystemItems;
-    // What belongs to the conversation — another of its chats at work, its waking or parking —
-    // waits until the conversation shows, not over its opening line.
-    const conversationShown = !threadDetailLoading;
-    const alsoWorkingItems =
-      !conversationShown || alsoWorkingBannerItem === null ? [] : [alsoWorkingBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
-    return [...urgentSystemItems, ...alsoWorkingItems, ...calmSystemItems];
-  }, [colleagueReadOnly, alsoWorkingBannerItem, systemComposerBannerItems, threadDetailLoading]);
+    return [...urgentSystemItems, ...calmSystemItems];
+  }, [colleagueReadOnly, systemComposerBannerItems]);
   // What happened that the person may still act on: quiet rows at the conversation's end, in the
   // order they come (S6). A colleague's conversation is read, not run, and says none of them.
   const crewNextNotice = useMemo(() => crewNextConversationNotice(crewNotices), [crewNotices]);
@@ -8475,6 +8470,7 @@ export default function ChatView(props: ChatViewProps) {
                               // its spinner until the turn runs and it turns
                               // into Stop, never the arrow in between.
                               isSendBusy={isSendBusy || phase === "connecting"}
+                              sendHint={alsoWorkingHint}
                               sendDisabledReason={
                                 feedbackUploading
                                   ? "Sending feedback"

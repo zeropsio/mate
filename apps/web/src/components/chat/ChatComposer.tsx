@@ -407,6 +407,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   promptHasText: boolean;
   isSendBusy: boolean;
   sendDisabledReason: string | null;
+  sendHint: string | null;
   isConnecting: boolean;
   isEnvironmentUnavailable: boolean;
   hasSendableContent: boolean;
@@ -443,6 +444,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         promptHasText={props.promptHasText}
         isSendBusy={props.isSendBusy}
         sendDisabledReason={props.sendDisabledReason}
+        sendHint={props.sendHint}
         isConnecting={props.isConnecting}
         isEnvironmentUnavailable={props.isEnvironmentUnavailable}
         isPreparingWorktree={props.isPreparingWorktree}
@@ -561,6 +563,8 @@ export interface ChatComposerProps {
   isConnecting: boolean;
   isSendBusy: boolean;
   sendDisabledReason: string | null;
+  /** What Send's hover says before it sends: the Mate at work in another chat on the same files. */
+  sendHint?: string | null | undefined;
   /**
    * D6: this agent is not runnable by this viewer right now, on a thread
    * that stays locked to it (the picker offers sign-in instead of a
@@ -716,6 +720,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     isConnecting,
     isSendBusy,
     sendDisabledReason: externalSendDisabledReason,
+    sendHint = null,
     zeropsSendBlockReason,
     isPreparingWorktree,
     environmentUnavailable,
@@ -4100,6 +4105,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       promptHasText={prompt.trim().length > 0}
                       isSendBusy={isSendBusy}
                       sendDisabledReason={sendDisabledReason}
+                      sendHint={sendHint}
                       isConnecting={isConnecting}
                       isEnvironmentUnavailable={
                         environmentUnavailable || noProviderAvailable || projectSelectionRequired
