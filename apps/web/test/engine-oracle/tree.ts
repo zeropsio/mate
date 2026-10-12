@@ -163,7 +163,10 @@ const learnRuns = (world: OracleWorld, model: Model) =>
         );
         model.lostCards.clear();
       } else {
-        model.cardOfRun.set(run.id, rootOf(run.id));
+        // A restart's or a usage limit's continuation goes on as the run it continues worked, on
+        // that run's card, or under the words the Mate said there, on a card of its own.
+        const cut = run.joins === null ? undefined : model.cardOfRun.get(run.joins);
+        model.cardOfRun.set(run.id, ownCardPast(cut ?? rootOf(run.id), run.id));
         model.loose.add(run.id);
       }
     }

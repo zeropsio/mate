@@ -825,7 +825,8 @@ describe("an engine run its card does not hold whole when it paints", () => {
    */
   const longRun = (
     total: number,
-    end: "settled" | "live" = "settled",
+    /** `cut`: a restart cut it before it answered, its continuation going on on its card. */
+    end: "settled" | "live" | "cut" = "settled",
     /** A run that continues the first (a restart's continuation): no person's words, later. */
     continues = false,
   ) => {
@@ -860,6 +861,7 @@ describe("an engine run its card does not hold whole when it paints", () => {
           }
         : {}),
       ...(end === "live" ? { state: "running", end: null, endedAt: null } : {}),
+      ...(end === "cut" ? { end: { kind: "cut-by-restart", continuedBy: run2 } } : {}),
       summary: {
         items: total,
         calls: { command: total / 2, mcp: total / 50 },
@@ -1019,7 +1021,7 @@ describe("an engine run its card does not hold whole when it paints", () => {
   // share a card, and both lie outside the window on a cold open.
   it.live("pages through every run its card draws, in order, until it holds them whole", () =>
     Effect.gen(function* () {
-      const cut = longRun(1_700);
+      const cut = longRun(1_700, "cut");
       const next = longRun(600, "settled", true);
       const r = rig((request) =>
         request.runId === run2 ? next.pager(request) : cut.pager(request),
