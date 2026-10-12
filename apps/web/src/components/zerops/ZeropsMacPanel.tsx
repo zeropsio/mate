@@ -7,7 +7,8 @@
  * updating but input pauses: a click would take over their screen.
  */
 import type { ScopedThreadRef, ZeropsMacInput } from "@t3tools/contracts";
-import { useRef } from "react";
+import { CheckIcon, CopyIcon } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { useAtomCommand } from "../../state/use-atom-command";
 import { zeropsCommands } from "../../state/zeropsCommands";
@@ -15,6 +16,101 @@ import { useMateMacView } from "../../zerops/macViewLinks";
 import { LiveFrameViewer, type LiveFrameKey } from "./LiveFrameViewer";
 import { MicroLabel, StatusDot } from "./primitives";
 import { FRAME_BOX } from "./ZeropsBrowserPanel";
+import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
+import { Button } from "../ui/button";
+
+/** How long a copy button says so. */
+const COPIED_MS = 2_000;
+
+/** One command for the Mac's Terminal, copied with one press. */
+export function MacCommand({ command }: { readonly command: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <span className="flex min-w-0 items-start gap-2">
+      <code className="min-w-0 flex-1 select-all rounded-md border border-border bg-muted px-2 py-1.5 font-mono text-xs break-all text-foreground">
+        {command}
+      </code>
+      <Button
+        onClick={() => {
+          void navigator.clipboard.writeText(command).then(
+            () => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), COPIED_MS);
+            },
+            () => undefined,
+          );
+        }}
+        size="sm"
+        variant="outline"
+      >
+        {copied ? <CheckIcon aria-hidden="true" /> : <CopyIcon aria-hidden="true" />}
+        {copied ? "Copied" : "Copy"}
+      </Button>
+    </span>
+  );
+}
+
+/** One numbered step of what the person does on the Mac: its words, then its command if it has one. */
+function macStep({
+  n,
+  words,
+  command,
+}: {
+  readonly n: number;
+  readonly words: string;
+  readonly command?: string | undefined;
+}) {
+  return (
+    <li className="arrival-open-step" key={words}>
+      <span className="arrival-num">{n}</span>
+      <span className="arrival-open-step-words text-sm">{words}</span>
+      <span />
+      {command === undefined ? null : (
+        <span className="arrival-open-step-field">
+          <MacCommand command={command} />
+        </span>
+      )}
+    </li>
+  );
+}
+
+/**
+ * What the person does on their Mac while the view waits on them, with the Mate's own commands
+ * (the VPN first, then the pairing): pairing it, reaching it again, or pairing it again.
+ */
+function macSteps({
+  status,
+  pairCommands,
+}: {
+  readonly status: "not-paired" | "unreachable" | "no-helper";
+  readonly pairCommands: ReadonlyArray<string>;
+}) {
+  const [vpn, pair] = pairCommands;
+  const steps =
+    status === "not-paired"
+      ? [
+          { words: "On the Mac, have zcli (signed in) and Node.js ready." },
+          {
+            words: "In Terminal, connect it to this project's VPN. It asks for the Mac's password.",
+            command: vpn,
+          },
+          { words: "Then set it up for this Mate. Allow node if macOS asks.", command: pair },
+        ]
+      : status === "unreachable"
+        ? [
+            { words: "Wake the Mac and sign in." },
+            { words: "Connect its VPN in Terminal.", command: vpn },
+            { words: "Still no answer? Pair it again.", command: pair },
+          ]
+        : [{ words: "In Terminal on the Mac, run the pairing again.", command: pair }];
+  return (
+    <ol className="flex flex-col gap-4 px-1 pt-1" data-zerops-mac-steps={status}>
+      {steps.map((step, index) =>
+        macStep({ command: step.command, n: index + 1, words: step.words }),
+      )}
+    </ol>
+  );
+}
 
 /** How long typing pauses before what was typed goes to the app. */
 const TYPING_PAUSE_MS = 150;
@@ -50,20 +146,27 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
 
   const line =
     view === "unavailable"
-      ? "The Mac view isn't available on this Mate yet."
+      ? "This Mate's version doesn't include the Mac view yet."
       : live === undefined
         ? null
         : live.status === "not-paired"
-          ? "No Mac is paired with this Mate. Ask it to pair one."
+          ? "Pair a Mac to build and run macOS apps on it from here."
           : live.status === "unreachable"
-            ? `${macName} does not answer — is it awake and on the project VPN?`
+            ? `${macName} does not answer.`
             : live.status === "no-app"
               ? `Nothing open on ${macName} yet.`
               : live.status === "no-helper"
-                ? "Run the pairing on the Mac again to see it here."
+                ? `${macName} was paired before the live view. Pair it again to see it here.`
                 : live.status === "live" && live.inUse
                   ? `Someone is using ${macName} right now, so clicks and typing are paused.`
                   : null;
+  // The person's next step on the Mac, wherever the view waits on one and the Mate said how.
+  const steps =
+    live !== undefined &&
+    live.pairCommands !== undefined &&
+    (live.status === "not-paired" || live.status === "unreachable" || live.status === "no-helper")
+      ? macSteps({ pairCommands: live.pairCommands, status: live.status })
+      : null;
 
   const handlePointer = (kind: "press" | "release" | "drag", point: { x: number; y: number }) => {
     if (kind !== "press" || inputDisabled) return;
@@ -89,6 +192,14 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
         <p className="px-1 text-muted-foreground text-xs" data-zerops-mac-line>
           {line}
         </p>
+      ) : null}
+      {steps}
+      {view === "unavailable" ? (
+        <div className="px-1">
+          <ZeropsMateUpdateControl environmentId={environmentId}>
+            {({ line: update }) => update}
+          </ZeropsMateUpdateControl>
+        </div>
       ) : null}
       {frame !== undefined ? (
         <LiveFrameViewer

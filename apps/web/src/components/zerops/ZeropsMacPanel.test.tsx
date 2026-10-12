@@ -35,7 +35,11 @@ vi.mock("../../state/zeropsCommands", () => ({
 }));
 
 import { LiveFrameViewer, type LiveFrameViewerProps } from "./LiveFrameViewer";
-import { ZeropsMacPanel } from "./ZeropsMacPanel";
+import { MacCommand, ZeropsMacPanel } from "./ZeropsMacPanel";
+import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
+
+/** The commands the Mate hands out for pairing: the VPN first, then the pairing. */
+const PAIR = ["zcli vpn up Prj0AAAAAAAAAAAAAAAAAA", "ssh zcp mac host | sh"];
 
 const THREAD_REF: ScopedThreadRef = {
   environmentId: EnvironmentId.make("environment-1"),
@@ -58,6 +62,16 @@ const RECT = { width: 230, height: 408, left: 0, top: 0 };
 function render() {
   hooks.beginRender();
   return ZeropsMacPanel({ threadRef: THREAD_REF });
+}
+
+/** The commands the panel offers the person, in order. */
+function macCommands(tree: unknown): ReadonlyArray<string> {
+  const found: string[] = [];
+  visitElements(tree, (element) => {
+    if (element.type === MacCommand) found.push(element.props.command as string);
+    return false;
+  });
+  return found;
 }
 
 function stateLine(tree: unknown): unknown {
@@ -108,13 +122,13 @@ describe("ZeropsMacPanel", () => {
   it.each([
     [
       "no Mac is paired",
-      { status: "not-paired", inUse: false },
-      "No Mac is paired with this Mate. Ask it to pair one.",
+      { status: "not-paired", inUse: false, pairCommands: PAIR },
+      "Pair a Mac to build and run macOS apps on it from here.",
     ],
     [
       "the Mac does not answer",
-      { status: "unreachable", macName: "Test Mac", inUse: false },
-      "Test Mac does not answer — is it awake and on the project VPN?",
+      { status: "unreachable", macName: "Test Mac", inUse: false, pairCommands: PAIR },
+      "Test Mac does not answer.",
     ],
     [
       "nothing is open yet",
@@ -123,17 +137,56 @@ describe("ZeropsMacPanel", () => {
     ],
     [
       "the Mac's pairing predates the view",
-      { status: "no-helper", macName: "Test Mac", inUse: false },
-      "Run the pairing on the Mac again to see it here.",
+      { status: "no-helper", macName: "Test Mac", inUse: false, pairCommands: PAIR },
+      "Test Mac was paired before the live view. Pair it again to see it here.",
     ],
     [
       "this Mate cannot show a Mac",
       "unavailable",
-      "The Mac view isn't available on this Mate yet.",
+      "This Mate's version doesn't include the Mac view yet.",
     ],
   ])("says in one plain line when %s", (_, view, line) => {
     feedState.view = view;
     expect(stateLine(render())).toBe(line);
+  });
+
+  it.each([
+    [
+      "pairing a Mac",
+      { status: "not-paired", inUse: false, pairCommands: PAIR },
+      ["zcli vpn up Prj0AAAAAAAAAAAAAAAAAA", "ssh zcp mac host | sh"],
+    ],
+    [
+      "reaching a Mac that does not answer, or pairing it again",
+      { status: "unreachable", macName: "Test Mac", inUse: false, pairCommands: PAIR },
+      ["zcli vpn up Prj0AAAAAAAAAAAAAAAAAA", "ssh zcp mac host | sh"],
+    ],
+    [
+      "pairing again a Mac paired before the live view",
+      { status: "no-helper", macName: "Test Mac", inUse: false, pairCommands: PAIR },
+      ["ssh zcp mac host | sh"],
+    ],
+  ])("walks the person through %s, with the Mate's own commands to copy", (_, view, commands) => {
+    feedState.view = view;
+    expect(macCommands(render())).toEqual(commands);
+  });
+
+  it("copies a command for the Mac's Terminal with one press", async () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    hooks.beginRender();
+    const tree = MacCommand({ command: "ssh zcp mac host | sh" });
+    const copy = visitElements(tree, (element) => typeof element.props.onClick === "function");
+    expect(copy).toBeDefined();
+    (copy!.props.onClick as () => void)();
+    expect(writeText).toHaveBeenCalledWith("ssh zcp mac host | sh");
+    vi.unstubAllGlobals();
+  });
+
+  it("on a Mate too old for the Mac view, offers the Mate's own update instead", () => {
+    feedState.view = "unavailable";
+    const update = visitElements(render(), (element) => element.type === ZeropsMateUpdateControl);
+    expect(update?.props.environmentId).toBe(THREAD_REF.environmentId);
   });
 
   it("shows no window and takes no input while it reaches the Mac", () => {

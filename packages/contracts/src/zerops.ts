@@ -801,6 +801,11 @@ export const ZeropsMacStateEvent = Schema.Struct({
   macName: Schema.optional(Schema.String),
   app: Schema.optional(Schema.String),
   inUse: Schema.Boolean,
+  /**
+   * The commands the person runs on their Mac, while a step of theirs is what the view waits on
+   * (`not-paired`, `unreachable`, `no-helper`): the VPN first, then the pairing.
+   */
+  pairCommands: Schema.optional(Schema.Array(Schema.String)),
 });
 export type ZeropsMacStateEvent = typeof ZeropsMacStateEvent.Type;
 
