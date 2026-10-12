@@ -52,10 +52,36 @@ describe("Decision: restore pre-regression behaviour; no test weakened; titles k
               (node as HTMLElement).style.visibility = "hidden";
             });
             const hidden = await s.page.screenshot({ clip });
+            // Since the list ends where it stops (0a481af341), compositing under the footer's blur
+            // differs by a level in a channel; history painting through differs by tens.
+            const difference = await s.page.evaluate(
+              async (shots) => {
+                const pixels = (data: string) =>
+                  new Promise<Uint8ClampedArray>((resolve, reject) => {
+                    const image = new Image();
+                    image.onload = () => {
+                      const canvas = document.createElement("canvas");
+                      canvas.width = image.width;
+                      canvas.height = image.height;
+                      const context = canvas.getContext("2d")!;
+                      context.drawImage(image, 0, 0);
+                      resolve(context.getImageData(0, 0, image.width, image.height).data);
+                    };
+                    image.onerror = reject;
+                    image.src = `data:image/png;base64,${data}`;
+                  });
+                const [a, b] = await Promise.all(shots.map(pixels));
+                let most = 0;
+                for (let index = 0; index < a!.length; index++)
+                  most = Math.max(most, Math.abs(a![index]! - b![index]!));
+                return most;
+              },
+              [Buffer.from(visible).toString("base64"), Buffer.from(hidden).toString("base64")],
+            );
             expect(
-              Buffer.compare(visible, hidden),
+              difference,
               "ASSERTION: conversation content never paints below the docked composer",
-            ).toBe(0);
+            ).toBeLessThanOrEqual(2);
           });
         }),
       );
