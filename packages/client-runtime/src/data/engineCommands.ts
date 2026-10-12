@@ -143,10 +143,17 @@ export const engineStartTurn =
         })(host);
       }
       const target = { environmentId, conversationId: input.threadId };
+      // What the agent hears with the words that the person did not type (what merged, the vault's
+      // key names): the engine tells it in front of them, and the record keeps the words alone.
+      const context =
+        input.agentNotes === undefined || input.agentNotes.length === 0
+          ? {}
+          : { context: input.agentNotes };
       const send = (commandId: string) =>
         host.operations.send({
           ...target,
           text: input.message.text,
+          ...context,
           attachments,
           ...(input.interactionMode === "plan" ? { interactionMode: "plan" as const } : {}),
           commandId,
@@ -163,6 +170,7 @@ export const engineStartTurn =
           ...target,
           runId: steered,
           text: input.message.text,
+          ...context,
           commandId: input.message.messageId,
         })
         .pipe(

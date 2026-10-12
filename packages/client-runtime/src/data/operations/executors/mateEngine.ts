@@ -75,6 +75,8 @@ export interface EngineCallWire {
           readonly conversationId: string;
           readonly commandId: string;
           readonly text: string;
+          /** What the agent hears with `text` that the person did not type: never a value. */
+          readonly context?: ReadonlyArray<string>;
           readonly attachments: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
           readonly interactionMode?: ProviderInteractionMode;
         }
@@ -109,6 +111,7 @@ export interface EngineCallWire {
           readonly commandId: string;
           readonly runId: string;
           readonly text: string;
+          readonly context?: ReadonlyArray<string>;
         }
       | {
           readonly kind: "switch-model";
@@ -165,6 +168,7 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
             request(WS_METHODS.engineSend, {
               ...base,
               text: command.text,
+              ...(command.context === undefined ? {} : { context: command.context }),
               ...(command.attachments.length === 0 ? {} : { attachments: command.attachments }),
               ...(command.interactionMode === undefined
                 ? {}
@@ -206,6 +210,7 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
               ...base,
               runId: command.runId as never,
               text: command.text,
+              ...(command.context === undefined ? {} : { context: command.context }),
             }),
           );
         case "switch-model":
@@ -468,6 +473,8 @@ export function makeMateEngineOperations(options: {
     send: (
       target: EngineOperationTarget & {
         readonly text: string;
+        /** What the agent hears with `text` that the person did not type; never retained here. */
+        readonly context?: ReadonlyArray<string>;
         /** Pictures by reference, files by the id they were uploaded under. */
         readonly attachments?: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
         /** `plan`: the agent plans the turn. Absent: default. */
@@ -489,6 +496,7 @@ export function makeMateEngineOperations(options: {
           conversationId: target.conversationId,
           commandId,
           text: target.text,
+          ...(target.context === undefined ? {} : { context: target.context }),
           attachments: target.attachments ?? [],
           ...(target.interactionMode === undefined
             ? {}
@@ -563,6 +571,8 @@ export function makeMateEngineOperations(options: {
       target: EngineOperationTarget & {
         readonly runId: string;
         readonly text: string;
+        /** What the agent hears with `text` that the person did not type; never retained here. */
+        readonly context?: ReadonlyArray<string>;
         /** The steer's own id where its caller already gave it one (the message's id). */
         readonly commandId?: string;
       },
@@ -581,6 +591,7 @@ export function makeMateEngineOperations(options: {
           commandId,
           runId: target.runId,
           text: target.text,
+          ...(target.context === undefined ? {} : { context: target.context }),
         }),
         target.commandId,
       ),

@@ -41,6 +41,8 @@ import {
 } from "./families/mateEngine.ts";
 import { engineHeader, engineRun } from "./__fixtures__/mateEngine.ts";
 import { engineResendId } from "./projections/mateEngine.ts";
+import { vaultChangesSince, vaultNote } from "./projections/vaultChanges.ts";
+import type { VaultView } from "./projections/vaultModel.ts";
 
 const ENV = "env-ada";
 const turn = (attachments: ReadonlyArray<unknown> = []) =>
@@ -387,6 +389,86 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
         ]);
         expect(r.v1Calls).toEqual([]);
       }),
+  );
+
+  const LANDED = "appdev #3 landed: Add the order summary";
+  it.effect.each([
+    { how: "its send", runs: [engineRun("thread-ada", 1)], steer: false, kind: "send" },
+    { how: "its steer", runs: [working("running")], steer: true, kind: "steer" },
+  ])(
+    "the agent hears the merged changes and the vault's key names with the message, on $how",
+    ({ runs, steer, kind }) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.runs(runs, SESSION(steer, steer));
+        const vault = "Vault changes since your last turn:\n+ STRIPE_KEY  Shared · sensitive";
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, { ...turn(), agentNotes: [LANDED, vault] } as never),
+            r.v1,
+          ),
+        );
+        expect(r.calls).toMatchObject([{ kind, text: "And the worker", context: [LANDED, vault] }]);
+      }),
+  );
+
+  it.effect("a message with nothing to tell sends no context", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1));
+      expect(r.calls).toHaveLength(1);
+      expect(r.calls[0]).not.toHaveProperty("context");
+    }),
+  );
+
+  it.effect("a vault value never travels with a message: the agent hears its key's name", () =>
+    Effect.gen(function* () {
+      const VALUE = ["synthetic", "billing", "secret"].join("-");
+      const view = {
+        status: "ready",
+        complete: true,
+        notLive: [],
+        scopes: [
+          {
+            ref: { kind: "shared" },
+            id: "shared",
+            hostname: null,
+            kind: "shared",
+            serviceType: null,
+            editable: true,
+            reads: [],
+            startedAt: null,
+            values: [
+              {
+                id: "e-billing",
+                key: "BILLING_KEY",
+                value: VALUE,
+                sensitive: false,
+                createdAt: "2026-10-07T11:00:00Z",
+                changedAt: "2026-10-07T11:00:00Z",
+                madeByZerops: false,
+                readers: [],
+              },
+            ],
+          },
+        ],
+      } as unknown as VaultView;
+      const note = vaultNote(vaultChangesSince(view, "2026-10-07T10:00:00Z", []));
+      const r = rig(1);
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineStartTurn(ENV, { ...turn(), agentNotes: [note!] } as never),
+          r.v1,
+        ),
+      );
+      const sent = JSON.stringify(r.calls);
+      expect(sent).toContain("BILLING_KEY");
+      expect(sent).not.toContain(VALUE);
+    }),
   );
 
   const picture = {
