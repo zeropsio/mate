@@ -3871,6 +3871,40 @@ describe("deriveMessagesTimelineRows — a request for a vault value", () => {
   });
 });
 
+// A Mastermate's organization tools never act: each proposes, and the person
+// approves or declines it on its card — theirs to answer, so it stands after
+// the run and its answer, never folded away with the work.
+describe("deriveMessagesTimelineRows — a proposal of the organization's Mate", () => {
+  const proposal = (id: string, minute: number) =>
+    operation(id, "t1", minute, {
+      kind: "proposal",
+      subject: "Restart medusa in Contoso",
+      proposal: {
+        id: `proposal-${id}`,
+        kind: "service.restart",
+        summary: "Restart medusa in Contoso",
+        projectId: "p-contoso",
+        serviceId: "s-medusa",
+      },
+    });
+
+  it("settled: after the run's answer", () => {
+    const list = rows({
+      entries: [user("u1", 0), tool("w1", "t1", 1), proposal("e1", 2), assistant("a1", "t1", 3)],
+      settled: "t1",
+    });
+    expect(shape(list).slice(-2)).toEqual(["message:a1", "proposal:proposal:op:e1"]);
+  });
+
+  it("live: after the run's card", () => {
+    const list = rows({
+      entries: [user("u1", 0), tool("w1", "t1", 1), proposal("e1", 2)],
+      live: "t1",
+    });
+    expect(shape(list).at(-1)).toBe("proposal:proposal:op:e1");
+  });
+});
+
 describe("an engine run whose work the account does not hold yet", () => {
   const scene = (unheldWork?: ReadonlyArray<string>): Scene => ({
     entries: [user("u1", 0, "Bring it up"), assistant("a1", "t1", 30, "All up.")],
