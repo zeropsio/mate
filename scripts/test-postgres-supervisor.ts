@@ -210,6 +210,9 @@ async function supervise() {
       );
       return shutdown;
     };
+    // Synchronous DDL must not delay a drain callback past its deadline with a stale sample.
+    // Serialize all leases, including cleanup, rather than just pairing each lease's replies.
+    let queue = Promise.resolve();
     const server = NodeNet.createServer({ allowHalfOpen: true }, (socket) => {
       owners.add(socket);
       const databases = new Set<string>();
@@ -221,8 +224,6 @@ async function supervise() {
         return name;
       };
       const lines = NodeReadline.createInterface({ input: socket });
-      // One command at a time per lease: the client pairs replies with its requests in order.
-      let queue = Promise.resolve();
       lines.on("line", (command) => {
         queue = queue.then(() => answer(command));
       });
@@ -238,7 +239,7 @@ async function supervise() {
             return;
           }
           if (command === "release") {
-            void release(true);
+            await release(true);
             return;
           }
           if (command.startsWith("freeze ")) {
@@ -291,15 +292,12 @@ async function supervise() {
         owners.delete(socket);
         socket.end();
       };
-      socket.on("error", () => {
-        void release();
-      });
-      socket.on("end", () => {
-        void release();
-      });
-      socket.on("close", () => {
-        void release();
-      });
+      const disconnected = () => {
+        queue = queue.then(() => release());
+      };
+      socket.on("error", disconnected);
+      socket.on("end", disconnected);
+      socket.on("close", disconnected);
     });
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
