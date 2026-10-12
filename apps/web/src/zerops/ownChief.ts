@@ -1,19 +1,20 @@
 /**
- * The viewer's own Chief in the organization in view, as HQ answers it (`GET /api/chief`), and
- * the Chiefs of everybody else, which no surface draws (`chief.ts`).
+ * The viewer's own Chief in the organization in view, as HQ's navigation says it (each project's
+ * person facts, `chief`), and the Chiefs of everybody else, which no surface draws (`chief.ts`).
  *
  * A reload starts from what the last visit had HQ say (`mateIdentityMemory.ts`), so the top row
  * paints the Chief on its first frame; HQ's answer replaces it. An organization without an HQ has
  * no Chief to hold.
  */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { shownHqMenuNavigationAtom, shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { Atom } from "effect/reactivity";
 import { useCallback, useContext, useEffect } from "react";
 
 import { sameValue } from "../lib/sameValue";
 import { mateRowsAtom, zeropsSessionAtom } from "../state/zerops";
-import { useAccountHq, useOfficialHq } from "./accountHq";
+import { useAccountHq } from "./accountHq";
 import { othersChiefs, type OwnChief } from "./chief";
 import { readChiefMemory, writeChiefMemory } from "./mateIdentityMemory";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
@@ -31,13 +32,17 @@ export const ownChiefAtom = Atom.make((get): OwnChief => {
   return orgId === undefined ? undefined : get(ownChiefByOrg(orgId));
 }).pipe(Atom.withLabel("zerops:own-chief"));
 
-/** Every listed project that is someone else's Chief: drawn nowhere. */
-export const othersChiefsAtom = Atom.make((get): ReadonlySet<string> =>
-  othersChiefs(
+/** Every project that is someone else's Chief, by its tag or by HQ's word: drawn nowhere. */
+export const othersChiefsAtom = Atom.make((get): ReadonlySet<string> => {
+  const tagged = othersChiefs(
     heldCandidates(get(mateRowsAtom)).rows.map((row) => row.project),
     get(ownChiefAtom),
-  ),
-).pipe(
+  );
+  const told = Object.entries(get(shownHqPersonFactsAtom)).flatMap(([projectId, facts]) =>
+    facts.chief === "another" ? [projectId] : [],
+  );
+  return told.length === 0 ? tagged : new Set([...tagged, ...told]);
+}).pipe(
   Atom.withEquality<ReadonlySet<string>>((left, right) => sameValue([...left], [...right])),
   Atom.withLabel("zerops:others-chiefs"),
 );
@@ -63,32 +68,21 @@ export function useKeepOwnChief(): (orgId: string, chief: string | null) => void
 }
 
 /**
- * Asks HQ whose Chief the viewer has, once per organization and HQ. An organization HQ is known to
- * be missing from has none. A read that fails keeps what was known.
+ * Keeps whose Chief the viewer has, as HQ's navigation says it: the project whose person facts
+ * say `mine`, else none once the list is read whole. An organization without an HQ has none.
  */
 export function useOwnChiefRead(): void {
   const session = useZeropsSessionOptional();
   const orgId = session?.activeOrganization?.id;
   const accountHq = useAccountHq(orgId);
-  const official = useOfficialHq();
   const keep = useKeepOwnChief();
+  const facts = useAtomValue(shownHqPersonFactsAtom);
+  const listRead = useAtomValue(shownHqMenuNavigationAtom).read === "read";
+  const mine = Object.entries(facts).find(([, fact]) => fact.chief === "mine")?.[0] ?? null;
   const noHq = accountHq.status === "ready" && accountHq.hq.kind === "none";
   useEffect(() => {
     if (orgId === undefined) return;
-    if (noHq) {
-      keep(orgId, null);
-      return;
-    }
-    if (official === null) return;
-    const controller = new AbortController();
-    official.api.chief(controller.signal).then(
-      (chief) => {
-        if (!controller.signal.aborted) keep(orgId, chief?.projectId ?? null);
-      },
-      () => {
-        /* HQ did not answer: what was known stands until it does. */
-      },
-    );
-    return () => controller.abort();
-  }, [keep, noHq, official, orgId]);
+    if (noHq) keep(orgId, null);
+    else if (mine !== null || listRead) keep(orgId, mine);
+  }, [keep, listRead, mine, noHq, orgId]);
 }

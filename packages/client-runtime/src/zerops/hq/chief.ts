@@ -19,8 +19,6 @@ import * as Schema from "effect/Schema";
 export const HqChief = Schema.Struct({ projectId: Schema.NonEmptyString, since: Schema.String });
 export type HqChief = typeof HqChief.Type;
 
-const ChiefAnswer = Schema.Struct({ chief: Schema.NullOr(HqChief) });
-
 /** What recording a Chief answers: the credential is the zcp's, handed once and never kept. */
 export const HqChiefSetUp = Schema.Struct({
   chief: HqChief,
@@ -57,7 +55,6 @@ export interface HqProposalDecisionWrite {
 export const PROPOSAL_IDS_PER_READ = 100;
 
 export interface HqChiefCalls {
-  readonly chief: (signal?: AbortSignal) => Promise<HqChief | null>;
   readonly setChief: (projectId: string) => Promise<HqChiefSetUp>;
   /** Every decision HQ holds of `ids`, read {@link PROPOSAL_IDS_PER_READ} at a time. */
   readonly proposalDecisions: (
@@ -79,14 +76,10 @@ export interface HqChiefTransport {
 }
 
 export function makeChiefCalls({ authorized, decoded }: HqChiefTransport): HqChiefCalls {
-  const readChief = decoded(ChiefAnswer);
   const readSetUp = decoded(HqChiefSetUp);
   const readDecisions = decoded(DecisionsAnswer);
   const readDecision = decoded(HqProposalDecision);
   return {
-    chief: async (signal) =>
-      (await readChief(await authorized("/api/chief", signal === undefined ? {} : { signal })))
-        .chief,
     setChief: async (projectId) =>
       readSetUp(
         await authorized(

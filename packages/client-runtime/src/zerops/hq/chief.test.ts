@@ -55,15 +55,6 @@ const DECISION = {
 } as const;
 
 describe("the Chief at HQ", () => {
-  it.each([
-    ["the reader's Chief", { chief: { projectId: "p-chief", since: "2026-10-12" } }],
-    ["none", { chief: null }],
-  ])("reads whose Chief the reader has: %s", async (_, body) => {
-    const { api, seen } = hqAnswering(() => json(200, body));
-    await expect(api.chief()).resolves.toEqual(body.chief);
-    expect(seen).toEqual([{ method: "GET", path: "/api/chief", ids: null, body: undefined }]);
-  });
-
   it("records a Chief by its project and hands back the credential and proxy its zcp uses", async () => {
     const answer = {
       chief: { projectId: "p-chief", since: "2026-10-12" },

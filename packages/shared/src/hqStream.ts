@@ -283,6 +283,8 @@ export const HqPersonFacts = Schema.Struct({
   waitsOnViewer: Schema.Boolean,
   /** Today's overview does not prove result identities: unknown until source attention arrives. */
   unseen: Schema.NullOr(Schema.Int),
+  /** The project is a Chief: the viewer's own, or another person's. Absent from an older HQ. */
+  chief: Schema.optionalKey(Schema.Literals(["mine", "another"])),
 });
 export type HqPersonFacts = typeof HqPersonFacts.Type;
 
