@@ -261,7 +261,7 @@ function ReviewTag({
           }
         >
           <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
-          <span className="menu-tag-word">Review</span>
+          <span className="menu-tag-word">Review work</span>
           <TagCount count={many ? items.length : undefined} />
         </TooltipTrigger>
         {only === undefined ? null : <TooltipPopup side="bottom">{only.title}</TooltipPopup>}

@@ -3619,8 +3619,9 @@ code {
     font-variant-numeric: tabular-nums;
   }
 
+  /* The header's blue (`chat-header-review`): the mark and the door it stands for, one colour. */
   .menu-mark-merge {
-    color: var(--info-foreground);
+    color: var(--primary);
   }
 
   .menu-mark-release {
@@ -3650,9 +3651,6 @@ code {
     border-radius: 9999px;
     background: var(--primary);
     color: var(--primary-foreground);
-    box-shadow:
-      0 1px 2px color-mix(in oklab, var(--primary) 30%, transparent),
-      0 6px 14px -7px color-mix(in oklab, var(--primary) 55%, transparent);
   }
 
   .chat-header-review .menu-tag {
