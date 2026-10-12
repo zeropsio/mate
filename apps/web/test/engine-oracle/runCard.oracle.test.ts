@@ -124,6 +124,20 @@ const DEFECTS: ReadonlyArray<Defect> = [
     ],
   },
   {
+    title:
+      "a helper that finished after its run ended reads finished on that card after a reload, though a wake ran after it",
+    tree: [
+      send,
+      { op: "helper", id: "H2", parent: null },
+      { op: "say" },
+      { op: "finish" },
+      { op: "end", id: "H2", how: "completed", exit: 8 },
+      { op: "wake" },
+      { op: "call", id: "C7", helper: null, fail: false },
+      { op: "reload" },
+    ],
+  },
+  {
     title: "a run that only wrote to the person thought, live and after a reload",
     tree: [send, { op: "say" }, { op: "say" }, { op: "finish" }, { op: "reload" }],
   },
