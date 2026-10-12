@@ -91,8 +91,11 @@ function scrollParentOf(element: HTMLElement | null): HTMLElement | null {
 }
 
 /** The room a project keeps above itself; the first keeps none, so its line takes 16px. */
+/** The air between a project's rows and the project before it, whose middle a drop line marks. */
 function roomAbove(section: HTMLElement): number {
-  return Number.parseFloat(getComputedStyle(section).marginTop) || 16;
+  const before = section.previousElementSibling;
+  if (!(before instanceof HTMLElement)) return 0;
+  return Math.max(0, section.offsetTop - (before.offsetTop + before.offsetHeight));
 }
 
 function drawnSections(tree: HTMLElement, except: string) {

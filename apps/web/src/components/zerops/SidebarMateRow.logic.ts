@@ -33,7 +33,15 @@ import { formatWorkingTime } from "./SidebarZeropsTree.logic";
  * is still coming up — and compared by what they say. Every other prop is the same value or a
  * change: the activity, the menu and the verbs stand while they say the same (`matesActivityOf`).
  */
-const READ_ANEW: ReadonlySet<string> = new Set(["owner", "coming", "crew", "change"]);
+const READ_ANEW: ReadonlySet<string> = new Set([
+  "owner",
+  "coming",
+  "crew",
+  "change",
+  // A project's row: its previews, and its changes and release, read anew from its flow.
+  "apps",
+  "review",
+]);
 
 /**
  * Whether a memoised Mate's row may skip its redraw: every prop the same, the ones read anew

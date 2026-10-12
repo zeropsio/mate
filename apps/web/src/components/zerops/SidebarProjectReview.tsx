@@ -204,6 +204,8 @@ function ReviewTag({
                 <button
                   aria-label={reviewTagLabel(items, projectName)}
                   className="menu-tag menu-tag-review"
+                  // What it holds, as the jump box keys a change (`changeRowKey`): a find lands here.
+                  data-zerops-changes={items.map((item) => item.key).join(" ")}
                   data-phase={phase}
                   data-zerops-surface="sidebar-project-review"
                   inert={leaving}
@@ -442,6 +444,7 @@ function ReviewListItem({
       aria-label={`Review ${item.title}`}
       className="menu-tagpop-item"
       data-mine={item.mine ? "" : undefined}
+      data-zerops-change={item.key}
       data-zerops-surface="sidebar-project-change"
       onClick={onOpen}
       onFocus={onFocus}

@@ -191,7 +191,7 @@ import {
   type CrewRowFacts,
   type SidebarCrewRead,
 } from "./crew/SidebarCrewMinis";
-import { ProjectSites, type ProjectSitesInput } from "./SidebarProjectSites";
+import { ProjectSites, type ProjectSitesInput, type SitesMate } from "./SidebarProjectSites";
 import {
   ProjectReviewTags,
   changeReviewItem,
@@ -246,7 +246,9 @@ import {
   stageStopChip,
   STOP_DOT,
   stopServing,
+  type ChipMenuModel,
   type ChipView,
+  type ProductionChip,
   type ReleasesAnswer,
   type ReleaseFailure,
   type StopServing,
@@ -354,14 +356,19 @@ function holdsRevealTarget(
   );
 }
 
-/** The group of the project whose conversation is open, when it has one. */
+/**
+ * The group of the project whose conversation is open, when it has one — a Mate still being made
+ * by its birth's placement, so a new Mate's group opens around it as the listed one's does.
+ */
 function groupIdOf(
   candidates: ReadonlyArray<RosterCandidate>,
   projectId: string | null | undefined,
+  births: ReadonlyArray<ZeropsPlacedBirth>,
 ): string | undefined {
   if (projectId === undefined || projectId === null) return undefined;
   const open = candidates.find((candidate) => candidate.project.id === projectId);
-  return open === undefined ? undefined : readZeropsMembership(open.project).groupId;
+  if (open !== undefined) return readZeropsMembership(open.project).groupId;
+  return births.find((birth) => birth.projectId === projectId)?.placement.groupId;
 }
 
 /**
@@ -604,6 +611,58 @@ const ignoreUpdateState = (_state: boolean) => {};
 const NO_APPS: ReadonlyArray<GroupFlowPreview> = [];
 /** A project whose ··· has nothing of its own yet. */
 const NO_MENU: ReadonlyArray<HeadingMenuEntry> = [];
+/** A place's menu where the project has lost the place since its row was drawn. */
+const NO_PLACES: ChipMenuModel = { stops: [] };
+
+/**
+ * One project as the menu plans it before drawing: the Mates it draws as rows, top to bottom (for
+ * ⌥1–9), every Mate of its in its rows' order (for "the next one that waits"), whether it folds
+ * (a group), and its rows.
+ */
+interface ProjectPlan {
+  readonly drawn: ReadonlyArray<string>;
+  readonly order: ReadonlyArray<string>;
+  readonly folds: boolean;
+  readonly render: () => ReactNode;
+}
+
+/** A project's verbs and readings as the newest draw made them. */
+interface ProjectLatest {
+  readonly out: () => void;
+  readonly drag: (event: ReactPointerEvent<HTMLElement>) => void;
+  readonly menu: () => ReadonlyArray<HeadingMenuEntry>;
+  readonly production: ((nowMs: number) => ChipMenuModel) | undefined;
+  readonly stages: ((nowMs: number) => ChipMenuModel) | undefined;
+  readonly openStop: (projectId: string) => (() => void) | undefined;
+}
+
+/** A project's verbs as its rows hold them: one function each, for as long as it is drawn. */
+interface ProjectRefs {
+  readonly out: () => void;
+  readonly drag: (event: ReactPointerEvent<HTMLElement>) => void;
+  readonly menu: () => ReadonlyArray<HeadingMenuEntry>;
+  readonly production: (nowMs: number) => ChipMenuModel;
+  readonly stages: (nowMs: number) => ChipMenuModel;
+  readonly openStop: (projectId: string) => (() => void) | undefined;
+}
+
+/** What a project's rows were last handed, kept while it reads the same. */
+interface ProjectShared {
+  readonly review: ProjectReviewData | undefined;
+  readonly sitesRead:
+    | {
+        readonly projectName: string;
+        readonly mates: ReadonlyArray<SitesMate>;
+        readonly prodChip: ProductionChip | undefined;
+        readonly stageChip: ProductionChip | undefined;
+        readonly line: HeadingLineInput | undefined;
+        readonly production: boolean;
+        readonly stages: boolean;
+      }
+    | undefined;
+  readonly sites: ProjectSitesInput | undefined;
+  readonly onAskToFix: ((mateProjectId: string, problem: FixProblem) => void) | undefined;
+}
 
 export const SidebarZeropsTree = memo(SidebarZeropsTreeView) as typeof SidebarZeropsTreeView;
 
@@ -702,7 +761,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // changes — a person may collapse the project again afterwards, and a menu
   // that forced it open on every render would not let them. Nothing seen yet
   // at mount: a reload on a Mate's conversation opens its project too.
-  const activeGroupId = groupIdOf(candidates, activeProjectId);
+  const activeGroupId = groupIdOf(candidates, activeProjectId, births);
   const [seenGroupId, setSeenGroupId] = useState<string | undefined>(undefined);
   if (seenGroupId !== activeGroupId) {
     setSeenGroupId(activeGroupId);
@@ -729,6 +788,30 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     [candidates, waitsOnViewer, getCrew],
   );
   const crewRows = useCrewRows(crewMates);
+  // What each project's rows are handed (`ProjectRefs`): the same functions from draw to draw,
+  // reading the newest draw's closures, and the same review and places while what they say holds.
+  const projectLatest = useRef(new Map<string, ProjectLatest>()).current;
+  const projectRefs = useRef(new Map<string, ProjectRefs>()).current;
+  const projectShared = useRef(new Map<string, ProjectShared>()).current;
+  const projectRefsOf = (id: string): ProjectRefs => {
+    const kept = projectRefs.get(id);
+    if (kept !== undefined) return kept;
+    const latest = () => projectLatest.get(id);
+    const made: ProjectRefs = {
+      out: () => {
+        latest()?.out();
+      },
+      drag: (event) => {
+        latest()?.drag(event);
+      },
+      menu: () => latest()?.menu() ?? NO_MENU,
+      production: (nowMs) => latest()?.production?.(nowMs) ?? NO_PLACES,
+      stages: (nowMs) => latest()?.stages?.(nowMs) ?? NO_PLACES,
+      openStop: (projectId) => latest()?.openStop(projectId),
+    };
+    projectRefs.set(id, made);
+    return made;
+  };
   // Whether *Add stage* and *Add production* stand in a project's menu: HQ's offer of each.
   const environmentOffers = useEnvironmentOffers();
   const treeRef = useRef<HTMLElement>(null);
@@ -821,23 +904,31 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     const { target, seq } = revealing;
     useSidebarReveal.getState().answerReveal(seq);
     const groupId =
-      target.kind === "mate" ? groupIdOf(candidates, target.projectId) : target.groupId;
+      target.kind === "mate" ? groupIdOf(candidates, target.projectId, births) : target.groupId;
     if (groupId !== undefined && target.kind !== "stop") {
       setProjectFolds((current) => withProjectFold(current, groupId, false));
     }
     focusAfterDraw.current = { target, drawn: false };
     setRevealDraw((draws) => draws + 1);
-  }, [candidates, revealing]);
+  }, [births, candidates, revealing]);
   useEffect(() => {
     const { land, next } = landingAfterDraw(focusAfterDraw.current);
     focusAfterDraw.current = next;
     if (land === undefined) return;
     const landing = revealLanding(treeRef.current, land);
-    if (landing === null) return;
+    if (landing === null) {
+      // A change no row holds — a draft, one its Mate still works on: its own page.
+      if (land.kind !== "change") return;
+      const flow = getFlow?.(land.groupId);
+      const pull = flow?.pullRequests.find((entry) => changeRowKey(entry) === land.key);
+      if (pull !== undefined) flow?.onOpenChange?.(pull);
+      return;
+    }
     focusOnceFree(landing.focus, () => {
       landing.flash.scrollIntoView({ block: "nearest" });
       flashOnce(landing.flash);
       landing.press?.click();
+      if (landing.within !== undefined) landWithin(landing.within);
     });
   });
   // The list's keys that belong to no one row: Option shows the numbers and
@@ -998,9 +1089,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     return { tint, shape: mateShapeOf(project, tint) };
   };
 
-  // Each drawn Mate's number, top to bottom, for the ⌥ chips.
-  let numbered = 0;
-
   // What the jump box finds, gathered as each project is read (`indexSection`):
   // data only, in the menu's own order — what the box does with a find is its
   // own.
@@ -1096,7 +1184,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     groupName: string | undefined,
     // `undefined` for Mates in no project, each its own row.
     group: ZeropsGroup | undefined,
-  ) => {
+  ): ProjectPlan | null => {
     const everyMate = entries.filter(({ item }) => hasMate(item));
     // Whose Mates the viewer asked to see (Mine / Everyone).
     const mateEntries = everyMate.filter(({ item }) => shown?.(item) ?? true);
@@ -1318,7 +1406,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       })),
     );
     const kind = projectRowKind({ mates: mateCount });
-    // A group's fold, from its row's press or its menu: its Mates unfold under it or fold away.
+    // A group's fold, from its row's press, its keys or its menu: its Mates unfold under it or
+    // fold away.
     const toggle = (opening: boolean) => {
       if (!opening) {
         const scroller = scrollingAncestor(treeRef.current);
@@ -1342,11 +1431,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       setProjectFolds((folded) => withProjectFold(folded, id, !opening));
       setFolds((moving) => new Map(moving).set(id, opening ? "opening" : "closing"));
     };
-    // The project's own verbs, on its row's ··· — first in a single Mate's. A group's Fold or
-    // Unfold folds alone: it opens no Mate, as the row's press may.
-    const projectMenu =
+    // The project's own verbs, on its row's ··· — first in a single Mate's, read as it draws. A
+    // group's Fold or Unfold folds alone: it opens no Mate, as the row's press may.
+    const projectMenu = () =>
       group === undefined
-        ? undefined
+        ? NO_MENU
         : projectMenuOf(
             group,
             kind === "group"
@@ -1367,7 +1456,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           ].map((projectId) => <StopDemand key={projectId} projectId={projectId} />);
     // What waits for the viewer's review, oldest first as the flow lists it: each shown Mate's
     // change once its Mate rests and it asks (`changeShowsReview`), each change of no Mate here
-    // that asks, then the work its crews have ready for the viewer's Land.
+    // that asks, then the work its crews have ready for the viewer's Land. A hidden Mate's change
+    // is drawn nowhere, as the jump box finds it nowhere.
     const asking = new Set([
       ...ordered.flatMap(({ item }) => {
         const run = mateRunOf(activityOfNow(getActivity?.(item)));
@@ -1387,57 +1477,37 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         owner: colleague === undefined ? undefined : ownerMark(colleague),
       };
     };
-    const reviewItems: ReadonlyArray<ProjectReviewItem> =
-      group === undefined
-        ? []
-        : [
-            ...flowPulls
-              .filter((pull) => asking.has(pull))
-              .map((pull) => {
-                const entry = ordered.find(
-                  (candidate) => candidate.projectId === pull.mateProjectId,
-                );
-                return changeReviewItem({
-                  pull,
-                  among: flowPulls,
-                  groupId: id,
-                  by: entry === undefined ? undefined : byOf(entry.item),
-                  mine: entry === undefined || waitsOnViewer(entry.projectId),
-                });
-              }),
-            ...ordered.flatMap(({ item, projectId }) =>
-              (crewRows.get(projectId)?.reviews ?? []).map((review) =>
-                crewTaskReviewItem({
-                  environmentId: review.target.environmentId,
-                  taskId: review.target.taskId,
-                  title: review.title,
-                  by: {
-                    name: review.crewmate.name,
-                    tint: review.crewmate.tint,
-                    shape: review.crewmate.shape,
-                    crewOf: projectNameInApp(item.project),
-                  },
-                  mine: waitsOnViewer(projectId),
-                }),
-              ),
-            ),
-          ];
-    const reviewTags: ReactNode =
-      group === undefined ? undefined : (
-        <ProjectReviewTags
-          groupId={id}
-          items={reviewItems}
-          projectName={projectName}
-          release={
-            flow?.releaseOffered === true
-              ? {
-                  waiting: projectFlow.main.notLive,
-                  atLeast: projectFlow.main.notLiveAtLeast,
-                }
-              : undefined
-          }
-        />
-      );
+    const reviewItems: ReadonlyArray<ProjectReviewItem> = [
+      ...flowPulls
+        .filter((pull) => asking.has(pull))
+        .map((pull) => {
+          const entry = ordered.find((candidate) => candidate.projectId === pull.mateProjectId);
+          return changeReviewItem({
+            pull,
+            among: flowPulls,
+            groupId: id,
+            by: entry === undefined ? undefined : byOf(entry.item),
+            // Whose review it waits on, as the menu's Mine holds it: unknown reads as theirs.
+            mine: entry === undefined || entry.mine,
+          });
+        }),
+      ...ordered.flatMap(({ item, projectId, mine: own }) =>
+        (crewRows.get(projectId)?.reviews ?? []).map((review) =>
+          crewTaskReviewItem({
+            environmentId: review.target.environmentId,
+            taskId: review.target.taskId,
+            title: review.title,
+            by: {
+              name: review.crewmate.name,
+              tint: review.crewmate.tint,
+              shape: review.crewmate.shape,
+              crewOf: projectNameInApp(item.project),
+            },
+            mine: own,
+          }),
+        ),
+      ),
+    ];
     // Its places — production, its stages, and every address each of its Mates has — behind the
     // globe; what goes wrong with them, or comes up, as the tag beside its changes (`ProjectSites`).
     const everyOrdered = groupMateOrder(
@@ -1449,44 +1519,83 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         item,
       })),
     );
-    const sitesInput: ProjectSitesInput | undefined =
+    const production =
+      prodChip === undefined
+        ? undefined
+        : (nowMs: number) =>
+            productionMenu({
+              chip: prodChip,
+              projectId: productionItem?.project.id,
+              failure: releases.kind === "answered" ? releases.failure : undefined,
+              down: downOf(productionServing),
+              routes: productionItem?.routes ?? [],
+              nowMs,
+            });
+    const stagesMenu =
+      stages.length === 0 && projectFlow.creatingStages.length === 0
+        ? undefined
+        : (nowMs: number) =>
+            stageMenu({
+              stages: stages.map(({ name, stop, serving }, index) => ({
+                projectId: stop.projectId,
+                name,
+                stop,
+                chip: stageChips[index],
+                deployedAt: stopDeployedAt(stop.projectId),
+                down: downOf(serving),
+                routes: stopItem(stop.projectId)?.routes ?? [],
+              })),
+              creating: projectFlow.creatingStages.map((creation) => ({
+                projectId: creation.projectId,
+                name: creation.name,
+              })),
+              nowMs,
+            });
+    const dragOf =
+      group === undefined || projectOrder.order !== "custom"
+        ? undefined
+        : (event: ReactPointerEvent<HTMLElement>) => {
+            reorder.startDrag({ groupId: id, name: group.name }, event, (groupId, before) => {
+              moveProject(groupId, before, group.name);
+            });
+          };
+    // What the project's rows are handed: the same functions from draw to draw, reading this
+    // draw's closures, and the same review and places while what they say holds — a memoised
+    // row redraws for its own news alone.
+    const refs = projectRefsOf(id);
+    projectLatest.set(id, {
+      out: () => {
+        focusProjectRow(id);
+      },
+      drag: (event) => {
+        dragOf?.(event);
+      },
+      menu: projectMenu,
+      production,
+      stages: stagesMenu,
+      openStop,
+    });
+    const held = projectShared.get(id);
+    const review: ProjectReviewData | undefined =
       group === undefined
         ? undefined
-        : {
+        : shareEqual(held?.review, {
             groupId: id,
             projectName,
-            production:
-              prodChip === undefined
-                ? undefined
-                : (nowMs) =>
-                    productionMenu({
-                      chip: prodChip,
-                      projectId: productionItem?.project.id,
-                      failure: releases.kind === "answered" ? releases.failure : undefined,
-                      down: downOf(productionServing),
-                      routes: productionItem?.routes ?? [],
-                      nowMs,
-                    }),
-            stages:
-              stages.length === 0 && projectFlow.creatingStages.length === 0
-                ? undefined
-                : (nowMs) =>
-                    stageMenu({
-                      stages: stages.map(({ name, stop, serving }, index) => ({
-                        projectId: stop.projectId,
-                        name,
-                        stop,
-                        chip: stageChips[index],
-                        deployedAt: stopDeployedAt(stop.projectId),
-                        down: downOf(serving),
-                        routes: stopItem(stop.projectId)?.routes ?? [],
-                      })),
-                      creating: projectFlow.creatingStages.map((creation) => ({
-                        projectId: creation.projectId,
-                        name: creation.name,
-                      })),
-                      nowMs,
-                    }),
+            items: reviewItems,
+            release:
+              flow?.releaseOffered === true
+                ? {
+                    waiting: projectFlow.main.notLive,
+                    atLeast: projectFlow.main.notLiveAtLeast,
+                  }
+                : undefined,
+          });
+    const sitesRead =
+      group === undefined
+        ? undefined
+        : shareEqual(held?.sitesRead, {
+            projectName,
             mates: everyOrdered.map(({ item, name }) => ({
               candidate: item,
               ...faceOf(item.project),
@@ -1498,46 +1607,35 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             prodChip,
             stageChip: stageChipDrawn,
             line,
-            onAskToFix,
-            onOpenStop: openStop,
-          };
-    // The project's own row, with its tags and its globe where it is a project.
-    const withSites = (render: (tags: ReactNode, globe: ReactNode) => ReactNode): ReactNode =>
-      sitesInput === undefined ? (
-        render(undefined, undefined)
-      ) : (
-        <ProjectSites {...sitesInput}>
-          {({ tag, globe }) =>
-            render(
-              <>
-                {reviewTags}
-                {tag}
-              </>,
-              globe,
-            )
-          }
-        </ProjectSites>
-      );
-    const dragOf =
-      group === undefined || projectOrder.order !== "custom"
+            production: production !== undefined,
+            stages: stagesMenu !== undefined,
+          });
+    const sites: ProjectSitesInput | undefined =
+      sitesRead === undefined
         ? undefined
-        : (event: ReactPointerEvent<HTMLElement>) => {
-            reorder.startDrag({ groupId: id, name: group.name }, event, (groupId, before) => {
-              moveProject(groupId, before, group.name);
-            });
-          };
-    // One Mate's row, as its project's (solo) or under its open group (kid).
-    const mateRow = (
-      item: T,
-      at: "solo" | "kid" | "alone",
-      tags?: ReactNode,
-      globe?: ReactNode,
-    ) => {
-      numbered += 1;
+        : held?.sites !== undefined &&
+            held.sitesRead === sitesRead &&
+            held.onAskToFix === onAskToFix
+          ? held.sites
+          : {
+              groupId: id,
+              projectName: sitesRead.projectName,
+              production: sitesRead.production ? refs.production : undefined,
+              stages: sitesRead.stages ? refs.stages : undefined,
+              mates: sitesRead.mates,
+              prodChip: sitesRead.prodChip,
+              stageChip: sitesRead.stageChip,
+              line: sitesRead.line,
+              onAskToFix,
+              onOpenStop: refs.openStop,
+            };
+    projectShared.set(id, { review, sitesRead, sites, onAskToFix });
+    // One Mate's row, as its project's (solo), under its open group (kid), or in no project.
+    const mateRow = (item: T, at: "solo" | "kid" | "alone") => {
       const active = item.project.id === activeProjectId;
       const apps =
         projectFlow.mates.find((mate) => mate.projectId === item.project.id)?.previews ?? NO_APPS;
-      const crewFacts = crewRows.get(item.project.id);
+      const number = numbers.get(item.project.id);
       return (
         <MateUnit active={active} key={item.key} projectId={item.project.id}>
           <MateRow
@@ -1551,23 +1649,21 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             coming={getComing?.(item)}
             conversationsRead={getConversationsRead?.(item) === true}
             crew={getCrew?.(item)}
-            crewMinis={crewFacts === undefined ? undefined : <SidebarCrewMinis facts={crewFacts} />}
-            crewNeed={crewFacts?.need?.words}
-            crewWords={crewFacts?.words}
+            crewFacts={crewRows.get(item.project.id)}
             onOpenCrew={onOpenCrew}
             keys={mateKeys}
             kid={at === "kid"}
-            number={numbered <= 9 ? numbered : undefined}
+            number={number !== undefined && number <= 9 ? number : undefined}
             numbers={altHeld}
-            onDragStart={at === "solo" ? dragOf : undefined}
-            onOut={at === "kid" ? () => focusProjectRow(id) : undefined}
+            onDragStart={at === "solo" && dragOf !== undefined ? refs.drag : undefined}
+            onOut={at === "kid" ? refs.out : undefined}
             onSelect={onSelect}
             owner={keyedReadings ? undefined : getOwner?.(item)}
             project={at === "solo" ? projectName : undefined}
-            projectMenu={at === "solo" ? projectMenu : undefined}
+            projectMenu={at === "solo" ? refs.menu : undefined}
+            review={at === "solo" ? review : undefined}
             reviewWaits={reviewWaits(item)}
-            tags={at === "solo" ? tags : undefined}
-            globe={at === "solo" ? globe : undefined}
+            sites={at === "solo" ? sites : undefined}
             timestampFormat={timestampFormat}
             {...faceOf(item.project)}
           />
@@ -1589,44 +1685,59 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         </MateUnit>
       );
     };
+    // Every Mate of its, as "the next one that waits" walks them: in its rows' order.
+    const order = ordered.map((entry) => entry.projectId);
 
     if (group === undefined) {
       // Mates in no project: each its own row, its name alone.
-      return <>{ordered.map(({ item }) => mateRow(item, "alone"))}</>;
+      return {
+        drawn: order,
+        order,
+        folds: false,
+        render: () => <>{ordered.map(({ item }) => mateRow(item, "alone"))}</>,
+      };
     }
     if (kind === "solo") {
       const only = ordered[0];
-      return (
-        <>
-          {demand}
-          {only === undefined
-            ? coming[0] === undefined
-              ? null
-              : comingRow(coming[0], "solo")
-            : withSites((tags, globe) => mateRow(only.item, "solo", tags, globe))}
-        </>
-      );
+      return {
+        drawn: only === undefined ? [] : [only.projectId],
+        order,
+        folds: false,
+        render: () => (
+          <>
+            {demand}
+            {only === undefined
+              ? coming[0] === undefined
+                ? null
+                : comingRow(coming[0], "solo")
+              : mateRow(only.item, "solo")}
+          </>
+        ),
+      };
     }
     if (kind === "bare") {
-      return (
-        <>
-          {demand}
-          {withSites((tags, globe) => (
+      return {
+        drawn: [],
+        order,
+        folds: false,
+        render: () => (
+          <>
+            {demand}
             <ProjectBareRow
-              globe={globe}
               groupId={id}
               keys={mateKeys}
-              menu={projectMenu ?? NO_MENU}
+              menu={projectMenu()}
               name={projectName}
               onDragStart={dragOf}
               onOpen={() => {
                 (onOpenGroup === undefined ? onBrowseProjects : () => onOpenGroup(id))();
               }}
-              tags={tags}
+              review={review}
+              sites={sites}
             />
-          ))}
-        </>
-      );
+          </>
+        ),
+      };
     }
     // A group: its row, then its Mates under it while it stands open.
     const open = !collapsed.has(id);
@@ -1639,7 +1750,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         waitsOnViewer(item.project.id);
       return {
         projectId: item.project.id,
-        asksViewer: asks || crewRows.get(item.project.id)?.need !== undefined,
+        // Its own question, or its crew's — never work waiting to land, which Review holds.
+        asksViewer: asks || crewRows.get(item.project.id)?.need?.kind === "ask",
         at: live?.at,
         working: live?.kind === "working",
         runSince: live?.runSince,
@@ -1702,13 +1814,17 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       active: activeProjectId ?? undefined,
     });
     if (current) bandKey = `group:${id}`;
-    const mineIds = ordered.filter((entry) => entry.mine).map((entry) => entry.projectId);
-    const row = withSites((tags, globe) => (
+    // The viewer's Mates in it, those they are making included: a press opens the one where it is
+    // exactly one.
+    const mineIds = [
+      ...ordered.filter((entry) => entry.mine).map((entry) => entry.projectId),
+      ...coming.map((member) => member.projectId),
+    ];
+    const row = (
       <ProjectGroupRow
         asksMore={Math.max(0, asks.length - 1)}
         current={current}
         faces={faces}
-        globe={globe}
         groupId={id}
         keyedReadings={keyedReadings}
         keys={mateKeys}
@@ -1729,7 +1845,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               }
         }
         mates={mateCount}
-        menu={projectMenu ?? NO_MENU}
+        menu={projectMenu()}
         more={cluster.more}
         name={projectName}
         onDragStart={dragOf}
@@ -1749,38 +1865,46 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           slideSelectedBandTo(chosen.projectId);
           onSelect(chosen.item);
         }}
+        onToggle={() => {
+          toggle(!open);
+        }}
         open={open}
-        tags={tags}
+        review={review}
+        sites={sites}
         timestampFormat={timestampFormat}
       />
-    ));
+    );
     // Folded, the group is its row alone; a fold under way keeps its Mates drawn until they have
     // folded away. A fragment either way, so the row keeps its node — and the focus of the press
     // that folded it.
-    if (!open && fold !== "closing") {
-      return (
-        <>
-          {demand}
-          {row}
-        </>
-      );
-    }
-    return (
-      <>
-        {demand}
-        {row}
-        <SidebarProjectFold
-          motion={fold}
-          onSettled={() => {
-            settleFold(id);
-          }}
-          open={open}
-        >
-          {ordered.map(({ item }) => mateRow(item, "kid"))}
-          {coming.map((member) => comingRow(member, "kid"))}
-        </SidebarProjectFold>
-      </>
-    );
+    const kidsDrawn = open || fold === "closing";
+    return {
+      drawn: open ? order : [],
+      order,
+      folds: true,
+      render: () =>
+        !kidsDrawn ? (
+          <>
+            {demand}
+            {row}
+          </>
+        ) : (
+          <>
+            {demand}
+            {row}
+            <SidebarProjectFold
+              motion={fold}
+              onSettled={() => {
+                settleFold(id);
+              }}
+              open={open}
+            >
+              {ordered.map(({ item }) => mateRow(item, "kid"))}
+              {coming.map((member) => comingRow(member, "kid"))}
+            </SidebarProjectFold>
+          </>
+        ),
+    };
   };
 
   /** A project's ···: its own verbs — fold, add a Mate, open it, move it, set a place up. */
@@ -1852,34 +1976,13 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   );
   // A group of Mates is one row until its person opens it (`projectFolded`): what they opened or
   // folded is kept.
-  const withMates = groups
-    .filter(
-      ({ group, environments }) =>
-        environments.some(({ item }) => hasMate(item)) ||
-        group.pending.some((member) => member.kind === "mate"),
-    )
-    .map(({ group }) => group.groupId);
   const collapsed: ReadonlySet<string> = new Set(
     groups
       .map(({ group }) => group.groupId)
       .filter((groupId) => projectFolded(projectFolds, groupId)),
   );
-  foldable.current = withMates;
-  anyOpen.current = withMates.length === 0 ? null : withMates.some((id) => !collapsed.has(id));
   const ungrouped = view.ungrouped.map((item) => ({ item, role: undefined }));
   const ungroupedMates = ungrouped.some(({ item }) => hasMate(item) && (shown?.(item) ?? true));
-  mateOrder.current = [
-    ...groups.flatMap(({ environments }) =>
-      environments
-        .filter(({ item }) => hasMate(item) && (shown?.(item) ?? true))
-        .map(({ item }) => item.project.id),
-    ),
-    ...(ungroupedMates
-      ? ungrouped
-          .filter(({ item }) => hasMate(item) && (shown?.(item) ?? true))
-          .map(({ item }) => item.project.id)
-      : []),
-  ];
 
   // The projects drawn, in order: a move by keyboard or by drag names its
   // place by these neighbours, and the order it writes still holds the rest.
@@ -1903,7 +2006,43 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
 
   // The open conversation's row wears the band — or, folded around it, its group's row.
   let bandKey: string | null | undefined = activeProjectId;
-  const groupSections = groups.map(({ group, environments }) => (
+  // Every project planned first — which of its Mates it draws as rows, and in what order — so the
+  // Mates drawn are numbered top to bottom (⌥1–9) before any row is drawn.
+  const numbers = new Map<string, number>();
+  const plans = groups.map(({ group, environments }) => ({
+    group,
+    plan: section(
+      group.groupId,
+      environments,
+      getFlow?.(group.groupId),
+      groupNameUnread(group) ? undefined : group.name,
+      group,
+    ),
+  }));
+  const ungroupedPlan = ungroupedMates
+    ? section("ungrouped", ungrouped, undefined, undefined, undefined)
+    : null;
+  for (const plan of [...plans.map((entry) => entry.plan), ungroupedPlan]) {
+    for (const projectId of plan?.drawn ?? []) numbers.set(projectId, numbers.size + 1);
+  }
+  // Fold all and Open all, from the menu's top row: the projects that fold — groups of Mates.
+  const folding = plans
+    .filter((entry) => entry.plan?.folds === true)
+    .map((entry) => entry.group.groupId);
+  foldable.current = folding;
+  anyOpen.current = folding.length === 0 ? null : folding.some((id) => !collapsed.has(id));
+  mateOrder.current = [
+    ...plans.flatMap((entry) => entry.plan?.order ?? []),
+    ...(ungroupedPlan?.order ?? []),
+  ];
+  // What no project drawn here holds any more lets go of what its rows were handed.
+  for (const id of [...projectShared.keys()]) {
+    if (drawn.has(id)) continue;
+    projectShared.delete(id);
+    projectLatest.delete(id);
+    projectRefs.delete(id);
+  }
+  const groupSections = plans.map(({ group, plan }) => (
     <section
       className={cn(
         "flex flex-col gap-0.5 transition-opacity",
@@ -1912,29 +2051,24 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       data-zerops-group={group.groupId}
       key={group.groupId}
     >
-      {section(
-        group.groupId,
-        environments,
-        getFlow?.(group.groupId),
-        groupNameUnread(group) ? undefined : group.name,
-        group,
-      )}
+      {plan?.render()}
     </section>
   ));
   // Under *Mine*, how many Mates the list leaves out.
   const hiddenMates =
     shown === undefined ? 0 : candidates.filter((item) => hasMate(item) && !shown(item)).length;
-  const ungroupedSection = ungroupedMates ? (
-    <section className="flex flex-col gap-0.5" data-zerops-ungrouped="true">
-      {/* Nothing groups these: a quiet word sets them apart where there are projects above. */}
-      {groups.length > 0 ? (
-        <span className="menu-ungrouped" data-zerops-surface="sidebar-ungrouped-label">
-          Ungrouped
-        </span>
-      ) : null}
-      {section("ungrouped", ungrouped, undefined, undefined, undefined)}
-    </section>
-  ) : null;
+  const ungroupedSection =
+    ungroupedPlan === null ? null : (
+      <section className="flex flex-col gap-0.5" data-zerops-ungrouped="true">
+        {/* Nothing groups these: a quiet word sets them apart where there are projects above. */}
+        {groups.length > 0 ? (
+          <span className="menu-ungrouped" data-zerops-surface="sidebar-ungrouped-label">
+            Ungrouped
+          </span>
+        ) : null}
+        {ungroupedPlan.render()}
+      </section>
+    );
   jumpIndex.current = {
     mates: jumpMates,
     projects: jumpProjects,
@@ -1950,7 +2084,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       // another, 43 px under the mark's foot (the owner, 2026-09-29: "first
       // project is too close to logo"). Its own stacking context, so the
       // selected band stands behind every row.
-      className={cn("relative isolate flex flex-col pt-4", className)}
+      className={cn("relative isolate flex flex-col gap-0.5 pt-4", className)}
       data-zerops-surface="sidebar-environments"
       ref={treeRef}
     >
@@ -2304,12 +2438,15 @@ interface GroupLeadInput<T extends RosterCandidate> {
 /** A group's own first-line words and second line: its name, its lead's time, its lead's words. */
 function GroupRowWords<T extends RosterCandidate>({
   name,
+  mates,
   lead,
   asksMore,
   tags,
   timestampFormat,
 }: {
   readonly name: string;
+  /** How many Mates it holds: said after its name to whoever cannot see the faces. */
+  readonly mates: number;
   readonly lead: GroupLeadInput<T>;
   /** Asks of the viewer behind the lead's: " · 1 more". */
   readonly asksMore: number;
@@ -2346,6 +2483,7 @@ function GroupRowWords<T extends RosterCandidate>({
           data-zerops-surface="sidebar-project-name"
         >
           {name}
+          <span className="sr-only">{`, ${String(mates)} Mates`}</span>
         </span>
         {tags ? <span aria-hidden="true" className="menu-row-tags-room" /> : null}
         <span className="relative flex h-5.5 min-w-16 shrink-0 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0 pointer-coarse:opacity-0">
@@ -2435,11 +2573,12 @@ function ProjectGroupRow<T extends RosterCandidate>({
   asksMore,
   keyedReadings,
   timestampFormat,
-  tags,
-  globe,
+  review,
+  sites,
   menu,
   keys,
   onPress,
+  onToggle,
   onInto,
   onDragStart,
 }: {
@@ -2457,11 +2596,14 @@ function ProjectGroupRow<T extends RosterCandidate>({
   readonly asksMore: number;
   readonly keyedReadings: boolean;
   readonly timestampFormat: TimestampFormat;
-  readonly tags: ReactNode;
-  readonly globe: ReactNode;
+  readonly review: ProjectReviewData | undefined;
+  readonly sites: ProjectSitesInput | undefined;
   readonly menu: ReadonlyArray<HeadingMenuEntry>;
   readonly keys: MateRowKeys;
+  /** A press: opens it — and the viewer's one Mate in it — or folds it (`groupRowPress`). */
   readonly onPress: () => void;
+  /** → and ←: open or fold it alone; a key walking the list never opens a conversation. */
+  readonly onToggle: () => void;
   /** → on its open row: its first Mate takes the focus. */
   readonly onInto: () => void;
   readonly onDragStart?: ((event: ReactPointerEvent<HTMLElement>) => void) | undefined;
@@ -2470,7 +2612,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
   const [menuAt, setMenuAt] = useState<MenuPoint | undefined>(undefined);
   const rowBox = useRef<HTMLDivElement>(null);
   const tagsBox = useRef<HTMLSpanElement>(null);
-  const hasTags = tags !== undefined && tags !== null;
+  const hasTags = review !== undefined || sites !== undefined;
   useTagsRoom(rowBox, tagsBox, hasTags);
   const drag = useRowDrag(onDragStart);
   const longPress = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({
@@ -2485,8 +2627,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
     setMenuAt(at);
     setMenuOpen(true);
   };
-  const leadName = lead === undefined ? undefined : projectNameInApp(lead.candidate.project);
-  return (
+  const body = (tags: ReactNode, globe: ReactNode) => (
     <MateUnit active={current} projectId={`group:${groupId}`}>
       <div
         className="menu-row-box relative"
@@ -2522,9 +2663,6 @@ function ProjectGroupRow<T extends RosterCandidate>({
         <button
           aria-current={current ? "true" : undefined}
           aria-expanded={open}
-          aria-label={`${name}, ${String(mates)} Mates${
-            lead?.asks === true && leadName !== undefined ? `, ${leadName} asks` : ""
-          }`}
           className="menu-row w-full min-w-0 cursor-pointer text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring"
           data-zerops-row=""
           data-zerops-surface="sidebar-project"
@@ -2550,7 +2688,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
             }
             if (step === "open" || step === "fold") {
               event.preventDefault();
-              onPress();
+              onToggle();
               return;
             }
             if (step === "into") {
@@ -2587,7 +2725,9 @@ function ProjectGroupRow<T extends RosterCandidate>({
           ) : keyedReadings ? (
             <KeyedGroupRowWords
               asksMore={asksMore}
+              key={lead.candidate.project.id}
               lead={lead}
+              mates={mates}
               name={name}
               tags={hasTags}
               timestampFormat={timestampFormat}
@@ -2595,7 +2735,9 @@ function ProjectGroupRow<T extends RosterCandidate>({
           ) : (
             <GroupRowWords
               asksMore={asksMore}
+              key={lead.candidate.project.id}
               lead={lead}
+              mates={mates}
               name={name}
               tags={hasTags}
               timestampFormat={timestampFormat}
@@ -2627,6 +2769,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
       </div>
     </MateUnit>
   );
+  return withProjectParts(review, sites, body);
 }
 
 /**
@@ -2637,8 +2780,8 @@ function ProjectGroupRow<T extends RosterCandidate>({
 function ProjectBareRow({
   groupId,
   name,
-  tags,
-  globe,
+  review,
+  sites,
   menu,
   keys,
   onOpen,
@@ -2646,8 +2789,8 @@ function ProjectBareRow({
 }: {
   readonly groupId: string;
   readonly name: string;
-  readonly tags: ReactNode;
-  readonly globe: ReactNode;
+  readonly review: ProjectReviewData | undefined;
+  readonly sites: ProjectSitesInput | undefined;
   readonly menu: ReadonlyArray<HeadingMenuEntry>;
   readonly keys: MateRowKeys;
   readonly onOpen: () => void;
@@ -2657,10 +2800,10 @@ function ProjectBareRow({
   const [menuAt, setMenuAt] = useState<MenuPoint | undefined>(undefined);
   const rowBox = useRef<HTMLDivElement>(null);
   const tagsBox = useRef<HTMLSpanElement>(null);
-  const hasTags = tags !== undefined && tags !== null;
+  const hasTags = review !== undefined || sites !== undefined;
   useTagsRoom(rowBox, tagsBox, hasTags);
   const drag = useRowDrag(onDragStart);
-  return (
+  const body = (tags: ReactNode, globe: ReactNode) => (
     <MateUnit active={false} projectId={`group:${groupId}`}>
       <div
         className="menu-row-box relative"
@@ -2742,6 +2885,7 @@ function ProjectBareRow({
       </div>
     </MateUnit>
   );
+  return withProjectParts(review, sites, body);
 }
 
 /** One place in a project's run of Mates: a Mate, one being created, or the quiet ones' fold. */
@@ -2768,8 +2912,10 @@ function typedIntoField(target: EventTarget | null): boolean {
 interface RevealLanding {
   readonly focus: HTMLElement;
   readonly flash: HTMLElement;
-  /** Pressed once it has the focus: a stop's chip opens its menu. */
+  /** Pressed once it has the focus: a project's globe opens its places, a Review its changes. */
   readonly press?: HTMLElement;
+  /** What it was asked for, inside what the press opened: a stop's section, a change's row. */
+  readonly within?: string;
 }
 
 function revealLanding(
@@ -2793,29 +2939,60 @@ function revealLanding(
     }
     case "stop": {
       // A stop is no row of its own: its project's globe carries it — production's, the stages',
-      // and every Mate's addresses — so the globe is focused, its row flashed, its popover opened.
+      // and every Mate's addresses — so the globe is focused, its row flashed, its popover opened
+      // at that stop's section.
       const globe = find(
         `[data-zerops-group="${target.groupId}"] [data-zerops-surface="sidebar-project-sites"]`,
       );
       if (globe === null) return null;
       const unit = globe.closest<HTMLElement>("[data-zerops-mate-unit]") ?? globe;
-      return { focus: globe, flash: unit, press: globe };
+      return {
+        focus: globe,
+        flash: unit,
+        press: globe,
+        within: `[data-zerops-surface="sidebar-project-sites-popover"] [data-sites-stop="${CSS.escape(target.projectId)}"]`,
+      };
     }
     case "change": {
-      // A change rides its project's row, behind its Review: one opens with Enter, several open
-      // their list at once.
+      // A change that waits for review rides its project's Review: alone there, the tag takes the
+      // focus and Enter opens it; among others, the tag opens their list and the change takes the
+      // focus there. A change that does not ask for review is no row: its own page opens instead.
       const review = find(
         `[data-zerops-group="${target.groupId}"] [data-zerops-surface="sidebar-project-review"]`,
       );
-      if (review === null) return null;
+      const held = review?.getAttribute("data-zerops-changes")?.split(" ") ?? [];
+      if (review === null || !held.includes(target.key)) return null;
       const unit = review.closest<HTMLElement>("[data-zerops-mate-unit]") ?? review;
-      return {
-        focus: review,
-        flash: unit,
-        ...(review.hasAttribute("aria-haspopup") ? { press: review } : {}),
-      };
+      return held.length === 1
+        ? { focus: review, flash: unit }
+        : {
+            focus: review,
+            flash: unit,
+            press: review,
+            within: `[data-zerops-surface="sidebar-project-changes"] [data-zerops-change="${CSS.escape(target.key)}"]`,
+          };
     }
   }
+}
+
+/**
+ * What a reveal asked for inside the popover its press opened — a stop's section, a change's row —
+ * once the popover has drawn it: brought into view, lit once, and the focus on it where it takes
+ * one. A popover that never draws it leaves the focus where the press left it.
+ */
+function landWithin(selector: string, frames = 0): void {
+  const element = document.querySelector<HTMLElement>(selector);
+  if (element === null) {
+    if (frames < 20) {
+      requestAnimationFrame(() => {
+        landWithin(selector, frames + 1);
+      });
+    }
+    return;
+  }
+  element.scrollIntoView({ block: "nearest" });
+  if (element.matches("button, a, [tabindex]")) element.focus({ preventScroll: true });
+  flashOnce(element);
 }
 
 /**
@@ -3230,6 +3407,13 @@ function useRowDrag(onDragStart: ((event: ReactPointerEvent<HTMLElement>) => voi
             },
             onPointerUp: () => {
               start.current = null;
+              // The click a drag ends in is swallowed — or, the pointer held by the drag, never
+              // reaches the row's button — and the next press is the row's own either way.
+              if (dragged.current) {
+                setTimeout(() => {
+                  dragged.current = false;
+                }, 0);
+              }
             },
           },
   };
@@ -3265,12 +3449,10 @@ function MateRowView<T extends RosterCandidate>({
   reviewWaits = false,
   project,
   kid = false,
-  tags: projectTags,
-  globe,
+  review,
+  sites,
   projectMenu,
-  crewMinis,
-  crewNeed,
-  crewWords,
+  crewFacts,
   onOut,
   onDragStart,
 }: {
@@ -3312,18 +3494,17 @@ function MateRowView<T extends RosterCandidate>({
   readonly project?: string | undefined;
   /** It stands under its project's row, the group open: indented, its face smaller. */
   readonly kid?: boolean;
-  /** Its project's tags at its first line's end (Review, Release, its places'), where it is the project's row. */
-  readonly tags?: ReactNode;
-  /** Its project's globe among its verbs, where it is the project's row. */
-  readonly globe?: ReactNode;
-  /** Its project's own items first in its ···, a line apart from its own, where it is the project's row. */
-  readonly projectMenu?: ReadonlyArray<HeadingMenuEntry> | undefined;
-  /** Its crew as mini Mates after its name. */
-  readonly crewMinis?: ReactNode;
-  /** What its crew needs of the viewer, said on its line where nothing of its own asks them. */
-  readonly crewNeed?: string | undefined;
-  /** Its crew's whole state in words, for its row's name where a dot names the row. */
-  readonly crewWords?: string | undefined;
+  /** Its project's changes and release (`ProjectReviewTags`), where it is the project's row. */
+  readonly review?: ProjectReviewData | undefined;
+  /** Its project's places (`ProjectSites`: the globe, the places' tag), where it is the project's row. */
+  readonly sites?: ProjectSitesInput | undefined;
+  /** Its project's own items, read as its ··· draws, first in it, a line apart from its own. */
+  readonly projectMenu?: (() => ReadonlyArray<HeadingMenuEntry>) | undefined;
+  /**
+   * Its crew (`useCrewRows`): mini Mates after its name, what it needs of the viewer on its line,
+   * its state in its row's name. The same object while nothing of it changed.
+   */
+  readonly crewFacts?: CrewRowFacts | undefined;
   /** ← on a Mate under its project's row: back to that row. */
   readonly onOut?: (() => void) | undefined;
   /** In the *Custom* order its project's row is pulled to move the project. */
@@ -3416,8 +3597,10 @@ function MateRowView<T extends RosterCandidate>({
   const rowButton = useRef<HTMLButtonElement>(null);
   const rowBox = useRef<HTMLDivElement>(null);
   const tagsBox = useRef<HTMLSpanElement>(null);
-  useTagsRoom(rowBox, tagsBox, projectTags !== undefined && projectTags !== null);
+  useTagsRoom(rowBox, tagsBox, review !== undefined || sites !== undefined);
   const drag = useRowDrag(onDragStart);
+  const crewNeed = crewFacts?.need;
+  const crewWords = crewFacts?.words;
   const openMenu = (at?: MenuPoint) => {
     setMenuAt(at);
     setMenuOpen(true);
@@ -3433,12 +3616,17 @@ function MateRowView<T extends RosterCandidate>({
     if (longPress.current.timer !== null) clearTimeout(longPress.current.timer);
     longPress.current.timer = null;
   };
-  // Its crew's need stands on its line where it asks the viewer nothing itself (S6 — one line).
-  const crewLine = crewNeed !== undefined && !asksViewer ? crewNeed : undefined;
+  // Its crew's ask, or its work ready to land, stands on its line where the Mate's own line says
+  // nothing more urgent — words or a step of its own, the person's ask, or nothing — and never a
+  // line more: the held room the Mate's words keep gives way to it.
+  const crewLine =
+    crewNeed !== undefined && !asksViewer && crewMayTakeLine(second, view)
+      ? crewNeed.words
+      : undefined;
   // The project's verbs ride the Mate's own menu, or a menu of their own where the Mate offers none.
-  const menuShown = actions !== undefined || (projectMenu !== undefined && projectMenu.length > 0);
+  const menuShown = actions !== undefined || projectMenu !== undefined;
 
-  return (
+  const body = (tags: ReactNode, globe: ReactNode) => (
     // The row is the container, not the button: the menu's trigger sits in
     // the row beside the button, never inside it. Both are lit as the row's
     // unit (`MateUnit`), wherever on it the pointer is.
@@ -3504,7 +3692,7 @@ function MateRowView<T extends RosterCandidate>({
         aria-label={
           dot === undefined
             ? undefined
-            : `${project === undefined ? name : `${project} · ${name}`}, ${
+            : `${project === undefined || sameName(project, name) ? name : `${project} · ${name}`}, ${
                 status?.kind === "limit" ? "Provider limit" : mateDotLabel(dot)
               }${crewWords === undefined ? "" : `, ${crewWords}`}`
         }
@@ -3634,7 +3822,7 @@ function MateRowView<T extends RosterCandidate>({
                   </>
                 )}
               </span>
-              {crewMinis}
+              {crewFacts === undefined ? null : <SidebarCrewMinis facts={crewFacts} />}
               {actions?.muted === true ? (
                 <BellOffIcon
                   aria-label="Notifications muted"
@@ -3644,9 +3832,7 @@ function MateRowView<T extends RosterCandidate>({
                 />
               ) : null}
             </span>
-            {projectTags === undefined || projectTags === null ? null : (
-              <span aria-hidden="true" className="menu-row-tags-room" />
-            )}
+            {tags === undefined ? null : <span aria-hidden="true" className="menu-row-tags-room" />}
             {/* A slot that is always there: the time, which gives way to the
                 row's verbs on hover and focus without anything moving. A
                 project's row holds three verbs there, a Mate under one two. */}
@@ -3682,7 +3868,9 @@ function MateRowView<T extends RosterCandidate>({
           {/* One line under the name: the Mate's answer alone (the owner, 2026-10-12: "just go
               with answer"), else what was asked of it while it has no words yet — or what its
               crew needs of the viewer, where it asks them nothing itself. */}
-          {heldLines === 0 ? null : <span aria-hidden="true" className="menu-line2 h-5" />}
+          {heldLines === 0 || crewLine !== undefined ? null : (
+            <span aria-hidden="true" className="menu-line2 h-5" />
+          )}
           {crewLine === undefined ? (
             <MateSecondLine
               askChanged={askChanged}
@@ -3703,9 +3891,9 @@ function MateRowView<T extends RosterCandidate>({
           )}
         </span>
       </button>
-      {projectTags === undefined || projectTags === null ? null : (
+      {tags === undefined ? null : (
         <span className="menu-row-tags" data-row-control="" ref={tagsBox}>
-          {projectTags}
+          {tags}
         </span>
       )}
       {outsideHq || retainedReply === undefined ? null : (
@@ -3763,10 +3951,10 @@ function MateRowView<T extends RosterCandidate>({
           )}
           {globe}
           {actions === undefined ? (
-            projectMenu === undefined || projectMenu.length === 0 ? null : (
+            projectMenu === undefined ? null : (
               <ProjectMenu
                 at={menuAt}
-                entries={projectMenu}
+                entries={projectMenu()}
                 name={project ?? name}
                 onOpenChange={(next) => {
                   setMenuOpen(next);
@@ -3808,7 +3996,7 @@ function MateRowView<T extends RosterCandidate>({
               project={
                 project === undefined || projectMenu === undefined
                   ? undefined
-                  : { name: project, entries: projectMenu }
+                  : { name: project, entries: projectMenu() }
               }
               shortcuts
               unread={unread}
@@ -3827,6 +4015,47 @@ function MateRowView<T extends RosterCandidate>({
       ) : null}
     </div>
   );
+  return withProjectParts(review, sites, body);
+}
+
+/** Its project's changes and release, as the row's tags draw them (`ProjectReviewTags`). */
+type ProjectReviewData = Parameters<typeof ProjectReviewTags>[0];
+
+/**
+ * A project's row with its project's parts: its Review and Release tags, and its places — the
+ * places' tag among the tags, the globe among its verbs (`ProjectSites`), one popover behind both.
+ * A Mate under its group's row has none of them.
+ */
+function withProjectParts(
+  review: ProjectReviewData | undefined,
+  sites: ProjectSitesInput | undefined,
+  body: (tags: ReactNode, globe: ReactNode) => ReactNode,
+): ReactNode {
+  const reviewTags = review === undefined ? null : <ProjectReviewTags {...review} />;
+  if (sites === undefined) return body(review === undefined ? undefined : reviewTags, undefined);
+  return (
+    <ProjectSites {...sites}>
+      {({ tag, globe }) =>
+        body(
+          <>
+            {reviewTags}
+            {tag}
+          </>,
+          globe,
+        )
+      }
+    </ProjectSites>
+  );
+}
+
+/**
+ * Whether a crew's need may take its Mate's line: where the Mate's own line is its words or its
+ * step, the person's ask, or nothing — never over an error, a sign-in, a Mate coming up, going,
+ * finishing its setup or outside HQ.
+ */
+function crewMayTakeLine(second: MateRowSecond, view: MateRowReading): boolean {
+  if (second.kind === "ask" || second.kind === "none") return true;
+  return second.kind === "reply" && second.tone !== "failed" && view.reply?.kind !== "held";
 }
 
 /** The one line under a Mate's name, as `mateRowSecond` chose it. */

@@ -498,6 +498,8 @@ export function SitesPanel({
               data-flash={flash === section.key ? "" : undefined}
               data-sites-place={section.kind === "place" ? section.place : undefined}
               data-sites-section={section.key}
+              // Its stop's project, where a find in the jump box lands (`revealLanding`).
+              data-sites-stop={section.kind === "place" ? section.stop?.projectId : undefined}
               hidden={filtering && shown === undefined}
               key={section.key}
             >
