@@ -129,14 +129,7 @@ export const sessionEnds = Effect.fn("signin.sessionEnds")(function* (
 
 export const retryHq = Effect.fn("signin.retryHq")(function* (s: Scenario) {
   yield* Effect.promise(() =>
-    s.page
-      .locator('::-p-aria([role="button"])')
-      .filter(
-        (element) =>
-          element.textContent?.includes("HQ") === true && element.textContent.includes("Try again"),
-      )
-      .setTimeout(10_000)
-      .click(),
+    s.page.locator('button[data-zerops-surface="sidebar-hq-outage"]').setTimeout(10_000).click(),
   );
 });
 
