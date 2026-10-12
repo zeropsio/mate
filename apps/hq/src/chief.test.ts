@@ -364,5 +364,77 @@ describe("the Chief", () => {
         assert.strictEqual(statuses.at(-1), 429);
       }),
     );
+
+    it.effect("a proposal's decision is recorded once, by whoever its conversation opens for", () =>
+      Effect.gen(function* () {
+        const { call, dev, owner } = yield* running;
+        const put = (session: string, id: string, body: unknown) =>
+          call("PUT", `/api/proposals/${id}`, { session, body });
+        const approved = yield* put(dev, "p-1", { projectId: "P_CHIEF", decision: "approved" });
+        assert.strictEqual(approved.status, 200);
+        assert.deepInclude(approved.body as object, {
+          id: "p-1",
+          projectId: "P_CHIEF",
+          decision: "approved",
+          outcome: null,
+          words: null,
+          by: "dev",
+        });
+        const cases: ReadonlyArray<readonly [string, string, string, unknown, number]> = [
+          ["the same again", dev, "p-1", { projectId: "P_CHIEF", decision: "approved" }, 200],
+          ["turned", dev, "p-1", { projectId: "P_CHIEF", decision: "declined" }, 409],
+          [
+            "in a project they cannot open",
+            dev,
+            "p-2",
+            { projectId: "P_IN", decision: "approved" },
+            403,
+          ],
+          ["by the owner there", owner, "p-2", { projectId: "P_OUT", decision: "declined" }, 200],
+          [
+            "outcome on a decline",
+            owner,
+            "p-2",
+            { projectId: "P_OUT", decision: "declined", outcome: "done" },
+            409,
+          ],
+          [
+            "outcome after the approval",
+            dev,
+            "p-1",
+            { projectId: "P_CHIEF", decision: "approved", outcome: "failed", words: "quota" },
+            200,
+          ],
+          [
+            "outcome turned",
+            dev,
+            "p-1",
+            { projectId: "P_CHIEF", decision: "approved", outcome: "done" },
+            409,
+          ],
+          ["no decision", dev, "p-3", { projectId: "P_CHIEF" }, 400],
+        ];
+        for (const [what, session, id, body, status] of cases) {
+          assert.strictEqual((yield* put(session, id, body)).status, status, what);
+        }
+        const read = yield* call("GET", "/api/proposals?ids=p-1,p-2,p-none", { session: dev });
+        assert.strictEqual(read.status, 200);
+        const decisions = (read.body as { readonly decisions: ReadonlyArray<object> }).decisions;
+        assert.strictEqual(decisions.length, 1);
+        assert.deepInclude(decisions[0]!, {
+          id: "p-1",
+          decision: "approved",
+          outcome: "failed",
+          words: "quota",
+          by: "dev",
+        });
+        const many = Array.from({ length: 101 }, (_, index) => `p-${String(index)}`).join(",");
+        assert.strictEqual(
+          (yield* call("GET", `/api/proposals?ids=${many}`, { session: dev })).status,
+          400,
+        );
+        assert.strictEqual((yield* call("GET", "/api/proposals?ids=p-1")).status, 401);
+      }),
+    );
   });
 });

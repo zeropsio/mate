@@ -1,10 +1,13 @@
 /**
- * The Chief's routes (`chief.ts`), beside HQ's API (`api.ts`), answered and refused
+ * The Chief's routes (`chief.ts`, `proposals.ts`), beside HQ's API (`api.ts`), answered and refused
  * as its routes are:
  *
  * - `GET /api/chief` → `{ chief: { projectId, since } | null }`: the person's own Chief here.
  * - `POST /api/chief` `{ projectId }` → `{ chief, credential, proxyUrl }`: registers it; `403` for
  *   a project that does not open for them or carries no `chief` tag, `409` for another's Chief.
+ * - `GET /api/proposals?ids=a,b` (at most 100) → `{ decisions }`, those on projects that open for
+ *   the person; `PUT /api/proposals/:id` `{ projectId, decision, outcome?, words? }` → the decision
+ *   held, `409` for one that would change what is held.
  * - `GET|POST /api/chief/zerops/<path>` with `Authorization: Bearer <Chief credential>`: the
  *   Chief's reads of Zerops (`401` unknown or revoked credential, `405` a method that writes, `403`
  *   a read outside the allowlist or the person's reach, `429` past its limit).
@@ -24,9 +27,14 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { BODY_LIMIT, TooLarge, handle, json, jsonBody, principal } from "./api.ts";
 import { CHIEF_PROXY_PATH, Chiefs } from "./chief.ts";
 import { ChiefRefused } from "./chiefRefused.ts";
+import { PROPOSALS_PER_READ, ProposalAsk, ProposalDecisions, ProposalId } from "./proposals.ts";
 import { Writes } from "./writes.ts";
 
 const RegisterBody = Schema.Struct({ projectId: Schema.String });
+const decodeIds = Schema.decodeUnknownEffect(
+  Schema.Array(ProposalId).check(Schema.isMaxLength(PROPOSALS_PER_READ)),
+);
+const decodeId = Schema.decodeUnknownEffect(ProposalId);
 const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 
 /** A search's body: JSON of at most 64 KiB (`413` past it); none for any other method. */
@@ -94,4 +102,34 @@ export const chiefRoutes = Layer.mergeAll(
     ),
   ),
   HttpRouter.add("*", `${CHIEF_PROXY_PATH}/*`, handle(proxy)),
+  HttpRouter.add(
+    "GET",
+    "/api/proposals",
+    handle(
+      Effect.gen(function* () {
+        const { userId } = yield* principal;
+        const search = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://hq")
+          .searchParams;
+        const ids = yield* decodeIds(
+          (search.get("ids") ?? "").split(",").filter((id) => id !== ""),
+        );
+        return json({ decisions: yield* (yield* ProposalDecisions).read(userId, ids) }, 200);
+      }),
+    ),
+  ),
+  HttpRouter.add(
+    "PUT",
+    "/api/proposals/:id",
+    handle(
+      Effect.gen(function* () {
+        const { userId } = yield* principal;
+        const id = yield* decodeId((yield* HttpRouter.params)["id"]);
+        const ask = yield* jsonBody(ProposalAsk, BODY_LIMIT);
+        const decisions = yield* ProposalDecisions;
+        return yield* (yield* Writes).outliving(
+          Effect.map(decisions.decide(userId, id, ask), (decision) => json(decision, 200)),
+        );
+      }),
+    ),
+  ),
 );
