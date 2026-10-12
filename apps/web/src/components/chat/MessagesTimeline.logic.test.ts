@@ -8,6 +8,7 @@ import {
   conversationSpeaker,
   deriveMessagesTimelineRows,
   earlierTurnsAnchor,
+  livePauseId,
   rowGap,
   thoughtParagraphs,
   thoughtPreview,
@@ -3152,6 +3153,46 @@ describe("a run that broke off", () => {
 });
 
 describe("a run the usage limit stopped", () => {
+  const limitWords = "You've hit your session limit · resets 9:20pm (UTC)";
+
+  // One live pause, the newest (review of B5, 2026-10-12): a later run that worked ends every
+  // earlier open pause as history, whether or not the limit then cut it too.
+  it("a run that worked ends the notice of a limit before it, even when the limit cuts it too", () => {
+    const list = rows({
+      limit: refusedLimit,
+      entries: [
+        user("m0", 0),
+        assistant("a1", "t1", 1, limitWords),
+        user("m1", 10),
+        tool("w1", "t2", 11),
+        assistant("a2", "t2", 12, limitWords),
+      ],
+      settled: "t2",
+    });
+    const pauses = list.filter((row) => row.kind === "pause");
+    expect(pauses).toHaveLength(1);
+    expect(pauses[0]).toMatchObject({ id: "pause:msg:m0" });
+    expect(pauses[0]).not.toMatchObject({ resumedAt: null });
+    expect(statusOf(list)?.paused).toBeDefined();
+    expect(livePauseId(list)).toBeNull();
+  });
+
+  // A result under a waiting card left as the resume joined it and came back as it settled.
+  it("a card waiting on the limit draws no result under it until it settles", () => {
+    const entries = [
+      user("m0", 0),
+      tool("w1", "t1", 1),
+      landed("l1", 2),
+      assistant("a1", "t1", 3, limitWords),
+    ];
+    const waiting = rows({ limit: refusedLimit, entries, settled: "t1" });
+    expect(statusOf(waiting)?.paused).toBeDefined();
+    expect(waiting.some((row) => row.kind === "outcome")).toBe(false);
+    const settled = rows({ entries, settled: "t1" });
+    expect(statusOf(settled)?.paused).toBeUndefined();
+    expect(settled.some((row) => row.kind === "outcome")).toBe(true);
+  });
+
   // Codex's limit in its own words, typed by the server: the run reads
   // "stopped at the usage limit", with the pause under it — never a break.
   it("pauses, whatever the driver's words", () => {

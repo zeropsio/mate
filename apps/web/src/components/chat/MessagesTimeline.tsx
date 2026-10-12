@@ -137,6 +137,7 @@ import {
   createMessagesTimelineRowsCache,
   conversationSpeaker,
   deriveMessagesTimelineRows,
+  livePauseId,
   livePauseStageId,
   earlierTurnsAnchor,
   helperFinishesOf,
@@ -797,10 +798,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   // Which rows stand where: what the list's containers are drawn again for.
   const rowOrder = useMemo(() => rows.map((row) => row.id).join("\n"), [rows]);
-  const livePauseId = useMemo(
-    () => rows.findLast((row) => row.kind === "pause" && row.resumedAt === null)?.id ?? null,
-    [rows],
-  );
+  const livePause = useMemo(() => livePauseId(rows), [rows]);
   // Only the server's own pause with nothing after it fills the conversation; the engine's pause
   // is a notice card where its run ended (Milo's run 4 drew it a viewport tall, blank below).
   const pauseStageId = useMemo(
@@ -1687,7 +1685,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onDismissEndNotice,
       driver: provider,
       standUpAsk,
-      livePauseId,
+      livePauseId: livePause,
       usagePause,
       pauseStage: {
         id: pauseStageId,
@@ -1733,7 +1731,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onDismissEndNotice,
       provider,
       standUpAsk,
-      livePauseId,
+      livePause,
       pauseStageId,
       usagePause,
       mate,
