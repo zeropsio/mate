@@ -82,6 +82,106 @@ describe("C: opening a Mate and chat", () => {
       }),
     );
 
+    it.effect("an archived conversation opens read-only from the archive list", () =>
+      Effect.gen(function* () {
+        const { s, chat } = yield* setup;
+        const fixture = chat.fixture();
+        fixture.engine.header = { ...fixture.engine.header, archived: true };
+        const title = "Earlier conversation from the archive record";
+        let deliverArchive = () => {};
+        fixture.mate.rpcHandlers.unshift((request, socket) => {
+          if (request.tag !== WS_METHODS.engineGetArchivedShellSnapshot) return false;
+          deliverArchive = () =>
+            fixture.mate.reply(socket, request.id, {
+              ...fixture.mate.shell(),
+              threads: [
+                {
+                  ...fixture.mate.shellThread(),
+                  title,
+                  archivedAt: "2026-10-05T12:00:00.000Z",
+                },
+              ],
+            });
+          return true;
+        });
+        yield* s.given.signedIn;
+        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        yield* chat.when.openReadOnly();
+        yield* chat.then.text("This conversation is archived");
+        yield* Effect.promise(() =>
+          s.page
+            .locator(() => {
+              const control = [
+                ...document.querySelectorAll('[data-zerops-surface="sidebar-account"]'),
+              ].find((element) => {
+                const box = element.getBoundingClientRect();
+                return (
+                  document
+                    .elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+                    ?.closest('[data-zerops-surface="sidebar-account"]') === element
+                );
+              });
+              if (control === undefined)
+                throw new Error("The account control is not clickable yet");
+              return control;
+            })
+            .click(),
+        );
+        yield* chat.when.press("Settings", "menuitem");
+        yield* chat.then.path("/settings/general");
+        yield* chat.when.press("Archive");
+        yield* chat.then.text("Loading archived threads");
+        deliverArchive();
+        yield* chat.then.text(title);
+        const row = yield* Effect.promise(() =>
+          s.page.evaluate((title) => {
+            const heading = [...document.querySelectorAll("h3")].find(
+              (heading) => heading.textContent === title,
+            );
+            const link = heading?.querySelector("a");
+            return {
+              href: link?.getAttribute("href") ?? null,
+              unarchive:
+                heading?.parentElement?.parentElement?.parentElement?.textContent?.includes(
+                  "Unarchive",
+                ),
+            };
+          }, title),
+        );
+        expect(row.href, "ASSERTION: the archive record opens its scoped conversation route").toBe(
+          "/env-Ada/thread-Ada",
+        );
+        expect(row.unarchive, "ASSERTION: the archive row keeps Unarchive").toBe(true);
+        yield* Effect.promise(() => s.page.locator(`a ::-p-text(${title})`).click());
+        yield* chat.then.path("/env-Ada/thread-Ada");
+        yield* chat.then.text("The existing conversation is still here");
+        yield* chat.then.text("This conversation is archived");
+        const editable = yield* Effect.promise(() =>
+          s.page.evaluate(
+            () =>
+              [...document.querySelectorAll('[role="textbox"], textarea')].filter(
+                (element) =>
+                  element.getBoundingClientRect().height > 0 &&
+                  !element.closest('[inert], [aria-hidden="true"]') &&
+                  !element.matches(':disabled, [aria-disabled="true"]'),
+              ).length,
+          ),
+        );
+        expect(editable, "ASSERTION: the archived view has no editable composer").toBe(0);
+        expect(
+          fixture.engine.header.archived,
+          "ASSERTION: opening the archive record leaves the conversation archived",
+        ).toBe(true);
+        yield* chat.when.press("Restore");
+        yield* chat.then.noText("This conversation is archived");
+        expect(
+          fixture.engine.header.archived,
+          "ASSERTION: Restore restores the archive record's conversation",
+        ).toBe(false);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     // A reported version difference alone must never offer a chat-level restart.
     it.effect("older and newer Mate versions show no version-skew warning or restart action", () =>
       Effect.gen(function* () {

@@ -79,6 +79,7 @@ import { primaryServerObservabilityAtom, primaryServerProvidersAtom } from "../.
 import { useEnvironmentAllowsWorktrees, useProjects } from "../../state/entities";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
@@ -2728,7 +2729,15 @@ export function ArchivedThreadsPanel() {
                     }
                   })();
                 }}
-                title={thread.title}
+                title={
+                  <Link
+                    to="/$environmentId/$threadId"
+                    params={buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id))}
+                    className="hover:underline"
+                  >
+                    {thread.title}
+                  </Link>
+                }
                 description={
                   <>
                     Archived {formatRelativeTimeLabel(thread.archivedAt ?? thread.createdAt)}
