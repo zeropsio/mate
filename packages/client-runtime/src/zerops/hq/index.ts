@@ -103,3 +103,11 @@ export {
 export { repositoryKey, selectRepositorySource, type RepositoryTarget } from "./repositoryStore.ts";
 
 export { selectGitCredentials, type GitCredentialSnapshot } from "./gitCredentialStore.ts";
+export {
+  HqChief,
+  HqChiefSetUp,
+  HqProposalDecision,
+  PROPOSAL_IDS_PER_READ,
+  type HqChiefCalls,
+  type HqProposalDecisionWrite,
+} from "./chief.ts";

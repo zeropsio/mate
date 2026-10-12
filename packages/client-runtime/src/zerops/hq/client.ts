@@ -51,6 +51,7 @@ import { type FetchImplementation } from "../api.ts";
 import type { HqEnvironment } from "./environments.ts";
 import { hqRefusalWords, ZEROPS_UNANSWERED } from "./refusals.ts";
 import { hqStructureOf } from "./structure.ts";
+import { makeChiefCalls, type HqChiefCalls } from "./chief.ts";
 
 /** An organization's HQ: its project, and the address its anchor names. */
 export interface HqEndpoint {
@@ -245,7 +246,7 @@ export interface Asked<T> {
   readonly deploys: HqDeployAnswer | undefined;
 }
 
-export interface HqApi {
+export interface HqApi extends HqChiefCalls {
   readonly autoUpdatePolicy: (signal?: AbortSignal) => Promise<HqAutoUpdatePolicy>;
   readonly setAutoUpdatePolicy: (enabled: boolean) => Promise<HqAutoUpdatePolicy>;
   readonly structure: (signal?: AbortSignal) => Promise<HqStructure>;
@@ -941,6 +942,7 @@ export function makeHqApi(input: {
   };
 
   return {
+    ...makeChiefCalls({ authorized, decoded }),
     structure: structureOf,
     openScopeSocket: async (on, signal) => {
       const { ticket } = await json<{ readonly ticket: string }>(
