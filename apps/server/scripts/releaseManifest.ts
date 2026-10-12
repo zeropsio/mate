@@ -60,6 +60,8 @@ export function buildReleaseManifest(input: {
   readonly catalog: Readonly<Record<string, string>>;
   readonly version: string;
 }): ReleaseManifest {
+  // node-addon-api is explicit in the server manifest: npm does not install the transitive
+  // headers of our tarball-injected bundled node-pty when its prebuild cannot be used.
   const kept = selectCliRuntimeExternalDependencies({ ...input.serverPackageJson.dependencies });
   const dependencies = resolveCatalogDependencies(kept, { ...input.catalog }, "apps/server");
 
