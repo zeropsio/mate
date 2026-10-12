@@ -71,7 +71,6 @@ export interface TimelineRowSharedState {
     readonly height: number | undefined;
   };
   limit?: MateLimit;
-  onUsageAutoResumeChange: ((enabled: boolean) => void) | null;
   interruption?: import("@t3tools/contracts").MateInterruption | null;
   onRestartContinue?:
     | ((interruption: import("@t3tools/contracts").MateInterruption) => void)

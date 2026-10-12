@@ -263,7 +263,6 @@ it("shows an empty streaming thought when its words arrive, without rebuilding s
     standUpAsk: null,
     livePauseId: null,
     usagePause: null,
-    onUsageAutoResumeChange: null,
     agentPanelModel: emptyAgentPanelModel(),
     onOpenAgents() {},
     onSteerQueuedMessage() {},

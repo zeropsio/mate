@@ -4,7 +4,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { requestConfirmDialog, resetConfirmDialogForTests } from "../confirmDialog";
-import { CustomSnoozeDialogHost, requestCustomSnooze } from "./CustomSnoozeDialog";
 import { ConfirmDialogHost } from "./ConfirmDialogHost";
 
 let root: Root;
@@ -61,37 +60,4 @@ describe("the request-owned confirmation, including Mate updates", () => {
     });
     expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
   });
-});
-
-describe("the request-owned custom snooze", () => {
-  it.each(["X", "Escape", "outside"])(
-    "returns no choice on %s and waits for a fresh request",
-    async (method) => {
-      let answer!: Promise<unknown>;
-      await act(() => {
-        root.render(<CustomSnoozeDialogHost />);
-        answer = requestCustomSnooze();
-      });
-      const dialog = document.querySelector('[role="dialog"]')!;
-      expect(dialog).not.toBeNull();
-      await act(() => {
-        if (method === "X")
-          document.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!.click();
-        else if (method === "Escape")
-          dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-        else {
-          const outside = document.querySelector('[data-slot="dialog-viewport"]')!;
-          for (const type of ["mousedown", "mouseup", "click"])
-            outside.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0 }));
-        }
-      });
-      await expect(answer).resolves.toBeNull();
-      await act(() => root.render(<CustomSnoozeDialogHost />));
-      expect(document.querySelector('[role="dialog"]')).toBeNull();
-      await act(() => {
-        requestCustomSnooze();
-      });
-      expect(document.querySelector('[role="dialog"]')).not.toBeNull();
-    },
-  );
 });

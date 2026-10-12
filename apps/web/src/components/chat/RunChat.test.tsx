@@ -74,7 +74,6 @@ const SHARED: TimelineRowSharedState = {
   standUpAsk: null,
   livePauseId: null,
   usagePause: null,
-  onUsageAutoResumeChange: null,
   agentPanelModel: emptyAgentPanelModel(),
   onOpenAgents: () => undefined,
   onSteerQueuedMessage: () => undefined,

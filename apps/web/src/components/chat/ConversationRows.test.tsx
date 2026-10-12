@@ -40,7 +40,6 @@ describe("the usage-limit pause", () => {
           provider: "Codex",
         }}
         serverPause={reset === null || autoResume === null ? null : { resetsAt: reset, autoResume }}
-        onAutoResumeChange={null}
         speaker={NOVA}
         timestampFormat="24-hour"
       />,
@@ -85,7 +84,6 @@ describe("the usage-limit pause", () => {
             ...(record === undefined ? {} : { provider: record }),
           }}
           serverPause={null}
-          onAutoResumeChange={null}
           speaker={NOVA}
           timestampFormat="24-hour"
         />,
@@ -119,7 +117,6 @@ describe("the usage-limit pause", () => {
             window: "7-day",
           }}
           serverPause={null}
-          onAutoResumeChange={null}
           speaker={NOVA}
           timestampFormat="24-hour"
         />,
@@ -186,7 +183,6 @@ describe("the pause's automatic-resume choice", () => {
             serverPause={null}
             limit={limitAt(at(60))}
             blockedByAnswer={blockedByAnswer}
-            onAutoResumeChange={null}
             onContinue={blockedByAnswer ? null : continued}
             speaker={NOVA}
             timestampFormat="24-hour"
@@ -229,7 +225,6 @@ describe("the pause's automatic-resume choice", () => {
               row={{ ...row, resumedAt }}
               serverPause={null}
               limit={limitAt(resetsAt)}
-              onAutoResumeChange={null}
               onContinue={continued}
               speaker={NOVA}
               timestampFormat="24-hour"
@@ -267,7 +262,6 @@ describe("the pause's automatic-resume choice", () => {
           }}
           serverPause={{ resetsAt, autoResume: false }}
           limit={limitAt(resetsAt)}
-          onAutoResumeChange={null}
           onContinue={continued}
           speaker={NOVA}
           timestampFormat="24-hour"
@@ -302,7 +296,6 @@ describe("the pause's automatic-resume choice", () => {
           }}
           serverPause={{ resetsAt, autoResume: false }}
           limit={limitAt(resetsAt)}
-          onAutoResumeChange={null}
           onContinue={continued}
           triesBeforeReset
           speaker={NOVA}
@@ -334,7 +327,6 @@ describe("the pause's automatic-resume choice", () => {
             }}
             serverPause={serverPause}
             limit={serverPause === null ? { kind: "none" } : limitAt(resetsAt)}
-            onAutoResumeChange={null}
             onContinue={continued}
             speaker={NOVA}
             timestampFormat="24-hour"
@@ -350,49 +342,6 @@ describe("the pause's automatic-resume choice", () => {
     expect(document.querySelector('[data-mate-status="limit"]')).toBeNull();
     expect(document.body.textContent).toContain("Nova hit the Claude limit on");
   });
-
-  it.each([
-    { autoResume: true, next: "off" },
-    { autoResume: false, next: "on" },
-  ])(
-    "the pause shows the thread's automatic-resume choice and lets the person turn it $next",
-    async ({ autoResume }) => {
-      const changed = vi.fn<(enabled: boolean) => void>();
-      const resetsAt = new Date(NOW_MS + 3_600_000).toISOString();
-      const show = (choice: boolean) =>
-        act(() => {
-          root!.render(
-            <PauseBlock
-              nowMs={NOW_MS}
-              onAutoResumeChange={changed}
-              row={{
-                kind: "pause",
-                id: "pause:choice",
-                createdAt: at(600),
-                resetsAt,
-                resumedAt: null,
-                held: 0,
-              }}
-              serverPause={{ resetsAt, autoResume: choice }}
-              limit={limitAt(resetsAt)}
-              speaker={NOVA}
-              timestampFormat="24-hour"
-            />,
-          );
-        });
-
-      await show(autoResume);
-      const toggle = document.querySelector<HTMLButtonElement>('[role="switch"]');
-      if (toggle === null) throw new Error("The pause has no automatic-resume choice.");
-      expect(toggle.getAttribute("aria-checked")).toBe(String(autoResume));
-      expect(toggle.closest("label")?.textContent).toContain("Continue automatically");
-
-      await act(() => toggle.click());
-      expect(changed).toHaveBeenCalledWith(!autoResume);
-      await show(!autoResume);
-      expect(toggle.getAttribute("aria-checked")).toBe(String(!autoResume));
-    },
-  );
 });
 
 describe("a slash command's line", () => {

@@ -427,7 +427,6 @@ interface MessagesTimelineProps {
   limit?: MateLimit;
   /** The Mate is out of reach: a live card holds and says so (`MateAway`). */
   away?: MateAway | null;
-  onUsageAutoResumeChange?: ((enabled: boolean) => void) | null;
   interruption?: import("@t3tools/contracts").MateInterruption | null;
   onRestartContinue?:
     | ((interruption: import("@t3tools/contracts").MateInterruption) => void)
@@ -493,7 +492,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   usagePause = null,
   limit = NO_MATE_LIMIT,
   away = null,
-  onUsageAutoResumeChange = null,
   interruption = null,
   onRestartContinue = null,
   onUsageContinue = null,
@@ -1672,7 +1670,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             : Math.max(0, pauseViewportHeight - contentInsetEndAdjustment),
       },
       limit,
-      onUsageAutoResumeChange,
       interruption,
       onRestartContinue,
       onUsageContinue,
@@ -1713,7 +1710,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       pauseViewportHeight,
       contentInsetEndAdjustment,
       limit,
-      onUsageAutoResumeChange,
       interruption,
       onRestartContinue,
       onUsageContinue,
@@ -3095,7 +3091,6 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
         stage={row.id === ctx.pauseStage?.id}
         mate={ctx.pauseStage?.mate ?? null}
         nowMs={Date.now()}
-        onAutoResumeChange={row.id === ctx.livePauseId ? ctx.onUsageAutoResumeChange : null}
         onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
         triesBeforeReset={ctx.usageContinueTries === true}
         limit={row.id === ctx.livePauseId ? (ctx.limit ?? NO_MATE_LIMIT) : NO_MATE_LIMIT}
