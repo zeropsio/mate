@@ -133,9 +133,21 @@ function pageInner(html: string, theme: PageTheme): string {
   );
 }
 
-/** What the wrapper lets load: only its own inline script and style, and no frame but `about:srcdoc`. */
-export const WRAPPER_POLICY =
-  "default-src 'none'; frame-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'";
+/**
+ * What the wrapper lets load: its own inline script and style, no frame but `about:srcdoc` — and
+ * what the page carries inline. The page's frame is the wrapper's `about:srcdoc`, which keeps the
+ * wrapper's policy as well as its own: a picture both do not allow never shows (the owner,
+ * 2026-10-13, of a page's screens drawn as broken images: "why are these not loading?").
+ */
+export const WRAPPER_POLICY = [
+  "default-src 'none'",
+  "frame-src 'none'",
+  "script-src 'unsafe-inline'",
+  "style-src 'unsafe-inline'",
+  "img-src data: blob:",
+  "font-src data:",
+  "media-src data: blob:",
+].join("; ");
 
 /**
  * Who the wrapper talks to. On the web, the conversation's frame: the wrapper's parent window. In
