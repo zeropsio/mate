@@ -175,6 +175,8 @@ describe("the scripts the Mate hands a Mac", () => {
       scutil: "echo 'Test Mac'",
       sw_vers: "echo 26.1",
       ssh: "cat > /dev/null",
+      // The fake Mac's own user, whoever runs the test (CI is not uid 501).
+      id: `case "$1" in -u) echo 501;; -un) echo tester;; esac`,
       open: "exit 0",
     });
 
@@ -221,6 +223,8 @@ describe("the scripts the Mate hands a Mac", () => {
       scutil: "echo 'Test Mac'",
       sw_vers: "echo 26.1",
       ssh: "cat > /dev/null",
+      // The fake Mac's own user, whoever runs the test (CI is not uid 501).
+      id: `case "$1" in -u) echo 501;; -un) echo tester;; esac`,
       open: `echo "$@" >> "$HOME/opened"`,
     });
 
