@@ -265,6 +265,7 @@ export async function runEnvironmentCreation(
               projectName: projectName ?? "",
               agents: step.agents,
               ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
+              ...(step.chief === true ? { chief: true } : {}),
             },
             { orgId, unobserved: UNCONFIRMED_WRITE },
           );

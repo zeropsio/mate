@@ -9,10 +9,20 @@ import {
   type MateShapeId,
   type MateTintId,
 } from "@t3tools/shared/brand";
-import { useEffect, useRef, useState, type AnimationEvent, type CSSProperties } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type AnimationEvent,
+  type CSSProperties,
+} from "react";
 import type * as React from "react";
 
 import { cn } from "~/lib/utils";
+
+import { MateMark } from "../../MateMark";
 
 import { trackGaze, type GazeHost } from "./mateFaceGaze.logic";
 import {
@@ -68,6 +78,11 @@ type MateFaceProps = Omit<React.ComponentProps<"span">, "children"> & {
   readonly shape?: MateShapeId | undefined;
   readonly state: MateMarkState;
   readonly size?: MateFaceSize;
+  /**
+   * Drawn as the Mate's own mark, the product's logo: a Chief's face (`chief.ts`).
+   * Absent, the conversation decides (`MateFaceAsMark`).
+   */
+  readonly mark?: boolean | undefined;
   readonly gaze?: MateFaceGaze | undefined;
   /**
    * Whether it greets the changes of pose it watches (`mateFaceArrival`): a face that
@@ -231,7 +246,28 @@ function useMoment(input: {
  * nod with a zzz, and whatever its caller cues. With reduced motion the face stays still. Decorative on its own — the name and the state are always
  * written beside it — so it carries no accessible name.
  */
-function MateFace({
+/** Every face in it is drawn as the mark: a Chief's conversation (prototype). */
+const MateFaceAsMark = createContext(false);
+
+function MateFace({ mark, ...props }: MateFaceProps) {
+  const asMark = useContext(MateFaceAsMark);
+  if (!(mark ?? asMark)) return <MateShapeFace {...props} />;
+  // The organization's Mate wears the product's mark, live, in the face's own box.
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "relative grid shrink-0 place-items-center",
+        SIZE_CLASS[props.size ?? "md"],
+        props.className,
+      )}
+    >
+      <MateMark awake className="h-full w-auto" playful state={props.state} />
+    </span>
+  );
+}
+
+function MateShapeFace({
   className,
   size = "md",
   state,
@@ -402,6 +438,6 @@ function MateFace({
   );
 }
 
-export { MateFace };
+export { MateFace, MateFaceAsMark };
 export type { MateFaceCue, MateMoment } from "./mateFaceMoment.logic";
 export type { MateFaceGaze, MateFaceProps, MateFaceSize };

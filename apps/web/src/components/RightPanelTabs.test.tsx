@@ -41,6 +41,7 @@ const ALL_AVAILABLE = {
   crew: "available",
   mcp: "available",
   vault: "available",
+  overview: "hidden",
 } as const;
 
 function renderLauncher(
@@ -107,6 +108,7 @@ describe("RightPanelTabs launcher", () => {
       crew: "hidden",
       mcp: "unavailable",
       vault: "unavailable",
+      overview: "hidden",
     });
     expect(html.match(/Available when a project is open\./gu)).toHaveLength(2);
     expect(html).toContain("Available for Git repositories.");

@@ -154,6 +154,16 @@ describe("runToEnd", () => {
     }
   });
 
+  it("a refusal stops with its owner's own code", async () => {
+    const { run } = setUp(() =>
+      Effect.fail({ outcome: "definitive-refusal", message: "Decided already.", code: "conflict" }),
+    );
+    await expect(run(CREATE, { orgId: ORG, unobserved: "" })).rejects.toMatchObject({
+      message: "Decided already.",
+      code: "conflict",
+    });
+  });
+
   it("an uncertain stop is the client's own uncertain failure", async () => {
     const { run } = setUp(() =>
       Effect.fail({ outcome: "uncertain-acceptance", message: "It may have landed." }),

@@ -21,6 +21,7 @@ import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
 import { enableZeropsMate } from "./enableZeropsMate.ts";
 import { hardenProject } from "./hardenProject.ts";
 import { HQ_BIRTH_KINDS } from "./hqBirth.ts";
+import { HQ_CHIEF_KINDS } from "./hqChief.ts";
 import { hqUpdate } from "./hqUpdate.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { importContainer } from "./importContainer.ts";
@@ -36,6 +37,7 @@ import { renameProject } from "./renameProject.ts";
 import { serviceRestart } from "./serviceRestart.ts";
 import { startProject } from "./startProject.ts";
 import { startService } from "./startService.ts";
+import { stopService } from "./stopService.ts";
 import { throwawaySweep } from "./throwawaySweep.ts";
 import { updateProjectTags } from "./updateProjectTags.ts";
 import { vaultWrite } from "./vaultWrite.ts";
@@ -67,6 +69,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   deleteProject,
   enableSubdomainAccess,
   startService,
+  stopService,
   startProject,
   enableZeropsMate,
   renameProject,
@@ -83,6 +86,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   hqUpdate,
   ...HQ_WRITE_KINDS,
   ...HQ_BIRTH_KINDS,
+  ...HQ_CHIEF_KINDS,
   changeComment,
   renameApp,
   deleteApp,

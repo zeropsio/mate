@@ -481,6 +481,32 @@ export async function visibleInMenu(page: Page, surface: string, name: string, t
   }
 }
 
+/**
+ * Opens the menu's account control: the one on top, as the closed menu's rail keeps its own
+ * under the open menu, where a click lands on the menu instead.
+ */
+export async function openAccountMenu(page: Page) {
+  // Its centre, clicked there: the control may draw anew between finding and clicking it.
+  const centre = await page.waitForFunction(
+    () => {
+      for (const button of document.querySelectorAll<HTMLElement>(
+        '[data-zerops-surface="sidebar-account"]',
+      )) {
+        const box = button.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) continue;
+        const x = box.x + box.width / 2;
+        const y = box.y + box.height / 2;
+        const top = document.elementFromPoint(x, y);
+        if (top !== null && button.contains(top)) return { x, y };
+      }
+      return null;
+    },
+    { timeout: 15_000 },
+  );
+  const { x, y } = (await centre.jsonValue()) as { readonly x: number; readonly y: number };
+  await page.mouse.click(x, y);
+}
+
 export async function clickText(page: Page, surface: string, text: string) {
   const parts = text.split('"').map((part) => `"${part}"`);
   const literal = parts.length === 1 ? parts[0] : `concat(${parts.join(`, '"', `)})`;

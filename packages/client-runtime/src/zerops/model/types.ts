@@ -10,6 +10,7 @@ import type { CallResultPage, ImageOccurrence } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { StandUpProgress } from "../activity/standupProgress.ts";
+import type { ZeropsProposal } from "./proposal.ts";
 
 /**
  * `inProgress` is the only non-terminal value. `interrupted` is the client
@@ -86,6 +87,7 @@ export type ZeropsOperationKind =
   | "process"
   | "discover"
   | "standup"
+  | "proposal"
   | "error";
 
 /**
@@ -386,6 +388,8 @@ export interface ZeropsOperation {
   readonly readResult?: ZeropsReadResult;
   /** `env` only. */
   readonly envChange?: ZeropsEnvChange;
+  /** `proposal` only: what an organization tool asks the person to approve. */
+  readonly proposal?: ZeropsProposal;
   /** bootstrap only. */
   readonly session?: {
     readonly sessionIds: ReadonlyArray<string>;

@@ -33,6 +33,17 @@ export function startServiceExecutor(platform: {
     );
 }
 
+export function stopServiceExecutor(platform: {
+  readonly stopService: (serviceId: string) => Promise<{ readonly processId: string | undefined }>;
+}) {
+  return (requestId: string, intent: IntentOf<"stop-service">) =>
+    Effect.map(
+      verb(() => platform.stopService(intent.serviceId)),
+      ({ processId }) =>
+        processReceipt(requestId, { family: "service", id: intent.serviceId }, processId),
+    );
+}
+
 /** The operation's receipt for the process a write answered with; with none, the answer ends it. */
 export const processReceipt = (
   requestId: string,

@@ -31,6 +31,7 @@ import { Sessions } from "../../src/sessions.ts";
 import { Official } from "../../src/official.ts";
 import { Backup, directoryStore } from "../../src/backup.ts";
 import { Changes } from "../../src/changes.ts";
+import { ChiefUpstream, makeChiefUpstreamHttp } from "../../src/chiefProxy.ts";
 import { coreApp } from "../../src/core.ts";
 import { OperationObserver, makeOperationWatch } from "../../src/operationWatch.ts";
 import { makeOperationWire } from "../../src/operationWire.ts";
@@ -196,6 +197,11 @@ export const startCore = (
     readonly officialRecheck?: Duration.Duration;
     /** `HQ_KEY_SECRET`; the test key by default, none with null. */
     readonly keySecret?: string | null;
+    /**
+     * The REST API the Chief's proxy forwards to (`chiefProxy.ts`); the HTTP fake's when it is
+     * given, else an address nothing answers on.
+     */
+    readonly chiefUpstream?: string;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -264,6 +270,14 @@ export const startCore = (
           ),
         ),
         Layer.provide(platform),
+        Layer.provide(
+          Layer.effect(
+            ChiefUpstream,
+            makeChiefUpstreamHttp(
+              given.chiefUpstream ?? given.zeropsHttp?.baseUrl ?? "http://127.0.0.1:9",
+            ),
+          ).pipe(Layer.provide(NodeHttpClient.layerNodeHttp)),
+        ),
         Layer.provideMerge(
           NodeHttpServer.layer(() => given.httpServer ?? NodeHttp.createServer(), { port: 0 }),
         ),

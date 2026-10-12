@@ -6,6 +6,8 @@ import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidate
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
+import { isChief } from "./chief";
+import { othersChiefsAtom } from "./ownChief";
 import { heldCandidateRowsAtom } from "./useZeropsCandidates";
 import {
   readMateMemory,
@@ -41,8 +43,10 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   const memory = readMateMemory();
   const remembered = rememberMates(memory, named, listRead);
   if (remembered !== memory) writeMateMemory(remembered);
+  // Another person's Chief is named nowhere (`ownChief.ts`).
+  const othersChiefs = get(othersChiefsAtom);
   for (const mate of seededIdentities(named, remembered, listRead)) {
-    if (mate.environmentId !== undefined) {
+    if (mate.environmentId !== undefined && !othersChiefs.has(mate.projectId)) {
       const bodiesHere = bodies.get(mate.projectId) ?? [];
       const body =
         bodiesHere.find((row) => row.environmentId === mate.environmentId) ??
@@ -55,6 +59,7 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
               serviceId: body.service?.id,
               running: candidateContainerRuns(body),
               arrivingUntil: mateArrivingUntil(body),
+              ...(isChief(body.project) ? { chief: true } : {}),
             }),
         connected: environments.some(
           (environment) =>

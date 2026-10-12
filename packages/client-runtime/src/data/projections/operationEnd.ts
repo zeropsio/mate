@@ -75,6 +75,8 @@ export interface OperationStop {
   readonly reason: string | null;
   /** It may have landed: asked again, it could be done twice. */
   readonly uncertain: boolean;
+  /** The owner's own code for a refusal (`conflict`), where it named one. */
+  readonly code?: string;
 }
 
 /**
@@ -92,7 +94,11 @@ export function operationStop(
         ? null
         : { reason: end.reason ?? `Zerops reported it ${end.outcome}.`, uncertain: false };
     case "refused":
-      return { reason: end.reason, uncertain: false };
+      return {
+        reason: end.reason,
+        uncertain: false,
+        ...(end.code === undefined ? {} : { code: end.code }),
+      };
     case "unsent":
       return { reason: said, uncertain: false };
     case "unresolved":

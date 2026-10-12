@@ -296,6 +296,12 @@ describe("the menu draws it from the press", () => {
       placed: [],
     },
     {
+      case: "the person's Chief is drawn in no group: the top row shows it coming up",
+      births: [birth({ chief: true })],
+      organizationId: "org-acme",
+      placed: [],
+    },
+    {
       case: "one the platform took is its birth's to draw",
       births: [birth({ step: "created", projectId: "p-vera" })],
       organizationId: "org-acme",

@@ -108,6 +108,7 @@ export function creationWritesExecutor(
               ...(write.setupRuntimesYaml === undefined
                 ? {}
                 : { setupRuntimesYaml: write.setupRuntimesYaml }),
+              ...(write.chief === true ? { chief: true } : {}),
             }),
           ),
           ({ serviceName, imported, processId }) =>

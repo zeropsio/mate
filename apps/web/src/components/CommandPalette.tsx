@@ -170,6 +170,7 @@ import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { useHqGate } from "../zerops/hqGate";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import { candidateListingAtom } from "../zerops/useZeropsCandidates";
+import { useOthersChiefs } from "../zerops/ownChief";
 import { slashKeyOpensJumpBox } from "../zerops/jumpSlash";
 import {
   primaryServerKeybindingsAtom,
@@ -435,6 +436,15 @@ function overlayModeForCommand(command: string | null): SearchOverlayMode | null
   return command in OVERLAY_MODE_BY_COMMAND
     ? OVERLAY_MODE_BY_COMMAND[command as keyof typeof OVERLAY_MODE_BY_COMMAND]
     : null;
+}
+
+/** HQ's Mates but for other people's Chiefs, which the jump box finds nowhere. */
+function withoutOthersChiefs<T>(
+  mates: ReadonlyMap<string, T> | null,
+  othersChiefs: ReadonlySet<string>,
+): ReadonlyMap<string, T> | null {
+  if (mates === null || !(othersChiefs.size > 0)) return mates;
+  return new Map([...mates].filter(([projectId]) => !othersChiefs.has(projectId)));
 }
 
 export function CommandPalette({ children }: { children: ReactNode }) {
@@ -1230,6 +1240,8 @@ export function OpenCommandPaletteDialog(props: {
   );
 
   const hqMates = useAtomValue(hqMatesAtom);
+  // Another person's Chief is found nowhere, its chats neither (`ownChief.ts`).
+  const othersChiefs = useOthersChiefs();
   const candidateListing = useAtomValue(candidateListingAtom);
   const hqStructure = useAtomValue(hqNavigationAtom);
   const mateNames = useMemo(
@@ -1249,7 +1261,7 @@ export function OpenCommandPaletteDialog(props: {
         .map((environment) => environment.environmentId),
     );
     return {
-      mates: hqMates?.mates ?? null,
+      mates: withoutOthersChiefs(hqMates?.mates ?? null, othersChiefs),
       current: hqMates?.current === true,
       connected: (environmentId) => connected.has(environmentId),
       linkable,
@@ -1259,7 +1271,7 @@ export function OpenCommandPaletteDialog(props: {
       mateApp: (projectId) => mateApps.get(projectId),
       renderStatus: (status) => <ThreadRowResolvedStatus status={status} />,
     };
-  }, [environments, hqMates, mateNames, mateApps, linkable, threadLastVisitedAtById]);
+  }, [environments, hqMates, othersChiefs, mateNames, mateApps, linkable, threadLastVisitedAtById]);
   const allThreadItems = useMemo(
     () =>
       buildThreadActionItems({

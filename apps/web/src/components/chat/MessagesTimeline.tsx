@@ -228,6 +228,8 @@ import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity, CrewTaskCard, CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
+import { ProposalCardContainer } from "../zerops/proposal/ProposalCardContainer";
+import { useProposalDecisionsRead } from "../../zerops/proposalRecord";
 import { VaultRequestCardContainer } from "../zerops/vault/VaultRequestCardContainer";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
@@ -721,6 +723,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const held = new Set(rowsHeldKey.split("\n"));
     return stableRows.filter((row) => !held.has(row.id));
   }, [stableRows, rowsHeldKey]);
+  // What was decided of every proposal in the conversation, read from HQ in one call.
+  const proposalIds = useMemo(
+    () =>
+      stableRows.flatMap((row) =>
+        row.kind === "proposal" && row.operation.proposal !== undefined
+          ? [row.operation.proposal.id]
+          : [],
+      ),
+    [stableRows],
+  );
+  useProposalDecisionsRead(proposalIds);
   // A crewmate's conversation (`CrewTimelineContext`, given for a crew thread
   // only) is empty while it holds nothing but seams.
   const crew = use(CrewTimelineContext);
@@ -2710,6 +2723,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "outcome" ? <OutcomeTimelineRow row={row} /> : null}
       {row.kind === "page" ? <PageTimelineRow row={row} /> : null}
       {row.kind === "vault-request" ? <VaultRequestTimelineRow row={row} /> : null}
+      {row.kind === "proposal" ? <ProposalTimelineRow row={row} /> : null}
       {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
       {row.kind === "crew-seam" ? <CrewSeamActivity seam={row.seam} words={row.words} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
@@ -3827,6 +3841,23 @@ const VaultRequestTimelineRow = memo(function VaultRequestTimelineRow({
         environmentId={ctx.activeThreadEnvironmentId}
         operation={row.operation}
         threadRef={ctx.threadRef}
+      />
+    </div>
+  );
+});
+
+/** What the organization's Mate proposes, after its run: the card the person decides it on. */
+const ProposalTimelineRow = memo(function ProposalTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "proposal" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <div className="min-w-0 px-1 py-0.5">
+      <ProposalCardContainer
+        environmentId={ctx.activeThreadEnvironmentId}
+        operation={row.operation}
       />
     </div>
   );

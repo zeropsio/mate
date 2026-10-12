@@ -8,6 +8,7 @@ import { useCallback } from "react";
 import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
+import { CHIEF_TAG } from "./chief";
 import { runOnce } from "./creations";
 import { beginPress, finishMateSetup, PRESS_MAY_HAVE_LANDED, whilePressing } from "./matePress";
 import { newProjectPlacement, runNewProjectBirth, type CreationAsk } from "./newProjectBirth";
@@ -50,7 +51,10 @@ export function useRunNewProject(): (held: CreationAsk) => void {
                     kind: "create-project",
                     orgId: organizationId,
                     name: projectName,
-                    tagList: withZeropsMateTag([]),
+                    tagList:
+                      ask.chief === true
+                        ? [...withZeropsMateTag([]), CHIEF_TAG]
+                        : withZeropsMateTag([]),
                     ...(location === undefined ? {} : { location }),
                   },
                   {
@@ -96,7 +100,8 @@ export function useRunNewProject(): (held: CreationAsk) => void {
               organizationId,
               startedAt,
               container: true,
-              placement: newProjectPlacement({ ...ask, appId }),
+              // A Chief is drawn in no group: the menu's top row shows it coming up.
+              placement: ask.chief === true ? null : newProjectPlacement({ ...ask, appId }),
             });
             invalidateZerops({ topic: "inventory", organization });
             void finishMateSetup({
@@ -105,7 +110,10 @@ export function useRunNewProject(): (held: CreationAsk) => void {
               projectName: appProjectName(name, botName),
               // After its attach: a press that stops before it leaves a Mate HQ holds in its
               // application, which any browser finishes.
-              container: { agents: ask.agents },
+              container: {
+                agents: ask.agents,
+                ...(ask.chief === true ? { chief: true as const } : {}),
+              },
               registration: {
                 hq,
                 groupId: appId,

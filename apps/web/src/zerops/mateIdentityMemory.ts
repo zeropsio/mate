@@ -1,13 +1,15 @@
 /**
- * The Mates' names and faces as the last visit had them, by environment: a reload paints them on
- * its first frame, before HQ answers, and HQ's answer replaces them ("a reload paints nothing it
- * takes back"). With nothing remembered a surface holds its place without a name.
+ * The Mates' names and faces as the last visit had them, by environment, and whose Chief HQ said
+ * the viewer has, by organization: a reload paints them on its first frame, before HQ answers, and
+ * HQ's answer replaces them ("a reload paints nothing it takes back"). With nothing remembered a
+ * surface holds its place without a name.
  */
 import type { HqMateIdentity } from "@t3tools/client-runtime/data";
 import { sameValue } from "../lib/sameValue";
 import { accountLocalStorage } from "./accountLifetime";
 
 const KEY = "mate:identities:v1";
+const CHIEF_KEY = "mate:chief:v1";
 
 /** What a Mate's name and face need, by its environment. */
 export type MateMemory = Readonly<Record<string, HqMateIdentity>>;
@@ -93,4 +95,37 @@ export function seededIdentities(
       named.has(environmentId) ? [] : [{ ...identity, environmentId } as HqMateIdentity],
     ),
   ];
+}
+
+/** Whose Chief the last visit had HQ name in `orgId`: its project, none, or undefined if unknown. */
+export function readChiefMemory(
+  orgId: string,
+  storage: Pick<Storage, "getItem"> | undefined = accountStorage(),
+): string | null | undefined {
+  try {
+    const raw = storage?.getItem(CHIEF_KEY);
+    if (raw == null) return undefined;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || !Object.hasOwn(parsed, orgId))
+      return undefined;
+    const chief = (parsed as Record<string, unknown>)[orgId];
+    return chief === null || typeof chief === "string" ? chief : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function writeChiefMemory(
+  orgId: string,
+  chief: string | null,
+  storage: Pick<Storage, "getItem" | "setItem"> | undefined = accountStorage(),
+): void {
+  try {
+    const raw = storage?.getItem(CHIEF_KEY);
+    const parsed: unknown = raw == null ? {} : JSON.parse(raw);
+    const held = typeof parsed === "object" && parsed !== null ? parsed : {};
+    storage?.setItem(CHIEF_KEY, JSON.stringify({ ...held, [orgId]: chief }));
+  } catch {
+    /* A storage policy can make this visit forget. */
+  }
 }

@@ -11,6 +11,7 @@ import { useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { ChevronDownIcon } from "lucide-react";
 import {
+  useContext,
   useLayoutEffect,
   useMemo,
   useState,
@@ -41,7 +42,7 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CrewmateMenu } from "../zerops/crew/CrewmateMenu";
 import { crewFaces } from "../zerops/crew/SidebarCrewLine.logic";
-import { MateFace } from "../zerops/primitives";
+import { MateFace, MateFaceAsMark } from "../zerops/primitives";
 import {
   alsoWorkingLine,
   crewmateAccessibleName,
@@ -225,6 +226,8 @@ function MatePill({
   const [subjectRef, cut] = useCut();
   const { subject, hover } = mateWords(mate, { crew, cut });
   const arrived = useArrival(subject !== null);
+  // The header's face is carried to the opening stage, outside the header: it takes its mark along.
+  const asMark = useContext(MateFaceAsMark);
   // Its row's face, playing what the row's plays: each Mate's line is drawn anew (its `key`), so
   // the face greets only what changes while it is on screen, and only once it is read.
   const face = useMemo(
@@ -234,6 +237,7 @@ function MatePill({
         cues={mate.cues}
         greets
         known={mate.known ?? false}
+        mark={asMark}
         restarting={mate.restarting}
         shape={mate.shape}
         size="sm"
@@ -241,7 +245,7 @@ function MatePill({
         tint={mate.tint}
       />
     ),
-    [mate.cues, mate.known, mate.restarting, mate.shape, mate.face, mate.tint],
+    [asMark, mate.cues, mate.known, mate.restarting, mate.shape, mate.face, mate.tint],
   );
   const name = (
     <span className="max-w-48 shrink-0 truncate text-base leading-6 font-semibold text-foreground">

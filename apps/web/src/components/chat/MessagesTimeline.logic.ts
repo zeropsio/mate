@@ -757,6 +757,16 @@ type MessagesTimelineRowBody =
       operation: ZeropsOperation;
     }
   | {
+      /**
+       * What the organization's Mate proposes (`zerops_org_*`): the person approves or declines
+       * it, so it stands after the run and its answer, never folded away with the work.
+       */
+      kind: "proposal";
+      id: string;
+      createdAt: string;
+      operation: ZeropsOperation;
+    }
+  | {
       /** A quiet line where a day begins, or where the conversation went quiet for a while. */
       kind: "seam";
       id: string;
@@ -3241,13 +3251,21 @@ export function deriveMessagesTimelineRows(input: {
     }
     // What it asked the person for follows its words: the person answers it there.
     for (const item of items) {
-      if (item.kind !== "operation" || vaultAskOf(item.operation) === null) continue;
-      rows.push({
-        kind: "vault-request",
-        id: `vault-request:${item.operation.key}`,
-        createdAt: item.operation.anchorAt,
-        operation: item.operation,
-      });
+      if (item.kind !== "operation") continue;
+      if (vaultAskOf(item.operation) !== null)
+        rows.push({
+          kind: "vault-request",
+          id: `vault-request:${item.operation.key}`,
+          createdAt: item.operation.anchorAt,
+          operation: item.operation,
+        });
+      else if (item.operation.proposal !== undefined)
+        rows.push({
+          kind: "proposal",
+          id: `proposal:${item.operation.key}`,
+          createdAt: item.operation.anchorAt,
+          operation: item.operation,
+        });
     }
     lastEnd = last.endedAt ?? last.startedAt;
   };

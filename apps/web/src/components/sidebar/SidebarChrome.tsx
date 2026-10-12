@@ -44,8 +44,11 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
   status,
   actions,
+  brand,
 }: {
   isElectron: boolean;
+  /** What stands in the mark's place: the Chief's row where the organization has one. */
+  brand?: ReactNode;
   /**
    * How current the menu is, while it is not (`SidebarHqStatus`): between the mark and the
    * squares, so saying it moves neither.
@@ -69,10 +72,13 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
       )}
     >
       <SidebarTrigger className="md:hidden" />
-      <SidebarBrand />
+      {brand ?? <SidebarBrand />}
       {status === undefined && actions === undefined ? null : (
         <div
-          className="flex min-w-0 flex-1 items-center justify-end gap-1 md:ps-3 md:pe-4"
+          className={cn(
+            "flex min-w-0 items-center justify-end gap-1 md:pe-4",
+            brand === undefined ? "flex-1 md:ps-3" : "shrink-0 md:ps-1",
+          )}
           data-zerops-surface="sidebar-top-actions"
         >
           {status}

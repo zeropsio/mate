@@ -290,7 +290,7 @@
         },
         {
           "action": "Select a service, node, or run a query",
-          "reverse": "none: browsing is read-only in this slice \u2014 there is nothing to undo, only a different selection to make."
+          "reverse": "none: browsing is read-only in this slice — there is nothing to undo, only a different selection to make."
         }
       ],
       "docs": {
@@ -510,7 +510,7 @@
       "entryPoints": [
         {
           "kind": "overlay",
-          "value": "Review \u2014 every door to a change, the next release, a roll back or a crew task"
+          "value": "Review — every door to a change, the next release, a roll back or a crew task"
         }
       ],
       "clients": {
@@ -857,7 +857,9 @@
         "packages/client-runtime/src/zerops/model/operations.ts",
         "packages/client-runtime/src/zerops/model/classify.ts",
         "packages/client-runtime/src/zerops/operations/phrases.ts",
-        "apps/web/src/zerops/activity/useOperationCard.ts"
+        "apps/web/src/zerops/activity/useOperationCard.ts",
+        "apps/web/src/components/zerops/proposal/ProposalCard.tsx",
+        "apps/web/src/components/zerops/proposal/ProposalCardContainer.tsx"
       ],
       "entryPoints": [
         {
@@ -1155,7 +1157,10 @@
         "packages/client-runtime/src/zerops/projectFlow.ts",
         "apps/web/src/zerops/useMenuRows.tsx",
         "apps/web/src/zerops/hqNavigation.tsx",
-        "apps/web/src/components/zerops/ZeropsReadFailure.tsx"
+        "apps/web/src/components/zerops/ZeropsReadFailure.tsx",
+        "apps/web/src/components/zerops/chief/ChiefSetupDialog.tsx",
+        "apps/web/src/components/zerops/chief/ChiefSetupHost.tsx",
+        "apps/web/src/components/zerops/chief/SidebarChiefSetupLine.tsx"
       ],
       "entryPoints": [
         {
@@ -1731,10 +1736,10 @@
         },
         {
           "action": "Stop",
-          "reverse": "Keep going\u2026"
+          "reverse": "Keep going…"
         },
         {
-          "action": "Keep going\u2026",
+          "action": "Keep going…",
           "reverse": "Stop"
         },
         {
@@ -1797,7 +1802,7 @@
         },
         {
           "kind": "inline",
-          "value": "Crew tab: the crew's \u00b7\u00b7\u00b7 Change the goal and Add a crewmate, a row's \u00b7\u00b7\u00b7 Change its job"
+          "value": "Crew tab: the crew's ··· Change the goal and Add a crewmate, a row's ··· Change its job"
         },
         {
           "kind": "inline",
@@ -1805,7 +1810,7 @@
         },
         {
           "kind": "overlay",
-          "value": "Crew tab: Let it work on its own\u2026, Keep going\u2026, and a plan's Start or Change while the crew doesn't work on its own"
+          "value": "Crew tab: Let it work on its own…, Keep going…, and a plan's Start or Change while the crew doesn't work on its own"
         }
       ],
       "clients": {

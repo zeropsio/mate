@@ -4,12 +4,17 @@
  * row, hidden from the timeline entirely, or — while still `inProgress` with
  * no arguments yet — not renderable at all (§2.3 R4).
  *
+ * A Zerops tool is a card once its result holds a proposal (`proposal.ts`); an
+ * organization tool's read (`zerops_org_*`), and a proposal not yet returned,
+ * are the plain row any call is.
+ *
  * `toolName` is already normalized (no `mcp__<server>__` prefix) — see
  * `ZeropsCall`. Evaluated once, on the merged call, never per row (R4): a
  * `zerops_workflow` whose completed row has `action=complete` cannot be
  * classified `generic` from a `{}` started row and end up as a work row
  * beside its own card.
  */
+import { ORG_TOOL_PREFIX, readZeropsProposal } from "./proposal.ts";
 import type { ZeropsCallStatus } from "./types.ts";
 
 export type ZeropsCallClass = "hidden" | "generic" | "card" | "pending-unclassifiable";
@@ -124,12 +129,19 @@ export function classifyZeropsCall(
   toolName: string,
   input: Record<string, unknown> | undefined,
   status: ZeropsCallStatus,
+  resultText?: string,
 ): ZeropsCallClass {
   if (!toolName.startsWith("zerops_")) {
     return TIMELINE_HIDDEN_TOOL_NAMES.has(toolName) ? "hidden" : "generic";
   }
   if (status === "failed") {
     return "card";
+  }
+  if (readZeropsProposal(toolName, resultText) !== undefined) {
+    return "card";
+  }
+  if (toolName.startsWith(ORG_TOOL_PREFIX)) {
+    return "generic";
   }
   if (
     PENDING_UNCLASSIFIABLE_TOOLS.has(toolName) &&

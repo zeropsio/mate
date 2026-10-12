@@ -148,6 +148,7 @@ describe("right panel kinds", () => {
         crew: "available",
         mcp: "available",
         vault: "available",
+        overview: "hidden",
       },
     },
     {
@@ -173,6 +174,7 @@ describe("right panel kinds", () => {
         crew: "hidden",
         mcp: "available",
         vault: "unavailable",
+        overview: "hidden",
       },
     },
     {
@@ -192,6 +194,7 @@ describe("right panel kinds", () => {
         crew: "hidden",
         mcp: "available",
         vault: "unknown",
+        overview: "hidden",
       },
     },
     {
@@ -211,6 +214,7 @@ describe("right panel kinds", () => {
         crew: "available",
         mcp: "available",
         vault: "available",
+        overview: "hidden",
       },
     },
   ] as const;

@@ -60,6 +60,8 @@ export type RightPanelSurface =
   | { id: "mcp"; kind: "mcp" }
   /** The Zerops project's variables: Shared and each service's, who reads them, what is not live. */
   | { id: "vault"; kind: "vault" }
+  /** The organization's project cards, in a Chief's conversation. */
+  | { id: "overview"; kind: "overview" }
   /**
    * One change, drawn where the reader already is.
    *
@@ -173,6 +175,8 @@ const singletonSurface = (
       return { id: "mcp", kind };
     case "vault":
       return { id: "vault", kind };
+    case "overview":
+      return { id: "overview", kind };
   }
 };
 

@@ -6,6 +6,9 @@
  *   L7 balancer's `X-Real-IP`. A Mate's and git's doors take ten at once, ten a minute. A person's
  *   door takes 120 at once, then one a second: a whole office behind one NAT is one address
  *   (t12, 2026-10-03: our agents and Karel, from one address, were answered 429 at ten a minute).
+ * - Per Chief credential at its proxy (`chief.ts`): 120 at once, two a second — an agent's look at
+ *   the whole org is a few dozen reads in a burst; a credential missed there takes from its
+ *   address's bucket, as git's misses do.
  * - Per person a person's door names, once the presented throwaway was read and judged on its own
  *   (`door.ts`) and before HQ reads its org: twenty at once, twenty a minute. One person's flood of
  *   throwaways stops at them, never at their colleagues behind the same address.
@@ -30,6 +33,9 @@ export const DOOR_LIMIT: DoorLimit = { capacity: 10, perMinute: 10 };
 export const PERSON_ADDRESS_LIMIT: DoorLimit = { capacity: 120, perMinute: 60 };
 /** A person's door, per person its throwaway names. */
 export const PERSON_LIMIT: DoorLimit = { capacity: 20, perMinute: 20 };
+
+/** A Chief's reads through HQ's proxy, per credential. */
+export const CHIEF_LIMIT: DoorLimit = { capacity: 120, perMinute: 120 };
 
 /** A door's bucket is empty: `429 too_many_requests`. */
 export class TooManyRequests extends Schema.TaggedError<TooManyRequests>()("TooManyRequests", {}) {}

@@ -10,6 +10,7 @@ import { ChangeDetailResponse } from "@t3tools/shared/hqChanges";
 import { MateState } from "@t3tools/shared/mateLink";
 import { expect } from "@effect/vitest";
 import type { ElementHandle } from "puppeteer-core";
+import { openAccountMenu } from "../../harness/browser.ts";
 import type { createScenario } from "../../harness/scenario.ts";
 import { changeFixture as originalChangeFixture } from "../../fakes/d-change/changes.ts";
 export { anotherOrganization } from "../../fakes/d-change/changes.ts";
@@ -148,8 +149,19 @@ export function review(s: Pick<Scenario, "page" | "web">) {
       }),
     switchOrganization: (name: string) =>
       Effect.promise(async () => {
-        await s.page.locator('[data-zerops-surface="sidebar-account"]').click();
-        await s.page.locator(`::-p-aria(${name}[role="menuitemradio"])`).click();
+        await openAccountMenu(s.page);
+        try {
+          await s.page.locator(`::-p-aria(${name}[role="menuitemradio"])`).click();
+        } catch (cause) {
+          const offered = await s.page.evaluate(() =>
+            [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].map(
+              (item) => `${item.getAttribute("role")}: ${item.innerText.trim()}`,
+            ),
+          );
+          throw new Error(`The account menu offered no ${name}: ${offered.join(" | ")}`, {
+            cause,
+          });
+        }
         await s.page.waitForFunction(
           (name) =>
             [

@@ -36,6 +36,16 @@ export type RunToEnd = <Intent extends OperationIntent>(
 
 const uncertain = (message: string) => new ZeropsApiError(message, "uncertain");
 
+/** A step stopped where nothing landed: its words, and its owner's code for a refusal. */
+export class OperationStopped extends Error {
+  readonly code: string | undefined;
+  constructor(message: string, code: string | undefined) {
+    super(message);
+    this.name = "OperationStopped";
+    this.code = code;
+  }
+}
+
 export function runToEnd(input: {
   readonly operations: Operations;
   readonly store: AccountStore;
@@ -68,6 +78,6 @@ export function runToEnd(input: {
     const stop = operationStop(end, store.state().operations.get(requestId));
     if (stop === null) return resultOf(requestId, intent.kind);
     const message = stop.reason ?? unobserved;
-    throw stop.uncertain ? uncertain(message) : new Error(message);
+    throw stop.uncertain ? uncertain(message) : new OperationStopped(message, stop.code);
   };
 }

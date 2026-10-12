@@ -212,6 +212,15 @@ import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, SidebarOverviewRow, useMenuProjects } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
+import { ownChiefAmong } from "~/zerops/chief";
+import {
+  openChiefSetup,
+  resumeChiefSetup,
+  useChiefSetupLine,
+  useChiefUnfinished,
+} from "~/zerops/chiefSetup";
+import { useOwnChief } from "~/zerops/ownChief";
+import { SidebarChiefSetupLine } from "./zerops/chief/SidebarChiefSetupLine";
 import { SidebarRail, useRailMates } from "./zerops/SidebarRail";
 import { SidebarPeekStage } from "./zerops/SidebarPeek";
 import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
@@ -1903,6 +1912,14 @@ export default function Sidebar() {
     },
     [askMateToFix, isMobile, setOpenMobile],
   );
+  // The person's own Chief, where they have one: the menu's top row in the overview's place.
+  const ownChief = useOwnChief();
+  const zeropsChief = useMemo(
+    () => ownChiefAmong(zeropsCandidates, ownChief),
+    [zeropsCandidates, ownChief],
+  );
+  const chiefSetupLine = useChiefSetupLine();
+  const chiefUnfinished = useChiefUnfinished(zeropsChief?.project.id ?? null);
   const onZeropsSelect = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) => {
       if (isMobile) {
@@ -2662,6 +2679,24 @@ export default function Sidebar() {
   return (
     <SidebarPeekStage rail={zeropsRail}>
       <SidebarChromeHeader
+        brand={
+          zeropsSignedIn && zeropsChief !== undefined ? (
+            <div className="menu-top-chief">
+              <SidebarOverviewRow
+                current={litZeropsProjectId === zeropsChief.project.id}
+                headline={zeropsHeadline}
+                chief
+                coming={zeropsComing(zeropsChief)}
+                onOpen={() => onZeropsSelect(zeropsChief)}
+                waiting={
+                  zeropsListHeld
+                    ? undefined
+                    : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
+                }
+              />
+            </div>
+          ) : undefined
+        }
         isElectron={isElectron}
         status={
           zeropsHqOutage === null ? undefined : (
@@ -2925,7 +2960,7 @@ export default function Sidebar() {
         }
       >
         <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
-          {zeropsSignedIn && !isSearchingThreads ? (
+          {zeropsSignedIn && !isSearchingThreads && zeropsChief === undefined ? (
             <div className="mt-2.5 mb-2" data-zerops-surface="sidebar-chrome-rows">
               <SidebarOverviewRow
                 current={zeropsOverviewOpen}
@@ -2937,7 +2972,22 @@ export default function Sidebar() {
                     : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
                 }
               />
+              {chiefSetupLine === null ? null : (
+                <SidebarChiefSetupLine onOpen={openChiefSetup} state={chiefSetupLine} />
+              )}
             </div>
+          ) : null}
+          {zeropsSignedIn &&
+          !isSearchingThreads &&
+          zeropsChief !== undefined &&
+          chiefUnfinished &&
+          zeropsSession.activeOrganization !== null ? (
+            <SidebarChiefSetupLine
+              onOpen={() =>
+                resumeChiefSetup(zeropsSession.activeOrganization!.id, zeropsChief.project.id)
+              }
+              state="unfinished"
+            />
           ) : null}
           {zeropsSignedIn && !isSearchingThreads ? (
             <SidebarZeropsTree

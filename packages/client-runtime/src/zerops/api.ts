@@ -415,6 +415,12 @@ export interface ZeropsServiceEnvVar {
 const ZEROPS_MATE_ENV_KEY = "ZCP_MATE_ENABLED";
 
 /**
+ * The only tags a project is born with: the Mate marker, and a Chief's (`apps/web/src/zerops/
+ * chief.ts`). Its application's place is HQ's, never a tag.
+ */
+const BORN_TAGS: ReadonlyArray<string> = ["mate", "chief"];
+
+/**
  * zcp's own reading of that flag: `1` or `true`, case-insensitive, surrounding
  * space tolerated. Deliberately forgiving, because it is a value a person
  * types into a service's env in the Zerops GUI, where a silently ignored
@@ -1694,7 +1700,7 @@ export class ZeropsApiClient {
           buildCreateProjectBody({
             clientId: input.clientId,
             name: input.name,
-            tagList: input.tagList.includes("mate") ? ["mate"] : [],
+            tagList: BORN_TAGS.filter((tag) => input.tagList.includes(tag)),
             ...(input.location ? { location: input.location } : {}),
           }),
         ),
@@ -1770,6 +1776,8 @@ export class ZeropsApiClient {
       readonly agents?: ReadonlyArray<ZeropsAgentType>;
       /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */
       readonly setupRuntimesYaml?: string;
+      /** A Chief's container: its zcp serves the organization `clientId` names. */
+      readonly chief?: boolean;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
@@ -1879,6 +1887,7 @@ export class ZeropsApiClient {
               ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
               ...(input.agents ? { agents: input.agents } : {}),
               ...(input.setupRuntimesYaml ? { setupRuntimesYaml: input.setupRuntimesYaml } : {}),
+              ...(input.chief === true ? { chiefOf: input.clientId } : {}),
             }),
           }),
         ),

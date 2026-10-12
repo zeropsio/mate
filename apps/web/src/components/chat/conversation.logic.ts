@@ -1644,6 +1644,8 @@ export function operationUnreturnedWords(operation: ZeropsOperation): string {
       return `Set up ${subject}`;
     case "standup":
       return `Stand ${subject} up`;
+    case "proposal":
+      return `Propose: ${subject}`;
     case "error":
       return operation.voice.replace(/\.$/, "");
   }
@@ -1738,6 +1740,9 @@ export function operationLineWords(operation: ZeropsOperation): string {
       return statusWord === "Running" || statusWord === "Not running"
         ? `Dev server ${statusWord.toLowerCase()} on ${subject}`
         : `Dev server on ${subject}`;
+    // Nothing ran: the person decides on its card under the run.
+    case "proposal":
+      return `Proposed: ${subject}`;
     default:
       return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${statusWord} ${subject}`;
   }

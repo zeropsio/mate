@@ -1235,7 +1235,8 @@ function walkProtectedRoot(
                   : targetPath;
               })()
             : undefined;
-      if (unresolved === undefined) {
+      // A stylesheet or another asset is no module: nothing in it renders or reads.
+      if (unresolved === undefined || /\.(css|svg|png|jpe?g|webp|woff2?)$/u.test(unresolved)) {
         return undefined;
       }
 

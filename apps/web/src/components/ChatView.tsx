@@ -218,6 +218,7 @@ import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
+import { MateFaceAsMark } from "./zerops/primitives";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
@@ -612,6 +613,9 @@ const ZeropsChangeDetailPage = lazy(() =>
 );
 const CrewPanel = lazy(() =>
   import("./zerops/crew/CrewPanel").then((module) => ({ default: module.CrewPanel })),
+);
+const ZeropsProjectsPage = lazy(() =>
+  import("./zerops/ZeropsProjectsPage").then((module) => ({ default: module.ZeropsProjectsPage })),
 );
 const McpPanel = lazy(() =>
   import("./mcp/McpPanel").then((module) => ({ default: module.McpPanel })),
@@ -1387,6 +1391,16 @@ function releaseChatTimelineAnchor<T extends { readonly messageId: MessageId | n
 }
 
 export default function ChatView(props: ChatViewProps) {
+  // A Chief's conversation draws its Mate as the product's own mark (`chief.ts`).
+  const mate = useZeropsMate(props.environmentId);
+  return (
+    <MateFaceAsMark.Provider value={mate.kind === "mate" && mate.mate.chief === true}>
+      <ConversationView {...props} />
+    </MateFaceAsMark.Provider>
+  );
+}
+
+function ConversationView(props: ChatViewProps) {
   const {
     environmentId,
     threadId,
@@ -3965,6 +3979,10 @@ export default function ChatView(props: ChatViewProps) {
   const addVaultSurface = useCallback(() => {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "vault");
+  }, [activeThreadRef]);
+  const addOverviewSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "overview");
   }, [activeThreadRef]);
   const openDataSurface = useCallback(
     (service: string) => {
@@ -7955,6 +7973,9 @@ export default function ChatView(props: ChatViewProps) {
       case "vault":
         addVaultSurface();
         return;
+      case "overview":
+        addOverviewSurface();
+        return;
     }
     kind satisfies never;
   };
@@ -8079,6 +8100,16 @@ export default function ChatView(props: ChatViewProps) {
                   environmentId={activeThreadRef.environmentId}
                   key={activeThreadRef.environmentId}
                 />
+              );
+            case "overview":
+              // The organization's cards, the overview page itself, in the Chief's panel.
+              return (
+                <div className="h-full min-h-0 overflow-y-auto">
+                  {/* Its cards' Mates wear their own faces, not the Chief's mark. */}
+                  <MateFaceAsMark.Provider value={false}>
+                    <ZeropsProjectsPage />
+                  </MateFaceAsMark.Provider>
+                </div>
               );
             case "change":
               return (

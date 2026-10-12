@@ -639,6 +639,8 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
           addService: unused,
           mergeChange: unused,
           closeChange: unused,
+          setChief: unused,
+          decideProposal: unused,
         }),
       }),
     },

@@ -28,6 +28,7 @@ const ALL_AVAILABLE = {
   crew: "available",
   mcp: "available",
   vault: "available",
+  overview: "hidden",
 } as const;
 
 const FILES_TAB: RightPanelSurface = { id: "files", kind: "files" };

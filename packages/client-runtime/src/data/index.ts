@@ -119,6 +119,10 @@ export type {
   VaultWrite,
 } from "./projections/vaultModel.ts";
 export { isMateOwned, vault, type VaultKey } from "./projections/vault.ts";
+export {
+  serviceVariableIds,
+  type ServiceVariableIdsKey,
+} from "./projections/serviceVariableIds.ts";
 export { vaultChangesSince, vaultImpact, vaultNote } from "./projections/vaultChanges.ts";
 export { agentContext, fitContextLine } from "./projections/agentContext.ts";
 export {
@@ -176,7 +180,9 @@ export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { type FlowWriteIntent } from "./operations/flowWrites.ts";
 export { flowAnswer, type FlowWriteAnswer } from "./projections/flowAnswer.ts";
 export { restartWay } from "./operations/mateRestart.ts";
-export { runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
+export { OperationStopped, runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
+export { PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
+export { readProposalDecisions } from "./adapters/hqProposalDecisions.ts";
 export {
   recordedEnvironment,
   type RecordedEnvironment,

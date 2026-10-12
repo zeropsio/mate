@@ -2214,6 +2214,17 @@ describe("AL-08 / AL-12 inventory completeness and uncertain operations", () => 
       kind: "unexpected",
     });
   });
+  it.each<[string, ReadonlyArray<string>, ReadonlyArray<string>]>([
+    ["a Mate's project is born with the Mate marker alone", ["mate", "mate:x", "other"], ["mate"]],
+    ["a Chief's project is born a Chief's", ["mate", "chief"], ["mate", "chief"]],
+    ["a project that is no Mate's is born with no tag", ["other"], []],
+  ])("%s", async (_title, tagList, born) => {
+    const stub = recordingFetch(() => jsonResponse(200, { id: "p1", name: "Project" }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    await client.createProject({ clientId: "org", name: "Project", tagList });
+    expect(JSON.parse(stub.requests[0]?.body ?? "{}").tagList).toEqual(born);
+  });
   it("reports a lost creation response as uncertain and never resubmits it", async () => {
     const stub = recordingFetch(() => {
       throw new TypeError("connection lost");

@@ -23,6 +23,7 @@ import { discussionId } from "../../families/hqDiscussion.ts";
 import type { OperationIntent, OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, UncertainAcceptance } from "../coordinator.ts";
+import { PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
 import type { HqWriteIntent } from "../hqWrites.ts";
 
 import {
@@ -51,6 +52,8 @@ export type HqWrites = Pick<
   | "createMate"
   | "recordClosedOff"
   | "keepDeployToken"
+  | "setChief"
+  | "decideProposal"
 > &
   FlowWrites &
   Partial<
@@ -192,6 +195,14 @@ export function makeHqExecutor(ports: {
   /** Captured account lifetime; lifecycle writes require it. */
   readonly active?: () => boolean;
   readonly hqProjectIdOf?: (orgId: string) => string | null;
+  /**
+   * Handed what a Chief's record answered for its project: the credential its zcp reaches the
+   * organization with, and the proxy. Told once, at HQ's answer; the receipt never holds it.
+   */
+  readonly chiefAccess?: (
+    projectId: string,
+    access: { readonly credential: string; readonly proxyUrl: string },
+  ) => void;
 }): OperationExecutor {
   /** The environment's own token minted, then kept by HQ; a refused one taken back. */
   const keepKey = (
@@ -221,6 +232,36 @@ export function makeHqExecutor(ports: {
           }),
       );
     });
+
+  /** A Chief's record and a proposal's decision: HQ's answer is their end. */
+  const chiefWrite = (requestId: string, api: HqWrites, intent: HqChiefIntent) => {
+    switch (intent.kind) {
+      case "set-chief":
+        return Effect.map(
+          Effect.tryPromise({ try: () => api.setChief(intent.projectId), catch: faultOf }),
+          ({ chief, credential, proxyUrl }) => {
+            ports.chiefAccess?.(intent.projectId, { credential, proxyUrl });
+            return answered(requestId, intent.projectId, { chief });
+          },
+        );
+      case "decide-proposal":
+        return Effect.map(
+          Effect.tryPromise({
+            try: () => api.decideProposal(intent.proposalId, intent.write),
+            // HQ holds another decision of it: refused as decided, never a write that may land.
+            catch: (cause) =>
+              cause instanceof HqError && cause.kind === "refused" && cause.status === 409
+                ? {
+                    outcome: "definitive-refusal" as const,
+                    message: cause.message,
+                    code: PROPOSAL_DECIDED_ELSEWHERE,
+                  }
+                : faultOf(cause),
+          }),
+          (decision) => answered(requestId, intent.proposalId, { decision }),
+        );
+    }
+  };
 
   const creationWrite = (requestId: string, api: HqWrites, intent: HqWriteIntent) => {
     switch (intent.kind) {
@@ -422,6 +463,8 @@ export function makeHqExecutor(ports: {
             outcome: "definitive-refusal",
             message: HQ_NOT_OPEN,
           });
+        if (intent.kind === "set-chief" || intent.kind === "decide-proposal")
+          return yield* chiefWrite(requestId, api, intent);
         if (intent.kind === "change-comment") {
           const said = yield* Effect.tryPromise({
             try: () => api.commentOnChange(intent.link, intent.body),

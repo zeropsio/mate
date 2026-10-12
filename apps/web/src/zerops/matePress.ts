@@ -1110,7 +1110,11 @@ export async function finishMateSetup(input: {
    * caller just imported it — a listing read this soon may not show it yet, and a second import
    * would make a second container.
    */
-  readonly container: { readonly agents: ReadonlyArray<ZeropsAgentType> } | null;
+  readonly container: {
+    readonly agents: ReadonlyArray<ZeropsAgentType>;
+    /** A Chief's container (`importDevelopmentContainer`'s `chief`). */
+    readonly chief?: true;
+  } | null;
   /** Null where there is no registry to write it in. */
   readonly registration: PressRegistration | null;
   /** The organization's HQ, where the close-off is marked; null where it is not open here. */
@@ -1213,7 +1217,13 @@ async function finishLocked(
     ...(input.registration === null ? [] : [{ kind: "register" } as const]),
     ...(input.container === null
       ? []
-      : [{ kind: "import-container", agents: input.container.agents } as const]),
+      : [
+          {
+            kind: "import-container",
+            agents: input.container.agents,
+            ...(input.container.chief === true ? { chief: true as const } : {}),
+          } as const,
+        ]),
     // Isolated a moment ago by the harden, which the close-off trusts where no container comes
     // after it.
     input.harden === true && input.container === null

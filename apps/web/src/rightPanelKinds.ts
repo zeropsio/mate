@@ -24,6 +24,7 @@ export const RIGHT_PANEL_KINDS = [
   "crew",
   "mcp",
   "vault",
+  "overview",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -184,6 +185,12 @@ export const RIGHT_PANEL_KIND_META = {
       unavailableHint: "Available in a Zerops project.",
     },
     availability: (input) => input.zeropsPanel,
+  },
+  // The organization's cards in a Chief's conversation: opened by its header's Overview,
+  // never offered as a card of the launcher.
+  overview: {
+    launcher: null,
+    availability: () => "hidden",
   },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 

@@ -492,6 +492,15 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 .map((project) => project.projectId),
             );
             const listed = [...view.ungrouped, ...view.apps.flatMap((app) => app.projects)];
+            // Whose Chief each Chief project is: the viewer's own, or another person's.
+            const chiefOwners = new Map(
+              (yield* sql<{ readonly project_id: string; readonly user_id: string }>`
+                SELECT project_id, user_id FROM hq_chief
+                WHERE org_id = ${current.facts.orgId} AND revoked_at IS NULL`).map((row) => [
+                row.project_id,
+                row.user_id,
+              ]),
+            );
             const signersFor = (projectId: string) => {
               const signedInNow: Record<string, string> = {};
               const everSignedIn: Record<string, string> = {};
@@ -555,6 +564,14 @@ export const hqScopesLayer = (build?: string, recheck = Duration.seconds(30)) =>
                 waitsOnViewer: waitsOn === entry.userId,
                 mayWrite: observable.some((project) => project.projectId === projectId),
                 mine: ownerUserId === entry.userId,
+                ...(chiefOwners.has(projectId)
+                  ? {
+                      chief:
+                        chiefOwners.get(projectId) === entry.userId
+                          ? ("mine" as const)
+                          : ("another" as const),
+                    }
+                  : {}),
                 unseen:
                   attention == null
                     ? null

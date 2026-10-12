@@ -13,7 +13,9 @@ import {
 } from "~/sidebarProjectGrouping";
 import { useProjects, useThreadShells } from "~/state/entities";
 import { useZeropsEnvironmentNames } from "~/zerops/useZeropsEnvironmentNames";
+import { chiefQuestion } from "~/zerops/chief";
 import { mateIdentityPose, zeropsMateAt } from "~/zerops/mateIdentities";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
@@ -57,6 +59,9 @@ export function DraftHeroHeadline({
   const whoLivesHere =
     activeProjectRef === null ? null : zeropsMateAt(mates, activeProjectRef.environmentId);
   const mate = whoLivesHere?.kind === "mate" ? whoLivesHere.mate : undefined;
+  // A Chief's question is the organization's, never its own project's.
+  const organization = useZeropsSessionOptional()?.activeOrganization?.name;
+  const chiefAsks = mate?.chief === true ? chiefQuestion(mate.name, organization) : undefined;
   const nowMs = useNowMs();
   const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
 
@@ -195,13 +200,15 @@ export function DraftHeroHeadline({
     ? (selectorLabel ?? "Choose a project")
     : (activeProjectTitle ?? "Add a project");
   const headingLabel = hasResolvedProject
-    ? whoLivesHere?.kind === "unknown"
-      ? projectSelectorText
-      : mate === undefined
-        ? `What should we build in ${projectSelectorText}?`
-        : mate.project === undefined
-          ? `What should ${mate.name} do?`
-          : `What should ${mate.name} do on ${projectSelectorText}?`
+    ? chiefAsks !== undefined
+      ? chiefAsks
+      : whoLivesHere?.kind === "unknown"
+        ? projectSelectorText
+        : mate === undefined
+          ? `What should we build in ${projectSelectorText}?`
+          : mate.project === undefined
+            ? `What should ${mate.name} do?`
+            : `What should ${mate.name} do on ${projectSelectorText}?`
     : canChooseProject
       ? `${projectSelectorText} to start`
       : "Add a project to start";
@@ -225,7 +232,9 @@ export function DraftHeroHeadline({
         className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl"
       >
         {hasResolvedProject ? (
-          whoLivesHere?.kind === "unknown" ? (
+          chiefAsks !== undefined ? (
+            chiefAsks
+          ) : whoLivesHere?.kind === "unknown" ? (
             // Neither question while who lives here is not known: the
             // project alone, which both of them name.
             projectSelector

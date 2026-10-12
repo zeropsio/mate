@@ -1,4 +1,5 @@
 import type { RestartReading, RestartProcess } from "../../../data/projections/restart.ts";
+import type { ZeropsProposal } from "../proposal.ts";
 /**
  * Small helpers every per-kind builder shares: reading a call's decoded card,
  * the step/status-word/voice plumbing, and `phaseFor` — the ONE mapping from
@@ -88,6 +89,8 @@ export interface BuiltCardFields {
   readonly readResult?: ZeropsReadResult;
   /** `env` only. */
   readonly envChange?: ZeropsEnvChange;
+  /** `proposal` only. */
+  readonly proposal?: ZeropsProposal;
   /**
    * Overrides `phaseFor(call.status)`, where the call's own status is not what
    * happened: `deploy`'s BUILD_TRIGGERED reads as the build it named stands
@@ -233,6 +236,7 @@ export const KIND_LABEL: Readonly<
   process: "Process",
   discover: "Discover",
   standup: "Stand-up",
+  proposal: "Proposal",
 };
 
 /** The ONE call-status → operation-phase mapping (§2.3, declined/stopped are not "done"). */
