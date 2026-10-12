@@ -67,7 +67,11 @@ export function nextStepBeforeChanges(
   return null;
 }
 
-export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): ZeropsMateNextStep {
+export function useZeropsMateNextStep(
+  threadRef: ScopedThreadRef | null,
+  /** Whether the Mate is the viewer's; a colleague's waits for a review, not the viewer's. */
+  yours = true,
+): ZeropsMateNextStep {
   const inventory = useZeropsInventory();
   const projectId = useMateOfEnvironment(threadRef?.environmentId)?.projectId;
   const mates = useZeropsMateDirectory();
@@ -89,6 +93,7 @@ export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): Zerops
     pullRequests: appChanges.pullRequests,
     mateProjectId: projectId,
     mateName: projectId === undefined ? undefined : mateNames.get(projectId),
+    yours,
   });
   if (step.kind === "none") return NOTHING;
   const mate = zeropsMateAt(mates, threadRef.environmentId);

@@ -253,6 +253,8 @@ function foldAway(top: HTMLElement | null, done: () => void): void {
 export function useZeropsNextStepStrip(
   threadRef: ScopedThreadRef | null,
   pending: ZeropsNextStepPending,
+  /** Whether the Mate is the viewer's; a colleague's change waits for a review, not the viewer's. */
+  yours = true,
 ): ReactNode {
   const openReview = useOpenReview();
   const navigate = useNavigate();
@@ -269,7 +271,7 @@ export function useZeropsNextStepStrip(
     [threadKey],
   );
   const { strip, reserved } = zeropsComposerTop({
-    nextStep: useZeropsMateNextStep(threadRef),
+    nextStep: useZeropsMateNextStep(threadRef, yours),
     dismissed: threadKey === null ? undefined : dismissedComposerReview(threadKey),
     pending,
   });

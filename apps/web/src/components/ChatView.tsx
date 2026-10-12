@@ -5325,11 +5325,15 @@ export default function ChatView(props: ChatViewProps) {
    * approval waits on the person, and while the Mate works in any of its chats.
    */
   const mateAtWork = useMateWorks(environmentId);
-  const composerTop = useZeropsNextStepStrip(activeThreadRef, {
-    question: activePendingUserInput !== null,
-    approval: activePendingApproval !== null,
-    working: isWorking || mateAtWork,
-  });
+  const composerTop = useZeropsNextStepStrip(
+    activeThreadRef,
+    {
+      question: activePendingUserInput !== null,
+      approval: activePendingApproval !== null,
+      working: isWorking || mateAtWork,
+    },
+    colleagueReadOnly === null,
+  );
   // Typing here while the Mate works in another of its chats (`ConversationStrip.tsx`).
   // A crewmate works on its own copy of the code, so another chat's work is
   // no warning there.
@@ -8587,6 +8591,7 @@ export default function ChatView(props: ChatViewProps) {
                             <ComposerRoomHeld draft={zeropsHeldDraft} />
                           ) : colleagueReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter
+                              change={threadDetailLoading ? null : composerTop}
                               environmentId={environmentId}
                               pendingApprovals={pendingApprovals}
                               pendingUserInputs={pendingUserInputs}

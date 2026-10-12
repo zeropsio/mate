@@ -160,6 +160,27 @@ describe("mateNextStep", () => {
   });
 });
 
+// The owner's pick on the "Composer Strips" board (S6, 2026-10-12): "A colleague's Mate shows its
+// change like yours", the same section over the read-along line, waiting for a review, not yours.
+describe("mateNextStep: a colleague's Mate", () => {
+  it.each([
+    { case: "one change", pulls: [pull()], title: "Rosa is waiting for a review of #1" },
+    {
+      case: "two changes",
+      pulls: [pull(), pull({ repository: "api", number: 2 })],
+      title: "Rosa is waiting for a review of 2 changes",
+    },
+  ])("asks for a review, never the viewer's: $case", ({ pulls, title }) => {
+    const step = mateNextStep({
+      pullRequests: pulls,
+      mateProjectId: "p-wren",
+      mateName: "Rosa",
+      yours: false,
+    });
+    expect(step.kind === "review" ? step.title : null).toBe(title);
+  });
+});
+
 describe("mateNextStep: every change of its own waiting, newest first", () => {
   const at = (hour: number) => `2026-09-30T${String(hour).padStart(2, "0")}:00:00Z`;
   const app1 = pull({ repository: "appdev", number: 1, title: "Build the site", updatedAt: at(9) });

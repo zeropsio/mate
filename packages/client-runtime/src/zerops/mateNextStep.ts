@@ -67,6 +67,8 @@ export function mateNextStep(input: {
    * way by its own hold instead, which keeps what it remembers of the strip (a dismissal).
    */
   readonly working?: boolean;
+  /** Whether the Mate is the viewer's; a colleague's waits for a review, not the viewer's. */
+  readonly yours?: boolean;
 }): MateNextStep {
   const { pullRequests, mateProjectId } = input;
   if (pullRequests === undefined || mateProjectId === undefined) return NONE;
@@ -85,7 +87,9 @@ export function mateNextStep(input: {
     .sort(byNewest);
   const [pull] = waiting;
   if (pull === undefined) return NONE;
-  const who = `${input.mateName ?? "This Mate"} is waiting for your review of`;
+  const who = `${input.mateName ?? "This Mate"} is waiting for ${
+    input.yours === false ? "a" : "your"
+  } review of`;
   if (waiting.length === 1) {
     return {
       kind: "review",
