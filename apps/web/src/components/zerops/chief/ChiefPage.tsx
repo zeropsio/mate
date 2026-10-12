@@ -167,7 +167,7 @@ export function ChiefStage({
           below: (
             <ArrivalSwap id="steps" kind="slot">
               <div className="flex flex-col items-center gap-5" data-zerops-surface="chief-setup">
-                <div className="w-full text-start">
+                <div className="w-fit max-w-full text-start">
                   <ProcessSteps
                     aria-label="Setting up your Chief"
                     steps={chiefSetupSteps(view.setup).map((step) =>
