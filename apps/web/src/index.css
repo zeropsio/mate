@@ -5288,14 +5288,7 @@ code {
   }
 
   .menu-chief-name-mate {
-    background: linear-gradient(90deg, oklch(0.6 0.11 190), oklch(0.66 0.12 165));
-    background-clip: text;
-    color: transparent;
-  }
-
-  .dark .menu-chief-name-mate {
-    background: linear-gradient(90deg, oklch(0.78 0.11 190), oklch(0.82 0.13 165));
-    background-clip: text;
+    color: var(--zerops-mate-mark-side);
   }
 
   .menu-chief-line {
