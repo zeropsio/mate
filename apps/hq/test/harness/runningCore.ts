@@ -207,7 +207,7 @@ export const startCore = (
   } = {},
 ) =>
   Effect.gen(function* () {
-    const url = given.url ?? (yield* (yield* TempPostgres).createDatabase);
+    const url = given.url ?? (yield* (yield* TempPostgres).createMigratedDatabase);
     const gitRoot = given.gitRoot ?? (yield* tempDir("hq-git-"));
     const storeDir = given.storeDir ?? (yield* tempDir("hq-backup-"));
     const stagingDir = given.stagingDir ?? (yield* tempDir("hq-backup-"));
