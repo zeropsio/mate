@@ -559,48 +559,16 @@
           );
         }
 
-        /* The Overview row, first in the menu's list 10 px under its 65 px logo row
-           (SidebarOverviewRow): its 40 px disc and its name, standing where the app draws them. */
-        html[data-boot-frame="app"] #boot-shell-menu-overview {
-          position: absolute;
-          top: 75px;
-          right: 8px;
-          left: 9px;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          height: 59px;
-          padding: 0 8px;
-        }
-
-        #boot-shell-menu:has(> :not(#boot-shell-menu-loading, #boot-shell-menu-overview))
-          > :is(#boot-shell-menu-loading, #boot-shell-menu-overview) {
+        #boot-shell-menu:has(> :not(#boot-shell-menu-loading)) > #boot-shell-menu-loading {
           display: none;
         }
 
-        #boot-shell-menu-overview span {
-          flex-shrink: 0;
-          width: 40px;
-          height: 40px;
-          border-radius: 9999px;
-          background: color-mix(in srgb, var(--boot-sidebar, #fafafa) 50%, #fff);
-        }
-
-        #boot-shell-menu-overview span + span {
-          width: 72px;
-          height: 8px;
-        }
-
-        html.dark #boot-shell-menu-overview span {
-          background: color-mix(in srgb, var(--boot-foreground, #f5f5f5) 8%, transparent);
-        }
-
         /* The menu's loading rows, where and as SidebarZeropsTree's MenuSkeleton draws them
-           under the Overview row (59 px and its 8 px gap), until the app draws the menu (or its
+           right under the 65 px top row (the Chief's), until the app draws the menu (or its
            preview, its rows). */
         html[data-boot-frame="app"] #boot-shell-menu-loading {
           position: absolute;
-          top: 142px;
+          top: 65px;
           right: 8px;
           left: 9px;
           display: flex;
@@ -655,7 +623,6 @@
 
         /* The rail (SidebarRail), where its person left the menu closed: its 72 px column and
            its mark, 28 x 33 at 22, 16; the open menu's rows are not its. */
-        html[data-boot-frame="app"][data-boot-menu="rail"] #boot-shell-menu-overview,
         html[data-boot-frame="app"][data-boot-menu="rail"] #boot-shell-menu-loading {
           display: none;
         }
@@ -727,7 +694,6 @@
   <body>
     <div id="boot-shell">
       <div id="boot-shell-menu">
-        <div id="boot-shell-menu-overview" aria-hidden="true"><span></span><span></span></div>
         <div
           id="boot-shell-menu-loading"
           data-zerops-surface="sidebar-environments-skeleton"

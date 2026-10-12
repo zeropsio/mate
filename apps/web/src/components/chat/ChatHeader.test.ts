@@ -121,4 +121,10 @@ describe("headerLead: who heads a conversation's header", () => {
   ] as const)("%s", (_case, kind, lead) => {
     expect(headerLead(kind)).toBe(lead);
   });
+
+  // The owner, 2026-10-12: the menu's top row is lit while the Chief is open, so its header never
+  // names it again.
+  it("heads a Chief's conversation with its title alone, never the Chief's mark or name", () => {
+    expect(headerLead("mate", { chief: true })).toBe("title");
+  });
 });

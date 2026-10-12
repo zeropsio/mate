@@ -1,9 +1,10 @@
 /**
- * Setting up the person's Chief, as this tab runs it (`chiefSetup.logic.ts`): the dialog that
- * explains it, the New project that makes its project and container, HQ's record of it, and its
- * zcp handed the organization's view as the person.
+ * Setting up the person's Chief, as this tab runs it (`chiefSetup.logic.ts`): the New project that
+ * makes its project and container, HQ's record of it, and its zcp handed the organization's view as
+ * the person. The Chief page shows it and presses it (`ChiefPage`); the runner is mounted once,
+ * above every view (`ChiefSetupHost`), so its steps run on wherever the person goes.
  *
- * Its state is this tab's memory: what a step needs survives the dialog closing, not a reload.
+ * Its state is this tab's memory: it survives leaving the page, not a reload.
  */
 import { NOT_READ_VAULT, serviceVariableIds } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
@@ -39,31 +40,36 @@ import { useRunNewProject } from "./useRunNewProject";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 interface ChiefSetupState {
-  /** The dialog is open. */
-  readonly open: boolean;
   /** The organization the setup runs in. */
   readonly orgId: string | null;
   readonly setup: ChiefSetup;
 }
 
-const INITIAL: ChiefSetupState = { open: false, orgId: null, setup: CHIEF_SETUP_IDLE };
+const INITIAL: ChiefSetupState = { orgId: null, setup: CHIEF_SETUP_IDLE };
 
 const useChiefSetupStore = create<ChiefSetupState>(() => INITIAL);
 
 onAccountLifetimeClose(() => useChiefSetupStore.setState(INITIAL));
 
-/** Opens the dialog: from the menu's line, or an ask of the Chief where the person has none. */
-export function openChiefSetup(): void {
-  useChiefSetupStore.setState({ open: true });
+/** What the runner does on a press, as the mounted runner last made it (`useChiefSetupRunner`). */
+let runnerPresses: { readonly start: () => void; readonly again: () => void } | null = null;
+
+/** *Set up Chief*: the mounted runner starts the setup; nothing while none is mounted. */
+export function startChiefSetup(): void {
+  runnerPresses?.start();
+}
+
+/** *Try again*: the mounted runner resumes the step that stopped. */
+export function tryChiefSetupAgain(): void {
+  runnerPresses?.again();
 }
 
 /**
  * Finishes a Chief whose zcp holds no access — a reload between HQ's answer and its writes left
- * it so: HQ is asked again, and its fresh credential written, with the dialog showing the steps.
+ * it so: HQ is asked again, and its fresh credential written, with the Chief page showing the steps.
  */
 export function resumeChiefSetup(orgId: string, projectId: string): void {
   useChiefSetupStore.setState((state) => ({
-    open: true,
     orgId,
     setup: chiefSetupAfter(state.setup, { type: "resume", projectId }),
   }));
@@ -86,10 +92,6 @@ export function useChiefUnfinished(projectId: string | null): boolean {
   return setup.phase === "idle" && ids !== null && ids["ZCP_ORG_TOKEN"] === undefined;
 }
 
-export function closeChiefSetup(): void {
-  useChiefSetupStore.setState({ open: false });
-}
-
 function dispatch(event: ChiefSetupEvent): void {
   useChiefSetupStore.setState((state) => ({ setup: chiefSetupAfter(state.setup, event) }));
 }
@@ -103,7 +105,7 @@ export function useChiefSetup(): ChiefSetupState {
     : { ...state, setup: CHIEF_SETUP_IDLE };
 }
 
-/** What the menu says of setting up a Chief beside its Overview row (`chiefSetupLine`). */
+/** Where setting up a Chief stands, as the menu's top row says it (`chiefSetupLine`). */
 export function useChiefSetupLine(): ReturnType<typeof chiefSetupLine> {
   const own = useOwnChief();
   const { setup } = useChiefSetup();
@@ -123,7 +125,8 @@ const CHIEF_FACE = { tint: "slate", shape: MATE_SHAPE_OF_TINT.slate } as const;
 /**
  * Runs the setup: *Set up Chief* starts its New project; once its container is added, HQ records
  * it and its zcp is handed what HQ answered; *Try again* resumes the step that stopped. Mounted
- * once, with the dialog.
+ * once, above every view: its presses reach the page through `startChiefSetup` and
+ * `tryChiefSetupAgain`.
  */
 export function useChiefSetupRunner(): {
   readonly start: () => void;
@@ -261,8 +264,14 @@ export function useChiefSetupRunner(): {
   useEffect(() => {
     if (doneProject === null || orgId === null) return;
     keep(orgId, doneProject);
-    closeChiefSetup();
   }, [doneProject, keep, orgId]);
+
+  useEffect(() => {
+    runnerPresses = { start, again };
+    return () => {
+      runnerPresses = null;
+    };
+  }, [again, start]);
 
   return { start, again };
 }

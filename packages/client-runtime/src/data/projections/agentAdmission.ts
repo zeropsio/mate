@@ -51,6 +51,19 @@ export interface AgentAdmissionAttention {
   readonly actionLabel: string;
 }
 
+/**
+ * No coding agent can act here — none signed in, none outside the sign-in ready — once the agents'
+ * sign-in is read: an empty conversation holds its composer for the sign-in (`holdsComposer`), and
+ * a Chief's empty draft shows the sign-in in its question's place.
+ */
+export function admissionNeedsSignIn(
+  read: Known<ZeropsAgentAuthSnapshot> | undefined,
+  providers: ReadonlyArray<ServerProvider>,
+): boolean {
+  const snapshot = read?.state === "known" ? read.value : null;
+  return snapshot !== null && zeropsAgentSignInRequired(snapshot, providers);
+}
+
 /** Auth establishes admission; a signer's identity establishes no client permission. */
 export function agentAdmission(input: {
   readonly environmentId: string;
@@ -129,9 +142,7 @@ export function agentAdmission(input: {
         });
   const holdsComposer =
     input.standUpHolds === true ||
-    (input.empty === true &&
-      snapshot !== null &&
-      zeropsAgentSignInRequired(snapshot, input.providers));
+    (input.empty === true && admissionNeedsSignIn(input.read, input.providers));
   return {
     attention,
     providerStatus: admissionProviderStatus(provider, snapshot, input.providers),

@@ -1,19 +1,13 @@
 /**
- * The Overview row, first in the menu's list: a soft disc with the layers glyph, "Overview", and
- * the organization in one line (`overviewHeadline`) — or, while something waits on the person,
- * what waits in a few plain words (`waitingSummary`), its count in an amber disc at the row's end
- * that opens the list of it beside the menu (the owner, 2026-10-12, of a Waiting on you row of its
- * own: "waiting on you is use less, it should be included in the overview somehow"). It wears the
- * selected band while the overview is open; a click and ⌥0 open it.
+ * The overview's pieces the menu keeps: the organization's projects as HQ names them, each as the
+ * overview's headline weighs it (the closed rail's line), and ⌥0, which opens the overview from
+ * anywhere. The menu's top row is the Chief (`SidebarChiefRow`); the overview opens from its
+ * conversation's header, the Chief page's, the rail and ⌥0.
  */
 import { useAtomValue } from "@effect/atom-react";
-import type { MateComing } from "@t3tools/client-runtime/data";
 import type { ZeropsEnvironmentServices, ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { LayersIcon } from "lucide-react";
 import { useEffect, useMemo } from "react";
-
-import { MateMark } from "../MateMark";
 
 import { hqNavigationAtom } from "~/state/zerops";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
@@ -26,8 +20,6 @@ import {
   type OverviewProject,
 } from "./SidebarOverview.logic";
 import { releaseFailureOf, stopServing } from "./SidebarProductionChip.logic";
-import { SidebarWaitingPopover, type WaitingVerbs } from "./SidebarWaiting";
-import { waitingSummary, type WaitingItem } from "./SidebarWaiting.logic";
 
 /** The organization's projects as HQ's navigation names them, by name. */
 export function useMenuProjects(): ReadonlyArray<SidebarCreateProject> {
@@ -92,42 +84,18 @@ function typedIntoField(target: EventTarget | null): boolean {
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
-export function SidebarOverviewRow({
-  headline,
-  current,
-  onOpen,
-  waiting,
-  chief = false,
-  coming,
-}: {
-  /**
-   * The organization's Chief stands in for the overview (prototype): the menu's top row,
-   * the Mate's own mark and its name, opening its conversation, whose panel holds the overview.
-   */
-  readonly chief?: boolean;
-  /**
-   * The Chief in its first minutes (`mateComing`): its line says how far it has got, or that it
-   * did not come, as any new Mate's row does.
-   */
-  readonly coming?: MateComing | undefined;
-  /** The organization in one line (`overviewHeadline`). */
-  readonly headline: string;
-  /** The overview is the page open now. */
-  readonly current: boolean;
-  readonly onOpen: () => void;
-  /** What waits on the person, and what its list asks of the menu. */
-  readonly waiting?:
-    | { readonly items: ReadonlyArray<WaitingItem>; readonly verbs: WaitingVerbs }
-    | undefined;
-}) {
+/**
+ * ⌥0 opens the overview, whatever the menu shows: the closed rail offers it too (its tip says ⌥0),
+ * and it clicks no row hidden under the rail. Off while `onOpen` is undefined.
+ */
+export function useOverviewKey(onOpen: (() => void) | undefined): void {
   useEffect(() => {
+    if (onOpen === undefined) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
       const { code, altKey, metaKey, ctrlKey, shiftKey } = event;
       const typing = typedIntoField(event.target);
       if (!overviewKeyPressed({ code, altKey, metaKey, ctrlKey, shiftKey, typing })) return;
-      // It opens the overview, whatever the menu shows: the closed rail offers it too (its tip
-      // says ⌥0), and it clicks no row hidden under the rail.
       event.preventDefault();
       onOpen();
     };
@@ -136,77 +104,4 @@ export function SidebarOverviewRow({
       window.removeEventListener("keydown", onKey);
     };
   }, [onOpen]);
-  const items = waiting?.items ?? [];
-  // A Chief coming up says so: nothing waits on the person from a Mate not up yet.
-  const summary = items.length === 0 || coming !== undefined ? undefined : waitingSummary(items);
-  return (
-    <div
-      className="menu-overview"
-      data-chief={chief ? "" : undefined}
-      data-coming={coming === undefined ? undefined : coming.kind}
-    >
-      <button
-        aria-current={current ? "page" : undefined}
-        aria-keyshortcuts="Alt+0"
-        className="menu-chrome-row"
-        data-current={current ? "" : undefined}
-        data-waits={summary === undefined ? undefined : ""}
-        data-zerops-surface="sidebar-overview"
-        onClick={onOpen}
-        type="button"
-      >
-        <span className="menu-chrome-disc" aria-hidden="true">
-          {chief ? (
-            <MateMark awake playful className="h-9 w-7.5" />
-          ) : (
-            <LayersIcon className="size-4.5" />
-          )}
-        </span>
-        <span className="menu-chrome-text">
-          <span className="menu-chrome-name" data-waiting-line="">
-            {chief ? "Chief" : "Overview"}
-          </span>
-          {coming !== undefined ? (
-            <span
-              className="menu-chrome-line"
-              data-ink={coming.kind === "failed" ? "" : undefined}
-              data-zerops-surface="sidebar-chief-coming"
-            >
-              <span>{coming.line}</span>
-            </span>
-          ) : summary === undefined ? (
-            <span className="menu-chrome-line" data-zerops-surface="sidebar-overview-headline">
-              <span>{headline}</span>
-            </span>
-          ) : (
-            <span
-              className="menu-chrome-line"
-              data-ink=""
-              data-zerops-surface="sidebar-waiting-line"
-            >
-              <span>{summary.words}</span>
-              {summary.more > 0 ? <span>· {summary.more} more</span> : null}
-            </span>
-          )}
-        </span>
-      </button>
-      {waiting === undefined || summary === undefined ? null : (
-        <SidebarWaitingPopover
-          items={items}
-          trigger={
-            <button
-              aria-label={`${String(items.length)} waiting on you: ${summary.words}${summary.more > 0 ? `, ${String(summary.more)} more` : ""}`}
-              className="menu-chrome-count"
-              data-waiting-trigger=""
-              data-zerops-surface="sidebar-waiting"
-              type="button"
-            />
-          }
-          verbs={waiting.verbs}
-        >
-          <span data-zerops-surface="sidebar-waiting-count">{items.length}</span>
-        </SidebarWaitingPopover>
-      )}
-    </div>
-  );
 }

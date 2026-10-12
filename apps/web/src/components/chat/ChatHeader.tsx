@@ -14,7 +14,7 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ArchiveIcon, ChevronDownIcon, EllipsisIcon, LayersIcon } from "lucide-react";
+import { ArchiveIcon, ChevronDownIcon, EllipsisIcon } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -30,8 +30,8 @@ import { createPortal } from "react-dom";
 import GitActionsControl from "../GitActionsControl";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { type DraftId } from "~/composerDraftStore";
-import { useRightPanelStore } from "~/rightPanelStore";
 import { Button } from "../ui/button";
+import { ChiefOverviewButton } from "../zerops/chief/ChiefOverviewButton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import ProjectScriptsControl, {
@@ -170,14 +170,16 @@ function StartFreshMenuItem({ onStartFresh }: { readonly onStartFresh: () => voi
 /**
  * Who heads a conversation's header: a Mate's line of conversations once the directory names the
  * Mate; upstream's breadcrumb where nobody lives; until the directory says, the strip's place held
- * empty — never the breadcrumb, to flip from.
+ * empty — never the breadcrumb, to flip from. A Chief's is its conversation's title alone, and
+ * nothing before it says anything: the menu's top row, lit while it is open, names the Chief.
  */
 export function headerLead(
   whoLivesHere: ZeropsMateAt["kind"],
-): "strip" | "reserved" | "breadcrumb" {
+  mate: { readonly chief?: boolean | undefined } = {},
+): "strip" | "reserved" | "breadcrumb" | "title" {
   switch (whoLivesHere) {
     case "mate":
-      return "strip";
+      return mate.chief === true ? "title" : "strip";
     case "unknown":
       return "reserved";
     case "nobody":
@@ -266,8 +268,8 @@ export const ChatHeader = memo(function ChatHeader({
   // While who lives here is not known, the header shows what both looks
   // share and leaves out what only one of them has.
   const whoLivesHere = useZeropsMate(activeThreadEnvironmentId);
-  const lead = headerLead(whoLivesHere.kind);
   const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
+  const lead = headerLead(whoLivesHere.kind, { chief: mate?.chief });
   const showOpenInPicker = shouldShowOpenInPicker({
     activeProjectName,
     activeThreadEnvironmentId,
@@ -569,6 +571,16 @@ export const ChatHeader = memo(function ChatHeader({
       >
         {lead === "reserved" ? (
           <div aria-hidden="true" className="min-w-0 flex-1" data-header-lead-reserved />
+        ) : lead === "title" ? (
+          // A Chief's conversation: its title once something is said in it, else only the
+          // controls at the header's end.
+          <WorkspaceBreadcrumb ariaLabel="Conversation" className="flex-1">
+            {spoken ? (
+              <WorkspaceBreadcrumbItem current className="flex-1">
+                {titleContent}
+              </WorkspaceBreadcrumbItem>
+            ) : null}
+          </WorkspaceBreadcrumb>
         ) : lead === "strip" ? (
           // The line of the Mate's conversations: the Mate, then its crew. What
           // the chat is about is the Mate's hover, never words on the line.
@@ -710,16 +722,7 @@ export const ChatHeader = memo(function ChatHeader({
             >
               {mate.chief === true ? (
                 // A Chief's way out is its organization: the overview's cards beside it.
-                <Button
-                  aria-label="Overview"
-                  data-chat-header-ghost
-                  onClick={() => useRightPanelStore.getState().open(activeThreadRef, "overview")}
-                  size="sm"
-                  variant="ghost-muted"
-                >
-                  <LayersIcon className="size-3.5 shrink-0" />
-                  <span className="hidden text-line @3xl/header-actions:inline">Overview</span>
-                </Button>
+                <ChiefOverviewButton threadRef={activeThreadRef} />
               ) : (
                 <ZeropsProjectLink projectUrl={mate.projectUrl} />
               )}

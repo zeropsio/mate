@@ -29,7 +29,7 @@ export type CallResultPicture = typeof CallResultPicture.Type;
 export const PAGE_MAX_BYTES = 8 * 1024 * 1024;
 
 /** The tallest a page stands in a conversation, in CSS pixels; a taller one scrolls inside. */
-export const PAGE_MAX_HEIGHT = 2000;
+export const PAGE_MAX_HEIGHT = 4000;
 /** The widest and narrowest a page's frame is measured at, in CSS pixels. */
 export const PAGE_WIDTH_MIN = 200;
 export const PAGE_WIDTH_MAX = 4000;

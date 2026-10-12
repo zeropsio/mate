@@ -4,10 +4,12 @@ import {
   chiefNames,
   chiefQuestion,
   chiefSetupLine,
+  chiefShowsSignIn,
   isChief,
   othersChiefs,
   ownChiefAmong,
   type OwnChief,
+  withoutOwnChief,
 } from "./chief";
 
 describe("isChief", () => {
@@ -64,6 +66,29 @@ describe("whose Chief", () => {
     const candidates = [own, theirs, shop].map((project) => ({ project }));
     expect(ownChiefAmong(candidates, ownChief)?.project.id).toBe(expected);
   });
+
+  it.each<[string, OwnChief, ReadonlyArray<string>]>([
+    [
+      "the menu's list leaves out the viewer's own Chief, drawn once as its top row",
+      "p-own",
+      ["p-theirs", "p-shop"],
+    ],
+    [
+      "the menu's list keeps every Mate when the viewer has no Chief",
+      null,
+      ["p-own", "p-theirs", "p-shop"],
+    ],
+    [
+      "the menu's list keeps every Mate while whose Chief is not known",
+      undefined,
+      ["p-own", "p-theirs", "p-shop"],
+    ],
+  ])("%s", (_title, ownChief, expected) => {
+    const candidates = [own, theirs, shop].map((project) => ({ project }));
+    expect(withoutOwnChief(candidates, ownChief).map((candidate) => candidate.project.id)).toEqual(
+      expected,
+    );
+  });
 });
 
 describe("chiefNames", () => {
@@ -116,5 +141,33 @@ describe("chiefSetupLine", () => {
     ["says nothing once it is set up", { own: "p", mayCreate: true, setup: "done" }, null],
   ])("%s", (_title, input, line) => {
     expect(chiefSetupLine(input)).toBe(line);
+  });
+});
+
+// The owner, 2026-10-12: "This page should have the auth interface instead of the form."
+describe("chiefShowsSignIn", () => {
+  it.each<[string, Parameters<typeof chiefShowsSignIn>[0], boolean]>([
+    [
+      "shows a Chief's sign-in in place of its question and composer while no agent is signed in",
+      { chief: true, signInRequired: true, said: false },
+      true,
+    ],
+    [
+      "shows the question and the composer once an agent is signed in",
+      { chief: true, signInRequired: false, said: false },
+      false,
+    ],
+    [
+      "leaves a conversation already under way to its own sign-in notice",
+      { chief: true, signInRequired: true, said: true },
+      false,
+    ],
+    [
+      "leaves every other Mate's empty conversation as it is",
+      { chief: false, signInRequired: true, said: false },
+      false,
+    ],
+  ])("%s", (_title, input, shows) => {
+    expect(chiefShowsSignIn(input)).toBe(shows);
   });
 });

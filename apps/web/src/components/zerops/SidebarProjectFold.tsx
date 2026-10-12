@@ -94,8 +94,8 @@ export function SidebarProjectFold({
   }, [open, motion]);
   return (
     <div data-zerops-surface="sidebar-project-rows" ref={fold}>
-      {/* The list's own 2 px between rows, before the first of its Mates too. */}
-      <div className="flex flex-col gap-0.5 pt-0.5" data-zerops-kids="">
+      {/* The list's own 6 px between rows, before the first of its Mates too. */}
+      <div className="flex flex-col gap-1.5 pt-1.5" data-zerops-kids="">
         {children}
       </div>
     </div>

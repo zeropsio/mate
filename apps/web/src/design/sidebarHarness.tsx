@@ -74,7 +74,7 @@ import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { PanelLayoutControls } from "~/components/chat/PanelLayoutControls";
 import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
-import { SidebarOverviewRow } from "~/components/zerops/SidebarOverview";
+import { SidebarChiefRow } from "~/components/zerops/chief/SidebarChiefRow";
 import { SidebarRail, useRailMates } from "~/components/zerops/SidebarRail";
 import { waitingItemsOf, type WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
 import { Button } from "~/components/ui/button";
@@ -1112,10 +1112,31 @@ function SidebarFrame({
           : ({ width, "--workspace-controls-left": `${CONTROLS}px` } as CSSProperties)
       }
     >
-      {/* The app's own logo row: the mark 16 px in on the web, or `?inset=90`
-          beside macOS's traffic lights; the waiting faces and ⌘K at its end. */}
+      {/* The app's top row: the Chief across the menu's width, the squares over its end, what
+          waits on you counted beside them; `?inset=90` beside macOS's traffic lights. */}
       <SidebarChromeHeader
         isElectron={false}
+        brand={
+          <SidebarChiefRow
+            current={overviewOpen}
+            onOpen={() => {
+              menuActions.push("chief");
+              setOpen("");
+            }}
+            waiting={{
+              items: WAIT_ALL ?? waiting.items,
+              verbs: {
+                onOpenMate: (projectId: string) => {
+                  menuActions.push(`open ${projectId}`);
+                  setOpen(projectId);
+                },
+                onAskToFix: (projectId: string, problem: { readonly what: string }) => {
+                  menuActions.push(`ask ${projectId}: ${problem.what}`);
+                },
+              },
+            }}
+          />
+        }
         actions={
           <>
             <SidebarJumpButton onJump={onJump} shortcut={JUMP_KEY} />
@@ -1131,28 +1152,6 @@ function SidebarFrame({
           the canvas at an edge only while something is scrolled under it. */}
       <SidebarContent>
         <div className="ps-2.25 pe-2 pb-1">
-          <div className="mt-2.5 mb-2">
-            <SidebarOverviewRow
-              current={overviewOpen}
-              headline={HARNESS_HEADLINE}
-              onOpen={() => {
-                menuActions.push("overview");
-                setOpen("");
-              }}
-              waiting={{
-                items: WAIT_ALL ?? waiting.items,
-                verbs: {
-                  onOpenMate: (projectId) => {
-                    menuActions.push(`open ${projectId}`);
-                    setOpen(projectId);
-                  },
-                  onAskToFix: (projectId, problem) => {
-                    menuActions.push(`ask ${projectId}: ${problem.what}`);
-                  },
-                },
-              }}
-            />
-          </div>
           <SidebarZeropsTree
             births={coming?.births}
             candidates={RELOAD_MS === null ? candidates : reloaded.rows}

@@ -1,0 +1,210 @@
+/**
+ * The Chief page (`/chief`), which the menu's top row opens while the person has no Chief to talk
+ * to: the stage a Mate's empty conversation stands on (`MateEmptyStateView`) — the Chief's mark,
+ * one headline, the sentence under it, one slot — saying what a Chief is over *Set up Chief*. The
+ * press runs the setup here (`chiefSetup.ts`): the button hands over to its steps in place, a step
+ * that stopped says why over *Try again*, and once it is set up the page is the Chief's own view
+ * while its container comes up (`ZeropsMateComingPage`), which hands over to its conversation.
+ */
+import { useNowMs } from "~/zerops/useNowMs";
+import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
+import {
+  resumeChiefSetup,
+  startChiefSetup,
+  tryChiefSetupAgain,
+  useChiefSetup,
+  useChiefUnfinished,
+} from "~/zerops/chiefSetup";
+import { CHIEF_NAME } from "~/zerops/chief";
+import { useOwnChief } from "~/zerops/ownChief";
+import { useOrgOffers } from "~/zerops/useHqOffers";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
+import { hqUpdateOffered } from "@t3tools/client-runtime/zerops/hq";
+import { useAtomValue } from "@effect/atom-react";
+import { hqStandingAtom } from "~/state/zerops";
+
+import { Button } from "../../ui/button";
+import { ArrivalSwap } from "../ArrivalSwap";
+import { MateFaceAsMark, ProcessSteps } from "../primitives";
+import { birthStepToProcessStep } from "../ZeropsBirthProgress.logic";
+import { MateComingFrame, MateComingHeader, ZeropsMateComingPage } from "../ZeropsMateComingPage";
+import { MateEmptyStateView, type MateEmptyComing } from "../ZeropsMateEmptyState";
+import { chiefSetupSteps } from "./chiefSetup.logic";
+import { chiefPageView, type ChiefPageView } from "./chiefTop.logic";
+
+/** The Chief as its page draws it before it exists: the product's mark, its name. */
+const CHIEF_DRAWN = {
+  name: CHIEF_NAME,
+  tint: "slate",
+  shape: MATE_SHAPE_OF_TINT.slate,
+  project: undefined,
+  connected: false,
+  chief: true,
+} as const;
+
+export function ChiefPage() {
+  const own = useOwnChief();
+  const { setup } = useChiefSetup();
+  const { activeOrganization } = useZeropsSession();
+  const orgId = activeOrganization?.id;
+  const accountHq = useAccountHq(orgId);
+  const unfinished = useChiefUnfinished(typeof own === "string" ? own : null);
+  const create = useOrgOffers()("create_app");
+  // An HQ on an older Core than this app's records no Chief: its update comes first.
+  const standing = useAtomValue(hqStandingAtom);
+  const carried = useCarriedCoreBuild();
+  const answering =
+    standing.kind === "healthy" || standing.kind === "unchecked" ? standing.build : undefined;
+  const view = chiefPageView({
+    own,
+    setup,
+    unfinished,
+    hq:
+      accountHq.hq.kind === "official"
+        ? answering !== undefined && carried !== undefined && hqUpdateOffered(answering, carried)
+          ? "behind"
+          : "official"
+        : accountHq.status === "ready"
+          ? "none"
+          : "reading",
+    mayCreate: create.kind !== "refused",
+  });
+  if (view.kind === "coming")
+    return <ZeropsMateComingPage key={view.projectId} projectId={view.projectId} />;
+  return (
+    <MateFaceAsMark.Provider value>
+      <MateComingFrame
+        header={<MateComingHeader arriving mate={{ ...CHIEF_DRAWN, projectUrl: undefined }} />}
+      >
+        {view.kind === "reading" ? null : (
+          <ChiefStage
+            onAgain={tryChiefSetupAgain}
+            onFinish={() => {
+              if (orgId !== undefined && view.kind === "finish")
+                resumeChiefSetup(orgId, view.projectId);
+            }}
+            onSetUp={startChiefSetup}
+            view={view}
+          />
+        )}
+      </MateComingFrame>
+    </MateFaceAsMark.Provider>
+  );
+}
+
+/** What a Chief is, in one headline and the sentence under it. */
+const CHIEF_IS = {
+  headline: "A Mate for your whole organization.",
+  sentence:
+    "Chief lives in its own project, with one container, and runs on your own coding agent's sign-in. It sees what you can see, and changes nothing without your Approve.",
+} as const;
+
+/**
+ * The page's stage in each of its states before the Chief exists (`chiefPageView`), for the page
+ * and a design harness alike: props only.
+ */
+export function ChiefStage({
+  view,
+  onSetUp,
+  onAgain,
+  onFinish,
+}: {
+  readonly view: Exclude<ChiefPageView, { kind: "reading" | "coming" }>;
+  readonly onSetUp: () => void;
+  readonly onAgain: () => void;
+  readonly onFinish: () => void;
+}) {
+  // Its steps carry no clock of their own: none says how long it took.
+  const now = useNowMs();
+  const coming = ((): MateEmptyComing => {
+    switch (view.kind) {
+      case "offer":
+        return {
+          kind: "coming",
+          face: "idle",
+          headline: CHIEF_IS.headline,
+          sentence: CHIEF_IS.sentence,
+          below: (
+            <ArrivalSwap id="offer" kind="slot">
+              <div className="flex flex-col items-center gap-3">
+                <Button
+                  data-zerops-surface="chief-set-up"
+                  disabled={view.blocked !== undefined}
+                  onClick={onSetUp}
+                  size="xl"
+                  variant="pill"
+                >
+                  Set up Chief
+                </Button>
+                {view.blocked === undefined ? null : (
+                  <p className="text-sm text-muted-foreground">{view.blocked}</p>
+                )}
+              </div>
+            </ArrivalSwap>
+          ),
+        };
+      case "finish":
+        return {
+          kind: "coming",
+          face: "needs",
+          headline: "Your Chief is not finished.",
+          sentence:
+            "Its view of your organization never reached it. Finishing hands it over again.",
+          below: (
+            <ArrivalSwap id="finish" kind="slot">
+              <Button
+                data-zerops-surface="chief-finish"
+                onClick={onFinish}
+                size="xl"
+                variant="pill"
+              >
+                Finish setting up
+              </Button>
+            </ArrivalSwap>
+          ),
+        };
+      case "steps": {
+        const stopped = view.setup.phase === "failed";
+        return {
+          kind: stopped ? "failed" : "coming",
+          face: stopped ? "needs" : "working",
+          headline: stopped ? "Setting up your Chief stopped." : "Setting up your Chief.",
+          sentence: stopped
+            ? "The step that stopped says why. Try again picks up there."
+            : "Keep this tab open until it is done.",
+          pressed: true,
+          below: (
+            <ArrivalSwap id="steps" kind="slot">
+              <div className="flex flex-col items-center gap-5" data-zerops-surface="chief-setup">
+                <div className="w-fit max-w-full text-start">
+                  <ProcessSteps
+                    aria-label="Setting up your Chief"
+                    steps={chiefSetupSteps(view.setup).map((step) =>
+                      birthStepToProcessStep(step, now),
+                    )}
+                  />
+                </div>
+                {stopped ? (
+                  <Button onClick={onAgain} size="compact" variant="pill">
+                    Try again
+                  </Button>
+                ) : null}
+              </div>
+            </ArrivalSwap>
+          ),
+        };
+      }
+    }
+  })();
+  return (
+    <MateEmptyStateView
+      coming={coming}
+      mate={CHIEF_DRAWN}
+      phase={null}
+      signIn={null}
+      signInRequired={false}
+      unknown={null}
+    />
+  );
+}

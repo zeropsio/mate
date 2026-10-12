@@ -38,7 +38,7 @@ vi.mock("~/zerops/useMateWrite", () => ({
   }),
 }));
 
-import { SidebarOverviewRow } from "./SidebarOverview";
+import { SidebarChiefRow } from "./chief/SidebarChiefRow";
 import { WaitingList } from "./SidebarWaiting";
 
 const mate = (name: string, kind: WaitingMate["kind"], extra: Partial<WaitingMate> = {}) =>
@@ -96,31 +96,28 @@ const button = (container: HTMLElement, words: string) =>
   [...container.querySelectorAll("button")].find((entry) => entry.textContent === words);
 
 // The owner, 2026-10-12, of a row of its own: "waiting on you is use less, it should be included
-// in the overview somehow".
-describe("SidebarOverviewRow — what waits on you, on the Overview row", () => {
-  const overview = (items: ReadonlyArray<WaitingItem>) => (
-    <SidebarOverviewRow
-      current={false}
-      headline="4 projects, all running"
-      onOpen={() => {}}
-      waiting={{ items, verbs: verbs() }}
-    />
+// in the overview somehow"; then of the Chief at the menu's top: its count stays, beside the squares.
+describe("SidebarChiefRow — what waits on you, at the menu's top", () => {
+  const top = (items: ReadonlyArray<WaitingItem>) => (
+    <SidebarChiefRow current={false} onOpen={() => {}} waiting={{ items, verbs: verbs() }} />
   );
 
   it("says how many wait, the first two in plain words, then how many more", async () => {
-    const container = await mount(overview(ITEMS));
+    const container = await mount(top(ITEMS));
     expect(
       container.querySelector('[data-zerops-surface="sidebar-waiting-count"]')?.textContent,
     ).toBe("4");
     expect(
-      container.querySelector('[data-zerops-surface="sidebar-waiting-line"]')?.textContent,
-    ).toBe("Help Fen · Answer Rhea· 2 more");
+      container
+        .querySelector('[data-zerops-surface="sidebar-waiting"]')
+        ?.getAttribute("aria-label"),
+    ).toBe("4 waiting on you: Help Fen · Answer Rhea, 2 more");
   });
 
   it("is not drawn while nothing waits", async () => {
-    const container = await mount(overview([]));
+    const container = await mount(top([]));
     expect(container.querySelector('[data-zerops-surface="sidebar-waiting"]')).toBeNull();
-    expect(container.textContent).toContain("4 projects, all running");
+    expect(container.textContent).toBe("Chief");
   });
 });
 

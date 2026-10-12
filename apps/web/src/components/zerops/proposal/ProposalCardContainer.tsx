@@ -10,6 +10,7 @@ import { NOT_READ_VAULT, vaultAtom } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { useAtomValue } from "@effect/atom-react";
+import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { useCallback, useMemo, useState } from "react";
 
@@ -19,7 +20,6 @@ import { useDetailDemand } from "~/zerops/ZeropsAccountData";
 import { useKnownMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { recordVaultWrite } from "~/zerops/vaultTurnNotes";
-import { openChiefSetup } from "~/zerops/chiefSetup";
 import { useOwnChief } from "~/zerops/ownChief";
 import { useProposalDecision } from "~/zerops/proposalRecord";
 import { useVaultWriter } from "../vault/VaultPanelContainer";
@@ -101,6 +101,7 @@ function Proposal({
   const { run, write } = useVaultWriter(vaultProject, view);
   const askMate = useAskMate();
   const openMate = useOpenMate();
+  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
 
   const envWrite = proposal.kind === "env.set" ? envProposalWrite(view, proposal) : null;
@@ -215,7 +216,9 @@ function Proposal({
             : undefined
       }
       onSetUpChief={
-        proposal.kind === "chief.message" && chief.kind === "none" ? openChiefSetup : undefined
+        proposal.kind === "chief.message" && chief.kind === "none"
+          ? () => void navigate({ to: "/chief" })
+          : undefined
       }
       proposal={proposal}
       recipient={recipient}
