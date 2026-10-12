@@ -396,25 +396,34 @@ export function StandUpAskLine({
 
 /**
  * What stopped the turn, in the failure tone: its icon on the text edge, its
- * words after it. Only a turn-ending error reaches here — a step that failed
- * on the way stays in the log it belongs to.
+ * words after it. Only a turn-ending error, or a failure no run shows at the
+ * conversation's end, reaches here — a step that failed on the way stays in
+ * the log it belongs to.
  */
 export function ErrorLine({
   label,
   detail,
+  calm = false,
 }: {
   readonly label: string;
   readonly detail?: string | undefined;
+  /** An expected refusal — a usage limit, a sign-in — told, never alerted. */
+  readonly calm?: boolean | undefined;
 }) {
   const extra = detail !== undefined && detail.trim() !== label.trim() ? detail : null;
   return (
     <div
       className="flex min-h-7 min-w-0 items-start py-1 text-line text-foreground"
       data-conversation-error
-      role="alert"
+      role={calm ? "status" : "alert"}
     >
       <LineMark className="h-5 items-center">
-        <CircleAlertIcon className="size-3.5 text-status-failed-text" />
+        <CircleAlertIcon
+          className={cn(
+            "size-3.5",
+            calm ? "text-status-attention-text" : "text-status-failed-text",
+          )}
+        />
       </LineMark>
       <div className="min-w-0">
         <p className="min-w-0">{label}</p>

@@ -161,6 +161,7 @@ import {
   type TimelineLatestTurn,
   type MateAway,
 } from "./MessagesTimeline.logic";
+import type { ThreadEndNotice } from "./threadErrorNotice.logic";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipScrollDismissArea, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -347,6 +348,8 @@ interface MessagesTimelineProps {
   working?: DockModel | null;
   /** The server's word on work that outlived the turn, while it runs on. */
   afterTurnWork?: "working" | "monitoring" | null;
+  /** A failure no run shows, as the conversation's last row (`threadErrorNotice`). */
+  endNotice?: ThreadEndNotice | null;
   /** The background jobs the server holds live, as watched (`useLiveJobs`). */
   liveJobs?: LiveJobs | null;
   isWorking: boolean;
@@ -455,6 +458,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onOpenAgents = NOOP_OPEN_AGENTS,
   working: workingNow = null,
   afterTurnWork = null,
+  endNotice = null,
   liveJobs = null,
   listRef,
   timelineEntries,
@@ -630,6 +634,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         supportsConversationRollback,
         queuedMessages,
         afterTurnWork,
+        endNotice,
         liveJobs,
         helperFinishes,
         alongside,
@@ -654,6 +659,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       supportsConversationRollback,
       queuedMessages,
       afterTurnWork,
+      endNotice,
       liveJobs,
       helperFinishes,
       alongside,
@@ -2673,7 +2679,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "crew-card" ? <CrewCardTimelineRow row={row} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
       {row.kind === "error" ? (
-        <ErrorLine label={row.entry.label} detail={row.entry.detail} />
+        <ErrorLine label={row.entry.label} detail={row.entry.detail} calm={row.calm} />
       ) : null}
       {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}
       {row.kind === "outcome" ? <OutcomeTimelineRow row={row} /> : null}

@@ -3023,6 +3023,32 @@ describe("deriveMessagesTimelineRows", () => {
     });
     expect(list.at(-1)).toMatchObject({ kind: "queued-message", isNext: true });
   });
+
+  it("ends the conversation on a failure no run shows, before the messages waiting to go", () => {
+    const list = deriveMessagesTimelineRows({
+      timelineEntries: [user("m0", 0)],
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+      endNotice: { words: "Select a base branch before sending.", calm: false },
+      queuedMessages: [
+        {
+          id: "q1",
+          createdAt: at(1),
+          prompt: "and the footer",
+          images: [],
+          terminalContexts: [],
+          reviewComments: [],
+        } as never,
+      ],
+    });
+    expect(list.map((row) => row.kind).slice(-2)).toEqual(["error", "queued-message"]);
+    expect(list.at(-2)).toMatchObject({
+      entry: { label: "Select a base branch before sending." },
+      calm: false,
+    });
+  });
 });
 
 describe("thoughtParagraphs", () => {

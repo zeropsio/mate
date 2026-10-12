@@ -7,7 +7,9 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { ThreadErrorBanner } from "./ThreadErrorBanner";
+import { ErrorLine } from "./ConversationRows";
+import { deriveMessagesTimelineRows } from "./MessagesTimeline.logic";
+import { threadErrorNotice } from "./threadErrorNotice.logic";
 
 const SIGNED_OUT =
   "Claude could not authenticate. For subscription login, run `claude auth login` on this environment's machine, then start a new thread. For API-key authentication, check this instance's configured credentials.";
@@ -53,16 +55,38 @@ const attention = agentAdmission({
   mateName: "Rosa",
 }).attention;
 
-describe("the thread's error banner", () => {
+/**
+ * What the conversation's end says of a failure no run of it shows (S6, the owner's pick on
+ * 2026-10-12: "What happened becomes a quiet row in the conversation."): the record is the thread's
+ * error, the conversation's own rows say it.
+ */
+function ConversationEnd(props: {
+  readonly error: string | null;
+  readonly mateName?: string;
+  readonly driver?: string | null;
+  readonly usageLimitShown?: boolean;
+}) {
+  const rows = deriveMessagesTimelineRows({
+    timelineEntries: [],
+    isWorking: false,
+    activeTurnStartedAt: null,
+    turnDiffSummaries: [],
+    supportsConversationRollback: false,
+    endNotice: threadErrorNotice(props),
+  });
+  const end = rows.at(-1);
+  return end?.kind === "error" ? <ErrorLine label={end.entry.label} calm={end.calm} /> : null;
+}
+
+describe("the thread's error at the conversation's end", () => {
   it("tells a legacy limit calmly, without asking for a message to be retyped", () => {
     const error = "Claude usage limit reached. Send the message again once the limit resets.";
-    const html = renderToStaticMarkup(<ThreadErrorBanner mateName="Rosa" error={error} />);
+    const html = renderToStaticMarkup(<ConversationEnd mateName="Rosa" error={error} />);
     expect(html).toContain("Rosa hit the Claude limit.");
     expect(html).not.toContain("Send the message again");
     expect(html).toContain('role="status"');
-    expect(html).not.toContain("<svg");
     expect(
-      renderToStaticMarkup(<ThreadErrorBanner mateName="Rosa" error={error} usageLimitShown />),
+      renderToStaticMarkup(<ConversationEnd mateName="Rosa" error={error} usageLimitShown />),
     ).toBe("");
   });
   it("offers to sign the agent in rather than repeat a command nobody here can run", () => {
@@ -106,31 +130,31 @@ describe("the thread's error banner", () => {
     { case: "Claude's words in another driver's conversation", error: SIGNED_OUT, driver: "codex" },
   ])("leaves $case as it came, with nothing to authorize", ({ error, driver }) => {
     const html = renderToStaticMarkup(
-      <ThreadErrorBanner mateName="Rosa" driver={driver} error={error} />,
+      <ConversationEnd mateName="Rosa" driver={driver} error={error} />,
     );
     expect(html).not.toContain('data-zerops-primary-action="Authorize"');
     expect(html).not.toContain("signed out");
   });
 
   it("keeps a sign-in refusal as history without claiming current admission", () => {
-    const html = renderToStaticMarkup(<ThreadErrorBanner mateName="Rosa" error={SIGNED_OUT} />);
+    const html = renderToStaticMarkup(<ConversationEnd mateName="Rosa" error={SIGNED_OUT} />);
     expect(html).not.toContain('data-zerops-primary-action="Authorize"');
     expect(html).toContain("Rosa&#x27;s turn could not continue because Claude was signed out.");
     expect(html).not.toContain("claude auth login");
     expect(html).toContain('role="status"');
-    expect(html).not.toContain("<svg");
   });
 
   it("leaves every other failure exactly as it came back", () => {
     const html = renderToStaticMarkup(
-      <ThreadErrorBanner mateName="Rosa" error="The container is not reachable." />,
+      <ConversationEnd mateName="Rosa" error="The container is not reachable." />,
     );
     expect(html).toContain("The container is not reachable.");
+    expect(html).toContain('role="alert"');
     expect(html).not.toContain('data-zerops-primary-action="Authorize"');
   });
 
   it("says nothing when nothing failed", () => {
-    expect(renderToStaticMarkup(<ThreadErrorBanner mateName="Rosa" error={null} />)).toBe("");
+    expect(renderToStaticMarkup(<ConversationEnd mateName="Rosa" error={null} />)).toBe("");
   });
 });
 

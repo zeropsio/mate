@@ -85,6 +85,7 @@ import type { LiveJobs } from "./liveJobs.logic";
 import { engineCardEffort, heldLines, withPagedEffort } from "../../zerops/engineCardPaging.logic";
 import { chatItemHasLine, selectChatItems, slotModelOf } from "./runCard.logic";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
+import type { ThreadEndNotice } from "./threadErrorNotice.logic";
 
 export type TimelineLatestTurn = Pick<
   OrchestrationLatestTurn,
@@ -697,6 +698,8 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       entry: WorkLogEntry;
+      /** An expected refusal — a usage limit, a sign-in — said calmly (`ThreadEndNotice`). */
+      calm?: boolean;
     }
   | {
       /** A usage limit: one pause, however many attempts ran into it. */
@@ -2254,6 +2257,8 @@ export function deriveMessagesTimelineRows(input: {
   newSince?: string | null;
   /** The server's word on work that outlived the turn, while it runs on. */
   afterTurnWork?: "working" | "monitoring" | null;
+  /** A failure no run shows, at the conversation's end (`threadErrorNotice`). */
+  endNotice?: ThreadEndNotice | null;
   /** The background jobs the server holds live (`liveJobs.logic`): one it does not never reports. */
   liveJobs?: LiveJobs | null;
   /** The clock a running turn's last words wait against (`LAST_WORDS_GRACE_MS`). */
@@ -3269,6 +3274,21 @@ export function deriveMessagesTimelineRows(input: {
       id: "after-work",
       createdAt: rows.at(-1)?.createdAt ?? "",
       state: input.afterTurnWork,
+    });
+  }
+  if (input.endNotice != null) {
+    const at = rows.at(-1)?.createdAt ?? "";
+    rows.push({
+      kind: "error",
+      id: "thread-error",
+      createdAt: at,
+      entry: {
+        id: "thread-error",
+        createdAt: at,
+        label: input.endNotice.words,
+        tone: input.endNotice.calm ? "info" : "error",
+      },
+      calm: input.endNotice.calm,
     });
   }
   input.queuedMessages?.forEach((queuedMessage, index) => {

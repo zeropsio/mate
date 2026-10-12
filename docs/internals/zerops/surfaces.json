@@ -2010,7 +2010,7 @@
         "apps/web/src/zerops/useMateReadOnly.ts",
         "apps/web/src/components/ChatView.tsx",
         "apps/web/src/components/chat/AgentAdmissionExplanation.tsx",
-        "apps/web/src/components/chat/ThreadErrorBanner.tsx",
+        "apps/web/src/components/chat/threadErrorNotice.logic.ts",
         "apps/web/src/components/chat/providerAvailability.logic.ts",
         "apps/web/src/components/chat/ProviderModelPicker.tsx",
         "apps/web/src/components/zerops/MateStatusMarker.tsx",
@@ -2057,7 +2057,7 @@
       },
       "tests": [
         "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
-        "apps/web/src/components/chat/ThreadErrorBanner.test.tsx",
+        "apps/web/src/components/chat/threadErrorNotice.test.tsx",
         "packages/client-runtime/src/data/projections/agentAdmission.test.ts"
       ],
       "captures": []

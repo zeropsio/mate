@@ -393,13 +393,7 @@ import {
   shouldShowComposerContextStrip,
   shouldShowEnvironmentIndicator,
 } from "./BranchToolbar.logic";
-import {
-  dismissThreadErrorBannerForSession,
-  getThreadErrorBannerKey,
-  isThreadErrorBannerDismissedForSession,
-  shouldShowThreadErrorBanner,
-  ThreadErrorBanner,
-} from "./chat/ThreadErrorBanner";
+import { threadErrorNotice } from "./chat/threadErrorNotice.logic";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { deriveDock, foldBackgroundTasks } from "./chat/conversationDock.logic";
 import { liveJobsOf } from "./chat/liveJobs.logic";
@@ -1814,11 +1808,6 @@ export default function ChatView(props: ChatViewProps) {
   const threadError = isServerThread
     ? (localServerError ?? activeServerThread?.session?.lastError ?? null)
     : localDraftError;
-  // Dismissals can only mask the shown error, never clear it: a server thread
-  // keeps its error in session.lastError, so clearing the local shadow would
-  // just fall through to the persisted one. Mask the current error until a
-  // different error arrives, mirroring the provider status banner.
-  const threadErrorBannerKey = getThreadErrorBannerKey(routeThreadKey, threadError);
   // A persisted runtime failure already has its place in the conversation.
   // Keep command refusals in the banner; they have no durable timeline entry.
   const threadErrorInTimeline =
@@ -1837,21 +1826,7 @@ export default function ChatView(props: ChatViewProps) {
             "message" in activity.payload &&
             activity.payload.message === threadError)),
     );
-  const visibleThreadError =
-    !threadErrorInTimeline &&
-    shouldShowThreadErrorBanner(
-      routeThreadKey,
-      threadError,
-      isThreadErrorBannerDismissedForSession(threadErrorBannerKey),
-    )
-      ? threadError
-      : null;
-  // Dismissing only mutates the session-scoped mask set, which does not
-  // trigger a render on its own; setThreadError(null) can also bail when the
-  // local shadow is already empty and the banner is driven purely by
-  // session.lastError. Bump a tick so the banner hides immediately. Mirrors
-  // the branch mismatch banner.
-  const [, setThreadErrorBannerDismissTick] = useState(0);
+  const visibleThreadError = threadErrorInTimeline ? null : threadError;
   const runtimeMode = composerRuntimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
@@ -3286,7 +3261,6 @@ export default function ChatView(props: ChatViewProps) {
     admission.explainsRefusal || engineCardsShowError(engineCards, visibleThreadError)
       ? null
       : visibleThreadError;
-  const hasTimelineTopBanner = Boolean(shownThreadError);
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
@@ -5332,6 +5306,29 @@ export default function ChatView(props: ChatViewProps) {
         ? crewChatEntries(displayedTimeline.entries, loadEarlierTurns === null)
         : displayedTimeline.entries,
     [displayedTimeline.entries, inCrewChat, loadEarlierTurns],
+  );
+  // A failure no run shows — a send refused here, a Mate that cannot say its run state — is the
+  // conversation's last row, never an alert over it (S6).
+  const endNoticeMateName = admissionMate.kind === "mate" ? admissionMate.mate.name : undefined;
+  const endNoticeDriver = activeServerThread?.session?.providerName ?? null;
+  const latestTurnIdForNotice = activeThread?.latestTurn?.turnId;
+  const endNoticeLimitShown = useMemo(
+    () =>
+      shownThreadError !== null &&
+      conversationEntries.some(
+        (entry) => isUsageLimitError(entry) && timelineEntryTurnId(entry) === latestTurnIdForNotice,
+      ),
+    [conversationEntries, latestTurnIdForNotice, shownThreadError],
+  );
+  const endNotice = useMemo(
+    () =>
+      threadErrorNotice({
+        error: shownThreadError,
+        mateName: endNoticeMateName,
+        driver: endNoticeDriver,
+        usageLimitShown: endNoticeLimitShown,
+      }),
+    [endNoticeDriver, endNoticeLimitShown, endNoticeMateName, shownThreadError],
   );
   // A crewmate's *Change its job*, and its composer's *Runs on*: its job in
   // the Crew tab; the lead's *Change the goal*: the crew's goal there.
@@ -8268,24 +8265,6 @@ export default function ChatView(props: ChatViewProps) {
         </WorkspacePageHeader>
         {zeropsSignInDialog.dialog}
 
-        <ThreadErrorBanner
-          mateName={(() => {
-            const at = zeropsMateAt(zeropsMates, environmentId);
-            return at.kind === "mate" ? at.mate.name : undefined;
-          })()}
-          driver={activeServerThread?.session?.providerName ?? null}
-          error={shownThreadError}
-          usageLimitShown={conversationEntries.some(
-            (entry) =>
-              isUsageLimitError(entry) &&
-              timelineEntryTurnId(entry) === activeThread.latestTurn?.turnId,
-          )}
-          onDismiss={() => {
-            setThreadError(activeThread.id, null);
-            dismissThreadErrorBannerForSession(threadErrorBannerKey);
-            setThreadErrorBannerDismissTick((tick) => tick + 1);
-          }}
-        />
         {/* Main content area with optional plan sidebar */}
         <div className="flex min-h-0 min-w-0 flex-1">
           {/* Chat column */}
@@ -8329,6 +8308,7 @@ export default function ChatView(props: ChatViewProps) {
                   onOpenAgents: addAgentsSurface,
                   working: dockModel,
                   afterTurnWork: activeBackgroundLiveness,
+                  endNotice,
                   liveJobs,
                   isWorking,
                   workingStepLabel,
@@ -8445,7 +8425,7 @@ export default function ChatView(props: ChatViewProps) {
                     { context: { terminalFocus: false } },
                   ),
                   onRemoveQueuedMessage,
-                  topFadeEnabled: !hasTimelineTopBanner,
+                  topFadeEnabled: true,
                   loadEarlier: loadEarlierTurns,
                 }}
               />
