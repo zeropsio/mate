@@ -20,7 +20,7 @@ import {
 import { ChevronRightIcon, SearchIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
-import { getProviderStatusMessage, hasProviderSetup } from "./ProviderStatusBanner";
+import { getProviderStatusMessage, hasProviderSetup } from "./providerAvailability.logic";
 import {
   modelPickerLegacySectionKey,
   modelPickerModelKey,

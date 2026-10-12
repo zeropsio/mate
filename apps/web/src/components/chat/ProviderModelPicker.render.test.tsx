@@ -94,3 +94,87 @@ describe("the open model menu", () => {
     expect(wheelOver(target!)).toBe(!scrolls);
   });
 });
+
+async function drawControl(agentStatus: ServerProvider, open: boolean) {
+  const onOpenProviderSetup = vi.fn();
+  root = createRoot(document.body.appendChild(document.createElement("div")));
+  await act(() =>
+    root!.render(
+      <ProviderModelPicker
+        activeInstanceId={CLAUDE}
+        model="claude-opus-5-5"
+        lockedProvider={null}
+        instanceEntries={deriveProviderInstanceEntries([provider])}
+        modelOptionsByInstance={
+          new Map([[CLAUDE, [{ slug: "claude-opus-5-5", name: "Claude Opus 5.5" }]]])
+        }
+        composer={{
+          traits: { descriptors: [], ultrathinkPromptControlled: false },
+          choices: null,
+          shortcuts: "composer.effort composer.mode",
+        }}
+        agentStatus={agentStatus}
+        open={open}
+        onOpenProviderSetup={onOpenProviderSetup}
+        onInstanceModelChange={() => {}}
+      />,
+    ),
+  );
+  return onOpenProviderSetup;
+}
+
+// S6 (the owner, 2026-10-12): what stops the agent answering is the model control's, not a strip
+// over the conversation.
+describe("the model control while its agent is not fully available", () => {
+  it.each([
+    {
+      tone: "warning",
+      status: {
+        ...provider,
+        displayName: "Claude",
+        status: "warning" as const,
+        message: "Claude is slow to answer right now.",
+        setup: { canAuthenticate: true, canInstall: false },
+      },
+      named: "Claude has limited availability",
+    },
+    {
+      tone: "error",
+      status: {
+        ...provider,
+        displayName: "Claude",
+        status: "error" as const,
+        message: "Claude did not start on this environment.",
+        setup: { canAuthenticate: true, canInstall: false },
+      },
+      named: "Claude is unavailable",
+    },
+  ])("carries a dot in its $tone tone, and its menu says why", async ({ tone, status, named }) => {
+    await drawControl(status as ServerProvider, false);
+
+    const control = document.querySelector("[data-chat-provider-model-picker]")!;
+    const dot = control.querySelector(`[role="img"][aria-label="${named}"]`);
+    expect(dot?.getAttribute("data-tone")).toBe(tone);
+    expect(control.getAttribute("aria-label")).toContain(named);
+
+    await act(() => root!.unmount());
+    root = undefined;
+    document.body.innerHTML = "";
+    const openSetup = await drawControl(status as ServerProvider, true);
+    const note = document.querySelector("[data-agent-availability]")!;
+    expect(note.textContent).toContain(named);
+    expect(note.textContent).toContain(status.message);
+    const setup = Array.from(note.querySelectorAll("button")).find(
+      (button) => button.textContent === "Open coding agent setup",
+    );
+    expect(setup).toBeDefined();
+    await act(() => setup!.click());
+    expect(openSetup).toHaveBeenCalledWith(CLAUDE);
+  });
+
+  it("carries no dot while its agent is ready", async () => {
+    await drawControl(provider, true);
+    expect(document.querySelector('[data-chat-provider-model-picker] [role="img"]')).toBeNull();
+    expect(document.querySelector("[data-agent-availability]")).toBeNull();
+  });
+});

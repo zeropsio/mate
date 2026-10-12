@@ -300,7 +300,7 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import { CircleAlertIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
-import { hasProviderSetup } from "./ProviderStatusBanner";
+import { hasProviderSetup } from "./providerAvailability.logic";
 import {
   applyProviderInstanceSettings,
   deriveProviderInstanceEntries,
@@ -672,6 +672,8 @@ export interface ChatComposerProps {
 
   onProviderModelSelect: (instanceId: ProviderInstanceId, model: string) => void;
   onOpenProviderSetup: (instanceId: ProviderInstanceId) => void;
+  /** The status of the agent the conversation runs on, as admission reads it (the model control's dot). */
+  agentStatus: ServerProvider | null;
   getModelDisabledReason: (instanceId: ProviderInstanceId, model: string) => string | null;
   toggleInteractionMode: () => void;
   handleRuntimeModeChange: (mode: RuntimeMode) => void;
@@ -763,6 +765,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onChangeActivePendingUserInputCustomAnswer,
     onProviderModelSelect,
     onOpenProviderSetup,
+    agentStatus,
     getModelDisabledReason,
     toggleInteractionMode,
     handleRuntimeModeChange,
@@ -4022,6 +4025,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         getModelDisabledReason={getModelDisabledReason}
                         onInstanceModelChange={onProviderModelSelect}
                         onOpenProviderSetup={onOpenProviderSetup}
+                        agentStatus={agentStatus}
                       />
                     )}
 

@@ -394,11 +394,6 @@ import {
   shouldShowEnvironmentIndicator,
 } from "./BranchToolbar.logic";
 import {
-  getProviderStatusBannerKey,
-  ProviderStatusBannerRegion,
-  shouldShowProviderStatusBanner,
-} from "./chat/ProviderStatusBanner";
-import {
   dismissThreadErrorBannerForSession,
   getThreadErrorBannerKey,
   isThreadErrorBannerDismissedForSession,
@@ -3218,9 +3213,6 @@ export default function ChatView(props: ChatViewProps) {
     resumeCompactionPermanentlyDismissed,
     setResumeCompactionPermanentlyDismissed,
   ]);
-  const [dismissedProviderStatusBannerKey, setDismissedProviderStatusBannerKey] = useState<
-    string | null
-  >(null);
   const mateStandUp = useMateStandUp({
     environmentId: activeThreadEnvironmentId,
     threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
@@ -3289,24 +3281,12 @@ export default function ChatView(props: ChatViewProps) {
     agentIdForDriverKind(
       providerStatuses.find((provider) => provider.instanceId === conversationInstanceId)?.driver,
     ) ?? agentIdForProviderInstance(conversationInstanceId);
-  const providerStatusBannerKey = getProviderStatusBannerKey(admission.providerStatus);
-  useEffect(() => {
-    if (providerStatusBannerKey === null && dismissedProviderStatusBannerKey !== null) {
-      setDismissedProviderStatusBannerKey(null);
-    }
-  }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
   // An engine run that broke off says so on its card, as a V1 turn's error activity did.
   const shownThreadError =
     admission.explainsRefusal || engineCardsShowError(engineCards, visibleThreadError)
       ? null
       : visibleThreadError;
-  const visibleProviderStatus = shouldShowProviderStatusBanner(
-    admission.providerStatus,
-    dismissedProviderStatusBannerKey,
-  )
-    ? admission.providerStatus
-    : null;
-  const hasTimelineTopBanner = Boolean(shownThreadError) || visibleProviderStatus !== null;
+  const hasTimelineTopBanner = Boolean(shownThreadError);
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
@@ -8331,11 +8311,6 @@ export default function ChatView(props: ChatViewProps) {
                 </div>
               </div>
             ) : null}
-            <ProviderStatusBannerRegion
-              status={visibleProviderStatus}
-              onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}
-              onOpenProviderSetup={openProviderSetup}
-            />
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Messages — LegendList handles virtualization and scrolling
@@ -8722,6 +8697,7 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               onProviderModelSelect={onProviderModelSelect}
                               onOpenProviderSetup={openProviderSetup}
+                              agentStatus={admission.providerStatus}
                               getModelDisabledReason={getModelDisabledReason}
                               toggleInteractionMode={toggleInteractionMode}
                               handleRuntimeModeChange={handleRuntimeModeChange}
