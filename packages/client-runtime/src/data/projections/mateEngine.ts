@@ -738,12 +738,6 @@ const shellThreadOf = (read: ProjectionReads, key: EngineConversationKey) => {
   });
 };
 
-/** The wakes that carry on a run a restart or a usage limit cut, as it worked. */
-const CUT_RUN_CONTINUATIONS = new Set(["restart-continuation", "usage-resume", "usage-probe"]);
-
-const continuesCutRun = (run: RunRecord): boolean =>
-  run.trigger.kind === "wake" && CUT_RUN_CONTINUATIONS.has(run.trigger.cause);
-
 /** A held conversation's runs, oldest first, with the card each draws on. */
 function cardsOf(read: ProjectionReads, conversationKey: string, header?: ConversationHeader) {
   const runs = valuesOf(read, "mateEngineRun", "engineRunsIn", conversationKey).sort(
@@ -751,16 +745,17 @@ function cardsOf(read: ProjectionReads, conversationKey: string, header?: Conver
   );
   const byId = new Map(runs.map((run) => [run.id as string, run]));
   // The run whose card each run draws on, oldest first: the first of the runs it continues. A run
-  // that only reports on that card's work — a turn the agent opened itself as a background job
-  // ended, a note of work lost — draws its own card once a run on that card answered, under the
-  // answer: words said before it never stand under work done after them (Milo's stress run 4A).
-  // A continuation of a cut run (a restart's, a usage resume) goes on as it worked, on its card.
+  // that goes on with a card's work — a turn the agent opened itself as a background job ended, a
+  // note of work lost, a restart's or a usage limit's continuation — draws its own card once a run
+  // on that card answered, under the answer: words said before it never stand under work done
+  // after them (Milo's stress run 4A; the owner, 2026-10-12, of a usage resume: "this state, where
+  // it has answer and then it's still working above is quite strange"). A run cut before it said
+  // anything goes on as it worked, on its card.
   const roots = new Map<string, RunRecord>();
   const answered = new Set<string>();
   for (const run of runs) {
     const joined = run.joins === null ? undefined : roots.get(run.joins);
-    const root =
-      joined === undefined || (answered.has(joined.id) && !continuesCutRun(run)) ? run : joined;
+    const root = joined === undefined || answered.has(joined.id) ? run : joined;
     roots.set(run.id, root);
     if (run.summary.answerItemId !== null) answered.add(root.id);
   }

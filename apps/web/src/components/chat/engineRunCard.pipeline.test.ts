@@ -725,6 +725,66 @@ it.each([
   },
 );
 
+// The owner (2026-10-12): "this state, where it has answer and then it's still working above is
+// quite strange" — a usage limit cut a run after its words, and its resume worked on in the card
+// above them.
+it.each([
+  { cause: "usage-resume", run: "answered", answered: true },
+  { cause: "restart-continuation", run: "answered", answered: true },
+  { cause: "usage-resume", run: "cut before it answered", answered: false },
+])(
+  "a cut run's continuation stands below the words the run said before the cut, and goes on in its card where it said none: a $cause, the run $run",
+  ({ cause, answered }) => {
+    const before = noteItem(run1, 12, "Deploying the API next.", {
+      at: t0 + 77_700,
+      answer: answered,
+    } as never);
+    const rows = render({
+      runs: [
+        stressRun({
+          end: { kind: "usage-limit", resetsAt: null },
+          summary: { ...stressSummary, answerItemId: answered ? `${run1}/i/12` : null },
+        } as never),
+        engineRun(key.conversationId, 2, {
+          trigger: { kind: "wake", cause, wakeId: null },
+          joins: RunId.make(run1),
+          queuedAt: t0 + 101_400,
+          admittedAt: t0 + 101_400,
+          startedAt: t0 + 101_400,
+          state: "running",
+          turnState: "running",
+          endedAt: null,
+          end: null,
+        } as never),
+      ],
+      items: [
+        ...stressItems("completed").slice(0, -1),
+        before,
+        {
+          ...bash(20, 101_500, "zcli push api", "Deploy the API"),
+          runId: run2,
+          id: `${run2}/i/20`,
+        } as Item,
+      ],
+      isWorking: true,
+    });
+    const cards = rows.flatMap((row) => (row.kind === "record" ? [row.turnId] : []));
+    const read = rows.flatMap((row) =>
+      row.kind === "record"
+        ? [`card of ${row.turnId}`]
+        : row.kind === "message" && row.message.role === "assistant"
+          ? [row.message.text]
+          : [],
+    );
+    expect(read).toEqual(
+      answered
+        ? [`card of ${run1}`, "Deploying the API next.", `card of ${run2}`]
+        : [`card of ${run1}`],
+    );
+    expect(cards).toHaveLength(answered ? 2 : 1);
+  },
+);
+
 // Milo's stress run 4A: the second wave a wake started joined the first wave's "Started 5 helpers".
 it.each([
   { first: "left no answer", answered: false },
