@@ -27,7 +27,7 @@ import { serve } from "./http.ts";
 import { openScenarioNavigation, startScenarioCore, type HqTimings } from "./hqCore.ts";
 import {
   openBrowser,
-  clickText,
+  menuMateRow,
   visibleText,
   visibleInMenu,
   sendConversationMessage,
@@ -326,18 +326,10 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         },
       },
       menu: {
-        // By its row (each project is named after its Mate here): a lone Mate's row reads
-        // "Project · Mate", so its name is never a text of its own.
         opensMate: (name: string) =>
           Effect.promise(async () => {
-            const row = await page
-              .waitForSelector(
-                `[data-zerops-mate-row="${name}"] [data-zerops-surface="sidebar-mate"]`,
-                { visible: true, timeout: 10_000 },
-              )
-              .catch(() => null);
-            if (row === null) await clickText(page, "sidebar-mate", name);
-            else await row.click();
+            const row = await menuMateRow(page, name);
+            await row.click();
             openedMate = mates.get(name);
           }),
       },
@@ -399,7 +391,11 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
                     ...document.querySelectorAll<HTMLElement>(
                       '[data-zerops-surface="sidebar-environments"]',
                     ),
-                  ].flatMap((element) => element.innerText.split("\n").map((line) => line.trim())),
+                  ].flatMap((element) =>
+                    element.innerText
+                      .split("\n")
+                      .flatMap((line) => line.split(/\s·\s/).map((part) => part.trim())),
+                  ),
                 );
                 for (const name of names)
                   if (!rows.has(name) && !state.missing.includes(name)) state.missing.push(name);

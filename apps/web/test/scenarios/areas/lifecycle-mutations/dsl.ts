@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import type { Page } from "puppeteer-core";
 import { expect } from "@effect/vitest";
 import type { ScenarioDrivers } from "../../harness/scenario.ts";
+import { menuMateIn } from "../../harness/browser.ts";
 
 export function originalMateRemains(drivers: ScenarioDrivers, projectId: string, name: string) {
   expect(drivers.zerops.requests.get(`PUT /project/${projectId}`)).toBe(1);
@@ -43,30 +44,23 @@ export function mutations(page: Page) {
     placement: (name: string, app: string) =>
       Effect.promise(async () => {
         await page.bringToFront();
-        await page.waitForFunction(
-          (name, app) => {
-            const headings = [
-              ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-project"]'),
-            ].filter((node) => node.getBoundingClientRect().height > 0);
-            const rows = [
+        await menuMateIn(page, name, app);
+        const count = await page.evaluate(
+          (name) =>
+            [
               ...document.querySelectorAll<HTMLElement>(
                 '[data-zerops-surface="sidebar-mate-name"]',
               ),
-            ].filter(
-              (row) => row.getBoundingClientRect().height > 0 && row.innerText.trim() === name,
-            );
-            if (rows.length !== 1) return false;
-            const heading = headings.findLast(
-              (heading) =>
-                (heading.compareDocumentPosition(rows[0]!) & Node.DOCUMENT_POSITION_FOLLOWING) !==
-                0,
-            );
-            return heading?.innerText.split("\n")[0]?.trim() === app;
-          },
-          { timeout: 8000, polling: "raf" },
+            ].filter((row) => {
+              const words = row.textContent?.replaceAll("\u00a0", " ").trim();
+              return (
+                row.getBoundingClientRect().height > 0 &&
+                (words === name || words?.endsWith(` · ${name}`) === true)
+              );
+            }).length,
           name,
-          app,
         );
+        expect(count, `Mate ${name} must appear once in ${app}`).toBe(1);
       }),
   };
 }

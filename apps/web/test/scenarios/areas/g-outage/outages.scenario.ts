@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
+import { foldMenuGroup } from "../../harness/browser.ts";
 import { outageControls } from "./fake.ts";
 import {
   givenOutage,
@@ -277,6 +278,7 @@ describe("G: outages, sleep and several tabs", () => {
         yield* reportsWork(s, "Ada", "Inspect Ada checkout");
         yield* reportsWork(s, "Bea", "Inspect Bea checkout");
         yield* s.given.signedIn;
+        yield* Effect.promise(() => foldMenuGroup(s.page, "Shop", false));
         yield* menuSays(s.page, "Inspect Ada checkout");
         yield* menuSays(s.page, "Inspect Bea checkout");
         yield* corruptMate(s, "Ada");
