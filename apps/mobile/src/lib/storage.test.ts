@@ -249,42 +249,6 @@ describe("mobile connection storage", () => {
     expect(fallback.updatedAt).toEqual(expect.any(Number));
   });
 
-  it("persists thread list shelf expansion preferences", async () => {
-    await expect(
-      savePreferencesPatch({
-        threadListSettledShelfExpanded: false,
-        threadListSnoozedShelfExpanded: true,
-      }),
-    ).resolves.toEqual({
-      threadListSettledShelfExpanded: false,
-      threadListSnoozedShelfExpanded: true,
-    });
-
-    await expect(loadPreferences()).resolves.toEqual({
-      threadListSettledShelfExpanded: false,
-      threadListSnoozedShelfExpanded: true,
-    });
-    expect(JSON.parse(mocks.getPreferencesJson() ?? "")).toEqual({
-      threadListSettledShelfExpanded: false,
-      threadListSnoozedShelfExpanded: true,
-    });
-  });
-
-  it("drops legacy and invalid thread list shelf expansion preferences", async () => {
-    mocks.setPreferencesJson(
-      JSON.stringify({
-        baseFontSize: 17,
-        threadListV2SettledShelfExpanded: true,
-        threadListV2SnoozedShelfExpanded: true,
-        threadListSettledShelfExpanded: "false",
-        threadListSnoozedShelfExpanded: 1,
-      }),
-      10,
-    );
-
-    await expect(loadPreferences()).resolves.toEqual({ baseFontSize: 17 });
-  });
-
   it("reconciles fallback preferences after SQLite recovers", async () => {
     mocks.setPreferencesJson(JSON.stringify({ baseFontSize: 15 }), 10);
     await mocks.setItemAsync(
