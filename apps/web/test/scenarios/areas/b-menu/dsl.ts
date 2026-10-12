@@ -2,6 +2,7 @@ import type { MateFake } from "../../fakes/mate.ts";
 import { expect } from "@effect/vitest";
 import type { Page } from "puppeteer-core";
 import * as Effect from "effect/Effect";
+import type { ElementHandle } from "puppeteer-core";
 import { clickText, menuMateIn } from "../../harness/browser.ts";
 import type { ScenarioExtension, ScenarioOptions } from "../../harness/scenario.ts";
 import type { OverviewMain, MateThreadKind } from "@t3tools/shared/mateLink";
@@ -184,7 +185,32 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
       }),
     opensApplication: (name: string) =>
       Effect.promise(async () => {
-        await s.page.locator(`::-p-aria(More for ${name})`).setTimeout(8_000).click();
+        // The project's ···: its group's, or the one its only Mate's row shares with it.
+        const more = await s.page.waitForFunction(
+          (name) => {
+            const said = (node: Element | null) =>
+              node?.textContent
+                ?.replaceAll("\u00a0", " ")
+                .replace(/, \d+ Mates$/, "")
+                .trim();
+            const row = [
+              ...document.querySelectorAll<HTMLElement>(
+                '[data-zerops-surface="sidebar-project-row"], [data-zerops-surface="sidebar-mate"]',
+              ),
+            ].find((row) => {
+              const words = said(
+                row.querySelector(
+                  '[data-zerops-surface="sidebar-project-name"], [data-zerops-surface="sidebar-mate-name"]',
+                ),
+              );
+              return words === name || words?.startsWith(`${name} · `) === true;
+            });
+            return row?.querySelector<HTMLElement>('button[aria-label^="More for"]') ?? null;
+          },
+          { timeout: 8_000, polling: "raf" },
+          name,
+        );
+        await (more.asElement() as ElementHandle<HTMLElement>).click();
         await s.page.locator("::-p-aria(Open project)").setTimeout(8_000).click();
         await s.page.waitForFunction(
           (name) =>

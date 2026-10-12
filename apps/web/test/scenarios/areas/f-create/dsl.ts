@@ -185,18 +185,26 @@ export function creation(s: Scenario) {
         try {
           // It stands on its project's page, outside the menu.
           await page.waitForFunction(
-            (name) => {
+            (name, tag) => {
               const menu = document.querySelector('[data-sidebar="sidebar"]');
-              return [...document.querySelectorAll<HTMLElement>("body *")].some(
-                (node) =>
-                  node.childElementCount === 0 &&
-                  node.textContent?.trim() === name &&
-                  menu?.contains(node) !== true &&
-                  node.getBoundingClientRect().height > 0,
+              const words = new Set(
+                [...document.querySelectorAll<HTMLElement>("body *")]
+                  .filter(
+                    (node) =>
+                      node.childElementCount === 0 &&
+                      menu?.contains(node) !== true &&
+                      node.getBoundingClientRect().height > 0,
+                  )
+                  .map((node) => node.textContent?.trim()),
               );
+              // A stage stands under its name; production as the project's Production, set up.
+              return tag === "prod"
+                ? words.has("Production") && !words.has("Set up production")
+                : words.has(name);
             },
             { timeout: 15_000, polling: "raf" },
             name,
+            tag,
           );
         } catch (cause) {
           throw new Error(

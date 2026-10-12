@@ -351,7 +351,7 @@ function mateInApp(page: Page, name: string, app: string) {
         );
         const title = group
           ?.querySelector('[data-zerops-surface="sidebar-project-name"]')
-          ?.textContent?.trim();
+          ?.firstChild?.textContent?.trim();
         if (group === null || group === undefined || title !== app) continue;
         if (group.getAttribute("aria-expanded") === "false") return "folded";
         if (rows(section).some((row) => named(row) === name)) return "shown";
@@ -376,7 +376,7 @@ function groupRow(page: Page, app: string) {
           group.getBoundingClientRect().height > 0 &&
           group
             .querySelector('[data-zerops-surface="sidebar-project-name"]')
-            ?.textContent?.trim() === app,
+            ?.firstChild?.textContent?.trim() === app,
       ) ?? null,
     { timeout: 10_000, polling: "raf" },
     app,
@@ -418,6 +418,46 @@ export async function menuMateIn(page: Page, name: string, app: string, timeout 
         `Menu did not show ${name} in ${app} (${where})\n${await page.evaluate(() => document.body.innerText)}`,
       );
     await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/**
+ * The menu's row of Mate `name`, drawn: its name alone (a Mate in no project, or under its open
+ * group), or its project's then its own ("Shop · Ada", a project of one Mate). A Mate in a folded
+ * group is drawn once a person opens its group: where none shows it soon, every group is opened
+ * from the menu's top row.
+ */
+export async function menuMateRow(page: Page, name: string, timeout = 10_000) {
+  const find = (within: number) =>
+    page.waitForFunction(
+      (name) =>
+        [...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-mate"]')].find(
+          (row) => {
+            const words = row
+              .querySelector('[data-zerops-surface="sidebar-mate-name"]')
+              ?.textContent?.replaceAll("\u00a0", " ")
+              .trim();
+            return (
+              row.getBoundingClientRect().height > 0 &&
+              (words === name || words?.endsWith(` · ${name}`) === true)
+            );
+          },
+        ) ?? null,
+      { timeout: within, polling: "raf" },
+      name,
+    );
+  const soon = Math.min(timeout, 3_000);
+  try {
+    return (await find(soon)).asElement() as ElementHandle<HTMLElement>;
+  } catch {
+    await page.evaluate(() =>
+      document
+        .querySelector<HTMLElement>(
+          '[data-zerops-surface="sidebar-fold-all"][aria-label="Open all projects"]',
+        )
+        ?.click(),
+    );
+    return (await find(Math.max(timeout - soon, 1_000))).asElement() as ElementHandle<HTMLElement>;
   }
 }
 

@@ -4,7 +4,7 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { createScenario } from "../../harness/scenario.ts";
-import { visibleInMenu, sendConversationMessage } from "../../harness/browser.ts";
+import { menuMateRow, visibleInMenu, sendConversationMessage } from "../../harness/browser.ts";
 import { chatFor, revokeProjectAccess } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
@@ -124,10 +124,8 @@ export function mateChat(
     });
   const openMate = (name: string) =>
     Effect.promise(async () => {
-      await page
-        .locator(`[data-zerops-surface="sidebar-mate"] ::-p-text(${name})`)
-        .setTimeout(8000)
-        .click();
+      // Its own row, its group opened where it is folded: never a group's line that names it.
+      await (await menuMateRow(page, name, 8000)).click();
     });
   const send = (message: string, waitForReady: boolean) =>
     Effect.promise(() => sendConversationMessage(page, message, waitForReady));
