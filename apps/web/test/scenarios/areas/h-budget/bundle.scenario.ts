@@ -23,7 +23,6 @@ function deferredAssets() {
     usage: asset("src/routes/usage.tsx?tsr-split=component"),
     settings: asset("src/routes/settings.appearance.tsx?tsr-split=component"),
     theme: asset("src/components/settings/ThemeEditorPanel.tsx"),
-    calendar: asset("src/components/ui/calendar.tsx"),
     terminal: asset("src/terminal/ghostty/surface.ts"),
     helpers: asset("src/components/AgentsPanel.tsx"),
     data: asset("src/components/zerops/ZeropsDataPanel.tsx"),
