@@ -75,7 +75,14 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
 
   return (
     <ComposerAsk
-      actions={actions}
+      // Someone else's agent: whom it waits on stands where its decisions would.
+      actions={
+        waitingLabel === undefined ? (
+          actions
+        ) : (
+          <span className="text-line text-muted-foreground">{waitingLabel}</span>
+        )
+      }
       face={face ?? <ComposerAskMark />}
       kind="approval"
       label={fallbackLabel}
@@ -98,12 +105,6 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
               {` · 1 of ${pendingCount}`}
             </span>
           ) : null}
-          {waitingLabel === undefined ? null : (
-            <span className="font-normal text-muted-foreground">
-              {" · "}
-              <span>{waitingLabel}</span>
-            </span>
-          )}
         </>
       }
     >

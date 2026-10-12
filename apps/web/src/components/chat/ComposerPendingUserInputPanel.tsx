@@ -294,7 +294,11 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     >
       <ComposerAsk
         actions={
-          answer !== null && prompt.dismissible ? (
+          answer === null ? (
+            <span className="text-line text-muted-foreground" data-pending-user-input-waiting>
+              {waitingLabel}
+            </span>
+          ) : prompt.dismissible ? (
             // Dismiss closes an async question without sending a reply.
             <Tooltip>
               <TooltipTrigger
@@ -349,13 +353,9 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                   {` · ${questionIndex + 1} of ${prompt.questions.length}`}
                 </span>
               ) : null}
-              {/* Whom it waits on: the face's needs pose says it is the viewer; someone else is named. */}
-              {answer === null ? (
-                <span className="font-normal text-muted-foreground">
-                  {" · "}
-                  <span data-pending-user-input-waiting>{waitingLabel}</span>
-                </span>
-              ) : (
+              {/* Whom it waits on: the face's needs pose says it is the viewer; someone else is
+                  named where the dismiss would stand. */}
+              {answer === null ? null : (
                 <span className="sr-only" data-pending-user-input-waiting>
                   {waitingLabel}
                 </span>

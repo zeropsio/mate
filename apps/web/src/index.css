@@ -8023,9 +8023,14 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   height: 14px;
 }
 
-.composer-top-dismiss:hover {
+.composer-top-dismiss:hover:not(:disabled) {
   color: var(--color-foreground);
   background: color-mix(in srgb, var(--color-foreground) 6%, transparent);
+}
+
+.composer-top-dismiss:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .composer-top-dismiss:focus-visible {

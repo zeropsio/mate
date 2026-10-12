@@ -73,26 +73,33 @@ export function ComposerAsk({
   return (
     <section
       aria-label={label}
-      className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-foreground/8 border-b pt-3 pe-2 pb-3 ps-4"
+      className="@container border-foreground/8 border-b"
       // What it asks stands over the conversation's end: it never moves it (`ChatView`).
       data-chat-composer-asks="true"
       data-composer-top={kind}
       role="group"
     >
-      {face}
-      <div className="min-w-0">
-        <p className="truncate font-medium text-foreground text-line leading-4.5">{title}</p>
-        {detail === undefined ? null : (
-          <div className="min-w-0 text-muted-foreground text-line leading-4.5">{detail}</div>
+      {/* What is asked comes before its buttons, for a reader and for the Tab key; the grid sets
+          the buttons beside the sentence, and under everything once the composer is too narrow
+          to hold both. */}
+      <div className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 pt-3 pe-2 pb-3 ps-4 @max-xl:grid-cols-[28px_minmax(0,1fr)]">
+        <div className="col-start-1 row-start-1 grid place-items-center">{face}</div>
+        <div className="col-start-2 row-start-1 min-w-0">
+          <p className="truncate font-medium text-foreground text-line leading-4.5">{title}</p>
+          {detail === undefined ? null : (
+            <div className="min-w-0 text-muted-foreground text-line leading-4.5">{detail}</div>
+          )}
+        </div>
+        {/* A folded panel leaves it empty, and an empty row would still take the grid's gap. */}
+        {children === undefined ? null : (
+          <div className="col-start-2 -col-end-1 row-start-2 min-w-0 empty:hidden">{children}</div>
+        )}
+        {actions === undefined ? null : (
+          <div className="col-start-3 row-start-1 flex min-w-0 flex-wrap items-center justify-end gap-1 @max-xl:col-start-2 @max-xl:-col-end-1 @max-xl:row-start-auto">
+            {actions}
+          </div>
         )}
       </div>
-      {actions === undefined ? null : (
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">{actions}</div>
-      )}
-      {/* A folded panel leaves it empty, and an empty row would still take the grid's gap. */}
-      {children === undefined ? null : (
-        <div className="col-start-2 col-end-4 min-w-0 empty:hidden">{children}</div>
-      )}
     </section>
   );
 }

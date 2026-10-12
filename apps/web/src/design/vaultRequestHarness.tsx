@@ -2,8 +2,8 @@
  * The card a Mate's request for a vault value draws in its conversation, in the conversation's
  * column at the owner's size (1786 wide, the left menu at 435, `?menu=` for another): a Shared
  * secret, a service's plain value, one given since, one set aside. Puts answer after 600 ms;
- * `?fail=1` refuses each. `?theme=dark` for dark. `?drawer=1`: an ask the engine keeps, in the
- * composer's drawer in each state, and its answer as the asking run's result rows.
+ * `?fail=1` refuses each. `?theme=dark` for dark. `?drawer=1`: an ask the engine keeps, at the
+ * composer's top in each state, and its answer as the asking run's result rows.
  *
  * Served by the dev server at `/design-vault-request.html`. Fixtures only: nothing here ships, and
  * no route imports this module.
@@ -99,7 +99,7 @@ function Ask({ ask, said: initial }: (typeof ASKS)[number]) {
   );
 }
 
-/** The drawer's asks, one per state it can stand in. */
+/** The composer's asks, one per state it can stand in. */
 const DRAWER_ASKS: ReadonlyArray<{ readonly name: string; readonly ask: VaultAsk }> = [
   {
     name: "asked",
@@ -185,9 +185,8 @@ function DrawerHarness() {
         <div className="mx-auto grid w-full max-w-3xl gap-6">
           {DRAWER_ASKS.map(({ name, ask }) => (
             <div
-              className="chat-composer-top-drawer"
-              data-chat-composer-asks="true"
-              data-chat-composer-top-drawer="true"
+              className="w-full overflow-hidden rounded-3xl border border-border bg-card"
+              data-chat-composer-main-surface="true"
               data-harness-state={name}
               key={name}
             >
@@ -204,6 +203,7 @@ function DrawerHarness() {
                 onUseGiven={() => undefined}
                 state={vaultAskState(VAULT_FIXTURE, ask)}
               />
+              <div className="px-4 pt-3 pb-12 text-placeholder text-sm">Ask anything...</div>
             </div>
           ))}
           <div data-harness-state="answered">

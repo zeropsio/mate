@@ -300,7 +300,6 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
 import { CircleAlertIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
-import { proposedPlanTitle } from "../../proposedPlan";
 import { hasProviderSetup } from "./ProviderStatusBanner";
 import {
   applyProviderInstanceSettings,
@@ -1620,9 +1619,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // What the agent asks stands at the composer's top in the look of the change waiting for review
   // (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12); a phone's folded composer
   // keeps it in the drawer over its one line.
-  const showComposerTopDrawer =
-    isComposerCollapsedMobile &&
-    (isComposerApprovalState || pendingUserInputs.length > 0 || vaultAskWaits);
+  const composerAsks = isComposerApprovalState || pendingUserInputs.length > 0 || vaultAskWaits;
+  const showComposerTopDrawer = isComposerCollapsedMobile && composerAsks;
   const askFace = <ComposerAskFace environmentId={environmentId} />;
   const askName = useComposerAskName(environmentId);
   const showCollapsedMobilePromptRow =
@@ -3014,7 +3012,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeTasksTurnId !== null && dismissedTasksTurnId === activeTasksTurnId;
   const visibleTasksProgress = tasksDismissedForActiveTurn ? null : activeTasksProgress;
   const visibleTaskSteps = tasksDismissedForActiveTurn ? null : activeTaskSteps;
-  const hasBlockingComposerTopDrawer = showComposerTopDrawer;
+  // An ask closes the tasks drawer and hides the shoulder tabs while it waits, as the drawer did.
+  const hasBlockingComposerTopDrawer = composerAsks;
   const dismissTasks = useCallback(() => {
     if (activeTasksTurnId !== null) {
       setDismissedTasksTurnId(activeTasksTurnId);
@@ -3025,7 +3024,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     stashQueue.length > 0 &&
     !isComposerApprovalState &&
     (props.externalDrawerAttached ||
-      showComposerTopDrawer ||
+      composerAsks ||
       isTasksDrawerOpen ||
       isComposerCollapsedMobile);
   const inlineStashBadge = showInlineStashBadge ? (
@@ -3043,7 +3042,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     visibleTaskSteps !== null &&
     !isTasksDrawerOpen &&
     !hasBlockingComposerTopDrawer &&
-    (props.externalDrawerAttached || showComposerTopDrawer || isComposerCollapsedMobile);
+    (props.externalDrawerAttached || isComposerCollapsedMobile);
   const inlineTasksBadge = showInlineTasksBadge ? (
     <ComposerTasksBadge
       expanded={false}
@@ -3056,7 +3055,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ) : null;
   const showShoulderTabs =
     !props.externalDrawerAttached &&
-    !showComposerTopDrawer &&
+    !composerAsks &&
     !isTasksDrawerOpen &&
     !isComposerCollapsedMobile;
   const hasShoulderTab =

@@ -119,8 +119,9 @@ export function ComposerVaultAsk(props: ComposerVaultAskProps) {
         title={<span data-vault-ask-line>{vaultAskLine(ask, mateName)}</span>}
       >
         {takes ? (
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex min-w-0 flex-1 items-center gap-1">
+          // The field keeps a width to type in; Keep hidden goes under it where both do not fit.
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="flex min-w-48 flex-1 items-center gap-1">
               <Input
                 aria-label={`Your ${vaultAskLabel(ask)}`}
                 autoComplete="new-password"
