@@ -37,6 +37,7 @@ import { mateUpdateRouteLayer } from "./zerops/mateUpdateHttp.ts";
 import { ZeropsLayerLive } from "./zerops/zeropsFeedsLayer.ts";
 import { McpServersLayerLive } from "./zerops/mcp/McpServers.ts";
 import * as ThreadFileWrites from "./zerops/ThreadFileWrites.ts";
+import * as MacCommandShim from "./zerops/mac/MacCommandShim.ts";
 import * as ZeropsIdentityStatusModule from "./zerops/ZeropsIdentityStatus.ts";
 import { ProviderRuntimeEventBusLive } from "./spi/ProviderRuntimeEventBus.ts";
 import { ClaudeThreadExtensionRegistry } from "./spi/claudeThreadProfile.ts";
@@ -560,6 +561,8 @@ const RuntimeDependenciesLive = Layer.mergeAll(
   McpServersLayerLive.pipe(Layer.provide(ZeropsLayerLive)),
   // It reads the Mate engine the Zerops feeds compose (the same instance, memoized by reference).
   ThreadFileWrites.layer.pipe(Layer.provide(ZeropsLayerLive)),
+  // Puts `mac` (work on a paired Mac) on the agents' PATH inside a Zerops container.
+  MacCommandShim.layer,
 ).pipe(
   Layer.provideMerge(providerUpdateSafetyLayer),
   Layer.provideMerge(ProviderRuntimeEventBusLayerLive),
