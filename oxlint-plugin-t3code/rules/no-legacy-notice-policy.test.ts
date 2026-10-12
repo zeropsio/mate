@@ -2,11 +2,13 @@ import plugin from "../index.ts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { createOxlintRuleHarness } from "../test/utils.ts";
-const chrome = createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
+import { createOxlintRuleBatch } from "../test/utils.ts";
+const batch = createOxlintRuleBatch("t3code/no-legacy-notice-policy");
+
+const chrome = batch.createHarness({
   filename: "apps/web/src/zerops/chatChrome.ts",
 });
-const chat = createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
+const chat = batch.createHarness({
   filename: "apps/web/src/components/OtherChat.tsx",
 });
 chrome.invalid(
@@ -21,14 +23,14 @@ chat.invalid(
   "another surface cannot relocate the removed chip policy",
   'import { zeropsAgentSignInRequired as needs } from "@t3tools/client-runtime/zerops/agentLogin"; export const state = needs(feed);',
 );
-const admissionChat = createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
+const admissionChat = batch.createHarness({
   filename: "apps/web/src/components/ChatView.tsx",
 });
 admissionChat.invalid(
   "admission policy cannot relocate beside the preserved arrival query",
   'import { zeropsAgentSignInRequired as needs } from "@t3tools/client-runtime/zerops/agentLogin"; export const restoredAdmission = needs(feed);',
 );
-const arrival = createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
+const arrival = batch.createHarness({
   filename: "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx",
 });
 arrival.valid(
@@ -52,7 +54,7 @@ admissionChat.valid(
   "the chat's existing arrival query stays with its arrival owner",
   'import { agentAdmission } from "@t3tools/client-runtime/data"; export const state = agentAdmission(input).holdsComposer;',
 );
-const admission = createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
+const admission = batch.createHarness({
   filename: "packages/client-runtime/src/data/projections/agentAdmission.ts",
 });
 admission.valid(
@@ -63,7 +65,7 @@ admissionChat.invalid(
   "ChatView cannot restore an arrival admission join",
   'import { zeropsAgentSignInRequired } from "@t3tools/client-runtime/zerops/agentLogin"; export const state = mateArrivalHoldsComposer({signInRequired: zeropsAgentSignInRequired(feed)});',
 );
-const crew = createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
+const crew = batch.createHarness({
   filename: "apps/web/src/components/zerops/crew/CrewPanel.tsx",
 });
 crew.valid(
@@ -87,11 +89,13 @@ it.effect(
         "apps/desktop",
       ]) {
         for (const policy of ["zeropsAgentSignInRequired", "spentLoginStatusStale"]) {
-          const output = yield* createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
-            filename: `${root}/src/relocated.ts`,
-          }).runAndExpectFailure(
-            `import { ${policy} as policy } from "legacy"; const alias = policy; export const notice = alias(evidence);`,
-          );
+          const output = yield* batch
+            .createHarness({
+              filename: `${root}/src/relocated.ts`,
+            })
+            .runAndExpectFailure(
+              `import { ${policy} as policy } from "legacy"; const alias = policy; export const notice = alias(evidence);`,
+            );
           expect(output).toContain(policy);
         }
       }
@@ -111,10 +115,12 @@ for (const policy of [
     `branch advice cannot relocate ${policy}`,
     `import * as branch from "./BranchToolbar.logic"; const { ${policy}: legacy } = branch; export const notice = legacy(evidence);`,
   );
-  createOxlintRuleHarness("t3code/no-legacy-notice-policy", {
-    filename: "apps/web/src/components/BranchToolbar.logic.ts",
-  }).valid(
-    `the branch owner retains ${policy}`,
-    `import { ${policy} as legacy } from "./existing"; export const advice = legacy(evidence);`,
-  );
+  batch
+    .createHarness({
+      filename: "apps/web/src/components/BranchToolbar.logic.ts",
+    })
+    .valid(
+      `the branch owner retains ${policy}`,
+      `import { ${policy} as legacy } from "./existing"; export const advice = legacy(evidence);`,
+    );
 }

@@ -6,14 +6,16 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import { type ExceptionEntry } from "../exceptions.ts";
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 import { HQ_CLIENT_VERBS, ZEROPS_CLIENT_VERBS } from "./no-remote-io-outside-data-layer.ts";
 
 const RULE = "t3code/no-remote-io-outside-data-layer";
 const LEDGER_DIRECTORY_ENV = "T3CODE_REMOTE_IO_LEDGER_DIRECTORY";
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
-const webFile = createOxlintRuleHarness(RULE, { filename: "apps/web/src/zerops/useSomething.ts" });
-const adapterFile = createOxlintRuleHarness(RULE, {
+const batch = createOxlintRuleBatch(RULE);
+
+const webFile = batch.createHarness({ filename: "apps/web/src/zerops/useSomething.ts" });
+const adapterFile = batch.createHarness({
   filename: "packages/client-runtime/src/zerops/hq/client.ts",
 });
 const FETCH = `export const read = (url: string) => fetch(url);`;
@@ -248,25 +250,31 @@ describe("t3code/no-remote-io-outside-data-layer", () => {
     "apps/desktop/src/updater.ts",
     "apps/server/src/zerops/link.ts",
   ]) {
-    createOxlintRuleHarness(RULE, { filename }).valid(`does not guard ${filename}`, FETCH);
+    batch.createHarness({ filename }).valid(`does not guard ${filename}`, FETCH);
   }
-  createOxlintRuleHarness(RULE, { filename: "apps/web/src/terminal/ghostty/runtime.ts" }).valid(
-    "allows a module that fetches a bundled file, not source data",
-    `export const read = (url: string) => window.fetch(url);`,
-  );
+  batch
+    .createHarness({ filename: "apps/web/src/terminal/ghostty/runtime.ts" })
+    .valid(
+      "allows a module that fetches a bundled file, not source data",
+      `export const read = (url: string) => window.fetch(url);`,
+    );
   for (const filename of [
     "apps/mobile/src/features/zerops/screen.tsx",
     "packages/client-runtime/src/zerops/hq/journal.ts",
   ]) {
-    createOxlintRuleHarness(RULE, { filename }).invalid(`guards ${filename}`, FETCH);
+    batch.createHarness({ filename }).invalid(`guards ${filename}`, FETCH);
   }
   const PLATFORM_CALL = `export const restart = (platform: Platform, id: string) => platform.restartService(id);`;
-  createOxlintRuleHarness(RULE, {
-    filename: "packages/client-runtime/src/data/operations/executors/zerops.ts",
-  }).valid("allows an operation executor to call a platform port", PLATFORM_CALL);
-  createOxlintRuleHarness(RULE, {
-    filename: "packages/client-runtime/src/data/adapters/services.ts",
-  }).valid("allows a data-layer adapter to reach its remote", FETCH);
+  batch
+    .createHarness({
+      filename: "packages/client-runtime/src/data/operations/executors/zerops.ts",
+    })
+    .valid("allows an operation executor to call a platform port", PLATFORM_CALL);
+  batch
+    .createHarness({
+      filename: "packages/client-runtime/src/data/adapters/services.ts",
+    })
+    .valid("allows a data-layer adapter to reach its remote", FETCH);
   for (const filename of [
     "packages/client-runtime/src/data/projections/services.ts",
     "packages/client-runtime/src/data/operations/receipts.ts",
@@ -275,10 +283,7 @@ describe("t3code/no-remote-io-outside-data-layer", () => {
     "packages/client-runtime/src/data/store.ts",
     "packages/client-runtime/src/data/reducer.ts",
   ]) {
-    createOxlintRuleHarness(RULE, { filename }).invalid(
-      `guards the data layer's ${filename}`,
-      PLATFORM_CALL,
-    );
+    batch.createHarness({ filename }).invalid(`guards the data layer's ${filename}`, PLATFORM_CALL);
   }
   webFile.valid(
     "allows the HTTP client's types",

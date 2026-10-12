@@ -7,15 +7,17 @@ import * as Schema from "effect/Schema";
 
 import { type ExceptionEntry } from "../exceptions.ts";
 import { RETIRED_MECHANISMS } from "../retiredMechanisms.ts";
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
 const RULE = "t3code/no-retired-mechanism";
 const LEDGER_DIRECTORY_ENV = "T3CODE_RETIRED_MECHANISM_LEDGER_DIRECTORY";
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
-const webFile = createOxlintRuleHarness(RULE, {
+const batch = createOxlintRuleBatch(RULE);
+
+const webFile = batch.createHarness({
   filename: "apps/web/src/zerops/useFixtureMenu.ts",
 });
-const hqFile = createOxlintRuleHarness(RULE, { filename: "apps/hq/src/fixtureStream.ts" });
+const hqFile = batch.createHarness({ filename: "apps/hq/src/fixtureStream.ts" });
 
 const KEEP = `export const keep = rememberMenuCandidates;`;
 const KEEP_ENTRY: ExceptionEntry = {
@@ -77,7 +79,7 @@ const BOUND = RETIRED_MECHANISMS.filter(
     mechanism.paths !== undefined &&
     !DISTINCTIVE.some((distinctive) => mechanism.token.includes(distinctive.token)),
 );
-const freshFile = createOxlintRuleHarness(RULE, {
+const freshFile = batch.createHarness({
   filename: "apps/web/src/components/zerops/FreshUnrelatedPanel.tsx",
 });
 
@@ -85,9 +87,11 @@ it.layer(NodeServices.layer)("no-retired-mechanism ledger", (it) => {
   it.effect("reports a common name in a file its mechanism lives in", () =>
     withFixtureLedger(
       [],
-      createOxlintRuleHarness(RULE, {
-        filename: "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-      }).runAndExpectFailure(`const [awaiting, setAwaiting] = useState(false);`),
+      batch
+        .createHarness({
+          filename: "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
+        })
+        .runAndExpectFailure(`const [awaiting, setAwaiting] = useState(false);`),
     ),
   );
 
@@ -152,6 +156,6 @@ describe("t3code/no-retired-mechanism", () => {
     "packages/client-runtime/src/zerops/testing/menu.ts",
     "apps/server/src/zerops/menu.ts",
   ]) {
-    createOxlintRuleHarness(RULE, { filename }).valid(`does not guard ${filename}`, KEEP);
+    batch.createHarness({ filename }).valid(`does not guard ${filename}`, KEEP);
   }
 });

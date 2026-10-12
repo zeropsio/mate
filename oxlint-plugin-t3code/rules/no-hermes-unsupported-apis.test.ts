@@ -1,8 +1,10 @@
 import { assert, describe } from "@effect/vitest";
 
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
-const rule = createOxlintRuleHarness("t3code/no-hermes-unsupported-apis", {
+const batch = createOxlintRuleBatch("t3code/no-hermes-unsupported-apis");
+
+const rule = batch.createHarness({
   filename: "fixture.ts",
 });
 

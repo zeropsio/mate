@@ -1,8 +1,10 @@
 import { assert, describe } from "@effect/vitest";
 
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
-const rule = createOxlintRuleHarness("t3code/require-suppression-reason", {
+const batch = createOxlintRuleBatch("t3code/require-suppression-reason");
+
+const rule = batch.createHarness({
   filename: "fixture.tsx",
 });
 

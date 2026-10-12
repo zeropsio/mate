@@ -6,31 +6,33 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import { type ExceptionEntry, FINDING_MESSAGE_MARKER } from "../exceptions.ts";
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
 const RULE_NAME = "no-legacy-vocabulary";
 const LEDGER_DIRECTORY_ENV = "T3CODE_LEGACY_VOCABULARY_LEDGER_DIRECTORY";
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
-const webFile = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
+const batch = createOxlintRuleBatch("t3code/no-legacy-vocabulary");
+
+const webFile = batch.createHarness({
   filename: "apps/web/src/components/Probe.tsx",
 });
-const mobileFile = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
+const mobileFile = batch.createHarness({
   filename: "apps/mobile/src/components/Probe.tsx",
 });
-const copyModule = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
+const copyModule = batch.createHarness({
   filename: "apps/web/src/versionSkew.ts",
 });
-const copyComponentModule = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
+const copyComponentModule = batch.createHarness({
   filename: "apps/web/src/components/RightPanelTabs.tsx",
 });
-const rightPanelKindsCopyModule = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
+const rightPanelKindsCopyModule = batch.createHarness({
   filename: "apps/web/src/rightPanelKinds.ts",
 });
-const ordinaryModule = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
+const ordinaryModule = batch.createHarness({
   filename: "apps/web/src/copy.ts",
 });
-const testFile = createOxlintRuleHarness("t3code/no-legacy-vocabulary", {
+const testFile = batch.createHarness({
   filename: "apps/web/src/components/Probe.test.tsx",
 });
 

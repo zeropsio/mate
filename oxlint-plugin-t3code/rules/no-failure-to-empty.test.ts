@@ -6,7 +6,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import { type ExceptionEntry } from "../exceptions.ts";
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
 const readImports = `
 import { useAtomValue } from "@effect/atom-react";
@@ -21,8 +21,10 @@ const RULE = "t3code/no-failure-to-empty";
 const LEDGER_DIRECTORY_ENV = "T3CODE_FAILURE_TO_EMPTY_LEDGER_DIRECTORY";
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
-const webHook = createOxlintRuleHarness(RULE, { filename: "apps/web/src/zerops/useFixture.ts" });
-const webComponent = createOxlintRuleHarness(RULE, {
+const batch = createOxlintRuleBatch(RULE);
+
+const webHook = batch.createHarness({ filename: "apps/web/src/zerops/useFixture.ts" });
+const webComponent = batch.createHarness({
   filename: "apps/web/src/components/zerops/ZeropsFixture.tsx",
 });
 const CAUGHT_EMPTY = `export const read = (client) => client.listTags("o", "r").catch(() => []);`;
@@ -115,11 +117,11 @@ it.layer(NodeServices.layer)("no-failure-to-empty ledger", (it) => {
 
 describe(RULE, () => {
   for (const filename of guardedFiles) {
-    createOxlintRuleHarness(RULE, { filename }).invalid(`guards ${filename}`, CAUGHT_EMPTY);
+    batch.createHarness({ filename }).invalid(`guards ${filename}`, CAUGHT_EMPTY);
   }
 
   for (const filename of unguardedFiles) {
-    createOxlintRuleHarness(RULE, { filename }).valid(`does not guard ${filename}`, CAUGHT_EMPTY);
+    batch.createHarness({ filename }).valid(`does not guard ${filename}`, CAUGHT_EMPTY);
   }
 
   for (const empty of ["[]", "undefined", "null"]) {
@@ -417,7 +419,7 @@ describe(RULE, () => {
   }
 });
 
-const data = createOxlintRuleHarness(RULE, {
+const data = batch.createHarness({
   filename: "packages/client-runtime/src/data/fixture.ts",
 });
 data.invalid(
@@ -532,7 +534,7 @@ webComponent.invalid(
 export function rows(tail: Promise<ReadonlyArray<string>>) { return tail.catch(() => undefined); }
 `,
 );
-const guardedBrowser = createOxlintRuleHarness(RULE, {
+const guardedBrowser = batch.createHarness({
   filename: "apps/web/src/components/files/FileBrowserPanel.tsx",
 });
 const browserImports = `import { useProjectEntriesQuery } from "./projectFilesQueryState"; import { FileBrowserPanelState } from "./FileBrowserPanelState";`;
@@ -649,7 +651,7 @@ it.layer(NodeServices.layer)("technical review regressions", (it) => {
     ),
   )("$title", ({ filename }) =>
     expectCount(
-      createOxlintRuleHarness(RULE, { filename }),
+      batch.createHarness({ filename }),
       `
       import { useProjection as read } from "~/zerops/ZeropsAccountData";
       export function rows() { return read(projection, key, fallback)?.rows ?? []; }
@@ -873,7 +875,7 @@ it.layer(NodeServices.layer)("automatic policy carries unknown and failure prese
             "../../packages/client-runtime/src/data/projections/hqAutoUpdatePolicy.ts",
           ),
         );
-        const policy = createOxlintRuleHarness(RULE, {
+        const policy = batch.createHarness({
           filename: "packages/client-runtime/src/data/projections/hqAutoUpdatePolicy.ts",
         });
         yield* expectFindingCount(policy, source, 0);

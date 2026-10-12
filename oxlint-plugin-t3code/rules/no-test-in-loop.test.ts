@@ -1,9 +1,11 @@
 import { assert, describe } from "@effect/vitest";
 
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
-const rule = createOxlintRuleHarness("t3code/no-test-in-loop", { filename: "fixture.test.ts" });
-const sourceRule = createOxlintRuleHarness("t3code/no-test-in-loop", { filename: "fixture.ts" });
+const batch = createOxlintRuleBatch("t3code/no-test-in-loop");
+
+const rule = batch.createHarness({ filename: "fixture.test.ts" });
+const sourceRule = batch.createHarness({ filename: "fixture.ts" });
 
 describe("t3code/no-test-in-loop", () => {
   rule.valid(

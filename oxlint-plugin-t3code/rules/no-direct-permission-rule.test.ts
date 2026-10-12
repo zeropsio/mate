@@ -1,23 +1,25 @@
 import { assert, describe } from "@effect/vitest";
 
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
 const RULE = "t3code/no-direct-permission-rule";
-const webFile = createOxlintRuleHarness(RULE, { filename: "apps/web/src/zerops/offersLike.ts" });
-const mobileFile = createOxlintRuleHarness(RULE, {
+const batch = createOxlintRuleBatch(RULE);
+
+const webFile = batch.createHarness({ filename: "apps/web/src/zerops/offersLike.ts" });
+const mobileFile = batch.createHarness({
   filename: "apps/mobile/src/features/zerops/screen.tsx",
 });
-const runtimeFile = createOxlintRuleHarness(RULE, {
+const runtimeFile = batch.createHarness({
   filename: "packages/client-runtime/src/zerops/barrel.ts",
 });
-const sharedFile = createOxlintRuleHarness(RULE, { filename: "packages/shared/src/index.ts" });
-const ruleItself = createOxlintRuleHarness(RULE, {
+const sharedFile = batch.createHarness({ filename: "packages/shared/src/index.ts" });
+const ruleItself = batch.createHarness({
   filename: "packages/shared/src/zeropsPermissions.ts",
 });
-const testFile = createOxlintRuleHarness(RULE, {
+const testFile = batch.createHarness({
   filename: "packages/client-runtime/src/zerops/hq/refusals.test.ts",
 });
-const hqFile = createOxlintRuleHarness(RULE, { filename: "apps/hq/src/api.ts" });
+const hqFile = batch.createHarness({ filename: "apps/hq/src/api.ts" });
 
 describe("t3code/no-direct-permission-rule", () => {
   webFile.valid(

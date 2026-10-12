@@ -1,9 +1,11 @@
 /* oxlint-disable t3code/no-unscoped-has -- the fixtures are invalid on purpose */
 import { assert, describe } from "@effect/vitest";
 
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
-const rule = createOxlintRuleHarness("t3code/no-unscoped-has", {
+const batch = createOxlintRuleBatch("t3code/no-unscoped-has");
+
+const rule = batch.createHarness({
   filename: "fixture.tsx",
 });
 

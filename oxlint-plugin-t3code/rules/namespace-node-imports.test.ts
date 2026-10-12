@@ -1,8 +1,10 @@
 import { assert, describe } from "@effect/vitest";
 
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
-const rule = createOxlintRuleHarness("t3code/namespace-node-imports");
+const batch = createOxlintRuleBatch("t3code/namespace-node-imports");
+
+const rule = batch.createHarness();
 
 describe("t3code/namespace-node-imports", () => {
   rule.valid(

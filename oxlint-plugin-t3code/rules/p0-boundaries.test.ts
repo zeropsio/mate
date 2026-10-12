@@ -1,14 +1,15 @@
 import { assert, describe } from "@effect/vitest";
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
-const io = (filename: string) =>
-  createOxlintRuleHarness("t3code/no-remote-io-outside-data-layer", { filename });
-const retired = (filename: string) =>
-  createOxlintRuleHarness("t3code/no-retired-mechanism", { filename });
-const empty = (filename: string) =>
-  createOxlintRuleHarness("t3code/no-failure-to-empty", { filename });
-const storage = (filename: string) =>
-  createOxlintRuleHarness("t3code/no-remote-data-in-browser-storage", { filename });
+const ioBatch = createOxlintRuleBatch("t3code/no-remote-io-outside-data-layer");
+const retiredBatch = createOxlintRuleBatch("t3code/no-retired-mechanism");
+const emptyBatch = createOxlintRuleBatch("t3code/no-failure-to-empty");
+const storageBatch = createOxlintRuleBatch("t3code/no-remote-data-in-browser-storage");
+
+const io = (filename: string) => ioBatch.createHarness({ filename });
+const retired = (filename: string) => retiredBatch.createHarness({ filename });
+const empty = (filename: string) => emptyBatch.createHarness({ filename });
+const storage = (filename: string) => storageBatch.createHarness({ filename });
 
 describe("sanctioned source boundaries retain their counterexamples", () => {
   const auth = io("apps/web/src/environments/primary/auth.ts");

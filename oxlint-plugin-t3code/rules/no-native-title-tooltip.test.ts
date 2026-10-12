@@ -1,8 +1,10 @@
 import { assert, describe } from "@effect/vitest";
 
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
-const rule = createOxlintRuleHarness("t3code/no-native-title-tooltip", {
+const batch = createOxlintRuleBatch("t3code/no-native-title-tooltip");
+
+const rule = batch.createHarness({
   filename: "fixture.tsx",
 });
 

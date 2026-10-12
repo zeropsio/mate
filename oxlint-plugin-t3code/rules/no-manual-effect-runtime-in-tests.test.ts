@@ -1,8 +1,10 @@
 import { assert, describe } from "@effect/vitest";
 
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
-const rule = createOxlintRuleHarness("t3code/no-manual-effect-runtime-in-tests", {
+const batch = createOxlintRuleBatch("t3code/no-manual-effect-runtime-in-tests");
+
+const rule = batch.createHarness({
   filename: "fixture.test.ts",
 });
 
@@ -61,7 +63,7 @@ describe("t3code/no-manual-effect-runtime-in-tests", () => {
   );
 });
 
-const productionRule = createOxlintRuleHarness("t3code/no-manual-effect-runtime-in-tests");
+const productionRule = batch.createHarness();
 
 productionRule.valid(
   "allows production runtime boundaries",

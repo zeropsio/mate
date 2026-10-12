@@ -1,14 +1,16 @@
 import { assert, describe } from "@effect/vitest";
 
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
-const guardedFile = createOxlintRuleHarness("t3code/no-platform-globals", {
+const batch = createOxlintRuleBatch("t3code/no-platform-globals");
+
+const guardedFile = batch.createHarness({
   filename: "packages/client-runtime/src/zerops/probe.ts",
 });
-const webFile = createOxlintRuleHarness("t3code/no-platform-globals", {
+const webFile = batch.createHarness({
   filename: "apps/web/src/zerops/collapsedStops.ts",
 });
-const guardedTestFile = createOxlintRuleHarness("t3code/no-platform-globals", {
+const guardedTestFile = batch.createHarness({
   filename: "packages/client-runtime/src/zerops/probe.test.ts",
 });
 

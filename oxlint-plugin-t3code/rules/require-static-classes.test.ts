@@ -1,13 +1,15 @@
 import { assert, describe } from "@effect/vitest";
 
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
 const RULE_NAME = "require-static-classes";
 
-const webFile = createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+const batch = createOxlintRuleBatch(`t3code/${RULE_NAME}`);
+
+const webFile = batch.createHarness({
   filename: "apps/web/src/components/example/Surface.tsx",
 });
-const uiFile = createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+const uiFile = batch.createHarness({
   filename: "apps/web/src/components/ui/surface.tsx",
 });
 

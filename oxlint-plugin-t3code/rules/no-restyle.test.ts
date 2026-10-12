@@ -6,22 +6,24 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import { type ExceptionEntry } from "../exceptions.ts";
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
 const RULE_NAME = "no-restyle";
 const LEDGER_DIRECTORY_ENV = "T3CODE_NO_RESTYLE_LEDGER_DIRECTORY";
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
-const webFile = createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+const batch = createOxlintRuleBatch(`t3code/${RULE_NAME}`);
+
+const webFile = batch.createHarness({
   filename: "apps/web/src/components/example/Surface.tsx",
 });
-const zeropsFile = createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+const zeropsFile = batch.createHarness({
   filename: "apps/web/src/components/zerops/Surface.tsx",
 });
-const uiFile = createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+const uiFile = batch.createHarness({
   filename: "apps/web/src/components/ui/surface.tsx",
 });
-const mobileFile = createOxlintRuleHarness(`t3code/${RULE_NAME}`, {
+const mobileFile = batch.createHarness({
   filename: "apps/mobile/src/features/example/Surface.tsx",
 });
 

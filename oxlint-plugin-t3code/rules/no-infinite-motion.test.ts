@@ -6,28 +6,30 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import { type ExceptionEntry } from "../exceptions.ts";
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
 const RULE_NAME = "no-infinite-motion";
 const LEDGER_DIRECTORY_ENV = "T3CODE_INFINITE_MOTION_LEDGER_DIRECTORY";
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
-const mobileFile = createOxlintRuleHarness("t3code/no-infinite-motion", {
+const batch = createOxlintRuleBatch("t3code/no-infinite-motion");
+
+const mobileFile = batch.createHarness({
   filename: "apps/mobile/src/features/example/MotionSurface.tsx",
 });
-const webFile = createOxlintRuleHarness("t3code/no-infinite-motion", {
+const webFile = batch.createHarness({
   filename: "apps/web/src/components/example/MotionSurface.tsx",
 });
-const serviceMapFile = createOxlintRuleHarness("t3code/no-infinite-motion", {
+const serviceMapFile = batch.createHarness({
   filename: "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
 });
-const nonProtectedZeropsFile = createOxlintRuleHarness("t3code/no-infinite-motion", {
+const nonProtectedZeropsFile = batch.createHarness({
   filename: "apps/web/src/components/zerops/ZeropsProjectPicker.tsx",
 });
-const testFile = createOxlintRuleHarness("t3code/no-infinite-motion", {
+const testFile = batch.createHarness({
   filename: "apps/web/src/components/example/MotionSurface.test.tsx",
 });
-const admissionExplanationFile = createOxlintRuleHarness("t3code/no-infinite-motion", {
+const admissionExplanationFile = batch.createHarness({
   filename: "apps/web/src/components/chat/AgentAdmissionExplanation.tsx",
 });
 

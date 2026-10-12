@@ -1,8 +1,10 @@
 import { assert, describe } from "@effect/vitest";
 
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
-const rule = createOxlintRuleHarness("t3code/prefer-catch-tags");
+const batch = createOxlintRuleBatch("t3code/prefer-catch-tags");
+
+const rule = batch.createHarness();
 
 describe("t3code/prefer-catch-tags", () => {
   rule.valid(

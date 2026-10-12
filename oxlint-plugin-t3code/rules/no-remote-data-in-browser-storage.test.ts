@@ -6,13 +6,15 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import { type ExceptionEntry } from "../exceptions.ts";
-import { createOxlintRuleHarness } from "../test/utils.ts";
+import { createOxlintRuleBatch } from "../test/utils.ts";
 
 const RULE = "t3code/no-remote-data-in-browser-storage";
 const LEDGER_DIRECTORY_ENV = "T3CODE_BROWSER_STORAGE_LEDGER_DIRECTORY";
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
-const webFile = createOxlintRuleHarness(RULE, { filename: "apps/web/src/zerops/fixtureMemory.ts" });
-const mobileFile = createOxlintRuleHarness(RULE, {
+const batch = createOxlintRuleBatch(RULE);
+
+const webFile = batch.createHarness({ filename: "apps/web/src/zerops/fixtureMemory.ts" });
+const mobileFile = batch.createHarness({
   filename: "apps/mobile/src/features/zerops/fixtureMemory.ts",
 });
 const KEEP = `export const keep = (text: string) => localStorage.setItem("mate:fixture", text);`;
@@ -114,10 +116,12 @@ describe("t3code/no-remote-data-in-browser-storage", () => {
     "apps/web/src/zerops/bootFrame.ts",
     "apps/mobile/src/features/zerops/storage.ts",
   ]) {
-    createOxlintRuleHarness(RULE, { filename }).valid(
-      `allows a preference, a draft or sign-in kept by ${filename}`,
-      `import * as SecureStore from "expo-secure-store"; export const read = () => [SecureStore, window.localStorage.getItem("k")];`,
-    );
+    batch
+      .createHarness({ filename })
+      .valid(
+        `allows a preference, a draft or sign-in kept by ${filename}`,
+        `import * as SecureStore from "expo-secure-store"; export const read = () => [SecureStore, window.localStorage.getItem("k")];`,
+      );
   }
   for (const filename of [
     "apps/web/src/zerops/fixtureMemory.test.ts",
@@ -125,10 +129,9 @@ describe("t3code/no-remote-data-in-browser-storage", () => {
     "packages/client-runtime/src/zerops/testing/tabs.ts",
     "apps/server/src/zerops/state.ts",
   ]) {
-    createOxlintRuleHarness(RULE, { filename }).valid(
-      `does not guard ${filename}`,
-      `export const read = () => localStorage.getItem("k");`,
-    );
+    batch
+      .createHarness({ filename })
+      .valid(`does not guard ${filename}`, `export const read = () => localStorage.getItem("k");`);
   }
   webFile.invalid(
     "reports a zustand store persisted outside the allowlist",
