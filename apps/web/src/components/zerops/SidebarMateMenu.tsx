@@ -24,7 +24,16 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { GroupFlowPreview } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId } from "@t3tools/contracts";
 
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "../ui/menu";
+import {
+  Menu,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuItem,
+  MenuPopup,
+  MenuSeparator,
+  MenuShortcut,
+  MenuTrigger,
+} from "../ui/menu";
 import { CHANGE_FACE_VERB } from "./ZeropsChangeFaceDialog.logic";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import type { ZeropsMenuAction, ZeropsMenuEntry } from "./ZeropsProjectMenu";
@@ -248,9 +257,11 @@ export function MateMenu({
   readonly onOpenChange: (open: boolean) => void;
   /**
    * Its project's own items, where its row is the project's (one Mate): first, a line apart from
-   * the Mate's — one menu, never two ··· on one row.
+   * the Mate's, each half under its name — one menu, never two ··· on one row.
    */
-  readonly project?: ReadonlyArray<HeadingMenuEntry> | undefined;
+  readonly project?:
+    | { readonly name: string; readonly entries: ReadonlyArray<HeadingMenuEntry> }
+    | undefined;
 }) {
   return (
     <Menu onOpenChange={onOpenChange} open={open}>
@@ -281,13 +292,21 @@ export function MateMenu({
         className="w-56"
         data-zerops-surface="sidebar-mate-menu"
       >
-        {project === undefined || project.length === 0 ? null : (
+        {project === undefined || project.entries.length === 0 ? (
+          <MateMenuItems {...items} name={name} />
+        ) : (
           <>
-            <ProjectMenuItems entries={project} />
+            <MenuGroup>
+              <MenuGroupLabel className="truncate">{project.name}</MenuGroupLabel>
+              <ProjectMenuItems entries={project.entries} />
+            </MenuGroup>
             <MenuSeparator />
+            <MenuGroup>
+              <MenuGroupLabel className="truncate">{name}</MenuGroupLabel>
+              <MateMenuItems {...items} name={name} />
+            </MenuGroup>
           </>
         )}
-        <MateMenuItems {...items} name={name} />
       </MenuPopup>
     </Menu>
   );

@@ -6,7 +6,7 @@
  * them (or in their popover, which React bubbles through them) never reaches the row.
  */
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
-import { GitPullRequestIcon, UsersIcon } from "lucide-react";
+import { GitPullRequestIcon, RocketIcon, UsersIcon } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -154,7 +154,9 @@ function ReleaseTag({
           />
         }
       >
-        Release
+        {/* In a narrow menu the word gives way to its mark, so the project's name keeps its room. */}
+        <RocketIcon aria-hidden="true" className="menu-tag-icon" />
+        <span className="menu-tag-word">Release</span>
       </TooltipTrigger>
       <TooltipPopup side="bottom">{tip}</TooltipPopup>
     </Tooltip>
@@ -212,7 +214,8 @@ function ReviewTag({
             />
           }
         >
-          Review
+          <GitPullRequestIcon aria-hidden="true" className="menu-tag-icon" />
+          <span className="menu-tag-word">Review</span>
           <TagCount count={many ? items.length : undefined} />
         </TooltipTrigger>
         {only === undefined ? null : <TooltipPopup side="bottom">{only.title}</TooltipPopup>}

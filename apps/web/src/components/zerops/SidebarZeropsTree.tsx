@@ -2490,7 +2490,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
   return (
     <MateUnit active={current} projectId={`group:${groupId}`}>
       <div
-        className="relative"
+        className="menu-row-box relative"
         data-zerops-project-row={groupId}
         data-zerops-surface="sidebar-project-row"
         onContextMenu={(event) => {
@@ -2664,7 +2664,7 @@ function ProjectBareRow({
   return (
     <MateUnit active={false} projectId={`group:${groupId}`}>
       <div
-        className="relative"
+        className="menu-row-box relative"
         data-zerops-project-row={groupId}
         data-zerops-surface="sidebar-project-row"
         onContextMenu={(event) => {
@@ -3173,8 +3173,13 @@ function useTagsRoom(
       rowElement.style.removeProperty("--menu-tags-w");
       return;
     }
+    let placed = -1;
     const place = () => {
       const width = tagsElement.offsetWidth;
+      // Only a width that changed moves the name: a reading that changed nothing writes nothing,
+      // so the observer never answers its own write.
+      if (width === placed) return;
+      placed = width;
       rowElement.toggleAttribute("data-tags", width > 0);
       rowElement.style.setProperty("--menu-tags-w", `${String(width)}px`);
     };
@@ -3434,7 +3439,7 @@ function MateRowView<T extends RosterCandidate>({
     // the row beside the button, never inside it. Both are lit as the row's
     // unit (`MateUnit`), wherever on it the pointer is.
     <div
-      className="relative"
+      className="menu-row-box relative"
       data-zerops-mate-row={candidate.project.id}
       data-zerops-surface="sidebar-mate-row"
       onContextMenu={
@@ -3793,7 +3798,11 @@ function MateRowView<T extends RosterCandidate>({
                 setRenaming(true);
               }}
               open={menuOpen}
-              project={projectMenu}
+              project={
+                project === undefined || projectMenu === undefined
+                  ? undefined
+                  : { name: project, entries: projectMenu }
+              }
               shortcuts
               unread={unread}
             />

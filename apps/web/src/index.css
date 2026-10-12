@@ -3785,8 +3785,8 @@ code {
 
   .menu-cluster-more {
     position: absolute;
-    right: -6px;
-    bottom: -4px;
+    right: -11px;
+    bottom: -6px;
     z-index: 4;
     display: grid;
     min-width: 22px;
@@ -3801,6 +3801,40 @@ code {
     font-weight: 600;
     line-height: 16px;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* A row is a container its tags read: in a narrow menu each tag keeps its mark and lets its word
+     go, so a project's name keeps its room — the places' tag and Release first, Review last. */
+  .menu-row-box {
+    container: menu-row / inline-size;
+  }
+
+  .menu-tag-icon {
+    display: none;
+    flex: none;
+    width: 13px;
+    height: 13px;
+  }
+
+  @container menu-row (max-width: 400px) {
+    .zerops-sites-tag .menu-tag-word,
+    .menu-tag-release .menu-tag-word {
+      display: none;
+    }
+
+    .menu-tag-release .menu-tag-icon {
+      display: block;
+    }
+  }
+
+  @container menu-row (max-width: 340px) {
+    .menu-tag-review .menu-tag-word {
+      display: none;
+    }
+
+    .menu-tag-review .menu-tag-icon {
+      display: block;
+    }
   }
 
   /* A project with no Mate: its mark where a face would stand. */

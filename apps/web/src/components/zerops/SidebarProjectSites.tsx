@@ -222,7 +222,8 @@ export function ProjectSites(
           }
         >
           <EnvDot dot={shown.dot} />
-          {shown.word}
+          {/* In a narrow menu the dot alone stands for it; the tooltip and its name say the rest. */}
+          <span className="menu-tag-word">{shown.word}</span>
         </TooltipTrigger>
         {open ? null : <TooltipPopup side="bottom">{shown.sentence}</TooltipPopup>}
       </Tooltip>
