@@ -7175,15 +7175,27 @@ button.run-bar:focus-visible {
   outline-offset: 2px;
   border-radius: 18px;
 }
-/* A fade at an edge says there is more past it. */
+/* A fade at an edge says there is more past it — over the lines only: the bar's 16 px gutter
+   stays whole, so its thumb is never shaved where it reaches an edge (the owner, 2026-10-12:
+   "scrollbar in the working card has some weird cut off on right"). */
+.run-scroll:is([data-more-above], [data-more-below]) {
+  mask-image: var(--run-scroll-fade), linear-gradient(currentColor, currentColor);
+  mask-position:
+    left top,
+    right top;
+  mask-repeat: no-repeat;
+  mask-size:
+    calc(100% - 16px) 100%,
+    16px 100%;
+}
 .run-scroll[data-more-above] {
-  mask-image: linear-gradient(to bottom, transparent, currentColor 24px);
+  --run-scroll-fade: linear-gradient(to bottom, transparent, currentColor 24px);
 }
 .run-scroll[data-more-below] {
-  mask-image: linear-gradient(to top, transparent, currentColor 24px);
+  --run-scroll-fade: linear-gradient(to top, transparent, currentColor 24px);
 }
 .run-scroll[data-more-above][data-more-below] {
-  mask-image: linear-gradient(
+  --run-scroll-fade: linear-gradient(
     to bottom,
     transparent,
     currentColor 24px,
