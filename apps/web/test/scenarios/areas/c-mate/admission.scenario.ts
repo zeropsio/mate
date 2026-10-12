@@ -118,16 +118,17 @@ describe("C: agent admission", () => {
           // A phone's folded composer hides the model control: its row carries the dot instead.
           yield* Effect.promise(async () => {
             await s.page.setViewport({ width: 390, height: 844 });
-            await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-            await s.page.mouse.click(200, 300);
+            // The closing menu hands focus back to its control a beat later: leave the composer
+            // until it folds.
             await expect
               .poll(
                 () =>
-                  s.page.evaluate(() =>
-                    document
+                  s.page.evaluate(() => {
+                    (document.activeElement as HTMLElement | null)?.blur();
+                    return document
                       .querySelector('[aria-label^="Expand composer"]')
-                      ?.getAttribute("aria-label"),
-                  ),
+                      ?.getAttribute("aria-label");
+                  }),
                 { timeout: 8000 },
               )
               .toMatch(/^Expand composer, .* is unsupported$/u);
