@@ -3489,7 +3489,15 @@ describe("owner-reported layout regressions", () => {
             );
             const frames = yield* Effect.promise(() => stopLastLineTrace(s.page, 1200));
             const heights = frames.flatMap((frame) => (frame.box === null ? [] : [frame.box]));
-            const steps = heights.slice(1).map((height, index) => height - heights[index]!);
+            // A frame the machine drops shows two of the glide's steps at once (its first is ~61 px,
+            // so 61 + 53 = 114.6 px read as a leap under a loaded gate): what grew is shared by the
+            // frame intervals the sample spans. Run 5's leap was 372 px inside one frame.
+            const drawn = frames.filter((frame) => frame.box !== null);
+            const steps = drawn.slice(1).map((frame, index) => {
+              const before = drawn[index]!;
+              const spans = Math.max(1, Math.round((frame.at - before.at) / (1000 / 60)));
+              return (frame.box! - before.box!) / spans;
+            });
             expect(heights.at(-1)! - heights[0]!, "ASSERTION: the box grew").toBeGreaterThan(200);
             expect(
               Math.max(...steps),
