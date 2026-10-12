@@ -43,7 +43,7 @@ export interface MacHostPaths {
   readonly publicKey: string;
   readonly record: string;
   readonly knownHosts: string;
-  /** The app the live view shows: the last one an agent opened with `mac device open`. */
+  /** The app the live view shows: the last one an agent opened with `mac open` or `mac device open`. */
   readonly view: string;
 }
 
@@ -180,6 +180,7 @@ export type MacCommand =
   | { readonly _tag: "status"; readonly json: boolean }
   | { readonly _tag: "sync" }
   | { readonly _tag: "run"; readonly command: ReadonlyArray<string> }
+  | { readonly _tag: "open"; readonly app: string }
   | { readonly _tag: "device"; readonly args: ReadonlyArray<string>; readonly whileInUse: boolean }
   | { readonly _tag: "screenshot"; readonly out: string | undefined; readonly whileInUse: boolean }
   | { readonly _tag: "unpair" }
@@ -212,6 +213,14 @@ export const parseMacCommand = (args: ReadonlyArray<string>): MacCommand => {
       return rest.length > 0
         ? { _tag: "run", command: rest }
         : { _tag: "usage", message: "mac run needs a command, for example: mac run swift build" };
+    case "open":
+      return rest.length === 1
+        ? { _tag: "open", app: rest[0]! }
+        : {
+            _tag: "usage",
+            message:
+              "mac open takes one app: a .app in the copy (mac open build/Counter.app), a bundle id or a name.",
+          };
     case "device": {
       const whileInUse = rest[0] === WHILE_IN_USE;
       const deviceArgs = whileInUse ? rest.slice(1) : rest;
@@ -239,13 +248,17 @@ export const MAC_HELP = `mac - work on the Mac paired with this Mate, over the p
   mac status              Whether a Mac is paired and reachable.
   mac pair                Print the two commands to run on the Mac to pair it.
   mac sync                Copy the current directory to the Mac (honours .gitignore).
-  mac run <command>       Run a shell command in that copy on the Mac.
+  mac run <command>       Run a shell command in that copy on the Mac (build there).
+  mac open <app>          Open an app in the background, behind the user's windows, and show
+                          it live in their Mac tab: a .app in the copy (build/Counter.app),
+                          a bundle id or a name. A build of that .app still running quits first.
   mac device <args>       Run agent-device on the Mac (macOS apps by default):
                             mac device open <bundle id>
                             mac device snapshot -i
                             mac device press @e3 --settle
   mac screenshot [path]   Save a screenshot of the open app here and print its path.
 
+  mac open never takes over the screen, so it runs while someone is using the Mac.
   mac device and mac screenshot raise the app and click on screen, so they wait while
   someone is using the Mac (exit 75); --while-in-use goes ahead with the user's say-so.
   mac unpair              Forget the Mac (prints how to remove its setup too).`;
@@ -332,6 +345,47 @@ export const macRunCommand = (
 ): string => {
   const dir = shellQuote(macWorkspaceDir(record, cwd));
   return `cd ${dir} 2>/dev/null || { echo "Nothing synced to the Mac yet; run mac sync first." >&2; exit 66; }; ${command.join(" ")}`;
+};
+
+/** A bundle id such as com.example.Counter: dotted words without spaces. */
+const BUNDLE_ID = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
+
+/**
+ * Opens an app with `open -g`: it launches behind the user's windows and takes
+ * no focus, so it runs while they work. A .app path is the copy's build; a
+ * build of it still running is quit first, or `open` would only bring the old
+ * one back. An app that activates itself on launch anyway gets the front taken
+ * back for the app the user was in. Prints what the live view should follow:
+ * the app's real path, or the bundle id or name as given.
+ */
+export const macOpenCommand = (record: MacHostRecord, cwd: string, app: string): string => {
+  const quoted = shellQuote(app);
+  const isPath = app.includes("/") || app.endsWith(".app");
+  const running = `ps -A -o pid= -o command= | P="$app/Contents/MacOS/" awk 'index($0, ENVIRON["P"]) { print $1 }'`;
+  const [open, key] = isPath
+    ? [`open -g "$app"`, "bundlepath"]
+    : BUNDLE_ID.test(app)
+      ? [`open -g -b "$app"`, "bundleid"]
+      : [`open -g -a "$app"`, "name"];
+  return [
+    // One field of the front app, as lsappinfo reports it; nothing where it cannot tell.
+    `front() { lsappinfo info -only "$1" "$(lsappinfo front 2>/dev/null)" 2>/dev/null | sed -n 's/^"[^"]*"="\\(.*\\)"$/\\1/p'; }`,
+    `app=${quoted}`,
+    ...(isPath
+      ? [
+          `cd ${shellQuote(macWorkspaceDir(record, cwd))} 2>/dev/null || cd "$HOME"`,
+          `case "$app" in "~/"*) app="$HOME/\${app#"~/"}";; esac`,
+          `[ -d "$app" ] || { printf '%s\\n' "No app at $app in the Mac's copy. Build it there first (mac run), or open an installed app by its bundle id or name." >&2; exit 66; }`,
+          `app=$(cd "$app" && pwd -P)`,
+          `pids=$(${running})`,
+          `if [ -n "$pids" ]; then kill $pids 2>/dev/null; i=0; while [ $i -lt 30 ] && [ -n "$(${running})" ]; do sleep 0.1; i=$((i + 1)); done; fi`,
+        ]
+      : []),
+    `was=$(front bundleid)`,
+    `${open} || exit $?`,
+    `case "$was" in ''|com.apple.loginwindow) ;; *) i=0; while [ $i -lt 15 ]; do if [ "$(front ${key})" = "$app" ]; then open -b "$was"; break; fi; sleep 0.2; i=$((i + 1)); done;; esac`,
+    `printf '%s\\n' "$app"`,
+  ].join("; ");
 };
 
 const agentDevice = (record: MacHostRecord) => shellQuote(`${record.root}/bin/agent-device`);

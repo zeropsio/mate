@@ -14,6 +14,7 @@ import {
   macDeviceCommand,
   macHostPaths,
   type MacHostRecord,
+  macOpenCommand,
   macRunCommand,
   macScreenPoint,
   macScreenshotCommand,
@@ -49,6 +50,7 @@ describe("parseMacCommand", () => {
     [["host"], { _tag: "host", remove: false }],
     [["host", "--remove"], { _tag: "host", remove: true }],
     [["run", "swift", "build"], { _tag: "run", command: ["swift", "build"] }],
+    [["open", "build/Counter+ Pro.app"], { _tag: "open", app: "build/Counter+ Pro.app" }],
     [
       ["device", "press", "@e4", "--settle"],
       { _tag: "device", args: ["press", "@e4", "--settle"], whileInUse: false },
@@ -67,12 +69,16 @@ describe("parseMacCommand", () => {
     expect(parseMacCommand(args)).toEqual(expected);
   });
 
-  it.each([[["run"]], [["device"]], [["status", "now"]], [["build"]]] as const)(
-    "answers `mac %j` with how to use it instead of guessing",
-    (args) => {
-      expect(parseMacCommand(args)._tag).toBe("usage");
-    },
-  );
+  it.each([
+    [["run"]],
+    [["device"]],
+    [["status", "now"]],
+    [["build"]],
+    [["open"]],
+    [["open", "Counter", "Notes"]],
+  ] as const)("answers `mac %j` with how to use it instead of guessing", (args) => {
+    expect(parseMacCommand(args)._tag).toBe("usage");
+  });
 });
 
 describe("acceptMacRegistration", () => {
@@ -386,6 +392,151 @@ describe("the app the live view follows", () => {
     } finally {
       NodeFS.rmSync(home, { recursive: true, force: true });
     }
+  });
+});
+
+describe("opening an app for the person to watch", () => {
+  /**
+   * Runs `mac open` as the Mac would: a real ps and kill, with \`open\` recording
+   * what it was asked and lsappinfo answering for the front app. The person
+   * works in com.example.Editor; with \`stealsFront\`, the opened app activates
+   * itself and takes the front.
+   */
+  const onMac = (
+    app: string,
+    prepare: (copy: string) => void = () => undefined,
+    options: { readonly stealsFront?: boolean } = {},
+  ) => {
+    const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-open-"));
+    try {
+      const bin = NodePath.join(home, "bin");
+      const copy = NodePath.join(home, "ZeropsMate", "app");
+      NodeFS.mkdirSync(bin);
+      NodeFS.mkdirSync(copy, { recursive: true });
+      const front = NodePath.join(home, "front");
+      NodeFS.writeFileSync(
+        front,
+        '"CFBundleIdentifier"="com.example.Editor"\n"LSBundlePath"="/Applications/Editor.app"\n"LSDisplayName"="Editor"\n',
+      );
+      const steal = options.stealsFront
+        ? `case "$1" in -g) shift; case "$1" in -b) k=CFBundleIdentifier; shift;; -a) k=LSDisplayName; shift;; *) k=LSBundlePath;; esac; printf '"%s"="%s"\\n' "$k" "$1" > "${front}";; esac\n`
+        : "";
+      NodeFS.writeFileSync(
+        NodePath.join(bin, "open"),
+        `#!/bin/sh\necho "$@" >> "${home}/opened"\n${steal}`,
+        { mode: 0o755 },
+      );
+      NodeFS.writeFileSync(NodePath.join(bin, "sleep"), "#!/bin/sh\n", { mode: 0o755 });
+      NodeFS.writeFileSync(
+        NodePath.join(bin, "lsappinfo"),
+        `#!/bin/sh\ncase "$3" in bundleid) k=CFBundleIdentifier;; bundlepath) k=LSBundlePath;; *) k=LSDisplayName;; esac\ncase "$1" in front) echo 'ASN:0x0-0x1:';; info) grep "^\\"$k\\"=" "${front}";; esac\n`,
+        { mode: 0o755 },
+      );
+      prepare(copy);
+      const result = NodeChildProcess.spawnSync(
+        "/bin/sh",
+        [
+          "-c",
+          macOpenCommand(
+            { ...record, root: home, workspace: NodePath.join(home, "ZeropsMate") },
+            "/var/www/app",
+            app,
+          ),
+        ],
+        { encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home } },
+      );
+      const opened = NodeFS.existsSync(NodePath.join(home, "opened"))
+        ? NodeFS.readFileSync(NodePath.join(home, "opened"), "utf8")
+        : "";
+      return { code: result.status, stdout: result.stdout, stderr: result.stderr, opened, copy };
+    } finally {
+      NodeFS.rmSync(home, { recursive: true, force: true });
+    }
+  };
+  const buildApp = (copy: string, name: string) => {
+    const macos = NodePath.join(copy, "build", `${name}.app`, "Contents", "MacOS");
+    NodeFS.mkdirSync(macos, { recursive: true });
+    const executable = NodePath.join(macos, name);
+    NodeFS.writeFileSync(executable, "#!/bin/sh\nwhile :; do sleep 1; done\n", { mode: 0o755 });
+    return { app: NodeFS.realpathSync(NodePath.join(copy, "build", `${name}.app`)), executable };
+  };
+
+  it("opens the app built in the Mac's copy behind the person's windows, and names it for the live view", () => {
+    let built = "";
+    const { code, stdout, opened } = onMac("build/Counter+ Pro.app", (copy) => {
+      built = buildApp(copy, "Counter+ Pro").app;
+    });
+    expect(code).toBe(0);
+    expect(opened).toBe(`-g ${built}\n`);
+    expect(stdout.trim().split("\n").at(-1)).toBe(built);
+  });
+
+  // Whether a process still runs an app's executable; one that quit is gone or a zombie.
+  const runsApp = (pid: number | undefined) =>
+    pid !== undefined &&
+    NodeChildProcess.spawnSync("ps", ["-p", String(pid), "-o", "command="], {
+      encoding: "utf8",
+    }).stdout.includes(".app/Contents/MacOS/");
+
+  it("quits the copy of that build still running, so a rebuild is what opens", () => {
+    let running: NodeChildProcess.ChildProcess | undefined;
+    let other: NodeChildProcess.ChildProcess | undefined;
+    try {
+      const { code } = onMac("build/Counter+ Pro.app", (copy) => {
+        running = NodeChildProcess.spawn(buildApp(copy, "Counter+ Pro").executable, [], {
+          stdio: "ignore",
+        });
+        other = NodeChildProcess.spawn(buildApp(copy, "Notes").executable, [], { stdio: "ignore" });
+        NodeChildProcess.spawnSync("sleep", ["0.3"]);
+      });
+      expect(code).toBe(0);
+      expect(runsApp(running?.pid)).toBe(false);
+      expect(runsApp(other?.pid)).toBe(true);
+    } finally {
+      running?.kill("SIGKILL");
+      other?.kill("SIGKILL");
+    }
+  });
+
+  it.each([
+    ["an installed app's bundle id", "com.example.Counter", "-g -b com.example.Counter\n"],
+    ["an installed app's name", "Counter Pro", "-g -a Counter Pro\n"],
+  ])("opens %s in the background too", (_, app, expected) => {
+    const { code, stdout, opened } = onMac(app);
+    expect(code).toBe(0);
+    expect(opened).toBe(expected);
+    expect(stdout.trim()).toBe(app);
+  });
+
+  it.each([
+    ["the app it built", "build/Counter.app", true],
+    ["an installed app by bundle id", "com.example.Counter", false],
+    ["an installed app by name", "Counter", false],
+  ])(
+    "gives the front back to the person's app when %s activates itself on launch",
+    (_, app, built) => {
+      const { code, opened } = onMac(
+        app,
+        (copy) => {
+          if (built) buildApp(copy, "Counter");
+        },
+        { stealsFront: true },
+      );
+      expect(code).toBe(0);
+      expect(opened.trim().split("\n").at(-1)).toBe("-b com.example.Editor");
+    },
+  );
+
+  it("leaves the person's front app alone when the opened app stays behind", () => {
+    const { opened } = onMac("com.example.Counter");
+    expect(opened).toBe("-g -b com.example.Counter\n");
+  });
+
+  it("says to build the app first when the Mac's copy has none at that path", () => {
+    const { code, stderr, opened } = onMac("build/Missing.app");
+    expect(code).toBe(66);
+    expect(opened).toBe("");
+    expect(stderr).toContain("build/Missing.app");
   });
 });
 
