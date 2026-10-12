@@ -15,6 +15,7 @@ import {
   ChevronRightIcon,
   GitMergeIcon,
   GitPullRequestIcon,
+  PlusIcon,
 } from "lucide-react";
 import {
   Fragment,
@@ -35,6 +36,7 @@ import { StopReadAgain } from "../StopReadAgain";
 import { heldLine } from "./emptyApps.logic";
 import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from "./flowSteps";
 import {
+  cardChangeRows,
   cardReady,
   foldMates,
   foldWords,
@@ -191,6 +193,21 @@ function PlainPanel({ line }: { readonly line: PlaceLine }) {
   );
 }
 
+/** A place not set up yet, by its way to be: its name, and the button that sets it up. */
+function SetUpPanel({ line, onSetUp }: { readonly line: PlaceLine; readonly onSetUp: () => void }) {
+  return (
+    <div className="ov-panel" data-zerops-place-setup={line.kind}>
+      <div className="ov-panel-head">
+        <b className="ov-panel-name">{placeLabel(line)}</b>
+      </div>
+      <button className="ov-setup" onClick={onSetUp} type="button">
+        <PlusIcon aria-hidden="true" className="size-3.5" />
+        {`Set up ${placeLabel(line).toLowerCase()}`}
+      </button>
+    </div>
+  );
+}
+
 /** How long ago a change last moved, as a menu row says its time: "3h", "2d". */
 function ChangeAge({ at }: { readonly at: string | undefined }) {
   const nowMs = useNowMs();
@@ -198,46 +215,83 @@ function ChangeAge({ at }: { readonly at: string | undefined }) {
   return when.length === 0 ? null : <span className="ov-change-time">{when}</span>;
 }
 
-/** One of a card's latest changes: what it is, whose, and where it stands; a click opens it. */
+/**
+ * A card's latest changes: each with its Mate's face, what it is, whose, and where it stands — a
+ * click opens it — with the releases cut among them and production's marked (`cardChangeRows`).
+ */
 export function CardChanges({
   changes,
+  releases = [],
+  face,
   mateName,
   onOpen,
 }: {
   readonly changes: ReadonlyArray<CardChange>;
+  /** Newest first, as the flow lists them. */
+  readonly releases?: ReadonlyArray<{
+    readonly tag: string;
+    readonly taggedAt: string;
+    readonly live: boolean;
+  }>;
+  /** The face of the Mate a change is from, where the card holds it. */
+  readonly face?: ((projectId: string) => ReactNode) | undefined;
   readonly mateName: (projectId: string) => string | undefined;
   readonly onOpen: (change: CardChange, from: HTMLElement) => void;
 }) {
+  const rows = cardChangeRows(changes, releases);
   return (
     <section aria-label="Changes" className="ov-sec" data-zerops-surface="card-changes">
       <h3 className="ov-sec-name">Changes</h3>
-      <ul className="ov-changes">
-        {changes.map((change) => {
-          const by = mateName(change.pull.mateProjectId);
-          const Icon = change.open ? GitPullRequestIcon : GitMergeIcon;
-          return (
-            <li key={`${change.pull.repository}#${String(change.pull.number)}`}>
-              <button
-                className="ov-change"
-                data-open={change.open ? "true" : undefined}
-                onClick={(event) => {
-                  onOpen(change, event.currentTarget);
-                }}
-                type="button"
-              >
-                <Icon aria-hidden="true" className="ov-change-icon" />
-                <span className="ov-change-text">
-                  <span className="ov-change-title">{change.pull.title}</span>
-                  <span className="ov-change-line" data-tone={change.tone}>
-                    {by === undefined ? change.words : `${by} · ${change.words}`}
+      {rows.length === 0 ? (
+        <p className="ov-sec-empty">No changes yet — a Mate opens one as it works.</p>
+      ) : (
+        <ul className="ov-changes">
+          {rows.map((row) => {
+            if (row.kind === "release")
+              return (
+                <li
+                  className="ov-change-release"
+                  data-zerops-surface="card-release"
+                  key={`release:${row.tag}`}
+                >
+                  <span className="ov-release-tag">{row.tag}</span>
+                  {row.live ? <span className="ov-release-live">Production</span> : null}
+                </li>
+              );
+            const { change } = row;
+            const by = mateName(change.pull.mateProjectId);
+            const Icon = change.open ? GitPullRequestIcon : GitMergeIcon;
+            const own = face?.(change.pull.mateProjectId);
+            return (
+              <li key={`${change.pull.repository}#${String(change.pull.number)}`}>
+                <button
+                  className="ov-change"
+                  data-open={change.open ? "true" : undefined}
+                  onClick={(event) => {
+                    onOpen(change, event.currentTarget);
+                  }}
+                  type="button"
+                >
+                  {own === undefined || own === null ? (
+                    <Icon aria-hidden="true" className="ov-change-icon" />
+                  ) : (
+                    <span aria-hidden="true" className="ov-change-face">
+                      {own}
+                    </span>
+                  )}
+                  <span className="ov-change-text">
+                    <span className="ov-change-title">{change.pull.title}</span>
+                    <span className="ov-change-line" data-tone={change.tone}>
+                      {by === undefined ? change.words : `${by} · ${change.words}`}
+                    </span>
                   </span>
-                </span>
-                <ChangeAge at={change.at} />
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+                  <ChangeAge at={change.at} />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }
@@ -389,15 +443,25 @@ function ProjectCard<T>({
         </div>
         {quiet === undefined ? null : <p className="ov-card-site">{quiet}</p>}
       </header>
-      {places.map((line) => (
-        <section
-          className="ov-sec"
-          data-zerops-place={line.kind}
-          key={`${line.kind}:${line.projectId ?? line.name}`}
-        >
-          {props.renderPlacePanel?.(entry, line) ?? <PlainPanel line={line} />}
-        </section>
-      ))}
+      {places.map((line) => {
+        const setUp =
+          line.kind === "production" && flow.production.kind === "absent"
+            ? props.setUpProduction?.(entry)
+            : undefined;
+        return (
+          <section
+            className="ov-sec"
+            data-zerops-place={line.kind}
+            key={`${line.kind}:${line.projectId ?? line.name}`}
+          >
+            {setUp === undefined ? (
+              (props.renderPlacePanel?.(entry, line) ?? <PlainPanel line={line} />)
+            ) : (
+              <SetUpPanel line={line} onSetUp={setUp} />
+            )}
+          </section>
+        );
+      })}
       {ready === undefined ? null : (
         <section className="ov-sec" data-zerops-card-ready="true">
           <p className="ov-ready-title">{readyTitle(ready)}</p>

@@ -10,6 +10,7 @@ import type { MateRowView } from "../SidebarMateRow.logic";
 import { pull } from "./flowTestFixtures";
 import {
   broughtBy,
+  cardChangeRows,
   cardChanges,
   cardMateReading,
   cardSecondWords,
@@ -633,5 +634,81 @@ describe("a card's latest changes", () => {
         change.words,
       ]),
     ).toEqual(rows);
+  });
+});
+
+describe("cardChangeRows", () => {
+  // The owner (2026-10-12): the changes "should show where tags were marked, where the prod is".
+  const merged = (number: number, mergedAt: string) =>
+    ({
+      pull: pull({ number, merged: true, mergedAt }),
+      open: false,
+      words: "Merged",
+      tone: "off",
+      at: mergedAt,
+    }) as const;
+  const open = {
+    pull: pull({ number: 9 }),
+    open: true,
+    words: "Ready to merge",
+    tone: "off",
+    at: undefined,
+  } as const;
+  const shown = (rows: ReturnType<typeof cardChangeRows>) =>
+    rows.map((row) =>
+      row.kind === "change"
+        ? `#${String(row.change.pull.number)}`
+        : `${row.tag}${row.live ? " (production)" : ""}`,
+    );
+  it.each([
+    {
+      case: "each release over the merged changes it took, open ones first",
+      changes: [open, merged(4, "2026-10-04"), merged(3, "2026-10-03"), merged(2, "2026-10-02")],
+      releases: [
+        { tag: "v3", taggedAt: "2026-10-03T12", live: true },
+        { tag: "v2", taggedAt: "2026-10-02T12", live: false },
+      ],
+      rows: ["#9", "#4", "v3 (production)", "#3", "v2", "#2"],
+    },
+    {
+      case: "production's release older than every change shown closes the list",
+      changes: [merged(4, "2026-10-04"), merged(3, "2026-10-03")],
+      releases: [
+        { tag: "v2", taggedAt: "2026-10-02", live: true },
+        { tag: "v1", taggedAt: "2026-10-01", live: false },
+      ],
+      rows: ["#4", "#3", "v2 (production)"],
+    },
+    {
+      case: "a release with no change shown after it stands over the newest",
+      changes: [merged(4, "2026-10-04")],
+      releases: [{ tag: "v5", taggedAt: "2026-10-05", live: true }],
+      rows: ["v5 (production)", "#4"],
+    },
+    {
+      case: "a release that took no change shown is left out, production's stays",
+      changes: [merged(4, "2026-10-04"), merged(2, "2026-10-02")],
+      releases: [
+        { tag: "v4", taggedAt: "2026-10-03T18", live: false },
+        { tag: "v3", taggedAt: "2026-10-03T12", live: true },
+        { tag: "v2b", taggedAt: "2026-10-03T06", live: false },
+        { tag: "v2", taggedAt: "2026-10-02T12", live: false },
+      ],
+      rows: ["#4", "v3 (production)", "v2", "#2"],
+    },
+    {
+      case: "no release, the changes alone",
+      changes: [open, merged(4, "2026-10-04")],
+      releases: [],
+      rows: ["#9", "#4"],
+    },
+    {
+      case: "no change shown, production's release alone",
+      changes: [],
+      releases: [{ tag: "v1", taggedAt: "2026-10-01", live: true }],
+      rows: ["v1 (production)"],
+    },
+  ])("places releases among a card's changes: $case", ({ changes, releases, rows }) => {
+    expect(shown(cardChangeRows(changes, releases))).toEqual(rows);
   });
 });

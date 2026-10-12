@@ -283,6 +283,39 @@ describe("a row's Mates", () => {
   );
 });
 
+describe("a card's production", () => {
+  // The owner (2026-10-12): "why instead of 'no production' empty state not have a button to
+  // setup prod".
+  it("offers its setup where it has none and HQ offers it, and says it is not released where not", () => {
+    const pressed: string[] = [];
+    const none = entry([WREN]);
+    const offered = mount(
+      <ZeropsProjectsFlow<Item>
+        {...FLOW_PROPS}
+        groups={[none]}
+        setUpProduction={({ group }) =>
+          () => {
+            pressed.push(group.groupId);
+          }}
+      />,
+    );
+    const button = offered.root.findAll(
+      (node) => node.type === "button" && node.children.includes("Set up production"),
+    );
+    expect(button).toHaveLength(1);
+    act(() => {
+      button[0]!.props.onClick();
+    });
+    expect(pressed).toEqual(["aaa"]);
+    const withheld = section(
+      render({ groups: [none], setUpProduction: () => undefined }),
+      'data-zerops-group="aaa"',
+    );
+    expect(withheld).not.toContain("Set up production");
+    expect(withheld).toContain("Not released yet");
+  });
+});
+
 describe("a card's release", () => {
   it("still offers the release beside a broken production, not just the build (D28)", () => {
     const html = section(render({ groups: [brokenProduction()] }), 'data-zerops-group="aaa"');

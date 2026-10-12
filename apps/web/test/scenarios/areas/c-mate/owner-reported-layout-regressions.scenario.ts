@@ -737,6 +737,63 @@ describe("owner-reported layout regressions", () => {
       });
     });
 
+    describe("Decision: an overview card is as tall as what it holds.", () => {
+      describe("B: overview cards", () => {
+        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+          // The owner (2026-10-12): "why the gap at bottom".
+          it.effect("an overview card ends where what it holds ends, beside a taller one", () =>
+            Effect.gen(function* () {
+              const s = yield* menuScenario();
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.project("Ada", { mate: true, app: "Shop" });
+              yield* s.given.project("Bea", { mate: true, app: "Northwind" });
+              yield* s.stage("Northwind stage", "Northwind");
+              yield* s.given.signedIn;
+              yield* Effect.promise(async () => {
+                await s.page.goto(`${s.web.origin}/zerops`);
+                await s.page.waitForFunction(
+                  () =>
+                    document.querySelectorAll('[data-zerops-surface="project-cards"] article')
+                      .length === 2,
+                );
+                const cards = await s.page.evaluate(() =>
+                  [
+                    ...document.querySelectorAll<HTMLElement>(
+                      '[data-zerops-surface="project-cards"] article',
+                    ),
+                  ].map((card) => {
+                    const box = card.getBoundingClientRect();
+                    const ends = Math.max(
+                      ...[...card.children]
+                        .map((part) => part.getBoundingClientRect())
+                        .filter((part) => part.height > 0)
+                        .map((part) => part.bottom),
+                    );
+                    return {
+                      name: card.getAttribute("aria-label"),
+                      height: box.height,
+                      below: box.bottom - ends - parseFloat(getComputedStyle(card).paddingBottom),
+                    };
+                  }),
+                );
+                const seen = quoted(cards);
+                expect(
+                  new Set(cards.map((card) => Math.round(card.height))).size,
+                  `ASSERTION: the two cards hold different heights: ${seen}`,
+                ).toBe(2);
+                for (const card of cards)
+                  expect(
+                    card.below,
+                    `ASSERTION: ${card.name}'s card ends where what it holds ends: ${seen}`,
+                  ).toBeLessThanOrEqual(1);
+              });
+              yield* s.then.noExternalNetwork;
+            }),
+          );
+        });
+      });
+    });
+
     const ROW = '[data-zerops-surface="sidebar-mate"]';
     const ASK = "Keep the running row steady";
     type Witness = {

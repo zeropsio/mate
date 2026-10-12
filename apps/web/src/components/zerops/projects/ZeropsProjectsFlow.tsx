@@ -138,6 +138,14 @@ export interface ZeropsProjectsFlowProps<T> {
     | undefined;
   /** A project's latest changes, open and merged (`cardChanges`); without it, none. */
   readonly renderChanges?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
+  /**
+   * Sets up a project's production, where it has none and HQ offers it to this person: its card
+   * offers it where production is said (the owner, 2026-10-12: "why instead of 'no production'
+   * empty state not have a button to setup prod").
+   */
+  readonly setUpProduction?:
+    | ((entry: ProjectsFlowGroup<T>) => (() => void) | undefined)
+    | undefined;
   /** The people on a project, beside its name, where more than one. */
   readonly renderCardPeople?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
 }

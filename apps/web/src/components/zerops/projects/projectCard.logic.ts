@@ -587,6 +587,48 @@ export function cardChanges(input: {
   return [...open, ...merged].slice(0, input.limit);
 }
 
+/** A row of a card's changes: a change, or a release cut among them. */
+export type CardChangeRow =
+  | { readonly kind: "change"; readonly change: CardChange }
+  | { readonly kind: "release"; readonly tag: string; readonly live: boolean };
+
+/**
+ * A card's changes with the releases cut among them (the owner, 2026-10-12: the changes "should
+ * show where tags were marked, where the prod is"): the open ones first, on no release yet; each
+ * release over the merged changes it took, newest first — one that took none of them left out —
+ * and production's always, closing the list where it is older than every change shown.
+ */
+export function cardChangeRows(
+  changes: ReadonlyArray<CardChange>,
+  /** Newest first, as the flow lists them. */
+  releases: ReadonlyArray<{
+    readonly tag: string;
+    readonly taggedAt: string;
+    readonly live: boolean;
+  }>,
+): ReadonlyArray<CardChangeRow> {
+  const rows: CardChangeRow[] = [];
+  let next = 0;
+  for (const change of changes) {
+    const mergedAt = change.open ? undefined : change.at;
+    if (mergedAt !== undefined) {
+      const cut: Array<(typeof releases)[number]> = [];
+      while (next < releases.length && releases[next]!.taggedAt >= mergedAt) {
+        cut.push(releases[next]!);
+        next += 1;
+      }
+      // The oldest of them took this change; one that took none shown is noise, but production's.
+      for (const [index, release] of cut.entries())
+        if (release.live || index === cut.length - 1)
+          rows.push({ kind: "release", tag: release.tag, live: release.live });
+    }
+    rows.push({ kind: "change", change });
+  }
+  const live = releases.slice(next).find((release) => release.live);
+  if (live !== undefined) rows.push({ kind: "release", tag: live.tag, live: true });
+  return rows;
+}
+
 /** A release as production's panel reads it: newest first, as the flow lists them. */
 type PanelRelease = Pick<FlowReleaseRow, "tag" | "taggedAt" | "standing" | "rollBack">;
 

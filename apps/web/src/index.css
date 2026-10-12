@@ -5273,7 +5273,8 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
   grid-auto-columns: min(380px, 100%);
   grid-auto-flow: column;
   column-gap: 16px;
-  align-items: stretch;
+  /* Each card as tall as what it holds (the owner, 2026-10-12: "why the gap at bottom"). */
+  align-items: start;
   justify-content: start;
   padding: 0 20px 6px;
   overflow-x: auto;
@@ -5345,28 +5346,35 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
   scale: 0.94;
 }
 
-/* A card: the project, its Mates, a release ready to go, production's line at its foot. */
-/* The board's three grounds: the page, a card a shade off it, and what waits on you lifted. */
+/* A card: the project, its places, its Mates, its changes — one light surface on the page (the
+   owner, 2026-10-12: "design wise it still needs to be light and beutiful"), what waits on you a
+   faint tint on it, its sections set apart by air and a hairline, never boxes in a box. */
 .ov-card,
 .ov-other {
-  --ov-ground: color-mix(in oklab, var(--foreground) 3.5%, var(--background));
-  --ov-lift: var(--card);
-  --ov-hover: color-mix(in oklab, var(--ov-lift) 60%, transparent);
+  --ov-ground: var(--card);
+  --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+  --ov-hover: color-mix(in oklab, var(--foreground) 3%, transparent);
+  --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
 }
 
 .dark .ov-card,
 .dark .ov-other {
-  --ov-ground: color-mix(in oklab, var(--foreground) 5%, var(--background));
-  --ov-lift: color-mix(in oklab, var(--foreground) 11%, var(--background));
+  --ov-ground: color-mix(in oklab, var(--foreground) 4%, var(--background));
+  --ov-lift: color-mix(in oklab, var(--foreground) 8%, var(--background));
+  --ov-rule: color-mix(in oklab, var(--foreground) 9%, transparent);
 }
 
 .ov-card {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  padding: 18px 12px 12px;
+  padding: 18px 12px 10px;
   border-radius: 20px;
   background: var(--ov-ground);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 4%, transparent),
+    0 8px 24px -12px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
   scroll-snap-align: start;
 }
 
@@ -6091,26 +6099,19 @@ a.ov-card-site:hover {
   font-size: 13px;
 }
 
-/* A card's sections: each its own white card in the project's column. */
+/* A card's sections: on the card itself, a hairline over each. */
 .ov-sec {
   display: grid;
   gap: 6px;
-  margin-top: 10px;
-  padding: 12px 14px 14px;
-  border-radius: 14px;
-  background: var(--ov-lift);
-  box-shadow:
-    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 5%, transparent),
-    0 1px 1px color-mix(in srgb, var(--contrast-foreground) 3%, transparent);
+  margin-top: 12px;
+  padding: 12px 6px 2px;
+  border-top: 1px solid var(--ov-rule);
 }
 
-/* The Mates stand on the column's own ground: what waits on you is the white there. */
+/* The Mates stand on the card's own ground: what waits on you is the tint there. */
 .ov-sec.ov-mates {
   gap: 2px;
-  margin-top: 14px;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
+  padding: 12px 0 0;
 }
 
 .ov-sec.ov-mates .ov-sec-name {
@@ -6128,7 +6129,7 @@ a.ov-card-site:hover {
 .ov-change {
   display: grid;
   width: 100%;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   column-gap: 10px;
   align-items: start;
   padding: 6px 8px;
@@ -6149,7 +6150,7 @@ a.ov-card-site:hover {
 .ov-change-icon {
   width: 16px;
   height: 16px;
-  margin-top: 2px;
+  margin: 2px 2px 0;
   color: var(--muted-foreground);
 }
 
@@ -6194,6 +6195,215 @@ a.ov-card-site:hover {
 
 .ov-change-line[data-tone="failed"] {
   color: var(--zerops-status-failed-text);
+}
+
+/* The overview's filter: quiet pills under its title, the current one inked; what waits on you
+   counted in the menu's amber. */
+.ov-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: -6px;
+}
+
+.ov-filter {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  outline: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong),
+    scale 160ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ov-filter:hover {
+    background: color-mix(in oklab, var(--foreground) 5%, transparent);
+    color: var(--foreground);
+  }
+}
+
+.ov-filter:active {
+  scale: 0.96;
+}
+
+.ov-filter[data-current] {
+  background: color-mix(in oklab, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+.ov-filter:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.ov-filter-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-filter[data-show="waiting"] .ov-filter-count {
+  background: var(--zerops-status-attention-surface);
+  color: var(--zerops-status-attention-text);
+}
+
+/* A filter that leaves nothing: a calm face, what it would show, and the way back. */
+.ov-filter-empty {
+  display: flex;
+  max-width: 380px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 40px 4px;
+}
+
+.ov-filter-empty-title {
+  margin-top: 8px;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.ov-filter-empty-line {
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 20px;
+  text-wrap: pretty;
+}
+
+.ov-filter-empty-back {
+  margin-top: 6px;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ov-filter-empty-back:hover {
+    text-decoration: underline 1px;
+    text-underline-offset: 3px;
+  }
+}
+
+/* A place not set up yet: its way to be, where the person may set it up. */
+.ov-setup {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  justify-self: start;
+  gap: 6px;
+  padding: 0 12px 0 10px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--primary) 9%, transparent);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    scale 160ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ov-setup:hover {
+    background: color-mix(in oklab, var(--primary) 15%, transparent);
+  }
+}
+
+.ov-setup:active {
+  scale: 0.96;
+}
+
+.ov-setup:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--background),
+    0 0 0 4px var(--ring);
+}
+
+.ov-setup:disabled {
+  opacity: 0.5;
+}
+
+/* A change's Mate: its face where the git mark stood, the face a bit smaller than a Mate row's. */
+.ov-change-face {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  margin-top: 0;
+}
+
+/* A release in the changes: where it was cut, its tag, and production's mark on the one it runs. */
+.ov-change-release {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ov-change-release::before,
+.ov-change-release::after {
+  height: 1px;
+  flex: 1;
+  background: var(--ov-rule);
+  content: "";
+}
+
+.ov-change-release::before {
+  max-width: 10px;
+}
+
+.ov-release-tag {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ov-release-live {
+  display: inline-flex;
+  height: 18px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--zerops-status-ok) 14%, transparent);
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ov-release-live::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--zerops-status-ok);
+  content: "";
+}
+
+/* Where nothing is said yet: one quiet line where the list would be. */
+.ov-sec-empty {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 18px;
 }
 
 /* A Mate's preview on its name's line, one per service and named by it — `web ↗`, `api ↗` — 12/16
