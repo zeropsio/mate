@@ -198,6 +198,14 @@ export function chiefMessageTarget(
   return own === null ? { kind: "none" } : { kind: "chief", projectId: own };
 }
 
+/**
+ * What an approved message says where its Mate's agent took no turn — it waits for a sign-in, say:
+ * why, and where the words wait to be sent.
+ */
+export function heldMessageWords(recipient: string, why: string): string {
+  return `${why} Your message waits in ${recipient}'s composer.`;
+}
+
 /** What a card says of a decided proposal; a failed one says the platform's own words instead. */
 export function proposalOutcomeWords(
   proposal: ZeropsProposal,

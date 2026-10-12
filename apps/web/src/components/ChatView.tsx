@@ -294,7 +294,7 @@ import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useRemoveClonedProject } from "../hooks/useRemoveClonedProject";
 import { ThreadArchiveBlockedError, useThreadActions } from "../hooks/useThreadActions";
-import { useComposerSendRequests } from "../hooks/useComposerSendRequests";
+import { composerAdmits, useComposerSendRequests } from "../hooks/useComposerSendRequests";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import { confirmTerminalClose, isTerminalCloseConfirmPending } from "../lib/terminalCloseConfirm";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
@@ -6097,6 +6097,7 @@ function ConversationView(props: ChatViewProps) {
   useComposerSendRequests({
     target: activeThread === undefined ? null : composerDraftTarget,
     targetKey: activeThread === undefined ? null : routeThreadKey,
+    admits: composerAdmits(admission, colleagueReadOnly?.notice ?? null),
     write: (prompt) => {
       promptRef.current = prompt;
       setComposerDraftPrompt(composerDraftTarget, prompt);

@@ -37,7 +37,7 @@ import { useCallback } from "react";
 
 import { useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
-import { useComposerDraftStore } from "../composerDraftStore";
+import { useComposerDraftStore, type ComposerSendIds } from "../composerDraftStore";
 import { useOpenMate } from "./useOpenMate";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 
@@ -51,7 +51,12 @@ import { useZeropsCandidates } from "./useZeropsCandidates";
 export type AskMate = (
   mateProjectId: string | undefined,
   ask: string,
-  options?: { readonly threadId?: string | undefined; readonly send?: boolean | undefined },
+  options?: {
+    readonly threadId?: string | undefined;
+    readonly send?: boolean | undefined;
+    /** The send's ids: whoever asked hears what became of it by them (`sendOutcomeOf`). */
+    readonly ids?: ComposerSendIds | undefined;
+  },
 ) => void;
 
 /**
@@ -105,11 +110,16 @@ export function askMateTarget(
  * retired for those surfaces by the owner, 2026-09-19); a request left to be read joins what they
  * had typed.
  */
-function askIn(threadRef: ScopedThreadRef, ask: string, send: boolean): void {
+function askIn(
+  threadRef: ScopedThreadRef,
+  ask: string,
+  send: boolean,
+  ids: ComposerSendIds | undefined,
+): void {
   const drafts = useComposerDraftStore.getState();
   if (!send) {
     drafts.setPrompt(threadRef, askedDraft(drafts.getComposerDraft(threadRef)?.prompt, ask));
-  } else drafts.requestSend(threadRef, ask);
+  } else drafts.requestSend(threadRef, ask, ids);
 }
 
 export function useAskMate(
@@ -141,12 +151,12 @@ export function useAskMate(
       if (target.kind === "mate" || chat === undefined) {
         // Its door: the conversation it opens — now, or once its own view hands over — is asked.
         openMate(lookup.kind === "found" ? lookup.row : { projectId: mateProjectId }, (opened) => {
-          askIn(opened, ask, send);
+          askIn(opened, ask, send, options?.ids);
         });
         return;
       }
       const threadRef = scopeThreadRef(target.environmentId, chat.id);
-      askIn(threadRef, ask, send);
+      askIn(threadRef, ask, send, options?.ids);
       void router.navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),
