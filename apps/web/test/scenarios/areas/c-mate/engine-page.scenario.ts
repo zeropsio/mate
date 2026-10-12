@@ -258,9 +258,9 @@ describe("C: a page the Mate publishes", () => {
           stands: 900,
         },
         {
-          title: "a page taller than 2000 px stands at 2000 and scrolls inside",
-          page: 2400,
-          stands: 2000,
+          title: "a page taller than 4000 px stands at 4000 and scrolls inside",
+          page: 4400,
+          stands: 4000,
         },
       ])
         it.effect(shape.title, () =>
