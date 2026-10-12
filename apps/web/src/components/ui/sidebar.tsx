@@ -331,8 +331,9 @@ function Sidebar({
           className={cn(
             "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) md:flex",
             layered
-              ? // Over the page while the menu peeks out of the rail (`data-menu-raised`).
-                "has-[[data-menu-raised]]:z-40"
+              ? // Over the page while the menu peeks out of the rail (`data-menu-raised`): above what
+                // the page lifts to 40 (the conversation's minimap), never above its dialogs.
+                "has-[[data-menu-raised]]:z-50"
               : "transition-[left,right,width] duration-200 ease-linear",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"

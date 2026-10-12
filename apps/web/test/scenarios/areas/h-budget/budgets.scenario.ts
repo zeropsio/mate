@@ -272,7 +272,7 @@ describe("H: hosted client budgets", () => {
         yield* Effect.promise(() => s.clock.install());
         yield* s.given.signedIn;
         yield* b.when.menuReady(names);
-        yield* b.when.opensProductionChip;
+        yield* b.when.opensAddresses;
         yield* b.when.browserSettled;
         const atStart = b.measure.projectRoutingReads();
         yield* Effect.promise(() => s.clock.advance(120_000));

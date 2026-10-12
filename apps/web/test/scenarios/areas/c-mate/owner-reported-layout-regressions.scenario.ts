@@ -552,9 +552,9 @@ describe("owner-reported layout regressions", () => {
                 await s.page.waitForFunction(
                   () => document.querySelectorAll("section[data-zerops-group]").length === 24,
                 );
-                // Past six projects the menu folds them by default; any left open is folded here.
+                // Groups start folded; any left open is folded here.
                 for (const toggle of await s.page.$$(
-                  '[data-zerops-surface="sidebar-project-toggle"][aria-expanded="true"]',
+                  '[data-zerops-surface="sidebar-project"][aria-expanded="true"]',
                 )) {
                   await toggle.click();
                   // Folding moves the next heading; wait for completion before aiming its click.
@@ -620,114 +620,6 @@ describe("owner-reported layout regressions", () => {
               });
               yield* s.then.noExternalNetwork;
             }),
-          );
-        });
-      });
-    });
-
-    describe("Decision: a heading keeps one line; what rides after its name steps aside as the menu narrows.", () => {
-      describe("B: heading fit", () => {
-        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-          // The owner (2026-10-12): "this has no handling when the left column is too small (it
-          // split name and others in two rows in this case)".
-          it.effect(
-            "a folded project's heading keeps one line at every menu width, its name its first letters",
-            () =>
-              Effect.gen(function* () {
-                const s = yield* menuScenario();
-                yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
-                const projects = [
-                  ["Ada", "Shop"],
-                  ["Bea", "Northwind Commerce Platform"],
-                ] as const;
-                for (const [mate, app] of projects) {
-                  yield* s.given.project(mate, { mate: true, app });
-                  yield* s.stage(`${app} stage`, app);
-                  yield* s.given.project(`${app} production`, {
-                    app,
-                    kind: "production",
-                    environmentName: "production",
-                  });
-                }
-                yield* s.given.signedIn;
-                for (const [mate, app] of projects) yield* s.menu.grouped(mate, app);
-                yield* Effect.promise(async () => {
-                  await ownerMenu(s.page);
-                  // Folded, a heading carries its Mates' faces after its road.
-                  for (const toggle of await s.page.$$(
-                    '[data-zerops-surface="sidebar-project-toggle"][aria-expanded="true"]',
-                  )) {
-                    await toggle.click();
-                    await s.page.waitForFunction(
-                      (toggle) => toggle.getAttribute("aria-expanded") === "false",
-                      { polling: "raf" },
-                      toggle,
-                    );
-                  }
-                  // At the owner's width each heading shows its whole road: stage and production.
-                  await s.page.waitForFunction(
-                    (count) =>
-                      [
-                        ...document.querySelectorAll(
-                          '[data-zerops-surface="sidebar-project"] [data-zerops-surface="sidebar-production-chip"]',
-                        ),
-                      ].filter((chip) => chip.getBoundingClientRect().width > 0).length === count,
-                    { polling: "raf" },
-                    projects.length * 2,
-                  );
-                  for (const width of [435, 304, 208]) {
-                    await menuAt(s.page, width);
-                    await s.page.evaluate(
-                      () => new Promise((done) => requestAnimationFrame(() => done(undefined))),
-                    );
-                    const headings = await s.page.evaluate(() =>
-                      [
-                        ...document.querySelectorAll<HTMLElement>(
-                          '[data-zerops-surface="sidebar-project"]',
-                        ),
-                      ].map((heading) => {
-                        const box = heading.getBoundingClientRect();
-                        const name = heading.querySelector<HTMLElement>(
-                          '[data-zerops-surface="sidebar-project-toggle"] > span',
-                        )!;
-                        const words = name.firstChild!;
-                        const first = document.createRange();
-                        first.setStart(words, 0);
-                        first.setEnd(words, Math.min(4, words.textContent!.length));
-                        const outside = [...heading.children]
-                          .map((part) => part.getBoundingClientRect())
-                          .filter(
-                            (part) =>
-                              part.width > 0 &&
-                              (part.right > box.right + 0.5 ||
-                                part.top < box.top - 0.5 ||
-                                part.bottom > box.bottom + 0.5),
-                          ).length;
-                        return {
-                          name: words.textContent,
-                          outside,
-                          shown: name.getBoundingClientRect().width,
-                          firstLetters: Math.min(
-                            first.getBoundingClientRect().width,
-                            name.scrollWidth,
-                          ),
-                        };
-                      }),
-                    );
-                    for (const heading of headings) {
-                      expect(
-                        heading.outside,
-                        `ASSERTION: at ${width} px, ${heading.name}'s heading holds all its parts on its one line`,
-                      ).toBe(0);
-                      expect(
-                        heading.shown,
-                        `ASSERTION: at ${width} px, ${heading.name}'s heading shows its name's first letters`,
-                      ).toBeGreaterThanOrEqual(heading.firstLetters - 1);
-                    }
-                  }
-                });
-                yield* s.then.noExternalNetwork;
-              }),
           );
         });
       });

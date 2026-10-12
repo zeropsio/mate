@@ -183,20 +183,24 @@ export function creation(s: Scenario) {
         if (projectId === undefined)
           throw new Error(`No project ${name} was made: ${JSON.stringify(control.accepted)}`);
         try {
+          // It stands on its project's page, outside the menu.
           await page.waitForFunction(
-            (projectId, tag) =>
-              [
-                ...document.querySelectorAll<HTMLElement>(
-                  `[data-zerops-surface="sidebar-production-chip"][data-zerops-chip="${tag}"]`,
-                ),
-              ].some((chip) => chip.dataset.zeropsStops?.split(" ").includes(projectId) === true),
+            (name) => {
+              const menu = document.querySelector('[data-sidebar="sidebar"]');
+              return [...document.querySelectorAll<HTMLElement>("body *")].some(
+                (node) =>
+                  node.childElementCount === 0 &&
+                  node.textContent?.trim() === name &&
+                  menu?.contains(node) !== true &&
+                  node.getBoundingClientRect().height > 0,
+              );
+            },
             { timeout: 15_000, polling: "raf" },
-            projectId,
-            tag,
+            name,
           );
         } catch (cause) {
           throw new Error(
-            `Missing environment ${name} on the ${tag} of its road\n${await page.evaluate(() => document.body.innerText)}`,
+            `Missing environment ${name} (${tag}) on its project's page\n${await page.evaluate(() => document.body.innerText)}`,
             { cause },
           );
         }

@@ -3,109 +3,13 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  headingFaces,
   landingAfterDraw,
   menuDrawsLoadingRows,
   newProjectOffered,
   openMateReveal,
-  projectRoom,
   slackAfterScroll,
   slackForFold,
 } from "./SidebarProjects.logic";
-
-describe("projectRoom", () => {
-  // The room belongs to the end of an open project, never above a heading:
-  // opening one unfolds its rows — and the room after them — below it, so the
-  // heading that was clicked stays where it is (M9).
-  it.each([
-    { name: "an open project, another under it", open: true, last: false, room: 16 },
-    { name: "the list's last project, open", open: true, last: true, room: 12 },
-    {
-      // Folded or open, the same air (the owner, 2026-10-11: squeezed folds made every open
-      // "layout shift to create the space"); opening one adds only its rows.
-      name: "a folded project: its heading, then the same air as an open one",
-      open: false,
-      last: false,
-      room: 16,
-    },
-    { name: "the list's last project, folded", open: false, last: true, room: 12 },
-  ])("$name keeps $room px below its rows", ({ open, last, room }) => {
-    expect(projectRoom({ open, last })).toBe(room);
-  });
-});
-
-describe("headingFaces — who a folded project's heading shows (M15)", () => {
-  // Each as its row draws it (`mateRowView`): the state, the face, the dot.
-  const ROW = {
-    idle: { face: "idle", dot: undefined },
-    paused: { face: "sleep", dot: undefined },
-    working: { face: "working", dot: undefined },
-    needs: { face: "needs", dot: "attention" },
-    unread: { face: "done", dot: "unread" },
-    failed: { face: "idle", dot: "failed" },
-  } as const;
-  const mate = (projectId: string, state: keyof typeof ROW) => ({
-    projectId,
-    name: projectId,
-    tint: "slate" as const,
-    shape: "gem" as const,
-    state,
-    ...ROW[state],
-    known: true,
-  });
-
-  // Every Mate, each in its state — never "1 Mate" in words (the owner, 2026-10-11: "why say
-  // '1 mate' instead of showing their avatars and their states?").
-  it.each([
-    {
-      name: "nobody busy: each face at rest",
-      mates: [mate("a", "idle"), mate("b", "paused")],
-      shown: [
-        ["a", undefined],
-        ["b", undefined],
-      ],
-    },
-    { name: "working: the face alone", mates: [mate("a", "working")], shown: [["a", undefined]] },
-    { name: "needs you: amber", mates: [mate("a", "needs")], shown: [["a", "attention"]] },
-    { name: "stopped on an error: red", mates: [mate("a", "failed")], shown: [["a", "failed"]] },
-    { name: "finished, not seen: blue", mates: [mate("a", "unread")], shown: [["a", "unread"]] },
-    {
-      name: "the most urgent first, the list's order kept within each, the quiet ones last",
-      mates: [
-        mate("i1", "idle"),
-        mate("w1", "working"),
-        mate("u1", "unread"),
-        mate("n1", "needs"),
-        mate("f1", "failed"),
-        mate("n2", "needs"),
-      ],
-      shown: [
-        ["n1", "attention"],
-        ["n2", "attention"],
-        ["f1", "failed"],
-        ["u1", "unread"],
-        ["w1", undefined],
-        ["i1", undefined],
-      ],
-    },
-  ])("$name", ({ mates, shown }) => {
-    expect(headingFaces(mates).map((face) => [face.projectId, face.dot])).toEqual(shown);
-  });
-
-  it("wears the row's face: still where it stopped on an error", () => {
-    expect(headingFaces([mate("a", "failed")])).toEqual([
-      {
-        projectId: "a",
-        name: "a",
-        tint: "slate",
-        shape: "gem",
-        face: "idle",
-        dot: "failed",
-        known: true,
-      },
-    ]);
-  });
-});
 
 describe("landingAfterDraw — a reveal lands on the draw after its ask, or never", () => {
   it.each([

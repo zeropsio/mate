@@ -1,0 +1,225 @@
+import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import { EnvironmentId } from "@t3tools/contracts";
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  changeReviewItem,
+  crewTaskReviewItem,
+  releaseTagTip,
+  reviewItemByline,
+  reviewListWithLeaving,
+  reviewPopoverTitle,
+  reviewTagLabel,
+  type ProjectReviewItem,
+} from "./SidebarProjectReview.logic";
+
+const pull = (
+  repository: string,
+  number: number,
+  title = `Change ${String(number)}`,
+  mateProjectId = "mate-vira",
+): FlowPullRequest =>
+  ({
+    repository,
+    number,
+    title,
+    kind: "code",
+    mateProjectId,
+    url: undefined,
+    mergeability: "clean",
+    behind: false,
+    merged: false,
+    mergedAt: undefined,
+  }) as unknown as FlowPullRequest;
+
+const VIRA = { name: "Vira", tint: "amber", shape: "clover" } as const;
+const ENVIRONMENT = EnvironmentId.make("environment-orbit");
+
+const item = (key: string, input: Partial<ProjectReviewItem> = {}): ProjectReviewItem => ({
+  ...changeReviewItem({
+    pull: pull("appdev", Number(key)),
+    among: [],
+    groupId: "orbit",
+    by: VIRA,
+    mine: true,
+  }),
+  ...input,
+});
+
+describe("a change as a review item", () => {
+  it.each([
+    {
+      case: "one repository: the number alone",
+      among: [pull("appdev", 4), pull("appdev", 5, "Other", "mate-theo")],
+      label: "#4",
+    },
+    {
+      case: "the project's changes span repositories: the repository leads",
+      among: [pull("appdev", 4), pull("apidev", 2, "Other", "mate-theo")],
+      label: "appdev #4",
+    },
+    { case: "nothing beside it", among: [], label: "#4" },
+  ])("is labelled by its number, with its repository where several: $case", ({ among, label }) => {
+    const review = changeReviewItem({
+      pull: pull("appdev", 4, "Add a due date to each todo"),
+      among,
+      groupId: "orbit",
+      by: VIRA,
+      mine: true,
+    });
+    expect(review.label).toBe(label);
+    expect(review.title).toBe("Add a due date to each todo");
+  });
+
+  it("opens that change's review and is keyed as the menu keys the change", () => {
+    const review = changeReviewItem({
+      pull: pull("appdev", 4),
+      among: [],
+      groupId: "orbit",
+      by: VIRA,
+      mine: true,
+    });
+    expect(review.key).toBe("appdev#4");
+    expect(review.target).toEqual({
+      kind: "change",
+      groupId: "orbit",
+      repository: "appdev",
+      number: 4,
+    });
+  });
+
+  it("a crew task is keyed by its environment and task, and opens the crew task's review", () => {
+    const review = crewTaskReviewItem({
+      environmentId: ENVIRONMENT,
+      taskId: "task-7",
+      title: "Write the scoring rules",
+      by: { ...VIRA, name: "Sid", crewOf: "Vira" },
+      mine: true,
+    });
+    expect(review.key).toBe("crew:environment-orbit:task-7");
+    expect(review.target).toEqual({
+      kind: "crew-task",
+      environmentId: ENVIRONMENT,
+      taskId: "task-7",
+    });
+  });
+});
+
+describe("what a review item says under its title", () => {
+  it.each([
+    { case: "the viewer's Mate", by: VIRA, mine: true, says: "Vira · #12" },
+    {
+      case: "a colleague's Mate, in review",
+      by: { ...VIRA, ownerFirstName: "Theo" },
+      mine: false,
+      says: "Vira · Theo's · #12 · in review",
+    },
+    {
+      case: "a colleague's Mate whose review waits on the viewer",
+      by: { ...VIRA, ownerFirstName: "Theo" },
+      mine: true,
+      says: "Vira · Theo's · #12",
+    },
+    { case: "nobody named", by: undefined, mine: true, says: "#12" },
+  ])("names who made it and its number: $case", ({ by, mine, says }) => {
+    expect(
+      reviewItemByline(
+        changeReviewItem({ pull: pull("appdev", 12), among: [], groupId: "orbit", by, mine }),
+      ),
+    ).toBe(says);
+  });
+
+  it("a crew task names its crewmate in its Mate's crew", () => {
+    const review = crewTaskReviewItem({
+      environmentId: ENVIRONMENT,
+      taskId: "task-7",
+      title: "Write the scoring rules",
+      by: { ...VIRA, name: "Sid", crewOf: "Ada" },
+      mine: true,
+    });
+    expect(reviewItemByline(review)).toBe("Sid, in Ada's crew");
+  });
+});
+
+describe("the Review tag's words", () => {
+  it("names the one change it opens, or how many wait in the project", () => {
+    const one = item("4", { title: "Add a due date" });
+    expect(reviewTagLabel([one], "Orbit")).toBe("Review Add a due date");
+    expect(reviewTagLabel([item("4"), item("5"), item("6")], "Orbit")).toBe("3 to review in Orbit");
+  });
+
+  it("the popover counts changes, or what is to review when crew tasks are among them", () => {
+    expect(reviewPopoverTitle([item("4"), item("5")], "Orbit")).toBe("2 changes in Orbit");
+    const task = crewTaskReviewItem({
+      environmentId: ENVIRONMENT,
+      taskId: "task-7",
+      title: "Write the scoring rules",
+      by: { ...VIRA, name: "Sid", crewOf: "Vira" },
+      mine: true,
+    });
+    expect(reviewPopoverTitle([item("4"), task], "Orbit")).toBe("2 to review in Orbit");
+  });
+});
+
+describe("the Release tag's tooltip", () => {
+  it.each([
+    { waiting: 0, atLeast: false, says: "Ready for production" },
+    { waiting: 1, atLeast: false, says: "1 change waits for production" },
+    { waiting: 3, atLeast: false, says: "3 changes wait for production" },
+    { waiting: 1, atLeast: true, says: "At least 1 change waits for production" },
+    { waiting: 20, atLeast: true, says: "At least 20 changes wait for production" },
+  ])("says what waits for production: $says", ({ waiting, atLeast, says }) => {
+    expect(releaseTagTip({ waiting, atLeast })).toBe(says);
+  });
+});
+
+describe("the popover's list while it is open", () => {
+  const keys = (shown: ReturnType<typeof reviewListWithLeaving>) =>
+    shown.map((entry) => `${entry.item.key}${entry.leaving ? " (leaving)" : ""}`);
+  const start = (items: ReadonlyArray<ProjectReviewItem>) => reviewListWithLeaving([], items);
+
+  it("lists the project's items oldest first, as the flow gives them", () => {
+    expect(keys(start([item("4"), item("5"), item("6")]))).toEqual([
+      "appdev#4",
+      "appdev#5",
+      "appdev#6",
+    ]);
+  });
+
+  it("an item that leaves stays where it was, leaving, until it has faded", () => {
+    const shown = start([item("4"), item("5"), item("6")]);
+    expect(keys(reviewListWithLeaving(shown, [item("4"), item("6")]))).toEqual([
+      "appdev#4",
+      "appdev#5 (leaving)",
+      "appdev#6",
+    ]);
+  });
+
+  it("an item that arrives takes its place in the flow's order", () => {
+    const shown = start([item("4"), item("6")]);
+    expect(keys(reviewListWithLeaving(shown, [item("4"), item("5"), item("6")]))).toEqual([
+      "appdev#4",
+      "appdev#5",
+      "appdev#6",
+    ]);
+    expect(keys(reviewListWithLeaving(shown, [item("3"), item("4"), item("6")]))).toEqual([
+      "appdev#3",
+      "appdev#4",
+      "appdev#6",
+    ]);
+  });
+
+  it("an item that comes back while it fades is simply there again", () => {
+    const leaving = reviewListWithLeaving(start([item("4"), item("5")]), [item("4")]);
+    expect(keys(reviewListWithLeaving(leaving, [item("4"), item("5")]))).toEqual([
+      "appdev#4",
+      "appdev#5",
+    ]);
+  });
+
+  it("an item's newer words replace its old ones", () => {
+    const shown = start([item("4", { title: "Old" })]);
+    const next = reviewListWithLeaving(shown, [item("4", { title: "New" })]);
+    expect(next.map((entry) => entry.item.title)).toEqual(["New"]);
+  });
+});

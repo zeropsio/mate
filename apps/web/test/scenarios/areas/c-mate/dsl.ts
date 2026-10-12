@@ -4,7 +4,7 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { createScenario } from "../../harness/scenario.ts";
-import { visibleText, sendConversationMessage } from "../../harness/browser.ts";
+import { visibleInMenu, sendConversationMessage } from "../../harness/browser.ts";
 import { chatFor, revokeProjectAccess } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
@@ -145,13 +145,13 @@ export function mateChat(
     when: {
       open: (name = "Ada", history?: string) =>
         Effect.gen(function* () {
-          yield* Effect.promise(() => visibleText(page, "sidebar-mate", name));
+          yield* Effect.promise(() => visibleInMenu(page, "sidebar-mate", name));
           yield* timed("first", openMate(name), name, history);
         }),
       openReadOnly: (name = "Ada") => openMate(name),
       returnTo: (name = "Ada") =>
         Effect.gen(function* () {
-          yield* Effect.promise(() => visibleText(page, "sidebar-mate", name));
+          yield* Effect.promise(() => visibleInMenu(page, "sidebar-mate", name));
           yield* timed("parked", openMate(name), name);
         }),
       reload: (name = "Ada", history?: string) =>

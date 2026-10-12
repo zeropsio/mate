@@ -31,26 +31,23 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     yield* Effect.promise(() =>
       page
         .locator(
-          '[data-zerops-group="' +
-            appId +
-            '"] [data-zerops-surface="sidebar-production-chip"][data-zerops-chip="prod"]',
+          '[data-zerops-group="' + appId + '"] [data-zerops-surface="sidebar-project-sites"]',
         )
         .click(),
     );
-    yield* Effect.promise(() =>
-      page.locator('[data-zerops-surface="sidebar-production-main"]').click(),
-    );
-  });
-  const reviewFromFoldedChip = Effect.gen(function* () {
     yield* Effect.promise(() =>
       page
         .locator(
-          `[data-zerops-group="${appId}"] [data-zerops-surface="sidebar-production-chip"][data-zerops-chip="prod"]`,
+          '[data-zerops-surface="sidebar-project-sites-popover"] [data-sites-place="production"] [data-zerops-surface="sidebar-project-sites-place"]',
         )
         .click(),
     );
+  });
+  const reviewFromReleaseTag = Effect.gen(function* () {
     yield* Effect.promise(() =>
-      page.locator('[data-zerops-surface="sidebar-production-review"]').click(),
+      page
+        .locator(`[data-zerops-group="${appId}"] [data-zerops-surface="sidebar-project-release"]`)
+        .click(),
     );
     expect(page.url()).not.toContain(`/Shop-production`);
   });
@@ -290,7 +287,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     when: {
       open,
       openFromNavigation,
-      reviewFromFoldedChip,
+      reviewFromReleaseTag,
       longRunningGap,
       finish,
       finishImport,

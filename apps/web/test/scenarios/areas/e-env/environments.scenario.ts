@@ -21,7 +21,7 @@ describe("E: stage, production, release and rollback", () => {
           yield* f.merge("Ship the storefront");
           if (stage === "failed") yield* a.when.finish("stage", "FAILED");
           yield* f.s.given.signedIn;
-          yield* a.when.reviewFromFoldedChip;
+          yield* a.when.reviewFromReleaseTag;
           yield* a.then.releaseEntriesShow("Ship the storefront");
           yield* a.when.click("Release v0.1.0 to production");
           yield* a.when.finish("production");
