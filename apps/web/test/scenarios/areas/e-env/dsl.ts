@@ -47,8 +47,13 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
   const reviewFromReleaseTag = Effect.gen(function* () {
     yield* Effect.promise(() =>
       page
-        .locator(`[data-zerops-group="${appId}"] [data-zerops-surface="sidebar-project-release"]`)
+        .locator(
+          `[data-zerops-group="${appId}"] [data-zerops-surface="sidebar-project-release-mark"]`,
+        )
         .click(),
+    );
+    yield* Effect.promise(() =>
+      page.locator('.chat-header-review [data-zerops-surface="sidebar-project-release"]').click(),
     );
     expect(page.url()).not.toContain(`/Shop-production`);
   });
