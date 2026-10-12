@@ -1,9 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
+import { deadline } from "../../harness/http.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { changeFixture } from "../../fakes/d-change/changes.ts";
-import { installArea, standUpBirth, vaultKey, vaultWrites } from "./fake.ts";
+import { installArea, installEngineArea, standUpBirth, vaultKey, vaultWrites } from "./fake.ts";
+import { EngineChatWire } from "./engine.ts";
 import { mateChat } from "./dsl.ts";
 
 describe("C: agent selection and contextual drafts", () => {
@@ -220,14 +222,43 @@ describe("C: agent selection and contextual drafts", () => {
       "J09: landed context stays separate from the person's message and compact event",
       () =>
         Effect.gen(function* () {
-          const s = yield* createScenario([installArea]);
+          const s = yield* createScenario([installEngineArea]);
           const landed = yield* changeFixture(s);
           const chat = mateChat(s);
           const wire = chat.fixture();
+          if (!(wire.wire instanceof EngineChatWire)) throw new Error("J09 is the engine's");
+          const engine = wire.wire.engine;
+          /** The agent says `text` in a turn of its own that ends with it. */
+          const say = (text: string) => {
+            const run = engine.startRun(null);
+            engine.item(run, { kind: "note", text, streaming: false, answer: true });
+            engine.end(run);
+          };
+          /** The `count`th message the engine took, sent or steered: its words and its context. */
+          const sent = (count: number) =>
+            Effect.promise(async () => {
+              const messages = () =>
+                engine.applied.filter(({ op }) => op === "send" || op === "steer");
+              await deadline(
+                new Promise<void>((resolve) => {
+                  const timer = setInterval(() => {
+                    if (messages().length < count) return;
+                    clearInterval(timer);
+                    resolve();
+                  }, 25);
+                }),
+                `Message ${count} the engine took`,
+                8000,
+              );
+              const { payload } = messages()[count - 1]!;
+              return {
+                text: String(payload.text),
+                context: ((payload.context ?? []) as ReadonlyArray<string>).join("\n"),
+              };
+            });
+          const lastRun = () => [...engine.runs.keys()].at(-1)!;
           wire.history();
-          wire.message(
-            "change-link",
-            "assistant",
+          say(
             `Review [the order change](https://hqzone.prg1-zerops.zone${landed.direct.replace("/change/", "/changes/")})`,
           );
           const vault = vaultWrites(s.drivers);
@@ -249,20 +280,26 @@ describe("C: agent selection and contextual drafts", () => {
           yield* chat.then.noText("Inspect what landed");
           wire.turnRefusal = null;
           yield* chat.when.press("Send message");
-          const sent = yield* Effect.promise(() => wire.waitForCommand("thread.turn.start", 2));
-          expect(sent).toMatchObject({ message: { text: "Inspect what landed" } });
-          if (sent.type !== "thread.turn.start") throw new Error("Expected contextual send");
-          expect((sent.agentNotes ?? []).join("\n")).toContain("STRIPE_KEY");
-          expect((sent.agentNotes ?? []).join("\n")).toContain("Add the order summary");
-          expect((sent.agentNotes ?? []).join("\n")).not.toContain("DISMISSED_KEY");
-          expect((sent.agentNotes ?? []).join("\n")).not.toContain("<redacted>");
+          // The agent hears the vault's key names and the merged changes with the person's message;
+          // the person's words go as they wrote them.
+          const first = yield* sent(1);
+          expect(first.text).toBe("Inspect what landed");
+          expect(first.context).toContain("STRIPE_KEY");
+          expect(first.context).toContain("Add the order summary");
+          expect(first.context).not.toContain("DISMISSED_KEY");
+          expect(first.context).not.toContain("<redacted>");
           yield* chat.then.once("Inspect what landed");
           yield* chat.then.control("Don't tell about STRIPE_KEY added", "button", false);
-          wire.run("vault-run", "running");
-          wire.tool(
-            "vault-request",
-            "tool.completed",
-            {
+          engine.settleRun(lastRun(), "completed");
+          const vaultRun = engine.startRun(null);
+          engine.item(vaultRun, {
+            kind: "call",
+            step: "mcp",
+            words: null,
+            state: "done",
+            endedAt: null,
+            tool: { name: "zerops_env", server: "zerops" },
+            shows: {
               toolName: "mcp__zerops__zerops_env",
               input: {
                 action: "request",
@@ -270,16 +307,14 @@ describe("C: agent selection and contextual drafts", () => {
                 project: true,
                 reason: "The billing service needs its key.",
               },
-              zerops: {
-                toolName: "zerops_env",
-                resultText: '{"requested":{"key":"BILLING_KEY","scope":"shared","sensitive":true}}',
-              },
               result: { requested: { key: "BILLING_KEY", scope: "shared", sensitive: true } },
             },
-            "vault-run",
-            { itemType: "mcp_tool_call" },
-          );
-          wire.run("vault-run", "completed");
+            result: {
+              toolName: "zerops_env",
+              resultText: '{"requested":{"key":"BILLING_KEY","scope":"shared","sensitive":true}}',
+            },
+          });
+          engine.settleRun(vaultRun, "completed");
           yield* chat.then.text("The billing service needs its key.");
           yield* chat.when.reload("Ada", "Inspect what landed");
           yield* chat.then.text("The billing service needs its key.");
@@ -305,58 +340,41 @@ describe("C: agent selection and contextual drafts", () => {
             "dispatch compact without the queued context",
             chat.when.send("/compact"),
           );
-          const compact = yield* Effect.promise(() =>
-            wire.waitForCommand("thread.turn.start", 3).catch((cause) => {
-              throw new Error("Compact command missing", { cause });
-            }),
-          );
-          expect(compact).toMatchObject({ message: { text: "/compact" } });
-          if (compact.type !== "thread.turn.start") throw new Error("Expected compact command");
-          expect(compact.agentNotes ?? []).toEqual([]);
+          const compact = yield* sent(2);
+          expect(compact).toEqual({ text: "/compact", context: "" });
           yield* chat.then.text("Condensing the context");
-          wire.run("compact-run", "running");
+          const compactRun = lastRun();
           yield* chat.then.control("Stop generation");
-          wire.activity(
-            "context-compaction",
-            "Context condensed",
-            { requestId: compact.message.messageId },
-            "compact-run",
-          );
-          wire.run("compact-run", "completed");
+          engine.item(compactRun, {
+            kind: "marker",
+            by: { kind: "engine" },
+            marker: { kind: "compacted" },
+          });
+          engine.settleRun(compactRun, "completed");
           yield* chat.then.text("Context condensed");
           yield* chat.step(
             "send the saved-key context after compact settles",
             chat.when.send("Use the key I saved"),
           );
-          const followup = yield* Effect.promise(() =>
-            wire.waitForCommand("thread.turn.start", 4).catch(async (cause) => {
-              throw new Error(
-                `After-compact command missing: ${await s.page.evaluate(() => document.body.innerText)}`,
-                { cause },
-              );
-            }),
-          );
-          expect(
-            (followup.type === "thread.turn.start" ? (followup.agentNotes ?? []) : []).join("\n"),
-          ).toContain("BILLING_KEY");
-          expect(
-            (followup.type === "thread.turn.start" ? (followup.agentNotes ?? []) : []).join("\n"),
-          ).not.toContain("synthetic-billing-secret");
+          const followup = yield* sent(3);
+          expect(followup.text).toBe("Use the key I saved");
+          expect(followup.context).toContain("BILLING_KEY");
+          const holds = (value: unknown): boolean =>
+            typeof value === "string"
+              ? value.includes("synthetic-billing-secret")
+              : typeof value === "object" && value !== null && Object.values(value).some(holds);
+          expect(holds(engine.applied)).toBe(false);
           yield* chat.then.once("Use the key I saved");
-          wire.run("after-compact", "completed");
-          wire.run("queued-context", "running");
+          engine.settleRun(lastRun(), "completed");
+          const working = engine.startRun(null);
           yield* chat.when.send("Keep this queued instruction unchanged");
           yield* chat.then.control("Send now");
           vaultKey(s.drivers, "LATER_KEY", "2099-10-07T12:00:00.000Z");
           yield* chat.then.text("LATER_KEY");
-          wire.run("queued-context", "completed");
-          const queued = yield* Effect.promise(() => wire.waitForCommand("thread.turn.start", 5));
-          expect(queued).toMatchObject({
-            message: { text: "Keep this queued instruction unchanged" },
-          });
-          expect(
-            (queued.type === "thread.turn.start" ? (queued.agentNotes ?? []) : []).join("\n"),
-          ).not.toContain("LATER_KEY");
+          engine.settleRun(working, "completed");
+          const queued = yield* sent(4);
+          expect(queued.text).toBe("Keep this queued instruction unchanged");
+          expect(queued.context).not.toContain("LATER_KEY");
           yield* chat.then.control("Don't tell about LATER_KEY added");
           yield* chat.then.once("Keep this queued instruction unchanged");
           yield* s.then.noExternalNetwork;
