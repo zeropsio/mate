@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import { STREAM_POLICY } from "../../../../../../packages/client-runtime/src/data/streamMachine.ts";
 import type { Page } from "puppeteer-core";
 import { startCore, untilHealth } from "../../../../../hq/test/harness/runningCore.ts";
 import { createScenario } from "../../harness/scenario.ts";
@@ -166,7 +167,7 @@ export const cappedHqOutage = (s: Scenario) =>
       );
       if (capped) return;
       const receipt = refusedHqRetry(s.page);
-      yield* Effect.promise(() => s.clock.advance(30_000));
+      yield* Effect.promise(() => s.clock.advanceStepped(STREAM_POLICY.backoffCapMs));
       yield* Effect.promise(() => receipt);
       yield* Effect.promise(() =>
         s.page.evaluate(
@@ -174,7 +175,7 @@ export const cappedHqOutage = (s: Scenario) =>
         ),
       );
     }
-    throw new Error("HQ never reached its capped outage state after eight 30-second retry rounds");
+    throw new Error("HQ never reached its capped outage state after eight retry rounds");
   });
 
 export const zeropsGoesDown = (s: Scenario) => dropZerops(s.drivers);
