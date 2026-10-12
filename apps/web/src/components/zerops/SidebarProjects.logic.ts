@@ -1,14 +1,6 @@
 /**
- * How the left menu lays its projects out, one after another, lands a reveal
- * on the row it asked for, and whether its foot offers *New project*.
- *
- * A heading never moves when it is clicked (M9). The room between two
- * projects used to sit above a heading and depend on that project's own
- * state — 4 px folded, 36 px open — so opening one dropped its heading 32 px
- * under the pointer (measured 166 → 198). The room belongs to the end of a
- * project instead: an open one's rows unfold below the heading with the room
- * after them, and folded projects stack as a list of names, each with its own
- * few px under it — the room an unfold grows from and a fold shrinks back to.
+ * How the left menu lands a reveal on the row it asked for, keeps the room a fold leaves at the
+ * list's end, and whether its foot offers *New project*.
  *
  * Pure: no React, no clock, no store.
  */
@@ -17,9 +9,6 @@ import {
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
-
-import type { MateRowState } from "./SidebarMateRow.logic";
 
 /**
  * Whether the menu's foot offers *New project* (D11), pinned above the
@@ -39,92 +28,6 @@ export function newProjectOffered(input: {
   if (!input.complete) return true;
   if (input.births.some((birth) => birth.placement.kind === "mate")) return true;
   return mateEnvironmentsEmptyReason(input.candidates) !== "no-mate";
-}
-
-/**
- * The air below each project, open or folded alike: 16 px. Folded names read as one list, and
- * opening one adds only its rows — never air to make room for them (the owner, 2026-10-11: folded
- * projects 60 px apart were "absolutely huge", and squeezed to 36 px every open was "layout
- * shifting on expand to create the space … it needs to be a balance"). At 12 a project's last
- * line stood 1.7 times as far from the next heading as a heading from its first Mate ("still
- * items squeezed together"); at 16 a project reads as one group, twice apart.
- */
-const PROJECT_AIR = 16;
-/** The list's own end, below its last project: 4 px. */
-const LIST_END = 4;
-
-/**
- * The room below a project, in px: the same air under an open project's rows as under a folded
- * heading — and the list's last project ends the same distance from the menu's foot, the list's
- * own 4 px end counted in. The room is the project's own, below it, so a heading's own fold
- * never moves it.
- */
-export function projectRoom(at: { readonly open: boolean; readonly last: boolean }): number {
-  return at.last ? PROJECT_AIR - LIST_END : PROJECT_AIR;
-}
-
-/** The dot on a folded heading's face: needs you, unread, or stopped on an error. */
-export type HeadingFaceDot = "attention" | "unread" | "failed";
-
-/** One of a folded project's Mates, as its heading shows it. */
-export interface HeadingFace {
-  readonly projectId: string;
-  readonly name: string;
-  readonly tint: MateTintId;
-  /** The shape its person picked, else its tint's own (`mateShapeOf`). */
-  readonly shape: MateShapeId;
-  /** Its row's face: still where it stopped on an error, as in the list. */
-  readonly face: MateMarkState;
-  /** Absent while it only works: its turning face says that. */
-  readonly dot: HeadingFaceDot | undefined;
-  /** Its state is read, not what this browser remembered: only then is a change an arrival. */
-  readonly known: boolean;
-  /** Its row's line — its last words, or the step it is on — said in its tooltip. */
-  readonly line?: string | undefined;
-}
-
-/**
- * The most urgent first: needing you, then stopped on an error, finished unseen, at work, and
- * the quiet ones last.
- */
-const RANK: Record<HeadingFaceDot | "working" | "quiet", number> = {
-  attention: 0,
-  failed: 1,
-  unread: 2,
-  working: 3,
-  quiet: 4,
-};
-
-/** At most this many faces on one heading; past them, how many more. */
-export const HEADING_FACES = 4;
-
-/**
- * Who a folded project's heading shows (M15): every one of its Mates, each as its row draws it
- * (`mateRowView`) — the same face, the same dot — the most urgent first, the list's order kept
- * within each. Never its count in words: "1 Mate" said nobody's state (the owner, 2026-10-11:
- * "why say '1 mate' instead of showing their avatars and their states?"). The heading draws the
- * first `HEADING_FACES` and says how many more.
- */
-export function headingFaces(
-  mates: ReadonlyArray<{
-    readonly projectId: string;
-    readonly name: string;
-    readonly tint: MateTintId;
-    readonly shape: MateShapeId;
-    /** Its row's state, face and dot (`mateRowView`). */
-    readonly state: MateRowState;
-    readonly face: MateMarkState;
-    readonly dot: HeadingFaceDot | undefined;
-    readonly known: boolean;
-    readonly line?: string | undefined;
-  }>,
-): ReadonlyArray<HeadingFace> {
-  const rank = (mate: (typeof mates)[number]) =>
-    RANK[mate.dot ?? (mate.state === "working" ? "working" : "quiet")];
-  return mates
-    .map((mate, index) => ({ mate, index }))
-    .toSorted((left, right) => rank(left.mate) - rank(right.mate) || left.index - right.index)
-    .map(({ mate: { state: _state, ...face } }) => face);
 }
 
 /** A reveal waiting for its row: asked for, and whether a draw has passed since. */

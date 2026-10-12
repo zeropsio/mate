@@ -167,7 +167,7 @@ import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
 import { zeropsSessionAtom } from "~/state/zerops";
 import { organization, project } from "~/zerops/__fixtures__/platformData";
-import type { SidebarCrewRead } from "./crew/SidebarCrewLine";
+import type { SidebarCrewRead } from "./crew/SidebarCrewMinis.logic";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import { ProjectReviewTags } from "./SidebarProjectReview";
 import { ProjectSites, type ProjectSitesInput } from "./SidebarProjectSites";
@@ -1776,6 +1776,65 @@ describe("a Mate and its crew, one unit in the menu", () => {
     expect(count(unit, "sidebar-crew")).toBe(0);
     // Itself, and its row's elements: nothing else to be lit.
     expect(elements(unit)).toBe(elements(row) + 1);
+  });
+
+  /**
+   * The fixture's crew as its Mate's overview carries it, every crewmate on Ada's Claude Code
+   * login: its first ask waiting on the viewer where `waiting`, task 13 ready for their Land
+   * where `ready`.
+   */
+  const waitingCrew = (input: { readonly waiting?: boolean; readonly ready?: boolean }) => {
+    const fixture = crewSnapshotFixture();
+    return {
+      status: "applied",
+      crew: {
+        ...crewDigestOf(fixture),
+        crewmates: crewDigestOf(fixture).crewmates.map((mate) => ({
+          ...mate,
+          threadKind: "idle" as const,
+          loginKey: "claude-code",
+        })),
+        attention:
+          input.waiting === true
+            ? fixture.attention.slice(0, 1).map(({ id, kind, handle }) => ({ id, kind, handle }))
+            : [],
+        readyTasks: input.ready === true ? [{ id: "task-13", owner: "frontend" }] : [],
+      },
+      logins: { "claude-code": { signedInBy: "ada", present: true, token: false } },
+      environmentId: EnvironmentId.make("env-crew"),
+    } satisfies SidebarCrewRead;
+  };
+  const withCrew = (read: SidebarCrewRead) => {
+    session.viewer = "ada";
+    return mount(
+      <SidebarZeropsTree
+        candidates={[mine(CRM_DEV_CONNECTED, "ada")]}
+        complete
+        getCrew={() => read}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+  };
+
+  // The crew's line under its Mate went into the Mate's own line (2026-10-12): who needs the
+  // viewer stands there, in the words' ink, and no Review is offered for an ask.
+  it("says who needs you, in the words' second ink, with no Review", () => {
+    const tree = withCrew(waitingCrew({ waiting: true }));
+    expect(text(surface(tree, "sidebar-mate-crew-need"))).toBe("Erik needs you");
+    expect(reviewsOf(tree)).toEqual([]);
+  });
+
+  it("offers Review where a task waits for your Land, opening that task's review", () => {
+    const tree = withCrew(waitingCrew({ ready: true }));
+    expect(reviewsOf(tree)).toEqual(["Frontend's work is ready — Frontend, in crm-dev's crew"]);
+    const [item] = tree.root.findByType(ProjectReviewTags).props
+      .items as ReadonlyArray<ProjectReviewItem>;
+    expect(item?.target).toEqual({
+      kind: "crew-task",
+      environmentId: EnvironmentId.make("env-crew"),
+      taskId: "task-13",
+    });
   });
 });
 

@@ -1,25 +1,20 @@
 /**
- * Arranging the left menu's projects by hand, in the *Custom* order.
+ * Arranging the left menu's projects by hand.
  *
- * A project heading wears a grip, on hover, first of its verbs: inside its
- * band and clear of the band's rounded ends, so the name never moves to make
- * room and the grip is never squeezed into a corner. Dragging it
- * draws one line in the gap the project would land in — never a gap opening
- * up, which would push every project under it about while the pointer is
- * still deciding — and a small copy of the name follows the pointer. The drop
- * is the only moment anything moves.
+ * In the *Custom* order a project's row is pulled to move it. Dragging draws
+ * one line in the gap the project would land in — never a gap opening up,
+ * which would push every project under it about while the pointer is still
+ * deciding — and a small copy of the name follows the pointer. The drop is
+ * the only moment anything moves.
  *
- * The same arrangement is the keyboard's too: the grip moves its project one
- * place with the arrow keys, and the project's menu has *Move up* and *Move
- * down* from any order. Every move is said out loud for a screen reader.
+ * The keyboard's way is the project's menu: *Move up* and *Move down*, from
+ * any order. Every move is said out loud for a screen reader.
  */
-import { GripVerticalIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useRef,
   useState,
-  type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
@@ -246,40 +241,4 @@ export function useProjectReorder(treeRef: RefObject<HTMLElement | null>): Proje
   );
 
   return { dragging: draggingId, startDrag, announce: setSpoken, overlay };
-}
-
-/**
- * The grip on a heading in the *Custom* order: a 28 px verb before + and ⋯,
- * in their slot, so it shows whenever they do — under the pointer, while a
- * menu of the heading's is open, on focus, and always to a finger — and the
- * name never moves for it.
- */
-export function ProjectGrip({
-  name,
-  groupId,
-  onPointerDown,
-  onMove,
-}: {
-  readonly name: string;
-  readonly groupId: string;
-  readonly onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  readonly onMove: (direction: "up" | "down") => void;
-}) {
-  return (
-    <button
-      aria-label={`Move ${name}: drag, or use the arrow keys`}
-      className="menu-heading-action cursor-grab touch-none active:cursor-grabbing"
-      data-zerops-grip={groupId}
-      data-zerops-surface="sidebar-project-grip"
-      onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
-        if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-        event.preventDefault();
-        onMove(event.key === "ArrowUp" ? "up" : "down");
-      }}
-      onPointerDown={onPointerDown}
-      type="button"
-    >
-      <GripVerticalIcon aria-hidden="true" className="size-3.5" />
-    </button>
-  );
 }

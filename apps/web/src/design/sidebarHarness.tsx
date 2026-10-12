@@ -98,7 +98,7 @@ import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountC
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
 import type { MateDecision } from "~/components/zerops/mateDecision.logic";
-import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewLine";
+import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewMinis.logic";
 import {
   SidebarAccountLine,
   SidebarZeropsTree,
