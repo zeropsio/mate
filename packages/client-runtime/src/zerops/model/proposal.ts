@@ -1,5 +1,5 @@
 /**
- * A Mastermate's proposal: what an organization tool (`zerops_org_*`) asks the person to approve.
+ * A Chief's proposal: what an organization tool (`zerops_org_*`) asks the person to approve.
  * Those tools never act. Each returns one document with a top-level `proposal`; the person approves
  * or declines it on its card, and the client carries out an approved one with the person's own
  * Zerops token. The contract is zcp's (`../zcp/docs/spec-mate.md`, org mode).

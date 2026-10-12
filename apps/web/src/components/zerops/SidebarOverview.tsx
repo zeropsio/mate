@@ -96,13 +96,13 @@ export function SidebarOverviewRow({
   current,
   onOpen,
   waiting,
-  mastermate = false,
+  chief = false,
 }: {
   /**
-   * The organization's Mastermate stands in for the overview (prototype): the menu's top row,
+   * The organization's Chief stands in for the overview (prototype): the menu's top row,
    * the Mate's own mark and its name, opening its conversation, whose panel holds the overview.
    */
-  readonly mastermate?: boolean;
+  readonly chief?: boolean;
   /** The organization in one line (`overviewHeadline`). */
   readonly headline: string;
   /** The overview is the page open now. */
@@ -132,7 +132,7 @@ export function SidebarOverviewRow({
   const items = waiting?.items ?? [];
   const summary = items.length === 0 ? undefined : waitingSummary(items);
   return (
-    <div className="menu-overview" data-master={mastermate ? "" : undefined}>
+    <div className="menu-overview" data-chief={chief ? "" : undefined}>
       <button
         aria-current={current ? "page" : undefined}
         aria-keyshortcuts="Alt+0"
@@ -144,7 +144,7 @@ export function SidebarOverviewRow({
         type="button"
       >
         <span className="menu-chrome-disc" aria-hidden="true">
-          {mastermate ? (
+          {chief ? (
             <MateMark awake playful className="h-9 w-7.5" />
           ) : (
             <LayersIcon className="size-4.5" />
@@ -152,7 +152,7 @@ export function SidebarOverviewRow({
         </span>
         <span className="menu-chrome-text">
           <span className="menu-chrome-name" data-waiting-line="">
-            {mastermate ? "Mastermate" : "Overview"}
+            {chief ? "Chief" : "Overview"}
           </span>
           {summary === undefined ? (
             <span className="menu-chrome-line" data-zerops-surface="sidebar-overview-headline">

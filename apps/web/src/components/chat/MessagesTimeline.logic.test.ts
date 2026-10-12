@@ -3871,7 +3871,7 @@ describe("deriveMessagesTimelineRows — a request for a vault value", () => {
   });
 });
 
-// A Mastermate's organization tools never act: each proposes, and the person
+// A Chief's organization tools never act: each proposes, and the person
 // approves or declines it on its card — theirs to answer, so it stands after
 // the run and its answer, never folded away with the work.
 describe("deriveMessagesTimelineRows — a proposal of the organization's Mate", () => {

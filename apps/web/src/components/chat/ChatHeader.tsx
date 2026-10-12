@@ -561,8 +561,8 @@ export const ChatHeader = memo(function ChatHeader({
     </>
   );
   return (
-    // A Mastermate's face is the product's own mark here as in its conversation.
-    <MateFaceAsMark.Provider value={mate?.master === true}>
+    // A Chief's face is the product's own mark here as in its conversation.
+    <MateFaceAsMark.Provider value={mate?.chief === true}>
       <div
         className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3"
         onContextMenu={handleHeaderContextMenu}
@@ -708,8 +708,8 @@ export const ChatHeader = memo(function ChatHeader({
               className={conversationLoading ? "invisible contents" : "contents"}
               data-opening-waits=""
             >
-              {mate.master === true ? (
-                // A Mastermate's way out is its organization: the overview's cards beside it.
+              {mate.chief === true ? (
+                // A Chief's way out is its organization: the overview's cards beside it.
                 <Button
                   aria-label="Overview"
                   data-chat-header-ghost

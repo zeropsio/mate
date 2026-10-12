@@ -1,5 +1,5 @@
 /**
- * What a Mastermate proposes, as its cards stand in its conversation at the owner's size (1786
+ * What a Chief proposes, as its cards stand in its conversation at the owner's size (1786
  * wide, the left menu at 435, `?menu=` for another): a restart, a secret value, a service's plain
  * value, a message with an attachment to another Mate, and each outcome — running, done, failed,
  * declined, and an approval a reload interrupted. Every face is the mark there; the receiving Mate

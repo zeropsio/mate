@@ -95,7 +95,7 @@ const SURFACE_DISABLED_REASONS = {
   crew: "The crew is only available from a Zerops project thread with crew mode on.",
   mcp: "MCP servers are only available from a conversation.",
   vault: "The vault is only available from a Zerops project thread.",
-  overview: "The overview opens from a Mastermate's conversation.",
+  overview: "The overview opens from a Chief's conversation.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
 /** Overlays that must win over the launcher's letter shortcuts. */

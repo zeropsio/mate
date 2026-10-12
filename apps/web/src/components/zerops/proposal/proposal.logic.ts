@@ -1,5 +1,5 @@
 /**
- * A Mastermate's proposal on its card: what the person decided of it, how an approved one is
+ * A Chief's proposal on its card: what the person decided of it, how an approved one is
  * carried out, and the words a message to another Mate is sent in. Nothing here acts; the card's
  * container carries out an approval with the person's own token.
  */

@@ -79,7 +79,7 @@ type MateFaceProps = Omit<React.ComponentProps<"span">, "children"> & {
   readonly state: MateMarkState;
   readonly size?: MateFaceSize;
   /**
-   * Drawn as the Mate's own mark, the product's logo: a Mastermate's face (`mastermate.ts`).
+   * Drawn as the Mate's own mark, the product's logo: a Chief's face (`chief.ts`).
    * Absent, the conversation decides (`MateFaceAsMark`).
    */
   readonly mark?: boolean | undefined;
@@ -246,7 +246,7 @@ function useMoment(input: {
  * nod with a zzz, and whatever its caller cues. With reduced motion the face stays still. Decorative on its own — the name and the state are always
  * written beside it — so it carries no accessible name.
  */
-/** Every face in it is drawn as the mark: a Mastermate's conversation (prototype). */
+/** Every face in it is drawn as the mark: a Chief's conversation (prototype). */
 const MateFaceAsMark = createContext(false);
 
 function MateFace({ mark, ...props }: MateFaceProps) {

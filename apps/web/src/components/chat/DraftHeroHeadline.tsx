@@ -13,7 +13,7 @@ import {
 } from "~/sidebarProjectGrouping";
 import { useProjects, useThreadShells } from "~/state/entities";
 import { useZeropsEnvironmentNames } from "~/zerops/useZeropsEnvironmentNames";
-import { mastermateQuestion } from "~/zerops/mastermate";
+import { chiefQuestion } from "~/zerops/chief";
 import { mateIdentityPose, zeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -59,10 +59,9 @@ export function DraftHeroHeadline({
   const whoLivesHere =
     activeProjectRef === null ? null : zeropsMateAt(mates, activeProjectRef.environmentId);
   const mate = whoLivesHere?.kind === "mate" ? whoLivesHere.mate : undefined;
-  // A Mastermate's question is the organization's, never its own project's.
+  // A Chief's question is the organization's, never its own project's.
   const organization = useZeropsSessionOptional()?.activeOrganization?.name;
-  const masterQuestion =
-    mate?.master === true ? mastermateQuestion(mate.name, organization) : undefined;
+  const chiefAsks = mate?.chief === true ? chiefQuestion(mate.name, organization) : undefined;
   const nowMs = useNowMs();
   const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
 
@@ -201,8 +200,8 @@ export function DraftHeroHeadline({
     ? (selectorLabel ?? "Choose a project")
     : (activeProjectTitle ?? "Add a project");
   const headingLabel = hasResolvedProject
-    ? masterQuestion !== undefined
-      ? masterQuestion
+    ? chiefAsks !== undefined
+      ? chiefAsks
       : whoLivesHere?.kind === "unknown"
         ? projectSelectorText
         : mate === undefined
@@ -233,8 +232,8 @@ export function DraftHeroHeadline({
         className="mx-auto w-full max-w-5xl text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl"
       >
         {hasResolvedProject ? (
-          masterQuestion !== undefined ? (
-            masterQuestion
+          chiefAsks !== undefined ? (
+            chiefAsks
           ) : whoLivesHere?.kind === "unknown" ? (
             // Neither question while who lives here is not known: the
             // project alone, which both of them name.

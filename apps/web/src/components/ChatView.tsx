@@ -1385,10 +1385,10 @@ function releaseChatTimelineAnchor<T extends { readonly messageId: MessageId | n
 }
 
 export default function ChatView(props: ChatViewProps) {
-  // A Mastermate's conversation draws its Mate as the product's own mark (`mastermate.ts`).
+  // A Chief's conversation draws its Mate as the product's own mark (`chief.ts`).
   const mate = useZeropsMate(props.environmentId);
   return (
-    <MateFaceAsMark.Provider value={mate.kind === "mate" && mate.mate.master === true}>
+    <MateFaceAsMark.Provider value={mate.kind === "mate" && mate.mate.chief === true}>
       <ConversationView {...props} />
     </MateFaceAsMark.Provider>
   );
@@ -8077,10 +8077,10 @@ function ConversationView(props: ChatViewProps) {
                 />
               );
             case "overview":
-              // The organization's cards, the overview page itself, in the Mastermate's panel.
+              // The organization's cards, the overview page itself, in the Chief's panel.
               return (
                 <div className="h-full min-h-0 overflow-y-auto">
-                  {/* Its cards' Mates wear their own faces, not the Mastermate's mark. */}
+                  {/* Its cards' Mates wear their own faces, not the Chief's mark. */}
                   <MateFaceAsMark.Provider value={false}>
                     <ZeropsProjectsPage />
                   </MateFaceAsMark.Provider>

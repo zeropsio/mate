@@ -6,7 +6,7 @@ import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidate
 import type { EnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
-import { isMastermate } from "./mastermate";
+import { isChief } from "./chief";
 import { heldCandidateRowsAtom } from "./useZeropsCandidates";
 import {
   readMateMemory,
@@ -56,7 +56,7 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
               serviceId: body.service?.id,
               running: candidateContainerRuns(body),
               arrivingUntil: mateArrivingUntil(body),
-              ...(isMastermate(body.project) ? { master: true } : {}),
+              ...(isChief(body.project) ? { chief: true } : {}),
             }),
         connected: environments.some(
           (environment) =>

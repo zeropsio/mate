@@ -48,8 +48,8 @@ export interface ZeropsMateIdentity {
   readonly arrivingUntil?: number | undefined;
   /** Its overview says it runs on an agent Mate signs nobody in to (HQ's overview). */
   readonly runsWithoutSignIn?: boolean | undefined;
-  /** It is its person's Mastermate, the organization's rather than one project's (`mastermate.ts`). */
-  readonly master?: boolean | undefined;
+  /** It is its person's Chief, the organization's rather than one project's (`chief.ts`). */
+  readonly chief?: boolean | undefined;
 }
 
 /** What a Mate's face reads of where it is in its life, from who lives there (`mateFaceFor`). */

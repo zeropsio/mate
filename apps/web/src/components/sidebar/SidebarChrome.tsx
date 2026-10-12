@@ -47,7 +47,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   brand,
 }: {
   isElectron: boolean;
-  /** What stands in the mark's place: the Mastermate's row where the organization has one. */
+  /** What stands in the mark's place: the Chief's row where the organization has one. */
   brand?: ReactNode;
   /**
    * How current the menu is, while it is not (`SidebarHqStatus`): between the mark and the

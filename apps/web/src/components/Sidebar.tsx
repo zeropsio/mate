@@ -212,7 +212,7 @@ import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, SidebarOverviewRow, useMenuProjects } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
-import { isMastermate } from "~/zerops/mastermate";
+import { isChief } from "~/zerops/chief";
 import { SidebarRail, useRailMates } from "./zerops/SidebarRail";
 import { SidebarPeekStage } from "./zerops/SidebarPeek";
 import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
@@ -1904,9 +1904,9 @@ export default function Sidebar() {
     },
     [askMateToFix, isMobile, setOpenMobile],
   );
-  // The organization's Mastermate, where it has one: the menu's top row in the overview's place.
-  const zeropsMastermate = useMemo(
-    () => zeropsCandidates.find((candidate) => isMastermate(candidate.project)),
+  // The organization's Chief, where it has one: the menu's top row in the overview's place.
+  const zeropsChief = useMemo(
+    () => zeropsCandidates.find((candidate) => isChief(candidate.project)),
     [zeropsCandidates],
   );
   const onZeropsSelect = useCallback(
@@ -2669,13 +2669,13 @@ export default function Sidebar() {
     <SidebarPeekStage rail={zeropsRail}>
       <SidebarChromeHeader
         brand={
-          zeropsSignedIn && zeropsMastermate !== undefined ? (
-            <div className="menu-top-master">
+          zeropsSignedIn && zeropsChief !== undefined ? (
+            <div className="menu-top-chief">
               <SidebarOverviewRow
-                current={litZeropsProjectId === zeropsMastermate.project.id}
+                current={litZeropsProjectId === zeropsChief.project.id}
                 headline={zeropsHeadline}
-                mastermate
-                onOpen={() => onZeropsSelect(zeropsMastermate)}
+                chief
+                onOpen={() => onZeropsSelect(zeropsChief)}
                 waiting={
                   zeropsListHeld
                     ? undefined
@@ -2948,7 +2948,7 @@ export default function Sidebar() {
         }
       >
         <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
-          {zeropsSignedIn && !isSearchingThreads && zeropsMastermate === undefined ? (
+          {zeropsSignedIn && !isSearchingThreads && zeropsChief === undefined ? (
             <div className="mt-2.5 mb-2" data-zerops-surface="sidebar-chrome-rows">
               <SidebarOverviewRow
                 current={zeropsOverviewOpen}

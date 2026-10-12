@@ -4536,17 +4536,17 @@ button.zerops-road-place:is(:hover, [data-popup-open]) {
     padding-right: 52px;
   }
 
-  /* The Mastermate in the menu's top bar (prototype): the bar's own height, the Mate's mark bare. */
-  .menu-overview[data-master] .menu-chrome-row {
+  /* The Chief in the menu's top bar (prototype): the bar's own height, the Mate's mark bare. */
+  .menu-overview[data-chief] .menu-chrome-row {
     height: 48px;
   }
 
-  .menu-overview[data-master] .menu-chrome-disc {
+  .menu-overview[data-chief] .menu-chrome-disc {
     background: transparent;
   }
 
   /* Its slot in the bar: the rest of the row beside the squares, its mark on the faces' column. */
-  .menu-top-master {
+  .menu-top-chief {
     min-width: 0;
     flex: 1 1 auto;
     padding-inline-start: calc(var(--sidebar-content-inset) + 1px);

@@ -174,7 +174,7 @@ export const RIGHT_PANEL_KIND_META = {
     },
     availability: (input) => input.zeropsPanel,
   },
-  // The organization's cards in a Mastermate's conversation: opened by its header's Overview,
+  // The organization's cards in a Chief's conversation: opened by its header's Overview,
   // never offered as a card of the launcher.
   overview: {
     launcher: null,

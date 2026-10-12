@@ -55,7 +55,7 @@ async function mount(over: Partial<ProposalCardProps> & { readonly proposal: Zer
   const pressed: string[] = [];
   await act(async () =>
     root?.render(
-      // A Mastermate's conversation: every face in it is the mark.
+      // A Chief's conversation: every face in it is the mark.
       <MateFaceAsMark value>
         <ProposalCard
           mateName="Fen"

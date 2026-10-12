@@ -147,7 +147,7 @@ import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
 import { type HqOutage } from "~/zerops/hqNavigation";
 import type { MateComing } from "@t3tools/client-runtime/data";
 import { mateFace } from "~/zerops/mateFace.logic";
-import { isMastermate } from "~/zerops/mastermate";
+import { isChief } from "~/zerops/chief";
 import { useMateFaceWatch } from "~/zerops/useMateMoments";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
@@ -945,8 +945,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // — so every row agrees on which container is the environment's.
   const mates = selectMateEnvironments(candidates);
   const mateByProject = new Map(mates.map((mate) => [mate.project.id, mate]));
-  // The person's Mastermate is the organization's, not a project's: the menu's top row, not here.
-  const master = mates.find((mate) => isMastermate(mate.project));
+  // The person's Chief is the organization's, not a project's: the menu's top row, not here.
+  const chief = mates.find((mate) => isChief(mate.project));
   const everyEnvironment = [
     ...candidates.filter((candidate) => !mateByProject.has(candidate.project.id)),
     ...mates,
@@ -1594,7 +1594,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // The viewer's Mate filter still hides applications whose Mates are all filtered out.
   const groups = orderedGroups.filter(
     ({ group, environments }) =>
-      !environments.some(({ item }) => item.project.id === master?.project.id) &&
+      !environments.some(({ item }) => item.project.id === chief?.project.id) &&
       (!environments.some(({ item }) => hasMate(item)) ||
         environments.some(({ item }) => hasMate(item) && (shown?.(item) ?? true)) ||
         group.pending.some((member) => member.kind === "mate")),
