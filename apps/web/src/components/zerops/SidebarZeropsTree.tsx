@@ -2263,7 +2263,7 @@ function ProjectCluster({
     >
       {drawn.map((face) => (
         <span
-          className={cn("menu-cluster-face", face.badge !== null && "menu-face-pale")}
+          className="menu-cluster-face"
           data-place={String(place.get(face.projectId) ?? 0)}
           key={face.projectId}
         >
@@ -3146,8 +3146,11 @@ function useMateRowState<T extends RosterCandidate>({
     second,
     heldLines,
     askChanged,
-    /** It asks the viewer something they can answer: never a colleague's Mate waiting on its person. */
-    asksViewer: asks && waitsOn === undefined && hqPeople?.waitsOnViewer !== false,
+    /**
+     * It asks the viewer something they can answer, as HQ says it waits on them: never a colleague's
+     * Mate waiting on its person, nor one HQ has not said of yet.
+     */
+    asksViewer: asks && hqPeople?.waitsOnViewer === true,
   };
 }
 
