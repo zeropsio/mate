@@ -4,7 +4,13 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it } from "vite-plus/test";
-import { idleDecision, parseWorktrees, pruneDecision, parseCwds } from "./prune-worktrees.ts";
+import {
+  idleDecision,
+  lsofBlockers,
+  parseCwds,
+  parseWorktrees,
+  pruneDecision,
+} from "./prune-worktrees.ts";
 
 const candidate = { path: "/repo/z3-wt/done", branch: "refs/heads/done", locked: false };
 const evidence = {
@@ -80,6 +86,37 @@ it("reads worktree paths with spaces and lsof cwd records", () => {
     "/repo/other",
   ]);
 });
+
+const unreachableMount = [
+  "lsof: WARNING: can't stat() smbfs file system /Volumes/.timemachine/nas/backup",
+  "      Output information may be incomplete.",
+  '      assuming "dev=36000006" from mount table',
+].join("\n");
+it.each([
+  {
+    name: "a mount that holds no lane",
+    stderr: unreachableMount,
+    roots: ["/repo/z3-wt"],
+    blocks: false,
+  },
+  {
+    name: "a mount that holds a lane",
+    stderr: unreachableMount,
+    roots: ["/Volumes/.timemachine/nas/backup/z3-wt"],
+    blocks: true,
+  },
+  {
+    name: "any other diagnostic",
+    stderr: "lsof: status error on /repo: Permission denied",
+    roots: ["/repo/z3-wt"],
+    blocks: true,
+  },
+])(
+  "an lsof warning blocks lane safety only when it can hide a lane: $name",
+  ({ stderr, roots, blocks }) => {
+    expect(lsofBlockers(stderr, roots).length > 0).toBe(blocks);
+  },
+);
 
 it("dry-run keeps eligible worktrees; apply removes only an unassigned clean merged worktree", () => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-prune-"));

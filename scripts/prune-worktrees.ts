@@ -109,18 +109,35 @@ export function git(cwd: string, args: string[]): string {
   return result.stdout;
 }
 
-export function liveCwds(): string[] {
+const unreachableMount = /^lsof: WARNING: can't stat\(\) \S+ file system (.+)$/;
+
+/** Diagnostics that can hide a process inside a lane root; a warning about another mount cannot. */
+export function lsofBlockers(stderr: string, roots: readonly string[]): string[] {
+  const blockers: string[] = [];
+  let skipping = false;
+  for (const line of stderr.split("\n")) {
+    if (!line.trim()) continue;
+    if (/^\s/.test(line) && skipping) continue;
+    const mount = unreachableMount.exec(line)?.[1];
+    skipping = mount !== undefined && !roots.some((root) => inside(root, mount));
+    if (!skipping) blockers.push(line);
+  }
+  return blockers;
+}
+
+export function liveCwds(roots: readonly string[]): string[] {
   const result = NodeChildProcess.spawnSync("lsof", ["-nP", "-a", "-d", "cwd", "-Fpn"], {
     encoding: "utf8",
   });
-  // lsof uses 1 for an empty selection. Any diagnostic means we cannot affirm process safety.
+  // lsof uses 1 for an empty selection. Any diagnostic that can hide a lane means we cannot affirm process safety.
+  const blockers = result.error ? [] : lsofBlockers(result.stderr, roots);
   if (
     result.error ||
-    result.stderr.trim() ||
+    blockers.length > 0 ||
     (result.status !== 0 && !(result.status === 1 && result.stdout === ""))
   )
     throw new Error(
-      `Cannot inspect live process cwd with lsof: ${result.error?.message ?? result.stderr}`,
+      `Cannot inspect live process cwd with lsof: ${result.error?.message ?? blockers.join("\n")}`,
     );
   return parseCwds(result.stdout);
 }
@@ -155,7 +172,7 @@ if (import.meta.main) {
   const apply = args.includes("--apply");
   const before = freeBytes(main);
   let count = 0;
-  let cwds = liveCwds();
+  let cwds = liveCwds(roots);
   for (const worktree of worktrees) {
     if (worktree.path === main || !roots.some((root) => inside(worktree.path, root))) continue;
     if (!NodeFS.existsSync(worktree.path)) {
@@ -179,7 +196,7 @@ if (import.meta.main) {
     }
     if (apply) {
       // Refresh safety evidence at the destructive boundary; git remove independently rejects dirt.
-      cwds = liveCwds();
+      cwds = liveCwds(roots);
       const refreshed = decision(cwds);
       if (refreshed) {
         console.log(`keep ${worktree.path}: ${refreshed}`);
