@@ -1841,50 +1841,86 @@ describe("owner-reported layout regressions", () => {
         );
       });
     });
-    describe("Decision: a calm notice is one quiet line on the composer; no room is held above it.", () => {
+    describe("Decision: what happened is a quiet row at the conversation's end; nothing stacks over the composer.", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-        // The owner (2026-10-12): "this stacking looks absolute shit + there is extra space on top".
+        // The owner (2026-10-12), of the strips over the composer: "I firmly believe we need to put
+        // them somewhere else.. especially when stacked they look extremely stupid" — S6 picked.
         it.effect(
-          "a calm notice over the composer says itself on one line, no room held above it",
+          "a notice arriving at the conversation's end moves nothing above it, and the composer holds no band for it",
           () =>
             Effect.gen(function* () {
-              const { s } = yield* composerLayout("notice");
+              const { s, chat } = yield* composerLayout("plain");
               yield* Effect.promise(() => ownerMenu(s.page));
-              const geometry = yield* Effect.promise(() =>
+              const read = () =>
                 s.page.evaluate(() => {
-                  const frame = document
-                    .querySelector("[data-composer-banner-anchor]")!
-                    .getBoundingClientRect();
-                  const notice = document.querySelector<HTMLElement>(
-                    '[data-composer-banner-drawer] [role="status"]',
-                  )!;
-                  const text = [...notice.querySelectorAll<HTMLElement>("span")].filter(
-                    (part) => part.childElementCount === 0 && part.textContent!.trim().length > 0,
-                  );
-                  const tops = text.map((part) => part.getBoundingClientRect().top);
-                  const line = parseFloat(getComputedStyle(notice).lineHeight);
+                  const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                  const rows = [
+                    ...document.querySelectorAll<HTMLElement>(
+                      ".timeline-legend-list [data-timeline-root]",
+                    ),
+                  ];
+                  const shell = document.querySelector('[data-slot="composer-shell"]')!;
+                  const overlay = document.querySelector("[data-chat-composer-overlay]")!;
+                  const at = (row: HTMLElement) =>
+                    Math.round(row.getBoundingClientRect().top + list.scrollTop);
                   return {
-                    words: text.map((part) => part.textContent),
-                    spread: Math.max(...tops) - Math.min(...tops),
-                    line,
-                    frameTop: frame.top,
-                    noticeTop: notice.getBoundingClientRect().top,
+                    rows: Object.fromEntries(
+                      rows.map((row) => [row.dataset.timelineRoot!, at(row)] as const),
+                    ),
+                    last: rows
+                      .map((row) => ({
+                        id: row.dataset.timelineRoot!,
+                        top: row.getBoundingClientRect().top,
+                      }))
+                      .toSorted((a, b) => a.top - b.top)
+                      .at(-1)?.id,
+                    shellTop: Math.round(shell.getBoundingClientRect().top),
+                    band: Math.round(
+                      shell.getBoundingClientRect().top - overlay.getBoundingClientRect().top,
+                    ),
+                    stack: document.querySelector("[data-composer-banner-anchor]") !== null,
                   };
-                }),
+                });
+              const before = yield* Effect.promise(read);
+              const wire = chat.fixture();
+              wire.claudeLoginFacts("ready");
+              wire.engine.assign({
+                instanceId: "claudeAgent",
+                model: "sonnet",
+                driver: "claudeAgent",
+              });
+              wire.engine.context({ usedTokens: 180_000 });
+              yield* chat.then.text("Resume with less context");
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () => {
+                    const list = document.querySelector<HTMLElement>(".timeline-legend-list");
+                    return (
+                      list &&
+                      document.querySelector("[data-conversation-notice]") &&
+                      Math.abs(list.scrollHeight - list.clientHeight - list.scrollTop) <= 2
+                    );
+                  },
+                  { polling: "raf", timeout: 8000 },
+                ),
               );
-              const seen = quoted(geometry);
+              const after = yield* Effect.promise(read);
+              const seen = quoted({ before, after });
+              const moved = Object.entries(before.rows).filter(
+                ([id, top]) => id in after.rows && Math.abs(after.rows[id]! - top) > 1,
+              );
+              expect(moved, `ASSERTION: a row above the notice moved: ${seen}`).toEqual([]);
               expect(
-                geometry.words.length,
-                `ASSERTION: the notice says its title and what it means: ${seen}`,
-              ).toBeGreaterThanOrEqual(2);
+                after.last,
+                `ASSERTION: the notice stands as the conversation's last row: ${seen}`,
+              ).toMatch(/^notice:resume-compaction:/u);
+              expect(after.stack, `ASSERTION: nothing stacks over the composer: ${seen}`).toBe(
+                false,
+              );
               expect(
-                geometry.spread,
-                `ASSERTION: its title and what it means stand on one line: ${seen}`,
-              ).toBeLessThan(geometry.line / 2);
-              expect(
-                geometry.noticeTop - geometry.frameTop,
-                `ASSERTION: no room is held above the notice: ${seen}`,
-              ).toBeLessThanOrEqual(1);
+                [after.shellTop, after.band],
+                `ASSERTION: the composer holds no band at its top: ${seen}`,
+              ).toEqual([before.shellTop, before.band]);
               yield* s.then.noExternalNetwork;
             }),
         );
@@ -1897,81 +1933,9 @@ describe("owner-reported layout regressions", () => {
             `the last row ends above the docked composer and history never paints below it (${state})`,
             () =>
               Effect.gen(function* () {
-                const { s, chat } = yield* composerLayout(state);
+                const { s } = yield* composerLayout(state);
                 yield* Effect.promise(() => ownerMenu(s.page));
 
-                const attached = () =>
-                  Effect.promise(async () => {
-                    const geometry = await s.page.evaluate(() => {
-                      // The front notice, a card or a calm one's quiet line.
-                      const front = document
-                        .querySelector(
-                          '[data-composer-banner-drawer] :is([role="status"], [role="alert"])',
-                        )!
-                        .getBoundingClientRect();
-                      const input = document
-                        .querySelector('[data-slot="composer-shell"]')!
-                        .getBoundingClientRect();
-                      return {
-                        gap: input.top - front.bottom,
-                        noticeTop: front.top,
-                        inputTop: input.top,
-                      };
-                    });
-                    expect(
-                      geometry.gap,
-                      "ASSERTION: the front notice touches the composer without a gap",
-                    ).toBeLessThanOrEqual(1);
-                    expect(
-                      geometry.noticeTop,
-                      "ASSERTION: the notice is above the composer",
-                    ).toBeLessThan(geometry.inputTop);
-                  });
-                if (state === "notice" || state === "stack") yield* attached();
-                if (state === "stack") {
-                  yield* chat.when.type("Keep this draft");
-                  yield* chat.then.control("1 more notice");
-                  yield* attached();
-                  yield* Effect.promise(async () => {
-                    const edge = await s.page.waitForSelector(
-                      'button[aria-label="Show 1 more notice"]',
-                      { visible: true },
-                    );
-                    const box = (await edge!.boundingBox())!;
-                    await s.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-                    await s.page.waitForSelector('button[aria-expanded="true"]');
-                  });
-                  yield* chat.then.control("Collapse notices");
-                }
-
-                if (state === "stack") {
-                  yield* attached();
-                  const stackGeometry = yield* Effect.promise(() =>
-                    s.page.evaluate(() => {
-                      const expanded = document
-                        .querySelector("[data-composer-banner-stack-expanded-items]")!
-                        .getBoundingClientRect();
-                      const front = document
-                        .querySelector(
-                          '[data-composer-banner-drawer] :is([role="status"], [role="alert"])',
-                        )!
-                        .getBoundingClientRect();
-                      return {
-                        height: expanded.height,
-                        bottom: expanded.bottom,
-                        frontTop: front.top,
-                      };
-                    }),
-                  );
-                  expect(
-                    stackGeometry.height,
-                    "ASSERTION: clicking the stacked edge opens the notices",
-                  ).toBeGreaterThan(0);
-                  expect(
-                    stackGeometry.bottom,
-                    "ASSERTION: expanded notices open above the attached front notice",
-                  ).toBeLessThanOrEqual(stackGeometry.frontTop);
-                }
                 const end = yield* Effect.promise(() =>
                   s.page.evaluate(() => {
                     const rows = [
@@ -2003,10 +1967,6 @@ describe("owner-reported layout regressions", () => {
                     });
                   }
                 });
-                if (state === "stack") {
-                  yield* chat.when.activateLast("Collapse notices");
-                  yield* attached();
-                }
                 yield* s.then.noExternalNetwork;
               }),
           );

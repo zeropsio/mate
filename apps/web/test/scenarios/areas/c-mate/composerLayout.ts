@@ -1,11 +1,11 @@
-import { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { changeFixture } from "../../fakes/d-change/changes.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
 
-export const composerStates = ["plain", "notice", "stack", "review"] as const;
+// "notice": an older session's compaction is offered — a row at the conversation's end since S6.
+export const composerStates = ["plain", "notice", "review"] as const;
 
 // Shared real-client input for geometry and the separate transparency compatibility check.
 export const composerLayout = Effect.fn("composerLayout")(function* (
@@ -24,18 +24,10 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
       "> Important: keep this conversation readable.\n\n".repeat(8),
     );
   wire.exchange("Finish here", "The last answer is above the composer.");
-  if (state === "notice" || state === "stack") {
+  if (state === "notice") {
     wire.claudeLoginFacts("ready");
     wire.engine.assign({ instanceId: "claudeAgent", model: "sonnet", driver: "claudeAgent" });
     wire.engine.context({ usedTokens: 180_000 });
-    if (state === "stack") {
-      // Another of Ada's chats is at work.
-      const primary = wire.mate.thread;
-      wire.engine.conversation("other-chat").startRun(null);
-      wire.threadCollection(primary, [
-        { ...primary, id: ThreadId.make("other-chat"), title: "Other work" },
-      ]);
-    }
   }
   yield* s.given.signedIn;
   yield* chat.when.open("Ada", "Finish here");
@@ -56,7 +48,7 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
       { polling: "raf", timeout: 8000 },
     ),
   );
-  if (state === "notice" || state === "stack") yield* chat.then.text("Resume with less context");
+  if (state === "notice") yield* chat.then.text("Resume with less context");
   if (state === "review") yield* chat.then.text("Ada is waiting for your review of #1");
 
   return { s, chat };

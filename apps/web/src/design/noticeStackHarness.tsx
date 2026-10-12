@@ -1,13 +1,13 @@
 /**
- * The composer's notice stack — one notice, and two with the second stacked behind — attached to
- * the composer's own frame.
+ * The composer's notice stack — the Mate's link and the connection, the only notices left over the
+ * composer (S6) — one, and two with the second stacked behind, attached to the composer's frame.
  *
  * Served by the dev server at `/design-notice-stack.html` (`?theme=dark`). Fixtures only: nothing
  * here ships, and no route imports this module.
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { CpuIcon, ShrinkIcon } from "lucide-react";
+import { CpuIcon, PlugZapIcon } from "lucide-react";
 
 import {
   ComposerBannerStack,
@@ -26,18 +26,18 @@ const CPU: ComposerBannerStackItem = {
   icon: <CpuIcon />,
   title: "Fen is under CPU pressure",
 };
-const COMPACT: ComposerBannerStackItem = {
-  id: "compact",
-  variant: "info",
-  icon: <ShrinkIcon />,
-  title: "Resume with less context",
-  description: "180k tokens from an older session",
+const REFUSED: ComposerBannerStackItem = {
+  id: "refused",
+  variant: "error",
+  layout: "centered",
+  icon: <PlugZapIcon />,
+  title: "Couldn't connect to Fen",
+  description: "Fen refused the connection.",
   actions: (
-    <Button size="xs" variant="outline">
-      Compact
+    <Button size="xs" variant="pill">
+      Try again
     </Button>
   ),
-  onDismiss: () => {},
 };
 
 function Composer({
@@ -68,9 +68,8 @@ function Composer({
 function Harness() {
   return (
     <div className="flex min-h-screen flex-col items-center gap-10 bg-background p-10 text-foreground">
-      <Composer items={[COMPACT]} label="One notice" />
-      <Composer items={[COMPACT, CPU]} label="Two notices" />
-      <Composer items={[CPU, COMPACT]} label="Two notices, centred front" />
+      <Composer items={[CPU]} label="One notice" />
+      <Composer items={[REFUSED, CPU]} label="Two notices" />
     </div>
   );
 }
