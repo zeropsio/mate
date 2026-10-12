@@ -21,10 +21,9 @@
 import type { ScopedThreadRef, ZeropsBrowserInput } from "@t3tools/contracts";
 import {
   frameImageSrc,
-  mapCanvasPointToDevicePixels,
   resolveBrowserDrivingState,
 } from "@t3tools/client-runtime/zerops/browserStream";
-import { useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
@@ -32,6 +31,7 @@ import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { zeropsCommands } from "../../state/zeropsCommands";
 import { useZeropsBrowserStream, useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
+import { LiveFrameViewer, type LiveFramePointer } from "./LiveFrameViewer";
 import { MicroLabel, StatusDot } from "./primitives";
 
 export interface ZeropsBrowserPanelProps {
@@ -45,9 +45,16 @@ function keyText(key: string): string | undefined {
   return key.length === 1 ? key : undefined;
 }
 
-/** The box a frame sits in, live or last seen. */
-const FRAME_BOX =
+/** The box a frame sits in, live or last seen; the Mac's view shares it. */
+export const FRAME_BOX =
   "relative overflow-hidden rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)]";
+
+/** The viewer's pointer kinds in CDP's `Input.dispatchMouseEvent` vocabulary. */
+const MOUSE_EVENT = {
+  press: "mousePressed",
+  release: "mouseReleased",
+  drag: "mouseMoved",
+} as const satisfies Record<LiveFramePointer, string>;
 
 /** `Last seen 3m ago · https://app.dev/`: when the retained frame came, and from where. */
 function lastSeenWords(atMs: number, url: string | undefined): string {
@@ -61,7 +68,6 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
   const lifecycle = useZeropsLifecycle(environmentId, threadRef?.threadId ?? null);
   const [takeOver, setTakeOver] = useState(initialTakeOver ?? false);
   const lastUserInputAtRef = useRef<number | undefined>(undefined);
-  const isPointerDownRef = useRef(false);
   // `undefined` means "no prior render observed yet" — distinct from a real
   // `false`, so mounting straight into an already-in-progress agent call
   // (e.g. a take-over restored from a prior session) is never mistaken for
@@ -103,72 +109,32 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
     void sendInputCommand({ environmentId, input });
   };
 
-  const handlePointer =
-    (eventType: "mousePressed" | "mouseReleased" | "mouseMoved") =>
-    (event: PointerEvent<HTMLCanvasElement>) => {
-      if (eventType === "mousePressed") {
-        isPointerDownRef.current = true;
-        // Keeps every later move/up event targeting this canvas even once
-        // the pointer strays outside its bounds mid-drag — without this, a
-        // release outside the canvas never reaches `mouseReleased` below and
-        // `isPointerDownRef` is stuck `true`.
-        event.currentTarget.setPointerCapture(event.pointerId);
-      } else if (eventType === "mouseReleased") {
-        isPointerDownRef.current = false;
-      } else if (!isPointerDownRef.current) {
-        // A bare hover carries nothing CDP needs for this slice (no
-        // hover-triggered UI to drive) and would otherwise fire one
-        // operate-scope RPC per pixel of mouse movement — only forward
-        // moves made while a button is held.
-        return;
-      }
-      if (frame === undefined) {
-        return;
-      }
-      const rect = event.currentTarget.getBoundingClientRect();
-      const point = mapCanvasPointToDevicePixels(
-        {
-          canvasWidth: rect.width,
-          canvasHeight: rect.height,
-          x: event.clientX - rect.left,
-          y: event.clientY - rect.top,
-        },
-        frame,
-      );
-      sendInput({
-        kind: "mouse",
-        eventType,
-        x: point.x,
-        y: point.y,
-        // A move only ever reaches here while a button is held (the guard
-        // above) — it IS a drag, so it carries the same "left" CDP reads
-        // press/release with; sending "none" here reads as a hover and
-        // breaks drag-select, sliders, and drag-and-drop on the remote page.
-        button: "left",
-        ...(eventType === "mouseMoved" ? {} : { clickCount: 1 }),
-      });
-    };
-
-  /** Belt-and-suspenders for a lost/cancelled pointer capture (e.g. a touch gesture cancel) — `setPointerCapture` above is what makes a normal release outside the canvas still land on `mouseReleased`. */
-  const resetPointerDown = () => {
-    isPointerDownRef.current = false;
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLCanvasElement>) => {
-    // The canvas owns the keystroke while it has focus — Space/arrows/Tab
-    // must drive the REMOTE page, never scroll or tab around mate's own.
-    event.preventDefault();
+  const handlePointer = (kind: LiveFramePointer, point: { x: number; y: number }) => {
     sendInput({
-      kind: "keyboard",
-      eventType: "keyDown",
-      key: event.key,
-      ...(keyText(event.key) !== undefined ? { text: keyText(event.key) } : {}),
+      kind: "mouse",
+      eventType: MOUSE_EVENT[kind],
+      x: point.x,
+      y: point.y,
+      // A move only ever reaches here while a button is held — it IS a drag,
+      // so it carries the same "left" CDP reads press/release with; sending
+      // "none" here reads as a hover and breaks drag-select, sliders, and
+      // drag-and-drop on the remote page.
+      button: "left",
+      ...(kind === "drag" ? {} : { clickCount: 1 }),
     });
   };
 
-  const handleKeyUp = (event: KeyboardEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
-    sendInput({ kind: "keyboard", eventType: "keyUp", key: event.key });
+  const handleKey = (kind: "down" | "up", { key }: { readonly key: string }) => {
+    sendInput(
+      kind === "down"
+        ? {
+            kind: "keyboard",
+            eventType: "keyDown",
+            key,
+            ...(keyText(key) !== undefined ? { text: keyText(key) } : {}),
+          }
+        : { kind: "keyboard", eventType: "keyUp", key },
+    );
   };
 
   const drivingLine = driving.agentDriving
@@ -249,29 +215,16 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
       ) : frame === undefined ? (
         <StatusDot className="px-1" label="Connecting" pulse tone="busy" />
       ) : (
-        <div className={FRAME_BOX}>
-          {/** biome-ignore lint/a11y/noNoninteractiveElementInteractions: the frame is a live remote viewport, not a static image. */}
-          <img
-            alt="Live view of the agent's browser"
-            className="block w-full"
-            src={frameImageSrc(frame)}
-          />
-          <canvas
-            aria-disabled={driving.inputDisabled}
-            aria-label="Browser viewport — click or type to interact"
-            className="absolute inset-0 h-full w-full"
-            data-zerops-browser-input-disabled={driving.inputDisabled}
-            onKeyDown={handleKeyDown}
-            onKeyUp={handleKeyUp}
-            onPointerCancel={resetPointerDown}
-            onPointerDown={handlePointer("mousePressed")}
-            onPointerLeave={resetPointerDown}
-            onPointerMove={handlePointer("mouseMoved")}
-            onPointerUp={handlePointer("mouseReleased")}
-            style={{ cursor: driving.inputDisabled ? "not-allowed" : "default" }}
-            tabIndex={driving.inputDisabled ? -1 : 0}
-          />
-        </div>
+        <LiveFrameViewer
+          alt="Live view of the agent's browser"
+          boxClassName={FRAME_BOX}
+          canvasData={{ "data-zerops-browser-input-disabled": driving.inputDisabled }}
+          frame={frame}
+          inputDisabled={driving.inputDisabled}
+          inputLabel="Browser viewport — click or type to interact"
+          onKey={handleKey}
+          onPointer={handlePointer}
+        />
       )}
     </section>
   );
