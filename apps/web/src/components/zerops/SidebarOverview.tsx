@@ -111,6 +111,8 @@ export function SidebarOverviewRow({
       const { code, altKey, metaKey, ctrlKey, shiftKey } = event;
       const typing = typedIntoField(event.target);
       if (!overviewKeyPressed({ code, altKey, metaKey, ctrlKey, shiftKey, typing })) return;
+      // It opens the overview, whatever the menu shows: the closed rail offers it too (its tip
+      // says ⌥0), and it clicks no row hidden under the rail.
       event.preventDefault();
       onOpen();
     };

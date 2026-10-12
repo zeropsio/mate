@@ -172,6 +172,15 @@ describe("SidebarRail — the closed menu on a desktop", () => {
     ]);
   });
 
+  it("marks the open Mate's whole project as the current one", async () => {
+    const { container } = await mount();
+    expect(
+      surface(container, "sidebar-rail-project").map((project) =>
+        project.getAttribute("aria-current"),
+      ),
+    ).toEqual(["true", null]);
+  });
+
   it("opens the menu again from its foot", async () => {
     const { container, onOpenMenu } = await mount();
     await act(async () => {

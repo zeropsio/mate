@@ -844,7 +844,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         event.defaultPrevented ||
         event.metaKey ||
         event.ctrlKey ||
-        typedIntoField(event.target)
+        typedIntoField(event.target) ||
+        // Waiting under the closed menu's rail, the rows are not the keyboard's.
+        !sidebarMenuShown()
       ) {
         return;
       }
@@ -2587,6 +2589,7 @@ function MateUnit({
 }
 
 import { mateOutsideHq, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
+import { sidebarMenuShown } from "./SidebarPeek";
 
 /** Memoised (`mateRowPropsEqual`): only the rows whose own props changed redraw with the tree. */
 function MateRowRead<T extends RosterCandidate>(

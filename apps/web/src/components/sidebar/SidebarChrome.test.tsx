@@ -1,4 +1,7 @@
+// @vitest-environment happy-dom
 import type * as React from "react";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MATE_LOCKUP } from "@t3tools/shared/brand";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -6,6 +9,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { APP_BASE_NAME } from "../../branding";
 
 const router = vi.hoisted(() => ({ pathname: "/" }));
+/** Whether the menu is docked open; closed, the open menu shown is the rail's peek. */
+const menu = vi.hoisted(() => ({ open: true }));
 
 vi.mock("@tanstack/react-router", async () => {
   const { createElement } = await import("react");
@@ -36,8 +41,11 @@ vi.mock("../ui/sidebar", async () => {
       createElement("button", { ...props, "data-active": isActive }),
     useSidebar: () => ({
       isMobile: false,
+      open: menu.open,
       setOpenMobile: () => {},
-      toggleSidebar: () => {},
+      toggleSidebar: () => {
+        menu.open = !menu.open;
+      },
       state: "expanded",
     }),
   };
@@ -150,6 +158,27 @@ describe("SidebarUtilityMenu", () => {
     expect(markup.includes('data-zerops-surface="sidebar-account"')).toBe(!back);
     // The collapse control is the foot's constant.
     expect(markup).toContain('aria-label="Collapse sidebar"');
+  });
+
+  it("peeking out of the closed menu, its foot docks it open", async () => {
+    router.pathname = "/";
+    menu.open = false;
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(<SidebarUtilityMenu />);
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('button[aria-label="Open the menu"]')?.click();
+    });
+    const docked = menu.open;
+    root.unmount();
+    container.remove();
+    menu.open = true;
+
+    expect(docked).toBe(true);
   });
 
   it("says who is signed in and whose organization the rows above belong to", () => {

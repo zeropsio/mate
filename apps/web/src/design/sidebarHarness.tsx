@@ -67,7 +67,7 @@ import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { changeUrl } from "@t3tools/shared/hqChanges";
 import type { MateThreadKind } from "@t3tools/shared/mateLink";
-import { EllipsisIcon, PanelLeftCloseIcon } from "lucide-react";
+import { EllipsisIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 
 import { onOpenCommandPalette } from "~/commandPaletteBus";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
@@ -104,7 +104,8 @@ import {
   SidebarZeropsTree,
   type SidebarProjectFlow,
 } from "~/components/zerops/SidebarZeropsTree";
-import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
+import { Sidebar, SidebarContent, SidebarProvider, useSidebar } from "~/components/ui/sidebar";
+import { SidebarPeekStage } from "~/components/zerops/SidebarPeek";
 import { HeadingLadder } from "./headingLadder";
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
@@ -1224,9 +1225,7 @@ function SidebarFrame({
           onSignOut={() => {}}
           organizations={[ORGANIZATION]}
         />
-        <button aria-label="Collapse sidebar" className="menu-foot-button" type="button">
-          <PanelLeftCloseIcon aria-hidden="true" className="size-4" />
-        </button>
+        <SidebarFootToggle />
       </footer>
     </aside>
   );
@@ -1421,8 +1420,30 @@ function HarnessJumpBox({
   );
 }
 
-/** `?menu=closed`: the menu closed to its rail on a desktop (`RailFrame`). */
+/**
+ * `?menu=closed`: the menu closed to its rail on a desktop (`RailFrame`), the harness's open menu
+ * peeking out of it and docking from it as the app's does (`SidebarPeekStage`).
+ */
 const MENU_CLOSED = new URLSearchParams(location.search).get("menu") === "closed";
+
+/** The menu's own toggle: it closes the docked menu, and docks a peeking one, as the app's. */
+function SidebarFootToggle() {
+  const { open, toggleSidebar } = useSidebar();
+  return (
+    <button
+      aria-label={open ? "Collapse sidebar" : "Open the menu"}
+      className="menu-foot-button"
+      onClick={toggleSidebar}
+      type="button"
+    >
+      {open ? (
+        <PanelLeftCloseIcon aria-hidden="true" className="size-4" />
+      ) : (
+        <PanelLeftOpenIcon aria-hidden="true" className="size-4" />
+      )}
+    </button>
+  );
+}
 
 /** The rail the app closes the menu to on a desktop (`SidebarRail`). */
 function RailFrame({
@@ -1463,38 +1484,36 @@ function RailFrame({
       menuActions.push(`ask ${projectId}`);
     },
   };
+  const menu = useSidebar();
   return (
-    <aside
-      className="flex h-screen w-16 shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
-      data-sidebar="sidebar"
-    >
-      <SidebarRail
-        account={
-          <SidebarZeropsAccount
-            account={ACCOUNT}
-            activeOrganization={ORGANIZATION}
-            collapsed
-            destination={null}
-            destinationIcon={() => null}
-            onGo={() => {}}
-            onSelectOrganization={() => {}}
-            onSignOut={() => {}}
-            organizations={[ORGANIZATION]}
-          />
-        }
-        activeProjectId={open === "" ? null : open}
-        groups={groups}
-        headline={HARNESS_HEADLINE}
-        onOpenMenu={() => menuActions.push("open the menu")}
-        onOverview={() => setOpen("")}
-        onSelect={setOpen}
-        openShortcut="⌘B"
-        overviewCurrent={open === ""}
-        showMark
-        verbs={verbs}
-        waiting={items}
-      />
-    </aside>
+    <SidebarRail
+      account={
+        <SidebarZeropsAccount
+          account={ACCOUNT}
+          activeOrganization={ORGANIZATION}
+          collapsed
+          destination={null}
+          destinationIcon={() => null}
+          onGo={() => {}}
+          onSelectOrganization={() => {}}
+          onSignOut={() => {}}
+          organizations={[ORGANIZATION]}
+        />
+      }
+      activeProjectId={open === "" ? null : open}
+      groups={groups}
+      headline={HARNESS_HEADLINE}
+      onOpenMenu={() => {
+        menu.setOpen(true);
+      }}
+      onOverview={() => setOpen("")}
+      onSelect={setOpen}
+      openShortcut="⌘B"
+      overviewCurrent={open === ""}
+      showMark
+      verbs={verbs}
+      waiting={items}
+    />
   );
 }
 /** `?crew=1`: the open Mate's line carries a crew of three, as a Mate with a crew's does. */
@@ -1648,7 +1667,18 @@ function Harness() {
         )}
       </CommandDialog>
       {MENU_CLOSED && !phone ? (
-        <RailFrame open={open} setOpen={setOpen} />
+        <Sidebar collapsible="icon" layered side="left">
+          <SidebarPeekStage rail={<RailFrame open={open} setOpen={setOpen} />}>
+            <SidebarFrame
+              onJump={() => {
+                setJumping(true);
+              }}
+              open={open}
+              setOpen={setOpen}
+              width={width}
+            />
+          </SidebarPeekStage>
+        </Sidebar>
       ) : (
         <SidebarFrame
           onJump={() => {
@@ -1734,7 +1764,16 @@ const router = createRouter({
       // The viewer is the whole menu's, as in the app: the waiting stack in the header reads
       // whose Mates wait on them too.
       <ZeropsSessionContext.Provider value={COMING_VIEWER}>
-        <SidebarProvider className="block" defaultOpen={!MENU_CLOSED}>
+        <SidebarProvider
+          className="block"
+          defaultOpen={!MENU_CLOSED}
+          style={
+            {
+              "--sidebar-width": `${params.get("w") ?? 256}px`,
+              "--sidebar-width-icon": "72px",
+            } as CSSProperties
+          }
+        >
           {LADDER ? <HeadingLadder width={Number(params.get("w") ?? 256)} /> : <Harness />}
         </SidebarProvider>
       </ZeropsSessionContext.Provider>

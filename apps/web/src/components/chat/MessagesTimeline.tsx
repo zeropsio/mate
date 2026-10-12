@@ -210,6 +210,7 @@ import type { DockModel } from "./conversationDock.logic";
 import {
   ErrorLine,
   EventLine,
+  HeldMessageLine,
   MessageReceipt,
   PauseBlock,
   Seam,
@@ -3375,130 +3376,147 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   };
   const revertTurnCount = row.revertTurnCount;
 
+  const heldRunId = row.message.heldRunId;
+  const withdrawHeld =
+    heldRunId !== undefined && ctx.onWithdrawHeldMessage
+      ? () => ctx.onWithdrawHeldMessage?.(heldRunId)
+      : null;
+  const held = row.receipt === "held";
+
   return (
-    // The time and actions sit beside the bubble's foot rather than under it:
-    // a hover-only strip in flow would add a blank line under every message.
-    // The receipt stays: it is how the person knows the Mate read it.
-    <div className="group flex flex-row-reverse items-end gap-2">
-      {/* One bubble for every message: a message sent as a turn ended can
+    <>
+      {/* The time and actions sit beside the bubble's foot rather than under it:
+        a hover-only strip in flow would add a blank line under every message.
+        The receipt stays: it is how the person knows the Mate read it. */}
+      <div className="group flex flex-row-reverse items-end gap-2">
+        {/* One bubble for every message: a message sent as a turn ended can
           become the next turn's opener, and it must not change its size. */}
-      <div
-        className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground"
-        data-message-aside={row.aside ? "true" : undefined}
-      >
-        <MessageAuthorHeading>You</MessageAuthorHeading>
-        {imagesAbove.length > 0 && (
-          <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-            {imagesAbove.map((image: ChatImageAttachment) => {
-              const state = pictureStates.get(image.id);
-              return (
-                <div
-                  key={image.id}
-                  className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-                >
-                  {state?._tag === "Failure" ? (
-                    <ImageUnavailable reason={state.reason} />
-                  ) : image.previewUrl ? (
-                    <button
-                      type="button"
-                      className="h-full w-full cursor-zoom-in"
-                      aria-label={`Preview ${image.name}`}
-                      onClick={() => expandImage(image)}
-                    >
-                      <AssetImage
-                        loading="lazy"
-                        decoding="async"
-                        src={image.previewUrl}
-                        alt={image.name}
-                        className="block max-h-[220px] w-full object-contain"
-                        style={{ aspectRatio: `${image.width ?? 16} / ${image.height ?? 9}` }}
+        <div
+          className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground"
+          data-message-aside={row.aside ? "true" : undefined}
+        >
+          <MessageAuthorHeading>You</MessageAuthorHeading>
+          {imagesAbove.length > 0 && (
+            <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
+              {imagesAbove.map((image: ChatImageAttachment) => {
+                const state = pictureStates.get(image.id);
+                return (
+                  <div
+                    key={image.id}
+                    className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+                  >
+                    {state?._tag === "Failure" ? (
+                      <ImageUnavailable reason={state.reason} />
+                    ) : image.previewUrl ? (
+                      <button
+                        type="button"
+                        className="h-full w-full cursor-zoom-in"
+                        aria-label={`Preview ${image.name}`}
+                        onClick={() => expandImage(image)}
+                      >
+                        <AssetImage
+                          loading="lazy"
+                          decoding="async"
+                          src={image.previewUrl}
+                          alt={image.name}
+                          className="block max-h-[220px] w-full object-contain"
+                          style={{ aspectRatio: `${image.width ?? 16} / ${image.height ?? 9}` }}
+                        />
+                      </button>
+                    ) : (
+                      <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs">
+                        {image.name}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <MessageFilesAbove files={filesAbove} urls={fileUrls} />
+          {placedPictures ? (
+            <MessagePictureBody
+              segments={placedPictures.segments}
+              dimensions={pictureDimensions}
+              states={pictureStates}
+              onOpen={expandImage}
+              fileUrls={fileUrls}
+              renderText={(segment) => (
+                <CollapsibleUserMessageBody
+                  text={segment.text}
+                  terminalContexts={[...(pictureContexts?.get(segment.after) ?? [])]}
+                  skills={ctx.skills}
+                  markdownCwd={ctx.markdownCwd}
+                />
+              )}
+            />
+          ) : (
+            <CollapsibleUserMessageBody
+              text={displayedUserMessage.visibleText}
+              terminalContexts={terminalContexts}
+              skills={ctx.skills}
+              markdownCwd={ctx.markdownCwd}
+            />
+          )}
+        </div>
+        {row.receipt ? (
+          <span className="flex shrink-0 pb-1.5">
+            <MessageReceipt
+              receipt={row.receipt}
+              speaker={ctx.speaker}
+              resetsAt={ctx.limit?.kind === "limited" ? ctx.limit.resetsAt : null}
+              timestampFormat={ctx.timestampFormat}
+            />
+          </span>
+        ) : null}
+        <div className="flex shrink-0 items-center pb-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
+          <div className="flex shrink-0 items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
+                {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat)}
+              </TooltipTrigger>
+              <TooltipPopup>
+                {formatChatTimestampTooltip(row.message.createdAt, ctx.timestampFormat)}
+              </TooltipPopup>
+            </Tooltip>
+            <div className="flex items-center gap-0.5">
+              {typeof revertTurnCount === "number" && (
+                <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
+              )}
+              {displayedUserMessage.copyText && (
+                <MessageCopyButton text={displayedUserMessage.copyText} variant="ghost" />
+              )}
+              {/* Held, Don't send stands in the line under the message. */}
+              {withdrawHeld !== null && !held ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="ghost"
+                        aria-label="Don't send"
+                        onClick={withdrawHeld}
                       />
-                    </button>
-                  ) : (
-                    <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs">
-                      {image.name}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <MessageFilesAbove files={filesAbove} urls={fileUrls} />
-        {placedPictures ? (
-          <MessagePictureBody
-            segments={placedPictures.segments}
-            dimensions={pictureDimensions}
-            states={pictureStates}
-            onOpen={expandImage}
-            fileUrls={fileUrls}
-            renderText={(segment) => (
-              <CollapsibleUserMessageBody
-                text={segment.text}
-                terminalContexts={[...(pictureContexts?.get(segment.after) ?? [])]}
-                skills={ctx.skills}
-                markdownCwd={ctx.markdownCwd}
-              />
-            )}
-          />
-        ) : (
-          <CollapsibleUserMessageBody
-            text={displayedUserMessage.visibleText}
-            terminalContexts={terminalContexts}
-            skills={ctx.skills}
-            markdownCwd={ctx.markdownCwd}
-          />
-        )}
-      </div>
-      {row.receipt ? (
-        <span className="flex shrink-0 pb-1.5">
-          <MessageReceipt
-            receipt={row.receipt}
-            speaker={ctx.speaker}
-            resetsAt={ctx.limit?.kind === "limited" ? ctx.limit.resetsAt : null}
-            timestampFormat={ctx.timestampFormat}
-          />
-        </span>
-      ) : null}
-      <div className="flex shrink-0 items-center pb-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
-        <div className="flex shrink-0 items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-              {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat)}
-            </TooltipTrigger>
-            <TooltipPopup>
-              {formatChatTimestampTooltip(row.message.createdAt, ctx.timestampFormat)}
-            </TooltipPopup>
-          </Tooltip>
-          <div className="flex items-center gap-0.5">
-            {typeof revertTurnCount === "number" && (
-              <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
-            )}
-            {displayedUserMessage.copyText && (
-              <MessageCopyButton text={displayedUserMessage.copyText} variant="ghost" />
-            )}
-            {row.message.heldRunId !== undefined && ctx.onWithdrawHeldMessage ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      size="icon-xs"
-                      variant="ghost"
-                      aria-label="Don't send"
-                      onClick={() => ctx.onWithdrawHeldMessage?.(row.message.heldRunId!)}
-                    />
-                  }
-                >
-                  <XIcon className="size-3.5" aria-hidden />
-                </TooltipTrigger>
-                <TooltipPopup>Don't send</TooltipPopup>
-              </Tooltip>
-            ) : null}
+                    }
+                  >
+                    <XIcon className="size-3.5" aria-hidden />
+                  </TooltipTrigger>
+                  <TooltipPopup>Don't send</TooltipPopup>
+                </Tooltip>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      {held ? (
+        <HeldMessageLine
+          onWithdraw={withdrawHeld}
+          resetsAt={ctx.limit?.kind === "limited" ? ctx.limit.resetsAt : null}
+          timestampFormat={ctx.timestampFormat}
+        />
+      ) : null}
+    </>
   );
 }
 

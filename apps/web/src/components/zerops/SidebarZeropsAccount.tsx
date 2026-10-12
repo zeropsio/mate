@@ -317,15 +317,18 @@ export function SidebarZeropsAccountMenu({
  */
 export function SidebarZeropsAccountRow({
   destinationIcon,
+  collapsed = false,
 }: {
   readonly destinationIcon: (id: SidebarAccountDestination["id"]) => ReactNode;
+  /** The rail's photo alone; the open menu, peeking over the rail too, keeps its whole row. */
+  readonly collapsed?: boolean;
 }) {
   // Optional on purpose: the foot renders in the shell, and a shell that
   // white-screens because no session is mounted is worse than one with no
   // account row. Signed out, there is no account to name either way.
   const session = useZeropsSessionOptional();
   const navigate = useNavigate();
-  const { isMobile, setOpenMobile, state } = useSidebar();
+  const { isMobile, setOpenMobile } = useSidebar();
   const destination = useLocation({
     select: (location) => sidebarAccountDestinationOf(location.pathname),
   });
@@ -343,7 +346,7 @@ export function SidebarZeropsAccountRow({
     <SidebarZeropsAccount
       account={zeropsAccountDisplay(user)}
       activeOrganization={activeOrganization}
-      collapsed={!isMobile && state === "collapsed"}
+      collapsed={!isMobile && collapsed}
       destination={destination}
       destinationIcon={destinationIcon}
       onGo={(entry) => {

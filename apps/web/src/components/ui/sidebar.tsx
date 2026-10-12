@@ -206,6 +206,7 @@ function Sidebar({
   variant = "sidebar",
   collapsible = "offcanvas",
   resizable = false,
+  layered = false,
   className,
   children,
   ...props
@@ -214,6 +215,12 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset";
   collapsible?: "offcanvas" | "icon" | "none";
   resizable?: boolean | SidebarResizableOptions;
+  /**
+   * Its content paints its own surface and moves itself (`SidebarPeek`): the column only holds
+   * the page's room, which slides with the menu's own edge, and steps over the page while the
+   * menu peeks.
+   */
+  layered?: boolean;
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
   const resolvedResizable = React.useMemo<SidebarResolvedResizableOptions | null>(() => {
@@ -307,7 +314,11 @@ function Sidebar({
         {/* This is what handles the sidebar gap on desktop */}
         <div
           className={cn(
-            "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
+            "relative w-(--sidebar-width) bg-transparent",
+            layered
+              ? // The page's edge travels with the menu's own (`.menu-stage-menu`).
+                "transition-[width] duration-220 ease-(--ease-out-strong) group-data-[state=collapsed]:duration-180 motion-reduce:transition-none"
+              : "transition-[width] duration-200 ease-linear",
             "group-data-[collapsible=offcanvas]:w-0",
             "group-data-[side=right]:rotate-180",
             variant === "floating" || variant === "inset"
@@ -318,7 +329,11 @@ function Sidebar({
         />
         <div
           className={cn(
-            "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
+            "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) md:flex",
+            layered
+              ? // Over the page while the menu peeks out of the rail (`data-menu-raised`).
+                "has-[[data-menu-raised]]:z-40"
+              : "transition-[left,right,width] duration-200 ease-linear",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -332,7 +347,11 @@ function Sidebar({
           {...props}
         >
           <div
-            className="flex h-full w-full flex-col bg-sidebar surface-grain group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm/5"
+            className={cn(
+              "flex h-full w-full flex-col",
+              !layered && "bg-sidebar surface-grain",
+              "group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm/5",
+            )}
             data-sidebar="sidebar"
             data-slot="sidebar-inner"
           >
@@ -517,6 +536,8 @@ function SidebarRail({
               "group-data-[collapsible=offcanvas]:translate-x-0 hover:group-data-[collapsible=offcanvas]:bg-sidebar group-data-[collapsible=offcanvas]:after:left-full",
               "[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
               "[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",
+              // Out of the way while the menu peeks over it (`SidebarPeek`).
+              "group-has-[[data-menu-raised]]:invisible",
               className,
             )}
             data-sidebar="rail"
