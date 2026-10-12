@@ -2427,6 +2427,8 @@ describe("owner-reported layout regressions", () => {
         interface SettleFrame {
           /** The time of the frame it shows (the page's clock). */
           readonly at: number;
+          /** When the geometry was read, so a task delayed after its frame is visible. */
+          readonly readAt: number;
           /** The run's card's head: where it stands and what it says. */
           readonly head: { readonly top: number; readonly words: string } | null;
           /** The person's message above the card, null out of view. */
@@ -2625,6 +2627,7 @@ describe("owner-reported layout regressions", () => {
                       document.querySelector<HTMLElement>("form")?.getBoundingClientRect().top ??
                       Infinity,
                     drawn: rows.size,
+                    readAt: performance.now(),
                     rises,
                     lastLine,
                     fromEnd: (() => {
@@ -2649,7 +2652,16 @@ describe("owner-reported layout regressions", () => {
               engine.update(note, { text, streaming: false });
               yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 400)));
             }
-            const endedAt = yield* Effect.promise(() => s.page.evaluate(() => performance.now()));
+            const ending = yield* Effect.promise(() =>
+              s.page.evaluate(() => ({
+                top:
+                  [...document.querySelectorAll<HTMLElement>("[data-run-chat] [data-run-head]")]
+                    .at(-1)
+                    ?.getBoundingClientRect().top ?? null,
+                at: performance.now(),
+              })),
+            );
+            const endedAt = ending.at;
             // As the cron turn on Milo (recheck on 0.15.41, +40:10.7): the slot says Thinking and
             // its short answer comes in the change that ends the run.
             if (note === null) engine.note(run, text, { kind: "completed" });
@@ -2691,13 +2703,10 @@ describe("owner-reported layout regressions", () => {
             // The head stands still through the settle: its card folds under it. Then the room the
             // fold left under the end goes in one short glide to the conversation's true end (the
             // owner, 0.15.44: the view rested short of its end over an empty foot).
-            const trace = `(ms:top) ${frames
-              .filter(
-                (frame, index) => index === 0 || frame.head?.top !== frames[index - 1]!.head?.top,
-              )
+            const trace = `endedAt=${endedAt.toFixed(2)} headAtEnd=${ending.top} (frame:ms:readMs:top) ${frames
               .map(
-                (frame) =>
-                  `${Math.round(frame.at - endedAt)}:${frame.head === null ? "-" : Math.round(frame.head.top)}`,
+                (frame, index) =>
+                  `${index}:${(frame.at - endedAt).toFixed(2)}:${(frame.readAt - endedAt).toFixed(2)}:${frame.head === null ? "-" : frame.head.top.toFixed(2)}`,
               )
               .join(" ")}`;
             // An answer that ends in view under the head keeps the head still; a longer one keeps
