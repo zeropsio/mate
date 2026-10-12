@@ -193,6 +193,7 @@ const EXPECTED_SURFACE_IDS = [
   "zerops-session",
   "zerops-panel",
   "zerops-browser-panel",
+  "zerops-mac-panel",
   "zerops-data",
   "zerops-git-tab",
   "zerops-vault",

@@ -39,6 +39,7 @@ vi.mock("../../state/zeropsCommands", () => ({
   zeropsCommands: { browserInput: Symbol("browserInput") },
 }));
 
+import { LiveFrameViewer, type LiveFrameViewerProps } from "./LiveFrameViewer";
 import { ZeropsBrowserPanel } from "./ZeropsBrowserPanel";
 
 const THREAD_REF: ScopedThreadRef = {
@@ -57,8 +58,17 @@ const knownLifecycle = (recentTools: ReadonlyArray<unknown>) => ({
   freshness: { kind: "live" },
 });
 
+/** The panel's tree with its live viewer rendered too: the input canvas is the viewer's. */
 function findByAttribute(tree: unknown, attribute: string) {
-  return visitElements(tree, (element) => attribute in element.props);
+  const found = visitElements(tree, (element) => attribute in element.props);
+  if (found !== null) return found;
+  const viewer = visitElements(tree, (element) => element.type === LiveFrameViewer);
+  return viewer === null
+    ? null
+    : visitElements(
+        LiveFrameViewer(viewer.props as unknown as LiveFrameViewerProps),
+        (element) => attribute in element.props,
+      );
 }
 
 interface FakePointerEvent {

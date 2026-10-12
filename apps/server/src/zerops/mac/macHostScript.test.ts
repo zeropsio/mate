@@ -6,6 +6,7 @@ import * as NodePath from "node:path";
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
+import { MAC_VIEW_SCRIPT } from "./macViewScript.ts";
 import {
   type MacHostScriptInput,
   renderMacHostFailure,
@@ -29,13 +30,19 @@ afterEach(() => {
   for (const dir of scratch.splice(0)) NodeFS.rmSync(dir, { recursive: true, force: true });
 });
 
+const BASE_TOOLS = ["awk", "rm", "sed", "cat", "id"];
+/** A whole pairing also needs the tools it files and keys with. */
+const PAIRING_TOOLS = ["mkdir", "chmod", "cut", "seq", "ssh-keygen", "dirname"];
+const extraTools = (stubs: Record<string, string>) =>
+  "npm" in stubs ? [...BASE_TOOLS, ...PAIRING_TOOLS] : BASE_TOOLS;
+
 /** Runs a script under sh as a Mac would, with some commands replaced by stubs. */
 const runOnFakeMac = (script: string, stubs: Record<string, string>) => {
   const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-home-"));
   const bin = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-bin-"));
   scratch.push(home, bin);
   // Only the stubs and the few real tools the scripts lean on: nothing else, node included.
-  for (const tool of ["awk", "rm", "sed", "cat", "id"]) {
+  for (const tool of extraTools(stubs)) {
     // A stub replaces the tool; never link one, or writing the stub would write through the link.
     if (tool in stubs) continue;
     const real = ["/usr/bin", "/bin"]
@@ -127,9 +134,105 @@ describe("the scripts the Mate hands a Mac", () => {
     expect(result.status).toBe(0);
     expect(NodeFS.existsSync(root)).toBe(false);
     expect(NodeFS.readdirSync(agents)).toEqual([]);
-    expect(NodeFS.readFileSync(NodePath.join(mac.home, "launchctl.log"), "utf8")).toBe(
-      `bootout gui/501/io.zerops.mate.${PROJECT}.sshd\nbootout gui/501/io.zerops.mate.${PROJECT}.agent-device\n`,
+    const log = NodeFS.readFileSync(NodePath.join(mac.home, "launchctl.log"), "utf8");
+    expect(log).toContain(`bootout gui/501/io.zerops.mate.${PROJECT}.sshd\n`);
+    expect(log).toContain(`bootout gui/501/io.zerops.mate.${PROJECT}.agent-device\n`);
+  });
+
+  it("removing the pairing stops the live view too", () => {
+    const mac = runOnFakeMac(renderMacRemoveScript(PROJECT), {
+      uname: "echo Darwin",
+      launchctl: `echo "$@" >> "$HOME/launchctl.log"`,
+      id: "echo 501",
+    });
+    const agents = NodePath.join(mac.home, "Library", "LaunchAgents");
+    NodeFS.mkdirSync(agents, { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(agents, `io.zerops.mate.${PROJECT}.view.plist`), "");
+
+    expect(mac.run().status).toBe(0);
+    expect(NodeFS.readdirSync(agents)).toEqual([]);
+    expect(NodeFS.readFileSync(NodePath.join(mac.home, "launchctl.log"), "utf8")).toContain(
+      `bootout gui/501/io.zerops.mate.${PROJECT}.view\n`,
     );
+  });
+
+  it("pairing leaves the live view running as the user's node, with its helper written intact", () => {
+    // A Mac on the VPN with node and npm; launchd starts what it is given at once.
+    const state = `$HOME/.zerops-mate/${PROJECT}/agent-device/state`;
+    const mac = runOnFakeMac(renderMacHostScript(input), {
+      uname: "echo Darwin",
+      route: "echo '  interface: utun5'",
+      ifconfig: "printf '\\tinet 10.12.0.4 --> 10.12.0.4 netmask 0xffffffff\\n'",
+      node: `case "$2" in snapshot) echo 'Snapshot: 12 nodes';; esac; exit 0`,
+      realpath: `echo "$1"`,
+      npm: [
+        `while [ "$1" != --prefix ]; do shift; done; P="$2/node_modules/agent-device"`,
+        `mkdir -p "$P/bin" "$P/dist/src/internal" && : > "$P/bin/agent-device.mjs" && : > "$P/dist/src/internal/daemon.js"`,
+      ].join("\n"),
+      launchctl: `echo "$@" >> "$HOME/launchctl.log"; case "$*" in bootstrap*agent-device*) : > "${state}/daemon.json";; esac`,
+      nc: "exit 0",
+      sleep: "exit 0",
+      scutil: "echo 'Test Mac'",
+      sw_vers: "echo 26.1",
+      ssh: "cat > /dev/null",
+      // The fake Mac's own user, whoever runs the test (CI is not uid 501).
+      id: `case "$1" in -u) echo 501;; -un) echo tester;; esac`,
+      open: "exit 0",
+    });
+
+    const result = mac.run();
+
+    expect(result.stderr).toContain("paired.");
+    expect(result.status).toBe(0);
+    const root = NodePath.join(mac.home, ".zerops-mate", PROJECT);
+    expect(NodeFS.readFileSync(NodePath.join(root, "bin", "view.mjs"), "utf8")).toBe(
+      MAC_VIEW_SCRIPT,
+    );
+    const plist = NodeFS.readFileSync(
+      NodePath.join(mac.home, "Library", "LaunchAgents", `io.zerops.mate.${PROJECT}.view.plist`),
+      "utf8",
+    );
+    expect(plist).toContain(`<string>${NodePath.join(root, "bin", "view.mjs")}</string>`);
+    expect(plist).toMatch(/<array>\s*<string>[^<]*\/node<\/string>/u);
+    expect(NodeFS.readFileSync(NodePath.join(mac.home, "launchctl.log"), "utf8")).toContain(
+      `bootstrap gui/501 ${NodePath.join(mac.home, "Library", "LaunchAgents", `io.zerops.mate.${PROJECT}.view.plist`)}`,
+    );
+  });
+
+  it("a daemon that has just started gets a few tries before System Settings opens on anyone's screen", () => {
+    // The first permission check after the daemon starts sees nothing; the next one sees the app.
+    const state = `$HOME/.zerops-mate/${PROJECT}/agent-device/state`;
+    const mac = runOnFakeMac(renderMacHostScript(input), {
+      uname: "echo Darwin",
+      route: "echo '  interface: utun5'",
+      ifconfig: "printf '\\tinet 10.12.0.4 --> 10.12.0.4 netmask 0xffffffff\\n'",
+      node: [
+        `case "$2" in snapshot)`,
+        `  n=$(cat "$HOME/snapshots" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$HOME/snapshots"`,
+        `  if [ "$n" -ge 2 ]; then echo 'Snapshot: 12 nodes'; else echo 'Snapshot: 0 nodes'; fi;;`,
+        `esac; exit 0`,
+      ].join("\n"),
+      realpath: `echo "$1"`,
+      npm: [
+        `while [ "$1" != --prefix ]; do shift; done; P="$2/node_modules/agent-device"`,
+        `mkdir -p "$P/bin" "$P/dist/src/internal" && : > "$P/bin/agent-device.mjs" && : > "$P/dist/src/internal/daemon.js"`,
+      ].join("\n"),
+      launchctl: `case "$*" in bootstrap*agent-device*) : > "${state}/daemon.json";; esac`,
+      nc: "exit 0",
+      sleep: "exit 0",
+      scutil: "echo 'Test Mac'",
+      sw_vers: "echo 26.1",
+      ssh: "cat > /dev/null",
+      // The fake Mac's own user, whoever runs the test (CI is not uid 501).
+      id: `case "$1" in -u) echo 501;; -un) echo tester;; esac`,
+      open: `echo "$@" >> "$HOME/opened"`,
+    });
+
+    const result = mac.run();
+
+    expect(result.stderr).toContain("paired.");
+    expect(result.status).toBe(0);
+    expect(NodeFS.existsSync(NodePath.join(mac.home, "opened"))).toBe(false);
   });
 
   it("a Mac piping a failed render into sh sees why and stops", () => {

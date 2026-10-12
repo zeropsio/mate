@@ -753,6 +753,73 @@ export const ZeropsBrowserInput = Schema.Union([
 export type ZeropsBrowserInput = typeof ZeropsBrowserInput.Type;
 
 /**
+ * The live view of the app an agent opened on the paired Mac (the Mac tab).
+ * `not-paired`: no Mac is paired with this Mate. `unreachable`: the paired
+ * Mac does not answer over the VPN. `no-app`: no app opened yet, or it is not
+ * running or has no window. `no-helper`: the Mac has no view helper (a
+ * pairing older than the view, or macOS not letting it record).
+ * `connecting`: reaching the Mac. `live`: frames are flowing.
+ */
+export const ZeropsMacStreamStatus = Schema.Literals([
+  "not-paired",
+  "unreachable",
+  "no-app",
+  "no-helper",
+  "connecting",
+  "live",
+]);
+export type ZeropsMacStreamStatus = typeof ZeropsMacStreamStatus.Type;
+
+/** The window's rect on the Mac's screen, in points: where a click on the image lands. */
+export const ZeropsMacWindowBounds = Schema.Struct({
+  x: Schema.Number,
+  y: Schema.Number,
+  width: Schema.Number,
+  height: Schema.Number,
+});
+export type ZeropsMacWindowBounds = typeof ZeropsMacWindowBounds.Type;
+
+/** One captured window, as {@link ZeropsBrowserFrame}: base64 image and its pixel size. */
+export const ZeropsMacFrame = Schema.Struct({
+  type: Schema.Literal("frame"),
+  mimeType: Schema.String,
+  data: Schema.String,
+  width: Schema.Number,
+  height: Schema.Number,
+  bounds: ZeropsMacWindowBounds,
+});
+export type ZeropsMacFrame = typeof ZeropsMacFrame.Type;
+
+/**
+ * The view's state, sent first and on every change. `inUse`: someone is
+ * working on the Mac, so a click or typing from the view would take over
+ * their screen and is refused (the `mac device` guard).
+ */
+export const ZeropsMacStateEvent = Schema.Struct({
+  type: Schema.Literal("state"),
+  status: ZeropsMacStreamStatus,
+  macName: Schema.optional(Schema.String),
+  app: Schema.optional(Schema.String),
+  inUse: Schema.Boolean,
+});
+export type ZeropsMacStateEvent = typeof ZeropsMacStateEvent.Type;
+
+export const ZeropsMacStreamEvent = Schema.Union([ZeropsMacFrame, ZeropsMacStateEvent]);
+export type ZeropsMacStreamEvent = typeof ZeropsMacStreamEvent.Type;
+
+const MacImagePixel = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0));
+
+/** `zerops.mac.input`: a click at a pixel of the last frame, or text typed into the app. */
+export const ZeropsMacInput = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("click"), x: MacImagePixel, y: MacImagePixel }),
+  Schema.Struct({
+    kind: Schema.Literal("text"),
+    text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1000)),
+  }),
+]);
+export type ZeropsMacInput = typeof ZeropsMacInput.Type;
+
+/**
  * `zerops.mate.update`'s success result (spec-mate.md §2.9 MU-2): the
  * decoded `zcp mate update --json` answer, plus the server's own version
  * before the update ran — the version the client's container machine

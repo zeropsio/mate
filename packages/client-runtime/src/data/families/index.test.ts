@@ -68,6 +68,8 @@ describe("the registries", () => {
     { key: "mate:database-session-env:database-session", mode: "realtime" },
     { key: "mate:browser-env", mode: "realtime" },
     { key: "mate:browser-env:browser-frame", mode: "realtime" },
+    { key: "mate:mac-env", mode: "realtime" },
+    { key: "mate:mac-env:mac-view", mode: "realtime" },
   ])("observe $key as $mode", ({ key, mode }) => {
     expect(streamMode(key)).toBe(mode);
   });

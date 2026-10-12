@@ -193,6 +193,57 @@
       "captures": []
     },
     {
+      "id": "zerops-mac-panel",
+      "title": "Zerops Mac panel",
+      "components": [
+        "apps/web/src/components/zerops/LiveFrameViewer.tsx",
+        "apps/web/src/components/zerops/ZeropsMacPanel.tsx",
+        "apps/web/src/components/zerops/ZeropsMacSurface.tsx",
+        "packages/client-runtime/src/zerops/macView.ts",
+        "apps/web/src/zerops/macViewLinks.tsx",
+        "packages/client-runtime/src/data/projections/mateMacView.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Mac"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/macView",
+        "subscribeZeropsMacStream",
+        "zerops.mac.input",
+        "@t3tools/client-runtime/data"
+      ],
+      "reverseStates": [
+        {
+          "action": "Click or type into the app",
+          "reverse": "none: the input reaches the real app on the Mac; it is undone there, like any click."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Mac panel yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsMacPanel.test.tsx",
+        "packages/client-runtime/src/data/adapters/mateMacView.test.ts",
+        "apps/server/src/zerops/ZeropsMacStream.test.ts",
+        "apps/server/src/zerops/mac/macViewScript.test.ts",
+        "packages/contracts/src/zerops.macView.test.ts"
+      ],
+      "captures": []
+    },
+    {
       "id": "zerops-data",
       "title": "Zerops Data panel",
       "components": [

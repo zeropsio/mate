@@ -51,6 +51,8 @@ export type RightPanelSurface =
   | { id: "zerops"; kind: "zerops" }
   | { id: "browser"; kind: "browser" }
   | { id: `service:${string}`; kind: "browser"; service: string; url: string }
+  /** The app an agent opened on the paired Mac, live. */
+  | { id: "mac"; kind: "mac" }
   | { id: "data"; kind: "data" }
   | { id: "git"; kind: "git" }
   /** The crew's one home: its setup, or its section above its board. */
@@ -159,6 +161,8 @@ const singletonSurface = (
       return { id: "zerops", kind };
     case "browser":
       return { id: "browser", kind };
+    case "mac":
+      return { id: "mac", kind };
     case "data":
       return { id: "data", kind };
     case "git":

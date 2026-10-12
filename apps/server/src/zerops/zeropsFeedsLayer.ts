@@ -29,6 +29,7 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
+import * as ZeropsMacStreamModule from "./ZeropsMacStream.ts";
 import * as ZeropsHqLinkModule from "./ZeropsHqLink.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
@@ -233,6 +234,7 @@ const liveLayer = Layer.mergeAll(
   // The same instance the link reads (memoized by reference), for the Mate's own clients.
   ZeropsMateAttentionLive,
   ZeropsBrowserStreamModule.layer,
+  ZeropsMacStreamModule.layer,
   ZeropsMateUpdateLive,
   mateAutoUpdatePolicyLayer,
   ZeropsDataConsoleModule.layer,

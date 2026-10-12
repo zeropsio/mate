@@ -128,6 +128,7 @@ import * as ZeropsSignOutModule from "./zerops/ZeropsSignOut.ts";
 import * as ZeropsTurnAdmissionModule from "./zerops/ZeropsTurnAdmission.ts";
 import { layer as providerInstancesLayer } from "./spi/providerInstances.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
+import * as ZeropsMacStreamModule from "./zerops/ZeropsMacStream.ts";
 import { ZeropsMateAttention } from "./zerops/ZeropsMateAttention.ts";
 import * as ZeropsCliModule from "./zerops/ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
@@ -502,6 +503,7 @@ const buildAppUnderTest = (options?: {
     | ZeropsSignOutModule.ZeropsSignOut
     | ZeropsLoginsModule.ZeropsLogins
     | ZeropsBrowserStreamModule.ZeropsBrowserStream
+    | ZeropsMacStreamModule.ZeropsMacStream
     | ZeropsMateAttention
     | ZeropsCliModule.ZeropsCli
     | ZeropsMateUpdateModule.ZeropsMateUpdate
@@ -567,6 +569,7 @@ const buildAppUnderTest = (options?: {
     zeropsAgentAuth?: Partial<ZeropsAgentAuth.ZeropsAgentAuth["Service"]>;
     zeropsAgentLogin?: Partial<ZeropsAgentLoginModule.ZeropsAgentLogin["Service"]>;
     zeropsBrowserStream?: Partial<ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"]>;
+    zeropsMacStream?: Partial<ZeropsMacStreamModule.ZeropsMacStream["Service"]>;
     zeropsCli?: Partial<ZeropsCliModule.ZeropsCli["Service"]>;
     zeropsMateUpdate?: Partial<ZeropsMateUpdateModule.ZeropsMateUpdate["Service"]>;
     zeropsDataConsole?: Partial<ZeropsDataConsoleModule.ZeropsDataConsole["Service"]>;
@@ -1167,6 +1170,14 @@ const buildAppUnderTest = (options?: {
               subscribe: Effect.succeed(Stream.make({ type: "state", status: "no-browser" })),
               sendInput: () => Effect.void,
               ...options?.layers?.zeropsBrowserStream,
+            }),
+            // A test machine pairs no Mac: the suite never reads a pairing or spawns ssh.
+            Layer.mock(ZeropsMacStreamModule.ZeropsMacStream)({
+              subscribe: Effect.succeed(
+                Stream.make({ type: "state", status: "not-paired", inUse: false }),
+              ),
+              sendInput: () => Effect.void,
+              ...options?.layers?.zeropsMacStream,
             }),
             Layer.mock(ZeropsMateAttention)({
               healthCurrent: Effect.succeed(Option.none()),

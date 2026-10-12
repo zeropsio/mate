@@ -20,6 +20,7 @@ import {
 import { useContext, useEffect, useMemo, type ReactNode } from "react";
 
 import { MateBrowserFrames } from "./browserStreamLinks";
+import { MateMacViews } from "./macViewLinks";
 import { useAccountWorkspace } from "./accountWorkspace";
 import { useAccountDatabase } from "./accountDatabase";
 import { useAccountBuildLogs } from "./accountBuildLogs";
@@ -148,7 +149,9 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       <MateImages store={store}>
         <AccountDataContext value={value}>
           <MateBrowserFrames store={store}>
-            <AccountOperationsContext value={operations}>{children}</AccountOperationsContext>
+            <MateMacViews store={store}>
+              <AccountOperationsContext value={operations}>{children}</AccountOperationsContext>
+            </MateMacViews>
           </MateBrowserFrames>
         </AccountDataContext>
       </MateImages>

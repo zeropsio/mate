@@ -2362,6 +2362,7 @@ describe("owner-reported layout regressions", () => {
           wanted,
         );
       interface LastLineFrame {
+        /** The time of the frame it shows (the page's clock). */
         readonly at: number;
         /** The top of the very last line line wherever it is drawn, null when it is out of view. */
         readonly top: number | null;
@@ -2390,7 +2391,10 @@ describe("owner-reported layout regressions", () => {
               ),
             ].at(-1);
             return {
-              at: performance.now(),
+              // The frame's time, not the read's: the read runs late on a loaded machine (43 ms
+              // after its frame, seen at 4x CPU throttling), and a time-based glide shows where it
+              // stands at its frame's time.
+              at: document.timeline.currentTime as number,
               top,
               box: box ? box.getBoundingClientRect().height : null,
             };
@@ -2529,6 +2533,7 @@ describe("owner-reported layout regressions", () => {
         );
 
         interface SettleFrame {
+          /** The time of the frame it shows (the page's clock). */
           readonly at: number;
           /** The run's card's head: where it stands and what it says. */
           readonly head: { readonly top: number; readonly words: string } | null;
@@ -2616,6 +2621,24 @@ describe("owner-reported layout regressions", () => {
                 note !== null,
               ),
             );
+            // With no words yet, the slot says Thinking once its last item has held its place and
+            // gone into the history. Waited for, not timed: on a loaded machine the job still stood
+            // in the slot 3.6 s on, went into the history with the end, and the short answer
+            // landed out of view.
+            if (note === null)
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () =>
+                    [
+                      ...document.querySelectorAll(
+                        "[data-run-chat][data-run-live] > [data-run-now]:not([data-run-head])",
+                      ),
+                    ]
+                      .at(-1)
+                      ?.textContent?.startsWith("Thinking") ?? false,
+                  { polling: "raf", timeout: 8000 },
+                ),
+              );
             yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
             yield* Effect.promise(() =>
               s.page.evaluate(() => {
@@ -2679,7 +2702,8 @@ describe("owner-reported layout regressions", () => {
                       asked = element.getBoundingClientRect().top;
                   }
                   return {
-                    at: performance.now(),
+                    // The frame's time, as in the last line's trace.
+                    at: document.timeline.currentTime as number,
                     head:
                       head === undefined
                         ? null
@@ -2790,8 +2814,11 @@ describe("owner-reported layout regressions", () => {
               (length === "short" || end === "cut") &&
               !(answer === "with its end" && length === "long")
             ) {
+              // Still within the pixel grid: as the card folds under it, a head on CI's Linux fonts
+              // flickered a pixel each way and came back (321, 320, 319, 320, 319, 320, 319, 321).
+              // A head the settle does not hold moves 9-27 px in its first frame.
               const moved = frames.findIndex(
-                (frame) => frame.head === null || Math.abs(frame.head.top - first.head!.top) > 1,
+                (frame) => frame.head === null || Math.abs(frame.head.top - first.head!.top) > 2,
               );
               expect(
                 moved === -1 || frames[moved]!.at - endedAt >= 300,
@@ -2898,8 +2925,9 @@ describe("owner-reported layout regressions", () => {
                 ),
                 "ASSERTION: the answer's last line lands near where it was read",
               ).toBeLessThanOrEqual(64);
-              // Its pace per 60 Hz frame: a slow runner paints half as often, so the same glide
-              // covers twice the ground between two of its frames.
+              // Its pace per 60 Hz frame of the frames' own times: a slow runner paints less often,
+              // so the same travel covers more ground between two of its frames. Timed by the reads
+              // instead, a frame read late made 35 px across a 166 ms stall count as one frame's.
               expect(
                 Math.max(
                   ...frames.map((frame, index) =>
@@ -3377,7 +3405,8 @@ describe("owner-reported layout regressions", () => {
                   const sample = () =>
                     setTimeout(() => {
                       frames.push({
-                        at: performance.now(),
+                        // The frame's time, as in the last line's trace.
+                        at: document.timeline.currentTime as number,
                         asked: topOf("Live stress test 4A"),
                         last: topOf("the very last line"),
                       });
@@ -3489,20 +3518,27 @@ describe("owner-reported layout regressions", () => {
             );
             const frames = yield* Effect.promise(() => stopLastLineTrace(s.page, 1200));
             const heights = frames.flatMap((frame) => (frame.box === null ? [] : [frame.box]));
-            // A frame the machine drops shows two of the glide's steps at once (its first is ~61 px,
-            // so 61 + 53 = 114.6 px read as a leap under a loaded gate): what grew is shared by the
-            // frame intervals the sample spans. Run 5's leap was 372 px inside one frame.
+            // The glide runs on time, so what it grows between two drawn frames is paced per 60 Hz
+            // frame of the time between them: its first step is ~61-64 px. A frame the machine
+            // drops shows two of its steps at once (57 -> 172 px across a 33 ms frame at 4x CPU
+            // throttling, read 12 ms after the frame before it). Run 5's leap was 372 px in a frame.
             const drawn = frames.filter((frame) => frame.box !== null);
             const steps = drawn.slice(1).map((frame, index) => {
               const before = drawn[index]!;
-              const spans = Math.max(1, Math.round((frame.at - before.at) / (1000 / 60)));
-              return (frame.box! - before.box!) / spans;
+              return (frame.box! - before.box!) / Math.max(1, (frame.at - before.at) / (1000 / 60));
             });
             expect(heights.at(-1)! - heights[0]!, "ASSERTION: the box grew").toBeGreaterThan(200);
             expect(
               Math.max(...steps),
               "ASSERTION: no frame grows the box by more than a glide's step",
             ).toBeLessThan(80);
+            // However long its frames run, a glide is seen on its way: a leap shows no height
+            // between where the box stood and where it ends.
+            expect(
+              heights.filter((height) => height > heights[0]! + 1 && height < heights.at(-1)! - 1)
+                .length,
+              "ASSERTION: the box is seen on its way, frame by frame",
+            ).toBeGreaterThanOrEqual(2);
             yield* s.then.noExternalNetwork;
           }),
         );

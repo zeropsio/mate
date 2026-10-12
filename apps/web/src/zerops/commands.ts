@@ -21,6 +21,8 @@ import {
  *   Claude API key, which crosses the wire only here — or signs one out and
  *   forgets it.
  * - `browserInput` — server scope: `AuthOrchestrationOperateScope` (S8b).
+ * - `macInput` — server scope: `AuthOrchestrationOperateScope`; a click or text for the app
+ *   in the paired Mac's live view.
  * - `gitProbeRemote` — server scope: `AuthOrchestrationReadScope`; a read, and
  *   the only party that can answer whether a checkout's remote actually
  *   answers (guide 4.5). The Git tab asks it on open and after each action,
@@ -29,7 +31,7 @@ import {
  * The resulting login state rides the read-only agent-auth feed; callers
  * await these commands only for the RPC result itself.
  */
-import { makeMateBrowserInputCommand } from "@t3tools/client-runtime/data";
+import { makeMateBrowserInputCommand, makeMateMacInputCommand } from "@t3tools/client-runtime/data";
 import type { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import { Atom } from "effect/reactivity";
 
@@ -52,6 +54,8 @@ export function createZeropsCommandAtoms<R, E>(
 
   const browserInput = makeMateBrowserInputCommand(runtime);
 
+  const macInput = makeMateMacInputCommand(runtime);
+
   return {
     standUpRetry,
     agentAuthCheck,
@@ -62,5 +66,6 @@ export function createZeropsCommandAtoms<R, E>(
     loginAdd,
     loginRemove,
     browserInput,
+    macInput,
   };
 }
