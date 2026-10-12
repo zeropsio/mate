@@ -876,18 +876,48 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     readonly at: number;
     readonly since: number;
     frame: number;
+    /** A held head whose answer comes apart from its slot: the view may travel to that answer. */
+    readonly glides?: boolean;
+    /** When the end first went on under the view: from then the view travels to it. */
+    glide?: number | undefined;
+    /** The held head's row as the last frame drew it, and how many frames it has stood so. */
+    card?: { readonly height: number; readonly still: number };
   } | null>(null);
   const followEnd = useCallback(() => {
     if (outerFoldsRef.current.size === 0 && landingRef.current === null) {
       endFollowRef.current?.follow();
     }
   }, []);
-  // What it holds back where it stood, in the frame that moved it.
+  // What it holds back where it stood, in the frame that moved it. An answer that comes with its
+  // run's end and goes on under the view takes the held head on to where it stands with the view
+  // at the conversation's true end, the room under it aside, as soon as its card stands at its
+  // new height: never a pause, then a glide (z1: 180 ms still, then 133 px).
   const holdAnswer = useCallback(() => {
     const landing = landingRef.current;
     const scroller = listRef.current?.getScrollableNode();
     if (landing === null || !scroller || !landing.element.isConnected) return;
-    const off = landing.element.getBoundingClientRect()[landing.edge] - landing.at;
+    const stands = landing.element.getBoundingClientRect()[landing.edge];
+    let at = landing.at;
+    if (landing.glides === true) {
+      const end = scroller.scrollHeight - askRoomRef.current - scroller.clientHeight;
+      // How far the end stands under the view. The view sets off once the head's card stands at
+      // its new height, its work folded: scrolled as they shed it, the list drew the rows under
+      // them a frame late (the usage limit's notice 47 px off the card's foot).
+      const under = landing.at - (stands - (end - scroller.scrollTop));
+      if (under <= 2) landing.glide = undefined;
+      else if (
+        landing.glide === undefined &&
+        (landing.card?.still ?? 0) >= CARD_STILL_FRAMES &&
+        outerFoldsRef.current.size === 0
+      )
+        landing.glide = performance.now();
+      if (landing.glide !== undefined) {
+        // Eased in from rest, as the card's own ease came to rest: one travel, never a kick.
+        const travelled = Math.min(1, (performance.now() - landing.glide) / HEAD_GLIDE_MS);
+        at -= travelled * travelled * (3 - 2 * travelled) * Math.max(0, under);
+      }
+    }
+    const off = stands - at;
     if (Math.abs(off) > 0.5) scrollOwn(scroller, scroller.scrollTop + off);
   }, [listRef]);
   // A landing holds what it holds where it stood until the card has settled around it, then keeps
@@ -899,13 +929,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       readonly element: HTMLElement;
       readonly edge: "top" | "bottom";
       readonly at: number;
+      readonly glides?: boolean;
     }) => {
       const scroller = listRef.current?.getScrollableNode();
       if (!scroller || !followingEndRef.current) return;
       const held = landingRef.current;
       if (held !== null) cancelAnimationFrame(held.frame);
       endFollowRef.current?.stop();
-      const landing = { ...target, since: performance.now(), frame: 0 };
+      const landing: NonNullable<typeof landingRef.current> = {
+        ...target,
+        since: performance.now(),
+        frame: 0,
+      };
       landingRef.current = landing;
       // Under a held head, a view's height: whatever folds under it — the card, its panel, the
       // slot — the room takes up. Below the view, it costs nothing; once it goes, the view glides
@@ -918,11 +953,23 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       holdAnswer();
       const step = (now: number) => {
         if (landingRef.current !== landing) return;
+        if (landing.glides === true) {
+          const height =
+            landing.element.closest("[data-timeline-row-id]")?.getBoundingClientRect().height ?? 0;
+          landing.card = {
+            height,
+            still:
+              landing.card !== undefined && Math.abs(landing.card.height - height) < 0.5
+                ? landing.card.still + 1
+                : 0,
+          };
+        }
         holdAnswer();
         // A held head lets go once its card has folded; an answer's line once its row is measured.
         const settling =
           outerFoldsRef.current.size > 0 ||
-          now - landing.since < (landing.edge === "top" ? HEAD_HOLD_MS : ANSWER_HOLD_MS);
+          now - landing.since < (landing.edge === "top" ? HEAD_HOLD_MS : ANSWER_HOLD_MS) ||
+          (landing.glide !== undefined && now - landing.glide < HEAD_GLIDE_MS);
         if (settling && followingEndRef.current) {
           landing.frame = requestAnimationFrame(step);
           return;
@@ -960,7 +1007,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // A run's turn ends under the person's eyes, the words they read whole in its slot: its head
   // stands still, from the commit that ends it.
   const onTurnLands = useCallback(
-    (head: HTMLElement, top: number) => land({ element: head, edge: "top", at: top }),
+    (head: HTMLElement, top: number, answerApart: boolean) =>
+      land({ element: head, edge: "top", at: top, glides: answerApart && !reducedMotion() }),
     [land],
   );
   // Run 5 (C +0:15.29): the answer whose words the person read at the slot's foot landed from its
@@ -990,13 +1038,43 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         });
         return;
       }
-      land(
-        landingHolds({ head: head !== null, whole: stood.whole }) === "head" && head !== null
-          ? { element: head.element, edge: "top", at: head.top }
-          : { element: words, edge: "bottom", at: stood.bottom },
+      if (landingHolds({ head: head !== null, whole: stood.whole }) === "head" && head !== null) {
+        land({ element: head.element, edge: "top", at: head.top });
+        return;
+      }
+      land({ element: words, edge: "bottom", at: stood.bottom });
+      // Its last line held where it was read, the answer unrolls upward from the height its card
+      // stood at, carrying what stands above along: never its card gone above it in one frame (z2,
+      // recheck on 0.15.44: −1,138 px, the head out of the view at once).
+      const row = words.closest<HTMLElement>("[data-timeline-row-id]");
+      if (landingRef.current === null || row === null || stood.head === null) return;
+      if (reducedMotion() || typeof row.animate !== "function") return;
+      // Read within the row and its card as they lay out now, wherever the list has placed them
+      // yet: the row's foot under the words, and its card's part still drawn above it — its head,
+      // closed — which stands where it stood.
+      const box = row.getBoundingClientRect();
+      const foot = box.bottom - words.getBoundingClientRect().bottom;
+      const kept = stood.head.element.isConnected
+        ? box.top - stood.head.element.getBoundingClientRect().top
+        : 0;
+      const from = stood.bottom + foot - (stood.head.top + Math.max(0, kept));
+      if (box.height - from < UNROLL_FROM_PX) return;
+      const unrolled = {
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "flex-end",
+      };
+      row.animate(
+        [
+          { ...unrolled, height: `${from}px` },
+          { ...unrolled, height: `${box.height}px` },
+        ],
+        { duration: ANSWER_UNROLL_MS, easing: "cubic-bezier(0.45, 0, 0.25, 1)" },
       );
+      holdAnswer();
     },
-    [land],
+    [holdAnswer, land],
   );
   useEffect(
     () => () => {
@@ -3553,6 +3631,15 @@ function MateProseWords({
 const WORDS_LAND_MS = 220;
 /** How long a card's head is held at least: its fold starts once the list has laid it out. */
 const HEAD_HOLD_MS = 300;
+/** How long the view takes to the end with an answer that landed under a held head. */
+const HEAD_GLIDE_MS = 300;
+/** How many frames a held head's card stands at one height before the view sets off. */
+const CARD_STILL_FRAMES = 2;
+
+/** How long a long answer takes to unroll upward from where its card stood. */
+const ANSWER_UNROLL_MS = 320;
+/** Less than this to unroll, it stands at its height at once. */
+const UNROLL_FROM_PX = 24;
 /** How long an answer is held where its words were read: its card folds, its row is measured. */
 const ANSWER_HOLD_MS = 1200;
 /** The room under the end while it is held: more than its card's foot and its own meta line. */

@@ -4071,7 +4071,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     const stood = headStoodRef.current;
     if (head === null || stood === null || performance.now() - stood.at > HEAD_STOOD_WITHIN_MS)
       return;
-    if (!wordsCutUnder(head)) onTurnLands(head, stood.top);
+    if (!wordsCutUnder(head)) onTurnLands(head, stood.top, !swapsRef.current);
   }, [turnOver, onTurnLands, ctx.syncing]);
   const cardRoomsRef = useRef<Rooms | null>(null);
   useLayoutEffect(() => {
