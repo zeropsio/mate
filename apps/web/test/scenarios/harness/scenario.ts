@@ -326,9 +326,18 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         },
       },
       menu: {
+        // By its row (each project is named after its Mate here): a lone Mate's row reads
+        // "Project · Mate", so its name is never a text of its own.
         opensMate: (name: string) =>
           Effect.promise(async () => {
-            await clickText(page, "sidebar-mate", name);
+            const row = await page
+              .waitForSelector(
+                `[data-zerops-mate-row="${name}"] [data-zerops-surface="sidebar-mate"]`,
+                { visible: true, timeout: 10_000 },
+              )
+              .catch(() => null);
+            if (row === null) await clickText(page, "sidebar-mate", name);
+            else await row.click();
             openedMate = mates.get(name);
           }),
       },

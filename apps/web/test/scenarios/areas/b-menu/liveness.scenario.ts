@@ -181,8 +181,8 @@ describe("B: menu liveness", () => {
         yield* s.given.signedIn;
         yield* s.menu.grouped("Ada", "Shop");
         yield* s.colleague.moves("Ada", null);
-        yield* s.menu.toggle("Shop");
-        yield* s.menu.absent("Bea");
+        // Shop keeps Bea alone, now its one row; Ada stands outside it.
+        yield* s.menu.grouped("Bea", "Shop");
         yield* s.menu.grouped("Ada", "Ungrouped");
         yield* s.then.noReload;
       }),
