@@ -378,7 +378,22 @@ function workActivities(
     item.seq,
   );
   const end = WORK_END_STATUS[item.status];
-  if (end === undefined) return [started];
+  // Resting or waiting on the person is no end: the helper reads so, never as working.
+  if (end === undefined)
+    return item.workKind === "helper" && (item.status === "idle" || item.status === "waiting")
+      ? [
+          started,
+          activity(
+            `${item.id}#${item.status}`,
+            "task.updated",
+            summary,
+            { ...payload, status: item.status },
+            card,
+            item.at,
+            item.rev,
+          ),
+        ]
+      : [started];
   return [
     started,
     activity(
@@ -980,8 +995,11 @@ export interface EngineCardWait {
   readonly commands: number;
 }
 
-/** Background work that still goes on, as the engine's view counts it (`conversationView`). */
-const ALIVE_WORK: ReadonlySet<string> = new Set(["running", "waiting", "idle"]);
+/**
+ * Background work a card that ended still waits on: what runs, or waits on the person. An idle
+ * helper rests, resumable: it reads settled, so its card closes (the helpers' surface says Idle).
+ */
+const ALIVE_WORK: ReadonlySet<string> = new Set(["running", "waiting"]);
 
 /** The typed records on each card, in source order; joining identity decides no run state. */
 export const engineRunCards: Projection<

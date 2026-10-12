@@ -830,6 +830,14 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
     expect(helpers("completed")).toEqual([{ title: "Review the api", status: "completed" }]);
   });
 
+  it.each(["idle", "waiting"] as const)(
+    "a helper the engine says is %s reads so on the helpers' surface, never working",
+    (status) => {
+      const [helper] = foldSubagentActivities(activitiesOf([workItem(run1, 2, { status })]));
+      expect(helper?.status).toBe(status);
+    },
+  );
+
   // Milo, 2026-10-08: "Started a helper · 56c95419-…/s/1.2.w1".
   it("a helper its agent never named is on the helpers' surface in plain words, never its id", () => {
     const [helper] = foldSubagentActivities(
@@ -1839,5 +1847,21 @@ it.each([
     const view = thread(state);
     expect(engineRunCards.derive(readsOfState(state), key)?.[run1]?.runs[0]?.end).toEqual(end);
     expect(view?.session?.lastError).toBeNull();
+  },
+);
+
+// An idle helper is resumable, not working: its card closes when its run ends, as V1 settled it.
+it.each([
+  { status: "running", waits: { helpers: 1, commands: 0 } },
+  { status: "waiting", waits: { helpers: 1, commands: 0 } },
+  { status: "idle", waits: undefined },
+] as const)(
+  "a run that ended holds its card open for a helper that is $status: $waits",
+  ({ status, waits }) => {
+    const state = held({
+      runs: [engineRun("thread-ada", 1, { state: "ended", end: { kind: "completed" } } as never)],
+      items: [workItem(run1, 2, { status })],
+    });
+    expect(engineRunCards.derive(readsOfState(state), key)?.[run1]?.waitsOn).toEqual(waits);
   },
 );
