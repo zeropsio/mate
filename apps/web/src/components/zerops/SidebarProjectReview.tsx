@@ -204,6 +204,8 @@ function ReviewTag({
                 <button
                   aria-label={reviewTagLabel(items, projectName)}
                   className="menu-tag menu-tag-review"
+                  // What it holds, as the jump box keys a change (`changeRowKey`): a find lands here.
+                  data-zerops-changes={items.map((item) => item.key).join(" ")}
                   data-phase={phase}
                   data-zerops-surface="sidebar-project-review"
                   inert={leaving}
@@ -221,11 +223,30 @@ function ReviewTag({
         {only === undefined ? null : <TooltipPopup side="bottom">{only.title}</TooltipPopup>}
       </Tooltip>
       <TagPortal>
-        <PopoverPrimitive.Positioner align="end" className="z-130" side="bottom" sideOffset={6}>
+        <PopoverPrimitive.Positioner
+          align="end"
+          className="z-130"
+          // Below or above its tag, never out to the side over the conversation: where neither
+          // holds it whole, the roomier one, its list scrolling in what it has.
+          collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
+          collisionPadding={8}
+          side="bottom"
+          sideOffset={6}
+        >
           <PopoverPrimitive.Popup
             className="menu-tagpop"
             data-zerops-surface="sidebar-project-changes"
-            finalFocus={() => !pressed.current}
+            // An item pressed keeps the focus its review takes; a tag that left with its last item
+            // hands it to its row, never to the page.
+            finalFocus={() =>
+              pressed.current
+                ? false
+                : leaving
+                  ? (tag.current
+                      ?.closest(".menu-row-box")
+                      ?.querySelector<HTMLElement>("[data-zerops-row]") ?? true)
+                  : true
+            }
             // A press opens it calm, nothing lit as if picked; ↓ then walks into it. Keys land on
             // its first item.
             initialFocus={(openType) => (openType === "keyboard" ? true : list.current)}
@@ -433,6 +454,7 @@ function ReviewListItem({
       aria-label={`Review ${item.title}`}
       className="menu-tagpop-item"
       data-mine={item.mine ? "" : undefined}
+      data-zerops-change={item.key}
       data-zerops-surface="sidebar-project-change"
       onClick={onOpen}
       onFocus={onFocus}

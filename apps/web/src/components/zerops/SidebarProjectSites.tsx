@@ -253,8 +253,10 @@ export function ProjectSites(
         <PopoverPrimitive.Positioner
           align="end"
           className="z-130"
-          // Kept at the door's end and slid to fit, never flipped to its start: the popover stays over the menu.
-          collisionAvoidance={{ side: "flip", align: "shift" }}
+          // Kept at the door's end and slid to fit, never flipped to its start, and never out to the
+          // side over the conversation: where neither below nor above holds it whole, it takes the
+          // roomier one and its list scrolls in what it has (`--available-height`).
+          collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
           collisionPadding={8}
           side="bottom"
           sideOffset={6}
@@ -496,6 +498,8 @@ export function SitesPanel({
               data-flash={flash === section.key ? "" : undefined}
               data-sites-place={section.kind === "place" ? section.place : undefined}
               data-sites-section={section.key}
+              // Its stop's project, where a find in the jump box lands (`revealLanding`).
+              data-sites-stop={section.kind === "place" ? section.stop?.projectId : undefined}
               hidden={filtering && shown === undefined}
               key={section.key}
             >
