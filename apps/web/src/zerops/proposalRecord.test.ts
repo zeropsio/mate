@@ -2,6 +2,7 @@ import type {
   HqProposalDecision,
   HqProposalDecisionWrite,
 } from "@t3tools/client-runtime/zerops/hq";
+import { OperationStopped, PROPOSAL_DECIDED_ELSEWHERE } from "@t3tools/client-runtime/data";
 import { describe, expect, it } from "vite-plus/test";
 
 import { makeProposalRecord } from "./proposalRecord";
@@ -18,19 +19,22 @@ const stored = (id: string, write: HqProposalDecisionWrite): HqProposalDecision 
   at: AT,
 });
 
-/** HQ as the record reaches it: what it holds, every read and write it was asked, and its refusals. */
+/**
+ * HQ as the record reaches it through the data layer: what it holds, every read and write it was
+ * asked, and its refusals — a decision HQ holds another of already stops with its code.
+ */
 function fakeHq(held: Record<string, HqProposalDecision> = {}) {
   const reads: string[][] = [];
   const writes: Array<[string, HqProposalDecisionWrite]> = [];
-  let refuse: { readonly status: number } | null = null;
+  let refuse: OperationStopped | null = null;
   const api = {
-    proposalDecisions: async (ids: ReadonlyArray<string>) => {
+    read: async (ids: ReadonlyArray<string>) => {
       reads.push([...ids]);
       return ids.flatMap((id) => (held[id] === undefined ? [] : [held[id]]));
     },
-    decideProposal: async (id: string, write: HqProposalDecisionWrite) => {
+    decide: async (id: string, write: HqProposalDecisionWrite) => {
       writes.push([id, write]);
-      if (refuse !== null) throw Object.assign(new Error("refused"), refuse);
+      if (refuse !== null) throw refuse;
       held[id] = stored(id, write);
       return held[id];
     },
@@ -40,7 +44,13 @@ function fakeHq(held: Record<string, HqProposalDecision> = {}) {
     reads,
     writes,
     refuseWith: (status: number | null) => {
-      refuse = status === null ? null : { status };
+      refuse =
+        status === null
+          ? null
+          : new OperationStopped(
+              "refused",
+              status === 409 ? PROPOSAL_DECIDED_ELSEWHERE : undefined,
+            );
     },
   };
 }
@@ -92,7 +102,7 @@ describe("the decisions HQ keeps, as a tab holds them", () => {
     const record = makeProposalRecord();
     hq.refuseWith(409);
     const held = stored("a", { projectId: "p", decision: "declined" });
-    hq.api.proposalDecisions = async (ids) => {
+    hq.api.read = async (ids) => {
       hq.reads.push([...ids]);
       return [held];
     };
@@ -115,7 +125,7 @@ describe("the decisions HQ keeps, as a tab holds them", () => {
     const hq = fakeHq();
     const record = makeProposalRecord();
     let answer: (records: HqProposalDecision[]) => void = () => undefined;
-    hq.api.proposalDecisions = () =>
+    hq.api.read = () =>
       new Promise<HqProposalDecision[]>((resolve) => {
         answer = resolve;
       });

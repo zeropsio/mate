@@ -180,7 +180,9 @@ export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { type FlowWriteIntent } from "./operations/flowWrites.ts";
 export { flowAnswer, type FlowWriteAnswer } from "./projections/flowAnswer.ts";
 export { restartWay } from "./operations/mateRestart.ts";
-export { runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
+export { OperationStopped, runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
+export { PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
+export { readProposalDecisions } from "./adapters/hqProposalDecisions.ts";
 export {
   recordedEnvironment,
   type RecordedEnvironment,

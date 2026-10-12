@@ -1,6 +1,8 @@
 /**
  * What the person decided of each proposal, as HQ keeps it (`GET` and `PUT /api/proposals`): a
- * reload draws each card as it was left, and no card offers Approve twice, in any browser.
+ * reload draws each card as it was left, and no card offers Approve twice, in any browser. HQ is
+ * reached through the data layer: its read (`readProposalDecisions`), and each decision written as
+ * the account's `decide-proposal` operation.
  *
  * This tab holds HQ's answers and its own writes in memory. Its own decision is drawn at once and
  * carried out only once HQ took it; one HQ did not take is taken back, with why — and where HQ
@@ -10,8 +12,12 @@
  * Which approvals this tab carries out now is memory only: an approval a reload interrupted is not
  * running here, and its card says its end was not seen.
  */
-import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { PROPOSAL_DECIDED_ELSEWHERE, readProposalDecisions } from "@t3tools/client-runtime/data";
+import type {
+  HqProposalDecision,
+  HqProposalDecisionWrite,
+} from "@t3tools/client-runtime/zerops/hq";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import {
   decisionFromHq,
@@ -23,8 +29,19 @@ import {
 } from "../components/zerops/proposal/proposal.logic";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { useOfficialHq } from "./accountHq";
+import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
+import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
-type DecisionsApi = Pick<HqApi, "proposalDecisions" | "decideProposal">;
+/** HQ's decisions as the data layer reaches them. */
+export interface ProposalDecisionsAt {
+  /** What HQ holds of `ids`; rejects where HQ did not answer. */
+  readonly read: (ids: ReadonlyArray<string>) => Promise<ReadonlyArray<HqProposalDecision>>;
+  /**
+   * HQ's record of one decision written; rejects where HQ did not keep it — with the code
+   * {@link PROPOSAL_DECIDED_ELSEWHERE} where HQ holds another decision of it.
+   */
+  readonly decide: (id: string, write: HqProposalDecisionWrite) => Promise<HqProposalDecision>;
+}
 
 /** One card's record: its decision, whether HQ answered for it, and whether it runs here. */
 export interface ProposalRecordEntry {
@@ -42,7 +59,7 @@ export function makeProposalRecord() {
   const answered = new Set<string>();
   const asking = new Set<string>();
   /** Asked for in this task: read together, in one call, once it ends. */
-  let pending: { api: DecisionsApi; ids: Set<string> } | null = null;
+  let pending: { at: ProposalDecisionsAt; ids: Set<string> } | null = null;
   const runningHere = new Set<string>();
   const listeners = new Set<() => void>();
   let version = 0;
@@ -51,7 +68,7 @@ export function makeProposalRecord() {
     for (const listener of listeners) listener();
   };
 
-  const adopt = (records: Awaited<ReturnType<DecisionsApi["proposalDecisions"]>>) => {
+  const adopt = (records: ReadonlyArray<HqProposalDecision>) => {
     const next: Record<string, ProposalDecision> = { ...decisions };
     for (const record of records) {
       next[record.id] = furtherDecision(next[record.id], decisionFromHq(record));
@@ -78,10 +95,10 @@ export function makeProposalRecord() {
      * Asks HQ what it holds of `ids`: every id asked for in one task — a conversation's cards as
      * they mount — read in one call once it ends, none read or being read already.
      */
-    read(api: DecisionsApi, ids: ReadonlyArray<string>): Promise<void> {
+    read(at: ProposalDecisionsAt, ids: ReadonlyArray<string>): Promise<void> {
       const unread = ids.filter((id) => !answered.has(id) && !asking.has(id));
       if (unread.length === 0) return Promise.resolve();
-      if (pending === null || pending.api !== api) pending = { api, ids: new Set() };
+      if (pending === null || pending.at !== at) pending = { at, ids: new Set() };
       for (const id of unread) pending.ids.add(id);
       const batch = pending;
       return Promise.resolve().then(async () => {
@@ -90,7 +107,7 @@ export function makeProposalRecord() {
         if (asked.length === 0) return;
         for (const id of asked) asking.add(id);
         try {
-          adopt(await batch.api.proposalDecisions(asked));
+          adopt(await batch.at.read(asked));
           for (const id of asked) answered.add(id);
         } catch {
           // HQ did not answer: the cards wait, and the next read asks again.
@@ -107,7 +124,7 @@ export function makeProposalRecord() {
      * not seen.
      */
     async record(
-      api: DecisionsApi,
+      at: ProposalDecisionsAt,
       id: string,
       projectId: string,
       next: ProposalDecision,
@@ -121,7 +138,7 @@ export function makeProposalRecord() {
       changed();
       const deciding = before === undefined;
       try {
-        adopt([await api.decideProposal(id, hqWriteOf(next, projectId))]);
+        adopt([await at.decide(id, hqWriteOf(next, projectId))]);
         changed();
         return null;
       } catch (cause) {
@@ -130,10 +147,11 @@ export function makeProposalRecord() {
         decisions = rest;
         runningHere.delete(id);
         // HQ holds another decision of it already: that one is drawn.
-        const conflict = (cause as { readonly status?: unknown } | null)?.status === 409;
+        const conflict =
+          (cause as { readonly code?: unknown } | null)?.code === PROPOSAL_DECIDED_ELSEWHERE;
         if (conflict) {
           try {
-            adopt(await api.proposalDecisions([id]));
+            adopt(await at.read([id]));
           } catch {
             // Unread: the card offers its decision again, and HQ refuses a second one.
           }
@@ -156,14 +174,40 @@ export function makeProposalRecord() {
 const record = makeProposalRecord();
 onAccountLifetimeClose(() => record.forget());
 
+/**
+ * HQ's decisions where the organization's official HQ is open and the account's operations are
+ * held; `null` otherwise.
+ */
+function useDecisionsAt(): ProposalDecisionsAt | null {
+  const api = useOfficialHq()?.api ?? null;
+  const operations = useAccountOperationsOptional();
+  const orgId = useZeropsSessionOptional()?.activeOrganization?.id ?? null;
+  return useMemo(
+    () =>
+      api === null || operations === null || orgId === null
+        ? null
+        : {
+            read: readProposalDecisions(api),
+            decide: async (proposalId, write) =>
+              (
+                await operations.run(
+                  { kind: "decide-proposal", orgId, proposalId, write },
+                  { orgId, unobserved: HQ_UNFOLLOWED },
+                )
+              ).decision,
+          },
+    [api, operations, orgId],
+  );
+}
+
 /** Reads what HQ holds of every card in the open conversation, in one call. */
 export function useProposalDecisionsRead(ids: ReadonlyArray<string>): void {
-  const api = useOfficialHq()?.api ?? null;
+  const at = useDecisionsAt();
   const key = ids.join(",");
   useEffect(() => {
-    if (api === null || key === "") return;
-    void record.read(api, key.split(","));
-  }, [api, key]);
+    if (at === null || key === "") return;
+    void record.read(at, key.split(","));
+  }, [at, key]);
 }
 
 export interface ProposalDecisionHandle extends ProposalRecordEntry {
@@ -178,21 +222,21 @@ export function useProposalDecision(
   id: string,
   projectId: string | undefined,
 ): ProposalDecisionHandle {
-  const api = useOfficialHq()?.api ?? null;
+  const at = useDecisionsAt();
   useSyncExternalStore(record.subscribe, record.version, record.version);
   useEffect(() => {
-    if (api !== null) void record.read(api, [id]);
-  }, [api, id]);
+    if (at !== null) void record.read(at, [id]);
+  }, [at, id]);
   const write = useCallback(
     async (next: ProposalDecision) =>
-      api === null || projectId === undefined
+      at === null || projectId === undefined
         ? HQ_DID_NOT_KEEP
-        : record.record(api, id, projectId, next),
-    [api, id, projectId],
+        : record.record(at, id, projectId, next),
+    [at, id, projectId],
   );
   return {
     ...record.entry(id),
-    unreachable: api === null || projectId === undefined,
+    unreachable: at === null || projectId === undefined,
     record: write,
   };
 }

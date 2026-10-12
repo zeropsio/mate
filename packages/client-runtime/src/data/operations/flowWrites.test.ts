@@ -154,6 +154,8 @@ function hqOf(answer: () => Promise<unknown>) {
     addService: call("addService"),
     mergeChange: call("mergeChange"),
     closeChange: call("closeChange"),
+    setChief: call("setChief"),
+    decideProposal: call("decideProposal"),
   } satisfies HqWrites;
   return { writes, calls };
 }

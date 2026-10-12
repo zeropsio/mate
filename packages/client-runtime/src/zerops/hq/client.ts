@@ -246,7 +246,13 @@ export interface Asked<T> {
   readonly deploys: HqDeployAnswer | undefined;
 }
 
-export interface HqApi extends HqChiefCalls {
+export interface HqApi {
+  /** The reader's Chief recorded for `projectId` (`chief.ts`): its credential is handed once. */
+  readonly setChief: HqChiefCalls["setChief"];
+  /** Every decision HQ holds of the proposals named (`chief.ts`). */
+  readonly proposalDecisions: HqChiefCalls["proposalDecisions"];
+  /** One proposal's decision, then once how an approval ended (`chief.ts`). */
+  readonly decideProposal: HqChiefCalls["decideProposal"];
   readonly autoUpdatePolicy: (signal?: AbortSignal) => Promise<HqAutoUpdatePolicy>;
   readonly setAutoUpdatePolicy: (enabled: boolean) => Promise<HqAutoUpdatePolicy>;
   readonly structure: (signal?: AbortSignal) => Promise<HqStructure>;

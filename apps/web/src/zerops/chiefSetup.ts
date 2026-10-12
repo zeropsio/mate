@@ -24,9 +24,11 @@ import {
   type ChiefVariable,
 } from "../components/zerops/chief/chiefSetup.logic";
 import { useVaultWriter } from "../components/zerops/vault/VaultPanelContainer";
-import { officialHq, useAccountHq, useOfficialHq } from "./accountHq";
+import { officialHq, useAccountHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
+import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
 import { chiefNames, chiefSetupLine } from "./chief";
+import { takeChiefAccess } from "./chiefAccess";
 import { beginCreation, tryCreationAgain, useCreation } from "./creations";
 import { useMatePresses } from "./matePress";
 import type { NewProjectAsk } from "./newProjectBirth";
@@ -109,6 +111,10 @@ export function useChiefSetupLine(): ReturnType<typeof chiefSetupLine> {
   return chiefSetupLine({ own, mayCreate, setup: setup.phase });
 }
 
+/** HQ recorded the Chief, yet its access did not reach this set-up: asking again mints a fresh one. */
+const CHIEF_ACCESS_LOST =
+  "HQ recorded your Chief, but its access did not reach this tab. Try again.";
+
 const NO_IDS = Atom.make<Readonly<Record<string, string>> | null>(null);
 
 /** The face a Chief's record carries: every surface draws a Chief as the product's mark. */
@@ -125,7 +131,8 @@ export function useChiefSetupRunner(): {
 } {
   const { user, activeOrganization } = useZeropsSession();
   const accountHq = useAccountHq(activeOrganization?.id);
-  const official = useOfficialHq();
+  const hqOpen = accountHq.hq.kind === "official";
+  const operations = useAccountOperationsOptional();
   const runNewProject = useRunNewProject();
   const keep = useKeepOwnChief();
   const { setup, orgId } = useChiefSetupStore();
@@ -207,7 +214,13 @@ export function useChiefSetupRunner(): {
       ? setup.projectId
       : null;
   useEffect(() => {
-    if (chiefProject === null || official === null || orgId === null || serviceId === undefined)
+    if (
+      chiefProject === null ||
+      !hqOpen ||
+      operations === null ||
+      orgId === null ||
+      serviceId === undefined
+    )
       return;
     if (finishing.current) return;
     finishing.current = true;
@@ -226,13 +239,22 @@ export function useChiefSetupRunner(): {
     };
     void finishChiefSetup({
       projectId: chiefProject,
-      setChief: (projectId) => official.api.setChief(projectId),
+      // HQ records it as the account's operation; its access is handed here alone, once.
+      setChief: async (projectId) => {
+        await operations.run(
+          { kind: "set-chief", orgId, projectId },
+          { orgId, unobserved: HQ_UNFOLLOWED },
+        );
+        const access = takeChiefAccess(projectId);
+        if (access === undefined) throw new Error(CHIEF_ACCESS_LOST);
+        return access;
+      },
       writeVariables,
       dispatch,
     }).finally(() => {
       finishing.current = false;
     });
-  }, [chiefProject, official, orgId, run, serviceId]);
+  }, [chiefProject, hqOpen, operations, orgId, run, serviceId]);
 
   // Set up: the menu's top row is the Chief, coming up as any new Mate does.
   const doneProject = setup.phase === "done" ? setup.projectId : null;
