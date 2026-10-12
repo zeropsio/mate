@@ -23,7 +23,7 @@ export function scenarioWorld(world: FakeWorld & Partial<ScenarioWorld>): Scenar
   return Object.assign(world, {
     organizations:
       world.organizations ??
-      new Map([...world.members.keys()].map((id) => [id, { name: id === "ORG" ? "KRLS" : id }])),
+      new Map([...world.members.keys()].map((id) => [id, { name: id === "ORG" ? "ACME" : id }])),
     people: world.people ?? new Map<string, string>(),
     projectGrants: world.projectGrants ?? new Map<string, Record<string, ZeropsOrgRole>>(),
   });
@@ -33,7 +33,7 @@ export function scenarioWorld(world: FakeWorld & Partial<ScenarioWorld>): Scenar
 export function definePerson(world: ScenarioWorld, name: string, options: PersonOptions = {}) {
   const orgId = options.orgId ?? "ORG";
   if (!world.organizations.has(orgId))
-    world.organizations.set(orgId, { name: orgId === "ORG" ? "KRLS" : orgId });
+    world.organizations.set(orgId, { name: orgId === "ORG" ? "ACME" : orgId });
   const members = world.members.get(orgId) ?? [];
   const existing = members.find((member) => member.userId === name && member.kind === "person");
   const roleCode =

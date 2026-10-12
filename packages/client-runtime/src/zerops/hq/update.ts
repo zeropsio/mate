@@ -8,7 +8,7 @@
  *   scheme (`<sha>.<build UTC>`) reads as older: its first update moves it onto this one.
  * - **Where it stands:** the Core HQ's health answers with, and Zerops' newest build of its `hq`
  *   service — never a flag of this browser's. The service list embeds the active app version
- *   without its name (KRLS, 2026-10-04), so Zerops names the running Core only through the build
+ *   without its name (Example Org, 2026-10-04), so Zerops names the running Core only through the build
  *   that deployed it, while the project's newest processes still hold it.
  */
 import type { ActivityProcess } from "../activity/dto.ts";
@@ -95,12 +95,12 @@ export function hqUpdateState(input: {
         : deploys.find((process) => process.appVersion?.id === activeId)?.appVersion?.name,
     );
   // A deploy of a newer Core that FINISHED runs it, though HQ may answer with the one before it
-  // for a few seconds (KRLS, 2026-10-04).
+  // for a few seconds (Example Org, 2026-10-04).
   const deployed = newest?.status === "FINISHED" ? namedCore(newest.appVersion?.name) : "";
   const running = hqUpdateOffered(answered, deployed) ? deployed : answered;
   if (newest !== undefined && LIVE_STATUSES.has(newest.status)) {
     const target = namedCore(newest.appVersion?.name);
-    // HQ may answer with the new Core before Zerops ends its build (KRLS, 2026-10-04).
+    // HQ may answer with the new Core before Zerops ends its build (Example Org, 2026-10-04).
     if (target === "" || hqUpdateOffered(running, target)) {
       return { kind: "updating", target: target === "" ? undefined : target };
     }

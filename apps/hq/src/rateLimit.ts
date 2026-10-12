@@ -5,7 +5,7 @@
  *   credential misses do not share one), before anything costs a Zerops read. The address is the
  *   L7 balancer's `X-Real-IP`. A Mate's and git's doors take ten at once, ten a minute. A person's
  *   door takes 120 at once, then one a second: a whole office behind one NAT is one address
- *   (t12, 2026-10-03: our agents and Karel, from one address, were answered 429 at ten a minute).
+ *   (t12, 2026-10-03: multiple clients, from one address, were answered 429 at ten a minute).
  * - Per Chief credential at its proxy (`chief.ts`): 120 at once, two a second — an agent's look at
  *   the whole org is a few dozen reads in a burst; a credential missed there takes from its
  *   address's bucket, as git's misses do.

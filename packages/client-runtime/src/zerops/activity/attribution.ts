@@ -1,9 +1,6 @@
 /**
  * Which processes on a project's live activity read belong to one operation
- * (deploy, import, subdomain toggle, delete, scale, manage) —
- * `../plans/mate-live-activity-2026-09-02.md` §3,
- * `../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §3
- * "Observation".
+ * (deploy, import, subdomain toggle, delete, scale, manage).
  *
  * A process is attributed iff it names one of the target services, belongs
  * to the right project, and was created no more than 5s before the

@@ -126,7 +126,7 @@ describe("zeropsClientsFromUser", () => {
           clientId: "org-1",
           status: "ACTIVE",
           roleCode: "OWNER",
-          client: { id: "org-1", accountName: "KRLS" },
+          client: { id: "org-1", accountName: "Example Org" },
         },
         {
           id: "cu-2",
@@ -147,12 +147,12 @@ describe("zeropsClientsFromUser", () => {
           id: "cu-4",
           clientId: "org-1",
           status: "ACTIVE",
-          client: { id: "org-1", accountName: "KRLS dup" },
+          client: { id: "org-1", accountName: "Example Org dup" },
         },
       ],
     });
     expect(clients.map((client) => client.id)).toEqual(["org-1", "org-2"]);
-    expect(clients[0]?.name).toBe("KRLS");
+    expect(clients[0]?.name).toBe("Example Org");
     expect(clients[0]?.roleCode).toBe("OWNER");
     expect(clients[1]).toMatchObject({
       membershipId: "cu-2",

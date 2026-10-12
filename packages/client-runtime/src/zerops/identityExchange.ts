@@ -31,7 +31,7 @@ import { connectThroughThrowaway } from "./doorThrowaway.ts";
 /**
  * Whether a Mate's door did not admit the throwaway: the connect failed, or never answered. A
  * Mate's door keeps no record of the throwaways it saw, so one it did not admit is held for its
- * next try, while young, and that try mints nothing (KRLS, 2026-10-03: a stall left one throwaway
+ * next try, while young, and that try mints nothing (Example Org, 2026-10-03: a stall left one throwaway
  * per try).
  */
 const notAdmitted = <A, E>(outcome: ThrowawayOutcome<AtomCommandResult<A, E>>): boolean =>

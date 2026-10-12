@@ -178,7 +178,7 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
           mode: "web",
           host: "127.0.0.1",
           zerops: resolveZeropsEnvironment({
-            projectId: "nTV3oMB2SS634ImDJnQckg",
+            projectId: "TEST000000000000000023",
             apiHost: undefined,
           }),
         }),

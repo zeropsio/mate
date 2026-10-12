@@ -279,17 +279,17 @@ describe("zeropsNavigationLink", () => {
 
       // Create and the service finish; the deploy runs on, then leaves and finishes.
       yield* replay(4, 10);
-      expect([...running()]).toEqual(["K1bQIB8AQBeQGHaAe8mneg"]);
+      expect([...running()]).toEqual(["TEST000000000000000007"]);
       yield* replay(11, 13);
       expect(running().size).toBe(0);
 
       // The delete's membership comes before its row: the row is read by id.
       yield* replay(14, 15);
       expect(fixture.requests.at(-1)).toMatchObject({ method: "POST", path: PROCESS_SEARCH });
-      expect(running()).toEqual(new Set(["OOlnYMslSg6Hjbgt9ZKlFQ"]));
+      expect(running()).toEqual(new Set(["TEST000000000000000011"]));
       yield* replay(16, 18);
       expect(running().size).toBe(0);
-      expect(factOf(store.state(), "process", "OOlnYMslSg6Hjbgt9ZKlFQ")?.content).toMatchObject({
+      expect(factOf(store.state(), "process", "TEST000000000000000011")?.content).toMatchObject({
         value: { status: "FINISHED" },
       });
       yield* Fiber.interrupt(fiber);
@@ -313,7 +313,7 @@ describe("zeropsNavigationLink", () => {
       yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "updateStream"), frameOf(1));
       yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "listStream"), {
         add: [],
-        delete: ["8OBjlA8pQbuaDGH7nYvggg"],
+        delete: ["TEST000000000000000001"],
       });
       yield* settle;
       expect(store.state().memberships.get(runningScope(ORG))?.coverage).toBe("unknown");
@@ -322,9 +322,9 @@ describe("zeropsNavigationLink", () => {
       yield* settle;
       const membership = store.state().memberships.get(runningScope(ORG));
       expect(membership?.coverage).toBe("complete");
-      expect(membership?.members.get("8OBjlA8pQbuaDGH7nYvggg")).toBe("removed");
+      expect(membership?.members.get("TEST000000000000000001")).toBe("removed");
       expect(indexOf(store.state(), "running", PROBE_PROJECT_ID)?.size).toBe(2);
-      expect(factOf(store.state(), "process", "J3TU3gE0SvCFrPDutSacqw")).toMatchObject({
+      expect(factOf(store.state(), "process", "TEST000000000000000006")).toMatchObject({
         revision: { version: 2 },
         method: "baseline",
       });
@@ -381,7 +381,7 @@ describe("zeropsNavigationLink", () => {
         );
       yield* settle;
       expect([...(indexOf(store.state(), "running", PROBE_PROJECT_ID) ?? [])]).toEqual([
-        "K1bQIB8AQBeQGHaAe8mneg",
+        "TEST000000000000000007",
       ]);
 
       outage = true;
@@ -407,7 +407,7 @@ describe("zeropsNavigationLink", () => {
       expect(fixture.opens()).toBe(3);
       expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("live");
       expect(indexOf(store.state(), "running", PROBE_PROJECT_ID)?.size).toBe(0);
-      expect(factOf(store.state(), "process", "K1bQIB8AQBeQGHaAe8mneg")?.content).toMatchObject({
+      expect(factOf(store.state(), "process", "TEST000000000000000007")?.content).toMatchObject({
         value: { status: "RUNNING" },
       });
       expect(factOf(store.state(), "project", "kept")?.content.kind).toBe("value");
@@ -470,7 +470,7 @@ describe("zeropsNavigationLink", () => {
 
       yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "updateStream"), frameOf(1));
       yield* settle;
-      expect(factOf(store.state(), "process", "J3TU3gE0SvCFrPDutSacqw")).toBeUndefined();
+      expect(factOf(store.state(), "process", "TEST000000000000000006")).toBeUndefined();
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -1118,7 +1118,7 @@ describe("what a baseline and a read by id may claim", () => {
         const fiber = yield* run(store, fixture);
         const registered = fixture.requests.filter((request) => request.body?.wsOutputType).length;
         yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "listStream"), {
-          add: ["J3TU3gE0SvCFrPDutSacqw"],
+          add: ["TEST000000000000000006"],
           delete: [],
         });
         yield* settle;
@@ -1127,10 +1127,10 @@ describe("what a baseline and a read by id may claim", () => {
         // Not before what Zerops asked for.
         yield* TestClock.adjust(4_000);
         yield* settle;
-        expect(factOf(store.state(), "process", "J3TU3gE0SvCFrPDutSacqw")).toBeUndefined();
+        expect(factOf(store.state(), "process", "TEST000000000000000006")).toBeUndefined();
         yield* TestClock.adjust(6_000);
         yield* settle;
-        expect(factOf(store.state(), "process", "J3TU3gE0SvCFrPDutSacqw")).toBeDefined();
+        expect(factOf(store.state(), "process", "TEST000000000000000006")).toBeDefined();
         expect(fixture.opens()).toBe(1);
         expect(fixture.requests.filter((request) => request.body?.wsOutputType)).toHaveLength(
           registered,

@@ -140,7 +140,7 @@ describe("startZeropsHandover names where this tab lives", () => {
   const rows = [
     { origin: "https://mate.zerops.io", path: "" },
     { origin: "https://app-1abc.prg1.zerops.app", path: "" },
-    { origin: "https://zcp-2333-8080.prg1.zerops.app", path: "/mate" },
+    { origin: "https://container.example.com", path: "/mate" },
     { origin: "http://localhost:5733", path: "" },
   ] as const;
   it.each(Array.from(rows, (row) => ({ title: `${row.origin}${row.path}`, row })))(

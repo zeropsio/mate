@@ -4,7 +4,7 @@
   "model": "gpt-6-luna",
   "prompt": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
   "capturedAt": "2026-10-07T22:43:01.108Z",
-  "capturedOn": "KRLS disposable e2e rig / zcp",
+  "capturedOn": "Example Org disposable e2e rig / zcp",
   "capturedBy": "chat3",
   "synthetic": false,
   "terminal": {

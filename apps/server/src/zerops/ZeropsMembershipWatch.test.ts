@@ -27,8 +27,8 @@ import {
 } from "./ZeropsMembershipWatch.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 
-const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
-const CLIENT_ID = "BkC8AGjFQMyFrLbzjHoE9g";
+const PROJECT_ID = "TEST000000000000000023";
+const CLIENT_ID = "BBBBBBBBBBBBBBBBBBBBBB";
 const JAN = "jan-user-id";
 const EVA = "eva-user-id";
 const MATE_KEY = "the-mates-own-zerops-key";

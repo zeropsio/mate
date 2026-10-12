@@ -380,7 +380,7 @@ describe("firstDeploy — where a stage's first deploy stands by HQ's jobs of it
 });
 
 describe("listedStopComing — a production, read the way the menu reads it", () => {
-  // Karel's xyz (2026-10-02): a production no release reached, its runtimes up on the import's
+  // An imported application (2026-10-02): a production no release reached, its runtimes up on the import's
   // no-code version, read "Production coming up · turning its address on" until its window ran out.
   const SHA = "7c41d9e0a2b35f6e8d1c0b9a4f3e2d1c0b9a8f7e";
   const known = (value: Deployment): Shown<Deployment> => ({

@@ -604,7 +604,7 @@ describe("exchangeAtDoor: every answer read into the machine's failure classes (
   });
 });
 
-// KRLS, 2026-10-03: while the organization's reads stalled, HQ's door minted a throwaway per try
+// Example Org, 2026-10-03: while the organization's reads stalled, HQ's door minted a throwaway per try
 // and none was deleted. A Mate's door minted one per try the same way.
 describe("exchangeAtDoor: the throwaway a door did not take", () => {
   const ENV = "env-door" as EnvironmentId;

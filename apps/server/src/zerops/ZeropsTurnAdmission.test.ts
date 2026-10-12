@@ -39,7 +39,7 @@ const THREAD = ThreadId.make("thread-1");
 const CREATED_AT = "2026-09-27T10:00:00.000Z";
 
 const environment = resolveZeropsEnvironment({
-  projectId: "nTV3oMB2SS634ImDJnQckg",
+  projectId: "TEST000000000000000023",
   apiHost: undefined,
   apiToken: "the-mates-own-zerops-key",
 })!;

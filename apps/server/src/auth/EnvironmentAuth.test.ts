@@ -67,7 +67,7 @@ const makeBearerRequest = (
 const SESSION_MAX_AGE_SECONDS = 900;
 
 const zeropsTestEnvironment = resolveZeropsEnvironment({
-  projectId: "nTV3oMB2SS634ImDJnQckg",
+  projectId: "TEST000000000000000023",
   apiHost: undefined,
   sessionMaxAgeSeconds: SESSION_MAX_AGE_SECONDS,
 });

@@ -857,7 +857,7 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
  * | coming up, deleting, finishing, outside  | that, in its own words                     |
  * | working                                  | its step, or what it is on and the dots    |
  * | what HQ last said of it, unreachable     | that                                       |
- * | a colleague's, waiting on its person     | "Waits on Karel"                           |
+ * | a colleague's, waiting on its person     | "Waits on Alex"                           |
  * | a question or a plan for the viewer      | the question, in ink                       |
  * | stopped on an error                      | the error: red if the viewer's, else muted |
  * | at its limit                             | "Paused until 1:00 PM"                     |

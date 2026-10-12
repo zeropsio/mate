@@ -4,7 +4,7 @@
  * not_found, any other `4xx` invalid) or is unavailable (no answer, `429`, `5xx`, a body not in the
  * expected shape) — as is `user/list`'s `400 userNotFound`, which the member list answers about
  * once in eight calls for a valid credential (ledger, 2026-09-22) and is no verdict. Every request
- * is asked once, a read too (Karel, 2026-10-03): what does not answer is its caller's answer, and a
+ * is asked once, a read too (measured 2026-10-03): what does not answer is its caller's answer, and a
  * caller that follows a handle reads it again on its own cadence.
  *
  * @module zerops/http

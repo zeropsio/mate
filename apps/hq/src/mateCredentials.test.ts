@@ -409,7 +409,7 @@ describe("mate credentials", () => {
       ),
     );
 
-    // An org Read only token reads a token by its id (measured on KRLS 2026-10-03: 200, with its
+    // An org Read only token reads a token by its id (measured on Example Org 2026-10-03: 200, with its
     // projects, role and creator): HQ keeps an id only where that token's one grant is the Mate's
     // own project — never a deploy key, a person's token, or another Mate's key.
     it.effect("keeps a key id only where its token's one grant is the Mate's project", () =>

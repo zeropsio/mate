@@ -28,9 +28,9 @@ describe("resolveZeropsEnvironment — the one detection rule", () => {
   });
 
   it("is on for a non-empty project id, and nothing else votes", () => {
-    const resolved = resolveZeropsEnvironment(input({ projectId: "nTV3oMB2SS634ImDJnQckg" }));
+    const resolved = resolveZeropsEnvironment(input({ projectId: "TEST000000000000000023" }));
     assert.isDefined(resolved);
-    assert.strictEqual(resolved?.projectId, "nTV3oMB2SS634ImDJnQckg");
+    assert.strictEqual(resolved?.projectId, "TEST000000000000000023");
   });
 
   it("trims the project id", () => {

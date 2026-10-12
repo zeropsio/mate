@@ -352,8 +352,8 @@ describe("a Mate on a card", () => {
   it.each([
     {
       case: "a colleague's Mate waiting on its person: whom it waits on",
-      second: { kind: "waits-on", text: "Waits on Karel" },
-      expected: { text: "Waits on Karel", tone: "muted" },
+      second: { kind: "waits-on", text: "Waits on Alex" },
+      expected: { text: "Waits on Alex", tone: "muted" },
     },
     {
       case: "the viewer's change waiting: its title, in ink",
@@ -408,14 +408,14 @@ describe("a Mate on a card", () => {
   });
 
   it("says the menu row's line where nothing lifts it, and its own fuller words where it is lifted", () => {
-    const line = { text: "Waits on Karel", tone: "muted" as const };
+    const line = { text: "Waits on Alex", tone: "muted" as const };
     const asking = view({
       state: "needs",
       reply: { kind: "words", text: "Stripe or Adyen?", tone: "ink" },
     });
     expect(
       cardMateReading({ view: asking, status: "input", mine: false, review: undefined, line }).text,
-    ).toBe("Waits on Karel");
+    ).toBe("Waits on Alex");
     expect(
       cardMateReading({ view: asking, status: "input", mine: true, review: undefined, line }).text,
     ).toBe("Stripe or Adyen?");

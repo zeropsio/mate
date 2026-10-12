@@ -3,7 +3,7 @@
  * none.
  *
  * The member list is the only source of HQ's anchor (`findOfficialHq`), on purpose: only an admin
- * can write one. It is also the slowest read Zerops has: KRLS's took tens of seconds. So a page
+ * can write one. It is also the slowest read Zerops has: the organization's took tens of seconds. So a page
  * keeps the verdict per account and organization, and `useAccountHq` reads the list only where it
  * keeps none: on first use, after HQ refused as not official, and after this page's own birth
  * (`accountHq.ts`). Held in this page's memory only — source data never reaches browser storage —

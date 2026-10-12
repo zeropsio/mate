@@ -4,8 +4,7 @@
  *
  * The server attaches this for `zerops_*` tools only, because its slimming pass
  * otherwise replaces every MCP result with its first line capped at 84
- * characters — see `apps/server/src/zerops/zeropsActivityResult.ts` for why,
- * and `../zcp/plans/z3-s6-ui-plan-2026-08-28.md` D-U1 for the decision.
+ * characters — see `apps/server/src/zerops/zeropsActivityResult.ts` for why.
  *
  * The read is defensive on purpose: a server older than this seam sends
  * nothing, and every absent or unrecognised shape has the same meaning to a

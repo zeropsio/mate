@@ -4,7 +4,7 @@
  * (SPEC §4). `view` serves it up to that age as `Facts<"cached">`. A write is decided over
  * `forWrite`, inside `confirmingRefusal`: first over the view at most 30 s old (`recent`), and
  * where the facts refuse it once more over a fresh read, whose refusal stands; its waits on Zerops
- * end within 35 s (F22, 2026-10-03: a release waited on a fresh read while KRLS's org-wide reads
+ * end within 35 s (F22, 2026-10-03: a release waited on a fresh read while organization-wide reads
  * stalled 25 s, and went with its client at 20 s). The decisions themselves are `can`'s
  * (`permissions.ts`); nothing about people is stored in HQ.
  *
@@ -15,16 +15,16 @@
  * write's unanswered roles are that refusal.
  *
  * While Zerops does not answer, `view` serves the last good view for five minutes from its read,
- * at once, and asks Zerops again behind it at most every 30 s (E2E 2026-10-03: KRLS's member list
+ * at once, and asks Zerops again behind it at most every 30 s (E2E 2026-10-03: the organization's member list
  * missing HQ's 10 s answered every read of a new application `503` for a minute). A read that
  * Zerops leaves 3 s unanswered — counted from when the read under way began — takes it too, as
- * does a reversible write's first pass; a confirmation never (F22, option A, 2026-10-03: KRLS's
+ * does a reversible write's first pass; a confirmation never (F22, option A, 2026-10-03: the organization's
  * member list went unanswered for minutes at a time, and every release and read waited on it).
  * Past the five minutes a read fails as a write does.
  *
  * `recent` is the view at most 30 s old, read now past that, and never the last good one: what
  * HQ's door admits by, so a reload's door after another waits on Zerops only once (t11,
- * 2026-10-03: doors re-entered behind a fresh read of KRLS's slow member list hung 55 s and 77 s).
+ * 2026-10-03: doors re-entered behind a fresh read of the organization's slow member list hung 55 s and 77 s).
  *
  * A view's age counts from when Zerops answered it: a read slower than 30 s — one a door gave up
  * on at its budget — lands fresh enough for the door asked again. A write's fresh read is only one

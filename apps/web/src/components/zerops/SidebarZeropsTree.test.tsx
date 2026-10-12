@@ -870,7 +870,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
   const line = (html: string) =>
     /<span[^>]*data-zerops-surface="sidebar-mate-sign-in"[^>]*>([^<]*)<\/span>/u.exec(html);
   const PETRA = { name: "Petra Malá", initials: "PM", avatarUrl: null, isViewer: true };
-  const KAREL = { name: "Karel Novák", initials: "KN", avatarUrl: null, isViewer: false };
+  const KAREL = { name: "Alex Novák", initials: "AN", avatarUrl: null, isViewer: false };
 
   // Board D1, 2026-09-30: the person who added a Mate reads that it waits on them, with the amber
   // dot of what needs them; anybody else that it waits for a sign-in — never a failure while it

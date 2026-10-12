@@ -172,7 +172,7 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
     accounts.get(userId)?.user.clientUserList?.find((m) => m.clientId === clientId);
   /**
    * A NO_ACCESS member sees an organization only through their project grants (measured
-   * 2026-10-03 as the KRLS Developer): its list answers 403, a search lists the projects their
+   * 2026-10-03 as the Example Org Developer): its list answers 403, a search lists the projects their
    * grants name, and only those projects answer them.
    */
   const throughGrantsOnly = (userId: string, clientId: string | undefined) =>

@@ -463,7 +463,6 @@ describe("projectActivityPayload", () => {
  * IS a JSON document the client renders a card from. So a bounded copy of the
  * text rides alongside, for `zerops_*` tools only.
  *
- * Plan: `../zcp/plans/z3-s6-ui-plan-2026-08-28.md` D-U1.
  */
 describe("projectActivityPayload — zerops results", () => {
   const zeropsDeployText = JSON.stringify({

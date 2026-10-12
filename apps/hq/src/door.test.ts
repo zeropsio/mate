@@ -105,7 +105,7 @@ const orgReadsBegun = (made: ReturnType<typeof emptyWorld>) =>
   made.calls.filter((call) => call === "projects:t").length;
 
 // t11, 2026-10-03: two of fourteen cold loads hung 55 s and 77 s at HQ's door, each door re-entered
-// queuing behind a fresh read of KRLS's slow member list. The door admits by a view at most 30 s
+// queuing behind a fresh read of the organization's slow member list. The door admits by a view at most 30 s
 // old, as a read verb does — never by the last good view a read verb falls back to.
 describe("HQ's door, over the org's view", () => {
   it.effect("admits over a view read under 30 s ago, asking Zerops nothing", () =>
@@ -171,7 +171,7 @@ describe("HQ's door, over the org's view", () => {
       const { door, roles } = yield* services(made);
       yield* door.admit(yield* throwaway(made, "door-1"));
 
-      // KRLS's member list failing, as an empty answer.
+      // the organization's member list failing, as an empty answer.
       made.members.set("ORG", []);
       yield* TestClock.adjust("31 seconds");
       const refused = yield* Effect.flip(door.admit(yield* throwaway(made, "door-2")));

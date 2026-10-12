@@ -277,7 +277,7 @@ describe("makeHqApi", () => {
     });
   });
 
-  // KRLS, 2026-10-03: one door attempt per HQ at a time — calls that come together join it.
+  // Example Org, 2026-10-03: one door attempt per HQ at a time — calls that come together join it.
   it("comes through one door for calls that ask at once", async () => {
     const hq = fakeHq();
     const door = doors();

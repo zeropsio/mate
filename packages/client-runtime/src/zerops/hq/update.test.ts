@@ -46,7 +46,7 @@ describe("hqUpdateOffered", () => {
 
 const OLDER = "20261003T100000Z.ba9876543210";
 
-/** The active version as the service list embeds it, measured on KRLS 2026-10-04: no `name`. */
+/** The active version as the service list embeds it, measured on Example Org 2026-10-04: no `name`. */
 const ACTIVE = { id: "av-active", status: "ACTIVE", source: "CLI" };
 
 const build = (over: Partial<ActivityProcess> = {}): ActivityProcess => ({
@@ -125,7 +125,7 @@ describe("hqUpdateState", () => {
       state: { kind: "failed", running: "", carried: CARRIED, reason: "boom" },
     },
     {
-      // HQ's health may name the new Core a few seconds before Zerops ends the build (KRLS).
+      // HQ's health may name the new Core a few seconds before Zerops ends the build (Example Org).
       name: "already answers with the Core a build still under way deploys",
       answering: CARRIED,
       processes: [build({ status: "RUNNING", appVersion: { name: `hq-core.${CARRIED}` } })],
@@ -181,7 +181,7 @@ describe("hqUpdateState", () => {
       state: { kind: "available", running: OLDER, carried: CARRIED },
     },
     {
-      // Measured on KRLS, 2026-10-04: the build FINISHED while HQ still answered with the old Core.
+      // Measured on Example Org, 2026-10-04: the build FINISHED while HQ still answered with the old Core.
       name: "finished deploying the carried Core before HQ answers with it",
       answering: OLDER,
       processes: [build({ appVersion: { name: `hq-core.${CARRIED}` } })],
@@ -208,7 +208,7 @@ describe("hqUpdateState", () => {
   ])("HQ that $name", ({ answering, active = ACTIVE, processes, state }) => {
     expect(
       hqUpdateState({
-        // As `GET /project/{id}/service-stack` embeds it: no name (KRLS, 2026-10-04).
+        // As `GET /project/{id}/service-stack` embeds it: no name (Example Org, 2026-10-04).
         service: { id: "svc-hq", activeAppVersion: active },
         processes,
         carried: CARRIED,

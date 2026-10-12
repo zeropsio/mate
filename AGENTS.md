@@ -39,18 +39,18 @@ Name the tier before the first tool call. A tier's loop is the whole loop; a hig
 are waste on a lower one.
 
 - **Tweak** — the look of what exists: CSS, spacing, colour, copy, an icon, one component's layout.
-  Grep the lines, edit, take one look cropped to the surface at the owner's view (1786 × 1000, the
+  Grep the lines, edit, take one look cropped to the surface at the reference viewport (1786 × 1000, the
   menu at 435 px) in the theme the report names, `vp check` the files, one commit. No new test,
   harness, sampler, theme × shell matrix, ledger entry, subagent or release unless asked. A test
   that pinned the old class, pixel or colour is deleted, not updated.
 - **Change** — behaviour: state, data, protocol, a new control. RED → GREEN on the logic
   (`*.logic.ts`, server, runtime), targeted `vp test run`, package typecheck, one live look for UI.
-- **Pass** — the owner calls it a pass, or it redesigns several surfaces or lands a slice: the loop
+- **Pass** — a maintainer calls it a pass, or it redesigns several surfaces or lands a slice: the loop
   below.
 
 The loop:
 
-- Prepare a worktree: `cd "$(node scripts/prepare-worktree.ts <job>)"` (reuses an idle one, installs,
+- Prepare a worktree: `cd "$(node scripts/prepare-worktree.ts <name>)"` (reuses an idle one, installs,
   checks readiness).
 - Iterate with targeted `vp test run <files>`. Never repo-wide `vp check`, `vp run -r test` or
   `vp run -r typecheck` in a worktree: CI runs the full suites once per `main` head.
@@ -63,7 +63,6 @@ The loop:
   the full unit and scenario suites before pushing.
 - Rebase once, right before the push, and re-run only what the rebase changed in your files. A push
   rejected because `main` moved is rebased and pushed again without re-running.
-- At most one CI watch per push, then read the failures once; never poll logs in a loop.
 - CI's Check job runs `vp check` repo-wide, ledger markdown included: a table row committed past
   the pre-commit hook leaves unaligned columns and a red job — `vp fmt` the file first.
 - The server is event-sourced and async flows emit typed receipts: wait on receipts and worker
@@ -138,7 +137,6 @@ another document. To answer a question, go to the home:
 | Shared UI principles, copy glossary, tokens, guard rules and exception policy | `docs/internals/zerops/design-system.md`                                   |
 | User-visible behaviour · runbooks                                             | `docs/user/` · `docs/operations/`                                          |
 | Behaviour invariant                                                           | a test whose title is the product sentence                                 |
-| Transient roadmap / journal                                                   | `../zcp/plans/` (never cite as a source)                                   |
 
 - A line in `docs/` must hold for something that does not exist yet: a rule across surfaces, a term,
   the zcp↔mate seam, a platform fact our code relies on. Anything about one surface, flow or

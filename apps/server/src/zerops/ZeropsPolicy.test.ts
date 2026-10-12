@@ -23,7 +23,7 @@ import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { UPSTREAM_POLICY, ZEROPS_POLICY, zeropsPolicy } from "./ZeropsPolicy.ts";
 
 const zeropsEnvironment = resolveZeropsEnvironment({
-  projectId: "nTV3oMB2SS634ImDJnQckg",
+  projectId: "TEST000000000000000023",
   apiHost: undefined,
 });
 

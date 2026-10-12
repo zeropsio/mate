@@ -6,7 +6,7 @@
  * signers' checks (`ZeropsProjectSigners`) each read the same two documents with the Mate's own
  * key: the project, for its org and what it says about people, and the org's member list. Read
  * apart, that was three reads of each, on timers of their own — and the member list carries every
- * integration token of the org as a member: 181 rows on KRLS (2026-10-03), which a slow Zerops
+ * integration token of the org as a member: 181 rows on Example Org (2026-10-03), which a slow Zerops
  * took up to 35 s to answer.
  *
  * So each is read once for all of them. An answer at most {@link ORG_READ_MAX_AGE} old is the

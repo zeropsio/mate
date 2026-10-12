@@ -848,7 +848,7 @@ describe("an application's releases over HQ's API", () => {
       { timeout: 60_000 },
     );
 
-    // F22, option A (2026-10-03): while Zerops left KRLS's member list unanswered for minutes,
+    // F22, option A (2026-10-03): while Zerops left the organization's member list unanswered for minutes,
     // every read past the view's 30 s waited until the read failed — 44 s in HQ's log. A read
     // waits on Zerops 3 s, then is served the last view Zerops answered within five minutes.
     it.effect(
@@ -865,7 +865,7 @@ describe("an application's releases over HQ's API", () => {
       { timeout: 60_000 },
     );
 
-    // F22 (2026-10-03): while Zerops left KRLS's member list unanswered for minutes, a release
+    // F22 (2026-10-03): while Zerops left the organization's member list unanswered for minutes, a release
     // waited on it for its client's whole 20 s. The owner, 2026-10-05: a release cannot be taken
     // back, so it is decided over roles Zerops answers for it — a slow answer still decides it, none
     // refuses it at once, and nothing is released over a view kept from before.

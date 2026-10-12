@@ -231,7 +231,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
               ServerConfig.layer({
                 ...config,
                 zerops: {
-                  projectId: "nTV3oMB2SS634ImDJnQckg",
+                  projectId: "TEST000000000000000023",
                   apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
                   publicOrigin: undefined,
                   apiToken: undefined,
@@ -243,7 +243,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           ),
         ),
       );
-      expect(insideZerops.zerops).toEqual({ projectId: "nTV3oMB2SS634ImDJnQckg" });
+      expect(insideZerops.zerops).toEqual({ projectId: "TEST000000000000000023" });
     }),
   );
 
@@ -253,7 +253,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
       return {
         ...config,
         zerops: {
-          projectId: "nTV3oMB2SS634ImDJnQckg",
+          projectId: "TEST000000000000000023",
           apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
           publicOrigin: undefined,
           apiToken: undefined,
@@ -377,7 +377,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
       const zeropsConfig = {
         ...config,
         zerops: {
-          projectId: "nTV3oMB2SS634ImDJnQckg",
+          projectId: "TEST000000000000000023",
           apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
           publicOrigin: undefined,
           apiToken: undefined,

@@ -271,7 +271,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
             ConfigProvider.layer(
               ConfigProvider.fromEnv({
                 env: {
-                  T3CODE_ZEROPS_PROJECT_ID: "nTV3oMB2SS634ImDJnQckg",
+                  T3CODE_ZEROPS_PROJECT_ID: "TEST000000000000000023",
                   T3CODE_ZEROPS_ROLE_RECHECK_SECONDS: configured,
                 },
               }),

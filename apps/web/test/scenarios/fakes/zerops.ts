@@ -87,7 +87,7 @@ export class ZeropsFake {
   private versions = new Map<string, number>();
   private initialFrames = new Map<string, { registration: Registration; frame: string }[]>();
   get orgName() {
-    return this.world.organizations.get("ORG")?.name ?? "KRLS";
+    return this.world.organizations.get("ORG")?.name ?? "ACME";
   }
   set orgName(name: string) {
     this.world.organizations.set("ORG", { ...this.world.organizations.get("ORG"), name });

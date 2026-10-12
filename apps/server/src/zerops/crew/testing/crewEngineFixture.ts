@@ -43,7 +43,7 @@ import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { CrewPlatformProcesses } from "../crewDeployState.ts";
 import { makeServiceRepository, serviceRepository, TEST_IDENTITY } from "./crewGitFixture.ts";
 
-/** The person who presses: Karel, in his own session. */
+/** The person who presses: Alex, in his own session. */
 export const KAREL: TurnPrincipal = {
   kind: "session",
   subject: `${ZEROPS_SUBJECT_PREFIX}user-karel`,

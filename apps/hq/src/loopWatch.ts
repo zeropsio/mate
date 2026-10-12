@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- the loop's delay, the process's CPU and its stdout are Node's own.
 /**
- * Whether HQ's event loop runs, for `/health` (F22, 2026-10-03: on KRLS, `/health` answered after
+ * Whether HQ's event loop runs, for `/health` (F22, 2026-10-03: on Example Org, `/health` answered after
  * 52.7 s, together with 40 GETs, though its database probe gives up at 2 s and it reads nothing of
  * Zerops — the loop itself did not run). Two measures:
  *

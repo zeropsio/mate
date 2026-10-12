@@ -24,7 +24,7 @@ describe("foundation: the real hosted client", () => {
     it.effect("B: the HQ enrollment path adds a Mate to the menu without reload", () =>
       Effect.gen(function* () {
         const { given, when, then } = yield* createScenario();
-        given.org("KRLS");
+        given.org("ACME");
         yield* given.project("Ada", { mate: true });
         yield* given.signedIn;
         yield* then.menu.row("Ada").appears();

@@ -39,7 +39,7 @@ export type ZeropsProjectRole = "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY" |
 /**
  * The names a Mate's key comes with: a press's, `zcp-<project>`, as the platform named the one it
  * minted with a container; and the Zerops GUI's, `zerops-zcp-<service>` (the audit, 2026-10-03:
- * 63 `zerops-zcp-zcp` keys on KRLS, none of which `zcp-` matched).
+ * 63 `zerops-zcp-zcp` keys on Example Org, none of which `zcp-` matched).
  */
 const MATE_KEY_NAME_PREFIXES: ReadonlyArray<string> = ["zcp-", "zerops-zcp-"];
 

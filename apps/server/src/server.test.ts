@@ -1827,7 +1827,7 @@ const crossOriginClientOrigin = "http://remote-client.test:3773";
 
 const zeropsTestEnvironment = (publicOrigin?: string) =>
   resolveZeropsEnvironment({
-    projectId: "nTV3oMB2SS634ImDJnQckg",
+    projectId: "TEST000000000000000023",
     apiHost: undefined,
     publicOrigin,
   });

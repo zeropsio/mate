@@ -112,7 +112,7 @@ describe("a Mate on its card", () => {
         tint="sky"
       />,
     );
-  const KAREL = { userId: "karel", name: "Karel Novak", avatarUrl: null };
+  const KAREL = { userId: "karel", name: "Alex Novak", avatarUrl: null };
 
   it.each([
     { case: "the viewer's own", owner: { ...KAREL, userId: "me" }, waits: false, mark: false },

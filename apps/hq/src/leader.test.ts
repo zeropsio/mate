@@ -101,7 +101,7 @@ const anchoredWorld = () => {
   world.projects.push({
     id: "P1",
     orgId: "ORG",
-    name: "mate-rig-hq",
+    name: "contract-hq",
     status: "ACTIVE",
     tags: [],
     userRoles: [],

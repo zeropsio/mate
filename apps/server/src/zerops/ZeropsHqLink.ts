@@ -194,7 +194,7 @@ export const connectLinkSocket: ConnectLinkSocket = (url) => {
 /**
  * How long a link that did not go over IPv6 is kept before its successor opens. The Zerops L7
  * closes a WebSocket on a project's shared IPv4 120 s after it opened, with no close frame,
- * whatever passes over it (measured on KRLS's HQ, F26, 2026-10-03): 100 s leaves the successor
+ * whatever passes over it (measured on the organization's HQ, F26, 2026-10-03): 100 s leaves the successor
  * 20 s to open and be answered.
  */
 export const MATE_LINK_ROTATE_MS = 100_000;

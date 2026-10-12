@@ -1217,7 +1217,7 @@ export class ZeropsApiClient {
    * lag-free client read, whose rows carry each project's `userRoles` exactly as
    * `GET /project/{id}` does (measured 2026-10-01, 6 of 6 projects equal). The
    * search fallback's rows carry only the searcher's own grants (measured
-   * 2026-10-03 as the KRLS Developer: Cyd's row named their `OWNER` alone, its
+   * 2026-10-03 as the Example Org Developer: Cyd's row named their `OWNER` alone, its
    * own read the Mate key's `BASIC_USER` beside it), so a caller judging access
    * or anyone's grant from a row trusts only a direct one.
    */

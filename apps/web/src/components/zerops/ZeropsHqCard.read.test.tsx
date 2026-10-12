@@ -60,7 +60,7 @@ vi.mock("~/hooks/useSettings", () => ({
 /**
  * HQ's services as the organization's services listing holds them, shaped as the live listing is
  * (client-runtime `__fixtures__/z3-eval.service-stack.json`): the project's system `core` among
- * them, an active version embedded without its name (KRLS, 2026-10-04), a managed service with none.
+ * them, an active version embedded without its name (Example Org, 2026-10-04), a managed service with none.
  */
 const SERVICES: ReadonlyArray<ZeropsService> = [
   {

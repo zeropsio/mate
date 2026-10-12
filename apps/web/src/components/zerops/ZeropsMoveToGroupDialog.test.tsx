@@ -77,7 +77,7 @@ const drawn = (target: { readonly groupId: string | undefined }) =>
     </Dialog>,
   );
 
-// e2e-krls F29: the menu offers "Move to project…", and the dialog spoke of groups.
+// End-to-end regression: the menu offers "Move to project…", and the dialog spoke of groups.
 describe("ZeropsMoveToGroupForm — in the words of the menu that opens it", () => {
   it("calls an application a project, never a group", () => {
     // What it says, without its markup's own names (a radio group is one).

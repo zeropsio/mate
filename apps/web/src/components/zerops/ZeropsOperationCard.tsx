@@ -30,7 +30,6 @@ import { mateImageSource } from "@t3tools/client-runtime/data/mateImage";
  * late — why it failed, the version it shipped — appends at the end, so
  * nothing already drawn moves.
  *
- * See `../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §5.
  */
 import { useImageIntent } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";

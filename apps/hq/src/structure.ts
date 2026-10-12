@@ -803,7 +803,7 @@ export const structureLayer = (options: {
         });
 
       // Over the org as recently read, never forcing a fresh read (the lead, 2026-10-03: forcing
-      // one every minute read KRLS's member and project lists for nothing).
+      // one every minute read the organization's member and project lists for nothing).
       const reconcile = Effect.gen(function* () {
         const listed = new Set((yield* roles.recent).projects.map((project) => project.id));
         const rows = yield* sql<{ readonly project_id: string }>`

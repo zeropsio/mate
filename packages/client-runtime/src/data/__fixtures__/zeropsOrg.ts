@@ -1,7 +1,6 @@
 /**
- * Recorded Zerops realtime traffic for one organization's running work: the owner PAT's frames
- * and registration answers of the probe run `20261005T184903Z` (`klient/probe-org3`), in arrival
- * order. A project was created (one create, one service create, one deploy) and deleted.
+ * Anonymized Zerops realtime traffic for one organization's running work: frames and
+ * registration answers in arrival order. A project was created (one create, one service create, one deploy) and deleted.
  *
  * Process rows are cut to the fields the process family reads. The probe recorded rows without `_version`;
  * each row here carries a synthesized `_version` that counts that process's observations in arrival
@@ -27,8 +26,8 @@ export type RecordedProcessEvent =
       readonly items: ReadonlyArray<Readonly<Record<string, unknown>>>;
     };
 
-export const ORGANIZATION_ID = "BkC8AGjFQMyFrLbzjHoE9g";
-export const PROBE_PROJECT_ID = "x7DxkVcBR4Wnb1Cc9rnSHw";
+export const ORGANIZATION_ID = "BBBBBBBBBBBBBBBBBBBBBB";
+export const PROBE_PROJECT_ID = "TEST000000000000000028";
 
 export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
   {
@@ -42,9 +41,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     data: {
       update: [
         {
-          id: "J3TU3gE0SvCFrPDutSacqw",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000006",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "RUNNING",
           actionName: "project.create",
           created: "2026-10-05T18:49:08.065Z",
@@ -53,9 +52,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
           _version: 1,
         },
         {
-          id: "8OBjlA8pQbuaDGH7nYvggg",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000001",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "PENDING",
           actionName: "stack.create",
           created: "2026-10-05T18:49:08.097Z",
@@ -64,9 +63,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
           _version: 1,
         },
         {
-          id: "K1bQIB8AQBeQGHaAe8mneg",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000007",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "PENDING",
           actionName: "stack.deploy",
           created: "2026-10-05T18:49:08.118Z",
@@ -82,9 +81,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     baseline: "during-running",
     items: [
       {
-        id: "J3TU3gE0SvCFrPDutSacqw",
-        clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-        projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+        id: "TEST000000000000000006",
+        clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+        projectId: "TEST000000000000000028",
         status: "RUNNING",
         actionName: "project.create",
         created: "2026-10-05T18:49:08.065Z",
@@ -93,9 +92,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
         _version: 2,
       },
       {
-        id: "8OBjlA8pQbuaDGH7nYvggg",
-        clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-        projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+        id: "TEST000000000000000001",
+        clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+        projectId: "TEST000000000000000028",
         status: "PENDING",
         actionName: "stack.create",
         created: "2026-10-05T18:49:08.097Z",
@@ -104,9 +103,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
         _version: 2,
       },
       {
-        id: "K1bQIB8AQBeQGHaAe8mneg",
-        clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-        projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+        id: "TEST000000000000000007",
+        clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+        projectId: "TEST000000000000000028",
         status: "PENDING",
         actionName: "stack.deploy",
         created: "2026-10-05T18:49:08.118Z",
@@ -120,7 +119,7 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     at: "2026-10-05T18:49:09.570Z",
     frame: "membership",
     data: {
-      add: ["J3TU3gE0SvCFrPDutSacqw", "8OBjlA8pQbuaDGH7nYvggg", "K1bQIB8AQBeQGHaAe8mneg"],
+      add: ["TEST000000000000000006", "TEST000000000000000001", "TEST000000000000000007"],
       delete: [],
     },
   },
@@ -130,9 +129,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     data: {
       update: [
         {
-          id: "J3TU3gE0SvCFrPDutSacqw",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000006",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "RUNNING",
           actionName: "project.create",
           created: "2026-10-05T18:49:08.065Z",
@@ -149,9 +148,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     data: {
       update: [
         {
-          id: "J3TU3gE0SvCFrPDutSacqw",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000006",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "RUNNING",
           actionName: "project.create",
           created: "2026-10-05T18:49:08.065Z",
@@ -168,9 +167,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     data: {
       update: [
         {
-          id: "J3TU3gE0SvCFrPDutSacqw",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000006",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "RUNNING",
           actionName: "project.create",
           created: "2026-10-05T18:49:08.065Z",
@@ -187,9 +186,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     data: {
       update: [
         {
-          id: "J3TU3gE0SvCFrPDutSacqw",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000006",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "RUNNING",
           actionName: "project.create",
           created: "2026-10-05T18:49:08.065Z",
@@ -206,9 +205,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     data: {
       update: [
         {
-          id: "J3TU3gE0SvCFrPDutSacqw",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000006",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "RUNNING",
           actionName: "project.create",
           created: "2026-10-05T18:49:08.065Z",
@@ -225,9 +224,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     data: {
       update: [
         {
-          id: "J3TU3gE0SvCFrPDutSacqw",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000006",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "RUNNING",
           actionName: "project.create",
           created: "2026-10-05T18:49:08.065Z",
@@ -244,9 +243,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     data: {
       update: [
         {
-          id: "J3TU3gE0SvCFrPDutSacqw",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000006",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "FINISHED",
           actionName: "project.create",
           created: "2026-10-05T18:49:08.065Z",
@@ -255,9 +254,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
           _version: 9,
         },
         {
-          id: "8OBjlA8pQbuaDGH7nYvggg",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000001",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "FINISHED",
           actionName: "stack.create",
           created: "2026-10-05T18:49:08.097Z",
@@ -266,9 +265,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
           _version: 3,
         },
         {
-          id: "K1bQIB8AQBeQGHaAe8mneg",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000007",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "RUNNING",
           actionName: "stack.deploy",
           created: "2026-10-05T18:49:08.118Z",
@@ -284,7 +283,7 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     frame: "membership",
     data: {
       add: [],
-      delete: ["8OBjlA8pQbuaDGH7nYvggg", "J3TU3gE0SvCFrPDutSacqw"],
+      delete: ["TEST000000000000000001", "TEST000000000000000006"],
     },
   },
   {
@@ -292,7 +291,7 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     frame: "membership",
     data: {
       add: [],
-      delete: ["K1bQIB8AQBeQGHaAe8mneg"],
+      delete: ["TEST000000000000000007"],
     },
   },
   {
@@ -301,9 +300,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     data: {
       update: [
         {
-          id: "K1bQIB8AQBeQGHaAe8mneg",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000007",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "FINISHED",
           actionName: "stack.deploy",
           created: "2026-10-05T18:49:08.118Z",
@@ -323,7 +322,7 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     at: "2026-10-05T18:49:50.649Z",
     frame: "membership",
     data: {
-      add: ["OOlnYMslSg6Hjbgt9ZKlFQ"],
+      add: ["TEST000000000000000011"],
       delete: [],
     },
   },
@@ -333,9 +332,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     data: {
       update: [
         {
-          id: "OOlnYMslSg6Hjbgt9ZKlFQ",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000011",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "RUNNING",
           actionName: "project.delete",
           created: "2026-10-05T18:49:49.66Z",
@@ -351,7 +350,7 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     frame: "membership",
     data: {
       add: [],
-      delete: ["OOlnYMslSg6Hjbgt9ZKlFQ"],
+      delete: ["TEST000000000000000011"],
     },
   },
   {
@@ -360,9 +359,9 @@ export const RECORDED_PROCESS_TRAFFIC: ReadonlyArray<RecordedProcessEvent> = [
     data: {
       update: [
         {
-          id: "OOlnYMslSg6Hjbgt9ZKlFQ",
-          clientId: "BkC8AGjFQMyFrLbzjHoE9g",
-          projectId: "x7DxkVcBR4Wnb1Cc9rnSHw",
+          id: "TEST000000000000000011",
+          clientId: "BBBBBBBBBBBBBBBBBBBBBB",
+          projectId: "TEST000000000000000028",
           status: "FINISHED",
           actionName: "project.delete",
           created: "2026-10-05T18:49:49.66Z",

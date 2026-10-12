@@ -1,7 +1,5 @@
 /**
- * The hook a card calls for its live observation —
- * `../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §3
- * "Observation", §6. Resolves the operation's target service(s), attributes
+ * The hook a card calls for its live observation. Resolves the operation's target service(s), attributes
  * the shared per-project process projection to them, and turns that into an
  * `ObservationState` plus the operation's remembered history.
  *

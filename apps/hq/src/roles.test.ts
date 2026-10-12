@@ -126,7 +126,7 @@ describe("rolesLayer", () => {
 });
 
 // E2E 2026-10-03: a4's recipe answered 503 `zerops_unavailable` right after its birth, and B's
-// read late for a minute — KRLS's member list not answering inside HQ's 10 s. A read verb decides
+// read late for a minute — the organization's member list not answering inside HQ's 10 s. A read verb decides
 // over the last good view for five minutes while Zerops does not answer, as a write's first pass
 // does (F22, option A); a write's confirmation never.
 describe("the last good view, while Zerops does not answer", () => {
@@ -155,7 +155,7 @@ describe("the last good view, while Zerops does not answer", () => {
     return made;
   };
   const userIds = (view: OrgView) => view.members.map((row) => row.userId);
-  /** The member list failing as KRLS's did: an outage dressed as an empty answer. */
+  /** The member list failing during an organization outage: an outage dressed as an empty answer. */
   const membersFail = (made: ReturnType<typeof emptyWorld>) => made.members.set("ORG", []);
 
   it.effect(
@@ -312,7 +312,7 @@ describe("a slow read, aged from its answer", () => {
   );
 });
 
-// F22 (2026-10-03): a release waited on a fresh read while KRLS's org-wide reads stalled 25 s, the
+// F22 (2026-10-03): a release waited on a fresh read while organization-wide reads stalled 25 s, the
 // client gave up at 20 s, and the release was gone with it. A write is decided over the view at
 // most 30 s old — or, once Zerops leaves its read 3 s unanswered, the last good one (option A); a
 // refusal of its facts is confirmed over a fresh read; its waits on Zerops end within 35 s, and a

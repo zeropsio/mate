@@ -15,9 +15,9 @@ import serviceStackFixture from "./__fixtures__/z3-eval.service-stack.json" with
 const realServices = serviceStackFixture.list as unknown as ReadonlyArray<ZeropsService>;
 const realProcesses = processFixture.list as unknown as ReadonlyArray<ActivityProcess>;
 
-const project: ZeropsProject = { id: "nTV3oMB2SS634ImDJnQckg", name: "z3-eval", status: "ACTIVE" };
+const project: ZeropsProject = { id: "TEST000000000000000023", name: "z3-eval", status: "ACTIVE" };
 
-const WEATHERDASH_ID = "EmWgeZ4rTiK0Ajpm8iH83A";
+const WEATHERDASH_ID = "TEST000000000000000005";
 
 const service = (
   overrides: Partial<ZeropsService> & { id: string; name: string },
@@ -137,7 +137,7 @@ describe("zcpServiceIdFor", () => {
   it("names the infrastructure zcp service and nothing else", () => {
     const view = projectTopology(project, realServices, []);
 
-    expect(zcpServiceIdFor(view)).toBe("gt7tJZjDSk2zyH5XvNeAQQ");
+    expect(zcpServiceIdFor(view)).toBe("TEST000000000000000019");
 
     // A runtime service happens to be named "zcp" (a user rename) — the
     // helper reads the type prefix, never the hostname, so a decoy must not

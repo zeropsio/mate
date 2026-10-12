@@ -156,7 +156,7 @@ const world = () => {
   fake.projects.push({
     id: "P1",
     orgId: "ORG",
-    name: "mate-rig-hq",
+    name: "contract-hq",
     status: "ACTIVE",
     tags: [],
     userRoles: [],
@@ -357,7 +357,7 @@ describe("officialLayer", () => {
   );
 });
 
-// The lead, 2026-10-03: HQ read KRLS's member list (181 entries) far more than it needed — the
+// The lead, 2026-10-03: HQ read the organization's member list (181 entries) far more than it needed — the
 // official check every 30 s on its own (user/info, its token, its project, the member list), on
 // standby too, and the reconcile's forced fresh read of the members and projects every minute.
 // The official check reads the org through the view every reader shares, every minute while ok;

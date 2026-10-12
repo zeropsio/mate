@@ -76,7 +76,7 @@ export interface FakeWorld {
   /** Integration tokens by their value; the fake's clock stamps `readAtMs` on each read. */
   tokens: Map<string, Omit<ZeropsOwnToken, "readAtMs">>;
   down: boolean;
-  /** How long the org's member list takes to answer, ms: KRLS's stalls (F22); none at 0. */
+  /** How long the org's member list takes to answer, ms: the organization's stalls (F22); none at 0. */
   membersTake: number;
   /** Whether answers carry the API's clock (`readAtMs`). */
   apiClock: boolean;

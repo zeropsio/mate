@@ -98,7 +98,7 @@ describe("FakeZeropsRest", () => {
     await expect(failureOf(clientOf(rest).listClientProjects("org-2"))).resolves.toBe("forbidden");
   });
 
-  // Measured 2026-10-03 as the KRLS Developer (NO_ACCESS, OWNER on Cyd by its grant): the
+  // Measured 2026-10-03 as the Example Org Developer (NO_ACCESS, OWNER on Cyd by its grant): the
   // organization's list answers 403; `/project/search` lists the projects their grants name, each
   // row carrying only their own grant; `GET /project/{id}` answers one of those whole, every
   // member's grant on it.

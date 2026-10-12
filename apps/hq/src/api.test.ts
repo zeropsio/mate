@@ -287,7 +287,7 @@ describe("HQ API", () => {
 
     // E2E 2026-10-03 (F5): an application a stopped New project left holds its recipe repository
     // only. Deleted, it goes from disk too: nothing reconciles or bundles it again.
-    // F22 (2026-10-03): a release asked while KRLS's org-wide reads stalled went with its client,
+    // F22 (2026-10-03): a release asked while organization-wide reads stalled went with its client,
     // who gave up at 20 s, and was never made. A write that started is finished, and its result is
     // there to read, whoever is left to hear its answer.
     it.effect("finishes a write whose client went away while Zerops stalled", () =>
@@ -896,7 +896,7 @@ describe("HQ API", () => {
       }),
     );
 
-    // t12, 2026-10-03: our agents and Karel come from one address, and HQ's door answered them
+    // t12, 2026-10-03: multiple clients come from one address, and HQ's door answered them
     // 429 at ten a minute. An office behind one NAT gets in; one person's flood of throwaways is
     // stopped at the person, never at their colleagues.
     it.effect("lets an office behind one address in, and stops one person's flood alone", () =>

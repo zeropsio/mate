@@ -1439,7 +1439,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
     return registry;
   };
 
-  // Live, KRLS 2026-10-05: unknown is never missing. A Mate whose project's services are not read
+  // Live, Example Org 2026-10-05: unknown is never missing. A Mate whose project's services are not read
   // yet — or could not be — has no container this browser knows of, and none it knows is missing:
   // no Finish setup, and no container imported for it.
   it("offers no Finish setup while its project's services are not read", () => {
@@ -1909,7 +1909,7 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
     expect(verbs(made).map((verb) => verb.id)).toContain("move");
   });
 
-  // e2e-krls F29: a birth cut before its Mate was attached leaves its application empty in HQ.
+  // End-to-end regression: a birth cut before its Mate was attached leaves its application empty in HQ.
   it("offers every application HQ offers it, one with no project in it too", async () => {
     mock.moveTo = { acme: KINDS, "app-g": KINDS };
     const registry = AtomRegistry.make();
@@ -1996,7 +1996,7 @@ describe("mateAddedBy — whether the viewer added this Mate", () => {
 });
 
 // Audit K3: deleting a Mate deleted its project and left its key on the account — 59 such orphans
-// on KRLS, and a member holding tokens cannot be taken off the org. The key goes with it now, by the
+// on Example Org, and a member holding tokens cannot be taken off the org. The key goes with it now, by the
 // id the Mate named to HQ; none is matched by name where it named none.
 describe("useMateActions — Delete Mate takes its key with it", () => {
   const deleteVerb = () => verbs(FEN).find((verb) => verb.id === "delete");

@@ -349,7 +349,7 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
           nonce: randomUUID(),
           // A door HQ did not answer as serving — unreached, past its deadline, or not serving — did
           // not take the throwaway: its next try presents it again, while young, and mints nothing
-          // (KRLS, 2026-10-03: eight throwaways in 21 s while the organization's reads stalled).
+          // (Example Org, 2026-10-03: eight throwaways in 21 s while the organization's reads stalled).
           keep: (outcome) =>
             !outcome.ok && outcome.cause instanceof HqError && outcome.cause.kind === "unavailable",
           connect: use,

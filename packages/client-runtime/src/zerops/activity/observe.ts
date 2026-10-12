@@ -1,9 +1,7 @@
 // @effect-diagnostics globalDate:off -- `new Date(ms).toISOString()` below formats an already-computed
 // offset (pipelineStart − 5s), never a wall-clock read.
 /**
- * What the platform says right now about a live operation — the
- * "Observation" layer of `../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md`
- * §3, §5. Computed fresh each time from one attribution read plus the
+ * What the platform says right now about a live operation. Computed fresh each time from one attribution read plus the
  * operation's own facts, so a reopened thread or a second client lands in
  * the right state on its first poll.
  *

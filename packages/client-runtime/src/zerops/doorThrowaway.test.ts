@@ -720,7 +720,7 @@ describe("throwaway hygiene", () => {
     await first;
   });
 
-  // KRLS, 2026-10-03: while the organization's reads stalled, one person's HQ door left eight
+  // Example Org, 2026-10-03: while the organization's reads stalled, one person's HQ door left eight
   // `mate-door:` throwaways in 21 s, one per try, none deleted. A door's next try presents the
   // throwaway its last try was not taken with, while it is young — never one mint per try.
   it("a door's next try presents the throwaway its last try was not taken with", async () => {
@@ -796,7 +796,7 @@ describe("throwaway hygiene", () => {
     expect(tab.mints()).toHaveLength(2);
   });
 
-  // KRLS, 2026-10-03: mints the stall took past their answer stood on the account, and nothing
+  // Example Org, 2026-10-03: mints the stall took past their answer stood on the account, and nothing
   // here knew to sweep them.
   it("a mint whose answer was lost owes the organization a sweep", async () => {
     vi.useFakeTimers();

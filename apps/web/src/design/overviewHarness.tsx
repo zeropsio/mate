@@ -61,7 +61,7 @@ interface Person {
   readonly initials: string;
 }
 const ADA: Person = { userId: "ada", name: "Ada", initials: "AL" };
-const KAREL: Person = { userId: "karel", name: "Karel", initials: "KN" };
+const KAREL: Person = { userId: "karel", name: "Alex", initials: "AN" };
 const JAN: Person = { userId: "jan", name: "Jan", initials: "JS" };
 
 /** A made-up Mate: what its menu row reads, and whose it is. */
@@ -435,7 +435,7 @@ const PROJECTS: ReadonlyArray<Project> = [
         view: {
           state: "needs",
           ask: "Hero picture",
-          reply: words("Waits on Karel · The red bike or the mountain one?"),
+          reply: words("Waits on Alex · The red bike or the mountain one?"),
           dot: undefined,
         },
       }),

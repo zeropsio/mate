@@ -1685,7 +1685,7 @@ describe("structure", () => {
         ),
     );
 
-    // The lead, 2026-10-03: the reconcile every minute forced a fresh read of KRLS's member and
+    // The lead, 2026-10-03: the reconcile every minute forced a fresh read of the organization's member and
     // project lists. It reads the org as recent — the view at most 30 s old another read left —
     // and a fresh read stays a write's.
     it.effect("reconciles over the org as recently read, never forcing a fresh read", () =>
@@ -2802,7 +2802,7 @@ describe("structure", () => {
       ),
     );
 
-    // F22 (2026-10-03): a write waited on a fresh read while KRLS's org-wide reads stalled, and fell
+    // F22 (2026-10-03): a write waited on a fresh read while organization-wide reads stalled, and fell
     // with its client. It is decided over the recent view; a refusal of its facts is confirmed over
     // a fresh read, and stands.
     it.effect(

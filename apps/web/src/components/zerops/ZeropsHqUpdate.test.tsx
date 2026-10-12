@@ -288,7 +288,7 @@ describe("ZeropsHqUpdatePanel", () => {
   });
 
   it("never offers again the update it just ran, while Zerops and HQ catch up", async () => {
-    // Measured on KRLS, 2026-10-04: for 9 s after the build finished, the panel offered it again.
+    // Measured on Example Org, 2026-10-04: for 9 s after the build finished, the panel offered it again.
     const tree = await mount(
       <ZeropsHqUpdatePanel
         answering={OLDER}

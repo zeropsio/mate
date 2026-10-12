@@ -36,7 +36,7 @@ const topology = (
   services: ReadonlyArray<ZeropsTopologyService>,
   overrides?: Partial<ZeropsTopologyView>,
 ): ZeropsTopologyView => ({
-  project: { id: "nTV3oMB2SS634ImDJnQckg", name: "z3-eval", status: "ACTIVE" },
+  project: { id: "TEST000000000000000023", name: "z3-eval", status: "ACTIVE" },
   services,
   warnings: [],
   usageRead: false,
@@ -439,9 +439,9 @@ describe("buildZeropsServiceMap — the row's identity", () => {
   });
 
   it("links every row to its own page in the Zerops dashboard", () => {
-    const row = rowFor(service({ hostname: "kanbandev", serviceId: "EmWgeZ4rTiK0Ajpm8iH83A" }));
+    const row = rowFor(service({ hostname: "kanbandev", serviceId: "TEST000000000000000005" }));
 
-    expect(row?.dashboardUrl).toBe("https://app.zerops.io/service-stack/EmWgeZ4rTiK0Ajpm8iH83A");
+    expect(row?.dashboardUrl).toBe("https://app.zerops.io/service-stack/TEST000000000000000005");
   });
 
   it("carries the live strip once usage is known", () => {

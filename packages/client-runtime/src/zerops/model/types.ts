@@ -3,9 +3,7 @@ import type { CallResultPage, ImageOccurrence } from "@t3tools/contracts";
 /**
  * The session and operation model — one object per thing Mate does to the
  * project, identity a domain fact (the provider's tool-call id) rather than a
- * transcript accident. See
- * `../../../../../../../zcp/plans/mate-session-model-2026-09-05.md` §2.2 and
- * `mate-session-model-2026-09-05-designs/C-client-domain.md` §1.
+ * transcript accident.
  */
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 

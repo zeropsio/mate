@@ -83,7 +83,7 @@ describe("ownerMark — whose Mate it is, as a 16 px mark before its name", () =
 // row's own line where nobody has signed its agent in.
 describe("mateOwnerView — whose seat, and whether anybody signed its agent in", () => {
   const PETRA = { name: "Petra Malá", initials: "PM", avatarUrl: null, isViewer: true };
-  const KAREL = { name: "Karel Novák", initials: "KN", avatarUrl: null, isViewer: false };
+  const KAREL = { name: "Alex Novák", initials: "AN", avatarUrl: null, isViewer: false };
   const NOBODY = { named: false, signedIn: false };
   const OWNED_UNSIGNED = { named: true, signedIn: false };
   const SIGNED = { named: true, signedIn: true };
@@ -1660,8 +1660,8 @@ describe("mateAsker — who a row says asked its Mate", () => {
     { case: "a colleague's", owner: { name: "Jan Novák", isViewer: false }, by: "Jan" },
     {
       case: "a colleague named by one word",
-      owner: { name: "Karel", isViewer: false },
-      by: "Karel",
+      owner: { name: "Alex", isViewer: false },
+      by: "Alex",
     },
     {
       case: "a colleague HQ names without a name",
@@ -1813,8 +1813,8 @@ describe("mateRowSecond — the one line under a Mate's name", () => {
     },
     {
       case: "a colleague's Mate waiting on its person: who it waits on",
-      over: { mine: false, waitsOn: "Karel" },
-      line: { kind: "waits-on", text: "Waits on Karel" },
+      over: { mine: false, waitsOn: "Alex" },
+      line: { kind: "waits-on", text: "Waits on Alex" },
     },
     {
       case: "the viewer's own failure: the fail colour",

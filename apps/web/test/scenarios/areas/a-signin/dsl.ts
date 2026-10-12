@@ -21,7 +21,7 @@ export const signInOrganization = Effect.fn("signin.chooseOrganization")(functio
         [...document.querySelectorAll("button")].some(
           (button) =>
             button.innerText.trim() === "Continue with your Zerops account" ||
-            button.innerText.includes("KRLS"),
+            button.innerText.includes("ACME"),
         ),
       { timeout: 10_000, polling: "raf" },
     );
@@ -30,13 +30,13 @@ export const signInOrganization = Effect.fn("signin.chooseOrganization")(functio
     await page.waitForFunction(
       () =>
         [...document.querySelectorAll("button")].some((button) =>
-          button.innerText.includes("KRLS"),
+          button.innerText.includes("ACME"),
         ),
       { timeout: 10_000, polling: "raf" },
     );
-    if (await page.$('::-p-aria(KRLS Owner[role="button"])'))
-      await page.locator('::-p-aria(KRLS Owner[role="button"])').click();
-    await visibleText(page, "sidebar-account-organization", "KRLS");
+    if (await page.$('::-p-aria(ACME Owner[role="button"])'))
+      await page.locator('::-p-aria(ACME Owner[role="button"])').click();
+    await visibleText(page, "sidebar-account-organization", "ACME");
   });
 });
 

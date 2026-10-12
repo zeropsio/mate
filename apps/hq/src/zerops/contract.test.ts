@@ -2,10 +2,9 @@
 /**
  * One contract, two implementations. The fake runs it always; the HTTP implementation runs it
  * against the real API when `HQ_ZEROPS_CONTRACT=1` and `HQ_ZEROPS_CONTRACT_TOKEN_FILE` names an
- * org Read only credential of KRLS (the rig's Core one, `nastroje/rig/hq-org-token.sh`). Read-only
- * calls on org KRLS and one HQ's project: `HQ_ZEROPS_CONTRACT_PROJECT` names it, the rig's
- * `mate-rig-hq` by default (`nastroje/rig/hq-lib.mjs`), whose tag and env fixtures
- * (`hq-project.sh`) are checked only there.
+ * org Read only credential. `HQ_ZEROPS_CONTRACT_ORG_ID` names the organization and
+ * `HQ_ZEROPS_CONTRACT_PROJECT` names the HQ project. The default `contract-hq` project
+ * carries the contract suite's tag and environment fixtures; those are checked only there.
  */
 import * as NodeFS from "node:fs";
 import * as NodeNet from "node:net";
@@ -23,8 +22,8 @@ import type { ZeropsApi, ZeropsError } from "./api.ts";
 import { makeZeropsApiHttp } from "./http.ts";
 
 const API = "https://api.app-prg1.zerops.io/api/rest/public";
-const KRLS = "BkC8AGjFQMyFrLbzjHoE9g";
-const RIG_PROJECT = "mate-rig-hq";
+const ORG_ID = "BBBBBBBBBBBBBBBBBBBBBB";
+const RIG_PROJECT = "contract-hq";
 const FOREIGN_ORG = "AAAAAAAAAAAAAAAAAAAAAA";
 const UNKNOWN_PROJECT = "AAAAAAAAAAAAAAAAAAAAAA";
 const UNKNOWN_SERVICE = "AAAAAAAAAAAAAAAAAAAAAA";
@@ -211,14 +210,14 @@ const unreachable = (name: string, subject: Effect.Effect<Subject, never, Scope.
     }),
   );
 
-/** The fake, seeded like the rig: org KRLS, its owner, Core's token, the rig project and its env. */
+/** The fake, seeded like the rig: an organization, its owner, Core's token, the rig project and its env. */
 const fakeSubject = (down: boolean) =>
   Effect.sync((): Subject => {
     const world = emptyWorld();
     const own = {
       id: "T1",
       name: "mate-hq-org:P1",
-      orgId: KRLS,
+      orgId: ORG_ID,
       roleCode: "READ_ONLY",
       canCreateProjects: false,
       canViewFinances: false,
@@ -228,7 +227,7 @@ const fakeSubject = (down: boolean) =>
       createdByUser: "U-owner",
     };
     world.tokens.set("fake-token", own);
-    world.members.set(KRLS, [
+    world.members.set(ORG_ID, [
       {
         name: "Org Owner",
         kind: "person",
@@ -250,7 +249,7 @@ const fakeSubject = (down: boolean) =>
     ]);
     world.projects.push({
       id: "P1",
-      orgId: KRLS,
+      orgId: ORG_ID,
       name: RIG_PROJECT,
       status: "ACTIVE",
       tags: ["mate-rig"],
@@ -286,20 +285,20 @@ const fakeSubject = (down: boolean) =>
     return {
       api: fakeZeropsApi(world),
       credential: Redacted.make("fake-token"),
-      orgId: KRLS,
+      orgId: ORG_ID,
       project: { name: RIG_PROJECT, rig: true },
     };
   });
 
 /** The HTTP implementation, its client alive for the test's scope. */
-const httpSubject = (baseUrl: string, token: string, project = RIG_PROJECT) =>
+const httpSubject = (baseUrl: string, token: string, project = RIG_PROJECT, orgId = ORG_ID) =>
   Effect.gen(function* () {
     const client = yield* Layer.build(NodeHttpClient.layerNodeHttp);
     const api = yield* makeZeropsApiHttp(baseUrl).pipe(Effect.provide(client));
     return {
       api,
       credential: Redacted.make(token),
-      orgId: KRLS,
+      orgId,
       project: { name: project, rig: project === RIG_PROJECT },
     };
   });
@@ -324,12 +323,16 @@ unreachable(
 
 const tokenFile = process.env["HQ_ZEROPS_CONTRACT_TOKEN_FILE"];
 if (process.env["HQ_ZEROPS_CONTRACT"] === "1" && tokenFile !== undefined) {
+  const orgId = process.env["HQ_ZEROPS_CONTRACT_ORG_ID"];
+  if (orgId === undefined)
+    throw new Error("HQ_ZEROPS_CONTRACT_ORG_ID is required for real API tests");
   contract(
     "ZeropsApi contract: http against the real API",
     httpSubject(
       API,
       NodeFS.readFileSync(tokenFile, "utf8").trim(),
       process.env["HQ_ZEROPS_CONTRACT_PROJECT"],
+      orgId,
     ),
   );
 } else {

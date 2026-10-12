@@ -59,7 +59,7 @@ describe("A: sign-in, session and organizations", () => {
     // live HQ session: only HQ asking for a new session may mint one.
     it.effect.each([
       { members: "read at once", lateMs: 0 },
-      { members: "read late, as KRLS's", lateMs: 3_000 },
+      { members: "read late, as the organization's", lateMs: 3_000 },
     ])(
       "a reload with a kept HQ session mints no door token, its member list $members",
       ({ lateMs }) =>
@@ -100,7 +100,7 @@ describe("A: sign-in, session and organizations", () => {
         yield* account(s.page).selectOrganization("Second");
         yield* account(s.page).needsAdministrator;
         yield* account(s.page).lacksRows(["Shop", "Ada"]);
-        yield* account(s.page).selectOrganization("KRLS");
+        yield* account(s.page).selectOrganization("ACME");
         yield* s.then.menu.row("Shop").appears();
         yield* s.then.noExternalNetwork;
       }),
@@ -145,7 +145,7 @@ describe("A: sign-in, session and organizations", () => {
       }),
     );
 
-    // Catches a reload or a new tab waiting on the organization's member list (KRLS: tens of
+    // Catches a reload or a new tab waiting on the organization's member list (ACME: tens of
     // seconds) before it reaches the HQ whose session the account kept.
     it.effect("reload and a new tab reach the kept HQ without waiting for the member list", () =>
       Effect.gen(function* () {

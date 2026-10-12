@@ -57,7 +57,7 @@ export const handoverCount = (drivers: ScenarioDrivers) =>
   drivers.zerops.requests.get("GET /authorize-app") ?? 0;
 
 /**
- * The organization's member list as KRLS's stalls it: each read the person's browser makes is
+ * The organization's member list as the organization's stalls it: each read the person's browser makes is
  * answered `ms` late. HQ's own reads (its token, `hq`) are not slowed: only the client's path is.
  */
 export function slowMemberList(drivers: ScenarioDrivers, ms: number) {

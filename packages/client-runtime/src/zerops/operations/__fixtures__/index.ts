@@ -1,8 +1,7 @@
 /**
  * Five real threads exported from a mate server, used to test the operations
  * reducer against real Claude Code + Zerops transcripts rather than
- * hand-written payloads. See
- * `../../../../../../../zcp/plans/mate-chat-output-concept-2026-09-03.md` §1.
+ * hand-written payloads.
  */
 import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 

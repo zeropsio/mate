@@ -9,7 +9,7 @@ import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { EXEC_MAX_TIMEOUT_MS, runExecCommand } from "./ExecService.ts";
 
 const zeropsEnvironment = resolveZeropsEnvironment({
-  projectId: "nTV3oMB2SS634ImDJnQckg",
+  projectId: "TEST000000000000000023",
   apiHost: undefined,
 });
 

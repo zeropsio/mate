@@ -370,8 +370,8 @@ const VIEWER: ZeropsMateOwner = {
   isViewer: true,
 };
 const KAREL: ZeropsMateOwner = {
-  name: "Karel Novák",
-  initials: "KN",
+  name: "Alex Novák",
+  initials: "AN",
   avatarUrl: null,
   isViewer: false,
 };

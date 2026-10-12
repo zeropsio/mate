@@ -7,8 +7,8 @@ import type { ObservationLogEntry } from "@t3tools/shared/hqObservation";
  * failed read is never an empty answer.
  *
  * Two implementations pass one contract suite (`contract.test.ts`): the HTTP one (`http.ts`) and
- * the in-memory fake (`test/harness/zeropsFake.ts`). The deploy's calls are the rig's own flow
- * (`nastroje/rig/hq-deploy.mjs`), measured with an environment's Basic user token on 2026-10-02.
+ * the in-memory fake (`test/harness/zeropsFake.ts`). The deploy's calls were measured with an
+ * environment's Basic user token on 2026-10-02.
  *
  * @module zerops/api
  */
@@ -130,7 +130,7 @@ export class ZeropsApi extends Context.Service<
     readonly ownToken: Read<ZeropsOwnToken>;
     /**
      * `GET /client/{org}/integration-token/{id}`: what one token of the org grants, read by its id —
-     * never its value. An org Read only token may read it (measured on KRLS 2026-10-03).
+     * never its value. An org Read only token may read it (measured on Example Org 2026-10-03).
      */
     readonly tokenProjects: (
       orgId: string,

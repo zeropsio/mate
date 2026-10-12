@@ -19,7 +19,7 @@
  * it to one callback and to nothing else; no caller stores it, returns it, or
  * writes it anywhere. One a door did not take is held in this page's memory
  * for the door's next try, for {@link THROWAWAY_REUSE_MS} from its mint, and
- * deleted then: a door tried again mints nothing (KRLS, 2026-10-03: a stall of
+ * deleted then: a door tried again mints nothing (Example Org, 2026-10-03: a stall of
  * the organization's reads left a throwaway per try).
  *
  * ## The sweep

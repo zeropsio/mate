@@ -657,7 +657,7 @@ describe("makeCloudLinkProof — Zerops project binding", () => {
     Effect.gen(function* () {
       const proof = yield* makeCloudLinkProof(
         dependenciesWith({
-          projectId: "nTV3oMB2SS634ImDJnQckg",
+          projectId: "TEST000000000000000023",
           apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
           publicOrigin: undefined,
           apiToken: undefined,
@@ -673,7 +673,7 @@ describe("makeCloudLinkProof — Zerops project binding", () => {
         readonly endpointOrigin: string;
         readonly scopes: ReadonlyArray<string>;
       };
-      expect(decoded.zeropsProjectId).toBe("nTV3oMB2SS634ImDJnQckg");
+      expect(decoded.zeropsProjectId).toBe("TEST000000000000000023");
       expect(decoded.endpointOrigin).toBe("https://zcp-26a7-8080.prg1.zerops.app");
       expect(decoded.scopes).toEqual(["agent_activity_notifications"]);
     }).pipe(Effect.provide(NodeServices.layer)),

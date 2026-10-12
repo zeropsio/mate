@@ -175,7 +175,7 @@ describe("readBundledCore — Core as this build carries it", () => {
   });
 });
 
-// Step A, open question 1: the member list names the official HQ, and KRLS's took tens of seconds
+// Step A, open question 1: the member list names the official HQ, and the organization's took tens of seconds
 // to read. A page holds the verdict per account and organization in memory, and reads the list
 // again only on first use, or after HQ refuses as not official.
 /** The anchor an org admin minted for the HQ at `address`: what the member list names it by. */
@@ -854,7 +854,7 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     expect(calls.at(-1)?.authorization).toBe(`Bearer ${issuedSession(2)}`);
   });
 
-  // KRLS, 2026-10-03: while the organization's reads stalled, one person's HQ door left eight
+  // Example Org, 2026-10-03: while the organization's reads stalled, one person's HQ door left eight
   // throwaways in 21 s, one per try. A door HQ did not answer is tried again with the same one.
   it("a door HQ is not serving is tried again with the throwaway it already minted", async () => {
     notServing = 1;

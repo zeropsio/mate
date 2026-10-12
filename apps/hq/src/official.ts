@@ -13,7 +13,7 @@ import { completionReceipt } from "@t3tools/shared/completionReceipt";
  * The verdict is read at boot, then every minute while it is `ok` and every 30 s while it is not,
  * and each change of it is logged. The members and the project come from the org's view every
  * reader shares (`roles.ts`'s `recent`), the credential's own token every ten minutes: HQ read
- * KRLS's member list of 181 a dozen times a minute before (the lead, 2026-10-03). A read the
+ * the organization's member list of 181 a dozen times a minute before (the lead, 2026-10-03). A read the
  * platform could not answer is `unknown`: it keeps an `ok` for at most ten minutes after that `ok`
  * was read, and never allows otherwise. Until the platform first answers this Core, the `ok` the Core
  * that led before held counts as its own (`inherit`, recorded in `hq_leader` by `leader.ts`): a

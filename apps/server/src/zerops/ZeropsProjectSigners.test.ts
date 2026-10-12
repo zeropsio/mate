@@ -274,8 +274,8 @@ describe("isMemberListComplete", () => {
   });
 });
 
-const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
-const CLIENT_ID = "BkC8AGjFQMyFrLbzjHoE9g";
+const PROJECT_ID = "TEST000000000000000023";
+const CLIENT_ID = "BBBBBBBBBBBBBBBBBBBBBB";
 const MATE_KEY = "the-mates-own-zerops-key";
 
 const environment = resolveZeropsEnvironment({

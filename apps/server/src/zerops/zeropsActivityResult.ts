@@ -17,7 +17,6 @@
  * only. The parsing stays client-side: this module decides *whether* text
  * travels, never what it means.
  *
- * Contract: `../zcp/plans/z3-s6-ui-plan-2026-08-28.md` D-U1.
  */
 import type { SpiEvent, SpiToolCall, SpiToolCallImage } from "@t3tools/contracts";
 

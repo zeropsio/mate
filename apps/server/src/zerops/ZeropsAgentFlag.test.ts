@@ -155,7 +155,7 @@ describe("readServiceEnvRows", () => {
 // HTTP layer
 // ---------------------------------------------------------------------------
 
-const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
+const PROJECT_ID = "TEST000000000000000023";
 const SERVICE_ID = "Nq49woUlTBeFYdP0jg4DQA";
 const MATE_KEY = "the-mates-own-zerops-key";
 

@@ -17,8 +17,8 @@ import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 
-const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
-const CLIENT_ID = "BkC8AGjFQMyFrLbzjHoE9g";
+const PROJECT_ID = "TEST000000000000000023";
+const CLIENT_ID = "BBBBBBBBBBBBBBBBBBBBBB";
 const USER_ID = "8yLPr0kbTA6MZKfMLBQe0A";
 /** A throwaway minted for this Mate. Nobody's own Zerops token is ever here. */
 const DOOR_TOKEN = "a-mate-door-throwaway";

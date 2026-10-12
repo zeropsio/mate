@@ -77,7 +77,7 @@ const read = (url: string, read: "members" | "project") =>
     );
   });
 
-// Karel (2026-10-03): nothing is tried twice — a read too. One that does not answer is the caller's
+// Nothing is tried twice — a read too. One that does not answer is the caller's
 // answer; HQ reads a handle again on its own cadence, never here.
 describe("makeZeropsApiHttp", () => {
   it.live("answers user/list's spurious 400 userNotFound as unavailable, asking once", () =>
@@ -199,7 +199,7 @@ const deployOver = (url: string) =>
   );
 
 describe("makeZeropsDeployHttp", () => {
-  // The rig's own flow (`nastroje/rig/hq-deploy.mjs`), with the environment's token.
+  // The contract deploy flow, with the environment's token.
   it.live("deploys as the rig does: a named version, its archive, its build with the setup", () =>
     Effect.gen(function* () {
       const api = yield* recording((heard) =>

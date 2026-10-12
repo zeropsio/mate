@@ -21,8 +21,8 @@ import { make as makeProjectSigners } from "./ZeropsProjectSigners.ts";
 import { verifyThrowawayCaller } from "./ZeropsThrowawayIdentity.ts";
 import { memorySignInStore, ZeropsSignIns } from "./zeropsSignIns.ts";
 
-const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
-const CLIENT_ID = "BkC8AGjFQMyFrLbzjHoE9g";
+const PROJECT_ID = "TEST000000000000000023";
+const CLIENT_ID = "BBBBBBBBBBBBBBBBBBBBBB";
 const USER_ID = "8yLPr0kbTA6MZKfMLBQe0A";
 const TOKEN_ID = "tok-throwaway";
 const MATE_KEY = "the-mates-own-zerops-key";
@@ -119,7 +119,7 @@ const signersGate = Effect.gen(function* () {
 });
 
 describe("the org, as this Mate reads it", () => {
-  // KRLS's list carries every integration token as a member (181 rows, 2026-10-03), and a slow
+  // the organization's list carries every integration token as a member (181 rows, 2026-10-03), and a slow
   // Zerops took up to 35 s to answer it: read once for all three.
   it.effect(
     "reads the member list once for a door, the membership watch and a signer check within 30 s",
