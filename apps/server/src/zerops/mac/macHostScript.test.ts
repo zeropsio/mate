@@ -7,6 +7,7 @@ import * as NodePath from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { MAC_VIEW_SCRIPT } from "./macViewScript.ts";
+import { MAC_VIEW_STREAM_SOURCE } from "./macViewStreamScript.ts";
 import {
   type MacHostScriptInput,
   renderMacHostFailure,
@@ -32,7 +33,7 @@ afterEach(() => {
 
 const BASE_TOOLS = ["awk", "rm", "sed", "cat", "id"];
 /** A whole pairing also needs the tools it files and keys with. */
-const PAIRING_TOOLS = ["mkdir", "chmod", "cut", "seq", "ssh-keygen", "dirname"];
+const PAIRING_TOOLS = ["mkdir", "chmod", "cut", "seq", "ssh-keygen", "dirname", "cmp", "mv"];
 const extraTools = (stubs: Record<string, string>) =>
   "npm" in stubs ? [...BASE_TOOLS, ...PAIRING_TOOLS] : BASE_TOOLS;
 
@@ -233,6 +234,90 @@ describe("the scripts the Mate hands a Mac", () => {
     expect(result.stderr).toContain("paired.");
     expect(result.status).toBe(0);
     expect(NodeFS.existsSync(NodePath.join(mac.home, "opened"))).toBe(false);
+  });
+
+  /** A Mac on the VPN with node and npm, already allowed everything; launchd starts what it is given at once. */
+  const pairableMac = (stubs: Record<string, string>) => {
+    const state = `$HOME/.zerops-mate/${PROJECT}/agent-device/state`;
+    return runOnFakeMac(renderMacHostScript(input), {
+      uname: "echo Darwin",
+      route: "echo '  interface: utun5'",
+      ifconfig: "printf '\\tinet 10.12.0.4 --> 10.12.0.4 netmask 0xffffffff\\n'",
+      node: `case "$2" in snapshot) echo 'Snapshot: 12 nodes';; esac; exit 0`,
+      realpath: `echo "$1"`,
+      npm: [
+        `while [ "$1" != --prefix ]; do shift; done; P="$2/node_modules/agent-device"`,
+        `mkdir -p "$P/bin" "$P/dist/src/internal" && : > "$P/bin/agent-device.mjs" && : > "$P/dist/src/internal/daemon.js"`,
+      ].join("\n"),
+      launchctl: `case "$*" in bootstrap*agent-device*) : > "${state}/daemon.json";; esac`,
+      nc: "exit 0",
+      sleep: "exit 0",
+      scutil: "echo 'Test Mac'",
+      sw_vers: "echo 26.1",
+      ssh: "cat > /dev/null",
+      id: `case "$1" in -u) echo 501;; -un) echo tester;; esac`,
+      open: "exit 0",
+      ...stubs,
+    });
+  };
+
+  /** Apple's command line tools: swiftc logs each build and leaves an executable where -o says. */
+  const commandLineTools = (
+    build = 'while [ "$1" != -o ]; do shift; done; : > "$2"; chmod 755 "$2"',
+  ) => ({
+    "xcode-select": `echo "$HOME"`,
+    xcrun: [
+      `case "$1" in`,
+      `  --find) echo /Library/Developer/CommandLineTools/usr/bin/swiftc;;`,
+      `  swiftc) echo "$@" >> "$HOME/swiftc.log"; ${build};;`,
+      `  *) exit 1;;`,
+      `esac`,
+    ].join("\n"),
+  });
+
+  const SLOWER_CAPTURE_NOTICE =
+    "smooth live view needs Apple's command line tools: xcode-select --install; using the slower capture";
+
+  it("pairing on a Mac with Apple's command line tools builds the smooth live view, again only when its source changed", () => {
+    const mac = pairableMac(commandLineTools());
+    const root = NodePath.join(mac.home, ".zerops-mate", PROJECT);
+    const builds = () =>
+      NodeFS.readFileSync(NodePath.join(mac.home, "swiftc.log"), "utf8").trim().split("\n");
+
+    const first = mac.run();
+
+    expect(first.stderr).toContain("paired.");
+    expect(first.stderr).not.toContain(SLOWER_CAPTURE_NOTICE);
+    expect(NodeFS.readFileSync(NodePath.join(root, "src", "view-stream.swift"), "utf8")).toBe(
+      MAC_VIEW_STREAM_SOURCE,
+    );
+    expect(NodeFS.statSync(NodePath.join(root, "bin", "view-stream")).mode & 0o111).not.toBe(0);
+    expect(builds()).toEqual([
+      `swiftc -O -o ${NodePath.join(root, "bin", "view-stream.new")} ${NodePath.join(root, "src", "view-stream.swift")}`,
+    ]);
+
+    expect(mac.run().status).toBe(0);
+    expect(builds()).toHaveLength(1);
+
+    NodeFS.writeFileSync(NodePath.join(root, "src", "view-stream.swift"), "// an older streamer\n");
+    expect(mac.run().status).toBe(0);
+    expect(builds()).toHaveLength(2);
+  });
+
+  it.each([
+    ["without Apple's command line tools", {}],
+    ["whose compiler fails the smooth live view", commandLineTools("exit 1")],
+  ])("pairing on a Mac %s says how to get it and pairs with the slower capture", (_, tools) => {
+    const mac = pairableMac(tools);
+
+    const result = mac.run();
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("paired.");
+    expect(result.stderr).toContain(`Zerops Mate: ${SLOWER_CAPTURE_NOTICE}\n`);
+    const bin = NodePath.join(mac.home, ".zerops-mate", PROJECT, "bin");
+    expect(NodeFS.existsSync(NodePath.join(bin, "view-stream"))).toBe(false);
+    expect(NodeFS.existsSync(NodePath.join(bin, "view.mjs"))).toBe(true);
   });
 
   it("a Mac piping a failed render into sh sees why and stops", () => {
