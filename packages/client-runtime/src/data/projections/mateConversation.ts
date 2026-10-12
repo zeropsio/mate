@@ -2,10 +2,6 @@ import * as Option from "effect/Option";
 import type { Projection } from "../store.ts";
 import type { ScopeKey } from "../model.ts";
 import type { EnvironmentShellState } from "../adapters/mateShellReplay.ts";
-import {
-  EMPTY_ENVIRONMENT_THREAD_STATE,
-  type EnvironmentThreadState,
-} from "../../state/threadState.ts";
 import { sameValue } from "./equal.ts";
 export interface ConversationKey {
   readonly environmentId: string;
@@ -45,27 +41,5 @@ export const mateShell: Projection<ConversationKey, EnvironmentShellState> = {
           ...fact.value.state,
           status: Option.isSome(fact.value.state.snapshot) ? "cached" : "empty",
         };
-  },
-};
-export const mateThread: Projection<ConversationKey, EnvironmentThreadState> = {
-  name: "mateThread",
-  keyOf: conversationId,
-  equals: sameValue,
-  derive: (read, key) => {
-    const fact = read.fact("mateThread", conversationId(key));
-    const stream = read.stream(conversationScope(key));
-    if (
-      fact.kind !== "known" ||
-      stream.fault?.outcome === "access-unverified" ||
-      stream.fault?.outcome === "authoritative-denial"
-    )
-      return {
-        ...EMPTY_ENVIRONMENT_THREAD_STATE,
-        status: ["connecting", "baselining"].includes(stream.phase) ? "synchronizing" : "empty",
-        error: stream.fault === null ? Option.none() : Option.some(stream.fault.message),
-      };
-    return stream.phase === "live" || fact.value.state.status === "deleted"
-      ? fact.value.state
-      : { ...fact.value.state, status: Option.isSome(fact.value.state.data) ? "cached" : "empty" };
   },
 };

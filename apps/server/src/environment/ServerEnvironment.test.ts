@@ -76,7 +76,6 @@ const makeServerConfig = Effect.fn(function* (baseDir: string) {
     zeropsFixtures: undefined,
     zerops: undefined,
     zeropsCrew: false,
-    mateEngine: "v1",
     noBrowser: false,
     startupPresentation: "browser",
     basePath: "",
@@ -178,27 +177,25 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
     }),
   );
 
-  it.effect("advertises the Mate engine only when the engine owns the conversation", () =>
+  it.effect("advertises the Mate engine's protocol on every server", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
       const baseDir = yield* fileSystem.makeTempDirectoryScoped({
         prefix: "t3-server-environment-engine-test-",
       });
       const config = yield* makeServerConfig(baseDir);
-      const describe = (mateEngine: ServerConfig.MateEngineMode) =>
-        Effect.gen(function* () {
-          return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
-        }).pipe(
-          Effect.provide(
-            ServerEnvironment.layer.pipe(
-              Layer.provide(ServerSecretStore.layer),
-              Layer.provide(ServerConfig.layer({ ...config, mateEngine })),
-            ),
+      const descriptor = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(
+        Effect.provide(
+          ServerEnvironment.layer.pipe(
+            Layer.provide(ServerSecretStore.layer),
+            Layer.provide(ServerConfig.layer(config)),
           ),
-        );
+        ),
+      );
 
-      expect((yield* describe("mate")).capabilities.mateEngine).toEqual({ protocol: 1 });
-      expect((yield* describe("v1")).capabilities).not.toHaveProperty("mateEngine");
+      expect(descriptor.capabilities.mateEngine).toEqual({ protocol: 1 });
     }),
   );
 

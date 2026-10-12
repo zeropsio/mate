@@ -12,14 +12,13 @@ import { ConversationId, ThreadId } from "@t3tools/contracts";
 
 import { MateEngine, providerThreadOf } from "./engine/MateEngine.ts";
 import { HandedOverResume } from "./engine/ports.ts";
-import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderSessionDirectory } from "./provider/Services/ProviderSessionDirectory.ts";
 
-/** Resolve a client's conversation to the current provider thread, or the V1 thread. */
+/** Resolve a client's conversation to its current provider thread. */
 export const currentProviderThread = Effect.gen(function* () {
   const engine = yield* MateEngine;
   return Effect.fn("currentProviderThread")(function* (threadId: ThreadId | undefined) {
-    if (threadId === undefined || !engine.live) return threadId;
+    if (threadId === undefined) return threadId;
     const conversation = ConversationId.make(threadId);
     const generation = yield* engine.generation(conversation);
     return generation === undefined ? undefined : providerThreadOf(conversation, generation);
@@ -55,14 +54,8 @@ export const serverHandedOverResume = Layer.effect(
   ),
 );
 
-/** Metadata and protected bytes use the same conversation owner, whichever engine serves it. */
+/** Metadata and protected bytes use the same conversation owner: the engine's. */
 export const resolveAssetContext = Effect.fn("resolveAssetContext")(function* (thread: ThreadId) {
   const engine = yield* Effect.serviceOption(MateEngine);
-  if (Option.isSome(engine) && engine.value.live) return yield* engine.value.assetContext(thread);
-  const query = yield* ProjectionSnapshotQuery;
-  const row = yield* query.getThreadShellById(thread);
-  if (Option.isNone(row)) return undefined;
-  const project = yield* query.getProjectShellById(row.value.projectId);
-  if (Option.isNone(project)) return undefined;
-  return { workspaceRoot: row.value.worktreePath ?? project.value.workspaceRoot };
+  return Option.isNone(engine) ? undefined : yield* engine.value.assetContext(thread);
 });

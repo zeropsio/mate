@@ -15,6 +15,7 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 import { CommandId, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ProviderOptionSelection } from "./model.ts";
 import {
+  AgentAdmissionRefusal,
   ChatFileAttachment,
   ChatImageAttachment,
   ProviderInteractionMode,
@@ -196,6 +197,13 @@ export const RunState = Schema.Literals(RUN_STATES);
 export type RunState = typeof RunState.Type;
 
 /** What ended a run. */
+/** Whose login admission refused a run for, and why; a reason a newer engine adds reads `unknown`. */
+export const RunAdmissionRefusal = Schema.Struct({
+  loginId: Schema.String,
+  reason: forwardCompatibleLiterals(AgentAdmissionRefusal.fields.reason.literals),
+});
+export type RunAdmissionRefusal = typeof RunAdmissionRefusal.Type;
+
 export const RunEnd = forwardCompatibleUnion({
   key: "kind",
   known: ["completed", "stopped", "failed", "crashed", "usage-limit", "cut-by-restart", "unknown"],
@@ -206,6 +214,8 @@ export const RunEnd = forwardCompatibleUnion({
       kind: Schema.Literal("failed"),
       reason: Schema.String,
       next: Schema.NullOr(Schema.String),
+      /** The login admission refused the run for, by id: that login's sign-in explains it. */
+      admission: Schema.optionalKey(RunAdmissionRefusal),
     }),
     Schema.Struct({ kind: Schema.Literal("crashed"), reason: Schema.String }),
     Schema.Struct({
@@ -789,6 +799,8 @@ export const EffectOutcome = forwardCompatibleUnion({
       reason: Schema.String,
       /** The other side refused for good: an answer it can no longer take, a run it won't admit. */
       refused: Schema.optionalKey(Schema.Boolean),
+      /** Admission's refusal of a login, by id. */
+      admission: Schema.optionalKey(RunAdmissionRefusal),
       /**
        * A send's word on its message: `true` it never reached the agent (safe to send again on a
        * new session), `false` it did, `"unknown"` nobody can tell.

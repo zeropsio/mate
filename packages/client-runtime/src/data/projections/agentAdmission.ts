@@ -8,6 +8,7 @@ import type {
   ServerProvider,
   ZeropsAgentAuthSnapshot,
   AgentAdmissionRefusal,
+  RunEnd,
 } from "@t3tools/contracts";
 import { agentIdForDriverKind, agentIdForProviderInstance } from "@t3tools/contracts";
 import type { Known } from "../../zerops/knowledge/index.ts";
@@ -146,6 +147,20 @@ export function agentAdmission(input: {
 }
 
 export type AgentRefusalSource = AgentAdmissionRefusal;
+
+/** The latest engine run's refusal, by its login: it joins the selected login as a command's did. */
+export function engineRunRefusal(
+  runs: ReadonlyArray<{ readonly ordinal: number; readonly end: RunEnd | null }> | undefined,
+): AgentAdmissionRefusal | undefined {
+  const latest = runs?.reduce<(typeof runs)[number] | undefined>(
+    (a, b) => (a === undefined || b.ordinal > a.ordinal ? b : a),
+    undefined,
+  );
+  const admission = latest?.end?.kind === "failed" ? latest.end.admission : undefined;
+  return admission === undefined || admission.reason === "unknown"
+    ? undefined
+    : { loginId: admission.loginId, reason: admission.reason };
+}
 
 /** A typed refusal joins the selected login by ID, regardless of labels or words. */
 export function admissionExplainsRefusal(

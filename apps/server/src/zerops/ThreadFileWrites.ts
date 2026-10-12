@@ -31,7 +31,6 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as SqlClient from "effect/sql/SqlClient";
 
 import { MateEngine, type MateEngineService } from "../engine/MateEngine.ts";
 import { readFileWritePaths, readFileWrites } from "./fileWrites.ts";
@@ -161,59 +160,8 @@ export const make = (store: ThreadFileWritesStore): ThreadFileWrites["Service"] 
   return ThreadFileWrites.of({ fileWrites, writtenFile });
 };
 
-/** The store over the thread's own projection rows. */
-export const makeSqlStore = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
-  // A store that cannot answer answers nothing: nothing is shown.
-  const orNothing = <A>(fallback: A) => Effect.orElseSucceed(() => fallback);
-
-  const parsed = (json: string): unknown => {
-    try {
-      return JSON.parse(json);
-    } catch {
-      return null;
-    }
-  };
-
-  // Only the rows whose stored text holds the path, as JSON writes it: a scan
-  // of the bytes, never a parse of the thread's every payload.
-  const completedWrites: ThreadFileWritesStore["completedWrites"] = (threadId, path) =>
-    sql<{ readonly payload: string; readonly completedAt: string }>`
-      SELECT payload_json AS "payload", created_at AS "completedAt"
-      FROM projection_thread_activities
-      WHERE thread_id = ${threadId}
-        AND kind = 'tool.completed'
-        AND instr(payload_json, ${JSON.stringify(path).slice(1, -1)}) > 0
-      ORDER BY sequence ASC, created_at ASC, activity_id ASC
-    `.pipe(
-      Effect.map((rows) =>
-        rows.map((row) => ({ payload: parsed(row.payload), completedAt: row.completedAt })),
-      ),
-      orNothing<ReadonlyArray<CompletedWrite>>([]),
-    );
-
-  const callPayloads: ThreadFileWritesStore["callPayloads"] = (threadId, callIds) =>
-    callIds.length === 0
-      ? Effect.succeed([])
-      : sql<{ readonly callId: string; readonly payload: string }>`
-          SELECT call_id AS "callId", payload_json AS "payload"
-          FROM projection_thread_activities
-          WHERE thread_id = ${threadId}
-            AND ${sql.in("call_id", callIds)}
-            AND kind IN ('tool.started', 'tool.updated', 'tool.completed')
-          ORDER BY sequence DESC, created_at DESC, activity_id DESC
-        `.pipe(
-          Effect.map((rows) =>
-            rows.map((row) => ({ callId: row.callId, payload: parsed(row.payload) })),
-          ),
-          orNothing<ReadonlyArray<{ readonly callId: string; readonly payload: unknown }>>([]),
-        );
-
-  return { completedWrites, callPayloads } satisfies ThreadFileWritesStore;
-});
-
 /**
- * The store over the Mate engine's record, while it owns the conversation: a conversation's
+ * The store over the Mate engine's record: a conversation's
  * calls' own records, kept beside their items (`MateEngine.callData`). The thread is the
  * conversation, a call its item.
  */
@@ -232,11 +180,10 @@ export const makeEngineStore = (engine: MateEngineService): ThreadFileWritesStor
     ),
 });
 
-/** What the thread's agent wrote: from the engine's record while it owns the conversation. */
+/** What the thread's agent wrote: from the engine's record. */
 export const layer = Layer.effect(
   ThreadFileWrites,
   Effect.gen(function* () {
-    const engine = yield* MateEngine;
-    return make(engine.live ? makeEngineStore(engine) : yield* makeSqlStore);
+    return make(makeEngineStore(yield* MateEngine));
   }),
 );

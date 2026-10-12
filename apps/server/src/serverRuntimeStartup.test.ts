@@ -1,42 +1,22 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import {
-  DEFAULT_MODEL,
-  type ModelSelection,
-  ProjectId,
-  ProviderDriverKind,
-  ProviderInstanceId,
-  type ServerProvider,
-  ThreadId,
-} from "@t3tools/contracts";
+import { ProjectId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as Layer from "effect/Layer";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "./config.ts";
-import { inertMateEngine } from "./engine/MateEngine.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
-import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
-import * as ServerSettings from "./serverSettings.ts";
-import { resolveZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
-
-it("uses the canonical Codex default for the auto-bootstrapped welcome thread", () => {
-  assert.deepStrictEqual(ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(), {
-    instanceId: ProviderInstanceId.make("codex"),
-    model: DEFAULT_MODEL,
-  });
-});
+import { inertMateEngine } from "./engine/testing/inertEngine.ts";
 
 it.effect("enqueueCommand waits for readiness and then drains queued work", () =>
   Effect.scoped(
@@ -100,138 +80,135 @@ it.effect("resolveWelcomeBase derives cwd and project name from server config", 
   }),
 );
 
-it.effect("resolveAutoBootstrapWelcomeTargets returns existing project and thread ids", () => {
-  const bootstrapProjectId = ProjectId.make("project-startup-bootstrap");
-  const bootstrapThreadId = ThreadId.make("thread-startup-bootstrap");
+it.effect(
+  "the auto-bootstrap keeps the project already at the working directory and makes nothing",
+  () => {
+    const bootstrapProjectId = ProjectId.make("project-startup-bootstrap");
 
-  return Effect.gen(function* () {
-    const dispatchCalls = yield* Ref.make<ReadonlyArray<string>>([]);
-    const targets = yield* ServerRuntimeStartup.resolveAutoBootstrapWelcomeTargets.pipe(
-      Effect.provideService(ServerConfig.ServerConfig, {
-        cwd: "/tmp/startup-project",
-        autoBootstrapProjectFromCwd: true,
-      } as never),
-      Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
-        getUserInputActivity: () => Effect.die("unused"),
-        getTurnStartMessage: () => Effect.die("unused"),
-        getCommandReadModel: () => Effect.die("unused"),
-        getSnapshot: () => Effect.die("unused"),
-        getShellSnapshot: () => Effect.die("unused"),
-        getArchivedShellSnapshot: () => Effect.die("unused"),
-        getSnapshotSequence: () => Effect.die("unused"),
-        getCounts: () => Effect.die("unused"),
-        getEventReplayStats: () => Effect.die("unused"),
-        getActiveProjectByWorkspaceRoot: () =>
-          Effect.succeed(
-            Option.some({
-              id: bootstrapProjectId,
-              title: "Startup Project",
-              workspaceRoot: "/tmp/startup-project",
-              defaultModelSelection: ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(),
-              scripts: [],
-              createdAt: "2026-01-01T00:00:00.000Z",
-              updatedAt: "2026-01-01T00:00:00.000Z",
-              deletedAt: null,
-            }),
-          ),
-        getProjectWorkspaceRootById: () => Effect.die("unused"),
-        getProjectShellById: () => Effect.die("unused"),
-        getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.some(bootstrapThreadId)),
-        getThreadCheckpointContext: () => Effect.succeed(Option.none()),
-        getFullThreadDiffContext: () => Effect.succeed(Option.none()),
-        getThreadRuntimeContext: () => Effect.die("unused"),
-        getThreadShellById: () => Effect.die("unused"),
-        getThreadDetailById: () => Effect.die("unused"),
-        getThreadDetailSnapshot: () => Effect.die("unused"),
-        searchThreads: () => Effect.succeed({ matches: [] }),
-      }),
-      Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
-        readEvents: () => Stream.empty,
-        readThreadEvents: () => Stream.empty,
-        getThreadReplayStats: () => Effect.die("unused thread replay stats"),
-        dispatch: (command) =>
-          Ref.update(dispatchCalls, (calls) => [...calls, command.type]).pipe(
-            Effect.as({ sequence: 1 }),
-          ),
-        streamDomainEvents: Stream.empty,
-        subscribeDomainEvents: Effect.succeed(Stream.empty),
-        latestSequence: Effect.succeed(0),
-      } satisfies OrchestrationEngine.OrchestrationEngineService["Service"]),
-      Effect.provide(NodeServices.layer),
-    );
+    return Effect.gen(function* () {
+      const dispatchCalls = yield* Ref.make<ReadonlyArray<string>>([]);
+      const targets = yield* ServerRuntimeStartup.resolveAutoBootstrapProject.pipe(
+        Effect.provideService(ServerConfig.ServerConfig, {
+          cwd: "/tmp/startup-project",
+          autoBootstrapProjectFromCwd: true,
+        } as never),
+        Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
+          getUserInputActivity: () => Effect.die("unused"),
+          getTurnStartMessage: () => Effect.die("unused"),
+          getCommandReadModel: () => Effect.die("unused"),
+          getSnapshot: () => Effect.die("unused"),
+          getShellSnapshot: () => Effect.die("unused"),
+          getArchivedShellSnapshot: () => Effect.die("unused"),
+          getSnapshotSequence: () => Effect.die("unused"),
+          getCounts: () => Effect.die("unused"),
+          getEventReplayStats: () => Effect.die("unused"),
+          getActiveProjectByWorkspaceRoot: () =>
+            Effect.succeed(
+              Option.some({
+                id: bootstrapProjectId,
+                title: "Startup Project",
+                workspaceRoot: "/tmp/startup-project",
+                defaultModelSelection: null,
+                scripts: [],
+                createdAt: "2026-01-01T00:00:00.000Z",
+                updatedAt: "2026-01-01T00:00:00.000Z",
+                deletedAt: null,
+              }),
+            ),
+          getProjectWorkspaceRootById: () => Effect.die("unused"),
+          getProjectShellById: () => Effect.die("unused"),
+          getFirstActiveThreadIdByProjectId: () => Effect.die("unused"),
+          getThreadCheckpointContext: () => Effect.succeed(Option.none()),
+          getFullThreadDiffContext: () => Effect.succeed(Option.none()),
+          getThreadRuntimeContext: () => Effect.die("unused"),
+          getThreadShellById: () => Effect.die("unused"),
+          getThreadDetailById: () => Effect.die("unused"),
+          getThreadDetailSnapshot: () => Effect.die("unused"),
+          searchThreads: () => Effect.succeed({ matches: [] }),
+        }),
+        Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
+          readEvents: () => Stream.empty,
+          readThreadEvents: () => Stream.empty,
+          getThreadReplayStats: () => Effect.die("unused thread replay stats"),
+          dispatch: (command) =>
+            Ref.update(dispatchCalls, (calls) => [...calls, command.type]).pipe(
+              Effect.as({ sequence: 1 }),
+            ),
+          streamDomainEvents: Stream.empty,
+          subscribeDomainEvents: Effect.succeed(Stream.empty),
+          latestSequence: Effect.succeed(0),
+        } satisfies OrchestrationEngine.OrchestrationEngineService["Service"]),
+        Effect.provide(NodeServices.layer),
+      );
 
-    assert.deepStrictEqual(targets, {
-      bootstrapProjectId,
-      bootstrapThreadId,
+      assert.deepStrictEqual(targets, { bootstrapProjectId });
+      assert.deepStrictEqual(yield* Ref.get(dispatchCalls), []);
     });
-    assert.deepStrictEqual(yield* Ref.get(dispatchCalls), []);
-  });
-});
+  },
+);
 
-it.effect("resolveAutoBootstrapWelcomeTargets creates a project and thread when missing", () =>
-  Effect.gen(function* () {
-    const dispatchCalls = yield* Ref.make<
-      ReadonlyArray<{
-        readonly type: string;
-        readonly defaultModelSelection?: unknown;
-        readonly modelSelection?: unknown;
-      }>
-    >([]);
-    const targets = yield* ServerRuntimeStartup.resolveAutoBootstrapWelcomeTargets.pipe(
-      Effect.provideService(ServerConfig.ServerConfig, {
-        cwd: "/tmp/startup-project",
-        autoBootstrapProjectFromCwd: true,
-      } as never),
-      Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
-        getUserInputActivity: () => Effect.die("unused"),
-        getCommandReadModel: () => Effect.die("unused"),
-        getSnapshot: () => Effect.die("unused"),
-        getShellSnapshot: () => Effect.die("unused"),
-        getArchivedShellSnapshot: () => Effect.die("unused"),
-        getSnapshotSequence: () => Effect.die("unused"),
-        getCounts: () => Effect.die("unused"),
-        getEventReplayStats: () => Effect.die("unused"),
-        getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
-        getProjectWorkspaceRootById: () => Effect.die("unused"),
-        getProjectShellById: () => Effect.die("unused"),
-        getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
-        getThreadCheckpointContext: () => Effect.succeed(Option.none()),
-        getFullThreadDiffContext: () => Effect.succeed(Option.none()),
-        getThreadRuntimeContext: () => Effect.die("unused"),
-        getTurnStartMessage: () => Effect.die("unused"),
-        getThreadShellById: () => Effect.die("unused"),
-        getThreadDetailById: () => Effect.die("unused"),
-        getThreadDetailSnapshot: () => Effect.die("unused"),
-        searchThreads: () => Effect.succeed({ matches: [] }),
-      }),
-      Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
-        readEvents: () => Stream.empty,
-        readThreadEvents: () => Stream.empty,
-        getThreadReplayStats: () => Effect.die("unused thread replay stats"),
-        dispatch: (command) =>
-          Ref.update(dispatchCalls, (calls) => [...calls, command]).pipe(
-            Effect.as({ sequence: 1 }),
-          ),
-        streamDomainEvents: Stream.empty,
-        subscribeDomainEvents: Effect.succeed(Stream.empty),
-        latestSequence: Effect.succeed(0),
-      } satisfies OrchestrationEngine.OrchestrationEngineService["Service"]),
-      Effect.provide(NodeServices.layer),
-    );
+it.effect(
+  "the auto-bootstrap makes the project a working directory lacks, and no thread: conversations are the engine's",
+  () =>
+    Effect.gen(function* () {
+      const dispatchCalls = yield* Ref.make<
+        ReadonlyArray<{
+          readonly type: string;
+          readonly defaultModelSelection?: unknown;
+          readonly modelSelection?: unknown;
+        }>
+      >([]);
+      const targets = yield* ServerRuntimeStartup.resolveAutoBootstrapProject.pipe(
+        Effect.provideService(ServerConfig.ServerConfig, {
+          cwd: "/tmp/startup-project",
+          autoBootstrapProjectFromCwd: true,
+        } as never),
+        Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
+          getUserInputActivity: () => Effect.die("unused"),
+          getCommandReadModel: () => Effect.die("unused"),
+          getSnapshot: () => Effect.die("unused"),
+          getShellSnapshot: () => Effect.die("unused"),
+          getArchivedShellSnapshot: () => Effect.die("unused"),
+          getSnapshotSequence: () => Effect.die("unused"),
+          getCounts: () => Effect.die("unused"),
+          getEventReplayStats: () => Effect.die("unused"),
+          getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
+          getProjectWorkspaceRootById: () => Effect.die("unused"),
+          getProjectShellById: () => Effect.die("unused"),
+          getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
+          getThreadCheckpointContext: () => Effect.succeed(Option.none()),
+          getFullThreadDiffContext: () => Effect.succeed(Option.none()),
+          getThreadRuntimeContext: () => Effect.die("unused"),
+          getTurnStartMessage: () => Effect.die("unused"),
+          getThreadShellById: () => Effect.die("unused"),
+          getThreadDetailById: () => Effect.die("unused"),
+          getThreadDetailSnapshot: () => Effect.die("unused"),
+          searchThreads: () => Effect.succeed({ matches: [] }),
+        }),
+        Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
+          readEvents: () => Stream.empty,
+          readThreadEvents: () => Stream.empty,
+          getThreadReplayStats: () => Effect.die("unused thread replay stats"),
+          dispatch: (command) =>
+            Ref.update(dispatchCalls, (calls) => [...calls, command]).pipe(
+              Effect.as({ sequence: 1 }),
+            ),
+          streamDomainEvents: Stream.empty,
+          subscribeDomainEvents: Effect.succeed(Stream.empty),
+          latestSequence: Effect.succeed(0),
+        } satisfies OrchestrationEngine.OrchestrationEngineService["Service"]),
+        Effect.provide(NodeServices.layer),
+      );
 
-    assert.equal(typeof targets.bootstrapProjectId, "string");
-    assert.equal(typeof targets.bootstrapThreadId, "string");
-    const commands = yield* Ref.get(dispatchCalls);
-    assert.deepStrictEqual(
-      commands.map((command) => command.type),
-      ["project.create", "thread.create"],
-    );
-    assert.equal("defaultModelSelection" in commands[0]!, false);
-    assert.deepStrictEqual(
-      commands[1]?.modelSelection,
-      ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(),
-    );
-  }),
+      assert.equal(typeof targets.bootstrapProjectId, "string");
+      assert.notProperty(targets, "bootstrapThreadId");
+      const commands = yield* Ref.get(dispatchCalls);
+      assert.deepStrictEqual(
+        commands.map((command) => command.type),
+        ["project.create"],
+      );
+      assert.equal("defaultModelSelection" in commands[0]!, false);
+    }),
 );
 
 it.effect("resolveAutoBootstrapWelcomeTargets preserves typed UUID generation failures", () =>
@@ -245,7 +222,7 @@ it.effect("resolveAutoBootstrapWelcomeTargets preserves typed UUID generation fa
     });
     const dispatchCalls = yield* Ref.make<ReadonlyArray<string>>([]);
 
-    const error = yield* ServerRuntimeStartup.resolveAutoBootstrapWelcomeTargets.pipe(
+    const error = yield* ServerRuntimeStartup.resolveAutoBootstrapProject.pipe(
       Effect.provideService(ServerConfig.ServerConfig, {
         cwd: "/tmp/startup-project",
         autoBootstrapProjectFromCwd: true,
@@ -296,400 +273,18 @@ it.effect("resolveAutoBootstrapWelcomeTargets preserves typed UUID generation fa
   }).pipe(Effect.provide(NodeServices.layer)),
 );
 
-// --- Zerops container: the bootstrap thread opens on an authenticated provider ---
-
-const zeropsEnvironment = resolveZeropsEnvironment({
-  projectId: "nTV3oMB2SS634ImDJnQckg",
-  apiHost: undefined,
-});
-
-const bootstrapSnapshotQuery = (
-  existingProject: Option.Option<{ readonly defaultModelSelection: unknown }>,
-) =>
-  ({
-    getCommandReadModel: () => Effect.die("unused"),
-    getSnapshot: () => Effect.die("unused"),
-    getShellSnapshot: () => Effect.die("unused"),
-    getArchivedShellSnapshot: () => Effect.die("unused"),
-    getSnapshotSequence: () => Effect.die("unused"),
-    getCounts: () => Effect.die("unused"),
-    getActiveProjectByWorkspaceRoot: () =>
-      Effect.succeed(
-        Option.map(existingProject, (project) => ({
-          id: ProjectId.make("project-startup-bootstrap"),
-          title: "Startup Project",
-          workspaceRoot: "/tmp/startup-project",
-          scripts: [],
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-          deletedAt: null,
-          ...project,
-        })),
-      ),
-    getProjectWorkspaceRootById: () => Effect.die("unused"),
-    getProjectShellById: () => Effect.die("unused"),
-    getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
-    getThreadCheckpointContext: () => Effect.succeed(Option.none()),
-    getFullThreadDiffContext: () => Effect.succeed(Option.none()),
-    getThreadShellById: () => Effect.die("unused"),
-    getThreadDetailById: () => Effect.die("unused"),
-    getThreadDetailSnapshot: () => Effect.die("unused"),
-    searchThreads: () => Effect.succeed({ matches: [] }),
-  }) as never;
-
-const providerSnapshot = (
-  overrides: Partial<ServerProvider> & Pick<ServerProvider, "driver">,
-): ServerProvider =>
-  ({
-    instanceId: ProviderInstanceId.make(overrides.driver),
-    displayName: overrides.driver,
-    enabled: true,
-    installed: true,
-    version: "1.0.0",
-    status: "ready",
-    auth: { status: "authenticated" },
-    checkedAt: "2026-01-01T00:00:00.000Z",
-    models: [{ slug: "model-a", name: "Model A", isCustom: false, capabilities: null }],
-    slashCommands: [],
-    skills: [],
-    ...overrides,
-  }) satisfies ServerProvider;
-
-const READY_CLAUDE = providerSnapshot({
-  driver: ProviderDriverKind.make("claudeAgent"),
-  models: [{ slug: "claude-sonnet-5", name: "Sonnet 5", isCustom: false, capabilities: null }],
-});
-
-const UNAUTHENTICATED_CODEX = providerSnapshot({
-  driver: ProviderDriverKind.make("codex"),
-  status: "error",
-  auth: { status: "unauthenticated" },
-  models: [{ slug: DEFAULT_MODEL, name: "GPT", isCustom: false, capabilities: null }],
-});
-
-const runBootstrap = (input: {
-  readonly zerops: boolean;
-  readonly providers?: ReadonlyArray<ServerProvider>;
-  /** Overrides `providers` when the registry must answer differently per call. */
-  readonly getProviders?: Effect.Effect<ReadonlyArray<ServerProvider>>;
-  readonly existingProject?: Option.Option<{ readonly defaultModelSelection: unknown }>;
-  readonly defaultModelSelection?: ModelSelection | null;
-}) =>
-  Effect.gen(function* () {
-    const dispatched = yield* Ref.make<ReadonlyArray<Record<string, unknown>>>([]);
-    yield* ServerRuntimeStartup.resolveAutoBootstrapWelcomeTargets.pipe(
-      Effect.provideService(ServerConfig.ServerConfig, {
-        cwd: "/tmp/startup-project",
-        autoBootstrapProjectFromCwd: true,
-        ...(input.zerops ? { zerops: zeropsEnvironment } : {}),
-      } as never),
-      Effect.provideService(
-        ProjectionSnapshotQuery.ProjectionSnapshotQuery,
-        bootstrapSnapshotQuery(input.existingProject ?? Option.none()),
-      ),
-      Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
-        readEvents: () => Stream.empty,
-        readThreadEvents: () => Stream.empty,
-        getThreadReplayStats: () => Effect.die("unused thread replay stats"),
-        dispatch: (command) =>
-          Ref.update(dispatched, (calls) => [
-            ...calls,
-            command as unknown as Record<string, unknown>,
-          ]).pipe(Effect.as({ sequence: 1 })),
-        streamDomainEvents: Stream.empty,
-        subscribeDomainEvents: Effect.succeed(Stream.empty),
-        latestSequence: Effect.succeed(0),
-      } satisfies OrchestrationEngine.OrchestrationEngineService["Service"]),
-      Effect.provideService(ProviderRegistry.ProviderRegistry, {
-        getProviders: input.getProviders ?? Effect.succeed(input.providers ?? []),
-      } as never),
-      Effect.provide(
-        ServerSettings.layerTest(
-          input.defaultModelSelection === undefined
-            ? {}
-            : { defaultModelSelection: input.defaultModelSelection },
-        ).pipe(Layer.provideMerge(NodeServices.layer)),
-      ),
-    );
-    return yield* Ref.get(dispatched);
-  });
-
-it.effect.each([true, false])(
-  "auto-bootstrap prefers the machine default model from settings (zerops: %s)",
-  (zerops) =>
-    Effect.gen(function* () {
-      const machineDefault = {
-        instanceId: ProviderInstanceId.make("codex"),
-        model: "gpt-5.4",
-      };
-      const dispatched = yield* runBootstrap({
-        zerops,
-        providers: [UNAUTHENTICATED_CODEX, READY_CLAUDE],
-        defaultModelSelection: machineDefault,
-      });
-
-      // Projects no longer carry a create-time model default; the first thread does.
-      assert.isUndefined(dispatched[0]?.defaultModelSelection);
-      assert.deepStrictEqual(dispatched[1]?.modelSelection, machineDefault);
-    }),
-);
-
-it.effect(
-  "auto-bootstrap on Zerops opens the first thread on the authenticated provider, not Codex",
-  () =>
-    Effect.gen(function* () {
-      const dispatched = yield* runBootstrap({
-        zerops: true,
-        providers: [UNAUTHENTICATED_CODEX, READY_CLAUDE],
-      });
-
-      const expected = {
-        instanceId: ProviderInstanceId.make("claudeAgent"),
-        model: "claude-sonnet-5",
-      };
-      assert.deepStrictEqual(
-        dispatched.map((command) => command.type),
-        ["project.create", "thread.create"],
-      );
-      assert.isUndefined(dispatched[0]?.defaultModelSelection);
-      assert.deepStrictEqual(dispatched[1]?.modelSelection, expected);
-    }),
-);
-
-it.effect("auto-bootstrap outside a Zerops container keeps the upstream Codex default", () =>
-  Effect.gen(function* () {
-    const dispatched = yield* runBootstrap({
-      zerops: false,
-      providers: [UNAUTHENTICATED_CODEX, READY_CLAUDE],
-    });
-
-    const expected = ServerRuntimeStartup.getAutoBootstrapThreadModelSelection();
-    assert.isUndefined(dispatched[0]?.defaultModelSelection);
-    assert.deepStrictEqual(dispatched[1]?.modelSelection, expected);
-  }),
-);
-
-it.effect("auto-bootstrap on Zerops keeps the upstream default when no provider is ready", () =>
-  Effect.gen(function* () {
-    const dispatched = yield* runBootstrap({
-      zerops: true,
-      providers: [UNAUTHENTICATED_CODEX],
-    });
-
-    const expected = ServerRuntimeStartup.getAutoBootstrapThreadModelSelection();
-    assert.isUndefined(dispatched[0]?.defaultModelSelection);
-    assert.deepStrictEqual(dispatched[1]?.modelSelection, expected);
-  }),
-);
-
-it.effect(
-  "an existing project without a stored default gets the resolved Zerops selection for its first thread",
-  () =>
-    Effect.gen(function* () {
-      const dispatched = yield* runBootstrap({
-        zerops: true,
-        providers: [UNAUTHENTICATED_CODEX, READY_CLAUDE],
-        existingProject: Option.some({ defaultModelSelection: null }),
-      });
-
-      assert.deepStrictEqual(
-        dispatched.map((command) => command.type),
-        ["thread.create"],
-      );
-      assert.deepStrictEqual(dispatched[0]?.modelSelection, {
-        instanceId: ProviderInstanceId.make("claudeAgent"),
-        model: "claude-sonnet-5",
-      });
-    }),
-);
-
-it.effect("an existing project's stored default still wins on Zerops", () =>
-  Effect.gen(function* () {
-    const stored = { instanceId: ProviderInstanceId.make("codex"), model: DEFAULT_MODEL };
-    const dispatched = yield* runBootstrap({
-      zerops: true,
-      providers: [UNAUTHENTICATED_CODEX, READY_CLAUDE],
-      existingProject: Option.some({ defaultModelSelection: stored }),
-    });
-
-    assert.deepStrictEqual(dispatched[0]?.modelSelection, stored);
-  }),
-);
-
-// --- Zerops container: the bootstrap waits for the first provider probe ---
-
-/** A provider whose very first probe has not landed yet. */
-const probing = (snapshot: ServerProvider): ServerProvider => ({
-  ...snapshot,
-  installed: false,
-  status: "warning",
-  auth: { status: "unknown" },
-});
-
-/**
- * A registry that answers with still-probing snapshots for the first
- * `pendingCalls` reads and settled ones after that — the shape of a real boot,
- * where the managed snapshot is published synchronously and the CLI probe
- * lands seconds later.
- */
-const flippingRegistry = (input: {
-  readonly pendingCalls: number;
-  readonly pending: ReadonlyArray<ServerProvider>;
-  readonly settled: ReadonlyArray<ServerProvider>;
-}) =>
-  Effect.gen(function* () {
-    const calls = yield* Ref.make(0);
-    return {
-      calls,
-      getProviders: Ref.updateAndGet(calls, (count) => count + 1).pipe(
-        Effect.map((count) => (count > input.pendingCalls ? input.settled : input.pending)),
-      ),
-    };
-  });
-
-it.effect("auto-bootstrap on Zerops waits for the first provider probe before choosing", () =>
-  Effect.gen(function* () {
-    const registry = yield* flippingRegistry({
-      pendingCalls: 1,
-      pending: [probing(UNAUTHENTICATED_CODEX), probing(READY_CLAUDE)],
-      settled: [UNAUTHENTICATED_CODEX, READY_CLAUDE],
-    });
-
-    const fiber = yield* runBootstrap({
-      zerops: true,
-      getProviders: registry.getProviders,
-    }).pipe(Effect.forkChild);
-
-    yield* TestClock.adjust(ServerRuntimeStartup.ZEROPS_BOOTSTRAP_PROVIDER_POLL_INTERVAL);
-    const dispatched = yield* Fiber.join(fiber);
-
-    const expected = {
-      instanceId: ProviderInstanceId.make("claudeAgent"),
-      model: "claude-sonnet-5",
-    };
-    assert.isUndefined(dispatched[0]?.defaultModelSelection);
-    assert.deepStrictEqual(dispatched[1]?.modelSelection, expected);
-    assert.isAbove(yield* Ref.get(registry.calls), 1);
-  }).pipe(Effect.provide(TestClock.layer())),
-);
-
-it.effect("auto-bootstrap does not wait once every provider has settled", () =>
-  Effect.gen(function* () {
-    const registry = yield* flippingRegistry({
-      pendingCalls: 0,
-      pending: [],
-      settled: [UNAUTHENTICATED_CODEX],
-    });
-
-    // No clock is advanced: a settled registry must decide on the first read,
-    // so a container where nobody is signed in still gets its thread at once.
-    const dispatched = yield* runBootstrap({
-      zerops: true,
-      getProviders: registry.getProviders,
-    });
-
-    assert.deepStrictEqual(
-      dispatched[1]?.modelSelection,
-      ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(),
-    );
-    assert.equal(yield* Ref.get(registry.calls), 1);
-  }).pipe(Effect.provide(TestClock.layer())),
-);
-
-it.effect("auto-bootstrap gives up on a provider whose probe never lands", () =>
-  Effect.gen(function* () {
-    const registry = yield* flippingRegistry({
-      pendingCalls: Number.MAX_SAFE_INTEGER,
-      pending: [probing(READY_CLAUDE)],
-      settled: [],
-    });
-
-    const fiber = yield* runBootstrap({
-      zerops: true,
-      getProviders: registry.getProviders,
-    }).pipe(Effect.forkChild);
-
-    yield* TestClock.adjust(ServerRuntimeStartup.ZEROPS_BOOTSTRAP_PROVIDER_WAIT);
-    const dispatched = yield* Fiber.join(fiber);
-
-    assert.deepStrictEqual(
-      dispatched[1]?.modelSelection,
-      ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(),
-    );
-    // It gave up on the deadline, not on the first read.
-    assert.isAbove(yield* Ref.get(registry.calls), 1);
-  }).pipe(Effect.provide(TestClock.layer())),
-);
-
-it.effect("auto-bootstrap outside a Zerops container never reads the provider registry", () =>
-  Effect.gen(function* () {
-    const registry = yield* flippingRegistry({
-      pendingCalls: 0,
-      pending: [],
-      settled: [UNAUTHENTICATED_CODEX, READY_CLAUDE],
-    });
-
-    const dispatched = yield* runBootstrap({
-      zerops: false,
-      getProviders: registry.getProviders,
-    });
-
-    assert.deepStrictEqual(
-      dispatched[1]?.modelSelection,
-      ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(),
-    );
-    assert.equal(yield* Ref.get(registry.calls), 0);
-  }).pipe(Effect.provide(TestClock.layer())),
-);
-
-const startedRoots = (live: boolean) =>
+it.effect("at boot, the Mate engine starts in the reactor scope", () =>
   Effect.gen(function* () {
     const started: Array<string> = [];
-    const root = (name: string) => ({
-      start: () => Effect.sync(() => void started.push(name)),
-    });
     const scope = yield* Scope.make();
     yield* ServerRuntimeStartup.startConversationRoots({
-      engine: { ...inertMateEngine, live, start: root("engine").start },
+      engine: { ...inertMateEngine, start: () => Effect.sync(() => void started.push("engine")) },
       reactorScope: scope,
-      v1: {
-        reactor: root("V1 reactors"),
-        reaper: root("session reaper"),
-        reconcile: Effect.sync(() => void started.push("V1 boot reconcile")),
-      },
     });
     yield* Scope.close(scope, Exit.void);
-    return started;
-  });
-
-it.effect.each([
-  [
-    "V1 owns the conversation: its reactors, the reaper and its reconcile start as today",
-    false,
-    ["V1 reactors", "session reaper", "V1 boot reconcile"],
-  ],
-  ["the Mate engine owns it: only the engine starts, and V1 stays parked", true, ["engine"]],
-] as const)("at boot, %s", ([, live, expected]) =>
-  Effect.gen(function* () {
-    assert.deepStrictEqual(yield* startedRoots(live), [...expected]);
+    assert.deepStrictEqual(started, ["engine"]);
   }),
 );
-
-it.each([
-  ["makes nothing when the flag is off", false, true, "none"],
-  [
-    "makes the project and its first thread while V1 owns the conversation",
-    true,
-    false,
-    "project-and-thread",
-  ],
-  ["makes the project alone when the Mate engine owns the conversation", true, true, "project"],
-] as const)("the auto-bootstrap %s", (_, autoBootstrapProjectFromCwd, live, expected) => {
-  assert.strictEqual(
-    ServerRuntimeStartup.autoBootstrapOf({ autoBootstrapProjectFromCwd }, { live }),
-    expected,
-  );
-});
 
 // A Mate's engine conversations show under its project (`overlayEngineShell` reads the shell's
 // first project): a Mate born on the engine needs that project, and V1's first thread never.

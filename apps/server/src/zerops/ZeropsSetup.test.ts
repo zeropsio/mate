@@ -6,12 +6,10 @@ import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
-  OrchestrationDispatchCommandError,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
-  type OrchestrationCommand,
   type OrchestrationProject,
   type OrchestrationThreadShell,
   type ServerProvider,
@@ -31,15 +29,13 @@ import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
-import { OrchestrationCommandInvariantError } from "../orchestration/Errors.ts";
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { runMigrations } from "../persistence/Migrations.ts";
 import * as NodeSqliteClient from "../persistence/NodeSqliteClient.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import {
-  inertMateEngine,
   MateEngine,
+  WakeRefused,
   type ConversationView,
   type WakeRequest,
 } from "../engine/MateEngine.ts";
@@ -55,7 +51,8 @@ import {
   type ZeropsSetupTimings,
 } from "./ZeropsSetup.ts";
 import { procStartTime } from "./zeropsSetupSteps.ts";
-import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
+import { type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
+import { inertMateEngine } from "../engine/testing/inertEngine.ts";
 
 const ZEROPS = resolveZeropsEnvironment({
   projectId: "project-mate",
@@ -155,10 +152,9 @@ interface World {
   /** The PIDs whose process is gone. */
   readonly goneProcesses: Ref.Ref<ReadonlyArray<number>>;
   readonly threads: Ref.Ref<ReadonlyArray<OrchestrationThreadShell>>;
-  readonly dispatched: Ref.Ref<ReadonlyArray<OrchestrationCommand>>;
+  /** Every wake asked, as whom, armed or not. */
   readonly admitted: Ref.Ref<ReadonlyArray<TurnPrincipal>>;
-  readonly refusal: Ref.Ref<string | undefined>;
-  /** A dispatch never comes back: the server dies before its stand-up goes out. */
+  /** A wake never comes back: the server dies before its stand-up goes out. */
   readonly dispatchHangs: Ref.Ref<boolean>;
   readonly dispatchHeld: Deferred.Deferred<void>;
   readonly dispatchFailure: Ref.Ref<boolean>;
@@ -196,9 +192,7 @@ const makeWorld = Effect.gen(function* () {
     statusFile: yield* Ref.make<unknown>(undefined),
     goneProcesses: yield* Ref.make<ReadonlyArray<number>>([]),
     threads: yield* Ref.make<ReadonlyArray<OrchestrationThreadShell>>([mainThread()]),
-    dispatched: yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]),
     admitted: yield* Ref.make<ReadonlyArray<TurnPrincipal>>([]),
-    refusal: yield* Ref.make<string | undefined>(undefined),
     dispatchHangs: yield* Ref.make(false),
     dispatchHeld: yield* Deferred.make<void>(),
     dispatchFailure: yield* Ref.make(false),
@@ -235,26 +229,6 @@ const fakes = (world: World) =>
         Effect.map(Ref.get(world.goneProcesses), (gone) => gone.includes(zcp.pid)),
       providers: Ref.get(world.providers),
     }),
-    Layer.mock(OrchestrationEngineService)({
-      dispatch: (command) =>
-        Effect.gen(function* () {
-          if (yield* Ref.get(world.dispatchHangs)) {
-            yield* Deferred.succeed(world.dispatchHeld, undefined);
-            return yield* Effect.never;
-          }
-          if (yield* Ref.get(world.dispatchFailure))
-            return yield* new OrchestrationCommandInvariantError({
-              commandType: command.type,
-              detail: "dispatch refused",
-            });
-          // The engine takes a command id once, as its receipts do.
-          const all = yield* Ref.get(world.dispatched);
-          if (!all.some((held) => held.commandId === command.commandId)) {
-            yield* Ref.set(world.dispatched, [...all, command]);
-          }
-          return { sequence: 1 };
-        }),
-    }),
     Layer.mock(ProjectionSnapshotQuery)({
       getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.some(PROJECT)),
       getShellSnapshot: () =>
@@ -267,17 +241,6 @@ const fakes = (world: World) =>
       getThreadShellById: (threadId) =>
         Effect.map(Ref.get(world.threads), (threads) =>
           Option.fromNullishOr(threads.find((thread) => thread.id === threadId)),
-        ),
-    }),
-    Layer.mock(ZeropsTurnAdmission)({
-      admit: ({ principal }) =>
-        Ref.update(world.admitted, (all) => [...all, principal]).pipe(
-          Effect.andThen(Ref.get(world.refusal)),
-          Effect.flatMap((refusal) =>
-            refusal === undefined
-              ? Effect.void
-              : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal })),
-          ),
         ),
     }),
     Layer.mock(ServerCommandReadiness)({
@@ -320,12 +283,23 @@ const fakes = (world: World) =>
         }),
       wake: (request) =>
         Effect.gen(function* () {
-          yield* Ref.update(world.wakes, (all) => [...all, request]);
-          return { wakeId: wakeId(request.conversationId, request.kind, request.key) };
+          yield* Ref.update(world.admitted, (all) => [...all, request.principal as TurnPrincipal]);
+          if (yield* Ref.get(world.dispatchHangs)) {
+            yield* Deferred.succeed(world.dispatchHeld, undefined);
+            return yield* Effect.never;
+          }
+          if (yield* Ref.get(world.dispatchFailure))
+            return yield* new WakeRefused({ message: "wake refused" });
+          // The engine arms a wake id once, as its receipts do.
+          const id = wakeId(request.conversationId, request.kind, request.key);
+          const all = yield* Ref.get(world.wakes);
+          if (!all.some((held) => wakeId(held.conversationId, held.kind, held.key) === id))
+            yield* Ref.set(world.wakes, [...all, request]);
+          return { wakeId: id };
         }),
       runOf: (found) =>
         Effect.map(Ref.get(world.wokenRuns), (runs) => {
-          const run = "wakeId" in found ? runs[found.wakeId] : undefined;
+          const run = "wakeId" in found ? runs[found.wakeId] : runs[found.providerTurnId];
           return run === undefined
             ? undefined
             : {
@@ -364,19 +338,13 @@ const FAST: ZeropsSetupTimings = {
 };
 
 /** A server on `database`; a second one on the same file is the same Mate after a restart. */
-const serverOn = (
-  world: World,
-  database: string,
-  timings: ZeropsSetupTimings = FAST,
-  mateEngine: ServerConfig.MateEngineMode = "v1",
-) =>
+const serverOn = (world: World, database: string, timings: ZeropsSetupTimings = FAST) =>
   Layer.effect(ZeropsSetup, makeZeropsSetup(timings)).pipe(
     Layer.provide(fakes(world)),
     Layer.provide(
       ServerConfig.layer({
         cwd: "/var/www",
         zerops: ZEROPS,
-        mateEngine,
       } as ServerConfig.ServerConfig["Service"]),
     ),
     Layer.provide(
@@ -392,23 +360,39 @@ const withServer = <A, E>(
   database: string,
   body: (setup: ZeropsSetup["Service"]) => Effect.Effect<A, E, ZeropsSetup>,
   timings: ZeropsSetupTimings = FAST,
-  mateEngine: ServerConfig.MateEngineMode = "v1",
 ) =>
   Effect.gen(function* () {
     const setup = yield* ZeropsSetup;
     return yield* body(setup);
-  }).pipe(Effect.provide(serverOn(world, database, timings, mateEngine)), Effect.scoped);
+  }).pipe(Effect.provide(serverOn(world, database, timings)), Effect.scoped);
 
 const freshDatabase = () =>
   NodePath.join(NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-setup-")), "state.sqlite");
 
+/** The stand-ups the engine was woken for, each with the agent its conversation was given. */
 const turnsOf = (world: World) =>
-  Effect.map(Ref.get(world.dispatched), (all) =>
-    all.filter(
-      (command): command is Extract<OrchestrationCommand, { type: "thread.turn.start" }> =>
-        command.type === "thread.turn.start",
-    ),
-  );
+  Effect.gen(function* () {
+    const wakes = yield* Ref.get(world.wakes);
+    const assigned = yield* Ref.get(world.assigned);
+    return wakes.map((wake) => {
+      const agent = assigned.findLast(([id]) => id === wake.conversationId)?.[1] as
+        | { readonly instanceId: string; readonly model: string; readonly options?: unknown }
+        | undefined;
+      return {
+        threadId: wake.conversationId as string,
+        commandId: wake.key,
+        message: { messageId: wake.key, text: wake.text },
+        modelSelection:
+          agent === undefined
+            ? undefined
+            : {
+                instanceId: agent.instanceId,
+                model: agent.model,
+                ...(agent.options === undefined ? {} : { options: agent.options }),
+              },
+      };
+    });
+  });
 
 /** The next completed worker cycle, with a failing bound if it never runs. */
 const ticks = Effect.flatMap(ZeropsSetup, (setup) =>
@@ -423,6 +407,35 @@ const eventually = <A>(read: Effect.Effect<A>, holds: (value: A) => boolean) =>
       yield* Effect.sleep(Duration.millis(10));
     }
     return assert.fail("the condition never held");
+  });
+
+/**
+ * The engine's run of a stand-up's message (its wake) and of the provider turn it went into
+ * (`turn-<message>`), as the stand-up reads it: asked or running, or how it ended.
+ */
+/** The engine ended a stand-up's run before its words provably reached the agent. */
+const runRefused = (world: World, threadId: string, messageId: string) =>
+  Ref.update(world.wokenRuns, (runs) => ({
+    ...runs,
+    [wakeId(ConversationId.make(threadId), "standup", messageId)]: {
+      end: { kind: "failed" },
+      reached: false,
+    },
+  }));
+
+const runIs = (world: World, threadId: string, messageId: string, state: string) =>
+  Ref.update(world.wokenRuns, (runs) => {
+    const run = {
+      end:
+        state === "pending" || state === "running"
+          ? null
+          : { kind: state === "completed" ? "completed" : "failed" },
+    };
+    return {
+      ...runs,
+      [wakeId(ConversationId.make(threadId), "standup", messageId)]: run,
+      [`turn-${messageId}`]: run,
+    };
   });
 
 describe("ZeropsSetup: the stand-up", () => {
@@ -478,26 +491,25 @@ describe("ZeropsSetup: the stand-up", () => {
       Effect.gen(function* () {
         const world = yield* makeWorld;
         yield* Ref.set(world.signers, SIGNED);
-        yield* Ref.set(world.refusal, "not signed in yet");
+        // The engine refused the stand-up's run before it reached the agent.
+        yield* runRefused(world, "thread-main", "mate-standup-thread-main-1");
         const database = freshDatabase();
         yield* withServer(world, database, (setup) =>
           Effect.gen(function* () {
-            yield* setup.awaitStandUp;
+            yield* eventually(turnsOf(world), (turns) => turns.length === 1);
             assert.strictEqual(
               (yield* setup.document).steps.find((step) => step.id === "standup")?.state,
               "failed",
             );
-            assert.strictEqual((yield* Ref.get(world.admitted)).length, 1);
           }),
         );
-        yield* Ref.set(world.refusal, undefined);
         yield* withServer(world, database, (setup) =>
           Effect.gen(function* () {
             yield* setup.awaitStandUp;
-            assert.strictEqual((yield* Ref.get(world.admitted)).length, 1);
+            assert.strictEqual((yield* turnsOf(world)).length, 1);
             assert.isFalse(yield* setup.retry("someone-else"));
             assert.isTrue(yield* setup.retry("user-a"));
-            assert.strictEqual((yield* turnsOf(world)).length, 1);
+            assert.strictEqual((yield* turnsOf(world)).length, 2);
             assert.isFalse(yield* setup.retry("user-a"));
           }),
         );
@@ -559,11 +571,12 @@ describe("ZeropsSetup: the stand-up", () => {
       yield* withServer(world, freshDatabase(), () =>
         eventually(turnsOf(world), (turns) => turns.length === 1),
       );
-      const [create, turn] = yield* Ref.get(world.dispatched);
-      assert.strictEqual(create?.type, "thread.create");
-      assert.strictEqual(
-        turn?.type === "thread.turn.start" && turn.threadId,
-        create?.type === "thread.create" && create.threadId,
+      // A new conversation, given its agent before the stand-up wakes it.
+      const [turn] = yield* turnsOf(world);
+      assert.notStrictEqual(turn?.threadId, "thread-main");
+      assert.deepStrictEqual(
+        (yield* Ref.get(world.assigned)).map(([id]) => id),
+        [turn!.threadId],
       );
     }),
   );
@@ -659,13 +672,7 @@ describe("ZeropsSetup: the stand-up", () => {
           const [turn] = yield* withServer(world, freshDatabase(), () =>
             eventually(turnsOf(world), (turns) => turns.length > 0),
           );
-          // The thread stores what its first turn runs on, so a reload reads it back.
-          const stored = (yield* Ref.get(world.dispatched)).flatMap((command) =>
-            command.type === "thread.meta.update" && command.modelSelection !== undefined
-              ? [command.modelSelection.options]
-              : [],
-          );
-          return { turn: turn!.modelSelection?.options, stored };
+          return { turn: turn!.modelSelection?.options };
         });
       const onCursor = (options?: ReadonlyArray<{ id: string; value: string }>) =>
         mainThread({
@@ -677,11 +684,10 @@ describe("ZeropsSetup: the stand-up", () => {
         });
       assert.deepStrictEqual(yield* standUpSelection(onCursor()), {
         turn: [{ id: "reasoning", value: "high" }],
-        stored: [[{ id: "reasoning", value: "high" }]],
       });
       assert.deepStrictEqual(
         yield* standUpSelection(onCursor([{ id: "reasoning", value: "low" }])),
-        { turn: [{ id: "reasoning", value: "low" }], stored: [] },
+        { turn: [{ id: "reasoning", value: "low" }] },
       );
     }),
   );
@@ -792,7 +798,7 @@ describe("ZeropsSetup: the stand-up", () => {
       yield* Ref.set(world.hq, hq);
       yield* withServer(world, freshDatabase(), (setup) =>
         Effect.gen(function* () {
-          yield* ticks;
+          yield* setup.finished.pipe(Effect.timeout("5 seconds"), Effect.orDie);
           assert.isFalse(yield* stillPolling(world));
           const document = yield* setup.document;
           assert.deepStrictEqual(
@@ -828,6 +834,8 @@ describe("ZeropsSetup: the stand-up", () => {
       const world = yield* makeWorld;
       yield* withServer(world, freshDatabase(), () =>
         Effect.gen(function* () {
+          // The first cycle is the flip's look for a main conversation; the polls follow it.
+          yield* ticks;
           assert.isTrue(yield* stillPolling(world));
         }),
       );
@@ -843,7 +851,7 @@ describe("ZeropsSetup: the stand-up", () => {
         Effect.gen(function* () {
           const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
           // Its turn asked, as the engine records it.
-          yield* turnRow(database, standUp!.threadId, standUp!.message.messageId, "pending");
+          yield* runIs(world, standUp!.threadId, standUp!.message.messageId, "pending");
           const document = yield* setup.document;
           assert.deepStrictEqual(
             document.steps
@@ -1046,7 +1054,7 @@ describe("ZeropsSetup: the document", () => {
           assert.deepStrictEqual(yield* states, ["done", "done", "running", "waiting", "waiting"]);
           yield* Ref.set(world.signers, SIGNED);
           const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-          yield* turnRow(database, standUp!.threadId, standUp!.message.messageId, "running");
+          yield* runIs(world, standUp!.threadId, standUp!.message.messageId, "running");
           assert.deepStrictEqual(yield* states, ["done", "done", "running", "done", "running"]);
           yield* Ref.set(world.statusFile, {
             version: 1,
@@ -1113,7 +1121,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
         Effect.gen(function* () {
           const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
           // The stand-up's own turn runs while zcp makes its two calls.
-          yield* turnRow(database, standUp!.threadId, standUp!.message.messageId, "running");
+          yield* runIs(world, standUp!.threadId, standUp!.message.messageId, "running");
           const sequence: ReadonlyArray<[unknown, string]> = [
             [
               {
@@ -1185,7 +1193,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
           const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
           const { threadId } = standUp!;
           const messageId = standUp!.message.messageId;
-          yield* turnRow(database, threadId, messageId, "running");
+          yield* runIs(world, threadId, messageId, "running");
           yield* setup.noteStandUpCall({
             threadId,
             turnId: `turn-${messageId}`,
@@ -1208,7 +1216,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
             reason: "process_gone",
           });
           yield* Ref.set(world.goneProcesses, []);
-          yield* turnRow(database, threadId, messageId, "completed");
+          yield* runIs(world, threadId, messageId, "completed");
           assert.deepStrictEqual(yield* standUpStep(setup), {
             id: "standup",
             state: "failed",
@@ -1216,7 +1224,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
             reason: "stage_not_built",
           });
           // A re-run in a later turn, waiting for its own stage call: its turn, not the first's.
-          yield* turnRow(database, threadId, "a-later-message", "running");
+          yield* runIs(world, threadId, "a-later-message", "running");
           yield* setup.noteStandUpCall({
             threadId,
             turnId: "turn-a-later-message",
@@ -1242,7 +1250,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
         yield* withServer(world, database, (setup) =>
           Effect.gen(function* () {
             yield* ticks;
-            yield* turnRow(database, "thread-main", "a-person-s-message", "running");
+            yield* runIs(world, "thread-main", "a-person-s-message", "running");
             yield* setup.noteStandUpCall({
               threadId: "thread-main",
               turnId: "turn-a-person-s-message",
@@ -1253,7 +1261,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
               standup: awaitingStages("2026-10-01T10:00:10Z"),
             });
             assert.strictEqual((yield* standUpStep(setup))?.state, "running");
-            yield* turnRow(database, "thread-main", "a-person-s-message", "completed");
+            yield* runIs(world, "thread-main", "a-person-s-message", "completed");
             assert.deepStrictEqual(yield* standUpStep(setup), {
               id: "standup",
               state: "failed",
@@ -1274,21 +1282,21 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
     ],
   };
   const pendingStage: ReadonlyArray<
-    [string, (database: string, threadId: string, messageId: string) => Effect.Effect<void>, string]
+    [string, (world: World, threadId: string, messageId: string) => Effect.Effect<void>, string]
   > = [
     ["its own turn not read (its thread gone): zcp's word", () => Effect.void, "done"],
     [
       "its own turn over, a later message's turn running: zcp's word, never a flap",
-      (database, threadId, messageId) =>
+      (world, threadId, messageId) =>
         Effect.andThen(
-          turnRow(database, threadId, messageId, "completed"),
-          turnRow(database, threadId, "a-later-message", "running"),
+          runIs(world, threadId, messageId, "completed"),
+          runIs(world, threadId, "a-later-message", "running"),
         ),
       "done",
     ],
     [
       "its own turn still running: the stage call is still to come",
-      (database, threadId, messageId) => turnRow(database, threadId, messageId, "running"),
+      (world, threadId, messageId) => runIs(world, threadId, messageId, "running"),
       "running",
     ],
   ];
@@ -1306,7 +1314,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
       yield* withServer(world, database, (setup) =>
         Effect.gen(function* () {
           const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-          yield* arrange(database, standUp!.threadId, standUp!.message.messageId);
+          yield* arrange(world, standUp!.threadId, standUp!.message.messageId);
           yield* Ref.set(world.statusFile, { version: 1, standup: afterDev });
           assert.strictEqual(yield* stateOf(setup, "standup"), expected);
         }),
@@ -1461,7 +1469,7 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
     world: World,
     database: string,
     body: (setup: ZeropsSetup["Service"]) => Effect.Effect<A, E, ZeropsSetup>,
-  ) => withServer(world, database, body, FAST, "mate");
+  ) => withServer(world, database, body, FAST);
 
   it.live(
     "a Mate born on the engine stands up: a wake for the person who asked, into a new conversation given its agent",
@@ -1491,9 +1499,6 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
           model: DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make("claudeAgent")],
           profile: { kind: "mate" },
         });
-        // Admitted by the engine at the run's admitted transition, like any run: not here.
-        assert.deepStrictEqual(yield* Ref.get(world.admitted), []);
-        assert.deepStrictEqual(yield* Ref.get(world.dispatched), []);
         assert.deepStrictEqual(
           (yield* recordIn(database, "")).map((row) => row.source),
           ["server"],

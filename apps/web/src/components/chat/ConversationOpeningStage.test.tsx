@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 import { PortalGate } from "../ui/portal-gate";
 import { MateEmptyStateView } from "../zerops/ZeropsMateEmptyState";
 import { MateFace, type MateFaceCue } from "../zerops/primitives/MateFace";
+import type { ZeropsAgentActivity } from "../../zerops/agentActivity";
 import {
   ConversationOpeningAvatar,
   ConversationOpeningProvider,
@@ -43,6 +44,7 @@ async function opening(ready = false, header = { cues: [] as ReadonlyArray<MateF
     readPending = true,
     children?: ReactElement<{ readonly faceSlot?: ReactNode }>,
     name = "Sage",
+    activity?: ZeropsAgentActivity,
   ) =>
     act(() =>
       root.render(
@@ -58,6 +60,7 @@ async function opening(ready = false, header = { cues: [] as ReadonlyArray<MateF
                 name={name}
                 mate={{ ...mate, name }}
                 threadKey={threadKey}
+                activity={activity}
               >
                 {children}
               </ConversationOpeningStage>
@@ -127,6 +130,20 @@ it("keeps the same waiting stage and face when the link route hands over to an a
     expect(view.host.querySelector("[data-conversation-opening]")).toBe(stage);
     expect(view.host.querySelector("[data-mate-face-state]")).toBe(face);
     expect(phase(view.host)).toBe("wake");
+  } finally {
+    await view.close();
+  }
+});
+
+it("an opening with nothing of the Mate's to say takes the limit a later read of it brings", async () => {
+  const view = await opening();
+  try {
+    expect(view.host.textContent).toContain("Picking up where you left off.");
+    const limited = {
+      limitHistory: { provider: "Claude", resetsAt: null },
+    } as unknown as ZeropsAgentActivity;
+    await view.show(false, "conversation", true, "main", true, undefined, "Sage", limited);
+    expect(view.host.textContent).toContain("Sage hit the Claude limit.");
   } finally {
     await view.close();
   }

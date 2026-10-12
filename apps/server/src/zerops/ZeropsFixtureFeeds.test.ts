@@ -27,7 +27,6 @@ import { makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./ZeropsMembershipWatch.ts";
 import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
-import { MateEngine } from "../engine/MateEngine.ts";
 import { RunAdmission } from "../engine/ports.ts";
 import { engineHostDoubles } from "../engine/testing/hostDoubles.ts";
 
@@ -105,12 +104,9 @@ const absoluteLoginStepScene: ShowcaseScene = {
  * registry it reads an instance's driver from. No scene here has a thread to
  * read or a configured instance to look up.
  */
-const fixtureHost = (
-  zerops: ServerConfig.ServerConfig["Service"]["zerops"],
-  mateEngine: ServerConfig.MateEngineMode = "v1",
-) =>
+const fixtureHost = (zerops: ServerConfig.ServerConfig["Service"]["zerops"]) =>
   Layer.mergeAll(
-    ServerConfig.layer({ zerops, mateEngine } as ServerConfig.ServerConfig["Service"]),
+    ServerConfig.layer({ zerops } as ServerConfig.ServerConfig["Service"]),
     Layer.mock(ProjectionSnapshotQuery)({}),
     ProviderRegistryTest.empty(),
     ProviderInstanceRegistryTest.empty(),
@@ -120,8 +116,7 @@ const fixtureHost = (
 const fixtureLayer = (
   scene: ShowcaseScene,
   zerops: ServerConfig.ServerConfig["Service"]["zerops"] = undefined,
-  mateEngine: ServerConfig.MateEngineMode = "v1",
-) => makeFixtureZeropsLayer(scene).pipe(Layer.provide(fixtureHost(zerops, mateEngine)));
+) => makeFixtureZeropsLayer(scene).pipe(Layer.provide(fixtureHost(zerops)));
 
 const withFixtureFeeds = <A>(
   scene: ShowcaseScene,
@@ -372,15 +367,6 @@ it.effect("admits turns through the live gate, over a scene where nobody recorde
   ),
 );
 
-it.effect.each([
-  ["runs V1 when the switch says v1", "v1", false],
-  ["runs the Mate engine when the switch says mate", "mate", true],
-] as const)("a fixture scene %s, as a live Mate would", ([, mateEngine, live]) =>
-  Effect.gen(function* () {
-    assert.strictEqual((yield* MateEngine).live, live);
-  }).pipe(Effect.provide(fixtureLayer(serviceMapScene, undefined, mateEngine))),
-);
-
 it.effect(
   "a fixture scene on the Mate engine admits runs through the same gate as V1's turns",
   () =>
@@ -401,7 +387,6 @@ it.effect(
         fixtureLayer(
           serviceMapScene,
           resolveZeropsEnvironment({ projectId: "fixture-project", apiHost: undefined }),
-          "mate",
         ),
       ),
     ),

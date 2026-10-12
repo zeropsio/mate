@@ -1,24 +1,17 @@
 import {
-  DispatchResult,
   ProjectSearchEntriesResult,
   ZeropsLifecycle,
   ReviewDiffPreviewInput,
   ReviewDiffPreviewResult,
-  ClientOrchestrationCommand,
   ATTACHMENT_UPLOAD_URL_TTL_MS,
-  OrchestrationThreadDetailPage,
   ZeropsBrowserStreamEvent,
   OrchestrationThreadShell,
-  OrchestrationThreadDetailSnapshot,
   OrchestrationShellStreamItem,
   ServerConfigStreamEvent,
   ServerProviderUpdatedPayload,
   ThreadUsagePause,
   McpServersList,
   McpServerSetEnabledInput,
-  OrchestrationCheckpointSummary,
-  OrchestrationGetTurnDiffInput,
-  OrchestrationGetTurnDiffResult,
   CrewSnapshot,
   CrewTask,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
@@ -35,10 +28,8 @@ import {
   ThreadFileWritesInput,
   ThreadFileWritesResult,
   ORCHESTRATION_WS_METHODS,
-  OrchestrationCommand,
-  OrchestrationEvent,
+  OrchestrationLatestTurn,
   OrchestrationThread,
-  OrchestrationThreadStreamItem,
   WS_METHODS,
   ZeropsAgentAuthSnapshot,
   ZeropsAgentLoginCancelInput,
@@ -46,7 +37,6 @@ import {
   ZeropsAgentLoginStartResult,
 } from "@t3tools/contracts";
 import * as NodeEvents from "node:events";
-import type { WebSocket } from "ws";
 import { deadline } from "../../harness/http.ts";
 import * as Schema from "effect/Schema";
 import * as DateTime from "effect/DateTime";
@@ -56,10 +46,9 @@ import type { ScenarioDrivers, ScenarioExtension } from "../../harness/scenario.
 import * as Effect from "effect/Effect";
 import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
 import { reportConversation } from "../b-menu/fake.ts";
-import { V1ChatWire } from "./v1.ts";
-import type { ChatIntent, ChatWire } from "./wire.ts";
+import type { ChatIntent } from "./wire.ts";
 import { EngineChatWire } from "./engine.ts";
-import { inject } from "vite-plus/test";
+import type { EngineOp, MateEngineFake } from "../../fakes/mateEngine.ts";
 
 const wireEncodeSearchEntries = Schema.encodeSync(ProjectSearchEntriesResult);
 
@@ -71,25 +60,16 @@ const wireDecodeAssetCreateUrlInput = Schema.decodeUnknownSync(AssetCreateUrlInp
 const wireDecodeAttachmentCreateUploadUrlInput = Schema.decodeUnknownSync(
   AttachmentCreateUploadUrlInput,
 );
-const wireDecodeClientOrchestrationCommand = Schema.decodeUnknownSync(ClientOrchestrationCommand);
 const wireDecodeCrewCommand = Schema.decodeUnknownSync(CrewCommand);
 const wireDecodeCrewSnapshot = Schema.decodeUnknownSync(CrewSnapshot);
 const wireDecodeCrewTask = Schema.decodeUnknownSync(CrewTask);
 const wireDecodeMcpServerSetEnabledInput = Schema.decodeUnknownSync(McpServerSetEnabledInput);
 const wireDecodeMcpServersList = Schema.decodeUnknownSync(McpServersList);
-const wireDecodeOrchestrationCheckpointSummary = Schema.decodeUnknownSync(
-  OrchestrationCheckpointSummary,
-);
-const wireDecodeOrchestrationGetTurnDiffInput = Schema.decodeUnknownSync(
-  OrchestrationGetTurnDiffInput,
-);
 const wireDecodeOrchestrationShellStreamItem = Schema.decodeUnknownSync(
   OrchestrationShellStreamItem,
 );
 const wireDecodeOrchestrationThread = Schema.decodeUnknownSync(OrchestrationThread);
-const wireDecodeOrchestrationThreadDetailSnapshot = Schema.decodeUnknownSync(
-  OrchestrationThreadDetailSnapshot,
-);
+const wireDecodeOrchestrationLatestTurn = Schema.decodeUnknownSync(OrchestrationLatestTurn);
 const wireDecodeOrchestrationThreadShell = Schema.decodeUnknownSync(OrchestrationThreadShell);
 const wireDecodeReviewDiffPreviewInput = Schema.decodeUnknownSync(ReviewDiffPreviewInput);
 const wireDecodeReviewDiffPreviewResult = Schema.decodeUnknownSync(ReviewDiffPreviewResult);
@@ -108,14 +88,8 @@ const wireEncodeAttachmentCreateUploadUrlResult = Schema.encodeSync(
 const wireEncodeCrewCommandResult = Schema.encodeSync(CrewCommandResult);
 const wireEncodeCrewFiles = Schema.encodeSync(CrewFiles);
 const wireEncodeCrewSnapshot = Schema.encodeSync(CrewSnapshot);
-const wireEncodeDispatchResult = Schema.encodeSync(DispatchResult);
 const wireEncodeMcpServersList = Schema.encodeSync(McpServersList);
-const wireEncodeOrchestrationGetTurnDiffResult = Schema.encodeSync(OrchestrationGetTurnDiffResult);
 const wireEncodeOrchestrationShellStreamItem = Schema.encodeSync(OrchestrationShellStreamItem);
-const wireEncodeOrchestrationThreadDetailSnapshot = Schema.encodeSync(
-  OrchestrationThreadDetailSnapshot,
-);
-const wireEncodeOrchestrationThreadStreamItem = Schema.encodeSync(OrchestrationThreadStreamItem);
 const wireEncodeReviewDiffPreviewResult = Schema.encodeSync(ReviewDiffPreviewResult);
 const wireEncodeServerConfigStreamEvent = Schema.encodeSync(ServerConfigStreamEvent);
 const wireEncodeThreadFileWritesResult = Schema.encodeSync(ThreadFileWritesResult);
@@ -128,9 +102,6 @@ const decodeAuth = wireDecodeZeropsAgentAuthSnapshot;
 const decodeThread = wireDecodeOrchestrationThread;
 
 const AT = "2026-10-05T12:00:00.000Z";
-const decodeCommand = wireDecodeClientOrchestrationCommand;
-const encodeStream = wireEncodeOrchestrationThreadStreamItem;
-const encodeResult = wireEncodeDispatchResult;
 const encodeAuth = wireEncodeZeropsAgentAuthSnapshot;
 
 /** Provider-side facts and response receipts, all outside the client. */
@@ -138,7 +109,6 @@ export class ChatDriver {
   crew: CrewSnapshot | null = null;
   crewRefusal: string | null = null;
   lifecycle: ZeropsLifecycle;
-  revertRefusal: string | null = null;
   responseRefusal: string | null = null;
   readonly mcpActions: McpServerSetEnabledInput[] = [];
   mcp = wireDecodeMcpServersList({
@@ -154,7 +124,6 @@ export class ChatDriver {
       },
     ],
   });
-  readonly diffs: OrchestrationGetTurnDiffInput[] = [];
   readonly crewCommands: CrewCommand[] = [];
   readonly otherThreads = new Map<string, OrchestrationThread>();
   database: ZeropsDataConsoleResponse = wireDecodeZeropsDataConsoleResponse({
@@ -163,17 +132,11 @@ export class ChatDriver {
     allowWrites: false,
     services: [],
   });
-  holdReplay = false;
-  page: OrchestrationThreadDetailPage | undefined;
-  readonly pages = new Map<string, () => Promise<OrchestrationThreadDetailSnapshot>>();
   readonly heldData = new Map<string, (reply: () => void) => void>();
   readonly databaseReplies = new Map<string, ZeropsDataConsoleResponse>();
-  readonly commands: ClientOrchestrationCommand[] = [];
   private readonly receipts = new NodeEvents.EventEmitter();
-  private readonly replay = new Map<WebSocket, string>();
   usagePause: ThreadUsagePause | null = null;
   turnRefusal: string | null = null;
-  turnAdmissionRefusal: import("@t3tools/contracts").AgentAdmissionRefusal | undefined;
   readonly assets = new Map<string, { bytes: Buffer; mimeType: string }>();
   readonly writes = new Map<string, ReadonlyArray<import("@t3tools/contracts").FileWrite>>();
   readonly http: string[] = [];
@@ -183,35 +146,29 @@ export class ChatDriver {
   readonly startedLogins: ZeropsAgentLoginStartInput[] = [];
   readonly cancelledLogins: ZeropsAgentLoginCancelInput[] = [];
   readonly mate: MateFake;
-  /** The V1 thread the area's richer fixtures write to. */
-  readonly v1: V1ChatWire;
-  /** The conversation the journeys arrange and read through, on whichever wire the Mate speaks. */
-  readonly wire: ChatWire;
-  constructor(mate: MateFake, wire?: ChatWire) {
+  /** The conversation the journeys arrange and read through: the Mate's engine. */
+  readonly wire: EngineChatWire;
+  /** The engine's records of this Mate's conversation. */
+  readonly engine: MateEngineFake;
+  constructor(mate: MateFake) {
     this.mate = mate;
-    this.v1 = new V1ChatWire(mate);
-    this.v1.writeRun = (turnId, state) => this.run(turnId, state);
-    this.wire = wire ?? this.v1;
+    this.wire = new EngineChatWire(mate);
+    this.engine = this.wire.engine;
     mate.conversation = this.wire;
-    if (wire instanceof EngineChatWire)
-      // The Mate refuses the caller before its engine sees the call, as it refuses a V1 command.
-      wire.engine.authorization = (op) =>
-        op === "answer" ? this.responseRefusal : op === "send" ? this.turnRefusal : null;
+    // The Mate refuses the caller before its engine sees the call.
+    this.engine.authorization = (op) =>
+      op === "answer" ? this.responseRefusal : op === "send" ? this.turnRefusal : null;
     this.lifecycle = wireDecodeZeropsLifecycle({ threadId: mate.thread.id, recentTools: [] });
-    Object.assign(mate.config, { threadSnapshotPagination: true });
     Object.assign(mate.config.environment.capabilities, {
-      threadSnapshotPagination: true,
       attachmentUploads: true,
       questionAttachments: true,
       fileAttachments: { maxUploadBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES },
     });
     Object.assign(mate.descriptor.capabilities!, {
-      threadSnapshotPagination: true,
       attachmentUploads: true,
       questionAttachments: true,
       fileAttachments: { maxUploadBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES },
     });
-    const originalSnapshot = mate.snapshot.bind(mate);
     const originalShellSnapshot = mate.shell.bind(mate);
     mate.shell = () => ({
       ...originalShellSnapshot(),
@@ -234,28 +191,6 @@ export class ChatDriver {
     mate.handle = (request) => {
       this.http.push(`${request.method} ${request.url.pathname}${request.url.search}`);
       const path = request.url.pathname.replace(/^\/mate/u, "");
-      if (path.startsWith("/api/orchestration/threads/")) {
-        const threadId = path.split("/").at(-1)!;
-        const thread = this.otherThreads.get(threadId);
-        const cursor = request.url.searchParams.get("beforeCursor");
-        if (this.pages.has(cursor ?? ""))
-          return this.pages.get(cursor ?? "")!().then((snapshot) => ({
-            body: wireEncodeOrchestrationThreadDetailSnapshot(snapshot),
-          }));
-        return {
-          body: wireEncodeOrchestrationThreadDetailSnapshot(
-            thread
-              ? {
-                  snapshotSequence: mate.sequence,
-                  thread,
-                }
-              : {
-                  ...originalSnapshot(),
-                  ...(this.page ? { page: { ...this.page, snapshotSequence: mate.sequence } } : {}),
-                },
-          ),
-        };
-      }
       if (path.startsWith("/api/chat-assets/")) {
         if (request.method === "OPTIONS") return { status: 204 };
         const id = path.split("/").at(-1)!;
@@ -382,23 +317,6 @@ export class ChatDriver {
         else reply();
         return true;
       }
-      if (
-        request.tag === ORCHESTRATION_WS_METHODS.subscribeThread &&
-        this.otherThreads.has(String(request.payload.threadId))
-      ) {
-        mate.subscriptions.get(socket)!.set(request.id, request);
-        mate.chunk(socket, request.id, [
-          encodeStream({
-            kind: "snapshot",
-            snapshot: {
-              snapshotSequence: mate.sequence,
-              thread: this.otherThreads.get(String(request.payload.threadId))!,
-            },
-          }),
-          encodeStream({ kind: "synchronized" }),
-        ]);
-        return true;
-      }
       if (request.tag === WS_METHODS.attachmentsCreateUploadUrl) {
         wireDecodeAttachmentCreateUploadUrlInput(request.payload);
         const attachmentId = `asset-${mate.requests.length}`;
@@ -488,23 +406,6 @@ export class ChatDriver {
         );
         return true;
       }
-      if (request.tag === ORCHESTRATION_WS_METHODS.getTurnDiff) {
-        const input = wireDecodeOrchestrationGetTurnDiffInput(request.payload);
-        this.diffs.push(input);
-        mate.reply(
-          socket,
-          request.id,
-          wireEncodeOrchestrationGetTurnDiffResult({
-            ...input,
-            diff: "diff --git a/appdev/summary.txt b/appdev/summary.txt\n--- a/appdev/summary.txt\n+++ b/appdev/summary.txt\n@@ -1 +1 @@\n-Old order total\n+Recorded order total\n",
-            coverage: "partial",
-            roots: [
-              { rootId: "app-root", label: "appdev", pathPrefix: "appdev/", status: "available" },
-            ],
-          }),
-        );
-        return true;
-      }
       if (request.tag === WS_METHODS.subscribeServerConfig) {
         mate.subscriptions.get(socket)!.set(request.id, request);
         mate.chunk(socket, request.id, [
@@ -516,177 +417,13 @@ export class ChatDriver {
         ]);
         return true;
       }
-      if (request.tag === ORCHESTRATION_WS_METHODS.subscribeThread && this.holdReplay) {
-        mate.subscriptions.get(socket)!.set(request.id, request);
-        this.replay.set(socket, request.id);
-        this.receipts.emit("wire");
-        return true;
-      }
-      if (request.tag === ORCHESTRATION_WS_METHODS.subscribeThread) {
-        mate.subscriptions.get(socket)!.set(request.id, request);
-        mate.chunk(socket, request.id, [
-          encodeStream({ kind: "snapshot", snapshot: mate.snapshot() }),
-          encodeStream({ kind: "synchronized" }),
-        ]);
-        return true;
-      }
       if (request.tag === WS_METHODS.subscribeZeropsAgentAuth) {
         mate.subscriptions.get(socket)!.set(request.id, request);
         mate.chunk(socket, request.id, [encodeAuth(this.auth())]);
         return true;
       }
-      if (request.tag !== ORCHESTRATION_WS_METHODS.dispatchCommand) return false;
-      const command = decodeCommand(request.payload);
-      this.commands.push(command);
-      this.receipts.emit("wire");
-      if (command.type === "thread.conversation.revert" && this.revertRefusal) {
-        socket.send(
-          JSON.stringify({
-            _tag: "Exit",
-            requestId: request.id,
-            exit: {
-              _tag: "Failure",
-              cause: [
-                {
-                  _tag: "Fail",
-                  error: { _tag: "OrchestrationDispatchCommandError", message: this.revertRefusal },
-                },
-              ],
-            },
-          }),
-        );
-        return true;
-      }
-      const authorizationRefusal =
-        command.type === "thread.turn.start"
-          ? this.turnRefusal
-          : command.type === "thread.user-input.respond"
-            ? this.responseRefusal
-            : null;
-      if (authorizationRefusal) {
-        socket.send(
-          JSON.stringify({
-            _tag: "Exit",
-            requestId: request.id,
-            exit: {
-              _tag: "Failure",
-              cause: [
-                {
-                  _tag: "Fail",
-                  error: {
-                    ...(command.type === "thread.turn.start" &&
-                    this.turnAdmissionRefusal !== undefined
-                      ? {
-                          _tag: "OrchestrationDispatchCommandError",
-                          agentAdmission: this.turnAdmissionRefusal,
-                        }
-                      : {
-                          _tag: "EnvironmentAuthorizationError",
-                          requiredScope: "orchestration:operate",
-                        }),
-                    message: authorizationRefusal,
-                  },
-                },
-              ],
-            },
-          }),
-        );
-        return true;
-      }
-      if (command.type === "thread.turn.start" && mate.acceptMessages) {
-        this.v1.live = true;
-        const attachments = command.message.attachments.map((attachment, index) => {
-          if (!("dataUrl" in attachment)) return attachment;
-          const id = `${command.message.messageId}-${index}`;
-          this.assets.set(id, {
-            bytes: Buffer.from(attachment.dataUrl.split(",")[1]!, "base64"),
-            mimeType: attachment.mimeType,
-          });
-          return {
-            type: attachment.type,
-            id,
-            name: attachment.name,
-            mimeType: attachment.mimeType,
-            sizeBytes: attachment.sizeBytes,
-          };
-        });
-        if (command.modelSelection)
-          mate.thread = decodeThread({ ...mate.thread, modelSelection: command.modelSelection });
-        this.message(
-          command.message.messageId,
-          "user",
-          command.message.text,
-          null,
-          { attachments },
-          command.commandId,
-        );
-        this.shell();
-        mate.reply(socket, request.id, encodeResult({ sequence: mate.sequence }));
-        return true;
-      }
-      if (command.type === "thread.archive" || command.type === "thread.unarchive") {
-        const at = this.at();
-        const archived = command.type === "thread.archive";
-        mate.thread = decodeThread({
-          ...mate.thread,
-          archivedAt: archived ? at : null,
-          updatedAt: at,
-        });
-        this.event(
-          archived ? "thread.archived" : "thread.unarchived",
-          {
-            threadId: mate.thread.id,
-            updatedAt: at,
-            ...(archived ? { archivedAt: at } : {}),
-          },
-          command.commandId,
-        );
-        this.shell();
-        mate.reply(socket, request.id, encodeResult({ sequence: mate.sequence }));
-        return true;
-      }
-      if (command.type === "thread.usage-auto-resume.set") {
-        if (this.usagePause) this.usagePause = { ...this.usagePause, autoResume: command.enabled };
-        this.event("thread.usage-auto-resume-set", {
-          threadId: mate.thread.id,
-          usageAutoResumeDisabledAt: command.enabled ? null : this.at(),
-        });
-        this.shell();
-        mate.reply(socket, request.id, encodeResult({ sequence: mate.sequence }));
-        return true;
-      }
-      if (
-        command.type !== "thread.approval.respond" &&
-        command.type !== "thread.user-input.respond"
-      )
-        return false;
-      this.v1.respond(command);
-      mate.reply(socket, request.id, encodeResult({ sequence: mate.sequence }));
-      return true;
+      return false;
     });
-  }
-
-  /** The endpoint has received the page read; the server chooses when its snapshot arrives. */
-  holdPage(cursor: string, snapshot: OrchestrationThreadDetailSnapshot) {
-    let arrived!: () => void;
-    let release!: (snapshot: OrchestrationThreadDetailSnapshot) => void;
-    const requested = new Promise<void>((resolve) => {
-      arrived = resolve;
-    });
-    const response = new Promise<OrchestrationThreadDetailSnapshot>((resolve) => {
-      release = resolve;
-    });
-    this.pages.set(cursor, () => {
-      arrived();
-      return response;
-    });
-    return {
-      requested: () =>
-        deadline(requested, "Older page requested").catch((cause) => {
-          throw new Error(`Older page not requested: ${this.http.join(" | ")}`, { cause });
-        }),
-      release: () => release(snapshot),
-    };
   }
 
   async browserSubscribed() {
@@ -795,69 +532,6 @@ export class ChatDriver {
     );
   }
 
-  checkpoint(turnId: string) {
-    const summary = wireDecodeOrchestrationCheckpointSummary({
-      turnId,
-      checkpointTurnCount: 1,
-      checkpointRef: "refs/mate/checkpoints/one",
-      status: "ready",
-      files: [{ path: "appdev/summary.txt", kind: "modified", additions: 1, deletions: 1 }],
-      assistantMessageId: null,
-      completedAt: this.at(),
-      history: {
-        runId: turnId,
-        coverage: "partial",
-        semantics: "observed-workspace",
-        representation: "git-normalized",
-        policyVersion: "1",
-        roots: [
-          {
-            root: {
-              rootId: "app-root",
-              label: "appdev",
-              remotePath: "/appdev",
-              pathPrefix: "appdev/",
-            },
-            before: {
-              status: "captured",
-              oid: "before-app",
-              ref: "refs/mate/before",
-              startedAt: AT,
-              completedAt: AT,
-            },
-            after: {
-              status: "captured",
-              oid: "after-app",
-              ref: "refs/mate/after",
-              startedAt: AT,
-              completedAt: AT,
-            },
-          },
-          {
-            root: {
-              rootId: "api-root",
-              label: "apidev",
-              remotePath: "/apidev",
-              pathPrefix: "apidev/",
-            },
-            before: {
-              status: "captured",
-              oid: "before-api",
-              ref: "refs/mate/before-api",
-              startedAt: AT,
-              completedAt: AT,
-            },
-            after: {
-              status: "refused",
-              reason: "apidev could not be captured; retry that repository",
-            },
-          },
-        ],
-      },
-    });
-    this.snapshot({ checkpoints: [summary] });
-  }
-
   seedCrew() {
     const thread = decodeThread({
       ...this.mate.thread,
@@ -888,6 +562,22 @@ export class ChatDriver {
       ],
     });
     this.otherThreads.set(thread.id, thread);
+    // Scout's conversation is its own on the Mate's engine: its words and the seam of its job.
+    const scout = this.engine.conversation(thread.id, {
+      kind: "crewmate",
+      id: "scout",
+      name: "Scout",
+    });
+    const run = scout.startRun(null);
+    scout.note(run, "Scout has its own conversation", { kind: "completed" });
+    scout.loose({
+      kind: "marker",
+      marker: {
+        kind: "crew.seam",
+        reason: "Scout's job changed — from its next message",
+        seam: { seam: "saved", apply: "nextTurn" },
+      },
+    });
     this.crew = wireDecodeCrewSnapshot({
       status: "applied",
       seq: 1,
@@ -1113,79 +803,6 @@ export class ChatDriver {
     );
   }
 
-  async waitForCommand(type: OrchestrationCommand["type"], count = 1) {
-    const found = () => this.commands.filter((command) => command.type === type);
-    if (found().length >= count) return found().at(-1)!;
-    let listener = () => {};
-    try {
-      await deadline(
-        new Promise<void>((resolve) => {
-          listener = () => {
-            if (found().length >= count) resolve();
-          };
-          this.receipts.on("wire", listener);
-        }),
-        `Mate command ${type}`,
-        8000,
-      );
-      return found().at(-1)!;
-    } finally {
-      this.receipts.off("wire", listener);
-    }
-  }
-
-  async replaySubscribed() {
-    if (this.replay.size) return;
-    let listener = () => {};
-    try {
-      await deadline(
-        new Promise<void>((resolve) => {
-          listener = () => {
-            if (this.replay.size) resolve();
-          };
-          this.receipts.on("wire", listener);
-        }),
-        "Mate replay subscribed",
-        8000,
-      );
-    } finally {
-      this.receipts.off("wire", listener);
-    }
-  }
-
-  replayEvents(events = this.mate.events) {
-    for (const [socket, id] of this.replay)
-      this.mate.chunk(
-        socket,
-        id,
-        events.map((event) => encodeStream({ kind: "event", event })),
-      );
-  }
-
-  ready() {
-    this.holdReplay = false;
-    for (const [socket, id] of this.replay)
-      this.mate.chunk(socket, id, [encodeStream({ kind: "synchronized" })]);
-    this.replay.clear();
-  }
-
-  snapshot(patch: Partial<OrchestrationThread> = {}) {
-    const mate = this.mate;
-    mate.thread = decodeThread({ ...mate.thread, ...patch });
-    const snapshot = wireDecodeOrchestrationThreadDetailSnapshot({
-      snapshotSequence: ++mate.sequence,
-      thread: mate.thread,
-    });
-    for (const [socket, subscriptions] of mate.subscriptions)
-      for (const [id, request] of subscriptions)
-        if (
-          request.tag === ORCHESTRATION_WS_METHODS.subscribeThread &&
-          request.payload.threadId === mate.thread.id
-        )
-          mate.chunk(socket, id, [encodeStream({ kind: "snapshot", snapshot })]);
-    this.shell();
-  }
-
   /** The endpoint replaces its authoritative thread collection, including the named primary. */
   threadCollection(primary: OrchestrationThread, others: ReadonlyArray<OrchestrationThread>) {
     this.mate.thread = decodeThread(primary);
@@ -1216,76 +833,76 @@ export class ChatDriver {
           mate.chunk(socket, id, [wireEncodeOrchestrationShellStreamItem(item)]);
   }
 
-  event(
-    type: OrchestrationEvent["type"],
-    payload: Record<string, unknown>,
-    commandId: string | null = null,
-  ) {
-    return this.v1.event(type, payload, commandId);
+  /** The engine's item for the call or work the journey named `id`. */
+  itemOf(id: string) {
+    return this.wire.itemOf(id);
   }
 
+  /** The engine's run for the journey's run `turnId`. */
+  runOf(turnId: string) {
+    return this.wire.runOf(turnId);
+  }
+
+  /** The conversation's latest run as the Mate reports it beyond the conversation: its turn. */
+  latestTurn() {
+    const run = [...this.engine.runs.values()].findLast((entry) => entry.state !== "queued");
+    if (run === undefined) return null;
+    const iso = (at: number) => new Date(at).toISOString();
+    return wireDecodeOrchestrationLatestTurn({
+      turnId: run.id,
+      state: run.turnState ?? "completed",
+      requestedAt: iso(run.queuedAt),
+      startedAt: iso(run.startedAt ?? run.queuedAt),
+      completedAt: run.endedAt === null ? null : iso(run.endedAt),
+      assistantMessageId: null,
+    });
+  }
+
+  /** Settles with the `count`th command the engine applied as `op`. */
+  async waitForOp(op: EngineOp, count = 1) {
+    const found = () => this.engine.applied.filter((entry) => entry.op === op);
+    let timer: ReturnType<typeof setInterval> | undefined;
+    try {
+      return await deadline(
+        new Promise<(typeof this.engine.applied)[number]>((resolve) => {
+          const check = () => {
+            if (found().length >= count) resolve(found()[count - 1]!);
+          };
+          check();
+          timer = setInterval(check, 25);
+        }),
+        `Mate's engine applied ${op}`,
+        8000,
+      );
+    } finally {
+      clearInterval(timer);
+    }
+  }
+
+  /** The Mate's clock now, as its records say it. */
   at() {
-    return this.v1.at();
+    return new Date(Date.now() + this.engine.clockSkewMs).toISOString();
   }
 
-  message(...args: Parameters<V1ChatWire["message"]>) {
-    this.v1.message(...args);
+  /** The journey's run `turnId` works, or ends as `state` says: a failure in `reason`'s words. */
+  run(turnId: string, state: "running" | "completed" | "error" | "interrupted", reason?: string) {
+    this.wire.run(turnId, state, reason);
   }
 
-  run(
-    turnId: string,
-    state: "running" | "completed" | "error" | "interrupted",
-    lastError: string | null = null,
-    assistantMessageId: string | null = null,
-  ) {
-    if (this.wire !== this.v1) return this.wire.run(turnId, state);
-    this.v1.live = true;
-    const at = this.at();
-    const previous =
-      this.mate.thread.latestTurn?.turnId === turnId ? this.mate.thread.latestTurn : null;
-    this.snapshot({
-      latestTurn: {
-        turnId,
-        state,
-        requestedAt: previous?.requestedAt ?? at,
-        startedAt: previous?.startedAt ?? at,
-        completedAt: state === "running" ? null : at,
-        assistantMessageId,
-      },
-      session: {
-        threadId: this.mate.thread.id,
-        status: state === "completed" ? "ready" : state,
-        providerName: "codex",
-        providerInstanceId: "codex",
-        runtimeMode: "full-access",
-        activeTurnId: state === "running" ? turnId : null,
-        lastError,
-        updatedAt: at,
-      },
-    } as Partial<OrchestrationThread>);
+  call(...args: Parameters<EngineChatWire["call"]>) {
+    return this.wire.call(...args);
   }
 
-  tool(
-    callId: string,
-    kind: "tool.started" | "tool.updated" | "tool.completed",
-    data: Record<string, unknown>,
-    turnId = "run-one",
-    extra: Record<string, unknown> = {},
-  ) {
-    // `summary` is the activity's own (V1's title for the call), never its payload's.
-    const { summary, ...payload } = extra;
-    this.activity(
-      kind,
-      String(summary ?? data.toolName ?? "Tool"),
-      {
-        toolCallId: callId,
-        itemType: "command_execution",
-        status: kind === "tool.completed" ? "completed" : "inProgress",
-        data,
-        ...payload,
-      },
-      turnId,
-    );
+  work(...args: Parameters<EngineChatWire["work"]>) {
+    return this.wire.work(...args);
+  }
+
+  say(...args: Parameters<EngineChatWire["say"]>) {
+    return this.wire.say(...args);
+  }
+
+  thought(...args: Parameters<EngineChatWire["thought"]>) {
+    return this.wire.thought(...args);
   }
 
   publishLifecycle() {
@@ -1471,8 +1088,12 @@ export class ChatDriver {
     });
   }
 
-  history(text = "The existing conversation is still here", turnId: string | null = null) {
-    this.wire.history(text, turnId);
+  history(
+    text = "The existing conversation is still here",
+    turnId: string | null = null,
+    attachments: ReadonlyArray<unknown> = [],
+  ) {
+    this.wire.history(text, turnId, attachments);
   }
 
   exchange(question: string, answer: string) {
@@ -1494,33 +1115,15 @@ export class ChatDriver {
   question(requestId = "question-target", turnId: string | null = null) {
     this.wire.question(requestId, turnId);
   }
-
-  activity(...args: Parameters<V1ChatWire["activity"]>) {
-    this.v1.activity(...args);
-  }
-}
-
-declare module "vite-plus/test" {
-  interface ProvidedContext {
-    /** Which wire the area's Mates speak: V1 unless a project says the engine's. */
-    mateWire?: "v1" | "engine";
-  }
 }
 
 const chats = new WeakMap<MateFake, ChatDriver>();
-const installOn =
-  (wire: () => "v1" | "engine" | undefined): ScenarioExtension =>
-  (drivers) => {
-    drivers.onMate.push((mate) => {
-      if (wire() !== "engine") return void chats.set(mate, new ChatDriver(mate));
-      const engine = new EngineChatWire(mate);
-      chats.set(mate, new ChatDriver(mate, engine));
-      engine.install();
-    });
-  };
-export const installArea: ScenarioExtension = installOn(() => inject("mateWire"));
-/** The area with its Mates on the engine's wire, in any project: a journey of the engine's records. */
-export const installEngineArea: ScenarioExtension = installOn(() => "engine");
+/** The area: each Mate's conversation runs on its engine, served ahead of the area's handlers. */
+export const installArea: ScenarioExtension = (drivers) => {
+  drivers.onMate.push((mate) => {
+    chats.set(mate, new ChatDriver(mate));
+  });
+};
 export function chatFor(mate: MateFake) {
   const chat = chats.get(mate);
   if (!chat) throw new Error("Install c-mate before creating projects");

@@ -39,6 +39,7 @@ import {
   engineHeldTurns,
   engineResendId,
   engineRows,
+  engineCardsShowError,
   engineRunCards,
   engineStopTarget,
   engineThread,
@@ -829,6 +830,14 @@ describe("an engine run's work, as the run card draws the same work of a V1 run"
     expect(helpers("running")).toEqual([{ title: "Review the api", status: "running" }]);
     expect(helpers("completed")).toEqual([{ title: "Review the api", status: "completed" }]);
   });
+
+  it.each(["idle", "waiting"] as const)(
+    "a helper the engine says is %s reads so on the helpers' surface, never working",
+    (status) => {
+      const [helper] = foldSubagentActivities(activitiesOf([workItem(run1, 2, { status })]));
+      expect(helper?.status).toBe(status);
+    },
+  );
 
   // Milo, 2026-10-08: "Started a helper · 56c95419-…/s/1.2.w1".
   it("a helper its agent never named is on the helpers' surface in plain words, never its id", () => {
@@ -1841,3 +1850,68 @@ it.each([
     expect(view?.session?.lastError).toBeNull();
   },
 );
+
+// An idle helper is resumable, not working: its card closes when its run ends, as V1 settled it.
+it.each([
+  { status: "running", waits: { helpers: 1, commands: 0 } },
+  { status: "waiting", waits: { helpers: 1, commands: 0 } },
+  { status: "idle", waits: undefined },
+] as const)(
+  "a run that ended holds its card open for a helper that is $status: $waits",
+  ({ status, waits }) => {
+    const state = held({
+      runs: [engineRun("thread-ada", 1, { state: "ended", end: { kind: "completed" } } as never)],
+      items: [workItem(run1, 2, { status })],
+    });
+    expect(engineRunCards.derive(readsOfState(state), key)?.[run1]?.waitsOn).toEqual(waits);
+  },
+);
+
+// V1 never recorded a turn its admission refused: the person's words went back to the composer.
+it("a message admission refused before anything ran goes back to its sender, never into the conversation", () => {
+  const state = held({
+    runs: [
+      engineRun("thread-ada", 1, {
+        startedAt: null,
+        end: {
+          kind: "failed",
+          reason: "Claude's sign-in has expired.",
+          next: null,
+          admission: { loginId: "claude-code", reason: "expired-login" },
+        },
+      }),
+    ],
+    items: [personItem(run1, 1, "Start work", { delivery: { state: "refused", at: null } })],
+  });
+  expect(thread(state)?.messages.map((message) => message.text)).toEqual([]);
+  expect(engineRunCards.derive(readsOfState(state), key)?.[run1]?.refused).toEqual({
+    messageId: `send-${run1}-1`,
+    text: "Start work",
+  });
+});
+
+// The run's card says how it broke off; the banner never says it a second time.
+const failedEnd = (reason: string) => ({ kind: "failed", reason, next: null }) as const;
+it.each([
+  ["a run that failed once it ran", { end: failedEnd("The agent process failed") }, true],
+  [
+    "a run that crashed once it ran",
+    { end: { kind: "crashed", reason: "The agent process failed" } },
+    true,
+  ],
+  [
+    "a run refused before anything of it ran",
+    { startedAt: null, end: failedEnd("The agent process failed") },
+    false,
+  ],
+  ["a run that broke off with other words", { end: failedEnd("Another failure") }, false],
+  ["a run that completed", { end: { kind: "completed" } }, false],
+] as const)("the error a card draws is its card's to say: %s", (_, patch, shown) => {
+  const state = held({ runs: [engineRun("thread-ada", 1, patch as Partial<RunRecord>)] });
+  expect(
+    engineCardsShowError(
+      engineRunCards.derive(readsOfState(state), key),
+      "The agent process failed",
+    ),
+  ).toBe(shown);
+});

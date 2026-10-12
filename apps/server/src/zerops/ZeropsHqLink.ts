@@ -74,8 +74,6 @@ import { HttpClient, HttpClientRequest } from "effect/http";
 import packageJson from "../../package.json" with { type: "json" };
 import { ServerConfig } from "../config.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
@@ -599,8 +597,6 @@ export const layer = (crew: OverviewSources["crew"]) =>
     Effect.gen(function* () {
       const config = yield* ServerConfig;
       const paths = yield* Path.Path;
-      const projection = yield* ProjectionSnapshotQuery;
-      const engine = yield* OrchestrationEngineService;
       const providers = yield* ProviderInstances;
       // Separate home database: capture IO cannot lock the orchestration event store.
       // Admission waits for a subscribed capture service, including across storage recovery.
@@ -612,24 +608,11 @@ export const layer = (crew: OverviewSources["crew"]) =>
         });
       }
       const fs = yield* FileSystem.FileSystem;
-      // While the Mate engine owns the conversation, its conversations are the chats: V1's
-      // projections (a thread left running at the flip among them) are never read.
+      // The engine's conversations are the chats: V1's projections (a thread left running at the
+      // flip among them) are never read.
       const attention = yield* ZeropsMateAttention;
       const chats = chatsSource(
         yield* MateEngine,
-        {
-          threads: Effect.gen(function* () {
-            const project = Option.getOrUndefined(
-              yield* projection.getActiveProjectByWorkspaceRoot(config.cwd),
-            );
-            return project === undefined
-              ? []
-              : (yield* projection.getShellSnapshot()).threads.filter(
-                  (thread) => thread.projectId === project.id,
-                );
-          }),
-          domainEvents: engine.streamDomainEvents,
-        },
         // The revision an engine row carries: the attention's source, as the engine wire's.
         Effect.map(attention.current, ({ source }) => source),
       );

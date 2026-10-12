@@ -9,10 +9,9 @@
  * verdicts and come back `ok`; a `failed` outcome passes through unchanged, but for a Stop on a run
  * that already ended, which is a Stop done.
  *
- * The verdicts mean what V1 made of the same module outcomes: a guard that stops a WIP commit, or
- * a ref moved outside the engine, parks the task (`crewTurns.commitAndPolice`); a landing's
- * refusals hold, redo, retry or park it (`crewLanding`); a discard of a copy that is gone still
- * discards (`crewTasks`); a copy's creation fails in its setup's words (`crewApply`).
+ * The verdicts: a guard that stops a WIP commit, or a ref moved outside the engine, parks the
+ * task; a landing's refusals hold, redo, retry or park it; a discard of a copy that is gone still
+ * discards; a copy's creation fails in its setup's words.
  *
  * The decider asks for no boot inspection; that handler stays registered under its own kind for
  * the wiring to queue.
@@ -101,7 +100,7 @@ class SettledAtOnce {
 const refusedFor = (reason: string) =>
   new SettledAtOnce({ _tag: "Done", outcome: { kind: "failed", reason, refused: true } });
 
-/** V1's words for a guard that stopped a WIP commit (`crewTurns`). */
+/** The words for a guard that stopped a WIP commit. */
 const GUARD_WORDS: Readonly<Record<Exclude<LaneParkReason, "unknown-tip">, string>> = {
   dependencies: "an unignored dependency directory",
   secrets: "a secret file",

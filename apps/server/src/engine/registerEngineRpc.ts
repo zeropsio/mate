@@ -4,8 +4,7 @@
  * `auth/RpcAuthorization.ts`: reading the conversation is the same read as V1's
  * `subscribeThread`, a send, stop, answer, dismissal or steer the same authority as a V1 dispatch.
  *
- * Every handler answers from the `MateEngine` the server was built with: its wire answers
- * `unserved` in V1 mode, and in mate mode serves the engine. The caller is the connecting session
+ * Every handler answers from the `MateEngine` the server was built with. The caller is the connecting session
  * (its subject from the authenticated session, never from RPC input); the revision its records
  * carry is the Mate's environment and start epoch, as its attention counts them.
  *

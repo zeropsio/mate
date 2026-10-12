@@ -32,9 +32,7 @@ describe("C: image tables at the conversation end", () => {
         const chat = mateChat(s);
         const wire = chat.fixture();
         wire.history();
-        wire.message(
-          "comparison",
-          "assistant",
+        wire.say(
           `${"A paragraph above the comparison.\n\n".repeat(30)}| Screenshot before UI | Screenshot after updates |\n| --- | --- |\n| ![Before overview](before.png) | ![After the layout update](after.png) |`,
         );
         yield* s.given.signedIn;

@@ -12,6 +12,7 @@ import { EMPTY_ENVIRONMENT_THREAD_STATE } from "../../state/threadState.ts";
 import { engineRouteOf, mateEngineHostAtom, type EngineRoute } from "../engineHost.ts";
 import {
   ENGINE_UPDATE_WORDS,
+  MATE_OLDER_WORDS,
   engineRows,
   engineHeldTurns,
   engineThread,
@@ -20,50 +21,28 @@ import {
 import type { EnvironmentCacheStore } from "../../platform/persistence.ts";
 import { followStreamInEnvironment } from "../../state/runtime.ts";
 import type { ShellSnapshotLoader } from "../../state/shellSnapshotHttp.ts";
-import type { ThreadSnapshotLoader } from "../../state/threadSnapshotHttp.ts";
 import { openShellReplay } from "./mateShellReplay.ts";
-import {
-  openThreadReplay,
-  registerOlderThreadTurns,
-  type ThreadResumeCache,
-} from "./mateThreadReplay.ts";
+import { registerOlderThreadTurns } from "../olderTurns.ts";
 import type { AccountStore } from "../store.ts";
-import type { MateThreadValue } from "../families/mateConversation.ts";
+import type { MateShellValue } from "../families/mateConversation.ts";
 import {
   conversationId,
   conversationScope,
   mateShell,
-  mateThread,
   type ConversationKey,
 } from "../projections/mateConversation.ts";
 import { streamOf, type Row } from "../reducer.ts";
-/**
- * A V1 conversation read that starts only once the Mate's door says its conversation is V1's: an
- * engine Mate's parked V1 history is never read. The cached paint comes from the account's facts.
- */
-const v1Only = <A, E, R>(stream: Stream.Stream<A, E, R>) =>
-  Stream.unwrap(
-    Effect.map(EnvironmentSupervisor, (supervisor) =>
-      SubscriptionRef.changes(supervisor.prepared).pipe(
-        Stream.filter(Option.isSome),
-        Stream.map((prepared) => engineRouteOf(prepared.value).kind === "v1"),
-        Stream.changes,
-        Stream.switchMap((v1) => (v1 ? stream : Stream.empty)),
-      ),
-    ),
-  );
-
 export const mateConversationStoreAtom = Atom.make<AccountStore | null>(null).pipe(Atom.keepAlive);
 export const publishConversation = (
   store: AccountStore,
   key: ConversationKey,
-  value: import("../families/mateConversation.ts").MateShellValue | MateThreadValue,
+  value: MateShellValue,
 ) => {
-  const family = key.threadId === undefined ? "mateShell" : "mateThread";
+  const family = "mateShell";
   const scope = conversationScope(key);
   const id = conversationId(key);
   const status = value.state.status;
-  const ready = status === "live" || status === "deleted";
+  const ready = status === "live";
   if (
     (ready || status === "synchronizing") &&
     streamOf(store.state(), scope).phase !== "live" &&
@@ -80,10 +59,7 @@ export const publishConversation = (
   const generation = streamOf(store.state(), scope).generation;
   const prior = store.state().facts.get(`${family}:${id}`)?.revision;
   const sequence = prior?.kind === "mate-link" ? prior.sequence + 1 : 1;
-  const hasValue =
-    "snapshot" in value.state
-      ? Option.isSome(value.state.snapshot)
-      : Option.isSome(value.state.data) || value.state.status === "deleted";
+  const hasValue = Option.isSome(value.state.snapshot);
   if (hasValue) {
     const row = { family, id, value, revision: { kind: "mate-link", sequence } } as Row;
     if (ready) {
@@ -113,7 +89,7 @@ export const publishConversation = (
     key: scope,
     now: Effect.runSync(Clock.currentTimeMillis),
     event:
-      status === "live" || status === "deleted"
+      status === "live"
         ? { kind: "baseline-committed" }
         : status === "synchronizing"
           ? { kind: "handshake" }
@@ -127,7 +103,7 @@ export const publishConversation = (
 
 export function createAccountConversationAtoms<R, E>(
   runtime: Atom.AtomRuntime<
-    EnvironmentRegistry | EnvironmentCacheStore | ShellSnapshotLoader | ThreadSnapshotLoader | R,
+    EnvironmentRegistry | EnvironmentCacheStore | ShellSnapshotLoader | R,
     E
   >,
 ) {
@@ -182,7 +158,7 @@ export function createAccountConversationAtoms<R, E>(
                     : ("denied" as const);
                 store.dispatch({
                   kind: "access",
-                  family: key.threadId === undefined ? "mateShell" : "mateThread",
+                  family: "mateShell",
                   id: conversationId(key),
                   access,
                 });
@@ -205,60 +181,16 @@ export function createAccountConversationAtoms<R, E>(
           ),
           Effect.forkScoped,
         );
-        if (key.threadId === undefined) {
-          yield* followStreamInEnvironment(
-            key.environmentId as EnvironmentId,
-            Stream.unwrap(openShellReplay(store).pipe(Effect.map(SubscriptionRef.changes))),
-          ).pipe(
-            Stream.runForEach((state) =>
-              Effect.sync(() => {
-                if (active && protectedRead) publishConversation(store, key, { state });
-              }),
-            ),
-          );
-        } else {
-          let owner: object | undefined;
-          const resume: ThreadResumeCache = {
-            get owner() {
-              return owner;
-            },
-            set owner(value) {
-              owner = value;
-            },
-            get snapshot() {
-              const fact = store.state().facts.get(`mateThread:${conversationId(key)}`);
-              return fact?.content.kind === "value"
-                ? (fact.content.value as MateThreadValue).resume
-                : undefined;
-            },
-            set snapshot(value) {
-              if (!active || !protectedRead || value === undefined) return;
-              publishConversation(store, key, { state: value.state, resume: value });
-            },
-          };
-          yield* followStreamInEnvironment(
-            key.environmentId as EnvironmentId,
-            v1Only(
-              Stream.unwrap(
-                openThreadReplay(key.threadId as ThreadId, resume, true).pipe(
-                  Effect.map(SubscriptionRef.changes),
-                ),
-              ),
-            ),
-          ).pipe(
-            Stream.runForEach((state) =>
-              Effect.sync(() => {
-                if (active && protectedRead) {
-                  const retained = resume.snapshot;
-                  publishConversation(store, key, {
-                    state,
-                    ...(retained === undefined ? {} : { resume: retained }),
-                  });
-                }
-              }),
-            ),
-          );
-        }
+        yield* followStreamInEnvironment(
+          key.environmentId as EnvironmentId,
+          Stream.unwrap(openShellReplay(store).pipe(Effect.map(SubscriptionRef.changes))),
+        ).pipe(
+          Stream.runForEach((state) =>
+            Effect.sync(() => {
+              if (active && protectedRead) publishConversation(store, key, { state });
+            }),
+          ),
+        );
       });
       get.mount(runtime.atom(effect));
       get.addFinalizer(() => {
@@ -307,8 +239,6 @@ export function createAccountConversationAtoms<R, E>(
       .pipe(Atom.keepAlive, Atom.withLabel(`mate-conversation-route:${environmentId}`)),
   );
   const routeOf = (get: Atom.AtomContext, environmentId: string): EngineRoute =>
-    // Before the door answers, V1 as always. The web keeps no conversation across a reload, so this
-    // paints only the opening state, never V1 content an engine Mate would take back.
     Option.getOrElse(AsyncResult.value(get(routes(environmentId))), () => ({
       kind: "unknown" as const,
     }));
@@ -374,6 +304,8 @@ export function createAccountConversationAtoms<R, E>(
             ...EMPTY_ENVIRONMENT_THREAD_STATE,
             error: Option.some(ENGINE_UPDATE_WORDS),
           });
+        // Before the door answers, the engine's records the account holds already paint it.
+        case "unknown":
         case "engine": {
           const host = get(engineHolds(encoded));
           return host === null || key.threadId === undefined
@@ -387,14 +319,11 @@ export function createAccountConversationAtoms<R, E>(
                 ),
               );
         }
-        case "unknown":
-        case "v1": {
-          // V1 until the door says otherwise: its cached paint and its access words at once.
-          const store = get(holders(encoded));
-          return store === null
-            ? AsyncResult.initial<State, E>(true)
-            : AsyncResult.success(get(store.data.project(mateThread, key)));
-        }
+        case "older":
+          return AsyncResult.success<State>({
+            ...EMPTY_ENVIRONMENT_THREAD_STATE,
+            error: Option.some(MATE_OLDER_WORDS),
+          });
       }
     }),
   );

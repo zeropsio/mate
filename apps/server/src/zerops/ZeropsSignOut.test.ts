@@ -1,14 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import {
-  type OrchestrationThreadShell,
-  ThreadId,
-  type ZeropsAgentAuthSnapshot,
-} from "@t3tools/contracts";
-import * as Duration from "effect/Duration";
+import { type ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as Ref from "effect/Ref";
-import * as TestClock from "effect/testing/TestClock";
 
 import { ZeropsAgentFlagError } from "./ZeropsAgentFlag.ts";
 import type { MateLogin } from "./ZeropsLogins.ts";
@@ -16,9 +9,6 @@ import {
   make,
   type SignOutTarget,
   stopSessionsOnEngine,
-  stopSessionsVia,
-  threadsToStop,
-  waitUntilNotLive,
   type ZeropsSignOutOptions,
 } from "./ZeropsSignOut.ts";
 
@@ -316,162 +306,6 @@ describe("ZeropsSignOut, an agent's own login", () => {
   );
 });
 
-// ---------------------------------------------------------------------------
-// threadsToStop — pure "which threads" selection
-// ---------------------------------------------------------------------------
-
-const THREAD_ID_1 = "th_0000000000000000000001" as ThreadId;
-const THREAD_ID_2 = "th_0000000000000000000002" as ThreadId;
-const THREAD_ID_3 = "th_0000000000000000000003" as ThreadId;
-
-const shell = (
-  over: Partial<Pick<OrchestrationThreadShell, "id" | "modelSelection" | "session">>,
-): Pick<OrchestrationThreadShell, "id" | "modelSelection" | "session"> => ({
-  id: THREAD_ID_1,
-  modelSelection: { instanceId: "claudeAgent", model: "claude" } as never,
-  session: {
-    threadId: THREAD_ID_1,
-    status: "running",
-    providerName: "claudeAgent",
-    runtimeMode: "agent",
-    activeTurnId: null,
-    lastError: null,
-    updatedAt: "2026-09-22T00:00:00.000Z",
-  } as never,
-  ...over,
-});
-
-describe("threadsToStop, an agent's own login", () => {
-  it.each(
-    Array.from(
-      [
-        ["idle", "idle", true],
-        ["starting", "starting", true],
-        ["running", "running", true],
-        ["ready", "ready", true],
-        ["interrupted", "interrupted", true],
-        ["stopped", "stopped", false],
-        ["error", "error", true],
-      ] as const,
-      ([name, status, expected]) => ({
-        title: `${expected ? "stops" : "leaves"} a thread whose session status is ${name}`,
-        status,
-        expected,
-      }),
-    ),
-  )("$title", ({ status, expected }) => {
-    const threads = [
-      shell({ id: THREAD_ID_1, session: { ...shell({}).session, status } as never }),
-    ];
-    assert.deepStrictEqual(
-      threadsToStop(threads, { agentId: "claude-code" }),
-      expected ? [THREAD_ID_1] : [],
-    );
-  });
-
-  it("leaves a thread with no session at all", () => {
-    const threads = [shell({ id: THREAD_ID_1, session: null })];
-    assert.deepStrictEqual(threadsToStop(threads, { agentId: "claude-code" }), []);
-  });
-
-  it("only selects threads whose provider instance maps to the requested agent", () => {
-    const threads = [
-      shell({
-        id: THREAD_ID_1,
-        modelSelection: { instanceId: "claudeAgent", model: "x" } as never,
-      }),
-      shell({ id: THREAD_ID_2, modelSelection: { instanceId: "codex", model: "x" } as never }),
-      shell({
-        id: THREAD_ID_3,
-        modelSelection: { instanceId: "some-other-driver", model: "x" } as never,
-      }),
-    ];
-    assert.deepStrictEqual(threadsToStop(threads, { agentId: "claude-code" }), [THREAD_ID_1]);
-    assert.deepStrictEqual(threadsToStop(threads, { agentId: "codex" }), [THREAD_ID_2]);
-  });
-
-  it("selects every live thread for the agent, not just the first", () => {
-    const threads = [
-      shell({ id: THREAD_ID_1 }),
-      shell({ id: THREAD_ID_2 }),
-      shell({ id: THREAD_ID_3, modelSelection: { instanceId: "codex", model: "x" } as never }),
-    ];
-    assert.deepStrictEqual(threadsToStop(threads, { agentId: "claude-code" }), [
-      THREAD_ID_1,
-      THREAD_ID_2,
-    ]);
-  });
-
-  it("keys on the live session's own provider instance, not the thread's current model selection", () => {
-    // A thread can switch which agent it's pointed at while a session from
-    // the PREVIOUS provider instance is still live — the live session is
-    // what must stop, not whatever the thread is now configured to use.
-    const threads = [
-      shell({
-        id: THREAD_ID_1,
-        modelSelection: { instanceId: "codex", model: "x" } as never,
-        session: { ...shell({}).session, providerInstanceId: "claudeAgent" } as never,
-      }),
-    ];
-    assert.deepStrictEqual(threadsToStop(threads, { agentId: "claude-code" }), [THREAD_ID_1]);
-    assert.deepStrictEqual(threadsToStop(threads, { agentId: "codex" }), []);
-  });
-
-  it("falls back to the thread's model selection when the session carries no providerInstanceId", () => {
-    const threads = [shell({ id: THREAD_ID_1 })];
-    assert.deepStrictEqual(threadsToStop(threads, { agentId: "claude-code" }), [THREAD_ID_1]);
-  });
-
-  it("selects nothing from an empty thread list", () => {
-    assert.deepStrictEqual(threadsToStop([], { agentId: "claude-code" }), []);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// waitUntilNotLive — poll-until-stopped with a bounded timeout
-// ---------------------------------------------------------------------------
-
-describe("waitUntilNotLive", () => {
-  it.effect("resolves as soon as isLive turns false, without waiting for the timeout", () =>
-    Effect.gen(function* () {
-      const remainingLivePolls = yield* Ref.make(2);
-      const pollCount = yield* Ref.make(0);
-      const isLive = Ref.updateAndGet(pollCount, (n) => n + 1).pipe(
-        Effect.andThen(Ref.getAndUpdate(remainingLivePolls, (n) => Math.max(n - 1, 0))),
-        Effect.map((n) => n > 0),
-      );
-      const fiber = yield* Effect.forkChild(
-        waitUntilNotLive(isLive, {
-          pollInterval: Duration.millis(100),
-          timeout: Duration.seconds(10),
-        }),
-      );
-      // First poll (live), sleep, second poll (live), sleep, third poll (not live) -> returns.
-      yield* TestClock.adjust(Duration.millis(100));
-      yield* TestClock.adjust(Duration.millis(100));
-      yield* Fiber.join(fiber);
-      assert.strictEqual(yield* Ref.get(pollCount), 3);
-    }),
-  );
-
-  it.effect("gives up once the timeout elapses, even if isLive never turns false", () =>
-    Effect.gen(function* () {
-      const pollCount = yield* Ref.make(0);
-      const isLive = Ref.update(pollCount, (n) => n + 1).pipe(Effect.as(true));
-      const fiber = yield* Effect.forkChild(
-        waitUntilNotLive(isLive, {
-          pollInterval: Duration.millis(100),
-          timeout: Duration.seconds(1),
-        }),
-      );
-      yield* TestClock.adjust(Duration.seconds(2));
-      // Never throws — a timeout is swallowed, not propagated.
-      yield* Fiber.join(fiber);
-      assert.isTrue((yield* Ref.get(pollCount)) > 0);
-    }),
-  );
-});
-
 const WORK: MateLogin = {
   id: "claudeAgent-work",
   agent: "claude-code",
@@ -583,85 +417,6 @@ describe("ZeropsSignOut, a login beyond the defaults", () => {
         (yield* Effect.flip(service.remove("claudeAgent"))).reason,
         "default-login",
       );
-    }),
-  );
-});
-
-describe("threadsToStop, a login beyond the defaults", () => {
-  const thread = (
-    id: string,
-    instanceId: string,
-    session: { readonly providerInstanceId?: string; readonly status: string } | null,
-  ) =>
-    ({
-      id: ThreadId.make(id),
-      modelSelection: { instanceId, model: "m" },
-      session,
-    }) as unknown as OrchestrationThreadShell;
-
-  it("stops the live sessions running on that login, and no other", () => {
-    assert.deepStrictEqual(
-      threadsToStop(
-        [
-          thread("a", "claudeAgent-work", {
-            providerInstanceId: "claudeAgent-work",
-            status: "running",
-          }),
-          thread("b", "claudeAgent", { providerInstanceId: "claudeAgent", status: "running" }),
-          thread("c", "claudeAgent-work", {
-            providerInstanceId: "claudeAgent-work",
-            status: "stopped",
-          }),
-          thread("d", "claudeAgent-work", null),
-          // Repointed at the default while its session still runs on the login.
-          thread("e", "claudeAgent", { providerInstanceId: "claudeAgent-work", status: "ready" }),
-        ],
-        { loginId: "claudeAgent-work" },
-      ),
-      ["a", "e"].map((id) => ThreadId.make(id)),
-    );
-  });
-});
-
-describe("stopSessionsVia", () => {
-  const live = (id: string, instanceId: string) =>
-    ({
-      id: ThreadId.make(id),
-      modelSelection: { instanceId, model: "m" },
-      session: { providerInstanceId: instanceId, status: "running" },
-    }) as unknown as OrchestrationThreadShell;
-
-  // Step (c) over orchestration: a stop is dispatched for every live session on the login, and
-  // each is waited on until it reads stopped; one stop that fails holds up none after it.
-  it.effect("stops every live session on the login, each waited on, past one that fails", () =>
-    Effect.gen(function* () {
-      const stopped = yield* Ref.make<ReadonlyArray<string>>([]);
-      const asked = yield* Ref.make<ReadonlyArray<string>>([]);
-      const polled = yield* Ref.make<ReadonlyArray<string>>([]);
-      const stop = stopSessionsVia({
-        threads: Effect.succeed([
-          live("a", "claudeAgent"),
-          live("b", "claudeAgent-work"),
-          live("c", "claudeAgent"),
-          live("d", "claudeAgent"),
-        ]),
-        isLive: (threadId) =>
-          Ref.update(polled, (all) => [...all, threadId]).pipe(
-            Effect.andThen(Effect.map(Ref.get(stopped), (all) => !all.includes(threadId))),
-          ),
-        stop: (threadId) =>
-          Ref.update(asked, (all) => [...all, threadId]).pipe(
-            Effect.andThen(
-              threadId === "c"
-                ? Effect.die(new Error("dispatch refused"))
-                : Ref.update(stopped, (all) => [...all, threadId]),
-            ),
-          ),
-      });
-      yield* stop({ agentId: "claude-code" });
-      assert.deepStrictEqual(yield* Ref.get(asked), ["a", "c", "d"]);
-      assert.deepStrictEqual(yield* Ref.get(stopped), ["a", "d"]);
-      assert.deepStrictEqual(yield* Ref.get(polled), ["a", "d"]);
     }),
   );
 });

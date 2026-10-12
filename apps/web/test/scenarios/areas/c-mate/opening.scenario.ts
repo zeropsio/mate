@@ -51,8 +51,7 @@ describe("C: the conversation opening follows readiness", () => {
                 conversationSelector,
               ),
             );
-          wire.holdReplay = true;
-          const read = wire.holdPage("", s.drivers.mates.get("Sage")!.snapshot());
+          const read = wire.engine.holdOpen();
           yield* Effect.addFinalizer(() => Effect.sync(() => read.release()));
           yield* s.given.signedIn;
           yield* chat.when.openReadOnly("Sage");
@@ -121,8 +120,6 @@ describe("C: the conversation opening follows readiness", () => {
             ),
           );
           read.release();
-          yield* Effect.promise(() => wire.replaySubscribed());
-          wire.ready();
           // DOM completion can precede the sampler's next frame; consume its own receipt.
           yield* Effect.promise(() =>
             s.page.waitForFunction(
@@ -216,8 +213,7 @@ describe("C: the conversation opening follows readiness", () => {
                       const wire = chat.fixture("Sage");
                       wire.history("Sage's conversation is ready");
                       wire.ownership = person === "colleague" ? "colleague" : "project-token";
-                      wire.holdReplay = true;
-                      const read = wire.holdPage("", s.drivers.mates.get("Sage")!.snapshot());
+                      const read = wire.engine.holdOpen();
                       yield* Effect.addFinalizer(() => Effect.sync(() => read.release()));
                       if (person === "reader") s.given.asPerson("reader");
                       yield* Effect.promise(() =>
@@ -413,7 +409,6 @@ describe("C: the conversation opening follows readiness", () => {
                         });
                       } else {
                         read.release();
-                        wire.ready();
                         yield* chat.then.text("Sage's conversation is ready");
                         yield* Effect.promise(async () => {
                           await s.page.waitForSelector('[data-conversation-opening="complete"]');

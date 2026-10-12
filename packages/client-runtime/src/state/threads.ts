@@ -9,43 +9,16 @@ import { Atom, AtomRegistry } from "effect/reactivity";
 
 import { EnvironmentRegistry } from "../connection/registry.ts";
 import { EnvironmentCacheStore } from "../platform/persistence.ts";
-import { ThreadSnapshotLoader } from "./threadSnapshotHttp.ts";
 import { parseThreadKey, threadKey } from "./entities.ts";
-import { THREAD_SNAPSHOT_IDLE_TTL_MS } from "./threadRetention.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
-import {
-  EMPTY_ENVIRONMENT_THREAD_STATE,
-  NATIVE_ENGINE_WORDS,
-  type EnvironmentThreadState,
-} from "./threadState.ts";
+import { EMPTY_ENVIRONMENT_THREAD_STATE, type EnvironmentThreadState } from "./threadState.ts";
 import { EnvironmentSupervisor } from "../connection/supervisor.ts";
-import {
-  engineRouteOf,
-  mateEngineHostAtom,
-  mateEngineReaderAtom,
-  type EngineRoute,
-} from "../data/engineHost.ts";
+import { engineRouteOf, mateEngineHostAtom, type EngineRoute } from "../data/engineHost.ts";
 import { engineThreadChanges } from "../data/engineThreadChanges.ts";
-import { NATIVE_UPDATE_WORDS } from "../data/projections/mateEngine.ts";
+import { MATE_OLDER_WORDS, NATIVE_UPDATE_WORDS } from "../data/projections/mateEngine.ts";
 import * as Option from "effect/Option";
 
-/** What a V1-only reader shows for a Mate whose conversation runs on the engine. */
-export const NATIVE_ENGINE_THREAD_STATE: EnvironmentThreadState = {
-  ...EMPTY_ENVIRONMENT_THREAD_STATE,
-  error: Option.some(NATIVE_ENGINE_WORDS),
-};
-
-import {
-  openThreadReplay,
-  cachedThreadState,
-  type ThreadResumeCache,
-} from "../data/adapters/mateThreadReplay.ts";
-export const makeEnvironmentThreadState = openThreadReplay;
-export {
-  requestOlderThreadTurns,
-  INITIAL_THREAD_USER_TURN_LIMIT,
-  isThreadSessionRunning,
-} from "../data/adapters/mateThreadReplay.ts";
+export { requestOlderThreadTurns } from "../data/olderTurns.ts";
 
 /** A Mate whose engine speaks only a newer protocol than this build: on the phone, an update. */
 const NEWER_ENGINE_THREAD_STATE: EnvironmentThreadState = {
@@ -59,17 +32,12 @@ const OPENING_ENGINE_THREAD_STATE: EnvironmentThreadState = {
   status: "synchronizing",
 };
 
-/**
- * An engine Mate's conversation, read from the account's engine records once its host is mounted;
- * a reader that reads no engine conversation shows the update route.
- */
+/** A Mate's conversation, read from the account's engine records once its host is mounted. */
 function engineThreadStateChanges(
   registry: AtomRegistry.AtomRegistry,
   environmentId: EnvironmentIdType,
   threadId: ThreadIdType,
 ): Stream.Stream<EnvironmentThreadState> {
-  if (registry.get(mateEngineReaderAtom) === "none")
-    return Stream.succeed(NATIVE_ENGINE_THREAD_STATE);
   return AtomRegistry.toStream(registry, mateEngineHostAtom).pipe(
     Stream.switchMap((host) =>
       host === null
@@ -79,29 +47,30 @@ function engineThreadStateChanges(
   );
 }
 
+/** A Mate from before the engine: only its update brings its conversation here. */
+const OLDER_MATE_THREAD_STATE: EnvironmentThreadState = {
+  ...EMPTY_ENVIRONMENT_THREAD_STATE,
+  error: Option.some(MATE_OLDER_WORDS),
+};
+
 function threadStateChanges(
   registry: AtomRegistry.AtomRegistry,
   environmentId: EnvironmentIdType,
   threadId: ThreadIdType,
-  resumeCache?: ThreadResumeCache,
 ) {
-  const v1 = Stream.unwrap(
-    makeEnvironmentThreadState(threadId, resumeCache).pipe(Effect.map(SubscriptionRef.changes)),
-  );
   return followStreamInEnvironment(
     environmentId,
     Stream.unwrap(
       Effect.gen(function* () {
         const supervisor = yield* EnvironmentSupervisor;
         const cache = yield* EnvironmentCacheStore;
-        // V1 runs at once, its cached paint offline too, until the Mate's door — or the
-        // configuration it last cached — says its conversation is the engine's: then it is read
-        // from the account's engine records, never its parked V1 history.
+        // The engine's records paint at once, offline too, unless the Mate's door — or the
+        // configuration it last cached — says this build and the Mate speak no common protocol.
         const cached = yield* cache
           .loadServerConfig(environmentId)
           .pipe(Effect.orElseSucceed(() => Option.none()));
         const routeBefore = Option.match(cached, {
-          onNone: (): EngineRoute["kind"] => "v1",
+          onNone: (): EngineRoute["kind"] => "unknown",
           onSome: (config) => {
             const served = config.environment.capabilities.mateEngine;
             return engineRouteOf(served === undefined ? {} : { mateEngine: served.protocol }).kind;
@@ -114,13 +83,15 @@ function threadStateChanges(
             Stream.map((prepared) => engineRouteOf(prepared.value).kind),
           ),
         ).pipe(
+          // Before the door answers the engine reads already: its answer never opens it again.
+          Stream.map((route) => (route === "unknown" ? "engine" : route)),
           Stream.changes,
           Stream.switchMap((route) =>
-            route === "engine"
-              ? engineThreadStateChanges(registry, environmentId, threadId)
-              : route === "update"
-                ? Stream.succeed(NEWER_ENGINE_THREAD_STATE)
-                : v1,
+            route === "update"
+              ? Stream.succeed(NEWER_ENGINE_THREAD_STATE)
+              : route === "older"
+                ? Stream.succeed(OLDER_MATE_THREAD_STATE)
+                : engineThreadStateChanges(registry, environmentId, threadId),
           ),
         );
       }),
@@ -129,39 +100,14 @@ function threadStateChanges(
 }
 
 export function createEnvironmentThreadStateAtoms<R, E>(
-  runtime: Atom.AtomRuntime<
-    EnvironmentRegistry | EnvironmentCacheStore | ThreadSnapshotLoader | R,
-    E
-  >,
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | EnvironmentCacheStore | R, E>,
 ) {
-  // Cache definitions must outlive collectible live-atom definitions. The
-  // registry retains these nodes without retaining environment or RPC scopes.
-  const resumeFamily = Atom.family((key: string) =>
-    Atom.make((): ThreadResumeCache => ({
-      snapshot: undefined,
-      owner: undefined,
-    })).pipe(
-      Atom.setIdleTTL(THREAD_SNAPSHOT_IDLE_TTL_MS),
-      Atom.withLabel(`environment-thread-resume:${key}`),
-    ),
-  );
   const family = Atom.family((key: string) => {
     const { environmentId, threadId } = parseThreadKey(key);
-    const resumeAtom = resumeFamily(key);
     return runtime
-      .atom(
-        (get) => {
-          get.mount(resumeAtom);
-          const resume = get.once(resumeAtom);
-          const live = threadStateChanges(get.registry, environmentId, threadId, resume);
-          return resume.snapshot === undefined
-            ? live
-            : Stream.concat(Stream.succeed(cachedThreadState(resume.snapshot.state)), live);
-        },
-        {
-          initialValue: EMPTY_ENVIRONMENT_THREAD_STATE,
-        },
-      )
+      .atom((get) => threadStateChanges(get.registry, environmentId, threadId), {
+        initialValue: EMPTY_ENVIRONMENT_THREAD_STATE,
+      })
       .pipe(Atom.setIdleTTL(0), Atom.withLabel(`environment-thread-state:${key}`));
   });
 
@@ -173,7 +119,6 @@ export function createEnvironmentThreadStateAtoms<R, E>(
 
 export * from "./archivedThreads.ts";
 export * from "./checkpointDiff.ts";
-export * from "./threadSnapshotHttp.ts";
 export * from "./composerPathSearch.ts";
 export * from "./threadCommands.ts";
 export * from "./threadFeedback.ts";

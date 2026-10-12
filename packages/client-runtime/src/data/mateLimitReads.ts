@@ -1,12 +1,9 @@
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import * as Option from "effect/Option";
 import { mateEngineHostAtom } from "./engineHost.ts";
 import { engineRows } from "./projections/mateEngine.ts";
 import { accountReadsAtom } from "./reads.ts";
-import { mateConversationStoreAtom } from "./adapters/mateConversation.ts";
-import { mateShell } from "./projections/mateConversation.ts";
 import { hqMates } from "./projections/hqMates.ts";
 import { parseScopedThreadKey } from "../environment/index.ts";
 import { sameValue } from "./projections/equal.ts";
@@ -51,14 +48,6 @@ const sourceAtom = Atom.family((key: string) =>
             (row) => String(row.conversationId) === ref.threadId,
           );
     if (row !== undefined) return { engineRow: row, latestTurn: null, session: null };
-    const store = get(mateConversationStoreAtom);
-    if (store !== null) {
-      const shell = get(store.data.project(mateShell, { environmentId: ref.environmentId }));
-      if (Option.isSome(shell.snapshot)) {
-        const thread = shell.snapshot.value.threads.find((thread) => thread.id === ref.threadId);
-        if (thread !== undefined) return thread;
-      }
-    }
     const account = get(accountReadsAtom);
     if (account?.orgId == null) return null;
     const mates = get(account.data.project(hqMates, account.orgId));

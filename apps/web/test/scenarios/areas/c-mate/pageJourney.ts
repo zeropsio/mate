@@ -9,7 +9,6 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
-import { EngineChatWire } from "./engine.ts";
 import { installArea } from "./fake.ts";
 
 const decodeCreateUrl = Schema.decodeUnknownSync(AssetCreateUrlInput);
@@ -126,7 +125,6 @@ export const journey = (
     yield* s.given.project("Ada", { mate: true });
     const chat = mateChat(s);
     const fixture = chat.fixture();
-    if (!(fixture.wire instanceof EngineChatWire)) throw new Error("A page is the engine's alone");
     const engine = fixture.wire.engine;
     const page = {
       asset: {

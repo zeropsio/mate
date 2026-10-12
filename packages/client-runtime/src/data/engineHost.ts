@@ -1,7 +1,7 @@
 /**
  * The account's engine conversations: one host per account store — its subscriptions, its
  * operations and its streamed text — and the route a Mate's conversation takes, decided at the
- * door from the protocol its descriptor names: the engine, V1, or the update route.
+ * door from the protocol its descriptor names: the engine, or an update of the app or the Mate.
  *
  * @module data/engineHost
  */
@@ -47,13 +47,7 @@ export interface MateEngineHost {
   readonly close: () => void;
 }
 
-/**
- * Whether this client reads engine conversations at all. A V1-only app (mobile today) says `none`:
- * an engine Mate's writes are then refused at once with the update route, never retried.
- */
-export const mateEngineReaderAtom = Atom.make<"engine" | "none">("engine").pipe(Atom.keepAlive);
-
-/** This client cannot talk to an engine Mate: the person updates the app. Never retried. */
+/** This client and the Mate speak no common protocol: the person updates one. Never retried. */
 export class MateEngineUnsupported extends Schema.TaggedError<MateEngineUnsupported>()(
   "MateEngineUnsupported",
   { message: Schema.String },
@@ -115,13 +109,14 @@ export function makeMateEngineHost(options: {
 /** Where a Mate's conversation is read and written. */
 export type EngineRoute =
   | { readonly kind: "unknown" }
-  | { readonly kind: "v1" }
   | { readonly kind: "engine"; readonly protocol: number }
   /** The Mate serves only a newer protocol: the person updates the app. */
-  | { readonly kind: "update" };
+  | { readonly kind: "update" }
+  /** The Mate serves no engine (a build from before it): the person updates the Mate. */
+  | { readonly kind: "older" };
 
 export function engineRouteOf(prepared: Pick<PreparedConnection, "mateEngine">): EngineRoute {
-  if (prepared.mateEngine === undefined) return { kind: "v1" };
+  if (prepared.mateEngine === undefined) return { kind: "older" };
   const protocol = engineProtocol(prepared.mateEngine);
   return protocol === null ? { kind: "update" } : { kind: "engine", protocol };
 }

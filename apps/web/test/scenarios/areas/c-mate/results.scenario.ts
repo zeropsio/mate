@@ -20,60 +20,32 @@ describe("C: calls, results and crew actions", () => {
         const wire = chat.fixture();
         wire.history("Inspect with trace_helper", "run-one");
         wire.run("run-one", "running");
-        wire.tool(
+        wire.call(
           "helper-launch",
-          "tool.updated",
+          "running",
           {
             toolName: "Agent",
             input: { description: "trace_helper", prompt: "Reply helper-ok" },
           },
           "run-one",
-          { itemType: "collab_agent_tool_call" },
+          { step: "helper" },
         );
-        wire.activity(
-          "task.started",
-          "Helper began",
-          {
-            taskId: "trace-helper",
-            toolUseId: "helper-launch",
-            agentKind: "agent",
-            title: "trace_helper",
-            role: "trace_helper",
-            agentPath: "/root/trace_helper",
-          },
-          "run-one",
-        );
-        wire.tool("native", "tool.completed", {
+        wire.work("trace-helper", "running", { title: "trace_helper", call: "helper-launch" });
+        wire.call("native", "done", {
           toolName: "Bash",
           command: "printf native-ok",
           rawOutput: { content: "native-ok" },
         });
-        wire.tool(
+        wire.call(
           "discover",
-          "tool.started",
-          {
-            toolName: "mcp__zerops__zerops_discover",
-            input: {},
-          },
+          "running",
+          { toolName: "mcp__zerops__zerops_discover", input: {} },
           "run-one",
-          { itemType: "mcp_tool_call" },
+          { step: "mcp" },
         );
         yield* s.given.signedIn;
         yield* chat.when.open("Ada", "Inspect with trace_helper");
-        wire.activity(
-          "task.updated",
-          "Helper returned",
-          {
-            taskId: "trace-helper",
-            toolUseId: "helper-launch",
-            agentKind: "agent",
-            title: "trace_helper",
-            role: "trace_helper",
-            agentPath: "/root/trace_helper",
-            status: "idle",
-          },
-          "run-one",
-        );
+        wire.work("trace-helper", "idle");
         yield* chat.when.press("Started a helper. Show them");
         yield* chat.then.text("trace_helper");
         yield* chat.then.text("Idle");
@@ -82,9 +54,9 @@ describe("C: calls, results and crew actions", () => {
         yield* chat.when.type("Keep this draft while the parent works");
         yield* chat.when.press("printf native-ok. Show what it returned");
         yield* chat.then.text("native-ok");
-        wire.tool(
+        wire.call(
           "discover",
-          "tool.completed",
+          "done",
           {
             toolName: "mcp__zerops__zerops_discover",
             input: {},
@@ -93,10 +65,10 @@ describe("C: calls, results and crew actions", () => {
             },
           },
           "run-one",
-          { itemType: "mcp_tool_call" },
+          { step: "mcp" },
         );
-        wire.message("parent-answer", "assistant", "trace-ok", "run-one");
-        wire.run("run-one", "completed", null, "parent-answer");
+        wire.say("trace-ok", "run-one");
+        wire.run("run-one", "completed");
         yield* chat.then.once("trace-ok");
         yield* chat.then.control("Stop generation", "button", false);
         yield* chat.then.draft("Keep this draft while the parent works");
@@ -120,14 +92,9 @@ describe("C: calls, results and crew actions", () => {
         const wire = chat.fixture();
         wire.history("Inspect the two commands", "run-one");
         wire.run("run-one", "running");
-        wire.message(
-          "thought",
-          "reasoning",
-          "I will inspect both commands independently",
-          "run-one",
-        );
-        wire.tool("call-a", "tool.started", { toolName: "Bash", command: "printf first-proof" });
-        wire.tool("call-b", "tool.started", { toolName: "Bash", command: "printf second-proof" });
+        wire.thought("I will inspect both commands independently", "run-one");
+        wire.call("call-a", "running", { toolName: "Bash", command: "printf first-proof" });
+        wire.call("call-b", "running", { toolName: "Bash", command: "printf second-proof" });
         yield* s.given.signedIn;
         yield* chat.step(
           "concurrent work keeps the composer usable",
@@ -135,23 +102,23 @@ describe("C: calls, results and crew actions", () => {
         );
         yield* chat.then.control("Stop generation");
         yield* chat.when.type("I can type while work arrives");
-        wire.tool("call-b", "tool.completed", {
+        wire.call("call-b", "done", {
           toolName: "Bash",
           command: "printf second-proof",
           rawOutput: { content: "Second command returned its own result" },
         });
-        wire.tool("call-a", "tool.completed", {
+        wire.call("call-a", "done", {
           toolName: "Bash",
           command: "printf first-proof",
           rawOutput: { content: "First command returned its own result" },
         });
-        wire.tool("call-no-result", "tool.updated", {
+        wire.call("call-no-result", "running", {
           toolName: "Bash",
           command: "printf unreturned-proof",
         });
-        wire.tool(
+        wire.call(
           "write-one",
-          "tool.completed",
+          "done",
           {
             toolName: "Write",
             wrote: true,
@@ -159,9 +126,9 @@ describe("C: calls, results and crew actions", () => {
             result: "Written",
           },
           "run-one",
-          { itemType: "file_change", wroteFile: true },
+          { step: "edit" },
         );
-        wire.writes.set("write-one", [
+        wire.writes.set(wire.itemOf("write-one"), [
           {
             path: "/srv/app/summary.txt",
             kind: "write",
@@ -169,14 +136,14 @@ describe("C: calls, results and crew actions", () => {
             truncated: false,
           },
         ]);
-        wire.tool("empty-call", "tool.completed", {
+        wire.call("empty-call", "done", {
           toolName: "Bash",
           command: "printf empty-proof",
           rawOutput: { content: "" },
         });
-        wire.tool(
+        wire.call(
           "malformed",
-          "tool.completed",
+          "done",
           {
             toolName: "mcp__inspector__inspect",
             input: { query: "orders" },
@@ -186,8 +153,8 @@ describe("C: calls, results and crew actions", () => {
           },
           "run-one",
           {
-            itemType: "mcp_tool_call",
-            detail: '{"notice":"The inspector returned a structured observation","count":2}',
+            step: "mcp",
+            input: '{"notice":"The inspector returned a structured observation","count":2}',
           },
         );
         yield* startStageBuild(s.drivers, "Ada");
@@ -203,24 +170,23 @@ describe("C: calls, results and crew actions", () => {
           recentTools: [],
         });
         wire.publishLifecycle();
-        wire.tool(
+        wire.call(
           "deploy-refused",
-          "tool.completed",
+          "failed",
+          { toolName: "mcp__zerops__zerops_deploy", input: { targetService: "app" } },
+          "run-one",
           {
-            toolName: "mcp__zerops__zerops_deploy",
-            input: { targetService: "app" },
-            zerops: {
+            step: "mcp",
+            result: {
               toolName: "zerops_deploy",
               resultText:
                 '{"code":"BUILD_FAILED","error":"The first build lacked its configuration","suggestion":"Correct the config and retry"}',
             },
           },
-          "run-one",
-          { itemType: "mcp_tool_call", status: "failed" },
         );
-        wire.tool(
+        wire.call(
           "deploy-first",
-          "tool.completed",
+          "done",
           {
             toolName: "mcp__zerops__zerops_deploy",
             input: { targetService: "app" },
@@ -230,18 +196,20 @@ describe("C: calls, results and crew actions", () => {
               message: "Build triggered.",
               appVersionId: "building-Ada",
             },
-            zerops: {
+          },
+          "run-one",
+          {
+            step: "mcp",
+            result: {
               toolName: "zerops_deploy",
               resultText:
                 '{"status":"BUILD_TRIGGERED","targetService":"app","message":"Build triggered.","appVersionId":"building-Ada"}',
             },
           },
-          "run-one",
-          { itemType: "mcp_tool_call" },
         );
-        wire.tool(
+        wire.call(
           "helper-launch",
-          "tool.updated",
+          "running",
           {
             toolName: "Agent",
             input: {
@@ -251,37 +219,15 @@ describe("C: calls, results and crew actions", () => {
             },
           },
           "run-one",
-          { itemType: "collab_agent_tool_call" },
+          { step: "helper" },
         );
-        wire.activity(
-          "task.started",
-          "Helper began",
-          {
-            taskId: "schema-helper",
-            agentKind: "agent",
-            toolUseId: "helper-launch",
-            taskType: "local_agent",
-            title: "Schema helper",
-            role: "explorer",
-          },
-          "run-one",
-        );
-        wire.activity(
-          "task.completed",
-          "Helper completed",
-          {
-            taskId: "schema-helper",
-            agentKind: "agent",
-            toolUseId: "helper-launch",
-            status: "completed",
-            summary: "The helper checked the key independently",
-            role: "explorer",
-          },
-          "run-one",
-        );
-        wire.tool(
+        wire.work("schema-helper", "running", { title: "Schema helper", call: "helper-launch" });
+        wire.work("schema-helper", "completed", {
+          report: "The helper checked the key independently",
+        });
+        wire.call(
           "write-two",
-          "tool.completed",
+          "done",
           {
             toolName: "Edit",
             wrote: true,
@@ -293,9 +239,9 @@ describe("C: calls, results and crew actions", () => {
             result: "Edited",
           },
           "run-one",
-          { itemType: "file_change" },
+          { step: "edit" },
         );
-        wire.writes.set("write-two", [
+        wire.writes.set(wire.itemOf("write-two"), [
           {
             path: "/srv/app/summary.txt",
             kind: "write",
@@ -303,13 +249,13 @@ describe("C: calls, results and crew actions", () => {
             truncated: false,
           },
         ]);
-        wire.message(
-          "answer-one",
-          "assistant",
-          "Both completed commands were inspected",
-          "run-one",
-        );
-        wire.run("run-one", "completed", null, "answer-one");
+        // A call its agent never answered says so once the run is over.
+        wire.call("call-no-result", "unreturned", {
+          toolName: "Bash",
+          command: "printf unreturned-proof",
+        });
+        wire.say("Both completed commands were inspected", "run-one");
+        wire.run("run-one", "completed");
         yield* chat.then.text("Both completed commands were inspected");
         yield* chat.then.control("Stop generation", "button", false);
         yield* chat.then.noButton("Approve");
@@ -355,12 +301,7 @@ describe("C: calls, results and crew actions", () => {
           Effect.gen(function* () {
             const picture =
               "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j7e8AAAAASUVORK5CYII=";
-            wire.message(
-              "browser-ask",
-              "user",
-              "Check the order and checkout pages",
-              "browser-run",
-            );
+            wire.history("Check the order and checkout pages", "browser-run");
             yield* chat.when.press("Toggle right panel");
             yield* chat.when.click("Browser");
             yield* Effect.promise(() => wire.browserSubscribed());
@@ -369,42 +310,44 @@ describe("C: calls, results and crew actions", () => {
               ["browser-order", "orders"],
               ["browser-checkout", "checkout"],
             ]) {
-              wire.tool(
+              wire.call(
                 callId!,
-                "tool.completed",
+                "done",
                 {
                   toolName: "mcp__zerops__zerops_browser",
                   input: { commands: [["open", `https://store.example/${path}`]] },
-                  zerops: {
+                },
+                "browser-run",
+                {
+                  step: "mcp",
+                  result: {
                     toolName: "zerops_browser",
                     resultText: `{"url":"https://store.example/${path}","steps":[]}`,
                   },
                 },
-                "browser-run",
-                { itemType: "mcp_tool_call" },
               );
             }
             yield* Effect.promise(() => wire.browserSubscribed());
             wire.browser({
               type: "call-result",
-              callId: "browser-order",
+              callId: wire.itemOf("browser-order"),
               threadId: "thread-Ada",
-              turnId: "browser-run",
+              turnId: wire.runOf("browser-run"),
               revision: 2,
               completeness: "complete",
               frame: { type: "frame", mimeType: "image/png", data: picture, width: 1, height: 1 },
             });
             wire.browser({
               type: "call-result",
-              callId: "browser-checkout",
+              callId: wire.itemOf("browser-checkout"),
               threadId: "thread-Ada",
               turnId: "older-run",
               revision: 9,
               completeness: "complete",
               frame: { type: "frame", mimeType: "image/png", data: picture, width: 1, height: 1 },
             });
-            wire.message("browser-answer", "assistant", "The page checks returned", "browser-run");
-            wire.run("browser-run", "completed", null, "browser-answer");
+            wire.say("The page checks returned", "browser-run");
+            wire.run("browser-run", "completed");
             yield* chat.then.once("The page checks returned");
             yield* chat.then.control("Stop generation", "button", false);
             yield* chat.then.noText("Ada stopped after");
@@ -418,18 +361,18 @@ describe("C: calls, results and crew actions", () => {
             yield* chat.then.control("/checkout. Open the screenshot", "button", false);
             wire.browser({
               type: "call-result",
-              callId: "browser-order",
+              callId: wire.itemOf("browser-order"),
               threadId: "thread-Ada",
-              turnId: "browser-run",
+              turnId: wire.runOf("browser-run"),
               revision: 3,
               completeness: "partial",
             });
             yield* chat.then.control("/orders. Open the screenshot");
             wire.browser({
               type: "call-result",
-              callId: "browser-order",
+              callId: wire.itemOf("browser-order"),
               threadId: "thread-Ada",
-              turnId: "browser-run",
+              turnId: wire.runOf("browser-run"),
               revision: 4,
               completeness: "complete",
               frame: null,
@@ -462,38 +405,34 @@ describe("C: calls, results and crew actions", () => {
           recentTools: [],
         });
         wire.run("run-one", "running");
-        wire.tool("kept", "tool.completed", {
+        wire.call("kept", "done", {
           toolName: "Bash",
           command: "printf partial-proof",
           rawOutput: { content: "The successful partial result remains" },
         });
-        wire.tool(
+        wire.call(
           "broken-dev",
-          "tool.completed",
+          "failed",
           {
             toolName: "mcp__zerops__zerops_dev_server",
             input: { action: "start", hostname: "appdev" },
-            zerops: {
+          },
+          "run-one",
+          {
+            step: "mcp",
+            result: {
               toolName: "zerops_dev_server",
               resultText:
                 '{"action":"start","hostname":"appdev","running":false,"reason":"The dev server could not start","logTail":"Missing start script"}',
             },
           },
-          "run-one",
-          { itemType: "mcp_tool_call", status: "failed" },
-        );
-        wire.activity(
-          "runtime.error",
-          "The agent process failed",
-          { message: "The agent process failed", turnEnd: "crash" },
-          "run-one",
         );
         wire.run("run-one", "error", "The agent process failed");
         yield* reportConversation(
           s.drivers,
           "Ada",
           {
-            latestTurn: wire.mate.thread.latestTurn,
+            latestTurn: wire.latestTurn(),
             session: { status: "error", lastError: "The agent process failed" },
           },
           "failed",
@@ -517,62 +456,23 @@ describe("C: calls, results and crew actions", () => {
             expect(wire.sentTurnCount()).toBe(0);
           }),
         );
-        wire.checkpoint("run-one");
-        yield* chat.when.press("Toggle right panel");
-        yield* chat.when.click("Diff");
-        yield* chat.when.press("Diff scope: Working tree");
-        yield* chat.when.press("Latest turn", "menuitemradio");
-        yield* chat.then.text("appdev");
-        yield* chat.then.text("apidev");
-        yield* chat.then.text("Recorded order total");
-        yield* chat.then.text("apidev could not be captured; retry that repository");
-        expect(wire.diffs).toContainEqual(
-          expect.objectContaining({ threadId: "thread-Ada", runId: "run-one", rootId: "app-root" }),
-        );
-        yield* chat.when.press("Toggle right panel");
         yield* chat.when.press("printf partial-proof. Show what it returned");
         yield* chat.then.text("The successful partial result remains");
-        yield* chat.step(
-          "a refused rewind retains the captured work and names the retry",
-          Effect.gen(function* () {
-            wire.revertRefusal =
-              "appdev changes are retained; apidev is unavailable. Reconnect apidev and retry.";
-            yield* chat.when.press("Revert to this message");
-            yield* chat.then.text("Workspace files stay as they are");
-            yield* chat.when.press("Revert and keep changes");
-            const refused = yield* Effect.promise(() =>
-              wire.waitForCommand("thread.conversation.revert"),
-            );
-            expect(refused).toMatchObject({
-              threadId: "thread-Ada",
-              turnCount: 0,
-            });
-            expect(refused).not.toHaveProperty("restoreFiles");
-            yield* chat.then.text("Reconnect apidev and retry.");
-            yield* chat.then.text("The successful partial result remains");
-            wire.revertRefusal = null;
-          }),
-        );
         yield* chat.when.send("Continue from the successful check");
         yield* chat.then.sent("Continue from the successful check");
-        const sent = yield* Effect.promise(() => wire.waitForCommand("thread.turn.start"));
-        expect(sent).toMatchObject({
-          threadId: "thread-Ada",
-          message: { text: "Continue from the successful check" },
-        });
+        yield* Effect.promise(() => wire.waitForTurn("Continue from the successful check"));
         wire.run("recovery", "running");
-        wire.message("recovered", "assistant", "The follow-up check succeeded", "recovery");
+        wire.say("The follow-up check succeeded", "recovery");
         wire.run("recovery", "completed");
         yield* chat.then.once("The follow-up check succeeded");
-        wire.message("stop-ask", "user", "Stop this inspection", "stop-run");
+        wire.history("Stop this inspection", "stop-run");
         wire.run("stop-run", "running");
         yield* chat.step(
           "Stop has a stopped outcome, separate from a crash",
           chat.when.press("Stop generation"),
         );
-        const stopped = yield* Effect.promise(() => wire.waitForCommand("thread.turn.interrupt"));
-        expect(stopped).toMatchObject({ threadId: "thread-Ada" });
-        wire.run("stop-run", "interrupted");
+        const stopped = yield* Effect.promise(() => wire.waitForOp("stop"));
+        expect(stopped.payload).toMatchObject({ conversationId: "thread-Ada" });
         yield* chat.then.text("Ada stopped");
         yield* chat.then.noButton("Create worktree");
         yield* chat.then.noButton("Pair");
@@ -598,9 +498,7 @@ describe("C: calls, results and crew actions", () => {
             yield* chat.when.press("Archive and start fresh", "menuitem");
             yield* chat.then.text("Stop the agent before starting fresh");
             yield* chat.then.path("/env-Ada/thread-Ada");
-            expect(wire.commands.filter((command) => command.type === "thread.archive")).toEqual(
-              [],
-            );
+            expect(wire.engine.applied.filter(({ op }) => op === "set-archived")).toEqual([]);
           }),
         );
         wire.run("busy-main", "completed");
@@ -719,18 +617,13 @@ describe("C: calls, results and crew actions", () => {
               id: "replacement-Ada",
               title: "Replacement conversation",
               createdAt: wire.at(),
-              messages: [
-                {
-                  ...main.messages[0]!,
-                  id: "replacement-history",
-                  text: "The replacement main is readable",
-                },
-              ],
+              messages: [],
               activities: [],
               latestTurn: null,
               session: null,
             });
             wire.threadCollection(replacement, [legacy, recent, scout]);
+            wire.engine.conversation(replacement.id).personTurn("The replacement main is readable");
             yield* reportConversation(s.drivers, "Ada", {
               id: replacement.id,
               title: replacement.title,

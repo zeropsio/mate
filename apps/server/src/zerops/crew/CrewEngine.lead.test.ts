@@ -2,21 +2,16 @@ import { assert, describe, it } from "@effect/vitest";
 import type { CrewRunOptions } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
-import { CREW_ID } from "./CrewHome.ts";
-import { CrewStore } from "./CrewStore.ts";
 import { git, read, write } from "./testing/crewGitFixture.ts";
 import {
   crewJourney,
   eventually,
   everyCopyReady,
   firstTurn,
-  CREW_WORLD,
-  onV1,
   opened,
   reportDone,
   seamsOf,
   turnsSent,
-  v1Journey,
   type CrewChat,
   type CrewWorld,
 } from "./testing/crewWorld.ts";
@@ -559,59 +554,6 @@ describe("CrewEngine lead", () => {
       ),
   );
 
-  // A rework that kept its accept is a state only V1's own tables can be put in.
-  it.live.skipIf(CREW_WORLD !== "v1")(
-    "a task back from rework is reviewed afresh, its earlier accept gone",
-    () =>
-      v1Journey((world) =>
-        Effect.gen(function* () {
-          yield* withLead(world);
-          const lead = yield* leadThread(world);
-          yield* world.propose(lead, [PLAN[0]!]);
-          const row = yield* world.v1.run(
-            Effect.gen(function* () {
-              const store = yield* CrewStore;
-              const [row] = yield* store.assignments(CREW_ID);
-              // Start with the retained rework outcome, without a merge/check still holding the copy.
-              yield* store.putAssignment({
-                ...row!,
-                state: "rework",
-                attempt: 1,
-                review: { verdict: "accept", note: "Fine.", by: "lead" },
-                waiting: { on: "conflict", reason: null, paths: ["ok.txt"] },
-              });
-              return row;
-            }),
-          );
-          yield* world.press({ _tag: "askResolve", taskId: row!.assignment });
-          const reworking = yield* world.snapshotWhere(
-            (current) => current.board.tasks[0]?.state === "working",
-          );
-          assert.deepStrictEqual(
-            [reworking.board.tasks[0]!.attempts, reworking.board.tasks[0]!.review],
-            [2, null],
-          );
-          yield* startRun(world, { landing: "lead" });
-          const thread = (yield* turnsSent(world)).find(
-            (turn) =>
-              turn.chat ===
-              reworking.crewmates.find((mate) => mate.handle === "backend")!.currentThreadId,
-          )!.chat;
-          yield* world.turnStarts(thread);
-          write(world.root, ".crew/backend/ok.txt", "ok\n");
-          yield* reportDone(world, thread);
-          yield* world.turnEnds(thread);
-          const reviewed = yield* world.snapshotWhere(
-            (current) => current.board.tasks[0]?.state === "review",
-          );
-          assert.deepStrictEqual(
-            [reviewed.board.tasks[0]!.attempts, reviewed.board.tasks[0]!.review],
-            [2, null],
-          );
-        }),
-      ),
-  );
-
   it.live("the lead's reject sends the task back to its crewmate with the note", () =>
     crewJourney((world) =>
       Effect.gen(function* () {
@@ -861,27 +803,12 @@ describe("CrewEngine lead", () => {
               .map((row) => [row.kind, row.handle, row.text]),
             [["question", "lead", "Mobile first?"]],
           );
-          // V1 records the restart's cut as an operation the answer continues: its own mechanism.
-          const interruption = waiting.attention.find(
-            (need) => need.kind === "interrupted",
-          )?.operation;
           yield* world.press({
             _tag: "answer",
             handle: "lead",
             taskId: null,
             text: "Mobile first.",
           });
-          yield* onV1(world, (v1) =>
-            Effect.gen(function* () {
-              const settled = yield* v1.v1.run(
-                Effect.flatMap(CrewStore, (store) => store.getOperation(interruption!.id)),
-              );
-              assert.strictEqual(
-                settled._tag === "Some" ? settled.value.status : null,
-                "continued",
-              );
-            }).pipe(Effect.orDie),
-          );
         }),
     ]),
   );

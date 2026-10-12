@@ -15,7 +15,7 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 
 import type { EnvironmentThreadState } from "../state/threadState.ts";
-import { registerOlderThreadTurns } from "./adapters/mateThreadReplay.ts";
+import { registerOlderThreadTurns } from "./olderTurns.ts";
 import type { MateEngineHost } from "./engineHost.ts";
 import type { EngineConversationKey } from "./families/mateEngine.ts";
 import {

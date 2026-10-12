@@ -108,8 +108,8 @@ const CrewEngineHooksLive = crewEngineHooks.pipe(
 );
 
 /**
- * The Mate engine (`engine/`, reached only from here, ws.ts and the startup): inert only when
- * T3CODE_MATE_ENGINE is `v1`. Its ports are Zerops's: runs are admitted through the same gate
+ * The Mate engine (`engine/`, reached only from here, ws.ts and the startup). Its ports are
+ * Zerops's: runs are admitted through the same gate
  * instance and the restart is read by the same own-key reader (memoized by reference). One value,
  * so the sign-out below stops sessions on the very engine the merge runs, and the crew's front
  * runs on it.
@@ -138,7 +138,7 @@ const ZeropsCrewLive = crewLayer.pipe(
 
 /**
  * The Mate's attention, one instance for the link and the Mate's own clients (memoized by
- * reference): V1's chats, or the engine's conversations while it owns the conversation.
+ * reference): the engine's conversations.
  */
 const ZeropsMateAttentionLive = ZeropsMateAttentionModule.layer.pipe(Layer.provide(MateEngineLive));
 

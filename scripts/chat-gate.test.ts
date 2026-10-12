@@ -47,7 +47,7 @@ it.each([
   expect(selectsChatGate([path])).toBe(false);
 });
 
-it("the gate runs the chat journeys against both wires a Mate can speak", () => {
+it("the gate runs every Mate journey on the engine's wire", () => {
   const projects = chatGateStages.flatMap((stage) =>
     stage.commands.flatMap((command) => {
       const at = command.args.indexOf("--project");
@@ -57,11 +57,6 @@ it("the gate runs the chat journeys against both wires a Mate can speak", () => 
   );
   expect(projects).toEqual([
     ["B: client wire journeys (C)", "scenarios", "test/scenarios/areas/c-mate"],
-    [
-      "B: client wire journeys on the engine (C)",
-      "scenarios-engine",
-      "test/scenarios/areas/c-mate",
-    ],
   ]);
 });
 
@@ -81,15 +76,15 @@ it("the gate proves the Mate engine on the proof harness's fixed seeds and the r
   ]);
 });
 
-it("the gate runs the crew's journeys on the engine's world, beside the unit suite's V1 run", () => {
+it("the gate runs the crew's journeys on the engine, every case certified", () => {
   const commands = chatGateStages.flatMap((stage) =>
     stage.commands.flatMap((command: ChatGateCommand) =>
       command.args.some((arg) => arg.startsWith("src/zerops/crew/CrewEngine"))
         ? [
             [
               stage.name,
-              command.env?.CREW_WORLD,
               command.args.filter((arg) => arg.startsWith("src/")),
+              command.args.includes("--reporter=../../scripts/chat-gate-reporter.ts"),
             ],
           ]
         : [],
@@ -98,7 +93,6 @@ it("the gate runs the crew's journeys on the engine's world, beside the unit sui
   expect(commands).toEqual([
     [
       "F: crew journeys on the engine",
-      "engine",
       [
         ...["attachments", "endings", "lead", "memory", "midway", "operations", "runs"].map(
           (part) => `src/zerops/crew/CrewEngine.${part}.test.ts`,
@@ -106,6 +100,7 @@ it("the gate runs the crew's journeys on the engine's world, beside the unit sui
         "src/zerops/crew/CrewEngine.test.ts",
         "src/zerops/crew/registerCrewRpc.test.ts",
       ],
+      true,
     ],
   ]);
 });
@@ -180,31 +175,31 @@ it.each([
   { path: "apps/server/src/provider/Layers/ClaudeAdapter.ts", ids: ["A"] },
   { path: "apps/server/src/spi/replay/goldens.test.ts", ids: ["A"] },
   { path: "apps/server/src/engine/outbox/crash.ts", ids: ["E"] },
-  { path: "packages/contracts/src/engine.ts", ids: ["C", "C-engine", "E", "types"] },
-  { path: "packages/contracts/src/engineCall.ts", ids: ["C", "C-engine", "E", "types"] },
-  { path: "packages/contracts/src/engineWire.ts", ids: ["C", "C-engine", "E", "types"] },
-  { path: "apps/server/src/engine/wire/EngineWire.ts", ids: ["C", "C-engine", "E", "types"] },
-  { path: "apps/server/src/wsServer.ts", ids: ["C", "C-engine", "types"] },
-  { path: "apps/web/src/components/chat/runCard.logic.ts", ids: ["C", "C-engine", "types"] },
-  { path: "apps/web/src/components/chat/MessagesTimeline.tsx", ids: ["C", "C-engine", "types"] },
-  { path: "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx", ids: ["C", "C-engine", "types"] },
-  { path: "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx", ids: ["C", "C-engine", "types"] },
+  { path: "packages/contracts/src/engine.ts", ids: ["C", "E", "types"] },
+  { path: "packages/contracts/src/engineCall.ts", ids: ["C", "E", "types"] },
+  { path: "packages/contracts/src/engineWire.ts", ids: ["C", "E", "types"] },
+  { path: "apps/server/src/engine/wire/EngineWire.ts", ids: ["C", "E", "types"] },
+  { path: "apps/server/src/wsServer.ts", ids: ["C", "types"] },
+  { path: "apps/web/src/components/chat/runCard.logic.ts", ids: ["C", "types"] },
+  { path: "apps/web/src/components/chat/MessagesTimeline.tsx", ids: ["C", "types"] },
+  { path: "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx", ids: ["C", "types"] },
+  { path: "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx", ids: ["C", "types"] },
   {
     path: "apps/web/src/components/zerops/ZeropsAgentSignIn.logic.ts",
-    ids: ["C", "C-engine", "types"],
+    ids: ["C", "types"],
   },
-  { path: "apps/web/package.json", ids: ["C", "C-engine", "types"] },
-  { path: "apps/web/tsconfig.json", ids: ["C", "C-engine", "types"] },
+  { path: "apps/web/package.json", ids: ["C", "types"] },
+  { path: "apps/web/tsconfig.json", ids: ["C", "types"] },
   { path: "apps/web/test/scenarios/areas/d-change/dsl.ts", ids: [] },
   { path: "apps/server/src/engine/pump/toCore.test.ts", ids: [] },
   // The engine crew's own code runs its journeys on the engine too.
-  { path: "apps/server/src/zerops/crew/engine/decide.ts", ids: ["C", "C-engine", "F", "types"] },
+  { path: "apps/server/src/zerops/crew/engine/decide.ts", ids: ["C", "F", "types"] },
   { path: "packages/client-runtime/src/data/projections/mateHealth.test.ts", ids: [] },
   { path: "docs/user/chat.md", ids: [] },
   { path: "apps/mobile/src/chat.tsx", ids: [] },
   {
     path: "packages/client-runtime/src/zerops/timelineFollow.ts",
-    ids: ["C", "C-engine", "types"],
+    ids: ["C", "types"],
   },
 ])("a lane selects the affected contract layers for $path", ({ path, ids }) => {
   const root = NodePath.resolve(import.meta.dirname, "..");
@@ -216,25 +211,20 @@ it.each([
   expect(selectLaneChatStages([path], related, root).map((stage) => stage.id)).toEqual(ids);
 });
 
-it("each wire stage owns only the journeys its project runs", () => {
+it("the C stage owns every Mate journey, the engine's own among them", () => {
   const root = NodePath.resolve(import.meta.dirname, "..");
-  // The rule, not a list: a new engine journey joins the engine stage without editing this test.
+  // The rule, not a list: a new journey joins the stage without editing this test.
   const area = "apps/web/test/scenarios/areas/c-mate";
-  const engineJourneys = NodeFS.readdirSync(NodePath.join(root, area))
-    .filter((name) => /^engine-.+\.scenario\.ts$/u.test(name))
+  const journeys = NodeFS.readdirSync(NodePath.join(root, area))
+    .filter((name) => name.endsWith(".scenario.ts"))
     .map((name) => `${area}/${name}`);
-  expect(engineJourneys.length).toBeGreaterThan(0);
-  const engine = chatGateTestFiles(
-    root,
-    chatGateStages.filter((stage) => stage.id === "C-engine"),
-  );
-  expect(engine.toSorted()).toEqual([`${area}/chat.scenario.ts`, ...engineJourneys].toSorted());
-  const plain = chatGateTestFiles(
-    root,
-    chatGateStages.filter((stage) => stage.id === "C"),
-  );
-  expect(plain).toContain(`${area}/opening.scenario.ts`);
-  for (const journey of engineJourneys) expect(plain).not.toContain(journey);
+  expect(journeys.some((journey) => /\/engine-.+\.scenario\.ts$/u.test(journey))).toBe(true);
+  expect(
+    chatGateTestFiles(
+      root,
+      chatGateStages.filter((stage) => stage.id === "C"),
+    ).toSorted(),
+  ).toEqual(journeys.toSorted());
   expect(chatGateTestFiles(root, [])).toEqual([]);
 });
 
@@ -264,42 +254,30 @@ it("the gate reads each scenario project's journeys as the scenario config runs 
   }
 });
 
-// A lane that changed engine-page.scenario.ts ran it under `--project scenarios`, which excludes
-// it: "no cases ran", and the lane's gate failed on a file it never ran.
+// A lane that changed a journey must run it under a project that holds it, never one that
+// excludes it: "no cases ran", and the lane's gate failed on a file it never ran.
 it.each([
-  {
-    path: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
-    ids: ["C-engine", "types"],
-  },
-  {
-    path: "apps/web/test/scenarios/areas/c-mate/engine-card.scenario.ts",
-    ids: ["C-engine", "types"],
-  },
+  { path: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts", ids: ["C", "types"] },
+  { path: "apps/web/test/scenarios/areas/c-mate/engine-card.scenario.ts", ids: ["C", "types"] },
   { path: "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts", ids: ["C", "types"] },
 ])("a changed scenario runs under the project that runs it: $path", ({ path, ids }) => {
   const root = NodePath.resolve(import.meta.dirname, "..");
   const stages = selectLaneChatStages([path], [path], root);
   expect(stages.map((stage) => stage.id)).toEqual(ids);
   const run = stages.find((stage) => stage.id !== "types")!.commands[0]!.args;
-  expect(run[run.indexOf("--project") + 1]).toBe(
-    ids.includes("C-engine") ? "scenarios-engine" : "scenarios",
-  );
+  expect(run[run.indexOf("--project") + 1]).toBe("scenarios");
   expect(run).toContain(NodePath.posix.relative("apps/web", path));
 });
 
 it.each([
   { args: ["--list", "--stages", "A"], labels: ["A: provider goldens"] },
   { args: ["--stages", "E", "--list"], labels: ["E: engine proof"] },
-  {
-    args: ["--list", "--stages", "C,C-engine"],
-    labels: ["B: client wire journeys (C)", "B: client wire journeys on the engine (C)"],
-  },
+  { args: ["--list", "--stages", "C"], labels: ["B: client wire journeys (C)"] },
   {
     args: ["--list"],
     labels: [
       "A: provider goldens",
       "B: client wire journeys (C)",
-      "B: client wire journeys on the engine (C)",
       "E: engine proof",
       "F: crew journeys on the engine",
       "Typecheck: wire consumers",
@@ -387,18 +365,17 @@ it.each(["A", "E"])("a %s-only gate runs without installing a scenario browser",
   }
 });
 
-it("lane file selection keeps the affected C journey on both wires without expanding siblings", () => {
+it("lane file selection keeps the affected C journey without expanding siblings", () => {
   const file = "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts";
   const result = NodeChildProcess.spawnSync(
     process.execPath,
-    ["scripts/chat-gate.ts", "--stages", "C,C-engine", "--files", JSON.stringify([file]), "--list"],
+    ["scripts/chat-gate.ts", "--stages", "C", "--files", JSON.stringify([file]), "--list"],
     { cwd: new URL("../", import.meta.url), encoding: "utf8" },
   );
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout.split(file.slice("apps/web/".length))).toHaveLength(3);
+  expect(result.stdout.split(file.slice("apps/web/".length))).toHaveLength(2);
   expect(result.stdout).not.toContain("opening.scenario.ts");
   expect(result.stdout).toContain("--project scenarios ");
-  expect(result.stdout).toContain("--project scenarios-engine ");
   expect(result.stdout).toContain("reason: explicit related files");
 });
 
@@ -406,7 +383,7 @@ it.each([
   ["--stages", "C", "--files", "[null]"],
   [
     "--stages",
-    "C-engine",
+    "E",
     "--files",
     JSON.stringify(["apps/web/test/scenarios/areas/c-mate/opening.scenario.ts"]),
   ],
@@ -439,27 +416,13 @@ it("a contract-only edit retains wire consumer typechecks even without a selecte
 it("an empty lane chat selection skips before starting any command", () => {
   const result = NodeChildProcess.spawnSync(
     process.execPath,
-    ["scripts/chat-gate.ts", "--verbose", "--stages", "A,C,C-engine,E", "--files", "[]"],
+    ["scripts/chat-gate.ts", "--verbose", "--stages", "A,C,E", "--files", "[]"],
     { cwd: new URL("../", import.meta.url), encoding: "utf8" },
   );
   expect(result.status, result.stderr).toBe(0);
-  for (const id of ["A", "C", "C-engine", "E"])
+  for (const id of ["A", "C", "E"])
     expect(result.stdout).toContain(`Selection ${id}: skip: no selected case files`);
   expect(result.stdout).not.toContain("no cases ran");
-});
-
-it("a selected client journey skips the engine stage when that project has no matching case", () => {
-  const file = "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts";
-  const result = NodeChildProcess.spawnSync(
-    process.execPath,
-    ["scripts/chat-gate.ts", "--stages", "C,C-engine", "--files", JSON.stringify([file]), "--list"],
-    { cwd: new URL("../", import.meta.url), encoding: "utf8" },
-  );
-  expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toContain("Selection C-engine: skip: no selected case files");
-  expect(result.stdout).toContain("--project scenarios ");
-  expect(result.stdout).not.toContain("--project scenarios-engine");
-  expect(result.stdout).toContain(file.slice("apps/web/".length));
 });
 
 it("Decision: no test deleted or weakened; only lane selection changes; main CI runs everything", () => {
@@ -468,9 +431,8 @@ it("Decision: no test deleted or weakened; only lane selection changes; main CI 
     encoding: "utf8",
   });
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toContain("test/scenarios/areas/c-mate --allowOnly=false");
   expect(result.stdout).toContain(
-    "--project scenarios-engine test/scenarios/areas/c-mate --allowOnly",
+    "--project scenarios test/scenarios/areas/c-mate --allowOnly=false",
   );
   for (const file of [
     "src/spi/replay/goldens.test.ts",
@@ -503,13 +465,21 @@ it("Decision: no test deleted or weakened; titles unchanged; crew/actor's crew s
     ].map(([file]) => `apps/web/${file}`);
   });
   expect(shards[0]?.map((file) => NodePath.basename(file, ".scenario.ts")).sort()).toEqual(
-    ["opening", "recovery", "admission", "providerLimits", "image-layout", "rewind"].sort(),
+    [
+      "opening",
+      "recovery",
+      "admission",
+      "providerLimits",
+      "image-layout",
+      "engine-card",
+      "engine-secret",
+    ].sort(),
   );
   expect(shards.flat().sort()).toEqual([...inventory].sort());
   expect(new Set(shards.flat()).size).toBe(inventory.length);
 });
 
-it("CI builds once and certifies both complete C shards and C-engine from that artifact", () => {
+it("CI builds once and certifies both complete C shards from that artifact", () => {
   const { jobs } = parse(
     NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
   ) as {
@@ -539,7 +509,6 @@ it("CI builds once and certifies both complete C shards and C-engine from that a
   expect(journeys.strategy?.matrix.include.map((row) => row.args)).toEqual([
     "--stages C --shard 1/2",
     "--stages C --shard 2/2",
-    "--stages C-engine",
   ]);
   const uploaded = build.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"))!;
   const downloaded = journeys.steps.find((step) =>

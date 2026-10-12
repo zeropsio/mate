@@ -4,8 +4,7 @@ import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.t
 import { deadline } from "../../harness/http.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { changeFixture } from "../../fakes/d-change/changes.ts";
-import { installArea, installEngineArea, standUpBirth, vaultKey, vaultWrites } from "./fake.ts";
-import { EngineChatWire } from "./engine.ts";
+import { installArea, standUpBirth, vaultKey, vaultWrites } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
 
 describe("C: agent selection and contextual drafts", () => {
@@ -23,8 +22,8 @@ describe("C: agent selection and contextual drafts", () => {
         yield* chat.when.openReadOnly();
         yield* chat.then.text("Ada is standing up development.");
         yield* chat.then.noComposer;
-        wire.message("stand-up-ask", "user", "Stand up development of the project.", "birth");
-        wire.message("stand-up-reply", "assistant", "Development is standing up", "birth");
+        wire.history("Stand up development of the project.", "birth");
+        wire.say("Development is standing up", "birth");
         wire.run("birth", "completed");
         yield* chat.then.ready("Ada");
         yield* chat.then.once("Development is standing up");
@@ -34,24 +33,20 @@ describe("C: agent selection and contextual drafts", () => {
           chat.when.send("Inspect using the first effort"),
         );
         yield* chat.then.once("Inspect using the first effort");
-        const first = yield* Effect.promise(() => wire.waitForCommand("thread.turn.start"));
-        expect(first).toMatchObject({ modelSelection: { model: "gpt-5.4" } });
-        wire.run("first-effort", "completed");
+        yield* Effect.promise(() => wire.waitForTurn("Inspect using the first effort"));
+        expect(wire.engine.header.model).toBe("gpt-5.4");
+        const firstRun = [...wire.engine.runs.keys()].at(-1)!;
+        wire.engine.settleRun(firstRun, "completed");
         yield* chat.when.press("GPT-5.4 · Extra High");
         yield* chat.then.text("Extra High");
         yield* chat.when.press("High", "radio");
         yield* chat.when.key("Escape");
         yield* chat.when.send("Inspect using my selected effort");
         yield* chat.then.sent("Inspect using my selected effort");
-        const sent = yield* Effect.promise(() => wire.waitForCommand("thread.turn.start", 2));
-        expect(sent).toMatchObject({
-          threadId: "thread-Ada",
-          modelSelection: {
-            instanceId: "codex",
-            model: "gpt-5.4",
-            options: [{ id: "reasoningEffort", value: "high" }],
-          },
-        });
+        expect(
+          yield* Effect.promise(() => wire.waitForTurn("Inspect using my selected effort")),
+        ).toMatchObject({ effort: "high" });
+        expect(wire.engine.header.agent).toMatchObject({ instanceId: "codex", model: "gpt-5.4" });
         yield* chat.when.reload("Ada", "Inspect using my selected effort");
         yield* chat.when.press("GPT-5.4 · High");
         yield* chat.then.selected("High");
@@ -175,37 +170,36 @@ describe("C: agent selection and contextual drafts", () => {
         yield* chat.then.control("Picture 1, layout.png. Opens it to crop or add notes.");
         chat.fixture().turnRefusal = null;
         yield* chat.when.press("Send message");
-        const sent = yield* Effect.promise(() =>
-          chat.fixture().waitForCommand("thread.turn.start", 2),
-        );
-        expect(sent.type).toBe("thread.turn.start");
-        if (sent.type !== "thread.turn.start") throw new Error("Expected picture send");
+        const sent = (yield* Effect.promise(() => chat.fixture().waitForOp("send"))).payload as {
+          readonly text: string;
+          readonly attachments: ReadonlyArray<{ readonly type: string; readonly name: string }>;
+        };
         expect(
-          sent.message.attachments
-            ?.filter((attachment) => attachment.type === "image")
+          sent.attachments
+            .filter((attachment) => attachment.type === "image")
             .map((attachment) => attachment.name),
         ).toEqual(["layout.png", "second.png"]);
-        expect(sent.message.attachments).toEqual(
+        expect(sent.attachments).toEqual(
           expect.arrayContaining([
             expect.objectContaining({ type: "file", name: "order-query.sql" }),
           ]),
         );
-        expect(sent.message.text).toContain("Move this action beside its heading");
-        expect(sent.message.text).toContain("Inspect these pictures in this order");
-        expect(sent.message.text).toContain("ordersdb.public.orders");
-        expect(sent.message.text).toContain("order_id");
+        expect(sent.text).toContain("Move this action beside its heading");
+        expect(sent.text).toContain("Inspect these pictures in this order");
+        expect(sent.text).toContain("ordersdb.public.orders");
+        expect(sent.text).toContain("order_id");
+        // The agent answers it: the conversation is at rest again.
+        chat
+          .fixture()
+          .engine.settleRun([...chat.fixture().engine.runs.keys()].at(-1)!, "completed");
         yield* chat.then.sent("Inspect these pictures in this order");
         yield* chat.when.reload("Ada", "Inspect these pictures in this order");
         yield* chat.then.text("Move this action beside its heading");
         yield* chat.then.text("order-query.sql");
         yield* chat.when.pastePicture("image-only.png", "#338f7b");
         yield* chat.when.press("Send message");
-        const pictureOnly = yield* Effect.promise(() =>
-          chat.fixture().waitForCommand("thread.turn.start", 3),
-        );
-        expect(pictureOnly).toMatchObject({
-          message: { attachments: [{ name: "image-only.png" }] },
-        });
+        const pictureOnly = yield* Effect.promise(() => chat.fixture().waitForOp("send", 2));
+        expect(pictureOnly.payload).toMatchObject({ attachments: [{ name: "image-only.png" }] });
         yield* chat.when.reload("Ada", "Inspect these pictures in this order");
         yield* chat.when.openLastPicture(3);
         yield* chat.then.text("image-only.png");
@@ -222,12 +216,11 @@ describe("C: agent selection and contextual drafts", () => {
       "J09: landed context stays separate from the person's message and compact event",
       () =>
         Effect.gen(function* () {
-          const s = yield* createScenario([installEngineArea]);
+          const s = yield* createScenario([installArea]);
           const landed = yield* changeFixture(s);
           const chat = mateChat(s);
           const wire = chat.fixture();
-          if (!(wire.wire instanceof EngineChatWire)) throw new Error("J09 is the engine's");
-          const engine = wire.wire.engine;
+          const engine = wire.engine;
           /** The agent says `text` in a turn of its own that ends with it. */
           const say = (text: string) => {
             const run = engine.startRun(null);

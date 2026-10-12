@@ -12,8 +12,6 @@ export default defineConfig({
         test: {
           name: "scenarios",
           include: ["test/scenarios/areas/**/*.scenario.ts"],
-          // Journeys of the engine's own records run on its wire alone.
-          exclude: ["**/node_modules/**", "test/scenarios/areas/c-mate/engine-*.scenario.ts"],
           environment: "node",
           globalSetup: [
             "test/scenarios/harness/build.ts",
@@ -22,25 +20,6 @@ export default defineConfig({
           fileParallelism: false,
           hookTimeout: 120_000,
           testTimeout: 45_000,
-        },
-      },
-      // The chat journeys again, against a Mate whose conversation runs on the engine's wire.
-      {
-        test: {
-          name: "scenarios-engine",
-          include: [
-            "test/scenarios/areas/c-mate/chat.scenario.ts",
-            "test/scenarios/areas/c-mate/engine-*.scenario.ts",
-          ],
-          environment: "node",
-          globalSetup: [
-            "test/scenarios/harness/build.ts",
-            "test/scenarios/harness/browserProcess.ts",
-          ],
-          fileParallelism: false,
-          hookTimeout: 120_000,
-          testTimeout: 45_000,
-          provide: { mateWire: "engine" as const },
         },
       },
       {

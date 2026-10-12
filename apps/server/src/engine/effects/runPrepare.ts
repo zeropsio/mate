@@ -41,7 +41,11 @@ export const makeRunPrepare = Effect.gen(function* () {
         const payload = row.payload as Payload;
         // Admission's outcome is its own: refused or broken, the run never goes without it.
         const refused = yield* admit(payload);
-        if (refused !== null) return failed(refused, { refused: true });
+        if (refused !== null)
+          return failed(refused.words, {
+            refused: true,
+            ...(refused.admission === undefined ? {} : { admission: refused.admission }),
+          });
         if (payload.capture === false) return ok();
         // Best effort: a capture that broke never holds the message back or tries again.
         const broke = yield* Effect.flatMap(workspace.of(row.conversationId), (setup) =>

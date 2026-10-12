@@ -20,8 +20,12 @@ type Reading = {
   top: number;
   end: number;
   decoded: boolean;
+  /** When it was read (`performance.now()`), and where the report stood in the view. */
+  at: number;
+  y: number;
 };
-type Trace = { active: boolean; readings: Reading[] };
+/** `arrivedAt`: the first reading after a reader away from the end scrolled to the report's card. */
+type Trace = { active: boolean; readings: Reading[]; arrivedAt?: number; grownAt?: number };
 
 describe("C: panel to report rooms", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -102,60 +106,40 @@ describe("C: panel to report rooms", () => {
               wire.history("Inspect the report room", "room-run");
               wire.run("room-run", "running");
               for (let index = 0; index < 12; index++)
-                wire.activity(
-                  "task.started",
-                  `Helper ${index}`,
-                  {
-                    taskId: `helper-${index}`,
-                    agentKind: "agent",
-                    title: `Helper ${index}`,
-                    role: "explorer",
-                  },
-                  "room-run",
-                );
+                wire.work(`helper-${index}`, "running", { title: `Helper ${index}` }, "room-run");
               const picture = (id: string) =>
-                wire.tool(
+                wire.call(
                   id,
-                  "tool.completed",
+                  "done",
                   {
                     toolName: "Read",
                     input: { file_path: `/tmp/${id}.png` },
                     imagePath: `/tmp/${id}.png`,
                   },
                   "room-run",
-                  { itemType: "image_view" },
+                  { step: "look" },
                 );
               const checkedPage = () =>
-                wire.tool(
+                wire.call(
                   "checked-page",
-                  "tool.completed",
+                  "done",
                   {
                     toolName: "mcp__zerops__zerops_browser",
                     input: { commands: [["open", "https://store.example/orders"]] },
-                    zerops: {
+                  },
+                  "room-run",
+                  {
+                    step: "mcp",
+                    result: {
                       toolName: "zerops_browser",
                       resultText: '{"url":"https://store.example/orders","steps":[]}',
                     },
                   },
-                  "room-run",
-                  { itemType: "mcp_tool_call" },
                 );
               const settle = () => {
-                for (let index = 0; index < 12; index++)
-                  wire.activity(
-                    "task.completed",
-                    `Helper ${index} finished`,
-                    {
-                      taskId: `helper-${index}`,
-                      agentKind: "agent",
-                      title: `Helper ${index}`,
-                      role: "explorer",
-                      status: "completed",
-                    },
-                    "room-run",
-                  );
-                wire.message("room-answer", "assistant", "The report is ready", "room-run");
-                wire.run("room-run", "completed", null, "room-answer");
+                for (let index = 0; index < 12; index++) wire.work(`helper-${index}`, "completed");
+                wire.say("The report is ready", "room-run");
+                wire.run("room-run", "completed");
               };
               if (mode === "first layout") {
                 checkedPage();
@@ -310,6 +294,8 @@ describe("C: panel to report rooms", () => {
                         decoded: [...marker.querySelectorAll("img")].some(
                           (image) => image.naturalWidth === 640,
                         ),
+                        at: performance.now(),
+                        y: marker.getBoundingClientRect().top - scroll.getBoundingClientRect().top,
                       });
                     if (trace.active) requestAnimationFrame(sample);
                   };
@@ -319,6 +305,66 @@ describe("C: panel to report rooms", () => {
               if (mode !== "first layout") {
                 if (mode !== "late") checkedPage();
                 settle();
+                // Away from the end, the report lands where the reader is not: they scroll to its
+                // card, and it shows there (the list builds rows near the view, not 700 px off it).
+                if (!follows)
+                  yield* Effect.promise(async () => {
+                    await s.page.waitForFunction(() => {
+                      const records = document.querySelectorAll(
+                        '[data-timeline-row-kind="record"]',
+                      );
+                      return records.length > 0;
+                    });
+                    // The reader's own wheel brings the card into view, a step at a time.
+                    const viewport = (await s.page.$(".timeline-legend-list"))!;
+                    const box = (await viewport.boundingBox())!;
+                    await s.page.mouse.move(box.x + box.width - 8, box.y + box.height / 2);
+                    const cardTop = () =>
+                      s.page.evaluate(() => {
+                        const scroll =
+                          document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                        const tops = [
+                          ...document.querySelectorAll<HTMLElement>(
+                            '[data-timeline-row-kind="record"]',
+                          ),
+                        ].map(
+                          (card) =>
+                            card.getBoundingClientRect().top - scroll.getBoundingClientRect().top,
+                        );
+                        return Math.max(...tops);
+                      });
+                    // Until the card stands in the view's lower part: below it, only its report
+                    // and answer, so any further is the end, where the list follows again.
+                    const inView = box.height - 300;
+                    for (
+                      let step = 0, left = (await cardTop()) - inView;
+                      step < 40 && left > 0;
+                      step++
+                    ) {
+                      await s.page.mouse.wheel({ deltaY: Math.min(100, left + 4) });
+                      await s.page.evaluate(
+                        () => new Promise((resolve) => setTimeout(resolve, 50)),
+                      );
+                      left = (await cardTop()) - inView;
+                    }
+                    // Arrived once the view stands still: what moves after is the page's doing.
+                    await s.page.evaluate(async () => {
+                      const scroll = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                      let still = 0;
+                      let last = scroll.scrollTop;
+                      for (let frame = 0; frame < 120 && still < 5; frame++) {
+                        await new Promise((resolve) => requestAnimationFrame(resolve));
+                        still = scroll.scrollTop === last ? still + 1 : 0;
+                        last = scroll.scrollTop;
+                      }
+                      const trace = (window as unknown as { reportTrace: Trace }).reportTrace;
+                      trace.arrivedAt = trace.readings.length;
+                    });
+                    expect(
+                      await s.page.$("[data-timeline-follows-end]"),
+                      "ASSERTION: a reader who scrolled to the card still reads away from the end",
+                    ).toBeNull();
+                  });
                 if (mode === "late") {
                   yield* chat.then.text("The report is ready");
                   // Exercise the existing late geometry window, not a second animation clock.
@@ -348,6 +394,13 @@ describe("C: panel to report rooms", () => {
                 );
               });
               // A tool picture joins the checked-page report after its measured shrink.
+              // What the test grows the report by from here is content, not the arrival.
+              yield* Effect.promise(() =>
+                s.page.evaluate(() => {
+                  const trace = (window as unknown as { reportTrace: Trace }).reportTrace;
+                  trace.grownAt = trace.readings.length;
+                }),
+              );
               if (mode !== "late" && mode !== "first layout") picture("first");
               picture("second");
               yield* Effect.promise(() =>
@@ -406,7 +459,7 @@ describe("C: panel to report rooms", () => {
                   { timeout: 8000, polling: "raf" },
                 ),
               );
-              const { readings, settledFrom } = yield* Effect.promise(() =>
+              const { readings, settledFrom, arrivedAt, grownAt } = yield* Effect.promise(() =>
                 s.page.evaluate(async () => {
                   const trace = (window as unknown as { reportTrace: Trace }).reportTrace;
                   const settledFrom = trace.readings.length;
@@ -427,14 +480,19 @@ describe("C: panel to report rooms", () => {
                   for (let index = 0; index < 180 && (index < 30 || !still()); index++)
                     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
                   trace.active = false;
-                  return { readings: trace.readings, settledFrom };
+                  return {
+                    readings: trace.readings,
+                    settledFrom,
+                    arrivedAt: trace.arrivedAt,
+                    grownAt: trace.grownAt,
+                  };
                 }),
               );
               if (directory)
                 yield* Effect.promise(() =>
                   NodeFSP.writeFile(
                     NodePath.join(directory, "geometry.json"),
-                    JSON.stringify(readings),
+                    JSON.stringify({ arrivedAt, readings }),
                   ),
                 );
               expect(
@@ -493,23 +551,62 @@ describe("C: panel to report rooms", () => {
                   readings.some((reading) => reading.held),
                   "ASSERTION: the measured panel handoff includes shrinking frames",
                 ).toBe(true);
-              else
-                // The virtualizer unmounted the offscreen panel and discarded its geometry.
+              else {
+                // The reader arrives at the card as it settles: whatever the hand-off holds, the
+                // report never jumps — its largest step a frame at a 60 Hz pace stays small.
+                const arrived = readings
+                  .slice(arrivedAt ?? 0, grownAt)
+                  .filter((reading) => reading.content > 0);
+                const steps = arrived.slice(1).map((reading, index) => {
+                  const before = arrived[index]!;
+                  const frames = Math.max(1, (reading.at - before.at) / (1000 / 60));
+                  return (
+                    Math.max(
+                      Math.abs(reading.height - before.height),
+                      Math.abs(reading.y - before.y),
+                    ) / frames
+                  );
+                });
+                expect(
+                  Math.max(0, ...steps),
+                  "ASSERTION: the report the reader comes to never steps 24 px in a frame",
+                ).toBeLessThan(24);
+                // What it replaced left out of the reader's view: nothing of it is handed over.
                 expect(
                   readings.some((reading) => reading.held),
                   "ASSERTION: a report without a mounted panel starts at its natural height",
                 ).toBe(false);
+                const shown = yield* Effect.promise(() =>
+                  s.page.evaluate((report) => {
+                    const marker = document.querySelector<HTMLElement>(report)!.parentElement!;
+                    const view = marker
+                      .closest("[data-timeline-thread]")!
+                      .querySelector<HTMLElement>(".timeline-legend-list")!
+                      .getBoundingClientRect();
+                    const box = marker.getBoundingClientRect();
+                    return box.top >= view.top - 1 && box.bottom <= view.bottom + 1;
+                  }, report),
+                );
+                expect(shown, "ASSERTION: the report the reader came to is in full view").toBe(
+                  true,
+                );
+              }
               if (follows)
                 expect(
                   laidOut.at(-1)!.end,
                   "ASSERTION: outer follow reaches the conversation end after report layout",
                 ).toBeLessThanOrEqual(2);
-              else
+              else {
+                // From where the reader stopped: their own wheel is no pull.
+                const read = readings
+                  .slice(arrivedAt ?? 0)
+                  .filter((reading) => reading.content > 0);
                 expect(
-                  Math.max(...laidOut.map((reading) => reading.top)) -
-                    Math.min(...laidOut.map((reading) => reading.top)),
+                  Math.max(...read.map((reading) => reading.top)) -
+                    Math.min(...read.map((reading) => reading.top)),
                   "ASSERTION: report growth never pulls a reading conversation toward its end",
                 ).toBeLessThanOrEqual(2);
+              }
 
               if (!follows) {
                 yield* Effect.promise(async () => {

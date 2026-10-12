@@ -26,7 +26,6 @@ import * as ServerConfig from "../config.ts";
 import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
-import { crewHeldWords, gatedMateEngine } from "../zerops/crew/engine/crewFlipGate.ts";
 
 export const modeFlag = Flag.Literals("mode", ServerConfig.RuntimeMode.literals).pipe(
   Flag.withDescription("Runtime mode. `desktop` keeps loopback defaults unless overridden."),
@@ -189,11 +188,6 @@ const EnvServerConfig = Config.all({
   ),
   // Crew mode (ARCHITECTURE seam 25): an env variable only, never a flag.
   zeropsCrew: Config.Boolean("T3CODE_ZEROPS_CREW").pipe(Config.withDefault(true)),
-  // The engine switch: read as a string so a typo runs the engine instead of failing the config.
-  mateEngine: Config.String("T3CODE_MATE_ENGINE").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
   noBrowser: Config.Boolean("T3CODE_NO_BROWSER").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -456,14 +450,6 @@ export const resolveServerConfig = (
         effectiveSeconds: Duration.toSeconds(zerops.roleRecheckInterval),
       });
     }
-    const mateEngine = ServerConfig.readMateEngine(env.mateEngine);
-    if (mateEngine.unknown) {
-      yield* Effect.logWarning("Unknown T3CODE_MATE_ENGINE; running the Mate engine.", {
-        value: env.mateEngine,
-      });
-    }
-    const gated = gatedMateEngine(mateEngine.engine, derivedPaths.dbPath);
-    if (gated.held !== null) yield* Effect.logWarning(crewHeldWords(gated.held));
     const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 
     const otel = yield* OtelEnvironment.load;
@@ -515,7 +501,6 @@ export const resolveServerConfig = (
       zeropsFixtures,
       zerops,
       zeropsCrew: env.zeropsCrew,
-      mateEngine: gated.engine,
       noBrowser,
       startupPresentation,
       desktopBootstrapToken,

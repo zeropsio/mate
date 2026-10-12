@@ -2636,6 +2636,8 @@ interface PanelStand {
   readonly line: number;
 }
 const panelStands = new Map<string, PanelStand>();
+/** The row each stand was read from, while the list carries it. */
+const panelRows = new Map<string, HTMLElement>();
 /**
  * When a run's panel left the rows, read from the rows themselves: the list
  * mounts and unmounts its rows in its own order, so the row that replaces the
@@ -2646,6 +2648,16 @@ const panelLeftAt = new Map<string, number>();
 const panelTakenAt = new Map<string, number>();
 const FOLD_RETAKE_MS = 50;
 
+/** Whether a run's panel stands in its list's view now, as the person reads it. */
+function panelInView(turnKey: string): boolean {
+  const panel = panelRows.get(turnKey);
+  const view = panel?.closest<HTMLElement>(".timeline-legend-list");
+  if (!panel || !view) return false;
+  const box = panel.getBoundingClientRect();
+  const sight = view.getBoundingClientRect();
+  return box.height > 0 && box.bottom > sight.top && box.top < sight.bottom;
+}
+
 /** Marks the runs whose panel the rows no longer carry. */
 function markPanelsGone(
   previous: ReadonlyArray<MessagesTimelineRow>,
@@ -2654,7 +2666,11 @@ function markPanelsGone(
   const live = new Set(rows.flatMap((row) => (row.kind === "working" ? [row.turnKey] : [])));
   const now = performance.now();
   for (const row of previous) {
-    if (row.kind === "working" && !live.has(row.turnKey)) panelLeftAt.set(row.turnKey, now);
+    if (row.kind !== "working" || live.has(row.turnKey)) continue;
+    // A hand-off plays only from what the person saw: a panel that left out of the view hands
+    // nothing over, and what takes its place stands at its own height.
+    if (panelInView(row.turnKey)) panelLeftAt.set(row.turnKey, now);
+    else panelStands.delete(row.turnKey);
   }
   for (const turnKey of live) {
     panelLeftAt.delete(turnKey);
@@ -2733,6 +2749,7 @@ function usePanelStand(turnKey: string, cardKey: string) {
       if (panelLeftAt.has(turnKey) || !own.isConnected) return;
       const panel = own.getBoundingClientRect().height;
       if (panel <= 0) return;
+      panelRows.set(turnKey, own);
       panelStands.set(turnKey, {
         panel,
         cardEnd: rowElementById(`card-end:${cardKey}`)?.getBoundingClientRect().height ?? 0,
@@ -2747,6 +2764,7 @@ function usePanelStand(turnKey: string, cardKey: string) {
       // Unmounted while the rows still carry it — scrolled out of the list's
       // window — its stand would be stale by the time it is taken.
       if (!panelLeftAt.has(turnKey)) panelStands.delete(turnKey);
+      if (panelRows.get(turnKey) === own) panelRows.delete(turnKey);
     };
   }, [turnKey, cardKey]);
   return markerRef;

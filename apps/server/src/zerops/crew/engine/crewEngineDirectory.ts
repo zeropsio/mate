@@ -13,7 +13,9 @@
  *
  * @module crew/engine/crewEngineDirectory
  */
+import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -39,11 +41,6 @@ import type {
   CrewToolHost,
   CrewToolText,
 } from "../crewSeams.ts";
-import {
-  CREW_CONTEXT_DEFAULT,
-  CREW_PAYLOAD_TIMEOUT_SECONDS,
-  realpathOrNearest,
-} from "../crewDirectory.ts";
 import type { CrewInput, CrewToolCall } from "./command.ts";
 import type { CrewAccepted } from "./CrewOwner.ts";
 import {
@@ -55,6 +52,27 @@ import {
   type CrewState,
   type MemberRecord,
 } from "./state.ts";
+
+/** A crew turn's commands run at most this long in the crewmate's copy. */
+const CREW_PAYLOAD_TIMEOUT_SECONDS = 600;
+
+/** The context window when `crew.yaml` names none. */
+const CREW_CONTEXT_DEFAULT = 200_000;
+
+/**
+ * The canonical path of an absolute path; a path that does not exist yet (a
+ * file about to be written) resolves through its nearest existing ancestor.
+ */
+const realpathOrNearest = (path: string): string => {
+  try {
+    return NodeFS.realpathSync(path);
+  } catch {
+    const parent = NodePath.dirname(path);
+    return parent === path
+      ? path
+      : NodePath.join(realpathOrNearest(parent), NodePath.basename(path));
+  }
+};
 
 export interface EngineCrewDirectoryInputs {
   readonly state: Effect.Effect<CrewState>;

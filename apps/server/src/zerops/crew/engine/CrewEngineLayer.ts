@@ -79,7 +79,6 @@ import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { crewLane } from "../CrewDefinition.ts";
 import { proposeCrewPorts, readDeclaredPorts } from "../crewPorts.ts";
 import { CrewWorkspace } from "../CrewWorkspace.ts";
-import { DEFAULT_CREW_LOGIN, noSpendWords } from "../crewCore.ts";
 import { subscribeUpdateChanges } from "../../../update/subscribeChanges.ts";
 import { CrewEngine, type CrewEngineService } from "../CrewEngine.ts";
 import { CREW_ID, CrewHome, refusalOf } from "../CrewHome.ts";
@@ -109,12 +108,20 @@ import {
 } from "./project.ts";
 import { crewEngineUpdateFacts } from "./updateIdle.ts";
 import {
+  DEFAULT_CREW_LOGIN,
   DEFAULT_CREW_TIMING,
   membersInOrder,
   tasksInOrder,
   type CrewState,
   type CrewTiming,
 } from "./state.ts";
+
+/**
+ * Why a dollar budget can't be kept, when an agent a crewmate runs on doesn't
+ * report what its turns cost: the run's spend would leave its turns out.
+ */
+const noSpendWords = (agent: string): string =>
+  `${agent} doesn't report what it spends, so this crew can't keep a budget`;
 
 /* ------------------------------------------------------------ the link */
 
@@ -761,7 +768,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       );
 
     /**
-     * A crew message's attachments, as a thread message's (V1's `crewCore`): each must be a
+     * A crew message's attachments, as a thread message's: each must be a
      * pending upload, never another message's stored attachment, and is claimed under the
      * crewmate's conversation as the press goes.
      */

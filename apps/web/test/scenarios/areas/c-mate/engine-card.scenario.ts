@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
-import { EngineChatWire } from "./engine.ts";
+import type { EngineChatWire } from "./engine.ts";
 import { installArea } from "./fake.ts";
 import { TARGET_QUESTION } from "./wire.ts";
 
@@ -36,7 +36,6 @@ const longConversation = Effect.gen(function* () {
   yield* chat.when.open();
   yield* chat.then.text("The existing conversation is still here");
   const wire = chat.fixture().wire;
-  if (!(wire instanceof EngineChatWire)) throw new Error("This journey runs on the engine's wire");
   return { s, chat, engine: wire.engine };
 });
 

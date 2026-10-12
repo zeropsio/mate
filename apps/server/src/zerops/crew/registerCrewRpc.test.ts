@@ -13,9 +13,9 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
 import { ZEROPS_SUBJECT_PREFIX } from "../ZeropsMembershipWatch.ts";
-import { CrewEngine, inertCrewEngine } from "./CrewEngine.ts";
+import { inertCrewEngine } from "./CrewEngine.ts";
 import { registerCrewRpc } from "./registerCrewRpc.ts";
-import { eventually, withCrewEngine } from "./testing/crewEngineFixture.ts";
+import { eventually } from "./testing/crewEngineFixture.ts";
 import { crewJourney } from "./testing/crewWorld.ts";
 import { makeRpcUpdateAdmission } from "../../RpcUpdateAdmission.ts";
 
@@ -79,22 +79,6 @@ describe("registerCrewRpc", () => {
     }),
   );
 
-  it.live("live on V1: the board holds every task, so no finished work pages past it", () =>
-    withCrewEngine(() =>
-      Effect.gen(function* () {
-        const handlers = registerCrewRpc({
-          crew: yield* CrewEngine,
-          subject: SUBJECT,
-          ...passThrough,
-        });
-        expect(
-          yield* handlers[WS_METHODS.zeropsCrewTaskPage]({ handle: "erik", before: null }),
-        ).toEqual({ tasks: [], next: null });
-      }),
-    ),
-  );
-
-  // On the world the crew journeys run on (`CREW_WORLD`): V1's crew, or the engine's.
   it.live("live: saves the crew home, applies it as the session, and streams the crew", () =>
     crewJourney((world) =>
       Effect.gen(function* () {

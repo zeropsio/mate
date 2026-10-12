@@ -124,44 +124,12 @@ export const deleteProject: (input: DeleteProjectInput) => CommandEffect = Effec
   });
 });
 
-export const createThread: (input: CreateThreadInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.createThread",
-)(function* (input) {
-  const metadata = yield* timestampedCommandMetadata(input);
-  return yield* dispatch({
-    ...input,
-    type: "thread.create",
-    commandId: metadata.commandId,
-    createdAt: metadata.createdAt,
-  });
-});
-
 export const deleteThread: (input: DeleteThreadInput) => CommandEffect = Effect.fn(
   "EnvironmentCommands.deleteThread",
 )(function* (input) {
   return yield* dispatch({
     ...input,
     type: "thread.delete",
-    commandId: yield* commandId(input),
-  });
-});
-
-export const archiveThread: (input: ArchiveThreadInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.archiveThread",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.archive",
-    commandId: yield* commandId(input),
-  });
-});
-
-export const unarchiveThread: (input: UnarchiveThreadInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.unarchiveThread",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.unarchive",
     commandId: yield* commandId(input),
   });
 });
@@ -265,96 +233,6 @@ export const reorderActiveThread: (input: ReorderActiveThreadInput) => CommandEf
     commandId: yield* commandId(input),
   });
 });
-
-export const updateThreadMetadata: (input: UpdateThreadMetadataInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.updateThreadMetadata",
-)(function* (input) {
-  return yield* dispatch({
-    ...input,
-    type: "thread.meta.update",
-    commandId: yield* commandId(input),
-  });
-});
-
-export const setThreadRuntimeMode: (input: SetThreadRuntimeModeInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.setThreadRuntimeMode",
-)(function* (input) {
-  const metadata = yield* timestampedCommandMetadata(input);
-  return yield* dispatch({
-    ...input,
-    type: "thread.runtime-mode.set",
-    commandId: metadata.commandId,
-    createdAt: metadata.createdAt,
-  });
-});
-
-export const setThreadInteractionMode: (input: SetThreadInteractionModeInput) => CommandEffect =
-  Effect.fn("EnvironmentCommands.setThreadInteractionMode")(function* (input) {
-    const metadata = yield* timestampedCommandMetadata(input);
-    return yield* dispatch({
-      ...input,
-      type: "thread.interaction-mode.set",
-      commandId: metadata.commandId,
-      createdAt: metadata.createdAt,
-    });
-  });
-
-export const startThreadTurn: (input: StartThreadTurnInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.startThreadTurn",
-)(function* (input) {
-  const metadata = yield* timestampedCommandMetadata(input);
-  return yield* dispatch({
-    ...input,
-    type: "thread.turn.start",
-    commandId: metadata.commandId,
-    createdAt: metadata.createdAt,
-  });
-});
-
-export const interruptThreadTurn: (input: InterruptThreadTurnInput) => CommandEffect = Effect.fn(
-  "EnvironmentCommands.interruptThreadTurn",
-)(function* (input) {
-  const metadata = yield* timestampedCommandMetadata(input);
-  return yield* dispatch({
-    ...input,
-    type: "thread.turn.interrupt",
-    commandId: metadata.commandId,
-    createdAt: metadata.createdAt,
-  });
-});
-
-export const respondToThreadApproval: (input: RespondToThreadApprovalInput) => CommandEffect =
-  Effect.fn("EnvironmentCommands.respondToThreadApproval")(function* (input) {
-    const metadata = yield* timestampedCommandMetadata(input);
-    return yield* dispatch({
-      ...input,
-      type: "thread.approval.respond",
-      commandId: metadata.commandId,
-      createdAt: metadata.createdAt,
-    });
-  });
-
-export const respondToThreadUserInput: (input: RespondToThreadUserInputInput) => CommandEffect =
-  Effect.fn("EnvironmentCommands.respondToThreadUserInput")(function* (input) {
-    const metadata = yield* timestampedCommandMetadata(input);
-    return yield* dispatch({
-      ...input,
-      type: "thread.user-input.respond",
-      commandId: metadata.commandId,
-      createdAt: metadata.createdAt,
-    });
-  });
-
-export const dismissThreadUserInput: (input: DismissThreadUserInputInput) => CommandEffect =
-  Effect.fn("EnvironmentCommands.dismissThreadUserInput")(function* (input) {
-    const metadata = yield* timestampedCommandMetadata(input);
-    return yield* dispatch({
-      ...input,
-      type: "thread.user-input.dismiss",
-      commandId: metadata.commandId,
-      createdAt: metadata.createdAt,
-    });
-  });
 
 export const revertThreadCheckpoint: (input: RevertThreadCheckpointInput) => CommandEffect =
   Effect.fn("EnvironmentCommands.revertThreadCheckpoint")(function* (input) {

@@ -6,7 +6,6 @@ import {
 } from "@t3tools/client-runtime/connection";
 import { RecentEnvironmentDescriptorsRef } from "@t3tools/client-runtime/environment";
 import { shellSnapshotLoaderLayer } from "@t3tools/client-runtime/state/shell";
-import { threadSnapshotLoaderLayer } from "@t3tools/client-runtime/state/threads";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -27,7 +26,7 @@ const providedConnectionPlatformLayer = connectionPlatformLayer.pipe(
   Layer.provide(runtimeContextLayer),
 );
 
-const snapshotLoaderLayer = Layer.mergeAll(threadSnapshotLoaderLayer, shellSnapshotLoaderLayer);
+const snapshotLoaderLayer = shellSnapshotLoaderLayer;
 
 type ConnectionLayerSource =
   | typeof Connection.layer

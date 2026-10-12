@@ -1,4 +1,3 @@
-import { v1UpdateDrainLayer } from "./update/V1UpdateDrain.ts";
 import { providerUpdateSafetyLayer } from "./spi/ProviderUpdateSafety.ts";
 import { rpcUpdateAdmissionLayer } from "./RpcUpdateAdmission.ts";
 import {
@@ -54,7 +53,6 @@ import { ProviderAuthServiceLive } from "./provider/Layers/ProviderAuthService.t
 import { AntigravityInstallation } from "./provider/AntigravityInstallation.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
-import { ProviderSessionReaperLive } from "./provider/Layers/ProviderSessionReaper.ts";
 import { ProviderUsageLimitsIngestionLive } from "./provider/Layers/ProviderUsageLimitsIngestion.ts";
 import * as OpenCodeRuntime from "./provider/opencodeRuntime.ts";
 import * as WorkspaceHistory from "./checkpointing/WorkspaceHistory.ts";
@@ -74,13 +72,6 @@ import * as TerminalManager from "./terminal/Manager.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
-import { OrchestrationReactorLive } from "./orchestration/Layers/OrchestrationReactor.ts";
-import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus.ts";
-import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion.ts";
-import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor.ts";
-import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
-import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
-import { ThreadUsagePauseReactorLive } from "./orchestration/Layers/ThreadUsagePauseReactor.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
@@ -272,15 +263,9 @@ const PlatformServicesLive = Layer.unwrap(
   }),
 );
 
-const ReactorLayerLive = Layer.empty.pipe(
-  Layer.provideMerge(OrchestrationReactorLive),
-  Layer.provideMerge(ProviderRuntimeIngestionLive),
-  Layer.provideMerge(ProviderCommandReactorLive),
-  Layer.provideMerge(CheckpointReactorLive),
-  Layer.provideMerge(ThreadDeletionReactorLive),
-  Layer.provideMerge(ThreadUsagePauseReactorLive),
-  Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
-  Layer.provideMerge(RuntimeReceiptBusLive),
+// The cloud endpoints read the awareness relay (`cloud/http.ts`).
+const AgentAwarenessRelayLive = AgentAwarenessRelay.layer.pipe(
+  Layer.provide(ServerSecretStore.layer),
 );
 
 const ProviderSessionDirectoryLayerLive = ProviderSessionDirectoryLive.pipe(
@@ -437,10 +422,9 @@ const CloudManagedEndpointRuntimeLive = Layer.mergeAll(
   ),
 );
 
-const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
+const ProviderRuntimeLayerLive = ProviderUsageLimitsIngestionLive.pipe(
   // Subscribes to `account.rate-limits.updated` so usage bars track live
   // telemetry instead of waiting for the next status probe.
-  Layer.provideMerge(ProviderUsageLimitsIngestionLive),
   Layer.provideMerge(ProviderLayerLive),
   Layer.provideMerge(OrchestrationLayerLive),
 );
@@ -472,7 +456,7 @@ const AntigravityInstallationRefreshLive = Layer.effectDiscard(
   }),
 );
 
-const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
+const RuntimeCoreDependenciesLive = AgentAwarenessRelayLive.pipe(
   Layer.provideMerge(AntigravityInstallationRefreshLive),
   Layer.provideMerge(ReplayMarkers.layer),
   Layer.provideMerge(ProviderAuthServiceLive),
@@ -577,7 +561,7 @@ const RuntimeDependenciesLive = Layer.mergeAll(
   // It reads the Mate engine the Zerops feeds compose (the same instance, memoized by reference).
   ThreadFileWrites.layer.pipe(Layer.provide(ZeropsLayerLive)),
 ).pipe(
-  Layer.provideMerge(Layer.mergeAll(v1UpdateDrainLayer, providerUpdateSafetyLayer)),
+  Layer.provideMerge(providerUpdateSafetyLayer),
   Layer.provideMerge(ProviderRuntimeEventBusLayerLive),
   Layer.provideMerge(RuntimeBaseDependenciesLive),
 );

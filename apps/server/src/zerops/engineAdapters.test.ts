@@ -3,7 +3,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
-import { ConversationId, type Principal, type RunTrigger } from "@t3tools/contracts";
+import {
+  ConversationId,
+  OrchestrationDispatchCommandError,
+  type Principal,
+  type RunTrigger,
+} from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
 import {
@@ -13,8 +18,13 @@ import {
   WorkspaceUnavailable,
 } from "../engine/ports.ts";
 import { CrewWorkspaceDirectory } from "./crew/engine/CrewWorkspaceDirectory.ts";
-import { engineAdaptersOpen, serverWorkspace, turnPrincipalOf } from "./engineAdapters.ts";
-import type { TurnPrincipal } from "./ZeropsTurnAdmission.ts";
+import {
+  engineAdaptersOpen,
+  serverWorkspace,
+  turnPrincipalOf,
+  zeropsRunAdmission,
+} from "./engineAdapters.ts";
+import { type TurnPrincipal, ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
 
 describe("engineAdapters", () => {
   const wake = (cause: string): RunTrigger => ({ kind: "wake", cause, wakeId: null });
@@ -60,6 +70,46 @@ describe("engineAdapters", () => {
       });
       assert.strictEqual(yield* (yield* RestartEvidence).read, null);
     }).pipe(Effect.provide(engineAdaptersOpen)),
+  );
+
+  it.effect("a run refused for a login reaches the engine naming that login", () =>
+    Effect.gen(function* () {
+      const refused = yield* Effect.flip(
+        (yield* RunAdmission).admit({
+          instanceId: "claudeAgent",
+          principal: { kind: "person", subject: "zerops-user:jan" },
+          trigger: { kind: "person", itemId: "mate/r/1/i/1" as never },
+        }),
+      );
+      assert.deepStrictEqual(
+        { message: refused.message, admission: refused.admission },
+        {
+          message: "Claude's sign-in has expired.",
+          admission: { loginId: "claude-code", reason: "expired-login" },
+        },
+      );
+    }).pipe(
+      Effect.provide(
+        zeropsRunAdmission.pipe(
+          Layer.provide(
+            Layer.succeed(
+              ZeropsTurnAdmission,
+              ZeropsTurnAdmission.of({
+                admit: () => Effect.void,
+                admitOperator: () => Effect.void,
+                admitRun: () =>
+                  Effect.fail(
+                    new OrchestrationDispatchCommandError({
+                      message: "Claude's sign-in has expired.",
+                      agentAdmission: { loginId: "claude-code", reason: "expired-login" },
+                    }),
+                  ),
+              }),
+            ),
+          ),
+        ),
+      ),
+    ),
   );
 
   it.effect(

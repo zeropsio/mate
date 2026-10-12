@@ -5,7 +5,7 @@ import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import { describe, expect, it } from "@effect/vitest";
 
-import { requestOlderThreadTurns } from "./adapters/mateThreadReplay.ts";
+import { requestOlderThreadTurns } from "./olderTurns.ts";
 import { makeTestEngineHost } from "./__fixtures__/engineHost.ts";
 import {
   engineRow,

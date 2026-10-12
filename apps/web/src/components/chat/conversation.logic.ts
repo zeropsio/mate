@@ -515,6 +515,22 @@ export function deriveTurnSpans(input: {
       span.terminalEntry = entry;
     }
   }
+  // A card the page holds nothing of yet is a turn all the same, where its run began: a closed run
+  // whose lines page in as it opens (a wake that only ran commands) lost its card on a reload, and
+  // with it the word of what woke it (the run-card oracle, seed 42203311). A live one is the
+  // unsettled turn's, below.
+  const placed = new Map<MutableSpan, number>();
+  for (const [id, card] of Object.entries(input.runCards ?? {})) {
+    const turnId = TurnId.make(id);
+    const first = card.runs[0];
+    if (first === undefined || byTurnId.has(turnId) || turnId === input.unsettledTurnId) continue;
+    if (card.runs.some((run) => run.turnState === "running")) continue;
+    const startedMs = first.startedAt ?? first.queuedAt;
+    const after = input.timelineEntries.findIndex(
+      (entry) => (parseMs(entry.createdAt) ?? -Infinity) > startedMs,
+    );
+    placed.set(open(turnId, null), (after === -1 ? input.timelineEntries.length : after) - 0.5);
+  }
   if (input.unsettledTurnId !== null) {
     if (!byTurnId.has(input.unsettledTurnId)) {
       const opener = openerOf(unclaimed);
@@ -526,7 +542,8 @@ export function deriveTurnSpans(input: {
   } else if (input.isWorking && unclaimed.length > 0) {
     open(null, openerOf(unclaimed));
   }
-  const startOf = (span: MutableSpan) => span.openerIndex ?? span.entryIndexes[0] ?? Infinity;
+  const startOf = (span: MutableSpan) =>
+    placed.get(span) ?? span.openerIndex ?? span.entryIndexes[0] ?? Infinity;
   return spans.toSorted((left, right) => startOf(left) - startOf(right));
 }
 
@@ -1074,10 +1091,13 @@ export function deriveConversationStructure(given: {
         : null;
     const { limit, limitOnly, answerIsRefusal } = refusal;
 
+    const firstRun = cardRuns[0];
     const turnStart =
       span.opener?.createdAt ??
       turnEntries[0]?.createdAt ??
-      (live ? input.activeTurnStartedAt : null);
+      (live ? input.activeTurnStartedAt : null) ??
+      // A card the page holds nothing of yet began where its first run did.
+      (typed && firstRun?.startedAt != null ? new Date(firstRun.startedAt).toISOString() : null);
     // Settled, a turn ends where the Mate's own entries did — whether it is
     // the latest or not, so its "worked for" never changes after the fact. A
     // helper or a background task it left working reports in on the turn,

@@ -4,10 +4,8 @@ import {
   ProjectId,
   ProviderInstanceId,
   EngineSendContext,
-  ORCHESTRATION_WS_METHODS,
   RunId,
   type EngineCallResult,
-  type ClientOrchestrationCommand,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Crypto from "effect/Crypto";
@@ -33,7 +31,7 @@ import {
   engineStartTurn,
   viaEngine,
 } from "./engineCommands.ts";
-import { mateEngineHostAtom, mateEngineReaderAtom, type MateEngineHost } from "./engineHost.ts";
+import { mateEngineHostAtom, type MateEngineHost } from "./engineHost.ts";
 import { makeMateEngineOperations, type EngineCommand } from "./operations/executors/mateEngine.ts";
 import { makeAccountStore } from "./store.ts";
 import {
@@ -78,12 +76,6 @@ function rig(
     },
   });
   registry.set(mateEngineHostAtom, { store, operations } as unknown as MateEngineHost);
-  const v1Calls: string[] = [];
-  const v1Commands: ClientOrchestrationCommand[] = [];
-  const v1 = Effect.sync(() => {
-    v1Calls.push("dispatchCommand");
-    return { sequence: 3 } as never;
-  });
   const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.gen(function* () {
       const prepared = yield* SubscriptionRef.make(
@@ -93,18 +85,6 @@ function rig(
         Effect.provideService(EnvironmentSupervisor, {
           target: { environmentId: ENV },
           prepared,
-          session: yield* SubscriptionRef.make(
-            Option.some({
-              client: {
-                [ORCHESTRATION_WS_METHODS.dispatchCommand]: (
-                  command: ClientOrchestrationCommand,
-                ) => {
-                  v1Commands.push(command);
-                  return v1;
-                },
-              },
-            }),
-          ),
         } as never),
       );
     });
@@ -163,16 +143,14 @@ function rig(
       removals: [],
     });
   };
-  return { registry, calls, v1, v1Calls, v1Commands, run, header, runs };
+  return { registry, calls, run, header, runs };
 }
 
 describe("the thread commands a view sends, by its Mate's wire", () => {
-  describe("Decision: V1 behaviour unchanged; engine gets parity.", () => {
+  describe("Decision: engine gets parity.", () => {
     it.effect.each([
       { action: "archive", archived: true, protocol: 1 },
       { action: "unarchive", archived: false, protocol: 1 },
-      { action: "archive", archived: true, protocol: undefined },
-      { action: "unarchive", archived: false, protocol: undefined },
     ] as const)(
       "$action follows the Mate door (engine $protocol)",
       ({ action, archived, protocol }) =>
@@ -201,32 +179,22 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             }),
           );
           expect(result._tag).toBe("Success");
-          expect(
-            r.v1Calls,
-            "ASSERTION: an engine archive action never dispatches the parked V1 command",
-          ).toEqual(protocol === undefined ? ["dispatchCommand"] : []);
-          expect(r.calls).toEqual(
-            protocol === undefined
-              ? []
-              : [
-                  {
-                    kind: "set-archived",
-                    conversationId: "thread-ada",
-                    commandId: "op-1",
-                    archived,
-                  },
-                ],
-          );
+          expect(r.calls).toEqual([
+            {
+              kind: "set-archived",
+              conversationId: "thread-ada",
+              commandId: "op-1",
+              archived,
+            },
+          ]);
         }),
     );
   });
 
-  describe("Decision: P0+P1 in this card; V1 behaviour unchanged (V1 compatibility tests stay green).", () => {
+  describe("Decision: P0+P1 in this card.", () => {
     it.effect.each([
       { creation: "inline", protocol: 1 },
       { creation: "separate", protocol: 1 },
-      { creation: "inline", protocol: undefined },
-      { creation: "separate", protocol: undefined },
     ] as const)(
       "a fresh engine conversation's first send uses the selected agent ($creation, engine $protocol)",
       ({ creation, protocol }) =>
@@ -281,21 +249,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             }),
           );
           expect(result._tag).toBe("Success");
-          if (protocol === undefined) {
-            expect(r.calls).toEqual([]);
-            expect(r.v1Calls).toHaveLength(creation === "separate" ? 2 : 1);
-            expect(r.v1Commands.at(-1)).toMatchObject({
-              type: "thread.turn.start",
-              message: turn().message,
-            });
-            expect(
-              creation === "inline"
-                ? r.v1Commands[0]?.type === "thread.turn.start" &&
-                    r.v1Commands[0].bootstrap?.createThread
-                : r.v1Commands[0],
-            ).toMatchObject(create);
-            return;
-          }
           expect(
             r.calls.map(({ kind }) => kind),
             "ASSERTION: a fresh engine conversation's first send uses the selected agent",
@@ -310,7 +263,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             conversationId: "thread-ada",
             runtimeMode: "approval-required",
           });
-          expect(r.v1Calls).toEqual([]);
         }),
     );
   });
@@ -351,7 +303,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
                   },
                 },
               }),
-              r.v1,
             ),
           ),
         );
@@ -359,7 +310,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
         expect(r.calls.map(({ kind }) => kind)).toEqual(
           refused === "assign-agent" ? ["assign-agent"] : ["assign-agent", "set-runtime-mode"],
         );
-        expect(r.v1Calls).toEqual([]);
       }),
   );
 
@@ -380,7 +330,7 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
       Effect.gen(function* () {
         const r = rig(1);
         r.runs([engineRun("thread-ada", 1), working(state)], SESSION(true));
-        yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1));
+        yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn())));
         expect(r.calls).toEqual([
           {
             kind: "steer",
@@ -390,7 +340,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             text: "And the worker",
           },
         ]);
-        expect(r.v1Calls).toEqual([]);
       }),
   );
 
@@ -410,7 +359,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             r.registry,
             ENV,
             engineStartTurn(ENV, { ...turn(), agentNotes: [LANDED, vault] } as never),
-            r.v1,
           ),
         );
         expect(r.calls).toMatchObject([{ kind, text: "And the worker", context: [LANDED, vault] }]);
@@ -434,12 +382,7 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
       const r = rig(1);
       const { lines } = agentContext([LANDED, "apidev #4 landed"], vaultKeys(9));
       yield* r.run(
-        viaEngine(
-          r.registry,
-          ENV,
-          engineStartTurn(ENV, { ...turn(), agentNotes: lines } as never),
-          r.v1,
-        ),
+        viaEngine(r.registry, ENV, engineStartTurn(ENV, { ...turn(), agentNotes: lines } as never)),
       );
       const sent = r.calls[0] as { readonly kind: string; readonly context?: unknown };
       expect(sent.kind).toBe("send");
@@ -459,12 +402,7 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
       const r = rig(1);
       const notes = Array.from({ length: 7 }, (_, n) => `${"word ".repeat(60)}${n}`);
       yield* r.run(
-        viaEngine(
-          r.registry,
-          ENV,
-          engineStartTurn(ENV, { ...turn(), agentNotes: notes } as never),
-          r.v1,
-        ),
+        viaEngine(r.registry, ENV, engineStartTurn(ENV, { ...turn(), agentNotes: notes } as never)),
       );
       const sent = r.calls[0] as { readonly context?: unknown };
       expect(fitsEngine(sent.context)).toBe(true);
@@ -474,7 +412,7 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
   it.effect("a message with nothing to tell sends no context", () =>
     Effect.gen(function* () {
       const r = rig(1);
-      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1));
+      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn())));
       expect(r.calls).toHaveLength(1);
       expect(r.calls[0]).not.toHaveProperty("context");
     }),
@@ -519,7 +457,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
           r.registry,
           ENV,
           engineStartTurn(ENV, { ...turn(), agentNotes: [note!] } as never),
-          r.v1,
         ),
       );
       const sent = JSON.stringify(r.calls);
@@ -561,7 +498,7 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
       Effect.gen(function* () {
         const r = rig(1);
         r.runs(runs, SESSION(steer, active));
-        yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn(carries)), r.v1));
+        yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn(carries))));
         expect(r.calls.map((call) => call.kind)).toEqual(["send"]);
       }),
   );
@@ -576,7 +513,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
           r.registry,
           ENV,
           engineStartTurn(ENV, { ...turn(), interactionMode: "plan" } as never),
-          r.v1,
         ),
       );
       expect(r.calls).toMatchObject([
@@ -600,7 +536,7 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             : ACCEPTED,
         );
         r.runs([engineRun("thread-ada", 1), working("running")], SESSION(true));
-        const result = yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1));
+        const result = yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn())));
         expect(result).toEqual({ sequence: 16 });
         expect(r.calls).toMatchObject([
           { kind: "steer", commandId: "message-7" },
@@ -608,7 +544,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
         ]);
         // The engine keeps the steer's refusal under the message's id: the send goes under its own.
         expect(r.calls[1]?.commandId).toBe(engineResendId("message-7"));
-        expect(r.v1Calls).toEqual([]);
       }),
   );
 
@@ -640,7 +575,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
               turnId: "thread-ada/r/1",
               createdAt: "2026-10-08T00:00:00.000Z",
             } as never),
-            r.v1,
           ),
         ),
       );
@@ -654,7 +588,7 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     () =>
       Effect.gen(function* () {
         const r = rig(1);
-        const result = yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1));
+        const result = yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn())));
         expect(result).toEqual({ sequence: 16 });
         expect(r.calls).toEqual([
           {
@@ -665,42 +599,37 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             attachments: [],
           },
         ]);
-        expect(r.v1Calls).toEqual([]);
       }),
   );
 
-  it.effect("a command on a V1 Mate goes over V1 unchanged", () =>
-    Effect.gen(function* () {
-      const r = rig(undefined);
-      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1));
-      expect(r.v1Calls).toEqual(["dispatchCommand"]);
-      expect(r.calls).toEqual([]);
-    }),
+  it.effect(
+    "a command on a Mate from before the engine is refused with the Mate's update, sending nothing",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(undefined);
+        const failure = yield* Effect.flip(
+          r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()))),
+        );
+        expect(failure._tag).toBe("MateEngineUnsupported");
+        expect(failure.message).toBe(
+          "This Mate is older than this app. Update the Mate to talk to it here.",
+        );
+        expect(r.calls).toEqual([]);
+      }),
   );
 
-  it.effect.each([
-    {
-      reader: "engine",
-      words:
-        "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.",
-    },
-    {
-      reader: "none",
-      words:
-        "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.",
-    },
-  ] as const)(
-    "a Mate serving only a newer protocol refuses with its app's way out: a reload or update on the web and desktop, an update on the phone (reader $reader)",
-    ({ reader, words }) =>
+  it.effect(
+    "a Mate serving only a newer protocol refuses with the app's way out: a reload or an update",
+    () =>
       Effect.gen(function* () {
         const r = rig(2);
-        r.registry.set(mateEngineReaderAtom, reader);
         const failure = yield* Effect.flip(
-          r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1)),
+          r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()))),
         );
-        expect(failure.message).toBe(words);
+        expect(failure.message).toBe(
+          "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.",
+        );
         expect(r.calls).toEqual([]);
-        expect(r.v1Calls).toEqual([]);
       }),
   );
 
@@ -726,7 +655,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
                   },
                 ]),
               ),
-              r.v1,
             ),
           ),
         );
@@ -747,7 +675,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             requestId: "thread-ada/r/2/q/1",
             decision: "accept",
           } as never),
-          r.v1,
         ),
       );
       expect(r.calls[0]).toMatchObject({
@@ -773,7 +700,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
               requestId: "thread-ada/r/2/q/1",
               outcome,
             }),
-            r.v1,
           ),
         );
         expect(r.calls).toEqual([
@@ -784,7 +710,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             summary: outcome,
           }),
         ]);
-        expect(r.v1Calls).toEqual([]);
       }),
   );
 
@@ -801,7 +726,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             answers: { target: "Inspect the preview" },
             attachmentsByQuestionId: { target: [{ name: "preview.png" }] },
           } as never),
-          r.v1,
         ),
       );
       expect(r.calls[0]).toMatchObject({
@@ -813,7 +737,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
           attachmentsByQuestionId: { target: [{ name: "preview.png" }] },
         },
       });
-      expect(r.v1Calls).toEqual([]);
     }),
   );
 
@@ -830,7 +753,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
               threadId: "thread-ada",
               requestId: "thread-ada/r/2/q/1",
             } as never),
-            r.v1,
           ),
         );
         expect(r.calls).toEqual([
@@ -841,7 +763,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             requestId: "thread-ada/r/2/q/1",
           },
         ]);
-        expect(r.v1Calls).toEqual([]);
       }),
   );
 
@@ -854,11 +775,9 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
           r.registry,
           ENV,
           engineUpdateMetadata(ENV, { threadId: "thread-ada", title: "Deploy the api" } as never),
-          r.v1,
         ),
       );
       expect(r.calls).toEqual([]);
-      expect(r.v1Calls).toEqual([]);
     }),
   );
 
@@ -875,7 +794,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             title: "Deploy",
             modelSelection: { instanceId: "claudeAgent", model: "claude-opus-4-1" },
           } as never),
-          r.v1,
         ),
       );
       expect(r.calls).toEqual([
@@ -886,7 +804,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
           model: "claude-opus-4-1",
         },
       ]);
-      expect(r.v1Calls).toEqual([]);
     }),
   );
 
@@ -902,7 +819,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             threadId: "thread-ada",
             modelSelection: { instanceId: "claudeAgent", model: "claude-sonnet-4-5" },
           } as never),
-          r.v1,
         ),
       );
       expect(r.calls).toEqual([]);
@@ -949,11 +865,9 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
           r.registry,
           ENV,
           engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
-          r.v1,
         ),
       );
       expect(r.calls).toEqual([call]);
-      expect(r.v1Calls).toEqual([]);
     }),
   );
 
@@ -1032,11 +946,9 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             } as never,
             () => CLAUDE as never,
           ),
-          r.v1,
         ),
       );
       expect(r.calls).toEqual([]);
-      expect(r.v1Calls).toEqual([]);
     }),
   );
 
@@ -1066,7 +978,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
               } as never,
               () => CLAUDE as never,
             ),
-            r.v1,
           ),
         );
         expect(r.calls).toEqual([
@@ -1078,7 +989,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             options: [option],
           },
         ]);
-        expect(r.v1Calls).toEqual([]);
       }),
   );
 
@@ -1094,13 +1004,11 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
               r.registry,
               ENV,
               engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
-              r.v1,
             ),
           ),
         );
         expect(failure.message).toMatch(words);
         expect(r.calls).toEqual([]);
-        expect(r.v1Calls).toEqual([]);
       }),
   );
 
@@ -1117,7 +1025,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
               threadId: "thread-ada",
               runtimeMode: "approval-required",
             } as never),
-            r.v1,
           ),
         );
         expect(r.calls).toEqual([
@@ -1128,7 +1035,6 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
             runtimeMode: "approval-required",
           },
         ]);
-        expect(r.v1Calls).toEqual([]);
       }),
   );
 
@@ -1137,15 +1043,13 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
     () =>
       Effect.gen(function* () {
         const r = rig(1);
-        yield* r.run(viaEngine(r.registry, ENV, engineSetInteractionMode, r.v1));
+        yield* r.run(viaEngine(r.registry, ENV, engineSetInteractionMode));
         expect(r.calls).toEqual([]);
-        expect(r.v1Calls).toEqual([]);
         yield* r.run(
           viaEngine(
             r.registry,
             ENV,
             engineStartTurn(ENV, { ...turn(), interactionMode: "plan" } as never),
-            r.v1,
           ),
         );
         expect(r.calls).toMatchObject([{ kind: "send", interactionMode: "plan" }]);
@@ -1162,25 +1066,8 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
         mimeType: "application/pdf",
         sizeBytes: 9,
       };
-      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn([file])), r.v1));
+      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn([file]))));
       expect(r.calls).toMatchObject([{ kind: "send", attachments: [file] }]);
-      expect(r.v1Calls).toEqual([]);
     }),
-  );
-
-  it.effect(
-    "a client that reads no engine conversation refuses an engine Mate's command at once, never to retry",
-    () =>
-      Effect.gen(function* () {
-        const r = rig(1);
-        r.registry.set(mateEngineHostAtom, null);
-        r.registry.set(mateEngineReaderAtom, "none");
-        const failure = yield* Effect.flip(
-          r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()), r.v1)),
-        );
-        expect(failure._tag).toBe("MateEngineUnsupported");
-        expect(failure.message).toMatch(/Update the app/);
-        expect(r.v1Calls).toEqual([]);
-      }),
   );
 });

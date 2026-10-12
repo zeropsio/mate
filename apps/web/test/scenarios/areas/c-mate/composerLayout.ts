@@ -1,4 +1,4 @@
-import { ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { changeFixture } from "../../fakes/d-change/changes.ts";
 import { createScenario } from "../../harness/scenario.ts";
@@ -26,18 +26,14 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
   wire.exchange("Finish here", "The last answer is above the composer.");
   if (state === "notice" || state === "stack") {
     wire.claudeLoginFacts("ready");
-    wire.activity("context-window.updated", "Context used", { usedTokens: 180_000 });
-    wire.snapshot({
-      modelSelection: {
-        instanceId: ProviderInstanceId.make("claudeAgent"),
-        model: "sonnet",
-      },
-    });
+    wire.engine.assign({ instanceId: "claudeAgent", model: "sonnet", driver: "claudeAgent" });
+    wire.engine.context({ usedTokens: 180_000 });
     if (state === "stack") {
+      // Another of Ada's chats is at work.
       const primary = wire.mate.thread;
-      wire.run("other-work", "running");
+      wire.engine.conversation("other-chat").startRun(null);
       wire.threadCollection(primary, [
-        { ...wire.mate.thread, id: ThreadId.make("other-chat"), title: "Other work" },
+        { ...primary, id: ThreadId.make("other-chat"), title: "Other work" },
       ]);
     }
   }

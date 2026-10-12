@@ -47,6 +47,7 @@ export const chatGateStages = [
     ],
   },
   {
+    // Every Mate journey, on the engine's wire: a Mate's conversation runs on its engine alone.
     id: "C",
     name: "B: client wire journeys (C)",
     commands: [
@@ -59,29 +60,6 @@ export const chatGateStages = [
           "test/scenarios/vitest.config.ts",
           "--project",
           "scenarios",
-          "test/scenarios/areas/c-mate",
-          "--allowOnly=false",
-          "--reporter=default",
-          "--reporter=../../scripts/chat-gate-reporter.ts",
-        ],
-      },
-    ],
-  },
-  {
-    // The same journeys against a Mate whose conversation runs on the engine's wire: their
-    // sentences hold for both engines (engine.md, "Running beside the old engine").
-    id: "C-engine",
-    name: "B: client wire journeys on the engine (C)",
-    commands: [
-      {
-        cwd: "apps/web",
-        args: [
-          "test",
-          "run",
-          "--config",
-          "test/scenarios/vitest.config.ts",
-          "--project",
-          "scenarios-engine",
           "test/scenarios/areas/c-mate",
           "--allowOnly=false",
           "--reporter=default",
@@ -130,16 +108,12 @@ export const chatGateStages = [
     ],
   },
   {
-    // The crew's journeys on a Mate whose crew runs on the engine; the unit suite runs the same
-    // sentences on V1's crew, so each one holds on both. The files' V1-only tests (skipped off the
-    // V1 world: V1's own mechanism) skip here by design, so this run reports without the
-    // certifying reporter.
+    // The crew's journeys on a Mate whose crew runs on the engine.
     id: "F",
     name: "F: crew journeys on the engine",
     commands: [
       {
         cwd: "apps/server",
-        env: { CREW_WORLD: "engine" },
         args: [
           "test",
           "run",
@@ -149,6 +123,8 @@ export const chatGateStages = [
           "src/zerops/crew/CrewEngine.test.ts",
           "src/zerops/crew/registerCrewRpc.test.ts",
           "--allowOnly=false",
+          "--reporter=default",
+          "--reporter=../../scripts/chat-gate-reporter.ts",
         ],
       },
     ],
@@ -247,7 +223,6 @@ export function selectLaneChatStages(
     // The crew's journeys run on the engine for the crew's own paths.
     F: paths.filter((path) => path.startsWith("apps/server/src/zerops/crew/")),
     C: paths,
-    "C-engine": paths,
   };
   const selected = related.length
     ? filterChatGateFiles(
@@ -266,7 +241,7 @@ export function selectLaneChatStages(
       !/\.test\./u.test(path) &&
       !path.endsWith(".md"),
   );
-  if (contracts.length || selected.some((stage) => stage.id === "C" || stage.id === "C-engine")) {
+  if (contracts.length || selected.some((stage) => stage.id === "C")) {
     stages.push({
       ...chatGateStages.find((stage) => stage.id === "types")!,
       reason: contracts.length
@@ -285,13 +260,6 @@ export function selectLaneChatStages(
 export const SCENARIO_PROJECT_FILES = {
   scenarios: {
     include: ["test/scenarios/areas/**/*.scenario.ts"],
-    exclude: ["**/node_modules/**", "test/scenarios/areas/c-mate/engine-*.scenario.ts"],
-  },
-  "scenarios-engine": {
-    include: [
-      "test/scenarios/areas/c-mate/chat.scenario.ts",
-      "test/scenarios/areas/c-mate/engine-*.scenario.ts",
-    ],
     exclude: [],
   },
 } as const satisfies Record<
@@ -406,7 +374,7 @@ if (import.meta.main) {
     (args.includes("--select") && args.length !== 1)
   )
     throw new Error(
-      "Usage: node scripts/chat-gate.ts [--verbose] [--list | --select (paths on stdin)] [--stages A,C,C-engine,E,F,types] [--files JSON-array] [--shard 1/2|2/2 (with --stages C)]",
+      "Usage: node scripts/chat-gate.ts [--verbose] [--list | --select (paths on stdin)] [--stages A,C,E,F,types] [--files JSON-array] [--shard 1/2|2/2 (with --stages C)]",
     );
   const root = NodePath.resolve(import.meta.dirname, "..");
   const requested = stageIds
@@ -421,7 +389,8 @@ if (import.meta.main) {
       "admission",
       "providerLimits",
       "image-layout",
-      "rewind",
+      "engine-card",
+      "engine-secret",
     ]);
     const files = chatGateTestFiles(root, requested).filter(
       (file) => first.has(NodePath.basename(file, ".scenario.ts")) === (shard === "1/2"),

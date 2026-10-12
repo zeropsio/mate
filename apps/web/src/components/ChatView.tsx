@@ -1,7 +1,12 @@
 import { useBranchAdvice } from "./useBranchAdvice";
 import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
-import { agentAdmission, type AgentRefusalSource } from "@t3tools/client-runtime/data";
+import {
+  agentAdmission,
+  engineCardsShowError,
+  engineRunRefusal,
+  type AgentRefusalSource,
+} from "@t3tools/client-runtime/data";
 import { useAgentAdmissionPlacement } from "../zerops/AgentAdmissionComposition";
 import { AgentAdmissionExplanation } from "./chat/AgentAdmissionExplanation";
 import {
@@ -3247,6 +3252,25 @@ export default function ChatView(props: ChatViewProps) {
     zeropsViewerSubject === undefined
       ? undefined
       : zeropsMateOwnerOf(admissionPeople?.owner, zeropsViewerSubject);
+  const engineCards = useEngineRunCards(activeThreadRef);
+  // The engine answers a send before admission does: a message sent from here that admission
+  // then refused goes back into the composer, as a refused send always did, unless the person has
+  // started writing something else there.
+  const sentHereRef = useRef(new Set<string>());
+  useEffect(() => {
+    for (const card of Object.values(engineCards ?? {})) {
+      const refused = card.refused;
+      if (refused === undefined || !sentHereRef.current.delete(refused.messageId)) continue;
+      if (promptRef.current.length > 0) continue;
+      promptRef.current = refused.text;
+      setComposerDraftPrompt(composerDraftTarget, refused.text);
+      composerRef.current?.resetCursorState({
+        cursor: collapseExpandedComposerCursor(refused.text, refused.text.length),
+        prompt: refused.text,
+        detectTrigger: true,
+      });
+    }
+  }, [composerDraftTarget, composerRef, engineCards, setComposerDraftPrompt]);
   const admission = agentAdmission({
     environmentId,
     instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
@@ -3259,7 +3283,11 @@ export default function ChatView(props: ChatViewProps) {
         ? localServerErrorsByThreadKey[routeThreadKey]?.refusalSource
         : localDraftError !== null
           ? localDraftErrorsByDraftId[draftId ?? ""]?.refusalSource
-          : undefined,
+          : engineRunRefusal(
+              engineCards === null
+                ? undefined
+                : Object.values(engineCards).flatMap((card) => card.runs),
+            ),
     providers: providerStatuses,
     mateName: admissionMate.kind === "mate" ? admissionMate.mate.name : "This Mate",
     owner: admissionOwner === undefined ? undefined : { mine: admissionOwner.isViewer },
@@ -3284,7 +3312,11 @@ export default function ChatView(props: ChatViewProps) {
       setDismissedProviderStatusBannerKey(null);
     }
   }, [dismissedProviderStatusBannerKey, providerStatusBannerKey]);
-  const shownThreadError = admission.explainsRefusal ? null : visibleThreadError;
+  // An engine run that broke off says so on its card, as a V1 turn's error activity did.
+  const shownThreadError =
+    admission.explainsRefusal || engineCardsShowError(engineCards, visibleThreadError)
+      ? null
+      : visibleThreadError;
   const visibleProviderStatus = shouldShowProviderStatusBanner(
     admission.providerStatus,
     dismissedProviderStatusBannerKey,
@@ -5258,7 +5290,6 @@ export default function ChatView(props: ChatViewProps) {
   const shellTaskIds = activeThreadShell?.backgroundTaskIds;
   const shellLiveness = activeThreadShell?.backgroundLiveness ?? null;
   const shellTaskKey = shellTaskIds === undefined ? null : shellTaskIds.join("\n");
-  const engineCards = useEngineRunCards(activeThreadRef);
   const engineConversation = engineCards !== null;
   const liveJobsNow = useMemo(
     () =>
@@ -7404,8 +7435,10 @@ export default function ChatView(props: ChatViewProps) {
       }
     }
 
-    if (failure === null && turnStartSucceeded)
+    if (failure === null && turnStartSucceeded) {
       sendTurnReceipts?.accepted(environmentId, messageIdForSend);
+      if (engineConversation) sentHereRef.current.add(messageIdForSend);
+    }
     if (failure !== null) {
       sendTurnReceipts?.failed(environmentId, messageIdForSend, turnStartAttempted);
       if (queuedMessage) {

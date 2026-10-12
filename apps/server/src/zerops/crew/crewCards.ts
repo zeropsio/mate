@@ -13,8 +13,7 @@
  *   **restart the dev server** after a landing, **show** the copy on dev and
  *   **give dev back**;
  * - a run's own turns: the **nudge** after a turn that ended without a
- *   report, the **rework** a review
- *   sent back, and the lead's wakes — a task to **review**, a crewmate's
+ *   report, and the lead's wakes — a task to **review**, a crewmate's
  *   **question** — and the lead's **answer** to its crewmate;
  * - the **carried** card a new conversation's first turn on an open task
  *   starts from, so every stint begins with a card for its seam line.
@@ -22,12 +21,9 @@
  * A stint's seam line — why its conversation is new — is `stintReasonWords`;
  * the chat shows it verbatim above the stint's first card. The seam lines no
  * card carries — a landing, a save that reaches the conversation later, a
- * conversation opened between turns — are thread activities
- * (`crewSeamLines`); their words are here too.
+ * conversation opened between turns — are thread activities; their words
+ * are here too.
  *
- * The **rotation seed** is not a card: it is what `SessionStart` adds to a new
- * stint's first session, so the crewmate carries on without the old
- * transcript (the probe-22 fallback, PRD §5.6).
  *
  * @module crewCards
  */
@@ -104,13 +100,6 @@ export const fixCard = (
     "Fix it in your copy, then report with crew_report.",
   ]);
 
-export const reviewReworkCard = (task: CardTask & { readonly note: string }): string =>
-  card(task, "rework after review", [
-    "The review sent it back:",
-    task.note.trim(),
-    "Change it in your copy, then report with crew_report.",
-  ]);
-
 /** The lead's wake for a task in review (PRD §5.4 step 6). */
 export const reviewCard = (
   task: CardTask & { readonly owner: string; readonly report: string | null },
@@ -142,19 +131,6 @@ export const nudgeCard = (task: CardTask): string =>
   card(task, "no report yet", [
     "Your turn ended without crew_report. If the task is done, report done. If only the person " +
       "or the lead can unblock you, report blocked with your question. Otherwise carry on.",
-  ]);
-
-export const afterLandCard = (
-  task: CardTask & {
-    readonly commit: string;
-    readonly host: string;
-    readonly devServer: DevServerShape;
-  },
-): string =>
-  card(task, "restart the dev server", [
-    `Your task landed as ${short(task.commit)}. Restart ${task.host}'s dev server from the tree ` +
-      `with zerops_dev_server: action=restart hostname=${task.host} port=${task.devServer.port} ` +
-      `processMatch="${task.devServer.command}", no workDir. Nothing else.`,
   ]);
 
 /** A dev server's restart shape: the port and full command the gate lets through (CONCEPT §3.3). */
@@ -293,40 +269,3 @@ export const closedSeamWords = (number: number): string =>
 export const carriedCard = (
   task: CardTask & { readonly reason: string; readonly text: string },
 ): string => card(task, "continues", [task.reason, "", task.text.trim()]);
-
-const ROTATION_WHY: Readonly<Record<RotationReason, string>> = {
-  "prompt-changed": "the brief or your job changed",
-  "login-changed": "you run on a different login now",
-  "start-fresh": "the person started you fresh",
-  "fresh-task": "your next task is unrelated work",
-  "principal-changed": "your next task is for someone else",
-  "second-rework": "your task comes back for a second rework",
-  compactions: "your context was compacted too many times",
-  "transcript-missing": "your previous conversation could not be resumed",
-  "resume-failed": "your previous conversation could not be resumed",
-  "context-overflow": "your previous conversation outgrew its context",
-};
-
-export const rotationSeed = (input: {
-  readonly handle: string;
-  readonly reason: RotationReason;
-  readonly task: (CardTask & { readonly card: TaskCard; readonly report: string | null }) | null;
-  /** `git log --oneline` of the copy since the task started, newest first. */
-  readonly commits: ReadonlyArray<string>;
-}): string => {
-  const head =
-    `This is a new conversation for @${input.handle}: ${ROTATION_WHY[input.reason]}. ` +
-    "Your copy of the code and its history carry on.";
-  const { task } = input;
-  if (task === null) return head;
-  return [
-    head,
-    "",
-    `You are working on #${task.number} ${task.title}:`,
-    task.card.brief.trim(),
-    ...(input.commits.length === 0
-      ? []
-      : ["", "Commits in your copy since the task started:", ...input.commits]),
-    ...(task.report === null ? [] : ["", `Your last report: ${task.report}`]),
-  ].join("\n");
-};

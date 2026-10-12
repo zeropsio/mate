@@ -12,7 +12,6 @@ import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { TerminalManager } from "../terminal/Manager.ts";
 import { ProviderUpdateSafety } from "../spi/ProviderUpdateSafety.ts";
-import { V1UpdateDrain } from "../update/V1UpdateDrain.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
@@ -45,8 +44,7 @@ const refused = HttpServerResponse.empty({ status: 403 });
 export const readMateUpdateIdleFacts = Effect.gen(function* () {
   const engine = yield* MateEngine;
   const terminals = yield* TerminalManager;
-  const legacy = Option.getOrUndefined(yield* Effect.serviceOption(V1UpdateDrain));
-  const engineDrain = engine.live ? engine.updateDrain : legacy;
+  const engineDrain = engine.updateDrain;
   const safety = Option.getOrUndefined(yield* Effect.serviceOption(ProviderUpdateSafety));
   const rpc = Option.getOrUndefined(yield* Effect.serviceOption(RpcUpdateAdmission));
   const clones = Option.getOrUndefined(yield* Effect.serviceOption(ProjectCloneTracker));
@@ -91,8 +89,7 @@ const drainRoute = HttpRouter.add(
     const terminals = yield* TerminalManager;
     const environment = yield* ServerEnvironment;
     const safety = Option.getOrUndefined(yield* Effect.serviceOption(ProviderUpdateSafety));
-    const legacyDrain = Option.getOrUndefined(yield* Effect.serviceOption(V1UpdateDrain));
-    const engineDrain = engine.live ? engine.updateDrain : legacyDrain;
+    const engineDrain = engine.updateDrain;
     const policyOption = yield* Effect.serviceOption(MateAutoUpdatePolicy);
     const policy = Option.getOrUndefined(policyOption);
     const { bootId } = yield* environment.getDescriptor;
@@ -220,8 +217,7 @@ const releaseRoute = (path: `/${string}`) =>
       if (!(yield* local)) return refused;
       const engine = yield* MateEngine;
       const terminals = yield* TerminalManager;
-      const legacyDrain = Option.getOrUndefined(yield* Effect.serviceOption(V1UpdateDrain));
-      yield* (engine.live ? engine.updateDrain : legacyDrain)?.cancel ?? Effect.void;
+      yield* engine.updateDrain?.cancel ?? Effect.void;
       yield* terminals.updateDrain?.cancel ?? Effect.void;
       const rpcAdmission = yield* Effect.serviceOption(RpcUpdateAdmission);
       if (Option.isSome(rpcAdmission)) yield* rpcAdmission.value.cancel;

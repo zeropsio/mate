@@ -12,7 +12,7 @@ import {
 import { assert, describe, it } from "vite-plus/test";
 
 import { projectActivityPayload } from "../../orchestration/ActivityPayloadProjection.ts";
-import { runtimeEventToActivities } from "../../orchestration/Layers/ProviderRuntimeIngestion.ts";
+import { runtimeEventToActivities } from "../testing/history/v1Activities.ts";
 import { makeToCore } from "../pump/toCore.ts";
 import { recordCallHeavy, type Recording } from "../testing/bridge/callHeavy.ts";
 import type { BridgeDriver } from "./spi3.ts";

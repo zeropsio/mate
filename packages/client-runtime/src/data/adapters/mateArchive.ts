@@ -1,6 +1,6 @@
 /** Connected-Mate archive demand shares account retention and the common refusal/retry policy. */
 import type { EnvironmentId, OrchestrationShellSnapshot } from "@t3tools/contracts";
-import { ORCHESTRATION_WS_METHODS, WS_METHODS } from "@t3tools/contracts";
+import { WS_METHODS } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Result from "effect/Result";
@@ -12,7 +12,7 @@ import * as Fiber from "effect/Fiber";
 import type { EnvironmentRegistry } from "../../connection/registry.ts";
 import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
 import { engineRouteOf } from "../engineHost.ts";
-import { ENGINE_UPDATE_WORDS } from "../projections/mateEngine.ts";
+import { ENGINE_UPDATE_WORDS, MATE_OLDER_WORDS } from "../projections/mateEngine.ts";
 import { request } from "../../rpc/client.ts";
 import { archiveScope } from "../families/mateArchive.ts";
 import type { AccountStore } from "../store.ts";
@@ -38,14 +38,19 @@ export const makeArchiveWire = (registry: EnvironmentRegistry["Service"]): Archi
           const route = Option.isSome(prepared)
             ? engineRouteOf(prepared.value)
             : { kind: "unknown" as const };
-          if (route.kind === "update")
+          if (route.kind === "update" || route.kind === "older")
             return yield* Effect.fail({
               outcome: "definitive-refusal",
-              message: ENGINE_UPDATE_WORDS,
+              message: route.kind === "update" ? ENGINE_UPDATE_WORDS : MATE_OLDER_WORDS,
             } satisfies StreamFault);
-          return yield* route.kind === "engine"
-            ? request(WS_METHODS.engineGetArchivedShellSnapshot, { protocol: route.protocol })
-            : request(ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot, {});
+          if (route.kind === "unknown")
+            return yield* Effect.fail({
+              outcome: "transient",
+              message: "This Mate is not connected yet.",
+            } satisfies StreamFault);
+          return yield* request(WS_METHODS.engineGetArchivedShellSnapshot, {
+            protocol: route.protocol,
+          });
         }),
       )
       .pipe(Effect.catchCause((cause) => Effect.fail(workspaceFailure(Cause.squash(cause))))),

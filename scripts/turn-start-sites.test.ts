@@ -23,29 +23,17 @@ const TURN_COMMAND_PATTERN = /\btype:\s*"(?:thread\.turn\.start|thread\.user-inp
 const CLIENT_COMMAND_PATTERN = /\bnormalizeDispatchCommand\(/u;
 const ADMISSION_PATTERN = /\.admit\(/u;
 
-/** The files that accept commands from a client. Each must admit them. */
-const CLIENT_ENTRY_POINTS = ["apps/server/src/ws.ts", "apps/server/src/orchestration/http.ts"];
+/**
+ * The files that accept commands from a client. Each must admit them. None does since V1 went: a
+ * person's turn reaches the engine's wire, whose runs the engine admits (below).
+ */
+const CLIENT_ENTRY_POINTS: ReadonlyArray<string> = [];
 
 /** Files that build a turn without admitting it, and why that is sound. */
 const UNADMITTED_TURN_BUILDERS: Readonly<Record<string, string>> = {
   "apps/server/src/orchestration/decider.ts":
     "the turn a message-mode answer becomes; admission gates the answer itself (isTurnStartingCommand)",
-  "apps/server/src/orchestration/Layers/ProviderCommandReactor.ts":
-    "re-dispatches a turn already admitted, after its session had to be replaced",
-  "apps/server/src/orchestration/Layers/ThreadUsagePauseReactor.ts":
-    "resumes a turn the usage limit paused; it was admitted when it started (a signer change during the pause is an open D6 question)",
 };
-
-/**
- * The crew's one turn builder (PRD §5.2a, acceptance 9). It admits every
- * turn with the principal the turn traces to: the person's own session
- * inside their call, or `{kind: "crew", startedBy}` — the person whose press
- * or message made it — when it starts later. The engine's tests pin which.
- */
-const CREW_TURN_BUILDERS: ReadonlyArray<string> = ["apps/server/src/zerops/crew/CrewDispatch.ts"];
-
-/** `.admit({ command, principal })`: a crew site passes a principal, never builds one inline. */
-const PRINCIPAL_ADMISSION_PATTERN = /\.admit\(\{\s*command,\s*principal\s*\}\)/u;
 
 /**
  * The Mate engine's D6 (coexist.md §6). The engine admits a run through its
@@ -201,19 +189,6 @@ it.layer(NodeServices.layer)("turn start sites (D6)", (it) => {
     }),
   );
 
-  it.effect("flags a listed entry point that stopped admitting", () =>
-    Effect.sync(() => {
-      const site = classifyTurnStartSite(
-        "const command = yield* normalizeDispatchCommand(args.payload);",
-        "apps/server/src/orchestration/http.ts",
-      );
-      assert.strictEqual(
-        turnStartViolation(site),
-        "apps/server/src/orchestration/http.ts accepts client commands without admitting them",
-      );
-    }),
-  );
-
   it.effect("flags a new place that accepts client commands, admitting or not", () =>
     Effect.sync(() => {
       const site = classifyTurnStartSite(
@@ -240,24 +215,15 @@ it.layer(NodeServices.layer)("turn start sites (D6)", (it) => {
     }),
   );
 
-  it.effect("the crew builds turns in one place, which admits each with its principal", () =>
+  it.effect("the crew builds no turn of its own: the engine runs and admits each", () =>
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const repoRoot = yield* path.fromFileUrl(repoRootUrl);
       const crewBuilders = (yield* scanServer).filter(
         (site) => site.buildsTurns && site.file.startsWith("apps/server/src/zerops/crew/"),
       );
       assert.deepStrictEqual(
-        crewBuilders.map((site) => [site.file, site.admits]),
-        CREW_TURN_BUILDERS.map((file) => [file, true]),
+        crewBuilders.map((site) => site.file),
+        [],
       );
-      for (const file of CREW_TURN_BUILDERS) {
-        assert.match(
-          yield* fs.readFileString(path.join(repoRoot, file)),
-          PRINCIPAL_ADMISSION_PATTERN,
-        );
-      }
     }),
   );
 

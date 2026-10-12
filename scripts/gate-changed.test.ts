@@ -396,20 +396,20 @@ afterAll(() => {
 it.each([
   { path: "apps/server/src/provider/Layers/ClaudeAdapter.ts", stages: "A" },
   { path: "apps/server/src/engine/domain/decide.ts", stages: "E" },
-  { path: "packages/contracts/src/engine.ts", stages: "C,C-engine,E,types" },
-  { path: "packages/contracts/src/engineCall.ts", stages: "C,C-engine,E,types" },
+  { path: "packages/contracts/src/engine.ts", stages: "C,E,types" },
+  { path: "packages/contracts/src/engineCall.ts", stages: "C,E,types" },
   { path: "apps/server/src/engine/wire/EngineWire.ts", stages: "E" },
-  { path: "apps/web/src/components/chat/RunChat.tsx", stages: "C,C-engine,types" },
+  { path: "apps/web/src/components/chat/RunChat.tsx", stages: "C,types" },
   {
     path: "packages/client-runtime/src/data/projections/agentAdmission.ts",
-    stages: "C,C-engine,types",
+    stages: "C,types",
   },
   { path: "apps/web/test/scenarios/areas/d-change/dsl.ts", stages: "" },
   { path: "apps/server/src/engine/pump/toCore.test.ts", stages: "" },
-  { path: "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx", stages: "C,C-engine,types" },
-  { path: "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx", stages: "C,C-engine,types" },
-  { path: "apps/web/package.json", stages: "C,C-engine,types" },
-  { path: "apps/web/tsconfig.json", stages: "C,C-engine,types" },
+  { path: "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx", stages: "C,types" },
+  { path: "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx", stages: "C,types" },
+  { path: "apps/web/package.json", stages: "C,types" },
+  { path: "apps/web/tsconfig.json", stages: "C,types" },
 ])("a lane validates only affected obligations for $path", ({ path, stages }) => {
   const file = NodePath.join(repositoryFixture, path);
   const original = NodeFS.readFileSync(file, "utf8");
@@ -469,22 +469,10 @@ it.each([
       );
     }
     expect(result.stdout).toContain("Selection A:");
-    expect(result.stdout).toContain("Selection C-engine:");
+    expect(result.stdout).toContain("Selection C:");
   } finally {
     NodeFS.writeFileSync(file, original);
   }
-});
-
-it("the engine wire's single journey leaves other C journeys with their scenario owner", () => {
-  const root = NodePath.resolve(import.meta.dirname, "..");
-  const owned = chatGateTestFiles(
-    root,
-    chatGateStages.filter((stage) => stage.id === "C-engine"),
-  );
-  const files = scenarioFiles(root, ["c-mate"], owned);
-  expect(files).not.toContain("test/scenarios/areas/c-mate/chat.scenario.ts");
-  expect(files).toContain("test/scenarios/areas/c-mate/opening.scenario.ts");
-  expect(files).toContain("test/scenarios/fakes/c-mate/chat.test.ts");
 });
 
 // Decision: no test deleted or weakened; only lane selection changes; main CI runs everything.
@@ -823,7 +811,6 @@ it("builders name rendering scenarios without expanding their siblings", () => {
   expect(result.stdout).toContain("Scenario files: 1;");
   expect(result.stdout).toContain(named);
   expect(result.stdout).toContain("explicit --scenarios");
-  expect(result.stdout).toContain("Selection C-engine: skip:");
   expect(result.stdout).not.toContain("chat.scenario.ts");
 });
 

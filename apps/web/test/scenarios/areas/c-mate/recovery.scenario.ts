@@ -276,8 +276,8 @@ describe("C: source failures keep the conversation", () => {
         yield* chat.then.control("Stop generation", "button");
         yield* chat.then.once("The existing conversation is still here");
         yield* chat.then.noText("couldn't restart");
-        wire.message("long-result", "assistant", "The long inspection finished", "long-run");
-        wire.run("long-run", "completed", null, "long-result");
+        wire.say("The long inspection finished", "long-run");
+        wire.run("long-run", "completed");
         yield* chat.then.once("The long inspection finished");
         yield* chat.then.control("Stop generation", "button", false);
         yield* s.then.noExternalNetwork;

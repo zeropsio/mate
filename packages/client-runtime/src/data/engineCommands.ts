@@ -1,9 +1,8 @@
 /**
  * The thread commands a conversation's view already sends — start a turn, interrupt it, answer an
  * approval or a question, dismiss a question, set the model, effort, agent, runtime or plan
- * mode — routed per Mate: through the account's engine operations when the
- * Mate's door named an engine protocol this build speaks, else unchanged over V1. The view keeps
- * its calls; the Mate decides the wire.
+ * mode — through the account's engine operations, once the Mate's door named an engine protocol
+ * this build speaks. The view keeps its calls.
  *
  * @module data/engineCommands
  */
@@ -34,16 +33,14 @@ import {
   MateEngineUnsupported,
   engineRouteOf,
   mateEngineHostAtom,
-  mateEngineReaderAtom,
   type MateEngineHost,
 } from "./engineHost.ts";
-import { NATIVE_ENGINE_WORDS } from "../state/threadState.ts";
 import { engineConversationId } from "./families/mateEngine.ts";
 import { EngineOperationFailed } from "./operations/executors/mateEngine.ts";
 import type { EngineAcceptance } from "./operations/mateEngine.ts";
 import {
   ENGINE_UPDATE_WORDS,
-  NATIVE_UPDATE_WORDS,
+  MATE_OLDER_WORDS,
   engineResendId,
   engineSteerTarget,
   engineStopTarget,
@@ -57,32 +54,35 @@ type Command<T extends ClientOrchestrationCommand["type"]> = Omit<
 >;
 
 /**
- * `v1` unless the Mate's prepared connection names an engine protocol: then the engine's
- * operation, its acceptance answered as the dispatch the view awaits.
+ * The engine's operation, its acceptance answered as the dispatch the view awaits; refused at once
+ * when the Mate and this build speak no common protocol, and unavailable until its door answers.
  */
-export function viaEngine<E, R>(
+export function viaEngine(
   registry: AtomRegistry.AtomRegistry,
   environmentId: string,
   engine: (host: MateEngineHost) => Effect.Effect<EngineAcceptance, EngineOperationFailed>,
-  v1: Effect.Effect<DispatchResult, E, R>,
 ): Effect.Effect<
   DispatchResult,
-  E | OrchestrationDispatchCommandError | EnvironmentRpcUnavailableError | MateEngineUnsupported,
-  R | EnvironmentSupervisor
+  OrchestrationDispatchCommandError | EnvironmentRpcUnavailableError | MateEngineUnsupported,
+  EnvironmentSupervisor
 > {
   return Effect.gen(function* () {
     const supervisor = yield* EnvironmentSupervisor;
     const prepared = yield* SubscriptionRef.get(supervisor.prepared);
-    if (Option.isNone(prepared)) return yield* v1;
-    const route = engineRouteOf(prepared.value);
-    if (route.kind === "v1" || route.kind === "unknown") return yield* v1;
-    const native = registry.get(mateEngineReaderAtom) === "none";
-    if (route.kind === "update")
+    if (Option.isNone(prepared))
       return yield* Effect.fail(
-        new MateEngineUnsupported({ message: native ? NATIVE_UPDATE_WORDS : ENGINE_UPDATE_WORDS }),
+        new EnvironmentRpcUnavailableError({
+          environmentId: environmentId as never,
+          message: "This Mate is not connected yet.",
+        }),
       );
-    if (native)
-      return yield* Effect.fail(new MateEngineUnsupported({ message: NATIVE_ENGINE_WORDS }));
+    const route = engineRouteOf(prepared.value);
+    if (route.kind === "update" || route.kind === "older")
+      return yield* Effect.fail(
+        new MateEngineUnsupported({
+          message: route.kind === "update" ? ENGINE_UPDATE_WORDS : MATE_OLDER_WORDS,
+        }),
+      );
     const host = registry.get(mateEngineHostAtom);
     if (host === null)
       return yield* Effect.fail(

@@ -5,16 +5,11 @@ import {
   AuthPairingCredentialResult,
   AuthWebSocketTicketResult,
   DEFAULT_SERVER_SETTINGS,
-  DispatchResult,
   ExecutionEnvironmentDescriptor,
-  OrchestrationCommand,
-  OrchestrationEvent,
   OrchestrationShellSnapshot,
   OrchestrationShellStreamItem,
   OrchestrationThread,
-  OrchestrationThreadDetailSnapshot,
   OrchestrationThreadShell,
-  OrchestrationThreadStreamItem,
   ServerConfig,
   ServerConfigStreamEvent,
   ServerSettings,
@@ -28,8 +23,8 @@ import {
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import type { WebSocket } from "ws";
-import * as NodeEvents from "node:events";
-import { deadline, type HttpHandler } from "../harness/http.ts";
+import type { HttpHandler } from "../harness/http.ts";
+import { MateEngineFake } from "./mateEngine.ts";
 
 const decodeExecutionEnvironmentDescriptor = Schema.decodeUnknownSync(
   ExecutionEnvironmentDescriptor,
@@ -39,23 +34,12 @@ const decodeServerConfig = Schema.decodeUnknownSync(ServerConfig);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const decodeOrchestrationThreadShell = Schema.decodeUnknownSync(OrchestrationThreadShell);
 const decodeOrchestrationShellSnapshot = Schema.decodeUnknownSync(OrchestrationShellSnapshot);
-const decodeOrchestrationThreadDetailSnapshot = Schema.decodeUnknownSync(
-  OrchestrationThreadDetailSnapshot,
-);
 const encodeExecutionEnvironmentDescriptor = Schema.encodeSync(ExecutionEnvironmentDescriptor);
 const encodeOrchestrationShellSnapshot = Schema.encodeSync(OrchestrationShellSnapshot);
-const encodeOrchestrationThreadDetailSnapshot = Schema.encodeSync(
-  OrchestrationThreadDetailSnapshot,
-);
 const encodeServerConfigStreamEvent = Schema.encodeSync(ServerConfigStreamEvent);
 const encodeUnknownOrchestrationShellStreamItem = Schema.encodeUnknownSync(
   OrchestrationShellStreamItem,
 );
-const encodeUnknownOrchestrationThreadStreamItem = Schema.encodeUnknownSync(
-  OrchestrationThreadStreamItem,
-);
-const decodeOrchestrationCommand = Schema.decodeUnknownSync(OrchestrationCommand);
-const encodeDispatchResult = Schema.encodeSync(DispatchResult);
 const encodeUnknownZeropsAgentAuthSnapshot = Schema.encodeUnknownSync(ZeropsAgentAuthSnapshot);
 const pairingCodec = Schema.toCodecJson(AuthPairingCredentialResult);
 const pairingBody = Schema.encodeSync(pairingCodec)(
@@ -87,9 +71,6 @@ const encodeSourceControl = Schema.encodeSync(SourceControlDiscoveryResult);
 const encodeReadFile = Schema.encodeSync(ProjectReadFileResult);
 const encodeServerConfig = Schema.encodeSync(ServerConfig);
 const encodeSessionState = Schema.encodeSync(AuthSessionState);
-const decodeOrchestrationEvent = Schema.decodeUnknownSync(OrchestrationEvent);
-const encodeOrchestrationThreadStreamItem = Schema.encodeSync(OrchestrationThreadStreamItem);
-const encodeOrchestrationShellStreamItem = Schema.encodeSync(OrchestrationShellStreamItem);
 const decodeMateAttention = Schema.decodeUnknownSync(MateAttention);
 const encodeMateAttention = Schema.encodeSync(MateAttention);
 
@@ -106,25 +87,16 @@ export type RpcHandler = (request: RpcRequest, socket: WebSocket) => boolean;
 export class MateFake {
   readonly rpcHandlers: RpcHandler[] = [];
   readonly requests: RpcRequest[] = [];
-  readonly events: OrchestrationEvent[] = [];
-  readonly shellEvents: {
-    kind: "thread-upserted";
-    sequence: number;
-    thread: OrchestrationThreadShell;
-  }[] = [];
   readonly subscriptions = new Map<WebSocket, Map<string, RpcRequest>>();
   readonly descriptor: ExecutionEnvironmentDescriptor;
   readonly config: ServerConfig;
   thread: OrchestrationThread;
   sequence = 1;
-  acceptMessages = true;
-  /**
-   * The conversation as its wire holds it: what a journey waits on for a person's message. V1's own
-   * thread unless an area composes another wire onto this Mate (the engine's).
-   */
-  conversation: { waitForMessage(text: string): Promise<void> } = this;
   readonly unknownMethods = new Set<string>();
-  private readonly receipts = new NodeEvents.EventEmitter();
+  /** Its conversation, on its engine: every Mate serves the engine. */
+  readonly engine: MateEngineFake;
+  /** The conversation as its wire holds it: what a journey waits on for a person's message. */
+  conversation: { waitForMessage(text: string): Promise<void> };
   readonly projectId: string;
   readonly name: string;
   /** Its attention's incarnation and revision, and what it says beyond its one chat. */
@@ -220,6 +192,8 @@ export class MateFake {
       shellResumeCompletionMarker: true,
       threadResumeCompletionMarker: true,
     });
+    this.engine = new MateEngineFake(this).install();
+    this.conversation = this.engine;
   }
 
   shellThread() {
@@ -305,13 +279,6 @@ export class MateFake {
       ...says,
     });
   }
-  snapshot() {
-    return decodeOrchestrationThreadDetailSnapshot({
-      snapshotSequence: this.sequence,
-      thread: this.thread,
-    });
-  }
-
   handle: HttpHandler = (request) => {
     const path = request.url.pathname.replace(/^\/mate/u, "");
     if (path === "/api/auth/session") {
@@ -332,8 +299,6 @@ export class MateFake {
     if (path === "/api/auth/websocket-ticket") return { body: ticketBody };
     if (path === "/api/orchestration/shell")
       return { body: encodeOrchestrationShellSnapshot(this.shell()) };
-    if (path.startsWith("/api/orchestration/threads/"))
-      return { body: encodeOrchestrationThreadDetailSnapshot(this.snapshot()) };
     return undefined;
   };
 
@@ -343,6 +308,15 @@ export class MateFake {
   reply(socket: WebSocket, id: string, value: unknown) {
     socket.send(JSON.stringify({ _tag: "Exit", requestId: id, exit: { _tag: "Success", value } }));
   }
+  /**
+   * The person said `text` (a seeded message: its id and command are the caller's words): one
+   * exchange of its engine's conversation, and the attention that follows it.
+   */
+  message(_messageId: string, text: string, _commandId: string) {
+    this.engine.personTurn(text);
+    this.publishAttention();
+  }
+
   socket = (socket: WebSocket) => {
     this.subscriptions.set(socket, new Map());
     socket.on("close", () => this.subscriptions.delete(socket));
@@ -371,45 +345,20 @@ export class MateFake {
               config: this.config,
             }),
           ]);
-        else if (
-          tag === ORCHESTRATION_WS_METHODS.subscribeShell ||
-          tag === ORCHESTRATION_WS_METHODS.subscribeThread
-        ) {
+        else if (tag === ORCHESTRATION_WS_METHODS.subscribeShell) {
           this.subscriptions.get(socket)!.set(id, request);
-          const after = payload.afterSequence as number | undefined;
-          if (tag === ORCHESTRATION_WS_METHODS.subscribeShell) {
-            const values =
-              after === undefined
-                ? [{ kind: "snapshot", snapshot: this.shell() }]
-                : this.shellEvents.filter((event) => event.sequence > after);
-            this.chunk(
-              socket,
-              id,
-              [...values, { kind: "synchronized" }].map((item) =>
-                encodeUnknownOrchestrationShellStreamItem(item),
-              ),
-            );
-          } else {
-            const values =
-              after === undefined
-                ? [{ kind: "snapshot", snapshot: this.snapshot() }]
-                : this.events
-                    .filter((event) => event.sequence > after)
-                    .map((event) => ({ kind: "event", event }));
-            this.chunk(
-              socket,
-              id,
-              [...values, { kind: "synchronized" }].map((item) =>
-                encodeUnknownOrchestrationThreadStreamItem(item),
-              ),
-            );
-          }
-        } else if (tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
-          const command = decodeOrchestrationCommand(payload);
-          if (command.type === "thread.turn.start" && this.acceptMessages) {
-            this.message(command.message.messageId, command.message.text, command.commandId);
-          }
-          this.reply(socket, id, encodeDispatchResult({ sequence: this.sequence }));
+          // Its thread list changes on no V1 event: a resumed read is caught up at once.
+          const values =
+            payload.afterSequence === undefined
+              ? [{ kind: "snapshot", snapshot: this.shell() }]
+              : [];
+          this.chunk(
+            socket,
+            id,
+            [...values, { kind: "synchronized" }].map((item) =>
+              encodeUnknownOrchestrationShellStreamItem(item),
+            ),
+          );
         } else if (tag === WS_METHODS.subscribeZeropsAttention) {
           this.subscriptions.get(socket)!.set(id, request);
           this.chunk(socket, id, [encodeMateAttention(this.attention())]);
@@ -462,80 +411,4 @@ export class MateFake {
       }
     });
   };
-
-  async waitForMessage(text: string) {
-    if (this.thread.messages.some((message) => message.text === text)) return;
-    const check = () => {};
-    let listener = check;
-    try {
-      await deadline(
-        new Promise<void>((resolve) => {
-          listener = () => {
-            if (this.thread.messages.some((message) => message.text === text)) resolve();
-          };
-          this.receipts.on("message", listener);
-        }),
-        `Mate accepted message: ${text}`,
-        8000,
-      );
-    } finally {
-      this.receipts.off("message", listener);
-    }
-  }
-
-  message(messageId: string, text: string, commandId: string) {
-    const event = decodeOrchestrationEvent({
-      sequence: ++this.sequence,
-      eventId: `event-${this.sequence}`,
-      aggregateKind: "thread",
-      aggregateId: this.thread.id,
-      occurredAt: AT,
-      commandId,
-      causationEventId: null,
-      correlationId: commandId,
-      metadata: {},
-      type: "thread.message-sent",
-      payload: {
-        threadId: this.thread.id,
-        messageId,
-        role: "user",
-        text,
-        turnId: null,
-        streaming: false,
-        createdAt: AT,
-        updatedAt: AT,
-      },
-    });
-    this.events.push(event);
-    this.thread = decodeOrchestrationThread({
-      ...this.thread,
-      messages: [
-        ...this.thread.messages,
-        {
-          id: messageId,
-          role: "user",
-          text,
-          turnId: null,
-          streaming: false,
-          createdAt: AT,
-          updatedAt: AT,
-        },
-      ],
-    });
-    this.receipts.emit("message");
-    this.publishAttention();
-    const shellEvent = {
-      kind: "thread-upserted" as const,
-      sequence: this.sequence,
-      thread: this.shellThread(),
-    };
-    this.shellEvents.push(shellEvent);
-    for (const [socket, subscriptions] of this.subscriptions)
-      for (const [id, request] of subscriptions) {
-        if (request.tag === ORCHESTRATION_WS_METHODS.subscribeThread)
-          this.chunk(socket, id, [encodeOrchestrationThreadStreamItem({ kind: "event", event })]);
-        if (request.tag === ORCHESTRATION_WS_METHODS.subscribeShell)
-          this.chunk(socket, id, [encodeOrchestrationShellStreamItem(shellEvent)]);
-      }
-  }
 }

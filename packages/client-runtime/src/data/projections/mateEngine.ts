@@ -144,6 +144,7 @@ function messageOf(
   cardOf: CardOf,
   neverStarted: NeverStarted = () => false,
   queued: (runId: string) => boolean = () => false,
+  refusedAtAdmission: NeverStarted = () => false,
 ): EngineMessage | null {
   const base = {
     turnId: cardOf(item.runId) as OrchestrationMessage["turnId"],
@@ -152,6 +153,8 @@ function messageOf(
   };
   switch (item.kind) {
     case "person":
+      // Refused before anything of its run ran (admission): its words go back to its sender.
+      if (item.delivery.state === "refused" && refusedAtAdmission(item.runId)) return null;
       return {
         ...base,
         // A message whose run ended before it began names no run, as a V1 message no run took.
@@ -378,7 +381,22 @@ function workActivities(
     item.seq,
   );
   const end = WORK_END_STATUS[item.status];
-  if (end === undefined) return [started];
+  // Resting or waiting on the person is no end: the helper reads so, never as working.
+  if (end === undefined)
+    return item.workKind === "helper" && (item.status === "idle" || item.status === "waiting")
+      ? [
+          started,
+          activity(
+            `${item.id}#${item.status}`,
+            "task.updated",
+            summary,
+            { ...payload, status: item.status },
+            card,
+            item.at,
+            item.rev,
+          ),
+        ]
+      : [started];
   return [
     started,
     activity(
@@ -846,6 +864,9 @@ export function engineThreadOf(
     const run = runId === null ? undefined : runById.get(runId);
     return run !== undefined && run.state === "ended" && run.startedAt === null;
   };
+  // Only admission ends a run failed before anything of it ran.
+  const refusedAtAdmission: NeverStarted = (runId) =>
+    neverStarted(runId) && runById.get(runId!)?.end?.kind === "failed";
   // A call whose work the person stopped: Stop ends the call failed and the work stopped.
   const stoppedCalls = new Set(
     items.flatMap((item) =>
@@ -860,6 +881,7 @@ export function engineThreadOf(
       cardOf,
       neverStarted,
       (runId) => runById.get(runId)?.state === "queued",
+      refusedAtAdmission,
     );
     if (message !== null) messages.push(message);
     switch (item.kind) {
@@ -964,6 +986,8 @@ export function engineThreadOf(
 export interface EngineRunCard {
   readonly runs: ReadonlyArray<RunRecord>;
   readonly openerMessageId?: string;
+  /** Its message, refused before anything of it ran: the words go back to the composer. */
+  readonly refused?: { readonly messageId: string; readonly text: string };
   readonly state?: ConversationRow["state"];
   /** Whether it holds any of its runs' background work: then that work says what it waits on. */
   readonly holdsWork?: true;
@@ -980,8 +1004,11 @@ export interface EngineCardWait {
   readonly commands: number;
 }
 
-/** Background work that still goes on, as the engine's view counts it (`conversationView`). */
-const ALIVE_WORK: ReadonlySet<string> = new Set(["running", "waiting", "idle"]);
+/**
+ * Background work a card that ended still waits on: what runs, or waits on the person. An idle
+ * helper rests, resumable: it reads settled, so its card closes (the helpers' surface says Idle).
+ */
+const ALIVE_WORK: ReadonlySet<string> = new Set(["running", "waiting"]);
 
 /** The typed records on each card, in source order; joining identity decides no run state. */
 export const engineRunCards: Projection<
@@ -1000,6 +1027,7 @@ export const engineRunCards: Projection<
       {
         runs: RunRecord[];
         openerMessageId?: string;
+        refused?: { messageId: string; text: string };
         state?: ConversationRow["state"];
         holdsWork?: true;
         waitsOn?: EngineCardWait;
@@ -1033,8 +1061,16 @@ export const engineRunCards: Projection<
         "mateEngineItem",
         engineFactId(key.environmentId, first.trigger.itemId),
       );
-      if (opener.kind === "known" && opener.value.kind === "person")
+      if (opener.kind === "known" && opener.value.kind === "person") {
         card.openerMessageId = personMessageId(opener.value);
+        if (
+          opener.value.delivery.state === "refused" &&
+          first.state === "ended" &&
+          first.startedAt === null &&
+          first.end?.kind === "failed"
+        )
+          card.refused = { messageId: card.openerMessageId, text: opener.value.text };
+      }
     }
     const row = read.fact("mateEngineRow", engineFactId(key.environmentId, key.conversationId));
     if (row.kind === "known" && row.value.latestRun !== null) {
@@ -1045,6 +1081,28 @@ export const engineRunCards: Projection<
     return cards;
   },
 };
+
+/**
+ * Whether the latest run's card says `error` itself: a run that broke off once it ran draws its
+ * reason on its card. One refused before anything of it ran has no card line; the banner says it.
+ */
+export function engineCardsShowError(
+  cards: Readonly<Record<string, EngineRunCard>> | null,
+  error: string | null,
+): boolean {
+  if (cards === null || error === null) return false;
+  const latest = Object.values(cards)
+    .flatMap((card) => card.runs)
+    .reduce<RunRecord | undefined>(
+      (a, b) => (a === undefined || b.ordinal > a.ordinal ? b : a),
+      undefined,
+    );
+  return (
+    latest?.startedAt != null &&
+    (latest.end?.kind === "failed" || latest.end?.kind === "crashed") &&
+    latest.end.reason === error
+  );
+}
 
 /** What a card's runs' calls came to, as the server counts them (`RunSummary`). */
 export interface EngineCardCounts {
@@ -1265,9 +1323,12 @@ function pageOf(
 
 /** The update route's words, for a Mate whose engine protocol this build does not speak. */
 export const ENGINE_UPDATE_WORDS = UPDATE_WORDS;
-/** The same news on the phone, which reads no engine conversation: only an update fixes it. */
+/** The same news on the phone: only an update of the app fixes it. */
 export const NATIVE_UPDATE_WORDS =
   "This Mate speaks a newer conversation protocol. Update the app to keep talking to it.";
+/** A Mate from before the engine: only its update fixes it. */
+export const MATE_OLDER_WORDS =
+  "This Mate is older than this app. Update the Mate to talk to it here.";
 
 /**
  * The conversation's last words as its row says them, over the V1 thread the engine took over:

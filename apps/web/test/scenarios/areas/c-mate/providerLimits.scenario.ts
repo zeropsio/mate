@@ -1,14 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
-import {
-  ProviderInstanceId,
-  TurnId,
-  OrchestrationThread,
-  ClientOrchestrationCommand,
-  ORCHESTRATION_WS_METHODS,
-} from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
 import { makeClaudeTurnUsage } from "../../../../../server/src/spi/responseUsage.ts";
 import { mateOverviewOf } from "../../../../../server/src/zerops/zeropsHqOverview.ts";
 import * as Effect from "effect/Effect";
@@ -20,11 +12,20 @@ import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.t
 import { createScenario } from "../../harness/scenario.ts";
 import { completedHttp } from "../../harness/completedHttp.ts";
 import { reportConversation } from "../b-menu/fake.ts";
-import { installArea } from "./fake.ts";
+import { installArea, type ChatDriver } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
 
-const decodeThread = Schema.decodeUnknownSync(OrchestrationThread);
-const decodeCommand = Schema.decodeUnknownSync(ClientOrchestrationCommand);
+/**
+ * Ada's conversation runs on Claude, and its last run hit Claude's weekly limit, until `resetsAt`;
+ * `asking`, it waits on the person's answer as it hit it.
+ */
+const claudeAtItsLimit = (wire: ChatDriver, resetsAt: string, asking = false) => {
+  wire.claudeLoginFacts("ready");
+  wire.engine.assign({ instanceId: "claudeAgent", model: "sonnet", driver: "claudeAgent" });
+  wire.run("refused", "running");
+  if (asking) wire.question("question-target", "refused");
+  wire.engine.limit(wire.runOf("refused"), Date.parse(resetsAt), "7-day");
+};
 
 // A deadline changes the reading, even when the provider and HQ send nothing more.
 describe("C: provider refusal and its real deadline", () => {
@@ -40,60 +41,7 @@ describe("C: provider refusal and its real deadline", () => {
             const chat = mateChat(s);
             const wire = chat.fixture();
             wire.history();
-            wire.claudeLoginFacts("ready");
-            wire.run("refused", "running", "You've hit your weekly limit");
-            const resetsAt = "2099-10-10T00:00:00.000Z";
-            wire.snapshot({
-              session: {
-                ...wire.mate.thread.session!,
-                providerName: "claudeAgent",
-                providerInstanceId: ProviderInstanceId.make("claudeAgent"),
-                usageLimitResetAt: resetsAt,
-              },
-            });
-            wire.activity(
-              "runtime.error",
-              "Claude usage limit reached",
-              {
-                message: "You've hit your weekly limit",
-                turnEnd: "usage-limit",
-                usageLimit: { resetsAt, window: "7-day" },
-              },
-              "refused",
-            );
-            wire.usagePause = {
-              resetsAt,
-              window: "7-day",
-              held: 0,
-              pausedAt: "2026-10-08T10:00:00.000Z",
-              autoResume: false,
-            };
-            wire.shell();
-            const refused = wire.mate.thread;
-            wire.mate.rpcHandlers.unshift((request) => {
-              if (request.tag !== ORCHESTRATION_WS_METHODS.dispatchCommand) return false;
-              const command = decodeCommand(request.payload);
-              if (command.type === "thread.archive") {
-                wire.usagePause = null;
-                wire.snapshot({ archivedAt: "2026-10-08T10:01:00.000Z" });
-              }
-              if (command.type === "thread.turn.start" && command.threadId !== refused.id) {
-                const fresh = decodeThread({
-                  ...refused,
-                  id: command.threadId,
-                  messages: [],
-                  activities: [],
-                  session: null,
-                  latestTurn: null,
-                  archivedAt: null,
-                  modelSelection: { instanceId: "codex", model: "gpt-5.4" },
-                });
-                wire.threadCollection(fresh, [
-                  { ...refused, archivedAt: "2026-10-08T10:01:00.000Z" },
-                ]);
-              }
-              return false;
-            });
+            claudeAtItsLimit(wire, "2099-10-10T00:00:00.000Z");
             yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
             yield* Effect.promise(() =>
               s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
@@ -103,32 +51,37 @@ describe("C: provider refusal and its real deadline", () => {
             yield* chat.then.text("Ada hit Claude's weekly limit.");
             yield* chat.when.press("More header actions");
             yield* chat.when.press("Archive and start fresh", "menuitem");
-            yield* Effect.promise(() => wire.waitForCommand("thread.archive"));
+            yield* Effect.promise(() => wire.waitForOp("set-archived"));
+            // The fresh conversation starts on the agent the person picks: Codex, while Claude waits.
+            yield* chat.when.press("Sonnet");
+            yield* chat.when.agent("Codex");
+            yield* Effect.promise(() =>
+              s.page
+                .locator('[role="option"]')
+                .filter((option) => option.textContent?.includes("GPT-5.4") ?? false)
+                .setTimeout(8000)
+                .click(),
+            );
             yield* chat.when.send("Use Codex while Claude waits");
-            const sent = yield* Effect.promise(() => wire.waitForCommand("thread.turn.start"));
-            if (sent.type !== "thread.turn.start")
-              throw new Error("Expected the Codex turn request");
-            expect(sent).toMatchObject({
-              modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+            const sent = yield* Effect.promise(() => wire.waitForOp("send"));
+            const fresh = String(sent.payload.conversationId);
+            expect(fresh).not.toBe(wire.engine.conversationId);
+            expect(
+              wire.engine.applied.find(
+                ({ op, payload }) => op === "assign-agent" && payload.conversationId === fresh,
+              )?.payload,
+            ).toMatchObject({ instanceId: "codex", model: "gpt-5.4" });
+            expect(wire.engine.runs.get(wire.runOf("refused"))?.end).toMatchObject({
+              kind: "usage-limit",
+              driver: "claudeAgent",
             });
-            expect(sent.threadId).not.toBe(refused.id);
-            expect(wire.otherThreads.get(String(refused.id))?.session?.lastError).toBe(
-              "You've hit your weekly limit",
-            );
             yield* chat.then.once("Use Codex while Claude waits");
-            wire.run("codex-reply", "running");
-            wire.message(
-              "codex-answer",
-              "assistant",
-              "Codex is ready to work while Claude waits for its reset.",
-              "codex-reply",
-            );
-            wire.run("codex-reply", "completed", null, "codex-answer");
-            yield* reportConversation(s.drivers, "Ada", {
-              session: wire.mate.thread.session ?? null,
-              latestTurn: wire.mate.thread.latestTurn ?? null,
-              latestMessagePreview: wire.mate.shellThread().latestMessagePreview ?? null,
+            const codex = wire.engine.conversation(fresh);
+            const codexRun = [...codex.runs.keys()].at(-1)!;
+            codex.note(codexRun, "Codex is ready to work while Claude waits for its reset.", {
+              kind: "completed",
             });
+            yield* reportConversation(s.drivers, "Ada");
             yield* chat.then.once("Codex is ready to work while Claude waits for its reset.");
             yield* chat.then.noText("Thinking");
             yield* Effect.promise(() => settled());
@@ -156,41 +109,12 @@ describe("C: provider refusal and its real deadline", () => {
           const chat = mateChat(s);
           const wire = chat.fixture();
           wire.history();
-          wire.claudeLoginFacts("ready");
-          wire.run("refused", "running", "You've hit your weekly limit");
-          const resetsAt = "2020-01-01T00:00:00.000Z";
-          wire.snapshot({
-            session: {
-              ...wire.mate.thread.session!,
-              providerName: "claudeAgent",
-              providerInstanceId: ProviderInstanceId.make("claudeAgent"),
-              usageLimitResetAt: resetsAt,
-            },
-          });
-          wire.activity(
-            "runtime.error",
-            "Claude usage limit reached",
-            {
-              message: "You've hit your weekly limit",
-              turnEnd: "usage-limit",
-              usageLimit: { resetsAt, window: "7-day" },
-            },
-            "refused",
-          );
-          wire.usagePause = {
-            resetsAt,
-            window: "7-day",
-            held: 0,
-            pausedAt: wire.mate.thread.latestTurn?.startedAt ?? "2026-10-08T10:00:00.000Z",
-            autoResume: false,
-          };
-          wire.question("question-target", "refused");
-          wire.shell();
+          claudeAtItsLimit(wire, "2020-01-01T00:00:00.000Z", true);
           yield* s.given.signedIn;
           yield* chat.when.open();
           yield* chat.then.text("Which environment should I inspect?");
           yield* chat.then.text("Respond to Ada's pending request before continuing.");
-          const before = wire.commands.length;
+          const before = wire.engine.applied.length;
           yield* Effect.promise(async () => {
             const button = await s.page.$('::-p-aria([name="Continue"][role="button"])');
             expect(button).not.toBeNull();
@@ -202,18 +126,13 @@ describe("C: provider refusal and its real deadline", () => {
               (node as HTMLButtonElement).click();
             });
           });
-          expect(wire.commands.length).toBe(before);
-          yield* chat.then.noText("Continue the work that was paused.");
+          expect(wire.engine.applied.length).toBe(before);
           yield* chat.when.click("Staging");
-          yield* Effect.promise(() => wire.waitForCommand("thread.user-input.respond"));
+          yield* Effect.promise(() => wire.waitForAnswer("question-target"));
           yield* chat.then.noText("Respond to Ada's pending request before continuing.");
           yield* chat.when.press("Continue");
-          expect(
-            yield* Effect.promise(() => wire.waitForCommand("thread.turn.start")),
-          ).toMatchObject({ message: { text: "Continue the work that was paused." } });
-          expect(
-            wire.commands.filter((command) => command.type === "thread.turn.start"),
-          ).toHaveLength(1);
+          yield* Effect.promise(() => wire.waitForOp("continue"));
+          expect(wire.engine.applied.filter(({ op }) => op === "continue")).toHaveLength(1);
           yield* s.then.noExternalNetwork;
         }),
       );
@@ -283,35 +202,7 @@ describe("C: provider refusal and its real deadline", () => {
           const chat = mateChat(s);
           const wire = chat.fixture();
           wire.history();
-          wire.claudeLoginFacts("ready");
-          const resetsAt = "2099-10-10T00:00:00.000Z";
-          wire.run("refused", "running", "You've hit your weekly limit");
-          wire.snapshot({
-            session: {
-              ...wire.mate.thread.session!,
-              providerName: "claudeAgent",
-              providerInstanceId: ProviderInstanceId.make("claudeAgent"),
-              usageLimitResetAt: resetsAt,
-            },
-          });
-          wire.activity(
-            "runtime.error",
-            "Claude usage limit reached",
-            {
-              message: "You've hit your weekly limit",
-              turnEnd: "usage-limit",
-              usageLimit: { resetsAt, window: "7-day" },
-            },
-            "refused",
-          );
-          wire.usagePause = {
-            resetsAt,
-            window: "7-day",
-            held: 0,
-            pausedAt: "2026-10-08T10:00:00.000Z",
-            autoResume: false,
-          };
-          wire.shell();
+          claudeAtItsLimit(wire, "2099-10-10T00:00:00.000Z");
           const overview = mateOverviewOf({
             identity: {
               environmentId: wire.mate.descriptor.environmentId,
@@ -321,8 +212,15 @@ describe("C: provider refusal and its real deadline", () => {
             threads: [wire.mate.shellThread()],
             auth: { available: true, agents: [] },
             crew: undefined,
+            conversations: [wire.engine.row()],
           });
-          yield* reportConversation(s.drivers, "Ada", overview.main!, "failed");
+          yield* reportConversation(
+            s.drivers,
+            "Ada",
+            overview.main!,
+            "failed",
+            overview.conversations,
+          );
           yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
           yield* Effect.promise(() =>
             s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
@@ -376,49 +274,16 @@ describe("C: provider refusal and its real deadline", () => {
             const at = yield* Clock.currentTimeMillis;
             const resetsAt = DateTime.formatIso(DateTime.makeUnsafe(at + 10_000));
             wire.history();
-            wire.claudeLoginFacts("ready");
-            wire.run(
-              "refused",
-              "running",
-              "Claude usage limit reached. Send the message again once the limit resets.",
-            );
-            wire.snapshot({
-              session: {
-                ...wire.mate.thread.session!,
-                status: "running",
-                activeTurnId: TurnId.make("refused"),
-                providerName: "claudeAgent",
-                providerInstanceId: ProviderInstanceId.make("claudeAgent"),
-                usageLimitResetAt: resetsAt,
-              },
-            });
-            wire.activity(
-              "runtime.error",
-              "Claude usage limit reached",
-              {
-                message: "You've hit your weekly limit",
-                turnEnd: "usage-limit",
-                usageLimit: { resetsAt, window: "7-day" },
-              },
-              "refused",
-            );
-            wire.usagePause = {
-              resetsAt,
-              window: "7-day",
-              held: 0,
-              pausedAt: DateTime.formatIso(DateTime.makeUnsafe(at)),
-              autoResume: false,
-            };
-            wire.shell();
+            claudeAtItsLimit(wire, resetsAt);
             yield* reportConversation(
               s.drivers,
               "Ada",
-              { session: wire.mate.thread.session, usagePause: wire.usagePause },
+              { refusal: { turnId: null, provider: "Claude", resetsAt }, usagePause: { resetsAt } },
               "failed",
+              [wire.engine.row()],
             );
-            const read = wire.holdPage("", wire.mate.snapshot());
+            const read = wire.engine.holdOpen({ rows: false });
             yield* Effect.addFinalizer(() => Effect.sync(() => read.release()));
-            wire.holdReplay = true;
             const fs = yield* FileSystem.FileSystem;
             const path = yield* Path.Path;
             /** What the menu's row for Ada says. */
@@ -442,8 +307,6 @@ describe("C: provider refusal and its real deadline", () => {
             yield* chat.then.text("Ada hit the Claude limit");
             yield* capture("opening");
             read.release();
-            yield* Effect.promise(() => wire.replaySubscribed());
-            wire.ready();
             yield* chat.then.ready("Ada");
             yield* chat.then.text("Ada hit Claude's weekly limit.");
             yield* Effect.promise(async () => {
@@ -473,10 +336,13 @@ describe("C: provider refusal and its real deadline", () => {
               ),
             );
             yield* capture("refused");
-            const before = wire.commands.length;
+            // On the engine, an early Continue asks the Mate to try (owner, 2026-10-10: a limit may be
+            // gone early); the provider still refuses, so the pause and its words stand.
+            wire.engine.onContinue.push(() => {});
             yield* chat.when.press("Continue");
-            yield* chat.then.text("Ada can't continue with Claude before");
-            expect(wire.commands.length).toBe(before);
+            yield* Effect.promise(() => wire.waitForOp("continue"));
+            yield* chat.then.text("Ada hit Claude's weekly limit.");
+            expect(yield* Effect.promise(adaRow)).toContain("At its usage limit");
             yield* capture("before-reset");
             const remaining =
               Date.parse(resetsAt) -
@@ -499,7 +365,7 @@ describe("C: provider refusal and its real deadline", () => {
                 { timeout: 8000, polling: "raf" },
               ),
             );
-            yield* chat.then.text("Ada hit the Claude limit on");
+            yield* chat.then.text("Ada hit Claude's weekly limit on");
             yield* chat.then.noText("Ada paused at the limit");
             yield* chat.then.noText("Ada thought");
             yield* chat.then.control("Continue");
@@ -514,9 +380,9 @@ describe("C: provider refusal and its real deadline", () => {
             );
             yield* capture("after-reset");
             yield* chat.when.press("Continue");
-            expect(
-              yield* Effect.promise(() => wire.waitForCommand("thread.turn.start")),
-            ).toMatchObject({ threadId: "thread-Ada" });
+            expect((yield* Effect.promise(() => wire.waitForOp("continue"))).payload).toMatchObject(
+              { conversationId: "thread-Ada" },
+            );
             yield* s.then.noExternalNetwork;
           }),
       );

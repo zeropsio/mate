@@ -443,7 +443,6 @@ export const assetRouteLayer = HttpRouter.add(
             break;
           }
           const context = yield* resolveAssetContext(owner.threadId).pipe(
-            Effect.provideService(ProjectionSnapshotQuery, query.value),
             Effect.mapError(() => contentAssetFailure("access-unverified", 503)),
           );
           if (context !== undefined) {

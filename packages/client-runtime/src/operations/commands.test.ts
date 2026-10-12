@@ -22,7 +22,7 @@ import * as EnvironmentSupervisor from "../connection/supervisor.ts";
 import * as RpcSession from "../rpc/session.ts";
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import {
-  archiveThread,
+  deleteThread,
   createProject,
   revertThreadCheckpoint,
   reorderActiveThread,
@@ -153,15 +153,15 @@ describe("environment commands", () => {
       const dispatched: ClientOrchestrationCommand[] = [];
       const supervisor = yield* makeSupervisor(dispatched);
 
-      yield* archiveThread({
-        commandId: CommandId.make("archive-command"),
+      yield* deleteThread({
+        commandId: CommandId.make("delete-command"),
         threadId: ThreadId.make("thread-1"),
       }).pipe(Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor));
 
       expect(dispatched).toEqual([
         {
-          type: "thread.archive",
-          commandId: "archive-command",
+          type: "thread.delete",
+          commandId: "delete-command",
           threadId: "thread-1",
         },
       ]);

@@ -238,8 +238,6 @@ jobs:
             args: --stages C --shard 1/2
           - name: C shard 2
             args: --stages C --shard 2/2
-          - name: C-engine
-            args: --stages C-engine
     steps:
       - name: Checkout
         uses: actions/checkout@v6

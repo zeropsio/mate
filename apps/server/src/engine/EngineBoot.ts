@@ -13,7 +13,7 @@
  * 4. Then the pump drains the subscription its layer made, the scheduler fires what came due, and
  *    the worker takes the outbox.
  *
- * An idle session is the engine's own to close (V1's reaper is parked in mate mode): a run that
+ * An idle session is the engine's own to close: a run that
  * ends with nothing queued arms a `session-idle` wake, and its close keeps a session whose
  * background work still lives.
  *

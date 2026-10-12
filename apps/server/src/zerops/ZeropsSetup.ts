@@ -24,19 +24,14 @@
  * @module ZeropsSetup
  */
 import {
-  CommandId,
   ConversationId,
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
-  DEFAULT_PROVIDER_INTERACTION_MODE,
-  MessageId,
   ProviderDriverKind,
   ProviderInstanceId,
-  ThreadId,
   agentIdForProviderInstance,
   type ModelSelection,
   OrchestrationDispatchCommandError,
-  type OrchestrationCommand,
   type OrchestrationThreadShell,
   type ServerProvider,
   type ZeropsAgentId,
@@ -65,19 +60,16 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
 import { MateEngine, type ConversationView } from "../engine/MateEngine.ts";
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { pickReadyAgentWithoutSignIn, resolveBootstrapModelSlug } from "./ZeropsBootstrapModel.ts";
-import { planFirstTurnEffort } from "./firstTurnEffort.ts";
 import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
-import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 import {
   STAND_UP_MESSAGE,
   parseZcpStatus,
@@ -153,8 +145,7 @@ export class ZeropsSetup extends Context.Service<
     /** Receipt: the initial wait ended as sent, failed, skipped or not asked. */
     readonly awaitStandUp: Effect.Effect<void>;
     /**
-     * One manual attempt, only for the recorded asker after a failed send. Refused while the Mate
-     * engine owns the conversation: V1 sends nothing then.
+     * One manual attempt, only for the recorded asker after a failed send.
      */
     readonly retry: (subject: string) => Effect.Effect<boolean, OrchestrationDispatchCommandError>;
   }
@@ -268,18 +259,15 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const config = yield* ServerConfig.ServerConfig;
     const reads = yield* ZeropsSetupReads;
     const sql = yield* SqlClient.SqlClient;
-    const orchestration = yield* OrchestrationEngineService;
     const projection = yield* ProjectionSnapshotQuery;
-    const admission = yield* ZeropsTurnAdmission;
     const readiness = yield* ServerCommandReadiness;
     const crypto = yield* Crypto.Crypto;
     const engine = yield* MateEngine;
-    // The Mate engine owns the conversation: the stand-up is a wake on it, never a V1 turn.
-    const onEngine = config.mateEngine === "mate";
+    // The stand-up is a wake on the Mate engine.
     // A flipped Mate's main conversation takes its earlier record before anything of the
     // person's runs: their sends wait from here until it is adopted (or the server stops).
-    const letSendsGo = onEngine ? yield* engine.holdSends : Effect.void;
-    if (onEngine) yield* Effect.addFinalizer(() => letSendsGo);
+    const letSendsGo = yield* engine.holdSends;
+    yield* Effect.addFinalizer(() => letSendsGo);
     const environment = config.zerops;
     const projectId = environment?.projectId ?? "";
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -392,21 +380,6 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const noteStandUpCall = (call: StandUpCall) =>
       Ref.update(calls, (held) => [...held, call].slice(-STAND_UP_CALLS_HELD));
 
-    /** The turn of the call zcp's section waits on (`sectionCall`). */
-    const sectionTurnOf = (read: ZcpStatus | undefined) =>
-      Effect.gen(function* () {
-        const call = sectionCall(read, yield* Ref.get(calls));
-        if (call?.turnId === undefined) return undefined;
-        return yield* sql<{ readonly state: string }>`
-          SELECT state FROM projection_turns
-          WHERE thread_id = ${call.threadId} AND turn_id = ${call.turnId}
-          ORDER BY row_id DESC LIMIT 1
-        `.pipe(
-          Effect.map(turnState),
-          Effect.orElseSucceed(() => undefined),
-        );
-      });
-
     /** A turn's state from the engine's run, ended or not; none when it holds no such run. */
     const engineTurnState = (
       found:
@@ -425,37 +398,30 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
 
     /**
      * A stand-up V1 ran before the flip: how its turn ended, read once from V1's projection; one
-     * V1 still says runs was cut by the switch (V1 runs nothing now, its reconcile is parked).
+     * V1 still says runs was cut by the flip (V1 runs nothing now).
      */
     const v1TurnAtFlip = (record: StandUpRow) =>
       Effect.map(turnOf(record), (state) => (state === "running" ? ("failed" as const) : state));
 
-    /** The stand-up's own run: the engine's, while it owns the conversation; else V1's turn. */
+    /** The stand-up's own run on the engine; a stand-up V1 ran before the flip, its turn. */
     const standUpTurnOf = (record: StandUpRow) =>
-      onEngine
-        ? Effect.flatMap(
-            engineTurnState({
-              wakeId: standUpWakeIdOf(
-                ConversationId.make(record.threadId),
-                "standup",
-                record.commandId,
-              ),
-            }),
-            (state) => (state === undefined ? v1TurnAtFlip(record) : Effect.succeed(state)),
-          )
-        : turnOf(record);
+      Effect.flatMap(
+        engineTurnState({
+          wakeId: standUpWakeIdOf(
+            ConversationId.make(record.threadId),
+            "standup",
+            record.commandId,
+          ),
+        }),
+        (state) => (state === undefined ? v1TurnAtFlip(record) : Effect.succeed(state)),
+      );
 
-    /** The turn zcp's section waits on: the engine's run that turn went into, else V1's. */
+    /** The turn zcp's section waits on: the engine's run that turn went into. */
     const sectionStateOf = (read: ZcpStatus | undefined) =>
       Effect.gen(function* () {
-        if (onEngine) {
-          const call = sectionCall(read, yield* Ref.get(calls));
-          if (call?.turnId !== undefined) {
-            const state = yield* engineTurnState({ providerTurnId: call.turnId });
-            if (state !== undefined) return state;
-          }
-        }
-        return yield* sectionTurnOf(read);
+        const call = sectionCall(read, yield* Ref.get(calls));
+        if (call?.turnId === undefined) return undefined;
+        return yield* engineTurnState({ providerTurnId: call.turnId });
       });
 
     const document = Effect.gen(function* () {
@@ -532,193 +498,6 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         return true;
       });
 
-    /**
-     * One look: starts the stand-up when it is due, or resumes one this
-     * server claimed and died before sending (its ids make the engine take it
-     * once); whether there is nothing left to do — only a terminal record.
-     */
-    const tick = () =>
-      Effect.gen(function* () {
-        const held = yield* recordOf;
-        if (held !== undefined && TERMINAL.has(held.source)) return true;
-        const resuming = held?.source === "server:claimed" ? held : undefined;
-        // Until the link brings the Mate, who asked is not known: nothing is settled on that.
-        const hq = yield* reads.hq;
-        if (hq.kind !== "linked") return false;
-        const asker = hq.mate.standupRequestedBy ?? undefined;
-        const providers = yield* reads.providers;
-        const ready = pickReadyAgentWithoutSignIn(providers);
-        const signers = yield* reads.signers;
-        // A claim resumed is sent as whoever can send it now: the person it was claimed for,
-        // else the person who asked for the stand-up — the first of them who holds an agent
-        // here. When none does, it went out (its message is in the conversation) or it is
-        // settled as none: a claim never waits on a sign-in that may never come.
-        const requestedBy =
-          resuming === undefined
-            ? asker
-            : [resuming.userId, asker].find(
-                (userId): userId is string =>
-                  userId !== undefined &&
-                  userId !== "" &&
-                  (standUpSigners(signers, userId).length > 0 || ready !== undefined),
-              );
-        if (requestedBy === undefined && resuming !== undefined) {
-          const thread = Option.getOrUndefined(
-            yield* projection
-              .getThreadShellById(ThreadId.make(resuming.threadId))
-              .pipe(Effect.catch(() => Effect.succeed(Option.none()))),
-          );
-          if (thread?.latestUserMessageAt != null) {
-            yield* confirm(resuming.commandId);
-          } else {
-            yield* settleTaken(resuming.commandId);
-          }
-          return true;
-        }
-        // HQ's record carries its ask from the write that made it (audit B3): naming nobody,
-        // nobody asked.
-        if (requestedBy === undefined) return yield* settle("none");
-        const project = Option.getOrUndefined(
-          yield* projection
-            .getActiveProjectByWorkspaceRoot(config.cwd)
-            .pipe(Effect.catch(() => Effect.succeed(Option.none()))),
-        );
-        if (project === undefined) return false;
-        const threads = (yield* projection.getShellSnapshot()).threads.filter(
-          (thread) => thread.projectId === project.id,
-        );
-        const main =
-          resuming === undefined
-            ? resolvePrimaryConversation(threads).primary
-            : threads.find((thread) => thread.id === resuming.threadId);
-        // Resumed, and its stand-up is already in the conversation: it went out before.
-        if (resuming !== undefined && main?.latestUserMessageAt != null) {
-          yield* confirm(resuming.commandId);
-          return true;
-        }
-        // The conversation's own instance when it is one of the ready ones.
-        const readyHere = pickReadyAgentWithoutSignIn(providers, main?.modelSelection.instanceId);
-        const decision = standUpDecision({
-          recorded: false,
-          requestedBy,
-          signers: standUpSigners(signers, requestedBy),
-          ready: readyHere?.instanceId,
-          spoken: resuming === undefined && main?.latestUserMessageAt != null,
-        });
-        if (decision.kind === "spoken") return yield* settle("skipped");
-        if (decision.kind !== "start") return false;
-
-        const now = yield* nowIso;
-        const threadId = ThreadId.make(
-          resuming?.threadId ?? main?.id ?? (yield* crypto.randomUUIDv4),
-        );
-        // On the agent the person signed in, else on the ready one that needs no sign-in.
-        let chosen: ModelSelection;
-        if ("agentId" in decision) {
-          chosen = standUpModelSelection(decision.agentId, main, project.defaultModelSelection);
-        } else if (readyHere !== undefined) {
-          chosen = standUpModelSelectionOn(readyHere, main, project.defaultModelSelection);
-        } else {
-          return false;
-        }
-        const ids =
-          resuming === undefined
-            ? standUpCommandIds(threadId)
-            : { commandId: resuming.commandId, messageId: resuming.commandId };
-        const standUpTurn = {
-          type: "thread.turn.start",
-          commandId: CommandId.make(ids.commandId),
-          threadId,
-          message: {
-            messageId: MessageId.make(ids.messageId),
-            role: "user",
-            text: STAND_UP_MESSAGE,
-            attachments: [],
-          },
-          modelSelection: chosen,
-          runtimeMode: main?.runtimeMode ?? "full-access",
-          interactionMode: main?.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
-          createdAt: now,
-        } satisfies OrchestrationCommand;
-        // The stand-up is a new conversation's first turn: Extra High unless it names an effort,
-        // and the thread stores it, so a reload reads it back (D10).
-        const { turn, store } = planFirstTurnEffort({
-          turn: standUpTurn,
-          thread: main ?? { latestTurn: null, modelSelection: chosen },
-          providers,
-        });
-        const modelSelection = turn.modelSelection ?? chosen;
-        // For the person who asked, with no session of theirs behind it: admitted while this
-        // project opens for them, on an agent they signed in (D6, X3).
-        const principal: TurnPrincipal = { kind: "standup", startedBy: decision.userId };
-        if (resuming === undefined) {
-          const claimed = yield* claim({
-            threadId,
-            commandId: ids.commandId,
-            userId: decision.userId,
-            source: "server:claimed",
-            startedAt: now,
-          });
-          if (!claimed) return false;
-        }
-        const admitted = yield* admission.admit({ command: turn, principal }).pipe(
-          Effect.as(true),
-          Effect.catch((error) =>
-            Effect.logInfo("zerops setup: the stand-up was refused", {
-              reason: error.message,
-            }).pipe(Effect.andThen(fail(ids.commandId)), Effect.as(false)),
-          ),
-        );
-        if (!admitted) return true;
-        const sent = yield* Effect.gen(function* () {
-          if (main === undefined) {
-            yield* orchestration.dispatch({
-              type: "thread.create",
-              // Its id too, so a resumed send never opens a second conversation.
-              commandId: CommandId.make(`${ids.commandId}-thread`),
-              threadId,
-              projectId: project.id,
-              title: "New thread",
-              modelSelection,
-              interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-              runtimeMode: "full-access",
-              branch: null,
-              worktreePath: null,
-              createdAt: now,
-            });
-          } else if (store !== undefined) {
-            yield* orchestration.dispatch({
-              type: "thread.meta.update",
-              commandId: CommandId.make(`${ids.commandId}-effort`),
-              threadId,
-              modelSelection: store,
-            });
-          }
-          yield* orchestration.dispatch(turn);
-        }).pipe(
-          Effect.as(true),
-          Effect.catch((error) =>
-            Effect.logWarning("zerops setup: the stand-up did not go out", { error }).pipe(
-              Effect.andThen(fail(ids.commandId)),
-              Effect.as(false),
-            ),
-          ),
-        );
-        if (!sent) return true;
-        yield* confirm(ids.commandId);
-        yield* Effect.logInfo("zerops setup: the stand-up went out", { threadId });
-        return true;
-      }).pipe(
-        Effect.catchCause(() =>
-          Effect.gen(function* () {
-            const held = yield* recordOf;
-            if (held?.source !== "server:claimed") return false;
-            yield* fail(held.commandId);
-            return true;
-          }),
-        ),
-      );
-
     /* ---------------------------------------------------------- the stand-up on the engine */
 
     /**
@@ -775,7 +554,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
      */
     const seenOnEngine = (record: StandUpRow | undefined) =>
       Effect.gen(function* () {
-        if (!onEngine || record?.source !== "server") return record;
+        if (record?.source !== "server") return record;
         const run = yield* recordedRun(record);
         // A stand-up V1 was running at the flip was cut by the switch: its asker may try again.
         if (run === undefined) {
@@ -990,22 +769,18 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       Effect.ensuring(letSendsGo),
     );
 
-    /** One look, on the engine that owns the conversation. */
-    const step = () => (onEngine ? tickOnEngine() : tick());
+    /** One look. */
+    const step = tickOnEngine;
 
     /** Until the stand-up is settled: fast while the Mate is new, slower after. */
     const wait = Effect.gen(function* () {
       const variables = yield* reads.serviceVariables;
       const marked = variables !== undefined && hasSetupMarker(variables);
-      // A Mate the new press did not make has no stand-up of the server's, and never polls.
-      if (!marked && !onEngine) {
-        yield* Deferred.succeed(settled, undefined);
-        return;
-      }
       yield* readiness.await;
-      // On the engine, a flipped Mate's main conversation moves first, so a stand-up still due
-      // goes into it rather than into a new one.
-      if (onEngine) yield* adoptAtFlip;
+      // A flipped Mate's main conversation moves first, so a stand-up still due goes into it
+      // rather than into a new one.
+      yield* adoptAtFlip;
+      // A Mate the new press did not make has no stand-up of the server's, and never polls.
       if (!marked) {
         yield* Deferred.succeed(settled, undefined);
         return;
@@ -1025,7 +800,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     if (environment !== undefined && isZeropsEnvironment(config)) {
       const worker = yield* Effect.forkScoped(wait);
       finished = Fiber.join(worker).pipe(Effect.orDie);
-    } else if (onEngine) {
+    } else {
       // No stand-up outside Zerops; a flipped main conversation still moves, once the agents
       // are known.
       yield* Deferred.succeed(settled, undefined);

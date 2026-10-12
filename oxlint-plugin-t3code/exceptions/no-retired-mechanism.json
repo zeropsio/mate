@@ -368,38 +368,6 @@
     "expires": "never"
   },
   {
-    "path": "packages/client-runtime/src/state/threads.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeEnvironmentThreadState",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mobile later: native thread compatibility facade and resume family preserve replay and pagination. Mobile is explicitly outside this migration.",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/state/threads.ts",
-    "kind": "retired-token",
-    "fingerprint": "makeEnvironmentThreadState",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mobile later: native thread compatibility facade and resume family preserve replay and pagination. Mobile is explicitly outside this migration.",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/state/threads.ts",
-    "kind": "retired-token",
-    "fingerprint": "resumeFamily",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mobile later: native thread compatibility facade and resume family preserve replay and pagination. Mobile is explicitly outside this migration.",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/state/threads.ts",
-    "kind": "retired-token",
-    "fingerprint": "resumeFamily",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mobile later: native thread compatibility facade and resume family preserve replay and pagination. Mobile is explicitly outside this migration.",
-    "expires": "never"
-  },
-  {
     "path": "packages/client-runtime/src/state/vcs.ts",
     "kind": "retired-token",
     "fingerprint": "createEnvironmentSubscriptionAtomFamily",

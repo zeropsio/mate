@@ -7,7 +7,7 @@ import * as Stream from "effect/Stream";
 
 import { drainMateUpdate, joinUpdateIdleFacts } from "../../mateUpdateDrain.ts";
 import { write } from "../testing/crewGitFixture.ts";
-import { applied, CREW_WORLDS, firstTurn } from "../testing/crewWorld.ts";
+import { applied, crewJourney, firstTurn } from "../testing/crewWorld.ts";
 import type { UpdateIdleFacts } from "../../../update/MateUpdateDrain.ts";
 import { crewEngineUpdateFacts } from "./updateIdle.ts";
 
@@ -83,16 +83,15 @@ const ownFacts = (facts: UpdateIdleFacts): UpdateIdleFacts => {
 };
 
 describe("an update's drain over the engine crew", () => {
-  // The engine world whatever `CREW_WORLD` names: the drain joins the engine's own facts and the
-  // engine crew's, as the server's update route does.
+  // The drain joins the engine's own facts and the engine crew's, as the server's update route does.
   it.live("an update waits for a crewmate at work and goes ahead once the crew is idle", () =>
-    CREW_WORLDS.engine!(
+    crewJourney(
       [
         (world) =>
           Effect.gen(function* () {
             yield* applied(world);
             const crew = yield* world.service;
-            const engine = (yield* world.engineUpdateDrain!)!;
+            const engine = (yield* world.engineUpdateDrain)!;
             const thread = yield* firstTurn(world, () =>
               write(world.root, ".crew/backend/ok.txt", "ok\n"),
             );

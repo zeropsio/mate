@@ -1,5 +1,5 @@
 /**
- * The live engine (switch on `mate`): its runtime — the store and its migrations, the actors, the
+ * The live engine: its runtime — the store and its migrations, the actors, the
  * outbox and its handlers, the live plane, the pump — and the `MateEngine` service over it.
  *
  * `start` boots it in the startup's reactor scope (`EngineBoot`), then watches what the providers
@@ -381,7 +381,6 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
     const updateDrain = yield* makeEngineUpdateDrain;
 
     return MateEngine.of({
-      live: true,
       ...(updateDrain === undefined ? {} : { updateDrain }),
       wire,
       holdSends: Effect.as(sends.close, Effect.asVoid(sends.open)),

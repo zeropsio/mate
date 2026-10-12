@@ -54,13 +54,14 @@ describe("Projects source states", () => {
           const s = yield* createScenario([installArea]);
           yield* s.given.project("Ada", { mate: true, app: "Shop" });
           const wire = mateChat(s).fixture();
+          wire.run("limited", "running");
           wire.run("limited", "error", "Claude usage limit reached");
           yield* reportConversation(
             s.drivers,
             "Ada",
             {
-              session: wire.mate.thread.session ?? null,
-              latestTurn: wire.mate.thread.latestTurn ?? null,
+              session: { status: "error", lastError: "Claude usage limit reached" },
+              latestTurn: wire.latestTurn(),
             },
             "failed",
           );
@@ -84,10 +85,11 @@ describe("Projects source states", () => {
               }
             });
           yield* capture("limit", "Ada hit the Claude limit.");
+          wire.run("finished", "running");
           wire.run("finished", "completed");
           yield* reportConversation(s.drivers, "Ada", {
-            session: wire.mate.thread.session ?? null,
-            latestTurn: wire.mate.thread.latestTurn ?? null,
+            session: { status: "ready", lastError: null },
+            latestTurn: wire.latestTurn(),
             latestUserMessagePreview: { text: "Redesign checkout" },
             latestMessagePreview: {
               role: "assistant",
