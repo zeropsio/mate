@@ -185,7 +185,19 @@ import {
   type ZeropsMateOwner,
 } from "~/zerops/useZeropsMateOwners";
 import { SidebarMateAge } from "./SidebarMateAge";
-import type { SidebarCrewRead } from "./crew/SidebarCrewLine";
+import {
+  SidebarCrewMinis,
+  useCrewRows,
+  type CrewRowFacts,
+  type SidebarCrewRead,
+} from "./crew/SidebarCrewMinis";
+import {
+  ProjectReviewTags,
+  changeReviewItem,
+  changeRowKey,
+  crewTaskReviewItem,
+  type ProjectReviewItem,
+} from "./SidebarProjectReview";
 import { SidebarSelectedBand, slideSelectedBandTo } from "./SidebarSelectedBand";
 import { KeyChip, MateFace } from "./primitives";
 import { groupNameUnread } from "./ZeropsGroupTree.logic";
@@ -704,6 +716,18 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const projectOrder = useProjectOrder();
   // Only the Mates HQ says wait on the viewer wait on them (`waitsOnViewer`).
   const waitsOnViewer = useWaitsOnViewer();
+  // Every listed Mate's crew, read once for the whole menu (`useCrewRows`): its mini Mates, what
+  // it needs of the viewer, and the work it has ready for their Land.
+  const crewMates = useMemo(
+    () =>
+      candidates.filter(hasMate).map((item) => ({
+        projectId: item.project.id,
+        mine: waitsOnViewer(item.project.id),
+        read: getCrew?.(item),
+      })),
+    [candidates, waitsOnViewer, getCrew],
+  );
+  const crewRows = useCrewRows(crewMates);
   // Whether *Add stage* and *Add production* stand in a project's menu: HQ's offer of each.
   const environmentOffers = useEnvironmentOffers();
   const treeRef = useRef<HTMLElement>(null);
@@ -1307,7 +1331,79 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             ...stages.map(({ stop }) => stop.projectId),
             ...(productionStop === undefined ? [] : [productionStop.projectId]),
           ].map((projectId) => <StopDemand key={projectId} projectId={projectId} />);
-    const tags: ReactNode = null;
+    // What waits for the viewer's review, oldest first as the flow lists it: each shown Mate's
+    // change once its Mate rests and it asks (`changeShowsReview`), each change of no Mate here
+    // that asks, then the work its crews have ready for the viewer's Land.
+    const asking = new Set([
+      ...ordered.flatMap(({ item }) => {
+        const run = mateRunOf(activityOfNow(getActivity?.(item)));
+        return (grouped.byMate.get(item.project.id) ?? []).filter((pull) =>
+          changeShowsReview(pull, run),
+        );
+      }),
+      ...grouped.others.filter((pull) => changeAsksForReview(pull)),
+    ]);
+    const byOf = (item: T): ProjectReviewItem["by"] => {
+      const owner = getOwner?.(item);
+      const colleague = owner !== undefined && !owner.isViewer ? owner : undefined;
+      return {
+        name: projectNameInApp(item.project),
+        ...faceOf(item.project),
+        ownerFirstName: colleague?.name.split(" ")[0],
+        owner: colleague === undefined ? undefined : ownerMark(colleague),
+      };
+    };
+    const reviewItems: ReadonlyArray<ProjectReviewItem> =
+      group === undefined
+        ? []
+        : [
+            ...flowPulls
+              .filter((pull) => asking.has(pull))
+              .map((pull) => {
+                const entry = ordered.find(
+                  (candidate) => candidate.projectId === pull.mateProjectId,
+                );
+                return changeReviewItem({
+                  pull,
+                  among: flowPulls,
+                  groupId: id,
+                  by: entry === undefined ? undefined : byOf(entry.item),
+                  mine: entry === undefined || waitsOnViewer(entry.projectId),
+                });
+              }),
+            ...ordered.flatMap(({ item, projectId }) =>
+              (crewRows.get(projectId)?.reviews ?? []).map((review) =>
+                crewTaskReviewItem({
+                  environmentId: review.target.environmentId,
+                  taskId: review.target.taskId,
+                  title: review.title,
+                  by: {
+                    name: review.crewmate.name,
+                    tint: review.crewmate.tint,
+                    shape: review.crewmate.shape,
+                    crewOf: projectNameInApp(item.project),
+                  },
+                  mine: waitsOnViewer(projectId),
+                }),
+              ),
+            ),
+          ];
+    const tags: ReactNode =
+      group === undefined ? undefined : (
+        <ProjectReviewTags
+          groupId={id}
+          items={reviewItems}
+          projectName={projectName}
+          release={
+            flow?.releaseOffered === true
+              ? {
+                  waiting: projectFlow.main.notLive,
+                  atLeast: projectFlow.main.notLiveAtLeast,
+                }
+              : undefined
+          }
+        />
+      );
     const globe: ReactNode = null;
     void line;
     void openStop;
@@ -1329,6 +1425,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       const active = item.project.id === activeProjectId;
       const apps =
         projectFlow.mates.find((mate) => mate.projectId === item.project.id)?.previews ?? NO_APPS;
+      const crewFacts = crewRows.get(item.project.id);
       return (
         <MateUnit active={active} key={item.key} projectId={item.project.id}>
           <MateRow
@@ -1342,6 +1439,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             coming={getComing?.(item)}
             conversationsRead={getConversationsRead?.(item) === true}
             crew={getCrew?.(item)}
+            crewMinis={crewFacts === undefined ? undefined : <SidebarCrewMinis facts={crewFacts} />}
+            crewNeed={crewFacts?.need?.words}
+            crewWords={crewFacts?.words}
             onOpenCrew={onOpenCrew}
             keys={mateKeys}
             kid={at === "kid"}
@@ -1425,7 +1525,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         waitsOnViewer(item.project.id);
       return {
         projectId: item.project.id,
-        asksViewer: asks,
+        asksViewer: asks || crewRows.get(item.project.id)?.need !== undefined,
         at: live?.at,
         working: live?.kind === "working",
         runSince: live?.runSince,
@@ -1534,6 +1634,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                 reviewWaits: reviewWaits(leadEntry.item),
                 tint: faceOf(leadEntry.item.project).tint,
                 asks: asks.length > 0,
+                crew: crewRows.get(leadEntry.projectId),
               }
         }
         mates={mateCount}
@@ -2116,6 +2217,8 @@ interface GroupLeadInput<T extends RosterCandidate> {
   readonly tint: MateTintId;
   /** It asks the viewer something they can answer: the line says the ask. */
   readonly asks: boolean;
+  /** Its crew, where it has one: what the crew needs of the viewer leads where it asks nothing. */
+  readonly crew?: CrewRowFacts | undefined;
 }
 
 /** A group's own first-line words and second line: its name, its lead's time, its lead's words. */
@@ -2143,13 +2246,18 @@ function GroupRowWords<T extends RosterCandidate>({
     timestampFormat,
     reviewWaits: lead.reviewWaits,
   });
+  // What its crew needs of the viewer, where the lead itself asks them nothing.
+  const crewNeed = state.asksViewer ? undefined : lead.crew?.need;
   // Whose words the line says, as a group chat's preview leads a message with its sender: an ask
-  // of the viewer, the person's own words to it, or its own.
-  const prefix = lead.asks
+  // of the viewer, its crew's need, the person's own words to it, or its own.
+  const prefix = state.asksViewer
     ? `${state.name} asks: `
-    : state.second.kind === "ask"
-      ? `${state.name} · `
-      : `${state.name}: `;
+    : crewNeed !== undefined
+      ? `${state.name}'s crew: `
+      : state.second.kind === "ask"
+        ? `${state.name} · `
+        : `${state.name}: `;
+  const asking = state.asksViewer || crewNeed !== undefined;
   return (
     <span className="flex min-w-0 flex-col">
       <span className="flex h-5.5 min-w-0 items-center gap-2">
@@ -2169,27 +2277,31 @@ function GroupRowWords<T extends RosterCandidate>({
           />
         </span>
       </span>
-      {state.second.kind === "none" ? null : (
+      {state.second.kind === "none" && crewNeed === undefined ? null : (
         <span className="menu-line2 flex min-w-0" data-zerops-surface="sidebar-project-line">
           <span
             className={cn(
-              "shrink-0 whitespace-pre",
-              lead.asks ? "text-sidebar-foreground" : "font-medium text-sidebar-foreground",
+              "shrink-0 whitespace-pre text-sidebar-foreground",
+              !asking && "font-medium",
             )}
             data-zerops-surface="sidebar-project-lead"
           >
             {prefix}
           </span>
           <span className="min-w-0 flex-1">
-            <MateSecondLine
-              askChanged={state.askChanged}
-              askLine={state.askLine}
-              finishing={state.finishing}
-              known={state.known}
-              second={state.second}
-              timestampFormat={timestampFormat}
-              view={state.view}
-            />
+            {crewNeed === undefined ? (
+              <MateSecondLine
+                askChanged={state.askChanged}
+                askLine={state.askLine}
+                finishing={state.finishing}
+                known={state.known}
+                second={state.second}
+                timestampFormat={timestampFormat}
+                view={state.view}
+              />
+            ) : (
+              <span className="menu-line2 truncate text-sidebar-foreground">{crewNeed.words}</span>
+            )}
           </span>
           {asksMore > 0 ? (
             <span className="shrink-0 whitespace-pre text-muted-foreground">{` · ${String(asksMore)} more`}</span>
@@ -3064,6 +3176,7 @@ function MateRowView<T extends RosterCandidate>({
   projectMenu,
   crewMinis,
   crewNeed,
+  crewWords,
   onOut,
   onDragStart,
 }: {
@@ -3115,6 +3228,8 @@ function MateRowView<T extends RosterCandidate>({
   readonly crewMinis?: ReactNode;
   /** What its crew needs of the viewer, said on its line where nothing of its own asks them. */
   readonly crewNeed?: string | undefined;
+  /** Its crew's whole state in words, for its row's name where a dot names the row. */
+  readonly crewWords?: string | undefined;
   /** ← on a Mate under its project's row: back to that row. */
   readonly onOut?: (() => void) | undefined;
   /** In the *Custom* order its project's row is pulled to move the project. */
@@ -3297,7 +3412,7 @@ function MateRowView<T extends RosterCandidate>({
             ? undefined
             : `${project === undefined ? name : `${project} · ${name}`}, ${
                 status?.kind === "limit" ? "Provider limit" : mateDotLabel(dot)
-              }`
+              }${crewWords === undefined ? "" : `, ${crewWords}`}`
         }
         aria-disabled={deleting || outsideHq || undefined}
         className={cn(
@@ -4148,8 +4263,3 @@ const COMING_SEAT: BadgeSeat | null = ownerBadge(
   }).seat,
   false,
 );
-
-/** A change's row, as the menu keys it and the jump box finds it: `repository#number`. */
-function changeRowKey(pull: Pick<FlowPullRequest, "repository" | "number">): string {
-  return `${pull.repository}#${String(pull.number)}`;
-}
