@@ -343,31 +343,9 @@ function OpeningSequence({
       else faceHost.remove();
       return;
     }
+    // Until it lands the face stays on the stage, and hands over fading with it where it stands.
     source.current?.appendChild(faceHost);
-    if (phase !== "hand-off") return;
-    const from = source.current?.getBoundingClientRect();
-    const to = avatar?.node.getBoundingClientRect();
-    if (
-      from === undefined ||
-      to === undefined ||
-      from.width <= 0 ||
-      to.width <= 0 ||
-      !avatar?.node.isConnected
-    ) {
-      finish();
-      return;
-    }
-    Object.assign(faceHost.style, {
-      position: "fixed",
-      left: `${from.x}px`,
-      top: `${from.y}px`,
-      width: `${from.width}px`,
-      height: `${from.height}px`,
-    });
-    faceHost.style.setProperty("--opening-x", `${to.x - from.x}px`);
-    faceHost.style.setProperty("--opening-y", `${to.y - from.y}px`);
-    faceHost.style.setProperty("--opening-scale", String(to.width / from.width));
-  }, [phase, avatar?.node, faceHost, finish]);
+  }, [phase, avatar?.node, faceHost]);
   useLayoutEffect(() => () => faceHost?.remove(), [faceHost]);
   // Receive the source's native face and callbacks. The one portal keeps its component
   // through composition changes; only readiness transfers its pose to the sequence.

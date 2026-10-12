@@ -61,7 +61,15 @@ export function agentAdmission(input: {
   readonly refusalSource?: AgentAdmissionRefusal | undefined;
   readonly empty?: boolean;
   readonly standUpHolds?: boolean;
+  /**
+   * Whose Mate it is as HQ records it (its owner against the viewer), never as a signer says: a
+   * colleague's Mate is read along, its composer and its sign-in its owner's (the owner,
+   * 2026-10-12: "this mate is not mine and I can still see the composer"). Absent while HQ names
+   * nobody, or has not said.
+   */
+  readonly owner?: { readonly mine: boolean } | undefined;
 }) {
+  const colleagues = input.owner?.mine === false;
   const snapshot = input.read?.state === "known" ? input.read.value : null;
   const provider = input.providers.find((p) => p.instanceId === input.instanceId) ?? null;
   const spent = resolveSpentLogin(input.instanceId, snapshot, input.providers);
@@ -103,7 +111,7 @@ export function agentAdmission(input: {
             ? "sign-in"
             : agentAuthAction(spent.agent);
   const attention =
-    cause === null || input.instanceId === undefined
+    colleagues || cause === null || input.instanceId === undefined
       ? null
       : admissionAttention({
           environmentId: input.environmentId,
@@ -127,11 +135,12 @@ export function agentAdmission(input: {
     attention,
     providerStatus: admissionProviderStatus(provider, snapshot, input.providers),
     explainsRefusal: admissionExplainsRefusal(attention, input.refusalSource),
-    footer: cold ? ("held" as const) : ("composer" as const),
-    canSend: !cold && !holdsComposer && attention === null,
+    footer: colleagues ? ("read-only" as const) : cold ? ("held" as const) : ("composer" as const),
+    canSend: !colleagues && !cold && !holdsComposer && attention === null,
     sendBlockReason: attention?.text ?? null,
-    // Signer records establish no client permission, including compact HQ records.
-    readOnly: false,
+    // Signer records establish no client permission, including compact HQ records; HQ's recorded
+    // owner does.
+    readOnly: colleagues,
     holdsComposer,
   };
 }

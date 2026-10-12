@@ -69,6 +69,11 @@ interface ChatHeaderProps {
   activeThreadId: ThreadId;
   draftId?: DraftId;
   activeThreadTitle: string;
+  /**
+   * The conversation is still being read: the way out to Zerops waits for it, its place held (the
+   * owner, 2026-10-12: "the 'open in zerops' doesn't need to be visible while loading").
+   */
+  conversationLoading?: boolean;
   /** Drafts have no server thread yet, so the title carries no action menu. */
   isServerThread: boolean;
   /** PR feeding the settled classification, resolved by ChatView. */
@@ -186,6 +191,7 @@ export const ChatHeader = memo(function ChatHeader({
   activeThreadId,
   draftId,
   activeThreadTitle,
+  conversationLoading = false,
   isServerThread,
   changeRequest,
   activeProjectName,
@@ -695,7 +701,15 @@ export const ChatHeader = memo(function ChatHeader({
           </MenuPopup>
         </Menu>
         <ChatHeaderLinks environmentId={activeThreadEnvironmentId} threadId={activeThreadId} />
-        {mate === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
+        {mate === undefined ? null : (
+          <span
+            aria-hidden={conversationLoading ? true : undefined}
+            className={conversationLoading ? "invisible contents" : "contents"}
+            data-opening-waits=""
+          >
+            <ZeropsProjectLink projectUrl={mate.projectUrl} />
+          </span>
+        )}
       </div>
     </div>
   );

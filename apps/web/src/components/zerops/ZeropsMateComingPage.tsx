@@ -996,7 +996,10 @@ export function MateComingHeader({
           </Button>
         )}
         {arriving || mate.projectUrl === undefined ? null : (
-          <ZeropsProjectLink projectUrl={mate.projectUrl} />
+          // It waits with the chat header's for the opening conversation (`index.css`).
+          <span className="contents" data-opening-waits="">
+            <ZeropsProjectLink projectUrl={mate.projectUrl} />
+          </span>
         )}
       </div>
       {standsIn === null ? null : (
