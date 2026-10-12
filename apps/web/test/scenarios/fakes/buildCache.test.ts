@@ -14,6 +14,143 @@ async function cacheFixture() {
   return root;
 }
 
+it.each([
+  {
+    title: "reuses the bundle after a server-only edit",
+    path: "apps/server/src/server.ts",
+    rebuild: false,
+  },
+  { title: "reuses the bundle after an HQ-only edit", path: "apps/hq/src/core.ts", rebuild: false },
+  {
+    title: "reuses the bundle after a docs edit",
+    path: "docs/operations/example.md",
+    rebuild: false,
+  },
+  {
+    title: "reuses the bundle after an unrelated script edit",
+    path: "scripts/example.ts",
+    rebuild: false,
+  },
+  {
+    title: "rebuilds the bundle after a web component edit",
+    path: "apps/web/src/components/Example.tsx",
+    rebuild: true,
+  },
+  {
+    title: "rebuilds the bundle after a Tailwind CSS source edit",
+    path: "apps/web/src/index.css",
+    rebuild: true,
+  },
+  {
+    title: "rebuilds the bundle after an imported contracts edit",
+    path: "packages/contracts/src/index.ts",
+    rebuild: true,
+  },
+  {
+    title: "rebuilds the bundle after a client-runtime edit",
+    path: "packages/client-runtime/src/state.ts",
+    rebuild: true,
+  },
+  {
+    title: "rebuilds the bundle after a shared helper edit",
+    path: "packages/shared/src/basePath.ts",
+    rebuild: true,
+  },
+  { title: "rebuilds the bundle after a lockfile edit", path: "pnpm-lock.yaml", rebuild: true },
+  {
+    title: "rebuilds the bundle after a Vite config edit",
+    path: "apps/web/vite.config.ts",
+    rebuild: true,
+  },
+  {
+    title: "rebuilds the bundle after a scenario config edit",
+    path: "apps/web/test/scenarios/vitest.config.ts",
+    rebuild: true,
+  },
+  {
+    title: "rebuilds the bundle after a public-config edit",
+    path: "scripts/lib/public-config.ts",
+    rebuild: true,
+  },
+  {
+    title: "rebuilds the bundle after a public asset edit",
+    path: "apps/web/public/favicon.svg",
+    rebuild: true,
+  },
+])("$title", async ({ path, rebuild }) => {
+  const root = await cacheFixture();
+  try {
+    const input = NodePath.join(root, path);
+    await NodeFSP.mkdir(NodePath.dirname(input), { recursive: true });
+    await NodeFSP.writeFile(input, "first");
+    const before = await bundleKey(root, {});
+    await NodeFSP.writeFile(input, "second");
+    const after = await bundleKey(root, {});
+    if (rebuild) expect(after).not.toBe(before);
+    else expect(after).toBe(before);
+  } finally {
+    await NodeFSP.rm(root, { recursive: true, force: true });
+  }
+});
+
+it.each([
+  '@source "../../../../tailwind-content/**/*.html";',
+  '@import "tailwindcss" source("../../../../tailwind-content");',
+])("includes explicit Tailwind sources outside the web tree: %s", async (directive) => {
+  const root = await cacheFixture();
+  try {
+    const stylesheet = NodePath.join(root, "apps/web/src/styles/index.css");
+    const candidate = NodePath.join(root, "tailwind-content/nested/candidate.html");
+    await NodeFSP.mkdir(NodePath.dirname(stylesheet), { recursive: true });
+    await NodeFSP.mkdir(NodePath.dirname(candidate), { recursive: true });
+    await NodeFSP.writeFile(stylesheet, directive);
+    const absent = await bundleKey(root, {});
+    await NodeFSP.writeFile(candidate, '<div class="p-4">');
+    const added = await bundleKey(root, {});
+    expect(added).not.toBe(absent);
+    await NodeFSP.writeFile(candidate, '<div class="p-8">');
+    expect(await bundleKey(root, {})).not.toBe(added);
+    await NodeFSP.rm(candidate);
+    expect(await bundleKey(root, {})).toBe(absent);
+  } finally {
+    await NodeFSP.rm(root, { recursive: true, force: true });
+  }
+});
+
+it("Decision: a stale bundle is worse than a slow one — when unsure whether a path is an input, it is an input", async () => {
+  const root = await cacheFixture();
+  try {
+    const input = NodePath.join(root, "packages/shared/src/future-import.ts");
+    await NodeFSP.mkdir(NodePath.dirname(input), { recursive: true });
+    const before = await bundleKey(root, {});
+    await NodeFSP.writeFile(input, "export const candidate = true;");
+    expect(await bundleKey(root, {})).not.toBe(before);
+  } finally {
+    await NodeFSP.rm(root, { recursive: true, force: true });
+  }
+});
+
+it("removing a tracked stylesheet invalidates the cache without blocking the next build", async () => {
+  const root = await cacheFixture();
+  try {
+    const path = "apps/web/src/obsolete.css";
+    await NodeFSP.mkdir(NodePath.dirname(NodePath.join(root, path)), { recursive: true });
+    await NodeFSP.writeFile(NodePath.join(root, path), ".obsolete { color: red; }");
+    NodeChildProcess.execFileSync("git", ["add", path], { cwd: root });
+    let builds = 0;
+    const build = async (dist: string) => {
+      await NodeFSP.writeFile(NodePath.join(dist, "index.html"), String(++builds));
+    };
+    const before = await cachedBundle(root, {}, build);
+    await NodeFSP.rm(NodePath.join(root, path));
+    const next = cachedBundle(root, {}, build);
+    await expect(next).resolves.not.toBe(before);
+    expect(await NodeFSP.readFile(NodePath.join(await next, "index.html"), "utf8")).toBe("2");
+  } finally {
+    await NodeFSP.rm(root, { recursive: true, force: true });
+  }
+});
+
 it("reuses identical input bytes, invalidates bundle inputs, and isolates worktrees", async () => {
   const root = await cacheFixture();
   const other = await cacheFixture();
@@ -183,7 +320,8 @@ it("a bundle artifact is reused in another checkout only when its input bytes ma
     expect(await NodeFSP.readFile(NodePath.join(restored, "index.html"), "utf8")).toBe(
       "certified bundle",
     );
-    await NodeFSP.writeFile(NodePath.join(consumer, "source.ts"), "changed");
+    await NodeFSP.mkdir(NodePath.join(consumer, "apps/web/src"), { recursive: true });
+    await NodeFSP.writeFile(NodePath.join(consumer, "apps/web/src/main.ts"), "changed");
     await expect(cachedBundle(consumer, {}, noBuild)).rejects.toThrow("artifact required");
   } finally {
     await NodeFSP.rm(builder, { recursive: true, force: true });
