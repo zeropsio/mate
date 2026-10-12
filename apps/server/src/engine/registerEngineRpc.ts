@@ -1,8 +1,8 @@
 /**
  * Registers the Mate engine's conversation wire (`subscribeEngineConversation`,
  * `subscribeEngineRows`, `engine.*`), spread by `ws.ts` beside `registerZeropsRpc`. Scopes stay in
- * `auth/RpcAuthorization.ts`: reading the conversation is the same read as V1's
- * `subscribeThread`, a send, stop, answer, dismissal or steer the same authority as a V1 dispatch.
+ * `auth/RpcAuthorization.ts`: reading the conversation is the same read as a thread's
+ * (`orchestration:read`), a send, stop, answer, dismissal or steer the same authority as a V1 dispatch.
  *
  * Every handler answers from the `MateEngine` the server was built with. The caller is the connecting session
  * (its subject from the authenticated session, never from RPC input); the revision its records

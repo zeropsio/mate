@@ -7,10 +7,8 @@ import {
 } from "@t3tools/shared/usageLimits";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
@@ -75,11 +73,6 @@ import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as ServerConfig from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
-import {
-  projectActivityEvent,
-  projectThreadDetailSnapshot,
-} from "./orchestration/ActivityPayloadProjection.ts";
-import { makeThreadLiveEventCoalescer } from "./orchestration/ThreadLiveEventCoalescer.ts";
 import { makeLiveStreamBudget, type RetainedLiveItem } from "./orchestration/LiveStreamBudget.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -97,7 +90,6 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import { withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
-import { backfillThreadMedia, captureConversationEvent } from "./assets/ConversationMedia.ts";
 import { resolveAssetContext } from "./engineSessionDirectory.ts";
 import { resolveImageAsset } from "./assets/ImageAsset.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
@@ -298,28 +290,6 @@ function projectFileFailureContext(
   }
 }
 
-export function isThreadDetailEvent(event: OrchestrationEvent): event is Extract<
-  OrchestrationEvent,
-  {
-    type:
-      | "thread.message-sent"
-      | "thread.proposed-plan-upserted"
-      | "thread.activity-appended"
-      | "thread.turn-diff-completed"
-      | "thread.reverted"
-      | "thread.session-set";
-  }
-> {
-  return (
-    event.type === "thread.message-sent" ||
-    event.type === "thread.proposed-plan-upserted" ||
-    event.type === "thread.activity-appended" ||
-    event.type === "thread.turn-diff-completed" ||
-    event.type === "thread.reverted" ||
-    event.type === "thread.session-set"
-  );
-}
-
 const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
 // When a resuming client's cursor is more than this many events behind the
@@ -329,9 +299,6 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 // Matches the event store's default page size (DEFAULT_READ_FROM_SEQUENCE_LIMIT).
 const SHELL_RESUME_MAX_GAP = 1_000;
 
-// Thread replay counts only this thread's rows. Busy or pruned unrelated
-// streams must not force a full thread snapshot.
-const THREAD_RESUME_MAX_EVENTS = 1_000;
 // Row count alone does not bound replay memory: a few events with large tool
 // payloads can decode to gigabytes. Before replaying, sum the serialized
 // payload bytes of the range in SQL and reset with a snapshot past this budget.
@@ -469,14 +436,6 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
       const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
       const repositoryIdentityResolver =
         yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
-      // Clone hooks run on the tracker's fiber, outside any RPC, so the
-      // normalizer's services are captured here rather than inherited.
-      const normalizerContext = yield* Effect.context<
-        | FileSystem.FileSystem
-        | Path.Path
-        | ServerConfig.ServerConfig
-        | WorkspacePaths.WorkspacePaths
-      >();
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
       const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
       const rpcClientIds = yield* Ref.make(new Set<RpcClientId>());
@@ -884,9 +843,6 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                   shellRevealInFileManager: true,
                   shellRevealInFileManagerKind: fileManagerRevealKind,
                 }),
-            threadResumeCompletionMarker: true,
-            threadSnapshotPagination: true,
-            reasoningMessages: true,
           };
         });
 
@@ -1108,193 +1064,6 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                   cause,
                 }),
             ),
-          ),
-        [ORCHESTRATION_WS_METHODS.subscribeThread]: (input) =>
-          Stream.unwrap(
-            Effect.gen(function* () {
-              const isThisThreadDetailEvent = (event: OrchestrationEvent) =>
-                event.aggregateKind === "thread" &&
-                event.aggregateId === input.threadId &&
-                isThreadDetailEvent(event);
-
-              const liveStream = orchestrationEngine.streamDomainEvents.pipe(
-                Stream.filter(isThisThreadDetailEvent),
-                Stream.map((event) => ({
-                  kind: "event" as const,
-                  event: projectActivityEvent(event, input.reasoningMessages === true),
-                })),
-              );
-
-              // Attach live delivery before reading either replay or snapshot state.
-              // Otherwise an event published while the snapshot is loading is lost.
-              const liveBuffer = yield* makeThreadLiveEventCoalescer();
-              yield* Effect.forkScoped(
-                liveStream.pipe(
-                  Stream.runForEachArray(liveBuffer.offerAll),
-                  Effect.raceFirst(liveBuffer.failed),
-                  Effect.catchTags({ OrchestrationGetSnapshotError: () => Effect.void }),
-                ),
-                { startImmediately: true },
-              );
-              const bufferedLiveStream = liveBuffer.stream;
-              let replayOnMissingSnapshot: typeof bufferedLiveStream | undefined;
-
-              // When the client already loaded the snapshot over HTTP it passes
-              // that snapshot's sequence, and we resume the live subscription by
-              // replaying persisted events after it instead of re-sending the
-              // (potentially multi-KB) snapshot frame over the socket.
-              //
-              // The live PubSub subscription must be attached *before* draining
-              // the catch-up replay, otherwise events published during the replay
-              // window are dropped (they are past the persisted tail the replay
-              // read, but the live stream is not yet subscribed). So fork the
-              // live stream into a buffer bound to this stream's scope, then emit
-              // catch-up followed by the buffered/ongoing live events. Overlapping
-              // events are deduped by sequence on the client.
-              //
-              // Measure only this thread's rows. Global sequence gaps can
-              // contain unrelated or pruned streams. Keep an explicit upper
-              // bound so events after the captured head stay in the live tail.
-              if (input.afterSequence !== undefined) {
-                const afterSequence = input.afterSequence;
-                const headSequence = yield* orchestrationEngine.latestSequence;
-                const range = {
-                  threadId: input.threadId,
-                  fromSequenceExclusive: afterSequence,
-                  toSequenceInclusive: headSequence,
-                };
-                const replayStats =
-                  afterSequence > headSequence
-                    ? null
-                    : yield* orchestrationEngine
-                        .getThreadReplayStats({
-                          ...range,
-                          maxEvents: THREAD_RESUME_MAX_EVENTS,
-                        })
-                        .pipe(
-                          Effect.mapError(
-                            (cause) =>
-                              new OrchestrationGetSnapshotError({
-                                message: `Failed to measure thread ${input.threadId} replay range`,
-                                cause,
-                              }),
-                          ),
-                        );
-                if (
-                  replayStats !== null &&
-                  replayStats.eventCount <= THREAD_RESUME_MAX_EVENTS &&
-                  replayStats.payloadBytes <= ORCHESTRATION_REPLAY_PAYLOAD_BUDGET_BYTES
-                ) {
-                  const catchUpStream = orchestrationEngine
-                    .readThreadEvents({ ...range, limit: THREAD_RESUME_MAX_EVENTS })
-                    .pipe(
-                      Stream.filter(isThisThreadDetailEvent),
-                      Stream.mapEffect((event) =>
-                        projectionSnapshotQuery.getCommandReadModel().pipe(
-                          Effect.flatMap((model) =>
-                            captureConversationEvent(event, model).pipe(
-                              Effect.provide(normalizerContext),
-                            ),
-                          ),
-                          Effect.map((captured) => ({ ...captured, sequence: event.sequence })),
-                        ),
-                      ),
-                      Stream.map((event) => ({
-                        kind: "event" as const,
-                        event: projectActivityEvent(event, input.reasoningMessages === true),
-                      })),
-                      Stream.mapError(
-                        (cause) =>
-                          new OrchestrationGetSnapshotError({
-                            message: `Failed to replay thread ${input.threadId} events`,
-                            cause,
-                          }),
-                      ),
-                    );
-                  const afterCatchUp =
-                    input.requestCompletionMarker === true
-                      ? Stream.unwrap(
-                          liveBuffer
-                            .offer({ kind: "synchronized" as const })
-                            .pipe(Effect.as(bufferedLiveStream)),
-                        )
-                      : bufferedLiveStream;
-                  const replay = Stream.concat(catchUpStream, afterCatchUp);
-                  if (!replayStats.hasCreateEvent) {
-                    return replay;
-                  }
-                  replayOnMissingSnapshot = replay;
-                }
-                // A recreated thread needs a fresh snapshot if it still exists.
-                // Oversized replays and invalid cursors also use the snapshot path.
-              }
-
-              const snapshot = yield* projectionSnapshotQuery
-                .getThreadDetailSnapshot(
-                  input.threadId,
-                  // Windowing the fallback snapshot is opt-in per subscription:
-                  // clients that don't send turnLimit (including all
-                  // pre-pagination clients) get the full thread, since they
-                  // have no way to load older pages.
-                  input.turnLimit === undefined ? undefined : { turnLimit: input.turnLimit },
-                )
-                .pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new OrchestrationGetSnapshotError({
-                        message: `Failed to load thread ${input.threadId}`,
-                        cause,
-                      }),
-                  ),
-                );
-
-              if (Option.isNone(snapshot)) {
-                // The recreated thread can already be deleted. Preserve the
-                // bounded replay and shell removal instead of retrying a
-                // snapshot that cannot exist. Oversized ranges still fail.
-                if (replayOnMissingSnapshot !== undefined) {
-                  return replayOnMissingSnapshot;
-                }
-                return yield* new OrchestrationGetSnapshotError({
-                  message: `Thread ${input.threadId} was not found`,
-                  cause: input.threadId,
-                });
-              }
-
-              const workspaceRoot =
-                snapshot.value.thread.worktreePath !== null
-                  ? Option.some(snapshot.value.thread.worktreePath)
-                  : yield* projectionSnapshotQuery
-                      .getProjectWorkspaceRootById(snapshot.value.thread.projectId)
-                      .pipe(
-                        Effect.mapError(
-                          (cause) =>
-                            new OrchestrationGetSnapshotError({
-                              message: "Failed to read image owner",
-                              cause,
-                            }),
-                        ),
-                      );
-              const root = Option.getOrUndefined(workspaceRoot);
-              const compact = root
-                ? yield* backfillThreadMedia(snapshot.value, root)
-                : snapshot.value;
-              const afterSnapshot =
-                input.requestCompletionMarker === true
-                  ? Stream.unwrap(
-                      liveBuffer
-                        .offer({ kind: "synchronized" as const })
-                        .pipe(Effect.as(bufferedLiveStream)),
-                    )
-                  : bufferedLiveStream;
-              return Stream.concat(
-                Stream.make({
-                  kind: "snapshot" as const,
-                  snapshot: projectThreadDetailSnapshot(compact, input.reasoningMessages === true),
-                }),
-                afterSnapshot,
-              );
-            }),
           ),
         [WS_METHODS.execRun]: (input) => admit(WS_METHODS.execRun, runExecCommand(input)),
         [WS_METHODS.serverProbe]: (_input) => Effect.succeed({}),

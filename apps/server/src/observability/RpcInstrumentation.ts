@@ -26,7 +26,6 @@ const RPC_AGGREGATES = {
   [ORCHESTRATION_WS_METHODS.searchThreads]: "orchestration",
   [ORCHESTRATION_WS_METHODS.subscribeShell]: "orchestration",
   [ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot]: "orchestration",
-  [ORCHESTRATION_WS_METHODS.subscribeThread]: "orchestration",
   [WS_METHODS.execRun]: "exec",
   [WS_METHODS.serverProbe]: "server",
   [WS_METHODS.serverGetConfig]: "server",

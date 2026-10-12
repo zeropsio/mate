@@ -39,7 +39,6 @@ export const ORCHESTRATION_WS_METHODS = {
   searchThreads: "orchestration.searchThreads",
   getArchivedShellSnapshot: "orchestration.getArchivedShellSnapshot",
   subscribeShell: "orchestration.subscribeShell",
-  subscribeThread: "orchestration.subscribeThread",
 } as const;
 
 export const ProviderApprovalPolicy = Schema.Literals([
@@ -1013,34 +1012,6 @@ export const OrchestrationSubscribeShellInput = Schema.Struct({
   requestCompletionMarker: Schema.optionalKey(Schema.Boolean),
 });
 export type OrchestrationSubscribeShellInput = typeof OrchestrationSubscribeShellInput.Type;
-
-export const OrchestrationSubscribeThreadInput = Schema.Struct({
-  threadId: ThreadId,
-  /** Opt in to reasoning roles; older clients receive system messages instead. */
-  reasoningMessages: Schema.optionalKey(Schema.Boolean),
-  /**
-   * When provided, the server skips the initial snapshot frame and instead
-   * replays events after this sequence before streaming live events. Clients
-   * that load the snapshot over HTTP pass the snapshot's sequence here so the
-   * live subscription resumes without a gap (overlapping events are deduped by
-   * sequence on the client).
-   */
-  afterSequence: Schema.optionalKey(NonNegativeInt),
-  /**
-   * Requests an explicit marker after the subscription has emitted its initial
-   * snapshot or catch-up replay and before it begins emitting live events.
-   */
-  requestCompletionMarker: Schema.optionalKey(Schema.Boolean),
-  /**
-   * When provided, the fallback snapshot frame (sent when `afterSequence` is
-   * missing or the catch-up gap is too large) is windowed to the last
-   * `turnLimit` user-anchored turns and carries `page` metadata. Absent means
-   * the fallback snapshot is the full thread, preserving pre-pagination client
-   * behavior. Live events are unaffected either way.
-   */
-  turnLimit: Schema.optionalKey(PositiveInt),
-});
-export type OrchestrationSubscribeThreadInput = typeof OrchestrationSubscribeThreadInput.Type;
 
 /**
  * Bounds a thread detail read to a window of recent turns. `turnLimit` counts
@@ -2042,71 +2013,6 @@ export const OrchestrationEvent = Schema.Union([
 ]);
 export type OrchestrationEvent = typeof OrchestrationEvent.Type;
 
-const isUnknownEventType = hasUnknownUnionTag(OrchestrationEvent.members, "type");
-const isUnknownActivityTone = (payload: unknown): boolean => {
-  const activity = (payload as { readonly activity?: unknown } | undefined)?.activity;
-  if (typeof activity !== "object" || activity === null || !("tone" in activity)) return false;
-  return !(OrchestrationThreadActivityTone.literals as ReadonlyArray<unknown>).includes(
-    activity.tone,
-  );
-};
-
-/**
- * A thread event whose type this build does not know, or an appended activity
- * whose tone it does not know. Newer Mates add both; an older client decodes
- * them to this case and skips them, still advancing its resume cursor, instead
- * of failing the whole subscription. A known event whose payload does not decode
- * still fails. Decode-only: servers never send it.
- */
-const OrchestrationUnknownThreadStreamEvent = Schema.Struct({
-  kind: Schema.Literal("event"),
-  event: Schema.Struct({
-    sequence: NonNegativeInt,
-    type: Schema.String,
-    payload: Schema.optional(Schema.Unknown),
-  }).check(
-    Schema.makeFilter(
-      (event) =>
-        isUnknownEventType(event) ||
-        (event.type === "thread.activity-appended" && isUnknownActivityTone(event.payload)) ||
-        "A known event type must decode in full.",
-    ),
-  ),
-}).pipe(
-  Schema.decodeTo(
-    Schema.Struct({
-      kind: Schema.Literal("unknown-event"),
-      sequence: NonNegativeInt,
-      eventType: Schema.String,
-    }),
-    {
-      decode: SchemaGetter.transform((item) => ({
-        kind: "unknown-event" as const,
-        sequence: item.event.sequence,
-        eventType: item.event.type,
-      })),
-      encode: SchemaGetter.forbidden(() => "Servers never send unknown thread events."),
-    },
-  ),
-);
-
-export const OrchestrationThreadStreamItem = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("synchronized"),
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("snapshot"),
-    snapshot: OrchestrationThreadDetailSnapshot,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("event"),
-    event: OrchestrationEvent,
-  }),
-  // After the known arm: union members are tried in order.
-  OrchestrationUnknownThreadStreamEvent,
-]);
-export type OrchestrationThreadStreamItem = typeof OrchestrationThreadStreamItem.Type;
-
 export const OrchestrationCommandReceiptStatus = Schema.Literals(["accepted", "rejected"]);
 export type OrchestrationCommandReceiptStatus = typeof OrchestrationCommandReceiptStatus.Type;
 
@@ -2276,10 +2182,6 @@ export const OrchestrationRpcSchemas = {
   getArchivedShellSnapshot: {
     input: Schema.Struct({}),
     output: OrchestrationShellSnapshot,
-  },
-  subscribeThread: {
-    input: OrchestrationSubscribeThreadInput,
-    output: OrchestrationThreadStreamItem,
   },
   subscribeShell: {
     input: OrchestrationSubscribeShellInput,

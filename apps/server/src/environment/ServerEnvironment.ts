@@ -93,8 +93,6 @@ export const makeServerEnvironmentCapabilities = (
     accountLifecycleVersion: 1,
     repositoryIdentity: true,
     connectionProbe: true,
-    threadSnapshotPagination: true,
-    reasoningMessages: true,
     attachmentUploads: true,
     contentAddressedImages: true,
     questionAttachments: true,

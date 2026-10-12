@@ -241,45 +241,6 @@ describe("RemoteEnvironmentAuthorization", () => {
 
   it.effect.each([
     {
-      name: "names both",
-      capabilities: { threadSnapshotPagination: true, reasoningMessages: false },
-      expected: { pagination: true, reasoningMessages: false },
-    },
-    { name: "is silent", capabilities: {}, expected: undefined },
-    {
-      name: "names only one",
-      capabilities: { threadSnapshotPagination: true },
-      expected: undefined,
-    },
-  ])(
-    "carries the thread snapshot's parameters when the descriptor $name",
-    ({ capabilities, expected }) =>
-      Effect.gen(function* () {
-        const harness = yield* makeHarness({
-          responses: [
-            Response.json({
-              ...DESCRIPTOR,
-              capabilities: { ...DESCRIPTOR.capabilities, ...capabilities },
-            }),
-            websocketTicket("ticket"),
-          ],
-        });
-        const authorized = yield* Effect.gen(function* () {
-          const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
-          return yield* remote.authorizeBearer({
-            expectedEnvironmentId: ENVIRONMENT_ID,
-            httpBaseUrl: ENDPOINT.httpBaseUrl,
-            wsBaseUrl: ENDPOINT.wsBaseUrl,
-            bearerToken: "bearer-token",
-            connectionMethod: "direct",
-          });
-        }).pipe(Effect.provide(harness.layer));
-        expect(authorized.threadSnapshot).toEqual(expected);
-      }),
-  );
-
-  it.effect.each([
-    {
       name: "serves the engine's protocol 1",
       capabilities: { mateEngine: { protocol: 1 } },
       expected: 1,
@@ -388,87 +349,6 @@ describe("RemoteEnvironmentAuthorization", () => {
       );
       expect(authorized.contentAddressedImages).toBe(false);
     }),
-  );
-
-  it.effect("opens cached-token history with the descriptor already read by its door", () =>
-    Effect.gen(function* () {
-      const descriptor = {
-        ...DESCRIPTOR,
-        capabilities: {
-          ...DESCRIPTOR.capabilities,
-          threadSnapshotPagination: true,
-          reasoningMessages: true,
-        },
-      };
-      const harness = yield* makeHarness({
-        initialToken: new TokenStore.RemoteDpopAccessToken({
-          environmentId: ENVIRONMENT_ID,
-          label: DESCRIPTOR.label,
-          endpoint: ENDPOINT,
-          accessToken: "cached-access-token",
-          expiresAtEpochMs: Number.MAX_SAFE_INTEGER,
-          dpopThumbprint: "thumbprint-1",
-        }),
-        recent: () => descriptor,
-        responses: [websocketTicket("cached-ticket")],
-      });
-      const authorized = yield* Effect.gen(function* () {
-        const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
-        return yield* remote.authorizeDpop({
-          expectedEnvironmentId: ENVIRONMENT_ID,
-          obtainBootstrap: harness.obtainBootstrap,
-        });
-      }).pipe(Effect.provide(harness.layer));
-      expect(authorized.threadSnapshot).toEqual({ pagination: true, reasoningMessages: true });
-      expect(harness.fetch.calls).toHaveLength(1);
-    }),
-  );
-
-  it.effect.each(["first sign-in", "expired token", "rejected token"] as const)(
-    "opens HTTP history after $0 without waiting for socket configuration",
-    (path) =>
-      Effect.gen(function* () {
-        const descriptor = {
-          ...DESCRIPTOR,
-          capabilities: {
-            ...DESCRIPTOR.capabilities,
-            threadSnapshotPagination: true,
-            reasoningMessages: true,
-          },
-        };
-        const harness = yield* makeHarness({
-          ...(path === "first sign-in"
-            ? {}
-            : {
-                initialToken: new TokenStore.RemoteDpopAccessToken({
-                  environmentId: ENVIRONMENT_ID,
-                  label: DESCRIPTOR.label,
-                  endpoint: ENDPOINT,
-                  accessToken: "old-access-token",
-                  expiresAtEpochMs: path === "expired token" ? 0 : Number.MAX_SAFE_INTEGER,
-                  dpopThumbprint: "thumbprint-1",
-                }),
-              }),
-          responses: [
-            ...(path === "rejected token" ? [authInvalid()] : []),
-            Response.json(descriptor),
-            accessToken("fresh-access-token"),
-            websocketTicket("fresh-ticket"),
-          ],
-        });
-        const authorized =
-          yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization.pipe(
-            Effect.flatMap((remote) =>
-              remote.authorizeDpop({
-                expectedEnvironmentId: ENVIRONMENT_ID,
-                obtainBootstrap: harness.obtainBootstrap,
-              }),
-            ),
-            Effect.provide(harness.layer),
-          );
-        expect(authorized.threadSnapshot).toEqual({ pagination: true, reasoningMessages: true });
-        expect(yield* Ref.get(harness.bootstrapCalls)).toBe(1);
-      }),
   );
 
   it.effect("refreshes and persists an expired environment token", () =>

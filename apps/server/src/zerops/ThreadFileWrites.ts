@@ -11,8 +11,8 @@
  *   workspace: what the thread's newest completed write of that exact,
  *   untrimmed path wrote there, and when the server stamped it. A failed,
  *   declined or never-returned call wrote nothing;
- * - to a caller who may read the thread (`orchestration:read`, as
- *   `subscribeThread`), at most {@link FILE_WRITES_RESPONSE_MAX_CHARS} of
+ * - to a caller who may read the thread (`orchestration:read`), at most
+ *   {@link FILE_WRITES_RESPONSE_MAX_CHARS} of
  *   text in one answer.
  *
  * @module ThreadFileWrites

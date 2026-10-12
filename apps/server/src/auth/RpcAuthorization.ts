@@ -33,7 +33,6 @@ export const RPC_REQUIRED_SCOPES = {
   [ORCHESTRATION_WS_METHODS.searchThreads]: AuthOrchestrationReadScope,
   [ORCHESTRATION_WS_METHODS.subscribeShell]: AuthOrchestrationReadScope,
   [ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot]: AuthOrchestrationReadScope,
-  [ORCHESTRATION_WS_METHODS.subscribeThread]: AuthOrchestrationReadScope,
   [WS_METHODS.execRun]: AuthExecOperateScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetConfig]: AuthOrchestrationReadScope,
@@ -96,7 +95,7 @@ export const RPC_REQUIRED_SCOPES = {
   // already there, with no ref written and nothing fetched (guide 4.5).
   [WS_METHODS.zeropsGitProbeRemote]: AuthOrchestrationReadScope,
   // What this thread's agent wrote, from its own record: the same read as the
-  // thread itself (`subscribeThread`). Nothing is read from disk.
+  // thread itself. Nothing is read from disk.
   [WS_METHODS.threadsFileWrites]: AuthOrchestrationReadScope,
   [WS_METHODS.threadsWrittenFile]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeResourceTelemetry]: AuthOrchestrationReadScope,
@@ -145,7 +144,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.zeropsCrewFilesPut]: AuthOrchestrationOperateScope,
   [WS_METHODS.zeropsCrewCommand]: AuthOrchestrationOperateScope,
   [WS_METHODS.zeropsCrewTaskPage]: AuthOrchestrationReadScope,
-  // The Mate engine's conversation: reading it is the same read as `subscribeThread`; sending,
+  // The Mate engine's conversation: reading it is the same read as a thread's; sending,
   // stopping, answering, dismissing and steering are the same authority as dispatching a V1 command.
   [WS_METHODS.subscribeEngineConversation]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeEngineRows]: AuthOrchestrationReadScope,
