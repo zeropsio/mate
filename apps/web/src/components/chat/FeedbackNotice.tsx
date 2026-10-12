@@ -24,7 +24,12 @@ export function feedbackNotice(
         {notice.description ? ` · ${notice.description}` : null}
       </>
     ),
-    ...(submission.status === "failed" ? { failed: true } : {}),
+    ...(submission.status === "failed"
+      ? {
+          failed: true,
+          announce: [notice.title, notice.description].filter(Boolean).join(": "),
+        }
+      : {}),
     ...(submission.status === "sent"
       ? {
           action: {

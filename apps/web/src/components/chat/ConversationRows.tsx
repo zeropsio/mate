@@ -398,8 +398,16 @@ export interface ConversationNotice {
   };
   readonly dismissLabel?: string;
   readonly onDismiss?: () => void;
-  /** It says that something failed. */
+  /**
+   * It says that something failed: its words whole, wrapped, four lines and the rest scrolled in
+   * the row — a failure's words are never cut.
+   */
   readonly failed?: boolean;
+  /**
+   * What a screen reader is told once when it comes (`NoticeAnnouncer`), outside the list: a row
+   * the list remounts as it scrolls would say it again.
+   */
+  readonly announce?: string;
 }
 
 /** A notice's row: an event's grammar — its mark on the text edge, its words — and its action. */
@@ -421,15 +429,28 @@ export function NoticeLine({ notice }: { readonly notice: ConversationNotice }) 
     <div
       className="min-w-0 text-line text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground"
       data-conversation-notice={notice.id}
-      role={notice.failed ? "alert" : "status"}
     >
-      <div className="flex min-h-8 min-w-0 items-center">
+      <div
+        className={cn(
+          "flex min-h-8 min-w-0",
+          notice.failed ? "items-start py-1.5" : "items-center",
+        )}
+      >
         <LineMark
-          className={cn("items-center [&_svg]:size-4", notice.failed && "text-status-failed-text")}
+          className={cn(
+            "items-center [&_svg]:size-4",
+            notice.failed && "h-5 text-status-failed-text",
+          )}
         >
           {notice.icon}
         </LineMark>
-        <span className="min-w-0 flex-1 truncate">{notice.words}</span>
+        {notice.failed ? (
+          <span className="max-h-20 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap wrap-break-word">
+            {notice.words}
+          </span>
+        ) : (
+          <span className="min-w-0 flex-1 truncate">{notice.words}</span>
+        )}
         {button !== null && unavailable !== null ? (
           <Tooltip>
             <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
@@ -453,6 +474,23 @@ export function NoticeLine({ notice }: { readonly notice: ConversationNotice }) 
         )}
       </div>
       {notice.detail === undefined ? null : <div className="ps-5 pb-1">{notice.detail}</div>}
+    </div>
+  );
+}
+
+/**
+ * Says each failed notice to a screen reader once, as it comes: one live region outside the list,
+ * whose words change only when another notice asks to be said (`ConversationNotice.announce`).
+ */
+export function NoticeAnnouncer({
+  notices,
+}: {
+  readonly notices: ReadonlyArray<ConversationNotice>;
+}) {
+  const said = notices.flatMap((notice) => (notice.announce ? [notice.announce] : [])).at(-1);
+  return (
+    <div aria-live="assertive" className="sr-only" data-notice-announcer="">
+      {said ?? ""}
     </div>
   );
 }

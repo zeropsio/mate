@@ -215,6 +215,7 @@ import {
   ErrorLine,
   EventLine,
   HeldMessageLine,
+  NoticeAnnouncer,
   NoticeLine,
   type ConversationNotice,
   MessageReceipt,
@@ -2044,6 +2045,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       <TimelineNoticesCtx value={noticesById}>
         <TimelineRowActivityCtx value={activityState}>
           <TimelineWorkingCtx value={working}>
+            {/* A failed notice is said once here, outside the list that remounts its rows. */}
+            <NoticeAnnouncer notices={notices} />
             <TooltipScrollDismissArea
               ref={setTimelineViewportElement}
               className="relative h-full min-h-0"

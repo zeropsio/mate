@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { feedbackNotice } from "./FeedbackNotice";
-import { NoticeLine } from "./ConversationRows";
+import { NoticeAnnouncer, NoticeLine } from "./ConversationRows";
 
 vi.mock("../../hooks/useCopyToClipboard", () => ({
   writeTextToClipboard: vi.fn(async () => undefined),
@@ -55,5 +55,45 @@ describe("Codex feedback", () => {
       "reported-codex-thread",
       "Codex feedback thread ID",
     );
+  });
+
+  it("failed feedback says its error whole and is announced once, outside the row", async () => {
+    const error =
+      "The upload to OpenAI was refused: the feedback endpoint answered 413 because the attached session log is larger than the 10 MB it accepts; trim the log or send without it.";
+    const item = feedbackNotice(
+      {
+        id: MessageId.make("feedback-submission"),
+        command: "/feedback The answer stopped early.",
+        createdAt: "2026-10-08T10:00:00.000Z",
+        status: "failed",
+        errorMessage: error,
+      } as never,
+      () => {},
+    );
+    if (!item) throw new Error("Failed feedback must have a visible notice");
+    const container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const draw = (rowMounted: boolean) =>
+      act(() =>
+        root?.render(
+          <>
+            <NoticeAnnouncer notices={[item]} />
+            {rowMounted ? <NoticeLine notice={item} /> : null}
+          </>,
+        ),
+      );
+    await draw(true);
+    const row = container.querySelector("[data-conversation-notice]")!;
+    expect(row.textContent).toBe(`Could not send feedback to OpenAI · ${error}`);
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    const said = container.querySelector("[data-notice-announcer]")!;
+    expect(said.getAttribute("aria-live")).toBe("assertive");
+    expect(said.textContent).toBe(`Could not send feedback to OpenAI: ${error}`);
+    // The list remounts the row as it scrolls; what is said stays the same node and words.
+    await draw(false);
+    await draw(true);
+    expect(container.querySelector("[data-notice-announcer]")).toBe(said);
+    expect(said.textContent).toBe(`Could not send feedback to OpenAI: ${error}`);
   });
 });
