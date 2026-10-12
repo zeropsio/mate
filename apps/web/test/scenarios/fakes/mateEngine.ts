@@ -27,6 +27,7 @@ import {
   type RequestAsk,
   type RunEnd,
   type RunSummary,
+  type RunAdmissionRefusal,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as NodeEvents from "node:events";
@@ -146,6 +147,8 @@ export class MateEngineFake {
   answerRefusal: "unknown-request" | "not-answerable" | null = null;
   /** Admission refuses the person's next runs (D6: the agent's sign-in is not theirs): its words. */
   admissionRefusal: string | null = null;
+  /** The login admission refuses for, as the server names it on the run's end. */
+  admissionRefusedLogin: RunAdmissionRefusal | null = null;
   /** The Mate refuses the caller before the engine sees the call: its words. */
   authorization: (op: EngineOp) => string | null = () => null;
   private readonly results = new Map<string, EngineCallResult>();
@@ -1217,7 +1220,13 @@ export class MateEngineFake {
         if (refusal !== null && this.runs.get(runId)?.state !== "queued") {
           this.commit((change) => {
             this.setItem(change, itemId, { delivery: { state: "refused", at: null } });
-            this.endRun(change, runId, { kind: "failed", reason: refusal, next: null });
+            const admission = this.main.admissionRefusedLogin;
+            this.endRun(change, runId, {
+              kind: "failed",
+              reason: refusal,
+              next: null,
+              ...(admission === null ? {} : { admission }),
+            });
           });
           return accepted as never;
         }

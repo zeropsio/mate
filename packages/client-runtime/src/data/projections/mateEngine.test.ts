@@ -1865,3 +1865,26 @@ it.each([
     expect(engineRunCards.derive(readsOfState(state), key)?.[run1]?.waitsOn).toEqual(waits);
   },
 );
+
+// V1 never recorded a turn its admission refused: the person's words went back to the composer.
+it("a message admission refused before anything ran goes back to its sender, never into the conversation", () => {
+  const state = held({
+    runs: [
+      engineRun("thread-ada", 1, {
+        startedAt: null,
+        end: {
+          kind: "failed",
+          reason: "Claude's sign-in has expired.",
+          next: null,
+          admission: { loginId: "claude-code", reason: "expired-login" },
+        },
+      }),
+    ],
+    items: [personItem(run1, 1, "Start work", { delivery: { state: "refused", at: null } })],
+  });
+  expect(thread(state)?.messages.map((message) => message.text)).toEqual([]);
+  expect(engineRunCards.derive(readsOfState(state), key)?.[run1]?.refused).toEqual({
+    messageId: `send-${run1}-1`,
+    text: "Start work",
+  });
+});

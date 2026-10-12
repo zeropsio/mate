@@ -295,6 +295,7 @@ describe("C: agent admission", () => {
         );
         wire.engine.assign({ instanceId: "claudeAgent", model: "sonnet", driver: "claudeAgent" });
         wire.engine.admissionRefusal = "Claude's sign-in has expired. Sign Claude in again.";
+        wire.engine.admissionRefusedLogin = { loginId: "claude-code", reason: "expired-login" };
         yield* s.given.signedIn;
         yield* chat.when.open();
         yield* chat.when.attemptSend("Start work");
@@ -400,6 +401,7 @@ describe("C: agent admission", () => {
           wire.providers([{ ...native, instanceId, displayName: "Claude Code · before" }]);
           wire.engine.assign({ instanceId, model: "sonnet", driver: "claudeAgent" });
           wire.engine.admissionRefusal = "The refused login had its old label: before.";
+          wire.engine.admissionRefusedLogin = { loginId: instanceId, reason: "missing-sign-in" };
           yield* s.given.signedIn;
           yield* chat.when.open();
           yield* chat.when.send("Work on this login");

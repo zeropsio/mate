@@ -615,6 +615,7 @@ export {
   admissionRefusalWords,
   mateAdmissionSummary,
   admissionExplainsRefusal,
+  engineRunRefusal,
   type AgentAdmissionAttention,
   type AgentRefusalSource,
 } from "./projections/agentAdmission.ts";

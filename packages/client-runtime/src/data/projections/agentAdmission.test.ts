@@ -6,7 +6,7 @@ import {
   type ZeropsAgentAuthSnapshot,
   type ZeropsLogin,
 } from "@t3tools/contracts";
-import { agentAdmission, admissionProviderStatus } from "./agentAdmission.ts";
+import { agentAdmission, admissionProviderStatus, engineRunRefusal } from "./agentAdmission.ts";
 
 it.each(["unknown", "authenticated", "unauthenticated"] as const)(
   "only a proved failed provider login asks for sign-in (%s)",
@@ -442,4 +442,46 @@ describe("a colleague's Mate, as HQ records whose it is", () => {
       expect(admission.attention !== null).toBe(asks);
     },
   );
+});
+
+describe("an engine run admission refused", () => {
+  const refused = {
+    kind: "failed",
+    reason: "Claude's sign-in has expired.",
+    next: null,
+    admission: { loginId: "claude-code", reason: "expired-login" },
+  } as const;
+  it.each([
+    [
+      "names the login its refusal was for",
+      [{ ordinal: 1, end: refused }],
+      { loginId: "claude-code", reason: "expired-login" },
+    ],
+    [
+      "is over once a later run goes",
+      [
+        { ordinal: 2, end: null },
+        { ordinal: 1, end: refused },
+      ],
+      undefined,
+    ],
+    [
+      "is no refusal when a run failed on its own",
+      [{ ordinal: 1, end: { kind: "failed", reason: "The agent process failed.", next: null } }],
+      undefined,
+    ],
+    [
+      "joins nothing for a reason this build does not know",
+      [
+        {
+          ordinal: 1,
+          end: { ...refused, admission: { loginId: "claude-code", reason: "unknown" } },
+        },
+      ],
+      undefined,
+    ],
+    ["is nothing before the conversation's runs are read", undefined, undefined],
+  ] as const)("%s", (_, runs, expected) => {
+    expect(engineRunRefusal(runs)).toEqual(expected);
+  });
 });

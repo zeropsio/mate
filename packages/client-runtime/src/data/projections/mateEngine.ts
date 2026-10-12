@@ -152,6 +152,8 @@ function messageOf(
   };
   switch (item.kind) {
     case "person":
+      // Refused before anything of its run ran (admission): its words go back to its sender.
+      if (item.delivery.state === "refused" && neverStarted(item.runId)) return null;
       return {
         ...base,
         // A message whose run ended before it began names no run, as a V1 message no run took.
@@ -979,6 +981,8 @@ export function engineThreadOf(
 export interface EngineRunCard {
   readonly runs: ReadonlyArray<RunRecord>;
   readonly openerMessageId?: string;
+  /** Its message, refused before anything of it ran: the words go back to the composer. */
+  readonly refused?: { readonly messageId: string; readonly text: string };
   readonly state?: ConversationRow["state"];
   /** Whether it holds any of its runs' background work: then that work says what it waits on. */
   readonly holdsWork?: true;
@@ -1018,6 +1022,7 @@ export const engineRunCards: Projection<
       {
         runs: RunRecord[];
         openerMessageId?: string;
+        refused?: { messageId: string; text: string };
         state?: ConversationRow["state"];
         holdsWork?: true;
         waitsOn?: EngineCardWait;
@@ -1051,8 +1056,15 @@ export const engineRunCards: Projection<
         "mateEngineItem",
         engineFactId(key.environmentId, first.trigger.itemId),
       );
-      if (opener.kind === "known" && opener.value.kind === "person")
+      if (opener.kind === "known" && opener.value.kind === "person") {
         card.openerMessageId = personMessageId(opener.value);
+        if (
+          opener.value.delivery.state === "refused" &&
+          first.state === "ended" &&
+          first.startedAt === null
+        )
+          card.refused = { messageId: card.openerMessageId, text: opener.value.text };
+      }
     }
     const row = read.fact("mateEngineRow", engineFactId(key.environmentId, key.conversationId));
     if (row.kind === "known" && row.value.latestRun !== null) {
