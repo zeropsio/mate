@@ -21,7 +21,7 @@ export function SidebarChiefSetupLine({
 }) {
   return (
     <button
-      className="flex min-w-0 items-center gap-1 ps-2 pt-1 text-start text-xs text-muted-foreground hover:text-foreground"
+      className="flex min-w-0 items-center gap-1 ps-15 pt-1 text-start text-xs text-muted-foreground hover:text-foreground"
       data-chief-setup={state}
       data-zerops-surface="sidebar-chief-setup"
       onClick={onOpen}
