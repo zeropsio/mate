@@ -195,7 +195,8 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
                 .trim();
             const row = [
               ...document.querySelectorAll<HTMLElement>(
-                '[data-zerops-surface="sidebar-project-row"], [data-zerops-surface="sidebar-mate"]',
+                // A lone Mate's ··· sits in its row's box, beside the row's own button.
+                '[data-zerops-surface="sidebar-project-row"], [data-zerops-surface="sidebar-mate-row"]',
               ),
             ].find((row) => {
               const words = said(

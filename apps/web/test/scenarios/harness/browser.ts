@@ -389,7 +389,8 @@ function groupRow(page: Page, app: string) {
  */
 export async function foldMenuGroup(page: Page, app: string, fold: boolean) {
   const group = (await groupRow(page, app)).asElement() as ElementHandle<HTMLElement>;
-  if ((await group.evaluate((node) => node.getAttribute("aria-expanded"))) === String(!fold)) {
+  // Press only when it stands the other way: open while folding, folded while opening.
+  if ((await group.evaluate((node) => node.getAttribute("aria-expanded"))) === String(fold)) {
     await group.focus();
     await page.keyboard.press(fold ? "ArrowLeft" : "ArrowRight");
   }
