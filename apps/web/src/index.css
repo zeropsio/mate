@@ -7083,6 +7083,13 @@ a.ov-card-site:hover {
 .run-now[data-run-head] .run-now-head {
   display: inline;
 }
+/* Waiting for the limit to reset, its head stays one line however narrow: when it goes on gives
+   way, Continue keeps its place. */
+.run-now[data-run-head][data-run-now="paused"] .run-now-words {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .run-head-chevron {
   width: 16px;
   height: 16px;
