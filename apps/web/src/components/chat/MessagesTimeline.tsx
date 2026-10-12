@@ -1038,13 +1038,43 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         });
         return;
       }
-      land(
-        landingHolds({ head: head !== null, whole: stood.whole }) === "head" && head !== null
-          ? { element: head.element, edge: "top", at: head.top }
-          : { element: words, edge: "bottom", at: stood.bottom },
+      if (landingHolds({ head: head !== null, whole: stood.whole }) === "head" && head !== null) {
+        land({ element: head.element, edge: "top", at: head.top });
+        return;
+      }
+      land({ element: words, edge: "bottom", at: stood.bottom });
+      // Its last line held where it was read, the answer unrolls upward from the height its card
+      // stood at, carrying what stands above along: never its card gone above it in one frame (z2,
+      // recheck on 0.15.44: −1,138 px, the head out of the view at once).
+      const row = words.closest<HTMLElement>("[data-timeline-row-id]");
+      if (landingRef.current === null || row === null || stood.head === null) return;
+      if (reducedMotion() || typeof row.animate !== "function") return;
+      // Read within the row and its card as they lay out now, wherever the list has placed them
+      // yet: the row's foot under the words, and its card's part still drawn above it — its head,
+      // closed — which stands where it stood.
+      const box = row.getBoundingClientRect();
+      const foot = box.bottom - words.getBoundingClientRect().bottom;
+      const kept = stood.head.element.isConnected
+        ? box.top - stood.head.element.getBoundingClientRect().top
+        : 0;
+      const from = stood.bottom + foot - (stood.head.top + Math.max(0, kept));
+      if (box.height - from < UNROLL_FROM_PX) return;
+      const unrolled = {
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "flex-end",
+      };
+      row.animate(
+        [
+          { ...unrolled, height: `${from}px` },
+          { ...unrolled, height: `${box.height}px` },
+        ],
+        { duration: ANSWER_UNROLL_MS, easing: "cubic-bezier(0.45, 0, 0.25, 1)" },
       );
+      holdAnswer();
     },
-    [land],
+    [holdAnswer, land],
   );
   useEffect(
     () => () => {
@@ -3606,6 +3636,10 @@ const HEAD_GLIDE_MS = 300;
 /** How many frames a held head's card stands at one height before the view sets off. */
 const CARD_STILL_FRAMES = 2;
 
+/** How long a long answer takes to unroll upward from where its card stood. */
+const ANSWER_UNROLL_MS = 320;
+/** Less than this to unroll, it stands at its height at once. */
+const UNROLL_FROM_PX = 24;
 /** How long an answer is held where its words were read: its card folds, its row is measured. */
 const ANSWER_HOLD_MS = 1200;
 /** The room under the end while it is held: more than its card's foot and its own meta line. */

@@ -2521,8 +2521,8 @@ describe("owner-reported layout regressions", () => {
             return held.frames;
           }),
         );
-      /** Milo at work in a run: held in no application, or placed in `app`. */
-      const miloAtWork = (app?: string) =>
+      /** Milo at work in a run: held in no application, or placed in `app`; a command run first. */
+      const miloAtWork = (app?: string, command = true) =>
         Effect.gen(function* () {
           const s = yield* createScenario([installArea]);
           yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
@@ -2540,15 +2540,16 @@ describe("owner-reported layout regressions", () => {
           yield* chat.when.open();
           yield* chat.when.send("Live stress test 4A: start two helpers");
           const run = [...engine.runs.values()].at(-1)!.id;
-          engine.item(run, {
-            kind: "call",
-            step: "command",
-            tool: { name: "Bash" },
-            words: "Command run",
-            state: "done",
-            endedAt: yield* Clock.currentTimeMillis,
-            input: "Bash: sleep 25 && echo helper-job-done",
-          });
+          if (command)
+            engine.item(run, {
+              kind: "call",
+              step: "command",
+              tool: { name: "Bash" },
+              words: "Command run",
+              state: "done",
+              endedAt: yield* Clock.currentTimeMillis,
+              input: "Bash: sleep 25 && echo helper-job-done",
+            });
           return { s, engine, run };
         });
 
@@ -3423,6 +3424,135 @@ describe("owner-reported layout regressions", () => {
         it.effect(
           "a long answer landing keeps the lines the person was reading where they were",
           () => landsInPlace(),
+        );
+
+        // Recheck on 0.15.44 (+settle of the story): a long answer's card went above it in one
+        // frame (−1,138 px), its head out of the view at once; in the harness 849 px with no work
+        // done, 869 px with a command run.
+        it.effect.each([
+          { case: "no work done", command: false },
+          { case: "a command run", command: true },
+        ])(
+          "a long answer unrolls upward where its card stood, what stood above travelling, never a cut: $case",
+          ({ command }) =>
+            Effect.gen(function* () {
+              const { s, engine, run } = yield* miloAtWork(undefined, command);
+              const note = engine.item(run, {
+                kind: "note",
+                text: "",
+                streaming: true,
+                answer: false,
+              });
+              const text = Array.from({ length: 40 }, (_, index) =>
+                index === 39
+                  ? "Line 40, the very last line."
+                  : `Line ${index + 1} of the story of the night the river froze.`,
+              ).join("\n\n");
+              engine.stream(note, text);
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () =>
+                    [
+                      ...document.querySelectorAll(
+                        '[data-run-chat][data-run-live] [data-chat-kind="note"]',
+                      ),
+                    ]
+                      .at(-1)
+                      ?.textContent?.includes("the very last line"),
+                  { polling: "raf", timeout: 8000 },
+                ),
+              );
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+              yield* Effect.promise(() =>
+                s.page.evaluate(() => {
+                  const frames: Array<{ at: number; asked: number | null; last: number | null }> =
+                    [];
+                  const state = { active: true };
+                  const topOf = (words: string) => {
+                    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                    let top: number | null = null;
+                    while (walker.nextNode()) {
+                      if (!walker.currentNode.textContent?.includes(words)) continue;
+                      const rect = walker.currentNode.parentElement!.getBoundingClientRect();
+                      if (rect.height > 0) top = rect.top;
+                    }
+                    return top;
+                  };
+                  // After the frame's paint: a rAF alone reads before the list's own frame work.
+                  const sample = () =>
+                    setTimeout(() => {
+                      frames.push({
+                        at: performance.now(),
+                        asked: topOf("Live stress test 4A"),
+                        last: topOf("the very last line"),
+                      });
+                      if (state.active) requestAnimationFrame(sample);
+                    }, 0);
+                  (window as unknown as { unrollTrace: unknown }).unrollTrace = { frames, state };
+                  requestAnimationFrame(sample);
+                }),
+              );
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 200)));
+              engine.settle(note);
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
+              engine.update(note, { text, streaming: false });
+              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 400)));
+              engine.end(run);
+              const frames = yield* Effect.promise(() =>
+                new Promise((resolve) => setTimeout(resolve, 2000)).then(() =>
+                  s.page.evaluate(() => {
+                    const held = (
+                      window as unknown as {
+                        unrollTrace: {
+                          frames: Array<{ at: number; asked: number | null; last: number | null }>;
+                          state: { active: boolean };
+                        };
+                      }
+                    ).unrollTrace;
+                    held.state.active = false;
+                    return held.frames;
+                  }),
+                ),
+              );
+              const first = frames[0]!;
+              expect(
+                first.asked,
+                "ASSERTION: the person's message stood in the page",
+              ).not.toBeNull();
+              const moved = frames.findIndex(
+                (frame) => Math.abs(frame.asked! - first.asked!) > 0.5,
+              );
+              expect(
+                moved,
+                "ASSERTION: what stood above went up as the answer landed",
+              ).toBeGreaterThan(0);
+              expect(
+                Math.abs(frames[moved]!.asked! - first.asked!),
+                "ASSERTION: in the frame the answer lands, what stood above stands where it stood",
+              ).toBeLessThan(16);
+              // Its pace per 60 Hz frame: a slow runner paints half as often.
+              const pace = Math.max(
+                ...frames.slice(1).map((frame, index) => {
+                  const before = frames[index]!;
+                  return (
+                    Math.abs(frame.asked! - before.asked!) /
+                    Math.max(1, (frame.at - before.at) / (1000 / 60))
+                  );
+                }),
+              );
+              expect(pace, "ASSERTION: what stood above travels up, never a cut").toBeLessThan(200);
+              expect(
+                first.asked! - frames.at(-1)!.asked!,
+                "ASSERTION: the whole answer stands above its last line once unrolled",
+              ).toBeGreaterThan(600);
+              expect(
+                frames.every(
+                  (frame) => frame.last !== null && Math.abs(frame.last - first.last!) <= 4,
+                ),
+                "ASSERTION: the answer's last line stands where it was read throughout",
+              ).toBe(true);
+              yield* s.then.noExternalNetwork;
+            }),
         );
 
         it.effect(
