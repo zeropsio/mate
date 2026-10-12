@@ -26,15 +26,23 @@ export type ResourcePressure = typeof ResourcePressure.Type;
 /** No preceding sample is retained: both longer averages must prove sustained stalls.
  * Used by notice eligibility and hierarchy selection so brief spikes cannot hide sustained stalls.
  */
+export const SUSTAINED_PRESSURE_FULL_PERCENT = 10;
+export const SUSTAINED_PRESSURE_SOME_PERCENT = 40;
+
 export function sustainedPressureLevel(pressure: ResourcePressure | null): number {
   const level = (line: ResourcePressure["full"], threshold: number) =>
     line === null ? 0 : Math.min(line.avg60 ?? 0, line.avg300 ?? 0) / threshold;
-  return pressure === null ? 0 : Math.max(level(pressure.full, 10), level(pressure.some, 40));
+  return pressure === null
+    ? 0
+    : Math.max(
+        level(pressure.full, SUSTAINED_PRESSURE_FULL_PERCENT),
+        level(pressure.some, SUSTAINED_PRESSURE_SOME_PERCENT),
+      );
 }
 export const MateResourceHealth = Schema.Struct({
   status: Schema.Literals(["ok", "strained", "unknown"]),
   severity: Schema.Literals(["warning", "critical"]),
-  resources: Schema.Array(Schema.Literals(["memory", "disk", "io", "cpu"])),
+  resources: Schema.Array(Schema.Literals(["memory", "disk", "io", "pids"])),
   memory: Schema.NullOr(
     Schema.Struct({
       scope: Schema.optionalKey(Schema.String),
@@ -47,63 +55,25 @@ export const MateResourceHealth = Schema.Struct({
       swapCurrent: Schema.NullOr(NonNegativeInt),
       swapMax: Schema.NullOr(NonNegativeInt),
       swapGrowth: Schema.optionalKey(NonNegativeInt),
+      // A recent observed kill; the server clears this when its notice expires.
+      oomKilledAt: Schema.optionalKey(Schema.NullOr(NonNegativeInt)),
     }),
   ),
-  cpu: Schema.NullOr(
-    Schema.Struct({
-      ...ResourcePressure.fields,
-      // Optional while older Mates/HQ instances still relay the avg10-only report.
-      window: Schema.optionalKey(
-        Schema.NullOr(
-          Schema.Struct({
-            scope: Schema.String,
-            elapsedUsec: NonNegativeInt.check(Schema.isGreaterThan(0)),
-            usageUsec: NonNegativeInt,
-            someUsec: NonNegativeInt,
-            fullUsec: Schema.NullOr(NonNegativeInt),
-            capacityCpus: Schema.Finite.check(Schema.isGreaterThan(0)),
-            throttledPeriods: NonNegativeInt,
-            saturated: Schema.Boolean,
-            consumer: Schema.NullOr(
-              Schema.Struct({
-                pid: NonNegativeInt,
-                name: Schema.String,
-                cpuCores: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
-              }),
-            ),
-          }),
-        ),
-      ),
-    }),
+  // Older Mates do not supply task-limit evidence.
+  pids: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({
+        scope: Schema.String,
+        current: NonNegativeInt,
+        max: Schema.NullOr(NonNegativeInt),
+      }),
+    ),
   ),
   io: Schema.NullOr(ResourcePressure),
   disk: Schema.NullOr(Schema.Struct({ free: NonNegativeInt, total: NonNegativeInt })),
   unavailable: Schema.Array(Schema.String),
 });
 export type MateResourceHealth = typeof MateResourceHealth.Type;
-type CpuWindow = NonNullable<NonNullable<MateResourceHealth["cpu"]>["window"]>;
-
-/**
- * The numbers a CPU warning quotes from a measured window, to the two decimals it shows them in:
- * a Mate under CPU strain publishes a new sample when one of these changes, and no other number.
- */
-export function cpuWarningQuote(window: CpuWindow) {
-  const cores = (value: number) => Number(value.toFixed(2));
-  return {
-    usedCores: cores(window.usageUsec / window.elapsedUsec),
-    limitCores: cores(window.capacityCpus),
-    seconds: cores(window.elapsedUsec / 1_000_000),
-    consumer:
-      window.consumer === null
-        ? null
-        : {
-            name: window.consumer.name,
-            pid: window.consumer.pid,
-            cores: cores(window.consumer.cpuCores),
-          },
-  };
-}
-
 export const MateHealth = Schema.Struct({
   source: MateAttentionSource,
   sampledAt: IsoDateTime,

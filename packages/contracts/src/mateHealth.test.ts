@@ -27,7 +27,7 @@ it.each([false, true])("decodes retained health with new memory evidence present
       severity: "warning",
       resources: modern ? ["memory", "io"] : ["disk"],
       memory,
-      cpu: null,
+      pids: null,
       io: { some: { avg10: 30, total: 300 }, full: { avg10: 24, total: 240 } },
       disk: { free: 1000, total: 2000 },
       unavailable: [],

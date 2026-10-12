@@ -26,7 +26,7 @@ const evidence: MateResourceHealth = {
     swapMax: 536870912,
   },
   disk: { free: 1000, total: 5000 },
-  cpu: null,
+  pids: null,
   io: null,
   unavailable: [],
 };
@@ -62,7 +62,7 @@ const relay = (value = health, live = false): AccountInput[] => [
     : []),
   {
     kind: "rows",
-    scope: hqMateScope("org", "ada"),
+    scope: hqMateHealthScope("org", "ada"),
     generation: live ? 1 : 0,
     method: "push",
     via: "hq-stream",
@@ -72,29 +72,6 @@ const relay = (value = health, live = false): AccountInput[] => [
         id: "ada",
         value,
         revision: { kind: "mate-attention", ...value.source, live },
-      },
-      {
-        family: "hqMate",
-        id: "ada",
-        revision: { kind: "hq", incarnation: "hq", revision: 1 },
-        value: {
-          health: value,
-          healthState: live ? "live" : "stored",
-          presence: { online: live, overview: live ? "live" : "stored", since: value.sampledAt },
-          overview: {
-            identity: {
-              environmentId: value.source.environmentId,
-              serverVersion: "0.14.42",
-              update: null,
-            },
-            main: null,
-            threads: { list: [], omitted: 0 },
-            logins: {},
-            crew: { status: "off" },
-          },
-          attention: null,
-          attentionState: "none",
-        },
       },
     ],
   },
@@ -119,80 +96,20 @@ const direct = (value = health): AccountInput[] => [
   },
 ];
 describe("health at the screen boundary", () => {
-  const cpuHealth = (saturated: boolean): MateHealth => ({
-    ...health,
-    evidence: {
-      ...evidence,
-      status: "strained",
-      resources: ["cpu"],
-      severity: "warning",
-      memory: null,
-      cpu: {
-        some: { avg10: 25, avg60: 40, avg300: 40, total: 500000 },
-        full: null,
-        window: {
-          scope: "/sys/fs/cgroup",
-          elapsedUsec: 2000000,
-          usageUsec: 3800000,
-          someUsec: 400000,
-          fullUsec: null,
-          capacityCpus: 2,
-          throttledPeriods: 0,
-          saturated,
-          consumer: { pid: 42, name: "code-server (node)", cpuCores: 1.8 },
-        },
-      },
-    },
-  });
-  it("names the measured CPU consumer and allocation without guessing an update is still starting", () => {
-    const copy = mateHealthCopy("Hardy", project(relay(cpuHealth(true), true)));
-    expect(copy?.title).toBe("Hardy is under CPU pressure");
-    expect(copy?.description).toContain("1.9 CPU cores used out of a limit of 2 over 2 seconds");
-    expect(copy?.description).toContain("code-server (node) (PID 42) used 1.8 CPU cores");
-    expect(copy?.description).not.toContain("starting");
-  });
-  it("shows no CPU notice for an old average or a recovered current window", () => {
-    const old = cpuHealth(true);
-    const { window: _, ...averages } = old.evidence.cpu!;
-    for (const cpu of [averages, cpuHealth(false).evidence.cpu]) {
-      const value: MateHealth = {
-        ...old,
-        evidence: { ...old.evidence, status: "ok", resources: [], cpu },
-      };
-      expect(mateHealthCopy("Hardy", project(direct(value)))).toBeNull();
-    }
-  });
-  it("says attribution is unknown when runnable work exhausts CPU but the consumer has exited", () => {
-    const value = cpuHealth(true);
-    const copy = mateHealthCopy(
-      "Hardy",
-      project(
-        direct({
-          ...value,
-          evidence: {
-            ...value.evidence,
-            cpu: {
-              ...value.evidence.cpu!,
-              window: { ...value.evidence.cpu!.window!, consumer: null },
-            },
-          },
-        }),
-      ),
+  it("Independent HQ health is live without health embedded in the Mate record", () => {
+    expect(project(relay(health, true))).toMatchObject({ health, live: true });
+    expect(mateHealthCopy("Ada", project(relay(health, true)))?.title).toBe(
+      "Ada has been swapping to disk for 5 minutes — work is slow.",
     );
-    expect(copy?.description).toContain("No current process could be attributed");
-    expect(copy?.description).not.toContain("Close idle container workloads");
   });
+
   it("uses HQ's independent live health even without a conversation overview", () => {
     expect(project(relay(health, true))).toMatchObject({ health, live: true });
     expect(mateHealthCopy("Skákala", project(relay(health, true)))?.title).not.toContain(
       "last-known",
     );
   });
-  it("retains HQ's report when unreachable and labels it last-known", () => {
-    const copy = mateHealthCopy("Skákala", project(relay()));
-    expect(copy?.title).toContain("last-known health");
-    expect(copy?.description).toContain("current resources are unknown");
-  });
+
   it("an old live run cannot hide a newer stored warning", () => {
     const older = {
       ...health,
@@ -208,6 +125,51 @@ describe("health at the screen boundary", () => {
       evidence: { ...evidence, status: "ok" as const, resources: [] },
     };
     expect(mateHealthCopy("Skákala", project([...relay(), ...direct(newer)]))).toBeNull();
+  });
+  it("Decision: stale last-known health is not shown", () => {
+    expect(project(relay()).health).toEqual(health);
+    expect(mateHealthCopy("Skákala", project(relay()))).toBeNull();
+  });
+  it.each(["direct", "HQ"])(
+    "A lost %s health source hides retained notice during reconnect grace",
+    (source) => {
+      const inputs = source === "direct" ? direct() : relay(health, true);
+      const lost: AccountInput = {
+        kind: "stream",
+        key: source === "direct" ? linkKeys.mateHealth("ada") : linkKeys.hq("org"),
+        now: 1,
+        event: {
+          kind: "fault",
+          jitter: 0,
+          fault: { outcome: "transient", message: "connection lost" },
+        },
+      };
+      expect(mateHealthCopy("Ada", project([...inputs, lost]))).toBeNull();
+    },
+  );
+  it("HQ changes health freshness without replacing the same source sample", () => {
+    const stored = relay({ ...health, evidence: { ...evidence, status: "ok" } }, false).map(
+      (input): AccountInput => (input.kind === "rows" ? { ...input, generation: 1 } : input),
+    );
+    const inputs = [...relay(health, true), ...stored];
+    expect(project(inputs)).toEqual({ health, live: false });
+    expect(mateHealthCopy("Ada", project(inputs))).toBeNull();
+    const resumed = relay(health, true).filter((input) => input.kind === "rows");
+    expect(project([...inputs, ...resumed])).toEqual({ health, live: true });
+  });
+  it("A stored HQ confirmation cannot make a live direct health sample stale", () => {
+    const stored = relay(health, true).map((input): AccountInput =>
+      input.kind === "rows"
+        ? {
+            ...input,
+            rows: input.rows.map((row) => ({
+              ...row,
+              revision: { kind: "mate-attention", ...health.source, live: false },
+            })),
+          }
+        : input,
+    );
+    expect(project([...direct(), ...stored])).toEqual({ health, live: true });
   });
   it("does not invent health for a Mate with no sample", () => {
     expect(mateHealthCopy("Skákala", project([]))).toBeNull();
@@ -243,6 +205,7 @@ describe("health at the screen boundary", () => {
         memory: {
           ...evidence.memory!,
           growth: { high: 0, max: 0, oom: 0, oomKill },
+          oomKilledAt: oomKill ? 1791806400000 : null,
           swapCurrent: 0,
           swapMax: 0,
           pressure,
@@ -251,29 +214,31 @@ describe("health at the screen boundary", () => {
     };
     expect(mateHealthCopy("Toby", project(direct(value)))).toEqual({
       severity,
-      title: "Toby is short of memory — work may be slow",
-      description:
-        "Close idle terminal agents or the IDE in the container, or raise the RAM limit in Zerops.",
+      title: oomKill
+        ? "Toby ran out of memory and the system stopped a process."
+        : "Toby has been swapping to disk for 5 minutes — work is slow.",
+      description: "Close unused browsers or raise minRam in Zerops.",
     });
   });
   it.each([true, false])(
     "Decision: one derivation per state; consumers never recompute it. (live=%s)",
     (live) => {
-      // The owner authorizes removing the client's stricter policy, including retained reports.
       const value: MateHealth = {
         ...health,
-        evidence: { ...evidence, resources: ["io", "memory", "cpu"], severity: "critical" },
+        evidence: { ...evidence, resources: ["io", "memory", "pids"], severity: "critical" },
       };
       const baseline = mateHealthCopy("Toby", project(relay(value, live)));
-      expect(baseline?.severity).toBe("critical");
-      expect(baseline?.title).toContain("is slowed by I/O stalls");
-      expect(baseline?.description).toContain("Close idle terminal agents");
+      if (live) {
+        expect(baseline?.severity).toBe("critical");
+        expect(baseline?.title).toBe("Toby has been waiting on disk for 5 minutes.");
+        expect(baseline?.description).toContain("Close unused browsers");
+      } else expect(baseline).toBeNull();
       const changed: MateHealth = {
         ...value,
         evidence: { ...value.evidence, memory: null, io: null, disk: { free: 0, total: 5000 } },
       };
       expect(mateHealthCopy("Toby", project(relay(changed, live)))).toEqual(baseline);
-      expect(baseline?.description).not.toContain("Free space");
+      if (live) expect(baseline?.description).not.toContain("state disk is full");
     },
   );
   it.each(["warning", "critical"] as const)(
@@ -290,35 +255,7 @@ describe("health at the screen boundary", () => {
       expect(mateHealthCopy("Toby", project(direct(value)))?.severity).toBe(severity);
     },
   );
-  it("Retained CPU reports keep the owner's notice without an attribution window", () => {
-    const value = cpuHealth(true);
-    const { window: _, ...cpu } = value.evidence.cpu!;
-    const copy = mateHealthCopy(
-      "Hardy",
-      project(relay({ ...value, evidence: { ...value.evidence, cpu } })),
-    );
-    expect(copy?.title).toBe("Hardy · last-known health is under CPU pressure");
-    expect(copy?.description).toContain("current resources are unknown");
-    expect(copy?.description).not.toContain("Measured");
-  });
-  it("A fixed CPU verdict keeps its notice when raw saturation and PSI change", () => {
-    const value = cpuHealth(true);
-    const baseline = mateHealthCopy("Hardy", project(direct(value)));
-    const changed: MateHealth = {
-      ...value,
-      evidence: {
-        ...value.evidence,
-        cpu: {
-          ...value.evidence.cpu!,
-          some: { avg10: 0, total: 500000 },
-          full: null,
-          window: { ...value.evidence.cpu!.window!, saturated: false },
-        },
-      },
-    };
-    expect(baseline?.title).toBe("Hardy is under CPU pressure");
-    expect(mateHealthCopy("Hardy", project(direct(changed)))).toEqual(baseline);
-  });
+
   it.each(["ok", "unknown"] as const)(
     "An owner-reported %s state stays quiet despite raw pressure",
     (status) => {

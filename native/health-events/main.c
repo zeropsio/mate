@@ -11,14 +11,14 @@
 
 int main(int argc, char **argv) {
   if (argc < 2) return 2;
-  struct pollfd *fds = calloc((size_t)argc * 3 + 1, sizeof(*fds));
+  struct pollfd *fds = calloc((size_t)argc * 2 + 1, sizeof(*fds));
   if (!fds) return 1;
   int count = 0;
   int changes = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
   if (changes < 0) { perror("inotify"); return 1; }
   fds[count++] = (struct pollfd){ .fd = changes, .events = POLLIN };
   const char *watched[] = { "memory.events", "memory.high", "memory.max", "memory.swap.max" };
-  const char *pressures[] = { "memory.pressure", "cpu.pressure", "io.pressure" };
+  const char *pressures[] = { "memory.pressure", "io.pressure" };
   /* Wake on any recorded stall in the kernel tracking window. The TypeScript
    * sampler owns the verdict; this trigger is not a health threshold. */
   const char trigger[] = "some 1 2000000";

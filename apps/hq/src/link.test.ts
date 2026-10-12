@@ -51,7 +51,7 @@ const healthAt = (revision: number) => ({
     severity: "warning",
     resources: ["io"],
     memory: null,
-    cpu: null,
+    pids: null,
     io: { some: { avg10: 1.75, total: 2_792_695_561 + revision }, full: null },
     disk: null,
     unavailable: [],

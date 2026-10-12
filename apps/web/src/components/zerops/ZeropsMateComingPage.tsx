@@ -2,7 +2,6 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { useMateRecovery } from "~/zerops/useMateRecovery";
 import { recoveryNotice } from "@t3tools/client-runtime/data";
 import { MateStateDetails } from "./MateStateDetails";
-import { MateHealthNotice } from "./MateHealthNotice";
 import { ConversationOpeningStage } from "../chat/ConversationOpeningStage";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { useAtomValue } from "@effect/atom-react";
@@ -874,14 +873,12 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           ready={false}
           name={named.name}
           mate={named}
-          notice={<MateHealthNotice projectId={projectId} name={named.name} />}
           activity={liveActivity ?? toldActivity}
           timestampFormat={timestampFormat}
         />
       ) : view === null ? null : (
         <ConversationOpeningStage ready={false} name={named.name} mate={named}>
           <MateEmptyStateView
-            notice={<MateHealthNotice projectId={projectId} name={named.name} />}
             coming={view}
             // Handed over to from the creation's view, whose headline held the focus.
             focusOnArrival={made !== undefined}

@@ -944,7 +944,7 @@ it.effect("sends measured health even when the conversation overview cannot answ
             swapMax: 512 * 1024 ** 2,
             swapGrowth: 1024,
           },
-          cpu: null,
+          pids: null,
           io: null,
           disk: null,
           unavailable: [],

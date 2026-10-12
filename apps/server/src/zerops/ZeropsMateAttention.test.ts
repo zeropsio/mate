@@ -328,7 +328,7 @@ it.effect("publishes health without waiting for conversation persistence", () =>
         severity: "warning",
         resources: [],
         memory: null,
-        cpu: null,
+        pids: null,
         io: null,
         disk: null,
         unavailable: ["cgroup-v2"],

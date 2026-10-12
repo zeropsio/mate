@@ -14,7 +14,6 @@ import {
   resourceHealthChanges,
   readResourceHealth as readKernelResourceHealth,
 } from "./mateResourceHealth.ts";
-import { makeCpuSampler } from "./mateCpuHealth.ts";
 import type { MateResourceHealth } from "@t3tools/contracts";
 
 // Hold a kernel read to deliver a cadence tick at the asynchronous boundary.
@@ -30,18 +29,7 @@ vi.mock("node:fs/promises", async (original) => {
   };
 });
 
-// Memory/disk cases begin with an established, quiet CPU window.
-async function readResourceHealth(
-  groups: ReadonlyArray<string>,
-  stateDir: string,
-  previous?: MateResourceHealth,
-) {
-  let now = 0;
-  const cpu = makeCpuSampler(groups, { nowUsec: () => now });
-  await cpu();
-  now = 2_000_000;
-  return readKernelResourceHealth(groups, stateDir, previous, cpu);
-}
+const readResourceHealth = readKernelResourceHealth;
 
 const dirs: string[] = [];
 async function fixture(values: Record<string, string> = {}) {
@@ -55,10 +43,8 @@ async function fixture(values: Record<string, string> = {}) {
     "memory.swap.current": "0",
     "memory.swap.max": "0",
     "memory.pressure": "some avg10=0.00 total=0\nfull avg10=0.00 total=0\n",
-    "cpu.pressure": "some avg10=0.00 total=0\nfull avg10=0.00 total=0\n",
-    "cpu.max": "max 100000",
-    "cpuset.cpus.effective": "0-1",
-    "cpu.stat": "usage_usec 0\nnr_throttled 0\n",
+    "pids.current": "136",
+    "pids.max": "2000",
     "io.pressure": "some avg10=0.00 total=0\nfull avg10=0.00 total=0\n",
     ...values,
   };
@@ -85,7 +71,7 @@ describe("container resource evidence", () => {
       "io.pressure":
         "some avg10=90 avg60=1 avg300=1 total=300\nfull avg10=0 avg60=0 avg300=0 total=0\n",
     });
-    const health = await readResourceHealth([leaf, root], root);
+    const health = await readResourceHealth([leaf, root], root, undefined, 0);
     expect(health.memory?.pressure?.full).toEqual({ avg10: 0, avg60: 10, avg300: 10, total: 200 });
     expect(health.io?.full).toEqual({ avg10: 0, avg60: 10, avg300: 10, total: 200 });
     expect(health.resources).toEqual(["memory", "io"]);
@@ -96,32 +82,33 @@ describe("container resource evidence", () => {
       "memory.high": "1610612736",
       "memory.swap.current": "536870912",
       "memory.swap.max": "536870912",
-      "memory.pressure": "some avg10=60.00 total=300\nfull avg10=40.00 total=200\n",
+      "memory.pressure":
+        "some avg10=60.00 avg60=40 avg300=40 total=300\nfull avg10=40.00 avg60=10 avg300=10 total=200\n",
     });
-    const health = await readResourceHealth([dir], dir);
+    const health = await readResourceHealth([dir], dir, undefined, 0);
     expect(health).toMatchObject({
       status: "strained",
-      severity: "critical",
+      severity: "warning",
       resources: ["memory"],
       memory: { high: 1610612736, swapCurrent: 536870912 },
     });
   });
   it("distinguishes old OOM counters from new kills, and unlimited from unreadable", async () => {
     const dir = await fixture({ "memory.events": "high 8\nmax 0\noom 4\noom_kill 2\n" });
-    const previous = await readResourceHealth([dir], dir);
+    const previous = await readResourceHealth([dir], dir, undefined, 0);
     expect(previous.status).toBe("ok");
     await NodeFSP.writeFile(
       NodePath.join(dir, "memory.events"),
       "high 9\nmax 0\noom 5\noom_kill 3\n",
     );
-    const next = await readResourceHealth([dir], dir, previous);
+    const next = await readResourceHealth([dir], dir, previous, 0);
     expect(next).toMatchObject({
       status: "strained",
       severity: "critical",
       memory: { growth: { high: 1, oom: 1, oomKill: 1 } },
     });
     await NodeFSP.writeFile(NodePath.join(dir, "memory.high"), "garbage");
-    expect((await readResourceHealth([dir], dir)).status).toBe("unknown");
+    expect((await readResourceHealth([dir], dir, undefined, 0)).status).toBe("unknown");
   });
   it("uses the ancestor enforcing the tightest cap, not the service's unlimited leaf", async () => {
     const root = await fixture({
@@ -130,38 +117,12 @@ describe("container resource evidence", () => {
       "memory.current": "200",
     });
     const leaf = await fixture();
-    expect(await readResourceHealth([leaf, root], leaf)).toMatchObject({
+    expect(await readResourceHealth([leaf, root], leaf, undefined, 0)).toMatchObject({
       status: "ok",
       memory: { high: 150, max: 300, current: 200 },
     });
   });
-  it.each(["reclaim", "swap"])(
-    "retains root %s pressure with a tighter child cap",
-    async (signal) => {
-      const root = await fixture({
-        "memory.max": String(3.75 * 1024 ** 3),
-        "memory.high": String(1.75 * 1024 ** 3),
-        "memory.swap.max": String(512 * 1024 ** 2),
-      });
-      const child = await fixture({ "memory.max": String(1024 ** 3) });
-      const previous = await readResourceHealth([child, root], root);
-      await NodeFSP.writeFile(
-        NodePath.join(root, signal === "reclaim" ? "memory.events" : "memory.swap.current"),
-        signal === "reclaim" ? "high 1\nmax 0\noom 0\noom_kill 0\n" : String(200 * 1024 ** 2),
-      );
-      const next = await readResourceHealth([child, root], root, previous);
-      expect(next).toMatchObject({
-        status: "strained",
-        resources: ["memory"],
-        memory: {
-          scope: root,
-          max: 3.75 * 1024 ** 3,
-          high: 1.75 * 1024 ** 3,
-          ...(signal === "reclaim" ? { growth: { high: 1 } } : { swapGrowth: 200 * 1024 ** 2 }),
-        },
-      });
-    },
-  );
+
   it.each(["disabled", "unreadable"])(
     "preserves descendant PSI when container accounting is %s",
     async (accounting) => {
@@ -172,10 +133,11 @@ describe("container resource evidence", () => {
       });
       const child = await fixture({
         "memory.max": String(1024 ** 3),
-        "memory.pressure": "some avg10=30.00 total=300\nfull avg10=24.00 total=240\n",
+        "memory.pressure":
+          "some avg10=30.00 avg60=40 avg300=40 total=300\nfull avg10=24.00 avg60=10 avg300=10 total=240\n",
       });
       if (accounting === "unreadable") await NodeFSP.unlink(NodePath.join(root, "memory.pressure"));
-      const health = await readResourceHealth([child, root], root);
+      const health = await readResourceHealth([child, root], root, undefined, 0);
       expect(health).toMatchObject({
         status: "strained",
         resources: ["memory"],
@@ -192,7 +154,7 @@ describe("container resource evidence", () => {
         NodePath.join(child, "memory.pressure"),
         "some avg10=0.00 total=300\nfull avg10=0.00 total=240\n",
       );
-      expect((await readResourceHealth([child, root], root, health)).status).toBe(
+      expect((await readResourceHealth([child, root], root, health, 0)).status).toBe(
         accounting === "unreadable" ? "unknown" : "ok",
       );
     },
@@ -203,9 +165,10 @@ describe("container resource evidence", () => {
     const child = await fixture({
       "memory.max": String(1024 ** 3),
       "memory.high": String(0.5 * 1024 ** 3),
-      "memory.pressure": "some avg10=30.00 total=300\nfull avg10=24.00 total=240\n",
+      "memory.pressure":
+        "some avg10=30.00 avg60=40 avg300=40 total=300\nfull avg10=24.00 avg60=10 avg300=10 total=240\n",
     });
-    expect(await readResourceHealth([child, root], root)).toMatchObject({
+    expect(await readResourceHealth([child, root], root, undefined, 0)).toMatchObject({
       status: "strained",
       resources: ["memory"],
       unavailable: ["memory.current"],
@@ -217,10 +180,11 @@ describe("container resource evidence", () => {
     async (accounting) => {
       const root = await fixture({ "cgroup.pressure": "0" });
       const child = await fixture({
-        "io.pressure": "some avg10=30.00 total=300\nfull avg10=24.00 total=240\n",
+        "io.pressure":
+          "some avg10=30.00 avg60=40 avg300=40 total=300\nfull avg10=24.00 avg60=10 avg300=10 total=240\n",
       });
       if (accounting === "unreadable") await NodeFSP.unlink(NodePath.join(root, "io.pressure"));
-      const health = await readResourceHealth([child, root], root);
+      const health = await readResourceHealth([child, root], root, undefined, 0);
       expect(health).toMatchObject({
         status: "strained",
         resources: ["io"],
@@ -232,60 +196,17 @@ describe("container resource evidence", () => {
         NodePath.join(child, "io.pressure"),
         "some avg10=0.00 total=300\nfull avg10=0.00 total=240\n",
       );
-      expect((await readResourceHealth([child, root], root, health)).status).toBe(
+      expect((await readResourceHealth([child, root], root, health, 0)).status).toBe(
         accounting === "unreadable" ? "unknown" : "ok",
       );
     },
   );
-  it.each([
-    { allocation: 3.375, highGrowth: 0, maxGrowth: 0, swapGrowth: 0, io: 30, resources: ["io"] },
-    { allocation: 3.75, highGrowth: 0, maxGrowth: 0, swapGrowth: 0, io: 0, resources: [] },
-    {
-      allocation: 3.375,
-      highGrowth: 1,
-      maxGrowth: 0,
-      swapGrowth: 0,
-      io: 30,
-      resources: ["memory", "io"],
-    },
-    { allocation: 3.75, highGrowth: 0, maxGrowth: 1, swapGrowth: 0, io: 0, resources: ["memory"] },
-    { allocation: 3.75, highGrowth: 0, maxGrowth: 0, swapGrowth: 1, io: 0, resources: ["memory"] },
-  ])(
-    "Rhea distinguishes static readings from growth: %j",
-    async ({ allocation, highGrowth, maxGrowth, swapGrowth, io, resources }) => {
-      const dir = await fixture({
-        "memory.current": String(2 * 1024 ** 3),
-        "memory.max": String(allocation * 1024 ** 3),
-        "memory.high": String((allocation - 2) * 1024 ** 3),
-        "memory.events": "high 2513\nmax 7\noom 0\noom_kill 0\n",
-        "memory.swap.current": String(200 * 1024 ** 2),
-        "memory.swap.max": String(512 * 1024 ** 2),
-        "io.pressure": `some avg10=${io} total=300\nfull avg10=${io ? 24 : 0} total=240\n`,
-      });
-      const previous = await readResourceHealth([dir], dir);
-      expect(previous.resources).toEqual(io ? ["io"] : []);
-      await NodeFSP.writeFile(
-        NodePath.join(dir, "memory.events"),
-        `high ${2513 + highGrowth}\nmax ${7 + maxGrowth}\noom 0\noom_kill 0\n`,
-      );
-      await NodeFSP.writeFile(
-        NodePath.join(dir, "memory.swap.current"),
-        String(200 * 1024 ** 2 + swapGrowth),
-      );
-      const next = await readResourceHealth([dir], dir, previous);
-      expect(next.resources).toEqual(resources);
-      expect(next.severity).toBe("warning");
-      expect(next.memory).toMatchObject({
-        max: allocation * 1024 ** 3,
-        high: (allocation - 2) * 1024 ** 3,
-        growth: { max: maxGrowth },
-        swapGrowth,
-      });
-    },
-  );
+
   it("does not call an unreadable disk healthy", async () => {
     const dir = await fixture();
-    expect(await readResourceHealth([dir], NodePath.join(dir, "missing"))).toMatchObject({
+    expect(
+      await readResourceHealth([dir], NodePath.join(dir, "missing"), undefined, 0),
+    ).toMatchObject({
       status: "unknown",
       disk: null,
     });
@@ -302,7 +223,7 @@ it.effect("publishes a changed kernel file without a polling timer", () =>
             ? Effect.promise(() =>
                 NodeFSP.writeFile(
                   NodePath.join(dir, "memory.events"),
-                  "high 1\nmax 0\noom 0\noom_kill 0\n",
+                  "high 1\nmax 0\noom 0\noom_kill 1\n",
                 ),
               )
             : Effect.void,
@@ -314,48 +235,20 @@ it.effect("publishes a changed kernel file without a polling timer", () =>
   }),
 );
 
-it("reports CPU and I/O stalls and clears them only when the kernel reports no recent stalls", async () => {
-  const dir = await fixture({
-    "io.pressure": "some avg10=5.00 total=40\nfull avg10=2.00 total=20\n",
-  });
-  let now = 0;
-  const cpu = makeCpuSampler([dir], { nowUsec: () => now });
-  await cpu();
-  await NodeFSP.writeFile(NodePath.join(dir, "cpu.pressure"), "some avg10=20.00 total=400000\n");
-  await NodeFSP.writeFile(NodePath.join(dir, "cpu.stat"), "usage_usec 3800000\nnr_throttled 0\n");
-  now = 2_000_000;
-  const before = await readKernelResourceHealth([dir], dir, undefined, cpu);
-  expect(before.resources).toEqual(["io", "cpu"]);
-  await NodeFSP.writeFile(NodePath.join(dir, "cpu.pressure"), "some avg10=20.00 total=800000\n");
-  await NodeFSP.writeFile(NodePath.join(dir, "cpu.stat"), "usage_usec 7600000\nnr_throttled 0\n");
-  now = 4_000_000;
-  expect((await readKernelResourceHealth([dir], dir, before, cpu)).resources).toEqual([
-    "io",
-    "cpu",
-  ]);
-  await NodeFSP.writeFile(
-    NodePath.join(dir, "io.pressure"),
-    "some avg10=0.00 total=40\nfull avg10=0.00 total=20\n",
-  );
-  now = 6_000_000;
-  const after = await readKernelResourceHealth([dir], dir, before, cpu);
-  expect(after.status).toBe("ok");
-});
-
 it("counts new events and swap across a changed RAM cap, but never subtracts counters from another cgroup", async () => {
   const dir = await fixture({ "memory.high": "150" });
-  const previous = await readResourceHealth([dir], dir);
+  const previous = await readResourceHealth([dir], dir, undefined, 0);
   await NodeFSP.writeFile(NodePath.join(dir, "memory.high"), "200");
   await NodeFSP.writeFile(
     NodePath.join(dir, "memory.events"),
     "high 1\nmax 0\noom 1\noom_kill 1\n",
   );
-  expect((await readResourceHealth([dir], dir, previous)).memory?.growth.oomKill).toBe(1);
+  expect((await readResourceHealth([dir], dir, previous, 0)).memory?.growth.oomKill).toBe(1);
   const other = await fixture({
     "memory.high": "200",
     "memory.events": "high 9\nmax 0\noom 9\noom_kill 9\n",
   });
-  const changedScope = await readResourceHealth([other], other, previous);
+  const changedScope = await readResourceHealth([other], other, previous, 0);
   expect(changedScope.memory?.growth).toEqual({ high: 0, max: 0, oom: 0, oomKill: 0 });
   expect(changedScope.memory?.swapGrowth).toBe(0);
 });
@@ -370,122 +263,6 @@ it.effect("reports missing notification coverage alongside the remaining measure
   }),
 );
 
-it.effect(
-  "publishes CPU exhaustion and the first recovered window without waiting for the PSI average to decay",
-  () =>
-    Effect.gen(function* () {
-      const dir = yield* Effect.promise(() => fixture());
-      let now = 0;
-      const cpu = makeCpuSampler([dir], { nowUsec: () => now, procRoot: dir });
-      const values = yield* Stream.runCollect(
-        resourceHealthChanges(dir, [dir], undefined, cpu).pipe(
-          Stream.tap((sample) =>
-            Effect.gen(function* () {
-              if (sample.cpu?.window === null) {
-                yield* Effect.promise(() =>
-                  Promise.all([
-                    NodeFSP.writeFile(
-                      NodePath.join(dir, "cpu.pressure"),
-                      "some avg10=20.00 total=400000\n",
-                    ),
-                    NodeFSP.writeFile(
-                      NodePath.join(dir, "cpu.stat"),
-                      "usage_usec 3800000\nnr_throttled 0\n",
-                    ),
-                  ]),
-                );
-                now = 2_000_000;
-                yield* TestClock.adjust(2000);
-              } else if (sample.resources.includes("cpu")) {
-                now = 4_000_000;
-                yield* TestClock.adjust(2000);
-              }
-            }),
-          ),
-          Stream.take(3),
-        ),
-      );
-      expect(values.map((value) => value.resources)).toEqual([[], ["cpu"], []]);
-      expect(values[2]?.cpu?.some.avg10).toBe(20);
-    }),
-);
-
-it.effect(
-  "observes swap growth on the shared cadence and clears it in the first quiet window",
-  () =>
-    Effect.gen(function* () {
-      const dir = yield* Effect.promise(() => fixture({ "memory.swap.max": "536870912" }));
-      const values = yield* Stream.runCollect(
-        resourceHealthChanges(dir, [dir]).pipe(
-          Stream.tap((sample) =>
-            Effect.gen(function* () {
-              if (sample.memory?.swapCurrent === 0) {
-                yield* Effect.promise(() =>
-                  NodeFSP.writeFile(NodePath.join(dir, "memory.swap.current"), "209715200"),
-                );
-                yield* TestClock.adjust(2000);
-              } else if (sample.resources.includes("memory")) {
-                yield* TestClock.adjust(2000);
-              }
-            }),
-          ),
-          Stream.take(3),
-        ),
-      );
-      expect(values.map((value) => value.resources)).toEqual([[], ["memory"], []]);
-      expect(values[1]?.memory?.swapGrowth).toBe(209715200);
-      expect(values[2]?.memory?.swapCurrent).toBe(209715200);
-    }),
-);
-
-it.effect("a tick during an event read advances CPU and memory together at the next boundary", () =>
-  Effect.gen(function* () {
-    const dir = yield* Effect.promise(() => fixture());
-    const samples = yield* Queue.unbounded<MateResourceHealth>();
-    let calls = 0;
-    // The tick's window is strained, so the Mate publishes it beside the memory strain it carries.
-    const cpu = async () => ({
-      cpu: { some: { avg10: 0, total: ++calls }, full: null, window: null },
-      strained: calls === 2,
-      unavailable: [],
-    });
-    yield* Effect.forkScoped(
-      Stream.runForEach(resourceHealthChanges(dir, [dir], undefined, cpu), (value) =>
-        Queue.offer(samples, value),
-      ),
-    );
-    yield* Queue.take(samples);
-    let entered!: () => void;
-    let release!: () => void;
-    const started = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const blocked = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    reads.beforeCurrent = async () => {
-      reads.beforeCurrent = undefined;
-      entered();
-      await blocked;
-    };
-    yield* Effect.promise(() =>
-      NodeFSP.writeFile(NodePath.join(dir, "memory.events"), "high 1\nmax 0\noom 0\noom_kill 0\n"),
-    );
-    yield* Effect.promise(() => started);
-    yield* TestClock.adjust(2000);
-    release();
-    const event = yield* Queue.take(samples);
-    expect(event.memory?.growth.high).toBe(1);
-    expect(event.cpu?.some.total).toBe(1);
-    const tick = yield* Queue.take(samples);
-    expect(tick.cpu?.some.total).toBe(2);
-    yield* TestClock.adjust(2000);
-    const recovered = yield* Queue.take(samples);
-    expect(recovered.memory?.growth.high).toBe(0);
-    expect(recovered.resources).toEqual([]);
-  }),
-);
-
 describe("a Mate publishes a sample again only when its warning, or a number the warning quotes, changes", () => {
   const quiet = { avg10: 0, total: 0 };
   const sample = (change: {
@@ -495,10 +272,6 @@ describe("a Mate publishes a sample again only when its warning, or a number the
     readonly memoryCurrent?: number;
     readonly memoryHigh?: number;
     readonly ioAvg10?: number;
-    readonly cpuTotal?: number;
-    readonly usageUsec?: number;
-    readonly elapsedUsec?: number;
-    readonly consumer?: { readonly pid: number; readonly name: string; readonly cpuCores: number };
   }): MateResourceHealth => ({
     status: change.status ?? "ok",
     severity: change.severity ?? "warning",
@@ -514,65 +287,31 @@ describe("a Mate publishes a sample again only when its warning, or a number the
       swapMax: 0,
       swapGrowth: 0,
     },
-    cpu: {
-      some: { avg10: 6.18, total: change.cpuTotal ?? 5_996_062_707 },
-      full: quiet,
-      window: {
-        scope: "/sys/fs/cgroup",
-        elapsedUsec: change.elapsedUsec ?? 2_000_000,
-        usageUsec: change.usageUsec ?? 3_800_000,
-        someUsec: 155_374,
-        fullUsec: 3_894,
-        capacityCpus: 2,
-        throttledPeriods: 0,
-        saturated: true,
-        consumer: change.consumer ?? { pid: 42, name: "node", cpuCores: 1.5 },
-      },
-    },
+    pids: null,
     io: { some: { avg10: change.ioAvg10 ?? 1.75, total: 2_792_695_561 }, full: quiet },
     disk: { free: 263_085_883_392, total: 268_435_456_000 },
     unavailable: [],
   });
   const io = { status: "strained", resources: ["io"] } as const;
-  const cpu = { status: "strained", resources: ["cpu"] } as const;
   const again = "publishes again";
   const nothing = "publishes nothing";
   it.each([
-    ["a healthy Mate whose usage moved", nothing, {}, { memoryCurrent: 950, cpuTotal: 1 }],
-    ["a healthy Mate whose RAM cap changed", again, {}, { memoryHigh: 2000 }],
+    ["a healthy Mate whose usage moved", nothing, {}, { memoryCurrent: 950 }],
+    ["a healthy Mate whose RAM cap changed", nothing, {}, { memoryHigh: 2000 }],
     [
-      "an I/O-strained Mate whose numbers moved, none of them quoted,",
+      "an I/O-strained Mate whose unquoted numbers moved",
       nothing,
       io,
-      { ...io, ioAvg10: 9.5, memoryCurrent: 950, cpuTotal: 1, usageUsec: 1_000_000 },
+      { ...io, ioAvg10: 9.5, memoryCurrent: 950 },
     ],
     [
-      "an I/O-strained Mate now strained on CPU too",
+      "an I/O-strained Mate now near its task limit too",
       again,
       io,
-      { ...cpu, resources: ["io", "cpu"] },
+      { ...io, resources: ["io", "pids"] },
     ],
     ["an I/O-strained Mate that recovered", again, io, {}],
     ["a strained Mate that turned critical", again, io, { ...io, severity: "critical" }],
-    ["a CPU-strained Mate whose measured use moved", again, cpu, { ...cpu, usageUsec: 3_000_000 }],
-    [
-      "a CPU-strained Mate whose window took a different time",
-      again,
-      cpu,
-      { ...cpu, elapsedUsec: 2_100_000, usageUsec: 3_990_000 },
-    ],
-    [
-      "a CPU-strained Mate whose top process changed",
-      again,
-      cpu,
-      { ...cpu, consumer: { pid: 43, name: "vite", cpuCores: 1.5 } },
-    ],
-    [
-      "a CPU-strained Mate whose unquoted numbers moved, the quote the same to two decimals,",
-      nothing,
-      cpu,
-      { ...cpu, usageUsec: 3_800_400, ioAvg10: 9.5, memoryCurrent: 950, cpuTotal: 1 },
-    ],
   ] as const)("%s %s", (_case, verdict, previous, next) => {
     expect(publishesAgain(sample(previous), sample(next))).toBe(verdict === again);
   });
@@ -604,3 +343,143 @@ it.effect(
       expect(yield* Queue.size(published)).toBe(0);
     }),
 );
+
+// cgroup-v2 file shapes captured read-only from Fen and Ada on 2026-10-12.
+describe("Approved health notices", () => {
+  it.each([
+    [
+      "memory.high event",
+      {
+        "memory.events":
+          "low 0\nhigh 22831\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\nsock_throttled 11021\n",
+      },
+    ],
+    ["swap growth", { "memory.swap.current": "209715200" }],
+    [
+      "brief memory PSI",
+      {
+        "memory.pressure":
+          "some avg10=90.00 avg60=1.00 avg300=0.20 total=23849061\nfull avg10=40.00 avg60=1.00 avg300=0.20 total=13008446\n",
+      },
+    ],
+    [
+      "brief I/O PSI",
+      {
+        "io.pressure":
+          "some avg10=90.00 avg60=1.00 avg300=0.20 total=17190765\nfull avg10=40.00 avg60=1.00 avg300=0.20 total=10213888\n",
+      },
+    ],
+    ["hard-limit event without a kill", { "memory.events": "high 0\nmax 1\noom 1\noom_kill 0\n" }],
+  ])("routine scaling stays quiet: %s", async (_signal, files) => {
+    const dir = await fixture({ "memory.events": "high 22830\nmax 0\noom 0\noom_kill 0\n" });
+    const previous = await readResourceHealth([dir], dir, undefined, 0);
+    await Promise.all(
+      Object.entries(files).map(([file, value]) =>
+        NodeFSP.writeFile(NodePath.join(dir, file), value),
+      ),
+    );
+    expect(await readResourceHealth([dir], dir, previous, 0)).toMatchObject({
+      status: "ok",
+      resources: [],
+    });
+  });
+  it.each([
+    [
+      "memory full",
+      "memory.pressure",
+      "some avg10=0 avg60=0 avg300=0 total=23849061\nfull avg10=0 avg60=10 avg300=10 total=13008446\n",
+      ["memory"],
+    ],
+    [
+      "memory some",
+      "memory.pressure",
+      "some avg10=0 avg60=40 avg300=40 total=23849061\nfull avg10=0 avg60=0 avg300=0 total=13008446\n",
+      ["memory"],
+    ],
+    [
+      "I/O full",
+      "io.pressure",
+      "some avg10=0 avg60=0 avg300=0 total=17190765\nfull avg10=0 avg60=10 avg300=10 total=10213888\n",
+      ["io"],
+    ],
+    [
+      "I/O some",
+      "io.pressure",
+      "some avg10=0 avg60=40 avg300=40 total=17190765\nfull avg10=0 avg60=0 avg300=0 total=10213888\n",
+      ["io"],
+    ],
+    ["task limit", "pids.current", "1800", ["pids"]],
+  ])("raises the approved %s notice at its boundary", async (_signal, file, value, resources) => {
+    const dir = await fixture({ [file]: value });
+    expect(await readResourceHealth([dir], dir, undefined, 0)).toMatchObject({
+      status: "strained",
+      severity: "warning",
+      resources,
+    });
+  });
+});
+
+it("An observed OOM kill stays visible for ten minutes without refreshing on reads", async () => {
+  const dir = await fixture();
+  const before = await readResourceHealth([dir], dir, undefined, 0);
+  await NodeFSP.writeFile(
+    NodePath.join(dir, "memory.events"),
+    "high 0\nmax 0\noom 1\noom_kill 1\n",
+  );
+  const killed = await readResourceHealth([dir], dir, before, 2000);
+  expect(killed).toMatchObject({
+    status: "strained",
+    severity: "critical",
+    resources: ["memory"],
+    memory: { oomKilledAt: 2000 },
+  });
+  const retained = await readResourceHealth([dir], dir, killed, 601999);
+  expect(retained).toMatchObject({
+    status: "strained",
+    memory: { oomKilledAt: 2000, growth: { oomKill: 0 } },
+  });
+  expect(publishesAgain(killed, retained)).toBe(false);
+  const expired = await readResourceHealth([dir], dir, retained, 602000);
+  expect(expired).toMatchObject({ status: "ok", resources: [], memory: { oomKilledAt: null } });
+  expect(publishesAgain(retained, expired)).toBe(true);
+});
+it.each(["memory.pressure", "io.pressure"])(
+  "Both long averages must cross the threshold for %s",
+  async (file) => {
+    for (const line of [
+      "some avg10=90 avg60=40 avg300=39.99 total=23849061\nfull avg10=90 avg60=10 avg300=9.99 total=13008446\n",
+      "some avg10=90 avg60=39.99 avg300=40 total=23849061\nfull avg10=90 avg60=9.99 avg300=10 total=13008446\n",
+    ]) {
+      const dir = await fixture({ [file]: line });
+      expect(await readResourceHealth([dir], dir, undefined, 0)).toMatchObject({
+        status: "ok",
+        resources: [],
+      });
+    }
+  },
+);
+it("The enforcing ancestor's task limit is visible and unlimited tasks stay quiet", async () => {
+  const root = await fixture({ "pids.current": "1800" });
+  const child = await fixture({ "pids.current": "40", "pids.max": "max" });
+  const before = await readResourceHealth([child, root], root, undefined, 0);
+  expect(before).toMatchObject({
+    resources: ["pids"],
+    pids: { scope: root, current: 1800, max: 2000 },
+  });
+  await NodeFSP.writeFile(NodePath.join(root, "pids.current"), "1799");
+  expect(await readResourceHealth([child, root], root, before, 0)).toMatchObject({
+    status: "ok",
+    resources: [],
+  });
+  await NodeFSP.writeFile(NodePath.join(root, "pids.max"), "max");
+  expect(await readResourceHealth([child, root], root, undefined, 0)).toMatchObject({
+    status: "ok",
+    resources: [],
+  });
+  await NodeFSP.unlink(NodePath.join(root, "pids.current"));
+  expect(await readResourceHealth([root], root, undefined, 0)).toMatchObject({
+    status: "unknown",
+    pids: null,
+    unavailable: ["pids.current"],
+  });
+});

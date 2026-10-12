@@ -1,10 +1,8 @@
-import { cpuWarningQuote, type MateHealth } from "@t3tools/contracts";
-import { hqMateScope } from "../families/hqMate.ts";
+import { type MateHealth } from "@t3tools/contracts";
 import { hqMateHealthScope, mateHealthScope } from "../families/mateHealth.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
-import { liveOrHeld } from "../streamMachine.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
 
 export interface MateHealthRead {
@@ -18,21 +16,19 @@ export const mateHealth: Projection<MateProjectKey, MateHealthRead> = {
   keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
   derive: (read, { orgId, projectId }) => {
     const attention = read.fact("mateHealth", projectId);
-    const relay = read.fact("hqMate", projectId);
     const health = attention.kind === "known" ? attention.value : null;
     const directLive =
       attention.kind === "known" &&
       attention.scope === mateHealthScope(projectId) &&
-      liveOrHeld(read.stream(linkKeys.mateHealth(projectId))) &&
-      liveOrHeld(read.stream(mateHealthScope(projectId)));
+      read.stream(linkKeys.mateHealth(projectId)).phase === "live" &&
+      read.stream(mateHealthScope(projectId)).phase === "live";
     const storedLive =
-      health !== null &&
-      relay.kind === "known" &&
-      relay.value.healthState === "live" &&
-      sameValue(relay.value.health?.source, health.source) &&
-      liveOrHeld(read.stream(linkKeys.hq(orgId))) &&
-      liveOrHeld(read.stream(hqMateScope(orgId, projectId))) &&
-      liveOrHeld(read.stream(hqMateHealthScope(orgId, projectId)));
+      attention.kind === "known" &&
+      attention.scope === hqMateHealthScope(orgId, projectId) &&
+      attention.revision.kind === "mate-attention" &&
+      attention.revision.live &&
+      read.stream(linkKeys.hq(orgId)).phase === "live" &&
+      read.stream(hqMateHealthScope(orgId, projectId)).phase === "live";
     const live = directLive || storedLive;
     return {
       health,
@@ -52,45 +48,26 @@ export function mateHealthCopy(
   readonly description: string;
 } | null {
   const { health, live } = read;
-  if (health === null || health.evidence.status !== "strained") return null;
-  const evidence = health.evidence;
-  const { resources, severity } = evidence;
-  if (resources.length === 0) return null;
-  const prefix = live ? name : `${name} · last-known health`;
-  const resource = resources[0];
-  const title =
+  if (!live || health === null || health.evidence.status !== "strained") return null;
+  const { evidence } = health;
+  if (evidence.resources.length === 0) return null;
+  const messages = evidence.resources.map((resource) =>
     resource === "memory"
-      ? `${prefix} is short of memory — work may be slow`
+      ? evidence.memory?.oomKilledAt != null
+        ? `${name} ran out of memory and the system stopped a process.`
+        : `${name} has been swapping to disk for 5 minutes — work is slow.`
       : resource === "disk"
-        ? `${prefix} has no free space on its state disk`
+        ? `${name}'s state disk is full.`
         : resource === "io"
-          ? `${prefix} is slowed by I/O stalls`
-          : `${prefix} is under CPU pressure`;
-  const actions = resources.flatMap((resource) =>
-    resource === "memory"
-      ? [
-          "Close idle terminal agents or the IDE in the container, or raise the RAM limit in Zerops.",
-        ]
-      : resource === "disk"
-        ? ["Free space on the Mate's state disk."]
-        : resource === "io"
-          ? [
-              "The kernel reports I/O stalls slowing container work. Reduce container disk activity.",
-            ]
-          : (() => {
-              const window = evidence.cpu?.window;
-              if (window == null) return [];
-              const quote = cpuWarningQuote(window);
-              const measured = `Measured ${quote.usedCores} CPU cores used out of a limit of ${quote.limitCores} over ${quote.seconds} seconds.`;
-              return [
-                measured,
-                quote.consumer === null
-                  ? "The kernel reports runnable work waiting for CPU. No current process could be attributed; inspect container workloads in Zerops."
-                  : `Top measured process: ${quote.consumer.name} (PID ${quote.consumer.pid}) used ${quote.consumer.cores} CPU cores. Check its workload before changing CPU in Zerops.`,
-              ];
-            })(),
+          ? `${name} has been waiting on disk for 5 minutes.`
+          : `${name} is near its process limit — likely leftover browsers.`,
   );
-  if (!live)
-    actions.push(`Last measured ${health.sampledAt}. The Mate's current resources are unknown.`);
-  return { severity, title, description: actions.join(" ") };
+  const hints = evidence.resources.includes("memory")
+    ? "Close unused browsers or raise minRam in Zerops."
+    : "";
+  return {
+    severity: evidence.severity,
+    title: messages[0]!,
+    description: [...messages.slice(1), hints].filter(Boolean).join(" "),
+  };
 }

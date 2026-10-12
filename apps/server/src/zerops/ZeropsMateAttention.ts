@@ -51,8 +51,12 @@ import { ServerConfig } from "../config.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { engineAttentionReads } from "./engineOverview.ts";
-import { CPU_SAMPLE_WINDOW_USEC } from "./mateCpuHealth.ts";
-import { latestAtMostEvery, publishesAgain, resourceHealthChanges } from "./mateResourceHealth.ts";
+import {
+  RESOURCE_HEALTH_SAMPLE_INTERVAL_MS,
+  latestAtMostEvery,
+  publishesAgain,
+  resourceHealthChanges,
+} from "./mateResourceHealth.ts";
 import { mateAttentionOf } from "./zeropsAttentionValue.ts";
 
 /** The most chats followed one by one between two reads; past it, all are read whole again. */
@@ -277,7 +281,7 @@ export const layer = Layer.effect(
         Stream.fromPubSub(healthDemand),
       ).pipe(
         // One sample a CPU window at most, the latest, and only one that says something new.
-        latestAtMostEvery(CPU_SAMPLE_WINDOW_USEC / 1000),
+        latestAtMostEvery(RESOURCE_HEALTH_SAMPLE_INTERVAL_MS),
         Stream.changesWith((a, b) => !publishesAgain(a, b)),
         Stream.mapEffect((evidence) =>
           Effect.map(Clock.currentTimeMillis, (ms) => ({

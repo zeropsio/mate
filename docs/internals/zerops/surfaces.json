@@ -798,15 +798,11 @@
     {
       "id": "zerops-resource-health",
       "title": "Mate resource health",
-      "components": ["apps/web/src/components/zerops/MateHealthNotice.tsx"],
+      "components": ["apps/web/src/components/chat/MateHealthBanner.tsx"],
       "entryPoints": [
         {
           "kind": "inline",
           "value": "ChatView composer"
-        },
-        {
-          "kind": "inline",
-          "value": "ZeropsMateComingPage"
         }
       ],
       "clients": {
@@ -827,7 +823,7 @@
       "reverseStates": [
         {
           "action": "Read resource strain",
-          "reverse": "none: A newer measured sample clears strain; loss of connection labels retained evidence last-known."
+          "reverse": "none: A newer healthy live sample clears the notice; loss of connection hides retained health."
         }
       ],
       "docs": {
@@ -837,7 +833,8 @@
         "apps/server/src/zerops/mateResourceHealth.test.ts",
         "apps/hq/src/mateOverviews.test.ts",
         "packages/client-runtime/src/data/projections/mateHealth.test.ts",
-        "apps/web/src/components/zerops/MateHealthNotice.test.tsx"
+        "apps/web/test/engine-oracle/mateHealth.oracle.test.ts",
+        "apps/web/test/scenarios/areas/c-mate/health.scenario.ts"
       ],
       "captures": []
     },

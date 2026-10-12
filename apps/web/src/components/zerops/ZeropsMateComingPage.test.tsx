@@ -128,8 +128,6 @@ const app = vi.hoisted(() => ({
   creations: [] as Array<unknown>,
   processes: [] as Array<unknown>,
   birthProgress: false,
-  healthNotice: null as string | null,
-  healthListeners: new Set<() => void>(),
   observeRefused: false,
   wholeForPerson: false,
   registration: {
@@ -147,18 +145,6 @@ vi.mock("~/zerops/useHqOffers", () => ({
 }));
 vi.mock("~/zerops/registration", () => ({ useMateRegistration: () => app.registration }));
 vi.mock("~/zerops/useMateRecovery", () => ({ useMateRecovery: () => app.recovery }));
-vi.mock("./MateHealthNotice", () => ({
-  MateHealthNotice: () => {
-    const notice = useSyncExternalStore(
-      (listener) => {
-        app.healthListeners.add(listener);
-        return () => app.healthListeners.delete(listener);
-      },
-      () => app.healthNotice,
-    );
-    return notice === null ? null : h("p", { role: "status" }, notice);
-  },
-}));
 vi.mock("~/zerops/useMenuMateReadings", () => ({
   useToldActivity: () => app.told,
   useLastKnownMateWords: () => undefined,
@@ -464,7 +450,6 @@ beforeEach(() => {
   app.registration = { attempt: 0, state: "waiting" };
   app.processes = [];
   app.birthProgress = false;
-  app.healthNotice = null;
   app.wholeForPerson = false;
 });
 afterEach(async () => {
@@ -483,31 +468,6 @@ afterEach(async () => {
 // at /zerops page". A Mate's own view waits for its link where it stands, connects it, and hands
 // over to its conversation; nothing in it takes the person to another screen on its own.
 describe("a Mate's own view while its link is made", () => {
-  it("keeps one waiting face while its project opens, including when a health notice arrives", () => {
-    app.link = {
-      key: KEY,
-      environmentId: ENV_QUINN,
-      reachability: { kind: "ready", notice: null },
-    } satisfies MateLink;
-    openView();
-    const stages = () =>
-      tree!.root.findAll((node) => node.props["data-conversation-opening"] === "waiting");
-    const stage = stages()[0];
-    expect(stages()).toHaveLength(1);
-    expect(tree!.root.findByProps({ "data-mate-face-state": "sleep" })).toBeDefined();
-    expect(tree!.root.findByProps({ "data-header-face": "sleep" })).toBeDefined();
-    act(() => {
-      app.healthNotice = "Sign in to the CLI processes.";
-      for (const listener of app.healthListeners) listener();
-    });
-    expect(stages()).toHaveLength(1);
-    expect(stages()[0]).toBe(stage);
-    expect(said()).toContain(app.healthNotice);
-    act(() => vi.advanceTimersByTime(10_000));
-    expect(stages()[0]).toBe(stage);
-    expect(tree!.root.findByProps({ "data-mate-face-state": "sleep" })).toBeDefined();
-  });
-
   it("connects it once by its target, says what it waits for, and stays", () => {
     const link: MateLink = {
       key: KEY,

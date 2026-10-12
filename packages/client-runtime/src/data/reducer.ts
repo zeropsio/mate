@@ -297,21 +297,29 @@ function reduceRows(
     if (current !== undefined && !admits(state, input, current, row)) {
       const held = current.revision;
       const incoming = row.revision;
-      // A direct confirmation of the held revision proves this path observed it, without
-      // replacing its value. A live path carrying an older run proves no freshness for it.
-      if (
-        input.via !== "mate-direct" ||
-        current.content.kind !== "value" ||
-        held.kind !== "mate-attention" ||
-        incoming.kind !== "mate-attention" ||
-        !incoming.live ||
-        held.environmentId !== incoming.environmentId ||
-        held.epoch !== incoming.epoch ||
-        held.incarnation !== incoming.incarnation ||
-        held.revision !== incoming.revision ||
-        current.scope === input.scope
-      )
-        continue;
+      // Equal source revisions keep their value. A direct confirmation can move its
+      // observed path; an ordered HQ path can change only that path's live metadata.
+      const sameSample =
+        current.content.kind === "value" &&
+        held.kind === "mate-attention" &&
+        incoming.kind === "mate-attention" &&
+        held.environmentId === incoming.environmentId &&
+        held.epoch === incoming.epoch &&
+        held.incarnation === incoming.incarnation &&
+        held.revision === incoming.revision;
+      const directConfirmation =
+        incoming.kind === "mate-attention" &&
+        input.via === "mate-direct" &&
+        incoming.live &&
+        current.scope !== input.scope;
+      const relayedFreshness =
+        held.kind === "mate-attention" &&
+        incoming.kind === "mate-attention" &&
+        input.via === "hq-stream" &&
+        current.via === input.via &&
+        current.scope === input.scope &&
+        held.live !== incoming.live;
+      if (!sameSample || (!directConfirmation && !relayedFreshness)) continue;
       draft ??= new Map(state.facts);
       draft.set(key, {
         ...current,

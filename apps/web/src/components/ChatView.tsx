@@ -1,5 +1,5 @@
 import { useBranchAdvice } from "./useBranchAdvice";
-import { isUsageLimitError } from "@t3tools/client-runtime/data";
+import { isUsageLimitError, mateHealthAtom } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
 import {
   agentAdmission,
@@ -401,6 +401,7 @@ import {
   threadErrorNotice,
 } from "./chat/threadErrorNotice.logic";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
+import { mateHealthBannerItem } from "./chat/MateHealthBanner";
 import { deriveDock, foldBackgroundTasks } from "./chat/conversationDock.logic";
 import { liveJobsOf } from "./chat/liveJobs.logic";
 import { useLiveJobs } from "./chat/useLiveJobs";
@@ -2375,6 +2376,9 @@ export default function ChatView(props: ChatViewProps) {
     recoveryMate.kind === "mate" ? (recoveryMate.mate.projectId ?? null) : null,
   );
   const tryMateAgain = useTryMateAgain();
+  const healthRead = useAtomValue(
+    mateHealthAtom(recoveryMate.kind === "mate" ? (recoveryMate.mate.projectId ?? "") : ""),
+  );
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
     const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
@@ -2402,6 +2406,12 @@ export default function ChatView(props: ChatViewProps) {
         projects: <Link to="/zerops" />,
       });
       if (banner !== null) items.push(banner);
+      const healthBanner = mateHealthBannerItem({
+        name: routeMateAt.mate.name,
+        read: healthRead,
+        projectUrl: routeMateAt.mate.projectUrl,
+      });
+      if (healthBanner !== null) items.push(healthBanner);
       return items;
     }
     if (activeEnvironmentUnavailableState && unavailableConnection && !suppressUnavailableBanner) {
@@ -2420,6 +2430,7 @@ export default function ChatView(props: ChatViewProps) {
     activeEnvironmentUnavailableState,
     environmentId,
     mateLinkVoice,
+    healthRead,
     mateRecoveryAction.act,
     mateRecoveryAction.busy,
     mateRecoveryAction.feedback,

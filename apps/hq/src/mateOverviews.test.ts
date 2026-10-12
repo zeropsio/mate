@@ -572,7 +572,7 @@ const healthSample = readHealth({
   evidence: {
     status: "strained",
     severity: "critical",
-    resources: ["cpu"],
+    resources: ["pids"],
     memory: {
       scope: "/sys/fs/cgroup",
       current: 2 * 1024 ** 3,
@@ -585,21 +585,7 @@ const healthSample = readHealth({
       swapMax: 512 * 1024 ** 2,
       swapGrowth: 1024,
     },
-    cpu: {
-      some: { avg10: 20, total: 400000 },
-      full: null,
-      window: {
-        scope: "/sys/fs/cgroup",
-        elapsedUsec: 2000000,
-        usageUsec: 3800000,
-        someUsec: 400000,
-        fullUsec: null,
-        capacityCpus: 2,
-        throttledPeriods: 0,
-        saturated: true,
-        consumer: { pid: 42, name: "code-server (node)", cpuCores: 1.8 },
-      },
-    },
+    pids: { scope: "/sys/fs/cgroup", current: 1900, max: 2000 },
     io: null,
     disk: null,
     unavailable: ["memory.current"],
