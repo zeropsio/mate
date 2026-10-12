@@ -221,7 +221,16 @@ function ReviewTag({
         {only === undefined ? null : <TooltipPopup side="bottom">{only.title}</TooltipPopup>}
       </Tooltip>
       <TagPortal>
-        <PopoverPrimitive.Positioner align="end" className="z-130" side="bottom" sideOffset={6}>
+        <PopoverPrimitive.Positioner
+          align="end"
+          className="z-130"
+          // Below or above its tag, never out to the side over the conversation: where neither
+          // holds it whole, the roomier one, its list scrolling in what it has.
+          collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
+          collisionPadding={8}
+          side="bottom"
+          sideOffset={6}
+        >
           <PopoverPrimitive.Popup
             className="menu-tagpop"
             data-zerops-surface="sidebar-project-changes"

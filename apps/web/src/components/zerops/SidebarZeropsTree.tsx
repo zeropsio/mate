@@ -3238,6 +3238,11 @@ function useRowDrag(onDragStart: ((event: ReactPointerEvent<HTMLElement>) => voi
 /** How far a press travels before it is a drag of its project's row. */
 const DRAG_FROM_PX = 5;
 
+/** A Mate named as its project: "Project · Mate" would say one name twice, so it says it once. */
+function sameName(project: string, mate: string): boolean {
+  return project.trim().toLocaleLowerCase() === mate.trim().toLocaleLowerCase();
+}
+
 function MateRowView<T extends RosterCandidate>({
   candidate,
   tint,
@@ -3618,13 +3623,14 @@ function MateRowView<T extends RosterCandidate>({
                 )}
                 data-zerops-surface="sidebar-mate-name"
               >
-                {project === undefined ? (
+                {project === undefined || sameName(project, name) ? (
                   <span className="min-w-0 truncate">{name}</span>
                 ) : (
-                  // The project's name gives way first; the Mate's keeps up to its share.
+                  // The project's name holds; the Mate's gives way first. The space before the dot is
+                  // a fixed one: a flex item drops a leading space.
                   <>
-                    <span className="min-w-0 truncate">{project}</span>
-                    <span className="menu-name-mate">{` · ${name}`}</span>
+                    <span className="menu-name-project">{project}</span>
+                    <span className="menu-name-mate">{`\u00a0· ${name}`}</span>
                   </>
                 )}
               </span>
@@ -4324,12 +4330,12 @@ function ComingMateRow({
       <span className="flex min-w-0 flex-col">
         <span className="flex h-5.5 min-w-0 items-center gap-2">
           <span className="menu-name flex min-w-0 font-medium">
-            {project === undefined ? (
+            {project === undefined || sameName(project, name) ? (
               <span className="min-w-0 truncate">{name}</span>
             ) : (
               <>
-                <span className="min-w-0 truncate">{project}</span>
-                <span className="menu-name-mate">{` · ${name}`}</span>
+                <span className="menu-name-project">{project}</span>
+                <span className="menu-name-mate">{`\u00a0· ${name}`}</span>
               </>
             )}
           </span>

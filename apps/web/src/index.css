@@ -3670,11 +3670,19 @@ code {
     padding-inline-start: 28px;
   }
 
-  /* "Project · Mate": the Mate's name after the project's, in the muted ink, keeping up to its
-     share while the project's name gives way first. */
+  /* "Project · Mate": the project is the row's unit, so its name holds; the Mate's, after it in the
+     muted ink, gives way first when the room runs out, and the project's only after it. */
+  .menu-name-project {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .menu-name-mate {
-    flex: none;
-    max-width: 45%;
+    flex: 0 1000 auto;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
