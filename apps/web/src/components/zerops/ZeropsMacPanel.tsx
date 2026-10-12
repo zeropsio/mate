@@ -3,8 +3,8 @@
  * same viewer as the agent's browser. A click is sent as a click at a pixel of
  * the captured window; printable keys are gathered and sent as one piece of
  * text once the person pauses (agent-device types text on macOS, it has no
- * key presses). While someone is working on the Mac, the window keeps
- * updating but input pauses: a click would take over their screen.
+ * key presses). A click or typing here is the person's own go-ahead, so it
+ * reaches the app even while someone works on the Mac; the line says so.
  */
 import type { ScopedThreadRef, ZeropsMacInput } from "@t3tools/contracts";
 import { CheckIcon, CopyIcon } from "lucide-react";
@@ -142,7 +142,7 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
   const live = view !== undefined && view !== "unavailable" ? view : undefined;
   const macName = live?.macName ?? "the Mac";
   const frame = live?.status === "live" ? live.frame : undefined;
-  const inputDisabled = live?.inUse ?? true;
+  const inputDisabled = live?.status !== "live";
 
   const line =
     view === "unavailable"
@@ -158,7 +158,7 @@ export function ZeropsMacPanel({ threadRef }: { readonly threadRef: ScopedThread
               : live.status === "no-helper"
                 ? `${macName} was paired before the live view. Pair it again to see it here.`
                 : live.status === "live" && live.inUse
-                  ? `Someone is using ${macName} right now, so clicks and typing are paused.`
+                  ? `Someone is using ${macName} right now. Clicks and typing here still reach the app.`
                   : null;
   // The person's next step on the Mac, wherever the view waits on one and the Mate said how.
   const steps =

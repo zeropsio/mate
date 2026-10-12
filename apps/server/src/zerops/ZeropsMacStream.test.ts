@@ -64,7 +64,8 @@ const PAIR = ["zcli vpn up Prj0AAAAAAAAAAAAAAAAAA", "ssh zcp mac host | sh"] as 
 const fakeMac = (options: {
   readonly paired?: boolean;
   readonly view?: MacViewRecord | undefined;
-  readonly deviceExit?: number;
+  /** Someone works on the Mac: agent-device refuses (exit 75) unless told to go ahead. */
+  readonly inUse?: boolean;
 }) =>
   Effect.gen(function* () {
     const connections: FakeConnection[] = [];
@@ -92,10 +93,11 @@ const fakeMac = (options: {
             exitCode: Deferred.await(exit),
           } satisfies MacStreamProcess;
         }),
-      runDevice: (_, args) =>
+      runDevice: (_, args, { whileInUse }) =>
         Effect.sync(() => {
+          if (options.inUse && !whileInUse) return 75;
           pressed.push(args);
-          return options.deviceExit ?? 0;
+          return 0;
         }),
       retryDelaysMs: [1000],
       pollMs: 500,
@@ -309,9 +311,9 @@ describe("ZeropsMacStream", () => {
   );
 
   describe("input", () => {
-    const live = (deviceExit?: number) =>
+    const live = (inUse = false) =>
       Effect.gen(function* () {
-        const mac = yield* fakeMac(deviceExit === undefined ? {} : { deviceExit });
+        const mac = yield* fakeMac({ inUse });
         const viewer = yield* watch(mac.service);
         yield* viewer.until(stateIs("connecting"));
         yield* settle;
@@ -347,19 +349,19 @@ describe("ZeropsMacStream", () => {
       }),
     );
 
-    it.effect("a click refused because someone is using the Mac turns the view's input off", () =>
-      Effect.gen(function* () {
-        const { mac, viewer } = yield* live(75);
-        yield* mac.service.sendInput({ kind: "click", x: 10, y: 10 });
-        expect(yield* viewer.until((event) => event.type === "state")).toEqual({
-          type: "state",
-          status: "live",
-          macName: "Test Mac",
-          app: "com.example.Counter",
-          inUse: true,
-        });
-        yield* viewer.leave;
-      }),
+    it.effect(
+      "a click or typing the person makes in the Mac tab goes ahead while they use the Mac: it is their say-so",
+      () =>
+        Effect.gen(function* () {
+          const { mac, viewer } = yield* live(true);
+          yield* mac.service.sendInput({ kind: "click", x: 230, y: 408 });
+          yield* mac.service.sendInput({ kind: "text", text: "hello" });
+          expect(mac.pressed).toEqual([
+            ["press", "215", "254"],
+            ["type", "hello"],
+          ]);
+          yield* viewer.leave;
+        }),
     );
 
     it.effect("says the Mac is in use as soon as the Mac reports it, and free again after", () =>

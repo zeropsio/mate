@@ -239,19 +239,17 @@ describe("ZeropsMacPanel", () => {
     expect(commandSpy).not.toHaveBeenCalled();
   });
 
-  it("while someone uses the Mac it keeps showing the window but pauses clicks and typing, saying so", () => {
+  it("while someone uses the Mac it says so, and the person's own clicks and typing still reach the app", () => {
     vi.useFakeTimers();
     feedState.view = { ...LIVE, inUse: true };
     const tree = render();
     expect(stateLine(tree)).toBe(
-      "Someone is using Test Mac right now, so clicks and typing are paused.",
+      "Someone is using Test Mac right now. Clicks and typing here still reach the app.",
     );
     const input = canvas(tree)!;
-    expect(input.props["aria-disabled"]).toBe(true);
+    expect(input.props["aria-disabled"]).toBe(false);
     pointerDown(input, 10, 10);
-    keyDown(input, "x");
-    vi.advanceTimersByTime(150);
-    expect(commandSpy).not.toHaveBeenCalled();
+    expect(commandSpy).toHaveBeenCalledTimes(1);
   });
 
   it("renders nothing without a thread", () => {
