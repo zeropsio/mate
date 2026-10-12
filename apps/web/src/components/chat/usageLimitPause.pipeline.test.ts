@@ -408,8 +408,8 @@ describe("a conversation paused at the usage limit", () => {
   it("the server's pause stays the stage with the /usage-limits answer under it", () => {
     const { rows, limit } = milo("paused", { work: false, notices: ["usage-limits:1"] });
     expect(rows.at(-1)).toMatchObject({ kind: "notice" });
-    expect(
-      livePauseStageId(rows, limit, { resetsAt: "2099-10-11T11:00:00.000Z", autoResume: false }),
-    ).toBe(rows[pauseIndex(rows)]!.id);
+    expect(livePauseStageId(rows, limit, { resetsAt: "2099-10-11T11:00:00.000Z" })).toBe(
+      rows[pauseIndex(rows)]!.id,
+    );
   });
 });
