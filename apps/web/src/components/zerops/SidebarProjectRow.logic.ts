@@ -119,14 +119,18 @@ export function clusterFaces(
 
 /**
  * A press on a group's row: a folded group opens — and where exactly one of its Mates is the
- * viewer's, that Mate opens with it; an open group folds, and the conversation stays.
+ * viewer's, that Mate opens with it, unless the group was folded around the conversation open
+ * now, which stays; an open group folds, and the conversation stays.
  */
 export function groupRowPress(input: {
   readonly open: boolean;
   /** The group's Mates that are the viewer's. */
   readonly mine: ReadonlyArray<string>;
+  /** It is folded around the conversation open now (`groupHoldsCurrent`). */
+  readonly current: boolean;
 }): { readonly open: boolean; readonly select: string | undefined } {
   if (input.open) return { open: false, select: undefined };
+  if (input.current) return { open: true, select: undefined };
   return { open: true, select: input.mine.length === 1 ? input.mine[0] : undefined };
 }
 

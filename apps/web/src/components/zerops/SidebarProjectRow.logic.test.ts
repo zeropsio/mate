@@ -154,8 +154,19 @@ describe("groupRowPress — a press on a group's row", () => {
       next: false,
       select: undefined,
     },
-  ])("$case", ({ open, mine, next, select }) => {
-    expect(groupRowPress({ open, mine })).toEqual({ open: next, select });
+    {
+      case: "only opens a group folded around the open conversation: the person stays where they are",
+      open: false,
+      mine: ["a"],
+      current: true,
+      next: true,
+      select: undefined,
+    },
+  ])("$case", ({ open, mine, next, select, current = false }) => {
+    expect(groupRowPress({ open, mine, current })).toEqual({
+      open: next,
+      select,
+    });
   });
 });
 

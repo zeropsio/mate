@@ -1096,8 +1096,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     groupName: string | undefined,
     // `undefined` for Mates in no project, each its own row.
     group: ZeropsGroup | undefined,
-    // The list's last project, under which a fold leaves its room.
-    last: boolean,
   ) => {
     const everyMate = entries.filter(({ item }) => hasMate(item));
     // Whose Mates the viewer asked to see (Mine / Everyone).
@@ -1320,11 +1318,46 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       })),
     );
     const kind = projectRowKind({ mates: mateCount });
-    // The project's own verbs, on its row's ··· — first in a single Mate's.
+    // A group's fold, from its row's press or its menu: its Mates unfold under it or fold away.
+    const toggle = (opening: boolean) => {
+      if (!opening) {
+        const scroller = scrollingAncestor(treeRef.current);
+        const rows = treeRef.current?.querySelector<HTMLElement>(
+          `[data-zerops-group="${CSS.escape(id)}"] [data-zerops-surface="sidebar-project-rows"]`,
+        );
+        if (scroller !== null && rows !== null && rows !== undefined) {
+          setSlack(
+            slackForFold(
+              {
+                scrollTop: scroller.scrollTop,
+                clientHeight: scroller.clientHeight,
+                scrollHeight: scroller.scrollHeight,
+                slack,
+              },
+              rows.getBoundingClientRect().height,
+            ),
+          );
+        }
+      }
+      setProjectFolds((folded) => withProjectFold(folded, id, !opening));
+      setFolds((moving) => new Map(moving).set(id, opening ? "opening" : "closing"));
+    };
+    // The project's own verbs, on its row's ··· — first in a single Mate's. A group's Fold or
+    // Unfold folds alone: it opens no Mate, as the row's press may.
     const projectMenu =
       group === undefined
         ? undefined
-        : projectMenuOf(group, kind === "group" ? !collapsed.has(id) : undefined);
+        : projectMenuOf(
+            group,
+            kind === "group"
+              ? {
+                  open: !collapsed.has(id),
+                  toggle: () => {
+                    toggle(collapsed.has(id));
+                  },
+                }
+              : undefined,
+          );
     const demand =
       group === undefined
         ? null
@@ -1669,29 +1702,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       active: activeProjectId ?? undefined,
     });
     if (current) bandKey = `group:${id}`;
-    const toggle = (opening: boolean) => {
-      if (!opening) {
-        const scroller = scrollingAncestor(treeRef.current);
-        const rows = treeRef.current?.querySelector<HTMLElement>(
-          `[data-zerops-group="${CSS.escape(id)}"] [data-zerops-surface="sidebar-project-rows"]`,
-        );
-        if (scroller !== null && rows !== null && rows !== undefined) {
-          setSlack(
-            slackForFold(
-              {
-                scrollTop: scroller.scrollTop,
-                clientHeight: scroller.clientHeight,
-                scrollHeight: scroller.scrollHeight,
-                slack,
-              },
-              rows.getBoundingClientRect().height,
-            ),
-          );
-        }
-      }
-      setProjectFolds((folded) => withProjectFold(folded, id, !opening));
-      setFolds((moving) => new Map(moving).set(id, opening ? "opening" : "closing"));
-    };
     const mineIds = ordered.filter((entry) => entry.mine).map((entry) => entry.projectId);
     const row = withSites((tags, globe) => (
       <ProjectGroupRow
@@ -1731,7 +1741,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             ?.focus();
         }}
         onPress={() => {
-          const press = groupRowPress({ open, mine: mineIds });
+          const press = groupRowPress({ open, mine: mineIds, current });
           toggle(press.open);
           if (press.select === undefined) return;
           const chosen = ordered.find((entry) => entry.projectId === press.select);
@@ -1755,7 +1765,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         </>
       );
     }
-    void last;
     return (
       <>
         {demand}
@@ -1777,7 +1786,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   /** A project's ···: its own verbs — fold, add a Mate, open it, move it, set a place up. */
   const projectMenuOf = (
     group: ZeropsGroup,
-    open: boolean | undefined,
+    fold: { readonly open: boolean; readonly toggle: () => void } | undefined,
   ): ReadonlyArray<HeadingMenuEntry> => {
     const missing = missingEnvironmentRows({
       tiersOnMain: tiersAddable({
@@ -1795,17 +1804,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       declarations: [],
     });
     return projectHeadingMenu({
-      collapsed: open === false,
-      onToggle:
-        open === undefined
-          ? undefined
-          : () => {
-              treeRef.current
-                ?.querySelector<HTMLElement>(
-                  `[data-zerops-group="${CSS.escape(group.groupId)}"] [data-zerops-surface="sidebar-project"]`,
-                )
-                ?.click();
-            },
+      collapsed: fold?.open === false,
+      onToggle: fold?.toggle,
       onAddMate: () => {
         onAddMate?.(group.groupId);
       },
@@ -1903,7 +1903,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
 
   // The open conversation's row wears the band — or, folded around it, its group's row.
   let bandKey: string | null | undefined = activeProjectId;
-  const groupSections = groups.map(({ group, environments }, index) => (
+  const groupSections = groups.map(({ group, environments }) => (
     <section
       className={cn(
         "flex flex-col gap-0.5 transition-opacity",
@@ -1918,7 +1918,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         getFlow?.(group.groupId),
         groupNameUnread(group) ? undefined : group.name,
         group,
-        index === groups.length - 1 && !ungroupedMates,
       )}
     </section>
   ));
@@ -1933,7 +1932,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           Ungrouped
         </span>
       ) : null}
-      {section("ungrouped", ungrouped, undefined, undefined, undefined, true)}
+      {section("ungrouped", ungrouped, undefined, undefined, undefined)}
     </section>
   ) : null;
   jumpIndex.current = {
