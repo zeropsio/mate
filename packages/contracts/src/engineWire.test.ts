@@ -13,6 +13,7 @@ import {
   EngineRowsFrame,
   EngineSendInput,
   EngineSetRuntimeModeInput,
+  EngineSteerInput,
   EngineSwitchModelInput,
 } from "./engineWire.ts";
 
@@ -232,6 +233,23 @@ describe("a conversation's settings on the wire", () => {
       ],
       interactionMode: "plan",
     });
+  });
+
+  it("a send carries what the agent hears beside the person's words, line by line", () => {
+    const context = [
+      "appdev #3 landed: Add the order summary",
+      "Vault changes since your last turn (values are never shown to you):\n+ STRIPE_KEY  Shared · sensitive · nothing reads it yet",
+    ];
+    roundTrips(EngineSendInput, { ...call, text: "Inspect what landed", context });
+    roundTrips(EngineSteerInput, { ...call, runId: run, text: "And this", context });
+  });
+
+  it.each<{ readonly title: string; readonly context: ReadonlyArray<string> }>([
+    { title: "more than five lines", context: Array.from({ length: 6 }, (_, n) => `line ${n}`) },
+    { title: "a line past 240 characters", context: ["x".repeat(241)] },
+    { title: "a blank line", context: ["   "] },
+  ])("a send's context is bounded: $title never decodes", ({ context }) => {
+    expect(() => decodeSend({ ...call, text: "hi", context })).toThrow();
   });
 
   it("a model switch carries the model's options; one without them keeps the conversation's", () => {

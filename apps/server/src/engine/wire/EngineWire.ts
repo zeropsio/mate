@@ -970,6 +970,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                     (claimed) => ({
                       _tag: "Send",
                       text: input.text,
+                      ...(input.context === undefined ? {} : { context: input.context }),
                       ...(input.attachments === undefined
                         ? {}
                         : {
@@ -1057,6 +1058,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           _tag: "Steer",
           runId: input.runId,
           text: input.text,
+          ...(input.context === undefined ? {} : { context: input.context }),
         }),
       switchModel: (input, caller) =>
         command(input.protocol, input.conversationId, input.commandId, caller, {

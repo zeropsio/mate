@@ -189,6 +189,8 @@ export type Command =
       readonly card?: CrewCard;
       /** `plan`: the agent plans the turn and changes nothing. Absent: default. */
       readonly interactionMode?: ProviderInteractionMode;
+      /** What the agent hears with `text` that the person did not type (`toldWith`). */
+      readonly context?: ReadonlyArray<string>;
     }
   | { readonly _tag: "Stop"; readonly runId?: RunId }
   /** The person asks the work a usage limit holds to try the provider now. */
@@ -204,7 +206,13 @@ export type Command =
     }
   /** Close a request unanswered: only one its agent does not wait on. The agent is not told. */
   | { readonly _tag: "Dismiss"; readonly requestId: RequestId }
-  | { readonly _tag: "Steer"; readonly runId: RunId; readonly text: string }
+  | {
+      readonly _tag: "Steer";
+      readonly runId: RunId;
+      readonly text: string;
+      /** What the agent hears with `text` that the person did not type (`toldWith`). */
+      readonly context?: ReadonlyArray<string>;
+    }
   /** The next model and, when given, its options: they apply from the next run on. */
   | {
       readonly _tag: "SwitchModel";

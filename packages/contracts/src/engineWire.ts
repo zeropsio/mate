@@ -22,7 +22,7 @@
  */
 import * as Schema from "effect/Schema";
 
-import { CommandId, ForwardCompatibleArray } from "./baseSchemas.ts";
+import { CommandId, ForwardCompatibleArray, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
   CommandResult,
   ConversationAgent,
@@ -379,12 +379,25 @@ export type EngineReceiptInput = typeof EngineReceiptInput.Type;
 const call = { ...protocol, conversationId: ConversationId, commandId: CommandId };
 
 /**
+ * What the agent hears with a person's message that the person did not type — the changes merged
+ * since it last spoke, the vault keys added or removed (names, never a value) — one fact a line.
+ * The engine places it in front of the words for the agent alone: the person's message in the
+ * record stays what they typed. Bounded on purpose: a handful of short lines, never a feed.
+ */
+export const EngineSendContext = Schema.Array(
+  TrimmedNonEmptyString.check(Schema.isMaxLength(240)),
+).check(Schema.isMaxLength(5));
+export type EngineSendContext = typeof EngineSendContext.Type;
+
+/**
  * A person's message: queued, or sent at once when nothing is on. Pictures by reference, files by
- * the id they were uploaded under; `plan` asks the agent for a plan.
+ * the id they were uploaded under; `plan` asks the agent for a plan; `context` is what the agent
+ * hears with it.
  */
 export const EngineSendInput = Schema.Struct({
   ...call,
   text: Schema.String,
+  context: Schema.optionalKey(EngineSendContext),
   attachments: Schema.optionalKey(
     Schema.Array(Schema.Union([ChatImageAttachment, ChatFileAttachment])),
   ),
@@ -446,7 +459,12 @@ export const EngineDismissInput = Schema.Struct({ ...call, requestId: RequestId 
 export type EngineDismissInput = typeof EngineDismissInput.Type;
 
 /** A message into the running turn: only while the session says it can steer. */
-export const EngineSteerInput = Schema.Struct({ ...call, runId: RunId, text: Schema.String });
+export const EngineSteerInput = Schema.Struct({
+  ...call,
+  runId: RunId,
+  text: Schema.String,
+  context: Schema.optionalKey(EngineSendContext),
+});
 export type EngineSteerInput = typeof EngineSteerInput.Type;
 
 /**

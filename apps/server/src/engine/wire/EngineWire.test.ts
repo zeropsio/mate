@@ -1278,6 +1278,43 @@ describe("a client's calls to an engine conversation", () => {
   );
 
   it.effect(
+    "a send's context reaches the agent through the wire, and the conversation shows only the person's words",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          const context = ["appdev #3 landed: Add the order summary"];
+          yield* wire.send(
+            {
+              protocol,
+              conversationId: mate,
+              commandId: CommandId.make("send-context"),
+              text: "Inspect what landed",
+              context,
+            },
+            ana,
+          );
+          yield* w.settle;
+          const sent = w.provider.sends.at(-1) as { readonly input?: string } | undefined;
+          assert.strictEqual(
+            sent?.input,
+            "<zerops-update>\nappdev #3 landed: Add the order summary\n</zerops-update>\n\nInspect what landed",
+          );
+          const frames = yield* watch(w, wire);
+          const snapshot = frames.find((frame) => frame.type === "snapshot");
+          if (snapshot?.type !== "snapshot") return assert.fail("no snapshot");
+          assert.deepStrictEqual(
+            snapshot.items.flatMap((item) => (item.kind === "person" ? [item.text] : [])),
+            ["Inspect what landed"],
+          );
+          assert.notInclude(JSON.stringify(snapshot), "zerops-update");
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
     "a session opened after an agent pick resumes from the state another instance of its driver left",
     () =>
       Effect.scoped(

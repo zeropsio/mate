@@ -83,6 +83,7 @@ import {
   type SessionRecord,
   type VaultAsk,
 } from "./state.ts";
+import { toldWith } from "./told.ts";
 
 /** Silence after which the watchdog marks a run unresponsive. */
 export const WATCHDOG_SILENCE_MS = 10 * 60_000;
@@ -1075,10 +1076,15 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
   const attachments = command.attachments ?? [];
   if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message");
   refuseOverWork(b);
+  // The agent hears the context with the words; the person's item keeps only what they typed.
+  const told =
+    command.maintenance === true || command.card !== undefined
+      ? command.text
+      : toldWith(command.text, command.context);
   const sleeping = sleepingTurn(b);
   if (sleeping !== undefined) {
     // Queued behind it, the message would never come: the turn waits for it.
-    steerInto(b, sleeping.run, sleeping.sessionId, command.text, attachments);
+    steerInto(b, sleeping.run, sleeping.sessionId, command.text, attachments, told);
     return;
   }
   const ordinal = b.state.nextRunOrdinal;
@@ -1088,7 +1094,7 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
     joins: null,
     principal: b.envelope.principal,
     maintenance: command.maintenance === true,
-    text: command.text,
+    text: told,
     ...(command.interactionMode === undefined ? {} : { interactionMode: command.interactionMode }),
   });
   b.emit({
@@ -1443,16 +1449,20 @@ const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): vo
   if (session === null || session.id !== run.sessionId || !session.capabilities.steer) {
     throw new Rejected("steer-unsupported");
   }
-  steerInto(b, run, session.id, command.text, []);
+  steerInto(b, run, session.id, command.text, [], toldWith(command.text, command.context));
 };
 
-/** The person's message into the run's turn: its item, steered, and the effect that sends it. */
+/**
+ * The person's message into the run's turn: its item, steered, and the effect that sends it. The
+ * item keeps `text`, what the person typed; the agent is sent `told`, the context in front of it.
+ */
 const steerInto = (
   b: StepBuilder,
   run: RunRecord,
   sessionId: SessionId,
   text: string,
   attachments: ReadonlyArray<PersonAttachment>,
+  told: string = text,
 ): EffectId => {
   const item = deriveItemId(run.id, run.nextItemOrdinal);
   b.emit({
@@ -1473,7 +1483,7 @@ const steerInto = (
     runId: run.id,
     sessionId,
     itemId: item,
-    text,
+    text: told,
     ...(attachments.length === 0 ? {} : { attachments: [...attachments] }),
     instanceId: b.state.agent?.instanceId ?? null,
     principal: b.envelope.principal,
