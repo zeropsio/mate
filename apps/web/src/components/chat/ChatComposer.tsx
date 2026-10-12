@@ -3956,6 +3956,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               <ComposerPromptLengthValidation
                 message={providerInputSubmissionError ?? composerSubmissionError}
               />
+              {/* What stops the agent taking a message is the composer's own to say (S6): the
+                  model control's dot names it, and this line says why sending waits. */}
+              {providerSendBlockReason === null ||
+              providerInputSubmissionError !== null ||
+              composerSubmissionError !== null ||
+              isComposerCollapsedMobile ? null : (
+                <p
+                  className="px-3 pb-2 text-xs text-muted-foreground sm:px-4"
+                  data-chat-composer-blocked=""
+                >
+                  {providerSendBlockReason}
+                </p>
+              )}
 
               {/* Bottom toolbar */}
               {isComposerCollapsedMobile || isComposerApprovalState ? null : (
