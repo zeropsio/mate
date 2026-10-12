@@ -15,6 +15,8 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import type { MacViewMessage } from "./macViewWire.ts";
+
 /** agent-device on the Mac; the native macOS backend needs no Xcode. */
 export const AGENT_DEVICE_VERSION = "0.21.24";
 
@@ -182,7 +184,13 @@ export type MacCommand =
   | { readonly _tag: "run"; readonly command: ReadonlyArray<string> }
   | { readonly _tag: "open"; readonly app: string }
   | { readonly _tag: "device"; readonly args: ReadonlyArray<string>; readonly whileInUse: boolean }
-  | { readonly _tag: "screenshot"; readonly out: string | undefined; readonly whileInUse: boolean }
+  | {
+      readonly _tag: "screenshot";
+      readonly out: string | undefined;
+      readonly whileInUse: boolean;
+      /** The whole screen through agent-device, rather than the app the Mac tab shows. */
+      readonly screen: boolean;
+    }
   | { readonly _tag: "unpair" }
   | { readonly _tag: "usage"; readonly message: string };
 
@@ -233,9 +241,10 @@ export const parseMacCommand = (args: ReadonlyArray<string>): MacCommand => {
     }
     case "screenshot": {
       const whileInUse = rest.includes(WHILE_IN_USE);
-      const paths = rest.filter((arg) => arg !== WHILE_IN_USE);
+      const screen = rest.includes("--screen");
+      const paths = rest.filter((arg) => arg !== WHILE_IN_USE && arg !== "--screen");
       return paths.length <= 1
-        ? { _tag: "screenshot", out: paths[0], whileInUse }
+        ? { _tag: "screenshot", out: paths[0], whileInUse, screen }
         : { _tag: "usage", message: "mac screenshot takes at most one output path." };
     }
     default:
@@ -256,12 +265,38 @@ export const MAC_HELP = `mac - work on the Mac paired with this Mate, over the p
                             mac device open <bundle id>
                             mac device snapshot -i
                             mac device press @e3 --settle
-  mac screenshot [path]   Save a screenshot of the open app here and print its path.
+  mac screenshot [path]   Save a picture of the app the Mac tab shows here and print its path;
+                          silent, so it works while someone uses the Mac. --screen takes
+                          the whole screen instead, or when no app is open.
 
   mac open never takes over the screen, so it runs while someone is using the Mac.
-  mac device and mac screenshot raise the app and click on screen, so they wait while
+  mac device and mac screenshot --screen raise the app and click on screen, so they wait while
   someone is using the Mac (exit 75); --while-in-use goes ahead with the user's say-so.
   mac unpair              Forget the Mac (prints how to remove its setup too).`;
+
+/** A screenshot from the Mac tab's live view: its first frame, or why there is none. */
+export type MacViewShot =
+  | { readonly _tag: "frame"; readonly bytes: Uint8Array; readonly mimeType: string }
+  | { readonly _tag: "none"; readonly status: "no-app" | "no-window" | "no-capture" };
+
+/**
+ * Reads the view helper's messages for a screenshot: the first frame is it; a
+ * state means the view has no picture, so the screen's own screenshot is the
+ * way; nothing yet means keep reading.
+ */
+export const macViewShot = (messages: ReadonlyArray<MacViewMessage>): MacViewShot | undefined => {
+  for (const message of messages) {
+    if (message.type === "frame") {
+      return { _tag: "frame", bytes: message.bytes, mimeType: message.mimeType };
+    }
+    if (message.type === "state") return { _tag: "none", status: message.status };
+  }
+  return undefined;
+};
+
+/** Where a picture lands: the path asked for, its extension the picture's own. */
+export const macShotPath = (out: string, mimeType: string): string =>
+  `${out.replace(/\.(png|jpe?g)$/i, "")}${mimeType === "image/jpeg" ? ".jpg" : ".png"}`;
 
 /** POSIX single-quoting for one word of a remote shell command. */
 export const shellQuote = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;

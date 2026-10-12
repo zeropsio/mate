@@ -18,12 +18,14 @@ import {
   macRunCommand,
   macScreenPoint,
   macScreenshotCommand,
+  macShotPath,
   macSshArgs,
   macStatusReport,
   renderMacStatus,
   macSshPort,
   macSyncArgs,
   macViewStreamCommand,
+  macViewShot,
   macViewTarget,
   parseMacCommand,
 } from "./MacHost.ts";
@@ -59,11 +61,18 @@ describe("parseMacCommand", () => {
       ["device", "--while-in-use", "press", "@e4"],
       { _tag: "device", args: ["press", "@e4"], whileInUse: true },
     ],
-    [["screenshot"], { _tag: "screenshot", out: undefined, whileInUse: false }],
-    [["screenshot", "/tmp/a.png"], { _tag: "screenshot", out: "/tmp/a.png", whileInUse: false }],
+    [["screenshot"], { _tag: "screenshot", out: undefined, whileInUse: false, screen: false }],
+    [
+      ["screenshot", "/tmp/a.png"],
+      { _tag: "screenshot", out: "/tmp/a.png", whileInUse: false, screen: false },
+    ],
     [
       ["screenshot", "--while-in-use", "/tmp/a.png"],
-      { _tag: "screenshot", out: "/tmp/a.png", whileInUse: true },
+      { _tag: "screenshot", out: "/tmp/a.png", whileInUse: true, screen: false },
+    ],
+    [
+      ["screenshot", "--screen", "--while-in-use"],
+      { _tag: "screenshot", out: undefined, whileInUse: true, screen: true },
     ],
   ] as const)("reads `mac %j` as the command an agent meant", (args, expected) => {
     expect(parseMacCommand(args)).toEqual(expected);
@@ -537,6 +546,50 @@ describe("opening an app for the person to watch", () => {
     expect(code).toBe(66);
     expect(opened).toBe("");
     expect(stderr).toContain("build/Missing.app");
+  });
+});
+
+describe("a screenshot of the app the Mac tab shows", () => {
+  const frame = {
+    type: "frame",
+    size: 3,
+    mimeType: "image/jpeg",
+    width: 2,
+    height: 2,
+    bounds: { x: 0, y: 0, width: 1, height: 1 },
+    inUse: true,
+    bytes: new Uint8Array([1, 2, 3]),
+  } as const;
+
+  it("is the live view's first frame, taken while the person works, since nothing moves on screen", () => {
+    expect(macViewShot([{ type: "tick", inUse: true }, frame])).toEqual({
+      _tag: "frame",
+      bytes: frame.bytes,
+      mimeType: "image/jpeg",
+    });
+  });
+
+  it.each(["no-app", "no-window", "no-capture"] as const)(
+    "falls back to the screen's own screenshot when the view answers %s",
+    (status) => {
+      expect(macViewShot([{ type: "state", status, inUse: false }])).toEqual({
+        _tag: "none",
+        status,
+      });
+    },
+  );
+
+  it("keeps reading while the view has sent no frame yet", () => {
+    expect(macViewShot([{ type: "tick", inUse: false }])).toBeUndefined();
+  });
+
+  it.each([
+    ["/tmp/shot.png", "image/jpeg", "/tmp/shot.jpg"],
+    ["/tmp/shot.png", "image/png", "/tmp/shot.png"],
+    ["/tmp/shot.JPEG", "image/png", "/tmp/shot.png"],
+    ["/tmp/shot", "image/jpeg", "/tmp/shot.jpg"],
+  ])("saves %s as a %s picture at %s, named for what it holds", (out, mimeType, path) => {
+    expect(macShotPath(out, mimeType)).toBe(path);
   });
 });
 

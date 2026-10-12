@@ -6,7 +6,7 @@
  * The commands are thin: each is one ssh or rsync run with the terminal
  * attached, and the remote exit code becomes this command's exit code.
  */
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalTimers:off
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -37,9 +37,15 @@ import {
   macSyncArgs,
   macSyncPrepareCommand,
   macOpenCommand,
+  macShotPath,
+  macViewShot,
+  type MacViewShot,
+  macViewStreamCommand,
+  decodeMacViewRecord,
   macViewTarget,
   parseMacCommand,
 } from "../zerops/mac/MacHost.ts";
+import { makeMacViewParser } from "../zerops/mac/macViewWire.ts";
 import {
   renderMacHostFailure,
   renderMacHostScript,
@@ -102,6 +108,47 @@ const writeView = (paths: MacHostPaths, app: string) =>
     mode: 0o600,
   });
 
+const readView = (paths: MacHostPaths) => {
+  try {
+    return decodeMacViewRecord(NodeFS.readFileSync(paths.view, "utf8"));
+  } catch {
+    return undefined;
+  }
+};
+
+/** How long a screenshot waits for the live view's first frame (a capture under launchd takes seconds). */
+const VIEW_SHOT_TIMEOUT_MS = 20_000;
+
+/** The live view's first frame of `app`, over one ssh connection; none when the view has no picture. */
+const viewShot = (
+  record: MacHostRecord,
+  paths: MacHostPaths,
+  app: string,
+): Promise<MacViewShot | undefined> =>
+  new Promise((resolve) => {
+    const child = NodeChildProcess.spawn(
+      "ssh",
+      macSshArgs(record, paths, macViewStreamCommand(record, app, 2)),
+      { stdio: ["ignore", "pipe", "ignore"] },
+    );
+    const parser = makeMacViewParser();
+    let settled = false;
+    const settle = (shot: MacViewShot | undefined) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill();
+      resolve(shot);
+    };
+    const timer = setTimeout(() => settle(undefined), VIEW_SHOT_TIMEOUT_MS);
+    child.stdout.on("data", (chunk: Buffer) => {
+      const shot = macViewShot(parser.push(chunk));
+      if (shot !== undefined || parser.broken) settle(shot);
+    });
+    child.on("error", () => settle(undefined));
+    child.on("close", () => settle(undefined));
+  });
+
 /** Runs with the terminal attached; returns the exit code. */
 const run = (
   command: string,
@@ -139,7 +186,7 @@ const statusReport = (paths: MacHostPaths, probe: boolean) => {
   });
 };
 
-const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
+const runMac = async (args: ReadonlyArray<string>, baseDir: string): Promise<number> => {
   const paths = macHostPaths(baseDir);
   const command = parseMacCommand(args);
   switch (command._tag) {
@@ -274,7 +321,7 @@ const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
     }
     case "screenshot": {
       const record = pairedRecord(paths);
-      const out = NodePath.resolve(
+      const asked = NodePath.resolve(
         command.out ??
           NodePath.join(
             NodeOS.tmpdir(),
@@ -282,7 +329,17 @@ const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
             `screenshot-${new Date().toISOString().replaceAll(/[:.]/g, "-")}.png`,
           ),
       );
-      NodeFS.mkdirSync(NodePath.dirname(out), { recursive: true });
+      NodeFS.mkdirSync(NodePath.dirname(asked), { recursive: true });
+      // The app the Mac tab shows, from its live view: silent, so it never waits on the user.
+      const view = command.screen ? undefined : readView(paths);
+      const shot = view === undefined ? undefined : await viewShot(record, paths, view.app);
+      if (shot?._tag === "frame") {
+        const out = macShotPath(asked, shot.mimeType);
+        NodeFS.writeFileSync(out, shot.bytes);
+        console.log(out);
+        return 0;
+      }
+      const out = macShotPath(asked, "image/png");
       const fd = NodeFS.openSync(out, "w");
       let code: number;
       try {
@@ -323,9 +380,12 @@ const runMac = (args: ReadonlyArray<string>, baseDir: string): number => {
 };
 
 /** A failure the user can act on prints as one line; anything else is a bug and throws. */
-const runMacReportingFailure = (args: ReadonlyArray<string>, baseDir: string): number => {
+const runMacReportingFailure = async (
+  args: ReadonlyArray<string>,
+  baseDir: string,
+): Promise<number> => {
   try {
-    return runMac(args, baseDir);
+    return await runMac(args, baseDir);
   } catch (cause) {
     if (!(cause instanceof MacFailure)) throw cause;
     console.error(cause.message);
@@ -344,7 +404,7 @@ export const macCommand = Command.make("mac", {
     Effect.fn("cli.mac")(function* ({ args }) {
       const home = yield* Config.String("T3CODE_HOME").pipe(Config.option);
       const baseDir = yield* resolveBaseDir(Option.getOrUndefined(home));
-      const code = yield* Effect.sync(() => runMacReportingFailure(args, baseDir));
+      const code = yield* Effect.promise(() => runMacReportingFailure(args, baseDir));
       if (code !== 0) process.exitCode = code;
     }),
   ),
