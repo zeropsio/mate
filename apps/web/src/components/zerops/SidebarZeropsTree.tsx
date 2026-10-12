@@ -118,6 +118,7 @@ import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
 import {
   createContext,
   memo,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -176,6 +177,7 @@ import {
   writeOpenedProjects,
   type ProjectFolds,
 } from "~/zerops/collapsedProjects";
+import { useMenuFolds } from "~/zerops/menuFolds";
 import {
   movedBefore,
   rememberProjectsOnScreen,
@@ -231,6 +233,7 @@ import {
   type MenuPoint,
 } from "./SidebarMateMenu";
 import { SidebarProjectFold, type ProjectFoldMotion } from "./SidebarProjectFold";
+import { ProjectCluster, type ClusterFace } from "./SidebarProjectCluster";
 import {
   landingAfterDraw,
   openMateReveal,
@@ -267,6 +270,7 @@ import {
   mateCrewItem,
   mateDeletingView,
   mateFinishingView,
+  mateDotLabel,
   mateNotYours,
   mateOwnerView,
   mateRowAskLine,
@@ -741,6 +745,15 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     writeCollapsedProjects(projectFolds.closed);
     writeOpenedProjects(projectFolds.opened);
   }, [projectFolds]);
+  // The closed menu's rail stands its groups as these do, and folds them through this
+  // (`menuFolds.ts`): before the frame paints, so the rail never shows a fold the menu left.
+  const foldFromRail = useCallback((groupId: string, open: boolean) => {
+    setProjectFolds((current) => withProjectFold(current, groupId, !open));
+  }, []);
+  useLayoutEffect(() => {
+    useMenuFolds.getState().lend(projectFolds, foldFromRail);
+  }, [foldFromRail, projectFolds]);
+  useLayoutEffect(() => () => useMenuFolds.getState().withdraw(), []);
   // Opening a Mate's conversation opens its project: the row lit as the one
   // open may not be hidden under a heading. Only when the open conversation
   // changes — a person may collapse the project again afterwards, and a menu
@@ -2396,68 +2409,6 @@ function StopDemand({ projectId }: { readonly projectId: string }) {
   return null;
 }
 
-/** One face in a group's avatar, as its own row would wear it. */
-interface ClusterFace {
-  readonly projectId: string;
-  readonly name: string;
-  readonly tint: MateTintId;
-  readonly shape: MateShapeId;
-  readonly state: MateMarkState;
-  /** Its state was read, not remembered: only then does it greet a change. */
-  readonly known: boolean;
-  /** A colleague's: their mark on its corner, its face paler. */
-  readonly badge: BadgeSeat | null;
-}
-
-/**
- * A group's faces in the face's column (the owner, 2026-10-12: "when more it would be project"):
- * two on the diagonal, three as a triangle, the lead in front — the one that asks the viewer, else
- * the one at work, else the newest words — and past three, how many more. Each wears its row's
- * state and its owner's mark, ringed in the menu's ground where they overlap. When the lead
- * changes, the faces travel to their new places.
- */
-function ProjectCluster({
-  faces,
-  more,
-}: {
-  readonly faces: ReadonlyArray<ClusterFace>;
-  readonly more: number;
-}) {
-  const place = new Map(faces.map((face, index) => [face.projectId, index]));
-  // Drawn in one order whoever leads, so a new lead travels rather than being drawn anew.
-  const drawn = faces.toSorted((left, right) => left.projectId.localeCompare(right.projectId));
-  return (
-    <span
-      aria-hidden="true"
-      className="menu-cluster"
-      data-count={String(Math.min(faces.length, 3))}
-      data-zerops-surface="sidebar-project-faces"
-    >
-      {drawn.map((face) => (
-        <span
-          className="menu-cluster-face"
-          data-place={String(place.get(face.projectId) ?? 0)}
-          key={face.projectId}
-        >
-          <MateFace
-            className="size-full"
-            greets
-            known={face.known}
-            shape={face.shape}
-            size="md"
-            state={face.state}
-            tint={face.tint}
-          />
-          {face.badge === null ? null : (
-            <MateOwnerMark className="menu-cluster-owner" seat={face.badge} />
-          )}
-        </span>
-      ))}
-      {more > 0 ? <span className="menu-cluster-more">{`+${String(more)}`}</span> : null}
-    </span>
-  );
-}
-
 /** Who leads a group, as its row reads them: whose time, whose line. */
 interface GroupLeadInput<T extends RosterCandidate> {
   readonly candidate: T;
@@ -3097,7 +3048,7 @@ function MateUnit({
 }
 
 import { mateOutsideHq, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
-import { sidebarMenuShown } from "./SidebarPeek";
+import { sidebarMenuShown } from "./SidebarStage";
 
 /** Memoised (`mateRowPropsEqual`): only the rows whose own props changed redraw with the tree. */
 function MateRowRead<T extends RosterCandidate>(
@@ -4349,20 +4300,6 @@ function MateWorkingTime({
     </span>
   );
 }
-
-/**
- * The dot before the age: amber where the Mate needs you, blue where it
- * finished something you have not seen, red where it stopped on an error
- * (S3) — never a word. A dot that arrives while you watch scales in, once
- * (T6); what the menu opened onto, or what this browser remembered, is
- * simply there.
- */
-const mateDotLabel = (tone: "attention" | "unread" | "failed"): string =>
-  tone === "unread"
-    ? "Unseen reply"
-    : tone === "failed"
-      ? "Stopped on an error"
-      : "Waiting for you";
 
 /** The third line's inks: the answer in the third ink, unread in the second ink, a question in ink, an error red. */
 const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention", string> = {
