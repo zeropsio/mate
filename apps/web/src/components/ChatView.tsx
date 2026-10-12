@@ -2,6 +2,7 @@ import { useBranchAdvice } from "./useBranchAdvice";
 import { isUsageLimitError, mateHealthAtom } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
 import {
+  admissionNeedsSignIn,
   agentAdmission,
   engineCardsShowError,
   engineRunRefusal,
@@ -372,6 +373,7 @@ import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
+import { chiefShowsSignIn } from "~/zerops/chief";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useSendTurnReceipts } from "~/zerops/sentAsk";
 import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
@@ -3080,13 +3082,25 @@ function ConversationView(props: ChatViewProps) {
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
     activeThreadKey !== null && dockedDraftHeroThreadKey === activeThreadKey;
-  const isDraftHeroState = resolveDraftHeroState({
-    isLocalDraftThread,
-    hasTimelineEntries: timelineEntries.length > 0,
-    isWorking,
-    draftHeroDockRequested,
-    backgroundSubmissionPending,
+  // A Chief no coding agent is signed in to: the Mate sign-in stands in place of its question and
+  // the composer, as an empty conversation's opening (`chiefShowsSignIn`).
+  const chiefSignIn = chiefShowsSignIn({
+    chief: (() => {
+      const at = zeropsMateAt(zeropsMates, environmentId);
+      return at.kind === "mate" && at.mate.chief === true;
+    })(),
+    signInRequired: admissionNeedsSignIn(zeropsAgentAuthRead, providerStatuses),
+    said: timelineEntries.length > 0,
   });
+  const isDraftHeroState =
+    !chiefSignIn &&
+    resolveDraftHeroState({
+      isLocalDraftThread,
+      hasTimelineEntries: timelineEntries.length > 0,
+      isWorking,
+      draftHeroDockRequested,
+      backgroundSubmissionPending,
+    });
   const [
     attachDraftHeroTransitionGroupRef,
     attachDraftHeroComposerAnchorRef,
@@ -4053,7 +4067,7 @@ function ConversationView(props: ChatViewProps) {
   );
   // A started conversation keeps its login; its admission item explains why Send waits.
   const zeropsSendBlockReason = admission.sendBlockReason;
-  const zeropsArrivalHoldsComposer = admission.holdsComposer;
+  const zeropsArrivalHoldsComposer = admission.holdsComposer || chiefSignIn;
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
   const chromeLogicalProjectEnvironments = useMemo(
     () =>
