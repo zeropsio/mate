@@ -36,9 +36,6 @@ type SidebarContextProps = {
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
   toggleSidebar: () => void;
-  /** The closed menu peeks: the open menu stands out over the page (`SidebarPeek`). */
-  peek: boolean;
-  setPeek: (peek: boolean) => void;
 };
 
 type SidebarResizableOptions = {
@@ -130,7 +127,6 @@ function SidebarProvider({
 }) {
   const isMobile = useIsMobile();
   const [openMobile, setOpenMobile] = React.useState(false);
-  const [peek, setPeek] = React.useState(false);
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
@@ -174,10 +170,8 @@ function SidebarProvider({
       setOpenMobile,
       state,
       toggleSidebar,
-      peek,
-      setPeek,
     }),
-    [state, open, setOpen, isMobile, openMobile, toggleSidebar, peek],
+    [state, open, setOpen, isMobile, openMobile, toggleSidebar],
   );
 
   return (
@@ -228,7 +222,7 @@ function Sidebar({
    */
   layered?: boolean;
 }) {
-  const { isMobile, state, openMobile, setOpenMobile, peek } = useSidebar();
+  const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
   const resolvedResizable = React.useMemo<SidebarResolvedResizableOptions | null>(() => {
     if (isMobile || collapsible === "none" || !resizable) {
       return null;
@@ -312,7 +306,6 @@ function Sidebar({
       <div
         className="group peer hidden text-sidebar-foreground md:block"
         data-collapsible={state === "collapsed" ? collapsible : ""}
-        data-peek={layered && peek ? "" : undefined}
         data-side={side}
         data-slot="sidebar"
         data-state={state}
@@ -338,7 +331,8 @@ function Sidebar({
           className={cn(
             "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) md:flex",
             layered
-              ? "group-data-[peek]:z-40"
+              ? // Over the page while the menu peeks out of the rail (`data-menu-raised`).
+                "has-[[data-menu-raised]]:z-40"
               : "transition-[left,right,width] duration-200 ease-linear",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
@@ -542,6 +536,8 @@ function SidebarRail({
               "group-data-[collapsible=offcanvas]:translate-x-0 hover:group-data-[collapsible=offcanvas]:bg-sidebar group-data-[collapsible=offcanvas]:after:left-full",
               "[[data-side=left][data-collapsible=offcanvas]_&]:-right-2",
               "[[data-side=right][data-collapsible=offcanvas]_&]:-left-2",
+              // Out of the way while the menu peeks over it (`SidebarPeek`).
+              "group-has-[[data-menu-raised]]:invisible",
               className,
             )}
             data-sidebar="rail"

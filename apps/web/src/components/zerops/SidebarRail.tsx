@@ -11,8 +11,9 @@
  * you have absolutely no idea what is what, the tooltip is slow and small"): each project is a
  * pod, its name inside over its faces — the project is how a Mate is found (2026-10-12) — and the
  * open Mate's whole pod wears the selected band. A Mate in no project carries its own name under
- * its face. A pointer resting on the rail peeks the open menu out over it (`SidebarPeek.tsx`), so
- * a face's card — its name, its project, what was asked, its last answer — is the keyboard's.
+ * its face. A face's tooltip, at once and instant from one face to the next, is a card of its
+ * name, its project, what was asked and its last answer; a pointer resting on the rail's own
+ * surface — a pod, its name, the air between — peeks the open menu out over it (`SidebarPeek`).
  */
 import {
   assignCandidateMateTints,
@@ -259,9 +260,8 @@ export function SidebarRail({
 }) {
   const summary = waitingSummary(waiting);
   return (
-    // A resting pointer peeks the open menu out over the rail before a card would open; focus
-    // opens a card at once, and instantly from one control to the next.
-    <TooltipProvider closeDelay={0} delay={600} timeout={700}>
+    // Tooltips open at once, and instantly from one control to the next while moving along the rail.
+    <TooltipProvider closeDelay={0} delay={80} timeout={700}>
       <div className="menu-rail" data-zerops-surface="sidebar-rail">
         <div className="menu-rail-top">
           {showMark ? (

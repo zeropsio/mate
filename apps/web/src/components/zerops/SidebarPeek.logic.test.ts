@@ -10,12 +10,13 @@ import {
   type PeekState,
 } from "./SidebarPeek.logic";
 
-const mouse = (kind: "enter" | "move", x: number, y: number): PeekInput => ({
-  kind,
-  pointer: "mouse",
-  x,
-  y,
-});
+/** A mouse over the rail's own surface — a pod, its name, the air between — or one of its controls. */
+const mouse = (
+  kind: "enter" | "move",
+  x: number,
+  y: number,
+  on: "surface" | "control" = "surface",
+): PeekInput => ({ kind, pointer: "mouse", x, y, on });
 
 /** Runs a pointer's story through the peek, a timer that comes due standing for its wait. */
 function run(inputs: ReadonlyArray<PeekInput | "due">) {
@@ -64,7 +65,7 @@ describe("peekStep — a pointer resting on the closed menu slides the open menu
     },
     {
       title: "a touch never peeks: a tap opens the menu as before",
-      inputs: [{ kind: "enter", pointer: "touch", x: 30, y: 400 }, "due"],
+      inputs: [{ kind: "enter", pointer: "touch", x: 30, y: 400, on: "surface" }, "due"],
       shown: false,
     },
     {
@@ -101,6 +102,49 @@ describe("peekStep — a pointer resting on the closed menu slides the open menu
       title: "a pointer left on the rail as the menu closes does not peek until it comes back",
       inputs: [{ kind: "close" }, mouse("move", 30, 400), "due"],
       shown: false,
+    },
+    {
+      title: "a pointer that came back after the menu closed peeks again",
+      inputs: [{ kind: "close" }, { kind: "leave" }, mouse("enter", 30, 400), "due"],
+      shown: true,
+    },
+    {
+      title: "a pointer that came back onto a face after the menu closed peeks from the pod",
+      inputs: [
+        { kind: "close" },
+        { kind: "leave" },
+        mouse("enter", 30, 400, "control"),
+        mouse("move", 30, 380),
+        "due",
+      ],
+      shown: true,
+    },
+    // A click lands on what the person aimed at: a face, Overview or a foot button keeps its own
+    // hover and its click, so resting on one never slides the menu over it.
+    {
+      title: "a pointer resting on a face never peeks",
+      inputs: [mouse("enter", 30, 400, "control"), "due"],
+      shown: false,
+    },
+    {
+      title: "moving from a face onto its pod's name peeks once it rests there",
+      inputs: [mouse("enter", 30, 400, "control"), mouse("move", 30, 380), "due"],
+      shown: true,
+    },
+    {
+      title: "moving onto a face before the rest is over cancels the peek",
+      inputs: [mouse("enter", 30, 380), mouse("move", 30, 400, "control"), "due"],
+      shown: false,
+    },
+    {
+      title: "a press on the rail cancels a pending peek",
+      inputs: [mouse("enter", 30, 380), { kind: "press" }, "due"],
+      shown: false,
+    },
+    {
+      title: "a press inside the peek keeps it",
+      inputs: [mouse("enter", 30, 380), "due", { kind: "press" }],
+      shown: true,
     },
   ] satisfies ReadonlyArray<{
     title: string;
