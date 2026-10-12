@@ -9,7 +9,7 @@ import {
   type ResolvedKeybindingsConfig,
   type ThreadId,
 } from "@t3tools/contracts";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -52,6 +52,8 @@ import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsProjectLink } from "../zerops/ZeropsProjectLink";
+import { useProjectSitesOf } from "~/zerops/projectSitesShown";
+import { useRightPanelStore } from "~/rightPanelStore";
 import { MateFaceAsMark } from "../zerops/primitives";
 import { ChatHeaderLinks } from "./ChatHeaderLinks";
 import { ConversationStrip } from "./ConversationStrip";
@@ -269,6 +271,8 @@ export const ChatHeader = memo(function ChatHeader({
   // share and leaves out what only one of them has.
   const whoLivesHere = useZeropsMate(activeThreadEnvironmentId);
   const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
+  // Sites opens the menu's panel for this Mate's project, with its ways to Zerops in it.
+  const headerSites = useProjectSitesOf(mate?.chief === true ? undefined : mate?.projectId);
   const lead = headerLead(whoLivesHere.kind, { chief: mate?.chief });
   const showOpenInPicker = shouldShowOpenInPicker({
     activeProjectName,
@@ -282,6 +286,15 @@ export const ChatHeader = memo(function ChatHeader({
     [activeThreadEnvironmentId, activeThreadId],
   );
   const mateActivity = useZeropsThreadActivity(activeThreadRef);
+  // A Chief's conversation opens beside its organization's overview, until the person closes it.
+  const chiefHere = mate?.chief === true && isServerThread;
+  useEffect(() => {
+    if (!chiefHere) return;
+    const panels = useRightPanelStore.getState();
+    const key = scopedThreadKey(activeThreadRef);
+    if (key in panels.byThreadKey) return;
+    panels.open(activeThreadRef, "overview");
+  }, [chiefHere, activeThreadRef]);
   const linkVoice = useMateVoice();
   const status = linkVoice.surface === "none" ? mateStatus(mateActivity, null) : null;
   const settings = useEnvironmentSettings(activeThreadEnvironmentId);
@@ -572,15 +585,9 @@ export const ChatHeader = memo(function ChatHeader({
         {lead === "reserved" ? (
           <div aria-hidden="true" className="min-w-0 flex-1" data-header-lead-reserved />
         ) : lead === "title" ? (
-          // A Chief's conversation: its title once something is said in it, else only the
-          // controls at the header's end.
-          <WorkspaceBreadcrumb ariaLabel="Conversation" className="flex-1">
-            {spoken ? (
-              <WorkspaceBreadcrumbItem current className="flex-1">
-                {titleContent}
-              </WorkspaceBreadcrumbItem>
-            ) : null}
-          </WorkspaceBreadcrumb>
+          // A Chief's conversation: only the controls at the header's end; its last question is
+          // the conversation itself.
+          <div aria-hidden="true" className="min-w-0 flex-1" />
         ) : lead === "strip" ? (
           // The line of the Mate's conversations: the Mate, then its crew. What
           // the chat is about is the Mate's hover, never words on the line.
@@ -713,7 +720,12 @@ export const ChatHeader = memo(function ChatHeader({
               ) : null}
             </MenuPopup>
           </Menu>
-          <ChatHeaderLinks environmentId={activeThreadEnvironmentId} threadId={activeThreadId} />
+          <ChatHeaderLinks
+            environmentId={activeThreadEnvironmentId}
+            mateProjectId={mate?.projectId}
+            sites={headerSites}
+            threadId={activeThreadId}
+          />
           {mate === undefined ? null : (
             <span
               aria-hidden={conversationLoading ? true : undefined}
@@ -723,9 +735,9 @@ export const ChatHeader = memo(function ChatHeader({
               {mate.chief === true ? (
                 // A Chief's way out is its organization: the overview's cards beside it.
                 <ChiefOverviewButton threadRef={activeThreadRef} />
-              ) : (
+              ) : headerSites === undefined ? (
                 <ZeropsProjectLink projectUrl={mate.projectUrl} />
-              )}
+              ) : null}
             </span>
           )}
         </div>

@@ -191,6 +191,7 @@ import {
   parseProjectsSearch,
   withoutOfficialHq,
   shownUngrouped,
+  type OverviewShow,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
 import { OverviewFilterEmpty, OverviewFilters } from "./projects/OverviewFilters";
@@ -732,7 +733,13 @@ export function useZeropsProjectConnection(): {
 const SHOWS_EVERY_MATE = () => true;
 const NO_ROWS: ReadonlyArray<never> = [];
 
-function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) {
+function ZeropsProjectsContent({
+  search,
+  onShow,
+}: {
+  readonly search: ProjectsSearch;
+  readonly onShow?: ((show: OverviewShow | undefined) => void) | undefined;
+}) {
   const openMate = useOpenMate();
   const authGate = useRouteContext({
     from: "__root__",
@@ -2377,12 +2384,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       {flowGroups.some((entry) => entry.flow.mates.length > 0) ? (
         <OverviewFilters
           mine={flowGroups.filter((entry) => filterFacts.mine.has(entry.group.groupId)).length}
+          onShow={onShow}
           show={search.show}
           waiting={flowGroups.filter((entry) => filterFacts.waits.has(entry.group.groupId)).length}
         />
       ) : null}
       {search.show !== undefined && keptGroups.length === 0 ? (
-        <OverviewFilterEmpty show={search.show} />
+        <OverviewFilterEmpty onShow={onShow} show={search.show} />
       ) : null}
       <ZeropsProjectsFlow
         creating={creationRunning}
@@ -2535,11 +2543,19 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
 }
 
-export function ZeropsProjectsPage() {
+export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boolean }) {
   const { activeOrganization, organizationStatus, status } = useZeropsSession();
   // The same page is the signed-in door at `/`, so the search is read loosely
   // and through the route's own parser.
-  const search = parseProjectsSearch(useSearch({ strict: false }));
+  const routeSearch = parseProjectsSearch(useSearch({ strict: false }));
+  // In a conversation's panel the address is the conversation's: the filter is the panel's own
+  // (the owner, 2026-10-12: "filtering here redirects me to the standalone page").
+  const [panelShow, setPanelShow] = useState<OverviewShow | undefined>(undefined);
+  const search: ProjectsSearch = !inPanel
+    ? routeSearch
+    : panelShow === undefined
+      ? {}
+      : { show: panelShow };
   const { listing, refresh } = useZeropsCandidates();
   const nowMs = useNowMs();
   const scoped =
@@ -2564,7 +2580,7 @@ export function ZeropsProjectsPage() {
       {scoped && !firstRun ? (
         <ZeropsProjectsHeader notice={projectsFreshnessNotice(listing, nowMs)} onRetry={refresh} />
       ) : null}
-      <ZeropsProjectsContent search={search} />
+      <ZeropsProjectsContent onShow={inPanel ? setPanelShow : undefined} search={search} />
     </ZeropsHostedFrame>
   );
 }

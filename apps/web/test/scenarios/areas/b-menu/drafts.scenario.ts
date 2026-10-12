@@ -109,12 +109,14 @@ describe("B: text-only drafts", () => {
             // 2026-10-11).
             await s.page.waitForFunction(
               () => {
-                // Their project's group, opened as a person would.
-                document
-                  .querySelector<HTMLElement>(
-                    '[data-zerops-surface="sidebar-fold-all"][aria-label="Open all projects"]',
-                  )
-                  ?.click();
+                // Their project's group, opened as a person would: → on its row.
+                for (const group of document.querySelectorAll<HTMLElement>(
+                  '[data-zerops-surface="sidebar-project"][aria-expanded="false"]',
+                )) {
+                  group.dispatchEvent(
+                    new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+                  );
+                }
                 const lines =
                   document
                     .querySelector<HTMLElement>('[data-zerops-surface="sidebar-environments"]')

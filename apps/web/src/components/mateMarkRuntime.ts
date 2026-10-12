@@ -475,7 +475,7 @@ function tick(
 
   if (mark.parts.band) {
     if (open < 0.998) {
-      put(mark, mark.parts.band, "visibility", "visible");
+      put(mark, mark.parts.band, "visibility", "inherit");
       const dx = round(open * TRAVEL * COS30);
       const dy = round(open * TRAVEL * SIN30);
       put(mark, mark.parts.bandLeft, "transform", `translate(${-dx},${dy})`);
@@ -544,14 +544,14 @@ function tick(
   const offsetY = 0.22 * U * mark.gazeY - PARALLAX * sinX;
   const happy = state === "done";
 
-  put(mark, mark.parts.eyes, "visibility", reveal > 0.01 ? "visible" : "hidden");
+  put(mark, mark.parts.eyes, "visibility", reveal > 0.01 ? "inherit" : "hidden");
   const eyeSlots = [
     [mark.parts.eyeLeft, mark.parts.happyLeft, MATE_MARK_LIVE.eyeCentres[0] + offsetX],
     [mark.parts.eyeRight, mark.parts.happyRight, MATE_MARK_LIVE.eyeCentres[1] + offsetX],
   ] as const;
   for (const [rect_, arc, cx] of eyeSlots) {
-    put(mark, rect_, "visibility", happy ? "hidden" : "visible");
-    put(mark, arc, "visibility", happy ? "visible" : "hidden");
+    put(mark, rect_, "visibility", happy ? "hidden" : "inherit");
+    put(mark, arc, "visibility", happy ? "inherit" : "hidden");
     if (happy) {
       put(
         mark,
@@ -581,7 +581,7 @@ function tick(
             ? 1.1 - 0.1 * ((since - 0.12) / 0.14)
             : 1;
       moving ||= since < 0.26;
-      put(mark, mark.parts.mouth, "visibility", "visible");
+      put(mark, mark.parts.mouth, "visibility", "inherit");
       put(
         mark,
         mark.parts.mouth,

@@ -23,6 +23,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
+  type ReactElement,
   type ReactNode,
 } from "react";
 
@@ -816,4 +817,84 @@ function SitesLinks({
       </div>
     );
   });
+}
+
+/**
+ * The conversation header's Sites: the panel a row's globe opens, narrowed to production and this
+ * conversation's own Mate. Each section's head carries its way to Zerops, so the header needs no
+ * Open in Zerops of its own.
+ */
+export function HeaderSites({
+  sites,
+  mateProjectId,
+  trigger,
+  children,
+}: {
+  readonly sites: ProjectSitesInput;
+  readonly mateProjectId: string;
+  readonly trigger: ReactElement;
+  readonly children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const mates = sites.mates.filter((mate) => mate.candidate.project.id === mateProjectId);
+  const line = sites.line === undefined ? undefined : { ...sites.line, stages: [] };
+  const close = () => {
+    setOpen(false);
+  };
+  return (
+    <PopoverPrimitive.Root
+      onOpenChange={(next) => {
+        if (next) setQuery("");
+        setOpen(next);
+      }}
+      open={open}
+    >
+      <PopoverPrimitive.Trigger render={trigger}>{children}</PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Positioner
+          align="end"
+          className="z-130"
+          collisionPadding={8}
+          side="bottom"
+          sideOffset={6}
+        >
+          <PopoverPrimitive.Popup
+            aria-label={`Sites of ${sites.projectName}`}
+            className="zerops-sites"
+            data-zerops-surface="chat-header-sites"
+          >
+            <SitesPanel
+              focusSection={undefined}
+              groupId={sites.groupId}
+              line={line}
+              mates={mates}
+              onAskToFix={
+                sites.onAskToFix === undefined
+                  ? undefined
+                  : (mateProjectId, problem) => {
+                      close();
+                      sites.onAskToFix?.(mateProjectId, problem);
+                    }
+              }
+              onOpenStop={(projectId) => {
+                const opens = sites.onOpenStop(projectId);
+                return opens === undefined
+                  ? undefined
+                  : () => {
+                      close();
+                      opens();
+                    };
+              }}
+              onQuery={setQuery}
+              production={sites.production}
+              projectName={sites.projectName}
+              query={query}
+              stages={undefined}
+            />
+          </PopoverPrimitive.Popup>
+        </PopoverPrimitive.Positioner>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+  );
 }

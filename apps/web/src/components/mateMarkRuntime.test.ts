@@ -229,7 +229,7 @@ describe("the live mark's loop", () => {
     const page = fakePage();
     const { parts } = page.mount(undefined, { awake: true });
     page.advance(47_000);
-    expect(parts.band.attributes.get("visibility")).toBe("visible");
+    expect(parts.band.attributes.get("visibility")).toBe("inherit");
     expect(page.pending()).toEqual({ frames: 0, timers: 0 });
     expect(page.advance(30_000)).toEqual({ frames: 0, writes: 0 });
     // A pointer wakes it again.
@@ -260,7 +260,7 @@ describe("the live mark's loop", () => {
     page.loop.setVisible(svg as unknown as Element, true);
     page.advance(1_500);
     // Asleep by now: it comes back shut, without ticking its way there while hidden.
-    expect(parts.band.attributes.get("visibility")).toBe("visible");
+    expect(parts.band.attributes.get("visibility")).toBe("inherit");
     expect(page.pending().frames).toBe(0);
   });
 

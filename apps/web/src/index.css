@@ -3156,8 +3156,8 @@ code {
     grid-template-columns: 36px minmax(0, 1fr);
     column-gap: 12px;
     align-items: start;
-    min-height: 59px;
-    padding: 9px 8px;
+    min-height: 63px;
+    padding: 11px 10px;
     border-radius: 12px;
   }
 
@@ -3583,8 +3583,18 @@ code {
     --menu-ground: var(--sidebar-row-hover);
   }
 
+  /* The open Mate's unit is the band's: its hover never stands over it. `!important` over the
+     unit's hover utility, which a component rule cannot outrank otherwise. */
   .menu-unit:has([aria-current="true"]) {
     --menu-ground: var(--sidebar-row-active);
+    background-color: transparent !important;
+  }
+
+  /* A pressed row is the open one from the press, lit at once while the band comes under it. */
+  .menu-unit[data-band-arriving] {
+    --menu-ground: var(--sidebar-row-active);
+    background-color: var(--sidebar-row-active) !important;
+    transition: none !important;
   }
 
   /* A Mate under its open group's row: 20 px in, so the group's Mates read as its. */
@@ -3619,8 +3629,8 @@ code {
      they measure (`useTagsRoom`); the name's line keeps its whole width. */
   .menu-row-tags {
     position: absolute;
-    top: 31px;
-    inset-inline-start: 56px;
+    top: 33px;
+    inset-inline-start: 58px;
     z-index: 1;
     display: flex;
     height: 22px;
@@ -3629,7 +3639,7 @@ code {
   }
 
   .menu-row-box:has(.menu-row-kid) .menu-row-tags {
-    inset-inline-start: 76px;
+    inset-inline-start: 78px;
   }
 
   [data-tags] .menu-row .menu-line2:not(.menu-line2 .menu-line2) {
@@ -4607,13 +4617,14 @@ code {
 
 /* The globe: a 20 px row action, as the row's ■ and ··· are. Dimmed — still pressable — where
    nothing anywhere has an address yet. */
-.zerops-sites-globe {
+.zerops-sites-globe,
+.menu-row-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   color: var(--sidebar-muted-foreground);
   cursor: pointer;
   outline: none;
@@ -4623,17 +4634,33 @@ code {
     opacity 150ms var(--ease-out-strong);
 }
 
-.zerops-sites-globe:hover {
-  background-color: var(--sidebar-row-hover);
+.menu-row-action {
+  color: var(--sidebar-muted-foreground);
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong);
+}
+
+/* On a row already lit by its own hover, a verb's hover needs a ground of its own. */
+.zerops-sites-globe:hover,
+.menu-row-action:hover {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 9%, transparent);
   color: var(--sidebar-foreground);
+}
+
+.menu-row-action:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
 .zerops-sites-globe:focus-visible {
   box-shadow: 0 0 0 2px var(--ring);
 }
 
-.zerops-sites-globe[data-popup-open] {
-  background-color: var(--sidebar-row-active);
+.zerops-sites-globe[data-popup-open],
+.menu-row-action[data-popup-open] {
+  background-color: color-mix(in oklab, var(--sidebar-foreground) 12%, transparent);
   color: var(--sidebar-foreground);
 }
 
@@ -5196,8 +5223,10 @@ code {
     background: var(--sidebar-row-hover);
   }
 
-  .menu-chief-row[data-current] {
+  .menu-chief-row[data-current],
+  .menu-chief-row[data-pressed] {
     background: var(--sidebar-row-active);
+    transition: none;
   }
 
   .menu-chief-row:focus-visible {
@@ -5210,7 +5239,7 @@ code {
     align-items: center;
     gap: 12px;
     min-width: 0;
-    padding-inline: 8px 12px;
+    padding-inline: 10px 12px;
   }
 
   /* The count stands at the first column's end, 4 px before the squares as they stand apart. */
@@ -5222,7 +5251,8 @@ code {
     display: grid;
     flex: none;
     place-items: center;
-    width: 40px;
+    /* A row's face column, so "Chief Mate" starts where every project's name does. */
+    width: 36px;
     height: 40px;
   }
 
@@ -5244,14 +5274,28 @@ code {
     }
   }
 
+  /* The org's own Mate, set apart from every project's: its title in the menu's heaviest weight,
+     tracked tight, "Mate" in the mark's teal. */
   .menu-chief-name {
     overflow: hidden;
-    font-size: 15px;
+    font-size: 16px;
     line-height: 21px;
-    font-weight: 500;
+    font-weight: 650;
+    letter-spacing: -0.01em;
     color: var(--sidebar-foreground);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .menu-chief-name-mate {
+    background: linear-gradient(90deg, oklch(0.6 0.11 190), oklch(0.66 0.12 165));
+    background-clip: text;
+    color: transparent;
+  }
+
+  .dark .menu-chief-name-mate {
+    background: linear-gradient(90deg, oklch(0.78 0.11 190), oklch(0.82 0.13 165));
+    background-clip: text;
   }
 
   .menu-chief-line {

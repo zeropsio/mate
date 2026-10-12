@@ -170,7 +170,7 @@ export function MateMark({
           ref={(node) => {
             parts.current.eyes = node;
           }}
-          visibility={playful && !awake ? "hidden" : "visible"}
+          visibility={playful && !awake ? "hidden" : "inherit"}
         >
           <rect
             height={eyeH}

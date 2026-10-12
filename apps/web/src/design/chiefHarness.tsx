@@ -34,7 +34,7 @@ import { ChiefSetupRowLine, SidebarChiefRow } from "~/components/zerops/chief/Si
 import { MateFaceAsMark } from "~/components/zerops/primitives";
 import { waitingItemsOf, type WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
 import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
-import { SidebarFoldAllButton } from "~/components/zerops/SidebarFoldAllButton";
+import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
 import { MateComingHeader } from "~/components/zerops/ZeropsMateComingPage";
 import type { AppRouter } from "~/router";
@@ -166,7 +166,7 @@ function Harness() {
           }
           actions={
             <>
-              <SidebarFoldAllButton />
+              <SidebarScopeButton onScope={() => {}} scope="everyone" />
               <SidebarJumpButton onJump={() => {}} shortcut="⌘K" />
               <SidebarCreateButton onNewMate={() => {}} onNewProject={() => {}} projects={[]} />
             </>

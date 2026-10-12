@@ -95,18 +95,6 @@ describe("a project's fold", () => {
     });
   });
 
-  // The owner, 2026-10-12: "how about fold / unfold all here?"
-  it.each([
-    { fold: true, closed: ["a", "b", "c"], opened: [] },
-    { fold: false, closed: [], opened: ["a", "b", "c"] },
-  ])("folds every project at once, or opens every one: fold $fold", ({ fold, closed, opened }) => {
-    const mixed = { closed: new Set(["a"]), opened: new Set(["b"]) };
-    expect(projects.withProjectsFolded(mixed, ["a", "b", "c"], fold)).toEqual({
-      closed: new Set(closed),
-      opened: new Set(opened),
-    });
-  });
-
   it("remembers what the person opened, per account", () => {
     lifetime.openAccountLifetime("user-a");
     projects.writeOpenedProjects(new Set(["group-a"]));

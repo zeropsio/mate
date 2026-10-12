@@ -1,3 +1,4 @@
+import { showProjectSites } from "~/zerops/projectSitesShown";
 import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
 import { mateStatus } from "../../zerops/mateStatus.logic";
@@ -169,7 +170,6 @@ import {
   readCollapsedProjects,
   readOpenedProjects,
   withProjectFold,
-  withProjectsFolded,
   writeCollapsedProjects,
   writeOpenedProjects,
   type ProjectFolds,
@@ -289,7 +289,6 @@ import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
 import { finishSetupRowLine, useMatePress } from "~/zerops/matePress";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useSidebarJump } from "~/zerops/sidebarJump";
-import { useMenuFolds } from "~/zerops/menuFolds";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
 import {
   EMPTY_JUMP_INDEX,
@@ -733,28 +732,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     closed: readCollapsedProjects(),
     opened: readOpenedProjects(),
   }));
-  // Every project folded or opened at once, asked from the menu's top row (`useMenuFolds`): the
-  // projects with Mates as this draw lists them, and whether any of them stands open.
-  const foldable = useRef<ReadonlyArray<string>>([]);
-  const anyOpen = useRef<boolean | null>(null);
-  anyOpen.current = null;
-  const setAnyOpen = useMenuFolds((state) => state.setAnyOpen);
-  useEffect(() => {
-    setAnyOpen(anyOpen.current);
-  });
-  useEffect(
-    () => () => {
-      setAnyOpen(null);
-    },
-    [setAnyOpen],
-  );
-  const foldAsked = useMenuFolds((state) => state.asked);
-  const foldAnswered = useRef(foldAsked?.seq ?? 0);
-  useEffect(() => {
-    if (foldAsked === null || foldAsked.seq === foldAnswered.current) return;
-    foldAnswered.current = foldAsked.seq;
-    setProjectFolds((current) => withProjectsFolded(current, foldable.current, foldAsked.fold));
-  }, [foldAsked]);
   useEffect(() => {
     writeCollapsedProjects(projectFolds.closed);
     writeOpenedProjects(projectFolds.opened);
@@ -797,6 +774,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const projectLatest = useRef(new Map<string, ProjectLatest>()).current;
   const projectRefs = useRef(new Map<string, ProjectRefs>()).current;
   const projectShared = useRef(new Map<string, ProjectShared>()).current;
+  // The header's Sites opens the panel a row's globe opens (`useProjectSitesOf`).
+  useEffect(() => {
+    showProjectSites([...projectShared.values()].map((shared) => shared.sites));
+  });
   const projectRefsOf = (id: string): ProjectRefs => {
     const kept = projectRefs.get(id);
     if (kept !== undefined) return kept;
@@ -2032,12 +2013,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   for (const plan of [...plans.map((entry) => entry.plan), ungroupedPlan]) {
     for (const projectId of plan?.drawn ?? []) numbers.set(projectId, numbers.size + 1);
   }
-  // Fold all and Open all, from the menu's top row: the projects that fold — groups of Mates.
-  const folding = plans
-    .filter((entry) => entry.plan?.folds === true)
-    .map((entry) => entry.group.groupId);
-  foldable.current = folding;
-  anyOpen.current = folding.length === 0 ? null : folding.some((id) => !collapsed.has(id));
   mateOrder.current = [
     ...plans.flatMap((entry) => entry.plan?.order ?? []),
     ...(ungroupedPlan?.order ?? []),
@@ -2751,7 +2726,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
           </span>
         ) : null}
         <span
-          className="absolute top-3.5 end-2 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100"
+          className="absolute top-2 end-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100"
           data-row-control=""
           data-zerops-surface="sidebar-project-actions"
         >
@@ -2866,7 +2841,7 @@ function ProjectBareRow({
           </span>
         ) : null}
         <span
-          className="absolute top-3.5 end-2 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100"
+          className="absolute top-2 end-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100"
           data-row-control=""
           data-zerops-surface="sidebar-project-actions"
         >
@@ -3036,8 +3011,7 @@ function focusOnceFree(element: HTMLElement, then: () => void, frames = 0): void
 const ROW_STOP_ARMED_CLASS =
   "inline-flex h-5 cursor-pointer items-center rounded px-1 text-line leading-5 font-semibold text-status-failed-text outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-const ROW_ACTION_CLASS =
-  "inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
+const ROW_ACTION_CLASS = "menu-row-action";
 
 /**
  * A Mate and its crew's line, one thing in the menu (the owner, 2026-09-29:
@@ -3966,7 +3940,7 @@ function MateRowView<T extends RosterCandidate>({
       {!menuShown && globe === undefined ? null : (
         <span
           className={cn(
-            "absolute top-3.5 flex h-5 items-center gap-0.5 opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
+            "absolute top-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
             "end-2",
             // A finger never hovers: a project's row holds its verbs where its time stood.
             project !== undefined && "pointer-coarse:opacity-100",
