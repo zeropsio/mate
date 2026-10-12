@@ -46,6 +46,7 @@ import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
 import { ZeropsNewMateHost } from "../components/zerops/ZeropsNewMateHost";
 import { ZeropsNewProjectHost } from "../components/zerops/ZeropsNewProjectHost";
+import { ChiefSetupHost } from "../components/zerops/chief/ChiefSetupHost";
 import { ZeropsHqGate } from "../components/zerops/ZeropsHqGate";
 import { Button } from "../components/ui/button";
 import {
@@ -321,6 +322,7 @@ function SignedInRootRouteView() {
             <>
               <ZeropsNewMateHost />
               <ZeropsNewProjectHost />
+              <ChiefSetupHost />
             </>
           ) : null}
         </CommandPalette>

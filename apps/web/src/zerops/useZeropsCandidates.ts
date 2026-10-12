@@ -34,6 +34,7 @@ import {
 } from "../state/zerops";
 import { sameValue } from "../lib/sameValue";
 import { invalidateZerops } from "./accountInvalidations";
+import { othersChiefsAtom } from "./ownChief";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 import { useZeropsInventory } from "./inventoryContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -158,7 +159,9 @@ export const candidateListingAtom = Atom.make(
     const environments = get(zeropsEnvironmentsAtom);
     const connectedOrigins = authenticatedZeropsOrigins(environments);
     const connectionsByOrigin = zeropsConnectionsByOrigin(environments);
-    return presentCandidates(rows, (row): ZeropsCandidatePresentation => {
+    // Another person's Chief is drawn nowhere (`ownChief.ts`).
+    const othersChiefs = get(othersChiefsAtom);
+    const presented = presentCandidates(rows, (row): ZeropsCandidatePresentation => {
       const candidate = withZeropsConnection(row, connectedOrigins);
       const resolved = get(projectServicesAtom(candidate.project.id)).services ?? null;
       const routes =
@@ -182,6 +185,12 @@ export const candidateListingAtom = Atom.make(
         ...(connection === undefined ? {} : { connection }),
       };
     });
+    return othersChiefs.size === 0 || presented.state !== "known"
+      ? presented
+      : {
+          ...presented,
+          value: presented.value.filter((candidate) => !othersChiefs.has(candidate.project.id)),
+        };
   },
 ).pipe(Atom.withLabel("zerops:candidate-listing"));
 

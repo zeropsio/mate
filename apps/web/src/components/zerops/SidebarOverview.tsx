@@ -7,6 +7,7 @@
  * selected band while the overview is open; a click and ⌥0 open it.
  */
 import { useAtomValue } from "@effect/atom-react";
+import type { MateComing } from "@t3tools/client-runtime/data";
 import type { ZeropsEnvironmentServices, ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { LayersIcon } from "lucide-react";
@@ -97,12 +98,18 @@ export function SidebarOverviewRow({
   onOpen,
   waiting,
   chief = false,
+  coming,
 }: {
   /**
    * The organization's Chief stands in for the overview (prototype): the menu's top row,
    * the Mate's own mark and its name, opening its conversation, whose panel holds the overview.
    */
   readonly chief?: boolean;
+  /**
+   * The Chief in its first minutes (`mateComing`): its line says how far it has got, or that it
+   * did not come, as any new Mate's row does.
+   */
+  readonly coming?: MateComing | undefined;
   /** The organization in one line (`overviewHeadline`). */
   readonly headline: string;
   /** The overview is the page open now. */
@@ -130,9 +137,14 @@ export function SidebarOverviewRow({
     };
   }, [onOpen]);
   const items = waiting?.items ?? [];
-  const summary = items.length === 0 ? undefined : waitingSummary(items);
+  // A Chief coming up says so: nothing waits on the person from a Mate not up yet.
+  const summary = items.length === 0 || coming !== undefined ? undefined : waitingSummary(items);
   return (
-    <div className="menu-overview" data-chief={chief ? "" : undefined}>
+    <div
+      className="menu-overview"
+      data-chief={chief ? "" : undefined}
+      data-coming={coming === undefined ? undefined : coming.kind}
+    >
       <button
         aria-current={current ? "page" : undefined}
         aria-keyshortcuts="Alt+0"
@@ -154,7 +166,15 @@ export function SidebarOverviewRow({
           <span className="menu-chrome-name" data-waiting-line="">
             {chief ? "Chief" : "Overview"}
           </span>
-          {summary === undefined ? (
+          {coming !== undefined ? (
+            <span
+              className="menu-chrome-line"
+              data-ink={coming.kind === "failed" ? "" : undefined}
+              data-zerops-surface="sidebar-chief-coming"
+            >
+              <span>{coming.line}</span>
+            </span>
+          ) : summary === undefined ? (
             <span className="menu-chrome-line" data-zerops-surface="sidebar-overview-headline">
               <span>{headline}</span>
             </span>

@@ -170,6 +170,7 @@ import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { useHqGate } from "../zerops/hqGate";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import { candidateListingAtom } from "../zerops/useZeropsCandidates";
+import { useOthersChiefs } from "../zerops/ownChief";
 import { slashKeyOpensJumpBox } from "../zerops/jumpSlash";
 import {
   primaryServerKeybindingsAtom,
@@ -1230,6 +1231,8 @@ export function OpenCommandPaletteDialog(props: {
   );
 
   const hqMates = useAtomValue(hqMatesAtom);
+  // Another person's Chief is found nowhere, its chats neither (`ownChief.ts`).
+  const othersChiefs = useOthersChiefs();
   const candidateListing = useAtomValue(candidateListingAtom);
   const hqStructure = useAtomValue(hqNavigationAtom);
   const mateNames = useMemo(
@@ -1249,7 +1252,12 @@ export function OpenCommandPaletteDialog(props: {
         .map((environment) => environment.environmentId),
     );
     return {
-      mates: hqMates?.mates ?? null,
+      mates:
+        hqMates === null
+          ? null
+          : othersChiefs.size === 0
+            ? hqMates.mates
+            : new Map([...hqMates.mates].filter(([projectId]) => !othersChiefs.has(projectId))),
       current: hqMates?.current === true,
       connected: (environmentId) => connected.has(environmentId),
       linkable,
@@ -1259,7 +1267,7 @@ export function OpenCommandPaletteDialog(props: {
       mateApp: (projectId) => mateApps.get(projectId),
       renderStatus: (status) => <ThreadRowResolvedStatus status={status} />,
     };
-  }, [environments, hqMates, mateNames, mateApps, linkable, threadLastVisitedAtById]);
+  }, [environments, hqMates, othersChiefs, mateNames, mateApps, linkable, threadLastVisitedAtById]);
   const allThreadItems = useMemo(
     () =>
       buildThreadActionItems({

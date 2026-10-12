@@ -148,6 +148,7 @@ import { type HqOutage } from "~/zerops/hqNavigation";
 import type { MateComing } from "@t3tools/client-runtime/data";
 import { mateFace } from "~/zerops/mateFace.logic";
 import { isChief } from "~/zerops/chief";
+import { useOwnChief } from "~/zerops/ownChief";
 import { useMateFaceWatch } from "~/zerops/useMateMoments";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
@@ -705,6 +706,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // in step without either one owning the other. In *Custom* the headings
   // take a grip, and every heading's menu moves its project up or down.
   const projectOrder = useProjectOrder();
+  const ownChief = useOwnChief();
   // Only the Mates HQ says wait on the viewer wait on them (`waitsOnViewer`).
   const waitsOnViewer = useWaitsOnViewer();
   // Whether *Add stage* and *Add production* stand in a project's menu: HQ's offer of each.
@@ -946,11 +948,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const mates = selectMateEnvironments(candidates);
   const mateByProject = new Map(mates.map((mate) => [mate.project.id, mate]));
   // The person's Chief is the organization's, not a project's: the menu's top row, not here.
-  const chief = mates.find((mate) => isChief(mate.project));
+  const chief = mates.find((mate) => mate.project.id === ownChief || isChief(mate.project));
   const everyEnvironment = [
     ...candidates.filter((candidate) => !mateByProject.has(candidate.project.id)),
     ...mates,
-  ];
+  ].filter((candidate) => candidate.project.id !== chief?.project.id);
   const view = buildZeropsGroupTree(everyEnvironment, {
     apps: appsWithWork,
     rank: rankZeropsCandidateForListing,

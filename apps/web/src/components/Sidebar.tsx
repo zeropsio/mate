@@ -212,7 +212,10 @@ import { openCrewTab } from "../zerops/crew/crewTab";
 import { useOpenMate } from "../zerops/useOpenMate";
 import { overviewProjectsOf, SidebarOverviewRow, useMenuProjects } from "./zerops/SidebarOverview";
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
-import { isChief } from "~/zerops/chief";
+import { ownChiefAmong } from "~/zerops/chief";
+import { openChiefSetup, useChiefSetupLine } from "~/zerops/chiefSetup";
+import { useOwnChief } from "~/zerops/ownChief";
+import { SidebarChiefSetupLine } from "./zerops/chief/SidebarChiefSetupLine";
 import { SidebarRail, useRailMates } from "./zerops/SidebarRail";
 import { SidebarPeekStage } from "./zerops/SidebarPeek";
 import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
@@ -1904,11 +1907,13 @@ export default function Sidebar() {
     },
     [askMateToFix, isMobile, setOpenMobile],
   );
-  // The organization's Chief, where it has one: the menu's top row in the overview's place.
+  // The person's own Chief, where they have one: the menu's top row in the overview's place.
+  const ownChief = useOwnChief();
   const zeropsChief = useMemo(
-    () => zeropsCandidates.find((candidate) => isChief(candidate.project)),
-    [zeropsCandidates],
+    () => ownChiefAmong(zeropsCandidates, ownChief),
+    [zeropsCandidates, ownChief],
   );
+  const chiefSetupLine = useChiefSetupLine();
   const onZeropsSelect = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) => {
       if (isMobile) {
@@ -2675,6 +2680,7 @@ export default function Sidebar() {
                 current={litZeropsProjectId === zeropsChief.project.id}
                 headline={zeropsHeadline}
                 chief
+                coming={zeropsComing(zeropsChief)}
                 onOpen={() => onZeropsSelect(zeropsChief)}
                 waiting={
                   zeropsListHeld
@@ -2960,6 +2966,9 @@ export default function Sidebar() {
                     : { items: zeropsWaiting.items, verbs: zeropsWaitingVerbs }
                 }
               />
+              {chiefSetupLine === null ? null : (
+                <SidebarChiefSetupLine onOpen={openChiefSetup} state={chiefSetupLine} />
+              )}
             </div>
           ) : null}
           {zeropsSignedIn && !isSearchingThreads ? (

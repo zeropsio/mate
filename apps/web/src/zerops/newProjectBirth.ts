@@ -77,6 +77,11 @@ export interface NewProjectAsk {
   /** Empty for every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`). */
   readonly agents: ReadonlyArray<ZeropsAgentType>;
   /**
+   * The person's Chief (`chief.ts`): its project tagged a Chief's, its zcp told the organization
+   * it serves. Drawn in no group: the menu's top row shows it coming up instead.
+   */
+  readonly chief?: true | undefined;
+  /**
    * Add a Mate, not a New project: the Mate goes into the project `name` that stands — no Git
    * hosting or registration of the project's own — its Zerops project named in full under it,
    * and its own registration written where `registers`.
@@ -275,7 +280,7 @@ export function placedNewProjects(
   organizationId: string | undefined,
 ): ReadonlyArray<ZeropsPlacedBirth> {
   return births.flatMap((birth) =>
-    birth.projectId !== null || birth.organizationId !== organizationId
+    birth.projectId !== null || birth.organizationId !== organizationId || birth.chief === true
       ? []
       : [
           {

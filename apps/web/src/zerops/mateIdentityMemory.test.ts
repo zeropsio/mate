@@ -3,7 +3,9 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  readChiefMemory,
   readMateMemory,
+  writeChiefMemory,
   rememberMates,
   seededIdentities,
   writeMateMemory,
@@ -105,5 +107,39 @@ describe("the Mates' names a reload remembers", () => {
   it("keeps the same memory when HQ says nothing new, so it is not written again", () => {
     const memory = rememberMates({}, [identity("env-milo", "Milo")], true);
     expect(rememberMates(memory, [identity("env-milo", "Milo")], true)).toBe(memory);
+  });
+});
+
+describe("whose Chief a reload remembers", () => {
+  it.each<[string, string | null]>([
+    ["the viewer's own Chief", "p-chief"],
+    ["that the viewer has none", null],
+  ])("a reload knows %s from the last visit before HQ answers", (_title, chief) => {
+    const held = storage();
+    writeChiefMemory("org-1", chief, held);
+    expect(readChiefMemory("org-1", held)).toBe(chief);
+  });
+
+  it("knows nothing of another organization's Chief", () => {
+    const held = storage();
+    writeChiefMemory("org-1", "p-chief", held);
+    expect(readChiefMemory("org-2", held)).toBeUndefined();
+  });
+
+  it("keeps each organization's Chief beside the others", () => {
+    const held = storage();
+    writeChiefMemory("org-1", "p-one", held);
+    writeChiefMemory("org-2", null, held);
+    expect([readChiefMemory("org-1", held), readChiefMemory("org-2", held)]).toEqual([
+      "p-one",
+      null,
+    ]);
+  });
+
+  it("remembers nothing from storage it cannot read", () => {
+    const held = storage();
+    held.setItem("mate:chief:v1", "{not json");
+    expect(readChiefMemory("org-1", held)).toBeUndefined();
+    expect(readChiefMemory("org-1", undefined)).toBeUndefined();
   });
 });
