@@ -121,8 +121,8 @@ function EnvironmentCloneToasts({
   const removeClonedProject = useRemoveClonedProject();
   const toasts = useMemo(() => toastsOf(shown, environmentId), [shown, environmentId]);
 
-  // Whether the user is already looking at this project's draft: the composer
-  // banner shows the same progress and actions there, so the toast steps
+  // Whether the user is already looking at this project's draft: the line in
+  // the composer's place shows the same progress there, so the toast steps
   // aside and comes back if they navigate away mid-clone.
   const isViewingProjectDraft = useCallback(
     (projectId: ProjectId) => {
@@ -212,7 +212,7 @@ function EnvironmentCloneToasts({
       }
 
       // Failed or cancelled: the project stays, pointing at an empty folder.
-      // Retry from here; the draft's composer banner offers the same.
+      // Retry from here; the line in the draft's composer place offers the same.
       const cancelled = clone.phase === "cancelled";
       const options = stackedThreadToast({
         type: cancelled ? "info" : "error",
