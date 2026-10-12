@@ -3948,34 +3948,37 @@ describe("owner-reported layout regressions", () => {
     describe("Decision: the closed menu names its projects, and peeks the open menu out of itself.", () => {
       const ANSWER_TEXT = "The existing conversation is still here";
       /** Shop's Mate open at the owner's view, the menu closed to its rail, the pointer on the page. */
-      const closedOnShop = Effect.gen(function* () {
-        const s = yield* createScenario([installArea]);
-        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        const chat = mateChat(s);
-        chat.fixture().exchange("And now?", ANSWER_TEXT);
-        yield* s.given.signedIn;
-        yield* Effect.promise(() => ownerMenu(s.page));
-        yield* chat.when.open();
-        yield* chat.then.text(ANSWER_TEXT);
-        yield* Effect.promise(async () => {
-          await s.page.click('button[aria-label="Collapse sidebar"]');
-          await s.page.mouse.move(1200, 500);
-          await s.page.waitForFunction(
-            () => {
-              const face = document.querySelector('[data-zerops-surface="sidebar-rail-mate"]');
-              if (face === null) return false;
-              const box = face.getBoundingClientRect();
-              return face.contains(
-                document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2),
-              );
-            },
-            { timeout: 8000 },
-          );
-          await new Promise((resolve) => setTimeout(resolve, 400));
+      const closedOn = (also?: { readonly mate: string; readonly app: string }) =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* s.given.project("Ada", { mate: true, app: "Shop" });
+          if (also !== undefined) yield* s.given.project(also.mate, { mate: true, app: also.app });
+          const chat = mateChat(s);
+          chat.fixture().exchange("And now?", ANSWER_TEXT);
+          yield* s.given.signedIn;
+          yield* Effect.promise(() => ownerMenu(s.page));
+          yield* chat.when.open();
+          yield* chat.then.text(ANSWER_TEXT);
+          yield* Effect.promise(async () => {
+            await s.page.click('button[aria-label="Collapse sidebar"]');
+            await s.page.mouse.move(1200, 500);
+            await s.page.waitForFunction(
+              () => {
+                const face = document.querySelector('[data-zerops-surface="sidebar-rail-mate"]');
+                if (face === null) return false;
+                const box = face.getBoundingClientRect();
+                return face.contains(
+                  document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2),
+                );
+              },
+              { timeout: 8000 },
+            );
+            await new Promise((resolve) => setTimeout(resolve, 400));
+          });
+          return s;
         });
-        return s;
-      });
+      const closedOnShop = closedOn();
       /** Every frame until stopped: how far the open menu reaches over the page, and where the
        * conversation's words stand. */
       const sampleFrames = (page: Page) =>
@@ -4030,6 +4033,88 @@ describe("owner-reported layout regressions", () => {
         });
 
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // The owner's ask for a smooth peek did not trade away a click: resting on a face and
+        // clicking it opened whatever row of the peek had slid under the pointer.
+        it.effect("a rest on a rail face and a click opens that Mate, with no peek over it", () =>
+          Effect.gen(function* () {
+            const s = yield* closedOn({ mate: "Bea", app: "Notes" });
+            const opened = yield* Effect.promise(async () => {
+              const face = (await s.page.$('[aria-label="Bea, Notes"]'))!;
+              const box = (await face.boundingBox())!;
+              const x = box.x + box.width / 2;
+              const y = box.y + box.height / 2;
+              await s.page.mouse.move(x, y, { steps: 4 });
+              await new Promise((resolve) => setTimeout(resolve, 150));
+              await s.page.mouse.down();
+              await s.page.mouse.up();
+              await new Promise((resolve) => setTimeout(resolve, 600));
+              return s.page.evaluate(
+                (x, y) => ({
+                  current: document
+                    .querySelector('[aria-label="Bea, Notes"]')
+                    ?.getAttribute("aria-current"),
+                  peeked:
+                    document
+                      .elementFromPoint(x + 200, y)
+                      ?.closest('[data-zerops-surface="sidebar-menu"]') != null,
+                }),
+                x,
+                y,
+              );
+            });
+            expect(opened, "ASSERTION: Bea opens, and the menu stays in the rail").toEqual({
+              current: "page",
+              peeked: false,
+            });
+            yield* s.then.noExternalNetwork;
+          }),
+        );
+
+        it.effect("the peeked menu's edge by the rail is the menu's, not the resize handle's", () =>
+          Effect.gen(function* () {
+            const s = yield* closedOnShop;
+            yield* restOnRail(s.page);
+            const at = yield* Effect.promise(() =>
+              s.page.evaluate(() => {
+                const hit = document.elementFromPoint(72, 300);
+                return {
+                  menu: hit?.closest('[data-zerops-surface="sidebar-menu"]') != null,
+                  handle: hit?.closest("[data-slot=sidebar-rail]") != null,
+                };
+              }),
+            );
+            expect(at, "ASSERTION: x 72 of the peek is the menu").toEqual({
+              menu: true,
+              handle: false,
+            });
+            yield* s.then.noExternalNetwork;
+          }),
+        );
+
+        it.effect("a rename begun in the peek keeps the peek while the pointer is away", () =>
+          Effect.gen(function* () {
+            const s = yield* closedOnShop;
+            yield* restOnRail(s.page);
+            const focused = yield* Effect.promise(async () => {
+              await s.page.click(
+                '[data-zerops-surface="sidebar-menu"] button[aria-label="More for Ada"]',
+              );
+              await s.page.locator('[data-zerops-mate-menu="rename"]').setTimeout(8000).click();
+              await s.page.waitForSelector('input[aria-label="Mate\'s name"]', { timeout: 8000 });
+              await s.page.mouse.move(1200, 600, { steps: 4 });
+              await new Promise((resolve) => setTimeout(resolve, 500));
+              return s.page.evaluate(
+                () =>
+                  document.activeElement?.getAttribute("aria-label") === "Mate's name" &&
+                  document.activeElement.closest('[data-zerops-surface="sidebar-menu"]') !== null &&
+                  document.activeElement.closest("[inert]") === null,
+              );
+            });
+            expect(focused, "ASSERTION: the rename field keeps its focus in the peek").toBe(true);
+            yield* s.then.noExternalNetwork;
+          }),
+        );
+
         it.effect(
           "at rest the closed menu draws each project as a named pod, its faces inside",
           () =>
