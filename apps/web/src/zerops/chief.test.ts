@@ -23,9 +23,7 @@ describe("isChief", () => {
 
 describe("chiefQuestion", () => {
   it("asks about the organization, never the Chief's own project", () => {
-    expect(chiefQuestion("Chief", "Acme Ltd")).toBe(
-      "What should Chief look into across Acme Ltd?",
-    );
+    expect(chiefQuestion("Chief", "Acme Ltd")).toBe("What should Chief look into across Acme Ltd?");
   });
 
   it("says your organization while its name is not known", () => {
