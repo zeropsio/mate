@@ -3177,22 +3177,19 @@ function MateRowView<T extends RosterCandidate>({
         </span>
       </button>
       {/* A change waiting for review stands under its Mate as a chip of its own on the words'
-          column, the same for every change: its title and Review — solid where it waits on the
-          viewer, quiet where it is a colleague's (the owner, 2026-10-12: it "absolutely blends
-          with the content"; one Mate's "looks completely different"). */}
+          column, the same for every change, whoever's Mate made it: its title and Review (the
+          owner, 2026-10-12: it "absolutely blends with the content"; one Mate's "looks
+          completely different"; then, of a Review solid only on their own Mate's change: "I
+          still don't understand why rosa has a different looking merge request"). What waits
+          on the viewer is the Overview's count to say. */}
       {review === undefined || change === undefined ? null : (
-        <div
-          className="menu-change"
-          data-mine={review.mine ? "true" : undefined}
-          data-zerops-surface="sidebar-mate-change"
-        >
+        <div className="menu-change" data-zerops-surface="sidebar-mate-change">
           <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
           <span className="menu-change-title">
             {review.mine ? change.title : `${change.title} · in review`}
           </span>
           <button
             className="menu-review"
-            data-mine={review.mine ? "true" : undefined}
             data-zerops-surface="sidebar-mate-review"
             onClick={(event) => {
               review.open(event.currentTarget);

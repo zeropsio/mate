@@ -1543,14 +1543,21 @@ describe("the project's flow under it", () => {
     expect(html.includes('data-zerops-surface="sidebar-mate-review"')).toBe(asks);
   });
 
-  it("says a colleague's open change is in review, muted, and leaves its Review quiet", () => {
-    session.viewer = "u-ada";
-    const html = withFlow([mine(CRM_DEV_CONNECTED, "u-karlos"), CRM_STAGE]);
-    expect(html).toMatch(
+  // The owner, 2026-10-12: "I still don't understand why rosa has a different looking merge
+  // request" — a Review solid only on their own Mate's change, nothing saying why.
+  it("says a colleague's open change is in review, its Review the same as on the viewer's own", () => {
+    const theirs = withFlow([mine(CRM_DEV_CONNECTED, "u-karlos"), CRM_STAGE]);
+    expect(theirs).toMatch(
       /sidebar-mate-change"[^>]*>(?:<svg[\s\S]*?<\/svg>)?(?:<span[^>]*>)?Change 4 · in review</u,
     );
-    expect(html).toMatch(/<button[^>]*data-zerops-surface="sidebar-mate-review"/u);
-    expect(html).not.toMatch(/data-mine="true"[^>]*data-zerops-surface="sidebar-mate-review"/u);
+    const ours = withFlow([own(), CRM_STAGE]);
+    // The change's chip and its Review as drawn, attributes and all.
+    const drawn = (html: string) =>
+      html.match(
+        /<div[^>]*data-zerops-surface="sidebar-mate-change"[^>]*>|<button[^>]*data-zerops-surface="sidebar-mate-review"[^>]*>/gu,
+      ) ?? [];
+    expect(drawn(theirs)).toHaveLength(2);
+    expect(drawn(theirs)).toEqual(drawn(ours));
   });
 
   it("offers to set up a stop the recipe has, in the project's menu rather than as a row", () => {
