@@ -39,10 +39,11 @@ import {
   ZeropsRecentTool,
   ZeropsStateEnvelope,
   type SpiEvent,
-  type ThreadId,
+  ThreadId,
   type ZeropsLifecycle as ZeropsLifecycleState,
 } from "@t3tools/contracts";
 
+import { conversationOfThread } from "../engine/pump/TurnPump.ts";
 import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
 import {
   ZeropsThreadLifecycleRepository,
@@ -222,7 +223,8 @@ export const make = (options: ZeropsLifecycleOptions) =>
             return;
           }
 
-          const previous = yield* load(event.threadId);
+          const threadId = ThreadId.make(conversationOfThread(event.threadId) ?? event.threadId);
+          const previous = yield* load(threadId);
           const at = yield* DateTime.now;
           const resultText = call.result?.text;
           const failed = call.result?.failed === true;
@@ -230,7 +232,7 @@ export const make = (options: ZeropsLifecycleOptions) =>
             resultText === undefined || failed ? undefined : extractZeropsEnvelope(resultText);
 
           const next: ZeropsLifecycleState = {
-            threadId: event.threadId,
+            threadId,
             // A result with no readable envelope leaves the previous one
             // standing. Clearing it, or reaching back to an older block, would
             // move the strip backwards over a corrupt payload.

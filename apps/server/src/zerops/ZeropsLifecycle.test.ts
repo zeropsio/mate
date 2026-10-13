@@ -11,8 +11,14 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
-import type { ItemLifecyclePayload, SpiEvent, ThreadId } from "@t3tools/contracts";
+import {
+  ConversationId,
+  type ItemLifecyclePayload,
+  type SpiEvent,
+  type ThreadId,
+} from "@t3tools/contracts";
 
+import { providerThreadOf } from "../engine/pump/TurnPump.ts";
 import { PersistenceSqlError } from "../persistence/Errors.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
@@ -127,6 +133,22 @@ describe("ZeropsLifecycle", () => {
         expect(state.envelope?.phase).toBe("develop-active");
         expect(state.envelope?.services[0]?.hostname).toBe("kanbandev");
         expect(state.recentTools.at(-1)?.toolName).toBe("zerops_workflow");
+      }),
+    ),
+  );
+
+  it.effect("a provider session's lifecycle is read on its owning conversation", () =>
+    withLifecycle((lifecycle) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(
+          claudeEvent({ threadId: providerThreadOf(ConversationId.make(THREAD)) }),
+        );
+        const state = yield* lifecycle.get(THREAD);
+        expect(
+          state.envelope?.project.id,
+          "ASSERTION: the conversation reads its native session's project",
+        ).toBe("proj-1");
+        expect(state.recentTools.map((tool) => tool.toolName)).toEqual(["zerops_workflow"]);
       }),
     ),
   );
