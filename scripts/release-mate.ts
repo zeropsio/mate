@@ -255,10 +255,7 @@ async function main(args: ReadonlySet<string>): Promise<void> {
       NodePath.join(tree, ".github/workflows/release.yml"),
       "utf8",
     );
-    if (
-      !workflow.includes("uses: ./.github/workflows/ci.yml") ||
-      !workflow.includes("needs: [build, ci]")
-    ) {
+    if (!workflow.includes("  verify:") || !workflow.includes("needs: [build, verify]")) {
       throw new Error(
         `source ${source} predates the release CI publication gate; choose a later green SHA`,
       );
