@@ -11,6 +11,7 @@ import * as NodeHttp from "node:http";
 import * as NodeNet from "node:net";
 import * as NodeChildProcess from "node:child_process";
 import * as Effect from "effect/Effect";
+import * as Redacted from "effect/Redacted";
 import { makeHqGit } from "./index.ts";
 import type { HqGit, GitEvent, HqGitOptions, GitError } from "./api.ts";
 
@@ -1336,3 +1337,200 @@ describe("receive-pack events without a listener", () => {
     ),
   );
 });
+
+describe("remote adoption", () => {
+  it.live("counts the exact first-push tree changes before main moves", () =>
+    fixture(async (git, dir) => {
+      const main = await write(git, { same: "same", hq: "hq", changed: "hq" }, null);
+      const remote = NodePath.join(dir, "remote.git");
+      await native(dir, ["init", "--bare", remote]);
+      const blob = await native(remote, ["hash-object", "-w", "--stdin"], "remote");
+      const same = await native(remote, ["hash-object", "-w", "--stdin"], "same");
+      const tree = await native(
+        remote,
+        ["mktree"],
+        `100644 blob ${blob}\tchanged\n100644 blob ${blob}\tremote\n100644 blob ${same}\tsame\n`,
+      );
+      const head = await native(remote, ["commit-tree", tree, "-m", "Remote"]);
+      await native(remote, ["update-ref", "refs/heads/main", head]);
+      const preview = await value(
+        git.previewAdoption(repo, { url: remote, token: Redacted.make("test"), branch: "main" }),
+      );
+      const ours = (await native(dir, ["ls-tree", "-r", main])).split("\n");
+      const theirs = (await native(remote, ["ls-tree", "-r", head])).split("\n");
+      const paths = new Set([...ours, ...theirs].map((entry) => entry.split("\t")[1]));
+      const n = [...paths].filter(
+        (path) =>
+          ours.find((entry) => entry.endsWith(`\t${path}`)) !==
+          theirs.find((entry) => entry.endsWith(`\t${path}`)),
+      ).length;
+      expect(n).toBe(3);
+      expect(preview.changedFiles).toBe(n);
+      expect(preview.main).toBe(main);
+      expect(preview.remoteTip).toBe(head);
+      expect(preview.seed).toBe(false);
+      expect(await native(dir, ["rev-parse", "main"])).toBe(main);
+    }),
+  );
+});
+
+it.live.each([
+  { seed: true, treeName: "the remote tree and empty seed" },
+  { seed: false, treeName: "HQ's populated tree" },
+])("adoption makes one two-parent commit and preserves $treeName", ({ seed }) =>
+  fixture(async (git, dir, events) => {
+    const main = await write(git, seed ? {} : { hq: "hq" }, null);
+    const mate = await branch(git, dir, main, { mate: "work" });
+    const remote = NodePath.join(dir, "remote.git");
+    await native(dir, ["init", "--bare", remote]);
+    const blob = await native(remote, ["hash-object", "-w", "--stdin"], "remote");
+    const tree = await native(remote, ["mktree"], `100644 blob ${blob}\tremote\n`);
+    const tip = await native(remote, ["commit-tree", tree, "-m", "Remote"]);
+    await native(remote, ["update-ref", "refs/heads/main", tip]);
+    await native(remote, ["tag", "upstream-tag", tip]);
+    const source = { url: remote, token: Redacted.make("test"), branch: "main" };
+    const preview = await value(git.previewAdoption(repo, source));
+    expect(preview.seed).toBe(seed);
+    expect(preview.changedFiles).toBe(seed ? 0 : 2);
+    const before = events.length;
+    const result = await value(git.acceptAdoption(repo, source, preview, author));
+    expect(result.kind).toBe("adopted");
+    if (result.kind !== "adopted") throw new Error("adoption refused");
+    expect(await native(dir, ["show", "-s", "--format=%P", "main"])).toBe(`${main} ${tip}`);
+    expect(await native(dir, ["rev-parse", "main^{tree}"])).toBe(
+      seed ? tree : await native(dir, ["rev-parse", `${main}^{tree}`]),
+    );
+    expect(await native(dir, ["merge-base", mate, "main"])).toBe(main);
+    expect(await native(dir, ["merge-base", "--is-ancestor", main, "main"])).toBe("");
+    expect(await native(dir, ["for-each-ref", "--format=%(refname)", "refs/tags"])).toBe("");
+    expect(
+      await NodeFSP.access(NodePath.join(dir, "FETCH_HEAD")).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
+    expect(events.slice(before)).toEqual([
+      { kind: "main_moved", repo, old: main, new: result.sha, by: "commit" },
+    ]);
+    const count = await native(dir, ["rev-list", "--all", "--count"]);
+    const again = await value(git.previewAdoption(repo, source));
+    expect(await value(git.acceptAdoption(repo, source, again, author))).toEqual({
+      kind: "unchanged",
+    });
+    expect(await native(dir, ["rev-list", "--all", "--count"])).toBe(count);
+    expect(events.length).toBe(before + 1);
+  }),
+);
+it.live.each(["remote", "main"] as const)(
+  "Decision L3a: a moved %s refuses the displayed adoption without moving main",
+  (changed) =>
+    fixture(async (git, dir, events) => {
+      const main = await write(git, { hq: "hq" }, null);
+      const remote = NodePath.join(dir, "remote.git");
+      await native(dir, ["init", "--bare", remote]);
+      const tree = await native(remote, ["mktree"], "");
+      const tip = await native(remote, ["commit-tree", tree, "-m", "Remote"]);
+      await native(remote, ["update-ref", "refs/heads/main", tip]);
+      const source = { url: remote, token: Redacted.make("test"), branch: "main" };
+      const preview = await value(git.previewAdoption(repo, source));
+      let expectedMain = main;
+      if (changed === "main") expectedMain = await write(git, { next: "next" }, main);
+      else {
+        const next = await native(remote, ["commit-tree", tree, "-p", tip, "-m", "Remote moved"]);
+        await native(remote, ["update-ref", "refs/heads/main", next]);
+      }
+      const before = events.length;
+      const objects = await native(dir, ["rev-list", "--all", "--count"]);
+      expect(await value(git.acceptAdoption(repo, source, preview, author))).toEqual({
+        kind: "stale",
+      });
+      expect(await native(dir, ["rev-parse", "main"])).toBe(expectedMain);
+      expect(await native(dir, ["rev-list", "--all", "--count"])).toBe(objects);
+      expect(events.length).toBe(before);
+    }),
+);
+it.live("an absent remote branch writes no adoption commit", () =>
+  fixture(async (git, dir, events) => {
+    const main = await write(git, {}, null);
+    const remote = NodePath.join(dir, "remote.git");
+    await native(dir, ["init", "--bare", remote]);
+    const source = { url: remote, token: Redacted.make("test"), branch: "missing" };
+    const preview = await value(git.previewAdoption(repo, source));
+    expect(preview.remoteTip).toBeNull();
+    expect(preview.changedFiles).toBe(0);
+    expect(await value(git.acceptAdoption(repo, source, preview, author))).toEqual({
+      kind: "unchanged",
+    });
+    expect(await native(dir, ["rev-parse", "main"])).toBe(main);
+    expect(await native(dir, ["rev-list", "--all", "--count"])).toBe("1");
+    expect(events.length).toBe(1);
+  }),
+);
+
+it.live("an absent remote previews every populated HQ file while writing no adoption commit", () =>
+  fixture(async (git, dir) => {
+    const main = await write(git, { a: "a", b: "b" }, null);
+    const remote = NodePath.join(dir, "remote.git");
+    await native(dir, ["init", "--bare", remote]);
+    const source = { url: remote, token: Redacted.make("fixture"), branch: "main" };
+    const preview = await value(git.previewAdoption(repo, source));
+    const files = (await native(dir, ["ls-tree", "-r", "--name-only", main])).split("\n");
+    expect(preview.changedFiles).toBe(files.length);
+    expect(await value(git.acceptAdoption(repo, source, preview, author))).toEqual({
+      kind: "unchanged",
+    });
+    expect(await native(dir, ["rev-parse", "main"])).toBe(main);
+  }),
+);
+
+it.live("an empty tree after real work is populated history and never the seed", () =>
+  fixture(async (git, dir) => {
+    const original = await write(git, { a: "work" }, null);
+    const main = await write(git, { a: null }, original);
+    const remote = NodePath.join(dir, "remote.git");
+    await native(dir, ["init", "--bare", remote]);
+    const blob = await native(remote, ["hash-object", "-w", "--stdin"], "remote");
+    const tree = await native(remote, ["mktree"], `100644 blob ${blob}\ta\n`);
+    const head = await native(remote, ["commit-tree", tree, "-m", "Remote"]);
+    await native(remote, ["update-ref", "refs/heads/main", head]);
+    const source = { url: remote, token: Redacted.make("fixture"), branch: "main" };
+    const preview = await value(git.previewAdoption(repo, source));
+    expect(preview.seed).toBe(false);
+    expect(preview.changedFiles).toBe(1);
+    expect((await value(git.acceptAdoption(repo, source, preview, author))).kind).toBe("adopted");
+    expect(await native(dir, ["rev-parse", "main^{tree}"])).toBe(
+      await native(dir, ["rev-parse", `${main}^{tree}`]),
+    );
+    expect(await native(dir, ["ls-tree", "main"])).toBe("");
+  }),
+);
+it.live(
+  "the first-push count is exact beyond bounded tree readers, including unusual path names",
+  () =>
+    fixture(async (git, dir) => {
+      const main = await write(git, { hq: "hq" }, null);
+      const remote = NodePath.join(dir, "remote.git");
+      await native(dir, ["init", "--bare", remote]);
+      const blob = await native(remote, ["hash-object", "-w", "--stdin"], "remote");
+      const paths = [
+        ...Array.from({ length: 1005 }, (_, i) => `file-${i}`),
+        "line\nfeed",
+        "tab\tfile",
+      ];
+      const tree = await native(
+        remote,
+        ["mktree", "-z"],
+        paths.map((path) => `100644 blob ${blob}\t${path}\0`).join(""),
+      );
+      const tip = await native(remote, ["commit-tree", tree, "-m", "Remote"]);
+      await native(remote, ["update-ref", "refs/heads/main", tip]);
+      const source = { url: remote, token: Redacted.make("fixture"), branch: "main" };
+      const preview = await value(git.previewAdoption(repo, source));
+      const listed = (await native(remote, ["ls-tree", "-r", "-z", "--name-only", tip]))
+        .split("\0")
+        .filter(Boolean);
+      expect(listed.length).toBe(paths.length);
+      expect(preview.changedFiles).toBe(listed.length + 1);
+      expect(await native(dir, ["rev-parse", "main"])).toBe(main);
+    }),
+);

@@ -147,6 +147,26 @@ export const mainOf = (git: HqGit, repo: Repo) =>
     (branches) => branches.items.find((branch) => branch.ref === "refs/heads/main")?.sha ?? null,
   );
 
+/** Same row lock as change merges and remote edits; acceptance rereads its tips inside it. */
+export const holdingRepo = <A, E, R>(repo: Repo, effect: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    const leader = yield* Leader;
+    const sql = yield* SqlClient.SqlClient;
+    return yield* leader.write(
+      Effect.gen(function* () {
+        const rows =
+          yield* sql`SELECT 1 FROM hq_repo WHERE app_id::text=${repo.appId} AND name=${repo.id} FOR UPDATE`;
+        if (rows.length === 0)
+          return yield* new GitError({
+            operation: "holdingRepo",
+            reason: "not_found",
+            message: "Repository not found",
+          });
+        return yield* effect;
+      }),
+    );
+  });
+
 /** A change as judged against `main` now: what its record keeps of its mergeability. */
 export interface Judged {
   readonly mergeability: MergeabilityKind;

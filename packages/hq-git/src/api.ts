@@ -3,6 +3,7 @@ import type * as NodeHttp from "node:http";
 import type * as NodeStream from "node:stream";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import type * as Redacted from "effect/Redacted";
 
 export type Principal =
   | { readonly kind: "mate"; readonly mateId: string; readonly appId: string }
@@ -158,6 +159,24 @@ export interface CommitFilesOptions {
   /** null creates an unborn ref. Only refs/heads/* outside mate/* are Core-owned here. */
   readonly expectedHead: string | null;
 }
+/** Core supplies its admitted HTTPS remote; local repositories are usable by internal fixtures. */
+export interface AdoptionSource {
+  readonly url: string;
+  readonly token: Redacted.Redacted;
+  readonly branch: string;
+}
+/** Exact tree projection captured before confirming the first attachment. */
+export interface AdoptionPreview {
+  readonly main: string;
+  readonly remoteTip: string | null;
+  readonly seed: boolean;
+  readonly changedFiles: number;
+}
+export type AdoptionResult =
+  | { readonly kind: "adopted"; readonly sha: string }
+  | { readonly kind: "unchanged" }
+  | { readonly kind: "stale" };
+
 export interface Bounded<A> {
   readonly items: ReadonlyArray<A>;
   readonly truncated: boolean;
@@ -241,6 +260,18 @@ export interface HqGit {
     | { readonly kind: "main_moved" | "head_moved" },
     GitError
   >;
+  /** Fetches only the observed commit, without tags, FETCH_HEAD or advertised refs. */
+  readonly previewAdoption: (
+    repo: Repo,
+    source: AdoptionSource,
+  ) => Effect.Effect<AdoptionPreview, GitError>;
+  /** Caller holds Core's repository write lock; rereads both tips and CAS moves main once. */
+  readonly acceptAdoption: (
+    repo: Repo,
+    source: AdoptionSource,
+    preview: AdoptionPreview,
+    author: Author,
+  ) => Effect.Effect<AdoptionResult, GitError>;
   readonly commitFiles: (
     repo: Repo,
     ref: string,

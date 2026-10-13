@@ -11,6 +11,7 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import * as NodeZlib from "node:zlib";
 import * as Effect from "effect/Effect";
+import * as Redacted from "effect/Redacted";
 import { GitRunner } from "./git.ts";
 import { refusalReport } from "./protocol.ts";
 import { GitError, makeHqGit, type HqGit, type HqGitOptions, type Principal } from "./index.ts";
@@ -1026,3 +1027,191 @@ describe("repositories and real smart HTTP", () => {
     ),
   );
 });
+
+it.live(
+  "A pair joined to the seed takes in an adopted main without conflict where its tree equals the remote's.",
+  () =>
+    fixture(
+      Effect.gen(function* () {
+        const repo = { appId: "app", id: "repo" };
+        yield* git.create(repo);
+        const seedWrite = yield* git.commitFiles(repo, "refs/heads/main", {
+          files: {},
+          message: "Seed",
+          expectedHead: null,
+          author: { name: "HQ", email: "hq@hq.invalid" },
+        });
+        if (!("sha" in seedWrite)) throw new Error("seed refused");
+        const seed = seedWrite.sha;
+        const remote = yield* Effect.promise(source);
+        yield* Effect.promise(() =>
+          NodeFSP.writeFile(NodePath.join(remote.path, "app.txt"), "remote application\n"),
+        );
+        yield* Effect.promise(() => checked(remote.path, ["add", "app.txt"]));
+        yield* Effect.promise(() => checked(remote.path, ["commit", "-m", "Application"]));
+        const remoteTip = yield* Effect.promise(() => checked(remote.path, ["rev-parse", "HEAD"]));
+        const pair = NodePath.join(dir, "pair");
+        yield* Effect.promise(() => checked(dir, ["clone", remote.path, pair]));
+        yield* Effect.promise(() => checked(pair, ["fetch", "--no-tags", repoDir(), seed]));
+        // zcp BuildMateBranch's seed join keeps HEAD's tree and parents (HEAD, FETCH_HEAD).
+        const joined = yield* Effect.promise(() =>
+          checked(pair, [
+            "commit-tree",
+            "HEAD^{tree}",
+            "-p",
+            "HEAD",
+            "-p",
+            "FETCH_HEAD",
+            "-m",
+            "Join the repository's base",
+          ]),
+        );
+        yield* Effect.promise(() =>
+          checked(pair, ["update-ref", "refs/heads/mate/alice/1", joined]),
+        );
+        yield* Effect.promise(() =>
+          checked(pair, ["symbolic-ref", "HEAD", "refs/heads/mate/alice/1"]),
+        );
+        yield* Effect.promise(startServer);
+        yield* Effect.promise(() =>
+          checked(pair, ["push", url(), "HEAD:refs/heads/mate/alice/1"], "mate"),
+        );
+        const sourceRef = {
+          url: remote.path,
+          token: Redacted.make("local-fixture"),
+          branch: "main",
+        };
+        const preview = yield* git.previewAdoption(repo, sourceRef);
+        const accepted = yield* git.acceptAdoption(repo, sourceRef, preview, {
+          name: "HQ",
+          email: "hq@hq.invalid",
+        });
+        expect(accepted.kind).toBe("adopted");
+        if (accepted.kind !== "adopted") throw new Error("adoption refused");
+        yield* Effect.promise(() => checked(pair, ["fetch", "--no-tags", url(), "main"], "mate"));
+        yield* Effect.promise(() => checked(pair, ["merge", "--no-edit", "FETCH_HEAD"]));
+        expect(yield* Effect.promise(() => checked(pair, ["rev-parse", "HEAD^{tree}"]))).toBe(
+          yield* Effect.promise(() => checked(remote.path, ["rev-parse", `${remoteTip}^{tree}`])),
+        );
+        expect(
+          yield* Effect.promise(() =>
+            checked(pair, ["merge-base", "--is-ancestor", accepted.sha, "HEAD"]),
+          ),
+        ).toBe("");
+      }),
+    ),
+);
+
+it.live(
+  "authenticates adoption fetches without importing remote tags or writing credentials to repository config",
+  () => {
+    const token = "private-fixture-token";
+    const authorization = `Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+    const requests: string[] = [];
+    return fixture(
+      Effect.gen(function* () {
+        const repo = { appId: "app", id: "repo" };
+        const remote = { appId: "app", id: "remote" };
+        yield* git.create(repo);
+        yield* git.create(remote);
+        const author = { name: "HQ", email: "hq@hq.invalid" };
+        yield* git.commitFiles(repo, "refs/heads/main", {
+          files: {},
+          message: "Seed",
+          expectedHead: null,
+          author,
+        });
+        const head = yield* git.commitFiles(remote, "refs/heads/main", {
+          files: { remote: "remote" },
+          message: "Remote",
+          expectedHead: null,
+          author,
+        });
+        if (!("sha" in head)) throw new Error("remote refused");
+        yield* git.createTag(remote, "upstream", head.sha, "Upstream tag");
+        yield* Effect.promise(startServer);
+        const source = {
+          url: `${origin}/git/app/remote.git`,
+          token: Redacted.make(token),
+          branch: "main",
+        };
+        const preview = yield* git.previewAdoption(repo, source);
+        expect(preview.remoteTip).toBe(head.sha);
+        expect(requests.length).toBeGreaterThan(0);
+        expect(requests.every((header) => header === authorization)).toBe(true);
+        expect((yield* git.tags(repo)).items).toEqual([]);
+        const config = yield* Effect.promise(() =>
+          NodeFSP.readFile(NodePath.join(repoDir(), "config"), "utf8"),
+        );
+        expect(config).not.toContain(token);
+        expect(config).not.toContain(authorization);
+      }),
+      {
+        authenticate: (req) => {
+          const header = req.headers.authorization ?? "";
+          requests.push(header);
+          return header === authorization ? { kind: "core" } : null;
+        },
+      },
+    );
+  },
+);
+
+it.live(
+  "Decision §6: a pair joined to the seed can conflict when its files differ from the adopted remote.",
+  () =>
+    fixture(
+      Effect.gen(function* () {
+        const repo = { appId: "app", id: "repo" };
+        yield* git.create(repo);
+        const author = { name: "HQ", email: "hq@hq.invalid" };
+        const seedWrite = yield* git.commitFiles(repo, "refs/heads/main", {
+          files: {},
+          message: "Seed",
+          expectedHead: null,
+          author,
+        });
+        if (!("sha" in seedWrite)) throw new Error("seed refused");
+        const remote = yield* Effect.promise(source);
+        yield* Effect.promise(() =>
+          NodeFSP.writeFile(NodePath.join(remote.path, "app.txt"), "remote\n"),
+        );
+        yield* Effect.promise(() => checked(remote.path, ["add", "app.txt"]));
+        yield* Effect.promise(() => checked(remote.path, ["commit", "-m", "Remote"]));
+        const pair = NodePath.join(dir, "pair");
+        yield* Effect.promise(() => checked(dir, ["clone", remote.path, pair]));
+        yield* Effect.promise(() => NodeFSP.writeFile(NodePath.join(pair, "app.txt"), "pair\n"));
+        yield* Effect.promise(() => checked(pair, ["add", "app.txt"]));
+        const tree = yield* Effect.promise(() => checked(pair, ["write-tree"]));
+        const local = yield* Effect.promise(() =>
+          checked(pair, ["commit-tree", tree, "-m", "Existing pair"]),
+        );
+        yield* Effect.promise(() =>
+          checked(pair, ["fetch", "--no-tags", repoDir(), seedWrite.sha]),
+        );
+        const joined = yield* Effect.promise(() =>
+          checked(pair, [
+            "commit-tree",
+            tree,
+            "-p",
+            local,
+            "-p",
+            "FETCH_HEAD",
+            "-m",
+            "Join the repository's base",
+          ]),
+        );
+        yield* Effect.promise(() => checked(pair, ["update-ref", "refs/heads/main", joined]));
+        const sourceRef = { url: remote.path, token: Redacted.make("fixture"), branch: "main" };
+        const preview = yield* git.previewAdoption(repo, sourceRef);
+        const accepted = yield* git.acceptAdoption(repo, sourceRef, preview, author);
+        if (accepted.kind !== "adopted") throw new Error("adoption refused");
+        yield* Effect.promise(() => checked(pair, ["fetch", "--no-tags", repoDir(), accepted.sha]));
+        const merge = yield* Effect.promise(() => run(pair, ["merge", "--no-edit", "FETCH_HEAD"]));
+        expect(merge.code).toBe(1);
+        expect(
+          yield* Effect.promise(() => checked(pair, ["diff", "--name-only", "--diff-filter=U"])),
+        ).toBe("app.txt");
+      }),
+    ),
+);

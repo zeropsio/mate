@@ -4,6 +4,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
+import * as Redacted from "effect/Redacted";
 import { GitError } from "./api.ts";
 
 const failed = (operation: string, message: string) =>
@@ -98,6 +99,24 @@ export class GitRunner {
       () => this.active.delete(spawned),
     );
     return spawned;
+  }
+
+  /** Token stays in the private child environment, never argv, config on disk or errors. */
+  remote(args: string[], url: string, token: Redacted.Redacted, signal: AbortSignal) {
+    return this.run(args, {
+      signal,
+      env: {
+        GIT_CONFIG_COUNT: "4",
+        GIT_CONFIG_KEY_0: "credential.helper",
+        GIT_CONFIG_VALUE_0: "",
+        GIT_CONFIG_KEY_1: "http.extraHeader",
+        GIT_CONFIG_VALUE_1: `Authorization: Basic ${Buffer.from(`x-access-token:${Redacted.value(token)}`).toString("base64")}`,
+        GIT_CONFIG_KEY_2: "http.followRedirects",
+        GIT_CONFIG_VALUE_2: "false",
+        GIT_CONFIG_KEY_3: `protocol.${NodePath.isAbsolute(url) ? "file" : new URL(url).protocol.slice(0, -1)}.allow`,
+        GIT_CONFIG_VALUE_3: "always",
+      },
+    });
   }
 
   async run(args: string[], options: RunOptions = {}): Promise<Buffer> {

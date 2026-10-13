@@ -4,6 +4,8 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeStream from "node:stream";
 import * as Effect from "effect/Effect";
+import * as Duration from "effect/Duration";
+import * as Schema from "effect/Schema";
 import {
   GitError,
   type Author,
@@ -27,6 +29,7 @@ const readLimits = {
   log: 100,
   history: 10000,
 } as const;
+const isGitError = Schema.is(GitError);
 const error = (message: string) =>
   new GitError({ operation: "operations", reason: "invalid_config", message });
 const pathError = (message: string) =>
@@ -337,6 +340,177 @@ export const makeOperations = (
       throw new GitError({ operation: "update-ref", reason: "busy", message: "Ref is locked" });
     }
   };
+  const adoptionSource = async (
+    dir: string,
+    source: Parameters<HqGit["previewAdoption"]>[1],
+    signal: AbortSignal,
+  ) => {
+    // Public admission is HTTPS-only; the internal layer also serves local fixture repositories.
+    if (!source.url || source.url.startsWith("-") || source.url.includes("\0"))
+      throw error("Invalid remote");
+    if (!NodePath.isAbsolute(source.url)) {
+      const url = new URL(source.url);
+      if (
+        (url.protocol !== "https:" &&
+          !(url.protocol === "http:" && url.hostname === "127.0.0.1")) ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash
+      )
+        throw error("Invalid remote");
+    }
+    const ref = `refs/heads/${source.branch}`;
+    await run(dir, ["check-ref-format", ref], signal);
+    const result = (
+      await git.remote(
+        ["-C", dir, "ls-remote", "--refs", source.url, ref],
+        source.url,
+        source.token,
+        signal,
+      )
+    )
+      .toString()
+      .trim();
+    if (!result) return null;
+    const lines = result.split("\n");
+    const [sha, found] = lines[0]!.split("\t");
+    if (lines.length !== 1 || found !== ref || !sha || !validSha(sha))
+      throw error("Invalid remote tip");
+    return sha;
+  };
+  const adoptionTree = async (
+    dir: string,
+    main: string,
+    remoteTip: string | null,
+    signal: AbortSignal,
+  ) => {
+    const tree = await text(dir, ["rev-parse", `${main}^{tree}`], signal);
+    const parents = await text(dir, ["show", "-s", "--format=%P", main], signal);
+    const emptyTree = (await run(dir, ["hash-object", "-t", "tree", "--stdin"], signal, ""))
+      .toString()
+      .trim();
+    const seed = parents === "" && tree === emptyTree;
+    const remoteTree =
+      remoteTip === null
+        ? emptyTree
+        : await text(dir, ["rev-parse", `${remoteTip}^{tree}`], signal);
+    if (seed) return { seed, changedFiles: 0, tree: remoteTree };
+    // Count NUL-delimited paths as a stream: exact even beyond bounded UI tree listings.
+    const process = git.start(
+      [
+        "-C",
+        dir,
+        "diff-tree",
+        "--no-commit-id",
+        "--no-renames",
+        "--name-only",
+        "-r",
+        "-z",
+        remoteTree,
+        tree,
+      ],
+      { signal },
+    );
+    process.child.stdin.end();
+    let changedFiles = 0;
+    try {
+      for await (const chunk of process.child.stdout) {
+        for (const byte of chunk as Uint8Array) if (byte === 0) changedFiles++;
+      }
+      await process.done;
+    } finally {
+      terminate(process.child);
+      await process.done.catch(() => {});
+    }
+    return { seed, changedFiles, tree };
+  };
+  const fetchAdoption = async (
+    dir: string,
+    source: Parameters<HqGit["previewAdoption"]>[1],
+    sha: string,
+    signal: AbortSignal,
+  ) => {
+    await git.remote(
+      [
+        "-C",
+        dir,
+        "fetch",
+        "--no-tags",
+        "--no-write-fetch-head",
+        "--no-recurse-submodules",
+        source.url,
+        sha,
+      ],
+      source.url,
+      source.token,
+      signal,
+    );
+    await resolve(dir, sha, signal);
+  };
+  const previewAdoption: HqGit["previewAdoption"] = (repo, source) =>
+    inRepo("previewAdoption", repo, async (dir, signal) => {
+      const main = await bornMain("previewAdoption", dir, signal);
+      const remoteTip = await adoptionSource(dir, source, signal);
+      if (remoteTip !== null) await fetchAdoption(dir, source, remoteTip, signal);
+      const { seed, changedFiles } = await adoptionTree(dir, main, remoteTip, signal);
+      return { main, remoteTip, seed, changedFiles };
+    }).pipe(
+      Effect.timeout(Duration.seconds(30)),
+      Effect.mapError((cause) =>
+        isGitError(cause)
+          ? cause
+          : new GitError({
+              operation: "previewAdoption",
+              reason: "git_failed",
+              message: "Remote review timed out",
+            }),
+      ),
+    );
+  const acceptAdoption: HqGit["acceptAdoption"] = (repo, source, preview, author) =>
+    inRepo("acceptAdoption", repo, async (dir, signal) => {
+      const env = identity(author);
+      const main = await bornMain("acceptAdoption", dir, signal);
+      const remoteTip = await adoptionSource(dir, source, signal);
+      if (main !== preview.main || remoteTip !== preview.remoteTip)
+        return { kind: "stale" } as const;
+      if (remoteTip === null) return { kind: "unchanged" } as const;
+      await fetchAdoption(dir, source, remoteTip, signal);
+      const projected = await adoptionTree(dir, main, remoteTip, signal);
+      if (projected.seed !== preview.seed || projected.changedFiles !== preview.changedFiles)
+        return { kind: "stale" } as const;
+      const ancestor = await git.exec(["-C", dir, "merge-base", "--is-ancestor", remoteTip, main], {
+        signal,
+        acceptExitCodes: [1],
+      });
+      if (ancestor.code === 0) return { kind: "unchanged" } as const;
+      const sha = (
+        await run(
+          dir,
+          ["commit-tree", projected.tree, "-p", main, "-p", remoteTip],
+          signal,
+          "Adopt remote history\n",
+          env,
+        )
+      )
+        .toString()
+        .trim();
+      if (!(await cas(dir, "refs/heads/main", sha, main, signal)))
+        return { kind: "stale" } as const;
+      emit({ kind: "main_moved", repo, old: main, new: sha, by: "commit" });
+      return { kind: "adopted", sha } as const;
+    }).pipe(
+      Effect.timeout(Duration.seconds(30)),
+      Effect.mapError((cause) =>
+        isGitError(cause)
+          ? cause
+          : new GitError({
+              operation: "acceptAdoption",
+              reason: "git_failed",
+              message: "Remote adoption timed out",
+            }),
+      ),
+    );
   const changeHead: HqGit["changeHead"] = (repo, mateId, number) =>
     inRepo("changeHead", repo, (dir, signal) => refHead(dir, changeRef(mateId, number), signal));
   const mergeability: HqGit["mergeability"] = (repo, mateId, number, captured) =>
@@ -1071,6 +1245,8 @@ export const makeOperations = (
     mergeability,
     squashMerge,
     commitFiles,
+    previewAdoption,
+    acceptAdoption,
     createTag,
     branches,
     tree,

@@ -6,6 +6,8 @@ import * as NodePath from "node:path";
 
 import { assert, describe, it } from "@effect/vitest";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -19,7 +21,7 @@ import { JUDGED_PER_MAIN_MOVE } from "@t3tools/shared/hqChanges";
 
 import { activeCoreLayer, untilActive } from "../test/harness/activeCore.ts";
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
-import { GitHost, gitHostLayer } from "./gitHost.ts";
+import { GitHost, gitHostLayer, holdingRepo } from "./gitHost.ts";
 import { rolloutsLayer } from "./rollouts.ts";
 
 const AUTHOR = { name: "HQ", email: "hq@hq.invalid" };
@@ -133,6 +135,52 @@ const hostWithChanges = (
 
 describe("gitHost", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("Adoption holds the same repository write lock as a change merge.", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const url = yield* (yield* TempPostgres).createDatabase;
+          const context = yield* Layer.build(activeCoreLayer(url));
+          yield* untilActive.pipe(Effect.provide(context));
+          const sql = Context.get(context, SqlClient.SqlClient);
+          const [app] = yield* sql<{
+            readonly id: string;
+          }>`INSERT INTO hq_app(name,created_by) VALUES ('Lock','owner') RETURNING id::text AS id`;
+          const repo = { appId: app!.id, id: "web" };
+          yield* sql`INSERT INTO hq_repo(app_id,name,created_by) VALUES (${repo.appId}::uuid,'web','owner')`;
+          const entered = yield* Deferred.make<void>();
+          const release = yield* Deferred.make<void>();
+          const first = yield* holdingRepo(
+            repo,
+            Effect.gen(function* () {
+              yield* Deferred.succeed(entered, undefined);
+              yield* Deferred.await(release);
+              yield* sql`UPDATE hq_repo SET main_head='first' WHERE app_id::text=${repo.appId} AND name='web'`;
+            }),
+          ).pipe(Effect.provide(context), Effect.forkChild);
+          yield* Deferred.await(entered);
+          // A merge's independent SQL transaction cannot acquire the held row.
+          const blocked = yield* sql
+            .withTransaction(
+              sql`SELECT 1 FROM hq_repo WHERE app_id::text=${repo.appId} AND name='web' FOR UPDATE NOWAIT`,
+            )
+            .pipe(Effect.flip);
+          const cause = blocked.reason.cause;
+          assert.strictEqual(
+            typeof cause === "object" && cause !== null && "code" in cause ? cause.code : null,
+            "55P03",
+          );
+          yield* Deferred.succeed(release, undefined);
+          yield* Fiber.join(first);
+          assert.strictEqual(
+            (yield* sql<{
+              readonly main_head: string;
+            }>`SELECT main_head FROM hq_repo WHERE app_id::text=${repo.appId} AND name='web'`)[0]!
+              .main_head,
+            "first",
+          );
+        }),
+      ),
+    );
     it.effect("opens git again with backoff while it leads, once opening can succeed", () =>
       Effect.gen(function* () {
         const url = yield* (yield* TempPostgres).createDatabase;
