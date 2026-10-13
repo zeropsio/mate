@@ -8,7 +8,6 @@ import {
   approach,
   glideStep,
   keepsFoot,
-  LONG_GONE_MS,
   movesAsPerson,
   spendStep,
   glidesTo,
@@ -63,10 +62,11 @@ describe("approach", () => {
       current: 100,
       target: 900,
       dt: 2000,
+      outOfSight: true,
       expected: 900,
     },
-  ])("$what", ({ current, target, dt, expected }) => {
-    expect(approach(current, target, dt, ROOM_TAU_MS)).toBe(expected);
+  ])("$what", ({ current, target, dt, expected, outOfSight }) => {
+    expect(approach(current, target, dt, ROOM_TAU_MS, outOfSight)).toBe(expected);
   });
 
   it.each([
@@ -87,6 +87,13 @@ describe("approach", () => {
   it("moves no further in a late frame than in one on time", () => {
     expect(approach(0, 500, 50, ROOM_TAU_MS)).toBe(approach(0, 500, 20, ROOM_TAU_MS));
     expect(approach(0, 500, 50, ROOM_TAU_MS)).toBeLessThan(40);
+  });
+
+  it.each([250, 500, 2000])("a visible frame delayed by %s ms never snaps to the target", (dt) => {
+    expect(
+      approach(0, 500, dt, ROOM_TAU_MS),
+      "ASSERTION: a visible late frame keeps its speed cap",
+    ).toBe(32);
   });
 
   it("is retargeted from where it stands: a second arrival mid-way never jumps", () => {
@@ -277,8 +284,19 @@ describe("spendStep", () => {
 
   it("lets a frame long gone stand at its target", () => {
     const budget = { at: -1, grow: 0, shrink: 0 };
-    expect(spendStep(budget, 1000, LONG_GONE_MS, 400)).toBe(400);
+    expect(spendStep(budget, 1000, 250, 400, true)).toBe(400);
   });
+
+  it.each([250, 500, 2000])(
+    "eases share the speed cap in a visible frame delayed by %s ms",
+    (dt) => {
+      const budget = { at: -1, grow: 0, shrink: 0 };
+      expect(
+        [spendStep(budget, 1000, dt, 400), spendStep(budget, 1000, dt, 200)],
+        "ASSERTION: visible late eases spend one frame's speed",
+      ).toEqual([32, 0]);
+    },
+  );
 });
 
 // A glide to the foot chased a foot the history's ease kept moving, and hid

@@ -508,14 +508,35 @@ describe("createEndFollow", () => {
   });
 
   it("stands at the end at once when its next frame comes long after, as on a tab coming back", () => {
+    const page = Object.assign(new EventTarget(), { visibilityState: "visible" });
+    vi.stubGlobal("document", page);
     const { scroll, follow } = atItsEnd();
     grow(scroll, follow, 900);
     now += FRAME_MS;
     for (const frame of frames.splice(0)) frame(now);
+    page.visibilityState = "hidden";
+    page.dispatchEvent(new Event("visibilitychange"));
+    page.visibilityState = "visible";
+    page.dispatchEvent(new Event("visibilitychange"));
     now += 2000;
     for (const frame of frames.splice(0)) frame(now);
-    expect(frames).toHaveLength(0);
-    expect(scroll.element.scrollTop).toBe(endOf(scroll));
+    expect(frames, "ASSERTION: a returned tab has no unfinished glide").toHaveLength(0);
+    expect(scroll.element.scrollTop, "ASSERTION: a returned tab already stands at its end").toBe(
+      endOf(scroll),
+    );
+  });
+
+  it.each([250, 500, 2000])("a visible conversation keeps gliding through %s ms frames", (gap) => {
+    vi.stubGlobal("document", { visibilityState: "visible" });
+    const { scroll, follow } = atItsEnd();
+    const start = scroll.element.scrollTop;
+    grow(scroll, follow, 600);
+    const tops = play(scroll, gap);
+    expect(tops.at(-1), "ASSERTION: the visible conversation reaches its end").toBe(endOf(scroll));
+    expect(
+      Math.max(...tops.map((top, index) => top - (tops[index - 1] ?? start))),
+      "ASSERTION: no visible late frame moves the conversation over its speed cap",
+    ).toBeLessThanOrEqual(32);
   });
 
   it("stands at the end at once while the tab is out of sight", () => {

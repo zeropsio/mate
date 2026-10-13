@@ -106,6 +106,7 @@ export function createEndFollow({
   /** The list commits this measured alignment after pending virtualizer layout. */
   readonly placeEnd: () => void;
 }): EndFollow {
+  const page = typeof document === "undefined" ? undefined : document;
   let frame = 0;
   let last = 0;
   // Where the glide stands: the browser rounds what it is given.
@@ -129,6 +130,7 @@ export function createEndFollow({
   };
   const stopGlide = () => {
     cancelAnimationFrame(frame);
+    page?.removeEventListener?.("visibilitychange", visibilityChanged);
     frame = 0;
     last = 0;
     if (gliding !== null) said(gliding, false);
@@ -149,11 +151,17 @@ export function createEndFollow({
       stopGlide();
       return;
     }
-    at = approach(at, end, last === 0 ? 1000 / 60 : now - last, FOLLOW_TAU_MS);
+    at = approach(at, end, last === 0 ? 1000 / 60 : now - last, FOLLOW_TAU_MS, outOfSight());
     last = now;
     scrollOwn(element, at);
     if (at !== end) frame = requestAnimationFrame(step);
     else stopGlide();
+  };
+  // Finish while unseen, before a returning tab can paint its paused glide.
+  const visibilityChanged = () => {
+    if (!outOfSight()) return;
+    cancelAnimationFrame(frame);
+    step(last);
   };
   const observe = (element: HTMLElement) => {
     const end = endOf(element);
@@ -230,6 +238,7 @@ export function createEndFollow({
       gliding = element;
       // Said on it while it glides: a run's fold waits for it (`foldWork`).
       said(element, true);
+      page?.addEventListener?.("visibilitychange", visibilityChanged);
       frame = requestAnimationFrame(step);
     },
     undo: () => {

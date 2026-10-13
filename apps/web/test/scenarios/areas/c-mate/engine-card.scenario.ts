@@ -6,6 +6,7 @@ import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import type { EngineChatWire } from "./engine.ts";
 import { installArea } from "./fake.ts";
+import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { TARGET_QUESTION } from "./wire.ts";
 
 /** What the conversation shows, frame by frame, while something happens to it. */
@@ -48,6 +49,22 @@ const realLongConversation = Effect.gen(function* () {
   const provider = s.drivers.realMates.get("Ada")!.provider;
   const chat = mateChat(s);
   yield* s.given.signedIn;
+  yield* Effect.promise(async () => {
+    const rail = (await s.page.$('[data-sidebar="rail"]'))!;
+    const box = (await rail.boundingBox())!;
+    const width = await s.page.$eval(
+      '[data-sidebar="sidebar"]',
+      (node) => node.getBoundingClientRect().width,
+    );
+    await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await s.page.mouse.down();
+    await s.page.mouse.move(box.x + box.width / 2 + 435 - width, box.y + box.height / 2);
+    await s.page.mouse.up();
+    await s.page.waitForFunction(
+      () =>
+        document.querySelector('[data-sidebar="sidebar"]')!.getBoundingClientRect().width === 435,
+    );
+  });
   yield* s.when.menu.opensMate("Ada");
   yield* s.then.conversation.appears;
   for (const round of [1, 2, 3]) {
@@ -55,12 +72,14 @@ const realLongConversation = Effect.gen(function* () {
       "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(30);
     yield* provider.turn([{ kind: "say", text: answer }]);
     yield* s.when.conversation.sends(`How did deploy ${round} go?`);
+    expect((yield* provider.received).input.input).toBe(`How did deploy ${round} go?`);
     yield* s.then.conversation.showsMessage(
       "The shop's deploy built, its logs are clean and the storefront answers.",
     );
   }
   yield* provider.turn([{ kind: "say", text: "The existing conversation is still here" }]);
   yield* s.when.conversation.sends("And now?");
+  expect((yield* provider.received).input.input).toBe("And now?");
   yield* s.then.conversation.showsMessage("The existing conversation is still here");
   return { s, chat, provider };
 });
@@ -71,6 +90,14 @@ function everyTenth(step: (count: number) => void): { readonly stop: () => void 
   const timer = setInterval(() => step((count += 1)), 100);
   return { stop: () => clearInterval(timer) };
 }
+
+/** Make the two motion witnesses face the late frames seen on a loaded CI runner. */
+const underLoad = (page: import("puppeteer-core").Page) =>
+  Effect.promise(async () => {
+    const cdp = await page.createCDPSession();
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 8 });
+    await cdp.detach();
+  });
 
 /** Starts sampling every frame; `read` stops and returns what it saw. */
 const trace = (page: import("puppeteer-core").Page, anchorText: string) =>
@@ -326,7 +353,8 @@ describe("C: an engine Mate's run card in a live conversation", () => {
     it.effect("a message the person sends moves the conversation by a glide, never a jump", () =>
       Effect.gen(function* () {
         const { s, chat, provider } = yield* realLongConversation;
-        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+        yield* underLoad(s.page);
+        yield* Effect.promise(() => waitForStillFrames(s.page));
         yield* trace(s.page, "The existing conversation is still here");
         const working = yield* Deferred.make<void>();
         yield* provider.turn([{ kind: "wait", until: working }]);
@@ -346,22 +374,26 @@ describe("C: an engine Mate's run card in a live conversation", () => {
       "a message steered into the running run lands above its card without moving the page",
       () =>
         Effect.gen(function* () {
-          const { s, chat, engine } = yield* longConversation;
-          const run = engine.personRun("Check both pages");
-          engine.session();
-          engine.note(run, "Checking the first page now.");
+          const { s, chat, provider } = yield* realLongConversation;
+          const working = yield* Deferred.make<void>();
+          yield* provider.turn([
+            { kind: "say", text: "Checking the first page now." },
+            { kind: "wait", until: working },
+          ]);
+          yield* chat.when.send("Check both pages");
+          const running = yield* provider.received;
           yield* chat.then.text("Checking the first page now.");
-          yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+          yield* underLoad(s.page);
+          yield* Effect.promise(() => waitForStillFrames(s.page));
           yield* trace(s.page, "Checking the first page now.");
           yield* chat.when.send("also tell me the page title");
           yield* chat.when.press("Send now");
           yield* chat.then.once("also tell me the page title");
+          const steered = yield* provider.received;
           expect(
-            engine.applied
-              .filter(({ op }) => op === "steer")
-              .map(({ payload }) => ({ runId: payload.runId, text: payload.text })),
+            { turnId: steered.turnId, text: steered.input.input },
             "ASSERTION: the message was steered into the running run",
-          ).toEqual([{ runId: run, text: "also tell me the page title" }]);
+          ).toEqual({ turnId: running.turnId, text: "also tell me the page title" });
           const frames = yield* readTrace(s.page, 1500);
           const order = yield* Effect.promise(() =>
             s.page.evaluate(() => {

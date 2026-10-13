@@ -24,7 +24,7 @@ export const MAX_SPEED_PX_PER_MS = 1.6;
 /** The longest frame a move's speed counts: a frame and a fifth at 60 Hz. */
 const ON_TIME_FRAME_MS = 20;
 
-/** A frame this late means nobody watched: the move stands at its target. */
+/** The duration-based height ease finishes after a frame this late (`stepHeight`). */
 export const LONG_GONE_MS = 250;
 
 /** Closer than this to its target, a move stands at it. */
@@ -34,10 +34,16 @@ export const SETTLED_PX = 0.5;
  * Where a move stands `dtMs` after `current`, on its way to `target`: the
  * share `1 - e^(-dt/tau)` of what is left, at most `MAX_SPEED_PX_PER_MS`.
  */
-export function approach(current: number, target: number, dtMs: number, tauMs: number): number {
+export function approach(
+  current: number,
+  target: number,
+  dtMs: number,
+  tauMs: number,
+  outOfSight = false,
+): number {
+  // Load can delay a visible frame too. Only the page's visibility proves nobody watched.
+  if (outOfSight) return target;
   if (dtMs <= 0) return current;
-  // A frame long gone — a tab out of sight coming back — finds it there.
-  if (dtMs >= LONG_GONE_MS) return target;
   const share = (target - current) * (1 - Math.exp(-dtMs / tauMs));
   // A late frame moves no further than a frame on time would: the move
   // takes longer, and nothing jumps.
@@ -64,11 +70,16 @@ export interface EaseBudget {
 /**
  * What of `step` an ease takes in the frame at `now`, `dtMs` after its last:
  * the first ease heard in a frame gives the budget that frame's speed each
- * way, and each takes from what is left its way. A frame long gone stands
- * at its target.
+ * way, and each takes from what is left its way. An unseen move stands at its target.
  */
-export function spendStep(budget: EaseBudget, now: number, dtMs: number, step: number): number {
-  if (dtMs >= LONG_GONE_MS) return step;
+export function spendStep(
+  budget: EaseBudget,
+  now: number,
+  dtMs: number,
+  step: number,
+  outOfSight = false,
+): number {
+  if (outOfSight) return step;
   if (budget.at !== now) {
     budget.at = now;
     budget.grow = budget.shrink = MAX_SPEED_PX_PER_MS * Math.min(dtMs, ON_TIME_FRAME_MS);
