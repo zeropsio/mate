@@ -4046,6 +4046,12 @@ describe("streamedRecordGrowth", () => {
       grows: true,
     },
     {
+      title: "a live run's first streamed words carry the conversation's end",
+      previous: [],
+      next: [note("First")],
+      grows: true,
+    },
+    {
       title: "a run's first measurement still arrives by a glide",
       previous: undefined,
       next: [note("First")],
@@ -4088,6 +4094,45 @@ describe("streamedRecordGrowth", () => {
           ? undefined
           : { items: [], slot: { live: previous, record: [], filler: { kind: "thinking" } } },
         { items: [], slot: { live: next, record: [], filler: { kind: "thinking" } } },
+      ),
+    ).toBe(grows);
+  });
+  it.each([
+    {
+      title: "unchanged projected warnings do not turn first streamed words into an arrival",
+      label: "The workspace snapshot was not saved",
+      detail: "No repository",
+      grows: true,
+    },
+    {
+      title: "a warning's changed words still arrive by a glide",
+      label: "The snapshot failed",
+      detail: "No repository",
+      grows: false,
+    },
+    {
+      title: "a warning's changed detail still arrives by a glide",
+      label: "The workspace snapshot was not saved",
+      detail: "Permission denied",
+      grows: false,
+    },
+  ])("$title", ({ label, detail, grows }) => {
+    const warning = (label: string, detail: string): RecordItem => ({
+      kind: "warning",
+      key: "warning:snapshot",
+      at: at(1),
+      entry: { id: "snapshot", createdAt: at(1), tone: "info", label, detail },
+    });
+    expect(
+      streamedRecordGrowth(
+        {
+          items: [warning("The workspace snapshot was not saved", "No repository")],
+          slot: { live: [], record: [], filler: { kind: "writing" } },
+        },
+        {
+          items: [warning(label, detail)],
+          slot: { live: [note("First")], record: [], filler: { kind: "thinking" } },
+        },
       ),
     ).toBe(grows);
   });

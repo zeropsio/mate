@@ -4,7 +4,6 @@ import * as Deferred from "effect/Deferred";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
-import { installArea } from "./fake.ts";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import {
@@ -48,28 +47,6 @@ const ownerMenu = (page: import("puppeteer-core").Page) =>
         document.querySelector('[data-sidebar="sidebar"]')!.getBoundingClientRect().width === 435,
     );
   });
-
-/** A conversation long enough to scroll, at its end, with a run of the stress test's shape. */
-const longConversation = Effect.gen(function* () {
-  const s = yield* createScenario([installArea]);
-  yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
-  yield* s.given.project("Ada", { mate: true });
-  const chat = mateChat(s);
-  for (const round of [1, 2, 3])
-    chat
-      .fixture()
-      .exchange(
-        `How did deploy ${round} go?`,
-        "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(30),
-      );
-  chat.fixture().exchange("And now?", "The existing conversation is still here");
-  yield* s.given.signedIn;
-  yield* ownerMenu(s.page);
-  yield* chat.when.open();
-  yield* chat.then.text("The existing conversation is still here");
-  const wire = chat.fixture().wire;
-  return { s, chat, engine: wire.engine };
-});
 
 // Real history is authored by the provider and committed by the same engine the browser reads.
 const realLongConversation = Effect.gen(function* () {
@@ -617,14 +594,40 @@ describe("C: an engine Mate's run card in a live conversation", () => {
     // its end, then the older history came and the view glided 1,338 px through it for 0.85 s.
     it.effect("a reload during a streaming run paints at the end first", () =>
       Effect.gen(function* () {
-        const { s, chat, engine } = yield* longConversation;
-        const run = engine.personRun("Write me the long report");
-        const note = engine.item(run, { kind: "note", text: "", streaming: true, answer: false });
-        engine.stream(note, "The report, section by section.\n\n");
+        const { s, chat, provider } = yield* realLongConversation;
+        const release = yield* Deferred.make<void>();
+        yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined));
+        yield* provider.turn([{ kind: "wait", until: release }]);
+        yield* chat.when.send("Write me the long report");
+        const native = yield* provider.received;
+        const note = RuntimeItemId.make("long-report");
+        yield* provider.event(native.threadId, {
+          type: "content.delta",
+          itemId: note,
+          payload: { streamKind: "assistant_text", delta: "The report, section by section.\n\n" },
+        });
         yield* chat.then.text("The report, section by section.");
-        // The answer goes on streaming through the reload, a line every tenth of a second.
-        const streaming = everyTenth((line) =>
-          engine.stream(note, `Section ${line} reads well and its numbers add up.\n\n`),
+        // The same paced source keeps streaming through the real reload.
+        let streamed = Promise.resolve();
+        const streaming = everyTenth((line) => {
+          streamed = streamed.then(() =>
+            Effect.runPromise(
+              provider.event(native.threadId, {
+                type: "content.delta",
+                itemId: note,
+                payload: {
+                  streamKind: "assistant_text",
+                  delta: `Section ${line} reads well and its numbers add up.\n\n`,
+                },
+              }),
+            ),
+          );
+        });
+        yield* Effect.addFinalizer(() =>
+          Effect.promise(async () => {
+            streaming.stop();
+            await streamed;
+          }),
         );
         yield* Effect.promise(() =>
           s.page.evaluateOnNewDocument(() => {
@@ -645,6 +648,7 @@ describe("C: an engine Mate's run card in a live conversation", () => {
         yield* chat.when.reload();
         yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 2000)));
         streaming.stop();
+        yield* Effect.promise(() => streamed);
         const frames = yield* Effect.promise(() =>
           s.page.evaluate(
             () =>

@@ -990,13 +990,14 @@ export function historicalInsertions(
   return new Set(next.slice(0, Math.max(0, end)).filter((id) => !known.has(id)));
 }
 
-/** Streamed words move an existing line's foot; a changed item sequence still arrives by a glide. */
+/** Streamed words carry their line, including its first words; other arrivals still glide. */
 export function streamedRecordGrowth(
   previous: Pick<Extract<MessagesTimelineRow, { kind: "record" }>, "items" | "slot"> | undefined,
   next: Pick<Extract<MessagesTimelineRow, { kind: "record" }>, "items" | "slot">,
 ): boolean {
   if (previous === undefined) return false;
   // The active note lives in the slot; its words reach the leaf subscription before its record.
+  // Its first words can arrive after the empty slot was measured on reload.
   // Another item's new shape or a changed sequence still arrives by a glide.
   return (
     next.slot.live.some((item) => item.kind === "note" && item.message.streaming === true) &&
@@ -1008,16 +1009,25 @@ export function streamedRecordGrowth(
     ).every(
       ([before, after]) =>
         before === after ||
+        (before.length === 0 &&
+          after.length === 1 &&
+          after[0]?.kind === "note" &&
+          after[0].message.streaming === true) ||
         (before.length === after.length &&
           after.every((item, index) => {
             const old = before[index];
             return (
               item === old ||
               (item.key === old?.key &&
-                item.kind === "note" &&
-                item.message.streaming === true &&
-                old.kind === "note" &&
-                old.message.streaming === true)
+                ((item.kind === "note" &&
+                  item.message.streaming === true &&
+                  old.kind === "note" &&
+                  old.message.streaming === true) ||
+                  // Native receipts rebuild the warning even when its rendered words are unchanged.
+                  (item.kind === "warning" &&
+                    old.kind === "warning" &&
+                    item.entry.label === old.entry.label &&
+                    item.entry.detail === old.entry.detail)))
             );
           })),
     )
