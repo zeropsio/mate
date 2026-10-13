@@ -134,6 +134,16 @@ describe("Projects compact flow", () => {
     });
     f.registry.dispose();
   });
+  it("A withheld production explains changed access in the release gate and runtime notice's words.", () => {
+    const f = fixture();
+    f.store.dispatch({ kind: "access", family: "project", id: "prod", access: "denied" });
+    expect(f.read()?.release.gate).toEqual({
+      allowed: false,
+      reason: "Your access to this project changed.",
+    });
+    f.registry.dispose();
+  });
+
   it("purges a denied production's protected version without erasing another application", () => {
     const f = fixture();
     f.store.dispatch({ kind: "access", family: "project", id: "prod", access: "denied" });

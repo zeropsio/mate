@@ -8,6 +8,7 @@ import {
 import type { CanonicalEnvironmentRow } from "../../zerops/groupRows.ts";
 import { flowReleaseOf, appRecipeOf, summarizeEnvironmentServices } from "../../zerops/index.ts";
 import { nameUnderApp } from "../../zerops/groups.ts";
+import { knownPresentation } from "../../zerops/knowledge/presentation.ts";
 import { hqRefusalWords } from "../../zerops/hq/index.ts";
 import type { GroupStopProject } from "../../zerops/groupDeploys.ts";
 import type { ZeropsOrganization } from "../../zerops/api.ts";
@@ -152,8 +153,20 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
     for (const projectId of projectIds) {
       const access = platformAccess.derive(read, { orgId, viewer, projectId });
       if (access.kind !== "allowed") {
-        if (access.kind === "denied")
-          withheld.set(projectId, "You no longer have access to this project.");
+        if (access.kind === "denied") {
+          const notice = knownPresentation(
+            { state: "withheld", reason: "access-denied", cause: null },
+            {
+              subject: "this project",
+              entity: "project",
+              source: "zerops",
+              checking: null,
+              negative: null,
+            },
+            { nowMs: 0, updateOffered: false },
+          );
+          if (notice.message !== null) withheld.set(projectId, notice.message.text);
+        }
         continue;
       }
       const project = read.fact("project", projectId);
