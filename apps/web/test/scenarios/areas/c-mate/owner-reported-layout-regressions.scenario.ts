@@ -411,6 +411,25 @@ describe("owner-reported layout regressions", () => {
             return scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop;
           }),
         );
+        const series = yield* Effect.promise(() =>
+          s.page.evaluate(
+            () =>
+              new Promise<string>((resolve) => {
+                const scroll = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                const out: string[] = [];
+                const start = performance.now();
+                const read = () => {
+                  out.push(
+                    `${Math.round(performance.now() - start)}:${Math.round(scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop)}/${scroll.scrollHeight}/${scroll.clientHeight}`,
+                  );
+                  if (performance.now() - start < 2000) requestAnimationFrame(read);
+                  else resolve(out.join(" "));
+                };
+                read();
+              }),
+          ),
+        );
+        console.log(`CI-PROBE live-arrival gap=${gap} series=${series}`);
         expect(
           gap,
           "ASSERTION: a live arrival is followed to the conversation end",
