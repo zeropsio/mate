@@ -21,6 +21,28 @@ const { jobs } = parse(
   >;
 };
 
+it("Decision: supersede pending main runs; never cancel a running deploy", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  ) as { concurrency: { group: string; "cancel-in-progress": string; queue?: string } };
+  expect(
+    workflow.concurrency.group,
+    "ASSERTION: main pushes must share one CI concurrency group to replace older pending runs",
+  ).toBe("ci-${{ github.event.pull_request.number || github.ref }}");
+  expect(
+    workflow.concurrency["cancel-in-progress"],
+    "ASSERTION: only PRs may cancel an in-progress CI run",
+  ).toBe("${{ github.event_name == 'pull_request' }}");
+  expect(workflow.concurrency.queue ?? "single").toBe("single");
+  const release = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/release.yml"), "utf8"),
+  ) as { concurrency?: { "cancel-in-progress"?: boolean } };
+  expect(
+    release.concurrency?.["cancel-in-progress"] ?? false,
+    "ASSERTION: a running release must finish",
+  ).toBe(false);
+});
+
 const scenarioPaths = NodeFS.readdirSync(NodePath.join(root, "apps/web/test/scenarios/areas"), {
   withFileTypes: true,
 })
