@@ -1789,9 +1789,11 @@ describe("environment route target dispatch", () => {
         ],
         ungrouped: [],
       } as CanonicalHqStructure;
-      const { store, seed } = mountHqNavigation(registry, "org", {
-        structure: kind === "unknown" ? undefined : structure,
-      });
+      const { store, seed } = mountHqNavigation(
+        registry,
+        "org",
+        kind === "unknown" ? {} : { structure },
+      );
       const requests: string[] = [];
       const data = {
         data: store.data,
@@ -2019,7 +2021,12 @@ it("An environment page explains HQ's refusal in words without opening project r
     const markup = renderToStaticMarkup(
       <RegistryContext.Provider value={registry}>
         <AccountDataContext.Provider
-          value={{ data: store.data, orgId: "org", demandDetail: () => () => {} } as AccountData}
+          value={
+            { data: store.data, orgId: "org", demandDetail: () => () => {} } as Pick<
+              AccountData,
+              "data" | "orgId" | "demandDetail"
+            > as AccountData
+          }
         >
           <InventoryContext.Provider value={EMPTY_ROUTE_INVENTORY}>
             <ZeropsStopDetailPage groupId="shop" environmentId="stage" />
@@ -2044,7 +2051,7 @@ const EMPTY_ROUTE_INVENTORY: Inventory = {
   authority: new Map(),
   lost: new Set(),
   isLoading: false,
-  error: undefined,
+  error: null,
 };
 
 it.each(["empty", "refused"] as const)(
@@ -2081,7 +2088,12 @@ it.each(["empty", "refused"] as const)(
       const markup = renderToStaticMarkup(
         <RegistryContext.Provider value={registry}>
           <AccountDataContext.Provider
-            value={{ data: store.data, orgId: "org", demandDetail: () => () => {} } as AccountData}
+            value={
+              { data: store.data, orgId: "org", demandDetail: () => () => {} } as Pick<
+                AccountData,
+                "data" | "orgId" | "demandDetail"
+              > as AccountData
+            }
           >
             <InventoryContext.Provider value={inventory}>
               <ZeropsStopDetailPage groupId="shop" environmentId="placed-stage" />

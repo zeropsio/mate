@@ -705,7 +705,12 @@ describe("groupFlowInputOf", () => {
         environments: [row("hidden-prod", "production"), row("p-stage", "stage")],
         pullRequests: [],
         merged: [],
-        release: { gate: { allowed: false }, suggestion: "", contents: [], untold: [] },
+        release: {
+          gate: { allowed: false, reason: "No offer" },
+          suggestion: "",
+          contents: [],
+          untold: [],
+        },
       },
       deployments: new Map(),
       pending: [],
