@@ -14,7 +14,6 @@ import {
 import type { ScriptedStep } from "../../../../../server/integration/scriptedProviderDriver.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { mateChat } from "./dsl.ts";
 
 // Native OpenCode tool facts; the production SPI and engine derive their visible work.
 const tool = (
@@ -81,13 +80,18 @@ type Trace = { active: boolean; frames: Frame[]; sample: () => void };
 // Real list, RunChat and foldWork; include intermediate frames starting before settlement.
 describe("Decision: one owner per concern as the report's table assigns; no new state model.", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    for (const mode of ["following", "keyboard", "focus/find", "opened command"] as const) {
+    for (const mode of [
+      "following",
+      "wheel",
+      "keyboard",
+      "focus/find",
+      "opened command",
+    ] as const) {
       it.effect(`settlement preserves the assembled outer and inner reader (${mode})`, () =>
         Effect.gen(function* () {
           const s = yield* createScenario([], { mate: "real" });
           yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
           yield* s.given.project("Ada", { mate: true });
-          const chat = mateChat(s);
           const { server, provider } = s.drivers.realMates.get("Ada")!;
           const conversationId = ConversationId.make("thread-Ada");
           const protocol = MATE_ENGINE_PROTOCOLS[0]!;
@@ -238,7 +242,11 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
           } else if (mode !== "following") {
             yield* Effect.promise(async () => {
               const outer = await s.page.$(".timeline-legend-list");
-              if (mode === "keyboard") {
+              const box = (await outer!.boundingBox())!;
+              if (mode === "wheel") {
+                await s.page.mouse.move(box.x + box.width - 8, box.y + box.height / 2);
+                await s.page.mouse.wheel({ deltaY: -300 });
+              } else if (mode === "keyboard") {
                 await outer!.evaluate((node) => {
                   (node as HTMLElement).focus();
                 });
@@ -313,7 +321,15 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
           );
           // Slot landing and panel/report shrink share this settlement; native clamps are sampled.
           yield* Deferred.succeed(settlement, undefined);
-          yield* chat.then.text("The fold is complete");
+          // A held reader can leave the reply outside the virtualized window.
+          while (true) {
+            const frame = yield* Queue.take(changes);
+            if (
+              frame.type === "changes" &&
+              frame.runs.some((run) => run.ordinal === historyLength + 2 && run.state === "ended")
+            )
+              break;
+          }
           yield* Effect.promise(() =>
             s.page.waitForFunction(
               (mode) => {

@@ -13,6 +13,7 @@
       type="font/woff2"
       crossorigin
     />
+    <link rel="stylesheet" href="/src/sidebarGeometry.css" />
     <!-- generated:theme-tokens start -->
     <meta name="theme-color" content="#0c0f0e" />
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
@@ -563,39 +564,16 @@
           display: none;
         }
 
-        /* The menu's loading rows, where and as SidebarZeropsTree's MenuSkeleton draws them
-           right under the top row (the Chief's: a Mate card's 66 px under the 13 px inset), until
-           the app draws the menu (or its preview, its rows). */
+        /* The boot frame and the menu share their loading geometry (sidebarGeometry.css). */
         html[data-boot-frame="app"] #boot-shell-menu-loading {
           position: absolute;
-          top: 79px;
-          right: var(--sidebar-content-inset, 12px);
-          left: calc(var(--sidebar-content-inset, 12px) + 1px);
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          padding: 8px 10px;
-        }
-
-        #boot-shell-menu-loading > div {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          height: 28px;
+          top: var(--sidebar-menu-header-height);
+          right: var(--sidebar-content-inset);
+          left: calc(var(--sidebar-content-inset) + 1px);
         }
 
         #boot-shell-menu-loading span {
-          flex-shrink: 0;
-          width: 20px;
-          height: 20px;
-          border-radius: 9999px;
           background: color-mix(in srgb, var(--boot-sidebar, #fafafa) 50%, #fff);
-        }
-
-        #boot-shell-menu-loading span + span {
-          flex-shrink: 1;
-          width: 66.6667%;
-          height: 8px;
         }
 
         html.dark #boot-shell-menu-loading span {
