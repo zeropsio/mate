@@ -591,45 +591,25 @@ export function groupFlowInputOf(input: {
     ),
     pullRequests: flow?.pullRequests ?? [],
     merged: flow?.merged ?? [],
-    stops: [
-      ...(flow?.environments ?? []).map((row) => {
-        const projectId = row.target.kind === "zerops" ? row.target.projectId : undefined;
-        const member =
-          projectId === undefined
-            ? undefined
-            : input.members.find((entry) => entry.projectId === projectId);
-        return {
-          projectId: row.id,
-          projectStatus: member?.projectStatus,
-          services: member?.services,
-          name: row.name,
-          tier: row.tier,
+    stops: input.members.flatMap((member) => {
+      const tier = member.role === undefined ? undefined : STOP_TIER[member.role];
+      if (tier === undefined) return [];
+      const row = flow?.environments.find(
+        (entry) => entry.target.kind === "zerops" && entry.target.projectId === member.projectId,
+      );
+      return [
+        {
+          projectId: row?.id ?? member.projectId,
+          projectStatus: member.projectStatus,
+          services: member.services,
+          name: row?.name ?? member.name,
+          tier,
           row,
-          deployment: projectId === undefined ? undefined : input.deployments?.get(projectId),
-          addresses: placeAddresses(member?.routes ?? []),
-        };
-      }),
-      ...input.members.flatMap((member) => {
-        const tier = member.role === undefined ? undefined : STOP_TIER[member.role];
-        if (
-          tier === undefined ||
-          flow?.environments.some((row) => row.tier === tier && member.role !== "devstage")
-        )
-          return [];
-        return [
-          {
-            projectId: member.projectId,
-            projectStatus: member.projectStatus,
-            services: member.services,
-            name: member.name,
-            tier,
-            row: undefined,
-            deployment: input.deployments?.get(member.projectId),
-            addresses: placeAddresses(member.routes),
-          },
-        ];
-      }),
-    ],
+          deployment: input.deployments?.get(member.projectId),
+          addresses: placeAddresses(member.routes),
+        },
+      ];
+    }),
     release:
       flow === undefined
         ? { gate: FLOW_NOT_READ, suggestion: "", waiting: 0, waitingAtLeast: false, untold: [] }

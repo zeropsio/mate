@@ -10,6 +10,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { HqEnvironmentId, ProjectId, type EnvironmentId } from "@t3tools/contracts";
+import { environmentRow } from "./flowTestFixtures";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -687,6 +688,36 @@ describe("groupFlowInputOf", () => {
       waitingAtLeast: false,
       untold: [],
     });
+  });
+
+  it("The menu keeps placed stop order and unregistered stages without inventing unlisted stops.", () => {
+    const row = (projectId: string, tier: "stage" | "production") => ({
+      ...environmentRow({ projectId, name: projectId, tier, sources: ["main"], services: [] }),
+      id: HqEnvironmentId.make(`environment-${projectId}`),
+    });
+    const input = groupFlowInputOf({
+      groupId: "g",
+      members: [
+        { ...members[1]!, projectId: "stage-unregistered", name: "Unregistered stage" },
+        members[1]!,
+      ],
+      flow: {
+        environments: [row("hidden-prod", "production"), row("p-stage", "stage")],
+        pullRequests: [],
+        merged: [],
+        release: { gate: { allowed: false }, suggestion: "", contents: [], untold: [] },
+      },
+      deployments: new Map(),
+      pending: [],
+    });
+    expect(input.stops.map(({ projectId, name, tier }) => [projectId, name, tier])).toEqual([
+      ["stage-unregistered", "Unregistered stage", "stage"],
+      ["environment-p-stage", "p-stage", "stage"],
+    ]);
+    expect(groupFlow(input).stages.map(({ projectId }) => projectId)).toEqual([
+      "stage-unregistered",
+      "environment-p-stage",
+    ]);
   });
 
   it("hands the group's creations under way to the flow as they are", () => {
