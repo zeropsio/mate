@@ -3241,7 +3241,12 @@ function ConversationView(props: ChatViewProps) {
             ),
     providers: providerStatuses,
     mateName: admissionMate.kind === "mate" ? admissionMate.mate.name : "This Mate",
-    owner: admissionOwner === undefined ? undefined : { mine: admissionOwner.isViewer },
+    owner:
+      admissionMate.kind === "nobody" || admissionPeople?.owned === false
+        ? null
+        : admissionOwner === undefined
+          ? undefined
+          : { mine: admissionOwner.isViewer },
   });
   const colleagueReadOnly =
     admission.footer === "read-only" && admissionOwner !== undefined

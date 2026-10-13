@@ -5,6 +5,7 @@ import type { ZeropsAgentActivity } from "./agentActivity";
 import { mateStatus, mateStatusWords } from "./mateStatus.logic";
 
 const admission = agentAdmission({
+  owner: null,
   environmentId: "rig",
   instanceId: "claudeAgent",
   viewerSubject: "owner",

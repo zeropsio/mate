@@ -34,6 +34,7 @@ it.each(["unknown", "authenticated", "unauthenticated"] as const)(
     const instanceId = ProviderInstanceId.make("codex");
     const words =
       agentAdmission({
+        owner: null,
         environmentId: "rig",
         instanceId,
         viewerSubject: "viewer",
@@ -275,6 +276,7 @@ it.each(["unsupported", "broken"] as const)(
       },
     };
     const result = agentAdmission({
+      owner: null,
       environmentId: "env",
       instanceId: provider.instanceId,
       viewerSubject: "viewer",
@@ -318,6 +320,7 @@ describe("one admission answer for composer, Send and Continue", () => {
     (state) => {
       expect(
         agentAdmission({
+          owner: null,
           ...base,
           read:
             state === "unread" ? { state, waitingFor: null } : { state, sinceMs: 0, attempt: 1 },
@@ -341,6 +344,7 @@ describe("one admission answer for composer, Send and Continue", () => {
       };
       expect(
         agentAdmission({
+          owner: null,
           ...base,
           read: {
             state: "known",
@@ -372,6 +376,7 @@ describe("mateArrivalHoldsComposer", () => {
     ({ holds, signInRequired, ...input }) => {
       expect(
         agentAdmission({
+          owner: null,
           ...input,
           environmentId: "rig",
           instanceId: "codex",
@@ -455,7 +460,8 @@ describe("a colleague's Mate, as HQ records whose it is", () => {
     freshness: { kind: "live" },
   } as const;
   it.each([
-    { case: "HQ names nobody, or has not said", owner: undefined, footer: "composer", asks: true },
+    { case: "HQ has not said", owner: undefined, footer: "held", asks: false },
+    { case: "HQ names nobody, or has not said", owner: null, footer: "composer", asks: true },
     {
       case: "HQ records it as the viewer's",
       owner: { mine: true },
@@ -569,6 +575,7 @@ describe("admission on the conversation's auth input", () => {
   });
   const derive = (read: Known<ZeropsAgentAuthSnapshot>) =>
     agentAdmission({
+      owner: null,
       environmentId: "env-Ada",
       instanceId: provider.instanceId,
       viewerSubject: "viewer",
@@ -664,12 +671,14 @@ describe("admission on the conversation's auth input", () => {
     });
     const refusalSource = { loginId: "claudeAgent-work", reason: "missing-sign-in" } as const;
     const attempted = agentAdmission({
+      owner: null,
       ...input,
       instanceId: "claudeAgent-work",
       read: before,
       refusalSource,
     });
     const sameLabel = agentAdmission({
+      owner: null,
       ...input,
       instanceId: "claudeAgent-other",
       read: before,
@@ -679,6 +688,7 @@ describe("admission on the conversation's auth input", () => {
     expect(sameLabel.attention?.text).toBe(attempted.attention?.text);
     expect(sameLabel.explainsRefusal).toBe(false);
     const after = agentAdmission({
+      owner: null,
       ...input,
       instanceId: "claudeAgent-work",
       refusalSource,
@@ -694,6 +704,7 @@ describe("admission on the conversation's auth input", () => {
     });
     expect(
       agentAdmission({
+        owner: null,
         ...input,
         instanceId: "claudeAgent-work",
         read: before,
@@ -702,3 +713,48 @@ describe("admission on the conversation's auth input", () => {
     ).toBe(false);
   });
 });
+
+// History and provider readiness can arrive before HQ's ownership evidence.
+it.each([
+  { case: "unresolved", owner: undefined, footer: "held", canSend: false },
+  { case: "affirmatively unowned", owner: null, footer: "composer", canSend: true },
+  { case: "Mine", owner: { mine: true }, footer: "composer", canSend: true },
+  { case: "a colleague's", owner: { mine: false }, footer: "read-only", canSend: false },
+] as const)(
+  "HQ ownership $case admits only its supported controls",
+  ({ owner, footer, canSend }) => {
+    const admission = agentAdmission({
+      environmentId: "rig",
+      instanceId: "codex",
+      viewerSubject: "viewer",
+      mateName: "Cyd",
+      providers: [],
+      owner,
+      read: {
+        state: "known",
+        value: {
+          available: true,
+          agents: [
+            {
+              agentId: "codex",
+              state: "authorized",
+              providerAuth: "authenticated",
+              credPresent: true,
+              flagOAuth: true,
+              flagToken: false,
+            },
+          ],
+        },
+        asOf: { ordinal: 1, atMs: 0 },
+        coverage: "complete",
+        freshness: { kind: "live" },
+      },
+    });
+    expect(
+      admission.footer,
+      "ASSERTION: unresolved HQ ownership never offers writable controls",
+    ).toBe(footer);
+    expect(admission.canSend).toBe(canSend);
+    expect(admission.attention).toBeNull();
+  },
+);

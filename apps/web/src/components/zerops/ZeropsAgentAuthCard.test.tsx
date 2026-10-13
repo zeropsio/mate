@@ -34,6 +34,7 @@ const noop = () => {};
 /** Whether the conversation running `instance` is held for a sign-in, as `ChatView` asks it. */
 const demanded = (feed: ZeropsAgentAuthSnapshot, instance: string): boolean =>
   agentAdmission({
+    owner: null,
     environmentId: "env",
     instanceId: ProviderInstanceId.make(instance),
     viewerSubject: "viewer",

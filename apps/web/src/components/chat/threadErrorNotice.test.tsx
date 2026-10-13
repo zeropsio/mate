@@ -46,6 +46,7 @@ const snapshot = {
   ],
 } as const;
 const attention = agentAdmission({
+  owner: null,
   environmentId: "rig",
   instanceId: provider.instanceId,
   viewerSubject: "owner",

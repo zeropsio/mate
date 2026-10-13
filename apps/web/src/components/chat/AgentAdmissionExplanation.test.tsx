@@ -49,6 +49,7 @@ const setFeed = (value: ZeropsAgentAuthSnapshot) => {
 };
 const derive = (read = feed.read) =>
   agentAdmission({
+    owner: null,
     environmentId: "env-Ada",
     instanceId: "claudeAgent",
     viewerSubject: "viewer",

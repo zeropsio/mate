@@ -79,16 +79,17 @@ export function agentAdmission(input: {
    * Whose Mate it is as HQ records it (its owner against the viewer), never as a signer says: a
    * colleague's Mate is read along, its composer and its sign-in its owner's (the owner,
    * 2026-10-12: "this mate is not mine and I can still see the composer"). Absent while HQ names
-   * nobody, or has not said.
+   * nobody (`null`); unresolved while HQ has not said (`undefined`).
    */
-  readonly owner?: { readonly mine: boolean } | undefined;
+  readonly owner?: { readonly mine: boolean } | null | undefined;
 }) {
   const colleagues = input.owner?.mine === false;
   const snapshot = input.read?.state === "known" ? input.read.value : null;
   const provider = input.providers.find((p) => p.instanceId === input.instanceId) ?? null;
   const spent = resolveSpentLogin(input.instanceId, snapshot, input.providers);
   const login = snapshot?.logins?.find((row) => !row.default && row.id === spent?.key);
-  const cold = input.read?.state === "unread" || input.read?.state === "reading";
+  const cold =
+    input.owner === undefined || input.read?.state === "unread" || input.read?.state === "reading";
   const auth = spent === undefined ? null : classifyZeropsAgentAuth(spent.agent).kind;
   const pending = spent?.agent.login;
   const inProgress =
