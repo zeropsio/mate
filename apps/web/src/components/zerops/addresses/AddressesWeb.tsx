@@ -26,6 +26,7 @@ import { Switch } from "../../ui/switch";
 import {
   checkedWords,
   domainFaceWords,
+  removeWaitsFor,
   domainProblem,
   domainsToAdd,
   keepsWorking,
@@ -102,6 +103,7 @@ export function AddressesWeb({
       {othersWaiting.length > 0 ? (
         <WaitingNotice
           busy={ctx.busy.has("publish-domains")}
+          held={ctx.hold}
           kind="domain"
           onPublish={
             oursUnderWay
@@ -147,13 +149,19 @@ export function AddressesWeb({
           ctx={ctx}
           existing={place.domains.map((domain) => domain.domainName)}
           onDone={() => setMode({ kind: "list" })}
+          onTaken={() => ctx.settle(mode)}
           othersWaiting={othersWaiting}
           targets={place.webTargets}
         />
       ) : place.webTargets.length > 0 ? (
         <div className="border-t border-border/60 pt-2">
           <Trouble text={ctx.trouble.get("add-domain")} />
-          <Button onClick={() => setMode({ kind: "add-domain" })} size="sm" variant="ghost">
+          <Button
+            disabled={ctx.hold}
+            onClick={() => setMode({ kind: "add-domain" })}
+            size="sm"
+            variant="ghost"
+          >
             <PlusIcon />
             Add your domain
           </Button>
@@ -169,6 +177,7 @@ export function WaitingNotice({
   kind,
   placeName,
   busy,
+  held,
   trouble,
   onPublish,
 }: {
@@ -176,6 +185,8 @@ export function WaitingNotice({
   readonly kind: "domain" | "port";
   readonly placeName: string;
   readonly busy: boolean;
+  /** The place is still being read: nothing is sent. */
+  readonly held: boolean;
   readonly trouble: string | undefined;
   /** `undefined` while a change of ours is under way: they go live with it. */
   readonly onPublish: (() => void) | undefined;
@@ -198,7 +209,7 @@ export function WaitingNotice({
         </p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={busy} onClick={onPublish} size="sm" variant="outline">
+          <Button disabled={busy || held} onClick={onPublish} size="sm" variant="outline">
             {busy ? <Spinner aria-hidden="true" /> : null}
             {waiting.length === 1 ? "Put it live" : "Put them live"}
           </Button>
@@ -239,6 +250,7 @@ function RoutingRows({
         <DomainRow
           ctx={ctx}
           domain={domain}
+          group={group}
           key={domain.domainName}
           mode={mode}
           othersWaiting={othersWaiting}
@@ -270,16 +282,20 @@ function RoutingRows({
 function DomainRow({
   ctx,
   domain,
+  group,
   mode,
   setMode,
   othersWaiting,
 }: {
   readonly ctx: SheetContext;
   readonly domain: AddressDomain;
+  /** The domains of its routing, itself among them. */
+  readonly group: ReadonlyArray<AddressDomain>;
   readonly mode: WebMode;
   readonly setMode: (mode: WebMode) => void;
   readonly othersWaiting: ReadonlyArray<WaitingChange>;
 }) {
+  const waitsFor = removeWaitsFor(domain, group);
   const face = domainFaceWords(domain.face);
   const key = `remove:${domain.domainName}`;
   const asking = mode.kind === "remove" && mode.domainName === domain.domainName;
@@ -309,12 +325,17 @@ function DomainRow({
                     Open {domain.domainName}
                   </MenuItem>
                 ) : null}
-                <MenuItem
-                  onClick={() => setMode({ kind: "remove", domainName: domain.domainName })}
-                  variant="destructive"
-                >
-                  Remove {domain.domainName}
-                </MenuItem>
+                {waitsFor === null ? (
+                  <MenuItem
+                    disabled={ctx.hold}
+                    onClick={() => setMode({ kind: "remove", domainName: domain.domainName })}
+                    variant="destructive"
+                  >
+                    Remove {domain.domainName}
+                  </MenuItem>
+                ) : (
+                  <MenuItem disabled>Wait until {waitsFor} is removed</MenuItem>
+                )}
               </MenuPopup>
             </Menu>
           )
@@ -340,6 +361,7 @@ function DomainRow({
       {asking ? (
         <Confirm
           busy={ctx.busy.has(key)}
+          disabled={ctx.hold}
           cancel="Cancel"
           confirm={
             othersWaiting.length === 0
@@ -349,8 +371,9 @@ function DomainRow({
           destructive
           onCancel={() => setMode({ kind: "list" })}
           onConfirm={() => {
-            void ctx.onWrite(removeWrite(domain, ctx.projectId)).then((taken) => {
-              if (taken) setMode({ kind: "list" });
+            const removing = group.filter((each) => each.face === "removing");
+            void ctx.onWrite(removeWrite(domain, ctx.projectId, removing)).then((taken) => {
+              if (taken) ctx.settle(mode);
             });
           }}
           title={
@@ -507,7 +530,7 @@ function CheckAgain({
       <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
         {checked === null ? null : <span>{checked}</span>}
         <Button
-          disabled={busy}
+          disabled={busy || ctx.hold}
           onClick={() =>
             void ctx.onWrite({
               kind: "check-domain-dns",
@@ -557,7 +580,7 @@ function ZeropsRow({
               <Switch
                 aria-label={label}
                 checked={!asking}
-                disabled={busy}
+                disabled={busy || ctx.hold}
                 onCheckedChange={(on) => {
                   if (!on) setMode({ kind: "close-zerops", serviceId: address.serviceId });
                 }}
@@ -565,7 +588,7 @@ function ZeropsRow({
             </span>
           ) : (
             <Button
-              disabled={busy}
+              disabled={busy || ctx.hold}
               onClick={() =>
                 void ctx.onWrite({
                   kind: "enable-subdomain-access",
@@ -607,6 +630,7 @@ function ZeropsRow({
       {asking ? (
         <Confirm
           busy={busy}
+          disabled={ctx.hold}
           cancel="Keep it open"
           confirm="Close it"
           onCancel={() => setMode({ kind: "list" })}
@@ -618,7 +642,7 @@ function ZeropsRow({
                 serviceId: address.serviceId,
               })
               .then((taken) => {
-                if (taken) setMode({ kind: "list" });
+                if (taken) ctx.settle(mode);
               });
           }}
           title={`Close ${first?.host ?? label}?`}
@@ -652,12 +676,14 @@ function AddDomainForm({
   targets,
   othersWaiting,
   onDone,
+  onTaken,
 }: {
   readonly ctx: SheetContext;
   readonly existing: ReadonlyArray<string>;
   readonly targets: ReadonlyArray<ServicePortChoice>;
   readonly othersWaiting: ReadonlyArray<WaitingChange>;
   readonly onDone: () => void;
+  readonly onTaken: () => void;
 }) {
   const id = useId();
   const [typed, setTyped] = useState("");
@@ -687,7 +713,7 @@ function AddDomainForm({
       })
       .then((taken) => {
         setGuarding(false);
-        if (taken) onDone();
+        if (taken) onTaken();
       });
   };
   const named = domains.join(" and ");
@@ -751,9 +777,10 @@ function AddDomainForm({
         </label>
       )}
       <Trouble text={ctx.trouble.get("add-domain")} />
-      {guarding ? (
+      {guarding && othersWaiting.length > 0 ? (
         <Confirm
           busy={busy}
+          disabled={ctx.hold}
           cancel="Cancel"
           confirm={guardPress(null, othersWaiting.length)}
           onCancel={() => setGuarding(false)}
@@ -764,7 +791,7 @@ function AddDomainForm({
         </Confirm>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={!ready || busy} size="sm" type="submit">
+          <Button disabled={!ready || busy || ctx.hold} size="sm" type="submit">
             {busy ? <Spinner aria-hidden="true" /> : null}
             {name === "" ? "Add" : `Add ${name}`}
           </Button>

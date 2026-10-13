@@ -20,6 +20,8 @@ afterEach(async () => {
 interface Mounted {
   readonly container: HTMLElement;
   readonly writes: Array<AddressWrite>;
+  /** Draws the sheet again with these props changed, as new reads arrive. */
+  readonly rerender: (over: Partial<AddressesSheetBodyProps>) => Promise<void>;
 }
 
 async function mount(over: Partial<AddressesSheetBodyProps> = {}): Promise<Mounted> {
@@ -36,9 +38,10 @@ async function mount(over: Partial<AddressesSheetBodyProps> = {}): Promise<Mount
     onPlace: () => {},
     place: ADDRESSES_FIXTURE,
     othersWaiting: { domains: [], ports: [] },
-    ipv4: { state: "known", price: 3 },
+    ipv4: { state: "known", price: 3, enabled: false },
     busy: new Set(),
     trouble: new Map(),
+    unsure: new Set(),
     startAdding: false,
     zeropsUrl: "https://app.zerops.io/project/p1",
     onWrite: async (write) => {
@@ -50,7 +53,10 @@ async function mount(over: Partial<AddressesSheetBodyProps> = {}): Promise<Mount
     ...over,
   };
   await act(async () => root!.render(<AddressesSheetBody {...props} />));
-  return { container, writes };
+  const rerender = async (more: Partial<AddressesSheetBodyProps>) => {
+    await act(async () => root!.render(<AddressesSheetBody {...props} {...more} />));
+  };
+  return { container, writes, rerender };
 }
 
 const text = (element: Element | null) => element?.textContent?.replace(/\s+/gu, " ").trim() ?? "";
@@ -270,7 +276,7 @@ describe("the addresses sheet", () => {
   });
 
   it("a refused write says why in a sentence", async () => {
-    const sentence = "That domain is already used by another project on Zerops.";
+    const sentence = "docs.shop.com is already in use on Zerops.";
     const { container } = await mount({
       startAdding: true,
       trouble: new Map([["add-domain", sentence]]),
@@ -325,5 +331,105 @@ describe("the addresses sheet", () => {
     ]);
     await press(items[2]!);
     expect(moved).toEqual(["p3"]);
+  });
+
+  it("the shared IPv4 is said to be shared across Zerops", async () => {
+    const { container } = await mount();
+    expect(text(part(container, "ip"))).toContain("IPv4 · shared across Zerops");
+  });
+
+  it("a domain of a routing waits to be removed until the other's removal lands", async () => {
+    const removing: PlaceAddresses = {
+      ...ADDRESSES_FIXTURE,
+      domains: ADDRESSES_FIXTURE.domains.map((domain) =>
+        domain.domainName === "shop.com" ? { ...domain, face: "removing" } : domain,
+      ),
+    };
+    const { container } = await mount({ place: removing });
+    await act(async () => {
+      button(container, "More for www.shop.com").click();
+    });
+    const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    const wait = items.find((item) => item.textContent === "Wait until shop.com is removed");
+    expect(wait?.getAttribute("aria-disabled")).toBe("true");
+    expect(items.some((item) => item.textContent === "Remove www.shop.com")).toBe(false);
+  });
+
+  it("changing an IPv4 port keeps it on IPv4", async () => {
+    const place: PlaceAddresses = {
+      ...ADDRESSES_FIXTURE,
+      ports: [
+        {
+          ...ADDRESSES_FIXTURE.ports[0]!,
+          publicIpType: "IP_V4",
+          ranges: ["198.51.100.20/32"],
+          address: "203.0.113.24:6432",
+        },
+      ],
+    };
+    const { container, writes } = await mount({ place });
+    await act(async () => {
+      button(container, "More for port 6432").click();
+    });
+    const change = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (item) => item.textContent === "Change who can connect",
+    )!;
+    await press(change);
+    await press(button(container, "Save"));
+    expect(writes).toMatchObject([
+      { kind: "change-port", publicIpType: "IP_V4", firewallIpRanges: ["198.51.100.20/32"] },
+    ]);
+  });
+
+  it("the own IPv4 is not offered again while it is on its way", async () => {
+    const enabled = await mount({ ipv4: { state: "known", price: 3, enabled: true } });
+    expect(text(part(enabled.container, "ip"))).toContain("on its way");
+    expect(() => button(enabled.container, "Get one")).toThrow();
+    await act(async () => root?.unmount());
+
+    const unsure = await mount({ unsure: new Set(["request-ipv4"]) });
+    expect(text(part(unsure.container, "ip"))).toContain("may be on its way");
+    expect(() => button(unsure.container, "Get one")).toThrow();
+  });
+
+  it("an answer does not close a form the person opened meanwhile", async () => {
+    let answer: (taken: boolean) => void = () => {};
+    const { container } = await mount({
+      onWrite: () =>
+        new Promise<boolean>((resolve) => {
+          answer = resolve;
+        }),
+    });
+    await press(button(container, "Get one"));
+    await press(button(container, "Get it for $3"));
+    await press(button(container, "Add your domain"));
+    await act(async () => answer(true));
+    expect(container.querySelector('[data-addresses-form="add-domain"]')).not.toBeNull();
+  });
+
+  it("the ask before putting others' changes live goes once they are live", async () => {
+    const waiting = {
+      domains: [{ id: "rt-api", label: "api.shop.com → api · port 8080" }],
+      ports: [],
+    };
+    const { container, writes, rerender } = await mount({
+      othersWaiting: waiting,
+      startAdding: true,
+    });
+    const form = container.querySelector('[data-addresses-form="add-domain"]')!;
+    await type(form.querySelector<HTMLInputElement>("input")!, "docs.shop.com");
+    await press(button(form, "Add docs.shop.com"));
+    expect(text(form)).toContain("also puts live a change made elsewhere");
+    await rerender({ othersWaiting: { domains: [], ports: [] }, startAdding: true });
+    expect(text(form)).not.toContain("made elsewhere");
+    await press(button(form, "Add docs.shop.com"));
+    expect(writes).toMatchObject([{ kind: "add-domain", domains: ["docs.shop.com"] }]);
+  });
+
+  it("changes wait until the place's addresses are read", async () => {
+    const { container } = await mount({ place: { ...ADDRESSES_FIXTURE, state: "reading" } });
+    expect(text(container)).toContain("Changes wait until it's read.");
+    expect(button(container, "Add your domain").disabled).toBe(true);
+    expect(button(container, "Get one").disabled).toBe(true);
   });
 });

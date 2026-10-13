@@ -27,6 +27,13 @@ export interface SheetContext {
   readonly trouble: ReadonlyMap<string, string>;
   /** Resolves `true` once Zerops took the write, `false` where it did not (the trouble says why). */
   readonly onWrite: (write: AddressWrite) => Promise<boolean>;
+  /**
+   * Ends the change a write was asked from, once Zerops took it — only while that change is
+   * still the one shown: an answer never closes what the person opened meanwhile.
+   */
+  readonly settle: (asked: object) => void;
+  /** The place is still being read: what waits to go live may be unknown, so nothing is sent. */
+  readonly hold: boolean;
   readonly nowMs: number;
 }
 

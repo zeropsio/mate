@@ -46,7 +46,7 @@ function Harness() {
         new Map([
           [
             writeKey(write),
-            addressTrouble("publicHttpRoutingDuplicateDomainNameInAnotherRouting")!,
+            addressTrouble("publicHttpRoutingDuplicateDomainNameInAnotherRouting", write)!,
           ],
         ]),
       );
@@ -61,7 +61,7 @@ function Harness() {
       <DialogPopup className="h-[min(55.5rem,100%)] max-w-[48.75rem]" showCloseButton={false}>
         <AddressesSheetBody
           busy={new Set(own.map(writeKey))}
-          ipv4={{ state: "known", price: 3 }}
+          ipv4={{ state: "known", price: 3, enabled: false }}
           nowMs={Date.parse("2026-10-14T12:00:00Z")}
           onClose={() => {}}
           onPlace={() => {}}
@@ -78,6 +78,7 @@ function Harness() {
           projectName="Shop"
           startAdding={TASK === "add"}
           trouble={trouble}
+          unsure={new Set()}
           zeropsUrl="https://app.zerops.io/project/p1"
         />
       </DialogPopup>

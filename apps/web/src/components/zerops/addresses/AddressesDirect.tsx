@@ -87,6 +87,7 @@ export function AddressesDirect({
           {othersWaiting.length > 0 ? (
             <WaitingNotice
               busy={ctx.busy.has("publish-ports")}
+              held={ctx.hold}
               kind="port"
               onPublish={
                 oursUnderWay
@@ -104,6 +105,7 @@ export function AddressesDirect({
                 ctx={ctx}
                 key={port.id}
                 onDone={() => setMode({ kind: "list" })}
+                onTaken={() => ctx.settle(mode)}
                 othersWaiting={othersWaiting}
                 ownV4={place.ips.ownV4 !== undefined}
                 port={port}
@@ -130,6 +132,7 @@ export function AddressesDirect({
             <PortForm
               ctx={ctx}
               onDone={() => setMode({ kind: "list" })}
+              onTaken={() => ctx.settle(mode)}
               othersWaiting={othersWaiting}
               ownV4={place.ips.ownV4 !== undefined}
               port={undefined}
@@ -143,7 +146,12 @@ export function AddressesDirect({
           ) : (
             <div className="border-t border-border/60 pt-2">
               <Trouble text={ctx.trouble.get("open-port")} />
-              <Button onClick={() => setMode({ kind: "open-port" })} size="sm" variant="ghost">
+              <Button
+                disabled={ctx.hold}
+                onClick={() => setMode({ kind: "open-port" })}
+                size="sm"
+                variant="ghost"
+              >
                 <PlusIcon />
                 Open a port
               </Button>
@@ -202,10 +210,14 @@ function PortRow({
                 <EllipsisIcon />
               </MenuTrigger>
               <MenuPopup align="end">
-                <MenuItem onClick={() => setMode({ kind: "change-port", portId: port.id })}>
+                <MenuItem
+                  disabled={ctx.hold}
+                  onClick={() => setMode({ kind: "change-port", portId: port.id })}
+                >
                   Change who can connect
                 </MenuItem>
                 <MenuItem
+                  disabled={ctx.hold}
                   onClick={() => setMode({ kind: "close-port", portId: port.id })}
                   variant="destructive"
                 >
@@ -232,6 +244,7 @@ function PortRow({
       {asking ? (
         <Confirm
           busy={ctx.busy.has(key)}
+          disabled={ctx.hold}
           cancel="Keep it open"
           confirm={
             othersWaiting.length === 0
@@ -244,7 +257,7 @@ function PortRow({
             void ctx
               .onWrite({ kind: "close-port", projectId: ctx.projectId, portRoutingId: port.id })
               .then((taken) => {
-                if (taken) setMode({ kind: "list" });
+                if (taken) ctx.settle(mode);
               });
           }}
           title={
@@ -275,6 +288,7 @@ function PortForm({
   ownV4,
   othersWaiting,
   onDone,
+  onTaken,
 }: {
   readonly ctx: SheetContext;
   readonly port: DirectPort | undefined;
@@ -283,6 +297,7 @@ function PortForm({
   readonly ownV4: boolean;
   readonly othersWaiting: ReadonlyArray<WaitingChange>;
   readonly onDone: () => void;
+  readonly onTaken: () => void;
 }) {
   const id = useId();
   const [target, setTarget] = useState(() =>
@@ -291,8 +306,9 @@ function PortForm({
     ),
   );
   const chosen = targets.find((each) => targetValue(each) === target) ?? targets[0];
+  // A change keeps the port's own IP type: the form offers no other.
   const [ipType, setIpType] = useState<IpType>(
-    port?.publicIpType === "IP_V4" && ownV4 ? "IP_V4" : "IP_V6",
+    port === undefined ? "IP_V6" : port.publicIpType === "IP_V4" ? "IP_V4" : "IP_V6",
   );
   // The service's own port where it is free on IPv6, else the person picks one.
   const [publicPort, setPublicPort] = useState(() => {
@@ -349,7 +365,7 @@ function PortForm({
       )
       .then((taken) => {
         setGuarding(false);
-        if (taken) onDone();
+        if (taken) onTaken();
       });
   };
 
@@ -517,9 +533,10 @@ function PortForm({
         </ul>
       )}
       <Trouble text={ctx.trouble.get(key)} />
-      {guarding ? (
+      {guarding && othersWaiting.length > 0 ? (
         <Confirm
           busy={busy}
+          disabled={ctx.hold}
           cancel="Cancel"
           confirm={guardPress(null, othersWaiting.length)}
           onCancel={() => setGuarding(false)}
@@ -535,7 +552,7 @@ function PortForm({
         </Confirm>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <Button disabled={busy} size="sm" type="submit">
+          <Button disabled={busy || ctx.hold} size="sm" type="submit">
             {busy ? <Spinner aria-hidden="true" /> : null}
             {press}
           </Button>
