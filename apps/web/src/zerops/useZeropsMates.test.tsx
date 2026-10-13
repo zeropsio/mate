@@ -1,5 +1,5 @@
 import { seedHqNavigation } from "@t3tools/client-runtime/data/fixtures";
-import { projectsScope } from "@t3tools/client-runtime/data";
+import { projectsScope, shownHqMateIdentitiesAtom } from "@t3tools/client-runtime/data";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { EnvironmentPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
@@ -16,6 +16,7 @@ import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { zeropsMateAt } from "./mateIdentities";
 import { zeropsEnvironmentNamesAtom } from "./useZeropsEnvironmentNames";
 import { zeropsMatesAtom } from "./useZeropsMates";
+import { writeMateMemory } from "./mateIdentityMemory";
 
 const environments = vi.hoisted(() => ({
   atom: null as unknown as Atom.Writable<ReadonlyMap<string, unknown>>,
@@ -122,6 +123,7 @@ function openAccount(userId: string) {
 
 afterEach(() => {
   closeAccountLifetime();
+  vi.unstubAllGlobals();
 });
 
 describe("who lives in each environment, derived", () => {
@@ -205,6 +207,48 @@ describe("who lives in each environment, derived", () => {
     expect(contentRenders).toBe(2);
     stops.forEach((stop) => stop());
     stop();
+  });
+
+  it("a remembered conversation keeps its Mate through navigation, overview arrival and an owner rename", () => {
+    openAccount("identity-hold");
+    const storage = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      },
+    });
+    publishAccount(appAtomRegistry);
+    const held = appAtomRegistry.get(shownHqMateIdentitiesAtom)[PROJECT.id]!;
+    writeMateMemory({ [FEN]: held });
+    // A reload has complete navigation before the separately observed overview.
+    const reloaded = publishAccount(appAtomRegistry, false);
+    seedHqNavigation(reloaded, organization.organizationId, {
+      structure: {
+        apps: [],
+        ungrouped: [{ projectId: PROJECT.id, name: "Cyd", mate: { face: "rose:seal" } }],
+      },
+    });
+    expect(
+      appAtomRegistry.get(zeropsMatesAtom).get(FEN),
+      "ASSERTION: navigation preserves the conversation's remembered environment and uses HQ's current name and face",
+    ).toMatchObject({ name: "Cyd", tint: "rose", shape: "seal", environmentId: FEN });
+    seedMate(reloaded, "Cyd");
+    expect(appAtomRegistry.get(zeropsMatesAtom).get(FEN)?.name).toBe("Cyd");
+    const scope = `hq:${organization.organizationId}:hq-placements` as const;
+    reloaded.dispatch({
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: [{ scope, generation: reloaded.state().streams.get(scope)?.generation ?? 0 }],
+      reset: false,
+      rows: [],
+      removals: [{ family: "placement", id: PROJECT.id, reason: "deleted" }],
+    });
+    expect(
+      appAtomRegistry.get(zeropsMatesAtom).has(FEN),
+      "ASSERTION: complete navigation forgets a genuinely removed project",
+    ).toBe(false);
   });
 
   it("an environment the list has not reached is unknown, never nobody", () => {

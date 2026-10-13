@@ -64,36 +64,46 @@ export function writeMateMemory(
 
 /**
  * The memory once HQ named `identities`: each named Mate as HQ names it now; once HQ's list is
- * read, an environment it no longer lists is forgotten. The same memory when nothing changed.
+ * read, a project it no longer lists is forgotten. The same memory when nothing changed.
  */
 export function rememberMates(
   memory: MateMemory,
   identities: ReadonlyArray<HqMateIdentity>,
   listRead: boolean,
 ): MateMemory {
-  const next: Record<string, HqMateIdentity> = listRead ? {} : { ...memory };
-  for (const identity of identities) {
+  const next: Record<string, HqMateIdentity> = {};
+  for (const identity of seededIdentities(identities, memory, listRead)) {
     if (identity.environmentId !== undefined) next[identity.environmentId] = identity;
   }
   return sameValue(next, memory) ? memory : next;
 }
 
 /**
- * The identities a surface draws: HQ's own once its list is read; before that, HQ's where it
- * named one and the remembered ones where it has not yet.
+ * Navigation owns names, faces and project membership; the separately observed overview owns
+ * the environment. A still-listed project keeps its remembered environment until that join
+ * arrives. Before navigation is complete, retain projects it has not named yet as well.
  */
 export function seededIdentities(
   identities: ReadonlyArray<HqMateIdentity>,
   memory: MateMemory,
   listRead: boolean,
 ): ReadonlyArray<HqMateIdentity> {
-  if (listRead) return identities;
-  const named = new Set<string>(identities.flatMap((identity) => identity.environmentId ?? []));
+  const remembered = new Map(
+    Object.entries(memory).map(([environmentId, identity]) => [
+      identity.projectId,
+      { ...identity, environmentId: environmentId as HqMateIdentity["environmentId"] },
+    ]),
+  );
+  const named = new Set(identities.map((identity) => identity.projectId));
   return [
-    ...identities,
-    ...Object.entries(memory).flatMap(([environmentId, identity]) =>
-      named.has(environmentId) ? [] : [{ ...identity, environmentId } as HqMateIdentity],
+    ...identities.map((identity) =>
+      identity.environmentId === undefined && remembered.has(identity.projectId)
+        ? { ...identity, environmentId: remembered.get(identity.projectId)?.environmentId }
+        : identity,
     ),
+    ...(listRead
+      ? []
+      : [...remembered.values()].filter((identity) => !named.has(identity.projectId))),
   ];
 }
 

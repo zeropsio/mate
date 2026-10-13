@@ -73,6 +73,32 @@ describe("the Mates' names a reload remembers", () => {
       remembers: ["env-milo:Mila", "env-rhea:Rhea"],
     },
     {
+      name: "a listed Mate keeps its remembered environment until its overview arrives",
+      memory: { "env-milo": identity("env-milo", "Milo") },
+      hq: [{ ...identity("env-milo", "Milo"), environmentId: undefined }],
+      read: true,
+      shows: ["env-milo:Milo"],
+      remembers: ["env-milo:Milo"],
+    },
+    {
+      name: "navigation renames and redraws a remembered Mate before its overview arrives",
+      memory: { "env-milo": identity("env-milo", "Milo") },
+      hq: [
+        { ...identity("env-milo", "Mila"), environmentId: undefined, tint: "rose", shape: "seal" },
+      ],
+      read: true,
+      shows: ["env-milo:Mila"],
+      remembers: ["env-milo:Mila"],
+    },
+    {
+      name: "an overview's replacement environment retires the same project's remembered environment",
+      memory: { "env-milo": identity("env-milo", "Milo") },
+      hq: [{ ...identity("env-milo", "Milo"), environmentId: "env-new" as EnvironmentId }],
+      read: false,
+      shows: ["env-new:Milo"],
+      remembers: ["env-new:Milo"],
+    },
+    {
       name: "a Mate HQ no longer lists is forgotten once its list is read",
       memory: {
         "env-milo": identity("env-milo", "Milo"),
