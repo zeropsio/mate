@@ -16,13 +16,18 @@ describe("C: agent selection and contextual drafts", () => {
       "a Mate's change waiting for a review stands in its conversation's header, for its owner and a colleague reading along, and opens from there",
       () =>
         Effect.gen(function* () {
-          const s = yield* createScenario([installArea]);
+          const s = yield* createScenario([], { mate: "real" });
           yield* changeFixture(s);
           s.given.person("dev", { role: "Developer", grants: { Ada: "BASIC_USER" } });
           const chat = mateChat(s);
-          chat.fixture().history("Add the order summary to the shop");
           yield* s.given.signedIn;
-          yield* chat.when.open("Ada", "Add the order summary to the shop");
+          yield* s.when.menu.opensMate("Ada");
+          yield* s.then.conversation.appears;
+          yield* s.drivers.realMates
+            .get("Ada")!
+            .provider.turn([{ kind: "say", text: "The order summary is ready for review" }]);
+          yield* s.when.conversation.sends("Add the order summary to the shop");
+          yield* s.then.conversation.showsMessage("The order summary is ready for review");
           const openHeaderReview = (page: typeof s.page) =>
             Effect.promise(async () => {
               const header = page.locator(
@@ -52,6 +57,7 @@ describe("C: agent selection and contextual drafts", () => {
         }),
     );
 
+    // Fake retained: native Codex effort/catalog, birth and login cancellation are not scriptable through createScenario.
     // J03 · Z03–Z05/Z32/Z33: the current catalog and the person's effort drive the next send.
     it.effect("J03: current model and explicit effort remain selected after send and reload", () =>
       Effect.gen(function* () {
@@ -144,6 +150,7 @@ describe("C: agent selection and contextual drafts", () => {
       }),
     );
 
+    // Fake retained: databaseCatalog/holdDataReply and turnRefusal have no real-Mate source seam.
     // J05 · Z06/Z20/Z21: an edited picture belongs to this draft and survives an acknowledged send.
     it.effect("J05: picture notes and attachment order survive send and reload", () =>
       Effect.gen(function* () {
@@ -250,6 +257,7 @@ describe("C: agent selection and contextual drafts", () => {
       }),
     );
 
+    // Fake retained: turnRefusal needs a receipt-correlated real send-refusal seam; provider failure happens after acceptance.
     // J09 · Z07–Z09/Z34: context does not rewrite the person's durable words or become a slash prompt.
     it.effect(
       "J09: landed context stays separate from the person's message and compact event",

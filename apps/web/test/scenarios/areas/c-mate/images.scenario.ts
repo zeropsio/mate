@@ -1,17 +1,79 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Optional frame recording uses Node filesystem tools.
 import { describe, expect, it } from "@effect/vitest";
-import { WS_METHODS, AssetCreateUrlInput, AssetCreateUrlResult } from "@t3tools/contracts";
+import {
+  WS_METHODS,
+  AssetCreateUrlInput,
+  AssetCreateUrlResult,
+  RuntimeItemId,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import type { RealMate } from "../../harness/scenario.ts";
+import type {
+  ScriptedEvent,
+  ScriptedStep,
+} from "../../../../../server/integration/scriptedProviderDriver.ts";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
+import * as NodeHttp from "node:http";
+import * as NodeNet from "node:net";
 const decode = Schema.decodeUnknownSync(AssetCreateUrlInput);
 const encode = Schema.encodeSync(AssetCreateUrlResult);
 const picture = ".message-picture-open img";
+
+// Authored OpenCode tool facts; the real SPI and engine derive the call and image records.
+const nativeCall = (
+  type: "item.started" | "item.updated" | "item.completed",
+  id: string,
+  itemType: "command_execution" | "image_view",
+  input: Record<string, string>,
+): ScriptedEvent => ({
+  type,
+  itemId: RuntimeItemId.make(id),
+  payload: {
+    itemType,
+    status: type === "item.completed" ? "completed" : "inProgress",
+    detail: input.command ?? input.file_path,
+    data: {
+      tool: itemType === "image_view" ? "Read" : "Bash",
+      state: { status: type === "item.completed" ? "completed" : "running", input },
+    },
+  },
+});
+const nativeStep = (event: ScriptedEvent): ScriptedStep => ({ kind: "event", event });
+const pastePng = (page: Parameters<typeof mateChat>[0]["page"], encoded: string, name: string) =>
+  Effect.promise(async () => {
+    await (await page.locator('[role="textbox"]').setTimeout(8000).waitHandle()).focus();
+    await page.evaluate(
+      async (encoded, name) => {
+        const blob = await (await fetch(`data:image/png;base64,${encoded}`)).blob();
+        const clipboard = new DataTransfer();
+        clipboard.items.add(new File([blob], name, { type: "image/png" }));
+        document.activeElement!.dispatchEvent(
+          new ClipboardEvent("paste", {
+            clipboardData: clipboard,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      },
+      encoded,
+      name,
+    );
+    await page.waitForSelector(`button[aria-label$=", ${name}. Opens it to crop or add notes."]`, {
+      timeout: 8000,
+    });
+  });
+const assetReads = (mate: RealMate) =>
+  mate.gate.requests.filter(
+    (request) => request.startsWith("GET ") && request.includes("/api/assets/"),
+  );
+
 function expectBoxWithinHalfPixel(
   actual: Record<string, number>,
   expected: Record<string, number>,
@@ -27,8 +89,10 @@ describe("C: conversation images", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect("decoded conversation and work pictures stay in place while a turn streams", () =>
       Effect.gen(function* () {
-        const s = yield* createScenario([installArea]);
-        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+        const s = yield* createScenario([], { mate: "real" });
+        yield* Effect.promise(() =>
+          s.page.setViewport({ width: 1786, height: 1000, deviceScaleFactor: 2 }),
+        );
         const bytes = Buffer.from(
           yield* Effect.promise(() =>
             s.page.evaluate(() => {
@@ -43,133 +107,70 @@ describe("C: conversation images", () => {
           ),
           "base64",
         );
-        const requests: string[] = [];
-        s.drivers.onMate.push((mate) => {
-          Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
-          Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
-          mate.rpcHandlers.unshift((request, socket) => {
-            if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
-            const input = decode(request.payload);
-            const id =
-              input.resource._tag === "attachment"
-                ? String(["one", "two", "three"].indexOf(input.resource.attachmentId) + 1)
-                : input.resource.path?.includes("bbbbbbbb")
-                  ? "5"
-                  : "4";
-            mate.reply(
-              socket,
-              request.id,
-              encode({
-                representation: {
-                  digest: id.padEnd(64, "a"),
-                  relativeUrl: `/api/assets/objects/${id.padEnd(64, "a")}/preview`,
-                  mimeType: "image/png",
-                  sizeBytes: bytes.length,
-                  width: 160,
-                  height: 80,
-                },
-                relativeUrl: `/api/assets/objects/${id.padEnd(64, "a")}/preview`,
-                expiresAt: 0,
-                imageDimensions: { width: 160, height: 80 },
-              }),
-            );
-            return true;
-          });
-          const handle = mate.handle;
-          mate.handle = (request) => {
-            if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
-            requests.push(request.url.pathname + request.url.search);
-            return Promise.resolve({ bytes, headers: { "content-type": "image/png" } });
-          };
-        });
         yield* s.given.project("Ada", { mate: true });
+        const mate = s.drivers.realMates.get("Ada")!;
         const chat = mateChat(s);
-        const wire = chat.fixture();
-        wire.history(
-          "[Picture 1]\n[Picture 2]\n[Picture 3]\nWatch these pictures while you work",
-          "stream",
-          ["one", "two", "three"].map((id) => ({
-            type: "image" as const,
-            id,
-            name: `${id}.png`,
-            mimeType: "image/png",
-            sizeBytes: bytes.length,
-            width: 160,
-            height: 80,
-          })),
-        );
-        const work = {
-          toolName: "Read",
-          input: { file_path: "/tmp/work.png" },
-          imagePath: "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-        };
-        wire.run("stream", "running");
-        wire.call(
-          "progress",
-          "running",
-          { command: "printf work-update-0", kind: "execute" },
-          "stream",
-        );
-        yield* s.given.signedIn;
-        yield* chat.when.open("Ada", "Watch these pictures while you work");
-        wire.call("work-image", "done", work, "stream", { step: "look" });
-        const secondWork = {
-          ...work,
-          imagePath: "mate-asset:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-        };
-        wire.call("second-work-image", "done", secondWork, "stream", { step: "look" });
+        const wait = yield* Deferred.make<void>();
+        const work = NodePath.join(mate.server.root, "workspace", "work.png");
+        const secondWork = NodePath.join(mate.server.root, "workspace", "second-work.png");
         yield* Effect.promise(() =>
-          s.page
-            .waitForFunction(
-              () => {
-                const images = [
-                  ...document.querySelectorAll<HTMLImageElement>("img[data-image-src]"),
-                ];
-                return (
-                  images.length === 5 &&
-                  images.every(
-                    (image) =>
-                      image.getBoundingClientRect().top >= 0 &&
-                      image.getBoundingClientRect().bottom <= innerHeight &&
-                      image.naturalWidth === 160 &&
-                      [
-                        image,
-                        ...Array.from(
-                          (function* () {
-                            for (
-                              let parent = image.parentElement;
-                              parent !== null;
-                              parent = parent.parentElement
-                            )
-                              yield parent;
-                          })(),
-                        ),
-                      ].every((node) => Number(getComputedStyle(node).opacity) === 1),
-                  )
-                );
-              },
-              { timeout: 8000 },
-            )
-            .catch(async (cause) => {
-              throw new Error(
-                JSON.stringify({
-                  requests,
-                  text: await s.page.evaluate(() => document.body.innerText),
-                  images: await s.page.$$eval("img[data-image-src]", (images) =>
-                    images.map((image) => ({
-                      src: image.getAttribute("src"),
-                      alt: image.getAttribute("alt"),
-                      box: image.getBoundingClientRect().toJSON(),
-                      opacity: getComputedStyle(image).opacity,
-                      width: (image as HTMLImageElement).naturalWidth,
-                    })),
-                  ),
-                }),
-                { cause },
-              );
-            }),
+          Promise.all([work, secondWork].map((path) => NodeFSP.writeFile(path, bytes))),
         );
-        const initialRequests = requests.length;
+        yield* mate.provider.turn([
+          nativeStep(
+            nativeCall("item.started", "progress", "command_execution", {
+              command: "printf work-update-0",
+            }),
+          ),
+          nativeStep(nativeCall("item.completed", "work-image", "image_view", { file_path: work })),
+          nativeStep(
+            nativeCall("item.completed", "second-work-image", "image_view", {
+              file_path: secondWork,
+            }),
+          ),
+          { kind: "wait", until: wait },
+        ]);
+        yield* s.given.signedIn;
+        yield* s.when.menu.opensMate("Ada");
+        yield* s.then.conversation.appears;
+        yield* chat.when.type("Watch these pictures while you work");
+        for (const id of ["one", "two", "three"])
+          yield* pastePng(s.page, bytes.toString("base64"), `${id}.png`);
+        yield* chat.when.press("Send message");
+        const native = yield* mate.provider.received;
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(
+            () => {
+              const images = [
+                ...document.querySelectorAll<HTMLImageElement>("img[data-image-src]"),
+              ];
+              return (
+                images.length === 5 &&
+                images.every(
+                  (image) =>
+                    image.getBoundingClientRect().top >= 0 &&
+                    image.getBoundingClientRect().bottom <= innerHeight &&
+                    image.naturalWidth === 160 &&
+                    [
+                      image,
+                      ...Array.from(
+                        (function* () {
+                          for (
+                            let parent = image.parentElement;
+                            parent !== null;
+                            parent = parent.parentElement
+                          )
+                            yield parent;
+                        })(),
+                      ),
+                    ].every((node) => Number(getComputedStyle(node).opacity) === 1),
+                )
+              );
+            },
+            { timeout: 8000 },
+          ),
+        );
+        const initialRequests = assetReads(mate).length;
         const frames = process.env.MATE_IMAGE_FRAMES;
         const recording = yield* Effect.promise(() => s.page.createCDPSession());
         const recorded: Promise<unknown>[] = [];
@@ -261,15 +262,11 @@ describe("C: conversation images", () => {
           }),
         );
         for (let update = 0; update < 24; update++) {
-          wire.call(
-            "progress",
-            "running",
-            {
-              kind: "execute",
+          yield* mate.provider.event(
+            native.threadId,
+            nativeCall("item.updated", "progress", "command_execution", {
               command: `printf work-update-${update}${"\necho growing".repeat(update % 4)}`,
-              rawOutput: { content: `Work update ${update}` },
-            },
-            "stream",
+            }),
           );
           yield* chat.then.text(`printf work-update-${update}`);
           if (update === 7)
@@ -317,7 +314,7 @@ describe("C: conversation images", () => {
             ),
           ).toEqual([]);
         }
-        expect(requests.slice(initialRequests)).toEqual([]);
+        expect(assetReads(mate).slice(initialRequests)).toEqual([]);
         const film = yield* Effect.promise(() =>
           s.page.evaluate((watched) => watched.finish(), watched),
         );
@@ -326,6 +323,7 @@ describe("C: conversation images", () => {
         yield* s.then.noExternalNetwork;
       }),
     );
+    // Fake retained: these arrangements replace previously streamed text; canonical provider text is append-only.
     for (const role of ["assistant", "reasoning"] as const) {
       it.effect(
         `a decoded ${role} image survives markdown restructuring and landing while work continues`,
@@ -525,6 +523,7 @@ describe("C: conversation images", () => {
           }),
       );
     }
+    // Fake retained: real steering accepts words only; pictures wait for a subsequent run (engineCommands.ts).
     it.effect("a steering picture lands intact while the turn continues", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installArea]);
@@ -703,31 +702,11 @@ describe("C: conversation images", () => {
       "messages appear before image bytes, reserve their size, and reuse previews on reopen",
       () =>
         Effect.gen(function* () {
-          const s = yield* createScenario([installArea]);
-          const encoded = yield* Effect.promise(() =>
-            s.page.evaluate(() => {
-              const canvas = document.createElement("canvas");
-              canvas.width = 160;
-              canvas.height = 80;
-              canvas.getContext("2d")!.fillRect(0, 0, 160, 80);
-              return canvas.toDataURL("image/png").split(",")[1]!;
-            }),
+          const s = yield* createScenario([], { mate: "real" });
+          // At this DPR the 586 px message slot demands a real 160 px preview of the 640 px original.
+          yield* Effect.promise(() =>
+            s.page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 0.273 }),
           );
-          const bytes = Buffer.from(encoded, "base64");
-          let release!: () => void;
-          const held = new Promise<void>((resolve) => {
-            release = resolve;
-          });
-          yield* Effect.addFinalizer(() => Effect.sync(release));
-          let originalStarted!: () => void;
-          const originalRequested = new Promise<void>((resolve) => {
-            originalStarted = resolve;
-          });
-          let releaseOriginal!: () => void;
-          const originalHeld = new Promise<void>((resolve) => {
-            releaseOriginal = resolve;
-          });
-          yield* Effect.addFinalizer(() => Effect.sync(releaseOriginal));
           const originalEncoded = yield* Effect.promise(() =>
             s.page.evaluate(() => {
               const canvas = document.createElement("canvas");
@@ -739,65 +718,104 @@ describe("C: conversation images", () => {
               return canvas.toDataURL("image/png").split(",")[1]!;
             }),
           );
-          const originalBytes = Buffer.from(originalEncoded, "base64");
-          const requests: string[] = [];
-          let transferred = 0;
-          s.drivers.onMate.push((mate) => {
-            if (mate.name !== "Ada") return;
-            Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
-            Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
-            mate.rpcHandlers.unshift((request, socket) => {
-              if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
-              const input = decode(request.payload);
-              if (input.resource._tag !== "attachment") return false;
-              mate.reply(
-                socket,
-                request.id,
-                encode({
-                  relativeUrl: `/api/assets/objects/${"a".repeat(64)}/${input.preview ? "preview" : "original"}`,
-                  expiresAt: 0,
-                  imageDimensions: { width: 640, height: 320 },
-                }),
-              );
-              return true;
-            });
-            const handle = mate.handle;
-            mate.handle = async (request) => {
-              if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
-              requests.push(request.url.pathname);
-              if (request.url.pathname.endsWith("/original")) {
-                originalStarted();
-                await originalHeld;
-              }
-              await held;
-              const body = request.url.pathname.endsWith("/original") ? originalBytes : bytes;
-              transferred += body.length;
-              return {
-                bytes: body,
-                headers: {
-                  "content-type": "image/png",
-                  "cache-control": "private, max-age=31536000, immutable",
-                },
-              };
-            };
-          });
           yield* s.given.project("Ada", { mate: true });
           yield* s.given.project("Bea", { mate: true });
+          const mate = s.drivers.realMates.get("Ada")!;
           const chat = mateChat(s);
-          chat.fixture("Bea").history("Bea history");
-          chat.fixture().history("[Picture 1]\n\nWords below the picture are readable", null, [
-            {
-              type: "image",
-              id: "shot",
-              name: "shot.png",
-              mimeType: "image/png",
-              sizeBytes: bytes.length,
-              width: 640,
-              height: 320,
-            },
-          ]);
+          const held = mate.gate.holdHttp((path) => path.endsWith("/preview"));
+          const original = mate.gate.holdHttp((path) => path.endsWith("/original"));
+          const release = held.release;
+          const releaseOriginal = original.release;
+          const originalRequested = original.held;
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              release();
+              releaseOriginal();
+            }),
+          );
+          // Chromium's fulfilled scenario routes report no CDP body bytes: count the actual HTTP stream.
+          const requests: string[] = [];
+          let transferred = 0;
+          const sockets = new Set<NodeNet.Socket>();
+          const proxy = NodeHttp.createServer((request, response) => {
+            const path = new URL(request.url!, mate.gate.origin).pathname;
+            const asset = path.includes("/api/assets/objects/");
+            if (asset) requests.push(path);
+            const upstream = NodeHttp.request(
+              new URL(request.url!, mate.gate.origin),
+              {
+                method: request.method,
+                headers: request.headers,
+              },
+              (answer) => {
+                response.writeHead(answer.statusCode!, answer.headers);
+                if (asset)
+                  answer.on("data", (bytes: Buffer) => {
+                    transferred += bytes.length;
+                  });
+                answer.pipe(response);
+              },
+            );
+            upstream.on("error", () => response.destroy());
+            response.once("close", () => upstream.destroy());
+            request.pipe(upstream);
+          });
+          proxy.on("connection", (socket) => {
+            sockets.add(socket);
+            socket.on("close", () => sockets.delete(socket));
+          });
+          proxy.on("upgrade", (request, socket, head) => {
+            const target = new URL(mate.gate.origin);
+            const upstream = NodeNet.connect(Number(target.port), target.hostname, () => {
+              upstream.write(
+                `${request.method} ${request.url} HTTP/${request.httpVersion}\r\n${request.rawHeaders.reduce((headers, value, index) => headers + value + (index % 2 === 0 ? ": " : "\r\n"), "")}\r\n`,
+              );
+              upstream.write(head);
+              socket.pipe(upstream).pipe(socket);
+            });
+            sockets.add(upstream);
+            upstream.on("error", () => socket.destroy());
+            upstream.on("close", () => {
+              sockets.delete(upstream);
+              socket.destroy();
+            });
+            socket.on("close", () => upstream.destroy());
+          });
+          yield* Effect.promise(
+            () => new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve)),
+          );
+          yield* Effect.addFinalizer(() =>
+            Effect.promise(async () => {
+              release();
+              releaseOriginal();
+              for (const socket of sockets) socket.destroy();
+              await new Promise<void>((resolve) => proxy.close(() => resolve()));
+            }),
+          );
+          s.drivers.routes["https://zcp-ada-8080.prg1.zerops.app"] =
+            `http://127.0.0.1:${(proxy.address() as NodeNet.AddressInfo).port}`;
+          yield* Effect.promise(() => s.web.setRoutes());
           yield* s.given.signedIn;
-          yield* chat.when.open("Ada", "Words below the picture are readable");
+          yield* s.when.menu.opensMate("Bea");
+          yield* s.then.conversation.appears;
+          yield* s.drivers.realMates
+            .get("Bea")!
+            .provider.turn([{ kind: "say", text: "Bea history" }]);
+          yield* s.when.conversation.sends("Start Bea's history");
+          yield* s.then.conversation.showsMessage("Bea history");
+          const beaUrl = s.page.url();
+          yield* s.when.menu.opensMate("Ada");
+          yield* Effect.promise(() =>
+            s.page.waitForFunction((url) => location.href !== url, { polling: 100 }, beaUrl),
+          );
+          yield* s.then.conversation.appears;
+          yield* mate.provider.turn([{ kind: "say", text: "The picture is recorded" }]);
+          yield* pastePng(s.page, originalEncoded, "shot.png");
+          yield* chat.when.type("Words below the picture are readable");
+          yield* chat.then.draft("Words below the picture are readable");
+          yield* chat.when.press("Send message");
+          yield* s.then.conversation.showsMessage("Words below the picture are readable");
+          yield* Effect.promise(() => held.held);
           const pending = yield* Effect.promise(async () => {
             await s.page.waitForSelector(picture, { timeout: 8000 });
             return s.page.$eval(picture, (image) => {
@@ -836,37 +854,17 @@ describe("C: conversation images", () => {
           ).toBeLessThan(0.05);
           release();
           yield* Effect.promise(() =>
-            s.page
-              .waitForFunction(
-                () => {
-                  const image = document.querySelector<HTMLImageElement>(
-                    ".message-picture-open img",
-                  );
-                  return (
-                    image?.naturalWidth === 160 &&
-                    getComputedStyle(image).visibility !== "hidden" &&
-                    Number(getComputedStyle(image).opacity) === 1
-                  );
-                },
-                { timeout: 8000 },
-              )
-              .catch(async (cause) => {
-                throw new Error(
-                  JSON.stringify({
-                    requests,
-                    transferred,
-                    images: await s.page.$$eval("img[data-image-src]", (nodes) =>
-                      nodes.map((image) => ({
-                        src: image.getAttribute("src"),
-                        width: (image as HTMLImageElement).naturalWidth,
-                        style: image.getAttribute("style"),
-                        rect: image.getBoundingClientRect().toJSON(),
-                      })),
-                    ),
-                  }),
-                  { cause },
+            s.page.waitForFunction(
+              () => {
+                const image = document.querySelector<HTMLImageElement>(".message-picture-open img");
+                return (
+                  image?.naturalWidth === 160 &&
+                  getComputedStyle(image).visibility !== "hidden" &&
+                  Number(getComputedStyle(image).opacity) === 1
                 );
-              }),
+              },
+              { timeout: 8000 },
+            ),
           );
           const loaded = yield* Effect.promise(() =>
             s.page.$eval(picture, (image) => ({
@@ -875,8 +873,11 @@ describe("C: conversation images", () => {
             })),
           );
           const first = { requests: requests.length, bytes: transferred };
-          yield* chat.when.open("Bea", "Bea history");
-          yield* chat.when.open("Ada", "Words below the picture are readable");
+          expect(first.bytes).toBeGreaterThan(0);
+          yield* s.when.menu.opensMate("Bea");
+          yield* s.then.conversation.showsMessage("Bea history");
+          yield* s.when.menu.opensMate("Ada");
+          yield* s.then.conversation.showsMessage("Words below the picture are readable");
           yield* Effect.promise(() =>
             s.page.waitForFunction(
               () =>
@@ -888,7 +889,6 @@ describe("C: conversation images", () => {
             requests: requests.length - first.requests,
             bytes: transferred - first.bytes,
           };
-          yield* Effect.log("Image measurement", { pending, loaded, first, second });
           expect(requests.every((path) => path.endsWith("/preview"))).toBe(true);
           expect(pending.hidden).toBe(true);
           expect(
@@ -952,7 +952,10 @@ describe("C: conversation images", () => {
       "result screenshots fill their reserved boxes and permanent missing files have no retry",
       () =>
         Effect.gen(function* () {
-          const s = yield* createScenario([installArea]);
+          const s = yield* createScenario([], { mate: "real" });
+          yield* Effect.promise(() =>
+            s.page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 2 }),
+          );
           const bytes = Buffer.from(
             yield* Effect.promise(() =>
               s.page.evaluate(() => {
@@ -965,87 +968,35 @@ describe("C: conversation images", () => {
             ),
             "base64",
           );
-          let release!: () => void;
-          const held = new Promise<void>((resolve) => {
-            release = resolve;
-          });
-          yield* Effect.addFinalizer(() => Effect.sync(release));
-          const paths: string[] = [];
-          s.drivers.onMate.push((mate) => {
-            Object.assign(mate.descriptor.capabilities!, { contentAddressedImages: true });
-            Object.assign(mate.config.environment.capabilities, { contentAddressedImages: true });
-            mate.rpcHandlers.unshift((request, socket) => {
-              if (request.tag !== WS_METHODS.assetsCreateUrl) return false;
-              const input = decode(request.payload);
-              if (input.resource._tag !== "workspace-file") return false;
-              const missing = input.resource.path.includes("source-missing");
-              mate.reply(
-                socket,
-                request.id,
-                encode({
-                  relativeUrl: `/api/assets/objects/${"b".repeat(64)}/preview`,
-                  expiresAt: 0,
-                  imageDimensions: { width: 640, height: 400 },
-                  ...(missing
-                    ? {
-                        occurrence: {
-                          id: "missing",
-                          threadId: mate.thread.id,
-                          ownerId: "read-gone",
-                          name: "gone.png",
-                          provenance: "capture" as const,
-                          original: { status: "failed" as const, code: "source-missing" as const },
-                        },
-                      }
-                    : {}),
-                }),
-              );
-              return true;
-            });
-            const handle = mate.handle;
-            mate.handle = async (request) => {
-              if (!request.url.pathname.includes("/api/assets/objects/")) return handle(request);
-              paths.push(request.url.pathname);
-              await held;
-              return { bytes, headers: { "content-type": "image/png" } };
-            };
-          });
           yield* s.given.project("Ada", { mate: true });
-          const chat = mateChat(s);
-          const wire = chat.fixture();
-          wire.history("Screenshot report", "run-one");
-          wire.call(
-            "read-kept",
-            "done",
-            {
-              toolName: "Read",
-              input: { file_path: "/tmp/shot.png" },
-              imagePath: "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-            },
-            "run-one",
-            { step: "look" },
-          );
-          wire.call(
-            "read-gone",
-            "done",
-            {
-              toolName: "Read",
-              input: { file_path: "/tmp/gone.png" },
-              imagePath: "mate-asset:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:source-missing",
-            },
-            "run-one",
-            { step: "look" },
-          );
-          wire.say("The screenshots are in the result", "run-one");
-          wire.run("run-one", "completed");
+          const mate = s.drivers.realMates.get("Ada")!;
+          const shot = NodePath.join(mate.server.root, "workspace", "shot.png");
+          const missingPath = NodePath.join(mate.server.root, "workspace", "gone.png");
+          yield* Effect.promise(() => NodeFSP.writeFile(shot, bytes));
+          const held = mate.gate.holdHttp((path) => path.includes("/api/assets/"));
+          const release = held.release;
+          yield* Effect.addFinalizer(() => Effect.sync(release));
+          yield* mate.provider.turn([
+            nativeStep(
+              nativeCall("item.completed", "read-shot", "image_view", { file_path: shot }),
+            ),
+            nativeStep(
+              nativeCall("item.completed", "read-gone", "image_view", { file_path: missingPath }),
+            ),
+            { kind: "say", text: "The screenshots are in the result" },
+          ]);
           yield* s.given.signedIn;
-          yield* chat.when.open("Ada", "The screenshots are in the result");
+          yield* s.when.menu.opensMate("Ada");
+          yield* s.then.conversation.appears;
+          yield* s.when.conversation.sends("Screenshot report");
+          yield* s.then.conversation.showsMessage("The screenshots are in the result");
           yield* Effect.promise(() => s.page.waitForSelector("[data-result-picture] img"));
           yield* Effect.promise(() =>
             s.page.$eval("[data-result-picture] img", (image) =>
               image.scrollIntoView({ block: "center" }),
             ),
           );
+          yield* Effect.promise(() => held.held);
           yield* Effect.promise(() =>
             s.page.waitForFunction(() =>
               [...document.querySelectorAll("[data-result-picture]")].some(
@@ -1082,7 +1033,7 @@ describe("C: conversation images", () => {
             })),
           );
           expectBoxWithinHalfPixel(loaded, pending);
-          expect(paths.every((path) => path.endsWith("/preview"))).toBe(true);
+          expect(assetReads(mate).every((request) => request.endsWith("/preview 200"))).toBe(true);
           const gone = yield* Effect.promise(() =>
             s.page.$eval("[data-result-picture]:has(.asset-image-unavailable)", (tile) => ({
               text: tile.textContent,
