@@ -441,7 +441,7 @@ export async function menuMateIn(page: Page, name: string, app: string, timeout 
 }
 
 /**
- * The menu's row of Mate `name`, drawn: its name alone (a Mate in no project, or under its open
+ * The menu's row of Mate `name`, drawn and still: its name alone (a Mate in no project, or under its open
  * group), or its project's then its own ("Shop · Ada", a project of one Mate). A Mate in a folded
  * group is drawn once a person opens its group: where none shows it soon, every group is opened
  * from the menu's top row.
@@ -458,7 +458,17 @@ export async function menuMateRow(page: Page, name: string, timeout = 10_000) {
               .trim();
             return (
               row.getBoundingClientRect().height > 0 &&
-              (words === name || words?.endsWith(` · ${name}`) === true)
+              (words === name || words?.endsWith(` · ${name}`) === true) &&
+              // Still: a group unfolding moves and clips its rows, so a press measured meanwhile
+              // lands beside the row.
+              !document
+                .getAnimations()
+                .some(
+                  (animation) =>
+                    animation.playState === "running" &&
+                    animation.effect instanceof KeyframeEffect &&
+                    animation.effect.target?.contains(row) === true,
+                )
             );
           },
         ) ?? null,
