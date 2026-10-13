@@ -233,6 +233,7 @@ export async function ownCgroups(): Promise<ReadonlyArray<string>> {
 /** Kernel wakes and the existing observation cadence publish recovery and OOM expiry. */
 export function resourceHealthChanges(
   stateDir: string,
+  homeDir: string,
   fixtureGroups?: ReadonlyArray<string>,
   requested?: Stream.Stream<unknown>,
 ): Stream.Stream<MateResourceHealth> {
@@ -286,7 +287,10 @@ export function resourceHealthChanges(
       const helperPath = NodePath.join(import.meta.dirname, "health-events");
       const helper =
         fixtureGroups === undefined && platform === "linux" && groups.length > 0
-          ? NodeChildProcess.spawn(helperPath, groups, { stdio: ["ignore", "pipe", "pipe"] })
+          ? NodeChildProcess.spawn(helperPath, groups, {
+              stdio: ["ignore", "pipe", "pipe"],
+              env: { ...process.env, HOME: homeDir },
+            })
           : null;
       helper?.stdout.on("data", notify);
       helper?.stderr.on("data", () => {

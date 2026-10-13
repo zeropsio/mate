@@ -1,5 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off -- procfs, statfs and kernel notification boundary.
 import * as NodeFSP from "node:fs/promises";
+import * as NodeChildProcess from "node:child_process";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { afterEach, describe, expect, it } from "@effect/vitest";
@@ -17,12 +19,24 @@ import {
 import type { MateResourceHealth } from "@t3tools/contracts";
 
 // Hold a kernel read to deliver a cadence tick at the asynchronous boundary.
-const reads = vi.hoisted(() => ({ beforeCurrent: undefined as (() => Promise<void>) | undefined }));
+const reads = vi.hoisted(() => ({
+  beforeCurrent: undefined as (() => Promise<void>) | undefined,
+  cgroupDir: undefined as string | undefined,
+}));
+vi.mock("node:child_process", async (original) => {
+  const childProcess = await original<typeof import("node:child_process")>();
+  return { ...childProcess, spawn: vi.fn(childProcess.spawn) };
+});
 vi.mock("node:fs/promises", async (original) => {
   const fs = await original<typeof import("node:fs/promises")>();
   return {
     ...fs,
     readFile: async (...args: Parameters<typeof fs.readFile>) => {
+      if (reads.cgroupDir !== undefined) {
+        if (args[0] === "/proc/self/cgroup") return "0::/\n";
+        if (args[0] === "/proc/self/mountinfo")
+          return `1 0 0:1 / ${reads.cgroupDir} rw - cgroup2 cgroup rw\n`;
+      }
       if (String(args[0]).endsWith("memory.current")) await reads.beforeCurrent?.();
       return fs.readFile(...args);
     },
@@ -55,6 +69,8 @@ async function fixture(values: Record<string, string> = {}) {
 }
 afterEach(async () => {
   reads.beforeCurrent = undefined;
+  reads.cgroupDir = undefined;
+  vi.mocked(NodeChildProcess.spawn).mockClear();
   await Promise.all(dirs.splice(0).map((dir) => NodeFSP.rm(dir, { recursive: true, force: true })));
 });
 describe("container resource evidence", () => {
@@ -213,11 +229,27 @@ describe("container resource evidence", () => {
   });
 });
 
+it.effect("the Linux health-events child gets the Mate's HOME", () =>
+  Effect.gen(function* () {
+    const dir = yield* Effect.promise(() => fixture());
+    const homeDir = NodePath.join(dir, "home");
+    reads.cgroupDir = dir;
+    // Exercise the native spawn boundary without requiring the Linux-only helper on macOS.
+    vi.mocked(NodeChildProcess.spawn).mockImplementationOnce((_, __, options) =>
+      NodeChildProcess.spawn(process.execPath, ["-e", ""], options),
+    );
+    yield* Stream.runCollect(resourceHealthChanges(dir, homeDir).pipe(Stream.take(1)));
+    const options = vi.mocked(NodeChildProcess.spawn).mock.calls[0]?.[2];
+    expect(options?.env?.HOME).toBe(homeDir);
+    expect(options?.env?.PATH).toBe(process.env.PATH);
+  }).pipe(Effect.provideService(HostProcessPlatform, "linux")),
+);
+
 it.effect("publishes a changed kernel file without a polling timer", () =>
   Effect.gen(function* () {
     const dir = yield* Effect.promise(() => fixture());
     const values = yield* Stream.runCollect(
-      resourceHealthChanges(dir, [dir]).pipe(
+      resourceHealthChanges(dir, NodePath.join(dir, "home"), [dir]).pipe(
         Stream.tap((sample) =>
           sample.resources.length === 0
             ? Effect.promise(() =>
@@ -257,7 +289,9 @@ it.effect("reports missing notification coverage alongside the remaining measure
   Effect.gen(function* () {
     const dir = yield* Effect.promise(() => fixture({ "memory.high": "150" }));
     yield* Effect.promise(() => NodeFSP.unlink(NodePath.join(dir, "memory.swap.max")));
-    const values = yield* Stream.runCollect(resourceHealthChanges(dir, [dir]).pipe(Stream.take(1)));
+    const values = yield* Stream.runCollect(
+      resourceHealthChanges(dir, NodePath.join(dir, "home"), [dir]).pipe(Stream.take(1)),
+    );
     expect(values[0]).toMatchObject({ status: "unknown", memory: { high: 150 } });
     expect(values[0]?.unavailable).toContain("kernel-events");
   }),

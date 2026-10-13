@@ -277,6 +277,7 @@ export const layer = Layer.effect(
       healthDemand: PubSub.publish(healthDemand, undefined).pipe(Effect.asVoid),
       health: resourceHealthChanges(
         config.stateDir,
+        config.homeDir,
         undefined,
         Stream.fromPubSub(healthDemand),
       ).pipe(
