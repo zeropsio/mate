@@ -2,12 +2,14 @@ import {
   CommandId,
   ConversationId,
   MATE_ENGINE_PROTOCOLS,
+  ProviderDriverKind,
   type EngineConversationFrame,
 } from "@t3tools/contracts";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import { CLAUDE_SCENARIO_CODE } from "../../../../../server/integration/scriptedClaudeSignIn.ts";
 import { changeFixture } from "../../fakes/d-change/changes.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "./fake.ts";
@@ -20,11 +22,18 @@ export const composerStates = ["plain", "notice", "review"] as const;
 export const composerLayout = Effect.fn("composerLayout")(function* (
   state: (typeof composerStates)[number] | "before-notice",
 ) {
-  const real = state === "plain" || state === "review";
+  const claude = state === "notice";
+  const real = state !== "before-notice";
   const s = yield* createScenario(real ? [] : [installArea], { mate: real ? "real" : "fake" });
   yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
   if (state === "review") yield* changeFixture(s);
-  else yield* s.given.project("Ada", { mate: true });
+  else
+    yield* s.given.project("Ada", {
+      mate: true,
+      ...(claude
+        ? { provider: { driverKind: ProviderDriverKind.make("claudeAgent") }, claudeSignIn: true }
+        : {}),
+    });
   const chat = mateChat(s);
   const exchanges = [
     ...Array.from(
@@ -41,6 +50,21 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
     const mate = s.drivers.realMates.get("Ada")!;
     yield* s.given.signedIn;
     yield* chat.when.openReadOnly();
+    if (claude)
+      yield* Effect.promise(async () => {
+        await s.page.locator('button[data-agent-id="claude-code"]').setTimeout(8000).click();
+        await s.page.waitForSelector(
+          '[data-sign-in-open="claude-code"][href^="https://claude.scenario.invalid/oauth/authorize"]',
+          { visible: true, timeout: 8000 },
+        );
+        await s.page.waitForSelector("[data-sign-in-code]", { visible: true, timeout: 8000 });
+        await s.page.type("[data-sign-in-code]", CLAUDE_SCENARIO_CODE);
+        await s.page.keyboard.press("Enter");
+        await s.page.waitForSelector('[role="textbox"]:not([inert] *)', {
+          visible: true,
+          timeout: 8000,
+        });
+      });
     yield* mate.provider.turn([{ kind: "say", text: exchanges[0]![1] }]);
     yield* chat.when.send(exchanges[0]![0]);
     yield* mate.provider.received;
@@ -52,7 +76,11 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
     );
     const conversationId = ConversationId.make(new URL(s.page.url()).pathname.split("/").at(-1)!);
     const protocol = MATE_ENGINE_PROTOCOLS[0]!;
-    const caller = { subject: "scenario-person", environmentId: "scenario", epoch: 1 };
+    const caller = {
+      subject: claude ? "zerops-user:owner" : "scenario-person",
+      environmentId: "scenario",
+      epoch: 1,
+    };
     const frames = yield* Queue.unbounded<EngineConversationFrame>();
     yield* mate.server.engine.wire.subscribe({ protocol, conversationId }, caller).pipe(
       Stream.runForEach((frame) => Queue.offer(frames, frame)),
@@ -86,21 +114,25 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
       expect((yield* mate.provider.received).input.input).toBe(question);
       yield* ended(index + 1);
     }
+    if (claude) yield* Effect.promise(() => s.clock.install());
     yield* Effect.promise(() => s.page.reload());
   } else {
-    // Retained: the scripted OpenCode driver has no Claude login/context snapshot source.
+    // Retained: the real pre-notice setup times out before its baseline placement settles.
     const wire = chat.fixture();
     wire.history("Read this long conversation");
     for (const [question, answer] of exchanges) wire.exchange(question, answer);
-    if (state === "notice") {
-      wire.claudeLoginFacts("ready");
-      wire.engine.assign({ instanceId: "claudeAgent", model: "sonnet", driver: "claudeAgent" });
-      wire.engine.context({ usedTokens: 180_000 });
-    }
     yield* s.given.signedIn;
     yield* chat.when.open("Ada", "Finish here");
   }
   yield* chat.then.text("The last answer is above the composer.");
+  if (claude) {
+    const mate = s.drivers.realMates.get("Ada")!;
+    yield* mate.provider.event(mate.provider.sends.at(-1)!.threadId, {
+      type: "thread.token-usage.updated",
+      payload: { usage: { usedTokens: 180_000 } },
+    });
+    yield* Effect.promise(() => s.clock.advance(71 * 60_000, true));
+  }
   yield* Effect.promise(() =>
     s.page.waitForFunction(
       () => {

@@ -78,7 +78,7 @@ describe("C: agent selection and contextual drafts", () => {
         }),
     );
 
-    // Fake retained: native Codex effort/catalog, birth and login cancellation are not scriptable through createScenario.
+    // Fake retained: the scripted model catalog has no effort capabilities or source for catalog/version outages.
     // J03 · Z03–Z05/Z32/Z33: the current catalog and the person's effort drive the next send.
     it.effect("J03: current model and explicit effort remain selected after send and reload", () =>
       Effect.gen(function* () {
@@ -358,7 +358,7 @@ describe("C: agent selection and contextual drafts", () => {
       }),
     );
 
-    // Fake retained: the scripted provider runs without sign-in; no real revocation source supplies this case's sign-in refusal.
+    // Fake retained: native Claude sign-in exists, but no source supplies this case's send-time sign-in refusal.
     // J09 · Z07–Z09/Z34: context does not rewrite the person's durable words or become a slash prompt.
     it.effect(
       "J09: landed context stays separate from the person's message and compact event",
