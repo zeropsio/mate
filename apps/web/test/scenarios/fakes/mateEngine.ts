@@ -133,8 +133,6 @@ export class MateEngineFake {
   /** Text streaming now, by item and stream: a subscriber that opens hears it whole. */
   private readonly streamed = new Map<string, string>();
   private readonly details = new Map<string, string>();
-  /** Every height a client recorded for a page: its call, the width, the height. */
-  readonly pageHeights: Array<[string, number, number]> = [];
   /** Told when the person answers a request: the fixture's agent replies. */
   readonly onAnswer: Array<(request: Request) => void> = [];
   /** Told when the person asks to continue past a usage limit: the fixture's provider answers. */
@@ -552,27 +550,6 @@ export class MateEngineFake {
       );
     } finally {
       this.receipts.off("message", listener);
-    }
-  }
-
-  /** This page's client measurement reached the engine before the scenario reloads it. */
-  async waitForPageHeight(itemId: string) {
-    const recorded = () => this.pageHeights.some(([id]) => id === itemId);
-    if (recorded()) return;
-    let listener = () => {};
-    try {
-      await deadline(
-        new Promise<void>((resolve) => {
-          listener = () => {
-            if (recorded()) resolve();
-          };
-          this.receipts.on("page-height", listener);
-        }),
-        `Mate's engine recorded page ${itemId}`,
-        8000,
-      );
-    } finally {
-      this.receipts.off("page-height", listener);
     }
   }
 
@@ -1139,8 +1116,6 @@ export class MateEngineFake {
         ]
           .slice(-12)
           .sort((a, b) => a[0] - b[0]);
-        this.pageHeights.push([String(payload.itemId), width, height]);
-        this.receipts.emit("page-height");
         this.mate.reply(socket, id, encodeRecordPageHeight({ _tag: "Recorded" }));
         return true;
       }
