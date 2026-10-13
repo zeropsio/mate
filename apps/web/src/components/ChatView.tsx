@@ -215,6 +215,7 @@ import { useCrew } from "../zerops/crew/useCrew";
 import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useThreadOnScreen } from "../zerops/threadOnScreen";
+import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
 import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
@@ -391,7 +392,7 @@ import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
 import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
 import { resolveTimelineIsAtEnd, type MateAway } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
-import { useAlsoWorkingHint } from "./chat/ConversationStrip";
+import { useAlsoWorkingHint, useMateWorks } from "./chat/ConversationStrip";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -5260,6 +5261,23 @@ function ConversationView(props: ChatViewProps) {
     void handleSwitchCheckoutToThread();
   }, [gitStatusQuery.data?.hasWorkingTreeChanges, handleSwitchCheckoutToThread]);
 
+  /**
+   * The composer's top: this Mate's change waiting for the person's review,
+   * from the project's flow rather than from what the agent said
+   * (`ZeropsNextStepBanner.tsx`); it gives way while a question or an
+   * approval waits on the person, and while the Mate works in any of its chats.
+   * Dismissed, the change still waits in the header's Review.
+   */
+  const mateAtWork = useMateWorks(environmentId);
+  const composerTop = useZeropsNextStepStrip(
+    activeThreadRef,
+    {
+      question: activePendingUserInput !== null,
+      approval: activePendingApproval !== null,
+      working: isWorking || mateAtWork,
+    },
+    colleagueReadOnly === null,
+  );
   // Typing here while the Mate works in another of its chats, Send's hover says so
   // (`ConversationStrip.tsx`). A crewmate works on its own copy of the code, so another chat's
   // work is no warning there.
@@ -8574,6 +8592,7 @@ function ConversationView(props: ChatViewProps) {
                             <ComposerRoomHeld draft={zeropsHeldDraft} />
                           ) : colleagueReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter
+                              change={threadDetailLoading ? null : composerTop}
                               environmentId={environmentId}
                               pendingApprovals={pendingApprovals}
                               pendingUserInputs={pendingUserInputs}
@@ -8610,7 +8629,7 @@ function ConversationView(props: ChatViewProps) {
                               }
                               idlePlaceholder={crewComposerPlaceholder ?? composerPlaceholders.idle}
                               mentionCrewmates={crewMentions}
-                              top={threadDetailLoading ? null : cloneTop}
+                              top={threadDetailLoading ? null : (cloneTop ?? composerTop)}
                               vaultChanges={vaultTurn.changes}
                               onDismissVaultChange={vaultTurn.dismiss}
                               {...(crewRunsOnLabel === null || activeCrewmate === null

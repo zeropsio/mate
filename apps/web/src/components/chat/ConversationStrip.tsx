@@ -840,6 +840,20 @@ export function ConversationStrip({
   );
 }
 
+/** Whether the Mate living in `environmentId` is at work in any of its chats (`mateWorks`). */
+export function useMateWorks(environmentId: EnvironmentId): boolean {
+  const shells = useThreadShells();
+  const activityByThread = useAtomValue(environmentActivitiesAtom(environmentId));
+  return useMemo(
+    () =>
+      mateWorks(
+        mateChats(shells.filter((thread) => thread.environmentId === environmentId)),
+        activityByThread,
+      ),
+    [environmentId, shells, activityByThread],
+  );
+}
+
 /**
  * What Send's hover says while you type in one of a Mate's chats and it works in another: both
  * change the same files. Nothing is refused: it only says so — the line it once was over the
