@@ -1,9 +1,11 @@
 import { it, expect } from "vite-plus/test";
 import * as Schema from "effect/Schema";
-import { MateAttention, WS_METHODS } from "@t3tools/contracts";
+import { MateAttention, VcsStatusResult, WS_METHODS } from "@t3tools/contracts";
 import { WebSocket } from "ws";
 import { MateFake } from "./mate.ts";
 import { serve, deadline } from "../harness/http.ts";
+
+const decodeVcsStatus = Schema.decodeUnknownSync(VcsStatusResult);
 
 it("publishes its attention: whole on subscribe, then each new revision, a message one too", async () => {
   const fake = new MateFake("Ada", "Ada");
@@ -65,4 +67,50 @@ it("revises its attention for its link to HQ alone, and starts it over when it r
     source: { epoch: 1, incarnation: "fake-Ada", revision: 3 },
     working: 1,
   });
+});
+
+it("answers checkout refreshes with the non-repository status", async () => {
+  const fake = new MateFake("Ada", "Ada");
+  const server = await serve(fake.handle, fake.socket);
+  const socket = new WebSocket(server.origin.replace("http:", "ws:") + "/ws");
+  try {
+    await deadline(new Promise((resolve) => socket.once("open", resolve)), "Mate socket open");
+    const answer = new Promise<unknown>((resolve) =>
+      socket.once("message", (raw) => resolve(JSON.parse(raw.toString()))),
+    );
+    socket.send(
+      JSON.stringify({
+        _tag: "Request",
+        id: "refresh",
+        tag: WS_METHODS.vcsRefreshStatus,
+        payload: { cwd: "/workspace" },
+      }),
+    );
+    const response = await deadline(answer, "checkout refresh");
+    expect(response).toMatchObject({
+      _tag: "Exit",
+      requestId: "refresh",
+      exit: {
+        _tag: "Success",
+        value: {
+          isRepo: false,
+          hasPrimaryRemote: false,
+          isDefaultRef: true,
+          refName: null,
+          hasWorkingTreeChanges: false,
+          workingTree: { files: [], insertions: 0, deletions: 0 },
+          hasUpstream: false,
+          aheadCount: 0,
+          behindCount: 0,
+          pr: null,
+        },
+      },
+    });
+    const frame = response as { exit: { value: unknown } };
+    expect(decodeVcsStatus(frame.exit.value).isRepo).toBe(false);
+    expect([...fake.unknownMethods]).toEqual([]);
+  } finally {
+    socket.close();
+    await server.close();
+  }
 });

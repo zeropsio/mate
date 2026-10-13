@@ -20,11 +20,26 @@ import {
   ProjectReadFileResult,
   ORCHESTRATION_WS_METHODS,
   MateAttention,
+  VcsStatusResult,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import type { WebSocket } from "ws";
 import type { HttpHandler } from "../harness/http.ts";
 import { MateEngineFake } from "./mateEngine.ts";
+
+const encodeVcsStatus = Schema.encodeSync(VcsStatusResult);
+const checkoutStatus = encodeVcsStatus({
+  isRepo: false,
+  hasPrimaryRemote: false,
+  isDefaultRef: true,
+  refName: null,
+  hasWorkingTreeChanges: false,
+  workingTree: { files: [], insertions: 0, deletions: 0 },
+  hasUpstream: false,
+  aheadCount: 0,
+  behindCount: 0,
+  pr: null,
+});
 
 const decodeExecutionEnvironmentDescriptor = Schema.decodeUnknownSync(
   ExecutionEnvironmentDescriptor,
@@ -391,6 +406,9 @@ export class MateFake {
             id,
             encodeSourceControl({ versionControlSystems: [], sourceControlProviders: [] }),
           );
+        else if (tag === WS_METHODS.vcsRefreshStatus)
+          // Focus and pending-question actions read the checkout independently of HQ's repository.
+          this.reply(socket, id, checkoutStatus);
         else if (tag === WS_METHODS.projectsReadFile)
           this.reply(
             socket,

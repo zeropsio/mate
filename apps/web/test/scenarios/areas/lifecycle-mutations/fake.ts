@@ -1,34 +1,6 @@
 import type { ScenarioExtension } from "../../harness/scenario.ts";
-import { VcsStatusResult, WS_METHODS } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
-
-const encodeStatus = Schema.encodeSync(VcsStatusResult);
-
 /** Move's platform rename uses the same versioned project facts as the real write. */
-export const installMutations: ScenarioExtension = ({ zerops, onMate }) => {
-  // Resolving a pending question refreshes the Mate's checkout status independently of HQ's repository.
-  onMate.push((mate) =>
-    mate.rpcHandlers.push((request, socket) => {
-      if (request.tag !== WS_METHODS.vcsRefreshStatus) return false;
-      mate.reply(
-        socket,
-        request.id,
-        encodeStatus({
-          isRepo: false,
-          hasPrimaryRemote: false,
-          isDefaultRef: true,
-          refName: null,
-          hasWorkingTreeChanges: false,
-          workingTree: { files: [], insertions: 0, deletions: 0 },
-          hasUpstream: false,
-          aheadCount: 0,
-          behindCount: 0,
-          pr: null,
-        }),
-      );
-      return true;
-    }),
-  );
+export const installMutations: ScenarioExtension = ({ zerops }) => {
   zerops.handlers.push((request) => {
     const projectId = request.url.pathname.match(/^\/api\/rest\/public\/project\/([^/]+)$/u)?.[1];
     if (projectId === undefined || request.method !== "PUT") return undefined;
