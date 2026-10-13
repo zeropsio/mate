@@ -101,7 +101,14 @@ const job = {
 };
 const environmentsWith = (streamed: object) => ({
   app: {
-    environments: [{ projectId: "prod-id", name: "renamed", jobs: [streamed] }],
+    environments: [
+      {
+        id: "prod-id",
+        target: { kind: "zerops", projectId: "prod-id" },
+        name: "renamed",
+        jobs: [streamed],
+      },
+    ],
     refused: null,
   },
 });
