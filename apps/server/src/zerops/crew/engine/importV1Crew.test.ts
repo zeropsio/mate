@@ -3,6 +3,9 @@
  * V1's own repositories (`testing/v1CrewSeed.ts`), read once and taken by the crew owner; each
  * crewmate's stints brought into its one conversation by the engine's history import.
  */
+// @effect-diagnostics nodeBuiltinImport:off - each crash gets a copy of a closed seed database.
+import * as NodeFS from "node:fs";
+
 import { afterAll, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -646,8 +649,11 @@ describe("the crew import's crash table", () => {
             ? FLIP_COMMITS.map((commit) => ({ ...crash, commit }))
             : [{ ...crash, commit: 0 }],
         );
+        // Seeding closes SQLite before returning. Only row copies are opened by the engine.
+        const seed = yield* seeded("crew-crash-seed");
         for (const crash of table) {
-          const file = yield* seeded("crew-crash");
+          const file = tempDb("crew-crash");
+          yield* Effect.sync(() => NodeFS.copyFileSync(seed, file));
           let armed = false;
           let commits = 0;
           let acted = false;

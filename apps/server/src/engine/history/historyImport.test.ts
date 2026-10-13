@@ -908,12 +908,16 @@ describe("the import's crash table", () => {
     Effect.gen(function* () {
       const reference = comparable((yield* cached).held);
       const broken: Array<string> = [];
-      const measured = yield* seededDb("history-moves");
+      // Seeding closes SQLite before returning. Only copies are opened by the engine.
+      const seed = yield* seededDb("history-crash-seed");
+      const measured = tempDb("history-moves");
+      yield* Effect.sync(() => NodeFS.copyFileSync(seed, measured));
       const moves = yield* lifetime(measured, ({ worker }) =>
         start.pipe(Effect.andThen(drain(worker))),
       );
       for (const crash of crashes(moves)) {
-        const file = yield* seededDb("history-crash");
+        const file = tempDb("history-crash");
+        yield* Effect.sync(() => NodeFS.copyFileSync(seed, file));
         let armed = false;
         let commits = 0;
         const acted = yield* Deferred.make<void>();
