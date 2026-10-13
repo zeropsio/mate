@@ -71,6 +71,22 @@ const setup = (viewTtl = Duration.millis(200)) =>
 
 describe("a Mate's application observation", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("A Mate observes only environments with a Zerops project.", () =>
+      Effect.gen(function* () {
+        const { sql, call, auth, appId } = yield* setup();
+        yield* sql`INSERT INTO hq_environment(id,target,app_id,tier,name,sources,created_by,branch,delivery)
+          VALUES ('git-stage','git',${appId}::uuid,'stage','git-stage',ARRAY['main'],'owner','stage','direct')`;
+        const list = yield* call("GET", "/api/mate/environments", { headers: auth });
+        assert.strictEqual(list.status, 200);
+        assert.deepStrictEqual(list.body, {
+          appId,
+          environments: [
+            { projectId: "P_STAGE", name: "stage", tier: "stage" },
+            { projectId: "P_PROD", name: "production", tier: "production" },
+          ],
+        });
+      }),
+    );
     it.effect(
       "reads stage and production with their deploy keys, projecting only runtime facts",
       () =>

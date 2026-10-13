@@ -175,6 +175,8 @@ it.effect(
           kind: "raw-route-project-read",
         },
         ...[
+          "sql`UPDATE hq_deploy_job SET environment_id = project_id WHERE project_id IS NOT NULL AND environment_id IS DISTINCT FROM project_id`;",
+          "sql`UPDATE hq_rollout r SET environment_id = CASE WHEN project_id IS NOT NULL THEN project_id ELSE environment_id END, left_out = ( SELECT coalesce(jsonb_agg(CASE WHEN entry->>'project_id' IS NOT NULL THEN entry || jsonb_build_object('environment_id', entry->'project_id') ELSE entry END ORDER BY ordinal), '[]'::jsonb) FROM jsonb_array_elements(r.left_out) WITH ORDINALITY AS entries(entry, ordinal) ) WHERE (project_id IS NOT NULL AND environment_id IS DISTINCT FROM project_id) OR EXISTS ( SELECT 1 FROM jsonb_array_elements(r.left_out) AS entries(entry) WHERE entry->>'project_id' IS NOT NULL AND entry->'environment_id' IS DISTINCT FROM entry->'project_id' )`;",
           "export function address(id: ProjectId) { return String(id); }",
           "export function address(id: EnvironmentId) { return id as string; }",
           "const LOCK_KEY = 1296254021; sql`SELECT pg_advisory_lock(${String(LOCK_KEY)})`;",

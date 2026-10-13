@@ -9,7 +9,8 @@
  * one; the key kept is what deploys it. It ends once every one of those rollouts was planned and
  * every job they asked for there ended — and every job of a commit they left out as under way there
  * — and either a deploy ran or the environment holds a working key: one with none is still waiting
- * for its key. An environment HQ did not bring up has no birth.
+ * for its key. A Git environment instead ends on its connected repositories' verified remotes;
+ * its attach never needs a Zerops deploy token. An environment HQ did not bring up has no birth.
  *
  * @module births
  */
@@ -17,10 +18,15 @@ import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 import * as Effect from "effect/Effect";
 import type * as SqlClient from "effect/sql/SqlClient";
 
-/** Each environment HQ brought up, by its project, and whether its birth ended. */
+/** Each environment HQ brought up, by its identity, and whether its birth ended. */
 export const environmentBirths = (sql: SqlClient.SqlClient) =>
-  Effect.map(
-    sql<{ readonly environment_id: string; readonly ended: boolean }>`
+  Effect.gen(function* () {
+    const rows = yield* sql<{
+      readonly environment_id: string;
+      readonly settled: boolean;
+      readonly ran_or_key: boolean;
+      readonly git: boolean;
+    }>`
       WITH born AS (
         SELECT DISTINCT ON (r.environment_id) r.id, r.environment_id
         FROM hq_rollout r WHERE r.cause = 'env_added' AND r.environment_id IS NOT NULL
@@ -44,7 +50,7 @@ export const environmentBirths = (sql: SqlClient.SqlClient) =>
       ),
       ran AS (
         SELECT environment_id, min(rollout_id) AS upto
-        FROM jobs WHERE state IN ('live', 'failed') GROUP BY environment_id
+        FROM jobs WHERE state IN ('live', 'failed', 'pushed') GROUP BY environment_id
       )
       SELECT b.environment_id,
              NOT EXISTS (
@@ -54,13 +60,34 @@ export const environmentBirths = (sql: SqlClient.SqlClient) =>
              AND NOT EXISTS (
                SELECT 1 FROM jobs x
                WHERE x.environment_id = b.environment_id AND x.ended_at IS NULL
-                 AND (ran.upto IS NULL OR x.rollout_id <= ran.upto))
-             AND (ran.upto IS NOT NULL OR EXISTS (
+                 AND (ran.upto IS NULL OR x.rollout_id <= ran.upto)) AS settled,
+             (ran.upto IS NOT NULL OR EXISTS (
                SELECT 1 FROM hq_environment e JOIN hq_deploy_token t USING (project_id)
-               WHERE e.id = b.environment_id AND t.invalid_since IS NULL)) AS ended
-      FROM born b LEFT JOIN ran USING (environment_id)`,
-    (rows) =>
-      new Map<string, EnvironmentBirth>(
-        rows.map((row) => [row.environment_id, { ended: row.ended }]),
-      ),
-  );
+               WHERE e.id = b.environment_id AND e.target='zerops' AND t.invalid_since IS NULL)) AS ran_or_key,
+             EXISTS (SELECT 1 FROM hq_environment e WHERE e.id=b.environment_id AND e.target='git') AS git
+      FROM born b LEFT JOIN ran USING (environment_id)`;
+    const awaitingRemote = rows.filter((row) => row.git && row.settled && !row.ran_or_key);
+    // Zerops-only snapshots, including identity expansion, need neither a remote table nor another read.
+    const verified = new Set(
+      awaitingRemote.length === 0
+        ? []
+        : (yield* sql<{ readonly environment_id: string }>`
+        SELECT e.id AS environment_id FROM hq_environment e
+        WHERE e.target='git' AND ${sql.in(
+          "e.id",
+          awaitingRemote.map((row) => row.environment_id),
+        )}
+          AND EXISTS (SELECT 1 FROM hq_repo_remote m WHERE m.app_id=e.app_id AND m.sealed IS NOT NULL
+            AND m.invalid_since IS NULL AND (m.expires_at IS NULL OR m.expires_at>now()))
+          AND NOT EXISTS (SELECT 1 FROM hq_repo_remote m WHERE m.app_id=e.app_id AND
+            (m.sealed IS NULL OR m.invalid_since IS NOT NULL OR m.expires_at<=now()))`).map(
+            (row) => row.environment_id,
+          ),
+    );
+    return new Map<string, EnvironmentBirth>(
+      rows.map((row) => [
+        row.environment_id,
+        { ended: row.settled && (row.ran_or_key || verified.has(row.environment_id)) },
+      ]),
+    );
+  });
