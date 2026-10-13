@@ -334,11 +334,11 @@ vi.mock("./ZeropsMateEmptyState", () => ({
       readonly headline?: string;
       readonly sentence?: string;
     };
-    readonly mate: { readonly name: string };
+    readonly mate: { readonly name: string; readonly tint?: string; readonly shape?: string };
   }) =>
     h(
       "section",
-      { "data-kind": coming.kind },
+      { "data-kind": coming.kind, "data-mate-face": `${mate.tint}:${mate.shape}` },
       mate.name,
       coming.headline,
       coming.sentence,
@@ -823,6 +823,20 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     openView();
     expect(said()).toContain("Quinn");
     expect(said()).not.toContain("Beviro - Quinn");
+  });
+
+  // Eli, 2026-10-13: its face turned slate once the listing held its project, before HQ placed it.
+  it("wears the face it was made with while the listing holds its project and HQ has not placed it", () => {
+    const unplaced = {
+      ...coming,
+      project: { id: PROJECT, name: "Beviro - Quinn", status: "ACTIVE", tagList: ["mate"] },
+    } as unknown as ZeropsCandidate;
+    app.creations = [QUINN_MADE];
+    app.listing = listingOf([unplaced]);
+    openView();
+    expect(tree?.root.findAll((node) => node.type === "section")[0]?.props["data-mate-face"]).toBe(
+      "sky:pick",
+    );
   });
 
   // One pose wherever its face shows (`matePose`): the header wears the stage's, waking.

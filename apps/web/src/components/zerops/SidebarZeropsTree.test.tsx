@@ -1123,6 +1123,62 @@ describe("a creation under way in the menu", () => {
     expect(row).toMatch(/>Coming up · \d+(:\d\d|h \d\dm)</u);
   });
 
+  // Eli, 2026-10-13: its tab reloaded mid-setup, and its row wore the slate in place of its pick.
+  it("wears the face picked at its Add after a reload, from its open birth at HQ, before HQ records it", () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    mountHqNavigation(registry, organization.organizationId, {
+      structure: {
+        apps: [
+          {
+            id: "aaa",
+            name: "Beviro CRM",
+            projects: [],
+            births: [{ id: "b-1", projectId: "vera-dev", face: "rose:seal" }],
+          },
+        ],
+        ungrouped: [],
+      },
+    });
+    const html = renderToStaticMarkup(
+      <RegistryContext.Provider value={registry}>
+        <SidebarZeropsTree
+          candidates={[
+            // Placed by its open birth (`placementsOf`): in its application, no record yet.
+            candidate(
+              "vera-dev",
+              {
+                tags: ["mate"],
+                hq: {
+                  appId: "aaa",
+                  appName: "Beviro CRM",
+                  kind: "mate",
+                  mate: null,
+                  unregistered: true,
+                },
+              },
+              "ready",
+              false,
+            ),
+          ]}
+          complete
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />
+      </RegistryContext.Provider>,
+    );
+    expect(
+      Object.fromEntries(
+        [...html.matchAll(/data-mate-face-(tint|shape)="([a-z]+)"/gu)].map((m) => [m[1], m[2]]),
+      ),
+    ).toEqual({ tint: "rose", shape: "seal" });
+    registry.dispose();
+  });
+
   it("says a creation that stopped in its line, in red", () => {
     const html = render([CRM_DEV], { births: [{ ...birth(), failed: true }] });
     const at = html.indexOf('data-zerops-surface="sidebar-mate-coming"');

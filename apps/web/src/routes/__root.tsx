@@ -465,11 +465,25 @@ function HostedStaticEnvironmentBootstrap() {
   return null;
 }
 
+/** A new build came while a Mate's setup runs in this tab: the reload waits for the setup. */
+function ReloadAfterSetup() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 text-center text-foreground">
+      <div className="max-w-sm">
+        <h1 className="text-lg font-semibold">Mate was updated.</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          This tab reloads to the new version once the setup it is running is done.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function RootRouteErrorView({ error }: ErrorComponentProps) {
   const router = useRouter();
   // A lazy surface whose code a deploy replaced reloads to the new build instead.
   const [reloading] = useState(() => staleChunkRecovery.recover(error));
-  if (reloading) return null;
+  if (reloading) return staleChunkRecovery.waiting() ? <ReloadAfterSetup /> : null;
   const message = errorMessage(error);
   const details = errorDetails(error);
 

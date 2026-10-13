@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import type { Known } from "../knowledge/known.ts";
 import {
+  birthFaceOf,
   birthIntentOf,
   heldOf,
   hqMateOffers,
@@ -243,6 +244,37 @@ describe("birthIntentOf", () => {
     // Closed by its attach, or never HQ's: none.
     expect(birthIntentOf(structure, "b-2")).toBeUndefined();
     expect(birthIntentOf(null, "b-1")).toBeUndefined();
+  });
+});
+
+describe("birthFaceOf", () => {
+  const structure = {
+    ungrouped: [],
+    apps: [
+      {
+        id: "app-g",
+        name: "G",
+        projects: [],
+        births: [
+          { id: "b-1", projectId: "p-eli", face: "rose:seal" },
+          { id: "b-2", projectId: "p-named", face: "" },
+          { id: "b-3", face: "mint:star" },
+        ],
+      },
+    ],
+  };
+  it.each([
+    ["the face picked at its birth", "p-eli", { tint: "rose", shape: "seal" }],
+    ["none where it wears its name's tint", "p-named", undefined],
+    ["none for a project no open birth names", "p-other", undefined],
+  ] as const)(
+    "a project HQ has not recorded yet wears what its open birth names: %s",
+    (_, projectId, face) => {
+      expect(birthFaceOf(structure, projectId)).toEqual(face);
+    },
+  );
+  it("names nothing where HQ's structure is not known", () => {
+    expect(birthFaceOf(null, "p-eli")).toBeUndefined();
   });
 });
 

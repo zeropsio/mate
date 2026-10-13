@@ -8,12 +8,14 @@ import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import {
   shownHqMateIdentitiesAtom,
+  shownHqMenuNavigationAtom,
   mateArrival,
   setupFailure as setupFailureProjection,
   setupFailureLogQuery,
   setupFailureReason,
 } from "@t3tools/client-runtime/data";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
+import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
 import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { useBuildLog } from "~/zerops/activity/useBuildLog";
 import { environmentShell } from "~/state/shell";
@@ -292,6 +294,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 
   // HQ names it as the menu does. Before registration, its creation or press names it.
   const identity = useAtomValue(shownHqMateIdentitiesAtom)[projectId];
+  const hqStructure = useAtomValue(shownHqMenuNavigationAtom).structure;
   const tints = useMemo(() => assignCandidateMateTints(held.rows), [held.rows]);
   const mate = useMemo((): ZeropsMateIdentity => {
     if (identity !== undefined)
@@ -302,7 +305,14 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         connected: candidate?.group === "connected",
       };
     if (candidate !== undefined) {
-      const listed = zeropsMateIdentityOf(candidate, tints);
+      // Listed before HQ records it: the face picked at its Add — its creation's or its press's,
+      // else its open birth's at HQ — never its name's slate in between.
+      const picked =
+        creation?.face ?? press?.placement?.face ?? birthFaceOf(hqStructure, projectId);
+      const listed = {
+        ...zeropsMateIdentityOf(candidate, tints),
+        ...(picked === undefined ? {} : { tint: picked.tint, shape: picked.shape }),
+      };
       // Listed before HQ places it: no application to cut its name under, but its creation or its
       // press knows it, so its name is its own all along.
       const app = creation?.name ?? press?.placement?.groupName;
@@ -323,7 +333,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       // This tab made it: the person looking asked for its stand-up.
       ...(creation !== undefined && viewer !== undefined ? { standUp: { by: viewer } } : {}),
     };
-  }, [identity, press, candidate, creation, projectId, tints, viewer]);
+  }, [identity, press, candidate, creation, projectId, tints, viewer, hqStructure]);
   const isChief = mate.chief === true || ownChief === projectId;
 
   // Up: its main conversation, read live, and its agents' sign-in — what the conversation paints
