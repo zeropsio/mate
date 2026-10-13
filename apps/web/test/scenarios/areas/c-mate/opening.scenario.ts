@@ -47,6 +47,40 @@ describe("C: the conversation opening follows readiness", () => {
             );
           expect(yield* Effect.promise(count)).toBe(1);
           yield* chat.then.noText("Sage's conversation is ready");
+          const trace = yield* Effect.promise(() =>
+            s.page.evaluateHandle(() => {
+              const state = {
+                active: true,
+                gap: false,
+                eyes: null as null | { open: boolean; shut: boolean },
+              };
+              const sample = () => {
+                if (!state.active) return;
+                const stage = document.querySelector<HTMLElement>("[data-conversation-opening]")!;
+                const phase = stage.getAttribute("data-conversation-opening");
+                if (
+                  phase !== "complete" &&
+                  (stage.getBoundingClientRect().height === 0 ||
+                    getComputedStyle(stage).visibility === "hidden")
+                )
+                  state.gap = true;
+                if (phase === "hand-off" && state.eyes === null) {
+                  const eyes = [...stage.querySelectorAll("[data-mate-face-eye]")];
+                  state.eyes = {
+                    open:
+                      eyes.length === 2 &&
+                      eyes.every((eye) => getComputedStyle(eye).opacity === "1"),
+                    shut: [...stage.querySelectorAll("[data-mate-face-shut]")].some(
+                      (eye) => getComputedStyle(eye).opacity !== "0",
+                    ),
+                  };
+                }
+                requestAnimationFrame(sample);
+              };
+              sample();
+              return state;
+            }),
+          );
           read.release();
           yield* chat.then.text("Sage's conversation is ready");
           yield* Effect.promise(() => waitForStillFrames(s.page));
@@ -56,6 +90,38 @@ describe("C: the conversation opening follows readiness", () => {
             ),
           ).toBe("complete");
           expect(yield* Effect.promise(count)).toBe(1);
+          expect(
+            yield* Effect.promise(() =>
+              trace.evaluate((state) => {
+                state.active = false;
+                return { gap: state.gap, eyes: state.eyes };
+              }),
+            ),
+          ).toEqual({ gap: false, eyes: { open: true, shut: false } });
+          yield* Effect.promise(() => trace.dispose());
+          const exposure = yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const input = document.querySelector('[data-conversation-footer] [role="textbox"]')!;
+              const box = input.getBoundingClientRect();
+              return {
+                width: box.width,
+                height: box.height,
+                visible: input.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+                exposed: [0.2, 0.5, 0.8].every((fraction) =>
+                  input.contains(
+                    document.elementFromPoint(
+                      box.left + box.width * fraction,
+                      box.top + box.height / 2,
+                    ),
+                  ),
+                ),
+              };
+            }),
+          );
+          expect(exposure.width).toBeGreaterThan(32);
+          expect(exposure.height).toBeGreaterThan(8);
+          expect(exposure.visible).toBe(true);
+          expect(exposure.exposed, "ASSERTION: nothing covers the ready composer").toBe(true);
           yield* s.then.noExternalNetwork;
         }),
     );
