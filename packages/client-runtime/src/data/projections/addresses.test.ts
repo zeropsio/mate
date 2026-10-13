@@ -132,11 +132,15 @@ const port = (patch: Partial<PublicPortRoutingValue> = {}): PublicPortRoutingVal
   ...patch,
 });
 
-function place(input: {
-  readonly routings?: Readonly<Record<string, PublicRoutingValue>>;
-  readonly ports?: Readonly<Record<string, PublicPortRoutingValue>> | "refused";
-  readonly project?: Readonly<Record<string, unknown>>;
-}): PlaceAddresses {
+function place(
+  input: {
+    readonly routings?: Readonly<Record<string, PublicRoutingValue>>;
+    readonly ports?: Readonly<Record<string, PublicPortRoutingValue>> | "refused";
+    readonly project?: Readonly<Record<string, unknown>>;
+  },
+  /** The place asked for: production's own unless a test names another. */
+  projectId = "p1",
+): PlaceAddresses {
   const inputs: AccountInput[] = [
     ...production(input.project),
     ...baselined(routingsScope(ORG), "publicRouting", input.routings ?? {}),
@@ -153,10 +157,7 @@ function place(input: {
       }),
     );
   } else inputs.push(...baselined(portRoutingsScope(ORG), "publicPortRouting", input.ports ?? {}));
-  return addresses.derive(readsOfState(apply(emptyAccount, inputs)), {
-    orgId: ORG,
-    projectId: "p1",
-  });
+  return addresses.derive(readsOfState(apply(emptyAccount, inputs)), { orgId: ORG, projectId });
 }
 
 const IPS: PlaceIps = { v6: V6, sharedV4: SHARED, zone: ZONE, zoneHasSharedV4: true };
@@ -386,6 +387,10 @@ describe("one place's addresses", () => {
   it("a port opened on an IPv4 the project lacks has no address to connect to", () => {
     const shown = place({ ports: { pr1: port({ publicIpType: "IP_V4" }) } });
     expect(shown.ports[0]?.address).toBeUndefined();
+  });
+
+  it("a project the organization's whole roster doesn't hold has addresses the viewer can't see", () => {
+    expect(place({ routings: { r1: routing() } }, "p9").state).toBe("failed");
   });
 
   it("ports refused to the viewer leave the rest of the place readable", () => {

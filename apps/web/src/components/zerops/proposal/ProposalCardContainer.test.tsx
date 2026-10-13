@@ -267,6 +267,15 @@ describe("the Chief's proposal to put a project on a domain", () => {
     expect(document.body.textContent).toContain("Reading the project's addresses…");
   });
 
+  it("offers no Approve for a project whose addresses the person can't see", async () => {
+    operation = domainOffer;
+    source.addresses = { ...production([]), state: "failed" };
+    await draw();
+    await press("Approve");
+    expect(source.run).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("You can't see Contoso - production's addresses.");
+  });
+
   it("names somebody else's waiting change that approving puts in place too", async () => {
     operation = domainOffer;
     source.addresses = production([], [{ id: "w1", label: "Removing api.contoso.com" }]);
