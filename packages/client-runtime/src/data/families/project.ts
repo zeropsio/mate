@@ -68,9 +68,12 @@ const Row = Schema.Struct({
 });
 const decodeRow = Schema.decodeUnknownOption(Row);
 
+/** Fields whose `null` says the project holds none: an own IPv4 goes when its add-on ends. */
+const SAID_NONE: ReadonlySet<string> = new Set(["publicIpV4"]);
+
 /**
- * The row's fields, a `null` one left out as unsaid; of its grants, everybody's where it names
- * them, else the viewer's own one as `viewerRoleCode`.
+ * The row's fields, a `null` one left out as unsaid (but `SAID_NONE`'s); of its grants,
+ * everybody's where it names them, else the viewer's own one as `viewerRoleCode`.
  */
 function valueOf(row: typeof Row.Type): ProjectValue {
   const { _version: _ignored, userRoles, ...fields } = row;
@@ -79,7 +82,9 @@ function valueOf(row: typeof Row.Type): ProjectValue {
   );
   const own = (userRoles ?? []).find(({ mine }) => mine === true);
   return {
-    ...Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== null)),
+    ...Object.fromEntries(
+      Object.entries(fields).filter(([key, value]) => value !== null || SAID_NONE.has(key)),
+    ),
     ...(userRoles === undefined ||
     userRoles === null ||
     (own !== undefined && everybody.length === 0)
