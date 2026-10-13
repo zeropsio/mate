@@ -1,7 +1,12 @@
+// @effect-diagnostics nodeBuiltinImport:off -- controls bytes uploaded to the disposable scenario Mate.
+import * as NodeFSP from "node:fs/promises";
+import * as NodePath from "node:path";
 import { menuMateRow, sendConversationMessage } from "../../harness/browser.ts";
 import { describe, expect, it } from "@effect/vitest";
 import {
   ConversationId,
+  MATE_ENGINE_PROTOCOLS,
+  type EngineConversationFrame,
   AssetCreateUrlInput,
   AssetCreateUrlResult,
   WS_METHODS,
@@ -9,6 +14,9 @@ import {
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpClient } from "effect/http";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario, type ScenarioOptions } from "../../harness/scenario.ts";
@@ -839,31 +847,106 @@ describe("C: opening a Mate and chat", () => {
 
     it.effect("a free answer carries only the picture attached to that question", () =>
       Effect.gen(function* () {
-        const { s, chat } = yield* fakeSetup;
+        const { s, chat } = yield* setup;
+        const { server, provider, gate } = s.drivers.realMates.get("Ada")!;
+        const conversationId = ConversationId.make(route(s).split("/").at(-1)!);
+        const changes = yield* Queue.unbounded<EngineConversationFrame>();
+        yield* server.engine.wire
+          .subscribe(
+            { protocol: MATE_ENGINE_PROTOCOLS[0]!, conversationId },
+            { subject: "scenario-person", environmentId: "scenario", epoch: 1 },
+          )
+          .pipe(
+            Stream.runForEach((frame) => Queue.offer(changes, frame)),
+            Effect.forkScoped,
+          );
+        while ((yield* Queue.take(changes)).type !== "synchronized") {}
+        const requestIn = (state: "open" | "answered") =>
+          Effect.gen(function* () {
+            while (true) {
+              const frame = yield* Queue.take(changes);
+              const request =
+                frame.type === "changes"
+                  ? frame.requests.find((request) => request.state === state)
+                  : undefined;
+              if (request) return request;
+            }
+          });
+        const finish = yield* Deferred.make<void>();
+        yield* provider.turn([
+          { kind: "ask", question: "Which environment should I inspect?" },
+          { kind: "say", text: "Preview received" },
+          { kind: "wait", until: finish },
+        ]);
         yield* s.given.signedIn;
         yield* chat.when.open();
-        chat.fixture().run("question-custom-run", "running");
-        chat.fixture().question("question-custom", "question-custom-run");
+        yield* mateChat(s).when.send("Inspect the environment");
+        expect((yield* provider.received).input.input).toBe("Inspect the environment");
+        const question = yield* requestIn("open");
         yield* chat.then.text("Which environment should I inspect?");
         yield* chat.when.type("Inspect the preview shown here");
+        const upload = s.page.waitForResponse(
+          (response) => response.url().includes("/api/attachments/upload/") && response.ok(),
+          { timeout: 8000 },
+        );
         yield* chat.when.pastePicture("question-preview.png");
+        yield* Effect.promise(() => upload);
         yield* chat.then.text("Attached to this answer");
-        chat.fixture().responseRefusal = "Your answer was refused. Sign in and retry.";
+        // Remove the real HTTP upload, rather than authoring an engine rejection.
+        const pending = yield* Effect.promise(async () => {
+          const directory = NodePath.join(server.stateDir, "attachments");
+          const files = (await NodeFSP.readdir(directory)).filter((file) =>
+            file.startsWith("pending-"),
+          );
+          expect(files).toHaveLength(1);
+          const path = NodePath.join(directory, files[0]!);
+          const bytes = await NodeFSP.readFile(path);
+          await NodeFSP.rm(path);
+          return { path, bytes };
+        });
+        const refusal = gate.answered((tag) => tag === "engine.answer");
         yield* chat.when.key("Enter");
-        yield* chat.then.text("Your answer was refused. Sign in and retry.");
+        expect(yield* Effect.promise(() => refusal)).toMatchObject({
+          exit: {
+            _tag: "Success",
+            value: { _tag: "Rejected", rejection: { reason: "attachment-refused" } },
+          },
+        });
+        expect(provider.answers).toHaveLength(0);
+        yield* chat.then.text(
+          "Attachment 'question-preview.png' cannot be sent: attachment not found (removed or expired).",
+        );
         yield* chat.then.composerText("Inspect the preview shown here");
         yield* chat.then.text("question-preview.png");
-        chat.fixture().responseRefusal = null;
+        yield* Effect.promise(() => NodeFSP.writeFile(pending.path, pending.bytes));
+        const accepted = gate.answered((tag) => tag === "engine.answer");
         yield* chat.when.key("Enter");
-        const answer = yield* Effect.promise(() => chat.fixture().waitForAnswer("question-custom"));
-        expect(answer).toMatchObject({
-          requestId: "question-custom",
-          answers: { target: "Inspect the preview shown here" },
-          attachmentsByQuestionId: { target: [{ name: "question-preview.png" }] },
+        expect(yield* Effect.promise(() => accepted)).toMatchObject({
+          exit: { _tag: "Success", value: { _tag: "Accepted" } },
         });
+        const answered = yield* requestIn("answered");
+        expect(answered.id).toBe(question.id);
+        expect(answered.answer).toMatchObject({
+          answers: { "0": "Inspect the preview shown here" },
+          attachmentsByQuestionId: { "0": [{ name: "question-preview.png" }] },
+        });
+        expect(Object.keys(answered.answer!.attachmentsByQuestionId!)).toEqual(["0"]);
+        expect(answered.answer!.attachmentsByQuestionId!["0"]).toHaveLength(1);
+        yield* chat.then.text("Preview received");
+        expect(provider.answers).toHaveLength(1);
+        const picture = answered.answer!.attachmentsByQuestionId!["0"]![0]!;
+        const picturePath = NodePath.join(server.stateDir, "attachments", `${picture.id}.png`);
+        const quotedPath = yield* Schema.encodeEffect(Schema.fromJsonString(Schema.String))(
+          picturePath,
+        );
+        expect(provider.answers[0]!.answer).toEqual({
+          "0": `Inspect the preview shown here\n\nAttached image "question-preview.png": ${quotedPath}`,
+        });
+        expect(yield* Effect.promise(() => NodeFSP.readFile(picturePath))).toEqual(pending.bytes);
         // Counted in the live run, before it settles and folds its work away.
         yield* chat.then.once("Inspect the preview shown here");
-        chat.fixture().run("question-custom-run", "completed");
+        yield* Deferred.succeed(finish, undefined);
+        yield* chat.then.control("Stop generation", "button", false);
         yield* chat.when.activateLast("Show work");
         yield* chat.when.press("Open question-preview.png");
         yield* chat.then.text("question-preview.png");
