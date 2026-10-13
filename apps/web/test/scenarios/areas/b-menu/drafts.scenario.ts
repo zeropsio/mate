@@ -253,9 +253,15 @@ describe("B: text-only drafts", () => {
           yield* s.given.signedIn;
           for (const name of ["Ada", "Bea"]) yield* s.when.menu.opensMate(name);
           yield* Effect.promise(async () => {
-            await s.page.keyboard.down("Meta");
+            // The palette's mod+k, as the page's platform reads it (`isMacPlatform`): CI is Linux.
+            const mod = (await s.page.evaluate(() =>
+              /mac|iphone|ipad|ipod/i.test(navigator.platform),
+            ))
+              ? "Meta"
+              : "Control";
+            await s.page.keyboard.down(mod);
             await s.page.keyboard.press("k");
-            await s.page.keyboard.up("Meta");
+            await s.page.keyboard.up(mod);
             await s.page.waitForSelector('[data-testid="command-palette"]');
             await s.page.keyboard.type(">");
             await s.page.waitForSelector('[data-testid="jump-box"]', { hidden: true });
