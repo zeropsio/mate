@@ -39,10 +39,9 @@ export interface ZeropsSessionCalls {
    * A token minted elsewhere — the hand-over's, or one a dev build injects — held and stored only
    * once a read proved it, with the person it names.
    */
-  readonly adoptToken: (input: {
-    readonly accessToken: string;
-    readonly refreshToken?: string;
-  }) => Promise<{ readonly session: ZeropsSession; readonly user: ZeropsUser }>;
+  readonly adoptToken: (
+    input: ZeropsSession,
+  ) => Promise<{ readonly session: ZeropsSession; readonly user: ZeropsUser }>;
   /** A password sign-in: its person, or `null` while its second factor is outstanding. */
   readonly signIn: (email: string, password: string) => Promise<ZeropsUser | null>;
   /** A registration, which signs in at once: the platform's answer and its person. */

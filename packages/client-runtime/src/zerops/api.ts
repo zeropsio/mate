@@ -982,7 +982,8 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Adopts a session minted elsewhere: the bearer the sign-in hand-over
+   * Adopts a session minted elsewhere: the full session a device login
+   * collects (`zerops/deviceLogin.ts`), the bearer the sign-in hand-over
    * delivers (`zerops/handover.ts`), with no refresh token, or — dev builds
    * only — a full `/auth/login` session an agent injects.
    *
@@ -990,21 +991,26 @@ export class ZeropsApiClient {
    * would render a signed-in-looking UI that fails on its first real call. So
    * it is held in memory, spent on one read, and only persisted once that read
    * comes back. Without a refresh token, a later 401 clears the session
-   * instead of trying to refresh it.
+   * instead of trying to refresh it. One that still owes a second factor is
+   * refused: an approval never answers one.
    */
-  async adoptSession(input: {
-    readonly accessToken: string;
-    readonly refreshToken?: string;
-  }): Promise<ZeropsSession> {
+  async adoptSession(input: ZeropsSession): Promise<ZeropsSession> {
     const accessToken = input.accessToken.trim();
-    if (!accessToken) {
+    if (!accessToken || requiresZeropsTwoFactor(input)) {
       throw new ZeropsApiError(
         "That Zerops sign-in carried no credential. Start again.",
         "invalid-input",
       );
     }
     const refreshToken = input.refreshToken?.trim();
-    const session: ZeropsSession = refreshToken ? { accessToken, refreshToken } : { accessToken };
+    const session: ZeropsSession = {
+      accessToken,
+      ...(refreshToken ? { refreshToken } : {}),
+      ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt }),
+      ...(input.expiresIn === undefined ? {} : { expiresIn: input.expiresIn }),
+      ...(input.userId === undefined ? {} : { userId: input.userId }),
+      ...(input.tokenType === undefined ? {} : { tokenType: input.tokenType }),
+    };
     const generation = this.#nextGeneration();
     this.#session = session;
     try {
@@ -1023,6 +1029,37 @@ export class ZeropsApiClient {
   async signOutLocally(): Promise<void> {
     this.#nextGeneration();
     await this.#setSession(null);
+  }
+
+  /**
+   * Ends `session` at the platform, after it was already forgotten here. One the
+   * platform already refused (its access token expired) is first swapped, with
+   * its own refresh token, for a pair this revoke alone uses. Never fails: the
+   * person is signed out here whatever the platform answers. A personal token
+   * (no refresh token) cannot revoke itself, so nothing is sent for one.
+   */
+  async revokeSession(session: ZeropsSession): Promise<void> {
+    if (session.refreshToken === undefined) return;
+    const logout = (accessToken: string) =>
+      this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: "{}",
+      });
+    try {
+      const first = await logout(session.accessToken);
+      if (first.status !== 401) return;
+      const renewed = await this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/refresh`, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshTokenId: session.refreshToken }),
+      });
+      if (!renewed.ok) return;
+      const fresh: unknown = await renewed.json();
+      if (isZeropsSession(fresh)) await logout(fresh.accessToken);
+    } catch {
+      // Offline, or the platform failing: the session lapses on its own.
+    }
   }
 
   /** `POST /registration` — signs up and returns an immediately usable session. */
@@ -3094,11 +3131,9 @@ export class ZeropsApiClient {
     const refresh = async () => {
       const response = await this.#fetch(`${this.#baseUrl}${PUBLIC_API_PREFIX}/auth/refresh`, {
         method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${current.accessToken}`,
-        },
+        // No bearer: the refresh token is the credential, and the access token
+        // it replaces may already be refused.
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({ refreshTokenId: current.refreshToken }),
       });
       this.#assertGeneration(generation);

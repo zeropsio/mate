@@ -92,6 +92,11 @@ export interface ZeropsSessionValue {
     /** True when the account just claimed a pool project, so the picker is skipped. */
     readonly zcpClaimed: boolean;
   }) => Promise<void>;
+  /**
+   * Adopts the session a device login collected (`deviceLogin.ts`): proven before it is stored,
+   * like a hand-over's.
+   */
+  readonly adoptDeviceLogin: (session: ZeropsSession) => Promise<void>;
   readonly register: (input: ZeropsRegistrationInput) => Promise<ZeropsRegistrationResponse>;
   readonly verifyTotp: (code: string) => Promise<void>;
   readonly signOut: () => Promise<void>;
@@ -219,13 +224,20 @@ function makeSession(storage: ZeropsStorageAdapter) {
     reauth: browserZeropsReauth.ask,
     reauthSettled: browserZeropsReauth.settled,
   });
+  /**
+   * Forgets the session here at once — storage, the owner record, every tab — then ends it at the
+   * platform in the background. A personal token from the hand-over cannot end itself, so it only
+   * leaves here; it stays in the person's Settings › Token management until they revoke it there.
+   */
   const signOutLocally = async () => {
+    const held = client.session;
     signingOut = true;
     try {
       await client.signOutLocally();
     } finally {
       signingOut = false;
     }
+    if (held !== null) void client.revokeSession(held);
   };
   return { calls, client, driver, signOutLocally };
 }
@@ -400,6 +412,9 @@ export function ZeropsSessionProvider({
           setLastRegistration({ auth: session, user: adopted, zcpClaimed: true });
         }
       },
+      adoptDeviceLogin: async (session) => {
+        driver.signedIn((await calls.adoptToken(session)).user);
+      },
       signIn: async (email, password) => {
         const signedIn = await calls.signIn(email, password);
         if (signedIn === null) driver.send({ type: "SECOND_FACTOR_REQUIRED" });
@@ -417,9 +432,6 @@ export function ZeropsSessionProvider({
       },
       signOut: async () => {
         setLastRegistration(null);
-        // Local only: `/auth/logout` answers a personal token 200 and revokes
-        // nothing, and the token cannot delete itself. It stays in the
-        // person's Settings › Token management until they revoke it there.
         await signOutLocally();
       },
       lastRegistration,
