@@ -717,3 +717,44 @@ describe("creationHandoff", () => {
     expect(creationHandoff(input)).toBe(want);
   });
 });
+
+describe("Git release candidates", () => {
+  it("lists connected code repositories by their full names without a recipe and names every left-out repository", () => {
+    const remote = {
+      url: "https://github.com/acme/app.git",
+      repositoryId: "1",
+      keptAt: "2026-10-13T10:00:00Z",
+      keptBy: "custodian",
+      expiresAt: null,
+      invalidSince: null,
+    };
+    const read = releaseCandidate({
+      target: { kind: "git", branch: "production", delivery: "direct" },
+      repos: [
+        { name: "API_v2", mainHead: API, updatedAt: "now", remote },
+        { name: "Web-App", mainHead: WEB, updatedAt: "now", remote },
+        { name: "group", mainHead: OLD, updatedAt: "now" },
+        { name: "unconnected", mainHead: API, updatedAt: "now", remote: null },
+        { name: "unborn", mainHead: null, updatedAt: "now", remote },
+      ],
+    });
+    expect(releaseEntries(read.candidate)).toEqual([
+      { service: "API_v2", commit: API },
+      { service: "Web-App", commit: WEB },
+    ]);
+    expect(read.groupHead).toBe(OLD);
+    expect(
+      read.repositories?.map(({ repository, sha, included, reason }) => ({
+        repository,
+        sha,
+        included,
+        reason,
+      })),
+    ).toEqual([
+      { repository: "API_v2", sha: API, included: true, reason: undefined },
+      { repository: "Web-App", sha: WEB, included: true, reason: undefined },
+      { repository: "unconnected", sha: API, included: false, reason: "No remote is connected." },
+      { repository: "unborn", sha: null, included: false, reason: "No commit on main." },
+    ]);
+  });
+});

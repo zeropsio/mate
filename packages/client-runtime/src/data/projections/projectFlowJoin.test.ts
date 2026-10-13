@@ -1,3 +1,8 @@
+import { HqEnvironmentId } from "@t3tools/contracts";
+import { gitDeliveryOf, type GitDelivery } from "../../zerops/gitDelivery.ts";
+import { releaseReview } from "../../zerops/reviewVerdict.ts";
+import type { HqPushNavigationJob } from "@t3tools/shared/hqStream";
+import type { ReleaseLive } from "./projectFlowJoin.ts";
 import {
   RELEASE_CHECKING,
   RELEASE_NO_PRODUCTION,
@@ -74,14 +79,7 @@ function join(input: {
   readonly repos?: ReadonlyMap<string, ReadonlyArray<RepoListEntry>>;
   readonly recipes?: ReadonlyMap<string, AppRecipe>;
   readonly permissions?: ReadonlyMap<string, ReleaseGate | undefined>;
-  readonly live?: ReadonlyMap<
-    string,
-    {
-      readonly moved: MovedCommits;
-      readonly untold: ReadonlyArray<string>;
-      readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
-    }
-  >;
+  readonly live?: ReadonlyMap<string, ReleaseLive>;
   readonly withheld?: ReadonlyMap<string, string>;
 }) {
   return joinProjectFlows({
@@ -599,5 +597,414 @@ describe("an application with no production", () => {
 
   it("offers a roll back to an earlier release once a production is there", () => {
     expect(flow(production)?.releases.map((row) => row.rollBack)).toContain(true);
+  });
+});
+
+const GIT_AT = "2026-10-13T10:00:00Z";
+const GIT_SHA = "a".repeat(40);
+const GIT_OLD = "b".repeat(40);
+const GIT_TARGET = { kind: "git", branch: "production", delivery: "direct" } as const;
+const GIT_ATTACHMENT = {
+  environmentId: HqEnvironmentId.make("git-prod"),
+  createdAt: GIT_AT,
+  target: GIT_TARGET,
+};
+const GIT_REMOTE = {
+  url: "https://github.com/acme/app.git",
+  repositoryId: "1",
+  keptAt: GIT_AT,
+  keptBy: "Zerops custodian",
+  expiresAt: null,
+  invalidSince: null,
+};
+const GIT_REPOS = [
+  { name: "API_v2", mainHead: GIT_SHA, updatedAt: GIT_AT, remote: GIT_REMOTE },
+  {
+    name: "Web-App",
+    mainHead: GIT_OLD,
+    updatedAt: GIT_AT,
+    remote: { ...GIT_REMOTE, url: "https://github.com/acme/web.git" },
+  },
+  { name: "group", mainHead: "9".repeat(40), updatedAt: GIT_AT },
+  { name: "not-connected", mainHead: GIT_SHA, updatedAt: GIT_AT, remote: null },
+];
+const GIT_OFFER = {
+  head: "9".repeat(40),
+  suggestion: "v0.1.1",
+  gate: { allow: true },
+  inFlight: null,
+  summary: { total: 1, more: 0, subjects: ["Ship it"], atLeast: false },
+  releaseTarget: GIT_ATTACHMENT,
+} as const;
+function pushed(repo: string, sha: string): HqPushNavigationJob {
+  return {
+    id: repo,
+    kind: "push",
+    service: repo,
+    sha,
+    state: "pushed",
+    cause: "release",
+    ref: "v0.1.0",
+    reason: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: "releaser",
+    at: GIT_AT,
+    endedAt: GIT_AT,
+    supersededBy: null,
+    evidence: {
+      confirmed: {
+        remote: GIT_REMOTE,
+        ref: "refs/heads/production",
+        before: null,
+        after: sha,
+        at: GIT_AT,
+        via: "answer",
+      },
+      nextActor: "none",
+      nextAction: "",
+    },
+  };
+}
+function gitStanding(
+  jobs: ReadonlyArray<HqPushNavigationJob> = [
+    pushed("API_v2", GIT_OLD),
+    pushed("Web-App", GIT_OLD),
+  ],
+  repos: ReadonlyArray<RepoListEntry> = GIT_REPOS,
+  preflight = {},
+): GitDelivery {
+  return gitDeliveryOf(
+    { id: GIT_ATTACHMENT.environmentId, target: GIT_TARGET, tier: "production", jobs },
+    { releases: [], repos, preflight },
+  )!;
+}
+function gitJoin(
+  over: Parameters<typeof join>[0] = {},
+  delivery: GitDelivery | undefined = gitStanding(),
+) {
+  return join({
+    navigationOffers: { g1: GIT_OFFER },
+    review: true,
+    releases: new Map([["g1", []]]),
+    repos: new Map([["g1", GIT_REPOS]]),
+    permissions: new Map([["g1", { allowed: true }]]),
+    live: new Map([
+      [
+        "g1",
+        {
+          moved: { state: "known", moved: [] },
+          untold: [],
+          runs: undefined,
+          git:
+            delivery === undefined
+              ? undefined
+              : { attachment: GIT_ATTACHMENT, delivery, replaceTokenPermission: { allowed: true } },
+        },
+      ],
+    ]),
+    ...over,
+  }).get("g1")!;
+}
+function gitReview(flow: ReturnType<typeof gitJoin>) {
+  return releaseReview({
+    tag: flow.release.suggestion,
+    gate: flow.release.gate,
+    permission: flow.release.permission,
+    git: flow.release.git,
+    changes: flow.release.summary?.total ?? 0,
+    onStage: undefined,
+    services: flow.release.entries.map(({ service }) => service),
+    replaces: { kind: "first" },
+    outcome: { kind: "offered" },
+    now: Date.parse(GIT_AT),
+  });
+}
+describe("Git release join to review", () => {
+  it("reviews connected repository heads against the last confirmed push without any recipe or Zerops demand", () => {
+    const demand = () => {
+      throw new Error("Git demanded Zerops services, recipe or receiver facts");
+    };
+    const recipes = new Map<string, AppRecipe>();
+    const stops = new Map<string, GroupStops>();
+    recipes.get = (id) => (id === "g1" ? demand() : undefined);
+    stops.get = (id) => (id === "g1" ? demand() : undefined);
+    const flow = gitJoin({ recipes, stops });
+    expect(flow.release.entries).toEqual([
+      { service: "API_v2", commit: GIT_SHA },
+      { service: "Web-App", commit: GIT_OLD },
+    ]);
+    expect(flow.release.comparison).toEqual([
+      { service: "API_v2", candidate: "aaaaaaa", production: "bbbbbbb", changed: true },
+      { service: "Web-App", candidate: "bbbbbbb", production: "bbbbbbb", changed: false },
+    ]);
+    expect(flow.release.runs).toBeUndefined();
+    expect(flow.recipeRead).toBe(false);
+    expect(flow.release.groupHead).toBe(GIT_OFFER.head);
+    const review = gitReview(flow);
+    expect(review.primary).toEqual({ label: "Release v0.1.1", enabled: true, safe: false });
+    expect(review.secondary).toEqual({ label: "Cancel", enabled: true });
+    expect(review.meta).toEqual(["the first release", "2 repositories", "1 change"]);
+    expect(review.consequence).toBe(
+      "Mate pushes API_v2 to https://github.com/acme/app.git production and Web-App to https://github.com/acme/web.git production. What happens next is up to those repositories. Only Mate may write to production; a commit made there any other way stops Mate's pushes until you settle it.",
+    );
+    expect(
+      review.repositories?.map(({ repository, sha, included, expiry }) => ({
+        repository,
+        sha,
+        included,
+        expiry,
+      })),
+    ).toEqual([
+      { repository: "API_v2", sha: GIT_SHA, included: true, expiry: "Expiry not reported" },
+      { repository: "Web-App", sha: GIT_OLD, included: true, expiry: "Expiry not reported" },
+      { repository: "not-connected", sha: GIT_SHA, included: false, expiry: undefined },
+    ]);
+  });
+  it.each(["roster", "head", "receipt"] as const)(
+    "waits for delayed %s evidence and resolves through the same join",
+    (part) => {
+      const waiting = gitJoin(
+        part === "roster"
+          ? { repos: new Map() }
+          : part === "head"
+            ? { navigationOffers: { g1: { ...GIT_OFFER, head: null } } }
+            : { live: new Map() },
+      );
+      expect(gitReview(waiting).primary).toBeUndefined();
+      expect(waiting.release.gate).toEqual({ allowed: false, reason: RELEASE_CHECKING });
+      const after = gitJoin();
+      expect(after.release.entries).toHaveLength(2);
+      expect(gitReview(after).primary?.label).toBe("Release v0.1.1");
+    },
+  );
+  it.each(["credential", "diverged", "unknown"] as const)(
+    "reads the single %s preflight blocker and never offers Release",
+    (verdict) => {
+      const reason =
+        verdict === "credential"
+          ? "GitHub refused this token; Workflows: Read and write is needed."
+          : verdict === "diverged"
+            ? "production has commits Mate doesn't; Mate didn't push over them."
+            : "GitHub asked Mate to wait until 12:00.";
+      const delivery = gitStanding(undefined, GIT_REPOS, {
+        API_v2: {
+          repo: "API_v2",
+          remote: GIT_REMOTE,
+          ref: "refs/heads/production",
+          before: GIT_OLD,
+          sha: GIT_SHA,
+          verdict,
+          reason,
+          checkedAt: GIT_AT,
+        },
+      });
+      const flow = gitJoin({}, delivery);
+      const review = gitReview(flow);
+      expect(flow.release.gate).toEqual({ allowed: false, reason: delivery.release.reason });
+      expect(review.verdict.why).toBe(delivery.release.reason?.replace(/\.$/u, ""));
+      expect(review.primary).toEqual(
+        verdict === "credential"
+          ? { label: "Replace token", enabled: true, safe: false }
+          : undefined,
+      );
+      expect(review.secondary?.label).toBe("Cancel");
+      expect(review.verdict.fix).toBeUndefined();
+    },
+  );
+  it("withholds an old attachment's receipts after production is replaced", () => {
+    const flow = gitJoin({
+      navigationOffers: {
+        g1: {
+          ...GIT_OFFER,
+          releaseTarget: { ...GIT_ATTACHMENT, createdAt: "2026-10-13T11:00:00Z" },
+        },
+      },
+    });
+    expect(flow.release.comparison.map(({ production }) => production)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(gitReview(flow).primary).toBeUndefined();
+    expect(flow.release.gate).toEqual({ allowed: false, reason: RELEASE_CHECKING });
+  });
+  it("refreshes the comparison when a delayed confirmed receipt changes only the last pushed sha", () => {
+    const prior = gitJoin();
+    const after = gitJoin({}, gitStanding([pushed("API_v2", GIT_SHA), pushed("Web-App", GIT_OLD)]));
+    expect(prior.release.comparison[0]).toEqual({
+      service: "API_v2",
+      candidate: "aaaaaaa",
+      production: "bbbbbbb",
+      changed: true,
+    });
+    expect(after.release.comparison[0]).toEqual({
+      service: "API_v2",
+      candidate: "aaaaaaa",
+      production: "aaaaaaa",
+      changed: false,
+    });
+    expect(after).not.toBe(prior);
+  });
+  it("reads verified token replacement without replaying an old failed version or applying its stale preflight", () => {
+    const reason =
+      "The person who supplied this token is no longer in this organization. Replace the token.";
+    const preflight = {
+      API_v2: {
+        repo: "API_v2",
+        remote: GIT_REMOTE,
+        ref: "refs/heads/production",
+        before: GIT_OLD,
+        sha: GIT_SHA,
+        verdict: "credential" as const,
+        reason,
+        checkedAt: GIT_AT,
+      },
+    };
+    const before = gitJoin({}, gitStanding(undefined, GIT_REPOS, preflight));
+    expect(gitReview(before).primary?.label).toBe("Replace token");
+    expect(before.release.git?.delivery?.nextActor).toBe("person");
+    const repos = GIT_REPOS.map((repo) =>
+      repo.name === "API_v2"
+        ? { ...repo, remote: { ...GIT_REMOTE, keptAt: "2026-10-13T11:00:00Z" } }
+        : repo,
+    );
+    const after = gitJoin(
+      { repos: new Map([["g1", repos]]) },
+      gitStanding(undefined, repos, preflight),
+    );
+    expect(gitReview(after).primary?.label).toBe("Release v0.1.1");
+    expect(after.release.entries[0]).toEqual({ service: "API_v2", commit: GIT_SHA });
+    expect(gitReview(before).primary?.label).toBe("Replace token");
+  });
+  it.each(["queued", "submitting", "unresolved"] as const)(
+    "consumes the %s writer blocker even when HQ records an end timestamp",
+    (state) => {
+      const job = {
+        ...pushed("API_v2", GIT_SHA),
+        state,
+        ref: "v0.1.0",
+        evidence: {
+          nextActor: "hq" as const,
+          nextAction: "Wait for the original writer to settle.",
+        },
+      };
+      const delivery = gitStanding([job]);
+      const flow = gitJoin({}, delivery);
+      expect(flow.release.gate).toEqual({ allowed: false, reason: delivery.release.reason });
+      expect(gitReview(flow).primary).toBeUndefined();
+      expect(gitReview(flow).verdict.why).toBe(delivery.release.reason?.replace(/\.$/u, ""));
+      expect(flow.release.git?.delivery?.activeVersion).toBe(
+        state === "queued" ? undefined : "v0.1.0",
+      );
+      expect(flow.release.git?.delivery?.queuedVersion).toBe(
+        state === "queued" ? "v0.1.0" : undefined,
+      );
+      expect(flow.release.entries[0]?.commit).toBe(GIT_SHA);
+    },
+  );
+  it("retains HQ's explicit in-flight refusal while a newer repository head waits", () => {
+    const flow = gitJoin({
+      navigationOffers: {
+        g1: {
+          ...GIT_OFFER,
+          gate: { allow: false, reason: "Releasing v0.1.0…" },
+          inFlight: "v0.1.0",
+        },
+      },
+    });
+    expect(flow.release.inFlight).toBe("v0.1.0");
+    expect(flow.release.gate).toEqual({ allowed: false, reason: "Releasing v0.1.0…" });
+    expect(gitReview(flow).primary).toBeUndefined();
+  });
+  it("keeps the accepted repository roster and left-out sha when another connection arrives", () => {
+    const accepted: Release = {
+      ...FIRST,
+      target: "git",
+      releaseTarget: GIT_ATTACHMENT,
+      entries: [
+        { service: "API_v2", sha: GIT_OLD },
+        { service: "Web-App", sha: GIT_OLD },
+      ],
+    };
+    const rollout: ReleaseRollout = {
+      id: "rollout",
+      tag: FIRST.tag,
+      ended: true,
+      landed: false,
+      target: "git",
+      releaseTarget: GIT_ATTACHMENT,
+      planned: true,
+      endedAt: GIT_AT,
+      leftOut: [{ service: "Web-App", sha: GIT_OLD, job: null, reason: "Remote unavailable." }],
+    };
+    const repos = [
+      ...GIT_REPOS,
+      { name: "new-connection", mainHead: GIT_SHA, updatedAt: GIT_AT, remote: GIT_REMOTE },
+    ];
+    const delivery = gitDeliveryOf(
+      {
+        id: GIT_ATTACHMENT.environmentId,
+        target: GIT_TARGET,
+        tier: "production",
+        jobs: [pushed("API_v2", GIT_OLD)],
+        release: rollout,
+      },
+      { releases: [accepted], repos },
+    )!;
+    const flow = gitJoin({ repos: new Map([["g1", repos]]) }, delivery);
+    const model = releaseReview({
+      tag: FIRST.tag,
+      gate: flow.release.gate,
+      permission: flow.release.permission,
+      git: flow.release.git,
+      changes: 1,
+      onStage: undefined,
+      services: [],
+      replaces: { kind: "first" },
+      outcome: { kind: "released", at: GIT_AT },
+      now: Date.parse(GIT_AT),
+    });
+    expect(
+      model.repositories?.map(({ repository, sha, included, reason }) => ({
+        repository,
+        sha,
+        included,
+        reason,
+      })),
+    ).toEqual([
+      { repository: "API_v2", sha: GIT_OLD, included: true, reason: undefined },
+      { repository: "Web-App", sha: GIT_OLD, included: false, reason: "Remote unavailable." },
+    ]);
+    expect(model.verdict.why).toBe("Pushed 1 of 2: Web-App: Remote unavailable.");
+    expect(model.primary).toBeUndefined();
+    expect(model.verdict.fix).toBeUndefined();
+    expect(model.ifWrong).toBeUndefined();
+    expect(flow.release.entries.map(({ service }) => service)).toEqual([
+      "API_v2",
+      "Web-App",
+      "new-connection",
+    ]);
+  });
+  it("keeps HQ's permission refusal even when projected delivery is ready", () => {
+    const flow = gitJoin({
+      navigationOffers: {
+        g1: {
+          ...GIT_OFFER,
+          gate: { allow: false, reason: "Only application developers can release." },
+        },
+      },
+      permissions: new Map([
+        [
+          "g1",
+          { allowed: false, reason: "Only application developers can release.", refusedBy: "hq" },
+        ],
+      ]),
+    });
+    expect(flow.release.gate).toEqual({
+      allowed: false,
+      reason: "Only application developers can release.",
+      refusedBy: "hq",
+    });
+    expect(gitReview(flow).primary).toBeUndefined();
   });
 });

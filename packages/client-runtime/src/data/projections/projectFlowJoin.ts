@@ -44,11 +44,13 @@ import type { CanonicalHqNavigationApp, HqNavigationChange } from "@t3tools/shar
 import { canonicalEnvironmentRow, type CanonicalEnvironmentRow } from "../../zerops/groupRows.ts";
 import type { CanonicalGroupEnvironmentRowInput } from "../../zerops/groupDeploys.ts";
 import type { Release } from "@t3tools/shared/hqRelease";
+import type { GitReleaseReviewFacts } from "../../zerops/release.ts";
 
 type ComparedCommits = MovedCommits & { readonly again?: (() => void) | undefined };
 
 /** What *Release* offers on a project, when it is offered at all. */
 export interface ZeropsReleaseOffer {
+  readonly git?: GitReleaseReviewFacts | undefined;
   readonly comparisonFailure?:
     | { readonly reason: string; readonly again?: (() => void) | undefined }
     | undefined;
@@ -204,6 +206,7 @@ const NOTHING_TO_LIST: ReadonlyMap<string, string> = new Map();
  * each production service runs (`productionRuns`) — what a roll back compares from.
  */
 export interface ReleaseLive {
+  readonly git?: Omit<GitReleaseReviewFacts, "repositories"> | undefined;
   readonly moved: ComparedCommits;
   readonly untold: ReadonlyArray<string>;
   readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
@@ -277,10 +280,14 @@ export function joinProjectFlows(input: {
 }): ReadonlyMap<string, ZeropsProjectFlow> {
   const flows = new Map<string, ZeropsProjectFlow>();
   for (const group of input.groups) {
-    const stops = input.stops.get(group.groupId);
+    const navigationOffer = input.navigationOffers?.[group.groupId];
+    const git =
+      navigationOffer != null &&
+      !("refused" in navigationOffer) &&
+      navigationOffer.releaseTarget?.target.kind === "git";
+    const stops = git ? undefined : input.stops.get(group.groupId);
     const records = input.releases.get(group.groupId);
     const changes = input.changes?.get(group.groupId);
-    const navigationOffer = input.navigationOffers?.[group.groupId];
     if (
       stops === undefined &&
       records === undefined &&
@@ -309,14 +316,14 @@ export function joinProjectFlows(input: {
         return notice === undefined ? [] : [[projectId, notice] as const];
       }),
     );
-    const { rollouts } = releaseDeploys(stops?.environments ?? []);
+    const { rollouts } = git ? { rollouts: [] } : releaseDeploys(stops?.environments ?? []);
     const newest = records?.[0] === undefined ? undefined : flowReleaseOf(records[0]);
     const deploy = {
       inFlight: releaseInFlight({ newest, rollouts }),
       stalled: releaseStalled({ newest, rollouts }),
     };
     const repos = input.repos.get(group.groupId);
-    const recipe = input.recipes.get(group.groupId);
+    const recipe = git ? undefined : input.recipes.get(group.groupId);
     const permission = input.permissions.get(group.groupId);
     const live = input.live.get(group.groupId) ?? NOT_ASKED;
     const changesFailure = input.changesRefused.get(group.groupId) ?? input.changesFailure;
@@ -334,6 +341,18 @@ export function joinProjectFlows(input: {
       liveKey(live.moved),
       live.untold,
       live.runs === undefined ? null : [...live.runs],
+      live.git === undefined
+        ? null
+        : {
+            ...live.git,
+            delivery:
+              live.git.delivery === undefined
+                ? undefined
+                : {
+                    ...live.git.delivery,
+                    lastPushed: [...live.git.delivery.lastPushed],
+                  },
+          },
     ]);
     let flow = byGroup.get(key);
     if (flow === undefined) {
@@ -406,7 +425,11 @@ function projectFlow(
   withheld: ReadonlyMap<string, string>,
 ): ZeropsProjectFlow {
   const { stops, records, changes } = halves;
-  const environmentInputs = stops?.environments ?? [];
+  const navigation = offered.navigationOffer;
+  const attachment =
+    navigation != null && !("refused" in navigation) ? navigation.releaseTarget : undefined;
+  const gitTarget = attachment?.target.kind === "git";
+  const environmentInputs = gitTarget ? [] : (stops?.environments ?? []);
   // A production the grant withholds shows nothing it runs, so
   // nothing is measured against it, and no release is listed.
   const withheldProduction = environmentInputs.find(
@@ -414,7 +437,9 @@ function projectFlow(
   );
   const productionWithheld =
     withheldProduction === undefined ? undefined : withheld.get(withheldProduction.projectId);
-  const sides = releaseDeploys(environmentInputs.filter((entry) => !withheld.has(entry.projectId)));
+  const sides = gitTarget
+    ? { production: new Map<string, string>(), failed: [] }
+    : releaseDeploys(environmentInputs.filter((entry) => !withheld.has(entry.projectId)));
   const releaseList = (records ?? []).map(flowReleaseOf);
   const liveTag = releaseRunBy(releaseList, sides.production);
   // Known once HQ has told the environments: an application holds a production in whatever state
@@ -434,41 +459,70 @@ function projectFlow(
   // Until HQ's releases, its repositories and the recipe are read, nothing is known to release:
   // the gate says it is checking.
   const { repos, recipe, permission, live } = offered;
+  const projected = live.git;
+  const delivery =
+    gitTarget &&
+    projected?.attachment.environmentId === attachment.environmentId &&
+    projected.attachment.createdAt === attachment.createdAt &&
+    projected.attachment.target.kind === "git" &&
+    projected.attachment.target.branch === attachment.target.branch &&
+    projected.attachment.target.delivery === attachment.target.delivery
+      ? projected.delivery
+      : undefined;
   const read =
-    records === undefined || repos === undefined || recipe === undefined
+    records === undefined || repos === undefined
       ? undefined
-      : releaseCandidate({ productionRepositories: recipe.productionRepositories, repos });
+      : gitTarget
+        ? releaseCandidate({ target: attachment.target, repos })
+        : recipe === undefined
+          ? undefined
+          : releaseCandidate({ productionRepositories: recipe.productionRepositories, repos });
   const candidate = read?.candidate ?? NOTHING_TO_LIST;
   const offer = {
     entries: releaseEntries(candidate),
-    comparison: compareForRelease({ candidate, production: sides.production }),
+    comparison: compareForRelease({
+      candidate,
+      production: gitTarget ? (delivery?.lastPushed ?? NOTHING_TO_LIST) : sides.production,
+    }),
     contents: live.moved.state === "known" ? live.moved.moved : [],
     suggestion: "",
   };
-  const navigation = offered.navigationOffer;
+  const ownerGate: ReleaseGate =
+    navigation === undefined
+      ? { allowed: false, reason: "Release offer is unknown." }
+      : navigation === null
+        ? { allowed: false, reason: "Checking what can be released…" }
+        : "refused" in navigation
+          ? {
+              allowed: false,
+              reason: hqRefusalWords({ code: navigation.refused, reason: navigation.refused }),
+              refusedBy: "hq",
+            }
+          : navigation.gate.allow
+            ? { allowed: true }
+            : permission?.allowed === false
+              ? permission
+              : { allowed: false, reason: navigation.gate.reason };
   const gate: ReleaseGate =
-    offered.review && (read === undefined || live.moved.state === "reading")
-      ? { allowed: false, reason: "Checking what can be released…" }
-      : offered.review && live.moved.state === "failed"
-        ? {
-            allowed: false,
-            reason: `Can't check what can be released: ${live.moved.reason.replace(/\.$/u, "")}.`,
-          }
-        : navigation === undefined
-          ? { allowed: false, reason: "Release offer is unknown." }
-          : navigation === null
-            ? { allowed: false, reason: "Checking what can be released…" }
-            : "refused" in navigation
-              ? {
-                  allowed: false,
-                  reason: hqRefusalWords({ code: navigation.refused, reason: navigation.refused }),
-                  refusedBy: "hq",
-                }
-              : navigation.gate.allow
-                ? { allowed: true }
-                : permission?.allowed === false
-                  ? permission
-                  : { allowed: false, reason: navigation.gate.reason };
+    gitTarget && !ownerGate.allowed
+      ? ownerGate
+      : gitTarget && delivery?.release.allowed === false
+        ? { allowed: false, reason: delivery.release.reason ?? delivery.line }
+        : offered.review &&
+            (read === undefined ||
+              live.moved.state === "reading" ||
+              (gitTarget &&
+                (delivery === undefined ||
+                  navigation == null ||
+                  "refused" in navigation ||
+                  navigation.head === null)))
+          ? { allowed: false, reason: "Checking what can be released…" }
+          : offered.review && live.moved.state === "failed"
+            ? {
+                allowed: false,
+                reason: `Can't check what can be released: ${live.moved.reason.replace(/\.$/u, "")}.`,
+              }
+            : ownerGate;
   return {
     groupId: group.groupId,
     declarations: stops?.declarations ?? [],
@@ -498,15 +552,30 @@ function projectFlow(
               navigation != null && !("refused" in navigation) ? navigation.summary : undefined,
             comparisonFailure: live.moved.state === "failed" ? live.moved : undefined,
             permission,
-            groupHead: read?.groupHead,
+            groupHead:
+              gitTarget && navigation != null && !("refused" in navigation)
+                ? (navigation.head ?? undefined)
+                : read?.groupHead,
+            ...(gitTarget
+              ? {
+                  git: {
+                    attachment: { ...attachment, target: attachment.target },
+                    delivery,
+                    repositories: read?.repositories,
+                    replaceTokenPermission: projected?.replaceTokenPermission,
+                  },
+                }
+              : {}),
             ...deploy,
             inFlight:
               navigation != null && !("refused" in navigation)
                 ? (navigation.inFlight ?? deploy.inFlight)
                 : deploy.inFlight,
             untold: live.untold,
-            runs: live.runs,
-            repositories: recipe?.productionRepositories,
+            runs: gitTarget ? undefined : live.runs,
+            repositories: gitTarget
+              ? new Map([...candidate.keys()].map((repo) => [repo, repo]))
+              : recipe?.productionRepositories,
           }
         : {
             ...offer,

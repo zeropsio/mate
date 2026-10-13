@@ -1,3 +1,5 @@
+import { HqEnvironmentId } from "@t3tools/contracts";
+import { gitDeliveryOf } from "./gitDelivery.ts";
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
 import { describe, expect, it } from "vite-plus/test";
 
@@ -1422,4 +1424,172 @@ describe("changeReview: competing terminal outcomes and permissions", () => {
       }
     },
   );
+});
+
+describe("Git release review evidence", () => {
+  const target = { kind: "git", branch: "production", delivery: "direct" } as const;
+  const attachment = {
+    environmentId: HqEnvironmentId.make("git-prod"),
+    createdAt: "2026-09-29T09:00:00Z",
+    target,
+  };
+  const remote = {
+    url: "https://gitlab.com/acme/API_v2.git",
+    repositoryId: null,
+    keptAt: attachment.createdAt,
+    keptBy: "Zerops custodian, not Git host owner",
+    expiresAt: null,
+    invalidSince: null,
+  };
+  const sha = "a".repeat(40);
+  function facts(expiresAt: string | null = null) {
+    return {
+      attachment,
+      delivery: gitDeliveryOf(
+        { id: attachment.environmentId, target, tier: "production", jobs: [] },
+        {
+          releases: [],
+          repos: [{ name: "API_v2", mainHead: sha, updatedAt: attachment.createdAt, remote }],
+        },
+      ),
+      replaceTokenPermission: { allowed: true } as const,
+      repositories: [
+        {
+          repository: "API_v2",
+          sha,
+          remote: { ...remote, expiresAt },
+          included: true,
+          reason: undefined,
+        },
+      ],
+    };
+  }
+  it.each([
+    [null, "Expiry not reported"],
+    ["2026-09-28T10:00:00Z", "Token expired 2026-09-28"],
+    ["2026-10-13T10:00:00Z", "Token expires 2026-10-13"],
+    ["2026-10-14T10:00:00Z", undefined],
+  ] as const)(
+    "formats only known token expiry %s at the supplied instant without inferring Git host identity",
+    (expiry, label) => {
+      const model = releaseReview(release({ git: facts(expiry) }));
+      expect(model.repositories?.[0]?.expiry).toBe(label);
+      expect(model.repositories?.[0]?.remote?.keptBy).toBe(remote.keptBy);
+      expect(model.consequence).toBe(
+        "Mate pushes API_v2 to https://gitlab.com/acme/API_v2.git production. What happens next is up to that repository. Only Mate may write to production; a commit made there any other way stops Mate's pushes until you settle it.",
+      );
+      expect(model.verdict.fix).toBeUndefined();
+      expect(model.ifWrong).toBeUndefined();
+    },
+  );
+  it.each([
+    undefined,
+    { allowed: false, reason: "Only application developers may replace the token." },
+  ] as const)(
+    "offers no token replacement without HQ's structure-write permission %s",
+    (replaceTokenPermission) => {
+      const git = facts();
+      git.delivery = gitDeliveryOf(
+        { id: attachment.environmentId, target, tier: "production", jobs: [] },
+        {
+          releases: [],
+          repos: [
+            {
+              name: "API_v2",
+              mainHead: sha,
+              updatedAt: attachment.createdAt,
+              remote: { ...remote, invalidSince: attachment.createdAt },
+            },
+          ],
+        },
+      );
+      const model = releaseReview(
+        release({
+          gate: { allowed: false, reason: git.delivery!.release.reason! },
+          git: { ...git, replaceTokenPermission },
+        }),
+      );
+      expect(model.primary).toBeUndefined();
+      expect(model.secondary).toEqual({ label: "Cancel", enabled: true });
+    },
+  );
+  it("uses projected pushed standing without claiming a receiver runs it or offering a rollback", () => {
+    const git = facts();
+    const accepted = {
+      tag: "v0.1.57",
+      sha,
+      entries: [{ service: "API_v2", sha }],
+      target: "git" as const,
+      releaseTarget: attachment,
+      by: "releaser",
+      at: attachment.createdAt,
+      state: "approved" as const,
+      reason: null,
+      rollbackOf: null,
+    };
+    git.delivery = gitDeliveryOf(
+      {
+        id: attachment.environmentId,
+        target,
+        tier: "production",
+        jobs: [
+          {
+            id: "push",
+            kind: "push",
+            service: "API_v2",
+            sha,
+            state: "pushed",
+            cause: "release",
+            ref: accepted.tag,
+            reason: null,
+            appVersionId: null,
+            processId: null,
+            requestedBy: "releaser",
+            at: attachment.createdAt,
+            endedAt: attachment.createdAt,
+            supersededBy: null,
+            evidence: {
+              confirmed: {
+                remote,
+                ref: "refs/heads/production",
+                before: null,
+                after: sha,
+                at: attachment.createdAt,
+                via: "answer",
+              },
+              nextActor: "none",
+              nextAction: "",
+            },
+          },
+        ],
+        release: {
+          id: "rollout",
+          tag: accepted.tag,
+          ended: true,
+          landed: false,
+          target: "git",
+          releaseTarget: attachment,
+          planned: true,
+          endedAt: attachment.createdAt,
+          leftOut: [],
+        },
+      },
+      { releases: [accepted], repos: [] },
+    );
+    const model = releaseReview(
+      release({ git, outcome: { kind: "released", at: attachment.createdAt } }),
+    );
+    expect(model.verdict.title).toBe("Pushed v0.1.57");
+    expect(model.verdict.tone).toBe("done");
+    expect(model.repositories?.map(({ repository, sha }) => ({ repository, sha }))).toEqual([
+      { repository: "API_v2", sha },
+    ]);
+    expect(model.verdict.why).toBe(git.delivery?.line);
+    expect(model.consequence).toBe(
+      "Mate's push is the hand-over. What happens next is up to that repository.",
+    );
+    expect(model.primary).toBeUndefined();
+    expect(model.ifWrong).toBeUndefined();
+    expect(model.verdict.fix).toBeUndefined();
+  });
 });

@@ -36,9 +36,13 @@
  * @module release
  */
 
-import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { HqRepoRemote, RepoListEntry } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { compareReleaseTags, type Release, type ReleaseRollout } from "@t3tools/shared/hqRelease";
+
+import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
+import type { HqReleaseTarget } from "@t3tools/shared/hqRelease";
+import type { GitDelivery } from "./gitDelivery.ts";
 
 import type { ReleaseDeployFailure } from "./groupDeploys.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
@@ -103,22 +107,80 @@ export function compareForRelease(input: {
   });
 }
 
+/** The HQ roster as the Git candidate lists it, including repositories it cannot send. */
+export interface GitReleaseRepository {
+  readonly repository: string;
+  readonly sha: string | null;
+  readonly remote: HqRepoRemote | null | undefined;
+  readonly included: boolean;
+  readonly reason: string | undefined;
+}
+
+/** Review consumes the attachment-bound standing and HQ rights supplied by the data layer. */
+export interface GitReleaseReviewFacts {
+  readonly attachment: HqReleaseTarget & {
+    readonly target: Extract<HqEnvironmentTarget, { readonly kind: "git" }>;
+  };
+  readonly delivery: GitDelivery | undefined;
+  readonly replaceTokenPermission: ReleaseGate | undefined;
+  readonly repositories: ReadonlyArray<GitReleaseRepository> | undefined;
+}
+
 /**
  * What a release would list, from the application's repositories as HQ answers them (C01): each
  * production runtime at its repository's `main` — a runtime whose repository has nothing on `main`
  * yet lists nothing — and the recipe repository's `main`, which the release tags; `undefined` where
  * it has none.
  */
-export function releaseCandidate(input: {
-  /** The repository each production runtime builds from, by hostname (`AppRecipe`). */
-  readonly productionRepositories: ReadonlyMap<string, string>;
-  readonly repos: ReadonlyArray<RepoListEntry>;
-}): { readonly candidate: ReadonlyMap<string, string>; readonly groupHead: string | undefined } {
+export function releaseCandidate(
+  input: (
+    | {
+        /** The repository each production runtime builds from, by hostname (`AppRecipe`). */
+        readonly productionRepositories: ReadonlyMap<string, string>;
+        readonly target?: Extract<HqEnvironmentTarget, { readonly kind: "zerops" }> | undefined;
+      }
+    | {
+        readonly target: Extract<HqEnvironmentTarget, { readonly kind: "git" }>;
+        readonly productionRepositories?: never;
+      }
+  ) & {
+    readonly repos: ReadonlyArray<RepoListEntry>;
+  },
+): {
+  readonly candidate: ReadonlyMap<string, string>;
+  readonly groupHead: string | undefined;
+  readonly repositories?: ReadonlyArray<GitReleaseRepository>;
+} {
   const heads = new Map(
     input.repos.flatMap((repo) => (repo.mainHead === null ? [] : [[repo.name, repo.mainHead]])),
   );
+  if (input.target?.kind === "git") {
+    const repositories = input.repos
+      .filter((repo) => repo.name !== RECIPE_REPO)
+      .map((repo): GitReleaseRepository => ({
+        repository: repo.name,
+        sha: repo.mainHead,
+        remote: repo.remote,
+        included: repo.remote != null && repo.mainHead !== null,
+        reason:
+          repo.remote == null
+            ? "No remote is connected."
+            : repo.mainHead === null
+              ? "No commit on main."
+              : undefined,
+      }));
+    return {
+      candidate: new Map(
+        repositories.flatMap((repo) =>
+          repo.included && repo.sha !== null ? [[repo.repository, repo.sha] as const] : [],
+        ),
+      ),
+      groupHead: heads.get(RECIPE_REPO),
+      repositories,
+    };
+  }
   const candidate = new Map(
-    [...input.productionRepositories].flatMap(([hostname, repo]) => {
+    [...(input.productionRepositories ?? [])].flatMap(([hostname, repo]) => {
       const head = heads.get(repo);
       return head === undefined ? [] : [[hostname, head] as const];
     }),

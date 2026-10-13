@@ -30,7 +30,12 @@ import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
 import type { RecipeTier } from "./recipeTier.ts";
 import type { MovedCommits } from "./releaseCompare.ts";
-import { releaseNothingReason, type ReleaseGate } from "./release.ts";
+import {
+  releaseNothingReason,
+  type ReleaseGate,
+  type GitReleaseReviewFacts,
+  type GitReleaseRepository,
+} from "./release.ts";
 
 /**
  * The word on every door to a change's review. Never *Merge*: that is the review's own button,
@@ -861,6 +866,7 @@ export type ReleaseOutcome =
     };
 
 export interface ReleaseReviewInput {
+  readonly git?: GitReleaseReviewFacts | undefined;
   /** The version it tags — the suggestion, or the tag on its way. */
   readonly tag: string;
   readonly gate: ReleaseGate;
@@ -898,6 +904,10 @@ export type ReleaseReplaces =
 
 /** A release's review: its verdict and foot, the header's facts, and where to go if it goes wrong. */
 export interface ReleaseReviewModel extends ReviewModel {
+  readonly repositories?:
+    | ReadonlyArray<GitReleaseRepository & { readonly expiry: string | undefined }>
+    | undefined;
+
   /** Beside the title: `the first release`, `replaces v0.1.0`, and how many changes. */
   readonly meta: ReadonlyArray<string>;
   /** Where a roll back goes; `undefined` for the first release, which replaced nothing. */
@@ -926,6 +936,7 @@ function stageWhy(input: ReleaseReviewInput): string {
 }
 
 export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
+  if (input.git !== undefined) return gitReleaseReview(input, input.git);
   const { tag, replaces } = input;
   // The release a roll back goes to — never the tag itself, which is a release read after it
   // landed; none for the first release, and production's menu for one no release names.
@@ -956,6 +967,107 @@ export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
         : `${back.charAt(0).toUpperCase()}${back.slice(1)}. It gets its own review.`,
   };
   return { ...releaseVerdictOf(input, back), ...facts };
+}
+
+/** The Git review formats HQ facts and the existing standing; it proves no receiver outcome. */
+function gitReleaseReview(
+  input: ReleaseReviewInput,
+  git: GitReleaseReviewFacts,
+): ReleaseReviewModel {
+  const offered = input.outcome.kind === "offered";
+  const roster = offered
+    ? git.repositories
+    : git.delivery?.repositories.map((repo): GitReleaseRepository => ({
+        repository: repo.repo,
+        sha: repo.sha,
+        remote: git.repositories?.find((entry) => entry.repository === repo.repo)?.remote,
+        included: repo.state !== "left-out",
+        reason: repo.reason ?? undefined,
+      }));
+  const repositories = roster?.map((repo) => {
+    const expiry = repo.remote?.expiresAt;
+    return {
+      ...repo,
+      expiry:
+        repo.remote == null
+          ? undefined
+          : expiry == null
+            ? "Expiry not reported"
+            : Date.parse(expiry) <= input.now
+              ? `Token expired ${expiry.slice(0, 10)}`
+              : Date.parse(expiry) - input.now <= 14 * 24 * 60 * 60 * 1_000
+                ? `Token expires ${expiry.slice(0, 10)}`
+                : undefined,
+    };
+  });
+  const included = repositories?.filter((repo) => repo.included) ?? [];
+  const meta = [
+    input.replaces.kind === "first"
+      ? "the first release"
+      : input.replaces.kind === "release"
+        ? `after ${input.replaces.tag}`
+        : "after the last hand-over",
+    count(included.length, "repository", "repositories"),
+    count(input.changes, "change", "changes"),
+  ];
+  const facts = { meta, repositories, ifWrong: undefined };
+  if (!offered) {
+    const delivery = git.delivery;
+    return {
+      ...facts,
+      verdict: {
+        state:
+          delivery?.standing === "pushing"
+            ? "releasing"
+            : delivery?.standing === "pushed"
+              ? "released"
+              : "release-stalled",
+        tone:
+          delivery?.standing === "pushing"
+            ? "busy"
+            : delivery?.standing === "pushed"
+              ? "done"
+              : "attention",
+        title: delivery?.line ?? "Checking what HQ pushed…",
+        why: delivery?.line ?? "Checking what HQ pushed…",
+        fix: undefined,
+      },
+      consequence: "Mate's push is the hand-over. What happens next is up to that repository.",
+      primary: undefined,
+    };
+  }
+  const ready = input.gate.allowed && git.delivery?.release.allowed === true;
+  const primary: ReviewPrimary | undefined = ready
+    ? { label: `Release ${input.tag}`, enabled: true, safe: false }
+    : git.delivery?.release.actions.includes("replace-token") &&
+        git.replaceTokenPermission?.allowed === true
+      ? { label: "Replace token", enabled: true, safe: false }
+      : undefined;
+  const branch = git.attachment.target.branch;
+  const destinations = included.map(
+    (repo) => `${repo.repository} to ${repo.remote?.url} ${branch}`,
+  );
+  const next = included.length === 1 ? "that repository" : "those repositories";
+  return {
+    ...facts,
+    verdict: {
+      state: ready ? "release-ready" : "release-blocked",
+      tone: ready ? "ok" : "attention",
+      title: ready ? "Ready to release" : "Can't release now",
+      why: ready
+        ? count(input.changes, "change", "changes") + " merged since the last release"
+        : (!input.gate.allowed
+            ? input.gate.reason
+            : (git.delivery?.release.reason ?? "Checking what can be released…")
+          ).replace(/\.$/u, ""),
+      fix: undefined,
+    },
+    consequence: ready
+      ? `Mate pushes ${listed(destinations)}. What happens next is up to ${next}. Only Mate may write to ${branch}; a commit made there any other way stops Mate's pushes until you settle it.`
+      : "Mate hasn't pushed this release. What happens after a push is up to that repository.",
+    primary,
+    secondary: { label: "Cancel", enabled: true },
+  };
 }
 
 function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): ReviewModel {
