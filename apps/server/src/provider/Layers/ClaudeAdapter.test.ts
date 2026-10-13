@@ -6191,6 +6191,123 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // Probed on Claude Code 2.1.296: a helper resumed by SendMessage registers under the resume's
+  // call, but its frames name the launch the process before made, beside the helper's own id.
+  it.effect.each([
+    { name: "fresh", started: "toolu_agent_a", streamed: "toolu_agent_a" },
+    { name: "resumed", started: "toolu_send_a", streamed: "toolu_agent_before_restart" },
+  ])(
+    "a helper's calls, its own jobs and its end are its helper's: $name",
+    ({ started, streamed }) => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const runtimeEvents: Array<ProviderRuntimeEvent> = [];
+        const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+          Effect.sync(() => {
+            runtimeEvents.push(event);
+          }),
+        ).pipe(Effect.forkChild);
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        });
+        yield* adapter.sendTurn({ threadId: THREAD_ID, input: "go on", attachments: [] });
+        const session = "sdk-session-resumed-helper";
+        const helperFrame = {
+          parent_tool_use_id: streamed,
+          agent_id: "task-a",
+          session_id: session,
+        };
+        for (const message of [
+          {
+            type: "system",
+            subtype: "task_started",
+            task_id: "task-a",
+            tool_use_id: started,
+            description: "Review the schema",
+            task_type: "local_agent",
+            uuid: "started-task-a",
+            session_id: session,
+          },
+          {
+            type: "assistant",
+            ...helperFrame,
+            message: {
+              model: SYNTHETIC_SUBAGENT_MODEL,
+              content: [
+                { type: "tool_use", id: "tool-h1", name: "Bash", input: { command: "ls" } },
+              ],
+            },
+            uuid: "snapshot-h1",
+          },
+          {
+            type: "assistant",
+            ...helperFrame,
+            message: {
+              model: SYNTHETIC_SUBAGENT_MODEL,
+              content: [
+                {
+                  type: "tool_use",
+                  id: "tool-h2",
+                  name: "Bash",
+                  input: { command: "sleep 40", run_in_background: true },
+                },
+              ],
+            },
+            uuid: "snapshot-h2",
+          },
+          {
+            type: "system",
+            subtype: "task_started",
+            task_id: "bash-1",
+            tool_use_id: "tool-h2",
+            description: "Sleep",
+            task_type: "local_bash",
+            parent_task_id: "task-a",
+            owned_by_subagent: true,
+            uuid: "started-bash-1",
+            session_id: session,
+          },
+          {
+            type: "system",
+            subtype: "task_notification",
+            task_id: "task-a",
+            tool_use_id: started,
+            status: "completed",
+            output_file: "",
+            summary: "Reviewed.",
+            uuid: "notified-task-a",
+            session_id: session,
+          },
+        ]) {
+          harness.query.emit(message as unknown as SDKMessage);
+        }
+        for (let tick = 0; tick < 8; tick += 1) yield* Effect.yieldNow;
+        runtimeEventsFiber.interruptUnsafe();
+
+        const ownerOf = (type: string, id: string) => {
+          const event = runtimeEvents.find(
+            (candidate) =>
+              candidate.type === type &&
+              (String(candidate.itemId) === id ||
+                (candidate.type === "task.started" && candidate.payload.taskId === id)),
+          );
+          return event !== undefined && "agentId" in event.payload ? event.payload.agentId : null;
+        };
+        assert.equal(ownerOf("item.started", "tool-h1"), "task-a");
+        assert.equal(ownerOf("item.started", "tool-h2"), "task-a");
+        assert.equal(ownerOf("task.started", "bash-1"), "task-a");
+        // Its end closes the call it never saw return.
+        assert.equal(ownerOf("item.completed", "tool-h1"), "task-a");
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
+
   it.effect("closes the previous session before replacing an existing thread session", () => {
     const queries: FakeClaudeQuery[] = [];
     const layer = Layer.effect(
