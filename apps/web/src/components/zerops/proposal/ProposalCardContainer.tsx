@@ -171,7 +171,9 @@ function Proposal({
               ? envWrite.refused
               : proposal.kind === "domain.add" && place.state === "reading"
                 ? "Reading the project's addresses…"
-                : undefined;
+                : proposal.kind === "domain.add" && place.state === "failed"
+                  ? `You can't see ${proposal.projectName ?? "this project"}'s addresses.`
+                  : undefined;
 
   const ended = useCallback(
     (outcome: VaultWriteOutcome) =>

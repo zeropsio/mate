@@ -14,6 +14,7 @@
 import type { ZeropsProject } from "../../zerops/api.ts";
 import { isZcpService } from "../../zerops/candidates.ts";
 import { derivePublicRoutes } from "../../zerops/publicRoutes.ts";
+import { projectsScope } from "../families/project.ts";
 import { portRoutingsScope, type PublicPortRoutingValue } from "../families/publicPortRouting.ts";
 import type { PublicRoutingDomain, PublicRoutingValue } from "../families/publicRouting.ts";
 import type { ServiceValue } from "../families/service.ts";
@@ -438,9 +439,15 @@ export const addresses: Projection<ProjectKey, PlaceAddresses> = {
     const services = projectServices.derive(read, key);
     const routings = projectRoutings(read, key);
     const readsProject = routings.readsProject;
-    if (services.unavailableReason !== undefined || routings.kind === "failed")
-      return { state: "failed", ...NOTHING, readsProject };
     const project = read.fact("project", key.projectId);
+    // Deleted, taken from the viewer, or missing from the organization's whole roster: nothing
+    // of it will be read here.
+    const unseen =
+      project.kind === "deleted" ||
+      project.kind === "withheld" ||
+      (project.kind === "unknown" && read.coverage(projectsScope(key.orgId)) === "complete");
+    if (services.unavailableReason !== undefined || routings.kind === "failed" || unseen)
+      return { state: "failed", ...NOTHING, readsProject };
     if (services.services === undefined || routings.kind !== "read" || project.kind !== "known")
       return { state: "reading", ...NOTHING, readsProject };
     const row = project.value as ZeropsProject;
