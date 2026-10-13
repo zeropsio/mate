@@ -467,10 +467,16 @@ export function relatedFiles(
         }
         if (typeof value !== "object" || value === null) return;
         const node = value as Record<string, unknown>;
+        const callee = record(node.callee);
+        const mock =
+          node.type === "CallExpression" &&
+          callee?.type === "MemberExpression" &&
+          ["vi", "vitest"].includes(symbolName(callee.object) ?? "") &&
+          ["mock", "doMock", "unmock", "doUnmock"].includes(symbolName(callee.property) ?? "");
         const literal =
           node.source ??
           (node.type === "TSImportType" ? node.argument : undefined) ??
-          (node.type === "CallExpression" && (node.callee as { name?: string })?.name === "require"
+          (node.type === "CallExpression" && (callee?.name === "require" || mock)
             ? (node.arguments as unknown[])[0]
             : undefined);
         if (
@@ -801,7 +807,7 @@ function writeReceipt(path: string, receipt: GateReceipt): void {
   NodeFS.renameSync(`${path}.tmp`, path);
 }
 
-/** Unit selection follows source imports, never the browser scenario graph. */
+/** Unit selection follows transitive imports and Vitest mocks, never the browser scenario graph. */
 function unitFiles(root: string): string[] {
   const collect = (directory: string): string[] =>
     NodeFS.readdirSync(NodePath.join(root, directory), { withFileTypes: true }).flatMap((entry) => {
@@ -968,7 +974,6 @@ if (import.meta.main) {
         meaningful.paths.filter((path) => !manifestPaths.includes(path)),
         units,
         meaningful.previous,
-        1,
       ),
       ...units.filter((file) =>
         changedModules.some(

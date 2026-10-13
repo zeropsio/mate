@@ -1431,7 +1431,53 @@ it("L2 runs owned scenario-driver units through their existing project before sc
   }
 });
 
-it("Decision: L2 selects changed modules' same-name tests and one-hop direct importers, leaves transitive readers to dependent typechecks and CI, and preserves normal package parallelism", () => {
+it.each([
+  ["a depth-2 importer", 'import "./bridge.ts";', 'import "./owner.ts";'],
+  ["a mock-only reader", 'vi.mock("./owner.ts", () => ({}));', "export {};"],
+  ["a transitive mock reader", 'import "./bridge.ts";', 'vi.mock("./owner.ts", () => ({}));'],
+])("the gate selects %s of a changed module", (_case, reader, bridge) => {
+  const directory = "apps/web/src/gate-selection-witness";
+  const fixtures = {
+    [`${directory}/owner.ts`]: "export const value = 1;",
+    [`${directory}/bridge.ts`]: bridge,
+    [`${directory}/reader.test.ts`]: reader,
+    [`${directory}/unrelated.test.ts`]: "export {};",
+  };
+  const head = fixtureGit("rev-parse", "HEAD");
+  try {
+    for (const [path, content] of Object.entries(fixtures)) {
+      const file = NodePath.join(repositoryFixture, path);
+      NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
+      NodeFS.writeFileSync(file, content);
+    }
+    fixtureGit("add", ...Object.keys(fixtures));
+    fixtureGit("commit", "-qm", "unit dependency fixture");
+    NodeFS.appendFileSync(
+      NodePath.join(repositoryFixture, `${directory}/owner.ts`),
+      "\nexport const added = 2;\n",
+    );
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+      { cwd: repositoryFixture, encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const units = result.stdout
+      .split("\n")
+      .filter((line) => line.startsWith("related "))
+      .join("\n");
+    expect(
+      units,
+      "ASSERTION: every importing or mocking unit reader runs for its changed owner",
+    ).toContain("src/gate-selection-witness/reader.test.ts");
+    expect(units).not.toContain("unrelated.test.ts");
+  } finally {
+    fixtureGit("reset", "--hard", head);
+    NodeFS.rmSync(NodePath.join(repositoryFixture, directory), { recursive: true, force: true });
+  }
+});
+
+it("Decision: L2 selects changed modules' same-name tests and every importing or mocking unit reader at any depth, and preserves normal package parallelism", () => {
   const head = fixtureGit("rev-parse", "HEAD");
   const fixtures = {
     "packages/contracts/src/engine.spec.ts": "export {};",
@@ -1459,10 +1505,10 @@ it("Decision: L2 selects changed modules' same-name tests and one-hop direct imp
       NodeFS.writeFileSync(file, content);
     }
     fixtureGit("add", ...Object.keys(fixtures));
-    fixtureGit("commit", "-qm", "one-hop ownership fixture");
+    fixtureGit("commit", "-qm", "transitive ownership fixture");
     NodeFS.appendFileSync(
       NodePath.join(repositoryFixture, "packages/contracts/src/engine.ts"),
-      "\nexport const oneHopWitness = true;\n",
+      "\nexport const transitiveWitness = true;\n",
     );
     const result = NodeChildProcess.spawnSync(
       process.execPath,
@@ -1473,8 +1519,8 @@ it("Decision: L2 selects changed modules' same-name tests and one-hop direct imp
     const units = result.stdout.split("\n").filter((line) => line.startsWith("related "));
     expect(
       units.join("\n").includes("gate-hop-downstream/src/transitive.test.ts"),
-      "ASSERTION: a contracts edit selects direct test importers, never transitive readers",
-    ).toBe(false);
+      "ASSERTION: a contracts edit selects its transitive test readers",
+    ).toBe(true);
     expect(units.join("\n")).toContain("gate-hop-consumer/src/direct.test.ts");
     expect(units.join("\n")).toContain("packages/contracts/src/engine.spec.ts");
     expect(result.stdout).toContain("typecheck @fixture/direct:");
