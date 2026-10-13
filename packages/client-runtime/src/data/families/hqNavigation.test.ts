@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { hqAppFamily, placementFamily, hqPersonFamily } from "./hqNavigation.ts";
+import { gitEnvironment } from "../__fixtures__/hqWire.ts";
 
 const app = {
   id: "shop",
@@ -29,6 +30,40 @@ const project = {
   signedInNow: {},
   everSignedIn: {},
 };
+
+it("admits Git identity and exact confirmed release beside a Zerops target", () => {
+  const zerops = {
+    ...gitEnvironment,
+    id: "stage",
+    target: { kind: "zerops", projectId: "stage-project" },
+    tier: "stage",
+    jobs: [],
+  };
+  const value = hqAppFamily.hq!.decode({ environments: [zerops, gitEnvironment] }, "app:shop");
+  expect(value?.environments).toEqual([zerops, gitEnvironment]);
+});
+
+it.each(["building", "live", "failed", "skipped"])(
+  "Git navigation never admits the Zerops job state %s",
+  (state) => {
+    expect(
+      hqAppFamily.hq!.decode(
+        { environments: [{ ...gitEnvironment, jobs: [{ ...gitEnvironment.jobs[0], state }] }] },
+        "app:shop",
+      )?.environments,
+    ).toBeUndefined();
+  },
+);
+it("slice one admits direct branches only and never invents a PR target", () => {
+  expect(
+    hqAppFamily.hq!.decode(
+      {
+        environments: [{ ...gitEnvironment, target: { ...gitEnvironment.target, delivery: "pr" } }],
+      },
+      "app:shop",
+    )?.environments,
+  ).toBeUndefined();
+});
 
 describe("navigation record decoding", () => {
   it.each([undefined, "unreadable", { head: 42 }])(

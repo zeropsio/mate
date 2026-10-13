@@ -170,6 +170,27 @@ export function hqNavigationLink(options: {
     families: familiesOf("navigation").map((spec) => ({ spec, scope: scopeOf(spec, orgId) })),
   };
   const scopes = [...nav.families.map(({ scope }) => scope), hqProtocolScope(orgId)];
+  const deny = (scopes: ReadonlyArray<ScopeKey>) => {
+    const now = Effect.runSync(Clock.currentTimeMillis);
+    for (const scope of scopes)
+      store.dispatch({
+        kind: "stream",
+        key: scope,
+        now,
+        event: { kind: "demand", demanded: false },
+      });
+    for (const [key, fact] of store.state().facts) {
+      if (!scopes.includes(fact.scope)) continue;
+      const spec = scopeSpec(fact.scope);
+      store.dispatch({
+        kind: "access",
+        scope: fact.scope,
+        family: spec.family,
+        id: key.slice(spec.family.length + 1),
+        access: "denied",
+      });
+    }
+  };
   const demands = makeDetailDemands({
     // A demanded scope's riders are demanded with it: their records come on its wire.
     demanded: (scope, demanded) =>
@@ -332,6 +353,7 @@ export function hqNavigationLink(options: {
             ...registered.families.map(({ scope }) => scope),
             ...(registered.wire.kind === "navigation" ? [hqProtocolScope(orgId)] : []),
           ]) {
+            yield* signal(scope, { kind: "demand", demanded: true });
             yield* signal(scope, { kind: "attempt" });
             yield* signal(scope, { kind: "handshake" });
             generations.push({ scope, generation: streamOf(store.state(), scope).generation });
@@ -517,8 +539,23 @@ export function hqNavigationLink(options: {
             case "scope-error": {
               const entry = subscribed.get(hqScopeKey(message.scope));
               if (entry === undefined) return;
+              // Only HQ's authoritative access denial purges facts; a host probe's refusal is data.
+              const accessDenied =
+                message.disposition === "refused" &&
+                (message.code === "forbidden" || message.code === "session_required");
+              if (accessDenied) {
+                deny(entry.registered.families.map(({ scope }) => scope));
+                const scopeKey = hqScopeKey(message.scope);
+                subscribed.delete(scopeKey);
+                if (asked.delete(scopeKey) && open !== null)
+                  yield* open.send({ type: "unsubscribe", scopes: [message.scope] });
+              }
               const fault: StreamFault = {
-                outcome: message.disposition === "refused" ? "definitive-refusal" : "transient",
+                outcome: accessDenied
+                  ? "authoritative-denial"
+                  : message.disposition === "refused"
+                    ? "definitive-refusal"
+                    : "transient",
                 message: message.reason ?? `HQ could not read this (${message.code}).`,
                 code: message.code,
               };
@@ -715,6 +752,8 @@ export function hqNavigationLink(options: {
         Effect.tapError((fault) =>
           Effect.sync(() => {
             if (fault.outcome === "definitive-refusal") refusedWhole = true;
+            if (fault.code === "forbidden" || fault.code === "session_required")
+              deny([...scopes, ...demands.scopes().flatMap(fedBy)]);
           }),
         ),
       );
@@ -744,7 +783,7 @@ export function hqNavigationLink(options: {
   return {
     key,
     scopes,
-    details: () => demands.scopes().flatMap(fedBy),
+    details: () => (stopped ? [] : demands.scopes().flatMap(fedBy)),
     attempt,
     childMoved: () => wakeAttempt?.(),
     retryDetail: (demand) => {
@@ -765,7 +804,7 @@ export function hqNavigationLink(options: {
         }),
       );
     },
-    demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
+    demandDetail: (demand) => (stopped ? () => {} : demands.hold(detailScopeOf(orgId, demand))),
     moveOffers: (projectId) =>
       ask<HqMoveOffers>("move-offers", (requestId) => ({
         type: "move-offers",
@@ -792,11 +831,25 @@ export function hqNavigationLink(options: {
       wire = next;
     },
     stop: () => {
+      if (stopped) return;
       stopped = true;
       stopHolding?.();
       stopHolding = null;
       for (const release of mateHolds.values()) release();
       mateHolds.clear();
+      // Ending this owning HQ lifetime is distinct from a recoverable segment loss.
+      const owned = new Set<ScopeKey>([...scopes, ...demands.scopes().flatMap(fedBy)]);
+      for (const fact of store.state().facts.values())
+        if (fact.authority === "hq" && fact.scope.startsWith(`${key}:`)) owned.add(fact.scope);
+      const now = Effect.runSync(Clock.currentTimeMillis);
+      for (const scope of owned)
+        store.dispatch({
+          kind: "stream",
+          key: scope,
+          now,
+          event: { kind: "demand", demanded: false },
+        });
+      store.dispatch({ kind: "forget", scopes: [...owned] });
     },
   };
 }

@@ -11,6 +11,8 @@
 import { HqOffers } from "@t3tools/shared/hqOffers";
 import {
   CanonicalHqNavigationApp,
+  CanonicalHqNavigationEnvironment,
+  HqGitNavigationEnvironment,
   HqNavigationProject,
   HqNavigationPerson,
   HqNavigationPress,
@@ -49,7 +51,25 @@ const Birth = Schema.Struct({
   face: Schema.String,
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
-const App = navigationRecord({ ...CanonicalHqNavigationApp.fields, births: Schema.Array(Birth) });
+// The old outward reader remains Zerops-only; the account admits each target's own job contract.
+const DeliveryEnvironments = Schema.Union([
+  Schema.Array(
+    Schema.Union([
+      HqGitNavigationEnvironment,
+      CanonicalHqNavigationEnvironment.check(
+        Schema.makeFilter((row) =>
+          row.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",
+        ),
+      ),
+    ]),
+  ),
+  Schema.Struct({ refused: Schema.String }),
+]);
+const App = navigationRecord({
+  ...CanonicalHqNavigationApp.fields,
+  environments: DeliveryEnvironments,
+  births: Schema.Array(Birth),
+});
 const PersonFacts = navigationRecord(HqPersonFactsSchema.fields);
 const Mate = navigationRecord(HqNavigationMate.fields);
 const Project = navigationRecord({

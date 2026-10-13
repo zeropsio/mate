@@ -10,6 +10,8 @@ import {
 import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "./model.ts";
 import { factOf, reduceAccount, type AccountInput } from "./reducer.ts";
 import { publicRead, readsOfState } from "./store.ts";
+import { gitEnvironment } from "./__fixtures__/hqWire.ts";
+import { hqNavigation } from "./projections/hqNavigation.ts";
 
 const ORG = "org";
 const apps = hqAppsScope(ORG);
@@ -97,6 +99,77 @@ const appName = (state: AccountState, id: string) => {
 const members = (state: AccountState, scope: ScopeKey) => readsOfState(state).members(scope);
 
 describe("an HQ scope's delivery", () => {
+  it.each([1, 2, 3])(
+    "Git receipt admission follows HQ source revision %s, not the receipt timestamp",
+    (revision) => {
+      const value = hqAppFamily.hq!.decode(
+        { ...app("shop", "Shop"), environments: [gitEnvironment] },
+        "app:shop",
+      )!;
+      const held = apply(attached(), [
+        delivery({ revision: 2, rows: [{ family: "hqApp", id: "shop", value }] }),
+        { kind: "hq-ready", scopes: scopes() },
+      ]);
+      const changed = {
+        ...gitEnvironment,
+        jobs: [
+          {
+            ...gitEnvironment.jobs[0],
+            id: "push-v3",
+            ref: "v3.0.0",
+            sha: "c".repeat(40),
+            state: "queued",
+            evidence: null,
+            endedAt: null,
+          },
+        ],
+      };
+      const newer = hqAppFamily.hq!.decode(
+        { ...app("shop", "Shop"), environments: [changed] },
+        "app:shop",
+      )!;
+      const next = apply(held, [
+        delivery({ revision, rows: [{ family: "hqApp", id: "shop", value: newer }] }),
+      ]);
+      expect(hqNavigation.derive(readsOfState(next), ORG).deliveryEnvironments.shop).toEqual([
+        revision > 2 ? changed : gitEnvironment,
+      ]);
+      expect(readsOfState(next).coverage(apps)).toBe("complete");
+    },
+  );
+  it("incomplete Git input preserves evidence, while an explicit environment denial replaces it", () => {
+    const value = hqAppFamily.hq!.decode(
+      { ...app("shop", "Shop"), environments: [gitEnvironment] },
+      "app:shop",
+    )!;
+    const held = apply(attached(), [
+      delivery({ revision: 1, rows: [{ family: "hqApp", id: "shop", value }] }),
+    ]);
+    const damaged = hqAppFamily.hq!.decode(
+      {
+        ...app("shop", "Shop"),
+        environments: [{ ...gitEnvironment, jobs: [{ ...gitEnvironment.jobs[0], state: "live" }] }],
+      },
+      "app:shop",
+    )!;
+    const preserved = apply(held, [
+      delivery({ revision: 2, rows: [{ family: "hqApp", id: "shop", value: damaged }] }),
+    ]);
+    expect(hqNavigation.derive(readsOfState(preserved), ORG).deliveryEnvironments.shop).toEqual([
+      gitEnvironment,
+    ]);
+    const denied = hqAppFamily.hq!.decode(
+      { ...app("shop", "Shop"), environments: { refused: "Cannot read changes" } },
+      "app:shop",
+    )!;
+    const purged = apply(preserved, [
+      delivery({ revision: 3, rows: [{ family: "hqApp", id: "shop", value: denied }] }),
+    ]);
+    expect(hqNavigation.derive(readsOfState(purged), ORG).deliveryEnvironments.shop).toEqual({
+      refused: "Cannot read changes",
+    });
+    expect(JSON.stringify([...purged.facts.values()])).not.toContain("push-v2");
+  });
   it.each([
     { revision: 2, keys: ["hqApp:shop"] },
     { revision: 1, keys: [] },

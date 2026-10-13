@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { defineOperationKinds } from "../operations/kinds.ts";
-import { defineFamilies, streamMode } from "./index.ts";
+import { defineFamilies, streamMode, familySpec } from "./index.ts";
 import { organizationMembersFamily } from "./organizationMembers.ts";
 import { processFamily } from "./process.ts";
 
@@ -15,6 +15,17 @@ const otherFamily = {
 };
 
 describe("the registries", () => {
+  it("Git review records extend the registered app-detail family without another observation", () => {
+    const family = familySpec("hqAppDetail");
+    expect(family.scope).toEqual({
+      source: "hq",
+      suffix: "hq-app-detail",
+      leaving: "removed",
+      demand: "detail",
+    });
+    expect(family.hq?.wireScope?.("shop")).toEqual({ kind: "app-detail", appId: "shop" });
+    expect(family.hq?.idOf("probe:web", { orgId: "org", ownerId: "shop" })).toBe("shop/probe:web");
+  });
   it("accept the families as registered", () => {
     expect(defineFamilies([processFamily, otherFamily as never])).toHaveLength(2);
   });

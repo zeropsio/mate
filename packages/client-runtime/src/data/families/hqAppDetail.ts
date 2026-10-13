@@ -11,6 +11,11 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import type { ScopeKey } from "../model.ts";
+import {
+  decodeHqGitTarget,
+  isHqGitTargetKey,
+  type HqGitTargetRecord,
+} from "../adapters/hqGitTargets.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
 const KEYS: ReadonlySet<string> = new Set(Object.keys(HqAppDetailFields));
@@ -20,7 +25,8 @@ export type HqAppDetailValue =
   | { readonly kind: "releases"; readonly value: typeof HqAppDetailFields.releases.Type }
   | { readonly kind: "repos"; readonly value: typeof HqAppDetailFields.repos.Type }
   | { readonly kind: "changes"; readonly value: typeof HqAppDetailFields.changes.Type }
-  | { readonly kind: "recipe"; readonly value: (typeof HqAppDetailFields)["recipe:stage"]["Type"] };
+  | { readonly kind: "recipe"; readonly value: (typeof HqAppDetailFields)["recipe:stage"]["Type"] }
+  | HqGitTargetRecord;
 
 const readReleases = Schema.decodeUnknownOption(HqAppDetailFields.releases);
 const readRepos = Schema.decodeUnknownOption(HqAppDetailFields.repos);
@@ -28,6 +34,7 @@ const readChanges = Schema.decodeUnknownOption(HqAppDetailFields.changes);
 const readTier = Schema.decodeUnknownOption(HqAppDetailFields["recipe:stage"]);
 
 function decodeDetail(raw: unknown, key: string): HqAppDetailValue | null {
+  if (isHqGitTargetKey(key)) return decodeHqGitTarget(raw, key);
   if (key === "releases")
     return Option.match(readReleases(raw), {
       onNone: () => null,
@@ -60,10 +67,25 @@ export const hqAppDetailFamily: FamilySpec<"hqAppDetail"> = {
   family: "hqAppDetail",
   authority: "hq",
   scope: { source: "hq", suffix: "hq-app-detail", leaving: "removed", demand: "detail" },
+  // An older/partial repository record does not prove that a known connection disappeared.
+  keepUnsaid: (held, row) =>
+    held?.kind === "repos" && row.kind === "repos"
+      ? {
+          kind: "repos",
+          value: row.value.map((repo) => {
+            const prior = held.value.find((value) => value.name === repo.name);
+            return repo.remote === undefined && prior?.remote !== undefined
+              ? { ...repo, remote: prior.remote }
+              : repo;
+          }),
+        }
+      : row,
   hq: {
     scope: "app-detail",
     idOf: (key, owner) =>
-      owner.ownerId === null || !KEYS.has(key) ? null : `${owner.ownerId}/${key}`,
+      owner.ownerId === null || (!KEYS.has(key) && !isHqGitTargetKey(key))
+        ? null
+        : `${owner.ownerId}/${key}`,
     keyOf: (id, owner) => id.slice((owner.ownerId ?? "").length + 1),
     decode: decodeDetail,
     wireScope: (appId) => ({ kind: "app-detail", appId }),

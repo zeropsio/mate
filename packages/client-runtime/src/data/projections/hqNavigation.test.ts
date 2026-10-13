@@ -20,6 +20,7 @@ import type { StreamEvent } from "../streamMachine.ts";
 import { pastGrace } from "../__fixtures__/account.ts";
 import { hqMates } from "./hqMates.ts";
 import { hqAppChanges, hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
+import { gitEnvironment } from "../__fixtures__/hqWire.ts";
 
 const ORG = "org";
 const NAV: ReadonlyArray<ScopeKey> = [
@@ -170,6 +171,49 @@ const demanded = apply(emptyAccount, [
     stream(scope, { kind: "handshake" }),
   ]),
 ]);
+
+it("the delivery reader keeps mixed targets while existing project navigation keeps only Zerops", () => {
+  const zerops = {
+    ...gitEnvironment,
+    id: "environment-stage",
+    target: { kind: "zerops", projectId: "stage" },
+    projectId: "old-address",
+    tier: "stage",
+    jobs: [],
+  };
+  const value = hqAppFamily.hq!.decode(
+    { id: "shop", name: "Shop", environments: [zerops, gitEnvironment] },
+    "app:shop",
+  )!;
+  const state = apply(demanded, [
+    {
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: generations,
+      reset: true,
+      rows: [{ family: "hqApp", id: "shop", value, revision }],
+      removals: [],
+    },
+  ]);
+  const view = hqNavigation.derive(readsOfState(state), ORG);
+  expect(view.deliveryEnvironments.shop).toEqual([zerops, gitEnvironment]);
+  expect(view.structure?.apps[0]?.environments).toEqual([
+    {
+      projectId: "stage",
+      tier: "stage",
+      name: "Production",
+      sources: ["release"],
+      order: 2,
+      keyHeld: true,
+      keyInvalid: false,
+      can: {},
+      jobs: [],
+      release: null,
+      birth: null,
+    },
+  ]);
+  expect(view.structure?.apps[0]?.projects).toEqual([]);
+});
 const read = apply(demanded, [
   stream(linkKeys.hq(ORG), { kind: "handshake" }),
   stream(linkKeys.hq(ORG), { kind: "baseline-committed" }),

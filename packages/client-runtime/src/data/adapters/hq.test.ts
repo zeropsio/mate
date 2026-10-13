@@ -16,7 +16,17 @@ import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/reactivity";
 
 import { graceOver } from "../__fixtures__/account.ts";
-import { hqFixtureWire, type HqFixtureWire } from "../__fixtures__/hqWire.ts";
+import {
+  hqFixtureWire,
+  gitEnvironment,
+  gitRemote,
+  gitPreflight,
+  gitAdoption,
+  type HqFixtureWire,
+} from "../__fixtures__/hqWire.ts";
+import { hqAppDetailScope } from "../families/hqAppDetail.ts";
+import { hqAppGitTargets } from "../projections/hqNavigation.ts";
+import { hqAppDetail } from "../projections/hqAppDetail.ts";
 import { attention } from "../__fixtures__/mateAttention.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
 import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
@@ -132,6 +142,251 @@ const navigationRequests = (fixture: HqFixtureWire, segment: number) =>
     .map(({ request }) => request);
 
 describe("hqNavigationLink", () => {
+  it.effect(
+    "admits delayed Git receipts without changing Zerops output or inventing project demand",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber, link } = yield* live(store, fixture);
+        expect(
+          hqNavigation.derive(readsOfState(store.state()), ORG).deliveryEnvironments.shop,
+        ).toEqual([]);
+        yield* fixture.send(
+          navigation("scope-values", 4, [
+            {
+              key: "app:shop",
+              value: { ...app("shop", "Shop", ["ada"]), environments: [gitEnvironment] },
+            },
+          ]),
+        );
+        yield* settle;
+        const view = hqNavigation.derive(readsOfState(store.state()), ORG);
+        expect(view.deliveryEnvironments.shop).toEqual([gitEnvironment]);
+        expect(view.structure?.apps[0]?.environments).toEqual([]);
+        expect(readsOfState(store.state()).coverage(hqAppsScope(ORG))).toBe("complete");
+        expect(
+          fixture.sent
+            .flatMap(({ request }) =>
+              request.type === "subscribe" ? request.scopes.map(({ scope }) => scope) : [],
+            )
+            .filter((scope) => scope.kind === "attention"),
+        ).toEqual([{ kind: "attention", projectId: "ada", health: "apart" }]);
+        const newer = {
+          ...gitEnvironment,
+          jobs: [
+            {
+              ...gitEnvironment.jobs[0],
+              id: "push-v3",
+              sha: "c".repeat(40),
+              state: "queued",
+              ref: "v3.0.0",
+              evidence: null,
+              endedAt: null,
+            },
+            ...gitEnvironment.jobs,
+          ],
+        };
+        yield* fixture.send(
+          navigation("scope-values", 5, [
+            { key: "app:shop", value: { ...app("shop", "Shop", ["ada"]), environments: [newer] } },
+          ]),
+        );
+        yield* settle;
+        expect(
+          hqNavigation.derive(readsOfState(store.state()), ORG).deliveryEnvironments.shop,
+        ).toEqual([newer]);
+        yield* fixture.send(
+          navigation("scope-reset", 2, [
+            { key: "app:shop", value: { ...app("shop", "Old"), environments: [] } },
+          ]),
+        );
+        yield* settle;
+        expect(
+          hqNavigation.derive(readsOfState(store.state()), ORG).deliveryEnvironments.shop,
+        ).toEqual([newer]);
+        link.stop();
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect.each(["transient", "refused"] as const)(
+    "keeps Git evidence through transient loss and purges authoritative denial: %s",
+    (disposition) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber, link } = yield* live(store, fixture);
+        const release = link.demandDetail({ family: "hqAppDetail", ownerId: "shop" });
+        yield* settle;
+        const scope = { kind: "app-detail", appId: "shop" } as const;
+        yield* fixture.send({
+          type: "scope-reset",
+          scope,
+          incarnation: "detail",
+          revision: 2,
+          values: [
+            {
+              key: "probe:web",
+              value: { ok: true, remote: { ...gitRemote, token: "PROTECTED_TOKEN_MARKER" } },
+            },
+            { key: "preflight:web", value: gitPreflight },
+            { key: "adoption:web", value: gitAdoption },
+          ],
+          removals: [],
+        });
+        yield* fixture.send({ type: "scope-ready", scope, incarnation: "detail", revision: 2 });
+        yield* settle;
+        const read = () =>
+          hqAppGitTargets.derive(readsOfState(store.state()), { orgId: ORG, appId: "shop" });
+        expect(read().records).toEqual({
+          "probe:web": { kind: "probe", repo: "web", value: { ok: true, remote: gitRemote } },
+          "preflight:web": { kind: "preflight", repo: "web", value: gitPreflight },
+          "adoption:web": { kind: "adoption", repo: "web", value: gitAdoption },
+        });
+        expect(read().complete).toBe(true);
+        expect(JSON.stringify([...store.state().facts])).not.toContain("PROTECTED_TOKEN_MARKER");
+        const rotated = { ...gitRemote, keptAt: "2026-10-13T10:05:00Z" };
+        yield* fixture.send({
+          type: "scope-values",
+          scope,
+          incarnation: "detail",
+          revision: 3,
+          values: [
+            {
+              key: "repos",
+              value: [
+                {
+                  name: "web",
+                  remote: rotated,
+                  mainHead: gitPreflight.sha,
+                  updatedAt: rotated.keptAt,
+                },
+              ],
+            },
+          ],
+          removals: [],
+        });
+        yield* settle;
+        yield* fixture.send({
+          type: "scope-reset",
+          scope,
+          incarnation: "detail",
+          revision: 1,
+          values: [{ key: "probe:web", value: { ok: false, reason: "Obsolete credential" } }],
+          removals: [],
+        });
+        yield* settle;
+        expect(read().records["probe:web"]).toEqual({
+          kind: "probe",
+          repo: "web",
+          value: { ok: true, remote: gitRemote },
+        });
+        expect(
+          hqAppDetail.derive(readsOfState(store.state()), { orgId: ORG, appId: "shop" }).repos,
+        ).toEqual([
+          { name: "web", remote: rotated, mainHead: gitPreflight.sha, updatedAt: rotated.keptAt },
+        ]);
+        yield* fixture.send({
+          type: "scope-error",
+          scope,
+          code: "forbidden",
+          reason: "Membership denied",
+          disposition,
+        });
+        yield* settle;
+        if (disposition === "transient") {
+          expect(read().records["preflight:web"]).toEqual({
+            kind: "preflight",
+            repo: "web",
+            value: gitPreflight,
+          });
+          expect(factOf(store.state(), "hqAppDetail", "shop/probe:web")?.content.kind).toBe(
+            "value",
+          );
+        } else {
+          expect(read().records).toEqual({});
+          expect(factOf(store.state(), "hqAppDetail", "shop/probe:web")?.content.kind).toBe(
+            "purged",
+          );
+          expect(streamOf(store.state(), hqAppDetailScope(ORG, "shop")).demanded).toBe(false);
+          expect(fixture.sent.map(({ request }) => request)).toContainEqual({
+            type: "unsubscribe",
+            scopes: [scope],
+          });
+          yield* fixture.send({
+            type: "scope-reset",
+            scope,
+            incarnation: "detail",
+            revision: 4,
+            values: [{ key: "preflight:web", value: gitPreflight }],
+            removals: [],
+          });
+          yield* settle;
+          expect(read().records).toEqual({});
+          link.retryDetail({ family: "hqAppDetail", ownerId: "shop" });
+          yield* settle;
+          expect(streamOf(store.state(), hqAppDetailScope(ORG, "shop")).demanded).toBe(true);
+          yield* fixture.send({
+            type: "scope-reset",
+            scope,
+            incarnation: "detail",
+            revision: 4,
+            values: [{ key: "preflight:web", value: gitPreflight }],
+            removals: [],
+          });
+          yield* fixture.send({ type: "scope-ready", scope, incarnation: "detail", revision: 4 });
+          yield* settle;
+          expect(read().records).toEqual({
+            "preflight:web": { kind: "preflight", repo: "web", value: gitPreflight },
+          });
+        }
+        release();
+        link.stop();
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "ending an HQ lifetime forgets protected Git facts and fences late input and holds",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber, link } = yield* live(store, fixture);
+        yield* fixture.send(
+          navigation("scope-values", 4, [
+            { key: "app:shop", value: { ...app("shop", "Shop"), environments: [gitEnvironment] } },
+          ]),
+        );
+        yield* settle;
+        link.stop();
+        expect(hqNavigation.derive(readsOfState(store.state()), ORG).deliveryEnvironments).toEqual(
+          {},
+        );
+        expect(
+          [...store.state().facts.values()].some(
+            (fact) =>
+              fact.content.kind === "value" &&
+              JSON.stringify(fact.content.value).includes(gitRemote.url),
+          ),
+        ).toBe(false);
+        const release = link.demandDetail({ family: "hqAppDetail", ownerId: "shop" });
+        expect(link.details!()).toEqual([]);
+        expect(streamOf(store.state(), hqAppDetailScope(ORG, "shop")).demanded).toBe(false);
+        yield* fixture.send(
+          navigation("scope-values", 5, [
+            { key: "app:shop", value: { ...app("shop", "Late"), environments: [gitEnvironment] } },
+          ]),
+        );
+        yield* settle;
+        expect(hqNavigation.derive(readsOfState(store.state()), ORG).deliveryEnvironments).toEqual(
+          {},
+        );
+        release();
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
   it.effect("colleague enrollment adds a Mate beneath its application", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

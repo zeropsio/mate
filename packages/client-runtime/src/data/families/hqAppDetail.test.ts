@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { hqAppDetailFamily } from "./hqAppDetail.ts";
+import { gitRemote, gitPreflight, gitAdoption } from "../__fixtures__/hqWire.ts";
 
 const hq = hqAppDetailFamily.hq!;
 const owner = { orgId: "org", ownerId: "shop" };
@@ -39,6 +40,40 @@ const change = {
 const tier = { state: "present", importYaml: "services:\n  - hostname: api\n", mainHead: SHA };
 
 describe("hqAppDetailFamily", () => {
+  it.each([
+    { key: "probe:web", raw: { ok: true, remote: gitRemote }, kind: "probe" },
+    { key: "preflight:web", raw: gitPreflight, kind: "preflight" },
+    { key: "adoption:web", raw: gitAdoption, kind: "adoption" },
+    { key: "delivery", raw: { jobs: [], note: "No remote for api" }, kind: "delivery" },
+  ])("Git $key rides existing app-detail with no project demand", ({ key, raw, kind }) => {
+    expect(hq.idOf(key, owner)).toBe(`shop/${key}`);
+    expect(hq.keyOf(`shop/${key}`, owner)).toBe(key);
+    expect(hq.decode(raw, key)).toMatchObject({ kind, value: raw });
+  });
+  it("accepted Git release keeps its exact attachment, repository roster and shas", () => {
+    const value = {
+      ...release,
+      target: "git",
+      releaseTarget: {
+        environmentId: "production-git",
+        createdAt: "2026-10-13T00:00:00Z",
+        target: { kind: "git", branch: "main", delivery: "direct" },
+      },
+      entries: [{ service: "web", sha: SHA }],
+    };
+    expect(hq.decode([value], "releases")).toEqual({ kind: "releases", value: [value] });
+  });
+  it.each([undefined, null])(
+    "an omitted remote preserves custody while explicit disconnection replaces it: %s",
+    (remote) => {
+      const held = hq.decode([{ ...repo, remote: gitRemote }], "repos")!;
+      const row = hq.decode([{ ...repo, ...(remote === undefined ? {} : { remote }) }], "repos")!;
+      expect(hqAppDetailFamily.keepUnsaid!(held, row, false)).toEqual({
+        kind: "repos",
+        value: [{ ...repo, ...(remote === null ? { remote: null } : { remote: gitRemote }) }],
+      });
+    },
+  );
   it.each([
     { key: "releases", id: "shop/releases" },
     { key: "repos", id: "shop/repos" },

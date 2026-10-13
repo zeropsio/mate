@@ -28,6 +28,8 @@ import {
   type PlacementValue,
 } from "../families/hqNavigation.ts";
 import { hqProtocolScope } from "../families/hqProtocol.ts";
+import { hqAppDetailScope } from "../families/hqAppDetail.ts";
+import type { HqGitTargetRecord } from "../adapters/hqGitTargets.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { retryDelayMs, STREAM_POLICY } from "../streamMachine.ts";
@@ -57,19 +59,28 @@ export interface CanonicalHqNavigationRead extends Omit<HqNavigationRead, "struc
   readonly structure: CanonicalHqStructure | null;
 }
 
-function compatibilityNavigation(answer: CanonicalHqNavigationRead): HqNavigationRead {
+export interface HqDeliveryNavigationRead extends HqNavigationRead {
+  /** Additive delivery reader; protected facts, including Git, without invented project addresses. */
+  readonly deliveryEnvironments: Readonly<Record<string, NonNullable<HqAppValue["environments"]>>>;
+}
+export type CanonicalHqDeliveryNavigationRead = CanonicalHqNavigationRead &
+  Pick<HqDeliveryNavigationRead, "deliveryEnvironments">;
+
+function compatibilityNavigation(
+  answer: CanonicalHqDeliveryNavigationRead,
+): HqDeliveryNavigationRead {
   return {
     ...answer,
     structure: answer.structure === null ? null : zeropsStructure(answer.structure),
   };
 }
 
-export const canonicalHqNavigation: Projection<string, CanonicalHqNavigationRead> = {
+export const canonicalHqNavigation = {
   name: "canonicalHqNavigation",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => navigationOf(read, orgId, true),
   equals: sameValue,
-};
+} satisfies Projection<string, CanonicalHqDeliveryNavigationRead>;
 
 /** The ids a navigation scope lists, each with its value. */
 function listed<F extends "hqApp" | "placement" | "hqPerson" | "hqPress">(
@@ -111,7 +122,8 @@ function environmentsOfApp(
 ): Pick<CanonicalHqStructure["apps"][number], "environments"> {
   if (environments === undefined) return {};
   if ("refused" in environments) return { environments: { refused: environments.refused } };
-  const read = canonicalEnvironmentsOf(environments);
+  // Legacy Zerops rows still go through their existing normalizer; Git has no outward project DTO.
+  const read = canonicalEnvironmentsOf(environments.filter((row) => row.target?.kind !== "git"));
   return read === undefined ? {} : { environments: read };
 }
 
@@ -182,7 +194,7 @@ function navigationOf(
   read: ProjectionReads,
   orgId: string,
   includePeople: boolean,
-): CanonicalHqNavigationRead {
+): CanonicalHqDeliveryNavigationRead {
   const scope = hqAppsScope(orgId);
   const { complete, ...freshness } = scopeFreshness(read, scope);
   const organizationFact = read.fact("hqOrganization", orgId);
@@ -201,6 +213,11 @@ function navigationOf(
       (declared.protocol === undefined || declared.protocol < HQ_NAVIGATION_PROTOCOL),
     coreBuild: declared?.build,
     structure: structureOf(read, orgId, organization),
+    deliveryEnvironments: Object.fromEntries(
+      listed(read, "hqApp", scope).flatMap(({ id, value }) =>
+        value.environments === undefined ? [] : [[id, value.environments]],
+      ),
+    ),
     organization,
     presses: Object.fromEntries(
       listed(read, "hqPress", hqPressesScope(orgId)).map(({ id, value }) => [id, value]),
@@ -228,26 +245,57 @@ function navigationOf(
       (complete && !freshness.live && freshness.unavailableReason === undefined),
   };
 }
-export const hqNavigation: Projection<string, HqNavigationRead> = {
+export const hqNavigation = {
   name: "hqNavigation",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => compatibilityNavigation(canonicalHqNavigation.derive(read, orgId)),
   equals: sameValue,
+} satisfies Projection<string, HqDeliveryNavigationRead>;
+
+/** Review facts share app-detail's order, access and demand; silence cannot manufacture a verdict. */
+export const hqAppGitTargets: Projection<
+  { readonly orgId: string; readonly appId: string },
+  {
+    readonly records: Readonly<Record<string, HqGitTargetRecord>>;
+  } & ScopeFreshness
+> = {
+  name: "hqAppGitTargets",
+  keyOf: ({ orgId, appId }) => JSON.stringify([orgId, appId]),
+  derive: (read, { orgId, appId }) => {
+    const scope = hqAppDetailScope(orgId, appId);
+    return {
+      ...scopeFreshness(read, scope),
+      records: Object.fromEntries(
+        read.members(scope).ids.flatMap((id) => {
+          const fact = read.fact("hqAppDetail", id);
+          if (fact.kind !== "known") return [];
+          const value = fact.value;
+          return value.kind === "probe" ||
+            value.kind === "preflight" ||
+            value.kind === "adoption" ||
+            value.kind === "delivery"
+            ? [[id.slice(appId.length + 1), value]]
+            : [];
+        }),
+      ),
+    };
+  },
+  equals: sameValue,
 };
 /** Structure and navigation standing have no dependency on individual people. */
-export const canonicalHqMenuNavigation: Projection<string, CanonicalHqNavigationRead> = {
+export const canonicalHqMenuNavigation = {
   name: "canonicalHqMenuNavigation",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => navigationOf(read, orgId, false),
   equals: sameValue,
-};
+} satisfies Projection<string, CanonicalHqDeliveryNavigationRead>;
 
-export const hqMenuNavigation: Projection<string, HqNavigationRead> = {
+export const hqMenuNavigation = {
   name: "hqMenuNavigation",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => compatibilityNavigation(canonicalHqMenuNavigation.derive(read, orgId)),
   equals: sameValue,
-};
+} satisfies Projection<string, HqDeliveryNavigationRead>;
 
 /**
  * What HQ computed of the reader for each project it places, by project: their role, whether they
