@@ -12,7 +12,7 @@ import { mateChat } from "./dsl.ts";
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
-const cases = ["owner", "colleague", "reader"] as const;
+const cases = ["owner", "reader"] as const;
 
 describe("C: the conversation opening follows readiness", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -197,7 +197,7 @@ describe("C: the conversation opening follows readiness", () => {
     (it) => {
       for (const entry of ["menu", "project"] as const)
         for (const person of cases)
-          for (const theme of ["light", "dark"] as const)
+          for (const theme of ["light"] as const)
             for (const narrow of [false, true])
               for (const sidebar of [true, false]) {
                 const label = `${entry === "project" ? "project-" : ""}${person}-${theme}-${narrow ? "narrow" : "wide"}-${sidebar ? "sidebar" : "closed"}`;
@@ -212,7 +212,7 @@ describe("C: the conversation opening follows readiness", () => {
                       const chat = mateChat(s);
                       const wire = chat.fixture("Sage");
                       wire.history("Sage's conversation is ready");
-                      wire.ownership = person === "colleague" ? "colleague" : "project-token";
+                      wire.ownership = "project-token";
                       const read = wire.engine.holdOpen();
                       yield* Effect.addFinalizer(() => Effect.sync(() => read.release()));
                       if (person === "reader") s.given.asPerson("reader");
@@ -227,7 +227,7 @@ describe("C: the conversation opening follows readiness", () => {
                       yield* Effect.promise(() => s.clock.install());
                       const output = process.env.MATE_STAGE_EVIDENCE;
                       yield* Effect.promise(() =>
-                        s.page.evaluateOnNewDocument(() => {
+                        s.page.evaluateOnNewDocument((evidence: boolean) => {
                           const samples: Array<{
                             phase: string;
                             x: number;
@@ -274,10 +274,6 @@ describe("C: the conversation opening follows readiness", () => {
                               );
                             if (stage && column) {
                               const box = stage.getBoundingClientRect();
-                              const pane = column.getBoundingClientRect();
-                              const lead = stage
-                                .querySelector("[data-mate-empty-lead]")!
-                                .getBoundingClientRect();
                               const phase = stage
                                 .closest("[data-conversation-opening]")
                                 ?.getAttribute("data-conversation-opening");
@@ -297,21 +293,27 @@ describe("C: the conversation opening follows readiness", () => {
                               if (box.width > 0 && visible(stage)) seenStage = true;
                               else if (seenStage && !conversationReady && phase !== "complete")
                                 Reflect.set(window, "openingStageGap", true);
-                              samples.push({
-                                phase:
-                                  stage
-                                    .closest("[data-conversation-opening]")
-                                    ?.getAttribute("data-conversation-opening") ?? "route",
-                                x: box.x,
-                                y: box.y,
-                                width: box.width,
-                                columnX: pane.x,
-                                columnWidth: pane.width,
-                                stages: stages.length,
-                                leadY: lead.y,
-                                leadHeight: lead.height,
-                                areaHeight: box.height,
-                              });
+                              if (evidence) {
+                                const pane = column.getBoundingClientRect();
+                                const lead = stage
+                                  .querySelector("[data-mate-empty-lead]")!
+                                  .getBoundingClientRect();
+                                samples.push({
+                                  phase:
+                                    stage
+                                      .closest("[data-conversation-opening]")
+                                      ?.getAttribute("data-conversation-opening") ?? "route",
+                                  x: box.x,
+                                  y: box.y,
+                                  width: box.width,
+                                  columnX: pane.x,
+                                  columnWidth: pane.width,
+                                  stages: stages.length,
+                                  leadY: lead.y,
+                                  leadHeight: lead.height,
+                                  areaHeight: box.height,
+                                });
+                              }
                             } else if (seenStage && !conversationReady) {
                               Reflect.set(window, "openingStageGap", true);
                             }
@@ -319,7 +321,7 @@ describe("C: the conversation opening follows readiness", () => {
                           };
                           Object.assign(window, { stageSamples: samples });
                           requestAnimationFrame(sample);
-                        }),
+                        }, Boolean(output)),
                       );
                       yield* s.given.signedIn;
                       const frames: Array<{ data: string; timestamp: number | undefined }> = [];

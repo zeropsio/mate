@@ -6,6 +6,7 @@ import {
   type ZeropsAgentAuthSnapshot,
   type ZeropsLogin,
 } from "@t3tools/contracts";
+import type { Known } from "../../zerops/knowledge/index.ts";
 import {
   admissionNeedsSignIn,
   agentAdmission,
@@ -330,23 +331,32 @@ describe("one admission answer for composer, Send and Continue", () => {
     },
   );
   it("Decision: admission does not invent signer ownership. Drop unrecorded-login and any blocking derived from who signed in.", () => {
-    expect(
-      agentAdmission({
-        ...base,
-        read: {
-          state: "known",
-          value: snapshot,
-          asOf: { ordinal: 1, atMs: 0 },
-          coverage: "complete",
-          freshness: { kind: "live" },
-        },
-      }),
-    ).toMatchObject({
-      attention: null,
-      footer: "composer",
-      canSend: true,
-      readOnly: false,
-    });
+    for (const subject of [undefined, "viewer", "another"]) {
+      const value = {
+        ...snapshot,
+        agents: snapshot.agents.map((agent) => ({
+          ...agent,
+          authorizedBy: subject === undefined ? undefined : { subject },
+        })),
+      };
+      expect(
+        agentAdmission({
+          ...base,
+          read: {
+            state: "known",
+            value,
+            asOf: { ordinal: 1, atMs: 0 },
+            coverage: "complete",
+            freshness: { kind: "live" },
+          },
+        }),
+      ).toMatchObject({
+        attention: null,
+        footer: "composer",
+        canSend: true,
+        readOnly: false,
+      });
+    }
   });
 });
 
@@ -518,5 +528,177 @@ describe("an engine run admission refused", () => {
     ["is nothing before the conversation's runs are read", undefined, undefined],
   ] as const)("%s", (_, runs, expected) => {
     expect(engineRunRefusal(runs)).toEqual(expected);
+  });
+});
+
+// The conversation reads this auth evidence, not the provider config's previous answer.
+describe("admission on the conversation's auth input", () => {
+  const provider: ServerProvider = {
+    instanceId: ProviderInstanceId.make("claudeAgent"),
+    driver: ProviderDriverKind.make("claudeAgent"),
+    enabled: true,
+    installed: true,
+    version: "1",
+    status: "error",
+    auth: { status: "unknown" },
+    message: "Claude Code is not signed in on this project. Sign it in to use it.",
+    checkedAt: "2026-10-08T00:00:00Z",
+    models: [],
+    skills: [],
+    slashCommands: [],
+  };
+  const ready: ZeropsAgentAuthSnapshot = {
+    available: true,
+    agents: [
+      {
+        agentId: "claude-code",
+        credPresent: true,
+        flagOAuth: true,
+        flagToken: false,
+        state: "authorized",
+        providerAuth: "authenticated",
+      },
+    ],
+  };
+  const known = (value: ZeropsAgentAuthSnapshot): Known<ZeropsAgentAuthSnapshot> => ({
+    state: "known",
+    value,
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+  const derive = (read: Known<ZeropsAgentAuthSnapshot>) =>
+    agentAdmission({
+      environmentId: "env-Ada",
+      instanceId: provider.instanceId,
+      viewerSubject: "viewer",
+      read,
+      providers: [provider],
+      mateName: "Ada",
+    });
+
+  it("A cold auth read holds sending without flashing stale sign-in guidance", () => {
+    const states: ReadonlyArray<Known<ZeropsAgentAuthSnapshot>> = [
+      { state: "unread", waitingFor: null },
+      { state: "reading", sinceMs: 0, attempt: 1 },
+      { state: "reading", sinceMs: 0, attempt: 2 },
+      known(ready),
+    ];
+    // Every observed cold state holds input and Send; the first authoritative answer releases both.
+    expect(
+      states.map((read) => {
+        const answer = derive(read);
+        return {
+          text: answer.attention?.text ?? null,
+          footer: answer.footer,
+          canSend: answer.canSend,
+          providerMessage: answer.providerStatus?.message ?? null,
+        };
+      }),
+    ).toEqual([
+      { text: null, footer: "held", canSend: false, providerMessage: null },
+      { text: null, footer: "held", canSend: false, providerMessage: null },
+      { text: null, footer: "held", canSend: false, providerMessage: null },
+      { text: null, footer: "composer", canSend: true, providerMessage: null },
+    ]);
+  });
+
+  it("Decision: unknown is not healthy — if the auth read fails or is unsupported and the config says Not signed in, the explanation shows; only a cold, not-yet-read state is suppressed.", () => {
+    const states: ReadonlyArray<Known<ZeropsAgentAuthSnapshot>> = [
+      { state: "unread", waitingFor: null },
+      { state: "reading", sinceMs: 0, attempt: 1 },
+      {
+        state: "failed",
+        failure: {
+          kind: "refused",
+          code: "EnvironmentAuthorizationError",
+          words: "This auth read was refused.",
+        },
+        atMs: 0,
+        attempt: 1,
+        retryAtMs: null,
+      },
+      known({ available: false, reason: "unsupported", agents: [] }),
+    ];
+    expect(
+      states.map((read) => {
+        const answer = derive(read);
+        return {
+          text: answer.attention?.text ?? null,
+          action: answer.attention?.actionLabel ?? null,
+          canSend: answer.canSend,
+        };
+      }),
+    ).toEqual([
+      { text: null, action: null, canSend: false },
+      { text: null, action: null, canSend: false },
+      { text: "Ada needs a Claude sign-in to continue.", action: "Sign in", canSend: false },
+      { text: "Ada needs a Claude sign-in to continue.", action: "Sign in", canSend: false },
+    ]);
+  });
+
+  it("Decision: refusals correlate by login identity (id), never by label or message text.", () => {
+    const input = {
+      environmentId: "env-Ada",
+      viewerSubject: "viewer",
+      mateName: "Ada",
+      providers: [
+        {
+          ...provider,
+          instanceId: ProviderInstanceId.make("claudeAgent-work"),
+          displayName: "Claude Code · before",
+        },
+        {
+          ...provider,
+          instanceId: ProviderInstanceId.make("claudeAgent-other"),
+          displayName: "Claude Code · before",
+        },
+      ],
+    };
+    const before = known({
+      ...ready,
+      logins: [
+        login({ id: "claudeAgent-work", label: "before", state: "not-authorized" }),
+        login({ id: "claudeAgent-other", label: "before", state: "not-authorized" }),
+      ],
+    });
+    const refusalSource = { loginId: "claudeAgent-work", reason: "missing-sign-in" } as const;
+    const attempted = agentAdmission({
+      ...input,
+      instanceId: "claudeAgent-work",
+      read: before,
+      refusalSource,
+    });
+    const sameLabel = agentAdmission({
+      ...input,
+      instanceId: "claudeAgent-other",
+      read: before,
+      refusalSource,
+    });
+    expect(attempted.explainsRefusal).toBe(true);
+    expect(sameLabel.attention?.text).toBe(attempted.attention?.text);
+    expect(sameLabel.explainsRefusal).toBe(false);
+    const after = agentAdmission({
+      ...input,
+      instanceId: "claudeAgent-work",
+      refusalSource,
+      read: known({
+        ...ready,
+        logins: [login({ id: "claudeAgent-work", label: "after", state: "not-authorized" })],
+      }),
+    });
+    expect(after.explainsRefusal).toBe(true);
+    expect(after.attention).toMatchObject({
+      loginKey: "claudeAgent-work",
+      text: "Ada needs a Claude Code · after sign-in to continue.",
+    });
+    expect(
+      agentAdmission({
+        ...input,
+        instanceId: "claudeAgent-work",
+        read: before,
+        refusalSource: { loginId: "Claude Code · before", reason: "missing-sign-in" },
+      }).explainsRefusal,
+    ).toBe(false);
   });
 });

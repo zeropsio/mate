@@ -1,7 +1,18 @@
 import { RegistryContext } from "@effect/atom-react";
 import { useEngineCardSnapshots } from "../../zerops/useEngineCardPaging";
 import { useEngineLiveStructure } from "../../zerops/useEngineLiveMessage";
-import { deriveMessagesTimelineRows } from "./MessagesTimeline.logic";
+import { deriveMessagesTimelineRows, helperFinishesOf } from "./MessagesTimeline.logic";
+import {
+  callItem,
+  engineRun,
+  engineRunCardsOfRecords,
+  engineThreadOfRecords,
+  personItem,
+  noteItem,
+  workItem,
+  type EngineRecords,
+} from "@t3tools/client-runtime/data/fixtures";
+import { deriveTimelineEntries, deriveWorkLogEntries } from "../../session-logic";
 import {
   cardAccount,
   CARD_KEY,
@@ -16,6 +27,8 @@ import { ApprovalRequestId, EnvironmentId, MessageId, ThreadId, TurnId } from "@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   emptyAgentPanelModel,
+  deriveAgentPanelModel,
+  foldSubagentActivities,
   type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { act, StrictMode, type ReactNode } from "react";
@@ -1265,6 +1278,136 @@ describe("RunChat, as the person uses it", () => {
           ).length > 0),
     );
 
+  // Stop ends the engine's call as failed and its work as stopped. The card reads the work's
+  // meaning, and a helper report repeating its title never names that helper a second time.
+  it("what the person stopped reads stopped in its card, once, and never failed", () => {
+    const key = { environmentId: "environment-local", conversationId: "thread-stopped" };
+    const commandRun = engineRun(key.conversationId, 1, {
+      end: { kind: "stopped", by: { kind: "person", subject: "owner" } },
+    });
+    const helperRun = engineRun(key.conversationId, 2, {
+      end: { kind: "stopped", by: { kind: "person", subject: "owner" } },
+    });
+    const commandTitle = "Print a tick every second for 40 seconds";
+    const commandCall = callItem(commandRun.id, 2, {
+      step: "command",
+      tool: { name: "Bash" },
+      words: "Command run",
+      state: "failed",
+      input: "Bash: for i in $(seq 1 40); do echo tick $i; sleep 1; done",
+      shows: {
+        toolName: "Bash",
+        command: "for i in $(seq 1 40); do echo tick $i; sleep 1; done",
+        input: { description: commandTitle },
+        rawOutput: { content: "The user doesn't want to proceed with this tool use." },
+      },
+    });
+    const helperTitles = ["Helper 1: 90-second tick loop", "Helper 2: 90-second tick loop"];
+    const records: EngineRecords = {
+      runs: [commandRun, helperRun],
+      items: [
+        personItem(commandRun.id, 1, "Run the tick loop in the foreground"),
+        commandCall,
+        workItem(commandRun.id, 3, {
+          work: "session.w2",
+          workKind: "shell",
+          status: "stopped",
+          title: commandTitle,
+          call: commandCall.id,
+          endedAt: 1791201660000,
+        }),
+        personItem(helperRun.id, 1, "Start two helpers on the tick loop"),
+        ...helperTitles.flatMap((title, index) => {
+          const launch = callItem(helperRun.id, index * 2 + 2, {
+            step: "helper",
+            tool: { name: "Agent" },
+            words: "Subagent task",
+            state: "failed",
+            input: title,
+            shows: { toolName: "Agent", input: { description: title } },
+          });
+          return [
+            launch,
+            workItem(helperRun.id, index * 2 + 3, {
+              work: `session.h${index + 1}`,
+              workKind: "helper",
+              status: "stopped",
+              title,
+              call: launch.id,
+              endedAt: 1791201720100 + index,
+              report: title,
+            }),
+          ];
+        }),
+      ],
+    };
+    const thread = engineThreadOfRecords(key, records)!;
+    const agentPanelModel = deriveAgentPanelModel({
+      agents: foldSubagentActivities(thread.activities, { sessionLive: true }),
+    });
+    const rows = deriveMessagesTimelineRows({
+      runCards: engineRunCardsOfRecords(key, records)!,
+      timelineEntries: deriveTimelineEntries(
+        thread.messages as ReadonlyArray<ChatMessage>,
+        [],
+        deriveWorkLogEntries(thread.activities),
+      ),
+      latestTurn: thread.latestTurn,
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaries: [],
+      supportsConversationRollback: false,
+      helperFinishes: helperFinishesOf(agentPanelModel),
+    });
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(
+        <TimelineRowCtx value={{ ...SHARED, agentPanelModel }}>
+          <TimelineRowActivityCtx value={{ ...ACTIVITY, isWorking: false }}>
+            {rows
+              .filter((row) => row.kind === "record")
+              .map((row) => (
+                <RunChat key={row.id} row={row} />
+              ))}
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>,
+      );
+    });
+    const textNodes = () =>
+      renderer.root
+        .findAll((node) => typeof node.type === "string")
+        .flatMap((node) =>
+          node.children.filter((child): child is string => typeof child === "string"),
+        );
+    for (const opener of renderer.root.findAll(
+      (node) => node.type === "button" && node.children.includes("Show work"),
+    )) {
+      act(() => opener.props.onClick());
+    }
+    expect(
+      textNodes().join(" "),
+      "ASSERTION: the helper group says both helpers stopped",
+    ).toContain("2 stopped");
+    act(() =>
+      button(renderer, "Started 2 helpers. Show them").props.onClick({
+        currentTarget: { closest: () => null },
+      }),
+    );
+    for (const title of [commandTitle, ...helperTitles]) {
+      expect(
+        textNodes().filter((text) => text.includes(title)),
+        `ASSERTION: the open card names ${title} once`,
+      ).toHaveLength(1);
+    }
+    expect(
+      textNodes().filter((text) => text === "Stopped").length,
+      "ASSERTION: each stopped item reads stopped",
+    ).toBe(3);
+    expect(textNodes().join(" "), "ASSERTION: stopped work never reads failed").not.toContain(
+      "Failed",
+    );
+  });
+
   it.each([
     { now: null, words: "Thinking" },
     { now: { kind: "writing" as const }, words: "Writing" },
@@ -1633,6 +1776,173 @@ describe("RunChat, as the person uses it", () => {
       agentSpawn: { workflowId: null, agentTaskIds: ["a1"] },
     },
   };
+
+  // The current Codex trace finishes a helper before its parent returns its MCP result.
+  it("J11: an idle helper does not settle its parent's work", () => {
+    const key = { environmentId: "environment-local", conversationId: "thread-idle-helper" };
+    const run = engineRun(key.conversationId, 1, { state: "running", endedAt: null, end: null });
+    const launch = callItem(run.id, 2, {
+      step: "helper",
+      tool: { name: "Agent" },
+      state: "running",
+      endedAt: null,
+      shows: {
+        toolName: "Agent",
+        input: { description: "trace_helper", prompt: "Reply helper-ok" },
+      },
+    });
+    const records: EngineRecords = {
+      runs: [run],
+      items: [
+        personItem(run.id, 1, "Inspect with trace_helper"),
+        launch,
+        workItem(run.id, 3, {
+          work: "trace-helper",
+          status: "idle",
+          title: "trace_helper",
+          call: launch.id,
+        }),
+        callItem(run.id, 4, {
+          input: "Bash: printf native-ok",
+          shows: {
+            toolName: "Bash",
+            command: "printf native-ok",
+            rawOutput: { content: "native-ok" },
+          },
+        }),
+        callItem(run.id, 5, {
+          step: "mcp",
+          tool: { name: "mcp__zerops__zerops_discover" },
+          state: "running",
+          endedAt: null,
+          shows: { toolName: "mcp__zerops__zerops_discover", input: {} },
+        }),
+      ],
+    };
+    // The answer to a settled run stands in its own message row, beside the run's card.
+    let answers: string[] = [];
+    const view = (input: EngineRecords) => {
+      const thread = engineThreadOfRecords(key, input)!;
+      const agentPanelModel = deriveAgentPanelModel({
+        agents: foldSubagentActivities(thread.activities, { sessionLive: true }),
+      });
+      expect(agentPanelModel.directAgents.map((agent) => [agent.title, agent.status])).toEqual([
+        ["trace_helper", "idle"],
+      ]);
+      const rows = deriveMessagesTimelineRows({
+        activeTurnStartedAt: null,
+        runCards: engineRunCardsOfRecords(key, input)!,
+        timelineEntries: deriveTimelineEntries(
+          thread.messages as ReadonlyArray<ChatMessage>,
+          [],
+          deriveWorkLogEntries(thread.activities),
+        ),
+        latestTurn: thread.latestTurn,
+        isWorking: thread.latestTurn?.state === "running",
+        runningTurnId: thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null,
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+        helperFinishes: helperFinishesOf(agentPanelModel),
+      });
+      answers = rows.flatMap((row) =>
+        row.kind === "message" && row.message.role === "assistant" ? [row.message.text] : [],
+      );
+      return (
+        <TimelineRowCtx value={{ ...SHARED, agentPanelModel }}>
+          <TimelineRowActivityCtx
+            value={{ ...ACTIVITY, isWorking: thread.latestTurn?.state === "running" }}
+          >
+            {rows
+              .filter((row) => row.kind === "record")
+              .map((row) => (
+                <RunChat key={row.id} row={row} />
+              ))}
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>
+      );
+    };
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(view(records));
+    });
+    // What the page shows: every text in the rendered tree, markdown included.
+    const shownTexts = (tree: ReturnType<ReactTestRenderer["toJSON"]> | string): string[] =>
+      tree === null
+        ? []
+        : typeof tree === "string"
+          ? [tree]
+          : Array.isArray(tree)
+            ? tree.flatMap(shownTexts)
+            : (tree.children ?? []).flatMap(shownTexts);
+    const textNodes = () => [...shownTexts(renderer.toJSON()), ...answers];
+    const openWork = () => {
+      for (const opener of renderer.root.findAll(
+        (node) => node.type === "button" && node.children.includes("Show work"),
+      ))
+        act(() => opener.props.onClick());
+      act(() =>
+        button(renderer, "Started a helper. Show them").props.onClick({
+          currentTarget: { closest: () => null },
+        }),
+      );
+      expect(textNodes()).toContain("trace_helper");
+      expect(textNodes()).toContain("Idle");
+      act(() =>
+        button(renderer, "printf native-ok. Show what it returned").props.onClick({
+          currentTarget: { closest: () => null },
+        }),
+      );
+      expect(textNodes().filter((text) => text === "native-ok")).toHaveLength(1);
+    };
+    openWork();
+    expect(engineThreadOfRecords(key, records)?.latestTurn?.state).toBe("running");
+    expect(textNodes()).not.toContain("trace-ok");
+    const answer = noteItem(run.id, 6, "trace-ok");
+    const ended = engineRun(key.conversationId, 1);
+    const settled: EngineRecords = {
+      runs: [
+        {
+          ...ended,
+          summary: { ...ended.summary, answerItemId: answer.id, lastItemSeq: answer.seq },
+        },
+      ],
+      items: [
+        ...records.items.map((item) =>
+          item.kind === "call" && item.seq === 5
+            ? { ...item, state: "done" as const, endedAt: 1760000001000 }
+            : item,
+        ),
+        answer,
+      ],
+    };
+    act(() => renderer.update(view(settled)));
+    expect(textNodes().filter((text) => text === "trace-ok")).toHaveLength(1);
+    expect(engineThreadOfRecords(key, settled)?.latestTurn?.state).toBe("completed");
+    act(() => renderer.unmount());
+    let reloaded!: ReactTestRenderer;
+    act(() => {
+      reloaded = mounted(view(settled));
+    });
+    const freshTexts = () => [...shownTexts(reloaded.toJSON()), ...answers];
+    expect(freshTexts().filter((text) => text === "trace-ok")).toHaveLength(1);
+    for (const opener of reloaded.root.findAll(
+      (node) => node.type === "button" && node.children.includes("Show work"),
+    ))
+      act(() => opener.props.onClick());
+    act(() =>
+      button(reloaded, "Started a helper. Show them").props.onClick({
+        currentTarget: { closest: () => null },
+      }),
+    );
+    expect(freshTexts()).toContain("trace_helper");
+    expect(freshTexts()).toContain("Idle");
+    act(() =>
+      button(reloaded, "printf native-ok. Show what it returned").props.onClick({
+        currentTarget: { closest: () => null },
+      }),
+    );
+    expect(freshTexts().filter((text) => text === "native-ok")).toHaveLength(1);
+  });
 
   it("opens a helper's own card in the helpers panel", () => {
     const agent = helpersOf(helperAgent());

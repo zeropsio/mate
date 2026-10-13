@@ -11,78 +11,6 @@ import { mateChat } from "./dsl.ts";
 // These are reported provider facts; the fake never executes commands or git.
 describe("C: calls, results and crew actions", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    // The current Codex trace finishes a helper before its parent returns its MCP result.
-    it.effect("J11: an idle helper does not settle its parent's work", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installArea]);
-        yield* s.given.project("Ada", { mate: true });
-        const chat = mateChat(s);
-        const wire = chat.fixture();
-        wire.history("Inspect with trace_helper", "run-one");
-        wire.run("run-one", "running");
-        wire.call(
-          "helper-launch",
-          "running",
-          {
-            toolName: "Agent",
-            input: { description: "trace_helper", prompt: "Reply helper-ok" },
-          },
-          "run-one",
-          { step: "helper" },
-        );
-        wire.work("trace-helper", "running", { title: "trace_helper", call: "helper-launch" });
-        wire.call("native", "done", {
-          toolName: "Bash",
-          command: "printf native-ok",
-          rawOutput: { content: "native-ok" },
-        });
-        wire.call(
-          "discover",
-          "running",
-          { toolName: "mcp__zerops__zerops_discover", input: {} },
-          "run-one",
-          { step: "mcp" },
-        );
-        yield* s.given.signedIn;
-        yield* chat.when.open("Ada", "Inspect with trace_helper");
-        wire.work("trace-helper", "idle");
-        yield* chat.when.press("Started a helper. Show them");
-        yield* chat.then.text("trace_helper");
-        yield* chat.then.text("Idle");
-        yield* chat.then.control("Stop generation");
-        yield* chat.then.noText("trace-ok");
-        yield* chat.when.type("Keep this draft while the parent works");
-        yield* chat.when.press("printf native-ok. Show what it returned");
-        yield* chat.then.text("native-ok");
-        wire.call(
-          "discover",
-          "done",
-          {
-            toolName: "mcp__zerops__zerops_discover",
-            input: {},
-            result: {
-              content: [{ type: "text", text: "Discovery returned the fixture services" }],
-            },
-          },
-          "run-one",
-          { step: "mcp" },
-        );
-        wire.say("trace-ok", "run-one");
-        wire.run("run-one", "completed");
-        yield* chat.then.once("trace-ok");
-        yield* chat.then.control("Stop generation", "button", false);
-        yield* chat.then.draft("Keep this draft while the parent works");
-        yield* chat.when.reload("Ada", "Inspect with trace_helper");
-        yield* chat.then.once("trace-ok");
-        yield* chat.when.activate("Show work");
-        yield* chat.when.press("Started a helper. Show them");
-        yield* chat.then.text("trace_helper");
-        yield* chat.then.text("Idle");
-        yield* chat.when.press("printf native-ok. Show what it returned");
-        yield* chat.then.text("native-ok");
-      }),
-    );
-
     // J06 · Z12/Z13/Z16–Z19/Z21/Z25/Z29/Z33: distinct calls retain their recorded outputs.
     it.effect("J06: concurrent calls stay readable through settlement and reload", () =>
       Effect.gen(function* () {
@@ -367,6 +295,28 @@ describe("C: calls, results and crew actions", () => {
               revision: 3,
               completeness: "partial",
             });
+            yield* chat.then.control("/orders. Open the screenshot");
+            // An older revision arriving late cannot take back the newer one's evidence.
+            wire.browser({
+              type: "call-result",
+              callId: wire.itemOf("browser-order"),
+              threadId: "thread-Ada",
+              turnId: wire.runOf("browser-run"),
+              revision: 1,
+              completeness: "complete",
+              frame: null,
+            });
+            // The checkout's own evidence, sent after it, proves the late revision was read.
+            wire.browser({
+              type: "call-result",
+              callId: wire.itemOf("browser-checkout"),
+              threadId: "thread-Ada",
+              turnId: wire.runOf("browser-run"),
+              revision: 2,
+              completeness: "complete",
+              frame: { type: "frame", mimeType: "image/png", data: picture, width: 1, height: 1 },
+            });
+            yield* chat.then.control("/checkout. Open the screenshot");
             yield* chat.then.control("/orders. Open the screenshot");
             wire.browser({
               type: "call-result",

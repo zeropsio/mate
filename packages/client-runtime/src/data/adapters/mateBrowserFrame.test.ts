@@ -80,6 +80,49 @@ describe("the last page the agent's browser showed", () => {
 });
 
 describe("Mate call frame slots", () => {
+  it("a call's evidence belongs to its own turn and its newest revision, whatever order frames arrive in", () => {
+    const r = rig();
+    try {
+      r.sink.event(identified(2));
+      r.sink.event({ ...identified(9), callId: "second", turnId: "older-run" });
+      expect(r.read().frame).toEqual(identified(2));
+      expect(r.read("second")).toEqual(UNKNOWN_BROWSER_FRAME);
+      r.sink.event({
+        type: "call-result",
+        callId: "first",
+        threadId: "thread",
+        turnId: "turn",
+        revision: 3,
+        completeness: "partial",
+      });
+      expect(r.read().frame).toEqual(identified(2));
+      // A genuinely out-of-order complete absence cannot clear the newer partial revision.
+      r.sink.event({
+        type: "call-result",
+        callId: "first",
+        threadId: "thread",
+        turnId: "turn",
+        revision: 2,
+        completeness: "complete",
+        frame: null,
+      });
+      expect(r.read().frame).toEqual(identified(2));
+      r.sink.event({
+        type: "call-result",
+        callId: "first",
+        threadId: "thread",
+        turnId: "turn",
+        revision: 4,
+        completeness: "complete",
+        frame: null,
+      });
+      expect(r.read().kind).toBe("absent");
+      expect(r.read().frame).toBeNull();
+    } finally {
+      r.registry.dispose();
+    }
+  });
+
   it.each([
     { name: "legacy viewport", event: image, freshness: "stale" },
     { name: "live viewport status", event: { type: "state", status: "live" }, freshness: "stale" },
