@@ -451,6 +451,7 @@ export {
   changeReview,
   crewTaskReview,
   releaseReview,
+  gitRemoteExpiry,
   reviewAge,
   rollbackReview,
   type ChangeReviewInput,

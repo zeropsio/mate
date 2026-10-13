@@ -237,6 +237,9 @@ const gitEnvironment: CanonicalHqEnvironment = {
   target: { kind: "git", branch: "main", delivery: "direct" },
   order: 1,
   name: "Git",
+  can: {},
+  birth: null,
+  release: null,
   jobs: [],
 };
 function seedRuntime(

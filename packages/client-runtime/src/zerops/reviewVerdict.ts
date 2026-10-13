@@ -20,6 +20,7 @@
  * @module reviewVerdict
  */
 
+import type { HqRepoRemote } from "@t3tools/shared/hqChanges";
 import type { ChangePipeline } from "@t3tools/shared/hqChanges";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
@@ -969,6 +970,16 @@ export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
   return { ...releaseVerdictOf(input, back), ...facts };
 }
 
+/** The same metadata warning on every Git surface; an absent expiry header leaves the date unknown. */
+export function gitRemoteExpiry(remote: HqRepoRemote, now: number): string | undefined {
+  const expiry = remote.expiresAt;
+  if (expiry == null) return "Expiry not reported";
+  if (Date.parse(expiry) <= now) return `Token expired ${expiry.slice(0, 10)}`;
+  if (Date.parse(expiry) - now <= 14 * 24 * 60 * 60 * 1_000)
+    return `Token expires ${expiry.slice(0, 10)}`;
+  return undefined;
+}
+
 /** The Git review formats HQ facts and the existing standing; it proves no receiver outcome. */
 function gitReleaseReview(
   input: ReleaseReviewInput,
@@ -984,22 +995,10 @@ function gitReleaseReview(
         included: repo.state !== "left-out",
         reason: repo.reason ?? undefined,
       }));
-  const repositories = roster?.map((repo) => {
-    const expiry = repo.remote?.expiresAt;
-    return {
-      ...repo,
-      expiry:
-        repo.remote == null
-          ? undefined
-          : expiry == null
-            ? "Expiry not reported"
-            : Date.parse(expiry) <= input.now
-              ? `Token expired ${expiry.slice(0, 10)}`
-              : Date.parse(expiry) - input.now <= 14 * 24 * 60 * 60 * 1_000
-                ? `Token expires ${expiry.slice(0, 10)}`
-                : undefined,
-    };
-  });
+  const repositories = roster?.map((repo) => ({
+    ...repo,
+    expiry: repo.remote == null ? undefined : gitRemoteExpiry(repo.remote, input.now),
+  }));
   const included = repositories?.filter((repo) => repo.included) ?? [];
   const meta = [
     input.replaces.kind === "first"

@@ -189,7 +189,19 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
     const stops =
       environments === undefined
         ? undefined
-        : canonicalGroupStopsOf({ environments, projects, versions, activeVersions, recipe });
+        : canonicalGroupStopsOf({
+            environments,
+            projects,
+            versions,
+            activeVersions,
+            recipe,
+            git: {
+              releases: detail.releases,
+              repos: detail.repos,
+              preflight: detail.preflight,
+              live: scopeFreshness(read, hqAppsScope(orgId)).live,
+            },
+          });
     const changes =
       hqAddress === undefined || app.changes === undefined
         ? undefined
@@ -222,8 +234,14 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
       withheld,
     }).get(appId);
     if (flow === undefined) return undefined;
+    const git = flow.release.git;
+    const delivery =
+      git === undefined
+        ? undefined
+        : stops?.environments.find((entry) => entry.id === git.attachment.environmentId)?.git;
     const canonical: CanonicalProjectFlow = {
       ...flow,
+      release: git === undefined ? flow.release : { ...flow.release, git: { ...git, delivery } },
       declarations: stops?.declarations ?? [],
       environmentInputs: stops?.environments ?? [],
       environments: (stops?.environments ?? []).map((entry) =>
@@ -234,7 +252,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
     return {
       ...canonical,
       release: {
-        ...flow.release,
+        ...canonical.release,
         gate: {
           allowed: false,
           reason:

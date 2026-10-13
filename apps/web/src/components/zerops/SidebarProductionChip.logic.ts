@@ -1,3 +1,6 @@
+import type { GitDelivery } from "@t3tools/client-runtime/zerops";
+import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 /**
  * A project's production and its stages as two chips on its heading — one
  * for production, one for the stage or stages — and each chip's menu.
@@ -188,6 +191,7 @@ export type ChipState =
 
 /** What a chip says: its stops, their state and the facts that state names. */
 export interface ProductionChip {
+  readonly git?: GitDelivery;
   readonly label: ChipLabel;
   readonly state: ChipState;
   readonly readLine?: string;
@@ -301,6 +305,8 @@ export function productionChip(input: {
   const { production } = input;
   if (production.kind === "creating") return chipOf("prod", "creating");
   if (production.kind === "absent") return NONE;
+  if (production.stop.git !== undefined)
+    return { kind: "chip", chip: gitChip("prod", production.stop.git) };
   const served =
     input.building === undefined ? production.stop.version?.label : input.building.from;
   const waiting = input.waiting > 0 ? input.waiting : undefined;
@@ -386,6 +392,7 @@ export function stageStopChip(input: {
   readonly releases: ReleasesAnswer;
 }): ChipView {
   const { stop, serving } = input;
+  if (stop.git !== undefined) return { kind: "chip", chip: gitChip("stage", stop.git) };
   const version = stageVersion(stop);
   if (serving.kind === "down") return chipOf("stage", "down", { version });
   if (serving.kind === "stopped") return chipOf("stage", "stopped", { version });
@@ -621,6 +628,17 @@ function chipWords(chip: ProductionChip): string {
  * keeps its amber.
  */
 export function chipFace(chip: ProductionChip): ChipFace {
+  if (chip.git !== undefined)
+    return {
+      label: chip.label,
+      tone:
+        chip.git.standing === "refused" ||
+        chip.git.standing === "partly" ||
+        chip.git.standing === "unresolved"
+          ? "amber"
+          : "neutral",
+      words: chip.git.line,
+    };
   const tone = chip.label === "prod" && chip.state === "failed" ? "neutral" : TONE[chip.state];
   const words = chipWords(chip);
   return { tone, label: chip.label, words: chip.lastKnown ? `Last known: ${words}` : words };
@@ -650,6 +668,17 @@ function joined(names: ReadonlyArray<string>): string {
  * is broken (S6), and its public links, each led by its service.
  */
 export interface ChipMenuStop {
+  readonly git?: {
+    readonly delivery: GitDelivery;
+    readonly environment?:
+      | {
+          readonly target: Extract<HqEnvironmentTarget, { readonly kind: "git" }>;
+          readonly tier: "stage" | "production";
+        }
+      | undefined;
+    readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
+  };
+  readonly environmentId?: string | undefined;
   /** Its Zerops project, for its page and *Open in Zerops*; none while it is being set up. */
   readonly projectId: string | undefined;
   readonly name: string;
@@ -683,6 +712,12 @@ const MAIN_DOT: Record<ChipState, ChipDot> = {
 
 /** A stop's dot, by the state its chip says: in its menu's row and in the jump box. */
 export function chipDot(chip: ProductionChip): ChipDot {
+  if (chip.git !== undefined)
+    return chip.git.standing === "pushing"
+      ? "spinner"
+      : chip.git.blocked || chip.git.standing === "partly" || chip.git.standing === "refused"
+        ? "attention"
+        : "off";
   // Serving what cannot be told, or what HQ last said, is not known to be healthy.
   if (
     (chip.untold !== undefined || chip.lastKnown === true) &&
@@ -813,8 +848,28 @@ export function productionMenu(input: {
   readonly down: ReadonlyArray<string>;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   readonly nowMs: number;
+  readonly environmentId?: string | undefined;
+  readonly git?: ChipMenuStop["git"];
 }): ChipMenuModel {
   const { chip } = input;
+  if (chip.git !== undefined)
+    return {
+      stops: [
+        {
+          name: "production",
+          projectId: undefined,
+          environmentId: input.environmentId,
+          git: input.git ?? { delivery: chip.git },
+          version: chip.git.version,
+          dot: chipDot(chip),
+          word: chip.git.line,
+          tone: chipFace(chip).tone === "amber" ? "amber" : "muted",
+          note: chip.git.release.reason,
+          fix: undefined,
+          routes: [],
+        },
+      ],
+    };
   return {
     stops: [
       {
@@ -843,6 +898,7 @@ export function stageMenu(input: {
     /** Its name under the heading. */
     readonly name: string;
     readonly stop: GroupFlowStop;
+    readonly git?: ChipMenuStop["git"];
     /** As a chip of its own says it (`stageStopChip`); `undefined` while unread. */
     readonly chip: ProductionChip | undefined;
     readonly deployedAt: string | undefined;
@@ -856,6 +912,20 @@ export function stageMenu(input: {
 }): ChipMenuModel {
   const listed = input.stages.map((stage): ChipMenuStop => {
     const { chip, stop } = stage;
+    if (stop.git !== undefined)
+      return {
+        name: stage.name,
+        projectId: undefined,
+        environmentId: stage.projectId,
+        git: stage.git ?? { delivery: stop.git },
+        version: stop.git.version,
+        dot: chipDot(gitChip("stage", stop.git)),
+        word: stop.git.line,
+        tone: stop.git.blocked ? "amber" : "muted",
+        note: stop.git.release.reason,
+        fix: undefined,
+        routes: [],
+      };
     const serving = stop.version?.label;
     const base = {
       projectId: stage.projectId,
@@ -1024,4 +1094,22 @@ export function draftParts(prompt: string): ReadonlyArray<DraftPart> {
     parts.push({ kind: "code", text: body });
   }
   return parts;
+}
+
+/** Presentation mapping only: the shared standing remains the verdict. */
+function gitChip(label: ChipLabel, git: GitDelivery): ProductionChip {
+  return {
+    label,
+    git,
+    state:
+      git.standing === "pushing"
+        ? "releasing"
+        : git.standing === "pushed"
+          ? "ok"
+          : git.standing === "refused" || git.standing === "partly" || git.standing === "unresolved"
+            ? "failed"
+            : "unverified",
+    readLine: git.line,
+    ...(git.version === undefined ? {} : { version: git.version }),
+  };
 }

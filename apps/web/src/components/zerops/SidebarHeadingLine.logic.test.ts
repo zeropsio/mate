@@ -1,3 +1,5 @@
+import { HqEnvironmentId } from "@t3tools/contracts";
+import { gitDeliveryOf } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { StopComing } from "@t3tools/client-runtime/zerops";
@@ -226,4 +228,36 @@ describe("headingLanding — what this tab watched land", () => {
   ])("$case", ({ before, after, landing }) => {
     expect(headingLanding(before, after)).toEqual(landing);
   });
+});
+
+it("mixed Git and Zerops headings retain the Zerops failure and never announce a Git push as live", () => {
+  const git = gitDeliveryOf({
+    id: HqEnvironmentId.make("git-stage"),
+    target: { kind: "git", branch: "main", delivery: "direct" },
+    tier: "stage",
+    jobs: [],
+    release: null,
+  })!;
+  const mixed = input({
+    production: {
+      projectId: "prod",
+      chip: chip("ok"),
+      building: false,
+      coming: { kind: "failed", reason: "Build refused" },
+    },
+    stages: [{ ...stage(undefined, "git"), git }],
+  });
+  expect(headingLine(mixed, undefined)?.fact).toBe("Production didn’t come up");
+  const onlyGit = input({
+    production: {
+      projectId: "git",
+      chip: chip("ok", { git, version: "v2" }),
+      git,
+      building: false,
+      coming: undefined,
+    },
+  });
+  expect(headingLine(onlyGit, undefined)?.fact).toBe(git.line);
+  expect(headingLine(onlyGit, undefined)?.tone).not.toBe("ok");
+  expect(headingLanding(input(prod({ chip: chip("releasing") })), onlyGit)).toBeUndefined();
 });

@@ -6,6 +6,7 @@ import {
   rolledBackDescription,
   rolledBackTo,
   type FlowReleaseRow,
+  type GitDelivery,
   type Moved,
 } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
@@ -35,6 +36,7 @@ export interface ZeropsReleasesCarried {
 
 interface ReleaseRowsProps {
   readonly groupId: string;
+  readonly git?: GitDelivery | undefined;
   readonly releases: ReadonlyArray<FlowReleaseRow>;
   /** The verbs under way (`flowVerbKey`): a release rolling back holds its verb. */
   readonly pending: ReadonlySet<string>;
@@ -62,6 +64,8 @@ export function ZeropsReleaseRows({
   carried,
   ...props
 }: ReleaseRowsProps & { readonly carried?: ZeropsReleasesCarried }) {
+  if (props.git !== undefined)
+    return <GitReleaseRows releases={props.releases} delivery={props.git} />;
   if (carried !== undefined) return <CarriedReleaseRows {...props} carried={carried} />;
   const { groupId, releases, pending, onRollBack } = props;
   return (
@@ -290,5 +294,44 @@ function ReleaseService({
       {named ? <span className="text-xs text-muted-foreground">{service}</span> : null}
       {children}
     </div>
+  );
+}
+
+/** Historical rows keep HQ's frozen entries; only the shared standing proves a hand-over. */
+export function GitReleaseRows({
+  releases,
+  delivery,
+}: {
+  readonly releases: ReadonlyArray<Pick<FlowReleaseRow, "tag" | "entries" | "verdict">>;
+  readonly delivery: GitDelivery | undefined;
+}) {
+  return (
+    <>
+      {releases.map((release) => (
+        <ZeropsEnvironmentRow
+          key={release.tag}
+          name={release.tag}
+          tag="release"
+          status={
+            <StatusDot
+              label={
+                release.tag === delivery?.version
+                  ? delivery.line
+                  : release.tag === delivery?.previousVersion
+                    ? `Previously pushed ${release.tag}`
+                    : release.verdict === "refused"
+                      ? "Refused"
+                      : "Hand-over not reported"
+              }
+              sentence
+              tone={release.tag === delivery?.version && delivery.blocked ? "attention" : "off"}
+            />
+          }
+          summary={release.entries
+            .map((entry) => `${entry.service} ${entry.commit.slice(0, 7)}`)
+            .join(" · ")}
+        />
+      ))}
+    </>
   );
 }

@@ -85,6 +85,10 @@ vi.mock("~/zerops/projectFlows", async (importOriginal) => ({
     throw new Error(`Unexpected flow read: ${String(args)}`);
   },
 }));
+vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
+  ...(await original<typeof import("~/zerops/ZeropsSessionProvider")>()),
+  useZeropsSession: () => ({ status: "signed-in", activeOrganization: { id: "org" } }),
+}));
 vi.mock("~/zerops/accountHq", () => ({
   useAccountHq: () => ({ status: "ready", hq: { kind: "official", address: "https://hq.test" } }),
 }));
@@ -1782,6 +1786,9 @@ describe("environment route target dispatch", () => {
                       order: 1,
                       keyHeld: false,
                       keyInvalid: false,
+                      can: {},
+                      birth: null,
+                      release: null,
                       jobs: [],
                     },
                   ],
@@ -1847,6 +1854,9 @@ describe("environment route target dispatch", () => {
                       order: 1,
                       keyHeld: false,
                       keyInvalid: false,
+                      can: {},
+                      birth: null,
+                      release: null,
                       jobs: [],
                     },
                   ],

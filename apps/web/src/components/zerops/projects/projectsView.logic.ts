@@ -339,6 +339,17 @@ export function stopLine(stop: GroupFlowStop): {
   readonly version: string | undefined;
   readonly tone: ServiceStatusToneId;
 } {
+  if (stop.git !== undefined)
+    return {
+      word: stop.git.line,
+      version: undefined,
+      tone:
+        stop.git.standing === "pushing"
+          ? "busy"
+          : stop.git.blocked || stop.git.standing === "partly"
+            ? "attention"
+            : "off",
+    };
   const tone = STOP_TONE[stop.state];
   // Its own import still runs: set up first, as the menu says, before any first deploy.
   if (stop.firstDeploy?.kind === "setting-up")

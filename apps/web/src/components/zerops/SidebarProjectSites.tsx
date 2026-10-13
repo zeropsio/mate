@@ -1,3 +1,5 @@
+import { GitDeliveryStatus } from "./GitDeliveryStatus";
+import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 /**
  * A project's places on its row (the menu by project): one popover of every address the app knows
  * for the project — production's, each stage's, every Mate's — with two doors to it. The globe sits
@@ -585,8 +587,9 @@ function PlaceSection({
   ) => void;
   readonly children: ReactNode;
 }) {
-  const projectId = stop?.projectId;
-  const opens = projectId === undefined ? undefined : onOpenStop(projectId);
+  const projectId = stop?.git === undefined ? stop?.projectId : undefined;
+  const detailId = stop?.environmentId ?? projectId;
+  const opens = detailId === undefined ? undefined : onOpenStop(detailId);
   const row = (
     <>
       <EnvDot dot={stop?.dot ?? "off"} />
@@ -597,7 +600,7 @@ function PlaceSection({
         )}
       </span>
       <span className="zerops-envpop-word" data-tone={stop?.tone ?? "muted"}>
-        {stop?.word ?? "Reading…"}
+        {stop?.git === undefined ? (stop?.word ?? "Reading…") : null}
       </span>
     </>
   );
@@ -636,10 +639,13 @@ function PlaceSection({
           projectId={projectId}
         />
       )}
+      {stop?.git?.environment === undefined ? null : (
+        <GitPlaceEvidence appId={groupId} git={stop.git} />
+      )}
       {projectId === undefined ? null : (
         <PlaceAccess filtering={filtering} onRoutes={onRoutes} projectId={projectId} />
       )}
-      {children}
+      {stop?.git === undefined ? children : null}
     </>
   );
 }
@@ -896,5 +902,23 @@ export function HeaderSites({
         </PopoverPrimitive.Positioner>
       </PopoverPrimitive.Portal>
     </PopoverPrimitive.Root>
+  );
+}
+
+/** The open Git place holds the existing app-detail scope; the resting menu holds none. */
+function GitPlaceEvidence({
+  appId,
+  git,
+}: {
+  readonly appId: string;
+  readonly git: NonNullable<ChipMenuStop["git"]>;
+}) {
+  const detail = useHqAppDetail(appId);
+  return git.environment === undefined ? null : (
+    <GitDeliveryStatus
+      environment={git.environment}
+      delivery={git.delivery}
+      repos={detail.repos ?? git.repos}
+    />
   );
 }

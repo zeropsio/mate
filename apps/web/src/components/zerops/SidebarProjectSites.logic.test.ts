@@ -1,3 +1,5 @@
+import { HqEnvironmentId } from "@t3tools/contracts";
+import { gitDeliveryOf } from "@t3tools/client-runtime/zerops";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -504,4 +506,22 @@ describe("the addresses filter", () => {
   it("counts the addresses it lists", () => {
     expect(sitesLinkCount(sections)).toBe(5);
   });
+});
+
+it("a calm Git stage does not hide a failed Zerops production", () => {
+  const git = gitDeliveryOf({
+    id: HqEnvironmentId.make("git-stage"),
+    target: { kind: "git", branch: "main", delivery: "direct" },
+    tier: "stage",
+    jobs: [],
+    release: null,
+  })!;
+  const shown = projectSitesStatus({
+    prodChip: { label: "prod", state: "failed" },
+    stageChip: { label: "stage", state: "ok", git },
+    line: NO_LINE,
+    landing: undefined,
+  });
+  expect(shown?.word).toBe("Release failed");
+  expect(shown?.section).toBe("production");
 });

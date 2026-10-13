@@ -1,3 +1,4 @@
+import { GitDeliveryStatus, gitWhereLine } from "../GitDeliveryStatus";
 /**
  * A release's review, and a roll back's (R5, R6).
  *
@@ -284,7 +285,9 @@ function ReleaseData({
 
   const mainStage = mainStageOf(flow);
   const production = flow.environmentInputs.find((entry) => entry.tier === "production");
-  const productionHost = useProductionHost(production?.projectId);
+  const productionHost = useProductionHost(
+    production?.target.kind === "zerops" ? production.target.projectId : undefined,
+  );
   const {
     outcome,
     held: keep,
@@ -334,10 +337,11 @@ function ReleaseData({
   });
   // A failed release is anybody's to fix: the person's own Mate in the project, the one they
   // used last (S6, `fixMates.ts`).
-  const [fixer] = useFixMates({
-    projectId: production?.projectId ?? flow.groupId,
-    groupId: flow.groupId,
-  });
+  const [fixer] = useFixMates(
+    flow.release.git === undefined
+      ? { projectId: production?.projectId ?? flow.groupId, groupId: flow.groupId }
+      : undefined,
+  );
 
   const release = async () => {
     if (chosen.tag === undefined || chosen.error !== undefined) return;
@@ -357,6 +361,7 @@ function ReleaseData({
 
   return (
     <ReleaseReviewView
+      git={flow.release.git}
       comparisonFailure={flow.release.comparisonFailure}
       fixer={fixer?.name}
       gate={flow.release.gate}
@@ -425,6 +430,8 @@ function newestLive(
 }
 
 export interface ReleaseReviewViewProps {
+  readonly git?: ZeropsProjectFlow["release"]["git"];
+  readonly onReplaceToken?: (() => void) | undefined;
   readonly comparisonFailure?:
     | { readonly reason: string; readonly again?: (() => void) | undefined }
     | undefined;
@@ -481,6 +488,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     version === undefined ? undefined : releaseVersionField(version.value, version.tags);
   const model = releaseReview({
     tag,
+    git: props.git,
     gate: props.gate,
     permission: props.permission,
     changes: rows.length,
@@ -528,13 +536,17 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     <ZeropsReviewSurface
       consequence={
         refused ??
-        releaseFoot({
-          state: model.verdict.state,
-          consequence: model.consequence,
-          live: props.replaces.kind === "release" ? props.replaces.tag : undefined,
-        })
+        (props.git !== undefined
+          ? model.consequence
+          : releaseFoot({
+              state: model.verdict.state,
+              consequence: model.consequence,
+              live: props.replaces.kind === "release" ? props.replaces.tag : undefined,
+            }))
       }
-      dismiss={model.primary === undefined ? "Close" : "Cancel"}
+      dismiss={
+        props.git !== undefined ? "Cancel" : model.primary === undefined ? "Close" : "Cancel"
+      }
       fix={
         fix === undefined || props.fixer === undefined
           ? undefined
@@ -548,10 +560,13 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       kind="release"
       kindLabel={props.name ?? reviewKindLine("release")}
       // Ready, the line says all of it; else the verdict follows it.
-      meta={<span>{ready ? line : line.replace(/\.$/u, "")}</span>}
+      meta={
+        props.git !== undefined ? undefined : <span>{ready ? line : line.replace(/\.$/u, "")}</span>
+      }
       onClose={props.onClose}
       primary={
-        model.primary === undefined
+        model.primary === undefined ||
+        (model.primary.label === "Replace token" && props.onReplaceToken === undefined)
           ? undefined
           : {
               ...model.primary,
@@ -559,7 +574,8 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
               busy: press.kind === "running",
               label: press.kind === "running" ? `Releasing ${tag}` : model.primary.label,
               text: `${model.primary.label} to production`,
-              onPress: props.onRelease,
+              onPress:
+                model.primary.label === "Replace token" ? props.onReplaceToken! : props.onRelease,
             }
       }
       title={`Release ${tag} to production`}
@@ -568,21 +584,51 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       verdictInLine={!ready}
       whySaid={whySaid(model.verdict, false)}
     >
+      {props.git === undefined ? null : (
+        <>
+          <ReviewSection title="Where">
+            {model.repositories?.map((repo) => (
+              <div key={repo.repository}>
+                <p className="rv-words">
+                  {repo.repository} ·{" "}
+                  {repo.included ? "Included" : `Left out: ${repo.reason ?? "Not ready"}`} ·{" "}
+                  {repo.sha?.slice(0, 7) ?? "No commit on main"}
+                </p>
+                {repo.remote == null ? null : (
+                  <p className="rv-note">
+                    {gitWhereLine("production", props.git!.attachment.target, repo.remote.url)}
+                    {repo.expiry === undefined ? null : <> · {repo.expiry}</>}
+                  </p>
+                )}
+              </div>
+            ))}
+            {props.outcome.kind === "offered" ? null : (
+              <GitDeliveryStatus
+                environment={{ tier: "production", target: props.git.attachment.target }}
+                delivery={props.git.delivery}
+                showDestination={false}
+              />
+            )}
+          </ReviewSection>
+        </>
+      )}
       {props.comparisonFailure === undefined ? null : (
         <ZeropsReadFailure action="Compare again" {...props.comparisonFailure} />
       )}
-      {rows.length === 0 &&
-      untold.length === 0 &&
-      untoldDeploying.length === 0 &&
-      (answer !== undefined || props.where.length === 0) ? null : (
+      {props.git !== undefined && rows.length === 0 ? null : rows.length === 0 &&
+        untold.length === 0 &&
+        untoldDeploying.length === 0 &&
+        (answer !== undefined || props.where.length === 0) ? null : (
         <ReviewSection title="What goes out">
           {rows.length === 0 ? null : <ReviewReleaseRows onOpen={props.onOpenChange} rows={rows} />}
-          {untoldDeploying.length === 0 ? null : (
+          {props.git !== undefined || untoldDeploying.length === 0 ? null : (
             <p className="rv-note">{servicesDeploying(untoldDeploying)}.</p>
           )}
-          {untold.length === 0 ? null : <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>}
+          {props.git !== undefined || untold.length === 0 ? null : (
+            <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>
+          )}
           {/* Which commit each service redeploys from, until HQ answers where it went. */}
-          {answer === undefined
+          {props.git === undefined && answer === undefined
             ? props.where.map((entry) => (
                 <p className="rv-note" key={entry.service}>
                   {entry.service} {entry.line}.
@@ -591,7 +637,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
             : null}
         </ReviewSection>
       )}
-      {props.replaces.kind === "first" ? null : (
+      {props.git !== undefined || props.replaces.kind === "first" ? null : (
         <ReviewSection title="Production now">
           <p className="rv-words">
             {productionNowLine({
@@ -602,7 +648,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           </p>
         </ReviewSection>
       )}
-      {answer === undefined ? null : (
+      {props.git !== undefined || answer === undefined ? null : (
         <ReviewSection title="Where">
           <ReviewWhere answer={answer} rows={props.where} />
         </ReviewSection>

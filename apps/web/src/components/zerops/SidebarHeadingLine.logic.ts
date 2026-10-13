@@ -1,3 +1,4 @@
+import type { GitDelivery } from "@t3tools/client-runtime/zerops";
 /**
  * A project heading's second line (D′): under the name and above the Mates, one line that says
  * what the project's environments are doing — never a row after the Mates, which reads as the
@@ -31,6 +32,7 @@ export interface HeadingLineInput {
   readonly production:
     | {
         readonly projectId: string | undefined;
+        readonly git?: GitDelivery | undefined;
         /** Its pill, as the heading draws it; `undefined` while unread. */
         readonly chip: ProductionChip | undefined;
         readonly coming: StopComing | undefined;
@@ -39,6 +41,7 @@ export interface HeadingLineInput {
       }
     | undefined;
   readonly stages: ReadonlyArray<{
+    readonly git?: GitDelivery | undefined;
     readonly projectId: string;
     readonly name: string;
     readonly coming: StopComing | undefined;
@@ -89,6 +92,8 @@ export function headingLine(
   landing: HeadingLanding | undefined,
 ): HeadingLine | undefined {
   const { production, stages } = input;
+  const git = production?.git ?? stages.find((stage) => stage.git !== undefined)?.git;
+
   if (production?.coming?.kind === "failed") {
     return {
       fact: "Production didn’t come up",
@@ -110,6 +115,21 @@ export function headingLine(
       verb: { kind: "details", projectId: stage.projectId },
     };
   }
+  if (git !== undefined)
+    return {
+      fact: git.line,
+      rest: undefined,
+      tone: git.blocked || git.standing === "partly" ? "amber" : "ink",
+      spinner: git.standing === "pushing",
+      release: false,
+      verb: {
+        kind: "details",
+        projectId:
+          production?.git !== undefined
+            ? production.projectId
+            : stages.find((stage) => stage.git === git)?.projectId,
+      },
+    };
   if (production?.coming?.kind === "coming") {
     return {
       ...comingLine("Production", production.coming),
@@ -178,14 +198,19 @@ export function headingLanding(
   if (before === undefined) return undefined;
   const was = before.production;
   const now = after.production?.chip;
-  if (now !== undefined && RELEASED.has(now.state) && now.version !== undefined) {
+  if (
+    after.production?.git === undefined &&
+    now !== undefined &&
+    RELEASED.has(now.state) &&
+    now.version !== undefined
+  ) {
     if (was?.chip?.state === "releasing" || was?.coming?.kind === "coming") {
       return { kind: "live", version: now.version };
     }
   }
   for (const stage of after.stages) {
     // Up only where it serves: a coming-up window that ended is not a landing.
-    if (stage.coming !== undefined || !stage.serves) continue;
+    if (stage.git !== undefined || stage.coming !== undefined || !stage.serves) continue;
     const earlier = before.stages.find((entry) => entry.projectId === stage.projectId);
     if (earlier?.coming?.kind === "coming") {
       return { kind: "up", name: stageWord(after.stages, stage) };

@@ -39,6 +39,7 @@ export type PlaceDot = "running" | "failed" | "down" | "releasing" | "none" | "u
 
 /** One line at a card's foot: a place the code runs, by its name, in plain words, and its door. */
 export interface PlaceLine {
+  readonly git?: import("@t3tools/client-runtime/zerops").GitDelivery;
   /** Its Zerops project, where it has one. */
   readonly projectId: string | undefined;
   readonly kind: "production" | "stage";
@@ -186,6 +187,14 @@ function stageLine(
     name: stop.name,
     addresses: stop.addresses,
   };
+  if (stop.git !== undefined)
+    return {
+      ...base,
+      git: stop.git,
+      dot: stop.git.standing === "pushing" ? "releasing" : stop.git.blocked ? "failed" : "none",
+      words: [stop.git.line],
+      trouble: stop.git.blocked,
+    };
   if (chip !== undefined) return { ...base, ...chipLine(chip, { since: undefined, down }) };
   switch (stop.state) {
     case "failed":
@@ -249,6 +258,24 @@ export function placeLines(input: {
       },
     ];
   const stop = production.kind === "creating" ? undefined : production.stop;
+  if (stop?.git !== undefined)
+    return [
+      ...staged,
+      {
+        ...prod,
+        projectId: stop.projectId,
+        addresses: [],
+        git: stop.git,
+        dot:
+          stop.git.standing === "pushing"
+            ? "releasing"
+            : stop.git.blocked || stop.git.standing === "partly"
+              ? "failed"
+              : "none",
+        words: [stop.git.line],
+        trouble: stop.git.blocked || stop.git.standing === "partly",
+      },
+    ];
   const since = sinceWords(input.since, input.nowMs);
   const said =
     input.chip === undefined
