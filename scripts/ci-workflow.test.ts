@@ -222,15 +222,15 @@ it("HQ's offline shallow clone receives every object in its current commit", () 
   expect(checkout.with?.filter).toBeUndefined();
 });
 
-it("hosted web CI omits desktop and mobile jobs and work", () => {
+it("hosted web CI retains native compilation and dedicated native jobs", () => {
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
   for (const job of ["desktop_smoke", "test_mobile", "mobile_native_static_analysis"])
     expect(
       workflow.jobs[job],
-      "ASSERTION: unused clients must not consume CI runners",
-    ).toBeUndefined();
+      "ASSERTION: native CI jobs remain covered during the hosted web test phase",
+    ).toBeDefined();
   expect(Object.keys(workflow.jobs.changes.outputs).sort()).toEqual(["chat", "resource_monitor"]);
   expect(workflow.jobs.rust).toBeDefined();
   expect(workflow.jobs.release_smoke).toBeDefined();
@@ -243,12 +243,11 @@ it("hosted web CI omits desktop and mobile jobs and work", () => {
   const rootTypecheck = JSON.parse(NodeFS.readFileSync(NodePath.join(root, "package.json"), "utf8"))
     .scripts.typecheck as string;
   for (const client of ["desktop", "mobile"])
-    expect(rootTypecheck).toContain(`--filter '!@t3tools/${client}'`);
+    expect(rootTypecheck).not.toContain(`--filter '!@t3tools/${client}'`);
   expect(
-    rootTypecheck,
+    rootTypecheck.includes(" -r ") && rootTypecheck.includes("--filter"),
     "ASSERTION: Vite+ cannot combine recursive mode with filters",
-  ).not.toContain(" -r ");
-  expect(rootTypecheck).toContain("--filter '!@t3tools/monorepo'");
+  ).toBe(false);
   const check = steps.find((step) => step.name === "Check")!.run!;
   const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-web-only-"));
   try {
@@ -277,10 +276,10 @@ it("hosted web CI omits desktop and mobile jobs and work", () => {
   const test = workflow.jobs.test_packages.steps.find(
     (step: { name: string }) => step.name === "Test",
   ).run;
-  expect(test).toContain("--filter '!@t3tools/desktop'");
+  expect(test).not.toContain("--filter '!@t3tools/desktop'");
   expect(
     workflow.jobs.test_packages.steps.some((step: { name: string }) =>
       step.name.includes("Electron"),
     ),
-  ).toBe(false);
+  ).toBe(true);
 });
