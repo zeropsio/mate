@@ -18,7 +18,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 
-import { providerThreadOf } from "../engine/pump/TurnPump.ts";
+import { conversationOfThread, providerThreadOf } from "../engine/MateEngine.ts";
 import { PersistenceSqlError } from "../persistence/Errors.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
@@ -108,6 +108,7 @@ const withLifecycle = <A, E>(
       const lifecycle = yield* ZeropsLifecycle.make({
         toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
         repository,
+        threadOwner: conversationOfThread,
       });
       return yield* use(lifecycle);
     }),
@@ -618,7 +619,7 @@ describe("ZeropsLifecycle.layer (wired to the owned ProviderRuntimeEventBus, not
     Effect.scoped(
       Effect.gen(function* () {
         const bus = yield* Queue.unbounded<SpiEvent>();
-        const layer = ZeropsLifecycle.layer.pipe(
+        const layer = ZeropsLifecycle.layer(conversationOfThread).pipe(
           Layer.provide(ProviderRuntimeEventBusTest.make(Stream.fromQueue(bus))),
           Layer.provide(persistence),
         );
@@ -627,7 +628,10 @@ describe("ZeropsLifecycle.layer (wired to the owned ProviderRuntimeEventBus, not
           const lifecycle = yield* ZeropsLifecycle.ZeropsLifecycle;
           const subscription = yield* lifecycle.subscribe(THREAD);
           const next = yield* Stream.runHead(subscription.changes).pipe(Effect.forkChild);
-          yield* Queue.offer(bus, claudeEvent({}));
+          yield* Queue.offer(
+            bus,
+            claudeEvent({ threadId: providerThreadOf(ConversationId.make(THREAD)) }),
+          );
           return yield* Fiber.join(next);
         }).pipe(Effect.provide(layer));
 

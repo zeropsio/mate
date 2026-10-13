@@ -19,6 +19,7 @@ import { ServerConfig } from "../config.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
 import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ProcessRunner from "../processRunner.ts";
+import { conversationOfThread } from "../engine/MateEngine.ts";
 import { engineLayer } from "../engine/layer.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
 import { crewEngineHooks, crewLayer } from "./crew/crewLayer.ts";
@@ -174,7 +175,7 @@ const ZeropsHqLinkLive = Layer.unwrap(
 );
 
 const liveLayer = Layer.mergeAll(
-  ZeropsLifecycle.layer.pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
+  ZeropsLifecycle.layer(conversationOfThread).pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
   // `ZeropsProjectSigners` is merged rather than hidden: the agent-auth feed
   // reads who signed each agent in for its snapshot, and the turn gate below
   // asks the same service before it lets a turn start (D6). Both go by the

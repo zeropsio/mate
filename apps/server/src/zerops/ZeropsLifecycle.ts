@@ -43,7 +43,6 @@ import {
   type ZeropsLifecycle as ZeropsLifecycleState,
 } from "@t3tools/contracts";
 
-import { conversationOfThread } from "../engine/pump/TurnPump.ts";
 import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
 import {
   ZeropsThreadLifecycleRepository,
@@ -111,6 +110,8 @@ const INGEST_RESTART_CAP = Duration.seconds(30);
 export interface ZeropsLifecycleOptions {
   readonly toolEvents: Stream.Stream<SpiEvent>;
   readonly repository: ZeropsThreadLifecycleRepository["Service"];
+  /** The runtime wiring supplies the owner of a provider session; other threads keep their ID. */
+  readonly threadOwner?: (threadId: ThreadId) => string | undefined;
 }
 
 export const make = (options: ZeropsLifecycleOptions) =>
@@ -223,7 +224,7 @@ export const make = (options: ZeropsLifecycleOptions) =>
             return;
           }
 
-          const threadId = ThreadId.make(conversationOfThread(event.threadId) ?? event.threadId);
+          const threadId = ThreadId.make(options.threadOwner?.(event.threadId) ?? event.threadId);
           const previous = yield* load(threadId);
           const at = yield* DateTime.now;
           const resultText = call.result?.text;
@@ -305,11 +306,12 @@ export const make = (options: ZeropsLifecycleOptions) =>
     } satisfies ZeropsLifecycle["Service"];
   });
 
-export const layer = Layer.effect(
-  ZeropsLifecycle,
-  Effect.gen(function* () {
-    const bus = yield* ProviderRuntimeEventBus;
-    const repository = yield* ZeropsThreadLifecycleRepository;
-    return yield* make({ toolEvents: bus.events, repository });
-  }),
-);
+export const layer = (threadOwner: NonNullable<ZeropsLifecycleOptions["threadOwner"]>) =>
+  Layer.effect(
+    ZeropsLifecycle,
+    Effect.gen(function* () {
+      const bus = yield* ProviderRuntimeEventBus;
+      const repository = yield* ZeropsThreadLifecycleRepository;
+      return yield* make({ toolEvents: bus.events, repository, threadOwner });
+    }),
+  );
