@@ -1,3 +1,4 @@
+import { ProbeRefused } from "./githubProbes.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- each test's git root is a temporary directory.
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -5,7 +6,7 @@ import * as NodePath from "node:path";
 import * as NodeZlib from "node:zlib";
 
 import * as PgClient from "@effect/sql-pg/PgClient";
-import { assert, describe, it } from "@effect/vitest";
+import { assert, describe, expect, it } from "@effect/vitest";
 import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -39,9 +40,12 @@ import {
   fakeZeropsDeploy,
 } from "../test/harness/zeropsFake.ts";
 import { type KeySecret, deployKeysLayer, keySecretOf } from "./deployKeys.ts";
-import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
+import type { HqDeliveryAnswer as HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
 import { Deploys, type DeploysOptions, deploysLayer } from "./deploys.ts";
+import { gitPushLayer, type PushEvidence } from "./gitPush.ts";
+import { Remotes, RemoteRefused, type RemoteRecord } from "./repoRemotes.ts";
+import * as NodeChildProcess from "node:child_process";
 import { GitHost, gitHostLayer } from "./gitHost.ts";
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
@@ -203,6 +207,7 @@ interface Rig {
   /** Waits until every rollout is planned. */
   readonly planned: Effect.Effect<void>;
   readonly drained: Effect.Effect<void>;
+  readonly engine: Effect.Effect<typeof Deploys.Service>;
   readonly again: (userId: string, sha: string) => Effect.Effect<HqDeployAnswer>;
   /**
    * The Core stopped, `meanwhile` done while none leads, and another leading over the same
@@ -211,7 +216,7 @@ interface Rig {
   readonly takeover: (meanwhile?: Effect.Effect<void>) => Effect.Effect<void>;
 }
 
-type RigServices = Deploys | Releases | Rollouts | SqlClient.SqlClient;
+type RigServices = Deploys | Releases | Rollouts | SqlClient.SqlClient | Scope.Scope;
 
 /**
  * The deploy engine leading over a fresh database and git root: the application Shop with the
@@ -381,6 +386,7 @@ const withDeploys = <A, E>(
     return yield* use({
       appId,
       world,
+      engine: Effect.suspend(() => Effect.succeed(Context.get(core.context, Deploys))),
       tiers,
       commit,
       deploys,
@@ -477,8 +483,594 @@ const runAgain = (
     );
   });
 
+/** Only the external custody/probe boundary is substituted; the worker and GitPush are real. */
+const localPushLayer = (
+  destinations: Map<string, { url: string; keptAt: string }>,
+  probe: Effect.Effect<void, ProbeRefused> = Effect.void,
+  invalidations: string[] = [],
+) =>
+  gitPushLayer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        Remotes,
+        Remotes.of({
+          get: ({ appId, repo }) =>
+            Effect.sync(() => {
+              const at = destinations.get(repo);
+              return at === undefined
+                ? undefined
+                : ({
+                    appId,
+                    repo,
+                    url: at.url,
+                    urlKey: `local/${repo}`,
+                    host: "local",
+                    hostRepoId: repo,
+                    keptAt: at.keptAt,
+                    keptBy: "owner",
+                    invalidSince: null,
+                    expiresAt: null,
+                    expiryLabel: "Expiry not reported",
+                    credentialState: "kept",
+                  } satisfies RemoteRecord);
+            }),
+          forUse: ({ appId, repo }) =>
+            Effect.gen(function* () {
+              yield* probe;
+              const at = destinations.get(repo);
+              if (at === undefined) return yield* new RemoteRefused({ reason: "no_remote" });
+              return {
+                remote: {
+                  appId,
+                  repo,
+                  url: at.url,
+                  urlKey: `local/${repo}`,
+                  host: "local",
+                  hostRepoId: repo,
+                  keptAt: at.keptAt,
+                  keptBy: "owner",
+                  invalidSince: null,
+                  expiresAt: null,
+                  expiryLabel: "Expiry not reported",
+                  credentialState: "kept" as const,
+                },
+                token: Redacted.make("test-token"),
+              };
+            }),
+          invalidate: (_ref, keptAt) =>
+            Effect.sync(() => {
+              invalidations.push(keptAt);
+            }),
+          connect: () => Effect.die("Not used by the worker"),
+          disconnect: () => Effect.die("Not used by the worker"),
+          updateAddress: () => Effect.die("Not used by the worker"),
+        }),
+      ),
+    ),
+  );
+const gitEnvironment = (appId: string, id: string, tier: "stage" | "production" = "production") =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`INSERT INTO hq_environment (id,app_id,target,tier,name,sources,branch,delivery,created_by,release_floor)
+      VALUES (${id},${appId}::uuid,'git',${tier},${id},${tier === "stage" ? "{main}" : "{release}"}::text[],
+        ${id},'direct','owner',now())`;
+  });
+const localRemote = (
+  appId: string,
+  repo: string,
+  destinations: Map<string, { url: string; keptAt: string }>,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const root = yield* Effect.acquireRelease(
+      Effect.sync(() => NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-push-worker-"))),
+      (dir) => Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true })),
+    );
+    NodeChildProcess.execFileSync("git", ["init", "--bare", root], { stdio: "ignore" });
+    destinations.set(repo, { url: root, keptAt: "2026-10-13T00:00:00Z" });
+    yield* sql`INSERT INTO hq_repo_remote (app_id,repo,url,host,url_key,host_repo_id)
+      VALUES (${appId}::uuid,${repo},${`https://github.com/disposable/${repo}.git`},'github.com',${`test/${appId}/${repo}`},${`${appId}/${repo}`})`;
+    return root;
+  });
+const pushEvidenceJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const releaseEntries = Schema.encodeSync(
+  Schema.fromJsonString(
+    Schema.Array(Schema.Struct({ service: Schema.String, sha: Schema.String })),
+  ),
+);
+const gitRelease = (
+  appId: string,
+  environmentId: string,
+  tag: string,
+  entries: ReadonlyArray<{ service: string; sha: string }>,
+) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql`INSERT INTO hq_release (app_id,tag,sha,entries,released_by,state,target,environment_id,environment_created_at)
+      SELECT ${appId}::uuid,${tag},${entries[0]!.sha},${releaseEntries(entries)}::jsonb,'owner','approved','git',id,created_at
+      FROM hq_environment WHERE id=${environmentId}`;
+  });
+
 describe("deploys", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("Adding a git production pushes nothing until the next release.", () => {
+      const destinations = new Map<string, { url: string; keptAt: string }>();
+      return withDeploys(
+        ({ appId, commit, request, drained, planned, world }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            const sha = yield* commit("code", { "README.md": "No Zerops recipe" });
+            yield* planned;
+            const remote = yield* localRemote(appId, "code", destinations);
+            yield* gitEnvironment(appId, "git-production");
+            // Old accepted releases remain below the new attachment's floor/provenance.
+            yield* sql`INSERT INTO hq_release(app_id,tag,sha,entries,released_by,state,target,released_at)
+          VALUES (${appId}::uuid,'v0.0.1',${sha},${releaseEntries([{ service: "code", sha }])}::jsonb,'owner','approved','git',now()-interval '1 day')`;
+            const [environment] = yield* sql<{
+              readonly created: string;
+            }>`SELECT created_at::text AS created FROM hq_environment WHERE id='git-production'`;
+            const [added] = yield* sql<{
+              readonly id: string;
+            }>`INSERT INTO hq_rollout(app_id,cause,environment_id,environment_created_at,by)
+          VALUES (${appId}::uuid,'env_added','git-production',${environment!.created}::timestamptz,'owner') RETURNING id::text`;
+            yield* (yield* Deploys).run(added!.id);
+            yield* drained;
+            expect((yield* sql`SELECT id FROM hq_deploy_job WHERE kind='push'`).length).toBe(0);
+            expect(
+              NodeChildProcess.execFileSync(
+                "git",
+                ["--git-dir", remote, "for-each-ref", "--format=%(objectname)"],
+                { encoding: "utf8" },
+              ).trim(),
+            ).toBe("");
+            yield* gitRelease(appId, "git-production", "v0.1.0", [{ service: "code", sha }]);
+            const answer = yield* request({ cause: "release", appId, tag: "v0.1.0", by: "owner" });
+            expect(answer.jobs.map((job) => [job.kind, job.sha])).toEqual([["push", sha]]);
+            yield* drained;
+            const [job] = yield* sql<{
+              readonly state: string;
+              readonly sha: string;
+              readonly label: string;
+              readonly evidence: PushEvidence;
+            }>`SELECT state,sha,label,evidence FROM hq_deploy_job WHERE kind='push'`;
+            expect([job!.state, job!.sha, job!.label]).toEqual(["pushed", sha, "v0.1.0"]);
+            expect(job!.evidence.writerDrained).toBe(true);
+            expect(
+              NodeChildProcess.execFileSync(
+                "git",
+                ["--git-dir", remote, "rev-parse", "refs/heads/git-production"],
+                { encoding: "utf8" },
+              ).trim(),
+            ).toBe(sha);
+            expect(world.appVersions.size).toBe(0);
+          }),
+        { pushLayer: localPushLayer(destinations) },
+      );
+    });
+
+    it.effect(
+      "Replacing a remote's token pushes what each environment through it is waiting for.",
+      () => {
+        const destinations = new Map<string, { url: string; keptAt: string }>();
+        return withDeploys(
+          ({ appId, commit, request, drained, planned }) =>
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              const old = yield* commit("code", { "README.md": "one" });
+              yield* planned;
+              const remote = yield* localRemote(appId, "code", destinations);
+              yield* gitEnvironment(appId, "git-production");
+              yield* gitEnvironment(appId, "git-stage", "stage");
+              yield* gitRelease(appId, "git-production", "v0.1.0", [{ service: "code", sha: old }]);
+              const latest = yield* commit("code", { "README.md": "two" });
+              yield* gitRelease(appId, "git-production", "v0.2.0", [
+                { service: "code", sha: latest },
+              ]);
+              destinations.set("code", { url: remote, keptAt: "2026-10-13T01:00:00Z" });
+              yield* request({ cause: "key_kept", appId, repo: "code", by: "owner" });
+              yield* planned;
+              yield* drained;
+              const jobs = yield* sql<{
+                readonly name: string;
+                readonly sha: string;
+                readonly label: string;
+                readonly kept: string;
+              }>`
+          SELECT e.name,j.sha,j.label,j.evidence->>'keptAt' AS kept FROM hq_deploy_job j JOIN hq_environment e ON e.id=j.environment_id
+          WHERE j.kind='push' AND j.state='pushed' AND j.rollout_id IN (SELECT id FROM hq_rollout WHERE cause='key_kept') ORDER BY e.name`;
+              expect(jobs).toEqual([
+                {
+                  name: "git-production",
+                  sha: latest,
+                  label: "v0.2.0",
+                  kept: "2026-10-13T01:00:00Z",
+                },
+                { name: "git-stage", sha: latest, label: "main", kept: "2026-10-13T01:00:00Z" },
+              ]);
+              for (const branch of ["git-production", "git-stage"])
+                expect(
+                  NodeChildProcess.execFileSync(
+                    "git",
+                    ["--git-dir", remote, "rev-parse", `refs/heads/${branch}`],
+                    { encoding: "utf8" },
+                  ).trim(),
+                ).toBe(latest);
+            }),
+          { pushLayer: localPushLayer(destinations) },
+        );
+      },
+    );
+
+    it.effect(
+      "an unproven original writer retains unresolved evidence, blocks successors and refuses removal",
+      () => {
+        const destinations = new Map<string, { url: string; keptAt: string }>();
+        return withDeploys(
+          ({ appId, commit, planned, drained, takeover, engine }) =>
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              const first = yield* commit("code", { "README.md": "first" });
+              yield* planned;
+              const remote = yield* localRemote(appId, "code", destinations);
+              yield* gitEnvironment(appId, "git-stage", "stage");
+              const evidence: PushEvidence = {
+                phase: "writing",
+                processes: [],
+                version: null,
+                nextActor: "hq",
+                nextAction: "Drain original child",
+                remote,
+                identity: "code",
+                repositoryId: "code",
+                ref: "refs/heads/git-stage",
+                sha: first,
+                keptAt: "2026-10-13T00:00:00Z",
+                before: null,
+                writerDrained: false,
+                witness: NodePath.join(remote, "unknown-writer"),
+              };
+              const [rollout] = yield* sql<{
+                readonly id: string;
+              }>`INSERT INTO hq_rollout(app_id,cause,environment_id,planned_at)
+          VALUES (${appId}::uuid,'import','git-stage',now()) RETURNING id::text`;
+              yield* sql`INSERT INTO hq_deploy_job(rollout_id,kind,environment_id,repo,sha,label,state,submitted_at,evidence)
+          VALUES (${rollout!.id}::bigint,'push','git-stage','code',${first},'main','submitting',now(),${pushEvidenceJson(evidence)}::jsonb)`;
+              yield* takeover();
+              yield* drained;
+              const second = yield* commit("code", { "README.md": "second" });
+              yield* planned;
+              yield* drained;
+              const third = yield* commit("code", { "README.md": "third" });
+              yield* planned;
+              yield* drained;
+              const jobs = yield* sql<{
+                readonly state: string;
+                readonly sha: string;
+                readonly evidence: PushEvidence | null;
+              }>`
+          SELECT state,sha,evidence FROM hq_deploy_job WHERE kind='push' ORDER BY id`;
+              expect(jobs.map((job) => [job.state, job.sha])).toEqual([
+                ["unresolved", first],
+                ["superseded", second],
+                ["queued", third],
+              ]);
+              expect(jobs[0]!.evidence?.before).toBeNull();
+              expect(jobs[0]!.evidence?.writerDrained).toBe(false);
+              const deploys = yield* engine;
+              expect(yield* deploys.blocker("git-stage")).toEqual({
+                job: "1",
+                state: "unresolved",
+                label: "main",
+              });
+              expect(yield* deploys.writerDrained("git-stage")).toBe(false);
+              const removal = yield* deploys
+                .withEnvironment("git-stage", sql`DELETE FROM hq_environment WHERE id='git-stage'`)
+                .pipe(Effect.flip);
+              expect(removal._tag).toBe("DeployRefused");
+              expect((yield* sql`SELECT id FROM hq_environment WHERE id='git-stage'`).length).toBe(
+                1,
+              );
+              expect(
+                yield* deploys
+                  .redeploy("owner", appId, "git-stage", "code", first)
+                  .pipe(Effect.flip),
+              ).toHaveProperty("reason", "deploy_superseded");
+              expect(
+                yield* deploys
+                  .redeploy("owner", appId, "git-stage", "code", third)
+                  .pipe(Effect.flip),
+              ).toHaveProperty("reason", "deploy_running");
+              expect(
+                NodeChildProcess.execFileSync(
+                  "git",
+                  ["--git-dir", remote, "for-each-ref", "--format=%(objectname)"],
+                  { encoding: "utf8" },
+                ).trim(),
+              ).toBe("");
+            }),
+          { pushLayer: localPushLayer(destinations) },
+        );
+      },
+    );
+
+    it.effect(
+      "a submitted fixed sha settles before the newest queued sha and only queued work is superseded",
+      () => {
+        const destinations = new Map<string, { url: string; keptAt: string }>();
+        return withDeploys(
+          ({ appId, commit, planned, drained }) =>
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* commit("code", { "README.md": "initial" });
+              yield* planned;
+              const remote = yield* localRemote(appId, "code", destinations);
+              yield* gitEnvironment(appId, "git-stage", "stage");
+              const fifo = NodePath.join(remote, "gate");
+              NodeChildProcess.execFileSync("mkfifo", [fifo]);
+              const gate = yield* Effect.acquireRelease(
+                Effect.sync(() =>
+                  NodeFS.openSync(fifo, NodeFS.constants.O_RDWR | NodeFS.constants.O_NONBLOCK),
+                ),
+                (fd) => Effect.sync(() => NodeFS.closeSync(fd)),
+              );
+              const hook = NodePath.join(remote, "hooks/pre-receive");
+              NodeFS.writeFileSync(
+                hook,
+                `#!/bin/sh\nread old new ref\nprintf '%s\\n' "$new" > '${remote}/submitted'\nread gate < '${fifo}'\n`,
+                { mode: 0o700 },
+              );
+              const first = yield* commit("code", { "README.md": "one" });
+              const deploys = yield* Deploys;
+              yield* deploys.changes.pipe(
+                Stream.filterEffect(() =>
+                  Effect.map(
+                    sql<{ readonly phase: string }>`
+          SELECT evidence->>'phase' AS phase FROM hq_deploy_job WHERE kind='push' AND sha=${first}`,
+                    ([row]) => row?.phase === "writing",
+                  ),
+                ),
+                Stream.take(1),
+                Stream.runDrain,
+                Effect.timeout("10 seconds"),
+              );
+              yield* Effect.promise(
+                () =>
+                  new Promise<void>((resolve, reject) => {
+                    const signal = AbortSignal.timeout(10_000);
+                    const watcher = NodeFS.watch(remote, () => read());
+                    const abort = () => {
+                      watcher.close();
+                      reject(new Error("Remote hook did not start"));
+                    };
+                    signal.addEventListener("abort", abort, { once: true });
+                    const read = () => {
+                      try {
+                        if (
+                          NodeFS.readFileSync(NodePath.join(remote, "submitted"), "utf8").trim() !==
+                          first
+                        )
+                          return;
+                      } catch {
+                        return;
+                      }
+                      watcher.close();
+                      signal.removeEventListener("abort", abort);
+                      resolve();
+                    };
+                    read();
+                  }),
+              );
+              const second = yield* commit("code", { "README.md": "two" });
+              yield* planned;
+              const third = yield* commit("code", { "README.md": "three" });
+              yield* planned;
+              const pending = yield* sql<{
+                readonly sha: string;
+                readonly state: string;
+              }>`SELECT sha,state FROM hq_deploy_job WHERE kind='push' ORDER BY id`;
+              expect(pending).toEqual([
+                { sha: first, state: "submitting" },
+                { sha: second, state: "superseded" },
+                { sha: third, state: "queued" },
+              ]);
+              expect((yield* deploys.blocker("git-stage"))?.state).toBe("submitting");
+              NodeFS.rmSync(hook);
+              NodeFS.writeSync(gate, "go\n");
+              yield* drained;
+              const ended = yield* sql<{
+                readonly sha: string;
+                readonly state: string;
+                readonly before: string | null;
+                readonly drained: boolean;
+              }>`
+          SELECT sha,state,evidence->>'before' AS before,(evidence->>'writerDrained')::boolean AS drained
+          FROM hq_deploy_job WHERE kind='push' AND state<>'superseded' ORDER BY id`;
+              expect(ended).toEqual([
+                { sha: first, state: "pushed", before: null, drained: true },
+                { sha: third, state: "pushed", before: first, drained: true },
+              ]);
+              expect(NodeFS.readFileSync(NodePath.join(remote, "submitted"), "utf8").trim()).toBe(
+                first,
+              );
+              expect(
+                NodeChildProcess.execFileSync(
+                  "git",
+                  ["--git-dir", remote, "rev-parse", "refs/heads/git-stage"],
+                  { encoding: "utf8" },
+                ).trim(),
+              ).toBe(third);
+            }),
+          { pushLayer: localPushLayer(destinations) },
+        );
+      },
+    );
+
+    it.effect(
+      "Decision L4a: host rate limits recover through operationBackoff without invalidating the token; drained recovery permits removal",
+      () => {
+        const destinations = new Map<string, { url: string; keptAt: string }>();
+        const resetAt = "2026-10-13T12:00:00Z";
+        const invalidations: string[] = [];
+        const probe = Effect.fail(
+          new ProbeRefused({
+            reason: "rate_limited",
+            hostKind: "github",
+            remote: "disposable/code",
+            branch: "git-stage",
+            status: 429,
+            tokenState: "valid",
+            retryAfterMs: 60_000,
+            resetAt,
+          }),
+        );
+        return withDeploys(
+          ({ appId, commit, planned, engine }) =>
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* commit("code", { "README.md": "initial" });
+              yield* planned;
+              const remote = yield* localRemote(appId, "code", destinations);
+              yield* gitEnvironment(appId, "git-stage", "stage");
+              const deploys = yield* engine;
+              const recovering = deploys.changes.pipe(
+                Stream.filterEffect(() =>
+                  Effect.map(
+                    sql<{ readonly reset: string | null }>`
+          SELECT evidence->>'resetAt' AS reset FROM hq_deploy_job WHERE kind='push'`,
+                    ([row]) => row?.reset === resetAt,
+                  ),
+                ),
+                Stream.take(1),
+                Stream.runDrain,
+                Effect.timeout("10 seconds"),
+              );
+              const waiting = yield* Effect.forkChild(recovering);
+              const sha = yield* commit("code", { "README.md": "wanted" });
+              yield* Fiber.join(waiting);
+              const [row] = yield* sql<{
+                readonly sha: string;
+                readonly state: string;
+                readonly evidence: PushEvidence;
+              }>`
+          SELECT sha,state,evidence FROM hq_deploy_job WHERE kind='push'`;
+              expect(row!.sha).toBe(sha);
+              expect(row!.state).toBe("submitting");
+              expect(row!.evidence).toMatchObject({
+                phase: "recovering",
+                writerDrained: true,
+                resetAt,
+                keptAt: destinations.get("code")!.keptAt,
+              });
+              expect(row!.evidence.nextAction).toBe(
+                `The repository host asked Mate to wait until ${resetAt}.`,
+              );
+              expect(yield* deploys.writerDrained("git-stage")).toBe(true);
+              expect(invalidations).toEqual([]);
+              yield* deploys.withEnvironment(
+                "git-stage",
+                sql`DELETE FROM hq_environment WHERE id='git-stage'`,
+              );
+              expect((yield* sql`SELECT id FROM hq_environment WHERE id='git-stage'`).length).toBe(
+                0,
+              );
+              expect((yield* sql`SELECT id FROM hq_deploy_job WHERE kind='push'`).length).toBe(0);
+              expect(
+                NodeChildProcess.execFileSync(
+                  "git",
+                  ["--git-dir", remote, "for-each-ref", "--format=%(objectname)"],
+                  { encoding: "utf8" },
+                ).trim(),
+              ).toBe("");
+            }),
+          { pushLayer: localPushLayer(destinations, probe, invalidations) },
+        );
+      },
+    );
+
+    it.effect(
+      "Decision L1b: the planner never hands an accepted release to a replacement attachment with the same id",
+      () => {
+        const destinations = new Map<string, { url: string; keptAt: string }>();
+        return withDeploys(
+          ({ appId, commit, planned, request, drained }) =>
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              const sha = yield* commit("code", { "README.md": "accepted" });
+              yield* planned;
+              const remote = yield* localRemote(appId, "code", destinations);
+              yield* gitEnvironment(appId, "git-production");
+              yield* gitRelease(appId, "git-production", "v1.0.0", [{ service: "code", sha }]);
+              yield* sql`DELETE FROM hq_environment WHERE id='git-production'`;
+              yield* gitEnvironment(appId, "git-production");
+              yield* request({ cause: "release", appId, tag: "v1.0.0", by: "owner" });
+              yield* drained;
+              expect((yield* sql`SELECT id FROM hq_deploy_job WHERE kind='push'`).length).toBe(0);
+              expect(
+                NodeChildProcess.execFileSync(
+                  "git",
+                  ["--git-dir", remote, "for-each-ref", "--format=%(objectname)"],
+                  { encoding: "utf8" },
+                ).trim(),
+              ).toBe("");
+            }),
+          { pushLayer: localPushLayer(destinations) },
+        );
+      },
+    );
+
+    it.effect(
+      "a frozen multi-repository release keeps successful hand-over and names a missing remote",
+      () => {
+        const destinations = new Map<string, { url: string; keptAt: string }>();
+        return withDeploys(
+          ({ appId, commit, planned, request, drained }) =>
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              const first = yield* commit("one", { "README.md": "one" });
+              const second = yield* commit("two", { "README.md": "two" });
+              yield* planned;
+              const remote = yield* localRemote(appId, "one", destinations);
+              yield* gitEnvironment(appId, "git-production");
+              yield* gitRelease(appId, "git-production", "v1.0.0", [
+                { service: "one", sha: first },
+                { service: "two", sha: second },
+              ]);
+              // A later connection is not added to the accepted roster.
+              yield* commit("later", { "README.md": "later" });
+              yield* planned;
+              yield* localRemote(appId, "later", destinations);
+              yield* request({ cause: "release", appId, tag: "v1.0.0", by: "owner" });
+              yield* drained;
+              const rows = yield* sql<{
+                readonly repo: string;
+                readonly sha: string;
+                readonly label: string;
+                readonly state: string;
+                readonly reason: string | null;
+              }>`
+          SELECT repo,sha,label,state,reason FROM hq_deploy_job WHERE kind='push' ORDER BY repo`;
+              expect(rows).toEqual([
+                { repo: "one", sha: first, label: "v1.0.0", state: "pushed", reason: null },
+                {
+                  repo: "two",
+                  sha: second,
+                  label: "v1.0.0",
+                  state: "refused",
+                  reason: "No connected remote for two",
+                },
+              ]);
+              expect(
+                NodeChildProcess.execFileSync(
+                  "git",
+                  ["--git-dir", remote, "rev-parse", "refs/heads/git-production"],
+                  { encoding: "utf8" },
+                ).trim(),
+              ).toBe(first);
+            }),
+          { pushLayer: localPushLayer(destinations) },
+        );
+      },
+    );
     // SPEC §3.2b, main B10/B15/B16/B17: main moving deploys the exact commit's archive to every stage
     // environment following main, with the tier's setup, named `main <7 hex>`; live once the
     // service runs it.

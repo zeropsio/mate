@@ -14,13 +14,12 @@ import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
 import { readEnvironmentSource } from "./environmentNavigation.ts";
-// Old-Core compatibility belongs to 0052's supported schema. 0054 requires the identity-writer
-// floor; its full-current-schema controls live in migrations.test.ts.
+// Current-Core fixtures include 0054 rollout provenance.
 vi.mock("./migrationFiles.ts", async (original) => {
   const module = await original<typeof import("./migrationFiles.ts")>();
   return {
     ...module,
-    treeMigrations: () => module.treeMigrations().filter((file) => file.name < "0054_"),
+    treeMigrations: () => module.treeMigrations().filter((file) => file.name < "0055_"),
   };
 });
 const NAME = "0052_environment_identity.sql";
