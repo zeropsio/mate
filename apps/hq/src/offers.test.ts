@@ -384,3 +384,18 @@ const slotsOf = (
   stageProjectIds: projects.filter((row) => row.kind === "stage").map((row) => row.project_id),
   productionProjectId: projects.find((row) => row.kind === "production")?.project_id ?? null,
 });
+
+it("the Git release offer consumes the target-dispatched server authority verdict", () => {
+  const slots = {
+    stageProjectIds: [],
+    productionProjectId: null,
+    productionTarget: "git" as const,
+  };
+  expect(appOffers("dev", APP, { ...ORG, freshness: "cached" }, slots).release).toEqual({
+    allow: true,
+  });
+  expect(appOffers("reader", APP, { ...ORG, freshness: "cached" }, slots).release).toEqual({
+    allow: false,
+    reason: "not_releaser",
+  });
+});

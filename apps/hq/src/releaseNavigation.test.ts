@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as Schema from "effect/Schema";
+import { HqReleaseTarget } from "@t3tools/shared/hqRelease";
 import { releaseNavigationOffer } from "./releaseNavigation.ts";
+
+const decodeAttachment = Schema.decodeUnknownSync(HqReleaseTarget);
 
 const candidate = {
   head: "a".repeat(40),
@@ -48,4 +52,31 @@ describe("HQ navigation release offer", () => {
   it("does not invent a release from incomplete source coverage", () => {
     expect(releaseNavigationOffer(null, ready)).toBeNull();
   });
+});
+
+it("Git navigation consumes the accepted attachment and the shared hand-over blocker", () => {
+  const releaseTarget = decodeAttachment({
+    environmentId: "git-production",
+    createdAt: "2026-10-14T00:00:00Z",
+    target: { kind: "git", branch: "main", delivery: "direct" },
+  });
+  const gitCandidate = { ...candidate, releaseTarget };
+  expect(releaseNavigationOffer(gitCandidate, { ...ready, hasProduction: false })?.gate).toEqual({
+    allow: true,
+  });
+  const blocked = {
+    ...gitCandidate,
+    readiness: { allow: false, reason: "Releasing v0.1.0…" } as const,
+  };
+  expect(releaseNavigationOffer(blocked, ready)).toEqual({
+    ...gitCandidate,
+    gate: { allow: false, reason: "Releasing v0.1.0…" },
+    inFlight: null,
+  });
+  expect(
+    releaseNavigationOffer(blocked, {
+      ...ready,
+      permission: { allow: false, reason: "not_releaser" },
+    })?.gate,
+  ).toEqual({ allow: false, reason: "not_releaser" });
 });

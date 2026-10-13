@@ -27,7 +27,8 @@
 import type { GitError, HqGit, Repo } from "@t3tools/hq-git";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import {
-  ReleaseEntry,
+  GitReleaseEntry,
+  HqReleaseTarget,
   ReleaseTag,
   compareReleaseTags,
   parseReleaseMessage,
@@ -42,7 +43,7 @@ import { appendEvent } from "./gitEvents.ts";
 import type { Leader, NotLeader } from "./leader.ts";
 import { squashesOnMain } from "./squashes.ts";
 
-const encodeEntries = Schema.encodeSync(Schema.fromJsonString(Schema.Array(ReleaseEntry)));
+const encodeEntries = Schema.encodeSync(Schema.fromJsonString(Schema.Array(GitReleaseEntry)));
 const isReleaseTag = Schema.is(ReleaseTag);
 
 /** Who a reconciled record is by. */
@@ -104,9 +105,12 @@ export const missing = (
       UNION ALL
       SELECT app_id::text, ${RECIPE_REPO}, 'release', sha FROM hq_release
       UNION ALL
+      SELECT app_id::text, entry->>'service', 'release entry', entry->>'sha'
+      FROM hq_release CROSS JOIN LATERAL jsonb_array_elements(entries) entry WHERE target='git'
+      UNION ALL
       SELECT e.app_id::text, j.repo, 'deploy', j.sha
       FROM hq_deploy_job j JOIN hq_environment e ON e.id = j.environment_id
-      WHERE j.kind = 'deploy'`;
+      WHERE j.kind IN ('deploy','push')`;
     const repos = yield* sql<{ readonly app_id: string; readonly name: string }>`
       SELECT app_id::text AS app_id, name FROM hq_repo`;
     const counts: Record<string, number> = {};
@@ -383,24 +387,38 @@ const releasesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Servic
       .filter((tag) => isReleaseTag(tag.name) && !recorded.has(tag.name))
       .sort((a, b) => compareReleaseTags(a.name, b.name));
     for (const tag of tags) {
-      const read = parseReleaseMessage(tag.message);
+      const [event] = yield* sql<{
+        attachment: HqReleaseTarget;
+      }>`SELECT data->'releaseTarget' AS attachment
+        FROM hq_git_event WHERE app_id::text=${repo.appId} AND kind='released' AND data->>'tag'=${tag.name}
+          AND data ? 'releaseTarget' ORDER BY seq DESC LIMIT 1`;
+      const attachment = event?.attachment;
+      const target = attachment?.target.kind ?? "zerops";
+      const read = parseReleaseMessage(tag.message, target);
       const entries = "entries" in read ? read.entries : [];
       const reason = "refused" in read ? read.refused : null;
       yield* leader.write(
         Effect.andThen(
           sql`
             INSERT INTO hq_release (app_id, tag, sha, entries, released_by, released_at, state,
-              reason)
+              reason,target,environment_id,environment_created_at)
             VALUES (${repo.appId}::uuid, ${tag.name}, ${tag.sha}, ${encodeEntries(entries)}::jsonb,
               ${BY}, ${tag.taggedAt === "" ? sql`now()` : sql`${tag.taggedAt}::timestamptz`},
-              ${reason === null ? "approved" : "refused"}, ${reason})
+              ${reason === null ? "approved" : "refused"}, ${reason}, ${target},
+              ${attachment?.environmentId ?? null}, ${attachment?.createdAt ?? null}::timestamptz)
             ON CONFLICT DO NOTHING`,
           appendEvent(sql, {
             kind: "released",
             appId: repo.appId,
             repo: repo.id,
             number: null,
-            data: { tag: tag.name, sha: tag.sha, by: BY, reconciled: true },
+            data: {
+              tag: tag.name,
+              sha: tag.sha,
+              by: BY,
+              reconciled: true,
+              ...(attachment === undefined ? {} : { releaseTarget: attachment }),
+            },
           }),
         ),
       );
