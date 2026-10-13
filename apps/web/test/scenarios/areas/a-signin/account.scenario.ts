@@ -18,7 +18,7 @@ import {
 const accountScenario = Effect.fn("signin.scenario")(function* (sessionFault = false) {
   const s = yield* createScenario(
     [installSignIn],
-    sessionFault ? { hq: { streamRecheck: 1_000 } } : {},
+    sessionFault ? { signIn: "ui", hq: { streamRecheck: 1_000 } } : { signIn: "ui" },
   );
   return { ...s, receivedReplies: receivedHqReplies(s.page, s.drivers.routes, s.hq.origin) };
 });

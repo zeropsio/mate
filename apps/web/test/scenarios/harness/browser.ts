@@ -10,6 +10,7 @@ import puppeteer, {
   type Browser,
 } from "puppeteer-core";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { ZEROPS_SESSION_STORAGE_KEY } from "../../../../../packages/client-runtime/src/zerops/session.ts";
 import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
 import { serve } from "./http.ts";
 
@@ -288,6 +289,23 @@ export async function openBrowser(
         throw new Error("Use a new browser context to sign in as another person");
       contextIdentities.set(context, token);
       identities.set(page, token);
+    },
+    // Seed only this navigation: reload and sign-out must use the product's persisted state.
+    gotoWithSession: async (page: Page, token: string) => {
+      const script = await page.evaluateOnNewDocument(
+        (origin, key, accessToken) => {
+          if (location.origin === origin && localStorage.getItem(key) === null)
+            localStorage.setItem(key, JSON.stringify({ accessToken }));
+        },
+        web.origin,
+        ZEROPS_SESSION_STORAGE_KEY,
+        token,
+      );
+      try {
+        await page.goto(`${web.origin}/zerops`);
+      } finally {
+        await page.removeScriptToEvaluateOnNewDocument(script.identifier);
+      }
     },
     setRoutes: async () => {
       for (const update of routeSetters.values()) await update();

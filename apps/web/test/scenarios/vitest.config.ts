@@ -7,8 +7,8 @@ export default defineConfig({
   test: {
     reporters: ["default", new GateTimingReporter()],
     globalSetup: ["../../scripts/test-postgres.setup.ts"],
-    // Bound browser work across both projects; PostgreSQL is shared across runs.
-    maxWorkers: 1,
+    // Files share Chrome, while every case owns its context, loopback ports and cloned DB.
+    maxWorkers: 2,
     projects: [
       {
         test: {
@@ -19,7 +19,7 @@ export default defineConfig({
             "test/scenarios/harness/build.ts",
             "test/scenarios/harness/browserProcess.ts",
           ],
-          fileParallelism: false,
+          fileParallelism: true,
           hookTimeout: 120_000,
           testTimeout: 45_000,
         },
@@ -32,6 +32,8 @@ export default defineConfig({
           taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
           include: ["test/scenarios/fakes/**/*.test.ts"],
           environment: "node",
+          // browserLifecycle counts every context in the shared Chrome.
+          fileParallelism: false,
           testTimeout: 10_000,
         },
       },

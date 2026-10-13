@@ -53,6 +53,8 @@ export interface ScenarioDrivers {
 
 export interface ScenarioOptions {
   hq?: HqTimings;
+  /** Restore an account by default; UI sign-in cases explicitly retain the OAuth journey. */
+  signIn?: "injected" | "ui";
 }
 
 export const createScenario = Effect.fn("scenarios.create")(function* (
@@ -282,32 +284,37 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         selectedPerson = name;
       },
       signedIn: Effect.promise(async () => {
-        web.setPerson(page, persons.get(selectedPerson)!.token);
+        const token = persons.get(selectedPerson)!.token;
+        web.setPerson(page, token);
         await web.setRoutes();
-        await page.goto(web.origin);
+        const signIn = options.signIn ?? "injected";
+        if (signIn === "injected") await web.gotoWithSession(page, token);
+        else await page.goto(web.origin);
         try {
-          await page.waitForFunction(
-            () =>
+          if (signIn === "ui") {
+            await page.waitForFunction(
+              () =>
+                [...document.querySelectorAll<HTMLButtonElement>("button")].some(
+                  (button) => button.innerText.trim() === "Continue with your Zerops account",
+                ) ||
+                [
+                  ...document.querySelectorAll<HTMLElement>(
+                    '[data-zerops-surface="sidebar-account"]',
+                  ),
+                ].some((element) => element.getBoundingClientRect().height > 0),
+              { timeout: 10_000, polling: "raf" },
+            );
+            const hasButton = await page.evaluate(() =>
               [...document.querySelectorAll<HTMLButtonElement>("button")].some(
                 (button) => button.innerText.trim() === "Continue with your Zerops account",
-              ) ||
-              [
-                ...document.querySelectorAll<HTMLElement>(
-                  '[data-zerops-surface="sidebar-account"]',
-                ),
-              ].some((element) => element.getBoundingClientRect().height > 0),
-            { timeout: 10_000, polling: "raf" },
-          );
-          const hasButton = await page.evaluate(() =>
-            [...document.querySelectorAll<HTMLButtonElement>("button")].some(
-              (button) => button.innerText.trim() === "Continue with your Zerops account",
-            ),
-          );
-          if (hasButton)
-            await page
-              .locator("::-p-aria(Continue with your Zerops account)")
-              .setTimeout(10_000)
-              .click();
+              ),
+            );
+            if (hasButton)
+              await page
+                .locator("::-p-aria(Continue with your Zerops account)")
+                .setTimeout(10_000)
+                .click();
+          }
           await visibleText(page, "sidebar-account-organization", zerops.orgName);
           signedInDocument = await page.evaluate(() => performance.timeOrigin);
         } catch (error) {

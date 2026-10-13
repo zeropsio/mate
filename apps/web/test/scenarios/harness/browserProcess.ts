@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off -- owns the serial scenario worker's Chrome process.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off -- owns the scenario project's Chrome process.
 import puppeteer from "puppeteer-core";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { resolveTestBrowser } from "../../testBrowser.ts";
@@ -10,7 +10,7 @@ declare module "vite-plus/test" {
   }
 }
 
-// Each scenario project has one serial worker. Global setup keeps Chrome alive across file
+// Global setup keeps Chrome alive across parallel workers and file
 // isolation; each file disconnects its CDP client and every scenario closes its own contexts.
 export default async function setup(project: TestProject) {
   const executablePath = await resolveTestBrowser(process.env.MATE_CHROME_BIN);
@@ -20,7 +20,7 @@ export default async function setup(project: TestProject) {
     headless: true,
     // Preserve Chrome's startup cause if it exits before CDP attaches.
     dumpio: process.env.GITHUB_ACTIONS === "true",
-    // The serial worker connects over loopback; scenarios only create isolated routed pages.
+    // Workers connect over loopback; scenarios only create isolated routed pages.
     pipe: false,
     waitForInitialPage: false,
     args: [
