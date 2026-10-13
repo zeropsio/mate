@@ -597,6 +597,11 @@ type MessagesTimelineRowBody =
       kind: "record";
       id: string;
       createdAt: string;
+      /**
+       * What woke a run nobody wrote to, when its card holds its lines: the card's title, beside
+       * the face, its run's line under it (the owner, 2026-10-14).
+       */
+      opener?: BackgroundOpener;
       turnKey: string;
       /** The turn it draws (an engine card's id: what it holds of a long run, `engineCardPaging`). */
       turnId?: TurnId | null;
@@ -1032,6 +1037,17 @@ export function streamedRecordGrowth(
           })),
     )
   );
+}
+
+/** A background row's facts: what ran, how it ended, whose (`background`). */
+export interface BackgroundOpener {
+  readonly key: string;
+  readonly entries: ReadonlyArray<WorkLogEntry>;
+  readonly tasks: number;
+  readonly failed: number;
+  readonly lost?: number;
+  readonly helpers: boolean;
+  readonly title: string | null;
 }
 
 export type MessagesTimelineRow = MessagesTimelineRowBody & {
@@ -2818,8 +2834,9 @@ export function deriveMessagesTimelineRows(input: {
     // moments (`WOKE_LAG_MS`) — a word that reached the thread late.
     let woke: WorkLogEntry[] = [];
     let helper: HelperFinish | null = null;
-    /** Where the line of what woke a run nobody wrote to stands (`woke:`). */
-    let opener: number | null = null;
+    /** What woke a run nobody wrote to, and whether its card takes it as its title. */
+    let wokeFacts: BackgroundOpener | null = null;
+    let titled = false;
     if (lead === null) {
       woke = wokeBy(turn, false);
       if (woke.length === 0) helper = helperWoke(first.startedAt, false);
@@ -3022,32 +3039,32 @@ export function deriveMessagesTimelineRows(input: {
         return;
       }
       seamBefore(first.startedAt, first.key);
-      opener = rows.length;
-      if (woke.length > 0) {
-        rows.push({
-          kind: "background",
-          id: `woke:${first.key}`,
-          createdAt: first.startedAt,
-          entries: woke,
-          ...backgroundRunSummary(woke),
-        });
-      } else if (helper !== null) {
-        rows.push({
-          kind: "background",
-          id: `woke:${first.key}`,
-          createdAt: first.startedAt,
-          entries: [],
-          tasks: 1,
-          failed: helper.failed ? 1 : 0,
-          ...(helper.lost ? { lost: 1 } : {}),
-          helpers: true,
-          title: helper.title,
-        });
-      } else opener = null;
+      wokeFacts =
+        woke.length > 0
+          ? { key: `woke:${first.key}`, entries: woke, ...backgroundRunSummary(woke) }
+          : helper !== null
+            ? {
+                key: `woke:${first.key}`,
+                entries: [],
+                tasks: 1,
+                failed: helper.failed ? 1 : 0,
+                ...(helper.lost ? { lost: 1 } : {}),
+                helpers: true,
+                title: helper.title,
+              }
+            : null;
+      // What woke it is its card's title where the card holds its lines and nothing was sent into
+      // the run before it (the owner, 2026-10-14: the line "floating in space" over its card).
+      titled =
+        wokeFacts !== null &&
+        exchanges.length === 0 &&
+        carded &&
+        (hasRecord || working || turn.interruption !== undefined);
+      if (wokeFacts !== null && !titled) {
+        const { key, ...facts } = wokeFacts;
+        rows.push({ kind: "background", id: key, createdAt: first.startedAt, ...facts });
+      }
     }
-    // What woke it opens its card, inside it, where nothing was sent into the run before its card
-    // (the owner, 2026-10-14: a helper's finish read as a line "floating in space" over it).
-    const openedBy = opener !== null && exchanges.length === 0 ? opener : null;
     rows.push(...exchanges);
     const { personMs, ...waited } = waitedOn(turn);
     const engineWorked =
@@ -3119,7 +3136,7 @@ export function deriveMessagesTimelineRows(input: {
     // end once it is over. A run with no chat keeps it as a line of its own.
     const chatted = hasRecord || working || turn.interruption !== undefined;
     if (carded && (!pausedHere || chatted || extras.length > 0)) {
-      const cardStart = openedBy ?? rows.length;
+      const cardStart = rows.length;
       if (!chatted && !pausedHere) {
         rows.push({
           kind: "work-line",
@@ -3156,6 +3173,7 @@ export function deriveMessagesTimelineRows(input: {
           kind: "record" as const,
           id: `record:${first.key}`,
           createdAt: first.startedAt,
+          ...(titled && wokeFacts !== null ? { opener: wokeFacts } : {}),
           turnKey: turn.key,
           turnId: turn.turnId,
           live: turn.live || waiting || waitsOnLimit,

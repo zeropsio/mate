@@ -1002,12 +1002,12 @@ it("what woke a run opens its card, inside it", () => {
       noteItem(run2, 2, "The interface subagent is done.", { at: t0 + 39_000 }),
     ],
   });
-  const woke = rows.findIndex((row) => row.id.startsWith("woke:"));
-  expect(woke).toBeGreaterThan(-1);
-  expect(rows.slice(woke, woke + 2).map((row) => [row.kind, row.card])).toEqual([
-    ["background", "top"],
-    ["record", "middle"],
-  ]);
+  // Its card's title, beside the face, its run's line under it: never a line over the card.
+  expect(rows.some((row) => row.id.startsWith("woke:"))).toBe(false);
+  const card = rows.find((row) => row.kind === "record" && row.turnId === run2);
+  expect(card?.kind === "record" ? card.opener : null).toMatchObject({
+    title: "Interface: AAA UI polish",
+  });
 });
 
 // Milo's stress run 5 (A +1:37.6): wake 92 fired as a planned restart began and only spoke, so it
@@ -1098,7 +1098,13 @@ it.each([
     });
     const read = rows.flatMap((row) =>
       row.kind === "record" || row.kind === "work-line"
-        ? [`card of ${row.turnId}`]
+        ? [
+            // What woke it titles its card.
+            ...(row.kind === "record" && row.opener !== undefined
+              ? [`woke by ${row.opener.title}`]
+              : []),
+            `card of ${row.turnId}`,
+          ]
         : row.kind === "background" && row.id.startsWith("woke:")
           ? [`woke by ${row.title}`]
           : row.kind === "message" && row.message.role === "assistant"

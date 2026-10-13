@@ -200,7 +200,7 @@ import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } f
 import { forgetRunFolds } from "./runCard.logic";
 import { easeRooms, type Rooms } from "./runRoom";
 import type { LiveJobs } from "./liveJobs.logic";
-import { backgroundLineOf, jobItems, taskItems } from "./backgroundLine.logic";
+import { backgroundLineOf, backgroundRowItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { ConversationOpeningStage } from "./ConversationOpeningStage";
 import { useZeropsThreadActivity } from "../../zerops/useZeropsAgentActivity";
@@ -3156,27 +3156,11 @@ function RecordTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "record"
  * outside any turn, or what woke the run under it.
  */
 function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "background" }> }) {
-  const items =
-    row.jobs !== undefined
-      ? jobItems(row.jobs)
-      : row.entries.length > 0
-        ? taskItems(row.entries)
-        : // A helper the panel says finished, with no report of its own here.
-          [
-            {
-              key: row.id,
-              title: row.title ?? (row.helpers ? "A helper" : "A background task"),
-              state:
-                (row.lost ?? 0) > 0
-                  ? ("lost" as const)
-                  : row.failed > 0
-                    ? ("failed" as const)
-                    : ("done" as const),
-              report: null,
-              mono: false,
-            },
-          ];
-  return <BackgroundLine line={backgroundLineOf(items, row.helpers)} />;
+  return (
+    <BackgroundLine
+      line={backgroundLineOf(backgroundRowItems({ ...row, key: row.id }), row.helpers)}
+    />
+  );
 }
 
 function EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }> }) {
