@@ -1997,3 +1997,36 @@ it("Environment navigation keeps its identity when the target's project name cha
     },
   ]);
 });
+
+it("An environment page explains HQ's refusal in words without opening project readers.", () => {
+  const registry = AtomRegistry.make();
+  const { store } = mountHqNavigation(registry, "org", {
+    structure: {
+      apps: [
+        { id: "shop", name: "Shop", projects: [], environments: { refused: "changes_not_seen" } },
+      ],
+      ungrouped: [],
+    },
+  });
+  platform.routeWitness = true;
+  platform.projectReads = [];
+  try {
+    const markup = renderToStaticMarkup(
+      <RegistryContext.Provider value={registry}>
+        <AccountDataContext.Provider
+          value={{ data: store.data, orgId: "org", demandDetail: () => () => {} } as AccountData}
+        >
+          <ZeropsStopDetailPage groupId="shop" environmentId="stage" />
+        </AccountDataContext.Provider>
+      </RegistryContext.Provider>,
+    );
+    expect(markup).toContain(
+      "You need at least Basic user access to one of this project&#x27;s Zerops projects to see its changes.",
+    );
+    expect(markup).not.toContain("changes_not_seen");
+    expect(platform.projectReads).toEqual([]);
+  } finally {
+    platform.routeWitness = false;
+    registry.dispose();
+  }
+});

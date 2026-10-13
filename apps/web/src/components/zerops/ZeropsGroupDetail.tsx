@@ -1,4 +1,5 @@
 import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
+import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import {
   canonicalAppEnvironments,
   canonicalHqNavigation,
@@ -1241,7 +1242,7 @@ export function ZeropsStopDetailPage({
   return (
     <DetailShell crumbs={crumbs} title={environment?.name}>
       {read.refused !== null ? (
-        <Note>{read.refused}</Note>
+        <Note>{hqRefusalWords({ code: "forbidden", reason: read.refused })}</Note>
       ) : unread !== null ? (
         <Note>{unread}</Note>
       ) : environment === undefined ? (
