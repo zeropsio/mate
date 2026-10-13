@@ -849,7 +849,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   const [pauseViewportHeight, setPauseViewportHeight] = useState<number | undefined>();
   const [listReady, setListReady] = useState(false);
-  const onListLoad = useCallback(() => setListReady(true), []);
+  const measuredRowsRef = useRef(new Map<string, MessagesTimelineRow>());
+  const onListLoad = useCallback(() => {
+    // A size equal to the estimate is measured too: LegendList records it without a
+    // size-change callback. Its next streamed growth belongs to this loaded row.
+    const sizes = listRef.current?.getState().sizes;
+    for (const row of rows) {
+      if (sizes?.has(row.id)) measuredRowsRef.current.set(row.id, row);
+    }
+    setListReady(true);
+  }, [listRef, rows]);
   // The list stands where it stays: a reading position put back, or the end
   // reached. Until then it is out of sight (`data-timeline-placing`).
   const [listPlaced, setListPlaced] = useState(false);
@@ -1233,7 +1242,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // The first size receipt replaces an estimate, not a row's previously painted height.
   // An inserted historical row carries its whole measured height before paint; the words
   // below it already stood in view. A live arrival still takes the follower's existing glide.
-  const measuredRowsRef = useRef(new Map<string, MessagesTimelineRow>());
   useLayoutEffect(() => {
     const keys = new Set(rowOrder.split("\n"));
     for (const key of measuredRowsRef.current.keys())

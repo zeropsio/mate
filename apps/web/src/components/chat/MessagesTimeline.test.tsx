@@ -8,6 +8,7 @@ import {
   useCardTimelineInput,
 } from "./engineCard.test-fixtures";
 import { markupDom } from "../../../test/markupDom";
+import { engineRun, personItem, noteItem } from "@t3tools/client-runtime/data/fixtures";
 import { projectMateLimit } from "@t3tools/client-runtime/data";
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
@@ -2490,6 +2491,106 @@ describe("MessagesTimeline — placing its rows", () => {
     } finally {
       await act(() => renderer.unmount());
     }
+  });
+
+  describe("Decision: the user must not see a reload slide toward the end; the first painted frame stands at the end.", () => {
+    it.each([false, true])(
+      "a streaming row measured at its estimate keeps the first painted growth at the reload's end (already writing: %s)",
+      async (writing) => {
+        const { LegendList } = await import("@legendapp/list/react");
+        const account = cardAccount(vi.fn());
+        const records = {
+          runs: [
+            engineRun(CARD_KEY.conversationId, 1, { state: "running", endedAt: null, end: null }),
+          ],
+          items: [
+            personItem(CARD_RUN, 1, "Write the report"),
+            ...(writing ? [noteItem(CARD_RUN, 2, "First", { streaming: true })] : []),
+          ],
+        };
+        account.publish(records);
+        const viewport = {
+          scrollTop: 1200,
+          scrollHeight: 2000,
+          clientHeight: 800,
+          toggleAttribute: () => {},
+        };
+        const sizes = new Map<string, number>();
+        let data: Array<{ id: string }> = [];
+        const ref = {
+          current: {
+            getState: () => ({
+              data,
+              sizes,
+              isWithinMaintainScrollAtEndThreshold: true,
+              indexByKey: (key: string) => data.findIndex((row) => row.id === key),
+              elementAtIndex: () => null,
+            }),
+            getScrollableNode: () => viewport,
+          } as unknown as LegendListRef,
+        };
+        function AccountTimeline() {
+          return (
+            <MessagesTimeline
+              {...buildProps()}
+              {...useCardTimelineInput(account)}
+              listRef={ref}
+              routeThreadKey={`${CARD_KEY.environmentId}:${CARD_KEY.conversationId}`}
+              activeThreadEnvironmentId={EnvironmentId.make(CARD_KEY.environmentId)}
+              syncing
+            />
+          );
+        }
+        let renderer!: ReactTestRenderer;
+        await act(() => {
+          renderer = create(
+            <RegistryContext value={account.registry}>
+              <AccountTimeline />
+            </RegistryContext>,
+          );
+        });
+        try {
+          const list = renderer.root.findByType(LegendList);
+          data = list.props.data;
+          const row = data.find((row) => row.id.startsWith("record:"))!;
+          expect(row, "ASSERTION: the account's live run is the list's row").toBeDefined();
+          // LegendList's sizes contains this measurement, but a zero diff emits no size-change callback.
+          sizes.set(row.id, 90);
+          await act(() => list.props.onLoad({ elapsedTimeInMs: 4 }));
+          await settleFrames(3);
+          expect(outOfSight(renderer)).toBe(false);
+          await act(() =>
+            account.publish({
+              ...records,
+              items: [
+                records.items[0]!,
+                noteItem(CARD_RUN, 2, "First, second, third", { streaming: true }),
+              ],
+            }),
+          );
+          const grownList = renderer.root.findByType(LegendList);
+          data = grownList.props.data;
+          const grown = data.find((item) => item.id === row.id)!;
+          viewport.scrollHeight += 61;
+          await act(() =>
+            grownList.props.onItemSizeChanged({
+              index: data.indexOf(grown),
+              itemKey: row.id,
+              itemData: grown,
+              previous: 90,
+              size: 151,
+            }),
+          );
+          expect(
+            viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+            "ASSERTION: every painted frame stands at the streaming end after an unchanged first measurement",
+          ).toBe(0);
+        } finally {
+          await act(() => renderer.unmount());
+          account.close();
+        }
+      },
+    );
   });
 
   it("a placed conversation leaves new arrivals to its glide, never the initial end scroll", async () => {
