@@ -49,7 +49,6 @@
  * if its snapshot contradicts it. The registry's answer never feeds back into
  * this feed — spec-mate.md §8.1.
  */
-import * as NodeOS from "node:os";
 
 import type {
   ServerProviderAuthStatus,
@@ -867,7 +866,7 @@ export const layer = Layer.effect(
       refreshProviderAuth: layerVerifyAgentAuth(spawnProbe),
       reconcileProviderAuth: providerInstances.reconcileAgentAuth,
       refreshProviderSnapshot: providerInstances.refreshAgent,
-      homeDir: NodeOS.homedir(),
+      homeDir: config.homeDir,
       envStorePath: ZEMBED_ENV_FILE,
       readSigners: projectSigners.signers,
       turnAuthFailures: bus.events.pipe(

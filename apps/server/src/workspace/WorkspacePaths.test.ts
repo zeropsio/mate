@@ -6,10 +6,12 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 
+import * as ServerConfig from "../config.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
 
 const TestLayer = Layer.empty.pipe(
   Layer.provideMerge(WorkspacePaths.layer),
+  Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3code-paths-config-" })),
   Layer.provideMerge(NodeServices.layer),
 );
 

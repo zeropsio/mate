@@ -76,7 +76,6 @@
  * that sends anything for it — a second, slower subscriber's later pull of
  * the same (already-superseded) seq is a no-op.
  */
-import * as NodeOS from "node:os";
 
 import type {
   ZeropsBrowserCallResult,
@@ -104,6 +103,7 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
+import { ServerConfig } from "../config.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { makeBrowserCallFrames } from "./ZeropsBrowserCallFrames.ts";
 
@@ -639,8 +639,9 @@ export const layer = Layer.effect(
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const bus = yield* ProviderRuntimeEventBus;
+    const config = yield* ServerConfig;
     const service = yield* make({
-      readStreamPort: readStreamPortFromFile(fs, path, NodeOS.homedir()),
+      readStreamPort: readStreamPortFromFile(fs, path, config.homeDir),
       connect: connectReal,
     });
     yield* Stream.runForEach(bus.events, service.ingestCall).pipe(Effect.forkScoped);

@@ -29,10 +29,12 @@ import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { ContentAssetError, contentAssetsAt } from "../assets/ContentAssets.ts";
 import { cleanupFailedUploadedAttachments, normalizeDispatchCommand } from "./Normalizer.ts";
 
-const testLayer = Layer.mergeAll(
-  WorkspacePaths.layer,
-  ServerConfig.layerTest(process.cwd(), { prefix: "t3-normalizer-attachments-" }),
-).pipe(Layer.provideMerge(NodeServices.layer));
+const testLayer = WorkspacePaths.layer.pipe(
+  Layer.provideMerge(
+    ServerConfig.layerTest(process.cwd(), { prefix: "t3-normalizer-attachments-" }),
+  ),
+  Layer.provideMerge(NodeServices.layer),
+);
 
 const attachmentUuid = "00000000-0000-4000-8000-0000000000aa";
 const isClientCommand = Schema.is(ClientOrchestrationCommand);

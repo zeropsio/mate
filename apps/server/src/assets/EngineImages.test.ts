@@ -20,7 +20,6 @@ import { contentAssetsAt } from "./ContentAssets.ts";
 import { resolveImageAsset } from "./ImageAsset.ts";
 
 const layer = Layer.mergeAll(
-  layerTest(process.cwd(), { prefix: "engine-images-" }),
   WorkspacePaths.layer,
   ProjectFaviconResolver.layer.pipe(
     Layer.provide(WorkspacePaths.layer),
@@ -31,7 +30,10 @@ const layer = Layer.mergeAll(
     getThreadShellById: () => Effect.succeedNone,
     getProjectShellById: () => Effect.succeedNone,
   }),
-).pipe(Layer.provideMerge(NodeServices.layer));
+).pipe(
+  Layer.provideMerge(layerTest(process.cwd(), { prefix: "engine-images-" })),
+  Layer.provideMerge(NodeServices.layer),
+);
 
 // Decision: V1 behaviour unchanged; engine gets image parity.
 it.effect.each(["screenshot", "attachment"] as const)(

@@ -244,6 +244,7 @@ const createManager = (
 
       const manager = yield* TerminalManager.makeWithOptions({
         logsDir,
+        homeDir: join(baseDir, "home"),
         historyLineLimit,
         ptyAdapter,
         ...(options.historyByteLimit !== undefined

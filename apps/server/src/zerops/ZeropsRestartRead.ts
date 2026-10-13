@@ -111,7 +111,12 @@ export const make = Effect.fnUntraced(function* (input: {
   return ZeropsRestartRead.of({ read });
 });
 
-export const layer = Layer.effect(ZeropsRestartRead, make({ serviceId: process.env["serviceId"] }));
+export const layer = Layer.effect(
+  ZeropsRestartRead,
+  Effect.flatMap(ServerConfig.ServerConfig, (config) =>
+    make({ serviceId: config.zerops?.serviceId }),
+  ),
+);
 
 /** The newest completed action, container replacement, or observed server boot. */
 export function restartCause(input: {

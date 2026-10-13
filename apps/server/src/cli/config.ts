@@ -23,7 +23,7 @@ import * as CliError from "effect/cli/CliError";
 
 import { readBootstrapEnvelope } from "../bootstrap.ts";
 import * as ServerConfig from "../config.ts";
-import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
+import { expandHomePath, hostHomeDir, resolveBaseDir } from "../os-jank.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 
@@ -179,6 +179,20 @@ const EnvServerConfig = Config.all({
   ),
   // The Mate's HQ enrollment, kept by zcp (ZeropsHqLink).
   zeropsHqEnrollment: Config.String("T3CODE_ZEROPS_HQ_ENROLLMENT").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  // Facts the platform and zcp put in every container's environment.
+  zeropsServiceId: Config.String("serviceId").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  zeropsHostname: Config.String("hostname").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  zcpStatusFile: Config.String("ZCP_STATUS_FILE").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  zcpMateUpdateStateFile: Config.String("ZCP_MATE_UPDATE_STATE_FILE").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
@@ -438,6 +452,10 @@ export const resolveServerConfig = (
             roleRecheckSeconds: env.zeropsRoleRecheckSeconds,
             sessionMaxAgeSeconds: env.zeropsSessionMaxAgeSeconds,
             hqEnrollmentPath: env.zeropsHqEnrollment,
+            serviceId: env.zeropsServiceId,
+            hostname: env.zeropsHostname,
+            statusFile: env.zcpStatusFile,
+            mateUpdateStateFile: env.zcpMateUpdateStateFile,
           })
         : undefined;
     if (
@@ -492,6 +510,7 @@ export const resolveServerConfig = (
       basePath,
       cwd,
       baseDir,
+      homeDir: hostHomeDir(),
       ...derivedPaths,
       serverTracePath,
       host,

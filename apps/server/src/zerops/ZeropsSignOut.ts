@@ -51,7 +51,6 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import type * as PlatformError from "effect/PlatformError";
-import * as NodeOS from "node:os";
 
 import { ServerConfig } from "../config.ts";
 import { MateEngine, type MateEngineService } from "../engine/MateEngine.ts";
@@ -307,7 +306,7 @@ export const layer = Layer.effect(
     const processRunner = yield* ProcessRunner.ProcessRunner;
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const homeDir = NodeOS.homedir();
+    const homeDir = config.homeDir;
 
     const engine = yield* MateEngine;
     const stopSessions = stopSessionsOnEngine(engine);

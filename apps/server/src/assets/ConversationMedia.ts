@@ -10,7 +10,6 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as NodePath from "node:path";
 import * as NodeFSP from "node:fs/promises";
-import * as NodeOS from "node:os";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
 import { ServerConfig } from "../config.ts";
@@ -21,6 +20,7 @@ import {
 import { resolveAttachmentPathById } from "../attachmentStore.ts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { contentAssetsAt, type ContentAssets } from "./ContentAssets.ts";
+import { outsideWorkspaceImageRoots } from "./AssetAccess.ts";
 import { findRetainedMedia, retainedMediaDirectory } from "./RetainedMedia.ts";
 
 /** Capture only locally authored images. External URLs remain external. */
@@ -36,6 +36,7 @@ export const captureConversationText = Effect.fn("captureConversationText")(func
   if (!text.includes("![")) return text;
   const config = yield* ServerConfig;
   const store = contentAssetsAt(config.stateDir);
+  const imageRoots = [workspaceRoot, ...(yield* outsideWorkspaceImageRoots)];
   const tree = fromMarkdown(text);
   type Node = typeof tree | (typeof tree.children)[number];
   const definitions = new Map<string, Extract<Node, { readonly type: "definition" }>>();
@@ -119,9 +120,7 @@ export const captureConversationText = Effect.fn("captureConversationText")(func
           );
           if (file === null) return null;
           const roots = await Promise.all(
-            [workspaceRoot, NodeOS.homedir(), NodeOS.tmpdir()].map((root) =>
-              NodeFSP.realpath(root).catch(() => root),
-            ),
+            imageRoots.map((root) => NodeFSP.realpath(root).catch(() => root)),
           );
           return roots.some((root) => {
             const relative = NodePath.relative(root, file);

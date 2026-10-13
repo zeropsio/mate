@@ -60,8 +60,6 @@
  * accepted trade-off against a scheduler crash.
  */
 
-import * as NodeOS from "node:os";
-
 import type {
   TerminalAttachInput,
   TerminalCloseInput,
@@ -834,7 +832,7 @@ export const layer = Layer.effect(
       zeropsAgentAuth,
       zeropsLogins,
       isZeropsEnvironment: isZeropsEnvironment(config),
-      homes: yield* makeLoginHomes(NodeOS.homedir()),
+      homes: yield* makeLoginHomes(config.homeDir),
       signIns,
       credentialsHeld: credentialsHeldOf(zeropsAgentAuth, zeropsLogins),
     });

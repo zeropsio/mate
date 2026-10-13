@@ -245,10 +245,9 @@ export const make = (options: ZeropsMateUpdateOptions) =>
  * with `Prefix() = $HOME/.zcp/mate` and HOME falling back to /home/zerops
  * (zcp internal/mate/manifest.go `manifestCachePath`, internal/runtime `HomeDir`).
  */
-const zcpManifestCacheFile = (): string => {
-  const home = process.env.HOME;
+const zcpManifestCacheFile = (home: string): string => {
   return NodePath.join(
-    home === undefined || home === "" || home === "/" ? "/home/zerops" : home,
+    home === "" || home === "/" ? "/home/zerops" : home,
     ".zcp",
     "mate",
     "manifest.json",
@@ -268,8 +267,8 @@ export const layer = Layer.effect(
       cli,
       isZeropsEnvironment: isZeropsEnvironment(config),
       policy,
-      stateFile: process.env.ZCP_MATE_UPDATE_STATE_FILE,
-      manifestFile: zcpManifestCacheFile(),
+      stateFile: config.zerops?.mateUpdateStateFile,
+      manifestFile: zcpManifestCacheFile(config.homeDir),
       recoverAdmission: (engine.updateDrain?.cancel ?? Effect.void).pipe(
         Effect.andThen(terminal.updateDrain?.cancel ?? Effect.void),
         Effect.andThen(rpcAdmission?.cancel ?? Effect.void),

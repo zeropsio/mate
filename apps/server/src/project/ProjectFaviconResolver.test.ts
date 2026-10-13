@@ -8,9 +8,12 @@ import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import { TestClock } from "effect/testing";
 
+import * as ServerConfig from "../config.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as ProjectFaviconResolver from "./ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "./T3ProjectFileLoader.ts";
+
+const configLayer = ServerConfig.layerTest(process.cwd(), { prefix: "t3code-favicon-config-" });
 
 const TestLayer = Layer.empty.pipe(
   Layer.provideMerge(
@@ -19,6 +22,7 @@ const TestLayer = Layer.empty.pipe(
       Layer.provide(T3ProjectFileLoader.layer),
     ),
   ),
+  Layer.provideMerge(configLayer),
   Layer.provideMerge(NodeServices.layer),
 );
 
@@ -46,6 +50,7 @@ const writeTextFile = Effect.fn("writeTextFile")(function* (
 const makeResolverWithFileSystem = (fileSystem: FileSystem.FileSystem) =>
   ProjectFaviconResolver.make.pipe(
     Effect.provide([WorkspacePaths.layer, T3ProjectFileLoader.layer]),
+    Effect.provide(configLayer),
     Effect.provideService(FileSystem.FileSystem, fileSystem),
   );
 

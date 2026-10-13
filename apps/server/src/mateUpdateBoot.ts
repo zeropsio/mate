@@ -1,9 +1,11 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 
-/** zcp writes this file atomically before switching. A damaged marker fails closed. */
-export function mateUpdateBootPending(): boolean {
-  const path = process.env.ZCP_MATE_UPDATE_STATE_FILE;
+/**
+ * zcp writes this file (`ServerConfig.zerops.mateUpdateStateFile`) atomically before switching.
+ * A damaged marker fails closed.
+ */
+export function mateUpdateBootPending(path: string | undefined): boolean {
   if (path === undefined) return false;
   let text: string;
   try {

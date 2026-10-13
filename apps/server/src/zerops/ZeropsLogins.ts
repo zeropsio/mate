@@ -24,7 +24,6 @@
  *
  * @module ZeropsLogins
  */
-import * as NodeOS from "node:os";
 
 import {
   defaultInstanceIdForDriver,
@@ -760,7 +759,7 @@ export const layer = Layer.effect(
     const providerInstances = yield* ProviderInstances;
     return yield* make({
       isZeropsEnvironment: isZeropsEnvironment(config),
-      homeDir: NodeOS.homedir(),
+      homeDir: config.homeDir,
       readInstances: settings.getSettings.pipe(Effect.map((current) => current.providerInstances)),
       instanceChanges: settings.streamChanges.pipe(
         Stream.map((current) => current.providerInstances),

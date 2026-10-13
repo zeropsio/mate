@@ -102,6 +102,13 @@ export interface ZeropsEnvironment {
    * not enroll: no link.
    */
   readonly hqEnrollmentPath?: string | undefined;
+  /** This container's service id and hostname, as the platform sets `serviceId` and `hostname`. */
+  readonly serviceId: string | undefined;
+  readonly hostname: string | undefined;
+  /** zcp's status file (`ZCP_STATUS_FILE`), when this zcp writes one. */
+  readonly statusFile: string | undefined;
+  /** zcp's Mate update state (`ZCP_MATE_UPDATE_STATE_FILE`), written before it switches versions. */
+  readonly mateUpdateStateFile: string | undefined;
 }
 
 /** Raw environment values, before the rule is applied. */
@@ -113,6 +120,10 @@ export interface ZeropsEnvironmentInput {
   readonly roleRecheckSeconds?: number | undefined;
   readonly sessionMaxAgeSeconds?: number | undefined;
   readonly hqEnrollmentPath?: string | undefined;
+  readonly serviceId?: string | undefined;
+  readonly hostname?: string | undefined;
+  readonly statusFile?: string | undefined;
+  readonly mateUpdateStateFile?: string | undefined;
 }
 
 /**
@@ -147,6 +158,10 @@ export const resolveZeropsEnvironment = (
   const publicOrigin = input.publicOrigin?.trim();
   const apiToken = input.apiToken?.trim();
   const hqEnrollmentPath = input.hqEnrollmentPath?.trim();
+  const present = (value: string | undefined) => {
+    const trimmed = value?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed : undefined;
+  };
   return {
     projectId,
     apiBaseUrl: resolveZeropsApiBaseUrl(input.apiHost),
@@ -162,6 +177,10 @@ export const resolveZeropsEnvironment = (
       positive(input.sessionMaxAgeSeconds, DEFAULT_ZEROPS_SESSION_MAX_AGE_SECONDS),
     ),
     ...(hqEnrollmentPath && hqEnrollmentPath.length > 0 ? { hqEnrollmentPath } : {}),
+    serviceId: present(input.serviceId),
+    hostname: present(input.hostname),
+    statusFile: present(input.statusFile),
+    mateUpdateStateFile: present(input.mateUpdateStateFile),
   };
 };
 

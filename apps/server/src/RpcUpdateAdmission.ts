@@ -3,10 +3,13 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
+import { ServerConfig } from "./config.ts";
 import { mateUpdateBootPending } from "./mateUpdateBoot.ts";
 
-export const makeRpcUpdateAdmission = Effect.gen(function* () {
-  let closed = mateUpdateBootPending();
+export const makeRpcUpdateAdmission = Effect.fnUntraced(function* (
+  updateStateFile: string | undefined,
+) {
+  let closed = mateUpdateBootPending(updateStateFile);
   let active = 0;
   const changes = yield* PubSub.sliding<void>(1);
   const changed = PubSub.publish(changes, undefined).pipe(Effect.asVoid);
@@ -45,6 +48,11 @@ export const makeRpcUpdateAdmission = Effect.gen(function* () {
 });
 export class RpcUpdateAdmission extends Context.Service<
   RpcUpdateAdmission,
-  Effect.Success<typeof makeRpcUpdateAdmission>
+  Effect.Success<ReturnType<typeof makeRpcUpdateAdmission>>
 >()("t3/RpcUpdateAdmission") {}
-export const rpcUpdateAdmissionLayer = Layer.effect(RpcUpdateAdmission, makeRpcUpdateAdmission);
+export const rpcUpdateAdmissionLayer = Layer.effect(
+  RpcUpdateAdmission,
+  Effect.flatMap(ServerConfig, (config) =>
+    makeRpcUpdateAdmission(config.zerops?.mateUpdateStateFile),
+  ),
+);

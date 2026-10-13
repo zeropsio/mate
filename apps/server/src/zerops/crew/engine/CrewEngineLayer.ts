@@ -555,6 +555,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       repositoryOf,
       agentOf,
       workspaceRoot: config.cwd,
+      homeDir: config.homeDir,
       ask: askAs,
       memory,
       reads,

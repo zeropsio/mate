@@ -2,13 +2,22 @@
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it as effectIt } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import { afterAll, assert, describe } from "vite-plus/test";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
-import { readWorkflowScript } from "./workflowScriptQuery.ts";
+import { ServerConfig } from "../config.ts";
+import { readWorkflowScript as readWorkflowScriptIn } from "./workflowScriptQuery.ts";
 
-const root = NodePath.join(NodeOS.homedir(), ".claude", "projects", "__wf_script_test__");
+const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "wf-script-"));
+const configLayer = ServerConfig.layerTest(process.cwd(), baseDir).pipe(
+  Layer.provide(NodeServices.layer),
+);
+const readWorkflowScript = (input: { readonly scriptPath: string }) =>
+  readWorkflowScriptIn(input).pipe(Effect.provide(configLayer));
+const root = NodePath.join(baseDir, "home", ".claude", "projects", "__wf_script_test__");
 NodeFS.mkdirSync(root, { recursive: true });
 const scriptPath = NodePath.join(root, "run.js");
 NodeFS.writeFileSync(scriptPath, "export const meta = {};\n");
@@ -26,7 +35,7 @@ if (symlinksSupported) {
 }
 
 afterAll(() => {
-  NodeFS.rmSync(root, { recursive: true, force: true });
+  NodeFS.rmSync(baseDir, { recursive: true, force: true });
   NodeFS.rmSync(outside, { force: true });
 });
 

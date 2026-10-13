@@ -503,9 +503,17 @@ it.effect("does not choose a default Forgejo login across ambiguous SSH server p
   }),
 );
 
+const makeForgejoCli = ForgejoCli.make.pipe(
+  Effect.provide(
+    ServerConfig.layerTest(process.cwd(), { prefix: "t3-forgejo-cli-test-" }).pipe(
+      Layer.provide(NodeServices.layer),
+    ),
+  ),
+);
+
 it.effect("rejects HTTP failures even when tea exits successfully", () =>
   Effect.gen(function* () {
-    const cli = yield* ForgejoCli.make;
+    const cli = yield* makeForgejoCli;
     const result = yield* cli
       .api({
         cwd: "/repo",
@@ -568,7 +576,7 @@ it.effect("rejects HTTP failures even when tea exits successfully", () =>
 
 it.effect("routes mounted Forgejo repositories without repeating the mount in API paths", () =>
   Effect.gen(function* () {
-    const cli = yield* ForgejoCli.make;
+    const cli = yield* makeForgejoCli;
     const viewer = yield* cli.api({ cwd: "/upstream-only", host: "code.test", path: "user" });
     assert.strictEqual(viewer.stdout, "[]");
     const mountedRepository = yield* cli.resolveRepository({
@@ -667,7 +675,7 @@ it.effect("prefers fj for HTTP and ported SSH aliases on root servers", () => {
   const commands: string[] = [];
   const requests: string[] = [];
   return Effect.gen(function* () {
-    const cli = yield* ForgejoCli.make;
+    const cli = yield* makeForgejoCli;
     for (const remoteUrl of [
       "http://forgejo.local:3000/maria/project.git",
       "ssh://git@ssh.forgejo.local:2222/maria/project.git",
@@ -794,7 +802,7 @@ it.effect("falls back to tea when fj is missing or has no account for this serve
     for (const scenario of ["missing-cli", "missing-account", "stale-invalid-storage"] as const) {
       const commands: string[] = [];
       yield* Effect.gen(function* () {
-        const cli = yield* ForgejoCli.make;
+        const cli = yield* makeForgejoCli;
         const result = yield* cli.api({
           cwd: "/repo",
           repository: "https://forgejo.local:3000/maria/project",
@@ -884,7 +892,7 @@ it.effect("handles fj mutation statuses without retrying failures or reading abs
     for (const status of [204, 205, 302, 401, 403, 404, 429, 500]) {
       let writes = 0;
       yield* Effect.gen(function* () {
-        const cli = yield* ForgejoCli.make;
+        const cli = yield* makeForgejoCli;
         const result = yield* cli
           .api({
             cwd: "/repo",

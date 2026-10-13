@@ -14,7 +14,6 @@
  * @module crew/engine/crewEngineDirectory
  */
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as Effect from "effect/Effect";
@@ -83,6 +82,8 @@ export interface EngineCrewDirectoryInputs {
   readonly agentOf: (login: string) => Effect.Effect<ProviderInstanceAgent | undefined>;
   /** The Mate's tree: where readers and the lead work, and relative paths resolve. */
   readonly workspaceRoot: string;
+  /** The Mate's home directory (`ServerConfig.homeDir`), refused as a writer root. */
+  readonly homeDir: string;
   /** Tells the crew owner one input as `principal`. */
   readonly ask: (
     input: CrewInput,
@@ -133,7 +134,7 @@ export const makeEngineCrewDirectory = (inputs: EngineCrewDirectoryInputs) => {
           .flatMap((other) => other.migrations),
         refusedRoots: crewRefusedRoots({
           workspaceRoot: inputs.workspaceRoot,
-          home: NodeOS.homedir(),
+          home: inputs.homeDir,
         }),
         realpath: realpathOrNearest,
         workspaceRoot: inputs.workspaceRoot,

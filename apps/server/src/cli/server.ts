@@ -7,6 +7,7 @@ import { Command, GlobalFlag } from "effect/cli";
 import * as CliError from "effect/cli/CliError";
 
 import { ServerConfig, type StartupPresentation } from "../config.ts";
+import { fixPath } from "../os-jank.ts";
 import { runServer } from "../server.ts";
 import { type CliServerFlags, resolveServerConfig, sharedServerCommandFlags } from "./config.ts";
 
@@ -22,6 +23,8 @@ const runServerCommand = (
 ) =>
   Effect.gen(function* () {
     const logLevel = yield* GlobalFlag.LogLevel;
+    // The CLI owns its process: PATH and HOME are repaired before configuration reads them.
+    yield* fixPath();
     const config = yield* resolveServerConfig(flags, logLevel, options);
     return yield* runServer.pipe(Effect.provideService(ServerConfig, config));
   });

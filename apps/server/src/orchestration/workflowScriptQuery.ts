@@ -14,22 +14,24 @@
  * never trusted beyond these checks.
  */
 import * as NodeFSP from "node:fs/promises";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { OrchestrationGetWorkflowScriptError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
+import { ServerConfig } from "../config.ts";
+
 const SCRIPT_BYTE_CAP = 256 * 1024;
 
-function scriptsRoot(): string {
-  return NodePath.join(NodeOS.homedir(), ".claude", "projects");
+function scriptsRoot(homeDir: string): string {
+  return NodePath.join(homeDir, ".claude", "projects");
 }
 
 export const readWorkflowScript = Effect.fn("orchestration.readWorkflowScript")(function* (input: {
   readonly scriptPath: string;
 }) {
   const requested = input.scriptPath;
+  const { homeDir } = yield* ServerConfig;
 
   if (!NodePath.isAbsolute(requested) || NodePath.extname(requested) !== ".js") {
     return yield* new OrchestrationGetWorkflowScriptError({
@@ -39,7 +41,7 @@ export const readWorkflowScript = Effect.fn("orchestration.readWorkflowScript")(
   }
 
   const root = yield* Effect.tryPromise({
-    try: () => NodeFSP.realpath(scriptsRoot()),
+    try: () => NodeFSP.realpath(scriptsRoot(homeDir)),
     catch: (cause) =>
       new OrchestrationGetWorkflowScriptError({
         reason: "root-unavailable",

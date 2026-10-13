@@ -97,6 +97,11 @@ export class ServerConfig extends Context.Service<
     readonly basePath: string;
     readonly cwd: string;
     readonly baseDir: string;
+    /**
+     * The account's home directory, where provider CLIs, zcp and agent logins keep their files.
+     * The one source for it in the server graph: nothing below reads `os.homedir()` or `HOME`.
+     */
+    readonly homeDir: string;
     readonly staticDir: string | undefined;
     readonly devUrl: URL | undefined;
     readonly devAllowedOrigins: ReadonlyArray<string>;
@@ -235,6 +240,7 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
       : yield* fs.makeTempDirectoryScoped({ prefix: baseDirOrPrefix.prefix });
   const derivedPaths = yield* deriveServerPaths(baseDir, devUrl);
   yield* ensureServerDirectories(derivedPaths);
+  const path = yield* Path.Path;
 
   return ServerConfig.of({
     logLevel: "Error",
@@ -253,6 +259,7 @@ const makeTest = Effect.fn("ServerConfig.makeTest")(function* (
     otelEnvironment: OtelEnvironment.none,
     cwd,
     baseDir,
+    homeDir: path.join(baseDir, "home"),
     ...derivedPaths,
     mode: "web",
     basePath: "",

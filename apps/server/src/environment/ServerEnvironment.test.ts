@@ -64,6 +64,7 @@ const makeServerConfig = Effect.fn(function* (baseDir: string) {
     otelEnvironment: OtelEnvironment.none,
     cwd: process.cwd(),
     baseDir,
+    homeDir: `${baseDir}/home`,
     mode: "web",
     autoBootstrapProjectFromCwd: false,
     logWebSocketEvents: false,
@@ -237,6 +238,10 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
                   apiToken: undefined,
                   roleRecheckInterval: Duration.seconds(300),
                   sessionMaxAge: Duration.hours(24),
+                  serviceId: undefined,
+                  hostname: undefined,
+                  statusFile: undefined,
+                  mateUpdateStateFile: undefined,
                 },
               }),
             ),
@@ -259,6 +264,10 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           apiToken: undefined,
           roleRecheckInterval: Duration.seconds(300),
           sessionMaxAge: Duration.hours(24),
+          serviceId: undefined,
+          hostname: undefined,
+          statusFile: undefined,
+          mateUpdateStateFile: undefined,
         },
       } satisfies ServerConfig.ServerConfig["Service"];
     });
@@ -383,6 +392,10 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
           apiToken: undefined,
           roleRecheckInterval: Duration.seconds(300),
           sessionMaxAge: Duration.hours(24),
+          serviceId: undefined,
+          hostname: undefined,
+          statusFile: undefined,
+          mateUpdateStateFile: undefined,
         },
       };
 

@@ -65,15 +65,21 @@ export const ASSET_ROUTE_PREFIX = "/api/assets";
 
 /**
  * Where an image outside the thread's workspace root may still be served
- * from: the server user's home and the OS temp dir. A Mate's container is
+ * from besides `ServerConfig.homeDir`: the OS temp dir. A Mate's container is
  * the person's own dev box, and a Mate saves the screenshots it shows in a
  * reply there (`~/shots/home.png`, `/tmp/v1.png`). A reference so a test can
  * stand in its own directories for the real ones.
  */
 export const OutsideWorkspaceImageRoots = Context.Reference<ReadonlyArray<string>>(
   "t3/assets/OutsideWorkspaceImageRoots",
-  { defaultValue: () => [NodeOS.homedir(), NodeOS.tmpdir()] },
+  { defaultValue: () => [NodeOS.tmpdir()] },
 );
+
+/** The home directory and {@link OutsideWorkspaceImageRoots}. */
+export const outsideWorkspaceImageRoots = Effect.gen(function* () {
+  const { homeDir } = yield* ServerConfig.ServerConfig;
+  return [homeDir, ...(yield* OutsideWorkspaceImageRoots)];
+});
 
 const ASSET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const PROJECT_FAVICON_TOKEN_BUCKET_MS = 30 * 60 * 1000;
@@ -311,7 +317,7 @@ const pinExactMediaFile = Effect.fn("AssetAccess.pinExactMediaFile")(function* (
 /**
  * An image the Mate put in a reply from outside the thread's workspace root.
  * Served only when its canonical path, every symlink resolved, lies inside
- * one of {@link OutsideWorkspaceImageRoots} (resolved the same way) and is
+ * one of {@link outsideWorkspaceImageRoots} (resolved the same way) and is
  * literally an image; pinned by device and inode like a `media-file`. A root
  * that resolves to the filesystem root is skipped, or it would open every
  * image on the host.
@@ -332,7 +338,7 @@ const resolveOutsideWorkspaceImage = Effect.fn("AssetAccess.resolveOutsideWorksp
       return yield* new AssetWorkspaceAssetNotFoundError({ resource });
     }
     const roots = yield* Effect.forEach(
-      (yield* OutsideWorkspaceImageRoots).filter((root) => path.isAbsolute(root)),
+      (yield* outsideWorkspaceImageRoots).filter((root) => path.isAbsolute(root)),
       (root) => optionOnNotFound(fileSystem.realPath(root)),
     ).pipe(Effect.mapError(inspectionFailed));
     const insideRoot = roots.some(
@@ -478,7 +484,10 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
   }
   switch (input.resource._tag) {
     case "media-file": {
-      let requestedPath = expandHomePath(input.resource.path);
+      let requestedPath = expandHomePath(
+        input.resource.path,
+        (yield* ServerConfig.ServerConfig).homeDir,
+      );
       if (!path.isAbsolute(requestedPath)) {
         if (!input.workspaceRoot) {
           return yield* new AssetWorkspaceContextNotFoundError({ resource: input.resource });

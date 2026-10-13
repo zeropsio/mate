@@ -615,6 +615,7 @@ const buildAppUnderTest = (options?: {
       host: "127.0.0.1",
       cwd: process.cwd(),
       baseDir,
+      homeDir: `${baseDir}/home`,
       ...derivedPaths,
       staticDir: undefined,
       devUrl,

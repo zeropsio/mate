@@ -91,13 +91,19 @@ export const fixPath = Effect.fn("fixPath")(function* (): Effect.fn.Return<
   );
 });
 
+/**
+ * The account's home directory. The CLI reads it once into `ServerConfig.homeDir`; the server graph
+ * reads only that, so an in-process server never reaches the home of the process hosting it.
+ */
+export const hostHomeDir = (): string => NodeOS.homedir();
+
 export const expandHomePath = Effect.fn(function* (input: string) {
   const { join } = yield* Path.Path;
   if (input === "~") {
-    return NodeOS.homedir();
+    return hostHomeDir();
   }
   if (input.startsWith("~/") || input.startsWith("~\\")) {
-    return join(NodeOS.homedir(), input.slice(2));
+    return join(hostHomeDir(), input.slice(2));
   }
   return input;
 });
@@ -105,7 +111,7 @@ export const expandHomePath = Effect.fn(function* (input: string) {
 export const resolveBaseDir = Effect.fn(function* (raw: string | undefined) {
   const { join, resolve } = yield* Path.Path;
   if (!raw || raw.trim().length === 0) {
-    return join(NodeOS.homedir(), ".t3");
+    return join(hostHomeDir(), ".t3");
   }
   return resolve(yield* expandHomePath(raw.trim()));
 });

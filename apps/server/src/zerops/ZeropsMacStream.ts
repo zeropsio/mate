@@ -406,10 +406,10 @@ export const layer = Layer.effect(
       spawner.spawn(ChildProcess.make("ssh", [...macSshArgs(record, paths, remoteCommand)]));
     return yield* make({
       pairCommands: macPairCommands(
-        config.zerops?.projectId ?? process.env["projectId"] ?? "<project id>",
-        process.env["hostname"] ?? "zcp",
+        config.zerops?.projectId ?? "<project id>",
+        config.zerops?.hostname ?? "zcp",
       ),
-      removeCommands: macRemoveCommands(process.env["hostname"] ?? "zcp"),
+      removeCommands: macRemoveCommands(config.zerops?.hostname ?? "zcp"),
       readRecord: readDecoded(paths.record, decodeMacHostRecord),
       readView: readDecoded(paths.view, decodeMacViewRecord),
       forget: Effect.forEach([paths.record, paths.knownHosts, paths.view], (file) =>

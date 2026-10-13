@@ -28,14 +28,16 @@ import {
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 const layer = Layer.mergeAll(
-  layerTest(process.cwd(), { prefix: "mate-capture-" }),
   WorkspacePaths.layer,
   ProjectFaviconResolver.layer.pipe(
     Layer.provide(WorkspacePaths.layer),
     Layer.provide(T3ProjectFileLoader.layer),
   ),
   Layer.succeed(AssetSigningKey.AssetSigningKey, { get: Effect.die("legacy signing is not used") }),
-).pipe(Layer.provideMerge(NodeServices.layer));
+).pipe(
+  Layer.provideMerge(layerTest(process.cwd(), { prefix: "mate-capture-" })),
+  Layer.provideMerge(NodeServices.layer),
+);
 it.effect(
   "captures a produced image without a viewer and gives pathname reuse a new occurrence",
   () =>

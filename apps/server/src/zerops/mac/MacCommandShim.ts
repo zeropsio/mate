@@ -41,9 +41,12 @@ export const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
     const entryPath = process.argv[1];
-    const homeDir = process.env["HOME"];
-    if (!isZeropsEnvironment(config) || !entryPath || !homeDir) return;
-    yield* installMacCommandShim({ homeDir, nodePath: process.execPath, entryPath });
+    if (!isZeropsEnvironment(config) || !entryPath) return;
+    yield* installMacCommandShim({
+      homeDir: config.homeDir,
+      nodePath: process.execPath,
+      entryPath,
+    });
   }).pipe(
     Effect.catchCause((cause) =>
       Effect.logWarning("Could not put the mac command on the agents' PATH", cause),

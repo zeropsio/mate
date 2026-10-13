@@ -206,11 +206,12 @@ const runStartupPhase = <A, E, R>(phase: string, effect: Effect.Effect<A, E, R>)
 export const startConversationRoots = (input: {
   readonly engine: Pick<MateEngineService, "start" | "updateDrain">;
   readonly reactorScope: Scope.Scope;
+  readonly updateStateFile: string | undefined;
 }): Effect.Effect<void> =>
   runStartupPhase(
     "engine.start",
     Effect.gen(function* () {
-      if (mateUpdateBootPending()) {
+      if (mateUpdateBootPending(input.updateStateFile)) {
         if (input.engine.updateDrain === undefined)
           return yield* Effect.die(new Error("This Mate cannot fence an automatic update boot."));
         yield* input.engine.updateDrain.begin;
@@ -277,7 +278,11 @@ export const make = (options?: StartupOptions) =>
       );
 
       yield* Effect.logDebug("startup phase: starting the Mate engine");
-      yield* startConversationRoots({ engine: mateEngine, reactorScope });
+      yield* startConversationRoots({
+        engine: mateEngine,
+        reactorScope,
+        updateStateFile: serverConfig.zerops?.mateUpdateStateFile,
+      });
 
       const welcomeBase = yield* resolveWelcomeBase;
       const environment = yield* serverEnvironment.getDescriptor;

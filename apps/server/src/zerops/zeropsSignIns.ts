@@ -22,9 +22,9 @@ import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
-import * as NodeOS from "node:os";
 
 import { writeFileStringAtomically } from "../atomicWrite.ts";
+import { ServerConfig } from "../config.ts";
 
 /** One login's latest successful sign-in: the Zerops user id, and when it started (epoch ms). */
 export interface SignInRecord {
@@ -213,6 +213,7 @@ export const layer = Layer.effect(
   ZeropsSignIns,
   Effect.gen(function* () {
     const path = yield* Path.Path;
-    return yield* fileSignInStore(signInsPath(path, NodeOS.homedir()));
+    const config = yield* ServerConfig;
+    return yield* fileSignInStore(signInsPath(path, config.homeDir));
   }),
 );

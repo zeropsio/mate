@@ -16,6 +16,7 @@ import {
   AntigravityInstallation,
   type AntigravityInstallationError,
 } from "./AntigravityInstallation.ts";
+import { BUILT_IN_DRIVERS } from "./builtInDrivers.ts";
 import { deriveProviderInstanceConfigMap } from "./Layers/ProviderInstanceRegistryHydration.ts";
 import { ProviderInstanceRegistry } from "./Services/ProviderInstanceRegistry.ts";
 import { ProviderRegistry } from "./Services/ProviderRegistry.ts";
@@ -46,7 +47,7 @@ export const makeProviderInstallation = Effect.fn("makeProviderInstallation")(fu
           }),
       ),
     );
-    return deriveProviderInstanceConfigMap(current);
+    return deriveProviderInstanceConfigMap(current, BUILT_IN_DRIVERS);
   });
 
   const requireInstance = Effect.fn("ProviderInstallation.requireInstance")(function* (

@@ -32,7 +32,7 @@ describe("registerCrewRpc", () => {
     "during update, an accepted crew can pause or stop while new crew work is refused",
     () =>
       Effect.gen(function* () {
-        const admission = yield* makeRpcUpdateAdmission;
+        const admission = yield* makeRpcUpdateAdmission(undefined);
         yield* admission.begin;
         const handlers = registerCrewRpc({
           crew: { ...inertCrewEngine, command: () => Effect.succeed({ _tag: "done" }) },

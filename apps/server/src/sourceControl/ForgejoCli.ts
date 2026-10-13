@@ -6,7 +6,7 @@ import * as Result from "effect/Result";
 import * as Clock from "effect/Clock";
 import * as FileSystem from "effect/FileSystem";
 import * as Semaphore from "effect/Semaphore";
-import * as NodeOS from "node:os";
+import { ServerConfig } from "../config.ts";
 // @effect-diagnostics-next-line nodeBuiltinImport:off - fj storage paths use explicit Windows and POSIX layouts, independently of this process's platform.
 import * as NodePath from "node:path";
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http";
@@ -215,6 +215,7 @@ export const make = Effect.gen(function* () {
   const process = yield* VcsProcess.VcsProcess;
   const fileSystem = yield* FileSystem.FileSystem;
   const httpClient = yield* HttpClient.HttpClient;
+  const { homeDir } = yield* ServerConfig;
   const authLock = yield* Semaphore.make(1);
   const authenticated = new Map<string, { token: string; time: number }>();
   const execute: ForgejoCli["Service"]["execute"] = (input) =>
@@ -250,7 +251,7 @@ export const make = Effect.gen(function* () {
   const readKeys = Effect.fn("ForgejoCli.readKeys")(function* (cwd: string) {
     for (const path of forgejoKeysPaths({
       platform: yield* HostProcessPlatform,
-      home: NodeOS.homedir(),
+      home: homeDir,
       ...(globalThis.process.env.XDG_DATA_HOME
         ? { dataHome: globalThis.process.env.XDG_DATA_HOME }
         : {}),

@@ -28,7 +28,6 @@ import {
   withUntracedRequests,
 } from "./http.ts";
 import { guardHttpResponseWriteErrors } from "./httpResponseErrorGuard.ts";
-import { fixPath } from "./os-jank.ts";
 import { websocketRpcRouteLayer } from "./ws.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
@@ -68,7 +67,9 @@ import * as GitLabCli from "./sourceControl/GitLabCli.ts";
 import * as ProcessRunner from "./processRunner.ts";
 import * as ForgejoCli from "./sourceControl/ForgejoCli.ts";
 import * as TextGeneration from "./textGeneration/TextGeneration.ts";
-import { ProviderInstanceRegistryHydrationLive } from "./provider/Layers/ProviderInstanceRegistryHydration.ts";
+import { makeProviderInstanceRegistryHydration } from "./provider/Layers/ProviderInstanceRegistryHydration.ts";
+import { BUILT_IN_DRIVERS, type BuiltInDriversEnv } from "./provider/builtInDrivers.ts";
+import type { AnyProviderDriver } from "./provider/ProviderDriver.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -457,85 +458,92 @@ const AntigravityInstallationRefreshLive = Layer.effectDiscard(
   }),
 );
 
-const RuntimeCoreDependenciesLive = AgentAwarenessRelayLive.pipe(
-  Layer.provideMerge(AntigravityInstallationRefreshLive),
-  Layer.provideMerge(ReplayMarkers.layer),
-  Layer.provideMerge(ProviderAuthServiceLive),
-  // Core Services
-  Layer.provideMerge(ServerSettingsLayerLive),
-  Layer.provideMerge(CheckpointingLayerLive),
-  Layer.provideMerge(SourceControlProviderRegistryLayerLive),
-  Layer.provideMerge(GitLayerLive),
-  Layer.provideMerge(VcsLayerLive),
-  Layer.provideMerge(ProviderRuntimeLayerLive),
-  Layer.provideMerge(TerminalLayerLive),
-  Layer.provideMerge(PersistenceLayerLive),
-  // Both read a user-owned file out of the state directory and stream changes
-  // to clients; neither depends on the other.
-  Layer.provideMerge(Layer.mergeAll(Keybindings.layer, UsageLimitSources.layer)),
-  Layer.provideMerge(ProviderRegistryLive),
-  // The instance registry is the new routing keystone — text generation,
-  // adapter lookup, and runtime ingestion all resolve `ProviderInstanceId`
-  // through this layer. Built-in drivers come from `BUILT_IN_DRIVERS`;
-  // `providerInstances` hydration merges `settings.providers.<kind>`
-  // with explicit `providerInstances` entries on boot.
-  Layer.provideMerge(ProviderInstanceRegistryHydrationLive),
-).pipe(
-  Layer.provideMerge(AntigravityInstallation.layer),
-  // Shared native/canonical NDJSON writers used by both the per-instance
-  // drivers (native stream, written from inside each `<X>Adapter`) and
-  // `ProviderService` (canonical stream, written after event normalization).
-  // Provided once at the runtime level so every consumer sees the same
-  // logger instances.
-  // `ModelManifest.layer` is the legacy-model classification data, refreshed
-  // from the repo's `model-manifest.json` on `main` and applied by the
-  // Codex/Claude drivers.
-  Layer.provideMerge(
-    Layer.mergeAll(ProviderEventLoggers.layer, ModelManifest.layer, ResetCreditCoordinator.layer),
-  ),
-  // `OpenCodeDriver.create()` yields `OpenCodeRuntime`; previously the old
-  // `ProviderRegistryLive` pulled `OpenCodeRuntimeLive` in for itself, but
-  // the rewritten registry reads snapshots off the instance registry and
-  // no longer transitively provides it. Exposing it at the runtime level
-  // keeps a single Live for all opencode consumers.
-  Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
-  Layer.provideMerge(WorkspaceLayerLive),
-  Layer.provideMerge(ProjectFaviconResolverLayerLive),
-  Layer.provideMerge(RepositoryIdentityResolverLayerLive),
-  Layer.provideMerge(ServerEnvironment.layer),
-  // `ServerEnvironment.getDescriptor` reads this Ref for the `zerops.identity`
-  // fields (S4). Self-sufficient (no deps of its own), so it can be added
-  // once here to satisfy `ServerEnvironment.layer`'s requirement for it — and
-  // because this whole chain (`RuntimeBaseDependenciesLive`) is later used to
-  // satisfy `ZeropsLayerLive`'s requirements in `RuntimeDependenciesLive`
-  // below, the SAME instance also reaches the membership watch and (through
-  // the runtime composition further down) the door — one shared status, one
-  // writer's worth of readers.
-  Layer.provideMerge(ZeropsIdentityStatusModule.layer),
-  Layer.provideMerge(AuthLayerLive),
-  Layer.provideMerge(AssetSigningKey.layer),
-  Layer.provideMerge(ServerSecretStore.layer),
-  Layer.provideMerge(
-    Layer.mergeAll(
-      CloudCliTokenManager.layer.pipe(
-        Layer.provide(ServerSecretStore.layer),
-        Layer.provide(ExternalLauncher.layer),
-      ),
-      CloudManagedEndpointRuntimeLive,
-    ),
-  ),
-);
+/** What a server is built from: production boots `BUILT_IN_DRIVERS`, a scenario Mate its scripted driver. */
+export interface ServerLayerOptions {
+  readonly drivers: ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv>>;
+}
 
-const RuntimeBaseDependenciesLive = RuntimeCoreDependenciesLive.pipe(
-  // Misc.
-  Layer.provideMerge(BackgroundLayerLive),
-  Layer.provideMerge(ResourceDiagnosticsLayerLive),
-  Layer.provideMerge(TraceDiagnostics.layer),
-  Layer.provideMerge(ExternalLauncher.layer),
-  Layer.provideMerge(RemoteOpenTargets.layer),
-  Layer.provideMerge(ServerLifecycleEvents.layer),
-  Layer.provide(NetService.layer),
-);
+const makeRuntimeCoreDependencies = (options: ServerLayerOptions) =>
+  AgentAwarenessRelayLive.pipe(
+    Layer.provideMerge(AntigravityInstallationRefreshLive),
+    Layer.provideMerge(ReplayMarkers.layer),
+    Layer.provideMerge(ProviderAuthServiceLive),
+    // Core Services
+    Layer.provideMerge(ServerSettingsLayerLive),
+    Layer.provideMerge(CheckpointingLayerLive),
+    Layer.provideMerge(SourceControlProviderRegistryLayerLive),
+    Layer.provideMerge(GitLayerLive),
+    Layer.provideMerge(VcsLayerLive),
+    Layer.provideMerge(ProviderRuntimeLayerLive),
+    Layer.provideMerge(TerminalLayerLive),
+    Layer.provideMerge(PersistenceLayerLive),
+    // Both read a user-owned file out of the state directory and stream changes
+    // to clients; neither depends on the other.
+    Layer.provideMerge(Layer.mergeAll(Keybindings.layer, UsageLimitSources.layer)),
+    Layer.provideMerge(ProviderRegistryLive),
+    // The instance registry is the new routing keystone — text generation,
+    // adapter lookup, and runtime ingestion all resolve `ProviderInstanceId`
+    // through this layer. Its drivers come from `options.drivers`;
+    // `providerInstances` hydration merges `settings.providers.<kind>`
+    // with explicit `providerInstances` entries on boot.
+    Layer.provideMerge(makeProviderInstanceRegistryHydration(options.drivers)),
+  ).pipe(
+    Layer.provideMerge(AntigravityInstallation.layer),
+    // Shared native/canonical NDJSON writers used by both the per-instance
+    // drivers (native stream, written from inside each `<X>Adapter`) and
+    // `ProviderService` (canonical stream, written after event normalization).
+    // Provided once at the runtime level so every consumer sees the same
+    // logger instances.
+    // `ModelManifest.layer` is the legacy-model classification data, refreshed
+    // from the repo's `model-manifest.json` on `main` and applied by the
+    // Codex/Claude drivers.
+    Layer.provideMerge(
+      Layer.mergeAll(ProviderEventLoggers.layer, ModelManifest.layer, ResetCreditCoordinator.layer),
+    ),
+    // `OpenCodeDriver.create()` yields `OpenCodeRuntime`; previously the old
+    // `ProviderRegistryLive` pulled `OpenCodeRuntimeLive` in for itself, but
+    // the rewritten registry reads snapshots off the instance registry and
+    // no longer transitively provides it. Exposing it at the runtime level
+    // keeps a single Live for all opencode consumers.
+    Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
+    Layer.provideMerge(WorkspaceLayerLive),
+    Layer.provideMerge(ProjectFaviconResolverLayerLive),
+    Layer.provideMerge(RepositoryIdentityResolverLayerLive),
+    Layer.provideMerge(ServerEnvironment.layer),
+    // `ServerEnvironment.getDescriptor` reads this Ref for the `zerops.identity`
+    // fields (S4). Self-sufficient (no deps of its own), so it can be added
+    // once here to satisfy `ServerEnvironment.layer`'s requirement for it — and
+    // because this whole chain (`makeRuntimeBaseDependencies`) is later used to
+    // satisfy `ZeropsLayerLive`'s requirements in `makeRuntimeDependencies`
+    // below, the SAME instance also reaches the membership watch and (through
+    // the runtime composition further down) the door — one shared status, one
+    // writer's worth of readers.
+    Layer.provideMerge(ZeropsIdentityStatusModule.layer),
+    Layer.provideMerge(AuthLayerLive),
+    Layer.provideMerge(AssetSigningKey.layer),
+    Layer.provideMerge(ServerSecretStore.layer),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        CloudCliTokenManager.layer.pipe(
+          Layer.provide(ServerSecretStore.layer),
+          Layer.provide(ExternalLauncher.layer),
+        ),
+        CloudManagedEndpointRuntimeLive,
+      ),
+    ),
+  );
+
+const makeRuntimeBaseDependencies = (options: ServerLayerOptions) =>
+  makeRuntimeCoreDependencies(options).pipe(
+    // Misc.
+    Layer.provideMerge(BackgroundLayerLive),
+    Layer.provideMerge(ResourceDiagnosticsLayerLive),
+    Layer.provideMerge(TraceDiagnostics.layer),
+    Layer.provideMerge(ExternalLauncher.layer),
+    Layer.provideMerge(RemoteOpenTargets.layer),
+    Layer.provideMerge(ServerLifecycleEvents.layer),
+    Layer.provide(NetService.layer),
+  );
 
 /**
  * `apps/server/src/zerops/**` depends on `ProviderRuntimeEventBus`
@@ -556,18 +564,19 @@ const ProviderRuntimeEventBusLayerLive = ProviderRuntimeEventBusLive.pipe(
  * would be treated as a dependency OF the runtime, and their own
  * requirements would leak out to every caller instead of being satisfied.
  */
-const RuntimeDependenciesLive = Layer.mergeAll(
-  ZeropsLayerLive,
-  McpServersLayerLive.pipe(Layer.provide(ZeropsLayerLive)),
-  // It reads the Mate engine the Zerops feeds compose (the same instance, memoized by reference).
-  ThreadFileWrites.layer.pipe(Layer.provide(ZeropsLayerLive)),
-  // Puts `mac` (work on a paired Mac) on the agents' PATH inside a Zerops container.
-  MacCommandShim.layer,
-).pipe(
-  Layer.provideMerge(providerUpdateSafetyLayer),
-  Layer.provideMerge(ProviderRuntimeEventBusLayerLive),
-  Layer.provideMerge(RuntimeBaseDependenciesLive),
-);
+const makeRuntimeDependencies = (options: ServerLayerOptions) =>
+  Layer.mergeAll(
+    ZeropsLayerLive,
+    McpServersLayerLive.pipe(Layer.provide(ZeropsLayerLive)),
+    // It reads the Mate engine the Zerops feeds compose (the same instance, memoized by reference).
+    ThreadFileWrites.layer.pipe(Layer.provide(ZeropsLayerLive)),
+    // Puts `mac` (work on a paired Mac) on the agents' PATH inside a Zerops container.
+    MacCommandShim.layer,
+  ).pipe(
+    Layer.provideMerge(providerUpdateSafetyLayer),
+    Layer.provideMerge(ProviderRuntimeEventBusLayerLive),
+    Layer.provideMerge(makeRuntimeBaseDependencies(options)),
+  );
 
 const commandReadinessLayer = HttpRouter.middleware(
   (httpEffect) =>
@@ -608,173 +617,172 @@ export const serveRoutes = (options: {
   readonly disableListenLog?: boolean;
 }) => HttpRouter.serve(makeRoutesLayer, options).pipe(withUntracedRequests);
 
-const makeServerLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* ServerConfig.ServerConfig;
-    const activation = yield* Deferred.make<void>();
-    const awaitActivation = Deferred.await(activation);
-    const activationLayer = Layer.succeed(ServerActivation, awaitActivation);
-    const runtimeStateParked = yield* Deferred.make<void>();
-    const cloudLinkParked = yield* Deferred.make<void>();
-    const routesReady = yield* Deferred.make<void>();
+export const makeServerLayer = (options: ServerLayerOptions) =>
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const activation = yield* Deferred.make<void>();
+      const awaitActivation = Deferred.await(activation);
+      const activationLayer = Layer.succeed(ServerActivation, awaitActivation);
+      const runtimeStateParked = yield* Deferred.make<void>();
+      const cloudLinkParked = yield* Deferred.make<void>();
+      const routesReady = yield* Deferred.make<void>();
 
-    yield* fixPath();
-
-    const httpListeningLayer = Layer.effectDiscard(
-      Effect.gen(function* () {
-        yield* HttpServer.HttpServer;
-        const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
-        yield* startup.markHttpListening;
-      }),
-    );
-    const runtimeStateLayer = Layer.effectDiscard(
-      Effect.acquireRelease(
+      const httpListeningLayer = Layer.effectDiscard(
         Effect.gen(function* () {
-          yield* Deferred.succeed(runtimeStateParked, undefined).pipe(Effect.orDie);
-          yield* awaitActivation;
-          const server = yield* HttpServer.HttpServer;
-          const address = server.address;
-          if (typeof address === "string" || !("port" in address)) {
-            return;
-          }
-
-          const state = yield* makePersistedServerRuntimeState({
-            config,
-            port: address.port,
-          });
-          yield* persistServerRuntimeState({
-            path: config.serverRuntimeStatePath,
-            state,
-          }).pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning("Failed to persist server runtime state", { cause }),
-            ),
-          );
+          yield* HttpServer.HttpServer;
+          const startup = yield* ServerRuntimeStartup.ServerRuntimeStartup;
+          yield* startup.markHttpListening;
         }),
-        () =>
-          clearPersistedServerRuntimeState(config.serverRuntimeStatePath).pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning("Failed to clear server runtime state", { cause }),
-            ),
-          ),
-      ),
-    );
-    const cloudDesiredLinkReconcileLayer = Layer.effectDiscard(
-      Effect.gen(function* () {
-        if (!hasCloudPublicConfig) {
-          yield* Deferred.succeed(cloudLinkParked, undefined).pipe(Effect.orDie);
-          return;
-        }
-        const releaseManagedTunnel = releaseManagedTunnelOnShutdown().pipe(
-          Effect.timeout("10 seconds"),
-          Effect.tap((released) =>
-            released ? Effect.logInfo("Released the managed tunnel on shutdown") : Effect.void,
-          ),
-          Effect.catchCause((cause) =>
-            Effect.logWarning(
-              "Failed to release the managed tunnel on shutdown; the next link reuses it",
-              { cause },
-            ),
-          ),
-          Effect.asVoid,
-        );
-        yield* forkParked(
+      );
+      const runtimeStateLayer = Layer.effectDiscard(
+        Effect.acquireRelease(
           Effect.gen(function* () {
-            yield* Effect.addFinalizer(() => releaseManagedTunnel);
-            if (!(yield* CloudCliState.readCliDesiredCloudLink)) return;
+            yield* Deferred.succeed(runtimeStateParked, undefined).pipe(Effect.orDie);
+            yield* awaitActivation;
             const server = yield* HttpServer.HttpServer;
             const address = server.address;
-            if (typeof address === "string" || !("port" in address)) return;
-            // No settling delay before the first attempt: routes are already
-            // serving by the time activation opens this gate (the startup
-            // sequence awaits routesReady), and the retry schedule below
-            // covers anything this sleep used to hedge against. Every
-            // millisecond here is dead time on the path to remote
-            // reachability after a restart.
-            yield* reconcileDesiredCloudLink(`http://127.0.0.1:${address.port}`).pipe(
-              Effect.retry({
-                while: (error) =>
-                  error._tag !== "EnvironmentHttpBadRequestError" &&
-                  error._tag !== "EnvironmentHttpUnauthorizedError" &&
-                  error._tag !== "EnvironmentHttpConflictError",
-                schedule: Schedule.exponential("1 second").pipe(
-                  Schedule.modifyDelay(({ duration }) =>
-                    Effect.succeed(Duration.min(duration, Duration.seconds(30))),
-                  ),
-                  Schedule.upTo({ duration: "10 minutes" }),
-                ),
-              }),
-              Effect.tap(() => Effect.logInfo("T3 Connect desired link reconciled on startup")),
-              Effect.catch((cause) =>
-                Effect.logWarning("Failed to reconcile T3 Connect desired link on startup", {
-                  cause,
-                }),
+            if (typeof address === "string" || !("port" in address)) {
+              return;
+            }
+
+            const state = yield* makePersistedServerRuntimeState({
+              config,
+              port: address.port,
+            });
+            yield* persistServerRuntimeState({
+              path: config.serverRuntimeStatePath,
+              state,
+            }).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("Failed to persist server runtime state", { cause }),
               ),
             );
           }),
-        );
-        yield* Deferred.succeed(cloudLinkParked, undefined).pipe(Effect.orDie);
-      }),
-    );
-
-    const runtimeServicesLive = ServerRuntimeStartup.layerWithOptions({
-      activate: Deferred.succeed(activation, undefined).pipe(Effect.asVoid),
-      abort: (error) => Deferred.die(activation, error).pipe(Effect.asVoid),
-      awaitAuxiliaryParked: Effect.all(
-        [
-          Deferred.await(runtimeStateParked),
-          Deferred.await(cloudLinkParked),
-          Deferred.await(routesReady),
-        ],
-        { concurrency: "unbounded" },
-      ).pipe(Effect.asVoid),
-    }).pipe(Layer.provideMerge(RuntimeDependenciesLive));
-
-    const routesLayer = serveRoutes({
-      disableLogger: !config.logWebSocketEvents,
-      routerConfig: HTTP_ROUTER_CONFIG,
-    }).pipe(Layer.tap(() => Deferred.succeed(routesReady, undefined).pipe(Effect.orDie)));
-    const serverApplicationLayer = Layer.mergeAll(
-      routesLayer,
-      httpListeningLayer,
-      runtimeStateLayer,
-      cloudDesiredLinkReconcileLayer,
-      HeapSnapshot.layer,
-    );
-
-    return serverApplicationLayer.pipe(
-      Layer.provideMerge(runtimeServicesLive),
-      Layer.provide(activationLayer),
-      Layer.provideMerge(serverRelayBrokerTracingLayer),
-      Layer.provideMerge(HttpServerLive),
-      Layer.provide(ApplicationObservabilityLive),
-      Layer.provideMerge(FetchHttpClient.layer),
-      Layer.provideMerge(VcsProcess.layer),
-      // Zero-dependency seams below the provider runtime and the runtime
-      // startup: the thread tool policy registries a driver reads when it
-      // builds its adapter, and the command readiness startup completes for
-      // layers that sit beneath it.
-      Layer.provideMerge(
-        Layer.mergeAll(
-          ThreadToolPolicyRegistry.layer,
-          ClaudeThreadExtensionRegistry.layer,
-          ServerCommandReadiness.layer,
-          rpcUpdateAdmissionLayer,
+          () =>
+            clearPersistedServerRuntimeState(config.serverRuntimeStatePath).pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("Failed to clear server runtime state", { cause }),
+              ),
+            ),
         ),
-      ),
-      // Inside a Zerops container every git spawn above this line is rewritten
-      // into `ssh <service> git -C /var/www …`; everything else reaches the
-      // platform spawner below unchanged. The repository source reads the
-      // container's own mount table (FileSystem, no spawn at all) and is
-      // merged here rather than buried in the spawner because the checkpoint
-      // reactor reads it too.
-      Layer.provideMerge(ZeropsGitSpawner.layer),
-      Layer.provideMerge(ZeropsWorkspaceObserver.layer),
-      Layer.provideMerge(ZeropsRepositorySource.layer),
-      Layer.provideMerge(PlatformServicesLive),
-    );
-  }),
-);
+      );
+      const cloudDesiredLinkReconcileLayer = Layer.effectDiscard(
+        Effect.gen(function* () {
+          if (!hasCloudPublicConfig) {
+            yield* Deferred.succeed(cloudLinkParked, undefined).pipe(Effect.orDie);
+            return;
+          }
+          const releaseManagedTunnel = releaseManagedTunnelOnShutdown().pipe(
+            Effect.timeout("10 seconds"),
+            Effect.tap((released) =>
+              released ? Effect.logInfo("Released the managed tunnel on shutdown") : Effect.void,
+            ),
+            Effect.catchCause((cause) =>
+              Effect.logWarning(
+                "Failed to release the managed tunnel on shutdown; the next link reuses it",
+                { cause },
+              ),
+            ),
+            Effect.asVoid,
+          );
+          yield* forkParked(
+            Effect.gen(function* () {
+              yield* Effect.addFinalizer(() => releaseManagedTunnel);
+              if (!(yield* CloudCliState.readCliDesiredCloudLink)) return;
+              const server = yield* HttpServer.HttpServer;
+              const address = server.address;
+              if (typeof address === "string" || !("port" in address)) return;
+              // No settling delay before the first attempt: routes are already
+              // serving by the time activation opens this gate (the startup
+              // sequence awaits routesReady), and the retry schedule below
+              // covers anything this sleep used to hedge against. Every
+              // millisecond here is dead time on the path to remote
+              // reachability after a restart.
+              yield* reconcileDesiredCloudLink(`http://127.0.0.1:${address.port}`).pipe(
+                Effect.retry({
+                  while: (error) =>
+                    error._tag !== "EnvironmentHttpBadRequestError" &&
+                    error._tag !== "EnvironmentHttpUnauthorizedError" &&
+                    error._tag !== "EnvironmentHttpConflictError",
+                  schedule: Schedule.exponential("1 second").pipe(
+                    Schedule.modifyDelay(({ duration }) =>
+                      Effect.succeed(Duration.min(duration, Duration.seconds(30))),
+                    ),
+                    Schedule.upTo({ duration: "10 minutes" }),
+                  ),
+                }),
+                Effect.tap(() => Effect.logInfo("T3 Connect desired link reconciled on startup")),
+                Effect.catch((cause) =>
+                  Effect.logWarning("Failed to reconcile T3 Connect desired link on startup", {
+                    cause,
+                  }),
+                ),
+              );
+            }),
+          );
+          yield* Deferred.succeed(cloudLinkParked, undefined).pipe(Effect.orDie);
+        }),
+      );
+
+      const runtimeServicesLive = ServerRuntimeStartup.layerWithOptions({
+        activate: Deferred.succeed(activation, undefined).pipe(Effect.asVoid),
+        abort: (error) => Deferred.die(activation, error).pipe(Effect.asVoid),
+        awaitAuxiliaryParked: Effect.all(
+          [
+            Deferred.await(runtimeStateParked),
+            Deferred.await(cloudLinkParked),
+            Deferred.await(routesReady),
+          ],
+          { concurrency: "unbounded" },
+        ).pipe(Effect.asVoid),
+      }).pipe(Layer.provideMerge(makeRuntimeDependencies(options)));
+
+      const routesLayer = serveRoutes({
+        disableLogger: !config.logWebSocketEvents,
+        routerConfig: HTTP_ROUTER_CONFIG,
+      }).pipe(Layer.tap(() => Deferred.succeed(routesReady, undefined).pipe(Effect.orDie)));
+      const serverApplicationLayer = Layer.mergeAll(
+        routesLayer,
+        httpListeningLayer,
+        runtimeStateLayer,
+        cloudDesiredLinkReconcileLayer,
+        HeapSnapshot.layer,
+      );
+
+      return serverApplicationLayer.pipe(
+        Layer.provideMerge(runtimeServicesLive),
+        Layer.provide(activationLayer),
+        Layer.provideMerge(serverRelayBrokerTracingLayer),
+        Layer.provideMerge(HttpServerLive),
+        Layer.provide(ApplicationObservabilityLive),
+        Layer.provideMerge(FetchHttpClient.layer),
+        Layer.provideMerge(VcsProcess.layer),
+        // Zero-dependency seams below the provider runtime and the runtime
+        // startup: the thread tool policy registries a driver reads when it
+        // builds its adapter, and the command readiness startup completes for
+        // layers that sit beneath it.
+        Layer.provideMerge(
+          Layer.mergeAll(
+            ThreadToolPolicyRegistry.layer,
+            ClaudeThreadExtensionRegistry.layer,
+            ServerCommandReadiness.layer,
+            rpcUpdateAdmissionLayer,
+          ),
+        ),
+        // Inside a Zerops container every git spawn above this line is rewritten
+        // into `ssh <service> git -C /var/www …`; everything else reaches the
+        // platform spawner below unchanged. The repository source reads the
+        // container's own mount table (FileSystem, no spawn at all) and is
+        // merged here rather than buried in the spawner because the checkpoint
+        // reactor reads it too.
+        Layer.provideMerge(ZeropsGitSpawner.layer),
+        Layer.provideMerge(ZeropsWorkspaceObserver.layer),
+        Layer.provideMerge(ZeropsRepositorySource.layer),
+        Layer.provideMerge(PlatformServicesLive),
+      );
+    }),
+  );
 
 // The CLI supplies configuration.
-export const runServer = Layer.launch(makeServerLayer);
+export const runServer = Layer.launch(makeServerLayer({ drivers: BUILT_IN_DRIVERS }));

@@ -52,7 +52,7 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
 import { ServerSettingsService } from "../../serverSettings.ts";
-import { BUILT_IN_DRIVERS, type BuiltInDriversEnv } from "../builtInDrivers.ts";
+import type { AnyProviderDriver } from "../ProviderDriver.ts";
 import { ProviderInstanceRegistry } from "../Services/ProviderInstanceRegistry.ts";
 import { ProviderInstanceRegistryMutator } from "../Services/ProviderInstanceRegistryMutator.ts";
 import { ProviderInstanceRegistryMutableLayer } from "./ProviderInstanceRegistryLive.ts";
@@ -62,7 +62,7 @@ import { ProviderInstanceRegistryMutableLayer } from "./ProviderInstanceRegistry
  *
  * Strategy:
  *   1. Copy all explicit `settings.providerInstances` entries verbatim.
- *   2. For each built-in driver whose `defaultInstanceIdForDriver(id)` key
+ *   2. For each of `drivers` whose `defaultInstanceIdForDriver(id)` key
  *      is *not* already in the explicit map, synthesize an entry from the
  *      matching legacy `settings.providers.<kind>` blob.
  *
@@ -72,10 +72,11 @@ import { ProviderInstanceRegistryMutableLayer } from "./ProviderInstanceRegistry
  */
 export const deriveProviderInstanceConfigMap = (
   settings: ServerSettings,
+  drivers: ReadonlyArray<AnyProviderDriver<unknown>>,
 ): ProviderInstanceConfigMap => {
   const merged: Record<string, ProviderInstanceConfig> = { ...settings.providerInstances };
 
-  for (const driver of BUILT_IN_DRIVERS) {
+  for (const driver of drivers) {
     const instanceId = defaultInstanceIdForDriver(driver.driverKind);
     if (instanceId in merged) {
       // Explicit `providerInstances` entry for this slot — user-authored
@@ -114,35 +115,37 @@ export const deriveProviderInstanceConfigMap = (
  * configs, so the only way the watcher could fail is a settings stream
  * tear-down, which logs and exits cleanly.
  */
-const SettingsWatcherLive = Layer.effectDiscard(
-  Effect.gen(function* () {
-    const mutator = yield* ProviderInstanceRegistryMutator;
-    const serverSettings = yield* ServerSettingsService;
-    const settingsChanges = yield* serverSettings.subscribeChanges;
-    yield* settingsChanges.pipe(
-      Stream.runForEach((next) =>
-        mutator
-          .reconcile(deriveProviderInstanceConfigMap(next))
-          .pipe(
-            Effect.catchCause((cause) =>
-              Effect.logError("ProviderInstanceRegistry reconcile failed", cause),
+const settingsWatcher = (drivers: ReadonlyArray<AnyProviderDriver<unknown>>) =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const mutator = yield* ProviderInstanceRegistryMutator;
+      const serverSettings = yield* ServerSettingsService;
+      const settingsChanges = yield* serverSettings.subscribeChanges;
+      yield* settingsChanges.pipe(
+        Stream.runForEach((next) =>
+          mutator
+            .reconcile(deriveProviderInstanceConfigMap(next, drivers))
+            .pipe(
+              Effect.catchCause((cause) =>
+                Effect.logError("ProviderInstanceRegistry reconcile failed", cause),
+              ),
             ),
-          ),
-      ),
-      Effect.forkScoped,
-    );
-  }),
-);
+        ),
+        Effect.forkScoped,
+      );
+    }),
+  );
 
 /**
- * Hydrate `ProviderInstanceRegistry` from `ServerSettings` and keep it in
- * sync with subsequent `streamChanges` emissions.
+ * Hydrate `ProviderInstanceRegistry` from `ServerSettings` with `drivers` and
+ * keep it in sync with subsequent `streamChanges` emissions. One list feeds
+ * both the initial registry and every reconcile.
  *
  * The Layer's two halves:
  *   - `ProviderInstanceRegistryMutableLayer` produces the registry +
  *     mutator from the initial config map. Its scope owns every
  *     per-instance child scope created during reconcile.
- *   - `SettingsWatcherLive` consumes the mutator, acquires its settings
+ *   - `settingsWatcher` consumes the mutator, acquires its settings
  *     subscription before forking, and runs a daemon fiber in the same scope.
  *
  * Composing via `Layer.provideMerge` makes the watcher's deps available
@@ -150,26 +153,25 @@ const SettingsWatcherLive = Layer.effectDiscard(
  * The mutator tag is technically also exposed; only this module imports
  * it, so the visibility leak is harmless in practice.
  */
-export const ProviderInstanceRegistryHydrationLive: Layer.Layer<
-  ProviderInstanceRegistry,
-  never,
-  BuiltInDriversEnv | ServerSettingsService
-> = Layer.unwrap(
-  Effect.gen(function* () {
-    const serverSettings = yield* ServerSettingsService;
-    const initialSettings: ServerSettings | undefined = yield* serverSettings.getSettings.pipe(
-      Effect.orElseSucceed(() => undefined),
-    );
-    const initialConfigMap =
-      initialSettings === undefined
-        ? ({} as ProviderInstanceConfigMap)
-        : deriveProviderInstanceConfigMap(initialSettings);
+export const makeProviderInstanceRegistryHydration = <R>(
+  drivers: ReadonlyArray<AnyProviderDriver<R>>,
+): Layer.Layer<ProviderInstanceRegistry, never, R | ServerSettingsService> =>
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsService;
+      const initialSettings: ServerSettings | undefined = yield* serverSettings.getSettings.pipe(
+        Effect.orElseSucceed(() => undefined),
+      );
+      const initialConfigMap =
+        initialSettings === undefined
+          ? ({} as ProviderInstanceConfigMap)
+          : deriveProviderInstanceConfigMap(initialSettings, drivers);
 
-    const mutableLayer = ProviderInstanceRegistryMutableLayer({
-      drivers: BUILT_IN_DRIVERS,
-      configMap: initialConfigMap,
-    });
+      const mutableLayer = ProviderInstanceRegistryMutableLayer({
+        drivers,
+        configMap: initialConfigMap,
+      });
 
-    return SettingsWatcherLive.pipe(Layer.provideMerge(mutableLayer));
-  }),
-) as Layer.Layer<ProviderInstanceRegistry, never, BuiltInDriversEnv | ServerSettingsService>;
+      return settingsWatcher(drivers).pipe(Layer.provideMerge(mutableLayer));
+    }),
+  ) as Layer.Layer<ProviderInstanceRegistry, never, R | ServerSettingsService>;

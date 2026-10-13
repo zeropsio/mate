@@ -12,7 +12,6 @@
  *
  * @module McpServers
  */
-import * as NodeOS from "node:os";
 
 import {
   McpServerName,
@@ -462,7 +461,7 @@ export const layer = Layer.effect(
         ),
         Effect.flatMap((current) =>
           resolveMcpAgentPaths({
-            homeDir: NodeOS.homedir(),
+            homeDir: config.homeDir,
             cwd: config.cwd,
             stateDir: config.stateDir,
             env: process.env,

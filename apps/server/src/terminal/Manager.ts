@@ -1297,6 +1297,7 @@ function stripAppImageRuntimeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 function createTerminalSpawnEnv(
   baseEnv: NodeJS.ProcessEnv,
+  homeDir: string,
   runtimeEnv?: Record<string, string> | null,
 ): NodeJS.ProcessEnv {
   const spawnEnv: NodeJS.ProcessEnv = {};
@@ -1308,7 +1309,9 @@ function createTerminalSpawnEnv(
   if (runtimeEnv) {
     for (const [key, value] of Object.entries(runtimeEnv)) {
       spawnEnv[key] =
-        key === "CODEX_HOME" || key === "CLAUDE_CONFIG_DIR" ? expandHomePath(value) : value;
+        key === "CODEX_HOME" || key === "CLAUDE_CONFIG_DIR"
+          ? expandHomePath(value, homeDir)
+          : value;
     }
   }
   // Both PTY backends feed truecolor-capable terminal clients.
@@ -1329,6 +1332,10 @@ function normalizedRuntimeEnv(
 
 interface TerminalManagerOptions {
   logsDir: string;
+  /** `ServerConfig.homeDir`: where `~` in a runtime `CODEX_HOME`/`CLAUDE_CONFIG_DIR` points. */
+  homeDir: string;
+  /** zcp's Mate update state file; a pending update boot fences new terminals. */
+  mateUpdateStateFile?: string | undefined;
   historyLineLimit?: number;
   historyByteLimit?: number;
   ptyAdapter: PtyAdapter.PtyAdapter["Service"];
@@ -1341,10 +1348,12 @@ interface TerminalManagerOptions {
 }
 
 export const make = Effect.fn("TerminalManager.make")(function* () {
-  const { terminalLogsDir } = yield* ServerConfig.ServerConfig;
+  const { terminalLogsDir, homeDir, zerops } = yield* ServerConfig.ServerConfig;
   const ptyAdapter = yield* PtyAdapter.PtyAdapter;
   return yield* makeWithOptions({
     logsDir: terminalLogsDir,
+    homeDir,
+    mateUpdateStateFile: zerops?.mateUpdateStateFile,
     ptyAdapter,
   });
 });
@@ -2068,7 +2077,11 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         Effect.andThen(
           Effect.gen(function* () {
             const shellCandidates = resolveShellCandidates(shellResolver, platform, baseEnv);
-            const terminalEnv = createTerminalSpawnEnv(baseEnv, session.runtimeEnv);
+            const terminalEnv = createTerminalSpawnEnv(
+              baseEnv,
+              options.homeDir,
+              session.runtimeEnv,
+            );
             const spawnResult = yield* trySpawn(shellCandidates, terminalEnv, session);
             ptyProcess = spawnResult.process;
             startedShell = spawnResult.shellLabel;
@@ -2898,7 +2911,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const closeIdle: TerminalManager["Service"]["closeIdle"] = (input) =>
     closeIdleWithPolicy(input, false);
 
-  let updateFenced = mateUpdateBootPending();
+  let updateFenced = mateUpdateBootPending(options.mateUpdateStateFile);
   let admissions = 0;
   const guardUpdate = <A, E>(
     input: { readonly threadId: string; readonly terminalId?: string },

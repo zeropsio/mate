@@ -23,14 +23,13 @@ import { retainedMediaDirectory, TemporaryMediaRoots } from "./RetainedMedia.ts"
 const serverLayer = (baseDir: string, workspace: string) => {
   const config = ServerConfig.layerTest(workspace, baseDir);
   return Layer.mergeAll(
-    config,
     WorkspacePaths.layer,
     ProjectFaviconResolver.layer.pipe(
       Layer.provide(WorkspacePaths.layer),
       Layer.provide(T3ProjectFileLoader.layer),
     ),
-    AssetSigningKey.layer.pipe(Layer.provide(ServerSecretStore.layer), Layer.provide(config)),
-  ).pipe(Layer.provideMerge(NodeServices.layer));
+    AssetSigningKey.layer.pipe(Layer.provide(ServerSecretStore.layer)),
+  ).pipe(Layer.provideMerge(config), Layer.provideMerge(NodeServices.layer));
 };
 
 describe("persistent conversation assets", () => {

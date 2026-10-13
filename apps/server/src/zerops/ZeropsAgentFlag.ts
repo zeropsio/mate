@@ -461,10 +461,7 @@ export const make = (options: {
 /**
  * Live only: `config.zerops` absent (not a Zerops environment) never
  * constructs a service that would try an HTTP call — every method fails
- * fast instead. The service id comes straight from this container's own
- * `serviceId` env var, not threaded through
- * `ServerConfig`, mirroring how `ZeropsAgentAuth.layer` reads
- * `NodeOS.homedir()` directly rather than plumbing it through config.
+ * fast instead. The service id is this container's own (`ZeropsEnvironment.serviceId`).
  */
 export const layer = Layer.effect(
   ZeropsAgentFlag,
@@ -478,6 +475,6 @@ export const layer = Layer.effect(
         clearSignedIn: () => Effect.fail(notZerops),
       });
     }
-    return yield* make({ environment, serviceId: process.env["serviceId"] });
+    return yield* make({ environment, serviceId: environment.serviceId });
   }),
 );

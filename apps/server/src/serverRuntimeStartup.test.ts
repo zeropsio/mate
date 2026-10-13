@@ -280,6 +280,7 @@ it.effect("at boot, the Mate engine starts in the reactor scope", () =>
     yield* ServerRuntimeStartup.startConversationRoots({
       engine: { ...inertMateEngine, start: () => Effect.sync(() => void started.push("engine")) },
       reactorScope: scope,
+      updateStateFile: undefined,
     });
     yield* Scope.close(scope, Exit.void);
     assert.deepStrictEqual(started, ["engine"]);

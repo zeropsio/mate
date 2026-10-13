@@ -61,6 +61,7 @@ const configLayer = (overrides: Partial<ServerConfig.ServerConfig["Service"]>) =
         otelEnvironment: OtelEnvironment.none,
         cwd: baseDir,
         baseDir,
+        homeDir: `${baseDir}/home`,
         ...derivedPaths,
         mode: "web",
         basePath: "",

@@ -2,7 +2,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeHttpPlatform from "@effect/platform-node/NodeHttpPlatform";
 import * as NodeFSP from "node:fs/promises";
-import * as NodeOS from "node:os";
 import { AssetPreviewTypeValidationError, ThreadId } from "@t3tools/contracts";
 import { PROJECT_FAVICON_FALLBACK_MARKER } from "@t3tools/shared/projectFavicon";
 import { describe, expect, it } from "@effect/vitest";
@@ -43,25 +42,19 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return { ...actual, open: vi.fn(actual.open), realpath: vi.fn(actual.realpath) };
 });
 
-vi.mock("node:os", async (importOriginal) => {
-  const actual = await importOriginal<typeof NodeOS>();
-  return { ...actual, homedir: vi.fn(actual.homedir) };
-});
-
 const configLayer = ServerConfig.ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-asset-access-test-",
 });
 const makeTestLayer = (services = NodeServices.layer) =>
   Layer.mergeAll(
     NodeHttpPlatform.layer,
-    configLayer,
     WorkspacePaths.layer,
     ProjectFaviconResolver.layer.pipe(
       Layer.provide(WorkspacePaths.layer),
       Layer.provide(T3ProjectFileLoader.layer),
     ),
-    AssetSigningKey.layer.pipe(Layer.provide(ServerSecretStore.layer), Layer.provide(configLayer)),
-  ).pipe(Layer.provideMerge(services));
+    AssetSigningKey.layer.pipe(Layer.provide(ServerSecretStore.layer)),
+  ).pipe(Layer.provideMerge(configLayer), Layer.provideMerge(services));
 // Workspace fixtures use temp directories but model files on a persistent workspace volume.
 const testLayer = makeTestLayer().pipe(Layer.provideMerge(Layer.succeed(TemporaryMediaRoots, [])));
 
@@ -304,8 +297,7 @@ describe("AssetAccess", () => {
       yield* fs.makeDirectory(path.dirname(filePath), { recursive: true });
       yield* fs.writeFileString(filePath, "recording bytes");
       const canonicalFile = yield* fs.realPath(filePath);
-      const homeSpy = vi.mocked(NodeOS.homedir).mockReturnValue(home);
-      try {
+      yield* Effect.gen(function* () {
         for (const workspaceRoot of [
           path.join(home, "project"),
           path.join(directory, "srv", "project"),
@@ -337,9 +329,9 @@ describe("AssetAccess", () => {
             expect(yield* Effect.promise(() => response.text())).toBe("recording bytes");
           }
         }
-      } finally {
-        homeSpy.mockRestore();
-      }
+      }).pipe(
+        Effect.updateService(ServerConfig.ServerConfig, (config) => ({ ...config, homeDir: home })),
+      );
     }).pipe(Effect.provide(testLayer)),
   );
 

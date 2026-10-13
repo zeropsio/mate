@@ -91,9 +91,6 @@ import {
 /** How many of the latest stand-up calls are held: a section, its carry, and retries before. */
 const STAND_UP_CALLS_HELD = 8;
 
-/** The variable zcp names its status file in when it launches this server. */
-export const ZCP_STATUS_FILE_VARIABLE = "ZCP_STATUS_FILE";
-
 /** How often the server looks for the stand-up's go-ahead while it is new… */
 export const STAND_UP_POLL = Duration.seconds(10);
 /** …for this long… */
@@ -926,7 +923,7 @@ export const liveReadsLayer = Layer.effect(
     const projectSigners = yield* ZeropsProjectSigners;
     const instances = yield* ProviderInstances;
     const agentAuth = yield* ZeropsAgentAuth;
-    const statusFilePath = process.env[ZCP_STATUS_FILE_VARIABLE];
+    const statusFilePath = (yield* ServerConfig.ServerConfig).zerops?.statusFile;
     return ZeropsSetupReads.of({
       hq: link.standing,
       signers: projectSigners.signers,
