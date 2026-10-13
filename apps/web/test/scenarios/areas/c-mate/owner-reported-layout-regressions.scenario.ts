@@ -4202,6 +4202,80 @@ describe("owner-reported layout regressions", () => {
         );
       });
     });
+    describe("Decision: product fix at the boundary; no witness weakening.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        it.effect("a draft becoming its conversation never hides the chat area", () =>
+          Effect.gen(function* () {
+            const s = yield* createScenario([], { mate: "real" });
+            yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+            yield* s.given.project("Ada", { mate: true });
+            yield* s.given.signedIn;
+            yield* Effect.promise(() => ownerMenu(s.page));
+            yield* s.when.menu.opensMate("Ada");
+            yield* s.then.conversation.appears;
+            expect(new URL(s.page.url()).pathname).toContain("/draft/");
+            yield* Effect.promise(() => waitForStillFrames(s.page));
+            const trace = yield* Effect.promise(() =>
+              s.page.evaluateHandle(() => {
+                const state = {
+                  active: true,
+                  frames: [] as Array<{
+                    path: string;
+                    width: number;
+                    height: number;
+                    hidden: boolean;
+                  }>,
+                };
+                const tick = () => {
+                  if (!state.active) return;
+                  const areas = [...document.querySelectorAll('main[data-slot="sidebar-inset"]')];
+                  const chat = areas.find((area) =>
+                    area.querySelector('[data-slot="composer-shell"]'),
+                  );
+                  const rect = chat?.getBoundingClientRect();
+                  state.frames.push({
+                    path: location.pathname,
+                    width: rect?.width ?? 0,
+                    height: rect?.height ?? 0,
+                    hidden: chat === undefined || getComputedStyle(chat).visibility === "hidden",
+                  });
+                  requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+                return state;
+              }),
+            );
+            yield* s.drivers.realMates
+              .get("Ada")!
+              .provider.turn([{ kind: "say", text: "The conversation is here." }]);
+            yield* s.when.conversation.sends("Keep the chat in sight");
+            yield* s.then.conversation.showsMessage("The conversation is here.");
+            yield* Effect.promise(() =>
+              s.page.waitForFunction(() => !location.pathname.includes("/draft/"), {
+                polling: "raf",
+              }),
+            );
+            yield* Effect.promise(() => waitForStillFrames(s.page));
+            const frames = yield* Effect.promise(async () => {
+              const frames = await trace.evaluate((state) => {
+                state.active = false;
+                return state.frames;
+              });
+              await trace.dispose();
+              return frames;
+            });
+            expect(frames.some((frame) => frame.path.includes("/draft/"))).toBe(true);
+            expect(frames.some((frame) => !frame.path.includes("/draft/"))).toBe(true);
+            expect(
+              frames.filter((frame) => frame.hidden || frame.width <= 0 || frame.height <= 0),
+              "ASSERTION: every frame keeps the chat area visible through draft promotion",
+            ).toEqual([]);
+            yield* s.then.noExternalNetwork;
+          }),
+        );
+      });
+    });
+
     describe("Decision: a reload paints nothing it takes back.", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         it.effect(

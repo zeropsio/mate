@@ -2,7 +2,7 @@ import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 
-import ChatView from "../components/ChatView";
+import ChatViewBoundary from "../components/ChatViewBoundary";
 import { threadHasStarted } from "../components/ChatView.logic";
 import { finalizePromotedDraftThreadByRef, useComposerDraftStore } from "../composerDraftStore";
 import { resolveThreadRouteRef, resolveThreadRouteRenderState } from "../threadRoutes";
@@ -94,7 +94,7 @@ function ChatThreadRouteView() {
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
       {renderState === "ready" || (renderState === "loading" && serverThreadShell !== null) ? (
-        <ChatView
+        <ChatViewBoundary
           environmentId={threadRef.environmentId}
           threadId={threadRef.threadId}
           routeKind="server"
@@ -117,6 +117,7 @@ const NO_ENVIRONMENT = EnvironmentId.make("none");
 export const Route = createFileRoute("/_chat/$environmentId/$threadId")({
   component: ChatThreadRouteView,
   pendingComponent: ChatThreadRoutePending,
-  // Its pending stage is already on screen while the conversation's code loads.
-  codeSplitGroupings: [["component"]],
+  // This small wrapper stays ready during draft promotion. ChatViewBoundary owns the lazy
+  // chat code inside the inset, so the router never hides the draft to load another wrapper.
+  codeSplitGroupings: [],
 });
