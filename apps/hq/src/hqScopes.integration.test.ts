@@ -1,3 +1,5 @@
+import { scopeReset, scopeValue, nextScopeValue } from "../test/harness/scopes.ts";
+import { CanonicalHqNavigationApp } from "@t3tools/shared/hqStream";
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off globalTimers:off globalConsoleInEffect:off -- real HQ socket acceptance test.
 import { assert, describe, it } from "@effect/vitest";
 import { HqAttentionValue } from "@t3tools/shared/hqStream";
@@ -18,9 +20,107 @@ import {
 import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 
 const readAttention = Schema.decodeEffect(HqAttentionValue);
+const readCanonicalApp = Schema.decodeUnknownEffect(CanonicalHqNavigationApp);
 
 describe("HQ scoped socket", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "Mixed Git and Zerops records and delayed Git evidence traverse the real scoped socket",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* startCore(true, {
+            reconcileEvery: Duration.infinity,
+            streamRecheck: Duration.infinity,
+            pingEvery: Duration.infinity,
+          });
+          yield* untilHealth(core.call, "active");
+          const session = yield* sessionFor(core.call, "door-owner");
+          const appId = (
+            (yield* core.call("POST", "/api/apps", { session, body: { name: "Mixed" } })).body as {
+              readonly id: string;
+            }
+          ).id;
+          yield* core.call("POST", `/api/apps/${appId}/projects`, {
+            session,
+            body: { projectId: "P_MATE", kind: "stage", environment: { name: "zerops-stage" } },
+          });
+          yield* core.sql`INSERT INTO hq_environment(id,target,app_id,tier,name,sources,branch,delivery,created_by) VALUES ('git-mixed','git',${appId}::uuid,'stage','git-stage','{main}','staging','direct','owner')`;
+          const socket = yield* core.socket(
+            `/api/structure/ws?ticket=${yield* ticketFor(core.call, session)}`,
+          );
+          const navigation = { kind: "navigation" } as const;
+          const detail = { kind: "app-detail", appId } as const;
+          yield* socket.send({
+            type: "subscribe",
+            scopes: [{ scope: navigation }, { scope: detail }],
+          });
+          const reset = yield* scopeReset(socket, navigation);
+          const app = yield* readCanonicalApp(scopeValue(reset, `app:${appId}`));
+          assert.isArray(app.environments);
+          const environments = Array.isArray(app.environments) ? app.environments : [];
+          const git = environments.find((row) => row.id === "git-mixed")!;
+          assert.deepStrictEqual(git.target, {
+            kind: "git",
+            branch: "staging",
+            delivery: "direct",
+          });
+          assert.notProperty(git, "projectId");
+          assert.strictEqual(
+            environments.find((row) => row.name === "zerops-stage")!.target.kind,
+            "zerops",
+          );
+          const first = yield* scopeReset(socket, detail);
+          assert.deepStrictEqual(app.can.release, { allow: false, reason: "no_production" });
+          const release = yield* core.call("POST", `/api/apps/${appId}/releases`, {
+            session,
+            body: {
+              tag: "v1.0.0",
+              groupHead: "a".repeat(40),
+              entries: [{ service: "web", sha: "a".repeat(40) }],
+            },
+          });
+          assert.strictEqual(release.status, 403);
+          assert.strictEqual(
+            (release.body as { readonly reason: string }).reason,
+            app.can.release!.reason,
+          );
+          assert.isUndefined(first.find((row) => row.key === "probe:api"));
+          const probe = {
+            ok: true,
+            remote: {
+              url: "https://github.com/krls2020/tst123",
+              repositoryId: "123",
+              expiresAt: null,
+              invalidSince: null,
+            },
+          };
+          const receipt = {
+            requestId: "delayed-probe",
+            operationId: "delayed-probe",
+            executor: "hq",
+            affected: [{ family: "hqAppDetail", id: appId }],
+            handles: [],
+            acceptance: { kind: "accepted", result: probe },
+            outcome: { kind: "succeeded", evidence: "delayed-probe" },
+          };
+          const intent = {
+            kind: "probe-git-remote",
+            orgId: "ORG",
+            hqProjectId: "HQ1",
+            appId,
+            repo: "api",
+            url: probe.remote.url,
+          };
+          yield* core.sql`INSERT INTO hq_git_target_receipt(request_id,user_id,app_id,intent,receipt) VALUES ('delayed-probe','owner',${appId}::uuid,${JSON.stringify(intent)}::jsonb,${JSON.stringify(receipt)}::jsonb)`;
+          yield* core.call("PATCH", `/api/apps/${appId}`, {
+            session,
+            body: { name: "Mixed after receipt" },
+          });
+          assert.deepStrictEqual(yield* nextScopeValue(socket, detail, "probe:api"), probe);
+          assert.notInclude(JSON.stringify(yield* socket.collected), "CANDIDATE_BOUNDARY_MARKER");
+          yield* socket.close;
+        }),
+    );
     it.effect("five tabs each receive real HQ data and show the application menu", () =>
       Effect.gen(function* () {
         const core = yield* startCore(true, {
