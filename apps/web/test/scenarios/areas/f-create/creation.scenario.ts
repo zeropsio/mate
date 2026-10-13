@@ -101,7 +101,10 @@ describe("F: creation through the hosted client", () => {
         yield* c.submitProject;
         yield* bound;
         yield* c.noSetupYet;
-        yield* c.reload;
+        expect(
+          yield* c.reload,
+          "ASSERTION: leaving a running setup confirms the browser's unload warning",
+        ).toEqual(["beforeunload"]);
         yield* c.completeProjectCreation;
         yield* c.finishSetup;
         yield* s.then.conversation.appears;

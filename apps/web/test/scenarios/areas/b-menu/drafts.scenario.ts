@@ -250,12 +250,21 @@ describe("B: text-only drafts", () => {
           });
           yield* s.given.project("Ada", { mate: true });
           yield* s.given.project("Bea", { mate: true });
+          // CI's Linux platform must exercise the same shortcut even on a Mac test host.
+          yield* Effect.promise(() =>
+            s.page.evaluateOnNewDocument(() => {
+              Object.defineProperty(navigator, "platform", { value: "Linux x86_64" });
+            }),
+          );
           yield* s.given.signedIn;
           for (const name of ["Ada", "Bea"]) yield* s.when.menu.opensMate(name);
           yield* Effect.promise(async () => {
-            await s.page.keyboard.down("Meta");
+            const modifier = await s.page.evaluate(() =>
+              navigator.platform.includes("Mac") ? "Meta" : "Control",
+            );
+            await s.page.keyboard.down(modifier);
             await s.page.keyboard.press("k");
-            await s.page.keyboard.up("Meta");
+            await s.page.keyboard.up(modifier);
             await s.page.waitForSelector('[data-testid="command-palette"]');
             await s.page.keyboard.type(">");
             await s.page.waitForSelector('[data-testid="jump-box"]', { hidden: true });

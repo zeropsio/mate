@@ -4,7 +4,7 @@ import { expect } from "@effect/vitest";
 import type { createScenario } from "../../harness/scenario.ts";
 import { creationNetwork } from "../../fakes/f-create/browserDrain.ts";
 import { creationOf } from "./fake.ts";
-import type { ElementHandle } from "puppeteer-core";
+import type { Dialog, ElementHandle } from "puppeteer-core";
 import { visibleText } from "../../harness/browser.ts";
 import { rendered } from "../../harness/completedHttp.ts";
 
@@ -82,7 +82,21 @@ export function creation(s: Scenario) {
     failProject: () => {
       control.creationStatus = "FAILED";
     },
-    reload: Effect.promise(() => page.reload()),
+    reload: Effect.promise(async () => {
+      const confirmations: string[] = [];
+      // Leaving during setup asks first; this driver represents choosing to leave.
+      const leave = async (dialog: Dialog) => {
+        confirmations.push(dialog.type());
+        await dialog.accept();
+      };
+      page.on("dialog", leave);
+      try {
+        await page.reload();
+        return confirmations;
+      } finally {
+        page.off("dialog", leave);
+      }
+    }),
     finishSetup: click("Finish setup"),
     originalSetupOnly: Effect.sync(() => {
       expect(control.accepted).toEqual([{ id: "created-1", name: "Garden - Nova" }]);
