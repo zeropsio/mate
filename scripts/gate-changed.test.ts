@@ -1,10 +1,11 @@
 // @effect-diagnostics nodeBuiltinImport:off -- gate selection and Git fixture.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
+import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { chatGateTestFiles, chatGateStages, selectsChatGate } from "./chat-gate.ts";
-import { afterAll, beforeAll, expect, it } from "vite-plus/test";
+import { afterAll, beforeAll, expect, it, vi } from "vite-plus/test";
 import {
   scenarioFiles,
   validateSelectedFiles,
@@ -1362,6 +1363,39 @@ it.each([
     );
   } finally {
     NodeFS.writeFileSync(file, original);
+  }
+});
+
+it("shared dependency sources are read once per selection regardless of reader count", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-shared-"));
+  const sources = {
+    "index.ts": 'export * from "./owner.ts";',
+    "owner.ts": "export const Owner = 1;",
+    ...Object.fromEntries(
+      Array.from({ length: 40 }, (_, index) => [
+        `reader-${index}.test.ts`,
+        'import * as Shared from "./index.ts";',
+      ]),
+    ),
+  };
+  for (const [file, source] of Object.entries(sources))
+    NodeFS.writeFileSync(NodePath.join(root, file), source);
+  const mutableFS = NodeModule.createRequire(import.meta.url)("node:fs") as typeof NodeFS;
+  const read = vi.spyOn(mutableFS, "readFileSync");
+  NodeModule.syncBuiltinESMExports();
+  try {
+    const readers = Object.keys(sources).filter((file) => file.endsWith(".test.ts"));
+    expect(relatedFiles(root, ["owner.ts"], readers)).toEqual(readers.sort());
+    const reads = read.mock.calls.map(([file]) => String(file));
+    for (const file of Object.keys(sources))
+      expect(
+        reads.filter((path) => path === NodePath.join(root, file)).length,
+        "ASSERTION: shared dependency sources are read once per selection",
+      ).toBeLessThanOrEqual(1);
+  } finally {
+    read.mockRestore();
+    NodeModule.syncBuiltinESMExports();
+    NodeFS.rmSync(root, { recursive: true, force: true });
   }
 });
 

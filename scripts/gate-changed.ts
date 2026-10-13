@@ -7,7 +7,7 @@ import * as NodePath from "node:path";
 import type { TimeoutRisk } from "./gate-timing-reporter.ts";
 import { failureSummary, gateLogDirectory, runLogged, stageSummary } from "./gate-log.ts";
 import { acquireGateSlot, gateSlotCount, gateSlotDirectory } from "./gate-slots.ts";
-import { parseSync } from "oxc-parser";
+import { parseSync, Visitor } from "oxc-parser";
 import { transform as parseCss } from "lightningcss";
 import { parse as parseHtml, type DefaultTreeAdapterMap } from "parse5";
 
@@ -175,18 +175,39 @@ export function relatedFiles(
 ): string[] {
   const changed = new Set(paths.filter((path) => !documentation(path)));
   if (!changed.size) return [];
+  // Node 24 on our 64-bit hosts supports Oxc's binary transfer, avoiding AST JSON serialization.
+  const parserOptions = { experimentalRawTransfer: true, preserveParens: true };
+  const sourceTexts = new Map<string, string[]>();
+  const sources = (file: string): string[] => {
+    const cached = sourceTexts.get(file);
+    if (cached) return cached;
+    const texts = [
+      ...new Set([
+        previous.get(file),
+        NodeFS.existsSync(NodePath.join(root, file))
+          ? NodeFS.readFileSync(NodePath.join(root, file), "utf8")
+          : undefined,
+      ]),
+    ].filter((source) => source !== undefined);
+    sourceTexts.set(file, texts);
+    return texts;
+  };
+  const resolvedFiles = new Map<string, string | undefined>();
   const exists = (path: string) =>
     previous.has(path) ||
     (NodeFS.existsSync(NodePath.join(root, path)) &&
       NodeFS.statSync(NodePath.join(root, path)).isFile());
   const resolveFile = (path: string): string | undefined => {
+    if (resolvedFiles.has(path)) return resolvedFiles.get(path);
     const variants = [
       path,
       ...[".ts", ".tsx", ".js", ".jsx", ".json"].map((extension) => path + extension),
       ...[".ts", ".tsx", ".js"].map((extension) => `${path}/index${extension}`),
     ];
     if (/\.[cm]?js$/u.test(path)) variants.push(path.replace(/\.[cm]?js$/u, ".ts"));
-    return variants.find(exists);
+    const resolved = variants.find(exists);
+    resolvedFiles.set(path, resolved);
+    return resolved;
   };
   const publicEntries = new Set<string>();
   const manifests = new Map<
@@ -292,17 +313,10 @@ export function relatedFiles(
     if (cached) return cached;
     const result = { barrel: false, names: new Map<string, string[]>() };
     exportOwners.set(file, result);
-    const sources = [
-      previous.get(file),
-      NodeFS.existsSync(NodePath.join(root, file))
-        ? NodeFS.readFileSync(NodePath.join(root, file), "utf8")
-        : undefined,
-    ];
-    const bodies = [...new Set(sources)].flatMap((source) => {
-      if (source === undefined) return [];
-      const parsed = parseSync(file, source);
+    const bodies = sources(file).map((source) => {
+      const parsed = parseSync(file, source, parserOptions);
       if (parsed.errors.length) throw new Error(`${file}: ${parsed.errors[0]!.message}`);
-      return [parsed.program.body];
+      return parsed.program.body;
     });
     result.barrel =
       bodies.length > 0 &&
@@ -360,7 +374,7 @@ export function relatedFiles(
     }
     return result;
   };
-  const importOwners = (target: string, node: Record<string, unknown>): string[] => {
+  const importOwners = (target: string, names?: ReadonlyArray<string>): string[] => {
     if (
       (!publicEntries.has(target) &&
         !/^index\.[cm]?[jt]sx?$/u.test(NodePath.posix.basename(target))) ||
@@ -369,15 +383,9 @@ export function relatedFiles(
       return [target];
     const exports = owners(target);
     if (!exports.barrel) return [target];
-    if (
-      node.type !== "ImportDeclaration" ||
-      !Array.isArray(node.specifiers) ||
-      !node.specifiers.length ||
-      node.specifiers.some((specifier) => record(specifier)?.type !== "ImportSpecifier")
-    )
+    if (!names?.length)
       return maxDepth === 1 ? [target, ...new Set([...exports.names.values()].flat())] : [target];
-    const names = node.specifiers.map((specifier) => symbolName(record(specifier)?.imported));
-    if (names.some((name) => name === undefined || !exports.names.has(name))) return [target];
+    if (names.some((name) => !exports.names.has(name))) return [target];
     return [
       ...new Set([
         ...(changed.has(target) ? [target] : []),
@@ -388,14 +396,8 @@ export function relatedFiles(
 
   const config = "apps/web/test/scenarios/vitest.config.ts";
   const setupDeclarations: { include: string[] | undefined; files: string[] }[] = [];
-  for (const source of [
-    previous.get(config),
-    NodeFS.existsSync(NodePath.join(root, config))
-      ? NodeFS.readFileSync(NodePath.join(root, config), "utf8")
-      : undefined,
-  ]) {
-    if (source === undefined) continue;
-    const parsed = parseSync(config, source);
+  for (const source of sources(config)) {
+    const parsed = parseSync(config, source, parserOptions);
     if (parsed.errors.length) throw new Error(`${config}: ${parsed.errors[0]!.message}`);
     const visit = (value: unknown): void => {
       if (Array.isArray(value)) {
@@ -430,14 +432,12 @@ export function relatedFiles(
     const cached = edges.get(file);
     if (cached) return cached;
     const dependencies = executionInputs(file);
-    const sources = [
-      previous.get(file),
-      NodeFS.existsSync(NodePath.join(root, file))
-        ? NodeFS.readFileSync(NodePath.join(root, file), "utf8")
-        : undefined,
-    ];
-    for (const source of new Set(sources)) {
-      if (source === undefined) continue;
+    // Data assets are terminal graph nodes: matching their path is enough, not reading their bytes.
+    if (!sourceFile.test(file) && !file.endsWith(".css") && file !== "apps/web/index.html") {
+      edges.set(file, dependencies);
+      return dependencies;
+    }
+    for (const source of sources(file)) {
       if (file === "apps/web/index.html") {
         for (const match of source.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["']/gu)) {
           const path = match[1]!;
@@ -459,15 +459,14 @@ export function relatedFiles(
         }
       }
       if (!sourceFile.test(file)) continue;
-      const parsed = parseSync(file, source);
+      const parsed = parseSync(file, source, parserOptions);
       if (parsed.errors.length) throw new Error(`${file}: ${parsed.errors[0]!.message}`);
+      const add = (request: string, names?: ReadonlyArray<string>) =>
+        dependencies.push(
+          ...resolveImport(file, request).flatMap((target) => importOwners(target, names)),
+        );
       const visit = (value: unknown): void => {
-        if (Array.isArray(value)) {
-          for (const child of value) visit(child);
-          return;
-        }
-        if (typeof value !== "object" || value === null) return;
-        const node = value as Record<string, unknown>;
+        const node = record(value)!;
         const callee = record(node.callee);
         const mock =
           node.type === "CallExpression" &&
@@ -486,35 +485,81 @@ export function relatedFiles(
           "value" in literal &&
           typeof literal.value === "string"
         )
-          dependencies.push(
-            ...resolveImport(file, literal.value).flatMap((target) => importOwners(target, node)),
+          add(
+            literal.value,
+            node.type === "ImportDeclaration" &&
+              Array.isArray(node.specifiers) &&
+              node.specifiers.every((specifier) => record(specifier)?.type === "ImportSpecifier")
+              ? node.specifiers.map((specifier) => symbolName(record(specifier)?.imported)!)
+              : undefined,
           );
-        for (const child of Object.values(node)) visit(child);
       };
-      visit(parsed.program);
+      new Visitor({
+        ImportDeclaration: visit,
+        ExportNamedDeclaration: visit,
+        ExportAllDeclaration: visit,
+        ImportExpression: visit,
+        TSImportType: visit,
+        CallExpression: visit,
+      }).visit(parsed.program);
     }
     edges.set(file, dependencies);
     return dependencies;
   };
+  const roots = (test: string) => [
+    test,
+    ...(maxDepth === Infinity && test.startsWith("apps/web/test/scenarios/")
+      ? [
+          config,
+          ...setupDeclarations
+            .filter(
+              (setup) =>
+                !setup.include ||
+                setup.include.some((pattern) =>
+                  NodePath.matchesGlob(NodePath.posix.relative("apps/web", test), pattern),
+                ),
+            )
+            .flatMap((setup) => setup.files),
+        ]
+      : []),
+  ];
+  if (maxDepth === Infinity) {
+    // Build one reverse graph and propagate ownership once, including through cycles.
+    const readers = new Map<string, Set<string>>();
+    const edge = (dependency: string, reader: string) => {
+      const entries = readers.get(dependency) ?? new Set<string>();
+      entries.add(reader);
+      readers.set(dependency, entries);
+    };
+    const pending = candidates.flatMap((test) => {
+      const inputs = roots(test);
+      for (const input of inputs.slice(1)) edge(input, test);
+      return inputs;
+    });
+    const visited = new Set<string>();
+    while (pending.length) {
+      const file = pending.pop()!;
+      if (visited.has(file)) continue;
+      visited.add(file);
+      if (changed.has(file)) continue;
+      for (const dependency of imports(file)) {
+        edge(dependency, file);
+        pending.push(dependency);
+      }
+    }
+    const affected = new Set(changed);
+    const owners = [...changed];
+    while (owners.length)
+      for (const reader of readers.get(owners.pop()!) ?? []) {
+        if (affected.has(reader)) continue;
+        affected.add(reader);
+        owners.push(reader);
+      }
+    return candidates.filter((test) => affected.has(test)).sort();
+  }
   return candidates
     .filter((test) => {
-      const pending = [
-        test,
-        ...(maxDepth === Infinity && test.startsWith("apps/web/test/scenarios/")
-          ? [
-              config,
-              ...setupDeclarations
-                .filter(
-                  (setup) =>
-                    !setup.include ||
-                    setup.include.some((pattern) =>
-                      NodePath.matchesGlob(NodePath.posix.relative("apps/web", test), pattern),
-                    ),
-                )
-                .flatMap((setup) => setup.files),
-            ]
-          : []),
-      ].map((file) => ({ file, depth: 0 }));
+      const pending = roots(test).map((file) => ({ file, depth: 0 }));
       const visited = new Set<string>();
       while (pending.length) {
         const { file, depth } = pending.pop()!;
