@@ -225,7 +225,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   // enrollment file and reached by the browser through the container's proxy.
   const realMate = Effect.fn("scenarios.given.realMate")(function* (
     name: string,
-    options: { app?: string; registered?: boolean },
+    options: { app?: string; registered?: boolean; launchEnvironment?: NodeJS.ProcessEnv },
   ) {
     const key = `mate-key-${name}`;
     zerops.world.tokens.set(key, {
@@ -255,6 +255,9 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         ...(credential ? { hq: { origin: core.origin, credential } } : {}),
         now: () => zerops.clock.currentTimeMillis(),
         drivers: [provider.driver],
+        ...(options.launchEnvironment === undefined
+          ? {}
+          : { launchEnvironment: options.launchEnvironment }),
       }),
     );
     cleanup.push(server.remove, server.stop);
@@ -286,6 +289,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       kind?: "mate" | "stage" | "production";
       environmentName?: string;
       registered?: boolean;
+      launchEnvironment?: NodeJS.ProcessEnv;
     } = {},
   ) {
     const kind = options.kind ?? (options.mate ? "mate" : undefined);

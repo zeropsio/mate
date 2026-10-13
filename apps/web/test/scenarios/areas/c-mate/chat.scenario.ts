@@ -9,6 +9,7 @@ import {
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
+import { FetchHttpClient, HttpClient } from "effect/http";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario, type ScenarioOptions } from "../../harness/scenario.ts";
 import { installArea } from "./fake.ts";
@@ -282,16 +283,24 @@ describe("C: opening a Mate and chat", () => {
     // A reported version difference alone must never offer a chat-level restart.
     it.effect("older and newer Mate versions show no version-skew warning or restart action", () =>
       Effect.gen(function* () {
-        const { s, chat } = yield* fakeSetup;
-        yield* s.given.project("Bea", { mate: true });
-        chat.fixture("Bea").history();
+        const s = yield* createScenario([], { mate: "real" });
+        const chat = realChat(s);
         for (const [name, version] of [
           ["Ada", "0.14.11"],
           ["Bea", "999.0.0"],
         ] as const) {
-          const mate = chat.fixture(name).mate;
-          Object.assign(mate.descriptor, { serverVersion: version });
-          Object.assign(mate.config.environment, { serverVersion: version });
+          yield* s.given.project(name, {
+            mate: true,
+            launchEnvironment: { T3CODE_SERVER_VERSION: version },
+          });
+          yield* seed(s, name);
+          const descriptor = yield* HttpClient.get(
+            `${s.drivers.realMates.get(name)!.server.origin}/.well-known/t3/environment`,
+          ).pipe(
+            Effect.flatMap((response) => response.json),
+            Effect.provide(FetchHttpClient.layer),
+          );
+          expect(descriptor).toMatchObject({ serverVersion: version });
         }
         yield* s.given.signedIn;
         for (const name of ["Ada", "Bea"]) {

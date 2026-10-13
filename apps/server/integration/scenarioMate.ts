@@ -16,6 +16,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
@@ -55,6 +56,8 @@ export interface ScenarioMateOptions {
   readonly drivers: ReadonlyArray<AnyProviderDriver<never>>;
   /** A state directory to start from (a copied history); a fresh one when absent. */
   readonly stateFrom?: string;
+  /** Per-boot environment input; never mutates the worker process environment. */
+  readonly launchEnvironment?: NodeJS.ProcessEnv;
   /** Raw kernel directory discovery, read by the real resource collector. */
   readonly cgroupDirectories?: ReadonlyArray<string>;
 }
@@ -182,6 +185,10 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
       })),
       Effect.provide(ServerConfig.layerTest(cwd, baseDir).pipe(Layer.provide(NodeServices.layer))),
       Effect.provideService(FetchHttpClient.Fetch, loopbackFetch),
+      Effect.provideService(HostProcessEnvironment, {
+        ...process.env,
+        ...options.launchEnvironment,
+      }),
     );
     // The clock reference is read where each fiber runs, so it is provided around the whole boot.
     const bound = await Effect.runPromise(

@@ -1,3 +1,5 @@
+import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
+import packageJson from "../../package.json" with { type: "json" };
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
@@ -84,6 +86,32 @@ const makeServerConfig = Effect.fn(function* (baseDir: string) {
 });
 
 it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
+  it.effect(
+    "the advertised Mate version reads its launch environment and otherwise the package",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        for (const [environment, expected] of [
+          [{}, packageJson.version],
+          [{ T3CODE_SERVER_VERSION: "0.14.11" }, "0.14.11"],
+          [{ T3CODE_SERVER_VERSION: "999.0.0" }, "999.0.0"],
+        ] as const) {
+          const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "version-source-" });
+          const descriptor = yield* Effect.gen(function* () {
+            const environment = yield* ServerEnvironment.ServerEnvironment;
+            return yield* environment.getDescriptor;
+          }).pipe(
+            Effect.provide(makeServerEnvironmentLayer(baseDir)),
+            Effect.provideService(HostProcessEnvironment, environment),
+          );
+          expect(
+            descriptor.serverVersion,
+            "ASSERTION: the descriptor carries the launched version",
+          ).toBe(expected);
+        }
+      }),
+  );
+
   it.effect("persists the environment id across service restarts", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
