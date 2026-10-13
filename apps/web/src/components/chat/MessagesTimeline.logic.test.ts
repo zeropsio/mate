@@ -8,6 +8,7 @@ import {
   conversationSpeaker,
   deriveMessagesTimelineRows,
   earlierTurnsAnchor,
+  historicalInsertions,
   livePauseId,
   rowGap,
   streamedRecordGrowth,
@@ -3963,6 +3964,43 @@ it("accepted work cut before the first provider handshake has a recovery card, t
   expect(continued?.kind).toBe("record");
   if (continued?.kind !== "record") return;
   expect(continued.status?.interruption?.continuation).toBe("requested");
+});
+
+describe("historical insertions", () => {
+  it.each([
+    {
+      title: "an old landing above the painted tail preserves the words being read",
+      before: ["work", "answer"],
+      after: ["work", "landing", "answer"],
+      held: ["landing"],
+    },
+    {
+      title: "a live arrival after the painted tail keeps its follow motion",
+      before: ["work", "answer"],
+      after: ["work", "answer", "live"],
+      held: [],
+    },
+    {
+      title: "initial history has no previously painted words to preserve",
+      before: [],
+      after: ["work", "landing", "answer"],
+      held: [],
+    },
+    {
+      title: "replacing the painted tail never borrows its reading position",
+      before: ["work", "answer"],
+      after: ["work", "other"],
+      held: [],
+    },
+    {
+      title: "simultaneous old and live arrivals preserve only the old insertion",
+      before: ["work", "answer"],
+      after: ["work", "landing", "answer", "live"],
+      held: ["landing"],
+    },
+  ])("$title", ({ before, after, held }) => {
+    expect([...historicalInsertions(before, after)]).toEqual(held);
+  });
 });
 
 describe("streamedRecordGrowth", () => {

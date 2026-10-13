@@ -142,6 +142,7 @@ import {
   livePauseStageId,
   earlierTurnsAnchor,
   helperFinishesOf,
+  historicalInsertions,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
   resolveTimelineIsAtEnd,
@@ -814,6 +815,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   // Which rows stand where: what the list's containers are drawn again for.
   const rowOrder = useMemo(() => rows.map((row) => row.id).join("\n"), [rows]);
+  const previousRowOrderRef = useRef(rowOrder);
+  const insertedHistory = useMemo(
+    () => historicalInsertions(previousRowOrderRef.current.split("\n"), rowOrder.split("\n")),
+    [rowOrder],
+  );
+  useLayoutEffect(() => {
+    previousRowOrderRef.current = rowOrder;
+  }, [rowOrder]);
   const livePause = useMemo(() => livePauseId(rows), [rows]);
   // Only the server's own pause with nothing after it fills the conversation; the engine's pause
   // is a notice card where its run ended (Milo's run 4 drew it a viewport tall, blank below).
@@ -1222,23 +1231,27 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // shorter. Read its native clamp in the measurement callback before another
   // layout can hide it, then follow after the list applies its layout.
   // The first size receipt replaces an estimate, not a row's previously painted height.
-  const measuredRecordsRef = useRef(
-    new Map<string, Extract<MessagesTimelineRow, { kind: "record" }>>(),
-  );
+  // An inserted historical row carries its whole measured height before paint; the words
+  // below it already stood in view. A live arrival still takes the follower's existing glide.
+  const measuredRowsRef = useRef(new Map<string, MessagesTimelineRow>());
   useLayoutEffect(() => {
     const keys = new Set(rowOrder.split("\n"));
-    for (const key of measuredRecordsRef.current.keys())
-      if (!keys.has(key)) measuredRecordsRef.current.delete(key);
+    for (const key of measuredRowsRef.current.keys())
+      if (!keys.has(key)) measuredRowsRef.current.delete(key);
   }, [rowOrder]);
   const onItemSizeChanged = useCallback<
     NonNullable<LegendListProps<MessagesTimelineRow>["onItemSizeChanged"]>
   >(
     (info) => {
-      const previous = measuredRecordsRef.current.get(info.itemKey);
+      const previous = measuredRowsRef.current.get(info.itemKey);
       const record = info.itemData?.kind === "record" ? info.itemData : undefined;
-      if (record !== undefined) measuredRecordsRef.current.set(info.itemKey, record);
-      const grew =
-        record?.live && streamedRecordGrowth(previous, record)
+      if (info.itemData !== undefined) measuredRowsRef.current.set(info.itemKey, info.itemData);
+      const grew = insertedHistory.has(info.itemKey)
+        ? previous === undefined
+          ? info.size
+          : Math.max(0, info.size - info.previous)
+        : record?.live &&
+            streamedRecordGrowth(previous?.kind === "record" ? previous : undefined, record)
           ? Math.max(0, info.size - info.previous)
           : 0;
       remeasurePositionRef.current?.();
@@ -1258,7 +1271,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         followEnd();
       });
     },
-    [followEnd, holdAnswer, placeFolds],
+    [followEnd, holdAnswer, insertedHistory, placeFolds],
   );
 
   // Where the person is, kept as they move, by row: the row at the reading

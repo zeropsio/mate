@@ -979,6 +979,17 @@ export type RecordItem =
       readonly entry: WorkLogEntry;
     };
 
+/** New rows before the previously painted tail are history joining, rather than a live arrival. */
+export function historicalInsertions(
+  previous: ReadonlyArray<string>,
+  next: ReadonlyArray<string>,
+): ReadonlySet<string> {
+  const tail = previous.at(-1);
+  const end = tail === undefined ? -1 : next.indexOf(tail);
+  const known = new Set(previous);
+  return new Set(next.slice(0, Math.max(0, end)).filter((id) => !known.has(id)));
+}
+
 /** Streamed words move an existing line's foot; a changed item sequence still arrives by a glide. */
 export function streamedRecordGrowth(
   previous: Pick<Extract<MessagesTimelineRow, { kind: "record" }>, "items" | "slot"> | undefined,
