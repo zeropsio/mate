@@ -22,21 +22,6 @@ const setup = (freezeClock = true) =>
 
 describe("C: source failures keep the conversation", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    // A proved restart failure must name both the Mate and startup cause, not an intentional stop.
-    it.effect("a failed restart has its cause and a direct restart action", () =>
-      Effect.gen(function* () {
-        const { s, chat, wire } = yield* setup();
-        reportContainer(s.drivers, "Wren", "ACTION_FAILED", true);
-        wire.disconnect();
-        yield* chat.then.text("Wren couldn't restart.");
-        yield* chat.then.text("Its startup command failed.");
-        yield* chat.then.control("Restart");
-        yield* chat.then.text("Open in Zerops");
-        yield* chat.then.noText("I'm stopped.");
-        yield* chat.then.once("The existing conversation is still here");
-        yield* s.then.noExternalNetwork;
-      }),
-    );
     // An intentional stop must offer the platform start operation directly beside the conversation.
     it.effect("a stopped container offers Start beside retained history", () =>
       Effect.gen(function* () {

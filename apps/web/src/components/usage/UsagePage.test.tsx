@@ -172,6 +172,7 @@ vi.mock("./usageProviders", async (importOriginal) => {
 
 import { UsagePage } from "./UsagePage";
 import type { UsageScope } from "./usageDimensions";
+import { usageReportView } from "../../state/usage";
 import { readUsagePagePreferences } from "./usagePagePreferences";
 function renderPage(scope: UsageScope = {}) {
   return renderToStaticMarkup(<UsagePage scope={scope} onScopeChange={vi.fn()} />);
@@ -801,4 +802,65 @@ it("A capped Usage report explains its visible limits without treating missing r
   expect(html).toContain("This report contains more sources or groups than can be shown.");
   expect(html).toContain("More Mates are covered than can be listed.");
   expect(html).not.toContain("could not be read");
+});
+
+// The HQ report record, presented by the Usage page without starting a browser.
+it("Usage displays a partial sub-cent estimate and the recorded daily date", () => {
+  testState.metric = "cost";
+  testState.hourly = false;
+  const report = recordedReport({
+    totals: statistics("920000", "22"),
+    pricing: {
+      ...recordedReport().pricing,
+      costUsdNanos: "949000",
+      pricedModelEntries: "1",
+      unpricedModelEntries: "21",
+    },
+    groups: [
+      {
+        key: "fixture",
+        provider: "claude",
+        model: "claude-opus-5-5[1m]",
+        period: "2026-10-01",
+        totals: statistics("920000", "22"),
+        costUsdNanos: "949000",
+        unpricedModelEntries: "21",
+        unpricedTokens: "919000",
+      },
+    ],
+  });
+  testState.report = report;
+  testState.periods = report;
+  const html = renderPage();
+  expect(html).toContain("21 unpriced model entries excluded");
+  expect(html).toContain("&lt;$0.01");
+  expect(html).toContain("partial");
+  expect(bodyOf(html).match(/<td[^>]*>(.*?)<\/td>/)?.[1]).toMatch(/^[A-Z][a-z]{2} \d/);
+});
+
+it("connected Usage shows zero records, sessions and cost for a refused Claude transcript", () => {
+  const report = recordedReport({
+    totals: statistics("0", "0"),
+    recordedSince: null,
+    groups: [],
+    pricing: {
+      ...recordedReport().pricing,
+      costUsdNanos: "0",
+      pricedModelEntries: "0",
+      unpricedModelEntries: "0",
+    },
+  });
+  testState.hourly = false;
+  testState.read = { kind: "read", stale: false, report };
+  testState.report = report;
+  testState.models = report;
+  testState.periods = report;
+  testState.providers = report;
+  expect(report.totals.records).toBe("0");
+  expect(usageReportView(report).sessions).toBe(0);
+  expect(report.pricing.costUsdNanos).toBe("0");
+  const html = renderPage();
+  expect(html).toContain("No recorded Mate usage yet.");
+  expect(html).not.toContain("$0.00");
+  expect(html).not.toContain("Not connected, so not counted: Ada");
 });

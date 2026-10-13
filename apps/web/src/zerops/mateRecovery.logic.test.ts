@@ -12,6 +12,11 @@ import {
 } from "@t3tools/client-runtime/data";
 import { liveZerops, ORG } from "@t3tools/client-runtime/data/fixtures";
 import { AtomRegistry } from "effect/reactivity";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { EnvironmentId } from "@t3tools/contracts";
+import { ComposerBannerStack } from "../components/chat/ComposerBannerStack";
+import { mateVoiceBannerItem } from "../components/chat/EnvironmentConnectionBanner";
 import { mateNoticeVoice } from "./mateNoticeVoice";
 
 describe("Mate recovery evidence", () => {
@@ -374,3 +379,54 @@ it.each([
     });
   },
 );
+
+it("a failed restart has its cause and a direct restart action", () => {
+  const read: MateRecovery = {
+    standing: { kind: "unknown" },
+    status: "ACTION_FAILED",
+    process: {
+      id: "restart",
+      actionName: "stack.restart",
+      status: "FAILED",
+      created: "2026-10-07",
+      projectId: "p",
+      serviceStackIds: ["s"],
+      failReason: "CommandExec: init command failed (exit 23)",
+    },
+  };
+  const voice = mateNoticeVoice({
+    mateName: "Wren",
+    conversationShown: true,
+    nowMs: 0,
+    reachability: { kind: "ready", notice: null },
+    recovery: {
+      ...read,
+      lifecycle: readRestartRecovery(
+        { ...NO_RESTARTS, running: ["restart"] },
+        read.process,
+        read.status,
+      ),
+    },
+  });
+  expect(voice).toMatchObject({
+    surface: "banner",
+    headline: "Wren couldn't restart.",
+    text: "Wren couldn't restart. Its startup command failed.",
+    actions: ["restart", "open-in-zerops"],
+  });
+  const banner = mateVoiceBannerItem({
+    environmentId: EnvironmentId.make("env-wren"),
+    voice,
+    onRetry: () => {},
+    projects: createElement("a", {}, "Projects"),
+    onContainerAction: () => {},
+    projectUrl: "https://app.zerops.io/project/p",
+  });
+  expect(banner).not.toBeNull();
+  const html = renderToStaticMarkup(createElement(ComposerBannerStack, { items: [banner!] }));
+  expect(html).toContain("Wren couldn&#x27;t restart.");
+  expect(html).toContain("Its startup command failed.");
+  expect(html).toContain("Restart");
+  expect(html).toContain("Open in Zerops");
+  expect(html).not.toContain("I&#x27;m stopped.");
+});

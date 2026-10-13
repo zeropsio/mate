@@ -3,7 +3,7 @@ import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, expect, it, vi } from "vite-plus/test";
 import { UsageDay } from "@t3tools/contracts";
-import { recordedReport } from "./usageTestFixtures";
+import { recordedReport, statistics } from "./usageTestFixtures";
 const source = vi.hoisted(() => ({
   read: { kind: "reading" } as AgentUsageRead,
   retry: vi.fn(),
@@ -27,19 +27,21 @@ vi.mock("../ui/dialog", () => ({
   DialogTitle: "h2",
 }));
 vi.mock("../ui/button", () => ({ InlineButton: "button" }));
-vi.mock("./UsageShareBar", () => ({ UsageShareBar: () => null }));
+vi.mock("./UsageShareBar", () => ({
+  UsageShareBar: ({ label }: { label: string }) => <span>{label}</span>,
+}));
 import { UsageModelDialog } from "./UsageModelDialog";
 import { usageReportView } from "../../state/usage";
 const report = recordedReport({
   groups: [{ ...recordedReport().groups[0]!, provider: "claude", model: "claude-opus-5-5[1m]" }],
 });
 const model = usageReportView(report, report).models[0]!;
-function render() {
+function render(shownModel = model) {
   let tree: ReactTestRenderer;
   act(() => {
     tree = create(
       <UsageModelDialog
-        model={model}
+        model={shownModel}
         input={{
           sinceDay: UsageDay.make("2026-10-01"),
           untilDay: UsageDay.make("2026-10-07"),
@@ -115,5 +117,66 @@ it("A retained model chart names its own freshness while the model totals stay c
   const tree = render();
   expect(JSON.stringify(tree.toJSON())).toContain("Showing last known model chart.");
   expect(JSON.stringify(tree.toJSON())).not.toContain("Showing last known model usage.");
+  act(() => tree.unmount());
+});
+
+it.each(
+  (["reading", "unavailable", "stale", "unknown"] as const).map((state) => ({
+    state,
+    title: `The model dialog presents its ${state} source record`,
+  })),
+)("$title", ({ state }) => {
+  const sourceReport = recordedReport({
+    totals: { ...statistics(), unknownComponents: state === "unknown" ? "1" : "0" },
+    groups: [
+      {
+        key: "Ada",
+        provider: "claude",
+        model: "recorded-model",
+        period: "2026-10-01",
+        totals: statistics(),
+        costUsdNanos: "7830000000",
+      },
+    ],
+  });
+  source.read =
+    state === "reading"
+      ? { kind: "reading" }
+      : state === "unavailable"
+        ? { kind: "unavailable", reason: "refused" }
+        : { kind: "read", report: sourceReport, stale: false };
+  const tree = render(usageReportView(sourceReport, sourceReport).models[0]!);
+  if (state === "stale") {
+    expect(JSON.stringify(tree.toJSON())).toContain("Tokens by type");
+    source.read = { kind: "read", report: sourceReport, stale: true };
+    const props = tree.root.findByType(UsageModelDialog).props as Parameters<
+      typeof UsageModelDialog
+    >[0];
+    act(() => tree.update(<UsageModelDialog {...props} />));
+  }
+  const message =
+    state === "reading"
+      ? "Reading model usage…"
+      : state === "unavailable"
+        ? "Model usage could not be read."
+        : state === "stale"
+          ? "Showing last known model usage."
+          : "Token categories are unknown.";
+  const text = JSON.stringify(tree.toJSON());
+  expect(text).toContain(message);
+  if (state !== "unknown") expect(text).not.toContain("Token categories are unknown.");
+  if (state === "unavailable" || state === "stale") {
+    const retry = tree.root
+      .findAllByType("button")
+      .find((node) => node.children.includes("Try again"));
+    expect(retry).toBeDefined();
+    act(() => retry!.props.onClick());
+    expect(
+      source.retry.mock.calls.map(([scope]) => ({
+        family: scope.family,
+        model: JSON.parse(scope.ownerId).model,
+      })),
+    ).toContainEqual({ family: "agentUsage", model: "recorded-model" });
+  }
   act(() => tree.unmount());
 });

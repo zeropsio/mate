@@ -1,7 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
-import { makeClaudeTurnUsage } from "../../../../../server/src/spi/responseUsage.ts";
 import { mateOverviewOf } from "../../../../../server/src/zerops/zeropsHqOverview.ts";
 import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -130,47 +129,6 @@ describe("C: provider refusal and its real deadline", () => {
         }),
       );
 
-      it.effect(
-        "connected Usage shows zero records, sessions and cost for a refused Claude transcript",
-        () =>
-          Effect.gen(function* () {
-            const read = makeClaudeTurnUsage({ session: { model_usage: {}, total_cost_usd: 0 } });
-            // A refused native result has no consumption; transcript history is never an input.
-            expect(
-              read({
-                type: "result",
-                session_id: "refused-session",
-                uuid: "refused",
-                modelUsage: {},
-                total_cost_usd: 0,
-              }),
-            ).toEqual([]);
-            const s = yield* createScenario([installArea]);
-            yield* s.given.project("Ada", { mate: true, app: "Shop" });
-            const chat = mateChat(s);
-            const wire = chat.fixture();
-            wire.history();
-            const rows = yield* s.drivers.core
-              .sql`SELECT count(*)::text AS records FROM hq_usage_fact`;
-            expect(rows[0]?.records).toBe("0");
-            yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
-            yield* Effect.promise(() =>
-              s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
-            );
-            yield* s.given.signedIn;
-            yield* chat.when.open();
-            yield* Effect.promise(() => s.page.goto(`${s.web.origin}/usage`));
-            yield* chat.when.press("Cost");
-            yield* chat.when.press("30 days");
-            yield* chat.then.text("No recorded Mate usage yet.");
-            yield* chat.then.noText("$0.00");
-            yield* chat.then.noText("Not connected, so not counted: Ada");
-            const output = process.env.MATE_LIMIT_EVIDENCE;
-            if (output)
-              yield* Effect.promise(() => s.page.screenshot({ path: `${output}/usage.png` }));
-            yield* s.then.noExternalNetwork;
-          }),
-      );
       it.effect("an unreachable Mate keeps the provider and reset as HQ last-known evidence", () =>
         Effect.gen(function* () {
           let unavailable = false;

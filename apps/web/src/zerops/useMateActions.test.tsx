@@ -26,6 +26,10 @@ import type { HqMateOfferStates, HqPlacement } from "@t3tools/client-runtime/zer
 import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/reactivity";
 import { act } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Menu } from "../components/ui/menu";
+import { MateMenuItems } from "../components/zerops/SidebarMateMenu";
+import { sidebarMateVerbs } from "./useSidebarMateMenus";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -2278,5 +2282,111 @@ describe("useMateActions — deletion failures finish visibly", () => {
     expect(mock.keyReads).toBe(1);
     expect(mock.deleteProject).toHaveBeenCalledTimes(1);
     expect(mock.deletedTokens).toEqual(["tok-fen", "tok-fen"]);
+  });
+});
+
+const menuAccessCases: ReadonlyArray<{
+  name: string;
+  person: { readonly role: string; readonly grants?: Readonly<Record<string, string>> };
+  actions: ReadonlyArray<string>;
+  recordWritable: boolean;
+}> = [
+  {
+    name: "org OWNER",
+    person: { role: "OWNER" },
+    recordWritable: true,
+    actions: ["rename", "face", "assign", "move", "delete"],
+  },
+  {
+    name: "org ADMIN",
+    person: { role: "ADMIN" },
+    recordWritable: true,
+    actions: ["rename", "face", "assign", "move", "delete"],
+  },
+  {
+    name: "Developer with their Mate OWNER grant",
+    person: { role: "Developer", grants: { Ada: "OWNER" } },
+    recordWritable: true,
+    actions: ["rename", "face", "move", "delete"],
+  },
+  {
+    name: "Developer with a BASIC_USER grant",
+    person: { role: "Developer", grants: { Ada: "BASIC_USER" } },
+    recordWritable: false,
+    actions: [],
+  },
+  ...(["OWNER", "ADMIN"] as const).map((grant) => ({
+    name: `NO_ACCESS with a ${grant} grant`,
+    person: { role: "NO_ACCESS" as const, grants: { Ada: grant } },
+    recordWritable: true,
+    actions: ["rename", "face", "move", "delete"],
+  })),
+  {
+    name: "NO_ACCESS with a BASIC_USER grant",
+    person: { role: "NO_ACCESS", grants: { Ada: "BASIC_USER" } },
+    recordWritable: false,
+    actions: [],
+  },
+  { name: "org READ_ONLY", person: { role: "READ_ONLY" }, recordWritable: false, actions: [] },
+  {
+    name: "NO_ACCESS with a READ_ONLY grant",
+    person: { role: "NO_ACCESS", grants: { Ada: "READ_ONLY" } },
+    recordWritable: false,
+    actions: [],
+  },
+];
+
+describe("B: Mate menu access", () => {
+  it.each(
+    menuAccessCases.map((row) => ({
+      row,
+      title: `${row.name} sees only their permitted Mate management actions`,
+    })),
+  )("$title", ({ row }) => {
+    mock.roleCode = row.person.role;
+    const grant = row.person.grants?.Ada;
+    // HQ's offered record is an input, separate from Zerops' project grant.
+    const allowed = row.recordWritable;
+    mock.mateOffers = () => ({
+      ...OWNER_OFFERS,
+      edit: allowed ? { kind: "allowed" } : { kind: "refused", reason: "not_project_admin" },
+      detach: allowed ? { kind: "allowed" } : { kind: "refused", reason: "not_project_admin" },
+    });
+    const held = mate("Ada");
+    const candidate = {
+      ...held,
+      project: {
+        ...held.project,
+        userRoles: grant === undefined ? [] : [{ clientUserId: "member-ada", roleCode: grant }],
+      },
+    };
+    mount();
+    const html = renderToStaticMarkup(
+      <Menu>
+        <MateMenuItems
+          actions={{
+            muted: false,
+            rename: actions().renameInPlace(candidate),
+            changeFace: actions().changeFace(candidate),
+            entries: sidebarMateVerbs(verbs(candidate)),
+          }}
+          apps={[]}
+          onOpenMate={() => {}}
+          onRename={() => {}}
+          shortcuts={false}
+          unread={false}
+        />
+      </Menu>,
+    );
+    const management = [...html.matchAll(/data-zerops-mate-menu="([^"]+)"/gu)]
+      .map((match) => match[1])
+      .filter((id) => ["rename", "face", "assign", "move", "delete"].includes(id!));
+    expect(management).toEqual(row.actions);
+    for (const tag of html.match(
+      /<[^>]*data-zerops-mate-menu="(?:rename|face|assign|move|delete)"[^>]*>/gu,
+    ) ?? []) {
+      expect(tag).not.toContain('aria-disabled="true"');
+      expect(tag).not.toContain('data-disabled=""');
+    }
   });
 });
