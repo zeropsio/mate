@@ -16,6 +16,7 @@ import {
   portProblem,
   priceWords,
   recordsOf,
+  removeWaitsFor,
   removeWrite,
   withOwnWrites,
   wwwTwin,
@@ -126,7 +127,7 @@ describe("a refused write says why in a sentence", () => {
   it.each([
     [
       "publicHttpRoutingDuplicateDomainNameInAnotherRouting",
-      "That domain is already used by another project on Zerops.",
+      "shop.com or www.shop.com is already in use on Zerops.",
     ],
     ["publicHttpRoutingInvalidDomainNameFQDN", "Enter a full domain name, like shop.com."],
     [
@@ -147,7 +148,21 @@ describe("a refused write says why in a sentence", () => {
     ["somethingElse", undefined],
     [undefined, undefined],
   ])("%s → %j", (code, sentence) => {
-    expect(addressTrouble(code)).toBe(sentence);
+    expect(
+      addressTrouble(code, {
+        kind: "add-domain",
+        projectId: "p1",
+        domains: ["shop.com", "www.shop.com"],
+        serviceId: "svc-app",
+        port: 3000,
+      }),
+    ).toBe(sentence);
+  });
+
+  it("names no domain where the write names none", () => {
+    expect(addressTrouble("publicHttpRoutingDuplicateDomainNameInAnotherRouting")).toBe(
+      "That domain is already in use on Zerops.",
+    );
   });
 });
 
@@ -254,6 +269,44 @@ describe("our own writes", () => {
     expect(place.ports.find((port) => port.id === "port-db")?.face).toBe("removing");
   });
 
+  it("shows a zerops.app address closed as soon as we close it", () => {
+    const place = withOwnWrites(ADDRESSES_FIXTURE, [
+      { kind: "disable-subdomain-access", projectId: "p1", serviceId: "svc-app" },
+    ]);
+    expect(place.zerops.find((address) => address.serviceId === "svc-app")?.on).toBe(false);
+    expect(place.zerops.find((address) => address.serviceId === "svc-api")?.on).toBe(true);
+  });
+
+  it("a waiting port on the same number but the other IP type is someone else's", () => {
+    const ports = [
+      { ...ADDRESSES_FIXTURE.ports[0]!, id: "port-v4", publicIpType: "IP_V4", publicPort: 7000 },
+      { ...ADDRESSES_FIXTURE.ports[0]!, id: "port-v6", publicIpType: "IP_V6", publicPort: 7000 },
+    ];
+    const waiting = [
+      { id: "port-v4", label: "Port 7000 → db · port 6432" },
+      { id: "port-v6", label: "Port 7000 → db · port 6432" },
+    ];
+    expect(
+      othersWaiting(
+        waiting,
+        [
+          {
+            kind: "open-port",
+            projectId: "p1",
+            serviceId: "svc-db",
+            publicIpType: "IP_V6",
+            publicPort: 7000,
+            internalPort: 6432,
+            internalProtocol: "tcp",
+            firewallPolicy: "BLACKLIST",
+            firewallIpRanges: [],
+          },
+        ],
+        ports,
+      ).map((change) => change.id),
+    ).toEqual(["port-v4"]);
+  });
+
   it("someone else's waiting change is told apart from ours", () => {
     const waiting = [
       { id: "rt-api", label: "api.shop.com → api · port 8080" },
@@ -309,6 +362,31 @@ describe("when the DNS was last looked at", () => {
 });
 
 describe("removing a domain", () => {
+  it("never keeps a domain whose own removal is under way", () => {
+    const www = ADDRESSES_FIXTURE.domains.find((domain) => domain.domainName === "www.shop.com")!;
+    const place = withOwnWrites(ADDRESSES_FIXTURE, [
+      removeWrite(
+        ADDRESSES_FIXTURE.domains.find((domain) => domain.domainName === "shop.com")!,
+        "p1",
+      ),
+    ]);
+    const removing = place.domains.filter((domain) => domain.face === "removing");
+    expect(removeWrite(www, "p1", removing)).toMatchObject({ keep: [] });
+  });
+
+  it("names the domain a remove must wait for while another of its routing is being removed", () => {
+    const place = withOwnWrites(ADDRESSES_FIXTURE, [
+      removeWrite(
+        ADDRESSES_FIXTURE.domains.find((domain) => domain.domainName === "shop.com")!,
+        "p1",
+      ),
+    ]);
+    const www = place.domains.find((domain) => domain.domainName === "www.shop.com")!;
+    expect(removeWaitsFor(www, place.domains)).toBe("shop.com");
+    const blog = place.domains.find((domain) => domain.domainName === "blog.com")!;
+    expect(removeWaitsFor(blog, place.domains)).toBeNull();
+  });
+
   it("keeps the routing's other domains and sends it as it reads", () => {
     const www = ADDRESSES_FIXTURE.domains.find((domain) => domain.domainName === "www.shop.com")!;
     expect(removeWrite(www, "p1")).toEqual({
