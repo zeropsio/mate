@@ -57,9 +57,10 @@ The loop:
 - When the change is complete, run `node scripts/gate-changed.ts` once: guard ledgers and repository
   invariants, `vp check` on touched files, incremental typechecks of touched packages and their
   dependents, owned unit tests, then edited scenario files plus a fixed state-only smoke (door,
-  send, reload, approve,
-  engine-secret and one sandbox case; no frame sampler). `--list` previews; `--base <ref>` changes
-  the comparison. Then re-run only the failed files and the gate once more.
+  send, reload, approve, engine-secret and one sandbox case; no frame sampler). `--list` previews;
+  `--base <ref>` changes the comparison. It finishes in about five minutes: run it as one blocking
+  command with a timeout of at least ten minutes, never detached and polled. Then re-run only the
+  failed files and the gate once more.
 - `node scripts/ci-local.ts` (CI's Check job) only after touching guard ledgers, exceptions,
   `surfaces.json`, theme tokens or tooling. Whoever assembles several worktrees' work runs it plus
   the full unit and scenario suites before pushing.
