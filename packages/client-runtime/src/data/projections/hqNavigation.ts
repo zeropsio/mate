@@ -235,10 +235,17 @@ export const hqNavigation: Projection<string, HqNavigationRead> = {
   equals: sameValue,
 };
 /** Structure and navigation standing have no dependency on individual people. */
+export const canonicalHqMenuNavigation: Projection<string, CanonicalHqNavigationRead> = {
+  name: "canonicalHqMenuNavigation",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => navigationOf(read, orgId, false),
+  equals: sameValue,
+};
+
 export const hqMenuNavigation: Projection<string, HqNavigationRead> = {
   name: "hqMenuNavigation",
   keyOf: (orgId) => orgId,
-  derive: (read, orgId) => compatibilityNavigation(navigationOf(read, orgId, false)),
+  derive: (read, orgId) => compatibilityNavigation(canonicalHqMenuNavigation.derive(read, orgId)),
   equals: sameValue,
 };
 

@@ -9,7 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { organization, project } from "../zerops/__fixtures__/platformData";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
-import { mateRowsAtom, takenBotNamesAtom, zeropsSessionAtom } from "./zerops";
+import { hqNavigationAtom, mateRowsAtom, takenBotNamesAtom, zeropsSessionAtom } from "./zerops";
 import { mountHqNavigation } from "../zerops/__fixtures__/hqNavigation";
 
 /** A Mate's record as HQ's navigation says it, nothing said beyond its face. */
@@ -204,4 +204,17 @@ describe("the names the organization's Mates go by", () => {
     const taken = registry.get(takenBotNamesAtom);
     expect({ names: [...taken.names].toSorted(), complete: taken.complete }).toEqual(expected);
   });
+});
+
+it("People updates leave the menu's structure and navigation standing unchanged.", () => {
+  const registry = AtomRegistry.make();
+  const structure = { apps: [{ id: "shop", name: "Shop", projects: [] }], ungrouped: [] };
+  const { seed } = mountHqNavigation(registry, "org", {
+    structure,
+    people: { user: { name: "Before" } },
+  });
+  const before = registry.get(hqNavigationAtom);
+  seed({ structure, people: { user: { name: "After" } } });
+  expect(registry.get(hqNavigationAtom)).toBe(before);
+  registry.dispose();
 });
