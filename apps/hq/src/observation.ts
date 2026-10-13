@@ -101,7 +101,7 @@ export const observationLayer = Layer.effect(
           readonly name: string;
           readonly tier: "stage" | "production";
         }>`
-      SELECT project_id, name, tier FROM hq_environment WHERE app_id = ${placement.app_id}::uuid ORDER BY declared_seq`;
+      SELECT project_id, name, tier FROM hq_environment WHERE app_id = ${placement.app_id}::uuid AND target = 'zerops' ORDER BY declared_seq`;
         return {
           view,
           appId: placement.app_id,
