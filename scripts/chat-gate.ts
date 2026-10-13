@@ -384,28 +384,9 @@ if (import.meta.main) {
     : chatGateStages;
   let stages: ReadonlyArray<ChatGateStage> = requested;
   if (shard) {
-    // 2026-10-13 GitHub-hosted per-file timings: ~304s, 413s, 273s, 260s.
-    // The 413s layout suite owns a runner; new files join the fourth partition.
-    const partitions = [
-      [
-        "chat",
-        "report-room",
-        "recovery",
-        "admission",
-        "providerLimits",
-        "image-layout",
-        "engine-secret",
-      ],
-      ["owner-reported-layout-regressions"],
-      ["opening", "engine-page", "images", "composer"],
-    ];
-    const index = Number(shard.split("/")[0]) - 1;
-    const files = chatGateTestFiles(root, requested).filter((file) => {
-      const assigned = partitions.findIndex((names) =>
-        names.includes(NodePath.basename(file, ".scenario.ts")),
-      );
-      return (assigned === -1 ? 3 : assigned) === index;
-    });
+    const { spreadShard } = await import("./lib/spread-shard.ts");
+    const index = Number(shard.split("/")[0]);
+    const files = spreadShard(chatGateTestFiles(root, requested), index, 4);
     if (!files.length) throw new Error(`Chat contract shard ${shard}: no cases ran`);
     stages = filterChatGateFiles(root, requested, files).map((stage) => ({
       ...stage,

@@ -312,8 +312,8 @@ it("the gate reads each scenario project's journeys as the scenario config runs 
 // excludes it: "no cases ran", and the lane's gate failed on a file it never ran.
 it.each([
   { path: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts", ids: ["C", "types"] },
-  { path: "apps/web/test/scenarios/areas/c-mate/engine-card.scenario.ts", ids: ["C", "types"] },
-  { path: "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts", ids: ["C", "types"] },
+  { path: "apps/web/test/scenarios/areas/c-mate/engine-secret.scenario.ts", ids: ["C", "types"] },
+  { path: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts", ids: ["C", "types"] },
 ])("a changed scenario runs under the project that runs it: $path", ({ path, ids }) => {
   const root = NodePath.resolve(import.meta.dirname, "..");
   const stages = selectLaneChatStages([path], [path], root);
@@ -428,7 +428,7 @@ it("lane file selection keeps the affected C journey without expanding siblings"
   );
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout.split(file.slice("apps/web/".length))).toHaveLength(2);
-  expect(result.stdout).not.toContain("opening.scenario.ts");
+  expect(result.stdout).not.toContain("admission.scenario.ts");
   expect(result.stdout).toContain("--project scenarios ");
   expect(result.stdout).toContain("reason: explicit related files");
 });
@@ -439,7 +439,7 @@ it.each([
     "--stages",
     "E",
     "--files",
-    JSON.stringify(["apps/web/test/scenarios/areas/c-mate/opening.scenario.ts"]),
+    JSON.stringify(["apps/web/test/scenarios/areas/c-mate/admission.scenario.ts"]),
   ],
   ["--stages", "A", "--files", JSON.stringify(["apps/server/src/spi/replay/missing.test.ts"])],
 ])("invalid lane file selection fails before running a command (%s)", (...args) => {
@@ -518,9 +518,12 @@ it("Decision: no test deleted or weakened; titles unchanged; crew/actor's crew s
       ...result.stdout.matchAll(/test\/scenarios\/areas\/c-mate\/[\w-]+\.scenario\.ts/gu),
     ].map(([file]) => `apps/web/${file}`);
   });
-  expect(shards[1]?.map((file) => NodePath.basename(file, ".scenario.ts"))).toEqual([
-    "owner-reported-layout-regressions",
-  ]);
+  expect(
+    shards.every((files) => files.length > 0),
+    "ASSERTION: every configured C shard contains live scenario files",
+  ).toBe(true);
+  const sizes = shards.map((files) => files.length);
+  expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1);
   expect(shards.flat().sort()).toEqual([...inventory].sort());
   expect(new Set(shards.flat()).size).toBe(inventory.length);
 });
