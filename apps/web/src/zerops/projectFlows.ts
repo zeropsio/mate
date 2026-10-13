@@ -13,8 +13,10 @@ import {
   canonicalProjectFlow,
   projectApplications,
 } from "@t3tools/client-runtime/data";
+import type { CanonicalHqEnvironment } from "@t3tools/client-runtime/zerops/hq";
 import {
   flowReleaseOf,
+  type ProductionRun,
   movedCommits,
   productionRuns,
   projectNameInApp,
@@ -93,7 +95,10 @@ export interface ProjectFlows {
 }
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
-const NO_ENVIRONMENTS: Readonly<Record<string, CanonicalAppEnvironmentsRead>> = {};
+type RuntimeEnvironmentsRead = Omit<CanonicalAppEnvironmentsRead, "environments"> & {
+  readonly environments: ReadonlyArray<CanonicalHqEnvironment> | undefined;
+};
+const NO_ENVIRONMENTS: Readonly<Record<string, RuntimeEnvironmentsRead>> = {};
 const NO_ENVIRONMENTS_ATOM = Atom.make(NO_ENVIRONMENTS);
 const NO_APPS: ReadonlyArray<string> = [];
 
@@ -128,7 +133,7 @@ export function useEveryAppId(): ReadonlyArray<string> {
 /** The named applications' stage and production as HQ's navigation says them, by id. */
 export function useAppsEnvironments(
   appIds: ReadonlyArray<string>,
-): Readonly<Record<string, CanonicalAppEnvironmentsRead>> {
+): Readonly<Record<string, RuntimeEnvironmentsRead>> {
   // The account's reads as mounted: what every surface over HQ's navigation reads through.
   const account = useAtomValue(accountReadsAtom);
   const key = appIds.join("\n");
@@ -137,12 +142,20 @@ export function useAppsEnvironments(
     if (account === null || orgId == null || key === "") return NO_ENVIRONMENTS_ATOM;
     return Atom.make((get) =>
       Object.fromEntries(
-        key
-          .split("\n")
-          .map((appId) => [
+        key.split("\n").map((appId) => {
+          const answer = get(account.data.project(canonicalAppEnvironments, { orgId, appId }));
+          // Runtime consumers retain canonical identity while excluding Git push jobs.
+          return [
             appId,
-            get(account.data.project(canonicalAppEnvironments, { orgId, appId })),
-          ]),
+            {
+              ...answer,
+              environments: answer.environments?.filter(
+                (environment): environment is CanonicalHqEnvironment =>
+                  environment.target.kind === "zerops",
+              ),
+            },
+          ];
+        }),
       ),
     );
   }, [account, key]);
@@ -330,7 +343,8 @@ export function useCompactProjectFlows(
               review: reviews?.get(appId),
             }),
           );
-          if (flow !== undefined) flows.set(appId, flow);
+          if (flow === undefined) continue;
+          flows.set(appId, flow);
         }
         return {
           hqAddress,
@@ -479,6 +493,32 @@ export function useProjectFlows(
       ),
     [appIds, told, offers],
   );
+  const gitLive = useMemo(() => {
+    const values = new Map<
+      string,
+      Omit<NonNullable<ZeropsProjectFlow["release"]["git"]>, "repositories">
+    >();
+    for (const appId of appIds) {
+      const app = told?.find((entry) => entry.id === appId);
+      const attachment = canonical.flows.get(appId)?.release.git?.attachment;
+      if (attachment?.target.kind !== "git") continue;
+      const flow = canonical.flows.get(appId);
+      const replacement = offers.state(app?.can, "replace_remote_token");
+      values.set(appId, {
+        attachment: { ...attachment, target: attachment.target },
+        delivery: flow?.release.git?.delivery,
+        replaceTokenPermission:
+          replacement.kind === "allowed"
+            ? { allowed: true }
+            : {
+                allowed: false,
+                reason: offers.words(replacement) ?? "HQ has not offered token replacement.",
+              },
+      });
+    }
+    return values;
+  }, [appIds, told, offers, canonical.flows]);
+
   // What a release of each group would put live: what HQ compares from what production runs to each
   // runtime's `main` (`releaseReads`) — asked only for a surface that shows it, and only once the
   // store has stated what each production service runs, as a version not read yet would read as
@@ -495,6 +535,25 @@ export function useProjectFlows(
         ?.environmentInputs.find(
           (entry) => entry.tier === "production" && entry.target.kind === "zerops",
         );
+      const git = gitLive.get(groupId);
+      if (git !== undefined && repos !== undefined && records !== undefined) {
+        const candidate = releaseCandidate({ target: git.attachment.target, repos }).candidate;
+        const running = new Map<string, ProductionRun>(
+          [...candidate.keys()].map((repo) => {
+            const sha = git.delivery?.lastPushed.get(repo);
+            return [repo, sha === undefined ? { kind: "nothing" } : { kind: "commit", sha }];
+          }),
+        );
+        plans.set(groupId, {
+          ...releaseReads({
+            productionRepositories: new Map([...candidate.keys()].map((repo) => [repo, repo])),
+            candidate,
+            running,
+          }),
+          running,
+        });
+        continue;
+      }
       if (recipe === undefined || repos === undefined || records === undefined) continue;
       // Nothing is compared for an application with no production: there is nothing to release to.
       if (production === undefined || production.target.kind !== "zerops") continue;
@@ -537,6 +596,7 @@ export function useProjectFlows(
     compare,
     groupProjects,
     canonical.flows,
+    gitLive,
     heldServices,
     recipes,
     releaseRecords,
@@ -579,12 +639,15 @@ export function useProjectFlows(
               id,
               {
                 permission: permissions.get(id),
-                live: live.get(id) ?? { moved: NOT_COMPARED, untold: [], runs: undefined },
+                live: {
+                  ...(live.get(id) ?? { moved: NOT_COMPARED, untold: [], runs: undefined }),
+                  git: gitLive.get(id),
+                },
               },
             ]),
           )
         : undefined,
-    [appIds, compare, permissions, live],
+    [appIds, compare, permissions, live, gitLive],
   );
   const reviewed = useCompactProjectFlows(apps, reviews);
   const flows = reviewed.flows;

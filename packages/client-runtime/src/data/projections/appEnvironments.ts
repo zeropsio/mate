@@ -9,9 +9,10 @@
  */
 import type { HqEnvironmentId } from "@t3tools/contracts";
 import {
-  canonicalEnvironmentsOf,
+  deliveryEnvironmentsOf,
   zeropsEnvironments,
   type CanonicalHqEnvironment,
+  type HqDeliveryEnvironment,
   type HqEnvironment,
 } from "../../zerops/hq/environments.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
@@ -25,7 +26,7 @@ export interface AppEnvironmentsRead {
 }
 
 export interface CanonicalAppEnvironmentsRead extends Omit<AppEnvironmentsRead, "environments"> {
-  readonly environments: ReadonlyArray<CanonicalHqEnvironment> | undefined;
+  readonly environments: ReadonlyArray<HqDeliveryEnvironment> | undefined;
 }
 
 const UNTOLD: CanonicalAppEnvironmentsRead = { environments: undefined, refused: null };
@@ -36,7 +37,7 @@ function environmentsRead(read: ProjectionReads, appId: string): CanonicalAppEnv
   const { environments } = fact.value;
   if (environments === undefined) return UNTOLD;
   if ("refused" in environments) return { environments: undefined, refused: environments.refused };
-  return { environments: canonicalEnvironmentsOf(environments), refused: null };
+  return { environments: deliveryEnvironmentsOf(environments), refused: null };
 }
 
 export const canonicalAppEnvironments: Projection<
@@ -52,7 +53,14 @@ export const canonicalAppEnvironments: Projection<
 const compatibilityRead = (answer: CanonicalAppEnvironmentsRead): AppEnvironmentsRead => ({
   ...answer,
   environments:
-    answer.environments === undefined ? undefined : zeropsEnvironments(answer.environments),
+    answer.environments === undefined
+      ? undefined
+      : zeropsEnvironments(
+          answer.environments.filter(
+            (environment): environment is CanonicalHqEnvironment =>
+              environment.target.kind === "zerops",
+          ),
+        ),
 });
 
 export const appEnvironments: Projection<
@@ -82,7 +90,7 @@ export const appsEnvironments: Projection<
 /** A route resolves an environment under its application, never a project by this id. */
 export const environmentById: Projection<
   { readonly orgId: string; readonly appId: string; readonly id: HqEnvironmentId },
-  CanonicalHqEnvironment | undefined
+  HqDeliveryEnvironment | undefined
 > = {
   name: "environmentById",
   keyOf: ({ orgId, appId, id }) => `${orgId}/${appId}/${id}`,

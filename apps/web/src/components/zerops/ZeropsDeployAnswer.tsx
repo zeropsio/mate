@@ -1,3 +1,6 @@
+import { GitDeliveryStatus } from "./GitDeliveryStatus";
+import type { GitDelivery } from "@t3tools/client-runtime/zerops";
+import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
 /** HQ's answer replaces a service's planned deploy line, inside the section that names it. */
 import type { ReviewPress } from "@t3tools/client-runtime/zerops";
 import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
@@ -6,7 +9,25 @@ import { Fragment } from "react";
 import { useDeployAnswerFollowing } from "~/zerops/activity/useDeployAnswerFollowing";
 import { ZeropsDeployLog } from "./ZeropsDeployLog";
 
-export function ZeropsDeployAnswer({
+export function ZeropsDeployAnswer(props: {
+  readonly git?:
+    | {
+        readonly delivery: GitDelivery | undefined;
+        readonly environment: {
+          readonly target: Extract<HqEnvironmentTarget, { kind: "git" }>;
+          readonly tier: "stage" | "production";
+        };
+      }
+    | undefined;
+  readonly answer?: HqDeployAnswer | undefined;
+  readonly showEnvironment?: boolean | undefined;
+  readonly rows?: ReadonlyArray<{ readonly service: string; readonly line: string }> | undefined;
+}) {
+  if (props.git !== undefined)
+    return <GitDeliveryStatus environment={props.git.environment} delivery={props.git.delivery} />;
+  return <PlatformDeployAnswer {...props} />;
+}
+function PlatformDeployAnswer({
   answer: asked,
   rows,
   showEnvironment,

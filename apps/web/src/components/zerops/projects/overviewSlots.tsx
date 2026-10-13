@@ -1,3 +1,4 @@
+import { GitDeliveryStatus } from "../GitDeliveryStatus";
 /**
  * What the overview's cards are handed from the page's reads: each project's places as the left
  * menu's chips read them (`productionChip`, `stageStopChip`), each place's panel with its facts and
@@ -176,6 +177,31 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       line.kind === "production"
         ? places.prodStop
         : entry.flow.stages.find((stage) => stage.projectId === line.projectId);
+    const gitEnvironment = read?.environments.find(
+      (environment) => environment.id === line.projectId,
+    );
+    if (gitEnvironment?.target.kind === "git")
+      return (
+        <div className="ov-panel">
+          <GitDeliveryStatus
+            environment={{ target: gitEnvironment.target, tier: gitEnvironment.tier }}
+            delivery={gitEnvironment.git}
+            repos={read?.repos}
+          />
+          <button
+            className="ov-btn"
+            type="button"
+            onClick={() => {
+              void navigate({
+                to: "/group/$groupId/$projectId",
+                params: { groupId, projectId: gitEnvironment.id },
+              });
+            }}
+          >
+            Details and history
+          </button>
+        </div>
+      );
     const item = itemOf(entry, line.projectId);
     const menu =
       line.kind === "production" && chip !== undefined

@@ -80,6 +80,8 @@ export function projectSitesStatus(input: {
   readonly landing: HeadingLanding | undefined;
 }): SitesStatus | undefined {
   const { prodChip, stageChip, landing } = input;
+  const git = prodChip?.git ?? stageChip?.git;
+
   const production = input.line?.production;
   const stages = input.line?.stages ?? [];
   if (prodChip?.state === "down") {
@@ -99,13 +101,30 @@ export function projectSitesStatus(input: {
       stageKey(stage.name),
     );
   }
-  if (prodChip?.state === "failed") {
+
+  if (prodChip?.git === undefined && prodChip?.state === "failed") {
     const words =
       prodChip.version === undefined
         ? "Release failed"
         : `Release failed · still runs ${prodChip.version}`;
     return status("amber", "Release failed", asKnown(prodChip, words), PRODUCTION);
   }
+  if (git !== undefined)
+    return git.blocked || git.standing === "partly" || git.standing === "refused"
+      ? status(
+          "amber",
+          "Push needs attention",
+          git.line,
+          prodChip?.git !== undefined ? PRODUCTION : stageKey("Stage"),
+        )
+      : git.standing === "pushing"
+        ? status(
+            "busy",
+            "Pushing",
+            git.line,
+            prodChip?.git !== undefined ? PRODUCTION : stageKey("Stage"),
+          )
+        : undefined;
   if (prodChip?.state === "releasing") {
     const word = prodChip.next === undefined ? "Deploying" : "Releasing";
     return status("busy", word, chipFace(prodChip).words, PRODUCTION);
@@ -256,7 +275,7 @@ export function projectSitesSections(input: {
     title: kind === "production" ? "Production" : stop.name,
     place: kind,
     stop,
-    links: once(placeLinks(input.placeRoutes(stop))),
+    links: stop.git === undefined ? once(placeLinks(input.placeRoutes(stop))) : [],
   });
   const unread = (name: string, kind: "production" | "stage"): SitesSection => ({
     kind: "place",

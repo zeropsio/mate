@@ -414,6 +414,7 @@ const NO_BIRTHS: ReadonlyArray<ZeropsPlacedBirth> = [];
  */
 export interface SidebarProjectFlow {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  readonly repos?: ReadonlyArray<import("@t3tools/shared/hqChanges").RepoListEntry> | undefined;
   /**
    * Whether HQ told the project's changes; absent reads as told. Until it
    * does, `pullRequests` is empty for want of an answer, and the menu draws
@@ -1374,12 +1375,15 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                 : {
                     projectId: productionStop?.projectId,
                     chip: prodChip,
+                    git: productionStop?.git,
                     coming:
                       projectFlow.production.kind === "creating"
                         ? PENDING
                         : productionStop === undefined
                           ? undefined
-                          : comingOf("production", productionStop),
+                          : productionStop.git === undefined
+                            ? comingOf("production", productionStop)
+                            : undefined,
                     building:
                       productionStop !== undefined &&
                       building.has(targetProjectId(productionStop.projectId) ?? ""),
@@ -1388,7 +1392,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               ...stages.map(({ name, stop }) => ({
                 projectId: stop.projectId,
                 name,
-                coming: comingOf("stage", stop),
+                git: stop.git,
+                coming: stop.git === undefined ? comingOf("stage", stop) : undefined,
                 serves: stopServes(listedOf(stop)),
                 building: building.has(targetProjectId(stop.projectId) ?? ""),
               })),
@@ -1555,6 +1560,20 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             productionMenu({
               chip: prodChip,
               projectId: productionItem?.project.id,
+              environmentId: productionStop?.projectId,
+              git:
+                productionStop?.git === undefined
+                  ? undefined
+                  : {
+                      delivery: productionStop.git,
+                      environment: (() => {
+                        const row = flow?.environments.get(productionStop.projectId);
+                        return row?.target.kind === "git"
+                          ? { target: row.target, tier: row.tier }
+                          : undefined;
+                      })(),
+                      repos: flow?.repos,
+                    },
               failure: releases.kind === "answered" ? releases.failure : undefined,
               down: downOf(productionServing),
               routes: productionItem?.routes ?? [],
@@ -1569,6 +1588,19 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                 projectId: stop.projectId,
                 name,
                 stop,
+                git:
+                  stop.git === undefined
+                    ? undefined
+                    : {
+                        delivery: stop.git,
+                        environment: (() => {
+                          const row = flow?.environments.get(stop.projectId);
+                          return row?.target.kind === "git"
+                            ? { target: row.target, tier: row.tier }
+                            : undefined;
+                        })(),
+                        repos: flow?.repos,
+                      },
                 chip: stageChips[index],
                 deployedAt: stopDeployedAt(stop.projectId),
                 down: downOf(serving),

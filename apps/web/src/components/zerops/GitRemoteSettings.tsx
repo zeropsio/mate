@@ -1,0 +1,265 @@
+import { gitRemoteExpiry } from "@t3tools/client-runtime/zerops";
+import type { HqRemoteProbe, RepoListEntry } from "@t3tools/shared/hqChanges";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
+import type { HqOffers } from "@t3tools/shared/hqOffers";
+import { hqOffer } from "@t3tools/shared/hqOffers";
+import { useNowMs } from "~/zerops/useNowMs";
+import { useState } from "react";
+import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { gitRemoteLabel } from "./GitDeliveryStatus";
+
+/** Optional actions are supplied by the account's operations, never a component's host client. */
+export interface GitRemoteActions {
+  readonly replaceToken?: (repo: string, token: string) => Promise<HqRemoteProbe>;
+  readonly disconnect?: (repo: string) => Promise<void>;
+  readonly connect?: (repo: string, url: string, token: string) => Promise<HqRemoteProbe>;
+  readonly addressReview?: {
+    readonly repo: string;
+    readonly verified: Extract<HqRemoteProbe, { readonly ok: true }>;
+    readonly confirm: () => Promise<void>;
+  };
+}
+
+export function GitRemoteSettings({
+  repos,
+  appName,
+  environments = [],
+  can,
+  actions,
+  live = true,
+  now: at,
+}: {
+  readonly repos: ReadonlyArray<RepoListEntry> | undefined;
+  readonly appName: string;
+  readonly environments?: ReadonlyArray<{
+    readonly name: string;
+    readonly target: { readonly kind: string };
+  }>;
+  readonly can?: HqOffers | undefined;
+  readonly actions?: GitRemoteActions | undefined;
+  readonly live?: boolean;
+  readonly now?: number;
+}) {
+  const clock = useNowMs();
+  const now = at ?? clock;
+  return (
+    <div data-zerops-surface="git-remote-settings">
+      {repos === undefined ? (
+        <p className="rv-note">Reading repositories…</p>
+      ) : (
+        repos
+          .filter((repo) => repo.name !== RECIPE_REPO)
+          .map((repo) => (
+            <Remote
+              key={repo.name}
+              repo={repo}
+              appName={appName}
+              dependencies={environments
+                .filter((environment) => environment.target.kind === "git")
+                .map((environment) => environment.name)}
+              can={can}
+              actions={actions}
+              live={live}
+              now={now}
+            />
+          ))
+      )}
+    </div>
+  );
+}
+function Remote({
+  repo,
+  appName,
+  dependencies,
+  can,
+  actions,
+  live,
+  now,
+}: {
+  readonly repo: RepoListEntry;
+  readonly appName: string;
+  readonly dependencies: ReadonlyArray<string>;
+  readonly can: HqOffers | undefined;
+  readonly actions: GitRemoteActions | undefined;
+  readonly live: boolean;
+  readonly now: number;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [token, setToken] = useState("");
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [answer, setAnswer] = useState<string | undefined>();
+  const [disconnecting, setDisconnecting] = useState(false);
+  const allowed = (verb: string) =>
+    hqOffer(can, verb, { current: live, unavailableSince: live ? null : 0 }).kind === "allowed";
+  const remote = repo.remote;
+  const guide = gitTokenGuide(remote?.url ?? url, appName);
+  const keep = remote == null ? actions?.connect : actions?.replaceToken;
+  const permitted =
+    allowed(remote == null ? "connect_remote" : "replace_remote_token") && keep !== undefined;
+  const review = actions?.addressReview;
+  const sameId =
+    remote?.repositoryId != null &&
+    review?.repo === repo.name &&
+    review.verified.remote.repositoryId === remote.repositoryId &&
+    new URL(remote.url).host === "github.com" &&
+    new URL(review.verified.remote.url).host === "github.com";
+  const submit = async () => {
+    if (!permitted || !token || guide.kind !== "guide" || busy) return;
+    setBusy(true);
+    const candidate = token;
+    setToken("");
+    try {
+      const result =
+        remote == null
+          ? await actions!.connect!(repo.name, url, candidate)
+          : await actions!.replaceToken!(repo.name, candidate);
+      setAnswer(
+        result.ok ? "Token verified. Waiting for HQ's saved remote record." : result.reason,
+      );
+      if (result.ok) setEditing(false);
+    } catch {
+      setAnswer("HQ couldn't confirm the token change. Check its outcome before trying again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="py-3" aria-label={repo.name}>
+      <p className="rv-words">
+        {repo.name} · {remote == null ? "No remote connected" : gitRemoteLabel(remote.url)}
+      </p>
+      {remote == null ? null : (
+        <>
+          {gitRemoteExpiry(remote, now) === undefined ? null : (
+            <p className="rv-note">{gitRemoteExpiry(remote, now)}</p>
+          )}
+          {remote.invalidSince === null ? null : (
+            <p className="rv-note">The remote refused Mate's token. Replace token.</p>
+          )}
+        </>
+      )}
+      {permitted && !editing ? (
+        <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+          {remote == null ? "Connect repository" : "Replace token"}
+        </Button>
+      ) : null}
+      {editing ? (
+        <div className="flex flex-col gap-2">
+          {remote == null ? (
+            <Input
+              nativeInput
+              aria-label="Repository HTTPS URL"
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+            />
+          ) : null}
+          {guide.kind === "guide" ? (
+            <p className="rv-note">
+              <a href={guide.tokenUrl} target="_blank" rel="noreferrer">
+                Create a token on {guide.hostLabel}
+              </a>{" "}
+              · Select {guide.repository} · {guide.permission}.
+              {guide.host === "github"
+                ? " Workflows: Read and write is needed only if a release changes .github/workflows."
+                : null}
+            </p>
+          ) : (
+            <p className="rv-note">Enter a repository's HTTPS URL.</p>
+          )}
+          <Input
+            nativeInput
+            aria-label="Candidate token"
+            type="password"
+            autoComplete="off"
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+          />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={busy || !permitted || !token || guide.kind !== "guide"}
+              onClick={() => {
+                void submit();
+              }}
+            >
+              Verify and keep token
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => {
+                setToken("");
+                setEditing(false);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {remote != null && dependencies.length > 0 ? (
+        <p className="rv-note">
+          {gitRemoteLabel(remote.url)} is used by {dependencies.join(", ")}. Remove those Git
+          environments first.
+        </p>
+      ) : null}
+      {remote != null &&
+      dependencies.length === 0 &&
+      allowed("disconnect_remote") &&
+      actions?.disconnect !== undefined ? (
+        <>
+          <Button size="sm" variant="outline" onClick={() => setDisconnecting(true)}>
+            Disconnect
+          </Button>
+          {disconnecting ? (
+            <div>
+              <p className="rv-note">
+                Disconnect deletes HQ's sealed token. The token stays valid on{" "}
+                {new URL(remote.url).host} until you revoke it there.
+              </p>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setDisconnecting(false);
+                  void actions.disconnect!(repo.name);
+                }}
+              >
+                Confirm disconnect
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setDisconnecting(false)}>
+                Cancel
+              </Button>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+      {sameId && allowed("update_remote_address") ? (
+        <div>
+          <p className="rv-note">
+            Same GitHub repository · Review new address:{" "}
+            {gitRemoteLabel(review!.verified.remote.url)}. Access and policy must be rechecked
+            before another push.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void review!.confirm();
+            }}
+          >
+            Update address
+          </Button>
+        </div>
+      ) : null}
+      {answer === undefined ? null : (
+        <p className="rv-note" role="status">
+          {answer}
+        </p>
+      )}
+    </div>
+  );
+}

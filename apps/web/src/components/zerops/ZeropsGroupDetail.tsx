@@ -1,3 +1,7 @@
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import { GitStopDetailPage } from "./GitStopDetail";
+import { GitDeliveryStatus } from "./GitDeliveryStatus";
+import { GitRemoteSettings } from "./GitRemoteSettings";
 import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
 import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import {
@@ -825,6 +829,7 @@ function KnownGroupDetail({
         <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
       }
       environments={environments}
+      repos={flow.repos}
       slots={slots}
       onAdd={(tier) => {
         addEnvironment(groupId, tier);
@@ -881,6 +886,7 @@ function KnownGroupDetail({
  * changes waiting, without an account behind it.
  */
 export function ZeropsGroupPane({
+  repos,
   readFailures,
   environments,
   slots,
@@ -912,6 +918,7 @@ export function ZeropsGroupPane({
   withheldNotice,
   firstDeployOf,
 }: {
+  readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
   readonly readFailures?: React.ReactNode;
   /** What has landed on the repository, as HQ compares it. */
   readonly history: ZeropsHistoryState;
@@ -1030,6 +1037,14 @@ export function ZeropsGroupPane({
         )}
       </Section>
 
+      <Section title="Repositories">
+        <GitRemoteSettings
+          repos={repos}
+          appName={name ?? "Application"}
+          environments={environments}
+        />
+      </Section>
+
       {slots.length === 0 ? null : (
         <Section title="Environments">
           <ul className="flex flex-col">
@@ -1103,6 +1118,18 @@ export function ZeropsGroupPane({
                 );
               const environment = environments.find((entry) => entry.id === slot.id);
               if (environment === undefined) return null;
+              if (environment.target.kind === "git")
+                return (
+                  <li key={slot.id}>
+                    <StopLine environment={environment} groupId={groupId} notice={null} />
+                    <GitDeliveryStatus
+                      environment={{ target: environment.target, tier: environment.tier }}
+                      delivery={environment.git}
+                      repos={repos}
+                      showExpiry={false}
+                    />
+                  </li>
+                );
               return (
                 <Fragment key={slot.id}>
                   <StopLine
@@ -1260,6 +1287,11 @@ export function ZeropsStopDetailPage({
   }
   return (
     <DetailShell crumbs={crumbs} title={environment?.name}>
+      <GitStopDetailPage
+        appId={groupId}
+        environment={{ ...environment, target: environment.target }}
+        live={navigation?.live ?? false}
+      />
       {note !== null ? <Note>{note}</Note> : null}
     </DetailShell>
   );
@@ -2641,7 +2673,40 @@ function stopLineVersion(deployment: Shown<Deployment> | undefined, row: Environ
   return stopView({ deployment: deployment ?? UNREAD_DEPLOYMENT, row, nowMs: 0 }).line;
 }
 
-function StopLine({
+function StopLine(props: {
+  readonly environment: EnvironmentRow;
+  readonly groupId: string;
+  readonly notice: string | null;
+  readonly firstDeploy?: FirstDeploy | undefined;
+}) {
+  if (props.environment.target.kind === "git")
+    return <GitStopLine environment={props.environment} groupId={props.groupId} />;
+  return <ZeropsStopLine {...props} />;
+}
+function GitStopLine({
+  environment,
+  groupId,
+}: {
+  readonly environment: EnvironmentRow;
+  readonly groupId: string;
+}) {
+  const navigate = useNavigate();
+  return (
+    <button
+      className="py-2 text-sm font-medium"
+      type="button"
+      onClick={() => {
+        void navigate({
+          to: "/group/$groupId/$projectId",
+          params: { groupId, projectId: environment.id },
+        });
+      }}
+    >
+      {environment.name}
+    </button>
+  );
+}
+function ZeropsStopLine({
   environment,
   firstDeploy,
   groupId,
