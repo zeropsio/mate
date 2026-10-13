@@ -133,6 +133,7 @@ export interface RecipeLandingTarget {
  * production (`null`: none yet).
  */
 export interface ReleaseTarget {
+  readonly productionTarget?: "zerops" | "git";
   readonly projectIds: ReadonlyArray<string>;
   readonly productionProjectId: string | null;
 }
@@ -358,10 +359,14 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     case "redeploy":
       if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
       return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
-    // A release, and a rollback, by whoever may deploy to the application's production: Basic user
-    // or above there (SPEC §3.3a). Without a production nobody releases, the org writer included.
+    // The target owns release authority: Git uses the application's merge authority; Zerops
+    // uses its production's deploy authority (SPEC §3.3a). Without production nobody releases.
     case "release": {
-      const { projectIds, productionProjectId } = request.target;
+      const { projectIds, productionProjectId, productionTarget } = request.target;
+      if (productionTarget === "git") {
+        if (!seesApp(projectIds)) return deny("app_not_seen");
+        return writesApp(projectIds) ? ALLOW : deny("not_releaser");
+      }
       // Its production is one of its projects, whatever HQ named beside it.
       const app = productionProjectId === null ? projectIds : [...projectIds, productionProjectId];
       if (!seesApp(app)) return deny("app_not_seen");
