@@ -73,6 +73,70 @@ describe("a release may update automatically only inside its proved rollback ran
         });
       }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   );
+  it.effect("sibling version-only releases prove ancestry through their main source commits", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped();
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const git = Effect.fnUntraced(function* (args: ReadonlyArray<string>) {
+        expect(
+          yield* spawner.exitCode(
+            ChildProcess.make("git", args, { cwd: root, stdout: "ignore", stderr: "ignore" }),
+          ),
+        ).toBe(0);
+      });
+      const files = [
+        "apps/server/package.json",
+        "apps/desktop/package.json",
+        "apps/web/package.json",
+      ];
+      for (const file of files) {
+        yield* fs.makeDirectory(path.dirname(path.join(root, file)), { recursive: true });
+        yield* fs.writeFileString(path.join(root, file), previousPackage);
+      }
+      yield* fs.writeFileString(
+        path.join(root, "apps/server/update-protocol.json"),
+        '{"protocol":1}',
+      );
+      yield* git(["init", "--quiet", "--initial-branch=main"]);
+      yield* git(["config", "user.name", "Release source test"]);
+      yield* git(["config", "user.email", "release@example.invalid"]);
+      yield* git(["add", "."]);
+      yield* git(["commit", "--quiet", "-m", "source baseline"]);
+      yield* git(["checkout", "--quiet", "--detach"]);
+      for (const file of files)
+        yield* fs.writeFileString(
+          path.join(root, file),
+          previousPackage.replace("0.15.0", "0.15.1"),
+        );
+      yield* git(["add", "."]);
+      yield* git(["commit", "--quiet", "-m", "chore(release): mate 0.15.1"]);
+      yield* git(["tag", "v0.15.1"]);
+      yield* git(["checkout", "--quiet", "main"]);
+      yield* fs.writeFileString(path.join(root, "apps/web/copy.ts"), "new copy");
+      yield* git(["add", "."]);
+      yield* git(["commit", "--quiet", "-m", "UI change"]);
+      yield* git(["checkout", "--quiet", "--detach"]);
+      for (const file of files)
+        yield* fs.writeFileString(
+          path.join(root, file),
+          previousPackage.replace("0.15.0", "0.15.2"),
+        );
+      yield* git(["add", "."]);
+      yield* git(["commit", "--quiet", "-m", "chore(release): mate 0.15.2"]);
+      expect(
+        yield* readRollbackCompatibility("v0.15.1", "0.15.2", root),
+        "ASSERTION: sibling releases with unchanged server runtime must retain automatic updates",
+      ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.1" });
+      yield* fs.writeFileString(path.join(root, "apps/server/extra.ts"), "hidden release change");
+      yield* git(["add", "."]);
+      yield* git(["commit", "--quiet", "--amend", "-m", "chore(release): mate 0.15.2"]);
+      expect(yield* readRollbackCompatibility("v0.15.1", "0.15.2", root)).toEqual({
+        rollbackCompatible: false,
+      });
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
   it("allows a UI change with the same updater, storage, events and native resume code", () => {
     expect(rollbackCompatibility(evidence)).toEqual({
       rollbackCompatible: true,

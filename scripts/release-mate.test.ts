@@ -1,9 +1,16 @@
+// @effect-diagnostics nodeBuiltinImport:off -- release driver fixture.
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as NodeChildProcess from "node:child_process";
+import { parse } from "yaml";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, FileSystem, Path, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { describe, expect, it } from "@effect/vitest";
 
 import {
+  greenSource,
   bumpVersion,
   highestTag,
   nextVersion,
@@ -169,4 +176,155 @@ esac
       }),
     ),
   );
+});
+
+it.each([
+  { status: "completed", conclusion: "success", green: true },
+  { status: "completed", conclusion: "failure", green: false },
+  { status: "in_progress", conclusion: null, green: false },
+])(
+  "a pinned source requires its own completed successful main CI: $status $conclusion",
+  ({ status, conclusion, green }) => {
+    expect(
+      greenSource([{ head_sha: "source", head_branch: "main", status, conclusion }], "source"),
+    ).toBe(green);
+    expect(
+      greenSource([{ head_sha: "other", head_branch: "main", status, conclusion }], "source"),
+    ).toBe(false);
+    expect(
+      greenSource([{ head_sha: "source", head_branch: "feature", status, conclusion }], "source"),
+    ).toBe(false);
+  },
+);
+
+it("a failed or pending rerun does not reuse an older green approval", () => {
+  expect(
+    greenSource(
+      [
+        { head_sha: "source", head_branch: "main", status: "in_progress", conclusion: null },
+        { head_sha: "source", head_branch: "main", status: "completed", conclusion: "success" },
+      ],
+      "source",
+    ),
+  ).toBe(false);
+});
+
+it("failed release CI publishes no manifest, checksum or latest release", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(
+      NodePath.join(import.meta.dirname, "../.github/workflows/release.yml"),
+      "utf8",
+    ),
+  ) as {
+    jobs: Record<
+      string,
+      { needs?: string[]; uses?: string; if?: string; steps?: { run?: string }[] }
+    >;
+  };
+  expect(workflow.jobs.ci?.uses).toBe("./.github/workflows/ci.yml");
+  expect(
+    workflow.jobs.release?.needs,
+    "ASSERTION: publication requires successful CI and bundle verification on R",
+  ).toEqual(["build", "ci"]);
+  expect(workflow.jobs.release?.if).toBe("github.event_name == 'push'");
+  expect(workflow.jobs.release?.steps?.at(-1)?.run).toContain("--latest");
+});
+
+it("Decision: orchestrator chose tag-from-green-SHA over a push hold (analysis: a hold needs race-free enforcement across every writer and stalls shipping).", () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "release-source-driver-"));
+  const git = (...args: string[]) =>
+    NodeChildProcess.execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  try {
+    git("init", "--quiet", "--initial-branch=main");
+    git("config", "user.name", "Release test");
+    git("config", "user.email", "release@example.invalid");
+    const files = [
+      "apps/server/package.json",
+      "apps/desktop/package.json",
+      "apps/web/package.json",
+    ];
+    for (const file of files) {
+      const path = NodePath.join(root, file);
+      NodeFS.mkdirSync(NodePath.dirname(path), { recursive: true });
+      NodeFS.writeFileSync(path, '{"version": "0.15.0"}');
+    }
+    NodeFS.mkdirSync(NodePath.join(root, ".github/workflows"), { recursive: true });
+    NodeFS.writeFileSync(
+      NodePath.join(root, ".github/workflows/release.yml"),
+      "uses: ./.github/workflows/ci.yml\nneeds: [build, ci]\n",
+    );
+    git("add", ".");
+    git("commit", "--quiet", "-m", "baseline");
+    git("tag", "v0.15.0");
+    NodeFS.writeFileSync(NodePath.join(root, "product.ts"), "fix");
+    git("add", ".");
+    git("commit", "--quiet", "-m", "critical fix");
+    const source = git("rev-parse", "HEAD");
+    NodeFS.writeFileSync(NodePath.join(root, "product.ts"), "main moved");
+    git("add", ".");
+    git("commit", "--quiet", "-m", "pending main");
+    const head = git("rev-parse", "HEAD");
+    const remote = NodePath.join(root, "remote.git");
+    git("init", "--quiet", "--bare", remote);
+    git("remote", "add", "origin", remote);
+    git("push", "--quiet", "origin", "main", "v0.15.0");
+    const bin = NodePath.join(root, "bin");
+    NodeFS.mkdirSync(bin);
+    NodeFS.writeFileSync(
+      NodePath.join(bin, "gh-mate"),
+      `#!/bin/sh
+case "$*" in
+ *ci.yml/runs*) echo '{"workflow_runs":[{"head_sha":"${source}","head_branch":"main","status":"completed","conclusion":"success"}]}' ;;
+ */releases?*) echo '[{"tag_name":"v0.15.0","draft":false,"prerelease":false}]' ;;
+ *release.yml/runs*) echo '{"workflow_runs":[{"head_sha":"'"$(git rev-parse v0.15.1^{commit})"'","status":"completed","conclusion":"failure"}]}' ;;
+ *) exit 1;;
+esac
+`,
+      { mode: 0o700 },
+    );
+    NodeFS.symlinkSync(
+      NodePath.join(import.meta.dirname, "../node_modules"),
+      NodePath.join(root, "node_modules"),
+      "dir",
+    );
+    const invoke = (dry: boolean) =>
+      NodeChildProcess.spawnSync(
+        process.execPath,
+        [
+          NodePath.join(import.meta.dirname, "release-mate.ts"),
+          "--from-sha",
+          source,
+          ...(dry ? ["--dry-run"] : []),
+        ],
+        {
+          cwd: root,
+          encoding: "utf8",
+          env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+          timeout: 30_000,
+        },
+      );
+    const plan = invoke(true);
+    expect(plan.status, plan.stderr).toBe(0);
+    expect(plan.stdout).toContain(`source: ${source}`);
+    expect(plan.stdout).toContain("critical fix");
+    expect(plan.stdout).not.toContain("- pending main");
+    const release = invoke(false);
+    expect(release.status, release.stderr).toBe(1);
+    expect(release.stderr).toContain("release CI failed");
+    expect(
+      git("rev-parse", "refs/remotes/origin/main"),
+      "ASSERTION: main must continue independently of the release",
+    ).toBe(head);
+    expect(git("rev-parse", "v0.15.1^"), "ASSERTION: R must have S as its only parent").toBe(
+      source,
+    );
+    expect(git("diff", "--name-only", source, "v0.15.1").split("\n").toSorted()).toEqual(
+      files.toSorted(),
+    );
+    expect(git("ls-remote", "--tags", "origin", "refs/tags/v0.15.1")).toContain(
+      "refs/tags/v0.15.1",
+    );
+  } finally {
+    NodeFS.rmSync(root, { recursive: true });
+  }
 });

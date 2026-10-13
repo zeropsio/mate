@@ -2,6 +2,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
+import { parse } from "yaml";
 
 import { describe, expect, it } from "@effect/vitest";
 
@@ -13,7 +14,8 @@ const exists = (relativePath: string) => NodeFS.existsSync(NodePath.join(repoRoo
 describe("registry-free server releases", () => {
   it("publishes only the supported server bundle and checksum", () => {
     const workflow = read(".github/workflows/release.yml");
-    expect(workflow).toContain("needs: build");
+    const release = parse(workflow) as { jobs: { release: { needs: string[] } } };
+    expect(release.jobs.release.needs).toContain("build");
     expect(workflow).not.toContain("build_desktop:");
     expect(workflow).not.toContain("desktop-assets");
     expect(workflow).toContain("sha256sum -c SHA256SUMS");

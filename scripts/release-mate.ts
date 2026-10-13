@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalFetch:off globalTimers:off globalDate:off - a release driver over git and the published manifest.
 /**
- * Cuts a mate release from `origin/main` in one command. In a throwaway worktree it bumps the three
+ * Cuts a mate release from a pinned green main SHA. In a throwaway worktree it bumps the three
  * package versions, commits `chore(release): mate X.Y.Z` naming what was merged since the last
- * release, pushes `main`, pushes exactly that tag, then waits until
+ * release, pushes only that tag, then waits for CI and bundle verification before
  * `releases/latest/download/stable.json` serves the new version with the checksum the release's
  * `SHA256SUMS` lists.
  *
- *   node scripts/release-mate.ts            a patch release
+ *   node scripts/release-mate.ts --from-sha S  release a green source commit
  *   node scripts/release-mate.ts --minor    the client's compatibility floor rises
  *   node scripts/release-mate.ts --dry-run  print the plan, change nothing
  */
@@ -15,13 +15,11 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as Effect from "effect/Effect";
+import { readReleaseSource, VERSIONED_RELEASE_PACKAGES } from "@t3tools/shared/releaseSource";
 
 /** The release workflow checks server == desktop and tag == server; web moves with them. */
-export const VERSIONED_PACKAGES = [
-  "apps/server/package.json",
-  "apps/desktop/package.json",
-  "apps/web/package.json",
-] as const;
+export const VERSIONED_PACKAGES = VERSIONED_RELEASE_PACKAGES;
 
 const REPOSITORY = "zeropsio/mate";
 
@@ -97,22 +95,69 @@ const git = (cwd: string, ...args: ReadonlyArray<string>) =>
     stdio: ["ignore", "pipe", "inherit"],
   }).trim();
 
+interface PublishedRelease {
+  readonly tag_name: string;
+  readonly draft: boolean;
+  readonly prerelease: boolean;
+}
+
+const github = <T>(repo: string, endpoint: string): T =>
+  JSON.parse(
+    NodeChildProcess.execFileSync("gh-mate", ["api", endpoint], {
+      cwd: repo,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "inherit"],
+    }),
+  ) as T;
+
+const sourceOf = (repo: string, ref: string) => {
+  const source = Effect.runSync(
+    readReleaseSource(ref, (args) => Effect.sync(() => ({ output: git(repo, ...args), code: 0 }))),
+  );
+  if (source === undefined) throw new Error(`release ${ref} is not a version-only commit`);
+  return source;
+};
+
+interface WorkflowRun {
+  readonly head_sha: string;
+  readonly head_branch: string;
+  readonly status: string;
+  readonly conclusion: string | null;
+}
+
+export function greenSource(runs: ReadonlyArray<WorkflowRun>, sha: string): boolean {
+  const latest = runs.find((run) => run.head_sha === sha && run.head_branch === "main");
+  return latest?.status === "completed" && latest.conclusion === "success";
+}
+
 interface Manifest {
   readonly version?: string;
   readonly asset?: string;
   readonly sha256?: string;
 }
 
-async function waitForManifest(version: string): Promise<void> {
-  const deadline = Date.now() + 20 * 60_000;
+async function waitForManifest(repo: string, version: string, releaseSHA: string): Promise<void> {
+  const deadline = Date.now() + 45 * 60_000;
   while (Date.now() < deadline) {
+    const runs = github<{ workflow_runs: WorkflowRun[] }>(
+      repo,
+      `repos/${REPOSITORY}/actions/workflows/release.yml/runs?head_sha=${releaseSHA}&per_page=10`,
+    ).workflow_runs;
+    const run = runs.find((run) => run.head_sha === releaseSHA);
+    if (run?.status === "completed" && run.conclusion !== "success")
+      throw new Error(`release CI failed for ${releaseSHA}: ${run.conclusion}; nothing published`);
+
     const manifest = await fetch(
       `https://github.com/${REPOSITORY}/releases/latest/download/stable.json`,
       { cache: "no-store" },
     )
       .then((response) => (response.ok ? (response.json() as Promise<Manifest>) : undefined))
       .catch(() => undefined);
-    if (manifest?.version === version) {
+    if (
+      run?.status === "completed" &&
+      run.conclusion === "success" &&
+      manifest?.version === version
+    ) {
       const sums = await fetch(
         `https://github.com/${REPOSITORY}/releases/download/v${version}/SHA256SUMS`,
       ).then((response) => response.text());
@@ -130,13 +175,13 @@ async function waitForManifest(version: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 15_000));
   }
   throw new Error(
-    `stable.json did not serve ${version} in 20 minutes: https://github.com/${REPOSITORY}/actions`,
+    `stable.json did not serve ${version} in 45 minutes: https://github.com/${REPOSITORY}/actions`,
   );
 }
 
 async function main(args: ReadonlySet<string>): Promise<void> {
   const repo = git(process.cwd(), "rev-parse", "--show-toplevel");
-  git(repo, "fetch", "--quiet", "origin", "main");
+  git(repo, "fetch", "--quiet", "origin", "main", "--tags");
   const mainHead = git(repo, "rev-parse", "origin/main");
   const expected = [...args]
     .find((arg) => arg.startsWith("--expected-sha="))
@@ -146,9 +191,43 @@ async function main(args: ReadonlySet<string>): Promise<void> {
       `origin/main moved after CI approval: expected ${expected}, fetched ${mainHead}`,
     );
   }
+  const argv = [...args];
+  const fromIndex = argv.indexOf("--from-sha");
+  const source =
+    argv.find((arg) => arg.startsWith("--from-sha="))?.slice("--from-sha=".length) ??
+    (fromIndex >= 0 ? argv[fromIndex + 1] : mainHead);
+  if (source === undefined || !/^[0-9a-f]{40}$/.test(source))
+    throw new Error("--from-sha requires a full commit SHA");
+  git(repo, "merge-base", "--is-ancestor", source, mainHead);
+  const runs = github<{ workflow_runs: WorkflowRun[] }>(
+    repo,
+    `repos/${REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${source}&branch=main&per_page=10`,
+  );
+  if (!greenSource(runs.workflow_runs, source))
+    throw new Error(`source ${source} has no green main CI`);
+  const releases: PublishedRelease[] = [];
+  for (let page = 1; ; page++) {
+    const batch = github<PublishedRelease[]>(
+      repo,
+      `repos/${REPOSITORY}/releases?per_page=100&page=${page}`,
+    );
+    releases.push(
+      ...batch.filter(
+        (release) =>
+          !release.draft && !release.prerelease && parseVersion(release.tag_name) !== undefined,
+      ),
+    );
+    if (batch.length < 100) break;
+  }
+  const lastTag = releases
+    .map((release) => release.tag_name)
+    .toSorted((a, b) => compare(parseVersion(a)!, parseVersion(b)!))
+    .at(-1);
+  const lastSource = lastTag === undefined ? undefined : sourceOf(repo, lastTag);
+  if (lastSource !== undefined) git(repo, "merge-base", "--is-ancestor", lastSource, source);
   // A throwaway tree: the release never touches a checkout someone is working in.
   const tree = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-release-"));
-  git(repo, "worktree", "add", "--quiet", "--detach", tree, mainHead);
+  git(repo, "worktree", "add", "--quiet", "--detach", tree, source);
   try {
     const versions = VERSIONED_PACKAGES.map(
       (file) =>
@@ -161,22 +240,29 @@ async function main(args: ReadonlySet<string>): Promise<void> {
     }
     const published = highestTag(git(tree, "ls-remote", "--tags", "origin", "refs/tags/v*"));
     const next = nextVersion(current, published, args.has("--minor") ? "minor" : "patch");
-    const lastRelease = git(
-      tree,
-      "log",
-      "--first-parent",
-      "-1",
-      "--format=%H",
-      "--grep=^chore(release): mate ",
-    );
-    const range = lastRelease === "" ? "HEAD" : `${lastRelease}..HEAD`;
+    const range = lastSource === undefined ? "HEAD" : `${lastSource}..HEAD`;
     const notes = releaseNotes(
       git(tree, "log", "--first-parent", "--reverse", `--format=${NOTES_LOG_FORMAT}`, range),
     );
     if (notes === "")
-      throw new Error(`nothing reached main since the last release ${lastRelease.slice(0, 9)}`);
+      throw new Error(`nothing reached main since the last release ${lastSource?.slice(0, 9)}`);
     const message = releaseMessage(next, notes);
-    console.log(`${current} → ${next} (published: ${published ?? "none"})\n\n${message}\n`);
+    console.log(
+      `source: ${source} (main: ${mainHead}); previous published: ${lastTag ?? "none"}; tag-only release\n${current} → ${next} (published: ${published ?? "none"})\n\n${message}\n`,
+    );
+    // Historical green commits predate this gate and cannot safely publish detached releases.
+    const workflow = NodeFS.readFileSync(
+      NodePath.join(tree, ".github/workflows/release.yml"),
+      "utf8",
+    );
+    if (
+      !workflow.includes("uses: ./.github/workflows/ci.yml") ||
+      !workflow.includes("needs: [build, ci]")
+    ) {
+      throw new Error(
+        `source ${source} predates the release CI publication gate; choose a later green SHA`,
+      );
+    }
     if (args.has("--dry-run")) return;
 
     for (const file of VERSIONED_PACKAGES) {
@@ -191,16 +277,17 @@ async function main(args: ReadonlySet<string>): Promise<void> {
       "dir",
     );
     git(tree, "commit", "--quiet", "-m", message);
-    // A fast-forward only: if main moved since the fetch, this fails and nothing is tagged.
-    git(tree, "push", "--quiet", "origin", "HEAD:main");
     git(tree, "tag", "-a", `v${next}`, "-m", `mate ${next}`);
     // Exactly this tag: the fork holds upstream's tags, which origin must never receive.
     git(tree, "push", "--quiet", "origin", `refs/tags/v${next}`);
-    console.log(`pushed main and v${next}; waiting for stable.json to serve it…`);
-    await waitForManifest(next);
+    console.log(`pushed only v${next}; waiting for release CI and stable.json…`);
+    await waitForManifest(repo, next, git(tree, "rev-parse", "HEAD"));
     console.log(`released: stable.json serves ${next}, its sha256 matches SHA256SUMS`);
   } finally {
-    git(repo, "worktree", "remove", "--force", tree);
+    const modules = NodePath.join(tree, "node_modules");
+    if (NodeFS.existsSync(modules)) NodeFS.unlinkSync(modules);
+    git(tree, "restore", "--staged", "--worktree", ...VERSIONED_PACKAGES);
+    git(repo, "worktree", "remove", tree);
   }
 }
 

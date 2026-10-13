@@ -1,3 +1,4 @@
+import { readReleaseSource } from "@t3tools/shared/releaseSource";
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -90,7 +91,10 @@ export const readRollbackCompatibility = Effect.fn("readRollbackCompatibility")(
       );
       return { output, code };
     }, Effect.scoped);
-    const ancestor = yield* git(["merge-base", "--is-ancestor", previousTag, "HEAD"]);
+    const previousSource = yield* readReleaseSource(previousTag, git);
+    const currentSource = yield* readReleaseSource("HEAD", git);
+    if (previousSource === undefined || currentSource === undefined) return MANUAL;
+    const ancestor = yield* git(["merge-base", "--is-ancestor", previousSource, currentSource]);
     if (ancestor.code !== 0) return MANUAL;
     const previousProtocol = yield* git([
       "show",
