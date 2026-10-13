@@ -33,7 +33,16 @@ import {
 } from "./engineCommands.ts";
 import { mateEngineHostAtom, type MateEngineHost } from "./engineHost.ts";
 import { makeMateEngineOperations, type EngineCommand } from "./operations/executors/mateEngine.ts";
-import { makeAccountStore } from "./store.ts";
+import { makeAccountStore, readsOfState } from "./store.ts";
+import { liveZerops, ORG } from "./__fixtures__/account.ts";
+import { seedHqNavigation } from "./__fixtures__/hqNavigation.ts";
+import { inventory } from "./projections/inventory.ts";
+import { linkKeys } from "./model.ts";
+import {
+  makeZeropsApiOrigin,
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+} from "../zerops/data/types.ts";
 import {
   engineConversationId,
   engineConversationScopes,
@@ -143,7 +152,7 @@ function rig(
       removals: [],
     });
   };
-  return { registry, calls, run, header, runs };
+  return { registry, store, calls, run, header, runs };
 }
 
 describe("the thread commands a view sends, by its Mate's wire", () => {
@@ -619,6 +628,102 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
       );
       yield* Effect.yieldNow;
       expect(r.calls).toMatchObject([{ kind: "stop", runId: "thread-ada/r/2" }]);
+    }),
+  );
+
+  it.effect.each([
+    { title: "HQ down: the menu holds and a Mate still opens and chats", zeropsDown: false },
+    {
+      title: "Zerops outage shows catching up and retains menu/chat through capped HQ retries",
+      zeropsDown: true,
+    },
+  ])("$title", ({ zeropsDown }) =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+      for (const input of liveZerops({
+        running: [],
+        projects: [{ id: "ada", name: "Ada", status: "ACTIVE" }],
+      }))
+        r.store.dispatch(input);
+      seedHqNavigation(r.store, ORG, {
+        structure: {
+          ungrouped: [],
+          apps: [
+            {
+              id: "shop",
+              name: "Shop",
+              projects: [
+                { projectId: "ada", name: "Ada", kind: "mate", mate: { face: "rose:seal" } },
+              ],
+            },
+          ],
+        },
+      });
+      r.header();
+      const key = {
+        organization: {
+          kind: "organization" as const,
+          account: {
+            apiOrigin: makeZeropsApiOrigin("https://api.test"),
+            accountId: ZeropsAccountId.make("account"),
+          },
+          organizationId: ZeropsOrganizationId.make(ORG),
+        },
+        viewer: { id: ORG, name: "Org", membershipId: "owner", roleCode: "ADMIN" },
+      };
+      const menu = () => inventory.derive(readsOfState(r.store.state()), key);
+      const expectedProjects = [{ id: "ada", name: "Ada", app: "Shop" }];
+      const rows = () =>
+        menu().projects.map((p) => ({ id: p.id, name: p.name, app: p.hq?.appName }));
+      expect(rows()).toEqual(expectedProjects);
+      const sources = [linkKeys.hq(ORG), ...(zeropsDown ? [linkKeys.zerops(ORG)] : [])];
+      for (const source of sources) {
+        for (const scope of r.store.state().streams.keys()) {
+          if (scope.startsWith(`${source}:`))
+            r.store.dispatch({
+              kind: "stream",
+              key: scope,
+              now: 0,
+              event: { kind: "parent-lost" },
+            });
+        }
+        let now = 0;
+        for (let attempt = 0; attempt < 8; attempt++) {
+          r.store.dispatch({
+            kind: "stream",
+            key: source,
+            now,
+            event: {
+              kind: "fault",
+              jitter: 1,
+              fault: { outcome: "transient", message: "Source unavailable" },
+            },
+          });
+          const next = r.store.state().streams.get(source)!.next;
+          expect(next.kind).toBe("retry");
+          if (next.kind !== "retry") throw new Error("A transient outage must schedule recovery");
+          if (attempt === 7) expect(next.at - now).toBe(60_000);
+          expect(rows()).toEqual(expectedProjects);
+          if (attempt < 7) {
+            now = next.at;
+            r.store.dispatch({ kind: "stream", key: source, now, event: { kind: "retry-due" } });
+          }
+        }
+      }
+      expect(menu().trouble).toBe(zeropsDown ? "retrying" : null);
+      const result = yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn())));
+      expect(result).toEqual({ sequence: 16 });
+      expect(r.calls).toEqual([
+        {
+          kind: "send",
+          conversationId: "thread-ada",
+          commandId: "message-7",
+          text: "And the worker",
+          attachments: [],
+        },
+      ]);
+      expect(rows()).toEqual(expectedProjects);
     }),
   );
 
