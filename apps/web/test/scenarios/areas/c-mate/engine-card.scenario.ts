@@ -170,7 +170,7 @@ const largestStep = (frames: ReadonlyArray<Frame>, of: (frame: Frame) => number 
 
 /**
  * The person's run that leaves a command waiting in the background, ended with `answer` (or with
- * no words), its job ended since.
+ * no words), its job still running.
  */
 const jobRun = (
   chat: ReturnType<typeof mateChat>,
@@ -216,22 +216,11 @@ const jobRun = (
     yield* chat.when.send("Start the wait in the background");
     const native = yield* provider.received;
     expect(native.input.input).toBe("Start the wait in the background");
-    yield* chat.then.text("Waiting for its background command");
-    yield* provider.event(native.threadId, {
-      type: "task.completed",
-      turnId: native.turnId,
-      payload: {
-        taskId: RuntimeTaskId.make("background-wait"),
-        taskType: "local_bash",
-        status: "completed",
-      },
-    });
-    yield* chat.then.noText("Waiting for its background command");
-    yield* chat.then.noText("running in the background");
+    yield* chat.then.text("Still working in the background");
     return native;
   });
 
-/** The last card folds as its wait ends; the page is still once it has. */
+/** The last card folds once its run ends; its background job can still be running. */
 const foldedCard = (page: import("puppeteer-core").Page) =>
   Effect.promise(() =>
     page.waitForFunction(
@@ -267,12 +256,43 @@ describe("C: an engine Mate's run card in a live conversation", () => {
         // The run ends with no answer: the run the job's end wakes is the same card's to go on in.
         const run = yield* jobRun(chat, provider, null);
         yield* foldedCard(s.page);
+        yield* Effect.promise(() => waitForStillFrames(s.page));
+        const waiting = yield* Effect.promise(() =>
+          s.page.evaluate(() => {
+            const card = [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1)!;
+            const bottom = document.querySelector<HTMLElement>("[data-conversation-after-work]")!;
+            return {
+              cardLine: card.querySelector("[data-run-head] .run-now-head")?.textContent,
+              outsideCard: bottom.closest("[data-run-chat]") === null,
+              belowCard:
+                bottom.getBoundingClientRect().top >= card.getBoundingClientRect().bottom - 1,
+            };
+          }),
+        );
+        expect(waiting.cardLine, "ASSERTION: the run's card is done while its job runs").toMatch(
+          /^Ada worked /,
+        );
+        expect(
+          { outsideCard: waiting.outsideCard, belowCard: waiting.belowCard },
+          "ASSERTION: the background wait stands at the bottom, below the finished card",
+        ).toEqual({ outsideCard: true, belowCard: true });
         yield* trace(s.page, "Start the wait in the background");
+        yield* provider.event(run.threadId, {
+          type: "task.completed",
+          turnId: run.turnId,
+          payload: {
+            taskId: RuntimeTaskId.make("background-wait"),
+            taskType: "local_bash",
+            status: "completed",
+          },
+        });
         yield* provider.event(run.threadId, {
           type: "turn.started",
           turnId: TurnId.make("native-wake"),
           payload: {},
         });
+        yield* chat.then.noText("Still working in the background");
+        yield* chat.then.noText("running in the background");
         yield* provider.event(run.threadId, {
           type: "content.delta",
           itemId: RuntimeItemId.make("wake-answer"),
