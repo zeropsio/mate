@@ -138,3 +138,97 @@ it("candidate token is cleared before verification and failed verification keeps
     vi.unstubAllGlobals();
   }
 });
+
+it.each(["connect", "replace", "disconnect", "address"] as const)(
+  "mounted %s uses the offered account action and clears its candidate",
+  async (action) => {
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    const probe = {
+      ok: true as const,
+      remote: { ...remote, url: "https://github.com/acme/renamed.git" },
+    };
+    const supplied = {
+      connect: vi.fn(async () => probe),
+      replaceToken: vi.fn(async () => probe),
+      disconnect: vi.fn(async () => {}),
+      reviewAddress: vi.fn(async () => probe),
+      updateAddress: vi.fn(async () => {}),
+    };
+    const click = async (label: string) => {
+      await act(async () => {
+        const node = [...host.querySelectorAll("button")].find(
+          (button) => button.textContent === label,
+        );
+        expect(node, label).toBeDefined();
+        node!.click();
+      });
+    };
+    const fill = async (label: string, value: string) => {
+      const input = host.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+      expect(input).not.toBeNull();
+      const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"))!;
+      const props = Reflect.get(input, key) as {
+        onChange: (event: { target: { value: string } }) => void;
+      };
+      await act(async () => props.onChange({ target: { value } }));
+      return input;
+    };
+    try {
+      await act(async () =>
+        root.render(
+          <GitRemoteSettings
+            repos={action === "connect" ? [{ ...repos[0]!, remote: null }] : repos}
+            appName="Shop"
+            actions={supplied}
+            can={{
+              connect_remote: { allow: true },
+              replace_remote_token: { allow: true },
+              disconnect_remote: { allow: true },
+              update_remote_address: { allow: true },
+            }}
+          />,
+        ),
+      );
+      if (action === "disconnect") {
+        await click("Disconnect");
+        expect(supplied.disconnect).not.toHaveBeenCalled();
+        await click("Confirm disconnect");
+        expect(supplied.disconnect).toHaveBeenCalledWith("api");
+      } else {
+        await click(
+          action === "connect"
+            ? "Connect repository"
+            : action === "replace"
+              ? "Replace token"
+              : "Review address",
+        );
+        if (action !== "replace") await fill("Repository HTTPS URL", probe.remote.url);
+        const input = await fill("Candidate token", "transient-candidate");
+        await click(action === "address" ? "Verify address" : "Verify and keep token");
+        expect(input.value).toBe("");
+        expect(host.innerHTML).not.toContain("transient-candidate");
+        if (action === "connect")
+          expect(supplied.connect).toHaveBeenCalledWith(
+            "api",
+            probe.remote.url,
+            "transient-candidate",
+          );
+        if (action === "replace")
+          expect(supplied.replaceToken).toHaveBeenCalledWith("api", "transient-candidate");
+        if (action === "address") {
+          expect(supplied.reviewAddress).toHaveBeenCalledWith(
+            "api",
+            probe.remote.url,
+            "transient-candidate",
+          );
+          expect(supplied.updateAddress).not.toHaveBeenCalled();
+          await click("Update address");
+          expect(supplied.updateAddress).toHaveBeenCalledWith("api", probe.remote.url);
+        }
+      }
+    } finally {
+      await act(async () => root.unmount());
+    }
+  },
+);
