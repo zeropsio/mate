@@ -225,7 +225,7 @@ it.each([
     areas: ["b-menu"],
     chatGate: false,
     includes: [
-      "test/scenarios/areas/b-menu/access.scenario.ts",
+      "test/scenarios/areas/b-menu/usage.scenario.ts",
       "test/scenarios/areas/b-menu/decode.scenario.ts",
       "test/scenarios/areas/b-menu/liveness.scenario.ts",
       "test/scenarios/areas/b-menu/placement.scenario.ts",
