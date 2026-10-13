@@ -83,15 +83,15 @@ it("tagged release installs reuse CI verification while manual rehearsals verify
   const release = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/release.yml"), "utf8"),
   );
-  expect(release.jobs.ci.if).toBe("github.event_name == 'push'");
-  expect(release.jobs.ci.uses).toBe("./.github/workflows/ci.yml");
+  expect(release.jobs.verify.if).toBeUndefined();
+  expect(release.jobs.build.needs).toBe("verify");
   const install = release.jobs.build.steps.find(
     (step: { name: string }) => step.name === "Install dependencies",
   );
   expect(install.run).toBe("vp install --frozen-lockfile");
   expect(
     install.env?.PNPM_CONFIG_TRUST_LOCKFILE,
-    "ASSERTION: release rehearsals without a called CI check must verify their lockfile",
+    "ASSERTION: manual rehearsals continue to verify their lockfile after the SHA verdict",
   ).toBe("${{ github.event_name == 'push' }}");
 });
 
@@ -446,7 +446,7 @@ it("CI runs full verification on integration pushes and preserves PR change sele
     "ASSERTION: only current integration refs trigger push CI",
   ).toEqual(["main", "kh-next", "kh-bisect/**"]);
   expect(workflow.on.pull_request).toBeNull();
-  expect(workflow.on.workflow_call).toBeNull();
+  expect(workflow.on.workflow_call).toBeUndefined();
   expect(workflow["run-name"]).toBe("CI · ${{ github.ref_name }}");
   expect(workflow.jobs.prepare.outputs).toEqual({ skip: "${{ steps.verdict.outputs.skip }}" });
   for (const [name, job] of Object.entries(workflow.jobs) as [
@@ -631,14 +631,104 @@ it("tag release CI retains final verification with the preparation job's read pe
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/release.yml"), "utf8"),
   );
   expect(release.on.push.tags).toEqual(["v[0-9]+.[0-9]+.[0-9]+"]);
-  expect(release.jobs.ci.uses).toBe("./.github/workflows/ci.yml");
-  // The reusable workflow's maximum permission includes its skipped main-only writer.
-  expect(release.jobs.ci.permissions).toMatchObject({
-    actions: "write",
-    contents: "read",
-    "pull-requests": "read",
-  });
-  expect(release.jobs.release.needs).toEqual(["build", "ci"]);
+  expect(
+    Object.values(release.jobs).filter((job) =>
+      (job as { uses?: string }).uses?.includes("ci.yml"),
+    ),
+    "ASSERTION: a release must reuse the CI verdict without starting CI jobs",
+  ).toEqual([]);
+  expect(release.jobs.verify.permissions).toEqual({ actions: "read", contents: "read" });
+  expect(release.jobs.verify.if).toBeUndefined();
+  expect(release.jobs.verify["timeout-minutes"]).toBe(2);
+  expect(release.on.workflow_dispatch.inputs.version.required).toBe(true);
+  expect(release.jobs.build.needs).toBe("verify");
+  expect(release.jobs.release.needs).toEqual(["build", "verify"]);
+});
+
+it.each(
+  ["push", "workflow_dispatch"].flatMap((event) => {
+    const green = {
+      id: 7,
+      name: "CI final · main",
+      path: ".github/workflows/ci.yml",
+      head_sha: "abc",
+      head_branch: "main",
+      status: "completed",
+      conclusion: "success",
+    };
+    return [
+      { event, case: "no verdict", runs: [], approved: false },
+      { event, case: "main", runs: [green], approved: true },
+      { event, case: "renamed CI", runs: [{ ...green, name: "CI" }], approved: true },
+      { event, case: "kh-next", runs: [{ ...green, head_branch: "kh-next" }], approved: true },
+      ...[
+        { head_branch: "feature" },
+        { head_branch: "kh-bisect/abc" },
+        { head_branch: null },
+        { head_sha: "other" },
+        { path: ".github/workflows/other.yml" },
+        { status: "in_progress" },
+        { conclusion: "failure" },
+      ].map((override) => ({
+        event,
+        case: JSON.stringify(override),
+        runs: [{ ...green, ...override }],
+        approved: false,
+      })),
+      {
+        event,
+        case: "green after unrelated run",
+        runs: [{ ...green, path: ".github/workflows/other.yml" }, green],
+        approved: true,
+      },
+    ];
+  }),
+)("release verification approves=$approved for $event: $case", ({ event, runs, approved }) => {
+  const release = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/release.yml"), "utf8"),
+  );
+  expect(
+    release.jobs.verify,
+    "ASSERTION: release must read a prior exact-SHA CI verdict",
+  ).toBeDefined();
+  const step = release.jobs.verify.steps[0];
+  expect(step.env.GH_TOKEN).toBe("${{ github.token }}");
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-release-verdict-"));
+  try {
+    const called = NodePath.join(directory, "called");
+    NodeFS.writeFileSync(
+      NodePath.join(directory, "runs.json"),
+      JSON.stringify({ workflow_runs: runs }),
+    );
+    NodeFS.writeFileSync(
+      NodePath.join(directory, "gh"),
+      '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLED"\njq "${5}" "$RUNS"\n',
+      { mode: 0o755 },
+    );
+    const result = NodeChildProcess.spawnSync("bash", ["-c", step.run], {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${directory}:${process.env.PATH}`,
+        GITHUB_SHA: "abc",
+        GITHUB_EVENT_NAME: event,
+        GITHUB_REPOSITORY: "zeropsio/mate",
+        CALLED: called,
+        RUNS: NodePath.join(directory, "runs.json"),
+      },
+    });
+    expect(
+      result.status,
+      "ASSERTION: only a completed successful CI verdict for this exact SHA on main/kh-next permits release",
+    ).toBe(approved ? 0 : 1);
+    expect(NodeFS.readFileSync(called, "utf8")).toContain(
+      "repos/zeropsio/mate/actions/runs?head_sha=abc&status=success&per_page=100 --paginate --jq",
+    );
+    if (!approved) expect(result.stderr).toContain("run CI on this commit first");
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 it("short Ubuntu checks share installed jobs without losing their commands or failure verdicts", () => {
