@@ -74,7 +74,7 @@ describe("a place's address writes at Zerops", () => {
       }),
   );
 
-  it.effect("a sync Zerops answers nothingToSync is the change live already", () =>
+  it.effect("a sync Zerops answers nothingToSync leaves the end to what the routings show", () =>
     Effect.gen(function* () {
       const { fake } = platform({ syncPublicHttpRouting: () => refusal("nothingToSync") });
       const receipt = yield* addressWritesExecutor(fake).publishDomains("r1", {
@@ -82,7 +82,49 @@ describe("a place's address writes at Zerops", () => {
         orgId: ORG,
         projectId: PROJECT,
       });
-      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+      expect(receipt).toMatchObject({
+        acceptance: { kind: "accepted" },
+        outcome: { kind: "pending" },
+        handles: [],
+      });
+    }),
+  );
+
+  it.effect(
+    "a change Zerops took but would not put live waits there, putting it live the person's next step",
+    () =>
+      Effect.gen(function* () {
+        const { fake } = platform({ syncPublicPortRouting: () => refusal("projectNotActive") });
+        const answer = yield* addressWritesExecutor(fake).openPort("r1", {
+          kind: "open-port",
+          orgId: ORG,
+          projectId: PROJECT,
+          ...PORT,
+        });
+        expect(answer).toMatchObject({
+          unobservable: {
+            nextActor: "person",
+            nextAction: "Put the waiting change live",
+            reason: "Zerops said projectNotActive.",
+          },
+          receipt: { acceptance: { kind: "accepted" }, outcome: { kind: "pending" }, handles: [] },
+        });
+      }),
+  );
+
+  it.effect("waiting changes Zerops will not put live are refused as Zerops said", () =>
+    Effect.gen(function* () {
+      const { fake } = platform({ syncPublicHttpRouting: () => refusal("projectNotActive") });
+      const answer = yield* Effect.result(
+        addressWritesExecutor(fake).publishDomains("r1", {
+          kind: "publish-domains",
+          orgId: ORG,
+          projectId: PROJECT,
+        }),
+      );
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({
+        code: "projectNotActive",
+      });
     }),
   );
 

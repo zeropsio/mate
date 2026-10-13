@@ -1,8 +1,10 @@
 /**
  * Zerops writes to a place's addresses. A domain or port write is sent, then the project's
- * routings of its kind are put in place: the receipt follows that process. Zerops refusing the
- * second step as `nothingToSync` says somebody else's sync took the change live already, which
- * is the write done (read 2026-10-14). A refused first step sends no second.
+ * routings of its kind are put in place: the receipt follows that process. Where no process
+ * follows — Zerops refusing the second step as `nothingToSync` (somebody else's sync took it
+ * live, read 2026-10-14), or naming none — the routings say its end. A second step refused after
+ * the first was taken leaves the write waiting there, putting it live the person's next step; a
+ * refused first step sends no second.
  *
  * @module data/operations/executors/addressWrites
  */
@@ -10,8 +12,9 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import type { ZeropsPortRoutingWrite } from "../../../zerops/api.ts";
-import type { Family } from "../../model.ts";
+import type { Family, OperationReceipt } from "../../model.ts";
 import type { PortRoutingWrite } from "../addressWrites.ts";
+import type { OwnerUnobservable } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
 import { answeredReceipt } from "./answered.ts";
 import { processReceipt } from "./serviceWrites.ts";
@@ -59,6 +62,19 @@ export interface AddressPlatform {
 
 const NOTHING_TO_SYNC = "nothingToSync";
 
+type Target = { readonly family: Family; readonly id: string };
+
+/** A write Zerops took that no process follows: what its routings show ends it. */
+const unfollowedReceipt = (requestId: string, target: Target): OperationReceipt => ({
+  requestId,
+  operationId: target.id,
+  executor: "zerops",
+  affected: [target],
+  handles: [],
+  acceptance: { kind: "accepted" },
+  outcome: { kind: "pending" },
+});
+
 const portOf = ({ serviceId: _service, ...port }: PortRoutingWrite): ZeropsPortRoutingWrite => ({
   publicIpType: port.publicIpType,
   publicPort: port.publicPort,
@@ -69,30 +85,47 @@ const portOf = ({ serviceId: _service, ...port }: PortRoutingWrite): ZeropsPortR
 });
 
 export function addressWritesExecutor(platform: AddressPlatform) {
-  /** The project's routings of a kind put in place, as the write's receipt. */
-  const putInPlace = (
-    requestId: string,
-    sync: () => Process,
-    target: { readonly family: Family; readonly id: string },
-  ) =>
+  /**
+   * The project's routings of a kind put in place, as the receipt of what was `written` before:
+   * a write of the sheet's (`true`), or only the waiting ones put live (`false`).
+   */
+  const putInPlace = (requestId: string, sync: () => Process, target: Target, written: boolean) =>
     Effect.gen(function* () {
       const synced = yield* Effect.result(verb(sync));
-      if (Result.isSuccess(synced))
-        return processReceipt(requestId, target, synced.success.processId);
-      if ("code" in synced.failure && synced.failure.code === NOTHING_TO_SYNC)
-        return answeredReceipt(requestId, target);
-      return yield* Effect.fail(synced.failure);
+      if (Result.isSuccess(synced)) {
+        const { processId } = synced.success;
+        return processId === undefined
+          ? unfollowedReceipt(requestId, target)
+          : processReceipt(requestId, target, processId);
+      }
+      const fault = synced.failure;
+      if ("code" in fault && fault.code === NOTHING_TO_SYNC)
+        return unfollowedReceipt(requestId, target);
+      // A lost answer is the coordinator's to resolve, by what the routings show.
+      if (!written || fault.outcome === "uncertain-acceptance") return yield* Effect.fail(fault);
+      return {
+        unobservable: {
+          nextActor: "person",
+          nextAction: "Put the waiting change live",
+          reason: fault.message,
+        },
+        receipt: unfollowedReceipt(requestId, target),
+      } satisfies OwnerUnobservable;
     });
-  const domains = (requestId: string, projectId: string, target: string) =>
-    putInPlace(requestId, () => platform.syncPublicHttpRouting(projectId), {
-      family: "publicRouting",
-      id: target,
-    });
-  const ports = (requestId: string, projectId: string, target: string) =>
-    putInPlace(requestId, () => platform.syncPublicPortRouting(projectId), {
-      family: "publicPortRouting",
-      id: target,
-    });
+  const domains = (requestId: string, projectId: string, target: string, written = true) =>
+    putInPlace(
+      requestId,
+      () => platform.syncPublicHttpRouting(projectId),
+      { family: "publicRouting", id: target },
+      written,
+    );
+  const ports = (requestId: string, projectId: string, target: string, written = true) =>
+    putInPlace(
+      requestId,
+      () => platform.syncPublicPortRouting(projectId),
+      { family: "publicPortRouting", id: target },
+      written,
+    );
 
   return {
     addDomain: (requestId: string, intent: IntentOf<"add-domain">) =>
@@ -118,7 +151,7 @@ export function addressWritesExecutor(platform: AddressPlatform) {
         answeredReceipt(requestId, { family: "publicRouting", id: intent.routingId }),
       ),
     publishDomains: (requestId: string, intent: IntentOf<"publish-domains">) =>
-      domains(requestId, intent.projectId, intent.projectId),
+      domains(requestId, intent.projectId, intent.projectId, false),
     disableSubdomainAccess: (requestId: string, intent: IntentOf<"disable-subdomain-access">) =>
       Effect.map(
         verb(() => platform.disableSubdomainAccess(intent.serviceId)),
@@ -138,7 +171,7 @@ export function addressWritesExecutor(platform: AddressPlatform) {
         Effect.andThen(ports(requestId, intent.projectId, intent.portRoutingId)),
       ),
     publishPorts: (requestId: string, intent: IntentOf<"publish-ports">) =>
-      ports(requestId, intent.projectId, intent.projectId),
+      ports(requestId, intent.projectId, intent.projectId, false),
     requestIpv4: (requestId: string, intent: IntentOf<"request-ipv4">) =>
       Effect.map(
         verb(() => platform.requestProjectPublicIp(intent.projectId)),

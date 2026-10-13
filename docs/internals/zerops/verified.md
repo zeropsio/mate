@@ -47,13 +47,14 @@ the dependent code are not repeated here.
   ```
 
 - **Putting a project's routings in place puts every waiting change live, anybody's; with none
-  waiting the platform refuses with `nothingToSync`** (2026-10-14). Dependency:
+  waiting the platform refuses with `nothingToSync`**, domain and port routings alike
+  (2026-10-14). Dependency:
   `packages/client-runtime/src/data/operations/executors/addressWrites.ts` (`putInPlace`). On a
-  project whose routings all read `isSynced` (the command changes nothing there):
+  project whose routings all read `isSynced` (the commands change nothing there):
 
   ```sh
-  curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
-    "$API/project/$PROJECT/sync-public-http-routing" | jq '.error.code'
+  for kind in http port; do curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
+    "$API/project/$PROJECT/sync-public-$kind-routing" | jq '.error.code'; done
   ```
 
 - **Billing lists each project's own IPv4 add-on with its state and price** (`metricId`
