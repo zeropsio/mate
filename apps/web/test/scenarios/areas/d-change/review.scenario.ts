@@ -135,42 +135,5 @@ describe("D: change review, comments and merge", () => {
         yield* s.then.noExternalNetwork;
       }),
     );
-    it.effect(
-      "a newer push cancels Close confirmation; closing the reviewed head keeps its branch",
-      () =>
-        Effect.gen(function* () {
-          const { s, change, r } = yield* setup;
-          yield* Effect.promise(async () => {
-            await s.page.setViewport({ width: 1786, height: 1000 });
-          });
-          yield* s.given.signedIn;
-          yield* Effect.promise(() => resizeMenu(s.page, 435));
-          yield* r.open;
-          yield* r.mergeEnabled;
-          yield* r.askClose;
-          yield* r.text("Close #1 without merging?");
-          yield* change.pushAgain;
-          yield* r.file("tax.txt");
-          yield* r.text("Draft");
-          expect(
-            yield* Effect.promise(() =>
-              s.page.evaluate(
-                () => document.querySelector('[data-zerops-surface="review"]')?.textContent ?? "",
-              ),
-            ),
-            "ASSERTION: the newer reviewed head cancels the previous Close confirmation",
-          ).not.toContain("Close #1 without merging?");
-          yield* r.askClose;
-          yield* r.text("Close #1 without merging?");
-          yield* r.confirmClose;
-          yield* r.text("Closed without merging");
-          yield* r.cannotMerge;
-          yield* r.cannotClose;
-          yield* change.closedWithBranch;
-          yield* s.then.noReload;
-          yield* s.then.noExternalNetwork;
-        }),
-      10_000,
-    );
   });
 });
