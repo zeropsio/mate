@@ -122,8 +122,10 @@ function environmentsOfApp(
 ): Pick<CanonicalHqStructure["apps"][number], "environments"> {
   if (environments === undefined) return {};
   if ("refused" in environments) return { environments: { refused: environments.refused } };
-  // Legacy Zerops rows still go through their existing normalizer; Git has no outward project DTO.
-  const read = canonicalEnvironmentsOf(environments.filter((row) => row.target?.kind !== "git"));
+  // Push jobs use the additive delivery reader; the canonical codec still reads other Git rows.
+  const read = canonicalEnvironmentsOf(
+    environments.filter((row) => row.jobs.every((job) => job.kind !== "push")),
+  );
   return read === undefined ? {} : { environments: read };
 }
 
