@@ -13,13 +13,6 @@ on:
 permissions:
   contents: read
 
-# Check owns registry-backed policy verification. Every other install consumes
-# the same frozen lockfile; local installs keep pnpm's policy defaults.
-# https://pnpm.io/settings/dependency-resolution#trustlockfile
-env:
-  PNPM_CONFIG_FROZEN_LOCKFILE: "true"
-  PNPM_CONFIG_TRUST_LOCKFILE: "true"
-
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -92,7 +85,9 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
+        # Check owns the registry-backed policy verification for this run.
         env:
+          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_TRUST_LOCKFILE: "false"
         with:
           node-version-file: package.json
@@ -162,6 +157,11 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
+        # Consumers trust Check's frozen lockfile only during installation.
+        # https://pnpm.io/settings/dependency-resolution#trustlockfile
+        env: &verified_lockfile
+          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+          PNPM_CONFIG_TRUST_LOCKFILE: "true"
         with:
           node-version-file: package.json
           cache: true
@@ -231,6 +231,7 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
+        env: *verified_lockfile
         with:
           node-version-file: package.json
           cache: true
@@ -282,6 +283,7 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
+        env: *verified_lockfile
         with:
           node-version-file: package.json
           cache: true
@@ -320,6 +322,7 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
+        env: *verified_lockfile
         with:
           node-version-file: package.json
           cache: true
@@ -346,6 +349,7 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
+        env: *verified_lockfile
         with:
           node-version-file: package.json
           cache: true
@@ -377,6 +381,7 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
+        env: *verified_lockfile
         with:
           node-version-file: package.json
           cache: true
@@ -412,6 +417,7 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
+        env: *verified_lockfile
         with:
           node-version-file: package.json
           cache: true
@@ -607,6 +613,7 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
+        env: *verified_lockfile
         with:
           node-version-file: package.json
           cache: true
@@ -634,6 +641,7 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
+        env: *verified_lockfile
         with:
           node-version-file: package.json
           cache: true
@@ -697,6 +705,7 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
+        env: *verified_lockfile
         with:
           node-version-file: package.json
           cache: true
@@ -722,6 +731,7 @@ jobs:
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
+        env: *verified_lockfile
         with:
           node-version-file: package.json
           cache: true

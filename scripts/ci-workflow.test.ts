@@ -66,6 +66,25 @@ it("tagged release installs reuse CI verification while manual rehearsals verify
   ).toBe("${{ github.event_name == 'push' }}");
 });
 
+it("release smoke can regenerate its fixture lockfile without inheriting frozen install settings", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const job = workflow.jobs.release_smoke;
+  const step = job.steps.find(
+    (step: { name: string }) => step.name === "Exercise release-only workflow steps",
+  );
+  const env = { ...workflow.env, ...job.env, ...step.env };
+  expect(
+    env.PNPM_CONFIG_FROZEN_LOCKFILE,
+    "ASSERTION: release smoke must be able to regenerate its fixture lockfile",
+  ).toBeUndefined();
+  expect(
+    env.PNPM_CONFIG_TRUST_LOCKFILE,
+    "ASSERTION: only installs consuming Check's frozen lockfile may skip policy verification",
+  ).toBeUndefined();
+});
+
 const { jobs } = parse(
   NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
 ) as {
