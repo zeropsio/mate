@@ -138,7 +138,6 @@ const QUICK_EFFECTS: ReadonlySet<string> = new Set([
   "crew.lane.remove",
   "crew.claim.read",
 ]);
-const QUIET_WAIT = 15_000;
 /** How long a journey waits for a frame before it fails with the last one. */
 const SNAPSHOT_WAIT = Number(process.env.CREW_FRAME_WAIT ?? 60_000);
 const ENGINE_FILE = "engine.sqlite";
@@ -149,18 +148,30 @@ interface DeliveryRow {
   readonly outcome_json: string | null;
 }
 
+/** Keep the hold visible after its one send claims it, until release or cancellation. */
+type SendHold = CrewHold & { readonly claimed: boolean };
+
 /** The provider, with a send a journey can hold before the agent gets it. */
-const holdableProvider = (provider: ScriptedProvider, sendHold: Ref.Ref<CrewHold | undefined>) => {
+const holdableProvider = (provider: ScriptedProvider, sendHold: Ref.Ref<SendHold | undefined>) => {
   const service = provider.service;
   return {
     ...provider,
     service: {
       ...service,
       sendTurn: (input: Parameters<typeof service.sendTurn>[0]) =>
-        Effect.flatMap(Ref.getAndSet(sendHold, undefined), (hold) =>
-          (hold === undefined ? Effect.void : hold.reached.pipe(Effect.andThen(hold.release))).pipe(
-            Effect.andThen(service.sendTurn(input)),
-          ),
+        Effect.flatMap(
+          Ref.modify(sendHold, (current) => {
+            const hold = current?.claimed === false ? current : undefined;
+            return [hold, hold === undefined ? current : { ...hold, claimed: true }];
+          }),
+          (hold) =>
+            (hold === undefined
+              ? Effect.void
+              : hold.reached.pipe(
+                  Effect.andThen(hold.release),
+                  Effect.ensuring(Ref.set(sendHold, undefined)),
+                )
+            ).pipe(Effect.andThen(service.sendTurn(input)), Effect.interruptible),
         ),
     },
   } as ScriptedProvider;
@@ -174,7 +185,7 @@ const enginePort = (input: {
   readonly provider: ScriptedProvider;
   readonly started: Effect.Effect<void>;
   readonly start: Effect.Effect<void>;
-  readonly sendHold: Ref.Ref<CrewHold | undefined>;
+  readonly sendHold: Ref.Ref<SendHold | undefined>;
   /** Every hold's release, run when the life ends. */
   readonly releases: Array<Effect.Effect<void>>;
   /** The session each conversation's agent last started (its session-start hook), across lives. */
@@ -215,6 +226,7 @@ const enginePort = (input: {
     call: (host: CrewToolHost["Service"], member: CrewThreadMember) => Effect.Effect<A>,
   ) =>
     Effect.gen(function* () {
+      yield* observed(chat);
       const member = yield* memberOf(chat);
       if (Option.isNone(member)) return yield* Effect.die(`no crewmate holds ${chat}`);
       const answer = yield* run(Effect.flatMap(CrewToolHost, (host) => call(host, member.value)));
@@ -304,21 +316,54 @@ const enginePort = (input: {
   /**
    * The crew has taken a step in: its quick effects (a delivery, a reset, a discard) have run, as
    * V1's press returned once its turn was dispatched. Long work (a copy's setup, a check, a
-   * landing) goes on; a journey waits for it on the feed. Bounded: a held step stays held.
+   * landing) goes on; a journey waits for it on the feed. Durable receipts advance this drain;
+   * the journey's own timeout bounds a held step instead of silently treating it as settled.
    */
   const settled = Effect.gen(function* () {
-    for (let waited = 0; waited < QUIET_WAIT; waited += 25) {
-      const state = yield* crewState;
-      // A task's dispatch is part of its step: V1's press returned once its turn went out.
-      if (
-        !Object.values(state.effects).some((effect) => QUICK_EFFECTS.has(effect.kind)) &&
-        !Object.values(state.tasks).some((task) => task.starting !== null)
-      ) {
-        return;
-      }
-      yield* Effect.sleep("25 millis");
-    }
+    const conversations = yield* run(Conversations);
+    const head = (yield* crewState).headSeq;
+    yield* Stream.concat(
+      Stream.succeed(undefined),
+      conversations
+        .owner(crewDomain)
+        .subscribe(CREW_OWNER_ID, head)
+        .pipe(Stream.map(() => undefined)),
+    ).pipe(
+      Stream.mapEffect(() => crewState),
+      Stream.filter(
+        (state) =>
+          !Object.values(state.effects).some((effect) => QUICK_EFFECTS.has(effect.kind)) &&
+          !Object.values(state.tasks).some((task) => task.starting !== null),
+      ),
+      Stream.runHead,
+      Effect.orDie,
+    );
   });
+
+  /** A live-turn read waits for the observer, separately from dispatch settlement. */
+  const observed = (chat: CrewChat) =>
+    Effect.gen(function* () {
+      const conversations = yield* run(Conversations);
+      const head = (yield* crewState).headSeq;
+      yield* Stream.concat(
+        Stream.succeed(undefined),
+        conversations
+          .owner(crewDomain)
+          .subscribe(CREW_OWNER_ID, head)
+          .pipe(Stream.map(() => undefined)),
+      ).pipe(
+        Stream.mapEffect(() =>
+          Effect.gen(function* () {
+            const conversation = yield* conversations.state(ConversationId.make(chat));
+            const state = yield* crewState;
+            return (state.cursors[chat] ?? 0) >= conversation.headSeq;
+          }),
+        ),
+        Stream.filter((ready) => ready),
+        Stream.runHead,
+        Effect.orDie,
+      );
+    });
 
   /**
    * A crewmate's sessions as its one conversation had them: read back from the crew owner's own
@@ -547,6 +592,9 @@ const enginePort = (input: {
    */
   const sendsReached = Effect.gen(function* () {
     if ((yield* Ref.get(input.sendHold)) !== undefined) return;
+    for (const member of membersInOrder(yield* crewState)) {
+      if (member.conversationId !== null) yield* observed(member.conversationId);
+    }
     for (let waited = 0; waited < 3_000; waited += 25) {
       const state = yield* crewState;
       if (membersInOrder(state).every((member) => member.active?.reached !== false)) return;
@@ -570,7 +618,9 @@ const enginePort = (input: {
     attachmentsDir: NodePath.join(fx.workspace, "attachments"),
     writeHome: (files) => writeCrewHome(fx.workspace, files),
     press: (press, as) =>
-      Effect.flatMap(crew, (service) => service.command(press, as ?? KAREL)).pipe(
+      // Commands enter a running server; later lives may inspect durable state before boot.
+      input.start.pipe(
+        Effect.andThen(Effect.flatMap(crew, (service) => service.command(press, as ?? KAREL))),
         Effect.tap(() => settled),
       ),
     readFiles: Effect.flatMap(crew, (service) => service.readFiles),
@@ -579,33 +629,7 @@ const enginePort = (input: {
       Effect.gen(function* () {
         yield* settled;
         const thread = yield* threadOf(chat);
-        // A press can return before its conversation receipt reaches the crew observer.
-        // The observer's cursor proves it has consumed that receipt before an idle agent
-        // opens a turn of its own; pending deliveries keep the existing idle verdict busy.
-        const conversations = yield* run(Conversations);
-        const cursor = (yield* crewState).headSeq;
-        yield* Stream.concat(
-          Stream.succeed(undefined),
-          conversations
-            .owner(crewDomain)
-            .subscribe(CREW_OWNER_ID, cursor)
-            .pipe(Stream.map(() => undefined)),
-        ).pipe(
-          Stream.mapEffect(() =>
-            Effect.gen(function* () {
-              const conversation = yield* conversations.state(ConversationId.make(chat));
-              const state = yield* crewState;
-              return (state.cursors[chat] ?? 0) >= conversation.headSeq;
-            }),
-          ),
-          Stream.filter((ready) => ready),
-          Stream.runHead,
-          Effect.orDie,
-          Effect.timeoutOrElse({
-            duration: QUIET_WAIT,
-            orElse: () => Effect.die(new Error(`crew never observed ${chat}'s turn receipts`)),
-          }),
-        );
+        yield* observed(chat);
         const idle = Effect.gen(function* () {
           const state = yield* crewState;
           const member = membersInOrder(state).find((entry) => entry.conversationId === chat);
@@ -851,7 +875,7 @@ const enginePort = (input: {
               ),
               release: Effect.void,
             };
-            yield* Ref.set(input.sendHold, hold);
+            yield* Ref.set(input.sendHold, { ...hold, claimed: false });
             const released = Deferred.succeed(release, undefined).pipe(Effect.asVoid);
             input.releases.push(released);
             return { reached: Deferred.await(reached), release: released } satisfies CrewHold;
@@ -1060,7 +1084,7 @@ export const engineWorld: CrewWorldRunner = <E>(
     };
     for (const phase of phases) {
       const scripted = yield* makeScriptedProvider({ driver: "claudeAgent" });
-      const sendHold = yield* Ref.make<CrewHold | undefined>(undefined);
+      const sendHold = yield* Ref.make<SendHold | undefined>(undefined);
       const provider = holdableProvider(scripted, sendHold);
       const life = yield* Scope.make();
       const context = (yield* Layer.buildWithScope(
@@ -1109,12 +1133,12 @@ export const engineWorld: CrewWorldRunner = <E>(
       });
       const exit = yield* Effect.exit(phase(world));
       if (Exit.isSuccess(exit)) yield* world.sendsReached;
-      // Whatever a journey still holds goes on, so the life's own work can wind down.
       yield* Ref.set(fixture.holds, []);
-      for (const release of releases.splice(0)) yield* release;
-      // The server goes down: every driver process dies with it.
+      // The server goes down while held work stays held: its cancellable children and sends
+      // stop before cleanup releases gates, so no held delivery can reach an agent at shutdown.
       for (const session of scripted.sessions.values()) session.alive = false;
       yield* Scope.close(life, Exit.void);
+      for (const release of releases.splice(0)) yield* release;
       if (Exit.isFailure(exit)) return yield* Effect.failCause(exit.cause);
     }
   }).pipe(Effect.ensuring(Effect.void), Effect.orDie) as Effect.Effect<void>;
