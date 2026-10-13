@@ -81,10 +81,9 @@ it("unresolved removal requires an explicit history-loss confirmation before the
   const host = document.createElement("div");
   const root = createRoot(host);
   const remove = vi.fn(async () => {});
-  const delivery = {
-    ...gitDeliveryOf(environment, { releases: [], repos: [] }),
-    standing: "unresolved" as const,
-  };
+  const projected = gitDeliveryOf(environment, { releases: [], repos: [] });
+  if (projected === undefined) throw new Error("The Git fixture must project a Git delivery");
+  const delivery = { ...projected, standing: "unresolved" as const };
   try {
     await act(async () =>
       root.render(
