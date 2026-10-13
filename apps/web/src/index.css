@@ -5692,16 +5692,22 @@ code {
     display: contents;
   }
 
+  /* The bar grows to hold the Chief's card at a Mate card's height, past the page header's line;
+     `!important` over the header's top-bar height utility. */
+  [data-slot="sidebar-header"]:has(.menu-top) {
+    height: auto !important;
+  }
+
   /* The Chief (`SidebarChiefRow`): a Mate row's measure in the bar — its mark on the faces' column,
-     a 15 px name over a 14 px line, 48 px tall, its band from the list's inset to the divider's. */
+     its name on the row's middle, its band from the list's inset to the divider's. */
   .menu-chief-row {
     display: grid;
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
     align-items: center;
-    /* The top bar's height, the menu's own room above it: the menu and the page's header keep
-       their centre line and bottom edge. */
-    height: calc(var(--workspace-topbar-height) - var(--sidebar-content-inset) - 1px);
+    /* As tall as a Mate's card under it, the row's two lines in its 11 px padding (the owner,
+       2026-10-13: "it doesn't look good that this upper card is actually smaller"). */
+    height: 66px;
     /* Its room above it the same as on its left. */
     margin-block-start: calc(var(--sidebar-content-inset) + 1px);
     margin-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
