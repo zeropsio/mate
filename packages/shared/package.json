@@ -7,6 +7,10 @@
       "types": "./src/mateAutoUpdatePolicy.ts",
       "import": "./src/mateAutoUpdatePolicy.ts"
     },
+    "./hqEnvironment": {
+      "types": "./src/hqEnvironment.ts",
+      "import": "./src/hqEnvironment.ts"
+    },
     "./hqStream": {
       "types": "./src/hqStream.ts",
       "import": "./src/hqStream.ts"

@@ -1,6 +1,8 @@
 import { MateHealth } from "@t3tools/contracts";
 import { MateAttention as HqAttentionValue } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import * as Struct from "effect/Struct";
+import { hqEnvironmentCodec } from "./hqEnvironment.ts";
 import { AgentUsageScope, AGENT_USAGE_REPORT_PROTOCOL } from "@t3tools/contracts";
 import { usageCanonical } from "./agentUsage.ts";
 import { MatePresence } from "./hqMates.ts";
@@ -329,6 +331,7 @@ export const HqNavigationJob = Schema.Struct({
   supersededBy: Schema.NullOr(Schema.String),
 });
 export type HqNavigationJob = typeof HqNavigationJob.Type;
+/** @deprecated Use CanonicalHqNavigationEnvironment at the HQ read boundary. */
 export const HqNavigationEnvironment = Schema.Struct({
   projectId: Schema.String,
   tier: Schema.Literals(["stage", "production"]),
@@ -343,10 +346,21 @@ export const HqNavigationEnvironment = Schema.Struct({
   birth: Schema.NullOr(EnvironmentBirth),
 });
 export type HqNavigationEnvironment = typeof HqNavigationEnvironment.Type;
+/** @deprecated Use CanonicalHqNavigationEnvironments at the HQ read boundary. */
 export const HqNavigationEnvironments = Schema.Union([
   Schema.Array(HqNavigationEnvironment),
   Schema.Struct({ refused: Schema.String }),
 ]);
+/** Canonical readers normalize older HQ rows at this boundary only. */
+export const CanonicalHqNavigationEnvironment = hqEnvironmentCodec(
+  Struct.omit(HqNavigationEnvironment.fields, ["projectId"]),
+);
+export type CanonicalHqNavigationEnvironment = typeof CanonicalHqNavigationEnvironment.Type;
+export const CanonicalHqNavigationEnvironments = Schema.Union([
+  Schema.Array(CanonicalHqNavigationEnvironment),
+  Schema.Struct({ refused: Schema.String }),
+]);
+export type CanonicalHqNavigationEnvironments = typeof CanonicalHqNavigationEnvironments.Type;
 /** Remaining hold duration from HQ's read; transport silence never decides its outcome. */
 export const HqNavigationPress = Schema.Struct({
   kind: Schema.Literals(["mate", "stage", "production"]),
@@ -392,6 +406,7 @@ export const HqNavigationRelease = Schema.Union([
   Schema.Struct({ refused: Schema.String }),
 ]);
 
+/** @deprecated Use CanonicalHqNavigationApp at the HQ read boundary. */
 export const HqNavigationApp = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -407,6 +422,12 @@ export const HqNavigationApp = Schema.Struct({
   births: Schema.Array(Schema.Unknown),
 });
 export type HqNavigationApp = typeof HqNavigationApp.Type;
+/** Additive canonical reader; the legacy app DTO remains usable until consumers migrate. */
+export const CanonicalHqNavigationApp = Schema.Struct({
+  ...HqNavigationApp.fields,
+  environments: CanonicalHqNavigationEnvironments,
+});
+export type CanonicalHqNavigationApp = typeof CanonicalHqNavigationApp.Type;
 export const HqNavigationProject = Schema.Struct({
   projectId: Schema.String,
   appId: Schema.NullOr(Schema.String),

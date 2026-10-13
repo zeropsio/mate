@@ -128,6 +128,7 @@ describe("trimmed non-empty strings", () => {
   const entityIds = [
     "ThreadId",
     "ProjectId",
+    "HqEnvironmentId",
     "EnvironmentId",
     "CommandId",
     "EventId",

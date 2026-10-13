@@ -240,6 +240,9 @@ export const ThreadId = makeEntityId("ThreadId");
 export type ThreadId = typeof ThreadId.Type;
 export const ProjectId = makeEntityId("ProjectId");
 export type ProjectId = typeof ProjectId.Type;
+/** HQ environment identity; distinct from its target and runtime connection. */
+export const HqEnvironmentId = makeEntityId("HqEnvironmentId");
+export type HqEnvironmentId = typeof HqEnvironmentId.Type;
 export const EnvironmentId = makeEntityId("EnvironmentId");
 export type EnvironmentId = typeof EnvironmentId.Type;
 export const CommandId = makeEntityId("CommandId");
