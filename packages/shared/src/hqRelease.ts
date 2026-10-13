@@ -25,7 +25,9 @@
  */
 import * as Schema from "effect/Schema";
 
-import { Sha } from "./hqChanges.ts";
+import { HqRepoRemote, RepoName, Sha } from "./hqChanges.ts";
+import { HqEnvironmentAttachment, HqTargetTimestamp } from "./hqEnvironment.ts";
+import { HqPushRef } from "./hqDeploys.ts";
 
 /** How many releases the history shows, as main's did (`RELEASES_SHOWN`). */
 export const RELEASES_SHOWN = 10;
@@ -52,6 +54,54 @@ export const ServiceName = Schema.String.check(Schema.isPattern(HOSTNAME));
 export const ReleaseEntry = Schema.Struct({ service: ServiceName, sha: Sha });
 export type ReleaseEntry = typeof ReleaseEntry.Type;
 
+/** The service key is unchanged; a Git target names a repository instead of a hostname. */
+export const GitReleaseEntry = Schema.Struct({ service: RepoName, sha: Sha });
+export type GitReleaseEntry = typeof GitReleaseEntry.Type;
+export const HqReleaseTarget = HqEnvironmentAttachment;
+export type HqReleaseTarget = typeof HqReleaseTarget.Type;
+
+const targetFields = {
+  target: Schema.optionalKey(Schema.Literals(["zerops", "git"])),
+  releaseTarget: Schema.optionalKey(HqReleaseTarget),
+};
+
+/** One destination/entry verdict for persisted records and incoming release requests. */
+const releaseTargetMatches = (value: {
+  readonly target?: "zerops" | "git";
+  readonly releaseTarget?: HqReleaseTarget;
+  readonly entries: ReadonlyArray<ReleaseEntry>;
+}) => {
+  if (value.target === "git") {
+    if (
+      value.releaseTarget?.target.kind !== "git" ||
+      value.releaseTarget.target.delivery !== "direct"
+    )
+      return "Expected the accepted direct Git attachment";
+  } else {
+    if (
+      value.releaseTarget !== undefined &&
+      (value.target !== "zerops" || value.releaseTarget.target.kind !== "zerops")
+    )
+      return "Expected the accepted Zerops attachment";
+    if (!value.entries.every((entry) => Schema.is(ServiceName)(entry.service)))
+      return "Expected Zerops service hostnames";
+  }
+  return undefined;
+};
+
+/** One remote's review-time observation, with the host verdict and no credential values. */
+export const HqGitReleasePreflight = Schema.Struct({
+  repo: RepoName,
+  remote: HqRepoRemote,
+  ref: HqPushRef,
+  before: Schema.NullOr(Sha),
+  sha: Sha,
+  verdict: Schema.Literals(["ready", "diverged", "credential", "declined", "unknown"]),
+  reason: Schema.NullOr(Schema.String),
+  checkedAt: HqTargetTimestamp,
+});
+export type HqGitReleasePreflight = typeof HqGitReleasePreflight.Type;
+
 /**
  * A release as HQ records it: its name, the recipe repository's `main` head it tags, what it lists,
  * who asked for it and when, HQ's verdict — the reason beside a refusal, none beside an approval —
@@ -60,7 +110,8 @@ export type ReleaseEntry = typeof ReleaseEntry.Type;
 export const Release = Schema.Struct({
   tag: ReleaseTag,
   sha: Sha,
-  entries: Schema.Array(ReleaseEntry),
+  entries: Schema.Array(GitReleaseEntry),
+  ...targetFields,
   by: Schema.String,
   at: Schema.String,
   state: Schema.Literals(["approved", "refused"]),
@@ -68,7 +119,7 @@ export const Release = Schema.Struct({
   rollbackOf: Schema.NullOr(ReleaseTag),
   /** Saved before production existed; the press requested no deployment. */
   snapshot: Schema.optionalKey(Schema.Boolean),
-});
+}).check(Schema.makeFilter(releaseTargetMatches));
 export type Release = typeof Release.Type;
 
 export const ReleaseListResponse = Schema.Struct({ releases: Schema.Array(Release) });
@@ -87,6 +138,7 @@ export type ReleaseListResponse = typeof ReleaseListResponse.Type;
 export const ReleaseRollout = Schema.Struct({
   /** Its rollout; none where the release has none of its own. */
   id: Schema.NullOr(Schema.String),
+  ...targetFields,
   /** The release it deploys. */
   tag: Schema.String,
   planned: Schema.Boolean,
@@ -104,11 +156,11 @@ export const ReleaseRollout = Schema.Struct({
       reason: Schema.String,
     }),
   ),
-});
+}).check(Schema.makeFilter((value) => releaseTargetMatches({ ...value, entries: [] })));
 export type ReleaseRollout = typeof ReleaseRollout.Type;
 
 /** At least one service, and each once: what a release message can carry. */
-const Entries = Schema.Array(ReleaseEntry).check(
+const Entries = Schema.Array(GitReleaseEntry).check(
   Schema.makeFilter((entries: ReadonlyArray<ReleaseEntry>) =>
     entries.length === 0
       ? "Expected at least one service"
@@ -127,7 +179,32 @@ export const CreateReleaseRequest = Schema.Struct({
   tag: ReleaseTag,
   groupHead: Sha,
   entries: Entries,
-});
+  ...targetFields,
+  preflight: Schema.optionalKey(Schema.Array(HqGitReleasePreflight)),
+}).check(
+  Schema.makeFilter((value) => {
+    const verdict = releaseTargetMatches(value);
+    if (verdict !== undefined) return verdict;
+    if (value.target !== undefined && value.releaseTarget === undefined)
+      return "Expected the reviewed attachment for an explicit target";
+    if (value.target !== "git")
+      return value.preflight === undefined ? undefined : "Expected Git preflight only for Git";
+    const target = value.releaseTarget?.target;
+    if (target?.kind !== "git" || value.preflight === undefined)
+      return "Expected the reviewed direct-delivery preflight";
+    const entries = new Map(value.entries.map((entry) => [entry.service, entry.sha]));
+    return value.preflight.length === entries.size &&
+      new Set(value.preflight.map((review) => review.repo)).size === entries.size &&
+      value.preflight.every(
+        (review) =>
+          review.verdict === "ready" &&
+          review.ref === `refs/heads/${target.branch}` &&
+          entries.get(review.repo) === review.sha,
+      )
+      ? undefined
+      : "Expected a ready preflight for each fixed repository sha";
+  }),
+);
 export type CreateReleaseRequest = typeof CreateReleaseRequest.Type;
 
 /** A rollback tags the recipe repository's `main` head read with its offer, as a release does. */
@@ -178,6 +255,7 @@ export function releaseMessage(entries: ReadonlyArray<ReleaseEntry>): string {
  */
 export function parseReleaseMessage(
   message: string,
+  target: "zerops" | "git" = "zerops",
 ):
   | { readonly entries: ReadonlyArray<ReleaseEntry> }
   | { readonly refused: (typeof RELEASE_MESSAGE_REFUSALS)[number] } {
@@ -188,7 +266,10 @@ export function parseReleaseMessage(
     const space = line.indexOf(" ");
     const service = space === -1 ? line : line.slice(0, space);
     const sha = space === -1 ? "" : line.slice(space + 1).trim();
-    if (!HOSTNAME.test(service) || !FULL_SHA.test(sha))
+    if (
+      !(target === "git" ? Schema.is(RepoName)(service) : HOSTNAME.test(service)) ||
+      !FULL_SHA.test(sha)
+    )
       return { refused: "release_line_unreadable" };
     const listed = found.get(service);
     if (listed !== undefined && listed !== sha) return { refused: "release_service_twice" };

@@ -1,3 +1,5 @@
+import * as Offers from "./hqOffers.ts";
+import * as Changes from "./hqChanges.ts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -459,4 +461,138 @@ describe("head-scoped review evidence", () => {
       expect(() => Schema.decodeUnknownSync(CloseChangeRequest)({})).toThrow();
     },
   );
+});
+
+it("Repository metadata serializes the verified remote and never its token.", () => {
+  const remote = {
+    url: "https://github.com/acme/app.git",
+    repositoryId: "42",
+    keptAt: "2026-10-13T10:00:00.000Z",
+    keptBy: "person",
+    expiresAt: null,
+    invalidSince: null,
+  };
+  const value = { name: "App_Code-2", mainHead: "a".repeat(40), updatedAt: remote.keptAt, remote };
+  expect(Schema.decodeUnknownSync(RepoListResponse)({ repos: [value] })).toEqual({
+    repos: [value],
+  });
+  const decoded = Schema.decodeUnknownSync(RepoListResponse)({
+    repos: [{ ...value, remote: { ...remote, token: "TOKEN_MARKER" } }],
+  });
+  expect(JSON.stringify(Schema.encodeSync(RepoListResponse)(decoded))).not.toContain(
+    "TOKEN_MARKER",
+  );
+});
+
+it("Only mutating remote inputs carry a token and unsafe remote URLs refuse.", () => {
+  expect(Changes).toHaveProperty("KeepRepoRemoteRequest");
+  const value = { url: "https://github.com/acme/app.git", token: "TOKEN_MARKER" };
+  expect(Schema.decodeUnknownSync(Changes.KeepRepoRemoteRequest)(value)).toEqual(value);
+  for (const url of [
+    "http://github.com/acme/app",
+    "ssh://git@github.com/acme/app",
+    "https://user:TOKEN_MARKER@github.com/acme/app",
+    "https://github.com/acme/app?token=TOKEN_MARKER",
+    "https://github.com/acme/app#TOKEN_MARKER",
+    "https://github.com",
+    "not a URL",
+    "https://github.com/acme/%zz",
+    "https://github.com/acme/../app",
+  ]) {
+    expect(Schema.decodeUnknownExit(Changes.KeepRepoRemoteRequest)({ ...value, url })._tag).toBe(
+      "Failure",
+    );
+  }
+});
+
+it("Direct branch creation requires the reviewed remote and main tips and cannot request PR or tag delivery.", () => {
+  expect(Changes).toHaveProperty("AddGitEnvironmentRequest");
+  const value = {
+    tier: "production",
+    name: "Production",
+    target: { kind: "git", branch: "production", delivery: "direct" },
+    adoption: [
+      {
+        repo: "App_Code-2",
+        remote: { url: "https://github.com/acme/app.git", repositoryId: "42" },
+        branch: "production",
+        mainHead: "a".repeat(40),
+        remoteHead: "b".repeat(40),
+        changedFiles: 3,
+        seed: false,
+      },
+    ],
+  };
+  expect(Schema.decodeUnknownSync(Changes.AddGitEnvironmentRequest)(value)).toEqual(value);
+  for (const patch of [
+    { target: { ...value.target, delivery: "pr" } },
+    { target: { ...value.target, kind: "tag" } },
+    { adoption: [] },
+    { adoption: [{ ...value.adoption[0], mainHead: "bad" }] },
+    { adoption: [{ ...value.adoption[0], remoteHead: "bad" }] },
+    { adoption: [{ ...value.adoption[0], changedFiles: -1 }] },
+    { adoption: [{ ...value.adoption[0], branch: "staging" }] },
+  ]) {
+    expect(
+      Schema.decodeUnknownExit(Changes.AddGitEnvironmentRequest)({ ...value, ...patch })._tag,
+    ).toBe("Failure");
+  }
+});
+
+it("Probe and adoption responses retain only safe evidence and reject partial modern records.", () => {
+  const remote = {
+    url: "https://github.com/acme/app.git",
+    repositoryId: "42",
+    keptAt: "2026-10-13T10:00:00.000Z",
+    keptBy: "person",
+    expiresAt: null,
+    invalidSince: null,
+  };
+  const probe = { ok: true, remote };
+  expect(Schema.decodeUnknownSync(Changes.HqRemoteProbe)(probe)).toEqual(probe);
+  for (const patch of [
+    { repositoryId: undefined },
+    { keptAt: "bad" },
+    { expiresAt: "bad" },
+    { invalidSince: "bad" },
+  ]) {
+    expect(
+      Schema.decodeUnknownExit(Changes.HqRemoteProbe)({ ...probe, remote: { ...remote, ...patch } })
+        ._tag,
+    ).toBe("Failure");
+  }
+  for (const value of [
+    { ok: false, reason: "credential", status: 401 },
+    { ok: false, reason: "rate_limit", status: 403, retryAt: remote.keptAt },
+  ]) {
+    expect(Schema.decodeUnknownSync(Changes.HqRemoteProbe)(value)).toEqual(value);
+  }
+  expect(
+    JSON.stringify(
+      Schema.decodeUnknownSync(Changes.HqRemoteProbe)({
+        ...probe,
+        token: "TOKEN_MARKER",
+        remote: { ...remote, token: "TOKEN_MARKER" },
+      }),
+    ),
+  ).not.toContain("TOKEN_MARKER");
+});
+
+it("Direct-target verbs travel through the existing open offers without a second permission verdict.", () => {
+  expect(Offers.HQ_GIT_TARGET_VERBS).toEqual([
+    "connect_remote",
+    "replace_remote_token",
+    "update_remote_address",
+    "disconnect_remote",
+    "add_git_environment",
+    "remove_git_environment",
+  ]);
+  for (const verb of Offers.HQ_GIT_TARGET_VERBS) {
+    expect(
+      Offers.hqOffer({ [verb]: { allow: false, reason: "not_writer" } }, verb, {
+        current: true,
+        unavailableSince: null,
+      }),
+    ).toEqual({ kind: "refused", reason: "not_writer" });
+  }
 });

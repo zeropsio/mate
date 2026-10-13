@@ -1,3 +1,4 @@
+import * as Stream from "./hqStream.ts";
 import { expect, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
 import {
@@ -359,4 +360,89 @@ it("Canonical navigation round-trips identity and retains list refusals.", () =>
     ...value,
     environments: { refused: "forbidden" },
   });
+});
+
+it("The navigation release offer retains a reviewed destination without deriving it from a project id.", () => {
+  const value = {
+    head: "a".repeat(40),
+    suggestion: "v1.0.0",
+    summary: { subjects: [], total: 0, more: 0, atLeast: false },
+    gate: { allow: true },
+    inFlight: null,
+    releaseTarget: {
+      environmentId: "git-id",
+      createdAt: "2026-10-13T10:00:00.000Z",
+      target: { kind: "git", branch: "production", delivery: "direct" },
+    },
+  };
+  expect(Schema.decodeUnknownSync(Stream.HqNavigationReleaseOffer)(value)).toEqual(value);
+});
+
+it("Push navigation carries attempted and confirmed hand-over evidence without token values.", () => {
+  expect(Stream).toHaveProperty("HqPushNavigationJob");
+  const attempt = {
+    remote: { url: "https://github.com/acme/app.git", repositoryId: "42" },
+    ref: "refs/heads/production",
+    sha: "a".repeat(40),
+    credentialKeptAt: "2026-10-13T10:00:00.000Z",
+    before: null,
+    phase: "submitting",
+  };
+  const value = {
+    id: "9",
+    kind: "push",
+    service: "App_Code-2",
+    sha: attempt.sha,
+    state: "pushed",
+    cause: "release",
+    ref: "v1.0.0",
+    reason: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: "person",
+    at: attempt.credentialKeptAt,
+    endedAt: attempt.credentialKeptAt,
+    supersededBy: null,
+    evidence: {
+      nextActor: "none",
+      nextAction: "Open repository",
+      attempt,
+      confirmed: {
+        remote: attempt.remote,
+        ref: attempt.ref,
+        before: null,
+        after: attempt.sha,
+        at: attempt.credentialKeptAt,
+        via: "answer",
+      },
+    },
+  };
+  expect(Schema.decodeUnknownSync(Stream.HqPushNavigationJob)(value)).toEqual(value);
+  const environment = {
+    id: "git-id",
+    projectId: "unrelated-project",
+    target: { kind: "git", branch: "production", delivery: "direct" },
+    tier: "production",
+    name: "Production",
+    sources: ["release"],
+    order: 1,
+    keyHeld: false,
+    keyInvalid: false,
+    can: {},
+    jobs: [value],
+    release: null,
+    birth: null,
+  };
+  expect(Schema.decodeUnknownSync(Stream.HqGitNavigationEnvironment)(environment)).toEqual(
+    environment,
+  );
+
+  const decoded = Schema.decodeUnknownSync(Stream.HqPushNavigationJob)({
+    ...value,
+    token: "TOKEN_MARKER",
+    evidence: { ...value.evidence, token: "TOKEN_MARKER" },
+  });
+  expect(JSON.stringify(Schema.encodeSync(Stream.HqPushNavigationJob)(decoded))).not.toContain(
+    "TOKEN_MARKER",
+  );
 });

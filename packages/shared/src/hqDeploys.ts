@@ -8,6 +8,8 @@
  * @module hqDeploys
  */
 import * as Schema from "effect/Schema";
+import { HqGitBranch, HqTargetTimestamp } from "./hqEnvironment.ts";
+import { HqRemoteIdentity, RepoName, Sha } from "./hqChanges.ts";
 
 /** HQ's words for a deploy Zerops did not answer, with what Zerops failed at. */
 export const zeropsDidNotAnswer = (detail: string): string => `Zerops did not answer: ${detail}`;
@@ -74,6 +76,93 @@ export const HqDeployOutcome = Schema.Struct({
   steps: Schema.optionalKey(Schema.Array(Schema.Unknown)),
 });
 export type HqDeployOutcome = typeof HqDeployOutcome.Type;
+
+/** A written branch's full ref, distinct from a release's tag. */
+export const HqPushRef = Schema.String.check(
+  Schema.makeFilter((ref: string) =>
+    ref.startsWith("refs/heads/") && Schema.is(HqGitBranch)(ref.slice("refs/heads/".length))
+      ? undefined
+      : "Expected a direct branch ref",
+  ),
+);
+
+/** Persisted before remote I/O; later observations never replace this attempted destination. */
+export const HqPushAttempt = Schema.Struct({
+  remote: HqRemoteIdentity,
+  ref: HqPushRef,
+  sha: Sha,
+  credentialKeptAt: HqTargetTimestamp,
+  before: Schema.NullOr(Sha),
+  phase: Schema.Literals(["submitting", "recovering"]),
+});
+export type HqPushAttempt = typeof HqPushAttempt.Type;
+
+/** A confirmed hand-over says nothing about what the receiver runs. */
+export const HqPushReceipt = Schema.Struct({
+  remote: HqRemoteIdentity,
+  ref: HqPushRef,
+  before: Schema.NullOr(Sha),
+  after: Sha,
+  at: HqTargetTimestamp,
+  via: Schema.Literals(["found", "answer", "resolve"]),
+});
+export type HqPushReceipt = typeof HqPushReceipt.Type;
+export const HqPushEvidence = Schema.Struct({
+  attempt: Schema.optionalKey(HqPushAttempt),
+  confirmed: Schema.optionalKey(HqPushReceipt),
+  observed: Schema.optionalKey(Schema.NullOr(Sha)),
+  nextActor: HqDeployEvidence.fields.nextActor,
+  nextAction: HqDeployEvidence.fields.nextAction,
+}).check(
+  Schema.makeFilter((value) => {
+    const a = value.attempt;
+    const c = value.confirmed;
+    return c === undefined ||
+      (a !== undefined &&
+        a.remote.url === c.remote.url &&
+        a.remote.repositoryId === c.remote.repositoryId &&
+        a.ref === c.ref &&
+        a.sha === c.after &&
+        a.before === c.before)
+      ? undefined
+      : "Expected confirmation of the retained attempt";
+  }),
+);
+export type HqPushEvidence = typeof HqPushEvidence.Type;
+
+/** Additive push export: existing deploy readers retain their Zerops state contract. */
+export const HqPushOutcome = Schema.Struct({
+  ...HqDeployOutcome.fields,
+  kind: Schema.Literal("push"),
+  service: RepoName,
+  sha: Sha,
+  state: Schema.Literals(["queued", "submitting", "pushed", "refused", "unresolved", "superseded"]),
+  processId: Schema.Null,
+  appVersionId: Schema.optionalKey(Schema.Null),
+  verifiedVersionId: Schema.optionalKey(Schema.Null),
+  steps: Schema.optionalKey(Schema.Array(HqPushEvidence)),
+  evidence: Schema.optionalKey(Schema.NullOr(HqPushEvidence)),
+}).check(
+  Schema.makeFilter((value) => {
+    const evidence = value.evidence;
+    if (value.state === "pushed" && evidence?.confirmed?.after !== value.sha)
+      return "Expected a confirmed hand-over of this sha";
+    if (
+      (value.state === "submitting" || value.state === "unresolved") &&
+      evidence?.attempt?.sha !== value.sha
+    )
+      return "Expected the retained attempt for this sha";
+    return undefined;
+  }),
+);
+export type HqPushOutcome = typeof HqPushOutcome.Type;
+export const HqDeliveryOutcome = Schema.Union([HqDeployOutcome, HqPushOutcome]);
+export type HqDeliveryOutcome = typeof HqDeliveryOutcome.Type;
+export const HqDeliveryAnswer = Schema.Struct({
+  jobs: Schema.Array(HqDeliveryOutcome),
+  note: Schema.NullOr(Schema.String),
+});
+export type HqDeliveryAnswer = typeof HqDeliveryAnswer.Type;
 
 /**
  * Every job an event asked for, and what HQ left out of it, in its words: what the event's own

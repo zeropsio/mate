@@ -22,6 +22,17 @@ import * as Schema from "effect/Schema";
 
 import type { Decision } from "./zeropsPermissions.ts";
 
+/** Person-facing direct-target verbs use the existing open offer record and server authority. */
+export const HQ_GIT_TARGET_VERBS = [
+  "connect_remote",
+  "replace_remote_token",
+  "update_remote_address",
+  "disconnect_remote",
+  "add_git_environment",
+  "remove_git_environment",
+] as const;
+export type HqGitTargetVerb = (typeof HQ_GIT_TARGET_VERBS)[number];
+
 /** One verb's decision as HQ sends it: its reason open, so a later HQ's reason is still read. */
 export const HqDecision = Schema.Union([
   Schema.Struct({ allow: Schema.Literal(true) }),

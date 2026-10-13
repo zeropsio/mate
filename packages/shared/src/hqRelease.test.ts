@@ -1,3 +1,4 @@
+import * as ReleaseSchemas from "./hqRelease.ts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -247,4 +248,208 @@ describe("hqRelease", () => {
       "release_not_approved",
     ]);
   });
+});
+
+const gitAttachment = {
+  environmentId: "git-id",
+  createdAt: "2026-10-13T10:00:00.000Z",
+  target: { kind: "git", branch: "production", delivery: "direct" },
+};
+const gitPreflight = {
+  repo: "App_Code-2",
+  remote: {
+    url: "https://github.com/acme/app.git",
+    repositoryId: "42",
+    keptAt: gitAttachment.createdAt,
+    keptBy: "person",
+    expiresAt: null,
+    invalidSince: null,
+  },
+  ref: "refs/heads/production",
+  before: A,
+  sha: B,
+  verdict: "ready",
+  reason: null,
+  checkedAt: gitAttachment.createdAt,
+};
+const legacyRelease = {
+  tag: "v1.0.0",
+  sha: A,
+  entries: [{ service: "api", sha: B }],
+  by: "person",
+  at: "2026-10-13T10:00:00.000Z",
+  state: "approved",
+  reason: null,
+  rollbackOf: null,
+};
+
+it("Old Zerops release JSON round-trips byte-identically with unknown historical provenance.", () => {
+  const wire = JSON.stringify(legacyRelease);
+  expect(
+    JSON.stringify(Schema.encodeSync(Release)(Schema.decodeUnknownSync(Release)(JSON.parse(wire)))),
+  ).toBe(wire);
+  expect(parseReleaseMessage(releaseMessage(legacyRelease.entries))).toEqual({
+    entries: legacyRelease.entries,
+  });
+});
+
+it("A Git release freezes repository names and shas with its accepted attachment, keeping the service key.", () => {
+  const value = {
+    ...legacyRelease,
+    target: "git",
+    releaseTarget: gitAttachment,
+    entries: [{ service: "App_Code-2", sha: LONG }],
+  };
+  expect(Schema.decodeUnknownExit(Release)(value)._tag).toBe("Success");
+  const decoded = Schema.decodeUnknownSync(Release)(value);
+  expect(Schema.encodeSync(Release)(decoded)).toEqual(value);
+  expect(JSON.stringify(decoded)).not.toContain('"unit"');
+  expect(Schema.decodeUnknownExit(Release)({ ...value, target: "zerops" })._tag).toBe("Failure");
+  expect(Schema.decodeUnknownExit(Release)({ ...value, target: undefined })._tag).toBe("Failure");
+});
+
+it("An explicit Git release request carries the reviewed attachment and frozen repository roster.", () => {
+  const value = {
+    tag: "v1.0.0",
+    groupHead: A,
+    entries: [{ service: "App_Code-2", sha: B }],
+    target: "git",
+    releaseTarget: gitAttachment,
+    preflight: [gitPreflight],
+  };
+  expect(Schema.decodeUnknownExit(CreateReleaseRequest)(value)._tag).toBe("Success");
+  expect(Schema.decodeUnknownSync(CreateReleaseRequest)(value)).toEqual(value);
+  for (const patch of [
+    { releaseTarget: undefined },
+    { target: undefined },
+    { releaseTarget: { ...gitAttachment, createdAt: "bad" } },
+    { releaseTarget: { ...gitAttachment, target: { kind: "zerops", projectId: "project" } } },
+    { entries: [] },
+    { entries: [value.entries[0], value.entries[0]] },
+    { entries: [{ service: "App_Code-2", sha: "bad" }] },
+  ]) {
+    expect(Schema.decodeUnknownExit(CreateReleaseRequest)({ ...value, ...patch })._tag).toBe(
+      "Failure",
+    );
+  }
+});
+
+it("Release message parsing dispatches repository names only for Git and leaves Zerops messages unchanged.", () => {
+  const entries = [{ service: "App_Code-2", sha: B }];
+  expect(parseReleaseMessage(releaseMessage(entries), "git")).toEqual({ entries });
+  expect(parseReleaseMessage(releaseMessage(entries))).toEqual({
+    refused: "release_line_unreadable",
+  });
+});
+
+it("Rollouts retain the accepted attachment while old Zerops rollout provenance stays unknown.", () => {
+  const old = { id: "9", tag: "v1.0.0", planned: true, ended: true, endedAt: null, leftOut: [] };
+  expect(Schema.decodeUnknownSync(ReleaseSchemas.ReleaseRollout)(old)).toEqual(old);
+  const git = { ...old, target: "git", releaseTarget: gitAttachment };
+  expect(Schema.decodeUnknownSync(ReleaseSchemas.ReleaseRollout)(git)).toEqual(git);
+  expect(
+    Schema.decodeUnknownExit(ReleaseSchemas.ReleaseRollout)({ ...git, releaseTarget: undefined })
+      ._tag,
+  ).toBe("Failure");
+});
+
+it.each(["ready", "diverged", "credential", "declined", "unknown"])(
+  "Git preflight preserves the host verdict %s without token data.",
+  (verdict) => {
+    const value = {
+      repo: "App_Code-2",
+      remote: {
+        url: "https://github.com/acme/app.git",
+        repositoryId: "42",
+        keptAt: gitAttachment.createdAt,
+        keptBy: "person",
+        expiresAt: null,
+        invalidSince: null,
+      },
+      ref: "refs/heads/production",
+      before: A,
+      sha: B,
+      verdict,
+      reason: null,
+      checkedAt: gitAttachment.createdAt,
+    };
+    expect(Schema.decodeUnknownSync(ReleaseSchemas.HqGitReleasePreflight)(value)).toEqual(value);
+    const decoded = Schema.decodeUnknownSync(ReleaseSchemas.HqGitReleasePreflight)({
+      ...value,
+      token: "TOKEN_MARKER",
+      remote: { ...value.remote, token: "TOKEN_MARKER" },
+    });
+    expect(
+      JSON.stringify(Schema.encodeSync(ReleaseSchemas.HqGitReleasePreflight)(decoded)),
+    ).not.toContain("TOKEN_MARKER");
+  },
+);
+
+it("Explicit Zerops release requests retain hostname validation and the reviewed project attachment.", () => {
+  const value = {
+    tag: "v1.0.0",
+    groupHead: A,
+    entries: [{ service: "api", sha: B }],
+    target: "zerops",
+    releaseTarget: {
+      environmentId: "environment-id",
+      createdAt: gitAttachment.createdAt,
+      target: { kind: "zerops", projectId: "different-project-id" },
+    },
+  };
+  expect(Schema.decodeUnknownSync(CreateReleaseRequest)(value)).toEqual(value);
+  expect(
+    Schema.decodeUnknownExit(CreateReleaseRequest)({
+      ...value,
+      entries: [{ service: "App_Code-2", sha: B }],
+    })._tag,
+  ).toBe("Failure");
+  expect(
+    Schema.decodeUnknownExit(CreateReleaseRequest)({ ...value, releaseTarget: undefined })._tag,
+  ).toBe("Failure");
+  const old = { tag: value.tag, groupHead: A, entries: value.entries };
+  expect(Schema.decodeUnknownSync(CreateReleaseRequest)(old)).toEqual(old);
+});
+
+it("A Git release cannot submit a diverged or refused-token preflight or an unreviewed roster.", () => {
+  const review = {
+    repo: "App_Code-2",
+    remote: {
+      url: "https://github.com/acme/app.git",
+      repositoryId: "42",
+      keptAt: gitAttachment.createdAt,
+      keptBy: "person",
+      expiresAt: null,
+      invalidSince: null,
+    },
+    ref: "refs/heads/production",
+    before: A,
+    sha: B,
+    verdict: "ready",
+    reason: null,
+    checkedAt: gitAttachment.createdAt,
+  };
+  const value = {
+    tag: "v1.0.0",
+    groupHead: A,
+    target: "git",
+    releaseTarget: gitAttachment,
+    entries: [{ service: review.repo, sha: B }],
+    preflight: [review],
+  };
+  expect(Schema.decodeUnknownSync(CreateReleaseRequest)(value)).toEqual(value);
+  for (const patch of [
+    { preflight: undefined },
+    { preflight: [] },
+    { preflight: [{ ...review, verdict: "diverged" }] },
+    { preflight: [{ ...review, verdict: "credential" }] },
+    { preflight: [{ ...review, verdict: "unknown" }] },
+    { preflight: [{ ...review, sha: A }] },
+    { preflight: [{ ...review, repo: "Another_Repo" }] },
+    { preflight: [{ ...review, ref: "refs/heads/staging" }] },
+  ]) {
+    expect(Schema.decodeUnknownExit(CreateReleaseRequest)({ ...value, ...patch })._tag).toBe(
+      "Failure",
+    );
+  }
 });

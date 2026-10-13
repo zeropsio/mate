@@ -2,7 +2,7 @@ import { MateHealth } from "@t3tools/contracts";
 import { MateAttention as HqAttentionValue } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
-import { hqEnvironmentCodec } from "./hqEnvironment.ts";
+import { hqEnvironmentCodec, HqDirectGitTarget } from "./hqEnvironment.ts";
 import { AgentUsageScope, AGENT_USAGE_REPORT_PROTOCOL } from "@t3tools/contracts";
 import { usageCanonical } from "./agentUsage.ts";
 import { MatePresence } from "./hqMates.ts";
@@ -11,8 +11,8 @@ import { RecipeTierResponse } from "./hqRecipe.ts";
 import { HqDecision } from "./hqOffers.ts";
 import { AppReadValue } from "./hqAppReads.ts";
 import { CompareQuery, CompareResponse, RepoName, HqChange } from "./hqChanges.ts";
-import { EnvironmentBirth, HqDeployOutcome } from "./hqDeploys.ts";
-import { ReleaseRollout } from "./hqRelease.ts";
+import { EnvironmentBirth, HqDeployOutcome, HqPushOutcome } from "./hqDeploys.ts";
+import { ReleaseRollout, HqReleaseTarget } from "./hqRelease.ts";
 
 export { HqAttentionValue };
 
@@ -333,6 +333,34 @@ export const HqNavigationJob = Schema.Struct({
   supersededBy: Schema.NullOr(Schema.String),
 });
 export type HqNavigationJob = typeof HqNavigationJob.Type;
+/** Direct-delivery readers opt into the push state contract; old Zerops readers are unchanged. */
+export const HqPushNavigationJob = Schema.Struct({
+  ...HqNavigationJob.fields,
+  kind: HqPushOutcome.fields.kind,
+  service: HqPushOutcome.fields.service,
+  sha: HqPushOutcome.fields.sha,
+  state: HqPushOutcome.fields.state,
+  processId: HqPushOutcome.fields.processId,
+  evidence: HqPushOutcome.fields.evidence,
+  steps: HqPushOutcome.fields.steps,
+  appVersionId: Schema.Null,
+  verifiedVersionId: HqPushOutcome.fields.verifiedVersionId,
+}).check(
+  Schema.makeFilter((value) =>
+    Schema.decodeUnknownExit(HqPushOutcome)({
+      ...value,
+      environment: "",
+      job: value.id,
+      behind: null,
+    })._tag === "Success"
+      ? undefined
+      : "Expected a valid direct-delivery job",
+  ),
+);
+export type HqPushNavigationJob = typeof HqPushNavigationJob.Type;
+export const HqDeliveryNavigationJob = Schema.Union([HqNavigationJob, HqPushNavigationJob]);
+export type HqDeliveryNavigationJob = typeof HqDeliveryNavigationJob.Type;
+
 /** @deprecated Use CanonicalHqNavigationEnvironment at the HQ read boundary. */
 export const HqNavigationEnvironment = Schema.Struct({
   projectId: Schema.String,
@@ -358,6 +386,14 @@ export const CanonicalHqNavigationEnvironment = hqEnvironmentCodec(
   Struct.omit(HqNavigationEnvironment.fields, ["projectId"]),
 );
 export type CanonicalHqNavigationEnvironment = typeof CanonicalHqNavigationEnvironment.Type;
+/** Explicit Git records are additive; existing canonical Zerops reader types remain stable. */
+export const HqGitNavigationEnvironment = Schema.Struct({
+  ...CanonicalHqNavigationEnvironment.to.fields,
+  target: HqDirectGitTarget,
+  jobs: Schema.Array(HqPushNavigationJob),
+});
+export type HqGitNavigationEnvironment = typeof HqGitNavigationEnvironment.Type;
+
 export const CanonicalHqNavigationEnvironments = Schema.Union([
   Schema.Array(CanonicalHqNavigationEnvironment),
   Schema.Struct({ refused: Schema.String }),
@@ -400,6 +436,7 @@ export const HqNavigationReleaseOffer = Schema.Struct({
     atLeast: Schema.Boolean,
   }),
   gate: HqDecision,
+  releaseTarget: Schema.optionalKey(HqReleaseTarget),
   inFlight: Schema.NullOr(Schema.String),
 });
 export type HqNavigationReleaseOffer = typeof HqNavigationReleaseOffer.Type;

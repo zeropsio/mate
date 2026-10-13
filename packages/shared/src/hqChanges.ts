@@ -47,6 +47,7 @@
  */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { HqDirectGitTarget, HqGitBranch, HqTargetTimestamp } from "./hqEnvironment.ts";
 
 /** An id the git layer takes for an application or a repository (`@t3tools/hq-git`, mirrored). */
 const ID = "[A-Za-z0-9][A-Za-z0-9_-]{0,127}";
@@ -187,12 +188,108 @@ export type HqChange = typeof HqChange.Type;
 export const HqRepo = Schema.Struct({ appId: Schema.String, name: RepoName });
 export type HqRepo = typeof HqRepo.Type;
 
+/** Credential-free repository address; userinfo, query and fragment are never public metadata. */
+export const HqRemoteUrl = Schema.String.check(
+  Schema.makeFilter((value: string) => {
+    try {
+      const url = new URL(value);
+      return value.trim() === value &&
+        url.protocol === "https:" &&
+        url.username === "" &&
+        url.password === "" &&
+        url.search === "" &&
+        url.hash === "" &&
+        url.hostname !== "" &&
+        url.pathname !== "/" &&
+        !/[\s\\]/u.test(value) &&
+        !/%(?![0-9a-f]{2})/iu.test(value) &&
+        !/(?:^|\/)(?:\.|\.\.)(?:\/|$)/u.test(value) &&
+        !Array.from(decodeURIComponent(url.pathname)).some(
+          (character) => character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127,
+        )
+        ? undefined
+        : "Expected a credential-free HTTPS repository URL";
+    } catch {
+      return "Expected a credential-free HTTPS repository URL";
+    }
+  }),
+);
+
+/** GitHub supplies a stable repository id; other hosts may prove only the URL. */
+export const HqRemoteIdentity = Schema.Struct({
+  url: HqRemoteUrl,
+  repositoryId: Schema.NullOr(Schema.String.check(Schema.isMinLength(1))),
+});
+export type HqRemoteIdentity = typeof HqRemoteIdentity.Type;
+
+/** Safe custody evidence, never the sealed or plaintext credential. */
+export const HqRepoRemote = Schema.Struct({
+  ...HqRemoteIdentity.fields,
+  keptAt: HqTargetTimestamp,
+  keptBy: Schema.String,
+  expiresAt: Schema.NullOr(HqTargetTimestamp),
+  invalidSince: Schema.NullOr(HqTargetTimestamp),
+});
+export type HqRepoRemote = typeof HqRepoRemote.Type;
+
+/** Candidate token input is confined to the person-facing mutating remote verbs. */
+const RemoteToken = Schema.String.check(Schema.isMinLength(1));
+export const KeepRepoRemoteRequest = Schema.Struct({ url: HqRemoteUrl, token: RemoteToken });
+export type KeepRepoRemoteRequest = typeof KeepRepoRemoteRequest.Type;
+export const ReplaceRepoRemoteTokenRequest = Schema.Struct({ token: RemoteToken });
+export type ReplaceRepoRemoteTokenRequest = typeof ReplaceRepoRemoteTokenRequest.Type;
+export const UpdateRepoRemoteAddressRequest = Schema.Struct({ url: HqRemoteUrl });
+export type UpdateRepoRemoteAddressRequest = typeof UpdateRepoRemoteAddressRequest.Type;
+
+/** Host probes return proven facts or a named refusal, never host bodies or credential values. */
+export const HqRemoteProbe = Schema.Union([
+  Schema.Struct({ ok: Schema.Literal(true), remote: HqRepoRemote }),
+  Schema.Struct({
+    ok: Schema.Literal(false),
+    reason: Schema.String,
+    status: Schema.optionalKey(Schema.Int),
+    retryAt: Schema.optionalKey(Schema.NullOr(HqTargetTimestamp)),
+  }),
+]);
+export type HqRemoteProbe = typeof HqRemoteProbe.Type;
+
+/** Both displayed tips fence adoption; the server re-reads them under its repository lock. */
+export const HqGitAdoption = Schema.Struct({
+  repo: RepoName,
+  remote: HqRemoteIdentity,
+  branch: HqGitBranch,
+  mainHead: Sha,
+  remoteHead: Schema.NullOr(Sha),
+  changedFiles: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  seed: Schema.Boolean,
+});
+export type HqGitAdoption = typeof HqGitAdoption.Type;
+export const PreviewGitEnvironmentRequest = Schema.Struct({
+  target: HqDirectGitTarget,
+});
+export type PreviewGitEnvironmentRequest = typeof PreviewGitEnvironmentRequest.Type;
+export const AddGitEnvironmentRequest = Schema.Struct({
+  tier: Schema.Literals(["stage", "production"]),
+  name: Schema.String.check(Schema.isMinLength(1)),
+  target: HqDirectGitTarget,
+  adoption: Schema.Array(HqGitAdoption).check(Schema.isMinLength(1)),
+}).check(
+  Schema.makeFilter((value) =>
+    value.adoption.every((review) => review.branch === value.target.branch) &&
+    new Set(value.adoption.map((review) => review.repo)).size === value.adoption.length
+      ? undefined
+      : "Expected each repository once at the reviewed branch",
+  ),
+);
+export type AddGitEnvironmentRequest = typeof AddGitEnvironmentRequest.Type;
+
 /**
  * One of an application's repositories as a person reads it: `main`'s head as HQ last recorded it
  * (none before HQ has), and when `main` last moved — the repository's making, before it ever has.
  */
 export const RepoListEntry = Schema.Struct({
   name: RepoName,
+  remote: Schema.optionalKey(Schema.NullOr(HqRepoRemote)),
   mainHead: Schema.NullOr(Sha),
   updatedAt: Instant,
   /** An optional suggestion, read from bounded root metadata at this exact main head. */
