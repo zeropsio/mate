@@ -506,7 +506,7 @@ it("Decision: no test deleted or weakened; titles unchanged; crew/actor's crew s
     root,
     chatGateStages.filter((stage) => stage.id === "C"),
   );
-  const shards = ["1/2", "2/2"].map((shard) => {
+  const shards = ["1/4", "2/4", "3/4", "4/4"].map((shard) => {
     const result = NodeChildProcess.spawnSync(
       process.execPath,
       ["scripts/chat-gate.ts", "--list", "--stages", "C", "--shard", shard],
@@ -518,22 +518,9 @@ it("Decision: no test deleted or weakened; titles unchanged; crew/actor's crew s
       ...result.stdout.matchAll(/test\/scenarios\/areas\/c-mate\/[\w-]+\.scenario\.ts/gu),
     ].map(([file]) => `apps/web/${file}`);
   });
-  expect(shards[0]?.map((file) => NodePath.basename(file, ".scenario.ts")).sort()).toEqual(
-    [
-      "opening",
-      "chat",
-      "engine-page",
-      "report-room",
-      "composer",
-      "images",
-      "recovery",
-      "admission",
-      "providerLimits",
-      "image-layout",
-      "engine-card",
-      "engine-secret",
-    ].sort(),
-  );
+  expect(shards[1]?.map((file) => NodePath.basename(file, ".scenario.ts"))).toEqual([
+    "owner-reported-layout-regressions",
+  ]);
   expect(shards.flat().sort()).toEqual([...inventory].sort());
   expect(new Set(shards.flat()).size).toBe(inventory.length);
 });
@@ -564,8 +551,9 @@ it("Decision: L3 runs everything on every main push; no test is skipped, deleted
   const certification =
     "--allowOnly=false --reporter=default --reporter=../../scripts/chat-gate-reporter.ts";
   expect(nonC).toEqual([
-    `${allNonC} --shard 1/2 ${certification}`,
-    `${allNonC} --shard 2/2 ${certification}`,
+    `${allNonC} --shard 1/3 ${certification}`,
+    `${allNonC} --shard 2/3 ${certification}`,
+    `${allNonC} --shard 3/3 ${certification}`,
   ]);
   // Vitest owns the partition; its complete input is every non-C file on disk.
   const listed = NodeChildProcess.spawnSync(

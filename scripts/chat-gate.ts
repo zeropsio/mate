@@ -365,7 +365,9 @@ if (import.meta.main) {
   );
   if (
     (shardAt !== -1 &&
-      (!["1/2", "2/2"].includes(shard ?? "") || stageIds?.join(",") !== "C" || filesAt !== -1)) ||
+      (!["1/4", "2/4", "3/4", "4/4"].includes(shard ?? "") ||
+        stageIds?.join(",") !== "C" ||
+        filesAt !== -1)) ||
     remaining.length > 1 ||
     remaining.some((arg) => arg !== "--list" && arg !== "--select") ||
     (stageAt !== -1 &&
@@ -374,7 +376,7 @@ if (import.meta.main) {
     (args.includes("--select") && args.length !== 1)
   )
     throw new Error(
-      "Usage: node scripts/chat-gate.ts [--verbose] [--list | --select (paths on stdin)] [--stages A,C,E,F,types] [--files JSON-array] [--shard 1/2|2/2 (with --stages C)]",
+      "Usage: node scripts/chat-gate.ts [--verbose] [--list | --select (paths on stdin)] [--stages A,C,E,F,types] [--files JSON-array] [--shard 1/4|2/4|3/4|4/4 (with --stages C)]",
     );
   const root = NodePath.resolve(import.meta.dirname, "..");
   const requested = stageIds
@@ -382,26 +384,28 @@ if (import.meta.main) {
     : chatGateStages;
   let stages: ReadonlyArray<ChatGateStage> = requested;
   if (shard) {
-    // Balance the summed Vitest per-file durations, putting the largest file on shard two
-    // and moving smaller files to shard one until their totals meet. Recomputed from the
-    // 2026-10-12 Vitest timings; all unlisted and newly added C files run on shard two.
-    const first = new Set([
-      "opening",
-      "chat",
-      "engine-page",
-      "report-room",
-      "composer",
-      "images",
-      "recovery",
-      "admission",
-      "providerLimits",
-      "image-layout",
-      "engine-card",
-      "engine-secret",
-    ]);
-    const files = chatGateTestFiles(root, requested).filter(
-      (file) => first.has(NodePath.basename(file, ".scenario.ts")) === (shard === "1/2"),
-    );
+    // 2026-10-13 GitHub-hosted per-file timings: ~304s, 413s, 273s, 260s.
+    // The 413s layout suite owns a runner; new files join the fourth partition.
+    const partitions = [
+      [
+        "chat",
+        "report-room",
+        "recovery",
+        "admission",
+        "providerLimits",
+        "image-layout",
+        "engine-secret",
+      ],
+      ["owner-reported-layout-regressions"],
+      ["opening", "engine-page", "images", "composer"],
+    ];
+    const index = Number(shard.split("/")[0]) - 1;
+    const files = chatGateTestFiles(root, requested).filter((file) => {
+      const assigned = partitions.findIndex((names) =>
+        names.includes(NodePath.basename(file, ".scenario.ts")),
+      );
+      return (assigned === -1 ? 3 : assigned) === index;
+    });
     if (!files.length) throw new Error(`Chat contract shard ${shard}: no cases ran`);
     stages = filterChatGateFiles(root, requested, files).map((stage) => ({
       ...stage,

@@ -105,7 +105,7 @@ it("Decision: no test removed from CI coverage", () => {
 it("C scenario shards expose every case's timing in the CI log", () => {
   const commands = jobs.chat_scenarios!.strategy!.matrix.include.map((row) => row.command);
   const c = commands.filter((command) => command.startsWith("node scripts/chat-gate.ts"));
-  expect(c).toHaveLength(2);
+  expect(c).toHaveLength(4);
   for (const command of c)
     expect(command, "ASSERTION: C shards must expose Vitest per-case timings").toContain(
       "--verbose",
@@ -155,9 +155,11 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
   ]);
   expect(journeys.needs).toBe("chat_bundle");
   expect(journeys.strategy?.["fail-fast"]).toBe(false);
-  expect(journeys.strategy?.matrix.include.slice(0, 2).map((row) => row.command)).toEqual([
-    "node scripts/chat-gate.ts --verbose --stages C --shard 1/2",
-    "node scripts/chat-gate.ts --verbose --stages C --shard 2/2",
+  expect(journeys.strategy?.matrix.include.slice(0, 4).map((row) => row.command)).toEqual([
+    "node scripts/chat-gate.ts --verbose --stages C --shard 1/4",
+    "node scripts/chat-gate.ts --verbose --stages C --shard 2/4",
+    "node scripts/chat-gate.ts --verbose --stages C --shard 3/4",
+    "node scripts/chat-gate.ts --verbose --stages C --shard 4/4",
   ]);
   const uploaded = build.steps.find((step) => step.uses?.startsWith("actions/upload-artifact@"))!;
   const downloaded = journeys.steps.find((step) =>
@@ -174,4 +176,29 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
       env: { MATE_SCENARIO_REQUIRE_BUNDLE: "1" },
     }),
   ]);
+});
+
+it("the Test verdict includes every scripts and HQ shard", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  expect(workflow.jobs.test.needs, "ASSERTION: Test must wait for every split package").toEqual([
+    "test_scripts",
+    "test_hq",
+  ]);
+  expect(workflow.jobs.test.if).toBe("${{ !cancelled() }}");
+  expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'failure')");
+  expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'skipped')");
+  for (const name of ["test_scripts", "test_hq"]) {
+    expect(workflow.jobs[name].strategy.matrix.shard).toEqual([1, 2]);
+    expect(workflow.jobs[name].strategy["fail-fast"]).toBe(false);
+    expect(workflow.jobs[name].steps.at(-1).run).toContain(
+      "--shard ${{ matrix.shard }}/${{ strategy.job-total }}",
+    );
+  }
+  const command = workflow.jobs.test.steps.find(
+    (step: { name: string }) => step.name === "Test",
+  ).run;
+  expect(command).toContain("--filter '!@t3tools/scripts'");
+  expect(command).toContain("--filter '!@t3tools/hq'");
 });
