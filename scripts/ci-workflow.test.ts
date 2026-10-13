@@ -8,6 +8,64 @@ import { expect, it } from "vite-plus/test";
 import { chatGateStages } from "./chat-gate.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
+
+it("CI verifies the frozen lockfile once in Check and keeps local installs protected", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  ) as {
+    env?: Record<string, string>;
+    jobs: Record<
+      string,
+      {
+        env?: Record<string, string>;
+        steps: {
+          uses?: string;
+          env?: Record<string, string>;
+          with?: Record<string, unknown>;
+        }[];
+      }
+    >;
+  };
+  const verifying: string[] = [];
+  const consumers: Record<string, string>[] = [];
+  for (const [name, job] of Object.entries(workflow.jobs)) {
+    for (const step of job.steps.filter((step) => step.uses === "voidzero-dev/setup-vp@v1")) {
+      expect(step.with?.["run-install"]).not.toBe(false);
+      const env = { ...workflow.env, ...job.env, ...step.env };
+      consumers.push(env);
+      if (env.PNPM_CONFIG_TRUST_LOCKFILE !== "true") verifying.push(name);
+    }
+  }
+  expect(
+    verifying,
+    "ASSERTION: only Check may repeat the registry-backed lockfile policy verification",
+  ).toEqual(["check"]);
+  for (const env of consumers)
+    expect(
+      env.PNPM_CONFIG_FROZEN_LOCKFILE,
+      "ASSERTION: CI consumers must install the frozen lockfile that Check verifies",
+    ).toBe("true");
+  const policy = parse(NodeFS.readFileSync(NodePath.join(root, "pnpm-workspace.yaml"), "utf8"));
+  expect(policy.trustLockfile ?? false).toBe(false);
+  expect(policy.minimumReleaseAge ?? 1440).toBeGreaterThan(0);
+});
+
+it("tagged release installs reuse CI verification while manual rehearsals verify", () => {
+  const release = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/release.yml"), "utf8"),
+  );
+  expect(release.jobs.ci.if).toBe("github.event_name == 'push'");
+  expect(release.jobs.ci.uses).toBe("./.github/workflows/ci.yml");
+  const install = release.jobs.build.steps.find(
+    (step: { name: string }) => step.name === "Install dependencies",
+  );
+  expect(install.run).toBe("vp install --frozen-lockfile");
+  expect(
+    install.env?.PNPM_CONFIG_TRUST_LOCKFILE,
+    "ASSERTION: release rehearsals without a called CI check must verify their lockfile",
+  ).toBe("${{ github.event_name == 'push' }}");
+});
+
 const { jobs } = parse(
   NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
 ) as {
