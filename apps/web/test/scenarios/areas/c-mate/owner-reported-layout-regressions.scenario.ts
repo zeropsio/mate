@@ -886,10 +886,6 @@ describe("owner-reported layout regressions", () => {
                 }),
               );
               expect(failures).toEqual([]);
-              yield* Effect.promise(async () => {
-                const element = await s.page.$(ROW);
-                await element!.screenshot({ path: "/tmp/sidebar-running-flicker.png" });
-              });
               yield* s.then.noReload;
             }),
         );
@@ -1836,6 +1832,11 @@ describe("owner-reported layout regressions", () => {
                   end.row,
                   "ASSERTION: the last row ends above the docked composer",
                 ).toBeLessThanOrEqual(end.composer);
+                const paint = yield* Effect.promise(() => s.page.evaluate(readEnd));
+                expect(
+                  paint.last.bottom,
+                  `ASSERTION: history's bubbles, cards, pictures and text paint above the composer: ${quoted(paint)}`,
+                ).toBeLessThanOrEqual(paint.composerTop);
 
                 yield* Effect.promise(async () => {
                   if (process.env.MATE_LAYOUT_EVIDENCE) {
@@ -2422,6 +2423,8 @@ describe("owner-reported layout regressions", () => {
           readonly head: { readonly top: number; readonly words: string } | null;
           /** The person's message above the card, null out of view. */
           readonly asked: number | null;
+          /** Document positions of the rendered history above this run's card. */
+          readonly aboveRows: Record<string, number>;
           /** How many copies of the answer the person sees. */
           readonly answers: number;
           /** The strip of what runs alongside under the card, its height. */
@@ -2584,6 +2587,22 @@ describe("owner-reported layout regressions", () => {
                     if (words.includes("Live stress test 4A") && seen(element))
                       asked = element.getBoundingClientRect().top;
                   }
+                  const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                  const history = [...list.querySelectorAll<HTMLElement>("[data-timeline-row-id]")];
+                  const record = head?.closest("[data-timeline-row-id]");
+                  const aboveRows = Object.fromEntries(
+                    history
+                      .slice(
+                        0,
+                        history.findIndex((row) => row === record),
+                      )
+                      .map((row) => [
+                        row.dataset.timelineRowId!,
+                        row.getBoundingClientRect().top -
+                          list.getBoundingClientRect().top +
+                          list.scrollTop,
+                      ]),
+                  );
                   return {
                     // The frame's time, as in the last line's trace.
                     at: document.timeline.currentTime as number,
@@ -2595,6 +2614,7 @@ describe("owner-reported layout regressions", () => {
                             words: head.querySelector(".run-now-words")?.textContent ?? "",
                           },
                     asked,
+                    aboveRows,
                     answers,
                     strip:
                       [
@@ -2689,6 +2709,19 @@ describe("owner-reported layout regressions", () => {
               "ASSERTION: the answer shows once in every frame",
             ).toBe(true);
             expect(last.answers, "ASSERTION: the answer stands once the turn is over").toBe(1);
+            expect(
+              Object.keys(first.aboveRows).length,
+              "ASSERTION: history above the answer is sampled",
+            ).toBeGreaterThan(0);
+            for (const [id, top] of Object.entries(first.aboveRows))
+              expect(
+                Math.max(
+                  ...frames.flatMap((frame) =>
+                    frame.aboveRows[id] === undefined ? [] : [Math.abs(frame.aboveRows[id]! - top)],
+                  ),
+                ),
+                `ASSERTION: the history row ${id} above the answer keeps its document position`,
+              ).toBeLessThanOrEqual(1);
             // The head stands still through the settle: its card folds under it. Then the room the
             // fold left under the end goes in one short glide to the conversation's true end (the
             // owner, 0.15.44: the view rested short of its end over an empty foot).
@@ -2857,8 +2890,11 @@ describe("owner-reported layout regressions", () => {
         interface RestFrame {
           /** Empty card under the card's last drawn line, to its edge. */
           readonly band: number;
+          /** One line of the card's head, an independent bound on empty room at its foot. */
+          readonly headHeight: number;
           /** The conversation's last row's foot, a screen y. */
           readonly lastRow: number;
+          readonly composerTop: number;
           /** How far the view stands from its end. */
           readonly fromEnd: number;
         }
@@ -2884,7 +2920,9 @@ describe("owner-reported layout regressions", () => {
                   element.children.length === 0 &&
                   ((element.textContent ?? "").trim() !== "" ||
                     ["IMG", "svg", "BUTTON"].includes(element.tagName));
-                if (leaf && box.height > 0 && box.width > 0) drawn = Math.max(drawn, box.bottom);
+                if (leaf && box.height > 0 && box.width > 0) {
+                  drawn = Math.max(drawn, box.bottom);
+                }
               }
             }
             const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
@@ -2897,7 +2935,11 @@ describe("owner-reported layout regressions", () => {
               ) || 0;
             return {
               band: Math.max(edge, edge + lent) - drawn,
+              headHeight: card.querySelector("[data-run-head]")!.getBoundingClientRect().height,
               lastRow: rows.at(-1)!.getBoundingClientRect().bottom,
+              composerTop: document
+                .querySelector("[data-chat-composer-overlay]")!
+                .getBoundingClientRect().top,
               fromEnd: list.scrollHeight - list.clientHeight - list.scrollTop,
             };
           });
@@ -2979,12 +3021,29 @@ describe("owner-reported layout regressions", () => {
             const drawn = yield* settled(ending !== "on its job");
             const said = (rest: { folded: RestFrame; open: RestFrame }) =>
               (["folded", "open"] as const)
-                .map(
-                  (state) =>
-                    `${state} band ${Math.round(rest[state].band)} last row ${Math.round(rest[state].lastRow)} from its end ${Math.round(rest[state].fromEnd)}`,
-                )
+                .map((state) => `${state} ${quoted(rest[state])}`)
                 .join(", ");
             const seen = `live: ${said(live)}; reloaded: ${said(drawn)}`;
+            for (const [phase, rest] of Object.entries({ live, reloaded: drawn }))
+              for (const state of ["folded", "open"] as const) {
+                const frame = rest[state];
+                expect(
+                  frame.band,
+                  `ASSERTION: ${phase} ${state} card holds its drawn content: ${seen}`,
+                ).toBeGreaterThanOrEqual(-1);
+                expect(
+                  frame.band,
+                  `ASSERTION: ${phase} ${state} card's empty foot fits within one head line: ${seen}`,
+                ).toBeLessThanOrEqual(frame.headHeight);
+                expect(
+                  frame.lastRow,
+                  `ASSERTION: ${phase} ${state} conversation ends above the composer: ${seen}`,
+                ).toBeLessThanOrEqual(frame.composerTop);
+                expect(
+                  Math.abs(frame.fromEnd),
+                  `ASSERTION: ${phase} ${state} view rests at its end: ${seen}`,
+                ).toBeLessThanOrEqual(1);
+              }
             for (const state of ["folded", "open"] as const)
               expect(
                 Math.abs(live[state].band - drawn[state].band),
@@ -3055,8 +3114,21 @@ describe("owner-reported layout regressions", () => {
                     if (element.closest("[data-run-chat], .sr-only") !== null) continue;
                     line = element.getBoundingClientRect().bottom;
                   }
+                  const card = [...document.querySelectorAll("[data-run-chat]")].at(-1)!;
+                  const rows = [
+                    ...document.querySelectorAll<HTMLElement>("[data-timeline-row-id]"),
+                  ];
+                  const start = rows.indexOf(card.closest<HTMLElement>("[data-timeline-row-id]")!);
+                  const end = rows.findIndex(
+                    (row, index) => index > start && row.dataset.timelineRowKind === "card-end",
+                  );
+                  const slices = rows
+                    .slice(start, end + 1)
+                    .map((row) => row.getBoundingClientRect());
                   return {
                     line,
+                    cardTop: Math.min(...slices.map((box) => box.top)),
+                    cardBottom: Math.max(...slices.map((box) => box.bottom)),
                     fromEnd: list.scrollHeight - list.clientHeight - list.scrollTop,
                     foot: document.querySelector("form")?.getBoundingClientRect().top ?? null,
                   };
@@ -3073,7 +3145,23 @@ describe("owner-reported layout regressions", () => {
                 }),
               );
               const after = frames.at(-1)!;
-              const seen = `before ${before.line}/${before.fromEnd}/${before.foot}, after ${after.line}/${after.fromEnd}/${after.foot}`;
+              const seen = quoted({ before, after });
+              expect(
+                after.cardBottom - after.cardTop,
+                `ASSERTION: opening the card increases its height: ${seen}`,
+              ).toBeGreaterThan(before.cardBottom - before.cardTop);
+              expect(
+                after.cardTop,
+                `ASSERTION: the opened card's head grows upward: ${seen}`,
+              ).toBeLessThan(before.cardTop);
+              expect(
+                frames.every(
+                  (frame) =>
+                    frame.cardTop <= before.cardTop + 1 &&
+                    frame.cardBottom <= before.cardBottom + 16,
+                ),
+                `ASSERTION: the card grows above its foot throughout opening: ${seen}`,
+              ).toBe(true);
               expect(before.line, "ASSERTION: the answer stood in view before").not.toBeNull();
               expect(
                 Math.max(
@@ -3155,9 +3243,10 @@ describe("owner-reported layout regressions", () => {
                     -1,
                   )!;
                   const bubble = card.querySelector<HTMLElement>('[data-chat-kind="note"]')!;
-                  const box = bubble
-                    .querySelector<HTMLElement>("[data-capped]")!
-                    .getBoundingClientRect();
+                  const item = bubble.querySelector<HTMLElement>("[data-capped]")!;
+                  const box = item.getBoundingClientRect();
+                  const contentHeight = item.firstElementChild!.getBoundingClientRect().height;
+                  const itemHeight = Number.parseFloat(getComputedStyle(item).maxHeight);
                   const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
                   let last: { top: number; bottom: number } | null = null;
                   while (walker.nextNode()) {
@@ -3165,13 +3254,28 @@ describe("owner-reported layout regressions", () => {
                     const rect = walker.currentNode.parentElement!.getBoundingClientRect();
                     last = { top: rect.top, bottom: rect.bottom };
                   }
-                  return { top: box.top, bottom: box.bottom, height: box.height, last };
+                  return {
+                    top: box.top,
+                    bottom: box.bottom,
+                    height: box.height,
+                    contentHeight,
+                    itemHeight,
+                    last,
+                  };
                 }),
               );
               expect(
                 read.height,
                 "ASSERTION: the words grow past four lines toward the run scroll's height",
               ).toBeGreaterThan(300);
+              expect(
+                read.contentHeight,
+                `ASSERTION: the streamed words fill more than the item's allowed height: ${quoted(read)}`,
+              ).toBeGreaterThan(read.itemHeight);
+              expect(
+                Math.abs(read.height - read.itemHeight),
+                `ASSERTION: the words' box grows to the full item height while being written: ${quoted(read)}`,
+              ).toBeLessThanOrEqual(1);
               expect(
                 read.last !== null &&
                   read.last.bottom <= read.bottom + 1 &&
@@ -4009,6 +4113,11 @@ describe("owner-reported layout regressions", () => {
                 `ASSERTION: it slides, not jumps: ${seen}`,
               ).toBeGreaterThanOrEqual(2);
               const reaches = frames.map((frame) => frame.reach);
+              expect(
+                reaches.filter((reach) => reach > reaches[0]! + 4 && reach < reaches.at(-1)! - 4)
+                  .length,
+                `ASSERTION: the menu grows through intermediate widths out of the rail: ${reaches.join(" ")}`,
+              ).toBeGreaterThanOrEqual(2);
               expect(
                 reaches.at(-1),
                 `ASSERTION: the menu stands docked at its width: ${reaches.join(" ")}`,
