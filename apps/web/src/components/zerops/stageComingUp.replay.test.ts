@@ -1,3 +1,4 @@
+import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 /**
  * A stage coming up, replayed on run 4's clock (2 Oct 2026) with HQ deploying it, under invented
  * names: the menu's heading line (`listedStopComing` → `headingLine`, what the left menu reads) and
@@ -10,7 +11,6 @@
  * +1407 → +1479 s and its address turned on at +1481 s.
  */
 import {
-  environmentRow,
   groupFlow,
   listedStopComing,
   stopServes,

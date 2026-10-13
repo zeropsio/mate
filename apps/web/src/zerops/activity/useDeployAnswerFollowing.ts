@@ -1,3 +1,4 @@
+import type { ProjectId } from "@t3tools/contracts";
 import { deployAnswerFollowing, deployLogTarget } from "@t3tools/client-runtime/zerops/hq";
 import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
@@ -15,7 +16,7 @@ export function useDeployAnswerFollowing(answer: HqDeployAnswer | undefined) {
     const logs = new Map<
       string,
       {
-        readonly projectId: string;
+        readonly projectId: ProjectId;
         readonly target: NonNullable<ReturnType<typeof deployLogTarget>>;
       }
     >();
@@ -24,11 +25,13 @@ export function useDeployAnswerFollowing(answer: HqDeployAnswer | undefined) {
     const streamed = new Map<string, HqJob>();
     for (const app of Object.values(environments)) {
       for (const environment of app.environments ?? []) {
+        if (environment.target.kind !== "zerops") continue;
         for (const job of environment.jobs) {
           if (!asked.has(job.id)) continue;
           streamed.set(job.id, job);
           const target = deployLogTarget(job);
-          if (target !== undefined) logs.set(job.id, { projectId: environment.projectId, target });
+          if (target !== undefined)
+            logs.set(job.id, { projectId: environment.target.projectId, target });
         }
       }
     }

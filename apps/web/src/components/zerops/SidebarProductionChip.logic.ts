@@ -121,7 +121,7 @@ export interface ReleaseFailure {
 export function releaseFailureOf(input: {
   /** Newest first. */
   readonly releases: ReadonlyArray<FlowReleaseRow>;
-  readonly environmentInputs: ReadonlyArray<GroupEnvironmentRowInput>;
+  readonly environmentInputs: ReadonlyArray<Pick<GroupEnvironmentRowInput, "tier" | "services">>;
 }): ReleaseFailure | undefined {
   const live = input.releases.findIndex((release) => release.standing === "live");
   const newer = live === -1 ? input.releases : input.releases.slice(0, live);
@@ -159,7 +159,7 @@ const wordsOf = (text: string | undefined): string | undefined => {
  * build's own failure, or HQ's refusal — while it is the newest.
  */
 function failedDeploy(
-  environments: ReadonlyArray<GroupEnvironmentRowInput>,
+  environments: ReadonlyArray<Pick<GroupEnvironmentRowInput, "tier" | "services">>,
   entry: { readonly service: string; readonly commit: string },
 ): HqJob | undefined {
   const production = environments.find((environment) => environment.tier === "production");

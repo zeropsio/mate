@@ -24,7 +24,7 @@ export function ZeropsRenameProjectDialog({
   group,
   onClose,
 }: {
-  readonly group: ZeropsGroup;
+  readonly group: Pick<ZeropsGroup, "groupId" | "name" | "nameSource">;
   readonly onClose: () => void;
 }) {
   const { rename, retry } = useRenameGroup();

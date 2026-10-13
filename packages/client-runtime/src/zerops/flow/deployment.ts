@@ -654,7 +654,7 @@ const sameVersion = (left: DeployedVersion, right: DeployedVersion): boolean =>
  */
 export function runningVersion(
   runs: DeployedVersion | undefined,
-  row: EnvironmentRow | undefined,
+  row: Omit<EnvironmentRow, "projectId"> | undefined,
 ): DeployedVersion | undefined {
   const named = runs?.label === undefined ? undefined : runs;
   const read = row?.version.label === undefined ? undefined : row.version;
@@ -683,7 +683,7 @@ export function runningVersion(
  */
 export function runningTone(
   runs: DeployedVersion | undefined,
-  row: EnvironmentRow | undefined,
+  row: Omit<EnvironmentRow, "projectId"> | undefined,
 ): GroupRowTone {
   const named = runs?.label === undefined ? undefined : runs;
   const read = row?.version.label === undefined ? undefined : row;
@@ -709,7 +709,7 @@ export function deploymentReadFailed(deployment: Shown<Deployment> | undefined):
  */
 export function stopTone(
   deployment: Shown<Deployment> | undefined,
-  row: EnvironmentRow | undefined,
+  row: Omit<EnvironmentRow, "projectId"> | undefined,
 ): GroupRowTone {
   if (deploymentReadFailed(deployment)) return "neutral";
   if (deployment?.state === "known" && deployment.value.kind === "deploying") return "pending";
@@ -727,7 +727,7 @@ export function stopTone(
  */
 function runningView(
   runs: Extract<Deployment, { readonly kind: "running" }> | undefined,
-  row: EnvironmentRow | undefined,
+  row: Omit<EnvironmentRow, "projectId"> | undefined,
 ): StopView {
   const version = runningVersion(runs?.version, row);
   const tone = runningTone(runs?.version, row);
@@ -750,7 +750,7 @@ function runningView(
  */
 export function stopView(input: {
   readonly deployment: Shown<Deployment>;
-  readonly row: EnvironmentRow | undefined;
+  readonly row: Omit<EnvironmentRow, "projectId"> | undefined;
   readonly nowMs: number;
 }): StopView {
   const { deployment, row } = input;

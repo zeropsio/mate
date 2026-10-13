@@ -41,7 +41,9 @@ export interface HqOutage {
  * retrying often.
  */
 export function hqOutage(
-  navigation: HqNavigationRead,
+  navigation: Pick<HqNavigationRead, "live" | "refusal" | "capped" | "reconnecting"> & {
+    readonly structure: unknown;
+  },
   downSince: number | null,
   timestampFormat: TimestampFormat,
   nowMs: number,

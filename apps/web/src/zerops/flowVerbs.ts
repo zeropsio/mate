@@ -263,18 +263,20 @@ export function useFlowVerbs(): FlowVerbs {
       projectId: string,
       deploy: { readonly service: string; readonly sha: string; readonly after: string },
     ): Promise<FlowVerbOutcome> => {
-      const environment = flow.environmentInputs.find(
-        (entry) => entry.projectId === projectId,
-      )?.environment;
-      if (environment === undefined) return Promise.resolve(refused(NOT_READ_YET));
+      const row = flow.environmentInputs.find(
+        (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
+      );
+      if (row === undefined || row.target.kind !== "zerops")
+        return Promise.resolve(refused(NOT_READ_YET));
+      const target = row.target;
       return run(
         { kind: "redeploy", groupId: flow.groupId, projectId, service: deploy.service },
         (orgId) => ({
           kind: "redeploy",
           orgId,
           appId: flow.groupId,
-          projectId,
-          environment,
+          projectId: target.projectId,
+          environment: row.environment,
           ...deploy,
         }),
         false,
@@ -285,18 +287,20 @@ export function useFlowVerbs(): FlowVerbs {
 
   const addService = useCallback(
     (flow: ZeropsProjectFlow, projectId: string, service: string): Promise<FlowVerbOutcome> => {
-      const environment = flow.environmentInputs.find(
-        (entry) => entry.projectId === projectId,
-      )?.environment;
-      if (environment === undefined) return Promise.resolve(refused(NOT_READ_YET));
+      const row = flow.environmentInputs.find(
+        (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
+      );
+      if (row === undefined || row.target.kind !== "zerops")
+        return Promise.resolve(refused(NOT_READ_YET));
+      const target = row.target;
       return run(
         { kind: "add-service", groupId: flow.groupId, projectId, service },
         (orgId) => ({
           kind: "add-service",
           orgId,
           appId: flow.groupId,
-          projectId,
-          environment,
+          projectId: target.projectId,
+          environment: row.environment,
           service,
         }),
         false,

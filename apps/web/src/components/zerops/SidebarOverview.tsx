@@ -54,7 +54,10 @@ export function overviewProjectsOf(input: {
     return overviewProjectOf({
       name: project.name,
       environments: (flow?.environments ?? []).map((environment) => {
-        const item = byProject.get(environment.projectId);
+        const item =
+          environment.target.kind === "zerops"
+            ? byProject.get(environment.target.projectId)
+            : undefined;
         return {
           tier: environment.tier,
           tone: environment.tone,

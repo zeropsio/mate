@@ -9,7 +9,7 @@ import {
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { HqEnvironmentId, ProjectId, type EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -634,7 +634,8 @@ describe("groupFlowInputOf", () => {
   it("reads the flow's pull requests, rows and release where it was read", () => {
     const row = {
       kind: "environment" as const,
-      projectId: "p-stage",
+      id: HqEnvironmentId.make("p-stage"),
+      target: { kind: "zerops" as const, projectId: ProjectId.make("p-stage") },
       name: "stage",
       tier: "stage" as const,
       source: "main",

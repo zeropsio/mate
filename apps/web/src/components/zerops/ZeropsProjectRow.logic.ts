@@ -44,7 +44,7 @@ import {
   HQ_PROJECT_NAME,
   type HqMateOfferStates,
   type HqPresses,
-  type HqStructure,
+  type CanonicalHqStructure,
   type OfficialHq,
 } from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
@@ -382,7 +382,7 @@ export function plainZeropsProject(
  */
 export function plainEvidenceOf(input: {
   readonly hqKnown: boolean;
-  readonly structure: HqStructure | null;
+  readonly structure: CanonicalHqStructure | null;
   /** Each press HQ holds a record of, by project (`hq_press`); none before HQ said. */
   readonly presses: Readonly<Record<string, unknown>> | null;
   readonly hq: OfficialHq;
@@ -404,7 +404,7 @@ export function plainEvidenceOf(input: {
  * Every project HQ's structure holds any record of: placed in an application or none, a tool, a
  * birth bound to it, an environment, or one whose removal HQ has not finished.
  */
-export function hqRecordedProjects(structure: HqStructure): ReadonlySet<string> {
+export function hqRecordedProjects(structure: CanonicalHqStructure): ReadonlySet<string> {
   const recorded = new Set<string>();
   for (const tool of structure.tools ?? []) recorded.add(tool.projectId);
   for (const mate of structure.ungrouped) recorded.add(mate.projectId);
@@ -413,7 +413,9 @@ export function hqRecordedProjects(structure: HqStructure): ReadonlySet<string> 
     for (const id of app.contents?.deletingProjectIds ?? []) recorded.add(id);
     // Environments HQ refused this reader are still among its projects above.
     const environments = Array.isArray(app.environments) ? app.environments : [];
-    for (const environment of environments) recorded.add(environment.projectId);
+    for (const environment of environments) {
+      if (environment.target.kind === "zerops") recorded.add(environment.target.projectId);
+    }
     for (const birth of app.births ?? []) {
       if (birth.projectId != null) recorded.add(birth.projectId);
     }

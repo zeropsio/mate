@@ -25,6 +25,7 @@ import {
   joinProjectFlows,
   HQ_CHANGES_UNANSWERED,
   type ZeropsProjectFlow,
+  type ReleaseLive,
 } from "./projectFlowJoin.ts";
 import { sameValue } from "./equal.ts";
 import { scopeFreshness } from "./freshness.ts";
@@ -88,6 +89,12 @@ export interface ProjectFlowKey {
   readonly appId: string;
   readonly hqAddress: string | undefined;
   readonly viewer: ZeropsOrganization | undefined;
+  readonly review?:
+    | {
+        readonly permission: ZeropsProjectFlow["release"]["permission"];
+        readonly live: ReleaseLive;
+      }
+    | undefined;
 }
 
 export interface CanonicalProjectFlow extends Omit<
@@ -100,7 +107,20 @@ export interface CanonicalProjectFlow extends Omit<
 }
 export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFlow | undefined> = {
   name: "canonicalProjectFlow",
-  keyOf: (key) => JSON.stringify(key),
+  keyOf: (key) =>
+    JSON.stringify({
+      ...key,
+      review:
+        key.review === undefined
+          ? undefined
+          : {
+              ...key.review,
+              live: {
+                ...key.review.live,
+                runs: key.review.live.runs === undefined ? undefined : [...key.review.live.runs],
+              },
+            },
+    }),
   derive: (read, key) => {
     const { orgId, appId, hqAddress, viewer } = key;
     if (!read.members(hqAppsScope(orgId)).ids.includes(appId)) return undefined;
@@ -178,8 +198,11 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
       releases: new Map(detail.releases === undefined ? [] : [[appId, detail.releases]]),
       repos: new Map(detail.repos === undefined ? [] : [[appId, detail.repos]]),
       recipes: new Map(recipe === undefined ? [] : [[appId, recipe]]),
-      permissions: new Map(),
-      live: new Map(),
+      review: key.review !== undefined,
+      permissions: new Map(
+        key.review?.permission === undefined ? [] : [[appId, key.review.permission]],
+      ),
+      live: new Map(key.review === undefined ? [] : [[appId, key.review.live]]),
       changes: changes?.rows ?? null,
       changesFailure: unavailable ? HQ_CHANGES_UNANSWERED : undefined,
       changesRefused: changes?.refused ?? new Map(),

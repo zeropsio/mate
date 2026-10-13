@@ -1,3 +1,4 @@
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 /**
  * The pass 16 plan's menu, as fixtures: projects standing in every state its
  * mock draws, so the harness (`design.html?set=plan`) can be put side by side
@@ -20,7 +21,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   deployedVersion,
-  type EnvironmentRow,
+  type CanonicalEnvironmentRow as EnvironmentRow,
   type FlowPullRequest,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
@@ -410,7 +411,8 @@ function row(
   const source = tier === "production" ? "release" : "main";
   return {
     kind: "environment",
-    projectId,
+    id: HqEnvironmentId.make(projectId),
+    target: { kind: "zerops", projectId: ProjectId.make(projectId) },
     name: tier,
     tier,
     source,

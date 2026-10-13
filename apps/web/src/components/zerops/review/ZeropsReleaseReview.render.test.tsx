@@ -1,3 +1,4 @@
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import type { FlowReleaseRow } from "@t3tools/client-runtime/zerops";
 import {
   Window,
@@ -76,7 +77,15 @@ function row(tag: string, commit: string, live = true): FlowReleaseRow {
 function flow(): ZeropsProjectFlow {
   return {
     groupId: "xyz",
-    declarations: [{ name: "prod", tier: "production", project: "p-prod", sources: ["release"] }],
+    declarations: [
+      {
+        name: "prod",
+        tier: "production",
+        id: HqEnvironmentId.make("p-prod"),
+        target: { kind: "zerops", projectId: ProjectId.make("p-prod") },
+        sources: ["release"],
+      },
+    ],
     declarationsRead: true,
     recipeRead: true,
     environments: [],

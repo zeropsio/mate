@@ -36,6 +36,9 @@ import {
   shownHqStatusAtom,
   shownProjectsAtom,
   type HqNavigationRead,
+  type CanonicalHqNavigationRead,
+  canonicalHqNavigation,
+  NOT_READ_HQ,
 } from "@t3tools/client-runtime/data";
 
 import { sameValue } from "../lib/sameValue";
@@ -82,8 +85,18 @@ export const zeropsSessionAtom = Atom.make<ZeropsSessionView | null>(null).pipe(
  * HQ's navigation of the organization in view (`@t3tools/client-runtime/data` `hqNavigation`): its
  * applications and where HQ places each project, as the account's store holds them.
  */
-export const hqNavigationAtom = shownHqNavigationAtom;
-export type HqNavigationView = HqNavigationRead & { readonly orgId: string | null };
+export const hqNavigationAtom = Atom.make(
+  (get): CanonicalHqNavigationRead & { readonly orgId: string | null } => {
+    const account = get(accountReadsAtom);
+    return account?.orgId == null
+      ? { ...NOT_READ_HQ, structure: null, orgId: null }
+      : {
+          ...get(account.data.project(canonicalHqNavigation, account.orgId)),
+          orgId: account.orgId,
+        };
+  },
+);
+export type HqNavigationView = CanonicalHqNavigationRead & { readonly orgId: string | null };
 
 /** HQ stopped answering what it answered: catching up, refused, or its retries capped. */
 export const hqDown = (

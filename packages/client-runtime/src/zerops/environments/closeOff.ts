@@ -25,7 +25,9 @@ export interface CloseOffWord {
 /** The close-off word of an HQ structure, current or as last known. */
 export function closeOffWordOf(
   organizationId: string,
-  structure: HqStructure,
+  structure: Pick<HqStructure, "ungrouped"> & {
+    readonly apps: ReadonlyArray<Pick<HqStructure["apps"][number], "projects">>;
+  },
   current: boolean,
 ): CloseOffWord {
   const closed = new Set<string>();

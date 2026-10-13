@@ -17,7 +17,7 @@ import {
   candidateContainerRuns,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import type { MateComing, ZeropsProjectFlow } from "@t3tools/client-runtime/data";
+import type { MateComing } from "@t3tools/client-runtime/data";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { CircleAlertIcon, GitPullRequestIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -80,7 +80,7 @@ export function OverviewCardMate({
   readonly shape: MateShapeId | undefined;
   readonly groupId: string | undefined;
   /** Its project's flow, whose changes say whether its own waits on the viewer's review. */
-  readonly flow: ZeropsProjectFlow | undefined;
+  readonly flow: import("~/zerops/projectFlows").ZeropsProjectFlow | undefined;
   /** Its open change that asks for review (`changeShowsReview`). */
   readonly change: FlowPullRequest | undefined;
   /** Still coming up, or never came, as its menu row reads it (`useMateComingOf`). */

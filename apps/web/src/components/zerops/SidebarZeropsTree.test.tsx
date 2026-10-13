@@ -3,7 +3,7 @@ import { markupDom } from "../../../test/markupDom";
 import {
   buildZeropsGroupTree,
   groupFlow,
-  type EnvironmentRow,
+  type CanonicalEnvironmentRow as EnvironmentRow,
   type FlowPullRequest,
   type GroupNextStepKind,
   type ZeropsPlacedBirth,
@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
+  HqEnvironmentId,
   EnvironmentId,
   ProjectId,
   ThreadId,
@@ -832,7 +833,8 @@ const pull = (number: number, overrides: Partial<FlowPullRequest> = {}): FlowPul
 });
 const stageRow: EnvironmentRow = {
   kind: "environment",
-  projectId: "crm-stage",
+  id: HqEnvironmentId.make("crm-stage"),
+  target: { kind: "zerops", projectId: ProjectId.make("crm-stage") },
   name: "stage",
   tier: "stage",
   source: "main",
@@ -852,7 +854,8 @@ const stageRow: EnvironmentRow = {
 };
 const productionRow: EnvironmentRow = {
   ...stageRow,
-  projectId: "crm-prod",
+  id: HqEnvironmentId.make("crm-prod"),
+  target: { kind: "zerops", projectId: ProjectId.make("crm-prod") },
   name: "production",
   tier: "production",
   source: "release",
@@ -2012,7 +2015,8 @@ describe("production and the stages are the project's places, behind its globe",
 
   it("never calls production healthy where what a service runs cannot be told", () => {
     const mounted = tree([CRM_DEV, up(CRM_PROD)], {
-      getFlow: () => flow({ releaseUntold: ["api"] }),
+      getFlow: () =>
+        flow({ environments: new Map([["crm-prod", released("v2.4.0")]]), releaseUntold: ["api"] }),
     });
     expect(placesOf(mounted)).toEqual([
       { name: "production", word: "Can't tell what api runs", tone: "muted" },
@@ -2075,6 +2079,7 @@ describe("production and the stages are the project's places, behind its globe",
 
   it("says what waits for production on its Release tag alone: production stays healthy and calm", () => {
     const waiting = flow({
+      environments: new Map([["crm-prod", released("v2.4.0")]]),
       releaseOffered: true,
       releaseContents: [
         compared([
@@ -2183,6 +2188,7 @@ describe("production and the stages are the project's places, behind its globe",
 
   it("turns prod amber when the newest release did not go through, while the old one serves", () => {
     const failed = flow({
+      environments: new Map([["crm-prod", released("v2.4.0")]]),
       releaseFailure: {
         tag: "v2.5.0",
         kind: "deploy-failed",
@@ -2966,7 +2972,7 @@ describe("the sidebar and the projects page read one group the same way", () => 
     const sidebar: SidebarProjectFlow = {
       pullRequests: groupReads.pullRequests,
       merged: groupReads.merged,
-      environments: new Map(groupReads.environments.map((row) => [row.projectId, row])),
+      environments: new Map(groupReads.environments.map((row) => [row.id, row])),
       releaseOffered: groupReads.release.gate.allowed,
       releaseContents: groupReads.release.contents,
       releaseTag: groupReads.release.suggestion,
@@ -3748,8 +3754,22 @@ describe("what the jump box finds in the menu", () => {
   const linksFlow = (pullRequests: ReadonlyArray<FlowPullRequest>): SidebarProjectFlow => ({
     pullRequests,
     environments: new Map([
-      ["links-stage", { ...stageRow, projectId: "links-stage" }],
-      ["links-prod", { ...productionRow, projectId: "links-prod" }],
+      [
+        "links-stage",
+        {
+          ...stageRow,
+          id: HqEnvironmentId.make("links-stage"),
+          target: { kind: "zerops", projectId: ProjectId.make("links-stage") },
+        },
+      ],
+      [
+        "links-prod",
+        {
+          ...productionRow,
+          id: HqEnvironmentId.make("links-prod"),
+          target: { kind: "zerops", projectId: ProjectId.make("links-prod") },
+        },
+      ],
     ]),
     releaseOffered: false,
     onOpenChange: () => {},
@@ -4153,7 +4173,7 @@ describe("the menu's release offer", () => {
               ? undefined
               : {
                   pullRequests: flow.pullRequests,
-                  environments: new Map(flow.environments.map((row) => [row.projectId, row])),
+                  environments: new Map(flow.environments.map((row) => [row.id, row])),
                   releaseOffered: flow.release.gate.allowed,
                   releaseSummary: flow.release.summary,
                   releaseTag: flow.release.suggestion,

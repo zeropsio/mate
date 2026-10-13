@@ -33,7 +33,7 @@ const view = (organizationId: string): HqNavigationView => ({
 describe("the applications HQ holds with no project", () => {
   it.each<{
     readonly name: string;
-    readonly view: HqNavigationView;
+    readonly view: Parameters<typeof emptyApplications>[0];
     readonly organizationId: string | undefined;
     readonly apps: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   }>([

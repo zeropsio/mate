@@ -7,7 +7,7 @@
  * and services, HQ's releases — so a card's foot and the menu say the same of one production.
  */
 import { useAtomValue } from "@effect/atom-react";
-import type { ZeropsProjectFlow } from "@t3tools/client-runtime/data";
+import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { deployActivatedAt, type Deployment } from "@t3tools/client-runtime/zerops/flow";
@@ -121,6 +121,16 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
             }),
           }
         : { kind: "waiting" };
+    const deploymentsOf = (id: string) => {
+      const row = read?.environments.find((environment) => environment.id === id);
+      const projectId =
+        row === undefined
+          ? entry.stops.get(id)?.item?.project.id
+          : row.target.kind === "zerops"
+            ? row.target.projectId
+            : undefined;
+      return projectId === undefined ? undefined : deployments.get(projectId);
+    };
     const { production } = entry.flow;
     const prodStop = "stop" in production ? production.stop : undefined;
     const prodItem = itemOf(entry, prodStop?.projectId);
@@ -129,7 +139,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       productionChip({
         production,
         building:
-          prodStop === undefined ? undefined : buildingOf(deployments.get(prodStop.projectId)),
+          prodStop === undefined ? undefined : buildingOf(deploymentsOf(prodStop.projectId)),
         waiting: entry.flow.main.notLive,
         waitingAtLeast: entry.flow.main.notLiveAtLeast,
         untold: read?.release.untold ?? NO_UNTOLD,
@@ -148,8 +158,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     const since =
       prodStop === undefined
         ? undefined
-        : (deployActivatedAt(deployments.get(prodStop.projectId)) ??
-          prodItem?.services?.deployedAt);
+        : (deployActivatedAt(deploymentsOf(prodStop.projectId)) ?? prodItem?.services?.deployedAt);
     return { read, releases, chip, stageChips, down, since, prodItem, prodStop };
   };
 

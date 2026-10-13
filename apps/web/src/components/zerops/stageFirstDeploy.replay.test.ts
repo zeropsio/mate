@@ -1,6 +1,6 @@
+import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 /** Replay of origin's import/build boundaries with HQ deploy records replacing runner and forge statuses. */
 import {
-  environmentRow,
   groupFlow,
   listedStopComing,
   stopServes,

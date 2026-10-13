@@ -1,3 +1,5 @@
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
+import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
 /**
  * Every page that stands in place of the thread, in the states it reaches.
@@ -19,14 +21,13 @@ import {
   carriedReads,
   deployedCommit,
   deployedVersion,
-  environmentRow,
   environmentSlots,
   releaseRunBy,
   nameStopByRelease,
   sameCommit,
   releaseContentsSummary,
   releaseRow,
-  type EnvironmentRow,
+  type CanonicalEnvironmentRow as EnvironmentRow,
   type EnvironmentServiceState,
   type FlowPullRequest,
   type FlowRelease,
@@ -160,7 +161,8 @@ const TAGS: ReadonlyMap<string, ReadonlyArray<string>> = new Map([[sha("3f9c1b2e
 
 function environment(over: Partial<EnvironmentRow> = {}): EnvironmentRow {
   return {
-    projectId: "shop-stage",
+    id: HqEnvironmentId.make("shop-stage"),
+    target: { kind: "zerops", projectId: ProjectId.make("shop-stage") },
     name: "stage",
     tier: "stage",
     source: "main",
@@ -727,7 +729,8 @@ function State({
 }
 
 const PRODUCTION_ROW = environment({
-  projectId: "shop-prod",
+  id: HqEnvironmentId.make("shop-prod"),
+  target: { kind: "zerops", projectId: ProjectId.make("shop-prod") },
   name: "production",
   tier: "production",
   source: "release",
@@ -767,7 +770,7 @@ function EnvironmentsFrame({
       tags={new Map()}
       environments={environments}
       slots={environmentSlots({
-        environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
+        environments: environments.map((entry) => ({ id: entry.id, tier: entry.tier })),
         devstages: [],
         pending: [],
         halfMade: [],
@@ -876,7 +879,8 @@ function Harness() {
           environments={[
             environment(),
             environment({
-              projectId: "shop-prod",
+              id: HqEnvironmentId.make("shop-prod"),
+              target: { kind: "zerops", projectId: ProjectId.make("shop-prod") },
               name: "production",
               tier: "production",
               source: "release",

@@ -1,10 +1,12 @@
+import { canonicalProjectFlow } from "@t3tools/client-runtime/data";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
+import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 import {
   deployedVersion,
-  environmentRow,
   environmentSlots,
   releaseContentsSummary,
   releaseRow,
-  type EnvironmentRow,
+  type CanonicalEnvironmentRow as EnvironmentRow,
   type EnvironmentServiceState,
   type FlowReleaseRow,
   type Moved,
@@ -28,7 +30,14 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { Window } from "happy-dom";
-import type { ReactNode } from "react";
+import { act, type ReactNode } from "react";
+import { RegistryContext } from "@effect/atom-react";
+import { AtomRegistry } from "effect/reactivity";
+import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
+import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
+import type { CanonicalHqStructure } from "@t3tools/client-runtime/zerops/hq";
+import { create, type ReactTestRenderer } from "react-test-renderer";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -39,6 +48,7 @@ import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import {
   detailTrail,
   groupMateOf,
+  ZeropsStopDetailPage,
   ZeropsGroupPane,
   ZeropsStopPane,
   ZeropsRuntimeStops,
@@ -52,6 +62,9 @@ const NOW = vi.hoisted(() => Date.parse("2026-09-25T12:00:00Z"));
 /** What the platform answered of each stop, as the page's stop lines read it. */
 const platform = vi.hoisted(() => ({
   deployments: new Map() as ReadonlyMap<string, unknown>,
+  routeWitness: false,
+  projectReads: [] as Array<string>,
+  navigation: [] as Array<unknown>,
 }));
 vi.mock("~/zerops/activity/useProjectActivity", async (original) => {
   const activity = await original<typeof import("~/zerops/activity/useProjectActivity")>();
@@ -63,6 +76,16 @@ vi.mock("~/zerops/activity/useProjectActivity", async (original) => {
 vi.mock("~/zerops/projectFlows", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useStopDeploymentsShown: () => platform.deployments,
+  useProjectFlows: (...args: unknown[]) => {
+    if (platform.routeWitness) {
+      platform.projectReads.push("project/service/log/version/token consumer");
+      throw new Error("Project reads reached before target dispatch");
+    }
+    throw new Error(`Unexpected flow read: ${String(args)}`);
+  },
+}));
+vi.mock("~/zerops/accountHq", () => ({
+  useAccountHq: () => ({ status: "ready", hq: { kind: "official", address: "https://hq.test" } }),
 }));
 vi.mock("~/zerops/useNowMs", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -76,7 +99,9 @@ vi.mock("@tanstack/react-router", async (actual) => {
     // Standing alone, the frame's bar carries the lockup as a link home.
     Link: ({ to, ...props }: React.ComponentProps<"a"> & { to: string }) =>
       createElement("a", { href: to, ...props }),
-    useNavigate: () => () => undefined,
+    useNavigate: () => (target: unknown) => {
+      platform.navigation.push(target);
+    },
   };
 });
 
@@ -94,7 +119,8 @@ const environment = (
   tier: EnvironmentRow["tier"] = "stage",
 ): EnvironmentRow =>
   ({
-    projectId,
+    id: HqEnvironmentId.make(projectId),
+    target: { kind: "zerops", projectId: ProjectId.make(projectId) },
     name,
     tier,
     source: "main",
@@ -123,7 +149,7 @@ const mate = (projectId: string, name: string, subject: string) => ({
 /** The Environments section as it stands for these environments and nothing else. */
 const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
   environmentSlots({
-    environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
+    environments: environments.map((entry) => ({ id: entry.id, tier: entry.tier })),
     devstages: [],
     pending: [],
     halfMade: [],
@@ -1727,4 +1753,247 @@ describe("detailTrail: where a detail page sits", () => {
   ] as const)("%s", (_case, inside, labels) => {
     expect(detailTrail(inside).map((crumb) => crumb.label)).toEqual(labels);
   });
+});
+
+describe("environment route target dispatch", () => {
+  it.each(["unknown", "git"] as const)(
+    "The environment route resolves its target before observing a Zerops project.",
+    (kind) => {
+      const registry = AtomRegistry.make();
+      const id = HqEnvironmentId.make("environment-without-project");
+      const structure = {
+        apps: [
+          {
+            id: "shop",
+            name: "Shop",
+            projects: [],
+            environments:
+              kind === "unknown"
+                ? []
+                : [
+                    {
+                      id,
+                      projectId: ProjectId.make("different-project-address"),
+                      target: { kind: "git", branch: "main", delivery: "direct" },
+                      tier: "production",
+                      name: "Production",
+                      sources: ["release"],
+                      order: 1,
+                      keyHeld: false,
+                      keyInvalid: false,
+                      jobs: [],
+                    },
+                  ],
+          },
+        ],
+        ungrouped: [],
+      } as CanonicalHqStructure;
+      const { store, seed } = mountHqNavigation(registry, "org", { structure });
+      const requests: string[] = [];
+      const data = {
+        data: store.data,
+        orgId: "org",
+        demandDetail: (demand) => {
+          requests.push(demand.family);
+          return () => {};
+        },
+      } satisfies Pick<AccountData, "data" | "orgId" | "demandDetail">;
+      platform.routeWitness = true;
+      platform.projectReads = [];
+      let failure: unknown;
+      let mounted: ReactTestRenderer | undefined;
+      try {
+        act(() => {
+          mounted = create(
+            <RegistryContext.Provider value={registry}>
+              <AccountDataContext.Provider value={data as AccountData}>
+                <ZeropsStopDetailPage groupId="shop" environmentId={id} />
+              </AccountDataContext.Provider>
+            </RegistryContext.Provider>,
+          );
+        });
+      } catch (cause) {
+        failure = cause;
+      } finally {
+        platform.routeWitness = false;
+      }
+      expect(platform.projectReads, "An environment's id never opens a Zerops project.").toEqual(
+        [],
+      );
+      expect(requests.filter((family) => family !== "hqAppDetail")).toEqual([]);
+      expect(failure).toBeUndefined();
+      if (kind === "unknown") {
+        act(() =>
+          seed({
+            structure: {
+              ...structure,
+              apps: [
+                {
+                  ...structure.apps[0]!,
+                  environments: [
+                    {
+                      id,
+                      target: { kind: "git", branch: "main", delivery: "direct" },
+                      tier: "production",
+                      name: "Late production",
+                      sources: ["release"],
+                      order: 1,
+                      keyHeld: false,
+                      keyInvalid: false,
+                      jobs: [],
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+        );
+        expect(
+          mounted!.root
+            .findAllByType("h1")
+            .flatMap((node) => node.children)
+            .filter((text) => text === "Late production"),
+        ).toEqual(["Late production"]);
+        expect(platform.projectReads).toEqual([]);
+        expect(requests.filter((family) => family !== "hqAppDetail")).toEqual([]);
+      }
+      act(() =>
+        store.dispatch({
+          kind: "stream",
+          key: "hq:org",
+          now: 0,
+          event: { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "503" } },
+        }),
+      );
+      act(() =>
+        store.dispatch({
+          kind: "stream",
+          key: "hq:org",
+          now: 5001,
+          event: { kind: "grace-over", lostAt: 0 },
+        }),
+      );
+      expect(
+        mounted!.root
+          .findAll((node) => typeof node.type === "string")
+          .flatMap((node) => node.children)
+          .filter((text) => text === "HQ is not answering right now."),
+      ).toEqual(["HQ is not answering right now."]);
+      expect(platform.projectReads).toEqual([]);
+      expect(requests.filter((family) => family !== "hqAppDetail")).toEqual([]);
+      act(() => mounted?.unmount());
+      registry.dispose();
+    },
+  );
+});
+
+it("Environment navigation keeps its identity when the target's project name changes.", () => {
+  const id = HqEnvironmentId.make("stable-environment");
+  const target = {
+    kind: "zerops" as const,
+    projectId: ProjectId.make("different-project-address"),
+  };
+  const open = (name: string) => {
+    const registry = AtomRegistry.make();
+    const store = mountRoster(registry, "org", [
+      { id: target.projectId, name: `Shop - ${name}`, status: "ACTIVE" },
+    ]);
+    mountHqNavigation(
+      registry,
+      "org",
+      {
+        structure: {
+          ungrouped: [],
+          apps: [
+            {
+              id: "shop",
+              name: "Shop",
+              projects: [],
+              environments: [
+                {
+                  id,
+                  target,
+                  name: "Stage",
+                  tier: "stage",
+                  sources: ["main"],
+                  order: 1,
+                  keyHeld: false,
+                  keyInvalid: false,
+                  jobs: [],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      store,
+    );
+    const answer = registry.get(
+      store.data.project(canonicalProjectFlow, {
+        orgId: "org",
+        appId: "shop",
+        hqAddress: undefined,
+        viewer: { id: "org", name: "Org", membershipId: "owner", roleCode: "OWNER" },
+      }),
+    );
+    const row = answer!.environments[0]!;
+    expect(row.name).toBe(name);
+    expect(row.id).toBe("stable-environment");
+    let mounted!: ReactTestRenderer;
+    act(() => {
+      mounted = create(
+        <RegistryContext.Provider value={registry}>
+          <ZeropsGroupPane
+            groupId="shop"
+            name="Shop"
+            attention={[]}
+            mates={[]}
+            environments={[row]}
+            slots={slotsOf([row])}
+            history={{ kind: "reading" }}
+            tags={new Map()}
+            crumbs={[]}
+            repo={undefined}
+            waiting={releaseContentsSummary([], 20)}
+            pullRequests={[]}
+            release={{
+              offered: false,
+              releasing: false,
+              tag: undefined,
+              reason: undefined,
+              onReview: () => {},
+            }}
+            names={{ mateNames: new Map() }}
+            onAct={() => {}}
+            onAddMate={() => {}}
+            onOpenMate={() => {}}
+            onFinish={() => {}}
+            finishing={false}
+            onAdd={() => {}}
+            onSetUp={() => {}}
+          />
+        </RegistryContext.Provider>,
+      );
+    });
+    const button = mounted.root
+      .findAllByType("button")
+      .find((node) => node.findAllByType("span").some((span) => span.children.includes(name)));
+    expect(button).toBeDefined();
+    act(() => button!.props.onClick());
+    act(() => mounted.unmount());
+    registry.dispose();
+  };
+  platform.navigation = [];
+  open("Original project name");
+  open("Renamed project name");
+  expect(platform.navigation).toEqual([
+    {
+      to: "/group/$groupId/$projectId",
+      params: { groupId: "shop", projectId: "stable-environment" },
+    },
+    {
+      to: "/group/$groupId/$projectId",
+      params: { groupId: "shop", projectId: "stable-environment" },
+    },
+  ]);
 });

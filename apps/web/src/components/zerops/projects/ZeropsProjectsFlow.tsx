@@ -32,7 +32,9 @@ import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
 export interface ProjectsFlowGroup<T> {
-  readonly group: ZeropsGroup;
+  readonly group: Omit<ZeropsGroup, "environments" | "production"> & {
+    readonly environments: ReadonlyArray<{ readonly role: ZeropsEnvironmentRole | undefined }>;
+  };
   readonly flow: GroupFlow;
   /** What HQ holds of it (`applicationContents`): a deletion under way, records left. */
   readonly contents?: HqAppContents | undefined;
@@ -56,7 +58,7 @@ export interface ProjectsFlowGroup<T> {
   /** Its stages and its production, by project id. */
   readonly stops: ReadonlyMap<
     string,
-    { readonly item: T; readonly role: ZeropsEnvironmentRole | undefined }
+    { readonly item: T | undefined; readonly role: ZeropsEnvironmentRole | undefined }
   >;
   /** Anything else it holds — a dev box without a Mate, a dev/stage. */
   readonly others: ReadonlyArray<{

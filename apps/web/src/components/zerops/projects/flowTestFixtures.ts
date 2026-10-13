@@ -1,3 +1,4 @@
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 /**
  * The groups, entries and slot defaults the projects-flow tests share. Plain
  * TypeScript, not TSX: it is no component, so no surface claims it.
@@ -5,7 +6,7 @@
 
 import {
   buildZeropsGroupTree,
-  environmentRow,
+  canonicalEnvironmentRow,
   groupFlow,
   type FlowPullRequest,
   type GroupFlowInput,
@@ -309,4 +310,18 @@ export function mount(element: ReactElement): ReactTestRenderer {
 /** The whole flow's markup, every slot a marker unless the test says otherwise. */
 export function renderFlow(props: Partial<ZeropsProjectsFlowProps<Item>> = {}): string {
   return renderToStaticMarkup(h(ZeropsProjectsFlow<Item>, { ...FLOW_PROPS, ...props }));
+}
+
+/** Equal addresses model deployed Zerops rows; identity witnesses supply unequal addresses themselves. */
+export function environmentRow(
+  input: Omit<Parameters<typeof canonicalEnvironmentRow>[0], "id" | "target" | "projectId"> & {
+    readonly projectId: string;
+  },
+) {
+  const { projectId, ...payload } = input;
+  return canonicalEnvironmentRow({
+    ...payload,
+    id: HqEnvironmentId.make(projectId),
+    target: { kind: "zerops", projectId: ProjectId.make(projectId) },
+  });
 }

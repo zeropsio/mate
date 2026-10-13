@@ -17,7 +17,7 @@ export function ZeropsDeleteProjectDialog({
   contents,
   onClose,
 }: {
-  readonly group: ZeropsGroup;
+  readonly group: Pick<ZeropsGroup, "groupId" | "name">;
   readonly contents: HqAppContents | undefined;
   readonly onClose: () => void;
 }) {

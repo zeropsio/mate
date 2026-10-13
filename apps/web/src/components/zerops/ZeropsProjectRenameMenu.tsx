@@ -11,7 +11,7 @@ export function ZeropsProjectRenameMenu({
   group,
   actions = [],
 }: {
-  readonly group: ZeropsGroup;
+  readonly group: Pick<ZeropsGroup, "groupId" | "name" | "nameSource">;
   readonly actions?: ReadonlyArray<ZeropsMenuEntry>;
 }) {
   // HQ offers renaming it (`rename_app`); while HQ has not said or does not answer, drawn and not

@@ -135,7 +135,7 @@ export interface ZeropsGitTabProps {
   /** The Mate's application in HQ, which is its group. */
   readonly appId: string | undefined;
   /** The application's environments as HQ records them, when they could be read. */
-  readonly declarations: ReadonlyArray<GroupEnvironment>;
+  readonly declarations: ReadonlyArray<Pick<GroupEnvironment, "name" | "tier" | "sources">>;
   /**
    * The project's changes as its flow carries them, once HQ's stream has told them; `undefined`
    * before.

@@ -7,7 +7,7 @@ import {
   projectSummary,
   mateAdmissionSummary,
 } from "@t3tools/client-runtime/data";
-import { groupFlow, hasMate, type ZeropsGroupTreeGroup } from "@t3tools/client-runtime/zerops";
+import { groupFlow, hasMate, type CanonicalGroupTreeView } from "@t3tools/client-runtime/zerops";
 import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 import { sameValue } from "~/lib/sameValue";
@@ -28,15 +28,18 @@ import type { ProjectFlows, useStopDeploymentsShown } from "./projectFlows";
 
 type Row = ProjectsFlowGroup<ZeropsCandidatePresentation>;
 interface ProjectsRowsInput {
-  readonly groups: ReadonlyArray<ZeropsGroupTreeGroup<ZeropsCandidatePresentation>>;
+  readonly groups: CanonicalGroupTreeView<ZeropsCandidatePresentation>["groups"];
   readonly flows: ProjectFlows;
   readonly deployments: ReturnType<typeof useStopDeploymentsShown>;
   readonly lines: ReadonlyMap<string, string | undefined>;
 }
 
 export function projectsRowsAtom(input: ProjectsRowsInput) {
-  const rows = input.groups.map(({ group, environments }) =>
+  const rows = input.groups.map(({ group, environments: allEnvironments }) =>
     Atom.make((get): Row => {
+      const environments = allEnvironments.flatMap((entry) =>
+        entry.item === undefined ? [] : [{ ...entry, item: entry.item }],
+      );
       const account = get(accountReadsAtom);
       const activities = new Map(
         environments.flatMap(({ item }) => {
@@ -135,9 +138,9 @@ export function projectsRowsAtom(input: ProjectsRowsInput) {
             .map(({ item }) => [item.project.id, item]),
         ),
         stops: new Map(
-          environments
+          allEnvironments
             .filter(({ role }) => isStop(role))
-            .map((entry) => [entry.item.project.id, entry]),
+            .map((entry) => [entry.kind === "managed" ? entry.id : entry.project.id, entry]),
         ),
         others: environments.filter(({ item, role }) => !hasMate(item) && !isStop(role)),
         // Navigation owns no last-merged summary. Already-held detail may enrich this fallback.

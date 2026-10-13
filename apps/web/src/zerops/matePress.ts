@@ -430,7 +430,11 @@ export function mateFinishRegistration(input: {
   /** HQ's structure is known: only then does a project it places nowhere have no record. */
   readonly hqKnown: boolean;
   /** HQ's structure, where its open birth intents are (`birthIntentOf`). */
-  readonly structure: HqStructure | null;
+  readonly structure:
+    | (Omit<HqStructure, "apps"> & {
+        readonly apps: ReadonlyArray<Omit<HqStructure["apps"][number], "environments">>;
+      })
+    | null;
   readonly project: ZeropsCandidate["project"];
   readonly press: MatePress | undefined;
   /** HQ's rule lets the viewer write the record of a Mate it holds none of (`create_mate_record`). */

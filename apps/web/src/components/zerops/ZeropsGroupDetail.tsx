@@ -1,3 +1,15 @@
+import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
+import {
+  canonicalAppEnvironments,
+  canonicalHqNavigation,
+  environmentById,
+  type CanonicalHqNavigationRead,
+  type CanonicalAppEnvironmentsRead,
+} from "@t3tools/client-runtime/data";
+import { Atom } from "effect/reactivity";
+import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
+import { useProjection } from "~/zerops/accountData";
 import { ReleaseAction, useReleaseOffer, type ReleaseOffer } from "./ZeropsReleaseVerb";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { StopVaultSide, StopVaultToggle, useStopVaultOpen } from "./vault/StopVault";
@@ -55,7 +67,7 @@ import {
   type ProjectAttentionItem,
   type ZeropsPublicRoute,
   type ProjectAttentionKind,
-  type EnvironmentRow,
+  type CanonicalEnvironmentRow as EnvironmentRow,
   type FlowPullRequest,
   type CompareRead,
   type FlowReleaseRow,
@@ -130,6 +142,7 @@ import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useFlowVerbs, type FlowVerbOutcome } from "~/zerops/flowVerbs";
 import {
   useAppsEnvironments,
+  useFlowNavigation,
   useMateNames,
   useProjectFlows,
   useStopDeploymentsShown,
@@ -239,7 +252,11 @@ function useWithheldStops(environments: ReadonlyArray<EnvironmentRow> | undefine
     () =>
       environments === undefined
         ? EMPTY_STOPS
-        : environments.filter((environment) => withheldNotice(environment.projectId) === null),
+        : environments.filter(
+            (environment) =>
+              environment.target.kind !== "zerops" ||
+              withheldNotice(environment.target.projectId) === null,
+          ),
     [environments, withheldNotice],
   );
   return { withheldNotice, shown };
@@ -472,7 +489,7 @@ function useProjectAttention(
         failedStops: environments
           .filter((environment) => environment.tone === "bad")
           .map((environment) => ({
-            projectId: environment.projectId,
+            projectId: environment.id,
             name: environment.name,
           })),
         pullRequests,
@@ -534,7 +551,10 @@ function useStageFirstDeploys(
   const deployments = useStopDeploymentsShown();
   return (projectId) => {
     const row = flow?.environments.find(
-      (entry) => entry.projectId === projectId && entry.tier === "stage",
+      (entry) =>
+        entry.target.kind === "zerops" &&
+        entry.target.projectId === projectId &&
+        entry.tier === "stage",
     );
     const candidate = heldCandidates(listing).rows.find((entry) => entry.project.id === projectId);
     return stageFirstDeploy({
@@ -556,7 +576,14 @@ type RuntimeStopIdentity = {
 export function runtimeStopsOf(
   groupId: string,
   projects: ReadonlyArray<ZeropsProject>,
-  declared: ReadonlyArray<RuntimeStopIdentity> | undefined,
+  declared:
+    | ReadonlyArray<
+        Pick<
+          import("@t3tools/client-runtime/zerops/hq").CanonicalHqEnvironment,
+          "id" | "target" | "name" | "tier"
+        >
+      >
+    | undefined,
 ): ReadonlyArray<RuntimeStopIdentity> {
   const stops = new Map<string, RuntimeStopIdentity>();
   for (const project of projects) {
@@ -570,7 +597,15 @@ export function runtimeStopsOf(
       tier: membership.role === "prod" ? "production" : "stage",
     });
   }
-  if (declared !== undefined) for (const stop of declared) stops.set(stop.projectId, stop);
+  if (declared !== undefined)
+    for (const stop of declared) {
+      if (stop.target.kind !== "zerops") continue;
+      stops.set(stop.target.projectId, {
+        projectId: stop.target.projectId,
+        name: stop.name,
+        tier: stop.tier,
+      });
+    }
   return [...stops.values()];
 }
 
@@ -749,7 +784,7 @@ function KnownGroupDetail({
   const slots = !flow.declarationsRead
     ? []
     : environmentSlots({
-        environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
+        environments: environments.map((entry) => ({ id: entry.id, tier: entry.tier })),
         devstages,
         pending: pendingEnvironments,
         halfMade: halfMadeHere.map((entry) => ({
@@ -761,9 +796,9 @@ function KnownGroupDetail({
         recipeRead: flow.recipeRead,
         offered: offered ?? { stage: false, production: false },
         productionRuns:
-          production === undefined
+          production?.target.kind !== "zerops"
             ? "unknown"
-            : productionRunsOf(deployments.get(production.projectId)),
+            : productionRunsOf(deployments.get(production.target.projectId)),
         waiting: { count: waiting.total, atLeast: waiting.atLeast },
         // Entries are what `main` would put in a release: none says it holds no code, once the
         // repositories and the recipe that names their services are both read.
@@ -929,7 +964,9 @@ export function ZeropsGroupPane({
     () =>
       deployedShas(
         environments.filter(
-          (environment) => (withheldNotice?.(environment.projectId) ?? null) === null,
+          (environment) =>
+            environment.target.kind !== "zerops" ||
+            (withheldNotice?.(environment.target.projectId) ?? null) === null,
         ),
       ),
     [environments, withheldNotice],
@@ -1056,15 +1093,23 @@ export function ZeropsGroupPane({
                     ) : null}
                   </li>
                 );
-              const environment = environments.find((entry) => entry.projectId === slot.id);
+              const environment = environments.find((entry) => entry.id === slot.id);
               if (environment === undefined) return null;
               return (
                 <Fragment key={slot.id}>
                   <StopLine
                     environment={environment}
                     groupId={groupId}
-                    notice={withheldNotice?.(environment.projectId) ?? null}
-                    firstDeploy={firstDeployOf?.(environment.projectId)}
+                    notice={
+                      environment.target.kind === "zerops"
+                        ? (withheldNotice?.(environment.target.projectId) ?? null)
+                        : null
+                    }
+                    firstDeploy={
+                      environment.target.kind === "zerops"
+                        ? firstDeployOf?.(environment.target.projectId)
+                        : undefined
+                    }
                   />
                   {slot.note === undefined ? null : (
                     <li className="flex min-w-0 items-center gap-3 px-2 pb-2">
@@ -1140,12 +1185,78 @@ export function ZeropsGroupPane({
   );
 }
 
+const NO_ROUTE_ENVIRONMENT = Atom.make(undefined);
+const NO_ROUTE_ENVIRONMENTS = Atom.make<CanonicalAppEnvironmentsRead>({
+  environments: undefined,
+  refused: null,
+});
+const NO_ROUTE_NAVIGATION = Atom.make<CanonicalHqNavigationRead>({
+  structure: null,
+  organization: null,
+  presses: {},
+  people: {},
+  read: "unread",
+  refusal: null,
+  capped: false,
+  updateRequired: false,
+  coreBuild: undefined,
+  live: false,
+  reconnecting: false,
+});
+const decodeEnvironmentId = Schema.decodeUnknownOption(HqEnvironmentId);
+
+/** The bookmark names an HQ environment; only its resolved Zerops target opens project readers. */
 export function ZeropsStopDetailPage({
+  groupId,
+  environmentId,
+}: {
+  readonly groupId: string;
+  readonly environmentId: string;
+}) {
+  const orgId = useAccountOrgId();
+  const id = Option.getOrUndefined(decodeEnvironmentId(environmentId));
+  const key = orgId === null ? null : { orgId, appId: groupId };
+  const environment = useProjection(
+    environmentById,
+    key === null || id === undefined ? null : { ...key, id },
+    NO_ROUTE_ENVIRONMENT,
+  );
+  const read = useProjection(canonicalAppEnvironments, key, NO_ROUTE_ENVIRONMENTS);
+  const navigation = useProjection(canonicalHqNavigation, orgId, NO_ROUTE_NAVIGATION);
+  const status = useFlowNavigation(orgId);
+  const unread = unreadFlowWords({
+    failure: status.readFailure,
+    groupsRead: status.groupsRead,
+    groupKnown: status.knownGroups.has(groupId),
+  });
+  const crumbs = useCrumbs({
+    groupId,
+    name: navigation?.structure?.apps.find((app) => app.id === groupId)?.name,
+  });
+  if (environment?.target.kind === "zerops") {
+    return (
+      <ZeropsProjectStopDetailPage groupId={groupId} projectId={environment.target.projectId} />
+    );
+  }
+  return (
+    <DetailShell crumbs={crumbs} title={environment?.name}>
+      {read.refused !== null ? (
+        <Note>{read.refused}</Note>
+      ) : unread !== null ? (
+        <Note>{unread}</Note>
+      ) : environment === undefined ? (
+        <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />
+      ) : null}
+    </DetailShell>
+  );
+}
+
+function ZeropsProjectStopDetailPage({
   groupId,
   projectId,
 }: {
   readonly groupId: string;
-  readonly projectId: string;
+  readonly projectId: ProjectId;
 }) {
   const recipeFailure = useHqRecipeFailure(groupId);
   // The environment's vault beside its page, where the account reads its organization.
@@ -1160,8 +1271,12 @@ export function ZeropsStopDetailPage({
   const deployments = useStopDeploymentsShown();
   const verbs = useFlowVerbs();
   const runtimeStops = useRuntimeStops(groupId).filter((entry) => entry.projectId === projectId);
-  const stop = flow?.environments.find((entry) => entry.projectId === projectId);
-  const declared = flow?.environmentInputs.find((entry) => entry.projectId === projectId);
+  const stop = flow?.environments.find(
+    (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
+  );
+  const declared = flow?.environmentInputs.find(
+    (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
+  );
   // A stop whose project the grant withholds draws nothing of it (DESIGN §3.4),
   // nor marks what it runs in another stop's history, and reads nothing its
   // repository and commit address.
@@ -1664,6 +1779,7 @@ export function ZeropsStopPane({
                 !notInZerops.includes(service ?? "")),
           ),
         };
+  const projectId = stop.target.kind === "zerops" ? stop.target.projectId : undefined;
   return (
     <DetailShell
       actions={
@@ -1671,20 +1787,22 @@ export function ZeropsStopPane({
           {vault === undefined ? null : (
             <StopVaultToggle onToggle={vault.onToggle} open={vault.open} />
           )}
-          <ZeropsStopMenu
-            name={title}
-            projectId={stop.projectId}
-            onOpenStop={undefined}
-            routes={routes}
-            stop={view}
-            triggerClassName="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-          />
+          {stop.target.kind === "zerops" ? (
+            <ZeropsStopMenu
+              name={title}
+              projectId={projectId!}
+              onOpenStop={undefined}
+              routes={routes}
+              stop={view}
+              triggerClassName="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+            />
+          ) : null}
         </>
       }
       crumbs={crumbs}
       side={
-        vault?.open === true ? (
-          <StopVaultSide name={title} orgId={vault.orgId} projectId={stop.projectId} />
+        vault?.open === true && stop.target.kind === "zerops" ? (
+          <StopVaultSide name={title} orgId={vault.orgId} projectId={projectId!} />
         ) : undefined
       }
 
@@ -1747,18 +1865,20 @@ export function ZeropsStopPane({
             <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
           ) : (
             <ul className="flex flex-col">
-              {services.map((row) => (
-                <StopServiceLine
-                  projectId={stop.projectId}
-                  deployAgain={deployAgain}
-                  answer={answered.get(row.hostname)}
-                  enablingServiceId={enablingServiceId ?? null}
-                  key={row.hostname}
-                  onEnableRoute={onEnableRoute}
-                  row={row}
-                  said={verdict.detail}
-                />
-              ))}
+              {stop.target.kind !== "zerops"
+                ? null
+                : services.map((row) => (
+                    <StopServiceLine
+                      projectId={projectId!}
+                      deployAgain={deployAgain}
+                      answer={answered.get(row.hostname)}
+                      enablingServiceId={enablingServiceId ?? null}
+                      key={row.hostname}
+                      onEnableRoute={onEnableRoute}
+                      row={row}
+                      said={verdict.detail}
+                    />
+                  ))}
             </ul>
           )}
           {notInZerops.length === 0 ? null : (
@@ -2494,11 +2614,12 @@ function StopLine({
   readonly firstDeploy?: FirstDeploy | undefined;
 }) {
   const navigate = useNavigate();
+  const projectId = environment.target.kind === "zerops" ? environment.target.projectId : undefined;
   const deployments = useStopDeploymentsShown(
-    useMemo(() => [environment.projectId], [environment.projectId]),
+    useMemo(() => (projectId === undefined ? [] : [projectId]), [projectId]),
   );
   // The one rule every surface words a stop by (`stopTone`), with the platform's answer beside it.
-  const deployment = deployments.get(environment.projectId);
+  const deployment = projectId === undefined ? undefined : deployments.get(projectId);
   const tone = stopTone(deployment, environment);
   // No word for what runs and a first deploy asked for: the line its cell and its page say.
   const said = deployWord(tone);
@@ -2508,15 +2629,15 @@ function StopLine({
   const open = useCallback(() => {
     void navigate({
       to: "/group/$groupId/$projectId",
-      params: { groupId, projectId: environment.projectId },
+      params: { groupId, projectId: environment.id },
     });
-  }, [environment.projectId, groupId, navigate]);
+  }, [environment.id, groupId, navigate]);
   if (notice !== null) {
     return (
       <li className="flex min-w-0 items-baseline gap-3 px-2 py-2">
         <span className="shrink-0 text-sm font-medium text-foreground">{environment.tier}</span>
         <span className="truncate text-xs text-muted-foreground">{notice}</span>
-        <StopReadAgain projectId={environment.projectId} />
+        {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
       </li>
     );
   }
@@ -2549,7 +2670,7 @@ function StopLine({
         )}
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
       </button>
-      <StopReadAgain projectId={environment.projectId} />
+      {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
     </li>
   );
 }

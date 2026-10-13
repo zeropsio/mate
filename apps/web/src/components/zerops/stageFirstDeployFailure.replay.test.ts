@@ -1,10 +1,6 @@
+import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 /** Origin's first-deploy failure regression, replayed from HQ's pushed deploy records. */
-import {
-  environmentRow,
-  groupFlow,
-  listedStopComing,
-  type GroupFlowInput,
-} from "@t3tools/client-runtime/zerops";
+import { groupFlow, listedStopComing, type GroupFlowInput } from "@t3tools/client-runtime/zerops";
 import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";

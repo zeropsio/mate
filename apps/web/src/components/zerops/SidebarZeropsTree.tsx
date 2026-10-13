@@ -37,7 +37,7 @@ import { mateStatus } from "../../zerops/mateStatus.logic";
  * Membership is `hasMate` — the project declares a Mate or a container backs
  * one, and never stage or production — not the live connection, so a
  * container going to sleep changes a face rather than rearranging the menu.
- * Grouping is `buildZeropsGroupTree`, the same derivation the projects screen
+ * Grouping is `buildCanonicalGroupTree`, the same derivation the projects screen
  * uses, so the two surfaces can never disagree about which project an
  * environment is in; the colours are `assignCandidateMateTints`, likewise
  * shared. Which pull requests are a Mate's to answer for, and what the
@@ -52,7 +52,7 @@ import { RunShimmer } from "../chat/RunShimmer";
 import { useWarmIntent } from "../chat/warmTimeline";
 import {
   assignCandidateMateTints,
-  buildZeropsGroupTree,
+  buildCanonicalGroupTree,
   groupFlow,
   hasMate,
   mateEnvironmentsEmptyReason,
@@ -69,7 +69,7 @@ import {
   matePoseOf,
   projectNameInApp,
   stopServes,
-  type EnvironmentRow,
+  type CanonicalEnvironmentRow as EnvironmentRow,
   type FlowPullRequest,
   type GroupFlowPreview,
   type Moved,
@@ -81,7 +81,7 @@ import {
   type StopComing,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
-  type ZeropsGroup,
+  type CanonicalGroup,
   type ZeropsGroupPendingMember,
   type ZeropsPlacedBirth,
   type ZeropsPublicRoute,
@@ -94,7 +94,6 @@ import {
   shownHqPersonFactsAtom,
   hqMatePresenceAtom,
   shownAttentionProjectsAtom,
-  shownHqMenuNavigationAtom,
 } from "@t3tools/client-runtime/data";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -162,7 +161,7 @@ import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { useMateOfflineSince, useMateLinkedInHq } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
-import { hqDown, hqPlacementsAtom } from "~/state/zerops";
+import { hqNavigationAtom, hqDown, hqPlacementsAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { mayBearHq } from "@t3tools/shared/zeropsRoles";
@@ -709,7 +708,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   onShowEveryone,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
-  const structureView = useAtomValue(shownHqMenuNavigationAtom);
+  const structureView = useAtomValue(hqNavigationAtom);
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const session = useZeropsSessionOptional();
   const accountHq = useAccountHq(structureView.orgId ?? undefined);
@@ -1071,7 +1070,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     ...candidates.filter((candidate) => !mateByProject.has(candidate.project.id)),
     ...mates,
   ].filter((candidate) => candidate.project.id !== chief?.project.id);
-  const view = buildZeropsGroupTree(everyEnvironment, {
+  const view = buildCanonicalGroupTree(everyEnvironment, {
     apps: appsWithWork,
     rank: rankZeropsCandidateForListing,
     order: projectOrder.order,
@@ -1081,7 +1080,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // One list in the person's order (Name, Creation date or Custom): no project moves for its work,
   // and none rests apart as an "other" (the owner, 2026-10-11, of the "other projects" fold: "I'd
   // get rid of" it). The overview's cards stand in the same order.
-  const orderedGroups = view.groups;
+  const orderedGroups = view.groups.map((entry) => ({
+    ...entry,
+    environments: entry.environments.flatMap(({ item, role }) =>
+      item === undefined ? [] : [{ item, role }],
+    ),
+  }));
   // Every project the order holds, drawn or not: what a move is written into,
   // and what choosing *Custom* elsewhere starts from.
   const onScreen = orderedGroups.map(({ group }) => group.groupId);
@@ -1109,7 +1113,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const jumpStops: JumpStop[] = [];
   const indexSection = (input: {
     readonly id: string;
-    readonly group: ZeropsGroup | undefined;
+    readonly group: CanonicalGroup | undefined;
     readonly groupName: string | undefined;
     readonly flow: SidebarProjectFlow | undefined;
     /** Its Mates as the menu draws them: the ones at work or lately, then the quiet ones. */
@@ -1194,7 +1198,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     flow: SidebarProjectFlow | undefined,
     groupName: string | undefined,
     // `undefined` for Mates in no project, each its own row.
-    group: ZeropsGroup | undefined,
+    group: CanonicalGroup | undefined,
   ): ProjectPlan | null => {
     const everyMate = entries.filter(({ item }) => hasMate(item));
     // Whose Mates the viewer asked to see (Mine / Everyone).
@@ -1228,10 +1232,22 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     );
     // Production and its stages are the project's places: its globe opens them, with every
     // address its Mates have, and what goes wrong with them rises to its row (`ProjectSites`).
+    const targetProjectId = (id: string) => {
+      const row = flow?.environments.get(id);
+      return row === undefined
+        ? others.find(({ item }) => item.project.id === id)?.item.project.id
+        : row.target.kind === "zerops"
+          ? row.target.projectId
+          : undefined;
+    };
+    const stopDeployments = (id: string) => {
+      const projectId = targetProjectId(id);
+      return projectId === undefined ? undefined : deployments?.get(projectId);
+    };
     const stopItem = (projectId: string | undefined) =>
       projectId === undefined
         ? undefined
-        : others.find(({ item }) => item.project.id === projectId)?.item;
+        : others.find(({ item }) => item.project.id === targetProjectId(projectId))?.item;
     const productionStop =
       "stop" in projectFlow.production ? projectFlow.production.stop : undefined;
     const productionItem = stopItem(productionStop?.projectId);
@@ -1262,7 +1278,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       building:
         productionStop === undefined
           ? undefined
-          : buildingOf(deployments?.get(productionStop.projectId)),
+          : buildingOf(stopDeployments(productionStop.projectId)),
       waiting: projectFlow.main.notLive,
       waitingAtLeast: projectFlow.main.notLiveAtLeast,
       untold: flow?.releaseUntold ?? NO_UNTOLD,
@@ -1284,7 +1300,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       shownChip(stageStopChip({ stop, serving, releases })),
     );
     const stopDeployedAt = (projectId: string) => {
-      const activated = deployActivatedAt(deployments?.get(projectId));
+      const activated = deployActivatedAt(stopDeployments(projectId));
       return activated ?? stopItem(projectId)?.services?.deployedAt;
     };
     const openStop = (projectId: string) => {
@@ -1341,7 +1357,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         stop,
         projectStatus: item?.project.status,
         services: item?.services?.statuses,
-        building: buildingOf(deployments?.get(stop.projectId)) !== undefined,
+        building: buildingOf(stopDeployments(stop.projectId)) !== undefined,
         routes: item?.routes?.length ?? 0,
       };
     };
@@ -1365,7 +1381,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                           ? undefined
                           : comingOf("production", productionStop),
                     building:
-                      productionStop !== undefined && building.has(productionStop.projectId),
+                      productionStop !== undefined &&
+                      building.has(targetProjectId(productionStop.projectId) ?? ""),
                   },
             stages: [
               ...stages.map(({ name, stop }) => ({
@@ -1373,7 +1390,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                 name,
                 coming: comingOf("stage", stop),
                 serves: stopServes(listedOf(stop)),
-                building: building.has(stop.projectId),
+                building: building.has(targetProjectId(stop.projectId) ?? ""),
               })),
               ...projectFlow.creatingStages.map((creation) => ({
                 projectId: creation.projectId,
@@ -1938,7 +1955,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
 
   /** A project's ···: its own verbs — fold, add a Mate, open it, move it, set a place up. */
   const projectMenuOf = (
-    group: ZeropsGroup,
+    group: CanonicalGroup,
     fold: { readonly open: boolean; readonly toggle: () => void } | undefined,
   ): ReadonlyArray<HeadingMenuEntry> => {
     const missing = missingEnvironmentRows({
@@ -1946,7 +1963,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         offered: environmentOffers(group.groupId),
         group,
         hq: [...(getFlow?.(group.groupId)?.environments.values() ?? [])].map((row) => ({
-          id: row.projectId,
+          id: row.id,
           tier: row.tier,
         })),
         recipe: {

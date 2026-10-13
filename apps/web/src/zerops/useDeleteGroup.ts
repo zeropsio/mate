@@ -14,14 +14,14 @@ import { submitHqAppWrite } from "./hqAppWrite";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Deletes the group's application in HQ. */
-export type DeleteGroup = (group: ZeropsGroup) => Promise<void>;
+export type DeleteGroup = (group: Pick<ZeropsGroup, "groupId">) => Promise<void>;
 
 export function useDeleteGroup(): DeleteGroup {
   const { activeOrganization } = useZeropsSession();
   const operations = useAccountOperations();
 
   return useCallback(
-    async (group: ZeropsGroup) => {
+    async (group: Pick<ZeropsGroup, "groupId">) => {
       if (activeOrganization === null) throw new Error("No organization is open.");
       await submitHqAppWrite(operations, {
         kind: "delete-app",

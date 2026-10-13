@@ -1,9 +1,9 @@
 /** Inventory presentation decorates the shared grouping with the current Mate connection rows. */
-import { inventoryGroups } from "@t3tools/client-runtime/data";
+import { canonicalInventoryGroups } from "@t3tools/client-runtime/data";
 import {
   rankZeropsCandidateForListing,
   type ZeropsPlacedBirth,
-  type ZeropsGroupTreeView,
+  type CanonicalGroupTreeView,
 } from "@t3tools/client-runtime/zerops";
 import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
@@ -18,11 +18,11 @@ export function useProjectsInventory(
   candidates: ReadonlyArray<ZeropsCandidatePresentation>,
   order: ProjectOrderOptions,
   births: ReadonlyArray<ZeropsPlacedBirth>,
-): ZeropsGroupTreeView<ZeropsCandidatePresentation> {
+): CanonicalGroupTreeView<ZeropsCandidatePresentation> {
   const { activeOrganization } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const tree = useProjection(
-    inventoryGroups,
+    canonicalInventoryGroups,
     activeOrganization === null
       ? null
       : {
@@ -40,10 +40,10 @@ export function useProjectsInventory(
       ...tree,
       groups: tree.groups.map(({ group, environments }) => ({
         group,
-        environments: environments.flatMap(({ item, role }) => {
-          const candidate = byId.get(item.project.id);
-          return candidate === undefined ? [] : [{ item: candidate, role }];
-        }),
+        environments: environments.map((entry) => ({
+          ...entry,
+          item: entry.project === undefined ? undefined : byId.get(entry.project.id),
+        })),
       })),
       ungrouped: tree.ungrouped
         .flatMap(({ project }) => {

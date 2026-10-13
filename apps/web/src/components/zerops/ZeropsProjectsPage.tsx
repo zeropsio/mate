@@ -122,7 +122,7 @@ import {
   projectNameInApp,
   readZeropsMembership,
   type EnvironmentCreationStepProgress,
-  type EnvironmentRow,
+  type CanonicalEnvironmentRow as EnvironmentRow,
   type GroupEnvironmentTier,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
@@ -1004,9 +1004,14 @@ function ZeropsProjectsContent({
       try {
         const projectId = candidate.project.id;
         const group = groupTree.groups.find((candidate) =>
-          candidate.environments.some(({ item }) => item.project.id === projectId),
+          candidate.environments.some(({ item }) => item?.project.id === projectId),
         );
-        const agents = group === undefined ? [] : await readGroupAgents(group.environments);
+        const agents =
+          group === undefined
+            ? []
+            : await readGroupAgents(
+                group.environments.flatMap(({ item }) => (item === undefined ? [] : [{ item }])),
+              );
         if (!isCurrent()) return;
         const hq = officialHq(accountHq);
         // What it registers, by the rule Finish setup registers by, before its container: in the
@@ -1107,7 +1112,7 @@ function ZeropsProjectsContent({
     | { readonly kind: "rename-agent"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "move"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "assign"; readonly candidate: ZeropsCandidate }
-    | { readonly kind: "delete-group"; readonly group: ZeropsGroup }
+    | { readonly kind: "delete-group"; readonly group: Pick<ZeropsGroup, "groupId" | "name"> }
     | null
   >(null);
   // The same write an environment's own page uses, so one way to open a
@@ -1487,9 +1492,15 @@ function ZeropsProjectsContent({
   // A group is offered more once its first Mate is up (`groupAddsOffered`).
   // This gates another Mate; HQ's own offers decide stage and production.
   const addsOfferedFor = useCallback(
-    (group: ZeropsGroup) => {
+    (group: Pick<ZeropsGroup, "groupId">) => {
       const entry = groupTree.groups.find((entry) => entry.group.groupId === group.groupId);
-      return entry !== undefined && groupAddsOffered(entry.environments, candidateHealth);
+      return (
+        entry !== undefined &&
+        groupAddsOffered(
+          entry.environments.flatMap(({ item }) => (item === undefined ? [] : [{ item }])),
+          candidateHealth,
+        )
+      );
     },
     [candidateHealth, groupTree.groups],
   );
@@ -1600,7 +1611,9 @@ function ZeropsProjectsContent({
   const declaredEnvironment = useCallback(
     (projectId: string) => {
       for (const state of groupDeploys.values()) {
-        const found = state.environments.find((entry) => entry.projectId === projectId);
+        const found = state.environments.find(
+          (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
+        );
         if (found !== undefined) return found;
       }
       return undefined;
@@ -1654,7 +1667,9 @@ function ZeropsProjectsContent({
       setCreation({ name: choice.name, tier: tier ?? "mate", progress: [] });
       const run = await runCreation({
         group: entry.group,
-        environments: entry.environments,
+        environments: entry.environments.flatMap(({ item }) =>
+          item === undefined ? [] : [{ item }],
+        ),
         role,
         choice,
         onPlanned: (steps) => {
@@ -1847,7 +1862,8 @@ function ZeropsProjectsContent({
   const projectGroups = useMemo(
     () =>
       groupTree.groups.filter(
-        ({ environments }) => !environments.some(({ item }) => isChief(item.project)),
+        ({ environments }) =>
+          !environments.some(({ item }) => item !== undefined && isChief(item.project)),
       ),
     [groupTree.groups],
   );
@@ -1964,7 +1980,9 @@ function ZeropsProjectsContent({
   /** Each environment's role in its group, for the card and the row that draw it. */
   const roleOf = new Map(
     groupTree.groups.flatMap(({ environments }) =>
-      environments.map(({ item, role }) => [item.project.id, role] as const),
+      environments.flatMap(({ item, role }) =>
+        item === undefined ? [] : [[item.project.id, role] as const],
+      ),
     ),
   );
 
@@ -2030,7 +2048,7 @@ function ZeropsProjectsContent({
         }
         busy={busy}
         // A group's stage or production: its name opens the stop's page.
-        link={stopLinkOf(tags.groupId, candidate.project.id, role)}
+        link={declared === undefined ? undefined : stopLinkOf(tags.groupId, declared.id, role)}
         menu={renderEnvironmentMenu(candidate, tags, false)}
         // By its own name under its application (`projectNameInApp`).
         name={projectNameInApp(candidate.project)}
@@ -2055,7 +2073,7 @@ function ZeropsProjectsContent({
             ? presentation.detail
             : declared === undefined
               ? summaryOf(candidate)
-              : declaredEnvironmentSummary(declared, firstDeployOf(candidate.project.id))
+              : declaredEnvironmentSummary(declared, firstDeployOf(declared.id))
         }
         tag={environmentRoleTag(role)}
       />
@@ -2502,7 +2520,9 @@ function ZeropsProjectsContent({
             groupName: requestedGroup.group.name,
             roleLabel:
               environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
-            taken: requestedGroup.environments.map(({ item }) => item.project.name),
+            taken: requestedGroup.environments.flatMap(({ item }) =>
+              item === undefined ? [] : [item.project.name],
+            ),
           })}
           defaultTintFor={(name) => newMateTint(candidates, name)}
           defaultWithAgent={defaultAgentForRole(creationRequest.role)}

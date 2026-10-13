@@ -19,7 +19,7 @@ import {
   releaseContentsSummary,
   releaseInFlightReason,
   REVIEW_LABEL,
-  type EnvironmentRow,
+  type CanonicalEnvironmentRow as EnvironmentRow,
   type FlowPullRequest,
   type Moved,
   type GroupEnvironmentTier,
@@ -467,7 +467,12 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
 export function tiersAddable(input: {
   /** The tiers HQ offers this person to add (`add_stage` / `add_production`); `null` before it says. */
   readonly offered: { readonly stage: boolean; readonly production: boolean } | null;
-  readonly group: Pick<ZeropsGroup, "environments" | "pending">;
+  readonly group: Pick<ZeropsGroup, "pending"> & {
+    readonly environments: ReadonlyArray<{
+      readonly role: import("@t3tools/client-runtime/zerops").ZeropsEnvironmentRole | undefined;
+      readonly project: { readonly id: string } | undefined;
+    }>;
+  };
   /** The application's environments as HQ records them. */
   readonly hq: ReadonlyArray<HeldEnvironment>;
   readonly recipe: { readonly read: boolean; readonly tiers: ReadonlyArray<GroupEnvironmentTier> };
@@ -483,7 +488,9 @@ export function tiersAddable(input: {
           : entry.role === "stage" || entry.role === "devstage"
             ? "stage"
             : undefined;
-      return tier === undefined ? [] : [{ id: entry.project.id, tier }];
+      return tier === undefined || entry.project === undefined
+        ? []
+        : [{ id: entry.project.id, tier }];
     }),
     ...group.pending.flatMap((entry): ReadonlyArray<HeldEnvironment> =>
       entry.kind === "stage" || entry.kind === "production"
@@ -584,23 +591,45 @@ export function groupFlowInputOf(input: {
     ),
     pullRequests: flow?.pullRequests ?? [],
     merged: flow?.merged ?? [],
-    stops: input.members.flatMap((member) => {
-      const tier = member.role === undefined ? undefined : STOP_TIER[member.role];
-      if (tier === undefined) return [];
-      const row = flow?.environments.find((entry) => entry.projectId === member.projectId);
-      return [
-        {
-          projectId: member.projectId,
-          projectStatus: member.projectStatus,
-          services: member.services,
-          name: row?.name ?? member.name,
-          tier,
+    stops: [
+      ...(flow?.environments ?? []).map((row) => {
+        const projectId = row.target.kind === "zerops" ? row.target.projectId : undefined;
+        const member =
+          projectId === undefined
+            ? undefined
+            : input.members.find((entry) => entry.projectId === projectId);
+        return {
+          projectId: row.id,
+          projectStatus: member?.projectStatus,
+          services: member?.services,
+          name: row.name,
+          tier: row.tier,
           row,
-          deployment: input.deployments?.get(member.projectId),
-          addresses: placeAddresses(member.routes),
-        },
-      ];
-    }),
+          deployment: projectId === undefined ? undefined : input.deployments?.get(projectId),
+          addresses: placeAddresses(member?.routes ?? []),
+        };
+      }),
+      ...input.members.flatMap((member) => {
+        const tier = member.role === undefined ? undefined : STOP_TIER[member.role];
+        if (
+          tier === undefined ||
+          flow?.environments.some((row) => row.tier === tier && member.role !== "devstage")
+        )
+          return [];
+        return [
+          {
+            projectId: member.projectId,
+            projectStatus: member.projectStatus,
+            services: member.services,
+            name: member.name,
+            tier,
+            row: undefined,
+            deployment: input.deployments?.get(member.projectId),
+            addresses: placeAddresses(member.routes),
+          },
+        ];
+      }),
+    ],
     release:
       flow === undefined
         ? { gate: FLOW_NOT_READ, suggestion: "", waiting: 0, waitingAtLeast: false, untold: [] }

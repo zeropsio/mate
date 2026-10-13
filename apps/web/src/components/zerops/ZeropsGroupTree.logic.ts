@@ -56,7 +56,7 @@ export function environmentRoleTag(role: ZeropsEnvironmentRole | undefined): str
  * holds no application without a name, so this is a read problem: the tree
  * marks it rather than pretending `7k2m9qx4vb1c` is a title.
  */
-export function groupNameUnread(group: ZeropsGroup): boolean {
+export function groupNameUnread(group: Pick<ZeropsGroup, "nameSource">): boolean {
   return group.nameSource === "unread";
 }
 
@@ -72,7 +72,9 @@ export function groupNameUnread(group: ZeropsGroup): boolean {
  * production showing no way to add anything at all — the state that reads as
  * a missing feature rather than a full set.
  */
-export function creatableRoles(group: ZeropsGroup): ReadonlyArray<ZeropsEnvironmentRole> {
+export function creatableRoles(group: {
+  readonly environments: ReadonlyArray<{ readonly role: ZeropsEnvironmentRole | undefined }>;
+}): ReadonlyArray<ZeropsEnvironmentRole> {
   const hasProduction = group.environments.some((entry) => entry.role === "prod");
   return (["dev", "stage", "prod"] as const).filter((role) => role !== "prod" || !hasProduction);
 }

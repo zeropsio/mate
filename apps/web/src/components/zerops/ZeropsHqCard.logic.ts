@@ -32,7 +32,11 @@ export interface HqCardInput {
   /** HQ's services from the platform summary; `undefined` while unread. */
   readonly services: ReadonlyArray<ZeropsService> | undefined;
   /** The structure HQ's stream last told; `null` while nothing is known. */
-  readonly structure: HqStructure | null;
+  readonly structure:
+    | (Pick<HqStructure, "ungrouped"> & {
+        readonly apps: ReadonlyArray<Pick<HqStructure["apps"][number], "id" | "name" | "projects">>;
+      })
+    | null;
   /** How many of the Mates the viewer observes are online; `undefined` while not live. */
   readonly online: number | undefined;
   /** HQ's builds as the opened card read them; `undefined` while unread. */
@@ -79,7 +83,14 @@ export interface HqCardView {
  * A repository as HQ names it, `<appId>/<repo>`, as a person reads it: its project's name and its
  * own, or its own alone where the viewer's structure holds no such project.
  */
-function repositoryName(repo: string, structure: HqStructure | null): string {
+function repositoryName(
+  repo: string,
+  structure:
+    | (Pick<HqStructure, "ungrouped"> & {
+        readonly apps: ReadonlyArray<Pick<HqStructure["apps"][number], "id" | "name" | "projects">>;
+      })
+    | null,
+): string {
   const slash = repo.indexOf("/");
   const app = structure?.apps.find((entry) => entry.id === repo.slice(0, slash));
   return app === undefined ? repo.slice(slash + 1) : `${app.name}/${repo.slice(slash + 1)}`;
@@ -115,7 +126,11 @@ const BACKUP_FAILURES: Readonly<Record<string, string>> = {
  */
 function backupFailure(
   backup: Extract<HqBackup, { readonly state: "failed" }>,
-  structure: HqStructure | null,
+  structure:
+    | (Pick<HqStructure, "ungrouped"> & {
+        readonly apps: ReadonlyArray<Pick<HqStructure["apps"][number], "id" | "name" | "projects">>;
+      })
+    | null,
 ): string | undefined {
   if (backup.reason === "quota" && backup.usage !== undefined) {
     return `the backup bucket is full. ${used(backup.usage)}; a backup needs ${gigabytes(backup.usage.neededBytes)} GB.`;
@@ -128,7 +143,11 @@ function backupFailure(
 
 function backupTrouble(
   backup: HqBackup | undefined,
-  structure: HqStructure | null,
+  structure:
+    | (Pick<HqStructure, "ungrouped"> & {
+        readonly apps: ReadonlyArray<Pick<HqStructure["apps"][number], "id" | "name" | "projects">>;
+      })
+    | null,
 ): ReadonlyArray<string> {
   switch (backup?.state) {
     case "off":
@@ -188,7 +207,14 @@ function servicesTroubles(
 }
 
 /** What HQ's own health says is wrong with its parts. */
-function partsTroubles(parts: HqParts, structure: HqStructure | null): ReadonlyArray<string> {
+function partsTroubles(
+  parts: HqParts,
+  structure:
+    | (Pick<HqStructure, "ungrouped"> & {
+        readonly apps: ReadonlyArray<Pick<HqStructure["apps"][number], "id" | "name" | "projects">>;
+      })
+    | null,
+): ReadonlyArray<string> {
   const keys = parts.keys === undefined ? undefined : KEYS_TROUBLES[parts.keys];
   return [
     ...(parts.db === "down" ? ["HQ's database isn't answering."] : []),
@@ -205,7 +231,14 @@ const counted = (count: number, one: string, many: string) =>
  * What HQ holds, as far as the viewer sees it: its projects, their Mates and those in no project,
  * and how many of them are online while that is live.
  */
-function holdings(structure: HqStructure | null, online: number | undefined): string | null {
+function holdings(
+  structure:
+    | (Pick<HqStructure, "ungrouped"> & {
+        readonly apps: ReadonlyArray<Pick<HqStructure["apps"][number], "id" | "name" | "projects">>;
+      })
+    | null,
+  online: number | undefined,
+): string | null {
   if (structure === null) return null;
   const unknown = structure.apps.some((app) =>
     app.projects.some((project) => project.mate === undefined),

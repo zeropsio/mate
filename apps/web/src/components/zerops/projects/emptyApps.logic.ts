@@ -5,13 +5,19 @@
  * made for, and to whoever writes the structure *Delete* (`deleteOffered`).
  */
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
-import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
+import type { HqAppContents, HqStructure } from "@t3tools/client-runtime/zerops/hq";
 
 import type { HqNavigationView } from "~/state/zerops";
 
 /** HQ's applications needing a row without a listed project, including unfinished deletion. */
 export function emptyApplications(
-  view: HqNavigationView,
+  view: Pick<HqNavigationView, "orgId" | "live" | "reconnecting"> & {
+    readonly structure: {
+      readonly apps: ReadonlyArray<
+        Pick<HqStructure["apps"][number], "id" | "name" | "projects" | "contents">
+      >;
+    } | null;
+  },
   organizationId: string | undefined,
 ): ReadonlyArray<{ readonly id: string; readonly name: string }> {
   if (view.structure === null || view.orgId !== organizationId) return [];
@@ -23,13 +29,21 @@ export function emptyApplications(
 }
 
 /** Whether a group holds nothing, listed or coming: offered *Add a Mate* for its first, and no more. */
-export function groupIsEmpty(group: Pick<ZeropsGroup, "environments" | "pending">): boolean {
+export function groupIsEmpty(
+  group: Pick<ZeropsGroup, "pending"> & { readonly environments: ReadonlyArray<unknown> },
+): boolean {
   return group.environments.length === 0 && group.pending.length === 0;
 }
 
 /** Only HQ's current answer for this organization and application can establish emptiness. */
 export function applicationContents(
-  view: HqNavigationView,
+  view: Pick<HqNavigationView, "orgId" | "live" | "reconnecting"> & {
+    readonly structure: {
+      readonly apps: ReadonlyArray<
+        Pick<HqStructure["apps"][number], "id" | "name" | "projects" | "contents">
+      >;
+    } | null;
+  },
   organizationId: string | undefined,
   appId: string,
 ): HqAppContents | undefined {
@@ -60,7 +74,7 @@ export function heldLine(mates: number, contents: HqAppContents | undefined): st
  * disagrees, and the person writes the structure (`delete_app`).
  */
 export function deleteOffered(
-  group: Pick<ZeropsGroup, "environments" | "pending">,
+  group: Pick<ZeropsGroup, "pending"> & { readonly environments: ReadonlyArray<unknown> },
   mayDelete: boolean,
   contents: HqAppContents | undefined,
 ): boolean {

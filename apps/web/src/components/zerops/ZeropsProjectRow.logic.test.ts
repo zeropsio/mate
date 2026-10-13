@@ -1,3 +1,4 @@
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { newMateTint } from "@t3tools/client-runtime/zerops";
 import type { HqMateOfferStates } from "@t3tools/client-runtime/zerops/hq";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
@@ -431,7 +432,12 @@ describe("deriveZeropsRowAction", () => {
                 name: "shop",
                 projects: [{ projectId: "p-placed", name: "", kind: "stage", mate: null }],
                 contents: { empty: false, deletingProjectIds: ["p-going"] },
-                environments: [{ projectId: "p-env" }],
+                environments: [
+                  {
+                    id: HqEnvironmentId.make("e-env"),
+                    target: { kind: "zerops", projectId: ProjectId.make("p-env") },
+                  },
+                ],
                 births: [{ id: "b", face: "", projectId: "p-born" }],
               },
             ],

@@ -247,7 +247,13 @@ export interface CommandPaletteHqThreads {
 }
 
 /** The Mates HQ's structure relays, each with the name of the application it is in. */
-function relayedMates(structure: HqStructure | null) {
+function relayedMates(
+  structure:
+    | (Pick<HqStructure, "ungrouped"> & {
+        readonly apps: ReadonlyArray<Pick<HqStructure["apps"][number], "name" | "projects">>;
+      })
+    | null,
+) {
   return [
     ...(structure?.ungrouped ?? []).map((entry) => ({ ...entry, app: undefined })),
     ...(structure?.apps ?? []).flatMap((app) =>
@@ -265,7 +271,11 @@ function relayedMates(structure: HqStructure | null) {
  */
 export function hqChatMateNames(
   listed: ReadonlyArray<ZeropsCandidate>,
-  structure: HqStructure | null,
+  structure:
+    | (Pick<HqStructure, "ungrouped"> & {
+        readonly apps: ReadonlyArray<Pick<HqStructure["apps"][number], "name" | "projects">>;
+      })
+    | null,
 ): ReadonlyMap<string, string> {
   return new Map([
     ...relayedMates(structure).flatMap(({ projectId, name, app }) =>
@@ -283,7 +293,11 @@ export function hqChatMateNames(
  */
 export function hqChatMateApps(
   listed: ReadonlyArray<ZeropsCandidate>,
-  structure: HqStructure | null,
+  structure:
+    | (Pick<HqStructure, "ungrouped"> & {
+        readonly apps: ReadonlyArray<Pick<HqStructure["apps"][number], "name" | "projects">>;
+      })
+    | null,
 ): ReadonlyMap<string, string> {
   return new Map([
     ...relayedMates(structure).flatMap(({ projectId, app }) =>

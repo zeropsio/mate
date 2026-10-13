@@ -49,7 +49,7 @@ import { useZeropsData } from "./zeropsDataContext";
 
 /** One environment to stand up in a group, as the surface that asked for it knows it. */
 export interface EnvironmentCreationRequest {
-  readonly group: ZeropsGroup;
+  readonly group: Pick<ZeropsGroup, "groupId" | "name">;
   /** The group's environments, whose agents a new one offers the same of. */
   readonly environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>;
   readonly role: ZeropsEnvironmentRole;

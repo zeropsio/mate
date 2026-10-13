@@ -104,7 +104,7 @@ export function useEnvironmentQuestionFacts(
         recipeTiers: flow?.recipeTiers ?? [],
         held: [
           ...(flow?.environmentInputs ?? []).map((entry) => ({
-            id: entry.projectId,
+            id: entry.id,
             tier: entry.tier,
           })),
           ...projects.flatMap((project): ReadonlyArray<HeldEnvironment> => {

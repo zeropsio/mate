@@ -193,7 +193,7 @@ const MAIN = "main";
  * release anything (`docs/group-repo.md`).
  */
 export function environmentForBranch(
-  declarations: ReadonlyArray<GroupEnvironment>,
+  declarations: ReadonlyArray<Pick<GroupEnvironment, "name" | "tier" | "sources">>,
   branch: string | null,
 ): string | undefined {
   if (branch === null || branch.length === 0) return undefined;
@@ -498,7 +498,7 @@ function actionOf(checkout: GitCheckoutState, state: GitBlockState): GitBlockAct
 export function gitBlock(input: {
   readonly checkout: GitCheckoutState;
   readonly changes: GitChangeState;
-  readonly declarations: ReadonlyArray<GroupEnvironment>;
+  readonly declarations: ReadonlyArray<Pick<GroupEnvironment, "name" | "tier" | "sources">>;
   readonly evidence: GitBlockEvidence;
   /** Whose Mate this is, so its own branch reads as a name rather than an id. */
   readonly mateName?: string | undefined;

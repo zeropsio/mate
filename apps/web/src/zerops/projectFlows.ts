@@ -7,11 +7,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   accountReadsAtom,
-  appsEnvironments,
-  hqAppReleaseOffers,
+  canonicalAppEnvironments,
   shownHqAppChangesAtom,
-  type AppEnvironmentsRead,
-  projectFlow,
+  type CanonicalAppEnvironmentsRead,
+  canonicalProjectFlow,
   projectApplications,
 } from "@t3tools/client-runtime/data";
 import {
@@ -22,11 +21,8 @@ import {
   readZeropsMembership,
   releaseCandidate,
   releaseReads,
-  statedActiveVersions,
-  statedVersionNames,
   summarizeEnvironmentServices,
   type GroupStopProject,
-  type GroupStops,
 } from "@t3tools/client-runtime/zerops";
 import {
   ZeropsProjectId,
@@ -39,7 +35,7 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { Atom } from "effect/reactivity";
 import { useContext, useEffect, useMemo } from "react";
 
-import { hqDown, hqNavigationAtom } from "../state/zerops";
+import { hqNavigationAtom } from "../state/zerops";
 import { useDetailProjects } from "./accountEnvironments";
 import { useStatedVersions, useStopDeployments } from "./accountForge";
 import { useAccountHq } from "./accountHq";
@@ -55,9 +51,7 @@ import {
 } from "./inventoryContext";
 import {
   groupChangesOf,
-  groupStopsFor,
   HQ_CHANGES_UNANSWERED,
-  joinProjectFlows,
   NOT_COMPARED,
   type GroupChanges,
   type ReleaseLive,
@@ -66,11 +60,14 @@ import {
 import { releaseGateOf, useOfferReading } from "./appOffers";
 import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
 import { useReleaseComparisons } from "./useReleaseComparisons";
-import { useAccountOrgId, useProjection, useProjectsServices } from "./ZeropsAccountData";
+import { useProjection, useProjectsServices } from "./ZeropsAccountData";
 import { useZeropsSession, useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
-export type { ZeropsProjectFlow, ZeropsReleaseOffer } from "@t3tools/client-runtime/data";
-import type { ZeropsProjectFlow } from "@t3tools/client-runtime/data";
+export type {
+  CanonicalProjectFlow as ZeropsProjectFlow,
+  ZeropsReleaseOffer,
+} from "@t3tools/client-runtime/data";
+import type { CanonicalProjectFlow as ZeropsProjectFlow } from "@t3tools/client-runtime/data";
 
 /**
  * Applications' flows as the surfaces that draw them read them, with what the account says around
@@ -96,7 +93,7 @@ export interface ProjectFlows {
 }
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
-const NO_ENVIRONMENTS: Readonly<Record<string, AppEnvironmentsRead>> = {};
+const NO_ENVIRONMENTS: Readonly<Record<string, CanonicalAppEnvironmentsRead>> = {};
 const NO_ENVIRONMENTS_ATOM = Atom.make(NO_ENVIRONMENTS);
 const NO_APPS: ReadonlyArray<string> = [];
 
@@ -131,14 +128,25 @@ export function useEveryAppId(): ReadonlyArray<string> {
 /** The named applications' stage and production as HQ's navigation says them, by id. */
 export function useAppsEnvironments(
   appIds: ReadonlyArray<string>,
-): Readonly<Record<string, AppEnvironmentsRead>> {
+): Readonly<Record<string, CanonicalAppEnvironmentsRead>> {
   // The account's reads as mounted: what every surface over HQ's navigation reads through.
   const account = useAtomValue(accountReadsAtom);
-  return useAtomValue(
-    account === null || account.orgId === null || appIds.length === 0
-      ? NO_ENVIRONMENTS_ATOM
-      : account.data.project(appsEnvironments, { orgId: account.orgId, appIds }),
-  );
+  const key = appIds.join("\n");
+  const atom = useMemo(() => {
+    const orgId = account?.orgId;
+    if (account === null || orgId == null || key === "") return NO_ENVIRONMENTS_ATOM;
+    return Atom.make((get) =>
+      Object.fromEntries(
+        key
+          .split("\n")
+          .map((appId) => [
+            appId,
+            get(account.data.project(canonicalAppEnvironments, { orgId, appId })),
+          ]),
+      ),
+    );
+  }, [account, key]);
+  return useAtomValue(atom);
 }
 
 /** What a surface over applications' changes reads: their rows, at HQ's official address. */
@@ -147,8 +155,6 @@ export interface AppsChanges {
   /** Each application's changes once HQ told them; one not told yet is absent. */
   readonly changes: ReadonlyMap<string, GroupChanges>;
 }
-
-const NO_OFFERS_ATOM = Atom.make<ReturnType<typeof hqAppReleaseOffers.derive>>({});
 
 const NO_CHANGES: ReadonlyMap<string, GroupChanges> = new Map();
 const NO_REFUSALS: ReadonlyMap<string, string> = new Map();
@@ -257,12 +263,42 @@ export function useStopDeploymentsShown(
  * would put live is compared only for a surface that shows it (`compare`), and only while it is
  * drawn; elsewhere the offer stays unasked.
  */
-export function useCompactProjectFlows(apps: FlowApps): ProjectFlows {
+const NO_FLOW_NAVIGATION = Atom.make({ ids: NO_APPS, read: false, unavailable: false });
+
+/** Navigation status is shared with routes that must resolve a target before any project read. */
+export function useFlowNavigation(orgId: string | null) {
+  const accountHq = useAccountHq(orgId ?? undefined);
+  const navigation = useProjection(projectApplications, orgId, NO_FLOW_NAVIGATION);
+  const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
+  return useMemo(
+    () => ({
+      hqAddress,
+      readFailure: navigation.unavailable
+        ? HQ_CHANGES_UNANSWERED
+        : accountHq.status === "failed"
+          ? "The organization's HQ could not be read."
+          : accountHq.status === "ready" && accountHq.hq.kind !== "official"
+            ? "This organization has no HQ."
+            : undefined,
+      groupsRead: navigation.read,
+      knownGroups: new Set(navigation.ids),
+    }),
+    [navigation, hqAddress, accountHq.status, accountHq.hq.kind],
+  );
+}
+
+export function useCompactProjectFlows(
+  apps: FlowApps,
+  reviews?: ReadonlyMap<
+    string,
+    NonNullable<Parameters<typeof canonicalProjectFlow.derive>[1]["review"]>
+  >,
+): ProjectFlows {
   const account = useAtomValue(accountReadsAtom);
   const session = useZeropsSession();
   const orgId = session.activeOrganization?.id;
-  const accountHq = useAccountHq(orgId);
-  const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
+  const navigation = useFlowNavigation(orgId ?? null);
+  const hqAddress = navigation.hqAddress;
   const appKey = apps === "every" ? null : apps.join("\n");
   const atom = useMemo(
     () =>
@@ -281,32 +317,26 @@ export function useCompactProjectFlows(apps: FlowApps): ProjectFlows {
             flows: EMPTY_FLOWS,
             releaseFailures: new Map(),
           };
-        const navigation = get(account.data.project(projectApplications, account.orgId));
-        const ids = navigation.ids;
+        const ids = navigation.knownGroups;
         const flows = new Map<string, ZeropsProjectFlow>();
         for (const appId of ids) {
           if (appKey !== null && !appKey.split("\n").includes(appId)) continue;
           const flow = get(
-            account.data.project(projectFlow, {
+            account.data.project(canonicalProjectFlow, {
               orgId: account.orgId,
               appId,
               hqAddress,
               viewer: session.activeOrganization ?? undefined,
+              review: reviews?.get(appId),
             }),
           );
           if (flow !== undefined) flows.set(appId, flow);
         }
         return {
           hqAddress,
-          readFailure: navigation.unavailable
-            ? HQ_CHANGES_UNANSWERED
-            : accountHq.status === "failed"
-              ? "The organization's HQ could not be read."
-              : accountHq.status === "ready" && accountHq.hq.kind !== "official"
-                ? "This organization has no HQ."
-                : undefined,
-          groupsRead: navigation.read,
-          knownGroups: new Set(ids),
+          readFailure: navigation.readFailure,
+          groupsRead: navigation.groupsRead,
+          knownGroups: navigation.knownGroups,
           flows,
           releaseFailures: new Map(),
         };
@@ -318,8 +348,8 @@ export function useCompactProjectFlows(apps: FlowApps): ProjectFlows {
       session.activeOrganization,
       hqAddress,
       appKey,
-      accountHq.status,
-      accountHq.hq.kind,
+      reviews,
+      navigation,
     ],
   );
   return useAtomValue(atom);
@@ -330,12 +360,10 @@ export function useProjectFlows(
   options: { readonly compare?: boolean } = {},
 ): ProjectFlows {
   const compare = options.compare === true;
-  const orgId = useAccountOrgId();
-  const navigationOffers = useProjection(hqAppReleaseOffers, orgId, NO_OFFERS_ATOM);
+  const canonical = useCompactProjectFlows(apps);
   const session = useZeropsSession();
   const inventory = useZeropsInventory();
   const clientId = session.activeOrganization?.id;
-  const signedInToMate = session.status === "signed-in";
 
   // The organization's applications as HQ's navigation lists them; none before it said them.
   const hqStructure = useAtomValue(hqNavigationAtom);
@@ -419,37 +447,6 @@ export function useProjectFlows(
   // Comparing a release is detail demand; navigation only reads already held detail.
   useHqAppDetailHold(compare ? appIds : NO_APPS);
   const recipes = useHqAppRecipes(appIds);
-  // Each group's stage and production, as HQ's navigation says them.
-  const environments = useAppsEnvironments(appIds);
-
-  // Each group's stops, from HQ's environments and the account's half.
-  const groupStops = useMemo(() => {
-    const built = new Map<string, GroupStops>();
-    for (const [groupId, projects] of groupProjects) {
-      const told = environments[groupId]?.environments;
-      if (told === undefined) continue;
-      const statedHere = new Map(
-        projects.flatMap(({ services }) =>
-          services.flatMap(({ serviceId }) => {
-            const version = stated.get(serviceId);
-            return version === undefined ? [] : [[serviceId, version] as const];
-          }),
-        ),
-      );
-      built.set(
-        groupId,
-        groupStopsFor(groupId, {
-          environments: told,
-          projects,
-          versions: statedVersionNames(statedHere),
-          activeVersions: statedActiveVersions(statedHere),
-          recipe: recipes.get(groupId),
-        }),
-      );
-    }
-    return built;
-  }, [environments, groupProjects, recipes, stated]);
-
   const {
     releases: releaseRecords,
     repos: appRepos,
@@ -470,12 +467,6 @@ export function useProjectFlows(
 
   // A Mate's changes, linked at the organization's official address: the flows stand on them
   // wherever HQ answers.
-  const accountHq = useAccountHq(clientId);
-  const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
-  const shownChanges = useChangeRows(appIds, hqAddress);
-  const changes = hqAddress === undefined ? null : shownChanges.rows;
-  const changesRefused = shownChanges.refused;
-  const changesFailure = hqDown(hqStructure) ? HQ_CHANGES_UNANSWERED : undefined;
   // HQ's rule for this person releasing each group, in its words.
   const offers = useOfferReading();
   const permissions = useMemo(
@@ -499,18 +490,21 @@ export function useProjectFlows(
       const recipe = recipes.get(groupId);
       const repos = appRepos.get(groupId);
       const records = releaseRecords.get(groupId);
-      const production = groupStops
+      const production = canonical.flows
         .get(groupId)
-        ?.environments.find((entry) => entry.tier === "production");
+        ?.environmentInputs.find(
+          (entry) => entry.tier === "production" && entry.target.kind === "zerops",
+        );
       if (recipe === undefined || repos === undefined || records === undefined) continue;
       // Nothing is compared for an application with no production: there is nothing to release to.
-      if (production === undefined) continue;
-      const productionId = ZeropsProjectId.make(production.projectId);
+      if (production === undefined || production.target.kind !== "zerops") continue;
+      const target = production.target;
+      const productionId = ZeropsProjectId.make(target.projectId);
       if (withheld.has(productionId)) continue;
       const listed = heldServices[productionId]?.services !== undefined;
       const running = productionRuns({
         services: listed
-          ? groupProjects.get(groupId)?.find(({ projectId }) => projectId === production.projectId)
+          ? groupProjects.get(groupId)?.find(({ projectId }) => projectId === target.projectId)
               ?.services
           : undefined,
         stated,
@@ -542,7 +536,7 @@ export function useProjectFlows(
     appRepos,
     compare,
     groupProjects,
-    groupStops,
+    canonical.flows,
     heldServices,
     recipes,
     releaseRecords,
@@ -577,42 +571,23 @@ export function useProjectFlows(
       ),
     [compares, releasePlans],
   );
-  const flows = useMemo<ReadonlyMap<string, ZeropsProjectFlow>>(
+  const reviews = useMemo(
     () =>
-      signedInToMate
-        ? joinProjectFlows({
-            groups: flowGroups,
-            navigationOffers,
-            review: compare,
-            stops: groupStops,
-            releases: releaseRecords,
-            repos: appRepos,
-            recipes,
-            permissions,
-            live,
-            changes,
-            changesFailure,
-            changesRefused,
-            withheld,
-          })
-        : EMPTY_FLOWS,
-    [
-      appRepos,
-      navigationOffers,
-      compare,
-      changes,
-      changesFailure,
-      changesRefused,
-      flowGroups,
-      groupStops,
-      live,
-      permissions,
-      recipes,
-      releaseRecords,
-      signedInToMate,
-      withheld,
-    ],
+      compare
+        ? new Map(
+            appIds.map((id) => [
+              id,
+              {
+                permission: permissions.get(id),
+                live: live.get(id) ?? { moved: NOT_COMPARED, untold: [], runs: undefined },
+              },
+            ]),
+          )
+        : undefined,
+    [appIds, compare, permissions, live],
   );
+  const reviewed = useCompactProjectFlows(apps, reviews);
+  const flows = reviewed.flows;
 
   // Time to the first pull request row, per group, for diagnostics.
   useEffect(() => {
@@ -622,32 +597,8 @@ export function useProjectFlows(
     }
   }, [flows]);
 
-  const knownGroups = useMemo(() => new Set((told ?? []).map(({ id }) => id)), [told]);
   return useMemo<ProjectFlows>(
-    () => ({
-      hqAddress,
-      readFailure:
-        changesFailure ??
-        (accountHq.status === "failed"
-          ? "The organization's HQ could not be read."
-          : accountHq.status === "ready" && accountHq.hq.kind !== "official"
-            ? "This organization has no HQ."
-            : undefined),
-      groupsRead: hqStructure.live && told !== undefined,
-      knownGroups,
-      flows,
-      releaseFailures,
-    }),
-    [
-      accountHq.hq.kind,
-      accountHq.status,
-      changesFailure,
-      flows,
-      hqAddress,
-      hqStructure.live,
-      knownGroups,
-      told,
-      releaseFailures,
-    ],
+    () => ({ ...reviewed, releaseFailures }),
+    [reviewed, releaseFailures],
   );
 }

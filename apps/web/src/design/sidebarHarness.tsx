@@ -1,3 +1,4 @@
+import { HqEnvironmentId } from "@t3tools/contracts";
 /**
  * The sidebar, in every state it has, at the width it really gets — the thing
  * a string assertion cannot show you.
@@ -57,7 +58,7 @@ import {
   deployedVersion,
   mateShapeOf,
   readZeropsMembership,
-  type EnvironmentRow,
+  type CanonicalEnvironmentRow as EnvironmentRow,
   type FlowPullRequest,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
@@ -526,14 +527,14 @@ const behindPull = (input: Partial<FlowPullRequest> & { number: number; mateProj
   pull({ mergeability: "conflicting", ...input });
 
 function environment(
-  input: Partial<Omit<EnvironmentRow, "version" | "versionRepository">> & {
+  input: Partial<Omit<EnvironmentRow, "version" | "versionRepository" | "projectId">> & {
     projectId: string;
     /** The Zerops app-version name, parsed the way the product parses it. */
     appVersionName?: string | undefined;
     versionRepository?: string | undefined;
   },
 ): EnvironmentRow {
-  const { appVersionName, versionRepository = "appdev", ...rest } = input;
+  const { appVersionName, projectId, versionRepository = "appdev", ...rest } = input;
   const version = deployedVersion(appVersionName);
   const source = rest.source ?? "main";
   return {
@@ -549,6 +550,8 @@ function environment(
     deploys: [],
     keyGap: false,
     ...rest,
+    id: HqEnvironmentId.make(projectId),
+    target: { kind: "zerops", projectId: ProjectId.make(projectId) },
   };
 }
 

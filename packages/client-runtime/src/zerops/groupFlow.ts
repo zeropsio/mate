@@ -127,7 +127,7 @@ export interface GroupFlowStopInput {
   readonly name: string;
   readonly tier: GroupEnvironmentTier;
   /** Its row, where HQ records the environment and its deploys (`environmentRowInputsOf`). */
-  readonly row: EnvironmentRow | undefined;
+  readonly row: Omit<EnvironmentRow, "projectId"> | undefined;
   /** The platform's pushed answer (`ZeropsProjectFlowValue.deployments`); `undefined` unread. */
   readonly deployment: Shown<Deployment> | undefined;
   /** Its public addresses, one per service it serves ({@link placeAddresses}). */

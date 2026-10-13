@@ -20,6 +20,11 @@ import type { ZeropsProject } from "../api.ts";
 
 import type { Known } from "../knowledge/known.ts";
 import type { HqMate, HqStructure } from "./client.ts";
+
+/** Mate placement readers use app projects/births, independently of environment targets. */
+export type MatePlacementStructure = Pick<HqStructure, "ungrouped" | "tools" | "unheld"> & {
+  readonly apps: ReadonlyArray<Omit<HqStructure["apps"][number], "environments">>;
+};
 import type { HqPressHold } from "./pressElsewhere.ts";
 
 export type HqPlacement =
@@ -63,7 +68,7 @@ export const isRoleProjectKind = (kind: string): kind is RoleProjectKind =>
  * `unregistered` — never read as a project nobody made: what HQ said of it is its press.
  */
 export function placementsOf(
-  structure: HqStructure,
+  structure: MatePlacementStructure,
   logins: ReadonlyMap<string, OverviewLogins> = new Map(),
   readyAgents: ReadonlyMap<string, boolean> = new Map(),
   presses: Readonly<Record<string, Pick<HqPressHold, "kind" | "appId">>> | null = null,
@@ -202,7 +207,9 @@ export function placeListing<
  * structure is not known.
  */
 export function birthIntentOf(
-  structure: HqStructure | null,
+  structure: {
+    readonly apps: ReadonlyArray<Pick<HqStructure["apps"][number], "id" | "births">>;
+  } | null,
   birthId: string,
 ): { readonly appId: string; readonly face: string } | undefined {
   for (const app of structure?.apps ?? []) {
@@ -218,7 +225,7 @@ export function birthIntentOf(
  * None where it wears its name's tint, or where HQ's structure is not known.
  */
 export function birthFaceOf(
-  structure: HqStructure | null,
+  structure: MatePlacementStructure | null,
   projectId: string,
 ): ZeropsMateFace | undefined {
   for (const app of structure?.apps ?? []) {
@@ -275,7 +282,7 @@ export function placedMenuRows(input: {
 }
 
 /** HQ's name for each project its structure places. */
-export function placedNames(structure: HqStructure): ReadonlyMap<string, string> {
+export function placedNames(structure: MatePlacementStructure): ReadonlyMap<string, string> {
   return new Map([
     ...structure.apps.flatMap((app) =>
       app.projects.map((project) => [project.projectId, project.name] as const),
@@ -300,7 +307,7 @@ export type HqMateOfferStates =
   | { readonly held: false; readonly createRecord: HqOfferState };
 
 export function hqMateOffers(
-  structure: HqStructure,
+  structure: MatePlacementStructure,
   projectId: string,
   hq: { readonly current: boolean; readonly unavailableSince: number | null },
 ): HqMateOfferStates {

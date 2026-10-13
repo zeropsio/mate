@@ -1,6 +1,6 @@
 import { Atom, AtomRegistry } from "effect/reactivity";
 import { ThreadId } from "@t3tools/contracts";
-import { buildZeropsGroupTree } from "@t3tools/client-runtime/zerops";
+import { buildCanonicalGroupTree } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
@@ -46,7 +46,7 @@ const activity = (subject: string): ZeropsAgentActivity => ({
 describe("Projects keyed rows", () => {
   it("updates the changed Mate's visible task while preserving its neighbor's row value", () => {
     const registry = AtomRegistry.make();
-    const groups = buildZeropsGroupTree([candidate("Ada"), candidate("Bea")], {
+    const groups = buildCanonicalGroupTree([candidate("Ada"), candidate("Bea")], {
       order: "name",
     }).groups;
     const atom = projectsRowsAtom({
@@ -110,7 +110,7 @@ function pageRow(input: ZeropsAgentActivity | undefined, signedOut = false) {
     });
   registry.set(mateActivityAtom("Ada") as Atom.Writable<ZeropsAgentActivity | undefined>, input);
   const atom = projectsRowsAtom({
-    groups: buildZeropsGroupTree([candidate("Ada")], { order: "name" }).groups,
+    groups: buildCanonicalGroupTree([candidate("Ada")], { order: "name" }).groups,
     flows: {
       hqAddress: undefined,
       readFailure: undefined,

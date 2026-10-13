@@ -223,7 +223,7 @@ import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
 
 import { useProjectFlows } from "../zerops/projectFlows";
 import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
-import type { EnvironmentRow } from "@t3tools/client-runtime/zerops";
+import type { CanonicalEnvironmentRow } from "@t3tools/client-runtime/zerops";
 import {
   candidatesNotice,
   findCandidate,
@@ -1321,7 +1321,7 @@ export default function Sidebar() {
         // The pull requests that have landed on `main`: without it `groupFlow`
         // never sees a group's own merged code, so it read `main` as empty.
         merged: flow.merged,
-        environments: new Map(flow.environments.map((entry) => [entry.projectId, entry])),
+        environments: new Map(flow.environments.map((entry) => [entry.id, entry])),
         releaseOffered: flow.release.gate.allowed,
         // What a release would put in front of people: the count the
         // chips' menus say waits for production.
@@ -1350,10 +1350,10 @@ export default function Sidebar() {
   const { isMobile, setOpen, setOpenMobile } = useSidebar();
   /** A stop's page, in place of the thread — the sidebar stays where it is. */
   const openStop = useCallback(
-    (groupId: string, row: EnvironmentRow) => {
+    (groupId: string, row: CanonicalEnvironmentRow) => {
       void router.navigate({
         to: "/group/$groupId/$projectId",
-        params: { groupId, projectId: row.projectId },
+        params: { groupId, projectId: row.id },
       });
     },
     [router],
