@@ -10,8 +10,8 @@ const threadId = ThreadId.make("thread-1");
 const started = Effect.gen(function* () {
   const scripted = yield* makeScriptedProvider();
   const instance = yield* scripted.driver.create({
-    instanceId: ProviderInstanceId.make("codex"),
-    displayName: "Codex",
+    instanceId: ProviderInstanceId.make("opencode"),
+    displayName: "OpenCode",
     environment: [],
     enabled: true,
     config: {},

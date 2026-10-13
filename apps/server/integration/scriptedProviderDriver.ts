@@ -1,7 +1,7 @@
 /**
  * The one fake inside a scenario Mate: a provider driver whose agent is played by the test. Each
  * turn it receives runs the next scripted list of steps — say, call a tool, ask, hit a usage
- * limit, fail — through the canonical events a Codex adapter emits, so everything above the
+ * limit, fail — through the canonical events an adapter emits, so everything above the
  * adapter (ProviderService, SPI bus, pump, engine, store, outbox) is the real Mate.
  *
  * It owns provider session/turn/request ids only. A send with no scripted turn, and every adapter
@@ -67,7 +67,9 @@ export interface ScriptedAnswer {
   readonly answer: ProviderApprovalDecision | ProviderUserInputAnswers;
 }
 
-const DRIVER_KIND = ProviderDriverKind.make("codex");
+// An agent Mate signs nobody in to, as the fake Mate reports (`runsWithoutSignIn`): a case about
+// sign-in scripts the login itself.
+const DRIVER_KIND = ProviderDriverKind.make("opencode");
 const MODEL = "gpt-5.4";
 
 interface Session {
@@ -85,7 +87,7 @@ export const makeScriptedProvider = () =>
 
     const driver: AnyProviderDriver<never> = {
       driverKind: DRIVER_KIND,
-      metadata: { displayName: "Codex", supportsMultipleInstances: false },
+      metadata: { displayName: "OpenCode", supportsMultipleInstances: false },
       configSchema: Schema.Unknown,
       defaultConfig: () => ({}),
       create: ({ instanceId, displayName, accentColor, enabled }) =>

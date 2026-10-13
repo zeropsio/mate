@@ -61,6 +61,8 @@ export interface ScenarioMate {
   readonly refused: ReadonlyArray<string>;
   /** Stops the server; its directories stay until `remove`. */
   readonly stop: () => Promise<void>;
+  /** Stops it and starts it again on the same state, home and port, as a restarted container. */
+  readonly restart: () => Promise<void>;
   readonly remove: () => Promise<void>;
 }
 
@@ -85,6 +87,14 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
   await Promise.all([homeDir, cwd].map((dir) => NodeFSP.mkdir(dir, { recursive: true })));
   if (options.stateFrom)
     await NodeFSP.cp(options.stateFrom, NodePath.join(baseDir, "userdata"), { recursive: true });
+  else {
+    // The scripted agent stands in for OpenCode, which a user opts in to from Settings.
+    await NodeFSP.mkdir(NodePath.join(baseDir, "userdata"), { recursive: true });
+    await NodeFSP.writeFile(
+      NodePath.join(baseDir, "userdata", "settings.json"),
+      JSON.stringify({ providers: { opencode: { enabled: true } } }),
+    );
+  }
   let hqEnrollmentPath: string | undefined;
   if (options.hq) {
     hqEnrollmentPath = NodePath.join(root, "hq", "enrollment.json");
@@ -106,65 +116,78 @@ export async function startScenarioMate(options: ScenarioMateOptions): Promise<S
     return globalThis.fetch(input, init);
   }) as typeof globalThis.fetch;
 
-  const scope = Scope.makeUnsafe();
-  const boot = Effect.gen(function* () {
-    const context = yield* Layer.buildWithScope(
-      makeServerLayer({ drivers: options.drivers }),
-      scope,
+  const boot = async (port: number) => {
+    const scope = Scope.makeUnsafe();
+    const server = Effect.gen(function* () {
+      const context = yield* Layer.buildWithScope(
+        makeServerLayer({ drivers: options.drivers }),
+        scope,
+      );
+      const ready = yield* ServerRuntimeStartup.pipe(Effect.provide(context));
+      yield* ready.awaitCommandReady;
+      const http = yield* HttpServer.HttpServer.pipe(Effect.provide(context));
+      const address = http.address;
+      if (!("port" in address))
+        return yield* Effect.die(new Error("Scenario Mate has no TCP port"));
+      return address.port;
+    }).pipe(
+      Effect.updateService(ServerConfig.ServerConfig, (config) => ({
+        ...config,
+        homeDir,
+        // A container's Mate opens on its workspace as its project, as `mate serve` does.
+        autoBootstrapProjectFromCwd: true,
+        // A test Mate never opens the developer's browser on its origin.
+        noBrowser: true,
+        basePath: "/mate",
+        host: "127.0.0.1",
+        port,
+        zerops: {
+          projectId: options.projectId,
+          apiBaseUrl: options.zeropsApiBaseUrl,
+          publicOrigin: options.publicOrigin,
+          apiToken: options.zeropsApiToken,
+          roleRecheckInterval: Duration.minutes(5),
+          sessionMaxAge: Duration.days(30),
+          hqEnrollmentPath,
+          serviceId: options.serviceId,
+          hostname: options.hostname,
+          statusFile: NodePath.join(root, "zcp", "status.json"),
+          mateUpdateStateFile: NodePath.join(root, "zcp", "update.json"),
+        },
+      })),
+      Effect.provide(ServerConfig.layerTest(cwd, baseDir).pipe(Layer.provide(NodeServices.layer))),
+      Effect.provideService(FetchHttpClient.Fetch, loopbackFetch),
     );
-    const ready = yield* ServerRuntimeStartup.pipe(Effect.provide(context));
-    yield* ready.awaitCommandReady;
-    const server = yield* HttpServer.HttpServer.pipe(Effect.provide(context));
-    const address = server.address;
-    if (!("port" in address)) return yield* Effect.die(new Error("Scenario Mate has no TCP port"));
-    return { port: address.port };
-  }).pipe(
-    Effect.updateService(ServerConfig.ServerConfig, (config) => ({
-      ...config,
-      homeDir,
-      // A test Mate never opens the developer's browser on its origin.
-      noBrowser: true,
-      basePath: "/mate",
-      host: "127.0.0.1",
-      zerops: {
-        projectId: options.projectId,
-        apiBaseUrl: options.zeropsApiBaseUrl,
-        publicOrigin: options.publicOrigin,
-        apiToken: options.zeropsApiToken,
-        roleRecheckInterval: Duration.minutes(5),
-        sessionMaxAge: Duration.days(30),
-        hqEnrollmentPath,
-        serviceId: options.serviceId,
-        hostname: options.hostname,
-        statusFile: NodePath.join(root, "zcp", "status.json"),
-        mateUpdateStateFile: NodePath.join(root, "zcp", "update.json"),
-      },
-    })),
-    Effect.provide(ServerConfig.layerTest(cwd, baseDir).pipe(Layer.provide(NodeServices.layer))),
-    Effect.provideService(FetchHttpClient.Fetch, loopbackFetch),
-  );
-  // The clock reference is read where each fiber runs, so it is provided around the whole boot.
-  const started = await Effect.runPromise(
-    Effect.flatMap(Clock.Clock, (base) =>
-      boot.pipe(Effect.provideService(Clock.Clock, scenarioClock(options.now, base))),
-    ),
-  ).catch(async (error: unknown) => {
-    await Effect.runPromise(Scope.close(scope, Exit.void));
-    throw error;
-  });
+    // The clock reference is read where each fiber runs, so it is provided around the whole boot.
+    const bound = await Effect.runPromise(
+      Effect.flatMap(Clock.Clock, (base) =>
+        server.pipe(Effect.provideService(Clock.Clock, scenarioClock(options.now, base))),
+      ),
+    ).catch(async (error: unknown) => {
+      await Effect.runPromise(Scope.close(scope, Exit.void));
+      throw error;
+    });
+    return { scope, port: bound };
+  };
 
-  let stopped = false;
+  let running: { scope: Scope.Closeable; port: number } | undefined = await boot(0);
+  const port = running.port;
+  const stop = async () => {
+    const closing = running;
+    running = undefined;
+    if (closing) await Effect.runPromise(Scope.close(closing.scope, Exit.void));
+  };
   return {
-    origin: `http://127.0.0.1:${started.port}`,
+    origin: `http://127.0.0.1:${port}`,
     root,
     homeDir,
     stateDir: NodePath.join(baseDir, "userdata"),
     dbPath: NodePath.join(baseDir, "userdata", "state.sqlite"),
     refused,
-    stop: async () => {
-      if (stopped) return;
-      stopped = true;
-      await Effect.runPromise(Scope.close(scope, Exit.void));
+    stop,
+    restart: async () => {
+      await stop();
+      running = await boot(port);
     },
     remove: () => NodeFSP.rm(root, { recursive: true, force: true }),
   };
