@@ -1852,13 +1852,32 @@ describe("the running engine", () => {
           modelSelection: { instanceId: driver, model: "m1", options: fast },
         });
         yield* w.agent((agent, thread) => agent.finish(thread));
-        const effort = [{ id: "effort", value: "low" }];
+        const effort = [{ id: driver === "codex" ? "reasoningEffort" : "effort", value: "low" }];
         yield* w.tell({ _tag: "SwitchModel", model: "m1", options: [...fast, ...effort] });
         yield* send(w, "low effort");
         assert.strictEqual(
           w.provider.calls.filter((call) => call.startsWith("start")).length,
           starts,
         );
+        assert.deepInclude(w.provider.sends.at(-1), {
+          modelSelection: { instanceId: driver, model: "m1", options: [...fast, ...effort] },
+        });
+        if (driver === "codex") {
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const options = [...fast, ...effort, { id: "contextWindow", value: "272000" }];
+          yield* w.tell({ _tag: "SwitchModel", model: "m1", options });
+          yield* send(w, "new context window");
+          assert.strictEqual(
+            w.provider.calls.filter((call) => call.startsWith("start")).length,
+            starts + 1,
+          );
+          assert.deepInclude(w.provider.starts.at(-1), {
+            modelSelection: { instanceId: driver, model: "m1", options },
+          });
+          assert.deepInclude(w.provider.sends.at(-1), {
+            modelSelection: { instanceId: driver, model: "m1", options },
+          });
+        }
         yield* w.shutdown;
       }),
     ),

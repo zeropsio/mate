@@ -394,11 +394,14 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
         subscribeChanges: Effect.succeed({ changes: Stream.empty }),
       },
       compactThread: () => Effect.die("not scripted"),
-      // As the adapters declare them: Claude applies effort to a live session, the rest per turn.
+      // As the adapters declare them: Claude applies effort; Codex applies reasoning and routing.
       getCapabilities: () =>
         Effect.succeed({
           sessionModelSwitch: "in-session",
           ...(driver === "claudeAgent" ? { inSessionModelOptions: ["effort"] } : {}),
+          ...(driver === "codex"
+            ? { inSessionModelOptions: ["reasoningEffort", "serviceTier", "fastMode"] }
+            : {}),
         }) as never,
       // An instance named `<driver>` or `<driver>:<name>` runs that driver; `<driver>:<name>~<key>`
       // resumes by `key` (default: the driver's).
