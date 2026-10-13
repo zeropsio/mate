@@ -8,17 +8,19 @@ import {
 import * as Schema from "effect/Schema";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
-import { createScenario } from "../../harness/scenario.ts";
+import { createScenario, type ScenarioOptions } from "../../harness/scenario.ts";
 import { installArea } from "./fake.ts";
 import { mateChat, projectAccessRevoked } from "./dsl.ts";
 
-const setup = Effect.gen(function* () {
-  const s = yield* createScenario([installArea]);
-  yield* s.given.project("Ada", { mate: true });
-  const chat = mateChat(s);
-  chat.fixture().history();
-  return { s, chat };
-});
+const openArea = (options: ScenarioOptions) =>
+  Effect.gen(function* () {
+    const s = yield* createScenario([installArea], options);
+    yield* s.given.project("Ada", { mate: true });
+    const chat = mateChat(s);
+    chat.fixture().history();
+    return { s, chat };
+  });
+const setup = openArea({});
 
 describe("C: opening a Mate and chat", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -220,7 +222,7 @@ describe("C: opening a Mate and chat", () => {
       // Catches a broken identity door/OAuth exchange or a slow first opening that never reaches the chosen chat.
       it.effect("first open crosses the door and OAuth", () =>
         Effect.gen(function* () {
-          const { s, chat } = yield* setup;
+          const { s, chat } = yield* openArea({ signIn: "ui" });
           yield* s.given.signedIn;
           expect(
             s.drivers.zerops.requests.get("GET /authorize-app"),
