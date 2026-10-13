@@ -111,7 +111,7 @@ it("CI's Test job runs scenario-driver units after provisioning their browser", 
     new URL("../.github/workflows/ci.yml", import.meta.url),
     "utf8",
   );
-  const driver = checkSteps(workflow, "test").find((step) =>
+  const driver = checkSteps(workflow, "test_packages").find((step) =>
     step.run.includes("--project scenario-drivers"),
   );
   expect(driver, "ASSERTION: scenario-driver units are covered by CI's Test job").toBeDefined();

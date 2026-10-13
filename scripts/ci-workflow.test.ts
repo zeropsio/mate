@@ -183,6 +183,7 @@ it("the Test verdict includes every scripts and HQ shard", () => {
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
   expect(workflow.jobs.test.needs, "ASSERTION: Test must wait for every split package").toEqual([
+    "test_packages",
     "test_scripts",
     "test_hq",
   ]);
@@ -196,7 +197,11 @@ it("the Test verdict includes every scripts and HQ shard", () => {
       "--shard ${{ matrix.shard }}/${{ strategy.job-total }}",
     );
   }
-  const command = workflow.jobs.test.steps.find(
+  expect(
+    workflow.jobs.test_packages.needs,
+    "ASSERTION: package execution must not wait for the split suites",
+  ).toBeUndefined();
+  const command = workflow.jobs.test_packages.steps.find(
     (step: { name: string }) => step.name === "Test",
   ).run;
   expect(command).toContain("--filter '!@t3tools/scripts'");
@@ -249,9 +254,13 @@ it("hosted web CI omits desktop and mobile jobs and work", () => {
   } finally {
     NodeFS.rmSync(directory, { recursive: true, force: true });
   }
-  const test = workflow.jobs.test.steps.find((step: { name: string }) => step.name === "Test").run;
+  const test = workflow.jobs.test_packages.steps.find(
+    (step: { name: string }) => step.name === "Test",
+  ).run;
   expect(test).toContain("--filter '!@t3tools/desktop'");
   expect(
-    workflow.jobs.test.steps.some((step: { name: string }) => step.name.includes("Electron")),
+    workflow.jobs.test_packages.steps.some((step: { name: string }) =>
+      step.name.includes("Electron"),
+    ),
   ).toBe(false);
 });

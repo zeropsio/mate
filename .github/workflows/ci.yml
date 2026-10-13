@@ -202,12 +202,20 @@ jobs:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
         run: ${{ matrix.command }}
 
-  # Scripts and HQ run on their own shards. Test keeps its existing context,
-  # package tests and scenario drivers, and includes every split verdict.
+  # Independent suites run concurrently; the existing Test context reports
+  # their combined verdict without serializing package execution.
   test:
     name: Test
-    needs: [test_scripts, test_hq]
+    needs: [test_packages, test_scripts, test_hq]
     if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require every package test job to pass
+        run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}" = true
+
+  test_packages:
+    name: Test Packages
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -233,9 +241,6 @@ jobs:
         run: |
           vp run test:browser
           vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenario-drivers --allowOnly=false
-
-      - name: Require every split package test job to pass
-        run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'skipped') }}" = true
 
   test_scripts:
     name: Test Scripts ${{ matrix.shard }}
