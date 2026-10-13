@@ -53,6 +53,7 @@ import {
   ownListScrolls,
   scrollOwn,
   takeOwnScroll,
+  type OwnScroll,
   type EndFollow,
 } from "./timelineEndFollow";
 import { landingHolds } from "./answerLanding.logic";
@@ -920,9 +921,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     /** The held head's row as the last frame drew it, and how many frames it has stood so. */
     card?: { readonly height: number; readonly still: number };
   } | null>(null);
-  const followEnd = useCallback((grew = 0) => {
+  // A fold or a landing holds the view where it stands: the follower waits for it.
+  const followEnd = useCallback((grew = 0, own?: OwnScroll) => {
     if (outerFoldsRef.current.size === 0 && landingRef.current === null) {
-      endFollowRef.current?.follow(grew);
+      if (own === "list") endFollowRef.current?.undo();
+      else endFollowRef.current?.follow(grew);
     }
   }, []);
   // What it holds back where it stood, in the frame that moved it. An answer that comes with its
@@ -1612,11 +1615,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // person's, however recently they touched the list.
   const handleScroll = useCallback(() => {
     const node = listRef.current?.getScrollableNode();
-    const own = node !== null && node !== undefined && takeOwnScroll(node);
+    const own = node ? takeOwnScroll(node) : undefined;
     placeFolds();
-    readList(!own && personIsScrolling(personSessionRef.current, performance.now()), own);
-    // A move of the page's own that left the end while it follows: back to the end.
-    if (own && followingEndRef.current && listPlacedRef.current) followEnd();
+    readList(
+      own === undefined && personIsScrolling(personSessionRef.current, performance.now()),
+      own !== undefined,
+    );
+    // A move of the page's own that left the end while it follows: back to the end; the list's
+    // own before the frame paints.
+    if (own && followingEndRef.current && listPlacedRef.current) followEnd(0, own);
   }, [followEnd, listRef, placeFolds, readList]);
 
   // Rows changed under the list: where it stands now is none of the person's doing.

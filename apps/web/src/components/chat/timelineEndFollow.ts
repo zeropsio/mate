@@ -20,23 +20,26 @@ export const GLIDING_ATTRIBUTE = "data-timeline-gliding";
 /** A step of the end this long or longer glides; a shorter one is already a glide's step. */
 export const GLIDE_FROM_PX = 40;
 
-/** Where the page itself last put each scroll: a scroll heard there is the page's. */
-const ownTops = new WeakMap<object, number>();
+/** Who of the page made a scroll: the page's own code (`scrollOwn`), or the list (`ownListScrolls`). */
+export type OwnScroll = "page" | "list";
+
+/** Where the page itself last put each scroll, and who put it there: a scroll heard there is the page's. */
+const ownTops = new WeakMap<object, { readonly top: number; readonly by: OwnScroll }>();
 
 /** The page puts `element`'s top at `top`: a scroll heard there is not the person's. */
 export function scrollOwn(element: HTMLElement, top: number): void {
   element.scrollTop = top;
-  ownTops.set(element, element.scrollTop);
+  ownTops.set(element, { top: element.scrollTop, by: "page" });
 }
 
 /**
- * Whether `element`'s scroll, heard now, is the page's own move (`scrollOwn`):
- * once only — a later scroll to the same top is someone else's.
+ * Who of the page made `element`'s scroll heard now (`scrollOwn`, `ownListScrolls`), or
+ * `undefined` for someone else's: once only — a later scroll to the same top is someone else's.
  */
-export function takeOwnScroll(element: HTMLElement): boolean {
+export function takeOwnScroll(element: HTMLElement): OwnScroll | undefined {
   const own = ownTops.get(element);
   ownTops.delete(element);
-  return own !== undefined && Math.abs(element.scrollTop - own) <= 1;
+  return own !== undefined && Math.abs(element.scrollTop - own.top) <= 1 ? own.by : undefined;
 }
 
 /**
@@ -49,11 +52,11 @@ export function ownListScrolls(element: HTMLElement): () => void {
   const scrollBy = element.scrollBy;
   element.scrollTo = function (...args: Parameters<HTMLElement["scrollTo"]>) {
     scrollTo.apply(element, args as never);
-    ownTops.set(element, element.scrollTop);
+    ownTops.set(element, { top: element.scrollTop, by: "list" });
   } as HTMLElement["scrollTo"];
   element.scrollBy = function (...args: Parameters<HTMLElement["scrollBy"]>) {
     scrollBy.apply(element, args as never);
-    ownTops.set(element, element.scrollTop);
+    ownTops.set(element, { top: element.scrollTop, by: "list" });
   } as HTMLElement["scrollBy"];
   return () => {
     element.scrollTo = scrollTo;
@@ -76,6 +79,13 @@ export interface EndFollow {
    * were read never glides on to the few pixels of its foot under it.
    */
   readonly keep: () => void;
+  /**
+   * The list moved the view itself — its initial scroll re-applied as rows measure: it stands at
+   * the end again at once, before the frame paints. Glided back, a long history showed the
+   * conversation mid-way for a second (1,471 px, still 5 px off the end after 60 frames).
+   * Mid-glide the glide goes on from where the list put it.
+   */
+  readonly undo: () => void;
   readonly stop: () => void;
 }
 
@@ -152,7 +162,7 @@ export function createEndFollow({
     // grow the range and before its coalesced scroll event arrives. Dimensions
     // round to integers while scrollTop stays fractional, so allow 1 px.
     if (element === observedViewport && at > end && Math.abs(end - element.scrollTop) <= 1) {
-      ownTops.set(element, element.scrollTop);
+      ownTops.set(element, { top: element.scrollTop, by: "page" });
     }
     observedViewport = element;
     at = element.scrollTop;
@@ -221,6 +231,12 @@ export function createEndFollow({
       // Said on it while it glides: a run's fold waits for it (`foldWork`).
       said(element, true);
       frame = requestAnimationFrame(step);
+    },
+    undo: () => {
+      const element = viewport();
+      if (element === null || !follows() || frame !== 0) return;
+      scrollOwn(element, endOf(element));
+      at = element.scrollTop;
     },
     stop: stopGlide,
   };

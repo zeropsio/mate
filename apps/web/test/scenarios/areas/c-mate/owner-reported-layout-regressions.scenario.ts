@@ -3936,6 +3936,77 @@ describe("owner-reported layout regressions", () => {
     // Run 9 (Milo, step 5): reloaded, a conversation ending in a recorded 369 px page landed
     // 320 px short of its end and glided there: the page's row was first measured in its 240 px
     // first box, before its width was read.
+    describe("Decision: product fix; the 2 px bound stays.", () => {
+      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+        // Found moving the chat journeys onto a real Mate: the list's own scroll up was glided
+        // back on the follow curve, as an arriving row is, and real history's 1,471 px still
+        // stood 5 px off the end a second later.
+        it.effect("a long real conversation never shows the list's own scroll off its end", () =>
+          Effect.gen(function* () {
+            const s = yield* createScenario([], { mate: "real" });
+            yield* s.given.project("Ada", { mate: true });
+            const ada = s.drivers.realMates.get("Ada")!;
+            yield* s.given.signedIn;
+            yield* s.when.menu.opensMate("Ada");
+            yield* s.then.conversation.appears;
+            const answer =
+              "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
+                30,
+              );
+            for (const [question, reply] of [
+              ["How did deploy 1 go?", answer],
+              ["How did deploy 2 go?", answer],
+              ["How did deploy 3 go?", answer],
+              ["And now?", "The existing conversation is still here"],
+            ] as const) {
+              yield* ada.provider.turn([{ kind: "say", text: reply }]);
+              yield* s.when.conversation.sends(question);
+              expect((yield* ada.provider.received).input.input).toBe(question);
+              yield* Effect.promise(() =>
+                s.page.waitForFunction(
+                  () => !document.querySelector('button[aria-label="Stop generation"]'),
+                  { timeout: 8000, polling: 100 },
+                ),
+              );
+            }
+            yield* Effect.promise(() => s.page.reload());
+            yield* s.then.conversation.showsMessage("The existing conversation is still here");
+            const fromEnd = () =>
+              Effect.promise(() =>
+                s.page.evaluate(async () => {
+                  const readings: number[] = [];
+                  for (let frame = 0; frame < 60; frame += 1) {
+                    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+                    const scroll = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                    readings.push(scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop);
+                  }
+                  return readings;
+                }),
+              );
+            const opened = yield* fromEnd();
+            expect(
+              opened.at(-1),
+              `ASSERTION: the conversation opened at its end: ${opened.join(" ")}`,
+            ).toBeLessThanOrEqual(2);
+            // LegendList's initial scroll re-applied while its rows measure: the list's own move.
+            const left = yield* Effect.promise(() =>
+              s.page.evaluate(() => {
+                const scroll = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                scroll.scrollTo({ top: Math.round(scroll.scrollHeight * 0.45) });
+                return scroll.scrollHeight - scroll.clientHeight - scroll.scrollTop;
+              }),
+            );
+            const after = yield* fromEnd();
+            expect(left, "ASSERTION: the list's own scroll went far up").toBeGreaterThan(1000);
+            expect(
+              Math.max(...after),
+              `ASSERTION: the list's own scroll showed off the end: ${after.join(" ")}`,
+            ).toBeLessThanOrEqual(2);
+            yield* s.then.noExternalNetwork;
+          }),
+        );
+      });
+    });
     describe("Decision: a reload paints nothing it takes back.", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         it.effect(

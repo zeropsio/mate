@@ -474,6 +474,39 @@ describe("createEndFollow", () => {
     expect(scroll.element.scrollTop).toBe(endOf(scroll));
   });
 
+  it("stands back at its end at once, before the frame paints, when the list itself scrolled far up", () => {
+    const { scroll, follow } = atItsEnd();
+    scroll.element.scrollTop = 120;
+    follow.undo();
+    expect(
+      endOf(scroll) - scroll.element.scrollTop,
+      "ASSERTION: the list's own scroll up is undone in the frame it came",
+    ).toBe(0);
+    expect(frames).toHaveLength(0);
+    expect(scroll.element.hasAttribute(GLIDING_ATTRIBUTE)).toBe(false);
+  });
+
+  it("lets a glide go on from where the list's own scroll put it", () => {
+    const { scroll, follow } = atItsEnd();
+    grow(scroll, follow, 600);
+    now += FRAME_MS;
+    for (const frame of frames.splice(0)) frame(now);
+    scroll.element.scrollTop -= 74;
+    const stood = scroll.element.scrollTop;
+    follow.undo();
+    expect(scroll.element.scrollTop).toBe(stood);
+    play(scroll);
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
+  });
+
+  it("never undoes a list scroll it does not follow", () => {
+    const { scroll, follow } = atItsEnd();
+    scroll.state.follows = false;
+    scroll.element.scrollTop = 120;
+    follow.undo();
+    expect(scroll.element.scrollTop).toBe(120);
+  });
+
   it("stands at the end at once when its next frame comes long after, as on a tab coming back", () => {
     const { scroll, follow } = atItsEnd();
     grow(scroll, follow, 900);
@@ -526,10 +559,10 @@ describe("takeOwnScroll", () => {
   it("names the page's move once, and a later scroll to the same top the person's", () => {
     const element = { scrollTop: 0, scrollHeight: 2000, clientHeight: 400 };
     scrollOwn(element as unknown as HTMLElement, 900);
-    expect(takeOwnScroll(element as unknown as HTMLElement)).toBe(true);
+    expect(takeOwnScroll(element as unknown as HTMLElement)).toBe("page");
     element.scrollTop = 600;
     element.scrollTop = 900;
-    expect(takeOwnScroll(element as unknown as HTMLElement)).toBe(false);
+    expect(takeOwnScroll(element as unknown as HTMLElement)).toBeUndefined();
   });
 });
 
@@ -547,14 +580,14 @@ describe("ownListScrolls", () => {
     const list = element as unknown as HTMLElement;
     const undo = ownListScrolls(list);
     list.scrollTo({ top: 1764 });
-    expect(takeOwnScroll(list)).toBe(true);
-    expect(takeOwnScroll(list)).toBe(false);
+    expect(takeOwnScroll(list)).toBe("list");
+    expect(takeOwnScroll(list)).toBeUndefined();
     list.scrollBy({ top: 74 });
-    expect(takeOwnScroll(list)).toBe(true);
+    expect(takeOwnScroll(list)).toBe("list");
     element.scrollTop = 400;
-    expect(takeOwnScroll(list)).toBe(false);
+    expect(takeOwnScroll(list)).toBeUndefined();
     undo();
     list.scrollTo({ top: 10 });
-    expect(takeOwnScroll(list)).toBe(false);
+    expect(takeOwnScroll(list)).toBeUndefined();
   });
 });
