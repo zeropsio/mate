@@ -20,14 +20,36 @@ const setup = (freezeClock = true) =>
     return { s, chat, wire };
   });
 
+const realSetup = Effect.gen(function* () {
+  const s = yield* createScenario([], { mate: "real" });
+  yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+  yield* s.given.project("Wren", { mate: true });
+  const chat = mateChat(s);
+  const mate = s.drivers.realMates.get("Wren")!;
+  yield* Effect.promise(() => s.clock.install());
+  yield* s.given.signedIn;
+  yield* s.when.menu.opensMate("Wren");
+  yield* s.then.conversation.appears;
+  yield* mate.provider.turn([{ kind: "say", text: "The existing conversation is still here" }]);
+  yield* s.when.conversation.sends("Keep this conversation");
+  yield* Effect.promise(() =>
+    s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
+      timeout: 8000,
+      polling: "raf",
+    }),
+  );
+  yield* chat.then.once("The existing conversation is still here");
+  return { s, chat, mate };
+});
+
 describe("C: source failures keep the conversation", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     // An intentional stop must offer the platform start operation directly beside the conversation.
     it.effect("a stopped container offers Start beside retained history", () =>
       Effect.gen(function* () {
-        const { s, chat, wire } = yield* setup();
+        const { s, chat, mate } = yield* realSetup;
         reportContainer(s.drivers, "Wren", "STOPPED");
-        wire.disconnect();
+        yield* Effect.promise(() => mate.server.stop());
         yield* chat.then.text("Wren's container is stopped.");
         yield* chat.then.text("Start Wren to reconnect.");
         yield* chat.then.control("Start");

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
@@ -39,6 +40,31 @@ const longConversation = Effect.gen(function* () {
   return { s, chat, engine: wire.engine };
 });
 
+// Real history is authored by the provider and committed by the same engine the browser reads.
+const realLongConversation = Effect.gen(function* () {
+  const s = yield* createScenario([], { mate: "real" });
+  yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+  yield* s.given.project("Ada", { mate: true });
+  const provider = s.drivers.realMates.get("Ada")!.provider;
+  const chat = mateChat(s);
+  yield* s.given.signedIn;
+  yield* s.when.menu.opensMate("Ada");
+  yield* s.then.conversation.appears;
+  for (const round of [1, 2, 3]) {
+    const answer =
+      "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(30);
+    yield* provider.turn([{ kind: "say", text: answer }]);
+    yield* s.when.conversation.sends(`How did deploy ${round} go?`);
+    yield* s.then.conversation.showsMessage(
+      "The shop's deploy built, its logs are clean and the storefront answers.",
+    );
+  }
+  yield* provider.turn([{ kind: "say", text: "The existing conversation is still here" }]);
+  yield* s.when.conversation.sends("And now?");
+  yield* s.then.conversation.showsMessage("The existing conversation is still here");
+  return { s, chat, provider };
+});
+
 /** Calls `step` with 1, 2, 3… every tenth of a second, on the page's own time, until stopped. */
 function everyTenth(step: (count: number) => void): { readonly stop: () => void } {
   let count = 0;
@@ -57,6 +83,7 @@ const trace = (page: import("puppeteer-core").Page, anchorText: string) =>
         while (walker.nextNode()) {
           const node = walker.currentNode;
           if (!node.textContent?.includes(anchorText)) continue;
+          if (!node.parentElement?.closest("[data-timeline-thread]")) continue;
           const box = node.parentElement?.getBoundingClientRect();
           if (box && box.height > 0) return box.top;
         }
@@ -298,9 +325,11 @@ describe("C: an engine Mate's run card in a live conversation", () => {
     // Milo's third stress run: each message sent moved the conversation 130 px in one frame.
     it.effect("a message the person sends moves the conversation by a glide, never a jump", () =>
       Effect.gen(function* () {
-        const { s, chat } = yield* longConversation;
+        const { s, chat, provider } = yield* realLongConversation;
         yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
         yield* trace(s.page, "The existing conversation is still here");
+        const working = yield* Deferred.make<void>();
+        yield* provider.turn([{ kind: "wait", until: working }]);
         yield* chat.when.send("Check the storefront again");
         const frames = yield* readTrace(s.page, 1500);
         expect(frames.length, "ASSERTION: the send was sampled").toBeGreaterThan(20);
@@ -369,20 +398,21 @@ describe("C: an engine Mate's run card in a live conversation", () => {
     // one frame, and the answer pulled it back down.
     it.effect("a question opening in the composer and its answer never move the conversation", () =>
       Effect.gen(function* () {
-        const { s, chat, engine } = yield* longConversation;
-        // The agent works on after the answer, as Milo did: the run neither ends nor settles.
-        engine.onAnswer.splice(0, engine.onAnswer.length, (request) => {
-          engine.note(request.runId, "You chose staging.");
-        });
-        const run = engine.personRun("Lay out the summary for me");
-        engine.note(run, "Step 8: your choice of format.");
+        const { s, chat, provider } = yield* realLongConversation;
+        const questionReady = yield* Deferred.make<void>();
+        const keepWorking = yield* Deferred.make<void>();
+        yield* provider.turn([
+          { kind: "say", text: "Step 8: your choice of format." },
+          { kind: "wait", until: questionReady },
+          { kind: "ask", question: TARGET_QUESTION.question, options: ["Staging", "Production"] },
+          { kind: "say", text: "You chose staging." },
+          { kind: "wait", until: keepWorking },
+        ]);
+        yield* s.when.conversation.sends("Lay out the summary for me");
         yield* chat.then.text("Step 8: your choice of format.");
         yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
         yield* trace(s.page, "Step 8: your choice of format.");
-        engine.ask(
-          { kind: "question", questions: [TARGET_QUESTION], dismissible: false },
-          { runId: run },
-        );
+        yield* Deferred.succeed(questionReady, undefined);
         yield* chat.then.text("Which environment should I inspect?");
         const asked = yield* readTrace(s.page, 600);
         const anchored = asked.flatMap((frame) => (frame.anchor === null ? [] : [frame]));
@@ -413,7 +443,7 @@ describe("C: an engine Mate's run card in a live conversation", () => {
     // end over 1.5 s.
     it.effect("a reload paints the conversation's end first and nothing it takes back", () =>
       Effect.gen(function* () {
-        const { s, chat } = yield* longConversation;
+        const { s } = yield* realLongConversation;
         yield* Effect.promise(() =>
           s.page.evaluateOnNewDocument(() => {
             const frames: Array<{ end: number; top: number }> = [];
@@ -430,7 +460,8 @@ describe("C: an engine Mate's run card in a live conversation", () => {
             requestAnimationFrame(sample);
           }),
         );
-        yield* chat.when.reload();
+        yield* Effect.promise(() => s.page.reload());
+        yield* s.then.conversation.showsMessage("The existing conversation is still here");
         yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1500)));
         const frames = yield* Effect.promise(() =>
           s.page.evaluate(

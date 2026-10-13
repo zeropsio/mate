@@ -2,15 +2,28 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { installArea } from "./fake.ts";
 
 describe("opening a Mate from the projects page", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect("a project's Mate chip opens that Mate's conversation", () =>
       Effect.gen(function* () {
-        const s = yield* createScenario([installArea]);
+        const s = yield* createScenario([], { mate: "real" });
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
+        yield* s.when.menu.opensMate("Ada");
+        yield* s.then.conversation.appears;
+        yield* s.drivers.realMates
+          .get("Ada")!
+          .provider.turn([{ kind: "say", text: "Ada's conversation" }]);
+        yield* s.when.conversation.sends("Open this project");
+        yield* s.then.conversation.showsMessage("Ada's conversation");
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(() => !location.pathname.startsWith("/draft/"), {
+            timeout: 8000,
+            polling: 100,
+          }),
+        );
+        const conversationPath = new URL(s.page.url()).pathname;
         yield* Effect.promise(async () => {
           await s.page.goto(`${s.web.origin}/zerops`);
           const chip = '[data-zerops-surface="project-cards"] [aria-label="Open Ada"]';
@@ -35,7 +48,7 @@ describe("opening a Mate from the projects page", () => {
           await s.page.locator(chip).click();
           await expect
             .poll(() => new URL(s.page.url()).pathname, { timeout: 8_000 })
-            .toBe("/env-Ada/thread-Ada");
+            .toBe(conversationPath);
         });
         yield* s.then.noExternalNetwork;
       }),
@@ -49,7 +62,7 @@ describe("Projects source states", () => {
       "account verification failure separates Verify again from Sign out without a storage claim",
       () =>
         Effect.gen(function* () {
-          const s = yield* createScenario();
+          const s = yield* createScenario([], { mate: "real" });
           yield* s.given.signedIn;
           s.drivers.zerops.faults.set("GET /user/info", { status: 503 });
           yield* Effect.promise(async () => {
