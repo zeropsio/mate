@@ -6,6 +6,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import type { TimeoutRisk } from "./gate-timing-reporter.ts";
 import { failureSummary, gateLogDirectory, runLogged, stageSummary } from "./gate-log.ts";
+import { acquireGateSlot, gateSlotCount, gateSlotDirectory } from "./gate-slots.ts";
 import { parseSync } from "oxc-parser";
 import { transform as parseCss } from "lightningcss";
 import { parse as parseHtml, type DefaultTreeAdapterMap } from "parse5";
@@ -686,6 +687,7 @@ interface GateStage {
   readonly command: string;
   readonly args: string[];
   readonly cwd?: string;
+  readonly slot?: true;
 }
 
 interface GateReceipt {
@@ -694,6 +696,7 @@ interface GateReceipt {
   readonly selectedStages: GateStage[];
   readonly results: { name: string; status: number; durationMs: number }[];
   durationMs: number;
+  queueWaitMs: number;
   completed: boolean;
   atRisk: TimeoutRisk[];
 }
@@ -744,6 +747,9 @@ function selectionHash(root: string, inventory: ReadonlyArray<string>): string {
     "scripts/gate-smoke-reporter.ts",
     ...repositoryInvariants,
     "scripts/gate-log.ts",
+    "scripts/gate-slots.ts",
+    "scripts/test-process-lock.ts",
+    "scripts/test-process-lock-holder.ts",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
     "tsconfig.base.json",
@@ -789,6 +795,8 @@ function reusableReceipt(
     JSON.stringify(receipt.selectedStages) === JSON.stringify(stages) &&
     Number.isFinite(receipt.durationMs) &&
     receipt.durationMs >= 0 &&
+    Number.isFinite(receipt.queueWaitMs) &&
+    receipt.queueWaitMs >= 0 &&
     Array.isArray(receipt.results) &&
     receipt.results.length === stages.length &&
     receipt.results.every(
@@ -826,6 +834,15 @@ function unitFiles(root: string): string[] {
 if (import.meta.main) {
   const root = NodePath.resolve(import.meta.dirname, "..");
   const args = process.argv.slice(2);
+  if (args.includes("--help")) {
+    console.log(
+      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--force] [--scenarios <file...>]\n" +
+        "GATE_SLOTS: positive integer, default 3. Machine-wide slots for browser/scenario stages.\n" +
+        `Slots: ${gateSlotDirectory()}. Queue waits have no timeout and are reported separately from stage timings.`,
+    );
+    process.exit(0);
+  }
+  const slots = gateSlotCount();
   const verbose = args.includes("--verbose");
   let base = "origin/main";
   const namedScenarios: string[] = [];
@@ -1064,6 +1081,22 @@ if (import.meta.main) {
       ],
     });
   }
+  const browserStage = steps.findIndex((step) =>
+    step.args.some(
+      (arg) =>
+        arg.endsWith("/scenarios/vitest.config.ts") ||
+        arg.includes("test/engine-oracle/") ||
+        arg === "engine-oracle" ||
+        /\.(?:browser|scenario)\.[cm]?[jt]sx?$/u.test(arg),
+    ),
+  );
+  if (browserStage >= 0)
+    steps.splice(browserStage, 0, {
+      name: "browser/scenario slot",
+      command: "acquire",
+      args: [`GATE_SLOTS=${slots}`, gateSlotDirectory()],
+      slot: true,
+    });
   if (args.includes("--list")) {
     console.log(`Diff from ${base}: ${paths.length} files`);
     for (const step of steps) console.log(`${step.name}: ${step.command} ${step.args.join(" ")}`);
@@ -1090,6 +1123,7 @@ if (import.meta.main) {
       selectedStages,
       results: [],
       durationMs: 0,
+      queueWaitMs: 0,
       completed: false,
       atRisk: [],
     };
@@ -1100,7 +1134,29 @@ if (import.meta.main) {
     );
     const logs = gateLogDirectory("gate-changed");
     if (verbose) console.log(`Full logs: ${logs}`);
+    let slot: Awaited<ReturnType<typeof acquireGateSlot>> | undefined;
     for (const [index, step] of steps.entries()) {
+      if (step.slot) {
+        slot = await acquireGateSlot({
+          slots,
+          worktree: root,
+          onWaiting: (holders, waitMs) =>
+            console.log(
+              `queued for browser/scenario slot · waited ${(waitMs / 1000).toFixed(2)}s · ` +
+                holders
+                  .map((holder) => `${holder.worktree} PID ${holder.pid} since ${holder.since}`)
+                  .join("; "),
+            ),
+        });
+        receipt.queueWaitMs = slot.waitMs;
+        receipt.results.push({ name: step.name, status: 0, durationMs: 0 });
+        receipt.durationMs = Date.now() - gateStarted - receipt.queueWaitMs;
+        writeReceipt(receiptPath, receipt);
+        console.log(
+          `acquired browser/scenario slot · queue wait ${(slot.waitMs / 1000).toFixed(2)}s`,
+        );
+        continue;
+      }
       const logPath = NodePath.join(logs, `${index + 1}.log`);
       const started = Date.now();
       const timingPath = NodePath.join(logs, `${index + 1}.timings.jsonl`);
@@ -1161,7 +1217,7 @@ if (import.meta.main) {
           );
       }
       receipt.results.push({ name: step.name, status, durationMs: Date.now() - started });
-      receipt.durationMs = Date.now() - gateStarted;
+      receipt.durationMs = Date.now() - gateStarted - receipt.queueWaitMs;
       writeReceipt(receiptPath, receipt);
       const output = NodeFS.readFileSync(logPath, "utf8");
       if (verbose) process.stdout.write(output);
@@ -1179,6 +1235,7 @@ if (import.meta.main) {
         process.exit(status);
       }
     }
+    slot?.release();
     if (
       diffHash(root, comparison) !== hash ||
       selectionHash(root, [...inventory, ...smokeFiles, ...ownedUnits]) !== selection
@@ -1187,7 +1244,7 @@ if (import.meta.main) {
         "Lane diff or selection inputs changed during the gate; run again for the changed code.",
       );
     receipt.completed = true;
-    receipt.durationMs = Date.now() - gateStarted;
+    receipt.durationMs = Date.now() - gateStarted - receipt.queueWaitMs;
     writeReceipt(receiptPath, receipt);
   }
 }

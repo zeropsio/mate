@@ -16,6 +16,15 @@ import {
   meaningfulChanges,
 } from "./gate-changed.ts";
 
+const gateRunnerFiles = [
+  "gate-changed.ts",
+  "chat-gate.ts",
+  "gate-log.ts",
+  "gate-slots.ts",
+  "test-process-lock.ts",
+  "test-process-lock-holder.ts",
+];
+
 it("includes relay consumers when discovering related tests for shared changes", () => {
   const packages = [
     { directory: "apps/web", name: "web", typecheck: true },
@@ -186,7 +195,7 @@ it.each([{ args: [] }, { args: ["--list"] }])(
     };
     try {
       NodeFS.mkdirSync(NodePath.join(root, "scripts"));
-      for (const name of ["gate-changed.ts", "chat-gate.ts", "gate-log.ts"])
+      for (const name of gateRunnerFiles)
         NodeFS.copyFileSync(
           NodePath.join(import.meta.dirname, name),
           NodePath.join(root, "scripts", name),
@@ -287,7 +296,7 @@ it.each([{ args: [] }, { args: ["--list"] }])(
     };
     try {
       NodeFS.mkdirSync(NodePath.join(root, "scripts"));
-      for (const name of ["gate-changed.ts", "chat-gate.ts", "gate-log.ts"])
+      for (const name of gateRunnerFiles)
         NodeFS.copyFileSync(
           NodePath.join(import.meta.dirname, name),
           NodePath.join(root, "scripts", name),
@@ -374,7 +383,7 @@ beforeAll(() => {
   ]);
   if (extracted.status !== 0) throw new Error(String(extracted.stderr));
   NodeFS.rmSync(archivePath);
-  for (const file of ["gate-changed.ts", "chat-gate.ts", "gate-log.ts"])
+  for (const file of gateRunnerFiles)
     NodeFS.copyFileSync(
       NodePath.join(import.meta.dirname, file),
       NodePath.join(repositoryFixture, "scripts", file),
@@ -525,7 +534,7 @@ it("a comments-only chat edit schedules no browser scenarios or chat stages", ()
   };
   try {
     NodeFS.mkdirSync(NodePath.join(root, "scripts"));
-    for (const name of ["gate-changed.ts", "chat-gate.ts", "gate-log.ts"])
+    for (const name of gateRunnerFiles)
       NodeFS.copyFileSync(
         NodePath.join(import.meta.dirname, name),
         NodePath.join(root, "scripts", name),
@@ -922,7 +931,7 @@ it("Decision: no check is skipped for changed code; a passing receipt is reused 
   try {
     for (const directory of ["scripts", "apps", "packages", "infra", "node_modules/.bin"])
       NodeFS.mkdirSync(NodePath.join(root, directory), { recursive: true });
-    for (const name of ["gate-changed.ts", "chat-gate.ts", "gate-log.ts"])
+    for (const name of gateRunnerFiles)
       NodeFS.copyFileSync(
         NodePath.join(import.meta.dirname, name),
         NodePath.join(root, "scripts", name),
@@ -1009,6 +1018,7 @@ esac
       0, 0, 0, 0,
     ]);
     expect(receipt.durationMs).toBeGreaterThanOrEqual(0);
+    expect(receipt.queueWaitMs).toBe(0);
     expect(changedPaths(root, "base")).toEqual(["README.md"]);
     git("add", "README.md");
     git("commit", "-qm", "lane");
@@ -1128,6 +1138,18 @@ esac
     expect(explicit.status, explicit.stderr).toBe(0);
     expect(explicit.stdout).not.toContain("reused receipt");
     expect(explicit.stdout).toContain("ok edited scenario files");
+    const queuedReceipt = JSON.parse(NodeFS.readFileSync(receiptPath, "utf8"));
+    expect(queuedReceipt.queueWaitMs).toBeGreaterThanOrEqual(0);
+    expect(
+      queuedReceipt.results.find((step: { name: string }) => step.name === "browser/scenario slot")
+        .durationMs,
+    ).toBe(0);
+    expect(queuedReceipt.durationMs).toBeGreaterThanOrEqual(
+      queuedReceipt.results.reduce(
+        (sum: number, step: { durationMs: number }) => sum + step.durationMs,
+        0,
+      ),
+    );
     expect(run(["--scenarios", scenario]).stdout).toContain("reused receipt");
     expect(run().stdout).not.toContain("reused receipt");
   } finally {
@@ -1421,6 +1443,9 @@ it("L2 runs owned scenario-driver units through their existing project before sc
     expect(lines[driver]).toContain("test/scenarios/fakes/mate.test.ts");
     const types = lines.flatMap((line, index) => (line.startsWith("typecheck ") ? [index] : []));
     expect(driver).toBeGreaterThan(Math.max(...types));
+    const slot = lines.findIndex((line) => line.startsWith("browser/scenario slot:"));
+    expect(slot).toBeGreaterThan(Math.max(...types));
+    expect(slot).toBeLessThan(driver);
     expect(lines.findIndex((line) => line.startsWith("state-only smoke:"))).toBeGreaterThan(driver);
     expect(lines.find((line) => line.startsWith("related @t3tools/web:")) ?? "").not.toContain(
       "test/scenarios/fakes/mate.test.ts",

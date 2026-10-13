@@ -43,7 +43,15 @@ function repository() {
 function installCli(root: string): void {
   const scripts = NodePath.join(root, "scripts");
   NodeFS.mkdirSync(scripts);
-  for (const name of ["check-test-sentences.ts", "gate-changed.ts", "chat-gate.ts", "gate-log.ts"])
+  for (const name of [
+    "check-test-sentences.ts",
+    "gate-changed.ts",
+    "chat-gate.ts",
+    "gate-log.ts",
+    "gate-slots.ts",
+    "test-process-lock.ts",
+    "test-process-lock-holder.ts",
+  ])
     NodeFS.copyFileSync(NodePath.join(import.meta.dirname, name), NodePath.join(scripts, name));
   NodeFS.symlinkSync(
     NodePath.join(import.meta.dirname, "node_modules"),
