@@ -33,13 +33,15 @@ import { AddressesWeb, type WebMode } from "./AddressesWeb";
 export type OwnIpv4Offer =
   | { readonly state: "reading" }
   /** Billing refuses the viewer, or names no price for the project. */
-  | { readonly state: "unavailable" }
+  | { readonly state: "unavailable"; readonly enabled?: boolean }
   | {
       readonly state: "known";
       /** Its price for 30 days. */
       readonly price: number;
       /** When the period it is paid for ends. */
       readonly validTill?: string;
+      /** Billing has it on: it is the project's, or on its way. */
+      readonly enabled: boolean;
     };
 
 export interface AddressesSheetBodyProps {
@@ -59,6 +61,8 @@ export interface AddressesSheetBodyProps {
   readonly ipv4: OwnIpv4Offer;
   readonly busy: ReadonlySet<string>;
   readonly trouble: ReadonlyMap<string, string>;
+  /** Writes whose answer was lost, by `writeKey`: they may have landed. */
+  readonly unsure: ReadonlySet<string>;
   /** Opened to add a domain: the sheet starts in its field. */
   readonly startAdding: boolean;
   /** The place in Zerops, where what Mate cannot do here is done. */
@@ -84,6 +88,8 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
     busy: props.busy,
     trouble: props.trouble,
     onWrite: props.onWrite,
+    settle: (asked) => setMode((current) => (current === asked ? LIST : current)),
+    hold: props.place.state !== "ready",
     nowMs: props.nowMs,
   };
   const web = isWeb(mode) ? mode : LIST;
@@ -103,6 +109,12 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
           </p>
         ) : (
           <div className="grid gap-7">
+            {ctx.hold ? (
+              <p className="flex items-center gap-2 text-muted-foreground text-sm">
+                <Spinner aria-hidden="true" size="sm" tone="muted" />
+                Still reading {props.placeName}'s addresses. Changes wait until it's read.
+              </p>
+            ) : null}
             <AddressesWeb
               ctx={ctx}
               mode={web}
@@ -114,11 +126,12 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
               setMode={setMode}
             />
             <IpSection
-              asking={mode.kind === "ipv4"}
               ctx={ctx}
               ipv4={props.ipv4}
+              mode={mode}
               place={props.place}
               setMode={setMode}
+              unsure={props.unsure.has("request-ipv4")}
               zeropsUrl={props.zeropsUrl}
             />
             <AddressesDirect
@@ -191,21 +204,29 @@ function IpSection({
   ctx,
   place,
   ipv4,
-  asking,
+  mode,
   setMode,
+  unsure,
   zeropsUrl,
 }: {
   readonly ctx: SheetContext;
   readonly place: PlaceAddresses;
   readonly ipv4: OwnIpv4Offer;
-  readonly asking: boolean;
+  readonly mode: Mode;
+  /** Our purchase's answer was lost: it may have landed. */
+  readonly unsure: boolean;
   readonly setMode: (mode: Mode) => void;
   readonly zeropsUrl: string;
 }) {
   const { ips } = place;
   const price = ipv4.state === "known" ? priceWords(ipv4.price) : undefined;
   const every = price === undefined ? "" : ` · ${price} every 30 days`;
-  const assigning = ctx.busy.has("request-ipv4") && ips.ownV4 === undefined;
+  const asking = mode.kind === "ipv4";
+  // Billing has it on, or our purchase is under way: the address is on its way, never offered again.
+  const assigning =
+    ips.ownV4 === undefined &&
+    (ctx.busy.has("request-ipv4") || (ipv4.state !== "reading" && ipv4.enabled === true));
+  const maybe = ips.ownV4 === undefined && !assigning && unsure;
   return (
     <SheetSection
       part="ip"
@@ -239,7 +260,7 @@ function IpSection({
           data="shared-ipv4"
           end={<CopyButton value={ips.sharedV4} />}
           name={<span className="truncate font-mono">{ips.sharedV4}</span>}
-          sub="IPv4 · shared with other projects · free, for web traffic only"
+          sub="IPv4 · shared across Zerops · free, for web traffic only"
         />
       )}
       {ips.ownV4 !== undefined ? null : (
@@ -248,10 +269,17 @@ function IpSection({
           end={
             assigning ? (
               <Face tone="busy" word="Assigning" />
+            ) : maybe ? (
+              <OpenInZerops url={zeropsUrl} />
             ) : asking ? (
               <Face tone="warn" word="Confirm below" />
             ) : (
-              <Button onClick={() => setMode({ kind: "ipv4" })} size="sm" variant="outline">
+              <Button
+                disabled={ctx.hold}
+                onClick={() => setMode({ kind: "ipv4" })}
+                size="sm"
+                variant="outline"
+              >
                 Get one
               </Button>
             )
@@ -259,23 +287,25 @@ function IpSection({
           name="Your own IPv4"
           sub={
             assigning
-              ? `Being assigned${every}`
-              : `For direct access over IPv4, or past the shared address's limits${every}`
+              ? `It's on its way${every}`
+              : maybe
+                ? "It may be on its way: Zerops's answer was lost. Check in Zerops before you try again."
+                : `For direct access over IPv4, or past the shared address's limits${every}`
           }
         />
       )}
       <Trouble text={ctx.trouble.get("request-ipv4")} />
-      {asking && ips.ownV4 === undefined && !assigning ? (
+      {asking && ips.ownV4 === undefined && !assigning && !maybe ? (
         <Confirm
           busy={ctx.busy.has("request-ipv4")}
           cancel="Cancel"
           confirm={price === undefined ? "Get it" : `Get it for ${price}`}
-          disabled={price === undefined}
+          disabled={price === undefined || ctx.hold}
           icon={<CreditCardIcon />}
           onCancel={() => setMode({ kind: "list" })}
           onConfirm={() => {
             void ctx.onWrite({ kind: "request-ipv4", projectId: ctx.projectId }).then((taken) => {
-              if (taken) setMode({ kind: "list" });
+              if (taken) ctx.settle(mode);
             });
           }}
           title={`Get your own IPv4 for ${ctx.placeName}${every}`}
