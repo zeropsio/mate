@@ -638,6 +638,12 @@ export interface ConversationStructure {
   /** Which stretch owns each timeline index — the person's messages included. */
   readonly stretchByIndex: ReadonlyMap<number, Stretch>;
   readonly unsettledTurnId: TurnId | null;
+  /**
+   * What an engine Mate's runs left running while none runs: the conversation's last card waits on
+   * it, under the last answer, with no run of its own (the owner, 2026-10-14: every earlier card is
+   * done, "the working card at bottom still goes on"). `since`: when the first of them began.
+   */
+  readonly waitsAtEnd: { readonly since: string } | null;
 }
 
 /** When a turn's entry ended: a message at its last update, work at its latest activity, an operation once settled. */
@@ -923,9 +929,11 @@ export function deriveConversationStructure(given: {
   // The latest run, its turns over, while what it started goes on.
   const latestSpan = spans.at(-1);
   const helperWorks = input.helperWorks;
+  // An engine card is done once its runs are: what they left running is waited on at the
+  // conversation's end, by a card of its own (`waitsAtEnd`).
   const waitingSpan =
     input.runCards !== undefined
-      ? spans.find((span) => span.turnIds.some((id) => engineCardWaits(input.runCards?.[id])))
+      ? undefined
       : liveSpan === undefined &&
           helperWorks !== undefined &&
           latestSpan !== undefined &&
@@ -1252,7 +1260,13 @@ export function deriveConversationStructure(given: {
     });
   }
 
-  return { turns, looseIndexes, stretchByIndex, unsettledTurnId };
+  const holding =
+    input.runCards === undefined || liveSpan !== undefined
+      ? undefined
+      : turns.find((turn) => turn.span.turnIds.some((id) => engineCardWaits(input.runCards?.[id])));
+  const holdingSince = holding?.stretches[0]?.startedAt;
+  const waitsAtEnd = holdingSince === undefined ? null : { since: holdingSince };
+  return { turns, looseIndexes, stretchByIndex, unsettledTurnId, waitsAtEnd };
 }
 
 // ---------------------------------------------------------------------------

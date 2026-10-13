@@ -513,12 +513,18 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     return turn;
   };
 
-  const workFor = (owner: SessionState, nativeIds: ReadonlyArray<string | undefined>) => {
-    let work: WorkState | undefined;
+  /** The work any of these native ids already names. */
+  const knownWork = (owner: SessionState, nativeIds: ReadonlyArray<string | undefined>) => {
     for (const id of nativeIds) {
-      if (id === undefined) continue;
-      work ??= owner.work.get(id);
+      const work = id === undefined ? undefined : owner.work.get(id);
+      if (work !== undefined) return work;
     }
+    return undefined;
+  };
+
+  /** The work these native ids name, made when none does; each id names it from then on. */
+  const workFor = (owner: SessionState, nativeIds: ReadonlyArray<string | undefined>) => {
+    let work = knownWork(owner, nativeIds);
     if (work === undefined) {
       owner.workCount += 1;
       work = { key: `${owner.key}.w${owner.workCount}` as WorkKey, origin: "unknown" };
@@ -554,12 +560,15 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     const payload = event.payload;
     if (payload.itemType === "user_message") return;
     const nativeId = event.itemId === undefined ? undefined : String(event.itemId);
+    // Every id the call names its helper by: a helper Claude resumed is registered under the
+    // resume's call but calls under the launch a process before it made, and only its task id
+    // ties the two (Eli's ~180 calls went to helpers nobody started).
+    const helperIds = [payload.agentId, payload.parentToolUseId];
     let item = nativeId === undefined ? undefined : owner.items.get(nativeId);
     if (item === undefined) {
       // A helper's own call goes on under the turn that started its helper, whatever turn is open
       // when it comes: it is that card's, never the next message's.
-      const launched = payload.agentId ?? payload.parentToolUseId;
-      const helper = launched === undefined ? undefined : owner.work.get(launched);
+      const helper = knownWork(owner, helperIds);
       const helperTurn =
         helper === undefined || helper.origin === "unknown" ? undefined : turns.get(helper.origin);
       const turn = helperTurn ?? turnOf(owner, event);
@@ -572,9 +581,8 @@ export function makeTranslator(options: TranslatorOptions): Translator {
     if (payload.responseId !== undefined && item.response === undefined) {
       item.response = responseKey(item.turn, payload.responseId);
     }
-    const helperId = payload.agentId ?? payload.parentToolUseId;
-    if (helperId !== undefined && item.helper === undefined) {
-      item.helper = workFor(owner, [helperId]).key;
+    if (item.helper === undefined && helperIds.some((id) => id !== undefined)) {
+      item.helper = workFor(owner, helperIds).key;
     }
     upsertItem(item, itemStatus(event));
   };
@@ -645,9 +653,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
       readonly agentId?: string;
       readonly parentToolUseId?: string;
     };
-    const named = [payload.agentId, payload.parentToolUseId].flatMap((id) =>
-      id === undefined ? [] : [owner.work.get(id)],
-    )[0];
+    const named = knownWork(owner, [payload.agentId, payload.parentToolUseId]);
     const helper = call?.helper ?? named?.key;
     const helperTurn =
       call?.helper !== undefined
@@ -806,7 +812,7 @@ export function makeTranslator(options: TranslatorOptions): Translator {
         // child that failed before it began): that is its work.
         if (
           owner.from === "resume" &&
-          !nativeIds.some((id) => id !== undefined && owner.work.has(id)) &&
+          knownWork(owner, nativeIds) === undefined &&
           WORK_ENDED.has(taskStatus(event, undefined))
         ) {
           drop("unknown-work", event.type);
