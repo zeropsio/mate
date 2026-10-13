@@ -123,6 +123,42 @@ describe("Mate call frame slots", () => {
     }
   });
 
+  it("identified browser evidence belongs to its check, even when frames arrive out of order", () => {
+    const r = rig();
+    const frame = {
+      type: "frame" as const,
+      mimeType: "image/png",
+      data: "orders",
+      width: 1,
+      height: 1,
+    };
+    const result = {
+      type: "call-result" as const,
+      threadId: "thread",
+      turnId: "turn",
+      callId: "first",
+      completeness: "complete" as const,
+      revision: 2,
+      frame,
+    };
+    try {
+      r.sink.event(result);
+      r.sink.event({ ...result, callId: "second", turnId: "older-run", revision: 9 });
+      expect(r.read().frame).toEqual(frame);
+      expect(r.read("second")).toEqual(UNKNOWN_BROWSER_FRAME);
+      r.sink.event({ ...result, revision: 3, completeness: "partial", frame: undefined });
+      expect(r.read().frame).toEqual(frame);
+      r.sink.event({ ...result, revision: 1, frame: null });
+      r.sink.event({ ...result, callId: "second", frame: { ...frame, data: "checkout" } });
+      expect(r.read("second").frame?.data).toBe("checkout");
+      expect(r.read().frame).toEqual(frame);
+      r.sink.event({ ...result, revision: 4, frame: null });
+      expect(r.read()).toMatchObject({ kind: "absent", frame: null });
+    } finally {
+      r.registry.dispose();
+    }
+  });
+
   it.each([
     { name: "legacy viewport", event: image, freshness: "stale" },
     { name: "live viewport status", event: { type: "state", status: "live" }, freshness: "stale" },
