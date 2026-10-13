@@ -12034,6 +12034,8 @@ button.rv-relrow:hover .rv-relrow-go {
   width: fit-content;
   max-width: 100%;
   margin-inline: auto;
+  /* Centred as a block, never its words: the stage around it centres its text. */
+  text-align: start;
 }
 
 .arrival-step {
