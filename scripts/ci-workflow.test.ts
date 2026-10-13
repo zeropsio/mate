@@ -6,12 +6,20 @@ import * as NodePath from "node:path";
 import { parse } from "yaml";
 import { expect, it } from "vite-plus/test";
 import { chatGateStages } from "./chat-gate.ts";
+import { checkSteps } from "./ci-local.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
 
-it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/42/merge", "refs/tags/v1.0.0"])(
+it.each([
+  ["refs/heads/main", "push"],
+  ["refs/heads/main", "workflow_dispatch"],
+  ["refs/heads/kh-next", "push"],
+  ["refs/pull/42/merge", "pull_request"],
+  ["refs/tags/v1.0.0", "push"],
+])(
   "CI verifies the frozen lockfile once in Check and keeps local installs protected",
-  (ref) => {
+  (ref, event) => {
+    const mainPush = ref === "refs/heads/main" && event === "push";
     const workflow = parse(
       NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
     ) as {
@@ -33,17 +41,19 @@ it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/42/merge", "refs/ta
     const verifying: string[] = [];
     const consumers: Record<string, string>[] = [];
     for (const [name, job] of Object.entries(workflow.jobs)) {
-      if (name === "cache" && ref !== "refs/heads/main") continue;
+      if (name === "cache" && !mainPush) continue;
       const installs = job.steps.filter(
         (step) =>
           (step.uses === "voidzero-dev/setup-vp@v1" && step.with?.["run-install"] !== false) ||
-          step.run === "vp install --frozen-lockfile",
+          step.run?.startsWith("vp install --frozen-lockfile"),
       );
       for (const step of installs) {
         const env = { ...workflow.env, ...job.env, ...step.env };
         if (name === "check") {
-          expect(env.PNPM_CONFIG_TRUST_LOCKFILE).toBe("${{ github.ref == 'refs/heads/main' }}");
-          env.PNPM_CONFIG_TRUST_LOCKFILE = String(ref === "refs/heads/main");
+          expect(env.PNPM_CONFIG_TRUST_LOCKFILE).toBe(
+            "${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}",
+          );
+          env.PNPM_CONFIG_TRUST_LOCKFILE = String(mainPush);
         }
         if (name === "cache") {
           expect(env.PNPM_CONFIG_TRUST_LOCKFILE).toBe("${{ runner.os != 'Linux' }}");
@@ -57,7 +67,7 @@ it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/42/merge", "refs/ta
     expect(
       verifying,
       "ASSERTION: exactly one Check owns the registry-backed lockfile policy verification",
-    ).toEqual([ref === "refs/heads/main" ? "cache" : "check"]);
+    ).toEqual([mainPush ? "cache" : "check"]);
     for (const env of consumers)
       expect(
         env.PNPM_CONFIG_FROZEN_LOCKFILE,
@@ -249,7 +259,11 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
   expect(build.needs).toEqual(["prepare", "changes"]);
   expect(
     build.steps
-      .filter((step) => step.run && step.if !== "needs.prepare.outputs.skip == 'true'")
+      .filter(
+        (step) =>
+          step.run?.includes("scenarios/harness/build.ts") &&
+          step.if !== "needs.prepare.outputs.skip == 'true'",
+      )
       .map((step) => step.run),
   ).toEqual(["vp exec node apps/web/test/scenarios/harness/build.ts"]);
   expect(journeys.needs).toEqual(["prepare", "chat_bundle"]);
@@ -270,7 +284,13 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
   });
   expect(downloaded.with).toEqual({ name: uploaded.with!.name, path: uploaded.with!.path });
   expect(
-    journeys.steps.filter((step) => step.run && step.if !== "needs.prepare.outputs.skip == 'true'"),
+    journeys.steps.filter(
+      (step) =>
+        step.run &&
+        !step.run.includes("$GITHUB_OUTPUT") &&
+        !step.run.startsWith("vp install ") &&
+        step.if !== "needs.prepare.outputs.skip == 'true'",
+    ),
   ).toEqual([
     expect.objectContaining({
       run: "${{ matrix.command }}",
@@ -332,27 +352,23 @@ it("hosted suites install their working set while native jobs retain their depen
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
   const install = (name: string) =>
-    workflow.jobs[name].steps.find((step: { name: string }) => step.name === "Setup Vite+").with[
-      "run-install"
-    ];
+    workflow.jobs[name].steps.find((step: { name: string }) => step.name === "Install dependencies")
+      .run;
   for (const name of ["chat_bundle", "chat_scenarios", "test_hq", "test_web"]) {
     expect(
-      typeof install(name),
+      install(name),
       "ASSERTION: hosted-only test runners must not install unused native workspaces",
-    ).toBe("string");
-    expect(parse(install(name))).toEqual({
-      args: ["--filter=!@t3tools/mobile", "--filter=!@t3tools/desktop"],
-    });
+    ).toBe("vp install --frozen-lockfile --filter='!@t3tools/mobile' --filter='!@t3tools/desktop'");
   }
-  // Scripts executes the shipped mobile Legend List patch; server projection tests
-  // consume the mobile feed, whose transform requires Expo's tsconfig.
+  // Scripts executes the shipped mobile Legend List patch; server consumers read the mobile feed.
   for (const name of ["test_scripts", "test_server"]) {
     expect(
-      parse(install(name)),
+      install(name),
       "ASSERTION: cross-client suites must install the mobile dependencies their consumers read",
-    ).toEqual({ args: ["--filter=!@t3tools/desktop"] });
+    ).toBe("vp install --frozen-lockfile --filter='!@t3tools/desktop'");
   }
-  for (const name of ["check", "test_packages", "test_mobile"]) expect(install(name)).toBe(true);
+  for (const name of ["check", "test_packages", "test_mobile"])
+    expect(install(name)).toBe("vp install --frozen-lockfile");
 });
 
 it("hosted web CI retains native compilation and dedicated native jobs", () => {
@@ -703,20 +719,21 @@ it("short Ubuntu checks share installed jobs without losing their commands or fa
 });
 
 it.each([
-  "refs/heads/main",
-  "refs/heads/kh-next",
-  "refs/heads/kh-bisect/failure",
-  "refs/pull/42/merge",
-  "refs/tags/v1.0.0",
-])("only main saves CI caches for %s", (ref) => {
+  ["refs/heads/main", "push", true],
+  ["refs/heads/main", "workflow_dispatch", false],
+  ["refs/heads/main", "pull_request", false],
+  ["refs/heads/kh-next", "push", false],
+  ["refs/heads/kh-bisect/failure", "push", false],
+  ["refs/pull/42/merge", "pull_request", false],
+  ["refs/tags/v1.0.0", "push", false],
+])("only main saves CI caches for %s", (ref, event, writes) => {
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
-  expect(workflow["cache-mode"], "ASSERTION: CI consumers must be restore-only by default").toBe(
-    "read",
-  );
-  const writers = Object.entries(workflow.jobs).filter(
-    ([, job]) => (job as Record<string, unknown>)["cache-mode"] === "write",
+  const writers = Object.entries(workflow.jobs).filter(([, job]) =>
+    (job as { steps?: { uses?: string }[] }).steps?.some(
+      (step) => step.uses === "actions/cache/save@v4",
+    ),
   );
   expect(writers, "ASSERTION: one main-only job owns all cache saves").toHaveLength(1);
   const [name, raw] = writers[0]!;
@@ -727,8 +744,22 @@ it.each([
     steps: { uses?: string; with?: Record<string, unknown> }[];
   };
   expect(name).toBe("cache");
-  expect(job.if).toBe("github.ref == 'refs/heads/main'");
-  expect(ref === "refs/heads/main").toBe(job.if.includes(`'${ref}'`));
+  expect(job.if).toBe("github.ref == 'refs/heads/main' && github.event_name == 'push'");
+  const condition = job.if
+    .replaceAll("github.ref", '"$GITHUB_REF"')
+    .replaceAll("github.event_name", '"$GITHUB_EVENT_NAME"');
+  const verdict = NodeChildProcess.spawnSync(
+    "bash",
+    ["-e", "-c", `if [[ ${condition} ]]; then printf save; else printf restore; fi`],
+    {
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_REF: String(ref), GITHUB_EVENT_NAME: String(event) },
+    },
+  );
+  expect(verdict.status, verdict.stderr).toBe(0);
+  expect(verdict.stdout, "ASSERTION: only a main push writes caches").toBe(
+    writes ? "save" : "restore",
+  );
   expect(job.strategy.matrix.os).toEqual(["ubuntu-latest", "macos-latest"]);
   expect(job.permissions.actions).toBe("write");
   expect(job.steps.filter((step) => step.uses === "actions/cache/save@v4")).toHaveLength(3);
@@ -763,13 +794,42 @@ it.each(["ci", "release"])(
       step.with.path,
       "ASSERTION: metadata restores must exclude pnpm's hash-based verification receipt",
     ).toBe("${{ runner.temp }}/pnpm-metadata/v11");
-    expect(workflow.env.PNPM_CONFIG_CACHE_DIR).toBe("${{ runner.temp }}/pnpm-metadata");
+    const install = job.steps.find(
+      (step: { name?: string }) => step.name === "Install dependencies",
+    );
+    expect(install.env.PNPM_CONFIG_CACHE_DIR).toBe("${{ runner.temp }}/pnpm-metadata");
     expect(workflow.env.PNPM_CONFIG_FETCH_RETRIES).toBe("2");
     expect(workflow.env.PNPM_CONFIG_FETCH_TIMEOUT).toBe("60000");
     expect(job.steps.indexOf(step)).toBeLessThan(
       job.steps.findIndex((step: { name?: string }) => step.name === "Setup Vite+"),
     );
-    if (name === "release") expect(workflow["cache-mode"]).toBe("read");
+    for (const consumer of Object.values(workflow.jobs) as {
+      steps?: { uses?: string; with?: Record<string, unknown> }[];
+    }[]) {
+      for (const setup of consumer.steps?.filter(
+        (step) => step.uses === "voidzero-dev/setup-vp@v1",
+      ) ?? []) {
+        expect(
+          setup.with?.cache,
+          "ASSERTION: setup-vp must never perform an automatic post save",
+        ).toBe(false);
+        expect(setup.with?.["run-install"]).toBe(false);
+      }
+      const restore = consumer.steps?.find(
+        (step) =>
+          step.uses === "actions/cache/restore@v4" &&
+          String(step.with?.key).startsWith("vite-plus-"),
+      );
+      if (consumer.steps?.some((step) => step.uses === "voidzero-dev/setup-vp@v1")) {
+        expect(
+          restore,
+          "ASSERTION: every pnpm consumer restores the newest store on a lockfile miss",
+        ).toBeDefined();
+        expect(restore?.with?.["restore-keys"]).toBe(
+          "vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-\n",
+        );
+      }
+    }
   },
 );
 
@@ -848,4 +908,68 @@ if [[ "$*" == *"--method DELETE"* ]]; then echo "$*" >> "$DELETIONS"; else cat "
   } finally {
     NodeFS.rmSync(directory, { recursive: true, force: true });
   }
+});
+
+const workflowFiles = NodeFS.readdirSync(NodePath.join(root, ".github/workflows")).filter((name) =>
+  /\.ya?ml$/u.test(name),
+);
+const actionlint = (files: string[], input?: string) =>
+  NodeChildProcess.spawnSync(
+    process.execPath,
+    [
+      NodePath.join(root, "scripts/node_modules/github-actionlint/dist/bin/actionlint.js"),
+      "-shellcheck=",
+      "-pyflakes=",
+      ...files,
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      input,
+      timeout: 60_000,
+      env: { ...process.env, ACTIONLINT_RELEASE: "1.7.12" },
+    },
+  );
+
+it.each(workflowFiles)(
+  "GitHub accepts the workflow schema and contexts in %s",
+  (file) => {
+    const result = actionlint([NodePath.join(root, ".github/workflows", file)]);
+    expect(
+      result.status,
+      `ASSERTION: workflow must pass pinned actionlint: ${result.stdout}${result.stderr}`,
+    ).toBe(0);
+  },
+  60_000,
+);
+
+it.each([
+  { place: "workflow", yaml: "cache-mode: read\n" },
+  {
+    place: "job",
+    yaml: "jobs:\n  check:\n    runs-on: ubuntu-latest\n    cache-mode: write\n    steps:\n      - run: echo checked\n",
+  },
+])("workflow validation rejects an unknown key at the $place level", ({ place, yaml }) => {
+  const source =
+    place === "workflow"
+      ? `on: push\n${yaml}jobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo checked\n`
+      : `on: push\n${yaml}`;
+  const result = actionlint(["-"], source);
+  expect(result.status, "ASSERTION: unknown workflow keys must fail locally").toBe(1);
+  expect(result.stdout).toContain(`unexpected key "cache-mode" for "${place}" section`);
+});
+
+it("CI and local Check validate every workflow with pinned actionlint", () => {
+  const workflow = NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8");
+  const step = checkSteps(workflow).find((step) => step.name === "Check workflow schema");
+  expect(step, "ASSERTION: CI and ci-local must share workflow schema validation").toBeDefined();
+  expect(step?.run).toBe(
+    "vp exec github-actionlint -shellcheck= -pyflakes= ../.github/workflows/*.yml",
+  );
+  expect(step?.workingDirectory).toBe("scripts");
+  expect(step?.env.ACTIONLINT_RELEASE).toBe("1.7.12");
+  const manifest = JSON.parse(
+    NodeFS.readFileSync(NodePath.join(root, "scripts/package.json"), "utf8"),
+  );
+  expect(manifest.devDependencies["github-actionlint"]).toBe("1.7.12");
 });
