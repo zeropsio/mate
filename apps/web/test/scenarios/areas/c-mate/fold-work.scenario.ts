@@ -36,7 +36,11 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
           wire.history("Watch this work settle");
           const historyLength = mode === "following" ? 200 : 10;
           for (let i = 0; i < historyLength; i++)
-            wire.exchange(`Earlier ask ${i}`, "Earlier conversation stays readable.\n\n".repeat(8));
+            wire.exchange(
+              `Earlier ask ${i}`,
+              "Earlier conversation stays readable.\n\n".repeat(8) +
+                (mode === "focus/find" ? `[Earlier answer ${i}](#history-${i})\n\n` : ""),
+            );
           wire.history("Fold this run", "fold-run");
           wire.run("fold-run", "running");
           wire.say(
@@ -114,14 +118,39 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
                 await s.page.mouse.wheel({ deltaY: -300 });
               } else if (mode === "keyboard") {
                 await outer!.evaluate((node) => {
-                  node.setAttribute("tabindex", "0");
                   (node as HTMLElement).focus();
                 });
                 await s.page.keyboard.press("PageUp");
-              } else
-                await outer!.evaluate((node) => {
-                  node.scrollTop -= 300;
+              } else {
+                const focused = await s.page.evaluate(() => {
+                  const outer = document.querySelector<HTMLElement>(".timeline-legend-list")!;
+                  const links = [
+                    ...outer.querySelectorAll<HTMLAnchorElement>('a[href^="#history-"]'),
+                  ];
+                  links.sort(
+                    (left, right) =>
+                      right.getBoundingClientRect().top - left.getBoundingClientRect().top,
+                  );
+                  const link = links.find(
+                    (link) =>
+                      link.getBoundingClientRect().bottom < outer.getBoundingClientRect().top,
+                  );
+                  const before = outer.scrollTop;
+                  link?.focus();
+                  return {
+                    active: document.activeElement === link,
+                    moved: before - outer.scrollTop,
+                  };
                 });
+                expect(
+                  focused.active,
+                  "ASSERTION: a rendered history link receives native focus",
+                ).toBe(true);
+                expect(
+                  focused.moved,
+                  "ASSERTION: native focus moves the reader into retained history",
+                ).toBeGreaterThan(40);
+              }
               await s.page.waitForFunction(
                 () => !document.querySelector("[data-timeline-follows-end]"),
               );

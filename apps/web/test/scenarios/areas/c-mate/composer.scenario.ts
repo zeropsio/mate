@@ -23,13 +23,30 @@ describe("C: agent selection and contextual drafts", () => {
           chat.fixture().history("Add the order summary to the shop");
           yield* s.given.signedIn;
           yield* chat.when.open("Ada", "Add the order summary to the shop");
+          const openHeaderReview = (page: typeof s.page) =>
+            Effect.promise(async () => {
+              const header = page.locator(
+                '[class~="@container/header-actions"] button[aria-label="Review Add the order summary"]',
+              );
+              expect(
+                await page.$eval(
+                  '[class~="@container/header-actions"]',
+                  (node) => node.textContent,
+                ),
+                "ASSERTION: review waits in the conversation header",
+              ).toContain("Review work");
+              await header.click();
+            });
           yield* chat.then.text("Review work");
+          yield* openHeaderReview(s.page);
+          yield* chat.then.text("What it does");
+          yield* chat.when.key("Escape");
           const colleague = yield* s.given.browserActor({ person: "dev" });
           yield* colleague.given.signedIn;
           const theirs = mateChat({ ...s, ...colleague });
           yield* theirs.when.openReadOnly("Ada");
           yield* theirs.then.text("Review work");
-          yield* theirs.when.press("Review Add the order summary");
+          yield* openHeaderReview(colleague.page);
           yield* theirs.then.text("What it does");
           yield* s.then.noExternalNetwork;
         }),
@@ -173,10 +190,6 @@ describe("C: agent selection and contextual drafts", () => {
         yield* chat.then.text("Sends");
         yield* chat.when.shortcut("z");
         yield* chat.then.text("320 × 200");
-        yield* chat.when.notePicture("A note I will undo");
-        yield* chat.then.control("Note 1: A note I will undo. Edit it");
-        yield* chat.when.shortcut("z");
-        yield* chat.then.control("Note 1: A note I will undo. Edit it", "button", false);
         yield* chat.when.notePicture("Move this action beside its heading");
         yield* chat.then.control("Note 1: Move this action beside its heading. Edit it");
         yield* chat.when.press("Done");

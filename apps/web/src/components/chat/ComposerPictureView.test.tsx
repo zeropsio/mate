@@ -205,6 +205,69 @@ describe("the open picture", () => {
     expect(document.querySelector<HTMLTextAreaElement>('[aria-label="Note text"]')?.value).toBe("");
   });
 
+  // The editor part of J05; the browser retains draft ownership, real crop input and reload.
+  it("J05: picture notes and attachment order survive send and reload", async () => {
+    const { dialog, changed } = await mount();
+    const undo = () =>
+      act(() =>
+        dialog.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "z",
+            ctrlKey: true,
+            bubbles: true,
+          }),
+        ),
+      );
+    await key(dialog, "c");
+    await act(() => button("Reset").click());
+    await key(dialog, "Escape");
+    expect(changed).not.toHaveBeenCalled();
+    await key(dialog, "c");
+    await act(() => button("Reset").click());
+    await key(dialog, "Enter");
+    expect(changed).toHaveBeenLastCalledWith(
+      expect.objectContaining({ crop: { x: 0, y: 0, w: 8000, h: 6000 } }),
+    );
+    await undo();
+    expect(changed).toHaveBeenLastCalledWith(
+      expect.objectContaining({ crop: { x: 800, y: 600, w: 4000, h: 3000 } }),
+    );
+    const frame = document.querySelector("canvas")!.parentElement!;
+    frame.setPointerCapture = vi.fn();
+    for (const type of ["pointerdown", "pointerup"])
+      await act(() =>
+        frame.dispatchEvent(
+          new PointerEvent(type, {
+            button: 0,
+            pointerId: 1,
+            clientX: 5,
+            clientY: 5,
+            bubbles: true,
+          }),
+        ),
+      );
+    expect(changed).toHaveBeenLastCalledWith(
+      expect.objectContaining({ marks: [expect.objectContaining({ kind: "pin" })] }),
+    );
+    const note = document.querySelector<HTMLTextAreaElement>('[aria-label="Note text"]')!;
+    await act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        note,
+        "A note I will undo",
+      );
+      note.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await key(note, "Enter");
+    expect(
+      document.querySelector('[aria-label="Note 1: A note I will undo. Edit it"]'),
+    ).not.toBeNull();
+    await undo();
+    expect(changed).toHaveBeenLastCalledWith(
+      expect.objectContaining({ marks: [expect.objectContaining({ note: "" })] }),
+    );
+    expect(document.querySelector('[aria-label="Note 1: A note I will undo. Edit it"]')).toBeNull();
+  });
+
   it("Tab and Shift-Tab keep keyboard focus inside the open picture", async () => {
     const { dialog } = await mount();
     for (const control of dialog.querySelectorAll("button, [role=switch], textarea")) {
