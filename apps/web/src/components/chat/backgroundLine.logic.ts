@@ -142,3 +142,30 @@ export function taskItems(entries: ReadonlyArray<WorkLogEntry>): ReadonlyArray<B
     };
   });
 }
+
+/**
+ * What a background row's line says: its jobs as they stand, its tasks, or the one helper the panel
+ * says finished, with no report of its own here. The same facts title a card they woke
+ * (`BackgroundOpener`).
+ */
+export function backgroundRowItems(row: {
+  readonly key: string;
+  readonly entries: ReadonlyArray<WorkLogEntry>;
+  readonly failed: number;
+  readonly lost?: number;
+  readonly helpers: boolean;
+  readonly title: string | null;
+  readonly jobs?: ReadonlyArray<BackgroundJob>;
+}): ReadonlyArray<BackgroundItem> {
+  if (row.jobs !== undefined) return jobItems(row.jobs);
+  if (row.entries.length > 0) return taskItems(row.entries);
+  return [
+    {
+      key: row.key,
+      title: row.title ?? (row.helpers ? "A helper" : "A background task"),
+      state: (row.lost ?? 0) > 0 ? "lost" : row.failed > 0 ? "failed" : "done",
+      report: null,
+      mono: false,
+    },
+  ];
+}

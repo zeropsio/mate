@@ -8208,6 +8208,23 @@ a.ov-card-site:hover {
   font-size: 14px;
   line-height: 20px;
 }
+/* A run nobody wrote to is titled by what woke it: the face beside the title, the run's line
+   under it, the same shape working and done (the owner, 2026-10-14). */
+.run-now[data-run-titled] {
+  align-items: start;
+}
+/* The words leaving cross-fade on the run's line, under the title. */
+.run-now[data-run-titled] .run-now-leaving {
+  top: 20px;
+}
+.run-now-title {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--color-foreground);
+}
 /* One line: the step, and after it what it runs and for how long. */
 .run-now-head {
   display: block;
