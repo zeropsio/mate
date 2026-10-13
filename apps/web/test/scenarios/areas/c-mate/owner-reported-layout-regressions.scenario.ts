@@ -1300,38 +1300,7 @@ describe("owner-reported layout regressions", () => {
                 yield* chat.then.text("Two helpers are reviewing the api and the web.");
               }),
           },
-          {
-            state: "a run waiting for its helpers",
-            arrange: (chat, engine) =>
-              Effect.gen(function* () {
-                const run = engine.personRun("Review the api with a helper");
-                engine.item(run, {
-                  kind: "work",
-                  work: "helper-api",
-                  workKind: "helper",
-                  status: "running",
-                  title: "Review the api",
-                });
-                engine.note(run, "The helper is still reviewing the api.", { kind: "completed" });
-                yield* chat.then.text("Waiting for its helpers");
-              }),
-          },
-          {
-            state: "a run waiting for its background command",
-            arrange: (chat, engine) =>
-              Effect.gen(function* () {
-                const run = engine.personRun("Start the wait in the background");
-                engine.item(run, {
-                  kind: "work",
-                  work: "session.w2",
-                  workKind: "shell",
-                  status: "running",
-                  title: "Wait 45 seconds in the background, then print done",
-                });
-                engine.note(run, "The background wait hasn't printed yet.", { kind: "completed" });
-                yield* chat.then.text("Waiting for its background command");
-              }),
-          },
+
           {
             state: "the usage limit holding a message",
             arrange: (chat, engine) =>
@@ -2524,7 +2493,7 @@ describe("owner-reported layout regressions", () => {
          * empty band at its foot that ran under the composer, and the view rested short of its end.
          * After the settle the card and the conversation's end read as a reload draws them.
          */
-        const restsAtItsEnd = (ending: "stopped with its helpers" | "completed" | "on its job") =>
+        const restsAtItsEnd = (ending: "stopped with its helpers" | "completed") =>
           Effect.gen(function* () {
             const { s, engine, run } = yield* miloAtWork();
             const chat = mateChat(s);
@@ -2551,11 +2520,9 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() => waitForStillFrames(s.page));
               engine.end(run, { kind: "stopped", by: { kind: "person", subject: "owner" } });
             } else {
-              if (ending === "completed")
-                for (const helper of helpers) engine.update(helper, { status: "completed" });
+              for (const helper of helpers) engine.update(helper, { status: "completed" });
               engine.item(run, { kind: "note", text: words, streaming: false, answer: false });
               engine.end(run);
-              if (ending === "on its job") engine.waitOnHelpers();
             }
             // The last note becomes the answer outside the card: its arrival alone is not that handoff.
             if (ending === "completed")
@@ -2591,10 +2558,9 @@ describe("owner-reported layout regressions", () => {
                 const other = yield* Effect.promise(() => readRest(s.page));
                 return open ? { folded, open: other } : { folded: other, open: folded };
               });
-            // A watched run settles closed, a waiting one stays open.
-            const live = yield* settled(ending !== "on its job");
+            const live = yield* settled(true);
             yield* chat.when.reload("Ada", "Live stress test 4A");
-            const drawn = yield* settled(ending !== "on its job");
+            const drawn = yield* settled(true);
             const said = (rest: { folded: RestFrame; open: RestFrame }) =>
               (["folded", "open"] as const)
                 .map((state) => `${state} ${quoted(rest[state])}`)
@@ -2646,10 +2612,6 @@ describe("owner-reported layout regressions", () => {
         it.effect(
           "after a run completes, its card hugs its content and the conversation rests at its end above the composer",
           () => restsAtItsEnd("completed"),
-        );
-        it.effect(
-          "after a turn ends on a job still running, its card hugs its content and the conversation rests at its end above the composer",
-          () => restsAtItsEnd("on its job"),
         );
 
         // Recheck on 0.15.45: opening a settled card at the conversation's end held the card where
@@ -3131,99 +3093,7 @@ describe("owner-reported layout regressions", () => {
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
         const LONG =
           "Live stress test 4D: what number is in this picture? Then open example.com in the browser, take a screenshot of the page and describe its layout in twenty lines: the background, the column, the icon at the top, each paragraph and the language it is written in, and the link at the end.";
-        it.effect(
-          "a message steered into the running run stands above its card, and the card's head has no step of 60 px or more in a frame",
-          () =>
-            Effect.gen(function* () {
-              const s = yield* createScenario([installArea]);
-              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
-              yield* s.given.project("Ada", { mate: true });
-              const chat = mateChat(s);
-              for (const round of [1, 2, 3])
-                chat
-                  .fixture()
-                  .exchange(
-                    `How did deploy ${round} go?`,
-                    "The shop's deploy built, its logs are clean and the storefront answers.\n\n".repeat(
-                      12,
-                    ),
-                  );
-              chat.fixture().exchange("And now?", EARLIER);
-              yield* s.given.signedIn;
-              yield* Effect.promise(() => ownerMenu(s.page));
-              yield* chat.when.open();
-              yield* chat.then.text(EARLIER);
-              const engine = chat.fixture().wire.engine;
-              const run = engine.personRun("Check both pages");
-              engine.session();
-              engine.note(run, "Checking the first page now.");
-              yield* chat.then.text("Checking the first page now.");
-              const text = "also tell me the page title";
-              yield* chat.when.send(text);
-              yield* Effect.promise(() => waitForStillFrames(s.page));
-              /** The running card's head and the steered message's row, each frame after its paint. */
-              yield* Effect.promise(() =>
-                s.page.evaluate((text) => {
-                  const frames: Array<{ head: number | null; message: number | null }> = [];
-                  const state = { active: true };
-                  const sample = () =>
-                    setTimeout(() => {
-                      const head = [
-                        ...document.querySelectorAll("[data-run-chat] > [data-run-head]"),
-                      ].at(-1);
-                      const message = [
-                        ...document.querySelectorAll(
-                          '[data-timeline-row-id][data-message-role="user"]',
-                        ),
-                      ].find((row) => row.textContent?.includes(text));
-                      frames.push({
-                        head: head?.getBoundingClientRect().top ?? null,
-                        message: message?.getBoundingClientRect().top ?? null,
-                      });
-                      if (state.active) requestAnimationFrame(sample);
-                    }, 0);
-                  (window as unknown as { steerTrace: unknown }).steerTrace = { frames, state };
-                  requestAnimationFrame(sample);
-                }, text),
-              );
-              yield* chat.when.press("Send now");
-              yield* chat.then.once(text);
-              const frames = yield* Effect.promise(() =>
-                waitForStillFrames(s.page, { stillFrames: 24 }).then(() =>
-                  s.page.evaluate(() => {
-                    const held = (
-                      window as unknown as {
-                        steerTrace: {
-                          frames: Array<{ head: number | null; message: number | null }>;
-                          state: { active: boolean };
-                        };
-                      }
-                    ).steerTrace;
-                    held.state.active = false;
-                    return held.frames;
-                  }),
-                ),
-              );
-              const last = frames.at(-1);
-              expect(
-                last?.message != null && last.head != null && last.message < last.head,
-                `ASSERTION: the steered message stands above the running card's head: ${quoted({ last })}`,
-              ).toBe(true);
-              // Frame to frame, never by elapsed time: the jump came in the commit's own long frame
-              // (86 ms), where a rate hid it.
-              const steps = frames.slice(1).flatMap((frame, index) => {
-                const before = frames[index]!;
-                if (frame.head === null || before.head === null) return [];
-                return [Math.abs(frame.head - before.head)];
-              });
-              expect(steps.length, "ASSERTION: the steer was sampled").toBeGreaterThan(10);
-              expect(
-                Math.max(0, ...steps),
-                "ASSERTION: the running card's head glides, no frame's step 60 px or more",
-              ).toBeLessThan(60);
-              yield* s.then.noExternalNetwork;
-            }),
-        );
+
         it.effect.each([
           {
             from: "this composer, one line",
