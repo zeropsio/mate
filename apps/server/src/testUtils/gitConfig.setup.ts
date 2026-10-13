@@ -11,6 +11,10 @@ const entries: ReadonlyArray<readonly [key: string, value: string]> = [
   ["commit.gpgsign", "false"],
   ["tag.gpgsign", "false"],
   ["init.defaultBranch", "main"],
+  // Git 2.54+ can repack even tiny fixtures in a detached process. Its pack writer
+  // can recreate .git while makeTempDirectoryScoped removes it. Fixture repositories
+  // need no automatic maintenance; pin this once for every Git test consumer.
+  ["maintenance.auto", "false"],
 ];
 
 const existing = Number(process.env.GIT_CONFIG_COUNT ?? "0");
