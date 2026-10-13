@@ -21,9 +21,29 @@ interface Frame {
   readonly anchor: number | null;
 }
 
+/** The owner's wide conversation, with its menu at 435 px. */
+const ownerMenu = (page: import("puppeteer-core").Page) =>
+  Effect.promise(async () => {
+    const rail = (await page.$('[data-sidebar="rail"]'))!;
+    const box = (await rail.boundingBox())!;
+    const width = await page.$eval(
+      '[data-sidebar="sidebar"]',
+      (node) => node.getBoundingClientRect().width,
+    );
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 435 - width, box.y + box.height / 2);
+    await page.mouse.up();
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-sidebar="sidebar"]')!.getBoundingClientRect().width === 435,
+    );
+  });
+
 /** A conversation long enough to scroll, at its end, with a run of the stress test's shape. */
 const longConversation = Effect.gen(function* () {
   const s = yield* createScenario([installArea]);
+  yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
   yield* s.given.project("Ada", { mate: true });
   const chat = mateChat(s);
   for (const round of [1, 2, 3])
@@ -35,6 +55,7 @@ const longConversation = Effect.gen(function* () {
       );
   chat.fixture().exchange("And now?", "The existing conversation is still here");
   yield* s.given.signedIn;
+  yield* ownerMenu(s.page);
   yield* chat.when.open();
   yield* chat.then.text("The existing conversation is still here");
   const wire = chat.fixture().wire;
@@ -49,22 +70,7 @@ const realLongConversation = Effect.gen(function* () {
   const provider = s.drivers.realMates.get("Ada")!.provider;
   const chat = mateChat(s);
   yield* s.given.signedIn;
-  yield* Effect.promise(async () => {
-    const rail = (await s.page.$('[data-sidebar="rail"]'))!;
-    const box = (await rail.boundingBox())!;
-    const width = await s.page.$eval(
-      '[data-sidebar="sidebar"]',
-      (node) => node.getBoundingClientRect().width,
-    );
-    await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await s.page.mouse.down();
-    await s.page.mouse.move(box.x + box.width / 2 + 435 - width, box.y + box.height / 2);
-    await s.page.mouse.up();
-    await s.page.waitForFunction(
-      () =>
-        document.querySelector('[data-sidebar="sidebar"]')!.getBoundingClientRect().width === 435,
-    );
-  });
+  yield* ownerMenu(s.page);
   yield* s.when.menu.opensMate("Ada");
   yield* s.then.conversation.appears;
   for (const round of [1, 2, 3]) {
@@ -91,7 +97,7 @@ function everyTenth(step: (count: number) => void): { readonly stop: () => void 
   return { stop: () => clearInterval(timer) };
 }
 
-/** Make the two motion witnesses face the late frames seen on a loaded CI runner. */
+/** Make the motion witnesses face the late frames seen on a loaded CI runner. */
 const underLoad = (page: import("puppeteer-core").Page) =>
   Effect.promise(async () => {
     const cdp = await page.createCDPSession();
@@ -242,6 +248,7 @@ describe("C: an engine Mate's run card in a live conversation", () => {
     it.effect("a run its job's end wakes goes on in the folded card without moving the page", () =>
       Effect.gen(function* () {
         const { s, chat, engine } = yield* longConversation;
+        yield* underLoad(s.page);
         // The run ends with no answer: the run the job's end wakes is the same card's to go on in.
         const run = yield* jobRun(chat, engine, null);
         yield* foldedCard(s.page);

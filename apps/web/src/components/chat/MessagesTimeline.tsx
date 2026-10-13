@@ -2152,7 +2152,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 getItemType={getItemType}
                 renderItem={renderItem}
                 estimatedItemSize={90}
-                initialScrollAtEnd={rememberedPosition?.atEnd !== false}
+                // Bootstrap ends at placement: keeping it armed re-pins new rows before their glide.
+                initialScrollAtEnd={!listPlaced && rememberedPosition?.atEnd !== false}
                 {...(restoringAlwaysRender ? { alwaysRender: restoringAlwaysRender } : {})}
                 {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
                 contentInsetEndAdjustment={contentInsetEndAdjustment}

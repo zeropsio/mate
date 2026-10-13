@@ -3974,6 +3974,11 @@ describe("owner-reported layout regressions", () => {
               yield* chat.when.open();
               yield* chat.then.text("The existing conversation is still here");
               const wire = chat.fixture().wire;
+              yield* Effect.promise(async () => {
+                const cdp = await s.page.createCDPSession();
+                await cdp.send("Emulation.setCPUThrottlingRate", { rate: 8 });
+                await cdp.detach();
+              });
               // The words typed and the composer at rest: the trace starts as the person sends.
               if (typed)
                 yield* Effect.promise(async () => {

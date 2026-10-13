@@ -2492,6 +2492,25 @@ describe("MessagesTimeline — placing its rows", () => {
     }
   });
 
+  it("a placed conversation leaves new arrivals to its glide, never the initial end scroll", async () => {
+    const { LegendList } = await import("@legendapp/list/react");
+    const renderer = await mount({
+      timelineEntries: [buildUserTimelineEntry("Where were we?")],
+    });
+    try {
+      expect(renderer.root.findByType(LegendList).props.initialScrollAtEnd).toBe(true);
+      await act(() => renderer.root.findByType(LegendList).props.onLoad({ elapsedTimeInMs: 4 }));
+      await settleFrames(6);
+      expect(outOfSight(renderer)).toBe(false);
+      expect(
+        renderer.root.findByType(LegendList).props.initialScrollAtEnd,
+        "ASSERTION: visible arrivals cannot rearm the initial end scroll",
+      ).toBe(false);
+    } finally {
+      await act(() => renderer.unmount());
+    }
+  });
+
   it("a parked refusal hands over the opening stage when its conversation list loads", async () => {
     const { LegendList } = await import("@legendapp/list/react");
     const lateList = createRef<LegendListRef>();
