@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { ZeropsServicePort } from "../../zerops/api.ts";
 import { liveZerops, ORG, zeropsVersion } from "../__fixtures__/account.ts";
 import { portRoutingsScope, type PublicPortRoutingValue } from "../families/publicPortRouting.ts";
 import {
@@ -63,8 +64,13 @@ const V6 = "2001:db8:4a7:1d::1";
 const SHARED = "93.185.106.128";
 const ZONE = "k3f9x2.prg1-zerops.zone";
 
+/** The app's port as Zerops routes HTTP to it. */
+const APP_PORTS: ReadonlyArray<ZeropsServicePort> = [
+  { port: 3000, scheme: "http", httpRouting: true, portRouting: false },
+];
+
 /** Production of a shop: an app serving the web on 3000 with its zerops.app address on, a db. */
-const production = (patch: Readonly<Record<string, unknown>> = {}) =>
+const production = (patch: Readonly<Record<string, unknown>> = {}, appPorts = APP_PORTS) =>
   liveZerops({
     running: [],
     projects: [
@@ -84,7 +90,7 @@ const production = (patch: Readonly<Record<string, unknown>> = {}) =>
         projectId: "p1",
         name: "app",
         subdomainAccess: true,
-        ports: [{ port: 3000, scheme: "http", httpRouting: true, portRouting: false }],
+        ports: appPorts,
       },
       {
         id: "s2",
@@ -137,12 +143,13 @@ function place(
     readonly routings?: Readonly<Record<string, PublicRoutingValue>>;
     readonly ports?: Readonly<Record<string, PublicPortRoutingValue>> | "refused";
     readonly project?: Readonly<Record<string, unknown>>;
+    readonly appPorts?: typeof APP_PORTS;
   },
   /** The place asked for: production's own unless a test names another. */
   projectId = "p1",
 ): PlaceAddresses {
   const inputs: AccountInput[] = [
-    ...production(input.project),
+    ...production(input.project, input.appPorts),
     ...baselined(routingsScope(ORG), "publicRouting", input.routings ?? {}),
   ];
   if (input.ports === "refused") {
@@ -357,6 +364,15 @@ describe("one place's addresses", () => {
     ]);
     expect(shown.portTargets).toEqual([
       { serviceId: "s2", serviceName: "db", port: 6432, protocol: "tcp" },
+    ]);
+  });
+
+  it("a port declaring an http scheme is a web port before Zerops routes HTTP to it", () => {
+    const shown = place({
+      appPorts: [{ port: 8080, scheme: "http", httpRouting: false, portRouting: false }],
+    });
+    expect(shown.webTargets).toEqual([
+      { serviceId: "s1", serviceName: "app", port: 8080, protocol: "tcp" },
     ]);
   });
 
