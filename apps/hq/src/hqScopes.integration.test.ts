@@ -80,9 +80,9 @@ describe("HQ scoped socket", () => {
             },
           });
           assert.strictEqual(release.status, 403);
-          assert.strictEqual(
-            (release.body as { readonly reason: string }).reason,
-            app.can.release!.reason,
+          assert.deepStrictEqual(
+            { allow: false, reason: (release.body as { readonly reason: string }).reason },
+            app.can.release,
           );
           assert.isUndefined(first.find((row) => row.key === "probe:api"));
           const probe = {
