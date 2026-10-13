@@ -216,7 +216,8 @@ const jobRun = (
     yield* chat.when.send("Start the wait in the background");
     const native = yield* provider.received;
     expect(native.input.input).toBe("Start the wait in the background");
-    yield* chat.then.text("Waiting for its background command");
+    // Its run over, the card is done; the conversation's bottom says the command still runs.
+    yield* chat.then.text("Still working in the background");
     yield* provider.event(native.threadId, {
       type: "task.completed",
       turnId: native.turnId,
@@ -226,7 +227,7 @@ const jobRun = (
         status: "completed",
       },
     });
-    yield* chat.then.noText("Waiting for its background command");
+    yield* chat.then.noText("Still working in the background");
     yield* chat.then.noText("running in the background");
     return native;
   });
