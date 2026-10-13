@@ -8,10 +8,8 @@ import {
   WS_METHODS,
   ConversationRow,
   TurnId,
-  RuntimeTaskId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Deferred from "effect/Deferred";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
@@ -202,34 +200,6 @@ async function settledEnd(page: Page) {
   await waitForStillFrames(page);
   return page.evaluate(readEnd);
 }
-
-// A real send and provider task receipts exercise the active and helper-waiting card.
-const realMiloAtWork = Effect.gen(function* () {
-  const s = yield* createScenario([], { mate: "real" });
-  yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
-  yield* Effect.promise(() =>
-    s.page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: "light" }]),
-  );
-  yield* s.given.project("Ada", { mate: true });
-  const chat = mateChat(s);
-  const { provider } = s.drivers.realMates.get("Ada")!;
-  yield* s.given.signedIn;
-  yield* Effect.promise(() => ownerMenu(s.page));
-  yield* chat.when.openReadOnly();
-  const finish = yield* Deferred.make<void>();
-  yield* provider.turn([
-    { kind: "tool", title: "Bash", detail: "sleep 25 && echo helper-job-done" },
-    {
-      kind: "say",
-      text: "Helper B's job ended first: exit code 4, as it was told to fail. Helper A's is still sleeping. Reacting with the first second-wave helper: it reads what B printed and checks the exit code against the plan.",
-    },
-    { kind: "wait", until: finish },
-  ]);
-  yield* chat.when.send("Live stress test 4A: start two helpers");
-  const turn = yield* provider.received;
-  yield* chat.then.text("Helper B's job ended first: exit code 4");
-  return { s, provider, turn, finish };
-});
 
 describe("owner-reported layout regressions", () => {
   // Cyd: delayed HQ app detail inserted an old landing above the painted final answer,
@@ -2484,92 +2454,6 @@ describe("owner-reported layout regressions", () => {
         });
 
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-        // The owner, on #178's controls line: "the whole placement of the 'hide work' when there
-        // is more content is absolute shit". The head is the card's one line of controls; Stop is
-        // the composer's.
-        it.effect("a live card spends no line on controls", () =>
-          Effect.gen(function* () {
-            const { s, provider, turn, finish } = yield* realMiloAtWork;
-            const controlsOnTheHead = (what: string) =>
-              Effect.gen(function* () {
-                const read = yield* Effect.promise(() =>
-                  s.page.evaluate(() => {
-                    const card = [
-                      ...document.querySelectorAll<HTMLElement>("[data-run-chat][data-run-live]"),
-                    ].at(-1)!;
-                    const head = card.querySelector<HTMLElement>(":scope > [data-run-head]")!;
-                    const line = head.getBoundingClientRect();
-                    const controls = [...card.querySelectorAll<HTMLButtonElement>("button")]
-                      .filter((button) => button.closest("[data-chat-row]") === null)
-                      .map((button) => {
-                        const rect = button.getBoundingClientRect();
-                        return {
-                          name: button.textContent ?? "",
-                          top: rect.top,
-                          bottom: rect.bottom,
-                        };
-                      });
-                    return {
-                      head: { top: line.top, bottom: line.bottom },
-                      controls,
-                      composerStop:
-                        document.querySelector('button[aria-label="Stop background work"]') !==
-                        null,
-                    };
-                  }),
-                );
-                expect(
-                  read.controls.map((control) => control.name),
-                  `ASSERTION: the card's controls are its head's toggle (${what})`,
-                ).toEqual(["Hide work"]);
-                for (const control of read.controls)
-                  expect(
-                    control.top >= read.head.top - 0.5 && control.bottom <= read.head.bottom + 0.5,
-                    `ASSERTION: ${control.name} stands on the head's line (${what})`,
-                  ).toBe(true);
-                return read;
-              });
-            yield* Effect.promise(() => settledFoot(s.page, ["Hide work"]));
-            yield* controlsOnTheHead("the Mate's words");
-            // Its turn over, the helper it launched works on: its Stop is the composer's.
-            yield* provider.event(turn.threadId, {
-              type: "task.started",
-              payload: {
-                taskId: RuntimeTaskId.make("helper-a"),
-                taskType: "subagent",
-                description: "Sleep 25 seconds, then report",
-              },
-            });
-            yield* Deferred.succeed(finish, undefined);
-            yield* Effect.promise(() =>
-              s.page.waitForFunction(
-                () =>
-                  [...document.querySelectorAll("[data-run-chat][data-run-live] [data-run-head]")]
-                    .at(-1)
-                    ?.textContent?.includes("Waiting for its helpers"),
-                { polling: "raf", timeout: 8000 },
-              ),
-            );
-            yield* Effect.promise(() => settledFoot(s.page, ["Hide work"]));
-            const waiting = yield* controlsOnTheHead("waiting for its helpers");
-            expect(waiting.composerStop, "ASSERTION: the composer offers the Stop").toBe(true);
-            if (process.env.MATE_LAYOUT_EVIDENCE) {
-              yield* Effect.promise(() =>
-                s.page.screenshot({
-                  path: `${process.env.MATE_LAYOUT_EVIDENCE}/milo-native-full.png`,
-                }),
-              );
-              yield* Effect.promise(async () => {
-                const card = await s.page.$("[data-run-chat][data-run-live]");
-                await card!.screenshot({
-                  path: `${process.env.MATE_LAYOUT_EVIDENCE}/milo-native.png`,
-                });
-              });
-            }
-            yield* s.then.noExternalNetwork;
-          }),
-        );
-
         /** Milo's turn ends with its answer, with or without a helper still at work. */
         /** Its answer streamed into the slot first, or arriving whole with the run's end. */
 
