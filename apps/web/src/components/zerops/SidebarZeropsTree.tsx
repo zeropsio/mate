@@ -2368,13 +2368,13 @@ function MenuSkeleton({ className }: { readonly className?: string | undefined }
   return (
     <div
       aria-hidden="true"
-      className={cn("flex flex-col gap-2 px-2.5 py-2", className)}
+      className={className}
       data-zerops-surface="sidebar-environments-skeleton"
     >
       {["first", "second", "third"].map((row) => (
-        <div className="flex h-7 items-center gap-3" key={row}>
-          <span className="size-5 shrink-0 rounded-full bg-sidebar-row-hover" />
-          <span className="h-2 w-2/3 rounded-full bg-sidebar-row-hover" />
+        <div key={row}>
+          <span className="bg-sidebar-row-hover" />
+          <span className="bg-sidebar-row-hover" />
         </div>
       ))}
     </div>
