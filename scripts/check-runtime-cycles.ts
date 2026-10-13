@@ -5,6 +5,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
+import { decodeGitHubEvent, githubRatchetRevision } from "./lib/github-ratchet.ts";
 
 const ROOT = NodePath.resolve(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)), "..");
 const BASELINE = "scripts/runtime-cycles.json";
@@ -142,25 +143,22 @@ function decodeBaseline(raw: string): number {
   return value;
 }
 
-function previousBudget(root: string, base: string): number {
+export function previousBudget(root: string, base: string): number {
   const git = (...args: string[]): string =>
     NodeChildProcess.execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
   let comparison = base;
   if (process.env.GITHUB_ACTIONS === "true") {
-    const event = JSON.parse(NodeFS.readFileSync(process.env.GITHUB_EVENT_PATH!, "utf8")) as {
-      before?: string;
-      pull_request?: { base: { sha: string } };
-    };
-    comparison = event.pull_request?.base.sha ?? event.before ?? "";
-    if (!/^[a-f0-9]{40}$/.test(comparison) || /^0+$/.test(comparison))
-      throw new Error("Missing GitHub cycle ratchet base");
+    const event = decodeGitHubEvent(NodeFS.readFileSync(process.env.GITHUB_EVENT_PATH!, "utf8"));
+    comparison = githubRatchetRevision(event, base);
+    const fetchComparison =
+      comparison === "origin/main" ? "refs/heads/main:refs/remotes/origin/main" : comparison;
     if (git("rev-parse", "--is-shallow-repository") === "true")
-      git("fetch", "--no-tags", "--unshallow", "origin", comparison);
+      git("fetch", "--no-tags", "--unshallow", "origin", fetchComparison);
     else if (
       NodeChildProcess.spawnSync("git", ["cat-file", "-e", `${comparison}^{commit}`], { cwd: root })
         .status !== 0
     )
-      git("fetch", "--no-tags", "origin", comparison);
+      git("fetch", "--no-tags", "origin", fetchComparison);
   }
   const revision = git("merge-base", comparison, "HEAD");
   if (

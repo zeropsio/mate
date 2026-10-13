@@ -1,10 +1,16 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Real dependency-graph fixtures.
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
-import { afterEach, describe, expect, it } from "vite-plus/test";
-import { assertCycleBudget, cyclicComponents, scanRuntimeCycles } from "./check-runtime-cycles.ts";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import {
+  assertCycleBudget,
+  cyclicComponents,
+  previousBudget,
+  scanRuntimeCycles,
+} from "./check-runtime-cycles.ts";
 
 const directories: string[] = [];
 function fixture(files: Record<string, string>): string {
@@ -17,6 +23,7 @@ function fixture(files: Record<string, string>): string {
   return root;
 }
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of directories.splice(0)) NodeFS.rmSync(root, { recursive: true, force: true });
 });
 
@@ -82,4 +89,47 @@ it("Account assembly and adapter facades have no runtime cycles", async () => {
   expect(scan.components.filter((component) => component.some((file) => owners.has(file)))).toEqual(
     [],
   );
+});
+
+it.each(["kh-try", "kh-final"])("new %s CI branches read the cycle budget from main", (branch) => {
+  const root = fixture({ "scripts/runtime-cycles.json": "1" });
+  const git = (...args: string[]) =>
+    NodeChildProcess.execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  git("init", "-q", "-b", "main");
+  git("config", "user.name", "Cycle fixture");
+  git("config", "user.email", "cycle@example.test");
+  git("add", ".");
+  git("commit", "-qm", "main budget");
+  git("update-ref", "refs/remotes/origin/main", "HEAD");
+  git("checkout", "-qb", "candidate");
+  NodeFS.writeFileSync(NodePath.join(root, "scripts/runtime-cycles.json"), "2");
+  git("add", ".");
+  git("commit", "-qm", "candidate budget");
+  const event = NodePath.join(root, "event.json");
+  NodeFS.writeFileSync(
+    event,
+    JSON.stringify({ before: "0".repeat(40), ref: `refs/heads/${branch}/candidate` }),
+  );
+  vi.stubEnv("GITHUB_ACTIONS", "true");
+  vi.stubEnv("GITHUB_EVENT_PATH", event);
+  expect(
+    previousBudget(root, "origin/main"),
+    "ASSERTION: a verification branch cannot bless its own raised cycle budget",
+  ).toBe(1);
+  const checkout = fixture({});
+  git(
+    "clone",
+    "--quiet",
+    "--depth",
+    "1",
+    "--branch",
+    "candidate",
+    NodeURL.pathToFileURL(root).href,
+    checkout,
+  );
+  let shallowBudget: number | undefined;
+  expect(() => {
+    shallowBudget = previousBudget(checkout, "origin/main");
+  }, "ASSERTION: a fresh shallow verification checkout fetches the real main baseline").not.toThrow();
+  expect(shallowBudget).toBe(1);
 });

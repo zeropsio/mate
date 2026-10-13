@@ -212,7 +212,7 @@ describe("identity multiset ratchet", () => {
       fs.writeFileSync(eventPath, JSON.stringify({ before: "0".repeat(40), pull_request: { base: { sha: before } } }));
       assert.equal(loadRatchetBaseline(checkout, "origin/main").get(RATCHET_RULES[0]).length, 2);
       fs.writeFileSync(eventPath, JSON.stringify({ before: "0".repeat(40) }));
-      assert.throws(() => loadRatchetBaseline(checkout, "origin/main"), /valid previous main/);
+      assert.equal(loadRatchetBaseline(checkout, "origin/main").get(RATCHET_RULES[0]).length, 1);
     } finally { fs.rmSync(directory, { recursive: true }); }
   `));
   it("admits only the enrollment commit and never replays admission after removal", () =>

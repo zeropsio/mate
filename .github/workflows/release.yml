@@ -18,9 +18,10 @@ permissions:
 jobs:
   ci:
     if: github.event_name == 'push'
-    # A called workflow gets no more than its caller grants; ci.yml's change detection reads PRs.
+    # The called CI workflow reads action runs and PR changes.
     permissions:
       contents: read
+      actions: read
       pull-requests: read
     uses: ./.github/workflows/ci.yml
 

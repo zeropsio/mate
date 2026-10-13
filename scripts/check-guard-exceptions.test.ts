@@ -16,13 +16,14 @@ import {
 import {
   checkGuardExceptions,
   GUARD_SCOPE_PATHS,
-  githubRatchetRevision,
   loadRatchetBaseline,
   ratchetAdditions,
   RATCHET_RULES,
   type GuardLintOutput,
   type GuardLintRequest,
 } from "./check-guard-exceptions.ts";
+
+import { githubRatchetRevision } from "./lib/github-ratchet.ts";
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
@@ -859,6 +860,22 @@ describe("githubRatchetRevision", () => {
       },
       compares: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     },
+    ...["kh-try", "kh-final"].map((branch) => ({
+      run: `a new ${branch} verification branch`,
+      event: { before: "0".repeat(40), ref: `refs/heads/${branch}/candidate` },
+      compares: "origin/main",
+    })),
+    {
+      run: "a new branch",
+      event: { before: "0".repeat(40), ref: "refs/heads/new" },
+      compares: "origin/main",
+    },
+    { run: "a dispatch", event: {}, compares: "origin/main" },
+    {
+      run: "a workflow call without a previous SHA",
+      event: { ref: "refs/tags/v0.15.74" },
+      compares: "origin/main",
+    },
     {
       run: "a release tag",
       event: { before: "0000000000000000000000000000000000000000", ref: "refs/tags/v0.15.71" },
@@ -868,14 +885,31 @@ describe("githubRatchetRevision", () => {
     assert.strictEqual(githubRatchetRevision(event, "origin/main"), compares);
   });
 
-  it("refuses a branch push with no previous commit", () => {
-    assert.throws(
-      () =>
-        githubRatchetRevision(
-          { before: "0000000000000000000000000000000000000000", ref: "refs/heads/new" },
-          "origin/main",
-        ),
-      /valid previous main or PR base commit/,
-    );
-  });
+  it.effect("refuses a branch push with no previous commit", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "ratchet-no-main-" });
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        for (const args of [
+          ["init", "-q"],
+          [
+            "-c",
+            "user.name=Ratchet fixture",
+            "-c",
+            "user.email=ratchet@example.test",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "initial candidate",
+          ],
+        ]) {
+          const child = yield* spawner.spawn(ChildProcess.make("git", args, { cwd }));
+          assert.equal(Number(yield* child.exitCode), 0);
+        }
+        // Falling back to main cannot bless a candidate whose previous main history is unavailable.
+        assert.throws(() => loadRatchetBaseline(cwd, "origin/main"), /origin/u);
+      }),
+    ).pipe(Effect.provide(NodeServices.layer)),
+  );
 });

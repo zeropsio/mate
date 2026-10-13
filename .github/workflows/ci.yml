@@ -1,4 +1,5 @@
 name: CI
+run-name: CI ${{ startsWith(github.ref, 'refs/heads/kh-try/') && 'fast' || 'final' }} · ${{ github.ref_name }}
 
 on:
   workflow_call:
@@ -6,6 +7,8 @@ on:
   push:
     branches:
       - main
+      - "kh-try/**"
+      - "kh-final/**"
 
 permissions:
   contents: read
@@ -15,8 +18,43 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  prepare:
+    name: CI level and promotion
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: read
+    outputs:
+      level: ${{ steps.verdict.outputs.level }}
+      skip: ${{ steps.verdict.outputs.skip }}
+    steps:
+      - name: Derive level and check final verification
+        id: verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          level=final
+          if [[ "$GITHUB_REF" == refs/heads/kh-try/* ]]; then level=fast; fi
+          echo "level=${level}" >> "$GITHUB_OUTPUT"
+
+          skip=false
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
+            verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=100" --paginate --jq '
+              .workflow_runs[]
+              | select(.head_sha == env.GITHUB_SHA)
+              | select(.head_branch // "" | startswith("kh-final/"))
+              | select(.event == "push" and .status == "completed" and .conclusion == "success")
+              | .id')
+            if [[ -n "$verified" ]]; then skip=true; fi
+          fi
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
+          echo "CI level: ${level}; already verified at final: ${skip}"
+
   check:
     name: Check
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -100,8 +138,8 @@ jobs:
   # failed gate from skipping its dependents outright.
   chat_bundle:
     name: Chat Contract bundle
-    needs: changes
-    if: ${{ !cancelled() && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') }}
+    needs: [prepare, changes]
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && needs.prepare.outputs.level == 'final' && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -137,7 +175,8 @@ jobs:
 
   chat_scenarios:
     name: Test Web Scenarios (${{ matrix.name }})
-    needs: chat_bundle
+    needs: [prepare, chat_bundle]
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && needs.prepare.outputs.level == 'final' && needs.chat_bundle.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
@@ -209,8 +248,8 @@ jobs:
   # their combined verdict without serializing package execution.
   test:
     name: Test
-    needs: [test_packages, test_scripts, test_hq]
-    if: ${{ !cancelled() }}
+    needs: [prepare, test_packages, test_scripts, test_hq]
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
@@ -219,6 +258,8 @@ jobs:
 
   test_packages:
     name: Test Packages
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -244,12 +285,15 @@ jobs:
         run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/monorepo' --filter '!@t3tools/scripts' --filter '!@t3tools/hq' test
 
       - name: Test scenario drivers
+        if: needs.prepare.outputs.level == 'final'
         run: |
           vp run test:browser
           vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenario-drivers --allowOnly=false
 
   test_scripts:
     name: Test Scripts ${{ matrix.shard }}
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -279,6 +323,8 @@ jobs:
 
   test_hq:
     name: Test HQ ${{ matrix.shard }}
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -303,6 +349,8 @@ jobs:
   # Its 669 files run in parallel workers, so two runners halve it.
   test_web:
     name: Test Web ${{ matrix.shard }}
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -336,6 +384,8 @@ jobs:
   # three hash slices ran 390–525 s and the heaviest neared the 10-minute limit.
   test_server:
     name: Test Server ${{ matrix.shard }}
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -401,8 +451,8 @@ jobs:
   # for checks that take under 3s, on the critical path of every PR.
   rust:
     name: Rust
-    needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.resource_monitor != 'false' }}
+    needs: [prepare, changes]
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && needs.changes.outputs.resource_monitor != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -425,10 +475,12 @@ jobs:
       - name: Test resource monitor
         run: cargo test --locked --manifest-path native/resource-monitor/Cargo.toml
 
-  # PRs select the scenario bundle and resource monitor by their inputs. Main
-  # runs both; an unresolved diff fails open to keep their coverage complete.
+  # PRs select the scenario bundle and resource monitor by their inputs. Pushes
+  # run both; an unresolved diff fails open to keep their coverage complete.
   changes:
     name: Changes
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -525,12 +577,14 @@ jobs:
           if [[ -n "${PR_NUMBER}" ]]; then
             gate resource_monitor '^native/resource-monitor/|^\.github/workflows/ci\.yml$'
           else
-            echo "Push to main: resource monitor runs in full."
+            echo "Push: resource monitor runs in full."
             echo "resource_monitor=true" >> "$GITHUB_OUTPUT"
           fi
 
   release_smoke:
     name: Release Smoke
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && needs.prepare.outputs.level == 'final' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -556,6 +610,8 @@ jobs:
 
   desktop_smoke:
     name: Desktop Smoke
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && needs.prepare.outputs.level == 'final' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -617,6 +673,8 @@ jobs:
 
   test_mobile:
     name: Test Mobile
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && needs.prepare.outputs.level == 'final' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -640,6 +698,8 @@ jobs:
 
   mobile_native_static_analysis:
     name: Mobile Native Static Analysis
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && needs.prepare.outputs.level == 'final' }}
     runs-on: macos-latest
     timeout-minutes: 10
     steps:

@@ -5,6 +5,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { parseSync } from "oxc-parser";
 import { changedPaths, comparisonBase } from "./gate-changed.ts";
+import { decodeGitHubEvent, githubRatchetRevision } from "./lib/github-ratchet.ts";
 
 const testFile = /(?:\.test\.tsx?|\.scenario\.ts)$/u;
 const record = (value: unknown): Record<string, unknown> | undefined =>
@@ -92,11 +93,7 @@ export function sentenceComparison(root: string, base?: string): string {
   if (base === undefined && process.env.GITHUB_ACTIONS === "true") {
     const path = process.env.GITHUB_EVENT_PATH;
     if (!path) throw new Error("Test sentence guard needs a GitHub push or PR event baseline.");
-    const event = record(JSON.parse(NodeFS.readFileSync(path, "utf8")));
-    const revision = record(record(event?.pull_request)?.base)?.sha ?? event?.before;
-    if (typeof revision !== "string" || !/^[a-f0-9]{40}$/u.test(revision) || /^0+$/u.test(revision))
-      throw new Error("Test sentence guard needs a valid previous main or PR base commit.");
-    ref = revision;
+    ref = githubRatchetRevision(decodeGitHubEvent(NodeFS.readFileSync(path, "utf8")), ref);
   }
   return comparisonBase(root, ref);
 }

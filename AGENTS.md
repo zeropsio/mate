@@ -49,7 +49,7 @@ The loop:
 - Prepare a worktree: `cd "$(node scripts/prepare-worktree.ts <name>)"` (reuses an idle one, installs,
   checks readiness).
 - Iterate: targeted `vp test run <files>`. Never repo-wide `vp check`, `vp run -r test` or
-  `vp run -r typecheck` in a worktree; CI runs full suites once per `main` head.
+  `vp run -r typecheck` in a worktree; `kh-try/**` CI runs fast, `kh-final/**` runs final.
 - On completion, run `node scripts/gate-changed.ts` once: guard ledgers/repository invariants,
   touched-file `vp check`, incremental typechecks of touched packages and dependents, owned unit tests,
   then edited scenario files plus fixed state-only smoke (door, send, reload, approve, engine-secret,
@@ -58,18 +58,20 @@ The loop:
   Then re-run only failed files and the gate once more.
 - CI's Check job runs repo-wide `vp check`, ledger markdown included. Local
   `node scripts/ci-local.ts` only after touching guard ledgers, exceptions,
-  `surfaces.json`, theme tokens or tooling. Whoever assembles several worktrees' work runs it plus
-  full unit/scenario suites before pushing. The formatter pads every table row to the table's widest
+  `surfaces.json`, theme tokens or tooling; the integrator certifies assembled work through fast/final
+  CI. The formatter pads every table row to the table's widest
   cell; table rows committed past the pre-commit hook leave unaligned columns and a red job:
   `vp fmt` the file first.
-- Rebase once right before pushing; re-run only what the rebase changed in your files. A push rejected
-  because `main` moved is rebased and pushed again without re-running.
+- Agents push `wt/<card>`, never `main` or `kh-next`; the integrator verifies and promotes. Returned
+  cards add commits, merging `kh-next` for conflicts; never force-push. Hotfixes may push `main`
+  (rebase before pushing; re-run only what the rebase changed).
 - The server is event-sourced; async flows emit typed receipts. Wait on receipts and worker drains,
   never sleeps or polling.
 - Live looks use test browsers (`test-t3-app` web, `test-t3-mobile` mobile). Computer use on the person's
   own desktop needs their consent.
 
-Shipping: pushing `main` deploys the hosted web client (mate.zerops.io); keep `main` releasable.
+Shipping: push tested work to `wt/<card>` and stop; the integrator verifies and promotes to `main`,
+which deploys the hosted web client (mate.zerops.io). Hotfixes may push `main`; keep it releasable.
 Release: `node scripts/release-mate.ts` (`--minor` when the client's floor rises, `--dry-run` prints
 the plan). Running-container delivery: `../zcp/eval/scripts/mate-dev-push.sh`, not a release;
 container restart wipes a dev build.

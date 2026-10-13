@@ -53,6 +53,11 @@ function installCli(root: string): void {
     "test-process-lock-holder.ts",
   ])
     NodeFS.copyFileSync(NodePath.join(import.meta.dirname, name), NodePath.join(scripts, name));
+  NodeFS.mkdirSync(NodePath.join(scripts, "lib"));
+  NodeFS.copyFileSync(
+    NodePath.join(import.meta.dirname, "lib/github-ratchet.ts"),
+    NodePath.join(scripts, "lib/github-ratchet.ts"),
+  );
   NodeFS.symlinkSync(
     NodePath.join(import.meta.dirname, "node_modules"),
     NodePath.join(scripts, "node_modules"),
@@ -338,8 +343,8 @@ it("GitHub pull requests compare against their base and missing event history fa
     const pr = run();
     expect(pr.status, pr.stderr).toBe(1);
     expect(pr.stderr).toContain("Dropped test sentence: routine memory reclaim shows no notice");
-    NodeFS.writeFileSync(event, JSON.stringify({ before: "0".repeat(40) }));
-    expect(run().stderr).toContain("needs a valid previous main or PR base commit");
+    NodeFS.unlinkSync(event);
+    expect(run().stderr).toContain("ENOENT");
     NodeFS.writeFileSync(event, JSON.stringify({ before: "f".repeat(40) }));
     const missing = run();
     expect(missing.status).toBe(1);
@@ -361,3 +366,33 @@ it("extra spaces in a Drops-test title do not approve a different sentence", () 
     expect(checkTestSentences(root, "origin/main")).toEqual([]);
   });
 });
+
+it.each(["kh-try", "kh-final"])(
+  "new %s CI branches retain every test sentence since main",
+  (branch) => {
+    fixture(({ root, write, commit }) => {
+      write("old.test.ts", "export {};");
+      commit("candidate drops sentence");
+      installCli(root);
+      const event = NodePath.join(root, "event.json");
+      NodeFS.writeFileSync(
+        event,
+        JSON.stringify({ before: "0".repeat(40), ref: `refs/heads/${branch}/candidate` }),
+      );
+      const result = NodeChildProcess.spawnSync(
+        process.execPath,
+        ["scripts/check-test-sentences.ts"],
+        {
+          cwd: root,
+          encoding: "utf8",
+          env: { ...process.env, GITHUB_ACTIONS: "true", GITHUB_EVENT_PATH: event },
+        },
+      );
+      expect(result.status).toBe(1);
+      expect(
+        result.stderr,
+        "ASSERTION: a verification branch still detects the actual dropped main sentence",
+      ).toContain("Dropped test sentence: routine memory reclaim shows no notice");
+    });
+  },
+);

@@ -7,7 +7,6 @@ import * as NodeURL from "node:url";
 import * as NodeUtil from "node:util";
 import { parse } from "yaml";
 import { expect, it } from "vite-plus/test";
-import { checkSteps } from "./ci-local.ts";
 import {
   SCENARIO_PROJECT_FILES,
   chatGateStages,
@@ -111,11 +110,14 @@ it("CI's Test job runs scenario-driver units after provisioning their browser", 
     new URL("../.github/workflows/ci.yml", import.meta.url),
     "utf8",
   );
-  const driver = checkSteps(workflow, "test_packages").find((step) =>
-    step.run.includes("--project scenario-drivers"),
+  const { jobs } = parse(workflow) as {
+    jobs: { test_packages: { steps: { run?: string; if?: string }[] } };
+  };
+  const driver = jobs.test_packages.steps.find((step) =>
+    step.run?.includes("--project scenario-drivers"),
   );
   expect(driver, "ASSERTION: scenario-driver units are covered by CI's Test job").toBeDefined();
-  expect(driver?.run.split("\n").filter(Boolean)).toEqual([
+  expect(driver?.run?.split("\n").filter(Boolean)).toEqual([
     "vp run test:browser",
     "vp -C apps/web test run --config test/scenarios/vitest.config.ts --project scenario-drivers --allowOnly=false",
   ]);
@@ -543,9 +545,11 @@ it("Decision: L3 runs everything on every main push; no test is skipped, deleted
   };
   // A false chat verdict must not prevent the shared bundle or its scenario consumers on main.
   expect(jobs.chat_bundle!.if).toBe(
-    "${{ !cancelled() && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') }}",
+    "${{ !cancelled() && needs.prepare.outputs.skip != 'true' && needs.prepare.outputs.level == 'final' && (github.event_name == 'push' || needs.changes.outputs.chat != 'false') }}",
   );
-  expect(jobs.chat_scenarios!.if).toBeUndefined();
+  expect(jobs.chat_scenarios!.if).toBe(
+    "${{ !cancelled() && needs.prepare.outputs.skip != 'true' && needs.prepare.outputs.level == 'final' && needs.chat_bundle.result == 'success' }}",
+  );
   expect(jobs.chat_scenarios!.name).toMatch(/^Test Web /u);
   const commands = jobs.chat_scenarios!.strategy.matrix.include.map((row) => row.command);
   const nonC = commands.filter((command) => command.startsWith("vp -C"));

@@ -27,6 +27,7 @@ import * as NodeOS from "node:os";
 import * as NodeURL from "node:url";
 
 import { rewriteImportPaths } from "./effect-401-codemod.ts";
+import { decodeGitHubEvent, githubRatchetRevision } from "./lib/github-ratchet.ts";
 import {
   guardCacheKey,
   hashGuardContext,
@@ -65,25 +66,6 @@ const OxlintOutputSchema = Schema.Struct({
   ),
 });
 const decodeOxlintOutput = Schema.decodeUnknownSync(Schema.fromJsonString(OxlintOutputSchema));
-
-const GitHubEvent = Schema.Struct({
-  before: Schema.optional(Schema.String),
-  ref: Schema.optional(Schema.String),
-  pull_request: Schema.optional(Schema.Struct({ base: Schema.Struct({ sha: Schema.String }) })),
-});
-const decodeGitHubEvent = Schema.decodeUnknownSync(Schema.fromJsonString(GitHubEvent));
-
-/**
- * What a GitHub run's ratchet compares with: a pull request's base, a push's previous head. A
- * release tag is pushed new, with no previous commit: it compares with `base`, main.
- */
-export const githubRatchetRevision = (event: typeof GitHubEvent.Type, base: string): string => {
-  const revision = event.pull_request?.base.sha ?? event.before;
-  if (revision !== undefined && /^[a-f0-9]{40}$/u.test(revision) && !/^0+$/u.test(revision))
-    return revision;
-  if (event.ref?.startsWith("refs/tags/") === true) return base;
-  throw new Error("GitHub ratchet needs a valid previous main or PR base commit.");
-};
 
 /** Everything the injectable lint runner needs to execute one isolated rule scan. */
 export interface GuardLintRequest {
@@ -257,14 +239,16 @@ export const loadRatchetBaseline = (
       decodeGitHubEvent(NodeFS.readFileSync(eventPath, "utf8")),
       base,
     );
+    const fetchComparison =
+      comparison === "origin/main" ? "refs/heads/main:refs/remotes/origin/main" : comparison;
     // Checkouts may contain only HEAD. Load both ancestry chains before computing their merge-base.
     if (git(["rev-parse", "--is-shallow-repository"]) === "true") {
-      git(["fetch", "--no-tags", "--unshallow", "origin", head, comparison]);
+      git(["fetch", "--no-tags", "--unshallow", "origin", head, fetchComparison]);
     } else if (
       NodeChildProcess.spawnSync("git", ["cat-file", "-e", `${comparison}^{commit}`], { cwd })
         .status !== 0
     ) {
-      git(["fetch", "--no-tags", "origin", comparison]);
+      git(["fetch", "--no-tags", "origin", fetchComparison]);
     }
   }
   const ancestor = git(["merge-base", comparison, "HEAD"]);

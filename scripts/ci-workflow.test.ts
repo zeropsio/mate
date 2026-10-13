@@ -136,7 +136,7 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
     jobs: Record<
       string,
       {
-        needs: string;
+        needs: string | string[];
         strategy?: { "fail-fast": boolean; matrix: { include: { command: string }[] } };
         steps: {
           uses?: string;
@@ -149,11 +149,11 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
   };
   const build = jobs.chat_bundle!;
   const journeys = jobs.chat_scenarios!;
-  expect(build.needs).toBe("changes");
+  expect(build.needs).toEqual(["prepare", "changes"]);
   expect(build.steps.filter((step) => step.run).map((step) => step.run)).toEqual([
     "vp exec node apps/web/test/scenarios/harness/build.ts",
   ]);
-  expect(journeys.needs).toBe("chat_bundle");
+  expect(journeys.needs).toEqual(["prepare", "chat_bundle"]);
   expect(journeys.strategy?.["fail-fast"]).toBe(false);
   expect(journeys.strategy?.matrix.include.slice(0, 4).map((row) => row.command)).toEqual([
     "node scripts/chat-gate.ts --verbose --stages C --shard 1/4",
@@ -183,11 +183,12 @@ it("the Test verdict includes every scripts and HQ shard", () => {
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
   expect(workflow.jobs.test.needs, "ASSERTION: Test must wait for every split package").toEqual([
+    "prepare",
     "test_packages",
     "test_scripts",
     "test_hq",
   ]);
-  expect(workflow.jobs.test.if).toBe("${{ !cancelled() }}");
+  expect(workflow.jobs.test.if).toBe("${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'failure')");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'skipped')");
   for (const name of ["test_scripts", "test_hq"]) {
@@ -203,7 +204,7 @@ it("the Test verdict includes every scripts and HQ shard", () => {
   expect(
     workflow.jobs.test_packages.needs,
     "ASSERTION: package execution must not wait for the split suites",
-  ).toBeUndefined();
+  ).toBe("prepare");
   const command = workflow.jobs.test_packages.steps.find(
     (step: { name: string }) => step.name === "Test",
   ).run;
@@ -314,4 +315,189 @@ it("hosted web CI retains native compilation and dedicated native jobs", () => {
       step.name.includes("Electron"),
     ),
   ).toBe(true);
+});
+
+it("CI branch levels keep handoffs quiet and fast candidates free of browser and native jobs", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  expect(
+    workflow.on.push.branches,
+    "ASSERTION: only main and verification branches trigger push CI",
+  ).toEqual(["main", "kh-try/**", "kh-final/**"]);
+  expect(workflow.on.pull_request).toBeNull();
+  expect(workflow.on.workflow_call).toBeNull();
+  expect(workflow["run-name"]).toContain("fast");
+  expect(workflow["run-name"]).toContain("final");
+  expect(workflow["run-name"]).toContain("github.ref_name");
+  const finalJobs = new Set([
+    "chat_bundle",
+    "chat_scenarios",
+    "release_smoke",
+    "desktop_smoke",
+    "test_mobile",
+    "mobile_native_static_analysis",
+  ]);
+  for (const [name, job] of Object.entries(workflow.jobs) as [
+    string,
+    { needs?: string | string[]; if?: string },
+  ][]) {
+    if (name === "prepare") continue;
+    expect([job.needs].flat(), `ASSERTION: ${name} reads the one CI preparation verdict`).toContain(
+      "prepare",
+    );
+    expect(job.if, `ASSERTION: ${name} skips a main SHA already verified at final`).toContain(
+      "needs.prepare.outputs.skip != 'true'",
+    );
+    expect(
+      job.if?.includes("needs.prepare.outputs.level == 'final'"),
+      `ASSERTION: ${name} follows its CI level`,
+    ).toBe(finalJobs.has(name));
+  }
+  expect(
+    workflow.jobs.test_packages.steps.find(
+      (step: { name: string }) => step.name === "Test scenario drivers",
+    ).if,
+  ).toBe("needs.prepare.outputs.level == 'final'");
+  expect(workflow.jobs.chat_bundle.if).toContain("needs.changes.outputs.chat != 'false'");
+  expect(workflow.jobs.rust.if).toContain("needs.changes.outputs.resource_monitor != 'false'");
+  expect(workflow.jobs.prepare.permissions.actions).toBe("read");
+});
+
+it.each([
+  {
+    ref: "refs/heads/kh-try/batch",
+    event: "push",
+    runs: [],
+    level: "fast",
+    skip: false,
+    api: false,
+  },
+  {
+    ref: "refs/heads/kh-final/abc1234",
+    event: "push",
+    runs: [],
+    level: "final",
+    skip: false,
+    api: false,
+  },
+  {
+    ref: "refs/pull/1/merge",
+    event: "pull_request",
+    runs: [],
+    level: "final",
+    skip: false,
+    api: false,
+  },
+  { ref: "refs/tags/v1.2.3", event: "push", runs: [], level: "final", skip: false, api: false },
+  { ref: "refs/heads/main", event: "push", runs: [], level: "final", skip: false, api: true },
+  {
+    ref: "refs/heads/main",
+    event: "push",
+    runs: [
+      {
+        id: 7,
+        head_sha: "abc",
+        head_branch: "kh-final/abc1234",
+        event: "push",
+        status: "completed",
+        conclusion: "success",
+      },
+    ],
+    level: "final",
+    skip: true,
+    api: true,
+  },
+  ...[
+    { head_branch: "kh-try/abc1234" },
+    { head_branch: null },
+    { conclusion: "failure" },
+    { status: "in_progress" },
+    { head_sha: "other" },
+    { event: "pull_request" },
+  ].map((override) => ({
+    ref: "refs/heads/main",
+    event: "push",
+    runs: [
+      {
+        id: 7,
+        head_sha: "abc",
+        head_branch: "kh-final/abc1234",
+        event: "push",
+        status: "completed",
+        conclusion: "success",
+        ...override,
+      },
+    ],
+    level: "final",
+    skip: false,
+    api: true,
+  })),
+])(
+  "CI preparation derives $level and skip=$skip for $ref with $runs",
+  ({ ref, event, runs, level, skip, api }) => {
+    const workflow = parse(
+      NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+    );
+    expect(
+      workflow.jobs.prepare,
+      "ASSERTION: CI owns one level and verified-SHA projection",
+    ).toBeDefined();
+    const run = workflow.jobs.prepare.steps[0].run as string;
+    const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-level-"));
+    const output = NodePath.join(directory, "output");
+    const called = NodePath.join(directory, "called");
+    try {
+      NodeFS.writeFileSync(
+        NodePath.join(directory, "runs.json"),
+        JSON.stringify({ workflow_runs: runs }),
+      );
+      NodeFS.writeFileSync(
+        NodePath.join(directory, "gh"),
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLED"\njq "${5}" "$RUNS"\n',
+        { mode: 0o755 },
+      );
+      const result = NodeChildProcess.spawnSync("bash", ["-c", run], {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${directory}:${process.env.PATH}`,
+          GITHUB_REF: ref,
+          GITHUB_EVENT_NAME: event,
+          GITHUB_SHA: "abc",
+          GITHUB_REPOSITORY: "zeropsio/mate",
+          GITHUB_OUTPUT: output,
+          CALLED: called,
+          RUNS: NodePath.join(directory, "runs.json"),
+        },
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(
+        NodeFS.readFileSync(output, "utf8").trim().split("\n"),
+        "ASSERTION: the real CI consumer emits the level and exact successful-final verdict",
+      ).toEqual([`level=${level}`, `skip=${skip}`]);
+      expect(NodeFS.existsSync(called)).toBe(api);
+      if (api)
+        expect(NodeFS.readFileSync(called, "utf8")).toContain(
+          "actions/workflows/ci.yml/runs?head_sha=abc&status=success&per_page=100",
+        );
+    } finally {
+      NodeFS.rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+it("tag release CI retains final verification with the preparation job's read permissions", () => {
+  const release = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/release.yml"), "utf8"),
+  );
+  expect(release.on.push.tags).toEqual(["v[0-9]+.[0-9]+.[0-9]+"]);
+  expect(release.jobs.ci.uses).toBe("./.github/workflows/ci.yml");
+  expect(release.jobs.ci.permissions).toMatchObject({
+    actions: "read",
+    contents: "read",
+    "pull-requests": "read",
+  });
+  expect(release.jobs.release.needs).toEqual(["build", "ci"]);
 });
