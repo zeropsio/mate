@@ -60,6 +60,8 @@ const activePath = (path: string) => !/^apps\/(?:mobile|desktop)(?:\/|$)/u.test(
 
 const sourceFile = /\.[cm]?[jt]sx?$/u;
 const documentation = (path: string) => /^(?:docs|\.plans)\//u.test(path) || /\.md$/iu.test(path);
+const packageManifest = (path: string) =>
+  /(?:^|\/)(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$/u.test(path);
 
 function sourceShape(path: string, text: string): string | undefined {
   if (path === "apps/web/index.html") {
@@ -176,8 +178,20 @@ export function relatedFiles(
   previous: ReadonlyMap<string, string> = new Map(),
   maxDepth = Infinity,
 ): string[] {
-  const changed = new Set(paths.filter((path) => !documentation(path)));
-  if (!changed.size) return [];
+  if (!paths.some((path) => !documentation(path))) return [];
+  return buildRelatedFileGraph(root, candidates, previous, maxDepth, paths).select(paths);
+}
+
+/** A source snapshot; selections below never read or mutate its graph. */
+export function buildRelatedFileGraph(
+  root: string,
+  candidates: ReadonlyArray<string>,
+  previous: ReadonlyMap<string, string> = new Map(),
+  maxDepth = Infinity,
+  stoppedAt: ReadonlyArray<string> = [],
+) {
+  const stopped = new Set(stoppedAt.filter((path) => !documentation(path)));
+  candidates = [...candidates];
   // Node 24 on our 64-bit hosts supports Oxc's binary transfer, avoiding AST JSON serialization.
   const parserOptions = { experimentalRawTransfer: true, preserveParens: true };
   const sourceTexts = new Map<string, string[]>();
@@ -302,7 +316,10 @@ export function relatedFiles(
   };
   // A pure re-export barrel is an ownership map, not a dependency on every exported domain.
   // Cache that map for this graph walk, preserving both old and current export owners.
-  const exportOwners = new Map<string, { barrel: boolean; names: Map<string, string[]> }>();
+  const exportOwners = new Map<
+    string,
+    { barrel: boolean; names: Map<string, string[]>; barrels: Map<string, string[]> }
+  >();
   const symbolName = (value: unknown): string | undefined => {
     const node = record(value);
     return typeof node?.name === "string"
@@ -311,10 +328,16 @@ export function relatedFiles(
         ? node.value
         : undefined;
   };
-  const owners = (file: string): { barrel: boolean; names: Map<string, string[]> } => {
+  const owners = (
+    file: string,
+  ): { barrel: boolean; names: Map<string, string[]>; barrels: Map<string, string[]> } => {
     const cached = exportOwners.get(file);
     if (cached) return cached;
-    const result = { barrel: false, names: new Map<string, string[]>() };
+    const result = {
+      barrel: false,
+      names: new Map<string, string[]>(),
+      barrels: new Map<string, string[]>(),
+    };
     exportOwners.set(file, result);
     const bodies = sources(file).map((source) => {
       const parsed = parseSync(file, source, parserOptions);
@@ -334,8 +357,10 @@ export function relatedFiles(
             );
           }),
       );
-    const add = (name: string | undefined, files: string[]) => {
-      if (name) result.names.set(name, [...new Set([...(result.names.get(name) ?? []), ...files])]);
+    const add = (name: string | undefined, files: string[], barrels: string[] = []) => {
+      if (!name) return;
+      result.names.set(name, [...new Set([...(result.names.get(name) ?? []), ...files])]);
+      result.barrels.set(name, [...new Set([...(result.barrels.get(name) ?? []), ...barrels])]);
     };
     for (const item of bodies.flat()) {
       const node = record(item)!;
@@ -350,7 +375,7 @@ export function relatedFiles(
         else
           for (const target of targets)
             for (const [name, files] of owners(target).names)
-              add(name, [...(changed.has(target) ? [target] : []), ...files]);
+              add(name, files, [target, ...(owners(target).barrels.get(name) ?? [])]);
       }
       if (node.type !== "ExportNamedDeclaration") continue;
       const declaration = record(node.declaration);
@@ -368,16 +393,23 @@ export function relatedFiles(
             symbolName(specifier.exported),
             targets.length
               ? targets.flatMap((target) => [
-                  ...(changed.has(target) ? [target] : []),
                   ...(local ? (owners(target).names.get(local) ?? [target]) : [target]),
                 ])
               : [file],
+            targets.flatMap((target) => [
+              target,
+              ...(local ? (owners(target).barrels.get(local) ?? []) : []),
+            ]),
           );
         }
     }
     return result;
   };
-  const importOwners = (target: string, names?: ReadonlyArray<string>): string[] => {
+  const importOwners = (
+    target: string,
+    conditional: string[],
+    names?: ReadonlyArray<string>,
+  ): string[] => {
     if (
       (!publicEntries.has(target) &&
         !/^index\.[cm]?[jt]sx?$/u.test(NodePath.posix.basename(target))) ||
@@ -386,15 +418,14 @@ export function relatedFiles(
       return [target];
     const exports = owners(target);
     if (!exports.barrel) return [target];
-    if (!names?.length)
+    if (!names?.length) {
+      if (maxDepth === 1) conditional.push(...[...exports.barrels.values()].flat());
       return maxDepth === 1 ? [target, ...new Set([...exports.names.values()].flat())] : [target];
+    }
     if (names.some((name) => !exports.names.has(name))) return [target];
-    return [
-      ...new Set([
-        ...(changed.has(target) ? [target] : []),
-        ...names.flatMap((name) => exports.names.get(name!)!),
-      ]),
-    ];
+    // Named imports observe a barrel edit without traversing its unrelated exports.
+    conditional.push(target, ...names.flatMap((name) => exports.barrels.get(name) ?? []));
+    return [...new Set(names.flatMap((name) => exports.names.get(name)!))];
   };
 
   const config = "apps/web/test/scenarios/vitest.config.ts";
@@ -431,10 +462,13 @@ export function relatedFiles(
     return [];
   };
   const edges = new Map<string, string[]>();
+  const changedEdges = new Map<string, string[]>();
   const imports = (file: string): string[] => {
     const cached = edges.get(file);
     if (cached) return cached;
     const dependencies = executionInputs(file);
+    const conditional: string[] = [];
+    changedEdges.set(file, conditional);
     // Data assets are terminal graph nodes: matching their path is enough, not reading their bytes.
     if (!sourceFile.test(file) && !file.endsWith(".css") && file !== "apps/web/index.html") {
       edges.set(file, dependencies);
@@ -466,7 +500,9 @@ export function relatedFiles(
       if (parsed.errors.length) throw new Error(`${file}: ${parsed.errors[0]!.message}`);
       const add = (request: string, names?: ReadonlyArray<string>) =>
         dependencies.push(
-          ...resolveImport(file, request).flatMap((target) => importOwners(target, names)),
+          ...resolveImport(file, request).flatMap((target) =>
+            importOwners(target, conditional, names),
+          ),
         );
       const visit = (value: unknown): void => {
         const node = record(value)!;
@@ -526,55 +562,68 @@ export function relatedFiles(
         ]
       : []),
   ];
-  if (maxDepth === Infinity) {
-    // Build one reverse graph and propagate ownership once, including through cycles.
-    const readers = new Map<string, Set<string>>();
-    const edge = (dependency: string, reader: string) => {
-      const entries = readers.get(dependency) ?? new Set<string>();
-      entries.add(reader);
-      readers.set(dependency, entries);
-    };
-    const pending = candidates.flatMap((test) => {
-      const inputs = roots(test);
-      for (const input of inputs.slice(1)) edge(input, test);
-      return inputs;
-    });
-    const visited = new Set<string>();
-    while (pending.length) {
-      const file = pending.pop()!;
-      if (visited.has(file)) continue;
-      visited.add(file);
-      if (changed.has(file)) continue;
-      for (const dependency of imports(file)) {
-        edge(dependency, file);
-        pending.push(dependency);
-      }
+  const inputs = new Map(candidates.map((test) => [test, roots(test)]));
+  const readers = new Map<string, Set<string>>();
+  const changedReaders = new Map<string, Set<string>>();
+  const edge = (graph: Map<string, Set<string>>, dependency: string, reader: string) => {
+    const entries = graph.get(dependency) ?? new Set<string>();
+    entries.add(reader);
+    graph.set(dependency, entries);
+  };
+  const pending = [...inputs].flatMap(([test, roots]) => {
+    for (const input of roots.slice(1)) edge(readers, input, test);
+    return roots.map((file) => ({ file, depth: 0 }));
+  });
+  const visited = new Map<string, number>();
+  while (pending.length) {
+    const { file, depth } = pending.pop()!;
+    const priorDepth = visited.get(file);
+    if (priorDepth !== undefined && (maxDepth === Infinity || priorDepth <= depth)) continue;
+    visited.set(file, depth);
+    if (stopped.has(file) || depth >= maxDepth) continue;
+    for (const dependency of imports(file)) {
+      edge(readers, dependency, file);
+      pending.push({ file: dependency, depth: depth + 1 });
     }
-    const affected = new Set(changed);
-    const owners = [...changed];
-    while (owners.length)
-      for (const reader of readers.get(owners.pop()!) ?? []) {
-        if (affected.has(reader)) continue;
-        affected.add(reader);
-        owners.push(reader);
-      }
-    return candidates.filter((test) => affected.has(test)).sort();
+    for (const dependency of changedEdges.get(file) ?? []) edge(changedReaders, dependency, file);
   }
-  return candidates
-    .filter((test) => {
-      const pending = roots(test).map((file) => ({ file, depth: 0 }));
-      const visited = new Set<string>();
-      while (pending.length) {
-        const { file, depth } = pending.pop()!;
-        if (visited.has(file)) continue;
-        visited.add(file);
-        if (changed.has(file)) return true;
-        if (depth < maxDepth)
-          pending.push(...imports(file).map((file) => ({ file, depth: depth + 1 })));
+  return Object.freeze({
+    select(paths: ReadonlyArray<string>): string[] {
+      const changed = new Set(paths.filter((path) => !documentation(path)));
+      if (!changed.size) return [];
+      if (maxDepth === Infinity) {
+        const affected = new Set(changed);
+        // Conditional edges match changed barrels only, never an affected export's barrel.
+        for (const file of changed)
+          for (const reader of changedReaders.get(file) ?? []) affected.add(reader);
+        const owners = [...affected];
+        while (owners.length)
+          for (const reader of readers.get(owners.pop()!) ?? []) {
+            if (affected.has(reader)) continue;
+            affected.add(reader);
+            owners.push(reader);
+          }
+        return candidates.filter((test) => affected.has(test)).sort();
       }
-      return false;
-    })
-    .sort();
+      return candidates
+        .filter((test) => {
+          const pending = inputs.get(test)!.map((file) => ({ file, depth: 0 }));
+          const visited = new Set<string>();
+          while (pending.length) {
+            const { file, depth } = pending.pop()!;
+            if (visited.has(file)) continue;
+            visited.add(file);
+            if (changed.has(file)) return true;
+            if (depth < maxDepth) {
+              if (changedEdges.get(file)?.some((path) => changed.has(path))) return true;
+              pending.push(...(edges.get(file) ?? []).map((file) => ({ file, depth: depth + 1 })));
+            }
+          }
+          return false;
+        })
+        .sort();
+    },
+  });
 }
 
 /** Explicit files relative to the web root, matching the scenario config's include paths. */
@@ -882,83 +931,52 @@ function unitFiles(root: string): string[] {
   );
 }
 
-if (import.meta.main) {
-  const root = NodePath.resolve(import.meta.dirname, "..");
-  const args = process.argv.slice(2);
-  if (args.includes("--help")) {
-    console.log(
-      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--force] [--scenarios <file...>]\n" +
-        "GATE_SLOTS: positive integer, default 3. Machine-wide slots for browser/scenario stages.\n" +
-        `Slots: ${gateSlotDirectory()}. Queue waits have no timeout and are reported separately from stage timings.`,
-    );
-    process.exit(0);
-  }
-  const slots = gateSlotCount();
-  const verbose = args.includes("--verbose");
-  let base = "origin/main";
-  const namedScenarios: string[] = [];
-  for (let index = 0; index < args.length; index++) {
-    const arg = args[index];
-    if (arg === "--list" || arg === "--force" || arg === "--verbose") continue;
-    if (arg === "--base") {
-      const ref = args[++index];
-      if (!ref || ref.startsWith("--")) throw new Error("--base needs a git ref");
-      base = ref;
-    } else if (arg === "--scenarios") {
-      const start = namedScenarios.length;
-      while (args[index + 1] && !args[index + 1]!.startsWith("--"))
-        namedScenarios.push(args[++index]!);
-      if (namedScenarios.length === start) throw new Error("--scenarios needs scenario file paths");
-    } else {
-      throw new Error(
-        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--force] [--scenarios <file...>]",
-      );
-    }
-  }
-  for (const file of namedScenarios) {
-    if (
-      !/^apps\/web\/test\/scenarios\/areas\/.+\.scenario\.ts$/u.test(file) ||
-      NodePath.posix.normalize(file) !== file
-    )
-      throw new Error(`Expected a repository-relative scenario file: ${file}`);
-  }
-  validateSelectedFiles(root, namedScenarios);
-  const comparison = comparisonBase(root, base);
-  const allPaths = changedPaths(root, comparison);
-  const paths = allPaths.filter(activePath);
-  if (allPaths.length === 0 && namedScenarios.length === 0) {
-    console.log("No changed files; no gates to run.");
-    process.exit(0);
-  }
-  const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
-  const changes = meaningfulChanges(root, comparison, allPaths);
-  const meaningful = { ...changes, paths: changes.paths.filter(activePath) };
-  // L3 owns import-graph scenario coverage; L2 runs only declared files and a fixed smoke.
-  const inventory = [
-    ...new Set([
-      ...meaningful.paths.filter(
-        (file) => file.endsWith(".scenario.ts") && existing.includes(file),
-      ),
-      ...namedScenarios,
-    ]),
-  ].sort();
-  const smokeFiles = meaningful.paths.length ? Object.keys(stateOnlySmoke) : [];
-  validateSelectedFiles(root, [...inventory, ...smokeFiles]);
+/** Discovery is shared by selector tables; the CLI still builds a fresh snapshot per run. */
+export function buildGateGraph(
+  root: string,
+  previous: ReadonlyMap<string, string> = new Map(),
+  stoppedAt?: ReadonlyArray<string>,
+) {
+  const workspace = Object.freeze(
+    workspacePackages(root).map((pkg) =>
+      Object.freeze({
+        ...pkg,
+        ...(pkg.dependencies ? { dependencies: Object.freeze([...pkg.dependencies]) } : {}),
+      }),
+    ),
+  );
+  const units = Object.freeze(unitFiles(root));
+  // The CLI did not discover import readers for comments/docs or manifest-only edits.
+  const related =
+    stoppedAt && !stoppedAt.some((path) => !documentation(path) && !packageManifest(path))
+      ? undefined
+      : buildRelatedFileGraph(root, units, previous, Infinity, stoppedAt);
+  return Object.freeze({ workspace, units, related });
+}
+
+export function selectGateSteps(
+  graph: ReturnType<typeof buildGateGraph>,
+  {
+    comparison,
+    existing,
+    paths,
+    typecheckPaths,
+    inventory,
+    smokeFiles,
+    slots,
+  }: {
+    readonly comparison: string;
+    readonly existing: ReadonlyArray<string>;
+    readonly paths: ReadonlyArray<string>;
+    readonly typecheckPaths: ReadonlyArray<string>;
+    readonly inventory: ReadonlyArray<string>;
+    readonly smokeFiles: ReadonlyArray<string>;
+    readonly slots: number;
+  },
+) {
+  const { workspace, units, related } = graph;
   const files = inventory.map((file) => NodePath.posix.relative("apps/web", file));
-  if (verbose || args.includes("--list")) {
-    console.log(
-      `Scenario files: ${inventory.length}; reason: ${meaningful.paths.length || namedScenarios.length ? "edited files or explicit --scenarios" : "documentation/comments only"}`,
-    );
-    for (const file of inventory)
-      console.log(
-        `Scenario ${file}; reason: ${[
-          ...(meaningful.paths.includes(file) ? ["changed file"] : []),
-          ...(namedScenarios.includes(file) ? ["explicit --scenarios"] : []),
-        ].join("; ")}`,
-      );
-  }
-  const workspace = workspacePackages(root);
-  const packages = typecheckPackages(changes.paths, workspace);
+  const packages = typecheckPackages(typecheckPaths, workspace);
   const steps: GateStage[] = [];
   steps.push({
     name: "guard ledgers",
@@ -981,7 +999,7 @@ if (import.meta.main) {
       command: "vp",
       args: ["check", "--no-error-on-unmatched-pattern", ...existing],
     });
-  if (meaningful.paths.length)
+  if (paths.length)
     steps.push({
       name: "repository invariants",
       command: "vp",
@@ -994,7 +1012,7 @@ if (import.meta.main) {
       args: ["exec", "tsc", "--noEmit", "--incremental"],
       cwd: pkg.directory,
     });
-  if (meaningful.paths.some((path) => path.startsWith("apps/web/test/engine-oracle/")))
+  if (paths.some((path) => path.startsWith("apps/web/test/engine-oracle/")))
     steps.push({
       name: "typecheck engine oracle",
       command: "vp",
@@ -1007,7 +1025,7 @@ if (import.meta.main) {
         "apps/web/test/engine-oracle/tsconfig.json",
       ],
     });
-  if (meaningful.paths.some((path) => path.startsWith("apps/web/test/scenarios/")))
+  if (paths.some((path) => path.startsWith("apps/web/test/scenarios/")))
     steps.push({
       name: "typecheck scenarios",
       command: "vp",
@@ -1021,30 +1039,22 @@ if (import.meta.main) {
       ],
     });
   // Explicit owned files avoid Vitest's manifest/lockfile fallback to full suites.
-  const units = unitFiles(root);
-  const manifestPaths = meaningful.paths.filter((path) =>
-    /(?:^|\/)(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$/u.test(path),
-  );
+  const manifestPaths = new Set(paths.filter(packageManifest));
   // A lockfile has no package-local owner. It never promotes the entire workspace's units;
   // tests owned by accompanying source edits and repository invariants still run.
   const manifestOwners = workspace.filter((pkg) =>
-    manifestPaths.includes(`${pkg.directory}/package.json`),
+    manifestPaths.has(`${pkg.directory}/package.json`),
   );
   const moduleName = (file: string) =>
     NodePath.posix.basename(file).replace(/(?:\.(?:test|spec))?\.[cm]?[jt]sx?$/u, "");
   const packageOwner = (file: string) =>
     workspace.find((pkg) => file.startsWith(`${pkg.directory}/`))?.directory ?? ".";
-  const changedModules = meaningful.paths.filter(
+  const changedModules = paths.filter(
     (file) => sourceFile.test(file) && !/\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(file),
   );
   const ownedUnits = [
     ...new Set([
-      ...relatedFiles(
-        root,
-        meaningful.paths.filter((path) => !manifestPaths.includes(path)),
-        units,
-        meaningful.previous,
-      ),
+      ...(related?.select(paths.filter((path) => !manifestPaths.has(path))) ?? []),
       ...units.filter((file) =>
         changedModules.some(
           (module) =>
@@ -1150,6 +1160,95 @@ if (import.meta.main) {
       args: [`GATE_SLOTS=${slots}`, gateSlotDirectory()],
       slot: true,
     });
+  return { steps, ownedUnits };
+}
+
+if (import.meta.main) {
+  const root = NodePath.resolve(import.meta.dirname, "..");
+  const args = process.argv.slice(2);
+  if (args.includes("--help")) {
+    console.log(
+      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--force] [--scenarios <file...>]\n" +
+        "GATE_SLOTS: positive integer, default 3. Machine-wide slots for browser/scenario stages.\n" +
+        `Slots: ${gateSlotDirectory()}. Queue waits have no timeout and are reported separately from stage timings.`,
+    );
+    process.exit(0);
+  }
+  const slots = gateSlotCount();
+  const verbose = args.includes("--verbose");
+  let base = "origin/main";
+  const namedScenarios: string[] = [];
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--list" || arg === "--force" || arg === "--verbose") continue;
+    if (arg === "--base") {
+      const ref = args[++index];
+      if (!ref || ref.startsWith("--")) throw new Error("--base needs a git ref");
+      base = ref;
+    } else if (arg === "--scenarios") {
+      const start = namedScenarios.length;
+      while (args[index + 1] && !args[index + 1]!.startsWith("--"))
+        namedScenarios.push(args[++index]!);
+      if (namedScenarios.length === start) throw new Error("--scenarios needs scenario file paths");
+    } else {
+      throw new Error(
+        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--force] [--scenarios <file...>]",
+      );
+    }
+  }
+  for (const file of namedScenarios) {
+    if (
+      !/^apps\/web\/test\/scenarios\/areas\/.+\.scenario\.ts$/u.test(file) ||
+      NodePath.posix.normalize(file) !== file
+    )
+      throw new Error(`Expected a repository-relative scenario file: ${file}`);
+  }
+  validateSelectedFiles(root, namedScenarios);
+  const comparison = comparisonBase(root, base);
+  const allPaths = changedPaths(root, comparison);
+  const paths = allPaths.filter(activePath);
+  if (allPaths.length === 0 && namedScenarios.length === 0) {
+    console.log("No changed files; no gates to run.");
+    process.exit(0);
+  }
+  const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
+  const changes = meaningfulChanges(root, comparison, allPaths);
+  const meaningful = { ...changes, paths: changes.paths.filter(activePath) };
+  // L3 owns import-graph scenario coverage; L2 runs only declared files and a fixed smoke.
+  const inventory = [
+    ...new Set([
+      ...meaningful.paths.filter(
+        (file) => file.endsWith(".scenario.ts") && existing.includes(file),
+      ),
+      ...namedScenarios,
+    ]),
+  ].sort();
+  const smokeFiles = meaningful.paths.length ? Object.keys(stateOnlySmoke) : [];
+  validateSelectedFiles(root, [...inventory, ...smokeFiles]);
+  if (verbose || args.includes("--list")) {
+    console.log(
+      `Scenario files: ${inventory.length}; reason: ${meaningful.paths.length || namedScenarios.length ? "edited files or explicit --scenarios" : "documentation/comments only"}`,
+    );
+    for (const file of inventory)
+      console.log(
+        `Scenario ${file}; reason: ${[
+          ...(meaningful.paths.includes(file) ? ["changed file"] : []),
+          ...(namedScenarios.includes(file) ? ["explicit --scenarios"] : []),
+        ].join("; ")}`,
+      );
+  }
+  const { steps, ownedUnits } = selectGateSteps(
+    buildGateGraph(root, meaningful.previous, meaningful.paths),
+    {
+      comparison,
+      existing,
+      paths: meaningful.paths,
+      typecheckPaths: changes.paths,
+      inventory,
+      smokeFiles,
+      slots,
+    },
+  );
   if (args.includes("--list")) {
     console.log(`Diff from ${base}: ${paths.length} files`);
     for (const step of steps) console.log(`${step.name}: ${step.command} ${step.args.join(" ")}`);
