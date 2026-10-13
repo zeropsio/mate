@@ -32,6 +32,12 @@ export type RolloutCause =
       readonly cause: "env_added" | "key_kept";
       readonly projectId: string;
       readonly by: string;
+    }
+  | {
+      readonly cause: "key_kept";
+      readonly appId: string;
+      readonly repo: string;
+      readonly by: string;
     };
 
 /**
@@ -48,13 +54,20 @@ export const addRollout = (sql: SqlClient.SqlClient, event: RolloutCause) => {
         ON CONFLICT (app_id, repo, sha) WHERE cause = 'merge' DO NOTHING`;
     case "release":
       return sql`
-        INSERT INTO hq_rollout (app_id, cause, tag, by)
-        VALUES (${event.appId}::uuid, 'release', ${event.tag}, ${event.by})`;
+        INSERT INTO hq_rollout (app_id, cause, tag, by, environment_id, environment_created_at)
+        SELECT ${event.appId}::uuid, 'release', ${event.tag}, ${event.by},
+          r.environment_id, r.environment_created_at
+        FROM hq_release r WHERE r.app_id::text=${event.appId} AND r.tag=${event.tag}`;
     case "env_added":
     case "key_kept":
+      if (!("projectId" in event))
+        return sql`
+        INSERT INTO hq_rollout (app_id, cause, repo, environment_id, environment_created_at, by)
+        SELECT app_id, 'key_kept', ${event.repo}, id, created_at, ${event.by}
+        FROM hq_environment WHERE app_id::text=${event.appId} AND target='git'`;
       return sql`
-        INSERT INTO hq_rollout (app_id, cause, environment_id, project_id, by)
-        SELECT app_id, ${event.cause}, id, project_id, ${event.by}
+        INSERT INTO hq_rollout (app_id, cause, environment_id, environment_created_at, project_id, by)
+        SELECT app_id, ${event.cause}, id, created_at, project_id, ${event.by}
         FROM hq_environment WHERE project_id = ${event.projectId}`;
   }
 };
@@ -79,6 +92,11 @@ export const rolloutOf = (sql: SqlClient.SqlClient, event: RolloutCause) =>
             ORDER BY id DESC LIMIT 1`;
         case "env_added":
         case "key_kept":
+          if (!("projectId" in event))
+            return sql<{ readonly id: string }>`
+            SELECT id::text AS id FROM hq_rollout WHERE app_id::text=${event.appId}
+              AND cause='key_kept' AND repo=${event.repo} AND by=${event.by}
+            ORDER BY id DESC LIMIT 1`;
           return sql<{ readonly id: string }>`
             SELECT r.id::text AS id FROM hq_rollout r
             JOIN hq_environment e ON e.id = r.environment_id

@@ -3,6 +3,7 @@ import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import { parseSync, Visitor } from "oxc-parser";
 import { parseFindingMessage } from "../exceptions.ts";
 import { runOxlintFixtures } from "../test/utils.ts";
 
@@ -56,10 +57,27 @@ it.effect(
         /SELECT id::text AS id, state,[\s\S]*?ORDER BY id DESC LIMIT 1/u,
       )?.[0];
       expect(newestRead).toBeDefined();
+      // Template expressions can contain nested templates; use the source AST for the full SQL.
+      const text = source(deploys);
+      const parsed = parseSync(deploys, text);
+      expect(parsed.errors).toEqual([]);
+      const inserts: string[] = [];
+      new Visitor({
+        TaggedTemplateExpression(node) {
+          if (
+            node.tag.type === "Identifier" &&
+            node.tag.name === "sql" &&
+            /^\s*INSERT INTO hq_deploy_job\b/u.test(node.quasi.quasis[0]!.value.raw)
+          ) {
+            inserts.push(text.slice(node.start, node.end));
+          }
+        },
+      }).visit(parsed.program);
+      expect(inserts.length).toBeGreaterThan(0);
       const cases = [
-        ...[...source(deploys).matchAll(/INSERT INTO hq_deploy_job[^`]+/gu)].map((match) => ({
+        ...inserts.map((insert) => ({
           filename: deploys,
-          source: "export const write = sql`" + match[0] + "`;",
+          source: "export const write = " + insert + ";",
           kind: undefined,
         })),
         { filename: deploys, source: deployRead, kind: undefined },

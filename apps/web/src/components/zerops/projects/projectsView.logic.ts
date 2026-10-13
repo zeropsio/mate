@@ -466,7 +466,12 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
  */
 export function tiersAddable(input: {
   /** The tiers HQ offers this person to add (`add_stage` / `add_production`); `null` before it says. */
-  readonly offered: { readonly stage: boolean; readonly production: boolean } | null;
+  readonly offered: {
+    readonly stage: boolean;
+    readonly production: boolean;
+    readonly git?: boolean;
+    readonly zerops?: { readonly stage: boolean; readonly production: boolean };
+  } | null;
   readonly group: Pick<ZeropsGroup, "pending"> & {
     readonly environments: ReadonlyArray<{
       readonly role: import("@t3tools/client-runtime/zerops").ZeropsEnvironmentRole | undefined;
@@ -503,7 +508,8 @@ export function tiersAddable(input: {
       tier,
       recipeRead: input.recipe.read,
       recipeTiers: input.recipe.tiers,
-      offered: offered[tier],
+      offered: offered.zerops?.[tier] ?? offered[tier],
+      gitOffered: offered.git === true,
       held,
     }),
   );
