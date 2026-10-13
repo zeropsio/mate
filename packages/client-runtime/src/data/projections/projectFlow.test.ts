@@ -2,6 +2,7 @@ import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 import { mountRoster } from "../../zerops/testing/accountRoster.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { hqAppFamily, hqAppsScope } from "../families/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { linkKeys } from "../model.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
@@ -70,6 +71,47 @@ function fixture(
 }
 
 describe("Projects compact flow", () => {
+  it.each([
+    { title: "a newer environment with an id but no target", environments: [{ id: "prod" }] },
+    { title: "a newer unreadable environments field", environments: 42 },
+    { title: "a newer omitted environments field", environments: undefined },
+  ])("incomplete newer data never erases known environments: $title", ({ environments }) => {
+    const f = fixture();
+    const scope = hqAppsScope("org");
+    const held = readsOfState(f.store.state()).fact("hqApp", "shop");
+    if (held.kind !== "known") throw new Error("Fixture must hold the application");
+    const value = hqAppFamily.hq!.decode(
+      { ...held.value, name: "Shop partial", environments },
+      "app:shop",
+    )!;
+    f.store.dispatch({
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: [{ scope, generation: f.store.state().streams.get(scope)!.generation }],
+      reset: false,
+      rows: [
+        {
+          family: "hqApp",
+          id: "shop",
+          value,
+          revision: { kind: "hq", incarnation: "seed", revision: 1_000_000 },
+        },
+      ],
+      removals: [],
+    });
+    const read = readsOfState(f.store.state());
+    expect(read.fact("hqApp", "shop")).toMatchObject({
+      kind: "known",
+      value: { name: "Shop partial" },
+    });
+    expect(
+      canonicalProjectFlow
+        .derive(read, key)
+        ?.environments.map(({ id, target }) => ({ id, target })),
+    ).toEqual([{ id: "prod", target: { kind: "zerops", projectId: "prod" } }]);
+    f.registry.dispose();
+  });
+
   it("shows production's actual version while recipes and release history are unread", () => {
     const f = fixture();
     expect(f.read()?.environments[0]?.version.label).toBe("v1.2.3");

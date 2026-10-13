@@ -140,6 +140,11 @@ export const hqAppFamily: FamilySpec<"hqApp"> = {
   family: "hqApp",
   authority: "hq",
   scope: navigation("hq-apps"),
+  // Incomplete newer data never erases the environments HQ already proved.
+  keepUnsaid: (held, row) =>
+    row.environments === undefined && held?.environments !== undefined
+      ? { ...row, environments: held.environments }
+      : row,
   hq: {
     scope: "navigation",
     ...prefixed("app"),

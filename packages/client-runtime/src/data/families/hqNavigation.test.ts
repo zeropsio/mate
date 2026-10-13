@@ -107,3 +107,31 @@ it("keeps modern identity and its authoritative target, even beside an older add
   const app = hqAppFamily.hq!.decode({ environments: [environment] }, "app:shop");
   expect(app?.environments).toEqual([environment]);
 });
+
+it.each([[], { refused: "Changes are private" }])(
+  "explicit empty or refused environments replace the known rows: %s",
+  (environments) => {
+    const held = hqAppFamily.hq!.decode(
+      {
+        ...app,
+        environments: [
+          {
+            id: "prod",
+            target: { kind: "zerops", projectId: "prod" },
+            tier: "production",
+            name: "production",
+            sources: ["release"],
+            order: 1,
+            keyHeld: true,
+            keyInvalid: false,
+            can: {},
+            jobs: [],
+          },
+        ],
+      },
+      "app:shop",
+    )!;
+    const row = hqAppFamily.hq!.decode({ ...app, environments }, "app:shop")!;
+    expect(hqAppFamily.keepUnsaid?.(held, row, false) ?? row).toEqual(row);
+  },
+);
