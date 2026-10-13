@@ -225,6 +225,34 @@ it("HQ's offline shallow clone receives every object in its current commit", () 
   expect(checkout.with?.filter).toBeUndefined();
 });
 
+it("hosted suites install their working set while native jobs retain their dependencies", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const install = (name: string) =>
+    workflow.jobs[name].steps.find((step: { name: string }) => step.name === "Setup Vite+").with[
+      "run-install"
+    ];
+  for (const name of [
+    "chat_bundle",
+    "chat_scenarios",
+    "test_scripts",
+    "test_hq",
+    "test_web",
+    "test_server",
+  ]) {
+    expect(
+      typeof install(name),
+      "ASSERTION: hosted-only test runners must not install unused native workspaces",
+    ).toBe("string");
+    expect(parse(install(name))).toEqual({
+      args: ["--filter=!@t3tools/mobile", "--filter=!@t3tools/desktop"],
+    });
+  }
+  for (const name of ["check", "test_packages", "desktop_smoke", "test_mobile"])
+    expect(install(name)).toBe(true);
+});
+
 it("hosted web CI retains native compilation and dedicated native jobs", () => {
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),

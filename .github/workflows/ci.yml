@@ -118,7 +118,10 @@ jobs:
         with:
           node-version-file: package.json
           cache: true
-          run-install: true
+          run-install: &hosted_dependencies |
+            args:
+              - --filter=!@t3tools/mobile
+              - --filter=!@t3tools/desktop
 
       - name: Build the shared scenario bundle
         run: vp exec node apps/web/test/scenarios/harness/build.ts
@@ -183,7 +186,7 @@ jobs:
         with:
           node-version-file: package.json
           cache: true
-          run-install: true
+          run-install: *hosted_dependencies
 
       - name: Cache the scenarios' Chrome for Testing
         uses: actions/cache@v4
@@ -267,7 +270,7 @@ jobs:
         with:
           node-version-file: package.json
           cache: true
-          run-install: true
+          run-install: *hosted_dependencies
 
       - name: Test
         run: vp run --filter @t3tools/scripts test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
@@ -289,7 +292,7 @@ jobs:
         with:
           node-version-file: package.json
           cache: true
-          run-install: true
+          run-install: *hosted_dependencies
 
       - name: Test
         run: vp run --filter @t3tools/hq test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
@@ -318,7 +321,7 @@ jobs:
         with:
           node-version-file: package.json
           cache: true
-          run-install: true
+          run-install: *hosted_dependencies
 
       - name: Test
         run: vp run --filter @t3tools/web test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
@@ -351,7 +354,7 @@ jobs:
         with:
           node-version-file: package.json
           cache: true
-          run-install: true
+          run-install: *hosted_dependencies
 
       - name: Test
         env:
