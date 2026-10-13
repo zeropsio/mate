@@ -1,22 +1,17 @@
 // @vitest-environment happy-dom
-import { RegistryContext } from "@effect/atom-react";
-import {
-  addresses,
-  makeAccountStore,
-  type AddressDomain,
-  type PlaceAddresses,
-} from "@t3tools/client-runtime/data";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId } from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
-import { Atom, AtomRegistry } from "effect/reactivity";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import type { FixProblem } from "~/zerops/fixRequest";
-import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
+import {
+  placeAddresses as place,
+  withPlaceAddresses as inAccount,
+} from "~/zerops/__fixtures__/placeAddresses";
 
 import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
 import type { ChipMenuModel, ChipMenuStop, ProductionChip } from "./SidebarProductionChip.logic";
@@ -122,51 +117,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   useAddressesSheet.getState().close();
 });
-
-/** A place's addresses as read: ready with these domains, or still reading. */
-const place = (domains: ReadonlyArray<string> | "reading"): PlaceAddresses => ({
-  state: domains === "reading" ? "reading" : "ready",
-  domains:
-    domains === "reading"
-      ? []
-      : domains.map((domainName) => ({ domainName }) as unknown as AddressDomain),
-  zerops: [],
-  ips: { zoneHasSharedV4: false },
-  portsState: "ready",
-  ports: [],
-  webTargets: [],
-  portTargets: [],
-  waitingDomains: [],
-  waitingPorts: [],
-  readsProject: false,
-});
-
-/** Inside the account `org`, each project's addresses as given; the rest as the store reads them. */
-function inAccount(places: Readonly<Record<string, PlaceAddresses>>) {
-  const registry = AtomRegistry.make();
-  const store = makeAccountStore(registry);
-  const held = new Map<string, Atom.Atom<PlaceAddresses>>();
-  const project: AccountData["data"]["project"] = (projection, key) => {
-    const projectId = (key as { readonly projectId?: string }).projectId;
-    if (projection.name !== addresses.name || projectId === undefined) {
-      return store.data.project(projection, key);
-    }
-    const atom = held.get(projectId) ?? Atom.make(places[projectId] ?? place("reading"));
-    held.set(projectId, atom);
-    return atom as never;
-  };
-  const account = {
-    data: { ...store.data, project },
-    orgId: "org",
-    demandDetail: () => () => {},
-    retry: () => {},
-  } as Pick<AccountData, "data" | "orgId" | "demandDetail" | "retry"> as AccountData;
-  return (children: ReactNode) => (
-    <RegistryContext.Provider value={registry}>
-      <AccountDataContext.Provider value={account}>{children}</AccountDataContext.Provider>
-    </RegistryContext.Provider>
-  );
-}
 
 async function mount(
   over: Partial<ProjectSitesInput> = {},

@@ -53,7 +53,10 @@ import { useId, useMemo, useState, type ReactNode } from "react";
 
 import { Input } from "~/components/ui/input";
 
+import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useFixMates } from "~/zerops/fixMates";
+import { useLacksOwnDomain } from "~/zerops/ownDomain";
+import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
@@ -309,6 +312,24 @@ function ReleaseData({
       }),
   });
   if (keep !== held) setHeld(keep);
+  // Once it is live, production on a domain of its own where it has none: read only from then.
+  const orgId = useAccountOrgId();
+  const offersDomain = useLacksOwnDomain(
+    outcome.kind === "released" ? production?.projectId : undefined,
+  );
+  const productionId = production?.projectId;
+  const onAddDomain =
+    !offersDomain || orgId === null || productionId === undefined
+      ? undefined
+      : () => {
+          onClose();
+          useAddressesSheet.getState().open({
+            orgId,
+            projectId: productionId,
+            groupId: flow.groupId,
+            intent: "add-domain",
+          });
+        };
   // The changes are the release's; where each stands on the stage is read as it stands now, from
   // HQ's deploys, the same for everyone who sees the application.
   const stage = useMemo(
@@ -386,6 +407,7 @@ function ReleaseData({
         askMateToFix(fixer.mateProjectId, problem);
         onClose();
       }}
+      onAddDomain={onAddDomain}
       onRelease={() => {
         void release();
       }}
@@ -474,6 +496,8 @@ export interface ReleaseReviewViewProps {
   readonly now: number;
   readonly titleId?: string | undefined;
   readonly onRelease: () => void;
+  /** Production on a domain of its own, offered once a release is live where it has none. */
+  readonly onAddDomain?: (() => void) | undefined;
   readonly onFix: (problem: FixProblem) => void;
   /** A change row pressed: its review, in place. */
   readonly onOpenChange?: ((row: ReviewReleaseRow) => void) | undefined;
@@ -567,7 +591,17 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       primary={
         model.primary === undefined ||
         (model.primary.label === "Replace token" && props.onReplaceToken === undefined)
-          ? undefined
+          ? model.primary === undefined &&
+            props.outcome.kind === "released" &&
+            props.onAddDomain !== undefined
+            ? {
+                label: "Put it on your domain",
+                enabled: true,
+                safe: false,
+                icon: "globe",
+                onPress: props.onAddDomain,
+              }
+            : undefined
           : {
               ...model.primary,
               enabled: model.primary.enabled && checkedVersion?.error === undefined,
