@@ -1,5 +1,6 @@
 import { composerLayout, composerStates } from "./composerLayout.ts";
 import type { Page } from "puppeteer-core";
+import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { describe, expect, it } from "@effect/vitest";
 import {
   AssetCreateUrlInput,
@@ -176,7 +177,7 @@ function readEnd() {
 /** A reading as an assertion message quotes it. */
 const quoted = (reading: object) => JSON.stringify(reading);
 
-/** The end of the conversation once nothing moves: the same reading for half a second. */
+/** The end of the conversation once its opening and motion have finished. */
 async function settledEnd(page: Page) {
   await page.waitForFunction(
     () => {
@@ -192,13 +193,7 @@ async function settledEnd(page: Page) {
     },
     { polling: "raf", timeout: 8000 },
   );
-  let previous = "";
-  for (let still = 0; still < 10;) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const now = JSON.stringify(await page.evaluate(readEnd));
-    still = now === previous ? still + 1 : 0;
-    previous = now;
-  }
+  await waitForStillFrames(page);
   return page.evaluate(readEnd);
 }
 
@@ -1275,8 +1270,8 @@ describe("owner-reported layout regressions", () => {
             (window as unknown as { lastWordsTrace: unknown }).lastWordsTrace = { frames, state };
             sample();
           }, LAST_WORDS);
-        const stopLastWords = (page: Page, ms: number) =>
-          new Promise((resolve) => setTimeout(resolve, ms)).then(() =>
+        const stopLastWords = (page: Page) =>
+          waitForStillFrames(page, { stillFrames: 24 }).then(() =>
             page.evaluate(() => {
               const held = (
                 window as unknown as {
@@ -1319,7 +1314,7 @@ describe("owner-reported layout regressions", () => {
               yield* chat.then.text(LAST_WORDS);
               raise(engine, run);
               yield* chat.then.text(shows);
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               // The person scrolls down as far as the conversation goes.
               yield* Effect.promise(async () => {
                 const list = (await s.page.$(".timeline-legend-list"))!;
@@ -1327,9 +1322,9 @@ describe("owner-reported layout regressions", () => {
                 await s.page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 100);
                 for (let wheel = 0; wheel < 4; wheel++) {
                   await s.page.mouse.wheel({ deltaY: 400 });
-                  await new Promise((resolve) => setTimeout(resolve, 120));
+                  await waitForStillFrames(s.page);
                 }
-                await new Promise((resolve) => setTimeout(resolve, 600));
+                await waitForStillFrames(s.page);
               });
               const end = yield* Effect.promise(() => s.page.evaluate(readEnd));
               yield* Effect.promise(async () => {
@@ -1353,7 +1348,7 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() => traceLastWords(s.page));
               yield* chat.when.click(answer);
               yield* chat.then.text("Going on with what you chose.");
-              const frames = (yield* Effect.promise(() => stopLastWords(s.page, 800))).filter(
+              const frames = (yield* Effect.promise(() => stopLastWords(s.page))).filter(
                 (top): top is number => top !== null,
               );
               expect(frames.length, "ASSERTION: the answer was sampled").toBeGreaterThan(10);
@@ -1430,11 +1425,11 @@ describe("owner-reported layout regressions", () => {
                 const run = engine.personRun(MESSAGE);
                 engine.note(run, LAST_WORDS);
                 yield* chat.then.text(LAST_WORDS);
-                yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+                yield* Effect.promise(() => waitForStillFrames(s.page));
                 raise(engine, run);
                 yield* chat.then.text(shows);
                 // Nobody scrolls: what the person reads is what the ask opened on.
-                yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 900)));
+                yield* Effect.promise(() => waitForStillFrames(s.page));
                 const end = yield* Effect.promise(() => s.page.evaluate(readEnd));
                 const message = yield* Effect.promise(() =>
                   s.page.evaluate((text) => {
@@ -1523,7 +1518,7 @@ describe("owner-reported layout regressions", () => {
             yield* s.drivers.links.get("Ada")!.close;
             wire.disconnect();
             yield* chat.then.text("Last known");
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+            yield* Effect.promise(() => waitForStillFrames(s.page));
             const geometry = yield* Effect.promise(() =>
               s.page.evaluate(() => {
                 const alert = document.querySelector<HTMLElement>(
@@ -1702,13 +1697,7 @@ describe("owner-reported layout regressions", () => {
                   const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
                   return list.scrollHeight - list.clientHeight - list.scrollTop;
                 });
-              const settle = () =>
-                s.page.evaluate(
-                  () =>
-                    new Promise((done) => {
-                      setTimeout(done, 600);
-                    }),
-                );
+              const settle = () => waitForStillFrames(s.page);
               const list = (yield* Effect.promise(() => s.page.$(".timeline-legend-list")))!;
               const box = (yield* Effect.promise(() => list.boundingBox()))!;
               yield* Effect.promise(async () => {
@@ -1930,8 +1919,8 @@ describe("owner-reported layout regressions", () => {
           (window as unknown as { limitTrace: unknown }).limitTrace = { frames, state };
           sample();
         }, HELD);
-      const stopTrace = (page: Page, ms: number) =>
-        new Promise((resolve) => setTimeout(resolve, ms)).then(() =>
+      const stopTrace = (page: Page) =>
+        waitForStillFrames(page, { stillFrames: 24 }).then(() =>
           page.evaluate(() => {
             const held = (
               window as unknown as {
@@ -1979,15 +1968,15 @@ describe("owner-reported layout regressions", () => {
         });
         // Claude's words: the run's end carried its answer empty, its words came 154 ms later.
         const said = engine.item(run, { kind: "note", text: "", streaming: false, answer: false });
-        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+        yield* Effect.promise(() => waitForStillFrames(s.page));
         yield* Effect.promise(() => startTrace(s.page));
         engine.limit(run, (yield* Clock.currentTimeMillis) + 18 * 3_600_000);
-        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 154)));
+        yield* Effect.promise(() => waitForStillFrames(s.page));
         engine.update(said, { text: "You've hit your weekly limit · resets 1pm (UTC)" });
         yield* Effect.promise(() =>
           s.page.waitForSelector('[data-run-head][data-run-now="paused"]', { timeout: 8000 }),
         );
-        const frames = yield* Effect.promise(() => stopTrace(s.page, 1500));
+        const frames = yield* Effect.promise(() => stopTrace(s.page));
         return { s, chat, engine, frames };
       });
 
@@ -2038,7 +2027,7 @@ describe("owner-reported layout regressions", () => {
             yield* Effect.promise(() =>
               s.page.waitForSelector('[data-message-receipt="held"]', { timeout: 8000 }),
             );
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+            yield* Effect.promise(() => waitForStillFrames(s.page));
             const band = yield* Effect.promise(() =>
               s.page.evaluate(() => {
                 const shell = document.querySelector('[data-slot="composer-shell"]')!;
@@ -2065,12 +2054,12 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() =>
                 s.page.waitForSelector('[data-message-receipt="held"]', { timeout: 8000 }),
               );
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               // Slowed tenfold, a glide spans ten times its frames on any runner.
               const slowed = yield* Effect.promise(() => slowAnimations(s.page, 0.1));
               yield* Effect.promise(() => startTrace(s.page));
               engine.lift();
-              const frames = (yield* Effect.promise(() => stopTrace(s.page, 3000))).filter(
+              const frames = (yield* Effect.promise(() => stopTrace(s.page))).filter(
                 (frame) => frame.card !== null,
               );
               yield* Effect.promise(() => slowed.restore());
@@ -2115,9 +2104,9 @@ describe("owner-reported layout regressions", () => {
               expect(
                 yield* Effect.promise(() => receipt!.evaluate((node) => node.ariaLabel)),
               ).toMatch(/^Sends when the limit resets /);
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 800)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               yield* Effect.promise(() => startTrace(s.page));
-              const held = (yield* Effect.promise(() => stopTrace(s.page, 100))).at(-1)!;
+              const held = (yield* Effect.promise(() => stopTrace(s.page))).at(-1)!;
               expect(held.end, "ASSERTION: the conversation stays at its end").toBeLessThanOrEqual(
                 1,
               );
@@ -2143,7 +2132,7 @@ describe("owner-reported layout regressions", () => {
                   { polling: "raf", timeout: 8000 },
                 ),
               );
-              const frames = (yield* Effect.promise(() => stopTrace(s.page, 3000))).filter(
+              const frames = (yield* Effect.promise(() => stopTrace(s.page))).filter(
                 (frame) => frame.card !== null && frame.message !== null,
               );
               yield* Effect.promise(() => slowed.restore());
@@ -2300,8 +2289,8 @@ describe("owner-reported layout regressions", () => {
           (window as unknown as { lastLineTrace: unknown }).lastLineTrace = { frames, state };
           requestAnimationFrame(sample);
         });
-      const stopLastLineTrace = (page: Page, ms: number) =>
-        new Promise((resolve) => setTimeout(resolve, ms)).then(() =>
+      const stopLastLineTrace = (page: Page) =>
+        waitForStillFrames(page, { stillFrames: 24 }).then(() =>
           page.evaluate(() => {
             const held = (
               window as unknown as {
@@ -2481,7 +2470,7 @@ describe("owner-reported layout regressions", () => {
                   title: "Wait 45 seconds in the background, then print job-finished-ok",
                 });
             // Its calls land in the history one after another before it writes.
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 3000)));
+            yield* Effect.promise(() => waitForStillFrames(s.page));
             // What Milo said: a short line as its job ran on (recheck on 0.15.41, +32:54.1), three
             // lines otherwise.
             const text =
@@ -2533,7 +2522,7 @@ describe("owner-reported layout regressions", () => {
                   { polling: "raf", timeout: 8000 },
                 ),
               );
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+            yield* Effect.promise(() => waitForStillFrames(s.page));
             yield* Effect.promise(() =>
               s.page.evaluate(() => {
                 const frames: SettleFrame[] = [];
@@ -2645,12 +2634,12 @@ describe("owner-reported layout regressions", () => {
                 requestAnimationFrame(sample);
               }),
             );
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 200)));
+            yield* Effect.promise(() => waitForStillFrames(s.page));
             if (note !== null && end === "whole") {
               engine.settle(note);
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               engine.update(note, { text, streaming: false });
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 400)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
             }
             const ending = yield* Effect.promise(() =>
               s.page.evaluate(() => ({
@@ -2675,7 +2664,7 @@ describe("owner-reported layout regressions", () => {
             } else engine.end(run);
             if (helperRunsOn && end === "whole") engine.waitOnHelpers();
             const frames = yield* Effect.promise(() =>
-              new Promise((resolve) => setTimeout(resolve, 2500)).then(() =>
+              waitForStillFrames(s.page, { stillFrames: 24 }).then(() =>
                 s.page.evaluate(() => {
                   const held = (
                     window as unknown as {
@@ -2936,12 +2925,12 @@ describe("owner-reported layout regressions", () => {
               length: 64,
               streaming: false,
             });
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 3000)));
+            yield* Effect.promise(() => waitForStillFrames(s.page));
             const words = "Both helpers reported their last tick, 90.";
             if (ending === "stopped with its helpers") {
               // As on Milo: the Stop ends the helpers first, the run a moment after.
               for (const helper of helpers) engine.update(helper, { status: "stopped" });
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 150)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               engine.end(run, { kind: "stopped", by: { kind: "person", subject: "owner" } });
             } else {
               if (ending === "completed")
@@ -2950,12 +2939,37 @@ describe("owner-reported layout regressions", () => {
               engine.end(run);
               if (ending === "on its job") engine.waitOnHelpers();
             }
+            // The last note becomes the answer outside the card: its arrival alone is not that handoff.
+            if (ending === "completed")
+              yield* Effect.promise(async () => {
+                const started = await s.page.waitForFunction(
+                  (words) => {
+                    const rows = [
+                      ...document.querySelectorAll<HTMLElement>("[data-timeline-row-id]"),
+                    ];
+                    const end = rows.findLastIndex(
+                      (row) => row.dataset.timelineRowKind === "card-end",
+                    );
+                    return (
+                      end !== -1 &&
+                      rows.findIndex(
+                        (row) =>
+                          row.dataset.timelineRowKind === "message" &&
+                          row.textContent?.includes(words),
+                      ) > end
+                    );
+                  },
+                  { polling: "raf", timeout: 8000 },
+                  words,
+                );
+                await started.dispose();
+              });
             const settled = (open: boolean) =>
               Effect.gen(function* () {
-                yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 2500)));
+                yield* Effect.promise(() => waitForStillFrames(s.page));
                 const folded = yield* Effect.promise(() => readRest(s.page));
                 yield* chat.when.activateLast(open ? "Show work" : "Hide work");
-                yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1500)));
+                yield* Effect.promise(() => waitForStillFrames(s.page));
                 const other = yield* Effect.promise(() => readRest(s.page));
                 return open ? { folded, open: other } : { folded: other, open: folded };
               });
@@ -3021,7 +3035,7 @@ describe("owner-reported layout regressions", () => {
                   endedAt: yield* Clock.currentTimeMillis,
                   input: `Bash: echo step-${index}`,
                 });
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 3000)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               engine.note(
                 run,
                 "All six steps ran; the last one printed its marker, as you noted.",
@@ -3029,7 +3043,7 @@ describe("owner-reported layout regressions", () => {
                   kind: "completed",
                 },
               );
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 2500)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               const read = () =>
                 s.page.evaluate(() => {
                   const list = document.querySelector<HTMLElement>(".timeline-legend-list")!;
@@ -3050,10 +3064,14 @@ describe("owner-reported layout regressions", () => {
               const before = yield* Effect.promise(read);
               yield* chat.when.activateLast("Show work");
               const frames: Array<Awaited<ReturnType<typeof read>>> = [];
-              for (let index = 0; index < 30; index += 1) {
-                yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 50)));
-                frames.push(yield* Effect.promise(read));
-              }
+              yield* Effect.promise(() =>
+                waitForStillFrames(s.page, {
+                  stillFrames: 30,
+                  sample: async () => {
+                    frames.push(await read());
+                  },
+                }),
+              );
               const after = frames.at(-1)!;
               const seen = `before ${before.line}/${before.fromEnd}/${before.foot}, after ${after.line}/${after.fromEnd}/${after.foot}`;
               expect(before.line, "ASSERTION: the answer stood in view before").not.toBeNull();
@@ -3205,17 +3223,17 @@ describe("owner-reported layout regressions", () => {
                 { polling: "raf", timeout: 8000 },
               ),
             );
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+            yield* Effect.promise(() => waitForStillFrames(s.page));
             yield* Effect.promise(() => startLastLineTrace(s.page));
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 200)));
+            yield* Effect.promise(() => waitForStillFrames(s.page));
             // As on Milo (run 6, R +1:22.4): its streamed words settle a moment before its record
             // says them whole, and the run ends 400 ms after its last words.
             engine.settle(note);
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
+            yield* Effect.promise(() => waitForStillFrames(s.page));
             engine.update(note, { text, streaming: false });
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 400)));
+            yield* Effect.promise(() => waitForStillFrames(s.page));
             engine.end(run);
-            const frames = yield* Effect.promise(() => stopLastLineTrace(s.page, 2000));
+            const frames = yield* Effect.promise(() => stopLastLineTrace(s.page));
             const first = frames[0]!;
             expect(
               first.top,
@@ -3286,7 +3304,7 @@ describe("owner-reported layout regressions", () => {
                   { polling: "raf", timeout: 8000 },
                 ),
               );
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               yield* Effect.promise(() =>
                 s.page.evaluate(() => {
                   const frames: Array<{ at: number; asked: number | null; last: number | null }> =
@@ -3317,14 +3335,14 @@ describe("owner-reported layout regressions", () => {
                   requestAnimationFrame(sample);
                 }),
               );
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 200)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               engine.settle(note);
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               engine.update(note, { text, streaming: false });
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 400)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               engine.end(run);
               const frames = yield* Effect.promise(() =>
-                new Promise((resolve) => setTimeout(resolve, 2000)).then(() =>
+                waitForStillFrames(s.page, { stillFrames: 24 }).then(() =>
                   s.page.evaluate(() => {
                     const held = (
                       window as unknown as {
@@ -3409,7 +3427,7 @@ describe("owner-reported layout regressions", () => {
                 { polling: "raf", timeout: 8000 },
               ),
             );
-            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 600)));
+            yield* Effect.promise(() => waitForStillFrames(s.page));
             yield* Effect.promise(() => startLastLineTrace(s.page));
             engine.stream(
               note,
@@ -3417,7 +3435,7 @@ describe("owner-reported layout regressions", () => {
                 "",
               ),
             );
-            const frames = yield* Effect.promise(() => stopLastLineTrace(s.page, 1200));
+            const frames = yield* Effect.promise(() => stopLastLineTrace(s.page));
             const heights = frames.flatMap((frame) => (frame.box === null ? [] : [frame.box]));
             // The glide runs on time, so what it grows between two drawn frames is paced per 60 Hz
             // frame of the time between them: its first step is ~61-64 px. A frame the machine
@@ -3514,8 +3532,8 @@ describe("owner-reported layout regressions", () => {
           text,
           EARLIER,
         );
-      const stopSendTrace = (page: Page, ms: number) =>
-        new Promise((resolve) => setTimeout(resolve, ms)).then(() =>
+      const stopSendTrace = (page: Page) =>
+        waitForStillFrames(page, { stillFrames: 24 }).then(() =>
           page.evaluate(() => {
             const held = (
               window as unknown as {
@@ -3584,13 +3602,13 @@ describe("owner-reported layout regressions", () => {
                   );
                   await input!.focus();
                   await s.page.keyboard.sendCharacter(text);
-                  await new Promise((resolve) => setTimeout(resolve, 800));
+                  await waitForStillFrames(s.page);
                 });
               yield* Effect.promise(() => startSendTrace(s.page, text.slice(0, 40)));
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 100)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               if (typed) yield* Effect.promise(() => s.page.keyboard.press("Enter"));
               else wire.engine.personRun(text);
-              const frames = yield* Effect.promise(() => stopSendTrace(s.page, 1500));
+              const frames = yield* Effect.promise(() => stopSendTrace(s.page));
               const shown = frames.filter((frame) => frame.message !== null);
               expect(shown.length, "ASSERTION: the sent message was sampled").toBeGreaterThan(10);
               const behind = shown.filter((frame) => frame.message!.bottom > frame.composer + 1);
@@ -3672,12 +3690,12 @@ describe("owner-reported layout regressions", () => {
                 () => document.querySelectorAll(".helper-map > li").length >= 2,
                 { timeout: 8000 },
               );
-              await new Promise((resolve) => setTimeout(resolve, 500));
+              await waitForStillFrames(s.page);
             });
             const states = [yield* Effect.promise(() => helperRows(s.page))];
             const settle = () =>
               Effect.promise(async () => {
-                await new Promise((resolve) => setTimeout(resolve, 800));
+                await waitForStillFrames(s.page);
                 states.push(await helperRows(s.page));
               });
             const second = engine.personRun("Start helper C");
@@ -3733,10 +3751,7 @@ describe("owner-reported layout regressions", () => {
                 s,
                 Effect.sync(() => publish()),
               );
-              yield* Effect.promise(async () => {
-                for (let wait = 0; wait < 50 && engine.pageHeights.length < 2; wait++)
-                  await new Promise((resolve) => setTimeout(resolve, 100));
-              });
+              yield* Effect.promise(() => engine.waitForPageHeights(2));
               // Every frame from the reload: how far the view stands from its end, and whether its
               // rows are placed yet.
               yield* Effect.promise(() =>
@@ -3759,7 +3774,7 @@ describe("owner-reported layout regressions", () => {
                 }),
               );
               yield* chat.when.reload("Ada", ANSWER);
-              yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1500)));
+              yield* Effect.promise(() => waitForStillFrames(s.page));
               const frames = yield* Effect.promise(() =>
                 s.page.evaluate(
                   () =>
@@ -3813,7 +3828,7 @@ describe("owner-reported layout regressions", () => {
               },
               { timeout: 8000 },
             );
-            await new Promise((resolve) => setTimeout(resolve, 400));
+            await waitForStillFrames(s.page);
           });
           return s;
         });
@@ -3853,7 +3868,7 @@ describe("owner-reported layout regressions", () => {
       const restOnRail = (page: Page) =>
         Effect.promise(async () => {
           await page.mouse.move(36, 600, { steps: 4 });
-          await new Promise((resolve) => setTimeout(resolve, 700));
+          await waitForStillFrames(page);
         });
 
       it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -3869,10 +3884,10 @@ describe("owner-reported layout regressions", () => {
               const x = box.x + box.width / 2;
               const y = box.y + box.height / 2;
               await s.page.mouse.move(x, y, { steps: 4 });
-              await new Promise((resolve) => setTimeout(resolve, 150));
+              await waitForStillFrames(s.page);
               await s.page.mouse.down();
               await s.page.mouse.up();
-              await new Promise((resolve) => setTimeout(resolve, 600));
+              await waitForStillFrames(s.page);
               return s.page.evaluate(
                 (x, y, bea) => ({
                   current: document.querySelector(bea)?.getAttribute("aria-current"),
@@ -3951,7 +3966,7 @@ describe("owner-reported layout regressions", () => {
               yield* restOnRail(s.page);
               yield* Effect.promise(async () => {
                 await s.page.mouse.move(44, 900, { steps: 4 });
-                await new Promise((resolve) => setTimeout(resolve, 700));
+                await waitForStillFrames(s.page);
               });
               const frames = yield* Effect.promise(() => stopFrames(s.page));
               expect(
@@ -3975,7 +3990,7 @@ describe("owner-reported layout regressions", () => {
               yield* Effect.promise(() => sampleFrames(s.page));
               yield* Effect.promise(async () => {
                 await s.page.click('[data-zerops-surface="sidebar-rail-open"]');
-                await new Promise((resolve) => setTimeout(resolve, 800));
+                await waitForStillFrames(s.page);
               });
               const frames = yield* Effect.promise(() => stopFrames(s.page));
               const words = frames.map((frame) => Math.round(frame.words));

@@ -555,6 +555,26 @@ export class MateEngineFake {
     }
   }
 
+  /** The client recorded its measured pages before the scenario reloads them. */
+  async waitForPageHeights(count: number) {
+    if (this.pageHeights.length >= count) return;
+    let listener = () => {};
+    try {
+      await deadline(
+        new Promise<void>((resolve) => {
+          listener = () => {
+            if (this.pageHeights.length >= count) resolve();
+          };
+          this.receipts.on("page-height", listener);
+        }),
+        `Mate's engine recorded ${count} page heights`,
+        8000,
+      );
+    } finally {
+      this.receipts.off("page-height", listener);
+    }
+  }
+
   // ── records ────────────────────────────────────────────────────────────────────────────────
 
   private next() {
@@ -1119,6 +1139,7 @@ export class MateEngineFake {
           .slice(-12)
           .sort((a, b) => a[0] - b[0]);
         this.pageHeights.push([String(payload.itemId), width, height]);
+        this.receipts.emit("page-height");
         this.mate.reply(socket, id, encodeRecordPageHeight({ _tag: "Recorded" }));
         return true;
       }

@@ -85,6 +85,56 @@ async function connect() {
 
 const conversation = { protocol: 1, conversationId: "thread-Ada" };
 
+it("page-height waits resolve on the client's recording receipt, including heights already recorded", async () => {
+  const r = await connect();
+  try {
+    const engine = r.wire.engine;
+    const run = engine.personRun("Publish a page");
+    const itemId = engine.item(run, {
+      kind: "call",
+      step: "mcp",
+      words: "MCP tool call",
+      state: "done",
+      endedAt: null,
+      tool: { name: "zerops_publish_page", server: "zerops" },
+      result: {
+        toolName: "zerops_publish_page",
+        resultText: '{"page":{}}',
+        page: {
+          asset: {
+            id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            threadId: "thread-Ada/s/1",
+            ownerId: "publish-call",
+            name: "page-0123456789abcdef.html",
+            provenance: "capture",
+            original: {
+              status: "ready",
+              digest: "c".repeat(64),
+              mimeType: "text/html",
+              sizeBytes: 100,
+            },
+          },
+          title: "Launch plan",
+          bytes: 100,
+          publishedAt: 1791201600000,
+        },
+      },
+    });
+    const recorded = engine.waitForPageHeights(1);
+    await r.call("height", WS_METHODS.engineRecordPageHeight, {
+      ...conversation,
+      itemId,
+      width: 435,
+      height: 369,
+    });
+    await recorded;
+    expect(engine.pageHeights).toEqual([[itemId, 435, 369]]);
+    await engine.waitForPageHeights(1);
+  } finally {
+    await r.close();
+  }
+});
+
 it("retains a journey's reply as its answer when the run completes separately", async () => {
   const r = await connect();
   try {
