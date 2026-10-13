@@ -169,7 +169,7 @@ it("Decision: no test removed from CI coverage", () => {
   expect(test.run).toContain("--reporter=../../scripts/chat-gate-reporter.ts");
   expect(test.env?.MATE_CHAT_GATE_SERVER).toBe("1");
   const oracle = server.steps.find((step) => step.name === "Certify engine oracles")!;
-  expect(oracle.if).toBe("matrix.shard == 1");
+  expect(oracle.if).toContain("matrix.shard == 1");
   expect(oracle.run).toContain("test/engine-oracle/runCard.oracle.test.ts");
   expect(oracle.run).toContain("test/engine-oracle/mateHealth.oracle.test.ts");
   expect(oracle.run).toContain("--allowOnly=false");
@@ -217,6 +217,7 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
         strategy?: { "fail-fast": boolean; matrix: { include: { command: string }[] } };
         steps: {
           uses?: string;
+          if?: string;
           run?: string;
           with?: Record<string, unknown>;
           env?: Record<string, string>;
@@ -227,9 +228,11 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
   const build = jobs.chat_bundle!;
   const journeys = jobs.chat_scenarios!;
   expect(build.needs).toEqual(["prepare", "changes"]);
-  expect(build.steps.filter((step) => step.run).map((step) => step.run)).toEqual([
-    "vp exec node apps/web/test/scenarios/harness/build.ts",
-  ]);
+  expect(
+    build.steps
+      .filter((step) => step.run && step.if !== "needs.prepare.outputs.skip == 'true'")
+      .map((step) => step.run),
+  ).toEqual(["vp exec node apps/web/test/scenarios/harness/build.ts"]);
   expect(journeys.needs).toEqual(["prepare", "chat_bundle"]);
   expect(journeys.strategy?.["fail-fast"]).toBe(false);
   expect(journeys.strategy?.matrix.include.slice(0, 4).map((row) => row.command)).toEqual([
@@ -247,7 +250,9 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
     "if-no-files-found": "error",
   });
   expect(downloaded.with).toEqual({ name: uploaded.with!.name, path: uploaded.with!.path });
-  expect(journeys.steps.filter((step) => step.run)).toEqual([
+  expect(
+    journeys.steps.filter((step) => step.run && step.if !== "needs.prepare.outputs.skip == 'true'"),
+  ).toEqual([
     expect.objectContaining({
       run: "${{ matrix.command }}",
       env: { MATE_SCENARIO_REQUIRE_BUNDLE: "1" },
@@ -265,7 +270,7 @@ it("the Test verdict includes every scripts and HQ shard", () => {
     "test_scripts",
     "test_hq",
   ]);
-  expect(workflow.jobs.test.if).toBe("${{ !cancelled() && needs.prepare.outputs.skip != 'true' }}");
+  expect(workflow.jobs.test.if).toBe("${{ !cancelled() && needs.prepare.result == 'success' }}");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'failure')");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'skipped')");
   for (const name of ["test_scripts", "test_hq"]) {
@@ -394,67 +399,89 @@ it("hosted web CI retains native compilation and dedicated native jobs", () => {
   ).toBe(true);
 });
 
-it("CI branch levels keep handoffs quiet and fast candidates free of browser and native jobs", () => {
+it("CI runs full verification on integration pushes and preserves PR change selection", () => {
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
   expect(
     workflow.on.push.branches,
-    "ASSERTION: only main and verification branches trigger push CI",
-  ).toEqual(["main", "kh-try/**", "kh-final/**"]);
+    "ASSERTION: only current integration refs trigger push CI",
+  ).toEqual(["main", "kh-next", "kh-bisect/**"]);
   expect(workflow.on.pull_request).toBeNull();
   expect(workflow.on.workflow_call).toBeNull();
-  expect(workflow["run-name"]).toContain("fast");
-  expect(workflow["run-name"]).toContain("final");
-  expect(workflow["run-name"]).toContain("github.ref_name");
-  const finalJobs = new Set([
-    "chat_bundle",
-    "chat_scenarios",
-    "release_smoke",
-    "desktop_smoke",
-    "test_mobile",
-    "mobile_native_static_analysis",
-  ]);
+  expect(workflow["run-name"]).toBe("CI · ${{ github.ref_name }}");
+  expect(workflow.jobs.prepare.outputs).toEqual({ skip: "${{ steps.verdict.outputs.skip }}" });
   for (const [name, job] of Object.entries(workflow.jobs) as [
     string,
     { needs?: string | string[]; if?: string },
   ][]) {
     if (name === "prepare") continue;
-    expect([job.needs].flat(), `ASSERTION: ${name} reads the one CI preparation verdict`).toContain(
+    expect([job.needs].flat(), `ASSERTION: ${name} reads the one promotion verdict`).toContain(
       "prepare",
     );
-    expect(job.if, `ASSERTION: ${name} skips a main SHA already verified at final`).toContain(
-      "needs.prepare.outputs.skip != 'true'",
-    );
-    expect(
-      job.if?.includes("needs.prepare.outputs.level == 'final'"),
-      `ASSERTION: ${name} follows its CI level`,
-    ).toBe(finalJobs.has(name));
+    expect(job.if).not.toContain("outputs.level");
   }
   expect(
     workflow.jobs.test_packages.steps.find(
       (step: { name: string }) => step.name === "Test scenario drivers",
     ).if,
-  ).toBe("needs.prepare.outputs.level == 'final'");
+  ).toBeUndefined();
   expect(workflow.jobs.chat_bundle.if).toContain("needs.changes.outputs.chat != 'false'");
   expect(workflow.jobs.rust.if).toContain("needs.changes.outputs.resource_monitor != 'false'");
   expect(workflow.jobs.prepare.permissions.actions).toBe("read");
 });
 
+it("main promotion reports successful required checks without repeating verified work", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const required = {
+    check: "Check",
+    test: "Test",
+    test_web: "Test Web ${{ matrix.shard }}",
+    chat_scenarios: "Test Web Scenarios (${{ matrix.name }})",
+    test_server: "Test Server ${{ matrix.shard }}",
+    chat_bundle: "Chat Contract bundle",
+    release_smoke: "Release Smoke",
+  };
+  for (const [id, name] of Object.entries(required)) {
+    const job = workflow.jobs[id];
+    expect(job.name).toBe(name);
+    expect(job.if, `ASSERTION: ${name} must run to report promotion success`).toContain(
+      "needs.prepare.result == 'success'",
+    );
+    const promotion = job.steps.filter(
+      (step: { if?: string }) => step.if === "needs.prepare.outputs.skip == 'true'",
+    );
+    expect(promotion, `ASSERTION: ${name} has exactly one promotion receipt`).toHaveLength(1);
+    const result = NodeChildProcess.spawnSync("bash", ["-e", "-c", promotion[0].run], {
+      encoding: "utf8",
+    });
+    expect(result.status, result.stderr).toBe(0);
+    for (const step of job.steps.filter(
+      (step: { if?: string }) => step.if !== "needs.prepare.outputs.skip == 'true'",
+    )) {
+      expect(step.if, `ASSERTION: ${name} never installs or verifies a promoted SHA`).toContain(
+        "needs.prepare.outputs.skip != 'true'",
+      );
+    }
+  }
+  expect(workflow.jobs.test_web.strategy.matrix.shard).toEqual([1, 2]);
+  expect(workflow.jobs.test_server.strategy.matrix.shard).toEqual([1, 2, 3, 4]);
+});
+
 it.each([
   {
-    ref: "refs/heads/kh-try/batch",
+    ref: "refs/heads/kh-next",
     event: "push",
     runs: [],
-    level: "fast",
     skip: false,
     api: false,
   },
   {
-    ref: "refs/heads/kh-final/abc1234",
+    ref: "refs/heads/kh-bisect/abc1234",
     event: "push",
     runs: [],
-    level: "final",
     skip: false,
     api: false,
   },
@@ -462,12 +489,11 @@ it.each([
     ref: "refs/pull/1/merge",
     event: "pull_request",
     runs: [],
-    level: "final",
     skip: false,
     api: false,
   },
-  { ref: "refs/tags/v1.2.3", event: "push", runs: [], level: "final", skip: false, api: false },
-  { ref: "refs/heads/main", event: "push", runs: [], level: "final", skip: false, api: true },
+  { ref: "refs/tags/v1.2.3", event: "push", runs: [], skip: false, api: false },
+  { ref: "refs/heads/main", event: "push", runs: [], skip: false, api: true },
   {
     ref: "refs/heads/main",
     event: "push",
@@ -475,18 +501,18 @@ it.each([
       {
         id: 7,
         head_sha: "abc",
-        head_branch: "kh-final/abc1234",
+        head_branch: "kh-next",
         event: "push",
         status: "completed",
         conclusion: "success",
       },
     ],
-    level: "final",
     skip: true,
     api: true,
   },
   ...[
-    { head_branch: "kh-try/abc1234" },
+    { head_branch: "kh-bisect/abc1234" },
+    { head_branch: "kh-next/other" },
     { head_branch: null },
     { conclusion: "failure" },
     { status: "in_progress" },
@@ -499,71 +525,64 @@ it.each([
       {
         id: 7,
         head_sha: "abc",
-        head_branch: "kh-final/abc1234",
+        head_branch: "kh-next",
         event: "push",
         status: "completed",
         conclusion: "success",
         ...override,
       },
     ],
-    level: "final",
     skip: false,
     api: true,
   })),
-])(
-  "CI preparation derives $level and skip=$skip for $ref with $runs",
-  ({ ref, event, runs, level, skip, api }) => {
-    const workflow = parse(
-      NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+])("CI preparation derives skip=$skip for $ref with $runs", ({ ref, event, runs, skip, api }) => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  expect(workflow.jobs.prepare, "ASSERTION: CI owns one verified-SHA projection").toBeDefined();
+  const run = workflow.jobs.prepare.steps[0].run as string;
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-promotion-"));
+  const output = NodePath.join(directory, "output");
+  const called = NodePath.join(directory, "called");
+  try {
+    NodeFS.writeFileSync(
+      NodePath.join(directory, "runs.json"),
+      JSON.stringify({ workflow_runs: runs }),
     );
+    NodeFS.writeFileSync(
+      NodePath.join(directory, "gh"),
+      '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLED"\njq "${5}" "$RUNS"\n',
+      { mode: 0o755 },
+    );
+    const result = NodeChildProcess.spawnSync("bash", ["-c", run], {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${directory}:${process.env.PATH}`,
+        GITHUB_REF: ref,
+        GITHUB_EVENT_NAME: event,
+        GITHUB_SHA: "abc",
+        GITHUB_REPOSITORY: "zeropsio/mate",
+        GITHUB_OUTPUT: output,
+        CALLED: called,
+        RUNS: NodePath.join(directory, "runs.json"),
+      },
+    });
+    expect(result.status, result.stderr).toBe(0);
     expect(
-      workflow.jobs.prepare,
-      "ASSERTION: CI owns one level and verified-SHA projection",
-    ).toBeDefined();
-    const run = workflow.jobs.prepare.steps[0].run as string;
-    const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-level-"));
-    const output = NodePath.join(directory, "output");
-    const called = NodePath.join(directory, "called");
-    try {
-      NodeFS.writeFileSync(
-        NodePath.join(directory, "runs.json"),
-        JSON.stringify({ workflow_runs: runs }),
+      NodeFS.readFileSync(output, "utf8").trim().split("\n"),
+      "ASSERTION: the real CI consumer emits the exact successful kh-next verdict",
+    ).toEqual([`skip=${skip}`]);
+    expect(NodeFS.existsSync(called)).toBe(api);
+    if (api)
+      expect(NodeFS.readFileSync(called, "utf8")).toContain(
+        "actions/workflows/ci.yml/runs?head_sha=abc&status=success&per_page=100",
       );
-      NodeFS.writeFileSync(
-        NodePath.join(directory, "gh"),
-        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLED"\njq "${5}" "$RUNS"\n',
-        { mode: 0o755 },
-      );
-      const result = NodeChildProcess.spawnSync("bash", ["-c", run], {
-        cwd: root,
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          PATH: `${directory}:${process.env.PATH}`,
-          GITHUB_REF: ref,
-          GITHUB_EVENT_NAME: event,
-          GITHUB_SHA: "abc",
-          GITHUB_REPOSITORY: "zeropsio/mate",
-          GITHUB_OUTPUT: output,
-          CALLED: called,
-          RUNS: NodePath.join(directory, "runs.json"),
-        },
-      });
-      expect(result.status, result.stderr).toBe(0);
-      expect(
-        NodeFS.readFileSync(output, "utf8").trim().split("\n"),
-        "ASSERTION: the real CI consumer emits the level and exact successful-final verdict",
-      ).toEqual([`level=${level}`, `skip=${skip}`]);
-      expect(NodeFS.existsSync(called)).toBe(api);
-      if (api)
-        expect(NodeFS.readFileSync(called, "utf8")).toContain(
-          "actions/workflows/ci.yml/runs?head_sha=abc&status=success&per_page=100",
-        );
-    } finally {
-      NodeFS.rmSync(directory, { recursive: true, force: true });
-    }
-  },
-);
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 it("tag release CI retains final verification with the preparation job's read permissions", () => {
   const release = parse(

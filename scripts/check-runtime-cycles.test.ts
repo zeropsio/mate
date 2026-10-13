@@ -91,45 +91,51 @@ it("Account assembly and adapter facades have no runtime cycles", async () => {
   );
 });
 
-it.each(["kh-try", "kh-final"])("new %s CI branches read the cycle budget from main", (branch) => {
-  const root = fixture({ "scripts/runtime-cycles.json": "1" });
-  const git = (...args: string[]) =>
-    NodeChildProcess.execFileSync("git", args, { cwd: root, encoding: "utf8" });
-  git("init", "-q", "-b", "main");
-  git("config", "user.name", "Cycle fixture");
-  git("config", "user.email", "cycle@example.test");
-  git("add", ".");
-  git("commit", "-qm", "main budget");
-  git("update-ref", "refs/remotes/origin/main", "HEAD");
-  git("checkout", "-qb", "candidate");
-  NodeFS.writeFileSync(NodePath.join(root, "scripts/runtime-cycles.json"), "2");
-  git("add", ".");
-  git("commit", "-qm", "candidate budget");
-  const event = NodePath.join(root, "event.json");
-  NodeFS.writeFileSync(
-    event,
-    JSON.stringify({ before: "0".repeat(40), ref: `refs/heads/${branch}/candidate` }),
-  );
-  vi.stubEnv("GITHUB_ACTIONS", "true");
-  vi.stubEnv("GITHUB_EVENT_PATH", event);
-  expect(
-    previousBudget(root, "origin/main"),
-    "ASSERTION: a verification branch cannot bless its own raised cycle budget",
-  ).toBe(1);
-  const checkout = fixture({});
-  git(
-    "clone",
-    "--quiet",
-    "--depth",
-    "1",
-    "--branch",
-    "candidate",
-    NodeURL.pathToFileURL(root).href,
-    checkout,
-  );
-  let shallowBudget: number | undefined;
-  expect(() => {
-    shallowBudget = previousBudget(checkout, "origin/main");
-  }, "ASSERTION: a fresh shallow verification checkout fetches the real main baseline").not.toThrow();
-  expect(shallowBudget).toBe(1);
-});
+it.each(["kh-next", "kh-bisect"])(
+  "new %s CI branches read the cycle budget from main",
+  (branch) => {
+    const root = fixture({ "scripts/runtime-cycles.json": "1" });
+    const git = (...args: string[]) =>
+      NodeChildProcess.execFileSync("git", args, { cwd: root, encoding: "utf8" });
+    git("init", "-q", "-b", "main");
+    git("config", "user.name", "Cycle fixture");
+    git("config", "user.email", "cycle@example.test");
+    git("add", ".");
+    git("commit", "-qm", "main budget");
+    git("update-ref", "refs/remotes/origin/main", "HEAD");
+    git("checkout", "-qb", "candidate");
+    NodeFS.writeFileSync(NodePath.join(root, "scripts/runtime-cycles.json"), "2");
+    git("add", ".");
+    git("commit", "-qm", "candidate budget");
+    const event = NodePath.join(root, "event.json");
+    NodeFS.writeFileSync(
+      event,
+      JSON.stringify({
+        before: "0".repeat(40),
+        ref: `refs/heads/${branch}${branch === "kh-next" ? "" : "/candidate"}`,
+      }),
+    );
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("GITHUB_EVENT_PATH", event);
+    expect(
+      previousBudget(root, "origin/main"),
+      "ASSERTION: a verification branch cannot bless its own raised cycle budget",
+    ).toBe(1);
+    const checkout = fixture({});
+    git(
+      "clone",
+      "--quiet",
+      "--depth",
+      "1",
+      "--branch",
+      "candidate",
+      NodeURL.pathToFileURL(root).href,
+      checkout,
+    );
+    let shallowBudget: number | undefined;
+    expect(() => {
+      shallowBudget = previousBudget(checkout, "origin/main");
+    }, "ASSERTION: a fresh shallow verification checkout fetches the real main baseline").not.toThrow();
+    expect(shallowBudget).toBe(1);
+  },
+);
