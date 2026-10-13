@@ -339,6 +339,78 @@ describe("C: an engine Mate's run card in a live conversation", () => {
       }),
     );
 
+    // Milo's third stress run: a steer landing in the running run moved the conversation 105 px.
+    it.effect(
+      "a message steered into the running run lands above its card without moving the page",
+      () =>
+        Effect.gen(function* () {
+          const { s, chat, provider } = yield* realLongConversation;
+          const working = yield* Deferred.make<void>();
+          yield* provider.turn([
+            { kind: "say", text: "Checking the first page now." },
+            { kind: "wait", until: working },
+          ]);
+          yield* chat.when.send("Check both pages");
+          const running = yield* provider.received;
+          yield* chat.then.text("Checking the first page now.");
+          yield* underLoad(s.page);
+          yield* Effect.promise(() => waitForStillFrames(s.page));
+          yield* trace(s.page, "Checking the first page now.");
+          yield* chat.when.send("also tell me the page title");
+          yield* chat.when.press("Send now");
+          const steered = yield* provider.received;
+          expect(
+            { turnId: steered.turnId, text: steered.input.input },
+            "ASSERTION: the message was steered into the running run",
+          ).toEqual({ turnId: running.turnId, text: "also tell me the page title" });
+          const frames = yield* readTrace(s.page);
+          const copies = yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const containsSteer = (element: Element) =>
+                element.textContent?.includes("also tell me the page title") === true;
+              return {
+                outer: [...document.querySelectorAll('[data-message-role="user"]')].filter(
+                  containsSteer,
+                ).length,
+                inCard: [
+                  ...document.querySelectorAll('[data-run-chat] [data-chat-kind="person"]'),
+                ].filter(containsSteer).length,
+              };
+            }),
+          );
+          expect(copies.outer, "ASSERTION: the steer has exactly one outer user row").toBe(1);
+          expect(copies.inCard, "ASSERTION: the running card marks the steer exactly once").toBe(1);
+          const order = yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+              let message: number | null = null;
+              while (walker.nextNode()) {
+                const node = walker.currentNode;
+                if (!node.textContent?.includes("also tell me the page title")) continue;
+                if (node.parentElement?.closest('[data-message-role="user"]') === null) continue;
+                const box = node.parentElement?.getBoundingClientRect();
+                if (box && box.height > 0) {
+                  message = box.top;
+                  break;
+                }
+              }
+              const card = [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1);
+              return { message, card: card?.getBoundingClientRect().top ?? null };
+            }),
+          );
+          expect(
+            order.message !== null && order.card !== null && order.message < order.card,
+            "ASSERTION: the steered message stands above the running run's card",
+          ).toBe(true);
+          expect(frames.length, "ASSERTION: the steer was sampled").toBeGreaterThan(20);
+          expect(
+            largestStep(frames, (frame) => frame.anchor),
+            "ASSERTION: the conversation never jumps as the steer lands",
+          ).toBeLessThan(60);
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
     // Milo's stress run: the question opening in the composer pushed the conversation up 250 px in
     // one frame, and the answer pulled it back down.
     it.effect("a question opening in the composer and its answer never move the conversation", () =>
