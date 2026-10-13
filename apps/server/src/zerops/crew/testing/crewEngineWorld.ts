@@ -138,7 +138,6 @@ const QUICK_EFFECTS: ReadonlySet<string> = new Set([
   "crew.lane.remove",
   "crew.claim.read",
 ]);
-const QUIET_WAIT = 15_000;
 /** How long a journey waits for a frame before it fails with the last one. */
 const SNAPSHOT_WAIT = Number(process.env.CREW_FRAME_WAIT ?? 60_000);
 const ENGINE_FILE = "engine.sqlite";
@@ -304,20 +303,28 @@ const enginePort = (input: {
   /**
    * The crew has taken a step in: its quick effects (a delivery, a reset, a discard) have run, as
    * V1's press returned once its turn was dispatched. Long work (a copy's setup, a check, a
-   * landing) goes on; a journey waits for it on the feed. Bounded: a held step stays held.
+   * landing) goes on; a journey waits for it on the feed. Durable receipts advance this drain;
+   * the journey's own timeout bounds a held step instead of silently treating it as settled.
    */
   const settled = Effect.gen(function* () {
-    for (let waited = 0; waited < QUIET_WAIT; waited += 25) {
-      const state = yield* crewState;
-      // A task's dispatch is part of its step: V1's press returned once its turn went out.
-      if (
-        !Object.values(state.effects).some((effect) => QUICK_EFFECTS.has(effect.kind)) &&
-        !Object.values(state.tasks).some((task) => task.starting !== null)
-      ) {
-        return;
-      }
-      yield* Effect.sleep("25 millis");
-    }
+    const conversations = yield* run(Conversations);
+    const head = (yield* crewState).headSeq;
+    yield* Stream.concat(
+      Stream.succeed(undefined),
+      conversations
+        .owner(crewDomain)
+        .subscribe(CREW_OWNER_ID, head)
+        .pipe(Stream.map(() => undefined)),
+    ).pipe(
+      Stream.mapEffect(() => crewState),
+      Stream.filter(
+        (state) =>
+          !Object.values(state.effects).some((effect) => QUICK_EFFECTS.has(effect.kind)) &&
+          !Object.values(state.tasks).some((task) => task.starting !== null),
+      ),
+      Stream.runHead,
+      Effect.orDie,
+    );
   });
 
   /**
@@ -602,7 +609,7 @@ const enginePort = (input: {
           Stream.runHead,
           Effect.orDie,
           Effect.timeoutOrElse({
-            duration: QUIET_WAIT,
+            duration: SNAPSHOT_WAIT,
             orElse: () => Effect.die(new Error(`crew never observed ${chat}'s turn receipts`)),
           }),
         );
