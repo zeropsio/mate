@@ -2100,3 +2100,43 @@ it.each(["empty", "refused"] as const)(
     }
   },
 );
+
+it("A runtime stop opens its recorded environment identity and keeps an unrecorded project's bookmark.", () => {
+  const stops = runtimeStopsOf(
+    "shop",
+    [
+      {
+        id: "project-stage",
+        name: "Stage",
+        status: "ACTIVE",
+        hq: { appId: "shop", appName: "Shop", kind: "stage", mate: null },
+      },
+      {
+        id: "unregistered-stage",
+        name: "Unregistered",
+        status: "ACTIVE",
+        hq: { appId: "shop", appName: "Shop", kind: "stage", mate: null },
+      },
+    ],
+    [
+      {
+        id: HqEnvironmentId.make("environment-stage"),
+        target: { kind: "zerops", projectId: ProjectId.make("project-stage") },
+        name: "Stage",
+        tier: "stage",
+      },
+    ],
+  );
+  const opened: string[] = [];
+  let mounted!: ReactTestRenderer;
+  act(() => {
+    mounted = create(
+      <ZeropsRuntimeStops stops={stops} deployments={new Map()} onOpen={(id) => opened.push(id)} />,
+    );
+  });
+  act(() => {
+    for (const button of mounted.root.findAllByType("button")) button.props.onClick();
+  });
+  expect(opened).toEqual(["environment-stage", "unregistered-stage"]);
+  act(() => mounted.unmount());
+});

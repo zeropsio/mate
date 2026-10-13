@@ -61,6 +61,7 @@ import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
 import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import type { ZeropsMateFace } from "./groups.ts";
 import type { DeployedVersion, EnvironmentRow, GroupRowTone } from "./groupRows.ts";
+import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
 import type { HqJob } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
@@ -127,7 +128,9 @@ export interface GroupFlowStopInput {
   readonly name: string;
   readonly tier: GroupEnvironmentTier;
   /** Its row, where HQ records the environment and its deploys (`environmentRowInputsOf`). */
-  readonly row: Omit<EnvironmentRow, "projectId"> | undefined;
+  readonly row:
+    | (Omit<EnvironmentRow, "projectId"> & Partial<Pick<HqEnvironmentIdentity, "id" | "target">>)
+    | undefined;
   /** The platform's pushed answer (`ZeropsProjectFlowValue.deployments`); `undefined` unread. */
   readonly deployment: Shown<Deployment> | undefined;
   /** Its public addresses, one per service it serves ({@link placeAddresses}). */
@@ -571,7 +574,16 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
   const productionStop = stops.find((_, index) => input.stops[index]?.tier === "production");
   const production = productionOf(productionStop, input);
   // The listed member wins: a creation the listing already holds is drawn from there.
-  const listed = new Set([...input.mates, ...input.stops].map((entry) => entry.projectId));
+  const listed = new Set([
+    ...input.mates.map((entry) => entry.projectId),
+    ...input.stops.flatMap((entry) =>
+      entry.row?.target === undefined
+        ? [entry.projectId]
+        : entry.row.target.kind === "zerops"
+          ? [entry.row.target.projectId]
+          : [],
+    ),
+  ]);
   const pending = input.pending.filter((entry) => !listed.has(entry.projectId));
   const comingMates = pending
     .filter((entry) => entry.kind === "mate")

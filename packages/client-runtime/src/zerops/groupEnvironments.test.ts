@@ -1,6 +1,7 @@
 import type { Deployment } from "./flow/deployment.ts";
 import type { ZeropsRegistry } from "./hq/registry.ts";
 import type { Shown } from "./knowledge/known.ts";
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -518,4 +519,34 @@ describe("productionRunsOf", () => {
   ] as const)("reads %s as %s", (_name, deployment, expected) => {
     expect(productionRunsOf(deployment)).toBe(expected);
   });
+});
+
+it("A recorded environment replaces its target's pending and half-made rows without hiding another project's creation.", () => {
+  const rows = environmentSlots({
+    environments: [
+      {
+        id: HqEnvironmentId.make("environment-stage"),
+        tier: "stage",
+        target: { kind: "zerops", projectId: ProjectId.make("project-stage") },
+      },
+    ],
+    devstages: [],
+    pending: [
+      { id: "project-stage", tier: "stage" },
+      { id: "environment-stage", tier: "stage" },
+    ],
+    halfMade: [{ id: "project-stage", tier: "stage", finish: true }],
+    recipeRead: false,
+    recipeTiers: [],
+    offered: { stage: false, production: false },
+    productionRuns: "unknown",
+    waiting: { count: 0, atLeast: false },
+    mainHasCode: undefined,
+    releaseOffered: false,
+    releasing: undefined,
+  });
+  expect(rows.filter((row) => row.kind !== "slot").map((row) => [row.kind, row.id])).toEqual([
+    ["environment", "environment-stage"],
+    ["creating", "environment-stage"],
+  ]);
 });

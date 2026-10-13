@@ -571,6 +571,7 @@ function useStageFirstDeploys(
 
 type RuntimeStopIdentity = {
   readonly projectId: string;
+  readonly environmentId?: HqEnvironmentId;
   readonly name: string;
   readonly tier: "production" | "stage";
 };
@@ -603,6 +604,7 @@ export function runtimeStopsOf(
       if (stop.target.kind !== "zerops") continue;
       stops.set(stop.target.projectId, {
         projectId: stop.target.projectId,
+        environmentId: stop.id,
         name: stop.name,
         tier: stop.tier,
       });
@@ -650,6 +652,7 @@ export function ZeropsRuntimeStops({
 }: {
   readonly stops: ReadonlyArray<{
     readonly projectId: string;
+    readonly environmentId?: HqEnvironmentId;
     readonly name: string;
     readonly tier: "production" | "stage";
   }>;
@@ -682,7 +685,7 @@ export function ZeropsRuntimeStops({
                   <button
                     className="flex min-w-0 items-center gap-3 text-left"
                     type="button"
-                    onClick={() => onOpen(stop.projectId)}
+                    onClick={() => onOpen(stop.environmentId ?? stop.projectId)}
                   >
                     {words}
                   </button>
@@ -785,7 +788,11 @@ function KnownGroupDetail({
   const slots = !flow.declarationsRead
     ? []
     : environmentSlots({
-        environments: environments.map((entry) => ({ id: entry.id, tier: entry.tier })),
+        environments: environments.map((entry) => ({
+          id: entry.id,
+          target: entry.target,
+          tier: entry.tier,
+        })),
         devstages,
         pending: pendingEnvironments,
         halfMade: halfMadeHere.map((entry) => ({

@@ -285,7 +285,11 @@ export const ENVIRONMENT_UNFINISHED = "Setup isn't finished";
  * on the other.
  */
 export function environmentSlots(input: {
-  readonly environments: ReadonlyArray<HeldEnvironment>;
+  readonly environments: ReadonlyArray<
+    HeldEnvironment & {
+      readonly target?: import("@t3tools/shared/hqEnvironment").HqEnvironmentIdentity["target"];
+    }
+  >;
   /** Mates that are also the stage (`devstage`). */
   readonly devstages: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   /** Creations the platform accepted and HQ does not hold yet (the group tree's `pending`). */
@@ -312,7 +316,15 @@ export function environmentSlots(input: {
   /** The release tag on its way to production. */
   readonly releasing: string | undefined;
 }): ReadonlyArray<EnvironmentSlotRow> {
-  const heldIds = new Set(input.environments.map((entry) => entry.id));
+  const heldIds = new Set(
+    input.environments.flatMap((entry) =>
+      entry.target === undefined
+        ? [entry.id]
+        : entry.target.kind === "zerops"
+          ? [entry.target.projectId]
+          : [],
+    ),
+  );
   // HQ's record stands in for a creation or a half-made project it now holds.
   const pending = input.pending.filter((entry) => !heldIds.has(entry.id));
   const halfMade = input.halfMade.filter(

@@ -1,3 +1,4 @@
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -1223,4 +1224,41 @@ describe("pairPreviewRoutes", () => {
       previews,
     );
   });
+});
+
+it("A listed environment replaces its target's creation while another project keeps its own coming stage.", () => {
+  const flow = groupFlow(
+    group({
+      stops: [
+        {
+          projectId: "environment-stage",
+          name: "Stage",
+          tier: "stage",
+          addresses: [],
+          deployment: undefined,
+          row: {
+            ...environmentRow({
+              projectId: "project-stage",
+              name: "Stage",
+              tier: "stage",
+              sources: ["main"],
+              services: [],
+            }),
+            id: HqEnvironmentId.make("environment-stage"),
+            target: { kind: "zerops", projectId: ProjectId.make("project-stage") },
+          },
+        },
+      ],
+      pending: [
+        { projectId: "project-stage", name: "Already held", kind: "stage" },
+        { projectId: "environment-stage", name: "Still coming", kind: "stage" },
+      ],
+    }),
+  );
+  expect(flow.stages.map(({ projectId, name }) => [projectId, name])).toEqual([
+    ["environment-stage", "Stage"],
+  ]);
+  expect(flow.creatingStages.map(({ projectId, name }) => [projectId, name])).toEqual([
+    ["environment-stage", "Still coming"],
+  ]);
 });
